@@ -44,6 +44,7 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { log } from 'evlog/client'
 
 // Nuxt Studio registers its own service worker at scope '/'
 // (host.js: `navigator.serviceWorker.register('/sw.js?<version>')`), which
@@ -92,8 +93,26 @@ useHead({
   ],
 })
 
+function reportException(exception: unknown, message: string): void {
+  const isError = exception instanceof Error
+
+  log.error({
+    action: 'client-error-boundary',
+    attributes: {
+      clientError: {
+        name: isError ? exception.name : typeof exception,
+        message,
+        stack: isError ? exception.stack : undefined,
+        route: route.fullPath,
+      },
+    },
+  })
+}
+
 async function onException(exception: unknown) {
   const parsedException = parseError(exception)
+
+  reportException(exception, parsedException.message)
 
   if (parsedException.status === 401) {
     const { fetchSession, session } = useAuth()

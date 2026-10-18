@@ -3,6 +3,21 @@ import { defineConfig, devices } from '@playwright/test'
 const AUTH_STATE_PATH = '.playwright/auth-user.json'
 const E2E_PORT = process.env.E2E_PORT || '3000'
 const E2E_BASE_URL = `http://localhost:${E2E_PORT}`
+const WEBKIT_SPECS = [/new-chat-navigation\.spec\.ts/]
+const WEBKIT_PROJECTS = process.env.E2E_WEBKIT
+  ? [
+    {
+      name: 'webkit',
+      dependencies: ['setup'],
+      testMatch: WEBKIT_SPECS,
+      use: {
+        ...devices['Desktop Safari'],
+        serviceWorkers: 'block' as const,
+        storageState: AUTH_STATE_PATH,
+      },
+    },
+  ]
+  : []
 const WEB_SERVER_ENV = {
   ...process.env,
   CI: 'true',
@@ -83,13 +98,10 @@ export default defineConfig({
         storageState: AUTH_STATE_PATH,
       },
     },
+    ...WEBKIT_PROJECTS,
     // {
     //   name: 'firefox',
     //   use: { ...devices['Desktop Firefox'] },
-    // },
-    // {
-    //   name: 'webkit',
-    //   use: { ...devices['Desktop Safari'] },
     // },
     // {
     //   name: 'mobile-chrome',

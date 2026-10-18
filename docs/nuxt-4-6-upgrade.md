@@ -10,7 +10,7 @@ audit the choices without replaying the session.
 | Package | Before | After |
 |---|---|---|
 | `nuxt` / `@nuxt/kit` | 4.5.2 | 4.6.0 |
-| `vue` | 3.5.41 | 3.6.0-rc.11 |
+| `vue` | 3.5.41 | 3.6.0-rc.12 |
 | `vue-router` | 5.2.x | 5.3.1 |
 | `vite` | (transitive) | 8.3.2 |
 | `unhead` / `@unhead/vue` / `@unhead/bundler` (override) | 3.2.1 | 3.4.2 |
@@ -222,6 +222,61 @@ to evlog's (`status` and `message`, with technical detail in `why`).
 - **`app/composables/field.ts`**: `checkParent` takes
   `Field | Field['parent']` because Vue 3.6 types a parent instance as
   `GenericComponentInstance`, not `ComponentInternalInstance`.
+
+## 2026-10-18: Vue rc.11 to rc.12 (WebKit `NotFoundError` on `/chats/new`)
+
+**Symptom.** In production, macOS Safari (WebKit) only, Chrome unaffected:
+after a chat page `/chats/<slug>` had been shown, a client-side navigation back
+to `/chats/new` raised the toast "The object can not be found here." (WebKit's
+default `NotFoundError` message) and left the page in the empty error-boundary
+state. The toast comes from `<NuxtErrorBoundary @error="onException">` in
+`app/app.vue`.
+
+**Root cause (confirmed in source).** `@vue/runtime-vapor@3.6.0-rc.11`
+`removeNode(block, parent)` called `parent.removeChild(block)` with the parent
+recorded when the block was created. When Suspense has moved the node during a
+page swap, the real `parentNode` differs and `removeChild` throws
+`NotFoundError`. `3.6.0-rc.12` (published 2026-10-16) reads
+`const current = block.parentNode` and removes only when it is set. The Vapor
+components on these pages are `Chat/Container`, `ui/Bubble`, `Logo` and
+`Welcome`.
+
+**Fix.** All twelve `overrides` in `pnpm-workspace.yaml` plus the `vue` pins in
+`package.json` and `modules/cookie-consent/package.json` moved to
+`3.6.0-rc.12` in lockstep, installed with a plain `pnpm install` (rc.12 was
+older than the 1440 minute release-age gate, no bypass). The rc.11
+`__props` auto-import guard and the `viteMDCSlot` guard still apply unchanged.
+
+**Observability.** `onException` in `app/app.vue` now also forwards the error
+(name, message, stack, route) to the evlog client logger as
+`action: 'client-error-boundary'` under `attributes.clientError`, so a future
+client error reaches Axiom instead of only showing a toast.
+
+**Regression spec and WebKit.** `tests/e2e/chat/new-chat-navigation.spec.ts`
+covers: SSR chat page then the sidebar "Start new chat" button, SSR new chat
+then client push then browser back, a mocked first turn sent from
+`/chats/new`, and repeated round trips. It wraps `Node.prototype.removeChild`,
+`insertBefore` and `replaceChild` to log the stack when they throw, settles for
+4 seconds and asserts no error toast and no DOM-mutation throw. It runs under
+the default `chromium` project in CI.
+
+The `webkit` Playwright project is opt-in: `E2E_WEBKIT=1 pnpm exec playwright
+test --project=webkit new-chat-navigation` after `pnpm exec playwright install
+webkit`. It is scoped to this spec through `testMatch`, and CI is unchanged
+(it installs chromium only). The project sets `serviceWorkers: 'block'`:
+Playwright's WebKit never finishes loading the app with the service worker
+registered (`document.readyState` never reaches `complete` and `page.evaluate`
+hangs), while the same pages load instantly with workers blocked. The service
+worker is push-only, so blocking it does not affect the removal path under
+test.
+
+**Repro status.** Against rc.11, in both the dev server and a production
+build served by `wrangler dev` (`CI=true` vars, `NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED`),
+Playwright WebKit (build 2370) did NOT reproduce the toast or any DOM throw in
+any scenario above, so the spec is a regression guard but did not fail before
+the bump. The failure was only observed on real Safari in production; real
+Safari was not driven from this repository. If the toast reappears, the
+`client-error-boundary` event carries the stack that was missing before.
 
 ## Known issues and follow-ups
 
