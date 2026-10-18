@@ -1,3 +1,5 @@
+import type { UtmParams } from '#shared/utils/utm'
+
 export type LandingEventName
   = | 'landing_page_view'
     | 'cta_click'
@@ -17,4 +19,10 @@ export interface LandingEventData {
   path?: string
   target?: string
   value?: number
+  utm?: UtmParams
 }
+
+export type ActivationEventName
+  = | 'signup_completed'
+    | 'first_provider_key_added'
+    | 'first_chat_message'

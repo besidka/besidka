@@ -138,9 +138,93 @@ describe('events ingest API', () => {
     expect(result).toEqual({ ok: true })
     expect(mocks.trackLandingEvent).toHaveBeenCalledWith(
       'cta_click',
-      { path: '/', target: 'hero-button', value: undefined },
+      { path: '/', target: 'hero-button', value: undefined, utm: {} },
       expect.anything(),
     )
+    expect(mocks.loggerSet).toHaveBeenCalledExactlyOnceWith({
+      analytics: { event: 'cta_click' },
+    })
+  })
+
+  it('sanitizes utm, logs it under attributes and forwards it', async () => {
+    const handler = await getEventsHandler()
+    const event = makeEvent(
+      {
+        event: 'landing_page_view',
+        path: '/',
+        utm: {
+          source: ' Reddit ',
+          medium: 'social',
+          campaign: 'bad value!',
+          content: 'a'.repeat(65),
+        },
+      },
+      { 'sec-fetch-site': 'same-origin' },
+    )
+
+    const result = await handler(event as any)
+
+    expect(result).toEqual({ ok: true })
+    expect(mocks.loggerSet).toHaveBeenCalledWith({
+      attributes: { utm: { source: 'reddit', medium: 'social' } },
+    })
+    expect(mocks.trackLandingEvent).toHaveBeenCalledWith(
+      'landing_page_view',
+      {
+        path: '/',
+        target: undefined,
+        value: undefined,
+        utm: { source: 'reddit', medium: 'social' },
+      },
+      expect.anything(),
+    )
+  })
+
+  it('does not log utm attributes when every utm value is invalid', async () => {
+    const handler = await getEventsHandler()
+    const event = makeEvent(
+      {
+        event: 'landing_page_view',
+        utm: { source: '<script>', medium: '' },
+      },
+      { 'sec-fetch-site': 'same-origin' },
+    )
+
+    await handler(event as any)
+
+    expect(mocks.loggerSet).toHaveBeenCalledExactlyOnceWith({
+      analytics: { event: 'landing_page_view' },
+    })
+    expect(mocks.trackLandingEvent).toHaveBeenCalledWith(
+      'landing_page_view',
+      expect.objectContaining({ utm: {} }),
+      expect.anything(),
+    )
+  })
+
+  it('rejects utm values longer than 256 characters (400)', async () => {
+    const handler = await getEventsHandler()
+    const event = makeEvent(
+      { event: 'landing_page_view', utm: { source: 'a'.repeat(257) } },
+      { 'sec-fetch-site': 'same-origin' },
+    )
+
+    await expect(handler(event as any)).rejects.toMatchObject({
+      statusCode: 400,
+    })
+    expect(mocks.trackLandingEvent).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-object utm payload (400)', async () => {
+    const handler = await getEventsHandler()
+    const event = makeEvent(
+      { event: 'landing_page_view', utm: 'utm_source=reddit' },
+      { 'sec-fetch-site': 'same-origin' },
+    )
+
+    await expect(handler(event as any)).rejects.toMatchObject({
+      statusCode: 400,
+    })
   })
 
   it('rejects unknown client path values (400)', async () => {

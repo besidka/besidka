@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountSuspended, mockNuxtImport } from '@nuxt/test-utils/runtime'
+import { useUtmAttribution } from '../../../../app/composables/utm-attribution'
 import CtaButtons from '../../../../app/components/landing/CtaButtons.vue'
 
 const mocks = vi.hoisted(() => {
@@ -26,6 +27,10 @@ const mountOptions = {
 }
 
 describe('CtaButtons.vue', () => {
+  beforeEach(() => {
+    clearNuxtState('utm-attribution')
+  })
+
   it('renders a hash href as a plain anchor (native scroll, not NuxtLink)',
     async () => {
       const wrapper = await mountSuspended(CtaButtons, {
@@ -94,6 +99,43 @@ describe('CtaButtons.vue', () => {
     expect(mocks.track).toHaveBeenCalledWith(
       'cta_click',
       { target: '#how-it-works' },
+    )
+  })
+
+  it('decorates auth links with captured utm params', async () => {
+    useUtmAttribution().captureUtmFromQuery({
+      utm_source: 'x',
+      utm_campaign: 'test',
+    })
+
+    const wrapper = await mountSuspended(CtaButtons, {
+      props: {
+        primary: { label: 'Start', href: '/signup' },
+        secondary: { label: 'Pricing', href: '/byok' },
+      },
+      ...mountOptions,
+    })
+
+    expect(wrapper.get('a[href^="/signup"]').attributes('href')).toBe(
+      '/signup?utm_source=x&utm_campaign=test',
+    )
+    expect(wrapper.find('a[href="/byok"]').exists()).toBe(true)
+  })
+
+  it('keeps the tracked target free of utm params', async () => {
+    mocks.track.mockClear()
+    useUtmAttribution().captureUtmFromQuery({ utm_source: 'x' })
+
+    const wrapper = await mountSuspended(CtaButtons, {
+      props: { primary: { label: 'Start', href: '/signup' } },
+      ...mountOptions,
+    })
+
+    await wrapper.get('a').trigger('click')
+
+    expect(mocks.track).toHaveBeenCalledWith(
+      'cta_click',
+      { target: '/signup' },
     )
   })
 })

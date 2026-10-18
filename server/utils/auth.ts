@@ -15,6 +15,10 @@ import type {
 } from '~~/modules/cookie-consent/src/runtime/types/module'
 import { isConsentCategoryGranted } from '~~/server/utils/consents'
 import * as schema from '../db/schema'
+import {
+  recordSignupActivation,
+  resolveSignupUtm,
+} from '~~/server/utils/analytics/activation'
 import { purgeUserData } from './account/purge-user-data'
 import {
   sendEmailChangedEmail,
@@ -306,6 +310,27 @@ function createAuth() {
       },
     },
     databaseHooks: {
+      user: {
+        create: {
+          async after(user, context) {
+            try {
+              await recordSignupActivation(
+                Number(user.id),
+                await resolveSignupUtm(context),
+              )
+            } catch (exception) {
+              resolveServerLogger().set({
+                attributes: {
+                  analytics: {
+                    error: exceptionMessage(exception),
+                    event: 'signup_completed',
+                  },
+                },
+              })
+            }
+          },
+        },
+      },
       account: {
         create: {
           // Fires for both a brand-new signup's first account row and every

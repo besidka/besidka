@@ -3,6 +3,7 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import type { RequestEvent } from 'nuxt/server'
 import type { LandingEventName, LandingEventData } from '#shared/types/analytics.d'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { toUtmBlobs } from '~~/server/utils/analytics/utm-blobs'
 
 const BOT_PATTERN
   = /bot|crawler|spider|scraper|curl|wget|python|java(?!script)|headless|phantom/i
@@ -61,7 +62,14 @@ export function trackLandingEvent(
     const value = data?.value ?? 0
 
     analytics.writeDataPoint({
-      blobs: [name, path, target, country, deviceClass],
+      blobs: [
+        name,
+        path,
+        target,
+        country,
+        deviceClass,
+        ...toUtmBlobs(data?.utm),
+      ],
       doubles: [value],
       indexes: [name],
     })

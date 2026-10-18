@@ -699,6 +699,27 @@ If a tool does neither, it runs without consent.
 When a tool lands in the **Required** rows, add the `analytics` category back
 and gate it (see [Re-enabling consent-gated analytics](#re-enabling-consent-gated-analytics)).
 
+### Campaign attribution uses no device storage
+
+UTM campaign attribution (`utm_source`, `utm_medium`, `utm_campaign`,
+`utm_content`) is built on the same rule. The values are read from the URL,
+held in in-memory client state (`useState`) and carried to sign-up through
+the URL (the sign-up links and Better Auth's `callbackURL`). Nothing is
+written to a cookie, `localStorage`, `sessionStorage` or IndexedDB, so
+Art. 5(3) and PKE Art. 399 are not triggered and the `analytics` category
+stays disabled.
+
+The server stores the first-touch campaign with the account
+(`user_attribution`). That is GDPR processing under Art. 6(1)(f), disclosed
+in the privacy policy, and it is not a consent matter.
+
+If a future change adds a UTM cookie or any other device storage for
+campaigns, it must go under the `analytics` category and be read only after
+consent. That means re-enabling the commented-out `analytics` category in
+`nuxt.config.ts`, which re-prompts users whose stored choice predates it, and
+updating the Cookie Policy table. The reasons the cookie was not built are in
+[`docs/analytics-utm.md`](analytics-utm.md#decision-no-analytics-consent-cookie).
+
 ### Remaining obligation either way
 
 Cookieless/anonymous analytics still requires **transparency** under

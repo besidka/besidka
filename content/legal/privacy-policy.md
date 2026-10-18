@@ -1,8 +1,8 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-10-09
-summary: "Besidka stores your account, chats, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway whose account you chose to route it through, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. Each of them is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
+updatedAt: 2026-10-18
+summary: "Besidka stores your account, chats, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway whose account you chose to route it through, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. Each of them is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
 ---
 
 ## What this policy covers
@@ -56,6 +56,14 @@ The same applies to the keys you add for an AI gateway or a search provider. A C
 
 This is the only field encrypted in this way. Please do not read it as a claim that the whole database is encrypted at the application level.
 
+### Campaign attribution
+
+If you reach Besidka through a link that carries campaign tags (`utm_source`, `utm_medium`, `utm_campaign`, `utm_content`) and you then create an account, I store those values with your account, in a separate table in the same D1 database. I store them once, as they were in the link you clicked, after a strict clean-up: only short values made of lowercase letters, digits, dots, hyphens and underscores are kept, and anything else is discarded. If your link had no campaign tags, nothing is stored. This is a first-touch record. It is never updated.
+
+If your account is created after this feature started (accounts that already existed are not tracked), I also record, once per account and with or without a campaign link, whether you reached three early milestones: your account was created, you saved your first AI provider or gateway key, and you sent your first chat message that got a complete answer. A failed or interrupted answer does not count. That record holds your user id, the milestone name, the provider involved and a timestamp. It tells me whether a campaign led to real use, and it keeps each milestone from being counted twice.
+
+The campaign tags travel in the web address and in the page's memory only. I do not set a cookie or write to your browser storage for this. See the [Cookie Policy](/cookie-policy).
+
 ### Sharing and notifications
 
 - Share records, if you publish a chat with a share link
@@ -80,10 +88,12 @@ I record structured logs of requests and errors so I can keep the service workin
 | Publish a chat behind a share link | Your consent — Art. 6(1)(a) |
 | Let search engines index a shared chat | A separate consent — Art. 6(1)(a) |
 | Store non-essential preferences in your browser | Your consent — Art. 6(1)(a) and PKE Art. 399 |
+| Remember which campaign link brought you to Besidka, and count the milestones above, so I can tell which of my own campaigns work | Legitimate interests — Art. 6(1)(f) |
+| Count page views and interface events as aggregate counters | Legitimate interests — Art. 6(1)(f) |
 | Error and operational logging | Legitimate interests — Art. 6(1)(f) |
 | Security, abuse prevention and rate limiting | Legitimate interests — Art. 6(1)(f) |
 
-Where I rely on legitimate interests, my interest is keeping a free service running, debuggable and not abused. I only log what I need for that, and I never log the content of your messages. You can object to this processing — see [Your rights](#your-rights).
+Where I rely on legitimate interests, my interest is keeping a free service running, debuggable and not abused. I only log what I need for that, and I never log the content of your messages. For campaign measurement my interest is knowing whether my own campaigns lead anyone to use the app, and I keep that to a few short tags and a handful of milestones. You can object to this processing — see [Your rights](#your-rights).
 
 Where I rely on consent, you can withdraw it at any time, and withdrawing is as easy as giving it.
 
@@ -194,6 +204,7 @@ My logs are deliberately narrow. Specifically:
 - **The content of your messages, your prompts and the model's answers are not logged.**
 - Search queries sent to Brave Search or Exa are not logged either, only how many results came back.
 - Push endpoints and push keys are never logged.
+- When you create an account, save your first key or send your first message, the log line for that event can carry the campaign tags from your first-touch record and, for a key or message, the provider's name. Those log lines already carry a pseudonymous user id, so the campaign tags are linked to that id for as long as the logs are kept.
 
 ## How long I keep things
 
@@ -204,6 +215,8 @@ My logs are deliberately narrow. Specifically:
 | Share links | Until you revoke the share, or until the expiry you chose (1 hour, 1 day, 1 week, 1 month, 1 year, or never). Revoking deletes the share record. |
 | Push subscriptions | Until you turn notifications off, or until your browser's push service reports the endpoint as invalid |
 | Sessions | Until they expire or you sign out |
+| Campaign attribution and milestone records | Until you delete your account. They are deleted together with it. |
+| Aggregate analytics counters | About three months, which is how long Cloudflare keeps Workers Analytics Engine data |
 | Operational logs | As kept by Axiom under my plan, and only in the reduced form described above |
 | Consent records | Stored in a separate database, pseudonymously — see [Cookie consent records](#cookie-consent-records) |
 
@@ -252,9 +265,17 @@ That is all. **I never send marketing email**, newsletters or product announceme
 
 ## Analytics
 
-I count page views and a small set of interface events (for example, that a call-to-action was clicked) **server-side**. That counting uses **no cookie, no user identifier and stores no IP address**. What is recorded is the event name, the path, a coarse country, and a device class (mobile, tablet or desktop) derived from the User-Agent string.
+I measure two things, and neither uses a cookie or any storage on your device.
 
-Because those counts are aggregate and cannot be linked back to you, they are not personal data, and they are not gated behind consent.
+**Aggregate counters.** I count page views and a small set of interface events (for example, that a call-to-action was clicked) **on the server**, in Cloudflare Workers Analytics Engine. A counter holds the event name, the path, a coarse country, a device class (mobile, tablet or desktop) derived from the User-Agent string, and the campaign tags from the link you opened, if it had any. It holds **no user id, no email address and no IP address**, and no cookie is set or read. Cloudflare keeps this data for about three months.
+
+Because those counters are aggregate and cannot be linked back to you, they are not personal data, and they are not gated behind consent.
+
+**Campaign attribution on your account.** When you create an account after opening a campaign link, I store the link's tags with your account. For every account created after this feature started, with or without a campaign link, I also record the three early milestones described under [Campaign attribution](#campaign-attribution). Accounts that already existed are not tracked. These records are stored with your account and deleted with it. They are personal data, because they are tied to your account. It is separate from the aggregate counters, which never receive your user id. The log lines for those milestones are covered under [Operational logging](#operational-logging).
+
+**How the campaign tags reach your account.** They are read from the web address of the page you opened and passed along in the address of the sign-up and sign-in links. They are held in the page's memory while you browse and are gone when you open the site again without the campaign link. While you use the sign-up page, they stay in its web address. Nothing is stored in a cookie, localStorage or sessionStorage. Because nothing is stored on or read from your device, no consent is needed under PKE Art. 399. A cookie that remembers a campaign across visits was considered and **is not used**.
+
+My legal basis for the account-level record is legitimate interests under GDPR Art. 6(1)(f): knowing whether my own campaigns lead anyone to use the app. I keep the data to what that needs, and you can object to it — see [Your rights](#your-rights). Deleting your account deletes the record.
 
 ## Cookies and browser storage
 
@@ -314,7 +335,7 @@ There is **no self-service export button yet**. Until there is, email **:privacy
 
 ### Deleting your account
 
-You can delete your account from your settings. I email you a confirmation link, and opening it removes your account and all data associated with it, including your chats, projects, settings, stored provider, gateway and search API keys, share records, push subscriptions and your stored files.
+You can delete your account from your settings. I email you a confirmation link, and opening it removes your account and all data associated with it, including your chats, projects, settings, stored provider, gateway and search API keys, share records, push subscriptions, your campaign attribution and milestone records and your stored files.
 
 Open that link in the same browser you are signed in to. The link is tied to your signed-in session, so opening it on a different device will not work.
 

@@ -62,7 +62,7 @@
         </NuxtLink>
         <NuxtLink
           v-else
-          to="/signup"
+          :to="withAuthUtm('/signup')"
           class="btn btn-accent btn-sm rounded-full max-xs:btn-circle"
           @click="track('header_cta_click', { target: '/signup' })"
         >
@@ -82,6 +82,7 @@
 <script setup lang="ts">
 const { loggedIn } = useAuth()
 const { track } = useLandingAnalytics()
+const { withAuthUtm } = useUtmAttribution()
 const route = useRoute()
 const isHomePage = computed<boolean>(() => route.path === '/')
 </script>

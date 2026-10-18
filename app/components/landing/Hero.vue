@@ -36,8 +36,9 @@
         class="flex flex-wrap items-center justify-center gap-3 mt-3"
       >
         <NuxtLink
-          :to="primaryCta.href"
+          :to="withAuthUtm(primaryCta.href)"
           class="group/cta btn btn-primary btn-sm"
+          data-testid="landing-hero-primary-cta"
           @click="track('cta_click', { target: primaryCta.href })"
         >
           {{ primaryCta.label }}
@@ -108,6 +109,7 @@ withDefaults(defineProps<{
 })
 
 const { track } = useLandingAnalytics()
+const { withAuthUtm } = useUtmAttribution()
 
 const { data: starsData, pending: starsPending } = await useGithubStars()
 

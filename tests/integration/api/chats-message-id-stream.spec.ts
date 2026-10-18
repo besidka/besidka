@@ -3,6 +3,7 @@ import {
   GENERATION_GUARD_HEARTBEAT_INTERVAL_MS,
   GENERATION_GUARD_LEASE_TTL_SECONDS,
 } from '../../../server/utils/ai/generation-guard'
+import { IMAGE_GENERATION_FAILURE_TEXT } from '../../../shared/utils/chat-failure-text'
 
 const mocks = vi.hoisted(() => ({
   failConvertToModelMessages: false,
@@ -17,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   persistedResponseParts: null as Array<Record<string, any>> | null,
   loggerSet: vi.fn(),
   aiLoggerSet: vi.fn(),
+  aiLoggerEmit: vi.fn(() => null),
+  trackFirstChatMessage: vi.fn(async () => undefined),
   stripUndeliveredInlineDataParts: vi.fn((parts: unknown) => parts),
 }))
 
@@ -119,7 +122,7 @@ vi.mock('evlog', () => ({
   }),
   createRequestLogger: () => ({
     set: mocks.aiLoggerSet,
-    emit: vi.fn(() => null),
+    emit: mocks.aiLoggerEmit,
     getContext: () => ({}),
   }),
   log: {
@@ -157,6 +160,10 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   }),
   isPersistedOversizedResponseFailureText: vi.fn(() => false),
   stripUndeliveredInlineDataParts: mocks.stripUndeliveredInlineDataParts,
+}))
+
+vi.mock('~~/server/utils/analytics/chat-activation', () => ({
+  trackFirstChatMessage: mocks.trackFirstChatMessage,
 }))
 
 vi.mock('~~/server/utils/chats/share', () => ({
@@ -661,7 +668,7 @@ describe('chat stream message ids', () => {
 
     await response.ready
 
-    expect(waitUntil).toHaveBeenCalledTimes(1)
+    expect(waitUntil).toHaveBeenCalledTimes(2)
     expect(sendPushNotificationToUserMock).toHaveBeenCalledWith(
       db,
       1,
@@ -674,6 +681,158 @@ describe('chat stream message ids', () => {
       expect.anything(),
       'https://pr-304-besidka.chernenko.workers.dev',
     )
+  })
+
+  it('tracks the first chat message separately from the ai event', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { event, waitUntil } = createWaitUntilEvent({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    })
+
+    mocks.aiLoggerEmit.mockReturnValueOnce({ wide: 'ai' } as never)
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as any)
+
+    await response.ready
+
+    expect(mocks.aiLoggerEmit).toHaveBeenCalledOnce()
+    expect((globalThis as any).shipWideEventToAxiom)
+      .toHaveBeenCalledExactlyOnceWith({ wide: 'ai' })
+    expect(mocks.trackFirstChatMessage).toHaveBeenCalledExactlyOnceWith({
+      userId: 1,
+      providerId: 'openai',
+      path: expect.any(String),
+      parentRequestId: 'test-request-id',
+      waitUntil: expect.any(Function),
+    })
+    expect(waitUntil).toHaveBeenCalledWith(
+      mocks.trackFirstChatMessage.mock.results[0]!.value,
+    )
+    expect(mocks.aiLoggerEmit.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.trackFirstChatMessage.mock.invocationCallOrder[0]!)
+  })
+
+  it('awaits first chat message tracking inline without waitUntil', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(mocks.trackFirstChatMessage).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ userId: 1, waitUntil: undefined }),
+    )
+    expect(mocks.aiLoggerEmit).toHaveBeenCalledOnce()
+  })
+
+  it('does not track the first chat message on abort', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    })
+
+    mocks.uiMessageStreamChunks = [{ type: 'abort' }]
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as any)
+
+    await response.ready
+
+    expect(mocks.trackFirstChatMessage).not.toHaveBeenCalled()
+    expect(mocks.aiLoggerEmit).toHaveBeenCalledOnce()
+  })
+
+  it('does not track the first chat message after a stream error', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    })
+
+    mocks.uiMessageStreamChunks = [
+      { type: 'start', messageId: 'assistant-1' },
+      { type: 'text-start', id: 'text-1' },
+      { type: 'text-delta', id: 'text-1', delta: 'Partial' },
+      { type: 'text-end', id: 'text-1' },
+      { type: 'error', errorText: 'Invalid API key' },
+    ]
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as any)
+
+    await response.ready
+
+    expect(sendPushNotificationToUserMock).toHaveBeenCalledOnce()
+    expect(mocks.trackFirstChatMessage).not.toHaveBeenCalled()
+  })
+
+  it('does not track the first chat message for a persisted image failure', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    })
+
+    mocks.uiMessageStreamChunks = [
+      { type: 'start', messageId: 'assistant-1' },
+      { type: 'text-start', id: 'text-1' },
+      {
+        type: 'text-delta',
+        id: 'text-1',
+        delta: IMAGE_GENERATION_FAILURE_TEXT.providerAuth,
+      },
+      { type: 'text-end', id: 'text-1' },
+      { type: 'finish' },
+    ]
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as any)
+
+    await response.ready
+
+    expect(sendPushNotificationToUserMock).toHaveBeenCalledOnce()
+    expect(mocks.trackFirstChatMessage).not.toHaveBeenCalled()
   })
 
   it('does not send a push notification when the stream is aborted', async () => {

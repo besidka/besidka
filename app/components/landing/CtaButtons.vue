@@ -42,7 +42,7 @@
     </a>
     <NuxtLink
       v-else
-      :to="primary.href"
+      :to="withAuthUtm(primary.href)"
       class="group/cta btn btn-primary btn-sm"
       @click="track('cta_click', { target: primary.href })"
     >
@@ -92,7 +92,7 @@
       </a>
       <NuxtLink
         v-else
-        :to="secondary.href"
+        :to="withAuthUtm(secondary.href)"
         class="group/cta btn btn-ghost btn-sm"
         @click="track('cta_click', { target: secondary.href })"
       >
@@ -120,6 +120,7 @@ withDefaults(defineProps<{
 })
 
 const { track } = useLandingAnalytics()
+const { withAuthUtm } = useUtmAttribution()
 
 function isAnchor(href: string) {
   return href.startsWith('#')
