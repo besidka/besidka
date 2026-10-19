@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
@@ -7,9 +7,30 @@ import { markdownSourceKey } from '../../../../app/composables/markdown-source'
 import type { MarkdownSourceContext } from '../../../../app/composables/markdown-source'
 
 const mocks = vi.hoisted(() => {
+  const panzoomInstance = {
+    zoomIn: vi.fn(),
+    zoomOut: vi.fn(),
+    reset: vi.fn(),
+    destroy: vi.fn(),
+    setOptions: vi.fn(),
+    zoomWithWheel: vi.fn(),
+  }
+
   return {
     copy: vi.fn(),
     renderAsync: vi.fn(),
+    runExportAction: vi.fn(),
+    panzoom: vi.fn(() => panzoomInstance),
+  }
+})
+
+vi.mock('@panzoom/panzoom', () => {
+  return { default: mocks.panzoom }
+})
+
+mockNuxtImport('useDiagramExport', () => {
+  return () => {
+    return { runExportAction: mocks.runExportAction }
   }
 })
 
@@ -56,6 +77,8 @@ vi.mock('shiki-stream/vue', async () => {
 const VALID_DIAGRAM = 'flowchart LR\n  A[Start] --> B[Done]\n  B --> C[End]'
 const INVALID_DIAGRAM = 'flowchart LR\n  A[Start --> B\n  B --> C'
 
+const VIEWER_SELECTOR = '[data-testid="mermaid-viewer"]'
+
 async function mountPre(
   code: string,
   options: {
@@ -76,7 +99,10 @@ async function mountPre(
       code,
       language: options.language ?? 'mermaid',
     },
-    global: { provide },
+    global: {
+      provide,
+      stubs: { teleport: true },
+    },
   })
 }
 
@@ -285,5 +311,188 @@ describe('prose/PreStream.vue mermaid', () => {
       .toBe(false)
     expect(wrapper.get('[data-testid="shiki-code"]').text())
       .toBe('const answer = 42')
+  })
+})
+
+describe('prose/PreStream.vue mermaid viewer and export', () => {
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import('pele/lazy')>(
+      'pele/lazy',
+    )
+
+    mocks.renderAsync.mockImplementation(actual.renderAsync)
+    mocks.panzoom.mockClear()
+    mocks.runExportAction.mockReset()
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal')
+      .mockImplementation(function () {
+        this.setAttribute('open', '')
+      })
+    vi.spyOn(HTMLDialogElement.prototype, 'close')
+      .mockImplementation(function () {
+        this.removeAttribute('open')
+        this.dispatchEvent(new Event('close'))
+      })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows the fullscreen button and export menu in diagram view',
+    async () => {
+      const wrapper = await mountPre(VALID_DIAGRAM)
+
+      await waitForDiagram(wrapper)
+
+      expect(wrapper.find('[data-testid="mermaid-fullscreen"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="mermaid-export"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="mermaid-toggle"]').exists())
+        .toBe(true)
+      expect(findButton(wrapper, 'Copy')).toBeDefined()
+    })
+
+  it('hides the fullscreen button and export menu in code view',
+    async () => {
+      const wrapper = await mountPre(VALID_DIAGRAM)
+
+      await waitForDiagram(wrapper)
+      await wrapper.get('[data-testid="mermaid-toggle"]').trigger('click')
+
+      expect(wrapper.find('[data-testid="mermaid-fullscreen"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="mermaid-export"]').exists())
+        .toBe(false)
+    })
+
+  it('never shows the fullscreen button or export menu on code blocks',
+    async () => {
+      const wrapper = await mountPre('const answer = 42', {
+        language: 'ts',
+      })
+
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="mermaid-fullscreen"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="mermaid-export"]').exists())
+        .toBe(false)
+    })
+
+  it('uses icon-only toolbar buttons below the sm breakpoint', async () => {
+    const wrapper = await mountPre(VALID_DIAGRAM)
+
+    await waitForDiagram(wrapper)
+
+    const labels = [
+      wrapper.get('[data-testid="mermaid-fullscreen"]'),
+      wrapper.get('[data-testid="mermaid-export"]'),
+      wrapper.get('[data-testid="mermaid-toggle"]'),
+    ]
+
+    for (const label of labels) {
+      expect(label.html()).toContain('max-sm:sr-only')
+    }
+  })
+
+  it('opens the viewer from the fullscreen button', async () => {
+    const wrapper = await mountPre(VALID_DIAGRAM)
+
+    await waitForDiagram(wrapper)
+
+    expect(wrapper.find(VIEWER_SELECTOR).exists()).toBe(false)
+
+    await wrapper.get('[data-testid="mermaid-fullscreen"]').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(wrapper.find(VIEWER_SELECTOR).exists()).toBe(true)
+    })
+
+    expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+  })
+
+  it('opens the viewer when the inline diagram is clicked', async () => {
+    const wrapper = await mountPre(VALID_DIAGRAM)
+
+    await waitForDiagram(wrapper)
+
+    const diagram = wrapper.get('[data-testid="mermaid-diagram"]')
+
+    expect(diagram.attributes('role')).toBeUndefined()
+    expect(diagram.attributes('tabindex')).toBeUndefined()
+
+    await diagram.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(wrapper.find(VIEWER_SELECTOR).exists()).toBe(true)
+    })
+  })
+
+  it('opens the viewer from the keyboard on the inline diagram',
+    async () => {
+      const wrapper = await mountPre(VALID_DIAGRAM)
+
+      await waitForDiagram(wrapper)
+
+      const openButton = wrapper.get('[data-testid="mermaid-diagram-open"]')
+
+      expect(openButton.element.tagName).toBe('BUTTON')
+      expect(openButton.text()).toBe('Open diagram in fullscreen')
+
+      await openButton.trigger('click')
+
+      await vi.waitFor(() => {
+        expect(wrapper.find(VIEWER_SELECTOR).exists()).toBe(true)
+      })
+    })
+
+  it('hides the inline svg while the viewer is open and unmounts it on '
+    + 'close', async () => {
+    const wrapper = await mountPre(VALID_DIAGRAM)
+
+    await waitForDiagram(wrapper)
+
+    expect(wrapper.get('[data-testid="mermaid-diagram"]').classes())
+      .not.toContain('invisible')
+
+    await wrapper.get('[data-testid="mermaid-fullscreen"]').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(wrapper.find(VIEWER_SELECTOR).exists()).toBe(true)
+    })
+
+    expect(wrapper.get('[data-testid="mermaid-diagram"]').classes())
+      .toContain('invisible')
+
+    wrapper.get('[data-testid="mermaid-viewer-close"]')
+      .element.closest('dialog')!
+      .dispatchEvent(new Event('close'))
+
+    await vi.waitFor(() => {
+      expect(wrapper.find(VIEWER_SELECTOR).exists()).toBe(false)
+    })
+
+    expect(wrapper.get('[data-testid="mermaid-diagram"]').classes())
+      .not.toContain('invisible')
+  })
+
+  it('exports the rendered svg with the diagram source', async () => {
+    mocks.runExportAction.mockResolvedValue(true)
+
+    const wrapper = await mountPre(VALID_DIAGRAM)
+
+    await waitForDiagram(wrapper)
+    await wrapper.get('[data-testid="mermaid-export-copy-markdown"]')
+      .trigger('click')
+
+    expect(mocks.runExportAction).toHaveBeenCalledWith(
+      'copy-markdown',
+      expect.objectContaining({
+        source: VALID_DIAGRAM,
+        svg: expect.stringContaining('<svg'),
+        themeElement: wrapper.get('[data-testid="mermaid-diagram"]').element,
+      }),
+    )
   })
 })

@@ -1,16 +1,34 @@
 <template>
-  <div>
+  <div class="relative">
     <div
       v-if="!svg"
       class="skeleton skeleton--default h-20 w-full"
     />
+    <button
+      v-if="isInteractive"
+      type="button"
+      class="
+        js-mermaid-open btn btn-xs
+        sr-only focus:not-sr-only focus:absolute focus:right-2 focus:top-2
+        focus:z-10
+      "
+      data-testid="mermaid-diagram-open"
+      @click="requestOpen"
+    >
+      Open diagram in fullscreen
+    </button>
     <div
       ref="container"
       class="
-        js-mermaid-diagram mermaid-diagram
+        js-mermaid-diagram mermaid-diagram pele-theme
         flex justify-center overflow-x-auto
       "
+      :class="{
+        'cursor-zoom-in': isInteractive,
+        'invisible': isHidden,
+      }"
       data-testid="mermaid-diagram"
+      @click="requestOpen"
       v-html="svg"
     />
   </div>
@@ -21,11 +39,13 @@ import type { DiagramRenderError } from '~/types/diagram.d'
 
 const props = defineProps<{
   code: string
+  isHidden?: boolean
 }>()
 
 const emit = defineEmits<{
   error: [error: DiagramRenderError]
-  rendered: []
+  rendered: [payload: { svg: string }]
+  open: []
 }>()
 
 const { renderDiagram } = useDiagramRenderer()
@@ -34,6 +54,24 @@ const container = useTemplateRef<HTMLElement>('container')
 const svg = shallowRef<string>('')
 const isMounted = shallowRef<boolean>(false)
 const idPrefix = `mermaid-${useId()}`
+
+const isInteractive = computed<boolean>(() => {
+  return !!svg.value
+})
+
+function requestOpen() {
+  if (!isInteractive.value) {
+    return
+  }
+
+  emit('open')
+}
+
+function getThemeElement(): HTMLElement | null {
+  return container.value
+}
+
+defineExpose({ getThemeElement })
 
 watch([() => props.code, isMounted], async ([code], _previous, onCleanup) => {
   if (!isMounted.value) {
@@ -62,47 +100,10 @@ watch([() => props.code, isMounted], async ([code], _previous, onCleanup) => {
   }
 
   svg.value = result.svg
-  emit('rendered')
+  emit('rendered', { svg: result.svg })
 })
 
 onMounted(() => {
   isMounted.value = true
 })
 </script>
-
-<style scoped>
-.mermaid-diagram {
-  --pele-bg: var(--color-base-100);
-  --pele-fg: var(--color-base-content);
-  --pele-muted: color-mix(in oklab, var(--color-base-content) 60%, transparent);
-  --pele-line: var(--color-base-content);
-  --pele-surface: var(--color-base-200);
-  --pele-surface-alt: var(--color-base-300);
-  --pele-border: color-mix(
-    in oklab,
-    var(--color-base-content) 35%,
-    var(--color-base-100)
-  );
-  --pele-accent: var(--color-accent);
-  --pele-critical: var(--color-error);
-  --pele-error: var(--color-error);
-  --pele-font: var(--font-display, 'Nunito', sans-serif);
-  --pele-font-mono: var(--font-code, 'Atkinson Hyperlegible Mono', monospace);
-  --pele-series-1: var(--color-accent);
-  --pele-series-2: var(--color-info);
-  --pele-series-3: var(--color-success);
-  --pele-series-4: var(--color-warning);
-  --pele-series-5: var(--color-error);
-  --pele-series-6: var(--color-base-content);
-  --pele-series-7: color-mix(
-    in oklab,
-    var(--color-accent) 50%,
-    var(--color-info)
-  );
-  --pele-series-8: color-mix(
-    in oklab,
-    var(--color-success) 50%,
-    var(--color-warning)
-  );
-}
-</style>

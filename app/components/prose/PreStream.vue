@@ -1,6 +1,6 @@
 <template>
   <div
-    class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-hidden overscroll-contain"
+    class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-clip overflow-y-visible"
   >
     <div class="flex items-center justify-between">
       <div class="mockup-browser-toolbar"/>
@@ -13,8 +13,28 @@
           :icon-size="14"
           size="xs"
           :text="isDiagramView ? 'Code' : 'Diagram'"
+          :icon-only-phone="isDiagramView"
           data-testid="mermaid-toggle"
           @click="isCodeViewSelected = !isCodeViewSelected"
+        />
+        <UiButton
+          v-if="isDiagramView"
+          mode="default"
+          ghost
+          icon-name="lucide:maximize"
+          :icon-size="14"
+          size="xs"
+          text="Fullscreen"
+          icon-only-phone
+          :disabled="!diagramSvg"
+          data-testid="mermaid-fullscreen"
+          @click="openViewer"
+        />
+        <ProseMermaidExportMenu
+          v-if="isDiagramView"
+          :source="trimmedCode"
+          :svg="diagramSvg"
+          :theme-element="getDiagramThemeElement"
         />
         <UiButton
           v-if="isExpandButtonVisible && !isDiagramView"
@@ -36,6 +56,7 @@
           :icon-size="14"
           size="xs"
           :text="copied ? 'Copied!' : 'Copy'"
+          :icon-only-phone="isDiagramView"
           @click="copy"
         />
       </div>
@@ -54,8 +75,12 @@
         </template>
         <ProseMermaidDiagram
           v-if="isDiagramView"
+          ref="diagram"
           :code="trimmedCode"
+          :is-hidden="isViewerOpen"
           @error="diagramError = $event"
+          @rendered="diagramSvg = $event.svg"
+          @open="openViewer"
         />
         <ProsePre v-else v-bind="props">
           <ShikiCachedRenderer
@@ -80,6 +105,11 @@
     >
       {{ diagramErrorText }}
     </p>
+    <LazyProseMermaidViewer
+      v-if="isViewerOpen"
+      v-model:open="isViewerOpen"
+      :source="trimmedCode"
+    />
   </div>
 </template>
 
@@ -121,6 +151,11 @@ const isMermaidComplete = computed<boolean>(() => {
 })
 
 const diagramError = shallowRef<DiagramRenderError | null>(null)
+const diagramSvg = shallowRef<string>('')
+const isViewerOpen = shallowRef<boolean>(false)
+const diagramRef = useTemplateRef<{
+  getThemeElement: () => HTMLElement | null
+}>('diagram')
 const isCodeViewSelected = shallowRef<boolean>(false)
 const isMounted = shallowRef<boolean>(false)
 
@@ -156,7 +191,26 @@ const diagramErrorText = computed<string>(() => {
 
 watch(trimmedCode, () => {
   diagramError.value = null
+  diagramSvg.value = ''
 })
+
+watch(isDiagramView, (isVisible) => {
+  if (!isVisible) {
+    diagramSvg.value = ''
+  }
+})
+
+function getDiagramThemeElement(): HTMLElement | null {
+  return diagramRef.value?.getThemeElement() ?? null
+}
+
+function openViewer() {
+  if (!diagramSvg.value) {
+    return
+  }
+
+  isViewerOpen.value = true
+}
 
 const codeLines = computed<number>(() => {
   const lines = trimmedCode.value.match(/\r?\n/gm)
