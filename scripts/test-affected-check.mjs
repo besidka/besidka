@@ -216,6 +216,16 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/context-menu-image.spec.ts',
     'tests/e2e/chat/context-menu-image-desktop.spec.ts',
     'tests/e2e/chat/gateway-image-generation.spec.ts',
+    'tests/e2e/chat/mermaid-diagram.spec.ts',
+  ]
+  const mermaidDiagramTests = [
+    'tests/unit/utils/markdown-fences.spec.ts',
+    'tests/unit/composables/diagram-renderer.spec.ts',
+    'tests/unit/composables/markdown-source.spec.ts',
+    'tests/unit/components/prose/PreStream.spec.ts',
+    'tests/unit/components/prose/MermaidDiagram.spec.ts',
+    'tests/unit/components/Chat/MarkdownSource.spec.ts',
+    'tests/e2e/chat/mermaid-diagram.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -1197,6 +1207,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/prose\/A\.vue|app\/composables\/chat-format\.ts)$/,
       tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/prose\/(PreStream|MermaidDiagram)\.vue|app\/composables\/(diagram-renderer|markdown-source|chat-format)\.ts|app\/utils\/markdown-fences\.ts|app\/types\/diagram\.d\.ts|app\/components\/Chat\/MarkdownSource\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: mermaidDiagramTests,
     },
     {
       pattern:

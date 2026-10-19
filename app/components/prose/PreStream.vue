@@ -6,7 +6,18 @@
       <div class="mockup-browser-toolbar"/>
       <div class="flex gap-2 py-2 pr-4">
         <UiButton
-          v-if="isExpandButtonVisible"
+          v-if="isDiagramToggleVisible"
+          mode="default"
+          ghost
+          :icon-name="isDiagramView ? 'lucide:code' : 'lucide:workflow'"
+          :icon-size="14"
+          size="xs"
+          :text="isDiagramView ? 'Code' : 'Diagram'"
+          data-testid="mermaid-toggle"
+          @click="isCodeViewSelected = !isCodeViewSelected"
+        />
+        <UiButton
+          v-if="isExpandButtonVisible && !isDiagramView"
           mode="default"
           ghost
           :icon-name="expanded
@@ -32,7 +43,7 @@
     <div
       class="p-4 overflow-x-auto text-sm"
       :class="{
-        'overflow-y-auto max-h-30': !expanded
+        'overflow-y-auto max-h-30': !expanded && !isDiagramView
       }"
     >
       <ClientOnly>
@@ -41,7 +52,12 @@
             {{ trimmedCode }}
           </ProsePre>
         </template>
-        <ProsePre v-bind="props">
+        <ProseMermaidDiagram
+          v-if="isDiagramView"
+          :code="trimmedCode"
+          @error="diagramError = $event"
+        />
+        <ProsePre v-else v-bind="props">
           <ShikiCachedRenderer
             :key="key"
             :highlighter="highlighter as any"
@@ -57,11 +73,19 @@
         </ProsePre>
       </ClientOnly>
     </div>
+    <p
+      v-if="diagramError"
+      class="px-4 pb-3 text-xs text-base-content/60"
+      data-testid="mermaid-error"
+    >
+      {{ diagramErrorText }}
+    </p>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ShikiCachedRenderer } from 'shiki-stream/vue'
+import type { DiagramRenderError } from '~/types/diagram.d'
 
 const props = defineProps<{
   code: string
@@ -70,9 +94,12 @@ const props = defineProps<{
   meta?: string
 }>()
 
+const DIAGRAM_ERROR_LIMIT: number = 200
+
 const colorMode = useColorMode()
 const clipboard = useClipboard()
 const highlighter = await useHighlighter()
+const markdownSource = useMarkdownSource()
 
 const trimmedCode = computed<string>(() => {
   try {
@@ -80,6 +107,55 @@ const trimmedCode = computed<string>(() => {
   } catch {
     return props.code
   }
+})
+
+const isMermaid = computed<boolean>(() => {
+  return props.language?.toLowerCase() === 'mermaid'
+})
+
+const isMermaidComplete = computed<boolean>(() => {
+  const { source, streaming } = markdownSource.value
+
+  return !streaming
+    || isFencedBlockClosed(source, 'mermaid', trimmedCode.value)
+})
+
+const diagramError = shallowRef<DiagramRenderError | null>(null)
+const isCodeViewSelected = shallowRef<boolean>(false)
+const isMounted = shallowRef<boolean>(false)
+
+const isDiagramCandidate = computed<boolean>(() => {
+  return isMermaid.value && isMermaidComplete.value && !diagramError.value
+})
+
+const isDiagramToggleVisible = computed<boolean>(() => {
+  return isMounted.value && isDiagramCandidate.value
+})
+
+const isDiagramView = computed<boolean>(() => {
+  return isDiagramCandidate.value && !isCodeViewSelected.value
+})
+
+const diagramErrorText = computed<string>(() => {
+  const error = diagramError.value
+
+  if (!error) {
+    return ''
+  }
+
+  const position = error.line
+    ? ` (line ${error.line}${error.column ? `, column ${error.column}` : ''})`
+    : ''
+
+  const message = error.message.length > DIAGRAM_ERROR_LIMIT
+    ? `${error.message.slice(0, DIAGRAM_ERROR_LIMIT)}…`
+    : error.message
+
+  return `Couldn't render diagram: ${message}${position}`
+})
+
+watch(trimmedCode, () => {
+  diagramError.value = null
 })
 
 const codeLines = computed<number>(() => {
@@ -148,6 +224,8 @@ onBeforeMount(() => {
 })
 
 onMounted(() => {
+  isMounted.value = true
+
   timer.value = setInterval(() => {
     if (props.code.length !== savedCodeState.value.length) {
       savedCodeState.value = props.code

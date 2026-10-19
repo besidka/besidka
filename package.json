@@ -108,6 +108,7 @@
 		"nuxt-email-renderer": "^2.11.1",
 		"nuxt-studio": "1.7.0",
 		"nuxt-svgo": "^5.3.0",
+		"pele": "1.6.0",
 		"plyr": "^3.8.5",
 		"remark-breaks": "^4.0.0",
 		"sanitize-html": "^2.18.1",
