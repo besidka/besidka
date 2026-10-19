@@ -230,7 +230,7 @@ const props = withDefaults(defineProps<{
 const reducedMotion = usePreferredReducedMotion()
 const activeIndex = shallowRef<number>(0)
 const isPlaying = shallowRef<boolean>(false)
-const wasPlayingBeforeLightbox = shallowRef<boolean>(false)
+const isPausedByUser = shallowRef<boolean>(false)
 const isLightboxOpen = shallowRef<boolean>(false)
 const lightboxIndex = shallowRef<number | null>(null)
 const liveAnnouncement = shallowRef<string>('')
@@ -271,7 +271,7 @@ function shouldAutoplay() {
 }
 
 function startAutoplay() {
-  if (!shouldAutoplay()) {
+  if (intervalHandle !== undefined || !shouldAutoplay()) {
     return
   }
 
@@ -290,8 +290,10 @@ function stopAutoplay() {
 
 function togglePlayback() {
   if (isPlaying.value) {
+    isPausedByUser.value = true
     stopAutoplay()
   } else {
+    isPausedByUser.value = false
     startAutoplay()
   }
 }
@@ -299,7 +301,6 @@ function togglePlayback() {
 async function openLightbox(index: number) {
   lightboxIndex.value = index
   isLightboxOpen.value = true
-  wasPlayingBeforeLightbox.value = isPlaying.value
   stopAutoplay()
 
   await nextTick()
@@ -309,7 +310,7 @@ async function openLightbox(index: number) {
 function onLightboxClose() {
   isLightboxOpen.value = false
 
-  if (props.autoplay && wasPlayingBeforeLightbox.value) {
+  if (props.autoplay && !isPausedByUser.value) {
     startAutoplay()
   }
 }
@@ -346,7 +347,7 @@ function handleVisibilityChange() {
 
   if (document.hidden) {
     stopAutoplay()
-  } else if (!isLightboxOpen.value) {
+  } else if (!isLightboxOpen.value && !isPausedByUser.value) {
     startAutoplay()
   }
 }
