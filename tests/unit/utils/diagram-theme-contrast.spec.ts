@@ -19,6 +19,9 @@ type CheckGroup
     | 'border-bg'
     | 'border-surface'
     | 'border-subtle'
+    | 'surface-alt-bg'
+    | 'surface-alt-subtle'
+    | 'fg-surface-alt'
     | 'muted-bg'
     | 'series-bg'
     | 'series-surface'
@@ -37,6 +40,7 @@ const TEXT_CONTRAST: number = 4.5
 const GRAPHIC_CONTRAST: number = 3
 const BORDER_BACKGROUND_CONTRAST: number = 3
 const BORDER_SURFACE_CONTRAST: number = 2.2
+const SURFACE_ALT_BACKGROUND_CONTRAST: number = 1.3
 const BORDER_SUBTLE_MARGIN: number = 0.5
 const MUTED_CONTRAST: number = 3
 const SERIES_BACKGROUND_CONTRAST: number = 1.8
@@ -53,6 +57,7 @@ const OLD_PELE_THEME_CSS: string = `
   --pele-line: var(--color-base-content);
   --pele-surface: var(--color-base-200);
   --pele-border: var(--color-base-300);
+  --pele-surface-alt: var(--color-base-300);
   --pele-muted: var(--color-base-content);
   --pele-accent: var(--color-primary);
   --pele-series-1: var(--color-primary);
@@ -114,6 +119,7 @@ function collectChecks(
   const background = color('--pele-bg')
   const surface = color('--pele-surface')
   const border = color('--pele-border')
+  const surfaceAlt = color('--pele-surface-alt')
   const lineBackgroundContrast = contrastRatio(color('--pele-line'), background)
   const borderBackgroundContrast = contrastRatio(border, background)
   const checks: Check[] = [
@@ -158,6 +164,24 @@ function collectChecks(
       label: 'line vs bg minus border vs bg',
       value: lineBackgroundContrast - borderBackgroundContrast,
       threshold: BORDER_SUBTLE_MARGIN,
+    },
+    {
+      group: 'surface-alt-bg',
+      label: 'surface-alt vs bg',
+      value: contrastRatio(surfaceAlt, background),
+      threshold: SURFACE_ALT_BACKGROUND_CONTRAST,
+    },
+    {
+      group: 'surface-alt-subtle',
+      label: 'border vs bg minus surface-alt vs bg',
+      value: borderBackgroundContrast - contrastRatio(surfaceAlt, background),
+      threshold: BORDER_SUBTLE_MARGIN,
+    },
+    {
+      group: 'fg-surface-alt',
+      label: 'fg vs surface-alt',
+      value: contrastRatio(color('--pele-fg'), surfaceAlt),
+      threshold: TEXT_CONTRAST,
     },
     {
       group: 'muted-bg',
@@ -254,6 +278,18 @@ describe('diagram theme contrast', () => {
 
       it('keeps border subtler than line on bg', () => {
         expect(describeFailures(checks, 'border-subtle')).toEqual([])
+      })
+
+      it('keeps surface-alt visible on bg (>= 1.3:1)', () => {
+        expect(describeFailures(checks, 'surface-alt-bg')).toEqual([])
+      })
+
+      it('keeps surface-alt subtler than border on bg', () => {
+        expect(describeFailures(checks, 'surface-alt-subtle')).toEqual([])
+      })
+
+      it('keeps fg text at WCAG AA (4.5:1) on surface-alt', () => {
+        expect(describeFailures(checks, 'fg-surface-alt')).toEqual([])
       })
 
       it('keeps muted text at the graphics minimum (3:1) on bg', () => {

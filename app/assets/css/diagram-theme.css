@@ -4,7 +4,11 @@
   --pele-muted: color-mix(in oklab, var(--color-base-content) 60%, transparent);
   --pele-line: var(--color-base-content);
   --pele-surface: var(--color-base-200);
-  --pele-surface-alt: var(--color-base-300);
+  --pele-surface-alt: color-mix(
+    in oklab,
+    var(--color-base-content) 14%,
+    var(--color-base-100)
+  );
   --pele-border: color-mix(
     in oklab,
     var(--color-base-content) 55%,
@@ -30,6 +34,11 @@
 }
 
 [data-theme='dark'] .pele-theme {
+  --pele-surface-alt: color-mix(
+    in oklab,
+    var(--color-base-content) 22%,
+    var(--color-base-100)
+  );
   --pele-series-1: var(--color-pink-300);
   --pele-series-2: var(--color-sky-400);
   --pele-series-3: var(--color-emerald-300);
