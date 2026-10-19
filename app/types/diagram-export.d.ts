@@ -11,7 +11,6 @@ export type DiagramExportAction
     | 'download-svg'
     | 'download-png'
     | 'download-drawio'
-    | 'open-drawio'
 
 export interface DiagramPngOptions {
   scale?: number

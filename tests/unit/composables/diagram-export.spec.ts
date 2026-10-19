@@ -109,7 +109,6 @@ describe('composables/diagram-export', () => {
   let written: FakeClipboardItem[]
   let writeText: ReturnType<typeof vi.fn>
   let write: ReturnType<typeof vi.fn>
-  let windowOpen: ReturnType<typeof vi.fn>
 
   beforeEach(async () => {
     themeOverrides = {}
@@ -124,14 +123,12 @@ describe('composables/diagram-export', () => {
       await Promise.all(items.flatMap(item => Object.values(item.items)))
     })
     writeText = vi.fn(async () => {})
-    windowOpen = vi.fn()
 
     vi.stubGlobal('ClipboardItem', FakeClipboardItem)
     vi.stubGlobal('navigator', {
       ...navigator,
       clipboard: { write, writeText },
     })
-    vi.spyOn(window, 'open').mockImplementation(windowOpen)
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
       (() => createCanvasContext()) as unknown as HTMLCanvasElement['getContext'],
     )
@@ -429,30 +426,6 @@ describe('composables/diagram-export', () => {
       await expect(useDiagramExport().runExportAction('download-png', input))
         .resolves.toBe(false)
       expect(anchors).toHaveLength(0)
-    })
-
-    it('open-drawio opens the hash url without opener or referrer', () => {
-      const result = useDiagramExport().runExportAction('open-drawio', input)
-
-      expect(result).toBe(true)
-      expect(windowOpen).toHaveBeenCalledTimes(1)
-
-      const [url, target, features] = windowOpen.mock.calls[0] ?? []
-
-      expect(url).toMatch(/^https:\/\/app\.diagrams\.net\/#create=/)
-      expect(JSON.parse(decodeURIComponent(String(url).split('#create=')[1]!)))
-        .toEqual({ type: 'mermaid', data: SOURCE })
-      expect(target).toBe('_blank')
-      expect(features).toBe('noopener,noreferrer')
-    })
-
-    it('open-drawio returns false when window.open throws', () => {
-      windowOpen.mockImplementation(() => {
-        throw new Error('blocked')
-      })
-
-      expect(useDiagramExport().runExportAction('open-drawio', input))
-        .toBe(false)
     })
   })
 

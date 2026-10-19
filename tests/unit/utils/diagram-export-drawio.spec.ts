@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   buildDrawioClipboardXml,
   buildDrawioFile,
-  buildDrawioOpenUrl,
   buildMermaidMarkdown,
 } from '~/utils/diagram-export-drawio'
 import {
@@ -41,17 +40,6 @@ describe('utils/diagram-export-drawio', () => {
   it('wraps the source in a mermaid fence', () => {
     expect(buildMermaidMarkdown('graph TD\n  A --> B'))
       .toBe('```mermaid\ngraph TD\n  A --> B\n```\n')
-  })
-
-  it('builds an open url whose hash decodes to the mermaid payload', () => {
-    const url = buildDrawioOpenUrl(SOURCE)
-    const prefix = 'https://app.diagrams.net/#create='
-
-    expect(url.startsWith(prefix)).toBe(true)
-    expect(JSON.parse(decodeURIComponent(url.slice(prefix.length)))).toEqual({
-      type: 'mermaid',
-      data: SOURCE,
-    })
   })
 
   it('builds clipboard xml with re-editable mermaid data and the svg image', () => {

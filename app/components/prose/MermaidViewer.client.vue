@@ -65,7 +65,7 @@
           </p>
           <div
             v-if="svg"
-            class="join join-vertical absolute bottom-4 right-4 rounded-field shadow-lg"
+            class="join join-vertical absolute bottom-4 right-4 [--radius-field:0.5rem] rounded-(--radius-field) shadow-lg"
           >
             <button
               type="button"

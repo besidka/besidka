@@ -16,11 +16,9 @@ type ExportAction
     | 'download-svg'
     | 'download-png'
     | 'download-drawio'
-    | 'open-drawio'
 
 const DIAGRAM_COUNT = 4
 const CYNEFIN_INDEX = 3
-const DRAWIO_CREATE_PREFIX = 'https://app.diagrams.net/#create='
 const MERMAID_BLOCK_PATTERN = /```mermaid\n([\s\S]*?)\n```/g
 const CYNEFIN_SOURCE = [...TEST_MERMAID_MESSAGE.matchAll(MERMAID_BLOCK_PATTERN)]
   .map(match => match[1]!.trim())[CYNEFIN_INDEX]!
@@ -396,7 +394,7 @@ async function downloadFrom(
 }
 
 test.describe('Mermaid diagram export', () => {
-  test('shows the export menu with all seven actions', async ({ page }) => {
+  test('shows the export menu with all six actions', async ({ page }) => {
     await waitForAllDiagrams(page)
 
     const block = getDiagramBlock(page, CYNEFIN_INDEX)
@@ -410,7 +408,6 @@ test.describe('Mermaid diagram export', () => {
       'download-svg',
       'download-png',
       'download-drawio',
-      'open-drawio',
     ]) {
       await expect(
         block.locator(`[data-testid="mermaid-export-${action}"]`),
@@ -431,7 +428,9 @@ test.describe('Mermaid diagram export', () => {
     })
     await trigger.click()
 
-    const lastItem = block.locator('[data-testid="mermaid-export-open-drawio"]')
+    const lastItem = block.locator(
+      '[data-testid="mermaid-export-download-drawio"]',
+    )
 
     await expect(lastItem).toBeVisible()
 
@@ -642,43 +641,6 @@ test.describe('Mermaid diagram export', () => {
     expect(download.suggestedFilename()).toBe('diagram.svg')
     expect((await readDownload(download)).toString('utf-8'))
       .toContain('Market research')
-  })
-
-  test('opens draw.io with the mermaid source', async ({ page }) => {
-    await waitForAllDiagrams(page)
-
-    await page.evaluate(() => {
-      const target = window as unknown as { openCalls: unknown[][] }
-
-      target.openCalls = []
-      window.open = (...args: unknown[]) => {
-        target.openCalls.push(args)
-
-        return null
-      }
-    })
-
-    await chooseExport(getDiagramBlock(page, CYNEFIN_INDEX), 'open-drawio')
-
-    await expect.poll(() => {
-      return page.evaluate(() => {
-        return (window as unknown as { openCalls: unknown[][] })
-          .openCalls.length
-      })
-    }).toBe(1)
-
-    const [url, target, features] = await page.evaluate(() => {
-      return (window as unknown as { openCalls: string[][] }).openCalls[0]!
-    }) as [string, string, string]
-
-    expect(url.startsWith(DRAWIO_CREATE_PREFIX)).toBe(true)
-    expect(target).toBe('_blank')
-    expect(features).toBe('noopener,noreferrer')
-
-    const payload = decodeURIComponent(url.slice(DRAWIO_CREATE_PREFIX.length))
-
-    expect(JSON.parse(payload))
-      .toEqual({ type: 'mermaid', data: CYNEFIN_SOURCE })
   })
 
   test.describe('clipboard', () => {

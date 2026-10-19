@@ -85,16 +85,6 @@ const groups: ExportGroup[] = [
       { action: 'download-drawio', label: '.drawio', icon: 'lucide:download' },
     ],
   },
-  {
-    title: 'Open',
-    items: [
-      {
-        action: 'open-drawio',
-        label: 'Open in draw.io',
-        icon: 'lucide:external-link',
-      },
-    ],
-  },
 ]
 
 const { runExportAction } = useDiagramExport()

@@ -10,7 +10,6 @@ import {
 import {
   buildDrawioClipboardXml,
   buildDrawioFile,
-  buildDrawioOpenUrl,
   buildMermaidMarkdown,
 } from '~/utils/diagram-export-drawio'
 import { buildEmbeddedFontCss } from '~/utils/diagram-export-fonts'
@@ -204,16 +203,6 @@ async function download(
   }
 }
 
-function openDrawio(source: string): boolean {
-  try {
-    window.open(buildDrawioOpenUrl(source), '_blank', 'noopener,noreferrer')
-
-    return true
-  } catch {
-    return false
-  }
-}
-
 function runExportAction(
   action: DiagramExportAction,
   input: DiagramExportInput,
@@ -247,8 +236,6 @@ function runExportAction(
             DRAWIO_MIME_TYPE,
           )
         })
-      case 'open-drawio':
-        return openDrawio(input.source)
       default:
         return false
     }
@@ -264,7 +251,6 @@ export function useDiagramExport() {
     buildMarkdown: buildMermaidMarkdown,
     buildDrawioFile,
     buildDrawioClipboardXml,
-    buildDrawioOpenUrl,
     runExportAction,
   }
 }

@@ -31,7 +31,6 @@ const ACTIONS: DiagramExportAction[] = [
   'download-svg',
   'download-png',
   'download-drawio',
-  'open-drawio',
 ]
 
 async function mountMenu(
@@ -61,7 +60,7 @@ describe('prose/MermaidExportMenu.vue', () => {
     mocks.useErrorMessage.mockReset()
   })
 
-  it('renders the three groups with all seven actions', async () => {
+  it('renders the two groups with all six actions', async () => {
     const { wrapper } = await mountMenu()
 
     expect(wrapper.get('[data-testid="mermaid-export"]').text())
@@ -74,7 +73,7 @@ describe('prose/MermaidExportMenu.vue', () => {
 
     expect(wrapper.findAll('.menu-title').map((title) => {
       return title.text()
-    })).toEqual(['Copy', 'Download', 'Open'])
+    })).toEqual(['Copy', 'Download'])
   })
 
   it.each(ACTIONS)('runs %s synchronously inside the click handler',
@@ -113,7 +112,6 @@ describe('prose/MermaidExportMenu.vue', () => {
     'download-svg',
     'download-png',
     'download-drawio',
-    'open-drawio',
   ])('shows no toast after a successful %s', async (action) => {
     const { wrapper } = await mountMenu()
 
@@ -145,7 +143,7 @@ describe('prose/MermaidExportMenu.vue', () => {
 
     const { wrapper } = await mountMenu()
 
-    await wrapper.get('[data-testid="mermaid-export-open-drawio"]')
+    await wrapper.get('[data-testid="mermaid-export-download-drawio"]')
       .trigger('click')
     await flushPromises()
 

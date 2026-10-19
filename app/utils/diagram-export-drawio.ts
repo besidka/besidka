@@ -3,7 +3,6 @@ import {
   escapeXmlAttribute,
 } from '~/utils/diagram-export-encoding'
 
-const DRAWIO_CREATE_URL: string = 'https://app.diagrams.net/#create='
 const DRAWIO_MERMAID_VERSION: string = '12'
 const DRAWIO_DIAGRAM_ID: string = 'besidka-diagram'
 const DRAWIO_IMAGE_STYLE: string
@@ -12,12 +11,6 @@ const DRAWIO_IMAGE_STYLE: string
 
 export function buildMermaidMarkdown(source: string): string {
   return `\`\`\`mermaid\n${source}\n\`\`\`\n`
-}
-
-export function buildDrawioOpenUrl(source: string): string {
-  const payload = JSON.stringify({ type: 'mermaid', data: source })
-
-  return `${DRAWIO_CREATE_URL}${encodeURIComponent(payload)}`
 }
 
 export function buildDrawioClipboardXml(
