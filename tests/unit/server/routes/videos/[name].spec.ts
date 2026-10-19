@@ -456,6 +456,95 @@ describe('GET /videos/[name]', () => {
       expect(mocks.head).toHaveBeenCalledTimes(1)
     })
 
+  it('serves 200 in full when R2 rejects the range and If-Range is stale',
+    async () => {
+      mocks.get
+        .mockRejectedValueOnce(
+          new Error('get: The requested range is not satisfiable (10039)'),
+        )
+        .mockResolvedValueOnce(createBody())
+      mocks.head.mockResolvedValue({ size: 1000, httpEtag: '"abc"' })
+
+      const event = createEvent({
+        'range': 'bytes=4000000-',
+        'if-range': '"stale"',
+      })
+      const result = await callRoute(event)
+
+      expect(result).toBe(BODY)
+      expect(event.res.status).toBe(200)
+      expect(event.res.headers.get('Content-Length')).toBe('1000')
+      expect(event.res.headers.has('Content-Range')).toBe(false)
+      expect(mocks.get).toHaveBeenCalledTimes(2)
+      expect(mocks.get.mock.calls[1]![1].range).toBeUndefined()
+    })
+
+  it('keeps 416 when R2 rejects the range and If-Range matches', async () => {
+    mocks.get.mockRejectedValue(
+      new Error('get: The requested range is not satisfiable (10039)'),
+    )
+    mocks.head.mockResolvedValue({ size: 1000, httpEtag: '"abc"' })
+
+    const event = createEvent({
+      'range': 'bytes=4000000-',
+      'if-range': '"abc"',
+    })
+
+    await expect(callRoute(event)).rejects.toMatchObject({ status: 416 })
+    expect(event.res.headers.get('Content-Range')).toBe('bytes */1000')
+    expect(mocks.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('serves 200 in full when the range is out of bounds after the read '
+    + 'and If-Range is stale', async () => {
+    const cancel = vi.fn(async () => {})
+
+    mocks.get
+      .mockResolvedValueOnce(createBody({ body: { cancel } }))
+      .mockResolvedValueOnce(createBody())
+
+    const event = createEvent({
+      'range': 'bytes=4000000-',
+      'if-range': '"stale"',
+    })
+    const result = await callRoute(event)
+
+    expect(result).toBe(BODY)
+    expect(event.res.status).toBe(200)
+    expect(event.res.headers.get('Content-Length')).toBe('1000')
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('serves 200 in full for a malformed range with a stale If-Range',
+    async () => {
+      mocks.get.mockResolvedValue(createBody())
+
+      const event = createEvent({
+        'range': 'items=0-10',
+        'if-range': '"stale"',
+      })
+
+      await callRoute(event)
+
+      expect(event.res.status).toBe(200)
+      expect(mocks.get).toHaveBeenCalledTimes(1)
+    })
+
+  it('keeps 416 after the read when the range is out of bounds and '
+    + 'If-Range matches', async () => {
+    const cancel = vi.fn(async () => {})
+
+    mocks.get.mockResolvedValue(createBody({ body: { cancel } }))
+
+    const event = createEvent({
+      'range': 'bytes=4000000-',
+      'if-range': '"abc"',
+    })
+
+    await expect(callRoute(event)).rejects.toMatchObject({ status: 416 })
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
   it('rethrows unrelated R2 errors', async () => {
     mocks.get.mockRejectedValue(new Error('R2 is down (10001)'))
 
