@@ -61,7 +61,6 @@
 
 .plyr video {
   height: 100%;
-  object-fit: cover;
 }
 
 /* Floating glass control bar — mirrors the chat .bubble header/footer. */
@@ -187,6 +186,29 @@
 
 .landing-player .plyr__poster {
   border-radius: 1rem;
+}
+
+.landing-player .plyr:fullscreen {
+  --plyr-video-background: #000;
+}
+
+.landing-player .plyr--fullscreen-fallback {
+  --plyr-video-background: #000;
+}
+
+.landing-player .plyr:fullscreen .plyr__video-wrapper,
+.landing-player .plyr:fullscreen .plyr__poster {
+  border-radius: 0;
+}
+
+.landing-player .plyr--fullscreen-fallback .plyr__video-wrapper,
+.landing-player .plyr--fullscreen-fallback .plyr__poster {
+  border-radius: 0;
+}
+
+.bubble:has(.landing-player .plyr--fullscreen-fallback) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* ── Mobile compact overrides (< 640 px) ────────────────────────────────── */
