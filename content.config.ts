@@ -69,7 +69,7 @@ export default defineContentConfig({
               src: z
                 .string()
                 .describe(
-                  'Image path, e.g. /preview-light-desktop.svg',
+                  'Image path, e.g. /carousel/01-any-model.webp',
                 ),
               alt: z
                 .string()
