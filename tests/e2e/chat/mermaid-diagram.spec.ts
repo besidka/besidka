@@ -106,6 +106,38 @@ async function waitForAllDiagrams(page: Page): Promise<void> {
   ).toHaveCount(DIAGRAM_COUNT, { timeout: 15_000 })
 }
 
+async function hasEmbeddableFontFaces(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const families = ['nunito', 'atkinson hyperlegible mono']
+
+    function collectRules(rules: CSSRuleList): boolean {
+      return Array.from(rules).some((rule) => {
+        if (rule instanceof CSSFontFaceRule) {
+          const family = rule.style
+            .getPropertyValue('font-family')
+            .replace(/["']/g, '')
+            .trim()
+            .toLowerCase()
+
+          return families.includes(family)
+        }
+
+        const nestedRules = (rule as CSSGroupingRule).cssRules
+
+        return nestedRules ? collectRules(nestedRules) : false
+      })
+    }
+
+    return Array.from(document.styleSheets).some((sheet) => {
+      try {
+        return collectRules(sheet.cssRules)
+      } catch {
+        return false
+      }
+    })
+  })
+}
+
 async function readViewerScale(page: Page): Promise<number> {
   return page
     .locator('[data-testid="mermaid-viewer-target"]')
@@ -459,6 +491,7 @@ test.describe('Mermaid diagram export', () => {
     expect(download.suggestedFilename()).toBe('diagram.svg')
 
     const markup = (await readDownload(download)).toString('utf-8')
+    const hasFontFaces = await hasEmbeddableFontFaces(page)
     const result = await page.evaluate((svgMarkup) => {
       const document = new DOMParser()
         .parseFromString(svgMarkup, 'image/svg+xml')
@@ -492,8 +525,8 @@ test.describe('Mermaid diagram export', () => {
     expect(result.firstChildName).toBe('rect')
     expect(result.backgroundFill).toMatch(/^#[0-9a-f]{6}$/i)
     expect(Number(result.backgroundWidth)).toBe(Number(result.width))
-    expect(result.hasFontFace).toBe(true)
-    expect(result.hasEmbeddedFontData).toBe(true)
+    expect(result.hasFontFace).toBe(hasFontFaces)
+    expect(result.hasEmbeddedFontData).toBe(hasFontFaces)
     expect(markup).not.toContain('var(')
     expect(markup).toContain('Market research')
   })
@@ -666,9 +699,17 @@ test.describe('Mermaid diagram export', () => {
       await expect.poll(() => readClipboardText(page)).toContain('<svg')
 
       const markup = await readClipboardText(page)
+      const hasFontFaces = await hasEmbeddableFontFaces(page)
 
       expect(markup).not.toContain('var(')
-      expect(markup).toContain('@font-face')
+
+      if (hasFontFaces) {
+        expect(markup).toContain('@font-face')
+        expect(markup).toContain('url(data:')
+      } else {
+        expect(markup).not.toContain('@font-face')
+      }
+
       expect(markup).toContain('Market research')
       await expect(page.getByText('SVG copied')).toBeVisible()
     })
