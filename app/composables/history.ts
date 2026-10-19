@@ -11,6 +11,8 @@ interface HistoryCacheEntry {
   lastFetchedAt: number | null
 }
 
+const UNSEARCHED_CACHE_KEY = 'history:'
+
 export function setHistoryChatSharedBySlug(slug: string, shared: boolean) {
   const cache = useState<Record<string, HistoryCacheEntry>>(
     'history:cache',
@@ -39,6 +41,111 @@ export function setHistoryChatSharedBySlug(slug: string, shared: boolean) {
         return chat.slug === slug ? { ...chat, shared } : chat
       }),
     }
+  }
+
+  cache.value = nextCache
+
+  const activeEntry = nextCache[activeKey]
+
+  if (!activeEntry) {
+    return
+  }
+
+  chats.value = activeEntry.chats
+  pinned.value = activeEntry.pinned
+}
+
+function updatePinnedState(
+  entry: HistoryCacheEntry,
+  chatId: string,
+  pinnedAt: string | null,
+  activityAt: string,
+): HistoryCacheEntry {
+  const existingChat = entry.pinned.find((chat) => {
+    return chat.id === chatId
+  }) ?? entry.chats.find((chat) => {
+    return chat.id === chatId
+  })
+
+  if (!existingChat) {
+    return entry
+  }
+
+  const updatedChat = {
+    ...existingChat,
+    pinnedAt,
+    activityAt,
+  }
+
+  if (pinnedAt) {
+    return {
+      ...entry,
+      pinned: [
+        updatedChat,
+        ...entry.pinned.filter((chat) => {
+          return chat.id !== chatId
+        }),
+      ],
+      chats: entry.chats.filter((chat) => {
+        return chat.id !== chatId
+      }),
+    }
+  }
+
+  return {
+    ...entry,
+    pinned: entry.pinned.filter((chat) => {
+      return chat.id !== chatId
+    }),
+    chats: [
+      updatedChat,
+      ...entry.chats.filter((chat) => {
+        return chat.id !== chatId
+      }),
+    ],
+  }
+}
+
+export function setHistoryChatPinned(chat: HistoryChat) {
+  const cache = useState<Record<string, HistoryCacheEntry>>(
+    'history:cache',
+    () => ({}),
+  )
+  const search = useState<string>('history:search', () => '')
+  const chats = useState<HistoryChat[]>('history:chats', () => [])
+  const pinned = useState<HistoryChat[]>('history:pinned', () => [])
+
+  const activeKey = `history:${search.value.trim().toLowerCase()}`
+  const nextCache: Record<string, HistoryCacheEntry> = {}
+
+  for (const [cacheKey, entry] of Object.entries(cache.value)) {
+    if (!entry.hasLoaded) {
+      nextCache[cacheKey] = entry
+
+      continue
+    }
+
+    const isKnownChat = [...entry.pinned, ...entry.chats].some((existing) => {
+      return existing.id === chat.id
+    })
+
+    if (cacheKey === UNSEARCHED_CACHE_KEY && chat.pinnedAt && !isKnownChat) {
+      const { snippet: _snippet, matchedIn: _matchedIn, ...cleanChat } = chat
+
+      nextCache[cacheKey] = {
+        ...entry,
+        pinned: [cleanChat, ...entry.pinned],
+      }
+
+      continue
+    }
+
+    nextCache[cacheKey] = updatePinnedState(
+      entry,
+      chat.id,
+      chat.pinnedAt,
+      chat.activityAt,
+    )
   }
 
   cache.value = nextCache
@@ -323,57 +430,6 @@ export function useHistory() {
     }
 
     return [...projectIds]
-  }
-
-  function updatePinnedState(
-    entry: HistoryCacheEntry,
-    chatId: string,
-    pinnedAt: string | null,
-    activityAt: string,
-  ): HistoryCacheEntry {
-    const existingChat = entry.pinned.find((chat) => {
-      return chat.id === chatId
-    }) ?? entry.chats.find((chat) => {
-      return chat.id === chatId
-    })
-
-    if (!existingChat) {
-      return entry
-    }
-
-    const updatedChat = {
-      ...existingChat,
-      pinnedAt,
-      activityAt,
-    }
-
-    if (pinnedAt) {
-      return {
-        ...entry,
-        pinned: [
-          updatedChat,
-          ...entry.pinned.filter((chat) => {
-            return chat.id !== chatId
-          }),
-        ],
-        chats: entry.chats.filter((chat) => {
-          return chat.id !== chatId
-        }),
-      }
-    }
-
-    return {
-      ...entry,
-      pinned: entry.pinned.filter((chat) => {
-        return chat.id !== chatId
-      }),
-      chats: [
-        updatedChat,
-        ...entry.chats.filter((chat) => {
-          return chat.id !== chatId
-        }),
-      ],
-    }
   }
 
   function updateProjectState(

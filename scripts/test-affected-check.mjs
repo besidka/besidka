@@ -247,6 +247,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-project-instructions.spec.ts',
     'tests/integration/pages/history-cache.spec.ts',
     'tests/e2e/history/dropdown-touch.spec.ts',
+    'tests/e2e/search/pin.spec.ts',
   ]
 
   const contextMenuTests = [
@@ -488,6 +489,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/files-modal-handoff.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
     'tests/unit/components/Search/ResultRow.spec.ts',
+    'tests/e2e/search/pin.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
   ]
