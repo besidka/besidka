@@ -119,6 +119,7 @@ export default defineEventHandler(async (event) => {
   applyResponseHeaders(event, { 'X-Content-Type-Options': 'nosniff' })
 
   const method = event.req.method
+
   if (method !== 'GET' && method !== 'HEAD') {
     throw failure(event, 405, 'Method Not Allowed', {
       Allow: ALLOWED_METHODS,
@@ -141,12 +142,29 @@ export default defineEventHandler(async (event) => {
   const rangeHeader = requestHeaders.get('range')
   const ifRange = requestHeaders.get('if-range')
 
+  let isRangeSent = false
+
   async function readObject(range: R2Range | undefined) {
     try {
-      return await CMS_BUCKET.get(name, { range, onlyIf: requestHeaders })
+      const object = await CMS_BUCKET.get(name, {
+        range,
+        onlyIf: requestHeaders,
+      })
+
+      isRangeSent = range !== undefined
+
+      return object
     } catch (exception) {
       if (isRangeNotSatisfiable(exception)) {
         const metadata = await CMS_BUCKET.head(name)
+        const isStaleIfRange = range !== undefined
+          && ifRange !== null
+          && metadata !== null
+          && ifRange !== metadata.httpEtag
+
+        if (isStaleIfRange) {
+          return readObject(undefined)
+        }
 
         throw failure(event, 416, 'Range Not Satisfiable', metadata
           ? { 'Content-Range': `bytes */${metadata.size}` }
@@ -198,7 +216,7 @@ export default defineEventHandler(async (event) => {
     && ifRange !== null
     && ifRange !== object.httpEtag
 
-  if (isRangeIgnored && toR2Range(rangeHeader)) {
+  if (isRangeIgnored && isRangeSent) {
     await object.body.cancel()
 
     const fullObject = await readObject(undefined)
