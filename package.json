@@ -122,8 +122,8 @@
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^5.20261018.1",
-		"@commitlint/cli": "^21.2.3",
-		"@commitlint/config-conventional": "^21.2.3",
+		"@commitlint/cli": "^21.2.4",
+		"@commitlint/config-conventional": "^21.2.4",
 		"@commitlint/format": "^21.2.3",
 		"@commitlint/types": "^21.2.3",
 		"@nuxt/kit": "^4.6.2",
