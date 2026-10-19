@@ -118,6 +118,13 @@ describe('Profile/Security/Passkeys', () => {
       expect(rows[0]!.text()).toContain('Synced across devices')
       expect(rows[1]!.text()).toContain('Local key')
       expect(rows[1]!.text()).toContain('This device only')
+
+      const time = rows[0]!.find('time[datetime]')
+
+      expect(time.attributes('datetime')).toBe('2026-01-01T00:00:00.000Z')
+      expect(time.text()).toBe(
+        new Date('2026-01-01T00:00:00.000Z').toLocaleDateString(),
+      )
     })
 
   it('shows an explanatory line and hides the Add affordance when '
