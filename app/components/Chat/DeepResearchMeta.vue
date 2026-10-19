@@ -65,6 +65,7 @@
           <ul
             class="
               timeline timeline-compact timeline-snap-icon timeline-vertical
+              [&>li]:[--timeline-col-start:0]
             "
           >
             <li

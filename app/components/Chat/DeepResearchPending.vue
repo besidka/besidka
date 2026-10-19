@@ -68,7 +68,10 @@
         <ul
           v-if="!checking && recentSteps.length"
           data-testid="research-current-step"
-          class="timeline timeline-compact timeline-snap-icon timeline-vertical"
+          class="
+            timeline timeline-compact timeline-snap-icon timeline-vertical
+            [&>li]:[--timeline-col-start:0]
+          "
         >
           <li
             v-for="(entry, index) in recentSteps"
