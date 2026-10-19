@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   authenticateUserByApi,
   createUniqueUser,
@@ -38,6 +38,17 @@ async function getConsentCookie(page: Page) {
   }
 
   return JSON.parse(decodeURIComponent(consent.value))
+}
+
+async function readLayoutSize(locator: Locator) {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element)
+
+    return {
+      width: parseFloat(style.width),
+      height: parseFloat(style.height),
+    }
+  })
 }
 
 function buildConsentCookieHeader(): string {
@@ -320,17 +331,15 @@ test.describe('Cookie consent banner', () => {
 
       expect(rejectClass).toBe(acceptClass)
 
-      const rejectBox = await rejectAll.boundingBox()
-      const acceptBox = await acceptAll.boundingBox()
+      const rejectSize = await readLayoutSize(rejectAll)
+      const acceptSize = await readLayoutSize(acceptAll)
 
-      expect(rejectBox).not.toBeNull()
-      expect(acceptBox).not.toBeNull()
       expect(
-        Math.abs(rejectBox!.width - acceptBox!.width),
-      ).toBeLessThanOrEqual(1)
+        Math.abs(rejectSize.width - acceptSize.width),
+      ).toBeLessThanOrEqual(0.5)
       expect(
-        Math.abs(rejectBox!.height - acceptBox!.height),
-      ).toBeLessThanOrEqual(1)
+        Math.abs(rejectSize.height - acceptSize.height),
+      ).toBeLessThanOrEqual(0.5)
     })
 
   test('Accept all on the first layer grants preferences in one click',
