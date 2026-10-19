@@ -31,7 +31,7 @@
           </p>
           <p class="text-sm text-base-content/70">
             {{ row.ipAddress || 'Unknown IP' }} · Last active
-            {{ new Date(row.updatedAt).toLocaleString() }}
+            <UiLocalDate :value="row.updatedAt" with-time />
           </p>
         </div>
         <UiButton

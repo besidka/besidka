@@ -48,7 +48,15 @@
           <div>
             <p class="font-medium">{{ row.label }}</p>
             <p class="text-sm text-base-content/70">
-              {{ accountStatus(row.providerId) }}
+              <template v-if="accountFor(row.providerId)">
+                Connected since
+                <UiLocalDate
+                  :value="accountFor(row.providerId)!.createdAt"
+                />
+              </template>
+              <template v-else>
+                Not connected
+              </template>
             </p>
           </div>
         </div>
@@ -129,16 +137,6 @@ function accountFor(providerId: string): LinkedAccount | undefined {
   return accounts.value.find((account) => {
     return account.providerId === providerId
   })
-}
-
-function accountStatus(providerId: string): string {
-  const account = accountFor(providerId)
-
-  if (!account) {
-    return 'Not connected'
-  }
-
-  return `Connected since ${new Date(account.createdAt).toLocaleDateString()}`
 }
 
 function clearRedirectQuery() {

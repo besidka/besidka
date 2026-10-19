@@ -97,6 +97,28 @@ describe('Profile/Security/Sessions', () => {
       expect(rows[1]?.text()).toContain('End session')
     })
 
+  it('renders the last-active date through the local date component',
+    async () => {
+      mocks.fetch.mockImplementation((url: string) => {
+        if (url === '/api/v1/profiles/sessions') {
+          return Promise.resolve([createSessionRow({ id: 1, current: true })])
+        }
+
+        throw new Error(`Unexpected request: ${url}`)
+      })
+
+      const wrapper = await mountSuspended(Sessions)
+
+      await flushPromises()
+
+      const time = wrapper.find('time[datetime]')
+
+      expect(time.attributes('datetime')).toBe('2026-08-01T09:00:00.000Z')
+      expect(time.text()).toBe(
+        new Date('2026-08-01T09:00:00.000Z').toLocaleString(),
+      )
+    })
+
   it('ends a session through the id-based route, not anything '
     + 'token-based', async () => {
     const revokeCalls: { url: string, method?: string }[] = []

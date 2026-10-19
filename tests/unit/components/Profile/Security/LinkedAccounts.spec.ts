@@ -121,6 +121,28 @@ describe('Profile/Security/LinkedAccounts', () => {
       expect(disconnectButtons[0]?.classes()).toContain('btn-disabled')
     })
 
+  it('renders the connected-since date through the local date component',
+    async () => {
+      mocks.listAccounts.mockResolvedValue({
+        data: [createAccount({ id: '1', providerId: 'credential' })],
+        error: null,
+      })
+
+      const wrapper = await mountSuspended(LinkedAccounts)
+
+      await flushPromises()
+
+      const time = wrapper.find('time[datetime]')
+
+      expect(wrapper.text()).toContain('Connected since')
+      expect(wrapper.text()).toContain('Not connected')
+      expect(wrapper.findAll('time[datetime]')).toHaveLength(1)
+      expect(time.attributes('datetime')).toBe('2026-01-01T00:00:00.000Z')
+      expect(time.text()).toBe(
+        new Date('2026-01-01T00:00:00.000Z').toLocaleDateString(),
+      )
+    })
+
   it('shows a recent-sign-in fallback with a working sign-out button when '
     + 'unlink rejects with SESSION_NOT_FRESH', async () => {
     mocks.listAccounts.mockResolvedValue({

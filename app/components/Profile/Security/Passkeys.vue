@@ -56,7 +56,7 @@
             </span>
           </p>
           <p class="text-sm text-base-content/70">
-            Added {{ formatCreatedAt(passkeyRow.createdAt) }}
+            Added <UiLocalDate :value="passkeyRow.createdAt" />
           </p>
         </div>
         <UiForm
@@ -199,10 +199,6 @@ const newPasskeyName = shallowRef<string>('')
 
 const renamingId = shallowRef<string | null>(null)
 const renameValue = shallowRef<string>('')
-
-function formatCreatedAt(createdAt: string | Date): string {
-  return new Date(createdAt).toLocaleDateString()
-}
 
 async function loadPasskeys() {
   const { data, error } = await client.passkey.listUserPasskeys()
