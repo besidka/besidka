@@ -391,6 +391,7 @@ export function getAffectedTests(changedFiles) {
 
   const landingTests = [
     'tests/unit/utils/landing-video-range.spec.ts',
+    'tests/unit/server/routes/videos/[name].spec.ts',
     'tests/unit/utils/video.spec.ts',
     'tests/unit/utils/landing/stats.spec.ts',
     'tests/unit/utils/landing/analytics-events.spec.ts',
@@ -402,6 +403,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/landing/MessageBubble.spec.ts',
     'tests/unit/components/landing/Carousel.spec.ts',
     'tests/unit/components/content/HomeStats.spec.ts',
+    'tests/unit/components/content/HomeVideo.spec.ts',
     'tests/unit/components/content/HomeBubble.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
     'tests/integration/api/stats.spec.ts',

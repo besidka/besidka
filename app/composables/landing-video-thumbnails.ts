@@ -39,6 +39,8 @@ interface GenerateOptions {
   count?: number
   width?: number
   height?: number
+  /** Aborting disposes the decoder and resolves with null. */
+  signal?: AbortSignal
 }
 
 interface SpriteData {
@@ -130,8 +132,21 @@ async function generateViaMediabunny(
   count: number,
   width: number,
   height: number,
+  signal?: AbortSignal,
 ): Promise<SpriteData | null> {
   const input = new Input({ source: new UrlSource(videoUrl), formats: [MP4] })
+
+  function disposeInput() {
+    input.dispose()
+  }
+
+  if (signal?.aborted) {
+    disposeInput()
+
+    return null
+  }
+
+  signal?.addEventListener('abort', disposeInput, { once: true })
 
   try {
     const videoTrack = await input.getPrimaryVideoTrack()
@@ -167,6 +182,10 @@ async function generateViaMediabunny(
     for await (const wrapped of sink.canvasesAtTimestamps(
       buildTimestamps(duration, count),
     )) {
+      if (signal?.aborted) {
+        return null
+      }
+
       const current = index
 
       index += 1
@@ -181,19 +200,20 @@ async function generateViaMediabunny(
       drawn += 1
     }
 
-    if (!drawn) {
+    if (!drawn || signal?.aborted) {
       return null
     }
 
     const blob = await canvasToBlob(canvas)
 
-    if (!blob) {
+    if (!blob || signal?.aborted) {
       return null
     }
 
     return { url: URL.createObjectURL(blob), columns, duration }
   } finally {
-    input.dispose()
+    signal?.removeEventListener('abort', disposeInput)
+    disposeInput()
   }
 }
 
@@ -202,8 +222,15 @@ function generateViaVideoElement(
   count: number,
   width: number,
   height: number,
+  signal?: AbortSignal,
 ): Promise<SpriteData | null> {
   return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve(null)
+
+      return
+    }
+
     const video = document.createElement('video')
 
     video.preload = 'metadata'
@@ -211,9 +238,17 @@ function generateViaVideoElement(
     video.crossOrigin = 'anonymous'
 
     function teardown() {
+      signal?.removeEventListener('abort', onAbort)
       video.removeAttribute('src')
       video.load()
     }
+
+    function onAbort() {
+      teardown()
+      resolve(null)
+    }
+
+    signal?.addEventListener('abort', onAbort, { once: true })
 
     video.addEventListener('error', () => {
       teardown()
@@ -237,6 +272,10 @@ function generateViaVideoElement(
       let drawn = 0
 
       for (let index = 0; index < count; index += 1) {
+        if (signal?.aborted) {
+          return
+        }
+
         const time = Math.min(duration - 0.05, index * step + step / 2)
         const seeked = await seekVideo(video, time)
 
@@ -252,7 +291,7 @@ function generateViaVideoElement(
 
       teardown()
 
-      if (!drawn) {
+      if (!drawn || signal?.aborted) {
         resolve(null)
 
         return
@@ -260,7 +299,7 @@ function generateViaVideoElement(
 
       const blob = await canvasToBlob(canvas)
 
-      if (!blob) {
+      if (!blob || signal?.aborted) {
         resolve(null)
 
         return
@@ -285,6 +324,7 @@ export function useLandingVideoThumbnails() {
     const count = options.count ?? DEFAULT_COUNT
     const width = options.width ?? DEFAULT_WIDTH
     const height = options.height ?? DEFAULT_HEIGHT
+    const { signal } = options
 
     // Workers resolve relative URLs against the worker script, not the page,
     // so mediabunny's UrlSource needs an absolute URL.
@@ -293,14 +333,26 @@ export function useLandingVideoThumbnails() {
     let data: SpriteData | null
 
     try {
-      data = await generateViaMediabunny(absoluteUrl, count, width, height)
+      data = await generateViaMediabunny(
+        absoluteUrl,
+        count,
+        width,
+        height,
+        signal,
+      )
     } catch {
       data = null
     }
 
-    if (!data) {
+    if (!data && !signal?.aborted) {
       try {
-        data = await generateViaVideoElement(absoluteUrl, count, width, height)
+        data = await generateViaVideoElement(
+          absoluteUrl,
+          count,
+          width,
+          height,
+          signal,
+        )
       } catch {
         data = null
       }

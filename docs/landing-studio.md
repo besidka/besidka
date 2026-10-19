@@ -390,18 +390,147 @@ is published in Studio, the rebuild + redeploy refreshes it.
 - The player is `app/components/landing/VideoPlayer.client.vue` ([Plyr](https://github.com/sampotts/plyr),
   client-only), themed to DaisyUI via `app/assets/css/plyr-theme.css`
   (maps `--plyr-*` onto `--color-accent`/glass; scoped to `.landing-player`).
-- Assets are managed by `pnpm run cms:files:upload` /
-  `pnpm run cms:files:download` (`scripts/cms-bucket-manager.mjs`):
-  `demo.mp4` (720p, default), `demo-360.mp4`, `demo-1080.mp4` (quality ladder),
-  and `demo.en.vtt` (fake captions). `upload` fetches/generates any missing
-  asset into `.files`, validates videos with **mediabunny**, and PUTs them into
-  the `CMS_BUCKET` bucket (local persisted R2 by default; `--remote` and
-  `-e production` target remote R2). `download` pulls them back from the bucket.
-  Served by `server/routes/videos/[name].ts` (HTTP Range, per-extension
-  content-type, fixed allow-list).
+  The section is the `::home-video` bubble in `content/index.md`; the player
+  config lives in the `video:` frontmatter.
+
+#### Assets
+
+The video is a real 54-second silent promo, not a placeholder. Renditions
+(bucket key = local filename in `.files/`):
+
+| Key | Rendition |
+| --- | --- |
+| `demo-1080.mp4` | 1920×1080 |
+| `demo.mp4` | 1280×720, default quality, also the hover-thumbnail source |
+| `demo-360.mp4` | 640×360 |
+| `demo.en.vtt` | English captions, committed at `scripts/cms-assets/demo.en.vtt` |
+
+The poster is the committed `public/promo/poster.webp` (served from the app,
+not R2). The MP4s are **not** committed (`.files/` is gitignored — large
+binaries); they live in the `CMS_BUCKET` R2 bucket.
+
+- The promo is a HyperFrames composition. The **source project lives outside
+  this repo** (archived in the owner's design folder). To change the video,
+  re-render it there, encode the three renditions as below, and copy them into
+  `.files/<key>`. `cms-bucket-manager.mjs` fails with a pointer to this section
+  when a video is missing from `.files/`.
+- Renditions were encoded as H.264 High, `yuv420p`, CRF 21 (1080p) / 23 (720p)
+  / 26 (360p), a fixed 2-second GOP (keyframe every 2 s, so seeking and
+  mediabunny thumbnail decoding stay cheap), and `+faststart` (moov atom at the
+  front, so `preload="metadata"` needs only the first range request). No audio
+  track.
+- `pnpm run cms:files:upload` (`scripts/cms-bucket-manager.mjs`) works in two
+  phases. **Preflight:** every asset is prepared and validated before anything
+  is written: videos must exist in `.files/` and are validated with
+  **mediabunny** (H.264 check, duration, dimensions); the captions are
+  *always* copied from the committed `scripts/cms-assets/demo.en.vtt` over
+  `.files/demo.en.vtt`, so a stale local copy can never be uploaded. **Upload:**
+  each asset is PUT into `CMS_BUCKET` via `pnpm exec wrangler` (argv, no shell,
+  no `npx`). It never downloads or generates a video. Local persisted R2 is
+  the default target; `--remote` and `-e production` target remote R2.
+- By default an object already present in the bucket is **skipped**. The
+  existence check **fails closed**: wrangler has no `info`/`head` command, so
+  the script runs `r2 object get --pipe`, reads at most the first 64 KiB, and
+  kills it; only the exact "The specified key does not exist" error means the
+  object is absent. Any other failure (auth, network, wrong bucket, a wrangler
+  change) aborts the run instead of overwriting blindly.
+- `--force` overwrites existing objects, e.g. after re-rendering:
+  `pnpm run cms:files:upload --remote --force` (preview). Overwriting
+  production (`--remote -e production --force`) additionally requires
+  `--yes`; without it the script prints the key list with sizes and durations
+  and exits non-zero. `--force` and `--yes` are rejected for `download`, which
+  pulls the objects back into `.files/` and skips files already there.
+
+#### Serving: one R2 read per request
+
+`server/routes/videos/[name].ts` serves a fixed allow-list (`demo.mp4`,
+`demo-360.mp4`, `demo-1080.mp4`, `demo.en.vtt`; anything else is 404). Only
+`GET` and `HEAD` are accepted; every other method is `405` with
+`Allow: GET, HEAD`. Successful responses carry `Accept-Ranges: bytes` and
+`Cache-Control: public, max-age=86400`; **all** responses carry
+`X-Content-Type-Options: nosniff`, and every error response (400, 404, 405,
+412, 416, 503) carries `Cache-Control: no-store` so an edge or browser never
+caches a failure (a 412 additionally keeps only its `ETag`).
+
+Every request costs one Worker request and **one R2 operation**: the route
+calls `CMS_BUCKET.get(name, { range, onlyIf })` and streams the body (never
+buffered). `onlyIf` is the incoming request `Headers`, so R2 evaluates the
+conditionals. `range` is an explicit `R2Range` built from the parsed header,
+never the raw headers, so garbage cannot reach R2. There is no preceding
+`head()`.
+
+- **Ranges** (`server/utils/landing/video.ts`) follow RFC 9110. `parseRangeSpec`
+  parses the syntax, `parseRangeHeader` resolves it against `object.size`
+  *after* the read: an end past EOF is **clamped** to the last byte (`206`,
+  `Content-Range: bytes a-<size-1>/<size>`); a range is unsatisfiable only when
+  its start is at or beyond the size or start > end. Unsatisfiable, malformed
+  (`items=0-10`) and multi-range requests answer `416` with
+  `Content-Range: bytes */<size>`; the unread body is cancelled. Malformed and
+  multi-range requests are read *without* a range so they cost no `head()`.
+- **Conditionals.** R2 returns an object without a body when `onlyIf` fails.
+  The route then picks the status itself: `412` if `If-Match` or
+  `If-Unmodified-Since` failed (checked against the object's ETag and upload
+  time), otherwise `304` (`If-None-Match`/`If-Modified-Since`, weak ETags
+  compare weakly). A malformed `If-Match`/`If-None-Match` makes workerd throw
+  while parsing `onlyIf`; that is caught and answered `400`, not `500`.
+- **`If-Range`.** The range is read speculatively; if `If-Range` is not equal
+  to the object's current strong ETag the `Range` is ignored and the full
+  object is served as `200`. That mismatch path (rare: resumed downloads of a
+  replaced file) costs a second R2 read.
+- `head()` is used on exactly one path: R2 itself throwing "range not
+  satisfiable" (code 10039), to learn the size for that `416`. Local miniflare
+  does not throw there and returns the whole object instead, which is why the
+  post-read validation exists.
+- `HEAD` requests do the same `get()`, cancel the body and return a bodyless
+  `Response` that carries the real `Content-Length`/`Content-Range`. Note that
+  `wrangler dev` omits `Content-Length` on every HEAD response, including
+  static assets, so it cannot confirm that header locally (the headless
+  `nuxt dev` server does show it); check `curl -I` against a deployed preview.
+
+#### Why it loads lazily
+
+Each Range request is one Worker request **and** one R2 Class B read. Both
+come with 10M/month included on Workers Paid, and R2 egress is free, so normal
+traffic is far inside the free quotas. The risk is abuse (a script hammering
+`/videos/*`), not organic viewers. To keep organic traffic at the minimum:
+
+- `app/components/content/HomeVideo.vue` mounts `LazyLandingVideoPlayer` only
+  once the section is within ~300px of the visible area (VueUse
+  `useIntersectionObserver`, `rootMargin: 300px`, one-shot). The page does not
+  scroll the viewport: `app/app.vue` wraps it in a `flex-1 overflow-y-auto`
+  region (`js-page-content`), which is passed as the observer `root`. Without
+  it the margin would be measured against the window and the lookahead would
+  never fire. Until then the component renders the skeleton, so a visitor who
+  never scrolls down makes **zero** `/videos/*` requests.
+- The `<video>` uses `preload="metadata"` (re-asserted after Plyr swaps the
+  media element), so mounting costs only the metadata range plus the captions
+  file.
+- Hover thumbnails are **not** generated on mount or on play. `loadThumbnails()`
+  starts once, on the first `pointerenter`/`focusin` on the Plyr progress bar
+  (the only moment a preview is needed). Starting it on `play` would run a
+  second full decode of the same file alongside playback and double the
+  download. Generation takes an `AbortSignal`
+  (`useLandingVideoThumbnails.generate`): aborting disposes the mediabunny
+  `Input`, stops the frame loop and resolves `null`; the player aborts on
+  unmount. Playback never waits on it.
+
+#### Owner action item: rate-limit `/videos/*`
+
+The route has no per-client throttle and Cloudflare does not cache Worker
+responses by default, so cap abuse at the edge. In the Cloudflare dashboard for
+the zone: **Security → WAF → Rate limiting rules → Create rule**, match
+`URI Path` starts with `/videos/`, count by IP, e.g. 120 requests per 10
+seconds (a normal viewer issues well under a dozen), action *Block* (or
+*Managed challenge*) for 10 minutes. This is a dashboard step; nothing in the
+repo configures it. Tighten after checking Workers/R2 analytics.
+
+#### Player behaviour
+
 - **Markers** are authored in the `video.markers` frontmatter as `"m:ss"`
   timecodes (quote them — unquoted `0:12` is parsed by YAML as a number) and
-  rendered as accent pins on the progress bar.
+  rendered as accent pins on the progress bar. The promo has eight chapters:
+  Any model, Desktop and phone, Search and cost, Images and files, Projects,
+  Code and diagrams, Reasoning, Get started.
 - **Hover thumbnails** are generated on the client: mediabunny streams the MP4
   via `UrlSource` (Range) and decodes frames with `CanvasSink` into a sprite,
   drawn by a custom overlay (Plyr's `previewThumbnails` can't load `blob:` URLs).
