@@ -292,6 +292,23 @@ describe('composables/diagram-export', () => {
       expect(svgBlob.type).toBe('image/svg+xml')
     })
 
+    it('copies the raw source as text/plain', async () => {
+      const result = await useDiagramExport()
+        .runExportAction('copy-source', input)
+      const blob = await written[0]!.items['text/plain']!
+
+      expect(result).toBe(true)
+      expect(Object.keys(written[0]!.items)).toEqual(['text/plain'])
+      expect(await readBlobText(blob)).toBe(SOURCE)
+    })
+
+    it('builds the copy-source ClipboardItem before any await', () => {
+      const result = useDiagramExport().runExportAction('copy-source', input)
+
+      expect(events).toEqual(['item', 'write'])
+      expect(result).toBeInstanceOf(Promise)
+    })
+
     it('copies markdown as text/plain', async () => {
       const result = await useDiagramExport()
         .runExportAction('copy-markdown', input)

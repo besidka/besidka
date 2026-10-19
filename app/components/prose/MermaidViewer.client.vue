@@ -18,10 +18,19 @@
           >
             Diagram
           </h2>
-          <ProseMermaidExportMenu
-            :source="source"
-            :svg="svg"
-            :theme-element="getThemeElement"
+          <ProseMermaidActionMenu
+            label="Download"
+            icon="lucide:download"
+            test-id="mermaid-download"
+            :actions="MERMAID_DOWNLOAD_ACTIONS"
+            :input="menuInput"
+          />
+          <ProseMermaidActionMenu
+            label="Copy"
+            icon="lucide:copy"
+            test-id="mermaid-copy"
+            :actions="MERMAID_COPY_ACTIONS"
+            :input="menuInput"
           />
           <form method="dialog">
             <button
@@ -108,6 +117,7 @@
 <script setup lang="ts">
 import Panzoom from '@panzoom/panzoom'
 import type { PanzoomObject } from '@panzoom/panzoom'
+import type { DiagramMenuInput } from '~/types/diagram-export.d'
 
 const props = defineProps<{
   source: string
@@ -148,6 +158,14 @@ let observedHeight: number = 0
 function getThemeElement(): HTMLElement | null {
   return themeRef.value
 }
+
+const menuInput = computed<DiagramMenuInput>(() => {
+  return {
+    source: props.source,
+    svg: svg.value,
+    themeElement: getThemeElement,
+  }
+})
 
 function onWheel(event: WheelEvent) {
   event.preventDefault()

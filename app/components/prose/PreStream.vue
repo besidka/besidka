@@ -3,10 +3,43 @@
     class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-clip overflow-y-visible"
   >
     <div class="flex items-center justify-between">
-      <div class="mockup-browser-toolbar"/>
-      <div class="flex gap-2 py-2 pr-4">
+      <div class="mockup-browser-toolbar w-auto! shrink-0 pr-0!"/>
+      <div
+        class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1 py-2 pr-4 sm:gap-2"
+      >
+        <span
+          v-if="isEdited"
+          class="badge badge-sm"
+          data-testid="mermaid-edited-badge"
+        >
+          Edited
+        </span>
         <UiButton
-          v-if="isDiagramToggleVisible"
+          v-if="isEditing"
+          mode="default"
+          ghost
+          icon-name="lucide:check"
+          :icon-size="14"
+          size="xs"
+          text="Done"
+          icon-only-phone
+          data-testid="mermaid-edit-done"
+          @click="finishEditing"
+        />
+        <UiButton
+          v-if="isEditing ? isEditorTextChanged : isEdited"
+          mode="default"
+          ghost
+          icon-name="lucide:rotate-ccw"
+          :icon-size="14"
+          size="xs"
+          text="Reset"
+          icon-only-phone
+          data-testid="mermaid-edit-reset"
+          @click="resetEdits"
+        />
+        <UiButton
+          v-if="isDiagramToggleVisible && !isEditing"
           mode="default"
           ghost
           :icon-name="isDiagramView ? 'lucide:code' : 'lucide:workflow'"
@@ -18,7 +51,20 @@
           @click="isCodeViewSelected = !isCodeViewSelected"
         />
         <UiButton
-          v-if="isDiagramView"
+          v-if="isEditButtonVisible"
+          ref="editButton"
+          mode="default"
+          ghost
+          icon-name="lucide:pencil"
+          :icon-size="14"
+          size="xs"
+          text="Edit"
+          icon-only-phone
+          data-testid="mermaid-edit"
+          @click="startEditing"
+        />
+        <UiButton
+          v-if="isDiagramCandidate"
           mode="default"
           ghost
           icon-name="lucide:maximize"
@@ -26,15 +72,9 @@
           size="xs"
           text="Fullscreen"
           icon-only-phone
-          :disabled="!diagramSvg"
+          :disabled="!menuInput.svg"
           data-testid="mermaid-fullscreen"
           @click="openViewer"
-        />
-        <ProseMermaidExportMenu
-          v-if="isDiagramView"
-          :source="trimmedCode"
-          :svg="diagramSvg"
-          :theme-element="getDiagramThemeElement"
         />
         <UiButton
           v-if="isExpandButtonVisible && !isDiagramView"
@@ -49,44 +89,76 @@
           :text="expanded ? 'Collapse' : 'Expand'"
           @click="expanded = !expanded"
         />
+        <ProseMermaidActionMenu
+          v-if="isDiagramCandidate"
+          label="Download"
+          icon="lucide:download"
+          test-id="mermaid-download"
+          :actions="MERMAID_DOWNLOAD_ACTIONS"
+          :input="menuInput"
+        />
+        <ProseMermaidActionMenu
+          v-if="isDiagramCandidate"
+          label="Copy"
+          icon="lucide:copy"
+          test-id="mermaid-copy"
+          :actions="MERMAID_COPY_ACTIONS"
+          :input="menuInput"
+        />
         <UiButton
+          v-else
           mode="default"
           ghost
           :icon-name="copied ? 'lucide:check' : 'lucide:copy'"
           :icon-size="14"
           size="xs"
           :text="copied ? 'Copied!' : 'Copy'"
-          :icon-only-phone="isDiagramView"
           @click="copy"
         />
       </div>
     </div>
     <div
+      ref="themeHost"
       class="p-4 overflow-x-auto text-sm"
       :class="{
+        'pele-theme': isMermaid,
         'overflow-y-auto max-h-30': !expanded && !isDiagramView
       }"
+      data-testid="mermaid-theme-host"
     >
       <ClientOnly>
         <template #fallback>
           <ProsePre v-bind="props" class="motion-safe:animate-pulse">
-            {{ trimmedCode }}
+            {{ effectiveSource }}
           </ProsePre>
         </template>
+        <ProseMermaidEditor
+          v-if="isEditing"
+          v-model="editorText"
+          @exit="finishEditing"
+        />
+        <p
+          v-if="isEditing && diagramError"
+          class="pt-2 text-xs text-base-content/60"
+          data-testid="mermaid-error"
+        >
+          {{ diagramErrorText }}
+        </p>
         <ProseMermaidDiagram
           v-if="isDiagramView"
-          ref="diagram"
-          :code="trimmedCode"
+          :class="{ 'mt-3': isEditing }"
+          :code="effectiveSource"
           :is-hidden="isViewerOpen"
-          @error="diagramError = $event"
-          @rendered="diagramSvg = $event.svg"
+          :has-error="!!diagramError"
+          @error="onDiagramError"
+          @rendered="onDiagramRendered"
           @open="openViewer"
         />
         <ProsePre v-else v-bind="props">
           <ShikiCachedRenderer
             :key="key"
             :highlighter="highlighter as any"
-            :code="trimmedCode"
+            :code="effectiveSource"
             :lang="lang"
             :theme="$colorMode.value === 'dark'
               ? 'github-dark'
@@ -99,7 +171,7 @@
       </ClientOnly>
     </div>
     <p
-      v-if="diagramError"
+      v-if="diagramError && !isEditing"
       class="px-4 pb-3 text-xs text-base-content/60"
       data-testid="mermaid-error"
     >
@@ -108,7 +180,7 @@
     <LazyProseMermaidViewer
       v-if="isViewerOpen"
       v-model:open="isViewerOpen"
-      :source="trimmedCode"
+      :source="effectiveSource"
     />
   </div>
 </template>
@@ -116,6 +188,7 @@
 <script setup lang="ts">
 import { ShikiCachedRenderer } from 'shiki-stream/vue'
 import type { DiagramRenderError } from '~/types/diagram.d'
+import type { DiagramMenuInput } from '~/types/diagram-export.d'
 
 const props = defineProps<{
   code: string
@@ -125,6 +198,7 @@ const props = defineProps<{
 }>()
 
 const DIAGRAM_ERROR_LIMIT: number = 200
+const EDIT_COMMIT_DELAY_MS: number = 250
 
 const colorMode = useColorMode()
 const clipboard = useClipboard()
@@ -152,23 +226,71 @@ const isMermaidComplete = computed<boolean>(() => {
 
 const diagramError = shallowRef<DiagramRenderError | null>(null)
 const diagramSvg = shallowRef<string>('')
+const diagramSvgSource = shallowRef<string>('')
+const diagramErrorSource = shallowRef<string>('')
 const isViewerOpen = shallowRef<boolean>(false)
-const diagramRef = useTemplateRef<{
-  getThemeElement: () => HTMLElement | null
-}>('diagram')
+const themeHostRef = useTemplateRef<HTMLElement>('themeHost')
+const editButtonRef = useTemplateRef<{ focus: () => void }>('editButton')
 const isCodeViewSelected = shallowRef<boolean>(false)
 const isMounted = shallowRef<boolean>(false)
+const isEditing = shallowRef<boolean>(false)
+const editorText = shallowRef<string>('')
+const editedSource = shallowRef<string | null>(null)
+
+const effectiveSource = computed<string>(() => {
+  return editedSource.value ?? trimmedCode.value
+})
+
+const isEdited = computed<boolean>(() => {
+  return editedSource.value !== null
+    && editedSource.value !== trimmedCode.value
+})
+
+const isEditorTextChanged = computed<boolean>(() => {
+  return editorText.value !== trimmedCode.value
+})
+
+const isDiagramErrorCurrent = computed<boolean>(() => {
+  return !!diagramError.value
+    && diagramErrorSource.value === effectiveSource.value
+})
 
 const isDiagramCandidate = computed<boolean>(() => {
-  return isMermaid.value && isMermaidComplete.value && !diagramError.value
+  return isMermaid.value
+    && isMermaidComplete.value
+    && (isEditing.value || !isDiagramErrorCurrent.value)
 })
 
 const isDiagramToggleVisible = computed<boolean>(() => {
   return isMounted.value && isDiagramCandidate.value
 })
 
+const isEditButtonVisible = computed<boolean>(() => {
+  return isMounted.value
+    && isMermaid.value
+    && isMermaidComplete.value
+    && !isEditing.value
+})
+
 const isDiagramView = computed<boolean>(() => {
-  return isDiagramCandidate.value && !isCodeViewSelected.value
+  return isDiagramCandidate.value
+    && (isEditing.value || !isCodeViewSelected.value)
+})
+
+const menuInput = computed<DiagramMenuInput>(() => {
+  if (isDiagramErrorCurrent.value || !diagramSvg.value) {
+    return {
+      source: effectiveSource.value,
+      svg: '',
+      themeElement: getThemeElement,
+    }
+  }
+
+  return {
+    source: diagramSvgSource.value,
+    svg: diagramSvg.value,
+    themeElement: getThemeElement,
+  }
 })
 
 const diagramErrorText = computed<string>(() => {
@@ -189,23 +311,76 @@ const diagramErrorText = computed<string>(() => {
   return `Couldn't render diagram: ${message}${position}`
 })
 
-watch(trimmedCode, () => {
-  diagramError.value = null
+watch(trimmedCode, (code, previousCode) => {
+  if (isEditing.value && editorText.value === previousCode) {
+    editorText.value = code
+  }
+
+  if (editedSource.value !== null) {
+    return
+  }
+
   diagramSvg.value = ''
+  diagramSvgSource.value = ''
 })
 
-watch(isDiagramView, (isVisible) => {
-  if (!isVisible) {
-    diagramSvg.value = ''
+function commitEditorText() {
+  editedSource.value = editorText.value === trimmedCode.value
+    ? null
+    : editorText.value
+}
+
+const { start: startCommitTimer, stop: stopCommitTimer } = useTimeoutFn(
+  commitEditorText,
+  EDIT_COMMIT_DELAY_MS,
+  { immediate: false },
+)
+
+watch(editorText, () => {
+  if (isEditing.value && editorText.value !== effectiveSource.value) {
+    startCommitTimer()
   }
 })
 
-function getDiagramThemeElement(): HTMLElement | null {
-  return diagramRef.value?.getThemeElement() ?? null
+function startEditing() {
+  editorText.value = effectiveSource.value
+  isCodeViewSelected.value = false
+  isEditing.value = true
+}
+
+async function finishEditing() {
+  stopCommitTimer()
+  commitEditorText()
+  isEditing.value = false
+
+  await nextTick()
+
+  editButtonRef.value?.focus()
+}
+
+function resetEdits() {
+  stopCommitTimer()
+  editorText.value = trimmedCode.value
+  editedSource.value = null
+}
+
+function onDiagramError(error: DiagramRenderError) {
+  diagramError.value = error
+  diagramErrorSource.value = effectiveSource.value
+}
+
+function onDiagramRendered(payload: { svg: string, source: string }) {
+  diagramError.value = null
+  diagramSvg.value = payload.svg
+  diagramSvgSource.value = payload.source
+}
+
+function getThemeElement(): HTMLElement | null {
+  return themeHostRef.value
 }
 
 function openViewer() {
-  if (!diagramSvg.value) {
+  if (!menuInput.value.svg) {
     return
   }
 
@@ -250,7 +425,7 @@ const key = computed<string>(() => {
 const copied = shallowRef(false)
 
 function copy() {
-  clipboard.copy(trimmedCode.value)
+  clipboard.copy(effectiveSource.value)
 
   copied.value = true
 

@@ -10,7 +10,8 @@ test.describe.configure({
 })
 
 type ExportAction
-  = | 'copy-svg'
+  = | 'copy-source'
+    | 'copy-svg'
     | 'copy-markdown'
     | 'copy-drawio'
     | 'download-svg'
@@ -367,6 +368,33 @@ test.describe('Mermaid diagram viewer', () => {
   })
 })
 
+async function expectOpenMenuInsideBlock(block: Locator): Promise<void> {
+  const menu = block.locator('details[open] .dropdown-content')
+
+  await expect(menu).toBeVisible()
+
+  const result = await menu.evaluate((element) => {
+    const blockElement = element.closest('.mockup-browser')!
+    const menuRect = element.getBoundingClientRect()
+    const blockRect = blockElement.getBoundingClientRect()
+    const probeX = menuRect.right - 6
+    const probeY = menuRect.top + menuRect.height / 2
+    const hit = document.elementFromPoint(probeX, probeY)
+
+    return {
+      menuLeft: menuRect.left,
+      menuRight: menuRect.right,
+      blockLeft: blockRect.left,
+      blockRight: blockRect.right,
+      isHit: !!hit && element.contains(hit),
+    }
+  })
+
+  expect(result.menuRight).toBeLessThanOrEqual(result.blockRight)
+  expect(result.menuLeft).toBeGreaterThanOrEqual(result.blockLeft)
+  expect(result.isHit).toBe(true)
+}
+
 async function readDownload(download: Download): Promise<Buffer> {
   const filePath = await download.path()
 
@@ -377,7 +405,11 @@ async function chooseExport(
   scope: Locator,
   action: ExportAction,
 ): Promise<void> {
-  await scope.locator('[data-testid="mermaid-export"]').click()
+  const menuTestId = action.startsWith('copy-')
+    ? 'mermaid-copy'
+    : 'mermaid-download'
+
+  await scope.locator(`[data-testid="${menuTestId}"]`).click()
   await scope.locator(`[data-testid="mermaid-export-${action}"]`).click()
 }
 
@@ -394,17 +426,19 @@ async function downloadFrom(
 }
 
 test.describe('Mermaid diagram export', () => {
-  test('shows the export menu with all six actions', async ({ page }) => {
+  test('shows the download and copy menus with all seven actions', async ({
+    page,
+  }) => {
     await waitForAllDiagrams(page)
 
     const block = getDiagramBlock(page, CYNEFIN_INDEX)
 
-    await block.locator('[data-testid="mermaid-export"]').click()
+    await expect(block.locator('[data-testid="mermaid-export"]')).toHaveCount(0)
+    await expect(block.locator('.menu-title')).toHaveCount(0)
+
+    await block.locator('[data-testid="mermaid-download"]').click()
 
     for (const action of [
-      'copy-svg',
-      'copy-markdown',
-      'copy-drawio',
       'download-svg',
       'download-png',
       'download-drawio',
@@ -413,15 +447,32 @@ test.describe('Mermaid diagram export', () => {
         block.locator(`[data-testid="mermaid-export-${action}"]`),
       ).toBeVisible()
     }
+
+    await block.locator('[data-testid="mermaid-copy"]').click()
+
+    for (const action of [
+      'copy-source',
+      'copy-markdown',
+      'copy-svg',
+      'copy-drawio',
+    ]) {
+      await expect(
+        block.locator(`[data-testid="mermaid-export-${action}"]`),
+      ).toBeVisible()
+    }
+
+    await expect(
+      block.locator('[data-testid="mermaid-export-download-svg"]'),
+    ).toBeHidden()
   })
 
-  test('shows the inline export menu without clipping it', async ({
+  test('shows the inline copy menu without clipping it', async ({
     page,
   }) => {
     await waitForAllDiagrams(page)
 
     const block = getDiagramBlock(page, 0)
-    const trigger = block.locator('[data-testid="mermaid-export"]')
+    const trigger = block.locator('[data-testid="mermaid-copy"]')
 
     await trigger.evaluate((element) => {
       element.scrollIntoView({ block: 'start' })
@@ -429,7 +480,7 @@ test.describe('Mermaid diagram export', () => {
     await trigger.click()
 
     const lastItem = block.locator(
-      '[data-testid="mermaid-export-download-drawio"]',
+      '[data-testid="mermaid-export-copy-drawio"]',
     )
 
     await expect(lastItem).toBeVisible()
@@ -455,6 +506,8 @@ test.describe('Mermaid diagram export', () => {
     })
 
     expect(isHittable).toBe(true)
+
+    await expectOpenMenuInsideBlock(block)
 
     const overflow = await page.evaluate(() => {
       const diagramBlock = document
@@ -673,7 +726,10 @@ test.describe('Mermaid diagram export', () => {
       }
 
       expect(markup).toContain('Market research')
-      await expect(page.getByText('SVG copied')).toBeVisible()
+      await expect(
+        getDiagramBlock(page, CYNEFIN_INDEX)
+          .locator('[data-testid="mermaid-copy"]'),
+      ).toContainText('Copied!')
     })
 
     test('copies the markdown fence', async ({ page }) => {
@@ -683,7 +739,19 @@ test.describe('Mermaid diagram export', () => {
       await expect
         .poll(() => readClipboardText(page))
         .toBe(`\`\`\`mermaid\n${CYNEFIN_SOURCE}\n\`\`\`\n`)
-      await expect(page.getByText('Markdown copied')).toBeVisible()
+      await expect(
+        getDiagramBlock(page, CYNEFIN_INDEX)
+          .locator('[data-testid="mermaid-copy"]'),
+      ).toContainText('Copied!')
+    })
+
+    test('copies the raw diagram source', async ({ page }) => {
+      await waitForAllDiagrams(page)
+      await chooseExport(getDiagramBlock(page, CYNEFIN_INDEX), 'copy-source')
+
+      await expect
+        .poll(() => readClipboardText(page))
+        .toBe(CYNEFIN_SOURCE)
     })
 
     test('copies draw.io clipboard xml', async ({ page }) => {
@@ -697,7 +765,164 @@ test.describe('Mermaid diagram export', () => {
       const xml = await readClipboardText(page)
 
       expect(xml).toContain('mermaidData')
-      await expect(page.getByText('Copied for draw.io')).toBeVisible()
+      await expect(
+        getDiagramBlock(page, CYNEFIN_INDEX)
+          .locator('[data-testid="mermaid-copy"]'),
+      ).toContainText('Copied!')
     })
+  })
+})
+
+test.describe('Mermaid diagram editing', () => {
+  test('edits the source live and exports the edited diagram', async ({
+    page,
+  }) => {
+    await waitForAllDiagrams(page)
+
+    const block = getDiagramBlock(page, 0)
+    const diagram = block.locator('[data-testid="mermaid-diagram"]')
+
+    await block.locator('[data-testid="mermaid-edit"]').click()
+
+    const editor = block.locator('[data-testid="mermaid-editor"]')
+
+    await expect(editor).toBeVisible()
+    await expect(
+      block.locator('[data-testid="mermaid-edit-reset"]'),
+    ).toHaveCount(0)
+
+    const originalSource = await editor.inputValue()
+
+    await editor.fill(
+      originalSource.replace('Worker --> K', 'Worker[Edge Worker] --> K'),
+    )
+
+    await expect(diagram.locator('svg')).toContainText('Edge Worker')
+    await expect(
+      block.locator('[data-testid="mermaid-edit-reset"]'),
+    ).toBeVisible()
+
+    const download = await downloadFrom(page, block, 'download-svg')
+
+    expect((await readDownload(download)).toString('utf-8'))
+      .toContain('Edge Worker')
+
+    await block.locator('[data-testid="mermaid-edit-done"]').click()
+
+    await expect(editor).toHaveCount(0)
+    await expect(
+      block.locator('[data-testid="mermaid-edited-badge"]'),
+    ).toBeVisible()
+    await expect(diagram.locator('svg')).toContainText('Edge Worker')
+
+    await block.locator('[data-testid="mermaid-edit"]').click()
+    await block.locator('[data-testid="mermaid-edit-reset"]').click()
+
+    await expect(diagram.locator('svg')).not.toContainText('Edge Worker')
+    await expect(diagram.locator('svg')).toContainText('Worker')
+    await expect(editor).toHaveValue(originalSource)
+    await expect(
+      block.locator('[data-testid="mermaid-edited-badge"]'),
+    ).toHaveCount(0)
+  })
+
+  test('keeps the last diagram and shows an error note on invalid syntax',
+    async ({ page }) => {
+      await waitForAllDiagrams(page)
+
+      const block = getDiagramBlock(page, 0)
+      const diagram = block.locator('[data-testid="mermaid-diagram"]')
+
+      await block.locator('[data-testid="mermaid-edit"]').click()
+      await block.locator('[data-testid="mermaid-editor"]')
+        .fill('flowchart LR\n  A[Start --> B\n  B --> C')
+
+      const errorNote = block.locator('[data-testid="mermaid-error"]')
+
+      await expect(errorNote).toBeVisible()
+      await expect(errorNote).toContainText('Couldn\'t render diagram')
+      await expect(diagram).toHaveClass(/opacity-60/)
+      await expect(diagram.locator('svg')).toContainText('KV hit?')
+      await expect(block.locator('[data-testid="mermaid-editor"]'))
+        .toBeVisible()
+      await expect(block.locator('[data-testid="mermaid-toggle"]'))
+        .toHaveCount(0)
+    })
+})
+
+test.describe('Mermaid diagram toolbar on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test('keeps every toolbar control and menu inside the block in edit mode',
+    async ({ page }) => {
+      await waitForAllDiagrams(page)
+
+      const block = getDiagramBlock(page, 0)
+
+      await block.locator('[data-testid="mermaid-edit"]').click()
+
+      const editor = block.locator('[data-testid="mermaid-editor"]')
+      const originalSource = await editor.inputValue()
+
+      await editor.fill(
+        originalSource.replace('Worker --> K', 'Worker[Edge Worker] --> K'),
+      )
+
+      await expect(
+        block.locator('[data-testid="mermaid-edited-badge"]'),
+      ).toBeVisible()
+
+      const controlSelector = [
+        'mermaid-edited-badge',
+        'mermaid-edit-done',
+        'mermaid-edit-reset',
+        'mermaid-fullscreen',
+        'mermaid-download',
+        'mermaid-copy',
+      ].map(testId => `[data-testid="${testId}"]`).join(', ')
+
+      const controlCount = await block.locator(controlSelector).count()
+
+      expect(controlCount).toBe(6)
+
+      const bounds = await block.evaluate((element, selector) => {
+        const blockRect = element.getBoundingClientRect()
+
+        return Array.from(element.querySelectorAll(selector)).map((control) => {
+          const rect = control.getBoundingClientRect()
+
+          return {
+            testId: control.getAttribute('data-testid'),
+            isInside: rect.left >= blockRect.left
+              && rect.right <= blockRect.right,
+          }
+        })
+      }, controlSelector)
+
+      for (const control of bounds) {
+        expect(control.isInside, `${control.testId} inside the block`)
+          .toBe(true)
+      }
+
+      await block.locator('[data-testid="mermaid-download"]').click()
+      await expectOpenMenuInsideBlock(block)
+
+      await block.locator('[data-testid="mermaid-copy"]').click()
+      await expectOpenMenuInsideBlock(block)
+    })
+
+  test('gives the editor a regular box radius', async ({ page }) => {
+    await waitForAllDiagrams(page)
+
+    const block = getDiagramBlock(page, 0)
+
+    await block.locator('[data-testid="mermaid-edit"]').click()
+
+    const radius = await block.locator('[data-testid="mermaid-editor"]')
+      .evaluate((element) => {
+        return parseFloat(getComputedStyle(element).borderTopLeftRadius)
+      })
+
+    expect(radius).toBeLessThanOrEqual(12)
   })
 })

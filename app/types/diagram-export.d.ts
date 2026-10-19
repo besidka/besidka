@@ -5,12 +5,26 @@ export interface DiagramExportInput {
 }
 
 export type DiagramExportAction
-  = | 'copy-svg'
+  = | 'copy-source'
+    | 'copy-svg'
     | 'copy-markdown'
     | 'copy-drawio'
     | 'download-svg'
     | 'download-png'
     | 'download-drawio'
+
+export interface DiagramMenuAction {
+  action: DiagramExportAction
+  label: string
+  icon: string
+  needsSvg: boolean
+}
+
+export interface DiagramMenuInput {
+  source: string
+  svg: string
+  themeElement: () => HTMLElement | null
+}
 
 export interface DiagramPngOptions {
   scale?: number

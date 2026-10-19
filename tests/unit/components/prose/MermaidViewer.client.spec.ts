@@ -322,26 +322,43 @@ describe('prose/MermaidViewer.client.vue', () => {
         .toBe(false)
     })
 
-  it('offers the export menu built from the viewer svg', async () => {
-    const wrapper = await mountViewer()
+  it('offers the download and copy menus built from the viewer svg',
+    async () => {
+      const wrapper = await mountViewer()
 
-    await vi.waitFor(() => {
-      expect(mocks.panzoom).toHaveBeenCalledTimes(1)
+      await vi.waitFor(() => {
+        expect(mocks.panzoom).toHaveBeenCalledTimes(1)
+      })
+
+      expect(wrapper.find('[data-testid="mermaid-export"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="mermaid-download"]').text())
+        .toContain('Download')
+      expect(wrapper.get('[data-testid="mermaid-copy"]').text())
+        .toContain('Copy')
+
+      const themeElement = wrapper.get('[data-testid="mermaid-viewer-body"]')
+        .element
+
+      for (const action of [
+        'download-svg',
+        'download-png',
+        'download-drawio',
+        'copy-source',
+        'copy-markdown',
+        'copy-svg',
+        'copy-drawio',
+      ]) {
+        await wrapper.get(`[data-testid="mermaid-export-${action}"]`)
+          .trigger('click')
+
+        expect(mocks.runExportAction).toHaveBeenLastCalledWith(action, {
+          source: SOURCE,
+          svg: SVG,
+          themeElement,
+        })
+      }
     })
-
-    await wrapper.get('[data-testid="mermaid-export-download-svg"]')
-      .trigger('click')
-
-    expect(mocks.runExportAction).toHaveBeenCalledWith(
-      'download-svg',
-      expect.objectContaining({
-        source: SOURCE,
-        svg: SVG,
-        themeElement: wrapper.get('[data-testid="mermaid-viewer-body"]')
-          .element,
-      }),
-    )
-  })
 
   it('restores focus only after the next render so a hidden trigger is visible',
     async () => {

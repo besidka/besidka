@@ -209,6 +209,8 @@ function runExportAction(
 ): boolean | Promise<boolean> {
   try {
     switch (action) {
+      case 'copy-source':
+        return copyText(Promise.resolve(input.source))
       case 'copy-svg': {
         const svgPromise = buildStandaloneSvg(input)
 

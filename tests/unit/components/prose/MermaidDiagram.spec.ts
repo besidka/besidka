@@ -36,7 +36,10 @@ describe('prose/MermaidDiagram.vue', () => {
         .toBe(true)
     })
 
-    expect(wrapper.emitted('rendered')).toHaveLength(1)
+    expect(wrapper.emitted('rendered')).toEqual([[{
+      svg: '<svg id="first"></svg>',
+      source: 'flowchart LR\n  A --> B',
+    }]])
     expect(wrapper.emitted('error')).toBeUndefined()
     expect(wrapper.find('[data-testid="mermaid-diagram"]').exists()).toBe(true)
     expect(mocks.renderDiagram).toHaveBeenCalledWith(
@@ -115,4 +118,56 @@ describe('prose/MermaidDiagram.vue', () => {
     expect(wrapper.find('svg#stale').exists()).toBe(false)
     expect(wrapper.emitted('rendered')).toHaveLength(1)
   })
+
+  it('shows the skeleton only while there is neither an svg nor an error',
+    async () => {
+      const pending = createDeferred()
+
+      mocks.renderDiagram.mockReturnValueOnce(pending.promise)
+
+      const wrapper = await mountSuspended(MermaidDiagram, {
+        props: { code: 'flowchart LR\n  A --> B' },
+      })
+
+      await vi.waitFor(() => {
+        expect(mocks.renderDiagram).toHaveBeenCalled()
+      })
+
+      expect(wrapper.find('.skeleton').exists()).toBe(true)
+
+      await wrapper.setProps({ hasError: true })
+
+      expect(wrapper.find('.skeleton').exists()).toBe(false)
+
+      pending.resolve({ svg: '<svg id="late"></svg>' })
+      await flushPromises()
+    })
+
+  it('dims the diagram and keeps the last svg when it has an error',
+    async () => {
+      mocks.renderDiagram
+        .mockResolvedValueOnce({ svg: '<svg id="first"></svg>' })
+        .mockResolvedValueOnce({ error: { message: 'Bad syntax' } })
+
+      const wrapper = await mountSuspended(MermaidDiagram, {
+        props: { code: 'flowchart LR\n  A --> B' },
+      })
+
+      await vi.waitFor(() => {
+        expect(wrapper.find('svg#first').exists()).toBe(true)
+      })
+
+      expect(wrapper.get('[data-testid="mermaid-diagram"]').classes())
+        .not.toContain('opacity-60')
+
+      await wrapper.setProps({ code: 'broken' })
+      await vi.waitFor(() => {
+        expect(wrapper.emitted('error')).toHaveLength(1)
+      })
+      await wrapper.setProps({ hasError: true })
+
+      expect(wrapper.find('svg#first').exists()).toBe(true)
+      expect(wrapper.get('[data-testid="mermaid-diagram"]').classes())
+        .toContain('opacity-60')
+    })
 })

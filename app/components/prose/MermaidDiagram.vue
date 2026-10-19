@@ -1,7 +1,7 @@
 <template>
   <div class="relative">
     <div
-      v-if="!svg"
+      v-if="!svg && !hasError"
       class="skeleton skeleton--default h-20 w-full"
     />
     <button
@@ -26,6 +26,7 @@
       :class="{
         'cursor-zoom-in': isInteractive,
         'invisible': isHidden,
+        'opacity-60': hasError,
       }"
       data-testid="mermaid-diagram"
       @click="requestOpen"
@@ -40,11 +41,12 @@ import type { DiagramRenderError } from '~/types/diagram.d'
 const props = defineProps<{
   code: string
   isHidden?: boolean
+  hasError?: boolean
 }>()
 
 const emit = defineEmits<{
   error: [error: DiagramRenderError]
-  rendered: [payload: { svg: string }]
+  rendered: [payload: { svg: string, source: string }]
   open: []
 }>()
 
@@ -66,12 +68,6 @@ function requestOpen() {
 
   emit('open')
 }
-
-function getThemeElement(): HTMLElement | null {
-  return container.value
-}
-
-defineExpose({ getThemeElement })
 
 watch([() => props.code, isMounted], async ([code], _previous, onCleanup) => {
   if (!isMounted.value) {
@@ -100,7 +96,7 @@ watch([() => props.code, isMounted], async ([code], _previous, onCleanup) => {
   }
 
   svg.value = result.svg
-  emit('rendered', { svg: result.svg })
+  emit('rendered', { svg: result.svg, source: code })
 })
 
 onMounted(() => {
