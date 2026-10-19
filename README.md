@@ -203,33 +203,38 @@ snyk code test
     <tr>
       <th colspan="2">
         Light theme
-      </td>
+      </th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td>
-        <img width="2070" height="1836" alt="image" src="https://github.com/user-attachments/assets/f656ba5c-7f7d-45ec-b43f-7b956df7a9f8" />
+        <img src="public/carousel/any-model.webp" width="100%" alt="Besidka on desktop and on a phone, labelled desktop and mobile, installable PWA and push notifications, with a push notification saying the response is ready." />
       </td>
       <td>
-        <img width="748" height="1638" alt="image" src="https://github.com/user-attachments/assets/88b40b26-7126-43fe-91f0-3566ffbd656d" />
+        <img src="public/carousel/projects.webp" width="100%" alt="A project page with project instructions marked Active and project memory synthesized from the project's chats." />
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="public/carousel/code-and-diagrams.webp" width="100%" alt="A light-theme chat answer with a syntax-highlighted TypeScript snippet and a rendered sequence diagram of a Worker reading from KV and falling back to D1." />
+      </td>
+      <td>
+        <img src="public/carousel/web-search-prices.webp" width="100%" alt="Search provider settings with prices per 1,000 searches for Brave, Exa and the built-in search of Gemini, Anthropic, OpenAI and DeepSeek." />
       </td>
     </tr>
   </tbody>
-    <thead>
+  <thead>
     <tr>
       <th colspan="2">
         Dark theme
-      </td>
+      </th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>
-        <img width="2080" height="1832" alt="image" src="https://github.com/user-attachments/assets/455dc66e-ee43-49b3-bfbc-2e9192ba3d9e" />
-      </td>
-      <td>
-        <img width="750" height="1642" alt="image" src="https://github.com/user-attachments/assets/5d39986b-3f03-44f1-9f75-9182472dc8a9" />
+      <td colspan="2">
+        <img src="public/carousel/dark-theme.webp" width="100%" alt="Besidka in dark theme on a desktop chat comparing D1 and Postgres and on a phone showing a Vue composable answer." />
       </td>
     </tr>
   </tbody>

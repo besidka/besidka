@@ -11,36 +11,45 @@ benefits:
     title: Pick the best model for each job
     body: Claude Opus for hard reasoning, GPT-5.6 for creative work, Gemini Flash for quick drafts, DeepSeek or Qwen for high-volume tasks — switch freely across providers in the same interface.
 carousel:
-  - src: /carousel/01-any-model.webp
+  - src: /carousel/any-model.webp
     alt: Besidka on desktop and on a phone, labelled desktop and mobile, installable PWA and push notifications, with a push notification saying the response is ready.
     caption: Desktop and mobile, installable PWA, push notifications
-  - src: /carousel/02-shared-chats.webp
-    alt: A shared Besidka chat open at besidka.com/shared, readable without an account, with a button to add it to your own chats.
-    caption: Share a chat, no account needed to read it
-  - src: /carousel/03-cost-per-answer.webp
-    alt: Message menu showing the model, provider, output tokens and the cost of the message, up to that message and for the whole chat.
-    caption: Model, tokens and cost on every answer
-  - src: /carousel/04-providers.webp
-    alt: Model picker with a rail of provider logos for Anthropic, Google, OpenAI, xAI, DeepSeek, Moonshot AI and Qwen, and a gateways strip below the list.
-    caption: Seven providers in one model picker
-  - src: /carousel/05-gateways.webp
+  - src: /carousel/dark-theme.webp
+    alt: Besidka in dark theme on a desktop chat comparing D1 and Postgres and on a phone showing a Vue composable answer.
+    caption: Light or dark theme, desktop and phone
+  - src: /carousel/providers.webp
+    alt: API keys settings listing seven direct providers, Anthropic, Google AI Studio, OpenAI, xAI, DeepSeek, Moonshot AI and Qwen, each with its logo and a saved key.
+    caption: Your own keys for seven providers
+  - src: /carousel/gateways.webp
     alt: Model picker switched to OpenRouter, listing Anthropic models available through the gateway, next to Cloudflare AI Gateway and Vercel AI Gateway.
     caption: "Optional gateways: OpenRouter, Vercel, Cloudflare"
-  - src: /carousel/06-file-manager.webp
-    alt: File manager listing uploaded and AI-generated files with type, size, expiry and storage used.
-    caption: File manager
-  - src: /carousel/07-image-generation.webp
-    alt: A chat where Nano Banana 2 generated a flat illustration of a sunset over pink mountains.
-    caption: Image generation in the chat
-  - src: /carousel/08-reasoning.webp
-    alt: An answer with its reasoning steps expanded and the reasoning effort menu set to High.
-    caption: Reasoning steps and effort
-  - src: /carousel/09-web-search-prices.webp
+  - src: /carousel/cost-per-answer.webp
+    alt: Message menu showing the model, provider, output tokens and the cost of the message, up to that message and for the whole chat.
+    caption: Model, tokens and cost on every answer
+  - src: /carousel/web-search-prices.webp
     alt: Search provider settings with prices per 1,000 searches for Brave, Exa and the built-in search of Gemini, Anthropic, OpenAI and DeepSeek.
     caption: Web search providers and their prices
-  - src: /carousel/10-deep-research.webp
+  - src: /carousel/projects.webp
+    alt: A project page with project instructions marked Active and project memory synthesized from the project's chats.
+    caption: Projects with shared instructions and memory
+  - src: /carousel/code-and-diagrams.webp
+    alt: A light-theme chat answer with a syntax-highlighted TypeScript snippet and a rendered sequence diagram of a Worker reading from KV and falling back to D1.
+    caption: Highlighted code and rendered diagrams
+  - src: /carousel/reasoning.webp
+    alt: An answer with its reasoning steps expanded and the reasoning effort set to High in the chat input.
+    caption: Reasoning steps and effort
+  - src: /carousel/image-generation.webp
+    alt: A chat where Nano Banana 2 generated a flat illustration of a sunset over pink mountains.
+    caption: Image generation in the chat
+  - src: /carousel/deep-research.webp
     alt: A deep research report from Gemini Deep Research with its trace of searches and pages read.
     caption: Deep research with the full trace
+  - src: /carousel/file-manager.webp
+    alt: File manager listing uploaded and AI-generated files with type, size, expiry and storage used.
+    caption: File manager
+  - src: /carousel/shared-chats.webp
+    alt: A shared Besidka chat open at besidka.com/shared, readable without an account, with a button to add it to your own chats.
+    caption: Share a chat, no account needed to read it
 comparison:
   caption: How Besidka compares to popular AI chat subscriptions
   columns:
