@@ -54,6 +54,8 @@ updates:
       # ship support -- see PR #297 for the full research writeup.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "nuxt-studio"
+        versions: ["1.8.0"]
     labels:
       - "dependencies"
     commit-message:
