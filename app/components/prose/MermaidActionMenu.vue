@@ -21,7 +21,7 @@
         :aria-disabled="isTriggerDisabled ? 'true' : undefined"
         :data-testid="testId"
       />
-      <div ref="contentRef" class="dropdown-content z-50 w-44 pt-2">
+      <div class="dropdown-content z-50 w-44 pt-2">
         <ul
           tabindex="0"
           class="menu menu-sm bg-base-100 rounded-box shadow-lg w-44 p-1"
@@ -70,12 +70,10 @@ const FAILURE_MESSAGE: string = 'Couldn\'t export diagram'
 const COPIED_MESSAGE: string = 'Copied'
 const FEEDBACK_MS: number = 2000
 const COPY_ACTION_PREFIX: string = 'copy-'
-const MENU_EDGE_GAP_PX: number = 4
 
 const { runExportAction } = useDiagramExport()
 
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
-const contentRef = useTemplateRef<HTMLElement>('contentRef')
 const isCopied = shallowRef<boolean>(false)
 const isOpen = shallowRef<boolean>(false)
 const announcement = shallowRef<string>('')
@@ -120,53 +118,6 @@ function focusTrigger() {
   dropdownRef.value?.querySelector<HTMLElement>('summary')?.focus()
 }
 
-function getClippingBoundary(element: HTMLElement): DOMRect {
-  let ancestor = element.parentElement
-
-  while (ancestor) {
-    const { overflowX } = getComputedStyle(ancestor)
-
-    if (overflowX && overflowX !== 'visible') {
-      return ancestor.getBoundingClientRect()
-    }
-
-    ancestor = ancestor.parentElement
-  }
-
-  return new DOMRect(0, 0, window.innerWidth, window.innerHeight)
-}
-
-function keepMenuInsideBoundary() {
-  const menu = dropdownRef.value
-  const content = contentRef.value
-
-  if (!menu || !content) {
-    return
-  }
-
-  content.style.translate = ''
-
-  const boundary = getClippingBoundary(menu)
-
-  if (!boundary.width) {
-    return
-  }
-
-  const left = menu.getBoundingClientRect().left + content.offsetLeft
-  const right = left + content.offsetWidth
-  const maxRight = boundary.right - MENU_EDGE_GAP_PX
-  const minLeft = boundary.left + MENU_EDGE_GAP_PX
-  let shift = right > maxRight ? maxRight - right : 0
-
-  if (left + shift < minLeft) {
-    shift = minLeft - left
-  }
-
-  if (shift) {
-    content.style.translate = `${shift}px`
-  }
-}
-
 function onToggle() {
   const currentMenu = dropdownRef.value
 
@@ -175,8 +126,6 @@ function onToggle() {
   if (!currentMenu?.open) {
     return
   }
-
-  keepMenuInsideBoundary()
 
   const openMenus = document.querySelectorAll<HTMLDetailsElement>(
     'details.js-mermaid-action-menu[open]',

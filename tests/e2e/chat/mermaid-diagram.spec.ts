@@ -369,29 +369,34 @@ test.describe('Mermaid diagram viewer', () => {
 })
 
 async function expectOpenMenuInsideBlock(block: Locator): Promise<void> {
-  const menu = block.locator('details[open] .dropdown-content')
+  const card = block.locator('details[open] .dropdown-content ul.menu')
 
-  await expect(menu).toBeVisible()
+  await expect(card).toBeVisible()
 
-  const result = await menu.evaluate((element) => {
+  const result = await card.evaluate((element) => {
     const blockElement = element.closest('.mockup-browser')!
-    const menuRect = element.getBoundingClientRect()
+    const cardRect = element.getBoundingClientRect()
     const blockRect = blockElement.getBoundingClientRect()
-    const probeX = menuRect.right - 6
-    const probeY = menuRect.top + menuRect.height / 2
+    const trigger = element.closest('details')!.querySelector('summary')!
+    const triggerRect = trigger.getBoundingClientRect()
+    const probeX = cardRect.right - 6
+    const probeY = cardRect.top + cardRect.height / 2
     const hit = document.elementFromPoint(probeX, probeY)
 
     return {
-      menuLeft: menuRect.left,
-      menuRight: menuRect.right,
+      cardLeft: cardRect.left,
+      cardRight: cardRect.right,
       blockLeft: blockRect.left,
       blockRight: blockRect.right,
+      triggerRight: triggerRect.right,
       isHit: !!hit && element.contains(hit),
     }
   })
 
-  expect(result.menuRight).toBeLessThanOrEqual(result.blockRight)
-  expect(result.menuLeft).toBeGreaterThanOrEqual(result.blockLeft)
+  expect(result.cardRight).toBeLessThanOrEqual(result.blockRight)
+  expect(result.cardLeft).toBeGreaterThanOrEqual(result.blockLeft)
+  expect(Math.abs(result.cardRight - result.triggerRight))
+    .toBeLessThanOrEqual(1)
   expect(result.isHit).toBe(true)
 }
 
@@ -893,6 +898,8 @@ test.describe('Mermaid diagram toolbar on a phone', () => {
 
           return {
             testId: control.getAttribute('data-testid'),
+            top: rect.top,
+            bottom: rect.bottom,
             isInside: rect.left >= blockRect.left
               && rect.right <= blockRect.right,
           }
@@ -904,11 +911,20 @@ test.describe('Mermaid diagram toolbar on a phone', () => {
           .toBe(true)
       }
 
+      const highestBottom = Math.min(...bounds.map(control => control.bottom))
+      const lowestTop = Math.max(...bounds.map(control => control.top))
+
+      expect(lowestTop, 'toolbar stays on a single row')
+        .toBeLessThan(highestBottom)
+
       await block.locator('[data-testid="mermaid-download"]').click()
       await expectOpenMenuInsideBlock(block)
 
       await block.locator('[data-testid="mermaid-copy"]').click()
       await expectOpenMenuInsideBlock(block)
+      await expect(block.locator('details[open]')).toHaveCount(1)
+      await expect(block.locator('[data-testid="mermaid-export-copy-svg"]'))
+        .toBeVisible()
     })
 
   test('gives the editor a regular box radius', async ({ page }) => {

@@ -729,6 +729,21 @@ describe('prose/PreStream.vue mermaid editing', () => {
     expect(wrapper.find('[data-testid="shiki-code"]').exists()).toBe(false)
   })
 
+  it('hides the window dots on phones while editing to keep one row',
+    async () => {
+      const wrapper = await mountPre(VALID_DIAGRAM)
+
+      await waitForDiagram(wrapper)
+
+      expect(wrapper.get('[data-testid="mermaid-window-dots"]').classes())
+        .not.toContain('max-sm:hidden')
+
+      await startEditing(wrapper)
+
+      expect(wrapper.get('[data-testid="mermaid-window-dots"]').classes())
+        .toContain('max-sm:hidden')
+    })
+
   it('enters edit mode straight from code view', async () => {
     const wrapper = await mountPre(VALID_DIAGRAM)
 
@@ -892,6 +907,8 @@ describe('prose/PreStream.vue mermaid editing', () => {
       .toBe('Edited')
     expect(wrapper.get('[data-testid="mermaid-edited-badge"]').classes())
       .toEqual(expect.arrayContaining(['badge', 'badge-sm']))
+    expect(wrapper.get('[data-testid="mermaid-window-dots"]').classes())
+      .toContain('max-sm:hidden')
     expect(wrapper.find('[data-testid="mermaid-toggle"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="mermaid-edit"]').exists()).toBe(true)
     expect(wrapper.get(DIAGRAM_SELECTOR).text()).toContain('Begin')

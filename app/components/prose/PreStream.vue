@@ -3,7 +3,11 @@
     class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-clip overflow-y-visible"
   >
     <div class="flex items-center justify-between">
-      <div class="mockup-browser-toolbar w-auto! shrink-0 pr-0!"/>
+      <div
+        class="mockup-browser-toolbar w-auto! shrink-0 pr-0!"
+        :class="{ 'max-sm:hidden': isToolbarCrowded }"
+        data-testid="mermaid-window-dots"
+      />
       <div
         class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1 py-2 pr-4 sm:gap-2"
       >
@@ -244,6 +248,10 @@ const effectiveSource = computed<string>(() => {
 const isEdited = computed<boolean>(() => {
   return editedSource.value !== null
     && editedSource.value !== trimmedCode.value
+})
+
+const isToolbarCrowded = computed<boolean>(() => {
+  return isEditing.value || isEdited.value
 })
 
 const isEditorTextChanged = computed<boolean>(() => {
