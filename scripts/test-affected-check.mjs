@@ -398,6 +398,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
+    'tests/unit/assets/css/plyr-theme.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/unit/components/landing/FeatureGrid.spec.ts',
     'tests/unit/components/landing/MessageBubble.spec.ts',
