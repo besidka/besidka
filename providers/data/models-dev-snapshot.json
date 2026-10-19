@@ -1679,9 +1679,9 @@
     "tieredPricing": true
   },
   "deepseek-flash": {
-    "name": "DeepSeek V4.1 Flash",
-    "description": "DeepSeek V4.1 Flash model for reasoning and agentic coding",
-    "releaseDate": "2026-09-10",
+    "name": "DeepSeek V4.1 Flash 1017",
+    "description": "October 17 update of DeepSeek V4.1 Flash with improved reasoning, coding, agentic tasks, and visual understanding",
+    "releaseDate": "2026-10-17",
     "toolCall": true,
     "limit": {
       "context": 1000000,
