@@ -10,10 +10,14 @@
  *
  * Two actions:
  *
- *   upload    Ensure each asset exists locally (download the demo video from
- *             its source URL / generate captions if missing), validate videos,
- *             then PUT it into CMS_BUCKET. Objects that already persist in the
- *             target bucket are skipped.
+ *   upload    Preflight every asset first (videos must already be present in
+ *             `.files` and are validated; the captions file is always copied
+ *             from the committed scripts/cms-assets/demo.en.vtt), then PUT
+ *             each into CMS_BUCKET. Objects that already exist in the target
+ *             bucket are skipped unless --force is passed, which overwrites
+ *             them. Overwriting production (--remote -e production --force)
+ *             additionally requires --yes. An existence check that fails for
+ *             any reason other than "key not found" aborts the run.
  *
  *   download  GET each asset from CMS_BUCKET into `.files`. Files already
  *             present locally are skipped.
@@ -27,30 +31,29 @@
  *   - demo.mp4        720p — default quality
  *   - demo-360.mp4    360p
  *   - demo-1080.mp4   1080p
- *   - demo.en.vtt     fake English captions
+ *   - demo.en.vtt     English captions (scripts/cms-assets/demo.en.vtt)
  *
  * Hover-preview thumbnails are NOT generated here; the player builds them on
  * the client at runtime via mediabunny's CanvasSink.
- *
- * ATTRIBUTION: "Big Buck Bunny" © Blender Foundation |
- * www.bigbuckbunny.org (CC BY 3.0)
  *
  * Usage:
  *   pnpm run cms:files:upload                       seed local R2 (default)
  *   pnpm run cms:files:upload --remote              upload to preview bucket
  *   pnpm run cms:files:upload --remote -e production   upload to prod bucket
+ *   pnpm run cms:files:upload --remote --force      overwrite preview objects
+ *   pnpm run cms:files:upload --remote -e production --force --yes
+ *                                                   overwrite prod objects
  *
  *   pnpm run cms:files:download                     pull from local R2
  *   pnpm run cms:files:download --remote            pull from preview bucket
  *   pnpm run cms:files:download --remote -e production pull from prod bucket
  */
 
-import { createWriteStream, existsSync, readFileSync } from 'node:fs'
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { copyFile, mkdir, stat } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { pipeline } from 'node:stream/promises'
-import { execSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 
 import {
   Input,
@@ -61,61 +64,44 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
 const FILES_DIR = join(ROOT, '.files')
+const COMMITTED_ASSETS_DIR = join(ROOT, 'scripts', 'cms-assets')
 
 // wrangler appends /v3 to --persist-to internally, so we pass .wrangler/state
 // (not .wrangler/state/v3) to land in the right place.
 const PERSIST_DIR = join(ROOT, '.wrangler', 'state')
 
-const BASE_URL = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264'
-
 const VALID_ACTIONS = ['upload', 'download']
 const VALID_ENVIRONMENTS = ['preview', 'production']
 
-const CAPTIONS_CONTENT = `WEBVTT
-
-00:00.000 --> 00:02.000
-Welcome to Besidka — open-source AI chat.
-
-00:02.000 --> 00:04.000
-Switch freely between the latest GPT and Gemini models.
-
-00:04.000 --> 00:06.000
-Attach files stored in your own R2 bucket.
-
-00:06.000 --> 00:08.000
-Group related chats into Projects.
-
-00:08.000 --> 00:10.000
-Your keys, your costs, your data.
-`
+const EXISTENCE_PROBE_BYTES = 64 * 1024
+const NOT_FOUND_MESSAGE = 'The specified key does not exist'
+const DOCS_HINT = 'docs/landing-studio.md ("Demo video player" section)'
 
 /**
  * Managed assets. `key` is both the local filename (in .files) and the R2
- * object key. `sourceUrl` (web download) or `content` (generated) tells upload
- * how to materialise a missing local copy. `kind: 'video'` enables validation.
+ * object key. Videos are provided locally and must already exist in .files.
+ * An asset with `committedSource` is always copied from scripts/cms-assets over
+ * its local copy. `kind: 'video'` enables validation.
  */
 const ASSETS = [
   {
     key: 'demo.mp4',
-    sourceUrl: `${BASE_URL}/720/Big_Buck_Bunny_720_10s_5MB.mp4`,
     contentType: 'video/mp4',
     kind: 'video',
   },
   {
     key: 'demo-360.mp4',
-    sourceUrl: `${BASE_URL}/360/Big_Buck_Bunny_360_10s_1MB.mp4`,
     contentType: 'video/mp4',
     kind: 'video',
   },
   {
     key: 'demo-1080.mp4',
-    sourceUrl: `${BASE_URL}/1080/Big_Buck_Bunny_1080_10s_5MB.mp4`,
     contentType: 'video/mp4',
     kind: 'video',
   },
   {
     key: 'demo.en.vtt',
-    content: CAPTIONS_CONTENT,
+    committedSource: join(COMMITTED_ASSETS_DIR, 'demo.en.vtt'),
     contentType: 'text/vtt; charset=utf-8',
     kind: 'captions',
   },
@@ -126,6 +112,10 @@ const ASSETS = [
  *
  *   <action>                 upload | download (first positional, required)
  *   --remote                 target remote R2 instead of local persisted R2
+ *   --force                  upload even when the object already exists in the
+ *                            target bucket (overwrite); default is to skip
+ *   --yes                    confirm overwriting production
+ *                            (--remote -e production --force)
  *   -e / --env <name>        environment (preview | production)
  *   -e=<name> / --env=<name> inline form of the above
  */
@@ -143,6 +133,12 @@ function parseArgs(argv) {
   }
 
   const remote = args.includes('--remote')
+  const force = args.includes('--force')
+  const yes = args.includes('--yes')
+
+  if (action === 'download' && (force || yes)) {
+    throw new Error('--force and --yes only apply to the upload action')
+  }
 
   let environment = 'preview'
 
@@ -169,7 +165,7 @@ function parseArgs(argv) {
     )
   }
 
-  return { action, remote, environment }
+  return { action, remote, force, yes, environment }
 }
 
 /**
@@ -211,30 +207,7 @@ function locationFlags(remote) {
     return ['--remote']
   }
 
-  return ['--local', `--persist-to="${PERSIST_DIR}"`]
-}
-
-async function downloadFromWeb(url, destination) {
-  console.log(`\nDownloading ${url}`)
-  console.log(`  → ${destination}`)
-
-  await mkdir(dirname(destination), { recursive: true })
-
-  const response = await fetch(url)
-
-  if (!response.ok || !response.body) {
-    throw new Error(
-      `Download failed: HTTP ${response.status} ${response.statusText}`,
-    )
-  }
-
-  const fileStream = createWriteStream(destination)
-
-  await pipeline(response.body, fileStream)
-
-  const { size } = await stat(destination)
-
-  console.log(`  ✓ Downloaded ${(size / 1024 / 1024).toFixed(2)} MB`)
+  return ['--local', `--persist-to=${PERSIST_DIR}`]
 }
 
 async function validateVideo(filePath) {
@@ -261,8 +234,12 @@ async function validateVideo(filePath) {
 
   const { size } = await stat(filePath)
 
+  const durationLabel = duration !== null
+    ? `${duration.toFixed(2)}s`
+    : 'unknown'
+
   console.log('  Format:   MP4')
-  console.log(`  Duration: ${duration !== null ? duration.toFixed(2) + 's' : 'unknown'}`)
+  console.log(`  Duration: ${durationLabel}`)
   console.log(`  Size:     ${(size / 1024 / 1024).toFixed(2)} MB`)
   console.log(`  Video:    ${videoTracks.length} track(s) — codec: ${videoCodec ?? 'unknown'}`)
   console.log(`  Audio:    ${audioTracks.length} track(s) — codec: ${audioCodec ?? 'unknown'}`)
@@ -302,57 +279,143 @@ async function validateVideo(filePath) {
   }
 
   input.dispose()
+
+  return { size, durationLabel }
 }
 
 /**
- * Materialise a missing local copy of an asset. Validates freshly fetched
- * videos. Existing files are left untouched (no re-download, no re-validate).
+ * Make sure a validated local copy of an asset exists. Videos are never
+ * fetched or generated: a missing one fails with an actionable error. Assets
+ * with a committed source are always copied over their local copy so a stale
+ * `.files` entry can never be uploaded.
  */
-async function ensureLocalAsset(asset, filePath) {
-  if (existsSync(filePath)) {
-    console.log(`\nUsing local ${asset.key}`)
+async function prepareLocalAsset(asset) {
+  const filePath = join(FILES_DIR, asset.key)
 
-    return
-  }
-
-  await mkdir(dirname(filePath), { recursive: true })
-
-  if (asset.sourceUrl) {
-    await downloadFromWeb(asset.sourceUrl, filePath)
-  } else if (asset.content) {
-    await writeFile(filePath, asset.content, 'utf8')
-    console.log(`\n✓ Generated ${filePath}`)
-  } else {
+  if (asset.committedSource) {
+    await mkdir(dirname(filePath), { recursive: true })
+    await copyFile(asset.committedSource, filePath)
+    console.log(`\n✓ Copied ${asset.committedSource} → ${filePath}`)
+  } else if (!existsSync(filePath)) {
     throw new Error(
-      `Cannot materialise "${asset.key}": no sourceUrl or content`,
+      `Missing video ".files/${asset.key}".`
+      + ` Render or copy the file into .files/${asset.key} and retry;`
+      + ` see ${DOCS_HINT}.`,
     )
+  } else {
+    console.log(`\nUsing local ${asset.key}`)
   }
 
   if (asset.kind === 'video') {
-    await validateVideo(filePath)
+    const { size, durationLabel } = await validateVideo(filePath)
+
+    return { asset, filePath, size, durationLabel }
   }
+
+  const { size } = await stat(filePath)
+
+  return { asset, filePath, size, durationLabel: '-' }
 }
 
 /**
- * Probe whether an object already exists in the bucket. There is no `head` in
- * the wrangler CLI, so this streams the object to a discarded pipe and treats
- * a zero exit code as "exists".
+ * Probe whether an object exists without downloading it. wrangler has no
+ * `info`/`head` command, so this starts `r2 object get --pipe`, treats a
+ * clean exit or the first 64 KiB of object data as "exists" and kills the
+ * child before a large transfer completes (wrangler prints a stray newline
+ * to stdout on failure, so a single byte proves nothing). Only the exact
+ * "key does not exist" error means absent; any other failure rejects so the
+ * run aborts instead of overwriting blindly.
  */
 function objectExists(bucketName, key, remote) {
-  const command = [
-    'npx wrangler r2 object get',
-    `${bucketName}/${key}`,
-    '--pipe',
-    ...locationFlags(remote),
-  ].join(' ')
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'pnpm',
+      [
+        'exec',
+        'wrangler',
+        'r2',
+        'object',
+        'get',
+        `${bucketName}/${key}`,
+        '--pipe',
+        ...locationFlags(remote),
+      ],
+      {
+        cwd: ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
+      },
+    )
 
-  try {
-    execSync(command, { cwd: ROOT, stdio: ['ignore', 'ignore', 'ignore'] })
+    let stderr = ''
+    let receivedBytes = 0
+    let isSettled = false
 
-    return true
-  } catch {
-    return false
-  }
+    function settle(callback) {
+      if (isSettled) {
+        return
+      }
+
+      isSettled = true
+      callback()
+    }
+
+    child.stdout.on('data', (chunk) => {
+      receivedBytes += chunk.length
+
+      if (receivedBytes < EXISTENCE_PROBE_BYTES) {
+        return
+      }
+
+      settle(() => {
+        child.kill('SIGKILL')
+        resolve(true)
+      })
+    })
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
+
+    child.on('error', (exception) => {
+      settle(() => {
+        reject(exception)
+      })
+    })
+
+    child.on('close', (code) => {
+      settle(() => {
+        if (code === 0) {
+          resolve(true)
+
+          return
+        }
+
+        if (stderr.includes(NOT_FOUND_MESSAGE)) {
+          resolve(false)
+
+          return
+        }
+
+        reject(new Error(
+          `Could not determine whether "${bucketName}/${key}" exists`
+          + ` (wrangler exit ${code}). Refusing to continue.\n`
+          + stderr.trim(),
+        ))
+      })
+    })
+  })
+}
+
+function runWrangler(args) {
+  return execFileSync('pnpm', ['exec', 'wrangler', ...args], {
+    cwd: ROOT,
+    stdio: 'inherit',
+  })
+}
+
+function describeCommand(args) {
+  return ['pnpm exec wrangler', ...args].join(' ')
 }
 
 function putObject(bucketName, asset, filePath, remote) {
@@ -360,16 +423,18 @@ function putObject(bucketName, asset, filePath, remote) {
 
   console.log(`\nUploading "${bucketName}/${asset.key}" (${target})...`)
 
-  const command = [
-    'npx wrangler r2 object put',
+  const args = [
+    'r2',
+    'object',
+    'put',
     `${bucketName}/${asset.key}`,
-    `--file="${filePath}"`,
-    `--content-type="${asset.contentType}"`,
+    `--file=${filePath}`,
+    `--content-type=${asset.contentType}`,
     ...locationFlags(remote),
-  ].join(' ')
+  ]
 
   try {
-    execSync(command, { cwd: ROOT, stdio: 'inherit' })
+    runWrangler(args)
     console.log(`  ✓ Uploaded ${asset.key}`)
 
     return true
@@ -379,7 +444,7 @@ function putObject(bucketName, asset, filePath, remote) {
       exception instanceof Error ? exception.message : String(exception),
     )
     console.log('\n  You can retry manually:')
-    console.log(`    ${command}`)
+    console.log(`    ${describeCommand(args)}`)
 
     return false
   }
@@ -391,15 +456,17 @@ function getObject(bucketName, key, filePath, remote) {
   console.log(`\nDownloading "${bucketName}/${key}" (${target})...`)
   console.log(`  → ${filePath}`)
 
-  const command = [
-    'npx wrangler r2 object get',
+  const args = [
+    'r2',
+    'object',
+    'get',
     `${bucketName}/${key}`,
-    `--file="${filePath}"`,
+    `--file=${filePath}`,
     ...locationFlags(remote),
-  ].join(' ')
+  ]
 
   try {
-    execSync(command, { cwd: ROOT, stdio: 'inherit' })
+    runWrangler(args)
     console.log(`  ✓ Downloaded ${key}`)
 
     return true
@@ -409,29 +476,62 @@ function getObject(bucketName, key, filePath, remote) {
       exception instanceof Error ? exception.message : String(exception),
     )
     console.log('\n  You can retry manually:')
-    console.log(`    ${command}`)
+    console.log(`    ${describeCommand(args)}`)
 
     return false
   }
 }
 
-async function runUpload(bucketName, remote) {
-  let hasFailures = false
+function printUploadPlan(prepared) {
+  console.log('\nAssets to overwrite:')
+
+  for (const { asset, size, durationLabel } of prepared) {
+    const megabytes = (size / 1024 / 1024).toFixed(2)
+
+    console.log(`  - ${asset.key}  ${megabytes} MB  duration ${durationLabel}`)
+  }
+}
+
+async function runUpload(bucketName, { remote, force, yes, environment }) {
+  const prepared = []
 
   for (const asset of ASSETS) {
-    const filePath = join(FILES_DIR, asset.key)
+    prepared.push(await prepareLocalAsset(asset))
+  }
 
-    await ensureLocalAsset(asset, filePath)
+  const isProductionOverwrite = remote
+    && environment === 'production'
+    && force
 
-    if (objectExists(bucketName, asset.key, remote)) {
-      console.log(`\nSkipping ${asset.key} (already in ${bucketName})`)
+  if (isProductionOverwrite && !yes) {
+    printUploadPlan(prepared)
+    console.error(
+      '\nRefusing to overwrite production objects without --yes.'
+      + ' Re-run with --yes to confirm.',
+    )
+
+    return false
+  }
+
+  const pending = []
+
+  for (const entry of prepared) {
+    if (!force && await objectExists(bucketName, entry.asset.key, remote)) {
+      console.log(
+        `\nSkipping ${entry.asset.key}`
+        + ` (already in ${bucketName}; use --force)`,
+      )
 
       continue
     }
 
-    const wasUploaded = putObject(bucketName, asset, filePath, remote)
+    pending.push(entry)
+  }
 
-    if (!wasUploaded) {
+  let hasFailures = false
+
+  for (const { asset, filePath } of pending) {
+    if (!putObject(bucketName, asset, filePath, remote)) {
       hasFailures = true
     }
   }
@@ -468,7 +568,8 @@ async function runDownload(bucketName, remote) {
 }
 
 async function main() {
-  const { action, remote, environment } = parseArgs(process.argv)
+  const options = parseArgs(process.argv)
+  const { action, remote, force, environment } = options
   const bucketName = remote
     ? resolveBucketName(environment)
     : resolveBucketName('preview')
@@ -480,29 +581,26 @@ async function main() {
   console.log(`Bucket:      ${bucketName} (CMS_BUCKET)`)
 
   if (action === 'upload') {
-    const succeeded = await runUpload(bucketName, remote)
+    console.log(`Overwrite:   ${force ? 'yes (--force)' : 'no'}`)
+  }
 
-    if (!succeeded) {
-      console.error('\nOne or more uploads failed.')
-      process.exitCode = 1
+  const succeeded = action === 'upload'
+    ? await runUpload(bucketName, options)
+    : await runDownload(bucketName, remote)
 
-      return
-    }
-  } else {
-    const succeeded = await runDownload(bucketName, remote)
+  if (!succeeded) {
+    console.error(`\nOne or more ${action}s failed.`)
+    process.exitCode = 1
 
-    if (!succeeded) {
-      console.error('\nOne or more downloads failed.')
-      process.exitCode = 1
-
-      return
-    }
+    return
   }
 
   console.log(`\n✓ Done (${action} → ${bucketName}).`)
 }
 
 main().catch((exception) => {
-  console.error('\nFatal error:', exception)
+  console.error('\nFatal error:', exception instanceof Error
+    ? exception.message
+    : exception)
   process.exit(1)
 })

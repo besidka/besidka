@@ -6,10 +6,20 @@ export type RangeParsed = {
 
 export type RangeParseResult = RangeParsed | 'invalid' | null
 
-export function parseRangeHeader(
+export type RangeSpec
+  = | { kind: 'suffix', suffix: number }
+    | { kind: 'bounded', start: number, end: number | null }
+
+export type RangeSpecResult = RangeSpec | 'invalid' | null
+
+/**
+ * Parse the syntax of a single-range `Range: bytes=...` header without knowing
+ * the object size. Returns null when no header is present and 'invalid' for
+ * malformed, multi-range, start > end and zero-length suffix specs.
+ */
+export function parseRangeSpec(
   rangeHeader: string | null | undefined,
-  size: number,
-): RangeParseResult {
+): RangeSpecResult {
   if (!rangeHeader) {
     return null
   }
@@ -21,7 +31,6 @@ export function parseRangeHeader(
   }
 
   const spec = match[1]!
-
   const suffixMatch = /^-(\d+)$/.exec(spec)
 
   if (suffixMatch) {
@@ -31,11 +40,7 @@ export function parseRangeHeader(
       return 'invalid'
     }
 
-    const offset = Math.max(0, size - suffix)
-    const end = size - 1
-    const length = end - offset + 1
-
-    return { offset, length, end }
+    return { kind: 'suffix', suffix }
   }
 
   const rangeMatch = /^(\d+)-(\d*)$/.exec(spec)
@@ -45,14 +50,46 @@ export function parseRangeHeader(
   }
 
   const start = parseInt(rangeMatch[1]!, 10)
-  const endStr = rangeMatch[2]!
-  const end = endStr === '' ? size - 1 : parseInt(endStr, 10)
+  const endText = rangeMatch[2]!
+  const end = endText === '' ? null : parseInt(endText, 10)
 
-  if (start > end || end >= size || start < 0) {
+  if (end !== null && start > end) {
     return 'invalid'
   }
 
-  const length = end - start + 1
+  return { kind: 'bounded', start, end }
+}
 
-  return { offset: start, length, end }
+/**
+ * Resolve a Range header against the object size per RFC 9110: an end past
+ * EOF is clamped to the last byte; the range is unsatisfiable only when its
+ * start is at or beyond the size. Suffix ranges larger than the object cover
+ * the whole object.
+ */
+export function parseRangeHeader(
+  rangeHeader: string | null | undefined,
+  size: number,
+): RangeParseResult {
+  const spec = parseRangeSpec(rangeHeader)
+
+  if (spec === null || spec === 'invalid') {
+    return spec
+  }
+
+  if (spec.kind === 'suffix') {
+    const offset = Math.max(0, size - spec.suffix)
+    const end = size - 1
+    const length = end - offset + 1
+
+    return { offset, length, end }
+  }
+
+  if (spec.start >= size) {
+    return 'invalid'
+  }
+
+  const end = Math.min(spec.end ?? size - 1, size - 1)
+  const length = end - spec.start + 1
+
+  return { offset: spec.start, length, end }
 }

@@ -1,16 +1,14 @@
 import { createError } from 'evlog'
-import { parseRangeHeader } from '~~/server/utils/landing/video'
+import {
+  parseRangeHeader,
+  parseRangeSpec,
+} from '~~/server/utils/landing/video'
 
 // @ts-ignore
 import { env } from 'cloudflare:workers'
-import {
-  defineEventHandler,
-  getRequestHeader,
-  setResponseStatus,
-} from 'nuxt/server'
+import { defineEventHandler, setResponseStatus } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
-import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const ALLOWED_FILES = new Set([
   'demo.mp4',
@@ -18,6 +16,11 @@ const ALLOWED_FILES = new Set([
   'demo-1080.mp4',
   'demo.en.vtt',
 ])
+
+const ALLOWED_METHODS = 'GET, HEAD'
+const CACHE_CONTROL = 'public, max-age=86400'
+const NO_STORE = 'no-store'
+const NOT_MODIFIED_VALIDATORS = ['if-none-match', 'if-modified-since']
 
 function resolveContentType(name: string): string {
   if (name.endsWith('.vtt')) {
@@ -27,127 +30,222 @@ function resolveContentType(name: string): string {
   return 'video/mp4'
 }
 
+function isRangeNotSatisfiable(exception: unknown): boolean {
+  if (!(exception instanceof Error)) {
+    return false
+  }
+
+  return /\(10039\)|range is not satisfiable/i.test(exception.message)
+}
+
+function isMalformedConditional(exception: unknown): boolean {
+  if (!(exception instanceof Error)) {
+    return false
+  }
+
+  return /\b(if-match|if-none-match|if-modified-since|if-unmodified-since)\b|invalid (etag|date)/i
+    .test(exception.message)
+}
+
+function hasNotModifiedValidator(headers: Headers): boolean {
+  return NOT_MODIFIED_VALIDATORS.some((header) => {
+    return headers.has(header)
+  })
+}
+
+function isIfMatchFailed(headers: Headers, httpEtag: string): boolean {
+  const ifMatch = headers.get('if-match')
+
+  if (ifMatch === null) {
+    return false
+  }
+
+  return !ifMatch.split(',').some((candidate) => {
+    const token = candidate.trim()
+
+    return token === '*' || token === httpEtag
+  })
+}
+
+function isIfUnmodifiedSinceFailed(
+  headers: Headers,
+  uploaded: Date,
+): boolean {
+  const ifUnmodifiedSince = headers.get('if-unmodified-since')
+
+  if (ifUnmodifiedSince === null) {
+    return false
+  }
+
+  const threshold = Date.parse(ifUnmodifiedSince)
+
+  if (Number.isNaN(threshold)) {
+    return false
+  }
+
+  return Math.floor(uploaded.getTime() / 1000) > Math.floor(threshold / 1000)
+}
+
+function toR2Range(rangeHeader: string | null): R2Range | undefined {
+  const spec = parseRangeSpec(rangeHeader)
+
+  if (!spec || spec === 'invalid') {
+    return undefined
+  }
+
+  if (spec.kind === 'suffix') {
+    return { suffix: spec.suffix }
+  }
+
+  if (spec.end === null) {
+    return { offset: spec.start }
+  }
+
+  return { offset: spec.start, length: spec.end - spec.start + 1 }
+}
+
+function failure(
+  event: Parameters<typeof applyResponseHeaders>[0],
+  status: number,
+  message: string,
+  headers: Record<string, string> = {},
+) {
+  applyResponseHeaders(event, { 'Cache-Control': NO_STORE, ...headers })
+
+  return createError({ status, message })
+}
+
 export default defineEventHandler(async (event) => {
+  applyResponseHeaders(event, { 'X-Content-Type-Options': 'nosniff' })
+
+  const method = event.req.method
+  if (method !== 'GET' && method !== 'HEAD') {
+    throw failure(event, 405, 'Method Not Allowed', {
+      Allow: ALLOWED_METHODS,
+    })
+  }
+
   const { name } = getDecodedRouterParams(event) as { name: string }
 
   if (!ALLOWED_FILES.has(name)) {
-    throw createError({
-      status: 404,
-      message: 'Video not found',
-    })
+    throw failure(event, 404, 'Video not found')
   }
 
   const { CMS_BUCKET } = env
 
   if (!CMS_BUCKET) {
-    throw createError({
-      status: 503,
-      message: 'Video storage unavailable',
-    })
+    throw failure(event, 503, 'Video storage unavailable')
   }
 
-  const ifNoneMatch = getRequestHeader(event, 'if-none-match')
-  const rangeHeader = getRequestHeader(event, 'range')
-  const method = event.req.method
+  const requestHeaders = event.req.headers
+  const rangeHeader = requestHeaders.get('range')
+  const ifRange = requestHeaders.get('if-range')
 
-  const headObject = await CMS_BUCKET.head(name)
+  async function readObject(range: R2Range | undefined) {
+    try {
+      return await CMS_BUCKET.get(name, { range, onlyIf: requestHeaders })
+    } catch (exception) {
+      if (isRangeNotSatisfiable(exception)) {
+        const metadata = await CMS_BUCKET.head(name)
 
-  if (!headObject) {
-    throw createError({
-      status: 404,
-      message: 'Video not found',
-    })
+        throw failure(event, 416, 'Range Not Satisfiable', metadata
+          ? { 'Content-Range': `bytes */${metadata.size}` }
+          : {})
+      }
+
+      if (isMalformedConditional(exception)) {
+        throw failure(event, 400, 'Malformed conditional request header')
+      }
+
+      throw exception
+    }
   }
 
-  const etag = headObject.httpEtag
-  const size = headObject.size
+  const firstRead = await readObject(toR2Range(rangeHeader))
 
-  if (ifNoneMatch && ifNoneMatch === etag) {
+  if (!firstRead) {
+    throw failure(event, 404, 'Video not found')
+  }
+
+  if (!('body' in firstRead)) {
+    if (
+      isIfMatchFailed(requestHeaders, firstRead.httpEtag)
+      || isIfUnmodifiedSinceFailed(requestHeaders, firstRead.uploaded)
+      || !hasNotModifiedValidator(requestHeaders)
+    ) {
+      applyResponseHeaders(event, {
+        'ETag': firstRead.httpEtag,
+        'Cache-Control': NO_STORE,
+      })
+      setResponseStatus(event, 412)
+
+      return null
+    }
+
+    applyResponseHeaders(event, {
+      'ETag': firstRead.httpEtag,
+      'Cache-Control': CACHE_CONTROL,
+      'Accept-Ranges': 'bytes',
+    })
     setResponseStatus(event, 304)
 
     return null
   }
 
-  const rangeResult = parseRangeHeader(rangeHeader, size)
+  let object = firstRead
+
+  const isRangeIgnored = rangeHeader !== null
+    && ifRange !== null
+    && ifRange !== object.httpEtag
+
+  if (isRangeIgnored && toR2Range(rangeHeader)) {
+    await object.body.cancel()
+
+    const fullObject = await readObject(undefined)
+
+    if (!fullObject || !('body' in fullObject)) {
+      throw failure(event, 404, 'Video not found')
+    }
+
+    object = fullObject
+  }
+
+  const rangeResult = isRangeIgnored
+    ? null
+    : parseRangeHeader(rangeHeader, object.size)
 
   if (rangeResult === 'invalid') {
-    applyResponseHeaders(event, {
-      'Content-Range': `bytes */${size}`,
-    })
-    throw createError({
-      status: 416,
-      message: 'Range Not Satisfiable',
+    await object.body.cancel()
+
+    throw failure(event, 416, 'Range Not Satisfiable', {
+      'Content-Range': `bytes */${object.size}`,
     })
   }
 
-  const isRangeRequest = rangeResult !== null
-
-  const commonHeaders: Record<string, string> = {
-    'Content-Type': resolveContentType(name),
-    'ETag': etag,
-    'Cache-Control': 'public, max-age=86400',
+  const headers: Record<string, string> = {
+    'ETag': object.httpEtag,
+    'Cache-Control': CACHE_CONTROL,
     'Accept-Ranges': 'bytes',
+    'Content-Type': resolveContentType(name),
   }
 
-  if (isRangeRequest) {
-    const { offset, length, end } = rangeResult
-
-    commonHeaders['Content-Length'] = String(length)
-    commonHeaders['Content-Range'] = `bytes ${offset}-${end}/${size}`
-
-    applyResponseHeaders(event, commonHeaders)
-    setResponseStatus(event, 206)
-
-    if (method === 'HEAD') {
-      return null
-    }
-
-    const object = await CMS_BUCKET.get(name, {
-      range: { offset, length },
-    })
-
-    if (!object) {
-      const logger = useRequestLogger(event)
-
-      logger.set({
-        video: {
-          name,
-          error: 'Object disappeared between head and range get',
-        },
-      })
-      throw createError({
-        status: 404,
-        message: 'Video not found',
-      })
-    }
-
-    return object.body
+  if (rangeResult) {
+    headers['Content-Length'] = String(rangeResult.length)
+    headers['Content-Range']
+      = `bytes ${rangeResult.offset}-${rangeResult.end}/${object.size}`
+  } else {
+    headers['Content-Length'] = String(object.size)
   }
 
-  commonHeaders['Content-Length'] = String(size)
+  const status = rangeResult ? 206 : 200
 
-  applyResponseHeaders(event, commonHeaders)
-  setResponseStatus(event, 200)
+  applyResponseHeaders(event, headers)
+  setResponseStatus(event, status)
 
   if (method === 'HEAD') {
-    return null
-  }
+    await object.body.cancel()
 
-  const object = await CMS_BUCKET.get(name)
-
-  if (!object) {
-    const logger = useRequestLogger(event)
-
-    logger.set({
-      video: {
-        name,
-        error: 'Object disappeared between head and full get',
-      },
-    })
-    throw createError({
-      status: 404,
-      message: 'Video not found',
-    })
+    return new Response(null, { status, headers })
   }
 
   return object.body

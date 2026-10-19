@@ -183,32 +183,171 @@ describe('VideoPlayer.client.vue', () => {
     )
   })
 
-  it('requests thumbnail generation from the default-quality source',
+  it('sets preload to metadata on the video element', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: true },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('video').attributes('preload')).toBe('metadata')
+  })
+
+  it('restores preload metadata when Plyr swaps the media element',
     async () => {
-      await mountSuspended(VideoPlayer, {
-        props: {
-          src: '/videos/demo.mp4',
-          qualities: [
-            { src: '/videos/demo-1080.mp4', size: 1080 },
-            { src: '/videos/demo.mp4', size: 720 },
-          ],
-          thumbnails: true,
-        },
+      const wrapper = await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/demo.mp4' },
       })
 
       await flushPromises()
 
-      expect(mocks.generate).toHaveBeenCalledWith(
-        '/videos/demo.mp4',
-        { count: 12 },
-      )
+      const video = wrapper.find('video').element
+
+      video.removeAttribute('preload')
+      mocks.instances[0]!.emit('ready')
+
+      expect(video.preload).toBe('metadata')
+    })
+
+  it('does not generate thumbnails on mount', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: true },
+    })
+
+    await flushPromises()
+
+    expect(mocks.generate).not.toHaveBeenCalled()
+  })
+
+  it('does not generate thumbnails on play', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: true },
+    })
+
+    await flushPromises()
+
+    mocks.instances[0]!.emit('play')
+    mocks.instances[0]!.emit('play')
+    await flushPromises()
+
+    expect(mocks.generate).not.toHaveBeenCalled()
+  })
+
+  it('requests thumbnails from the default-quality source with an abort '
+    + 'signal on progress bar pointerenter', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: {
+        src: '/videos/demo.mp4',
+        qualities: [
+          { src: '/videos/demo-1080.mp4', size: 1080 },
+          { src: '/videos/demo.mp4', size: 720 },
+        ],
+        thumbnails: true,
+      },
+    })
+
+    await flushPromises()
+
+    const progress = document.createElement('div')
+
+    progress.className = 'plyr__progress'
+    wrapper.find('.js-landing-player').element.append(progress)
+
+    mocks.instances[0]!.emit('ready')
+    progress.dispatchEvent(new Event('pointerenter'))
+    await flushPromises()
+
+    expect(mocks.generate).toHaveBeenCalledTimes(1)
+    expect(mocks.generate).toHaveBeenCalledWith(
+      '/videos/demo.mp4',
+      { count: 12, signal: expect.any(AbortSignal) },
+    )
+  })
+
+  it('aborts thumbnail generation on unmount', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: true },
+    })
+
+    await flushPromises()
+
+    const progress = document.createElement('div')
+
+    progress.className = 'plyr__progress'
+    wrapper.find('.js-landing-player').element.append(progress)
+
+    mocks.instances[0]!.emit('ready')
+    progress.dispatchEvent(new Event('pointerenter'))
+    await flushPromises()
+
+    const { signal } = mocks.generate.mock.calls[0]![1] as {
+      signal: AbortSignal
+    }
+
+    expect(signal.aborted).toBe(false)
+
+    wrapper.unmount()
+
+    expect(signal.aborted).toBe(true)
+  })
+
+  it('generates thumbnails once on the first progress bar pointerenter',
+    async () => {
+      const wrapper = await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/demo.mp4', thumbnails: true },
+      })
+
+      await flushPromises()
+
+      const progress = document.createElement('div')
+
+      progress.className = 'plyr__progress'
+      wrapper.find('.js-landing-player').element.append(progress)
+
+      mocks.instances[0]!.emit('ready')
+
+      progress.dispatchEvent(new Event('pointerenter'))
+      progress.dispatchEvent(new Event('pointerenter'))
+      await flushPromises()
+
+      expect(mocks.generate).toHaveBeenCalledTimes(1)
+    })
+
+  it('generates thumbnails when the progress bar receives focus',
+    async () => {
+      const wrapper = await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/demo.mp4', thumbnails: true },
+      })
+
+      await flushPromises()
+
+      const progress = document.createElement('div')
+
+      progress.className = 'plyr__progress'
+      wrapper.find('.js-landing-player').element.append(progress)
+
+      mocks.instances[0]!.emit('ready')
+
+      progress.dispatchEvent(new Event('focusin'))
+      await flushPromises()
+
+      expect(mocks.generate).toHaveBeenCalledTimes(1)
     })
 
   it('skips thumbnail generation when disabled', async () => {
-    await mountSuspended(VideoPlayer, {
+    const wrapper = await mountSuspended(VideoPlayer, {
       props: { src: '/videos/demo.mp4', thumbnails: false },
     })
 
+    await flushPromises()
+
+    const progress = document.createElement('div')
+
+    progress.className = 'plyr__progress'
+    wrapper.find('.js-landing-player').element.append(progress)
+
+    mocks.instances[0]!.emit('ready')
+    progress.dispatchEvent(new Event('pointerenter'))
     await flushPromises()
 
     expect(mocks.generate).not.toHaveBeenCalled()

@@ -244,7 +244,8 @@ useCases:
     payoff: A typical light-use month costs a few dollars instead of twenty.
 video:
   src: /videos/demo.mp4
-  caption: A quick tour of Besidka
+  poster: /promo/poster.webp
+  caption: A 54-second tour of Besidka
   qualities:
     - src: /videos/demo-1080.mp4
       size: 1080
@@ -261,14 +262,22 @@ video:
       srclang: en
       default: true
   markers:
-    - time: 0:02
-      label: Welcome
-    - time: 0:04
-      label: Multiple models
-    - time: 0:06
-      label: File attachments
-    - time: 0:08
+    - time: "0:00"
+      label: Any model
+    - time: "0:10"
+      label: Desktop and phone
+    - time: "0:18"
+      label: Search and cost
+    - time: "0:28"
+      label: Images and files
+    - time: "0:35"
       label: Projects
+    - time: "0:39"
+      label: Code and diagrams
+    - time: "0:42"
+      label: Reasoning
+    - time: "0:50"
+      label: Get started
   thumbnails: true
 ---
 
@@ -368,8 +377,7 @@ role: assistant
 :home-features{set="steps"}
 ::
 
-<!-- TODO: record a real demo video -->
-<!-- ::home-bubble{role="user" sr-label="User asking for a live demo of the app"}
+::home-bubble{role="user" sr-label="User asking for a live demo of the app"}
 Can I see it in action?
 ::
 
@@ -382,7 +390,7 @@ sr-label: Demo video showing Besidka in action
 Here is a short walkthrough of the key features.
 
 :home-video
-:: -->
+::
 
 ::home-bubble
 ---

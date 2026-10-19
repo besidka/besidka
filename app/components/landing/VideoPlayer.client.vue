@@ -13,6 +13,7 @@
         ref="videoRef"
         class="w-full h-full"
         playsinline
+        preload="metadata"
         crossorigin="anonymous"
         :poster="poster || undefined"
       >
@@ -134,7 +135,11 @@ let player: Plyr | null = null
 let hasTrackedPlay = false
 let progressElement: HTMLElement | null = null
 let detachPreview: (() => void) | null = null
+let detachThumbnailTrigger: (() => void) | null = null
+let hasStartedThumbnails = false
 let cancelled = false
+
+const thumbnailsAbortController = new AbortController()
 
 const overlayStyle = computed(() => {
   return {
@@ -366,11 +371,46 @@ function setupPreview() {
   }
 }
 
+function keepMetadataPreload() {
+  const media = containerRef.value?.querySelector('video')
+
+  if (media) {
+    media.preload = 'metadata'
+  }
+}
+
+function startThumbnails() {
+  if (!props.thumbnails || hasStartedThumbnails) {
+    return
+  }
+
+  hasStartedThumbnails = true
+  loadThumbnails()
+}
+
+function setupThumbnailTrigger() {
+  const progress = containerRef.value?.querySelector('.plyr__progress')
+
+  if (!props.thumbnails || !progress || detachThumbnailTrigger) {
+    return
+  }
+
+  progress.addEventListener('pointerenter', startThumbnails, { once: true })
+  progress.addEventListener('focusin', startThumbnails, { once: true })
+
+  detachThumbnailTrigger = () => {
+    progress.removeEventListener('pointerenter', startThumbnails)
+    progress.removeEventListener('focusin', startThumbnails)
+  }
+}
+
 function registerListeners(instance: Plyr) {
   instance.on('ready', () => {
     isReady.value = true
+    keepMetadataPreload()
     plyrRef.value = containerRef.value?.querySelector('.plyr') ?? null
     setupPreview()
+    setupThumbnailTrigger()
   })
 
   instance.on('play', () => {
@@ -421,8 +461,10 @@ function fallbackToNative(element: HTMLVideoElement) {
 
 /**
  * Generate hover thumbnails in the background and attach the overlay once they
- * land. Never gates playback — frame decoding can take seconds, so the player
- * is already interactive by the time this resolves.
+ * land. Started lazily by startThumbnails on the first progress-bar
+ * interaction so playback never competes with a second download of the same
+ * file, and aborted on unmount. Never gates playback — frame decoding can take
+ * seconds.
  */
 async function loadThumbnails() {
   const thumbnailSource
@@ -430,7 +472,10 @@ async function loadThumbnails() {
       return quality.size === DEFAULT_QUALITY
     })?.src ?? props.src
 
-  const result = await generate(thumbnailSource, { count: THUMBNAIL_COUNT })
+  const result = await generate(thumbnailSource, {
+    count: THUMBNAIL_COUNT,
+    signal: thumbnailsAbortController.signal,
+  })
 
   if (!result) {
     return
@@ -448,7 +493,7 @@ async function loadThumbnails() {
   setupPreview()
 }
 
-onMounted(async () => {
+onMounted(() => {
   const element = videoRef.value
 
   if (!element) {
@@ -472,16 +517,14 @@ onMounted(async () => {
     sources: buildSources(),
     tracks: buildTracks(),
   }
-
-  if (props.thumbnails) {
-    await loadThumbnails()
-  }
 })
 
 onUnmounted(() => {
   cancelled = true
+  thumbnailsAbortController.abort()
   plyrRef.value = null
   detachPreview?.()
+  detachThumbnailTrigger?.()
 
   if (player) {
     player.destroy()
