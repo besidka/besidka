@@ -1157,7 +1157,7 @@ export default defineEventHandler(async (event) => {
           })
         }
 
-        let result: ReturnType<typeof streamText>
+        let result: MultiConsumerStreamTextResult
         let modelMessages: ModelMessage[] = []
         let mainLoopSteps: SearchAnswerContinuationStep[] = []
         const messagesForModel = buildMessagesForModel(
@@ -2074,6 +2074,11 @@ function buildPersistedAssistantReplayChunks(input: {
   return chunks
 }
 
+type MultiConsumerStreamTextResult = Extract<
+  ReturnType<typeof streamText>,
+  { steps: unknown }
+>
+
 interface PersistAssistantMessageResult {
   persisted: boolean
   emptyAnswerFailure: boolean
@@ -2082,7 +2087,7 @@ interface PersistAssistantMessageResult {
 
 async function persistAssistantMessageFromStream(input: {
   stream: ReadableStream<any>
-  result: ReturnType<typeof streamText>
+  result: MultiConsumerStreamTextResult
   db: ReturnType<typeof useDb>
   event: RequestEvent
   providerId: string
