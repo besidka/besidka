@@ -42,6 +42,8 @@ describe('Chat/GeneratedImage', () => {
         this.removeAttribute('open')
         this.dispatchEvent(new Event('close'))
       })
+    vi.spyOn(HTMLImageElement.prototype, 'complete', 'get')
+      .mockReturnValue(false)
     useState<number>('image-preview-guard-count', () => 0).value = 0
     mocks.useImageInputSupport.mockReturnValue({
       isImageInputSupported: shallowRef(true),
@@ -620,6 +622,106 @@ describe('Chat/GeneratedImage', () => {
 
       expect(preview.attributes('style')).toContain('aspect-ratio: 2 / 3')
     })
+
+  describe('images that settle before hydration', () => {
+    const gatewayFilePart = {
+      type: 'file',
+      mediaType: 'image/png',
+      filename: undefined,
+      url: 'data:image/png;base64,AAAA',
+    } as any
+
+    const mountOptions = {
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    }
+
+    function mockImageState(
+      isComplete: boolean,
+      naturalWidth: number,
+      naturalHeight: number,
+    ) {
+      vi.spyOn(HTMLImageElement.prototype, 'complete', 'get')
+        .mockReturnValue(isComplete)
+      vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get')
+        .mockReturnValue(naturalWidth)
+      vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get')
+        .mockReturnValue(naturalHeight)
+    }
+
+    it('reveals a saved image that finished loading before hydration',
+      async () => {
+        mockImageState(true, 1024, 768)
+
+        const wrapper = await mountSuspended(GeneratedImage, {
+          props: {
+            messageRole: 'assistant',
+            part: gatewayFilePart,
+          },
+          ...mountOptions,
+        })
+
+        await flushPromises()
+
+        expect(wrapper.get('img').classes())
+          .toContain('generated-image--loaded')
+        expect(wrapper.find('.skeleton').exists()).toBe(false)
+        expect(wrapper.get(
+          '[data-testid="generated-image-preview-trigger"]',
+        ).attributes('style')).toContain('aspect-ratio: 1024 / 768')
+      })
+
+    it('shows the unavailable state for an image that failed before '
+      + 'hydration', async () => {
+      mockImageState(true, 0, 0)
+
+      const wrapper = await mountSuspended(GeneratedImage, {
+        props: {
+          messageRole: 'assistant',
+          part: gatewayFilePart,
+        },
+        ...mountOptions,
+      })
+
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="generated-image-preview-error"]')
+        .exists()).toBe(true)
+      expect(wrapper.get('img').classes())
+        .not.toContain('generated-image--loaded')
+    })
+
+    it('keeps the skeleton until the load event while the image is still '
+      + 'loading', async () => {
+      mockImageState(false, 0, 0)
+
+      const wrapper = await mountSuspended(GeneratedImage, {
+        props: {
+          messageRole: 'assistant',
+          part: gatewayFilePart,
+        },
+        ...mountOptions,
+      })
+
+      await flushPromises()
+
+      const image = wrapper.get('img')
+
+      expect(image.classes()).not.toContain('generated-image--loaded')
+      expect(wrapper.find('.skeleton').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="generated-image-preview-error"]')
+        .exists()).toBe(false)
+
+      await image.trigger('load')
+
+      expect(image.classes()).toContain('generated-image--loaded')
+      expect(wrapper.find('.skeleton').exists()).toBe(false)
+    })
+  })
 
   it('renders a persisted gateway file part through getSafeFileLinks, '
     + 'preserving the shared-chat token query', async () => {

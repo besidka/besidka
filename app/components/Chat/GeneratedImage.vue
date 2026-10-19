@@ -40,6 +40,7 @@
         />
         <img
           v-show="!hasImageLoadError"
+          ref="imageElement"
           :src="imageUrl"
           :alt="cardDisplay.name"
           class="generated-image relative size-full object-contain"
@@ -177,6 +178,7 @@ const { messageRole, part } = defineProps<{
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
 const { isImageInputSupported } = useImageInputSupport()
 
+const imageElement = useTemplateRef<HTMLImageElement>('imageElement')
 const isImageLoaded = shallowRef<boolean>(false)
 const hasImageLoadError = shallowRef<boolean>(false)
 const isImagePreviewOpen = shallowRef<boolean>(false)
@@ -360,19 +362,21 @@ const metaLabel = computed<string>(() => {
   return `${providerLabel.value} · ${formatFileSize(size)}`
 })
 
-function onImageLoad(event: Event) {
+function applyLoadedImage(image: HTMLImageElement) {
   isImageLoaded.value = true
 
   if (toolPart.value) {
     return
   }
 
-  const image = event.target as HTMLImageElement
-
   if (image.naturalWidth > 0 && image.naturalHeight > 0) {
     naturalImageAspectRatio.value
       = `${image.naturalWidth} / ${image.naturalHeight}`
   }
+}
+
+function onImageLoad(event: Event) {
+  applyLoadedImage(event.target as HTMLImageElement)
 }
 
 function onImageError() {
@@ -401,11 +405,30 @@ function attachForNextPrompt() {
   })
 }
 
+function syncAlreadySettledImage() {
+  const image = imageElement.value
+
+  if (!image || !image.complete || !image.getAttribute('src')) {
+    return
+  }
+
+  if (image.naturalWidth > 0) {
+    applyLoadedImage(image)
+
+    return
+  }
+
+  onImageError()
+}
+
+watch(imageElement, syncAlreadySettledImage, { flush: 'post' })
+
 watch(imageUrl, () => {
   isImageLoaded.value = false
   hasImageLoadError.value = false
   isImagePreviewOpen.value = false
   naturalImageAspectRatio.value = null
+  syncAlreadySettledImage()
 }, { flush: 'post' })
 </script>
 
