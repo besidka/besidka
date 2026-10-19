@@ -38,7 +38,7 @@ describe('prose/MermaidDiagram.vue', () => {
 
     expect(wrapper.emitted('rendered')).toHaveLength(1)
     expect(wrapper.emitted('error')).toBeUndefined()
-    expect(wrapper.find('.js-mermaid-diagram').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="mermaid-diagram"]').exists()).toBe(true)
     expect(mocks.renderDiagram).toHaveBeenCalledWith(
       'flowchart LR\n  A --> B',
       expect.objectContaining({ idPrefix: expect.stringContaining('mermaid') }),
