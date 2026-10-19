@@ -307,6 +307,19 @@ describe('Chat/DeepResearchPending', () => {
     expect(step.get('.iconify').classes()).toContain('i-lucide:brain')
   })
 
+  it('keeps the timeline start column collapsed so steps span the full width', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 5_000,
+        recentSteps: [{ kind: 'thought', text: 'Thinking.' }],
+      },
+    })
+
+    expect(wrapper.get('ul.timeline').classes())
+      .toContain('[&>li]:[--timeline-col-start:0]')
+  })
+
   it('applies the blinking skeleton treatment to the newest step title', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {

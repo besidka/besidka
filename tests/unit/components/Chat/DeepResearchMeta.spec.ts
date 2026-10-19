@@ -215,6 +215,24 @@ describe('Chat/DeepResearchMeta', () => {
     expect(scrollWrapper?.classList.contains('overscroll-contain')).toBe(true)
   })
 
+  it('keeps the timeline start column collapsed so entries span the full width', async () => {
+    const wrapper = await mountSuspended(DeepResearchMeta, {
+      props: {
+        message: createMessage([
+          createMetaPart({
+            provider: 'openai',
+            level: 'quick',
+            modelId: 'o4-mini-deep-research',
+          }),
+          createTracePart([{ kind: 'thought', text: 'Thinking.' }]),
+        ]),
+      },
+    })
+
+    expect(wrapper.get('ul.timeline').classes())
+      .toContain('[&>li]:[--timeline-col-start:0]')
+  })
+
   it('lists every trace entry with the icon matching its kind', async () => {
     const wrapper = await mountSuspended(DeepResearchMeta, {
       props: {
