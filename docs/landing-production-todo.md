@@ -120,8 +120,9 @@ The production environment is **`env.production`** in `wrangler.jsonc`.
     "prior informed disclosure" requirement for the permission itself — this
     Privacy Policy entry is the separate, additional disclosure needed for the
     resulting server-side data storage.
-- [ ] **Carousel mockups**: replace the placeholder SVG mockups
-  (`public/preview-*.svg`) with real product screenshots.
+- [x] **Carousel mockups**: replaced with real product screenshots in
+  `public/carousel/*.webp`, rendered from a local build with the `.growth/promo`
+  kit.
 - [ ] **Canonical host**: a Cloudflare redirect rule sends `www.besidka.com`
   to the apex (`besidka.com`), so the canonical host is the **bare apex**. The
   SEO modules plus robots/sitemap standardize on `https://besidka.com`,
