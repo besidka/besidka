@@ -421,6 +421,9 @@ export default defineNuxtConfig({
       // before changing or reverting this.
       cssMinify: 'esbuild',
     },
+    worker: {
+      format: 'es',
+    },
     optimizeDeps: {
       include: [
         'better-auth/vue',

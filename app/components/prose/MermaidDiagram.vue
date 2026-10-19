@@ -83,18 +83,26 @@ onMounted(() => {
     var(--color-base-content) 35%,
     var(--color-base-100)
   );
-  --pele-accent: var(--color-primary);
+  --pele-accent: var(--color-accent);
   --pele-critical: var(--color-error);
   --pele-error: var(--color-error);
   --pele-font: var(--font-display, 'Nunito', sans-serif);
   --pele-font-mono: var(--font-code, 'Atkinson Hyperlegible Mono', monospace);
-  --pele-series-1: var(--color-primary);
-  --pele-series-2: var(--color-secondary);
-  --pele-series-3: var(--color-accent);
-  --pele-series-4: var(--color-info);
-  --pele-series-5: var(--color-success);
-  --pele-series-6: var(--color-warning);
-  --pele-series-7: var(--color-error);
-  --pele-series-8: var(--color-neutral);
+  --pele-series-1: var(--color-accent);
+  --pele-series-2: var(--color-info);
+  --pele-series-3: var(--color-success);
+  --pele-series-4: var(--color-warning);
+  --pele-series-5: var(--color-error);
+  --pele-series-6: var(--color-base-content);
+  --pele-series-7: color-mix(
+    in oklab,
+    var(--color-accent) 50%,
+    var(--color-info)
+  );
+  --pele-series-8: color-mix(
+    in oklab,
+    var(--color-success) 50%,
+    var(--color-warning)
+  );
 }
 </style>

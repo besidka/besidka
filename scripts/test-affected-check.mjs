@@ -221,6 +221,8 @@ export function getAffectedTests(changedFiles) {
   const mermaidDiagramTests = [
     'tests/unit/utils/markdown-fences.spec.ts',
     'tests/unit/composables/diagram-renderer.spec.ts',
+    'tests/unit/utils/diagram-fonts.spec.ts',
+    'tests/unit/workers/diagram.worker.spec.ts',
     'tests/unit/composables/markdown-source.spec.ts',
     'tests/unit/components/prose/PreStream.spec.ts',
     'tests/unit/components/prose/MermaidDiagram.spec.ts',
@@ -1210,7 +1212,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/prose\/(PreStream|MermaidDiagram)\.vue|app\/composables\/(diagram-renderer|markdown-source|chat-format)\.ts|app\/utils\/markdown-fences\.ts|app\/types\/diagram\.d\.ts|app\/components\/Chat\/MarkdownSource\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+        /^(app\/components\/prose\/(PreStream|MermaidDiagram)\.vue|app\/composables\/(diagram-renderer|markdown-source|chat-format)\.ts|app\/utils\/(markdown-fences|diagram-render-core|diagram-fonts)\.ts|app\/workers\/diagram\.worker\.ts|app\/types\/diagram\.d\.ts|app\/components\/Chat\/MarkdownSource\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
       tests: mermaidDiagramTests,
     },
     {
