@@ -462,6 +462,49 @@ describe('VideoPlayer.client.vue', () => {
     expect(mocks.generate).not.toHaveBeenCalled()
   })
 
+  it('shows the poster under the spinner while loading', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', poster: '/videos/demo.webp' },
+    })
+
+    await flushPromises()
+
+    const poster = wrapper.get('[data-testid="player-loading-poster"]')
+
+    expect(poster.attributes('src')).toBe('/videos/demo.webp')
+    expect(poster.attributes('alt')).toBe('')
+    expect(poster.classes()).toContain('object-cover')
+    expect(wrapper.find('.skeleton').exists()).toBe(false)
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+  })
+
+  it('keeps the grey skeleton while loading without a poster', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4' },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="player-loading-poster"]').exists())
+      .toBe(false)
+    expect(wrapper.find('.skeleton').exists()).toBe(true)
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+  })
+
+  it('removes the loading overlay once Plyr is ready', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', poster: '/videos/demo.webp' },
+    })
+
+    await flushPromises()
+    mocks.instances[0]!.emit('ready')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="player-loading-poster"]').exists())
+      .toBe(false)
+    expect(wrapper.find('.animate-spin').exists()).toBe(false)
+  })
+
   it('falls back to native controls when Plyr throws', async () => {
     mocks.shouldThrow = true
 

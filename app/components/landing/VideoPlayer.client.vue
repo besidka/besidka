@@ -33,14 +33,26 @@
 
       <div
         v-if="!isReady && !hasError"
-        class="skeleton skeleton--default absolute inset-0 z-10
-          flex items-center justify-center"
+        class="absolute inset-0 z-10 flex items-center justify-center
+          overflow-hidden rounded-2xl"
+        :class="{ 'skeleton skeleton--default': !poster }"
         aria-hidden="true"
       >
+        <img
+          v-if="poster"
+          :src="poster"
+          alt=""
+          decoding="async"
+          data-testid="player-loading-poster"
+          class="absolute inset-0 size-full object-cover"
+        >
         <Icon
           name="lucide:loader-circle"
           size="32"
-          class="animate-spin text-base-content/40"
+          class="relative animate-spin"
+          :class="poster
+            ? 'text-white drop-shadow-md'
+            : 'text-base-content/40'"
         />
       </div>
     </div>
