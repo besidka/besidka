@@ -13,6 +13,9 @@ const CONTENT_FILES = [
   ...readdirSync(join(process.cwd(), 'content/legal'))
     .filter(fileName => fileName.endsWith('.md'))
     .map(fileName => `content/legal/${fileName}`),
+  ...readdirSync(join(process.cwd(), 'content/key-guides'))
+    .filter(fileName => fileName.endsWith('.md'))
+    .map(fileName => `content/key-guides/${fileName}`),
 ]
 
 const TOP_LEVEL_STRING_FIELDS = ['title', 'description', 'summary']

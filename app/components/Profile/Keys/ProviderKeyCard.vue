@@ -5,6 +5,7 @@
     :status="status"
     :group="group"
     :open="open"
+    @expanded-change="onExpandedChange"
   >
     <UiForm
       ref="form"
@@ -58,7 +59,7 @@
               v-if="status === 'saved'"
               class="mt-1 block"
             >
-              A saved key is never sent back to the browser — enter a new one
+              A saved key is never sent back to the browser. Enter a new one
               to replace it.
             </span>
           </template>
@@ -84,11 +85,18 @@
         </div>
       </UiFormFieldset>
     </UiForm>
+    <ProfileKeysGuide
+      :provider="providerId"
+      :doc="guide"
+      :status="status"
+      :card-open="isCardExpanded"
+    />
   </ProfileKeysCard>
 </template>
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import type { KeyGuidesCollectionItem } from '@nuxt/content'
 import type { ProviderMeta } from '#shared/utils/provider-meta'
 import { defaultKeyPlaceholder, providerMeta } from '#shared/utils/provider-meta'
 import type { UserKeyStatus } from '~/composables/user-keys'
@@ -99,10 +107,16 @@ const props = withDefaults(defineProps<{
   providerId: string
   group?: string
   open?: boolean
+  guide?: KeyGuidesCollectionItem | null
 }>(), {
   group: undefined,
   open: false,
+  guide: null,
 })
+
+const emit = defineEmits<{
+  expandedChange: [isExpanded: boolean]
+}>()
 
 const meta = computed<ProviderMeta>(() => {
   const providerMetaEntry = providerMeta[props.providerId]
@@ -131,9 +145,25 @@ const {
 const apiKey = shallowRef<string>('')
 const pending = shallowRef<boolean>(false)
 
+const isCardExpanded = shallowRef<boolean>(props.open)
+const isHydrating = shallowRef<boolean>(!!useNuxtApp().isHydrating)
+
 const status = computed<UserKeyStatus>(() => {
+  if (isHydrating.value) {
+    return 'unknown'
+  }
+
   return keyStatusForProvider(props.providerId)
 })
+
+onMounted(() => {
+  isHydrating.value = false
+})
+
+function onExpandedChange(isExpanded: boolean) {
+  isCardExpanded.value = isExpanded
+  emit('expandedChange', isExpanded)
+}
 
 const placeholder = computed<string>(() => {
   if (status.value === 'saved') {

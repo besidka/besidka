@@ -5,6 +5,7 @@
     :status="status"
     :group="group"
     :open="open"
+    @expanded-change="onExpandedChange"
   >
     <UiForm
       ref="form"
@@ -51,7 +52,7 @@
           data-testid="gateway-id-field"
           placeholder="default"
           :disabled="pending"
-          note="Optional — leave blank to use your account's default gateway"
+          note="Optional. Leave blank to use your account's default gateway"
         >
           <template #labelBefore>
             <Icon
@@ -119,7 +120,7 @@
             </span>
             <span class="mt-1 block">
               The token must be re-entered every time you save, even if you're
-              only updating the Account ID or Gateway ID —
+              only updating the Account ID or Gateway ID.
               {{ meta.label }} never sends a saved token back to the browser.
             </span>
             <span class="mt-1 block">
@@ -151,11 +152,18 @@
         </div>
       </UiFormFieldset>
     </UiForm>
+    <ProfileKeysGuide
+      provider="cloudflare"
+      :doc="guide"
+      :status="status"
+      :card-open="isCardExpanded"
+    />
   </ProfileKeysCard>
 </template>
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import type { KeyGuidesCollectionItem } from '@nuxt/content'
 import { providerMeta } from '#shared/utils/provider-meta'
 import type { UserKeyStatus } from '~/composables/user-keys'
 import UiForm from '~/components/ui/Form.vue'
@@ -169,13 +177,26 @@ interface CloudflareGatewayKeyResponse {
 
 type FormInputInstance = InstanceType<typeof UiFormInput>
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   group?: string
   open?: boolean
+  guide?: KeyGuidesCollectionItem | null
 }>(), {
   group: undefined,
   open: false,
+  guide: null,
 })
+
+const emit = defineEmits<{
+  expandedChange: [isExpanded: boolean]
+}>()
+
+const isCardExpanded = shallowRef<boolean>(props.open)
+
+function onExpandedChange(isExpanded: boolean) {
+  isCardExpanded.value = isExpanded
+  emit('expandedChange', isExpanded)
+}
 
 const meta = providerMeta.cloudflare!
 const keyRoute = '/api/v1/profiles/keys/cloudflare-gateway'

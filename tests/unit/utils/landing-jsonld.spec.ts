@@ -134,6 +134,18 @@ describe('buildFaqPageLd', () => {
     ])
   })
 
+  it('strips markdown links from the answer text', () => {
+    const faqPage = buildFaqPageLd([
+      {
+        question: 'Can I start for free?',
+        answer: 'Yes. [How to get a key](/guides/gemini-api-key) has steps.',
+      },
+    ])
+
+    expect(faqPage.mainEntity[0].acceptedAnswer.text)
+      .toBe('Yes. How to get a key has steps.')
+  })
+
   it('omits @id and isPartOf when called without ids', () => {
     const faqPage = buildFaqPageLd(FAQS)
 
@@ -361,6 +373,45 @@ describe('buildKeyGuidePageLd', () => {
       'contentUrl': 'https://besidka.com/videos/gemini-api-key.mp4',
       'inLanguage': 'en',
     })
+  })
+
+  it('emits chapter markers as Clip parts that end at the next chapter '
+    + 'or the video end', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: {
+        ...VIDEO,
+        duration: 'PT20S',
+        markers: [
+          { time: '0:12', label: 'Copy your key' },
+          { time: '0:00', label: 'Open the page' },
+        ],
+      },
+    })['@graph']
+
+    expect(video!.hasPart).toEqual([
+      {
+        '@type': 'Clip',
+        'name': 'Open the page',
+        'startOffset': 0,
+        'endOffset': 12,
+      },
+      {
+        '@type': 'Clip',
+        'name': 'Copy your key',
+        'startOffset': 12,
+        'endOffset': 20,
+      },
+    ])
+  })
+
+  it('omits hasPart when the video has no markers', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, markers: [] },
+    })['@graph']
+
+    expect(video).not.toHaveProperty('hasPart')
   })
 
   it('names the VideoObject after the video caption when one is set', () => {

@@ -52,6 +52,17 @@ function deleteButton(wrapper: any) {
   })
 }
 
+const guideDoc = {
+  provider: 'cloudflare',
+  keyUrl: 'https://example.com/keys',
+  checkedAt: '2026-10-20',
+  requirements: { card: false, sources: [] },
+}
+
+const guideStubs = {
+  ContentRenderer: { template: '<div data-testid="guide-steps" />' },
+}
+
 describe('Profile/Keys/CloudflareGateway', () => {
   beforeEach(() => {
     clearNuxtData()
@@ -67,6 +78,10 @@ describe('Profile/Keys/CloudflareGateway', () => {
 
       if (url === '/api/v1/profiles/keys') {
         return Promise.resolve({ keys: [] })
+      }
+
+      if (url === '/api/v1/events') {
+        return Promise.resolve({ ok: true })
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -309,4 +324,55 @@ describe('Profile/Keys/CloudflareGateway', () => {
       expect((apiKeyInput(wrapper).element as HTMLInputElement).value)
         .toBe('existing-token')
     })
+
+  it('renders the key guide open when no credentials are stored',
+    async () => {
+      const wrapper = await mountSuspended(CloudflareGateway, {
+        props: { guide: guideDoc },
+        global: { stubs: guideStubs },
+      })
+
+      await flushPromises()
+
+      const guide = wrapper
+        .get('[data-testid="key-guide-cloudflare"]')
+        .element as HTMLDetailsElement
+
+      expect(guide.open).toBe(true)
+    })
+
+  it('keeps the key guide closed when credentials are saved', async () => {
+    mocks.fetch.mockImplementation((url: string) => {
+      if (url === '/api/v1/profiles/keys/cloudflare-gateway') {
+        return Promise.resolve(credentialResponse({
+          accountId: 'acc',
+          hasKey: true,
+        }))
+      }
+
+      return Promise.resolve({ keys: [] })
+    })
+
+    const wrapper = await mountSuspended(CloudflareGateway, {
+      props: { guide: guideDoc },
+      global: { stubs: guideStubs },
+    })
+
+    await flushPromises()
+
+    const guide = wrapper
+      .get('[data-testid="key-guide-cloudflare"]')
+      .element as HTMLDetailsElement
+
+    expect(guide.open).toBe(false)
+  })
+
+  it('renders no guide when none is passed', async () => {
+    const wrapper = await mountSuspended(CloudflareGateway)
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="key-guide-cloudflare"]').exists())
+      .toBe(false)
+  })
 })

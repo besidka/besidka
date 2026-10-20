@@ -192,7 +192,7 @@ faqs:
   - question: Can I use ChatGPT with my own API key?
     answer: The ChatGPT app itself does not accept an API key, and a ChatGPT subscription and OpenAI API billing are separate products. With an OpenAI API key you can use the same GPT models in a BYOK app such as Besidka and pay OpenAI per use. OpenAI sells API credit in advance, with a minimum purchase of $5 as of 20 October 2026. The ChatGPT app has features that an API key does not give you, such as its own apps and voice mode. The BYOK guide has the steps.
   - question: Can I start for free?
-    answer: Yes, with a Gemini API key from Google AI Studio. Creating one needs a Google account but no card or billing account, and Besidka itself is free. The free tier has rate limits, and Google may use your prompts and responses on the free tier to improve its products, so do not send anything sensitive. Moving to the paid tier (a billing account; new accounts start on prepaid credit) stops Google using your prompts to improve its products. Other providers need prepaid credit or a card before their API accepts requests.
+    answer: Yes, with a Gemini API key from Google AI Studio. Creating one needs a Google account but no card or billing account, and Besidka itself is free. [How to get a free Gemini API key](/guides/gemini-api-key) has the steps and a short video. The free tier has rate limits, and Google may use your prompts and responses on the free tier to improve its products, so do not send anything sensitive. Moving to the paid tier (a billing account; new accounts start on prepaid credit) stops Google using your prompts to improve its products. Other providers need prepaid credit or a card before their API accepts requests.
   - question: Which AI providers are supported?
     answer: "Besidka connects directly to seven AI providers: Anthropic (Claude Opus 5, Claude Sonnet 5 and Claude Haiku 4.5), OpenAI (GPT-5.6, GPT-5.5 and the wider GPT family), Google AI Studio (Gemini 3.8 Flash, Gemini 3.1 Pro Preview and other Gemini models), xAI (Grok 4.6 and other Grok models), DeepSeek (DeepSeek V4 Pro and DeepSeek V4.1 Flash), Moonshot AI (Kimi K3 and Kimi K2.6) and Qwen (Qwen3.8 Max, Qwen3.8 Flash and other Qwen models). Instead of per-provider keys, you can also route chats through your own AI gateway account (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), using the models that gateway makes available to your account. For web search, you can add your own Brave Search or Exa key and use it with any model that supports tool calling, whichever provider or gateway runs it. Check the GitHub repository for the full, current model list."
   - question: Can Besidka generate images and documents?
@@ -256,6 +256,9 @@ hero:
     label: Self-host on GitHub
     href: https://github.com/besidka/besidka
     icon: streamline-logos:github-logo-2-solid
+  guideLink:
+    label: How to get the key
+    href: /guides/gemini-api-key
 steps:
   - icon: lucide:user-plus
     title: 1. Sign up
@@ -338,7 +341,7 @@ Yes, if you are fine creating an API key.
 
 A flat fee costs the same whether you send ten messages or ten thousand. That is a fair deal if you use the app heavily and a poor one if you do not.
 
-With your own API key you pay the provider for each message instead, at its published rates, and Besidka shows the price of every one. There is no subscription and no Besidka markup.
+With your own API key you pay the provider for each message instead, at its published rates, and Besidka shows the price of every one. There is no subscription and no Besidka markup. The quickest way to try it is a free Gemini key, which needs no card: see [how to get a free Gemini API key](/guides/gemini-api-key).
 
 Free tiers are fine for plain text chat. They limit other things: ChatGPT Free allows [3 file uploads a day](https://help.openai.com/en/articles/8555545-file-uploads-faq) and [limited image generation](https://help.openai.com/en/articles/9275245-chatgpt-free-tier-faq), and the free Gemini app gives access to fewer and smaller models than the paid plans ([Gemini models by plan](https://support.google.com/gemini/answer/18648722)). Whether paying per use is cheaper for you depends on how much you use AI, so check the comparison below.
 ::

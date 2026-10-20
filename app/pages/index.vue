@@ -7,6 +7,7 @@
       :subheadline="hero.subheadline"
       :primary-cta="hero.primaryCta"
       :secondary-cta="hero.secondaryCta"
+      :guide-link="hero.guideLink"
     />
 
     <div id="content" class="h-24 -mt-24"/>

@@ -459,7 +459,11 @@ explainers above:
   [Deliberate non-actions](#deliberate-non-actions)).
 - **Footer.** `LandingFooter.vue` generates the key-guide links from the
   `keyGuides` collection, so a new guide appears there without a code change.
-  `/byok` does not link to any key guide yet, to avoid dead links.
+  The home page links `/guides/gemini-api-key` from the hero (a "How to get
+  the key" text link, the optional `hero.guideLink` frontmatter field), the
+  "Can I start for free?" FAQ answer and the subscriptions answer, and `/byok`
+  links it from its free Gemini key section. `buildFaqPageLd()` strips
+  markdown links so the FAQPage JSON-LD answer text stays plain.
 - **Gateway guides.** A guide's `provider` may be a gateway id (for example
   `openrouter`). The "Add your key" deep link then opens the Gateways tab and
   that gateway's card; see [Sign-up redirect (`next`)](#sign-up-redirect-next).
@@ -467,8 +471,10 @@ explainers above:
   templated page type, each page a distinct query. The condition is that every
   guide carries `checkedAt` and sources, so a guide whose provider UI has
   changed is visibly dated rather than silently wrong.
-- **Status:** template only. The content is pending a separate task;
-  `content/key-guides/` has no files yet.
+- **Status:** live guides are `content/key-guides/gemini-api-key.md` and
+  `openrouter-api-key.md`. The same files feed the "How to get a key" guide on
+  each `/profile/keys` card; schema, video and keys-page behavior are in
+  `docs/key-guides.md`.
 
 ### Sign-up redirect (`next`)
 
@@ -487,6 +493,10 @@ owns the rule:
 - `next` is threaded through the email verification callback, OAuth, passkey
   and 2FA sign-in, and the guest middleware (`app/middleware/00.auth.global.ts`),
   and the sign-in and sign-up pages link to each other with it preserved.
+- The same middleware sends a signed-out visitor on a user-only page to
+  `/signin?next=<that page>` when `resolveSafeNextPath` accepts it and it is
+  not the default `/chats/new`, so an opened `/profile/keys?provider=google`
+  link survives sign-in. Other protected pages go to bare `/signin`.
 - On `/profile/keys`, `provider` forces the matching tab and opens that card,
   then scrolls it into view.
 - UTM keys stay top-level on the sign-up URL and are never nested in `next`
