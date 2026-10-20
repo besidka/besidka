@@ -253,7 +253,7 @@ hero:
     href: /signup
     icon: lucide:arrow-right
   secondaryCta:
-    label: Self-host on GitHub
+    label: View on GitHub
     href: https://github.com/besidka/besidka
     icon: streamline-logos:github-logo-2-solid
   guideLink:
@@ -539,7 +539,7 @@ Add your own API key, see what each message costs, and stop paying for months yo
     href: /signup
     icon: lucide:arrow-right
   secondary:
-    label: Self-host on GitHub
+    label: View on GitHub
     href: https://github.com/besidka/besidka
     icon: streamline-logos:github-logo-2-solid
   align: center
