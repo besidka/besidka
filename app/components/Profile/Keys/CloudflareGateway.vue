@@ -52,7 +52,7 @@
           data-testid="gateway-id-field"
           placeholder="default"
           :disabled="pending"
-          note="Optional — leave blank to use your account's default gateway"
+          note="Optional. Leave blank to use your account's default gateway"
         >
           <template #labelBefore>
             <Icon
@@ -120,7 +120,7 @@
             </span>
             <span class="mt-1 block">
               The token must be re-entered every time you save, even if you're
-              only updating the Account ID or Gateway ID —
+              only updating the Account ID or Gateway ID.
               {{ meta.label }} never sends a saved token back to the browser.
             </span>
             <span class="mt-1 block">
