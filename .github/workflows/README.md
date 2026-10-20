@@ -142,6 +142,9 @@ Triggers on push to `main`. Three jobs:
 **build-production**: Full test suite, build, deploy to production. Applies
 remote migrations to both production databases (`DB`, then `CONSENT_DB`)
 before deploy, unconditionally on every run (see below).
+The job has `timeout-minutes: 30`: unit (~7m), integration (~1.5m), build
+(~2m) and E2E (~8m, with its own 15-minute step timeout) together exceeded
+the former 20-minute limit. `deploy-preview` runs no tests and stays at 20.
 
 **indexnow**: Runs after `build-production`. A no-op unless the
 `INDEXNOW_KEY` secret exists. When it does, and the push changed a public
