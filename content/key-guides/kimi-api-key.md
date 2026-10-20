@@ -7,10 +7,31 @@ keyUrlLabel: Open Kimi platform keys page
 updatedAt: '2026-10-20'
 checkedAt: '2026-10-20'
 summary: Recharge a small balance, create a key on the Kimi platform, and chat with Kimi models.
+video:
+  src: /videos/key-guide-moonshotai.mp4
+  poster: /key-guides/moonshotai.webp
+  duration: PT34S
+  uploadDate: '2026-10-20'
+  alt: Screen recording of the Kimi platform. The API Keys page, the Create API Key dialog with a name and a project, the new key shown once and masked, then the key pasted into Besidka and a first answer from Kimi.
+  markers:
+    - time: "0:00"
+      label: Get a Kimi key
+    - time: "0:03"
+      label: Create API Key
+    - time: "0:07"
+      label: Name and project
+    - time: "0:12"
+      label: Copy your key
+    - time: "0:17"
+      label: Paste into Besidka
+    - time: "0:24"
+      label: First answer
+    - time: "0:30"
+      label: Done
 requirements:
   card: false
   cardNote: Check the Recharge page for the payment methods available to you. Individuals can pay with WeChat Pay or Alipay.
-  minimumTopUp: $1 per recharge. Start with $5 (max $10).
+  minimumTopUp: $1 per recharge. Start with $5.
   freeTier: 'No free tier. A $5 voucher is added once your total recharge reaches $5.'
   sources:
     - label: Kimi platform limits and recharge
@@ -20,7 +41,7 @@ requirements:
 ---
 
 1. Open the [Kimi platform keys page](https://platform.kimi.ai/console/api-keys) and sign in.
-2. Recharge before you create a key. Check the Recharge page for the payment methods you can use. The minimum is $1, so recharge $5 (max $10). Once your total recharge reaches $5, you get a $5 voucher, and a total of $10 unlocks Tier 1.
+2. Recharge before you create a key. Check the Recharge page for the payment methods you can use. The minimum is $1, so recharge $5. Once your total recharge reaches $5, you get a $5 voucher, and a total of $10 unlocks Tier 1.
 3. Back on the keys page, click **Create API Key**.
 4. In **Enter API Key name**, type a name such as `Besidka`. Leave **Project** on the default and click **OK**.
 5. In **Your API Key**, click the copy icon, then **OK**. The platform shows the key only once.

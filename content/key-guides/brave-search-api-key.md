@@ -7,6 +7,27 @@ keyUrlLabel: Open Brave Search API keys page
 updatedAt: '2026-10-20'
 checkedAt: '2026-10-20'
 summary: Activate the Search plan, create a key, and add web search to your chats.
+video:
+  src: /videos/key-guide-brave.mp4
+  poster: /key-guides/brave.webp
+  duration: PT34S
+  uploadDate: '2026-10-20'
+  alt: Screen recording of the Brave Search API dashboard. The API keys page with its monthly usage limit, the Add API key dialog with a name and the Search plan, the new key in the list, then the key pasted into Besidka and a chat answer marked as searched with Brave.
+  markers:
+    - time: "0:00"
+      label: Intro
+    - time: "0:03"
+      label: Create key
+    - time: "0:07"
+      label: Name the key
+    - time: "0:12"
+      label: Copy your key
+    - time: "0:17"
+      label: Paste into Besidka
+    - time: "0:24"
+      label: Search the web
+    - time: "0:30"
+      label: Done
 requirements:
   card: true
   cardNote: Yes. Activating a plan needs a card, even for the free credit.
@@ -28,4 +49,4 @@ requirements:
 5. In Besidka, go to **Profile**, **API Keys**, **Search Providers**, then the **Brave Search** card. Paste the key into **API Key** and click **Save**.
 6. Start a new chat, turn on web search, and pick Brave.
 
-**Costs.** Search costs $5 per 1,000 requests, and Brave gives $5 of free credit every month per plan. Using the free credit requires attribution to Brave. To cap spending, open the Usage limits page and set **Monthly usage limit** to $5 (max $10).
+**Costs.** Search costs $5 per 1,000 requests, and Brave gives $5 of free credit every month per plan. Using the free credit requires attribution to Brave. To cap spending, open the Usage limits page and set **Monthly usage limit** to $5.

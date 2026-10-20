@@ -7,6 +7,27 @@ keyUrlLabel: Open QwenCloud keys page
 updatedAt: '2026-10-20'
 checkedAt: '2026-10-20'
 summary: Add payment details, create a key on QwenCloud, and chat with Qwen models. QwenCloud may ask you to verify your identity first.
+video:
+  src: /videos/key-guide-qwen.mp4
+  poster: /key-guides/qwen.webp
+  duration: PT33S
+  uploadDate: '2026-10-20'
+  alt: Recording of QwenCloud and Besidka. The API Keys page with Create API key, the identity verification notice, the remaining key creation steps shown as text rather than a recording, then the key pasted into Besidka and a first answer from Qwen.
+  markers:
+    - time: "0:00"
+      label: Get a Qwen key
+    - time: "0:03"
+      label: Create API key
+    - time: "0:07"
+      label: Verify identity
+    - time: "0:12"
+      label: Generate Key
+    - time: "0:16"
+      label: Paste into Besidka
+    - time: "0:23"
+      label: First answer
+    - time: "0:29"
+      label: Done
 requirements:
   card: true
   cardNote: Yes. Payment details are required to unlock the free quota.
