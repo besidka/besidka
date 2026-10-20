@@ -90,6 +90,7 @@
       :doc="guide"
       :status="status"
       :card-open="isCardExpanded"
+      :card-open-trigger="cardOpenTrigger"
     />
   </ProfileKeysCard>
 </template>
@@ -97,6 +98,7 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import type { KeyGuidesCollectionItem } from '@nuxt/content'
+import type { KeyGuideOpenTrigger } from '#shared/types/analytics.d'
 import type { ProviderMeta } from '#shared/utils/provider-meta'
 import { defaultKeyPlaceholder, providerMeta } from '#shared/utils/provider-meta'
 import type { UserKeyStatus } from '~/composables/user-keys'
@@ -146,6 +148,7 @@ const apiKey = shallowRef<string>('')
 const pending = shallowRef<boolean>(false)
 
 const isCardExpanded = shallowRef<boolean>(props.open)
+const cardOpenTrigger = shallowRef<KeyGuideOpenTrigger>('auto')
 const isHydrating = shallowRef<boolean>(!!useNuxtApp().isHydrating)
 
 const status = computed<UserKeyStatus>(() => {
@@ -160,8 +163,12 @@ onMounted(() => {
   isHydrating.value = false
 })
 
-function onExpandedChange(isExpanded: boolean) {
+function onExpandedChange(
+  isExpanded: boolean,
+  trigger: KeyGuideOpenTrigger,
+) {
   isCardExpanded.value = isExpanded
+  cardOpenTrigger.value = trigger
   emit('expandedChange', isExpanded)
 }
 

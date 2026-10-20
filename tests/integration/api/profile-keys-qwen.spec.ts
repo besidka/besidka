@@ -16,6 +16,10 @@ vi.mock('evlog', () => ({
   },
 }))
 
+vi.mock('~~/server/utils/logging/request-logger', () => ({
+  useRequestLogger: () => ({ set: vi.fn() }),
+}))
+
 const activationMocks = vi.hoisted(() => ({
   recordFirstProviderKeyActivation: vi.fn(async () => undefined),
 }))
@@ -116,6 +120,7 @@ describe('qwen key API', () => {
     const fakeKv = createFakeKv()
 
     vi.stubGlobal('defineEventHandler', (handler: any) => handler)
+    vi.stubGlobal('useEvent', () => ({ context: {} }))
     vi.stubGlobal('setResponseStatus', vi.fn())
     vi.stubGlobal('enforceKeysRateLimit', enforceKeysRateLimit)
     vi.stubGlobal('useKV', () => fakeKv)

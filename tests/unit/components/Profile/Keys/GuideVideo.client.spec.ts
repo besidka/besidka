@@ -5,6 +5,9 @@ import GuideVideo
   from '../../../../../app/components/Profile/Keys/GuideVideo.client.vue'
 
 interface FakePlayer {
+  currentTime: number
+  duration: number
+  muted: boolean
   paused: boolean
   pip: boolean
   destroyed: boolean
@@ -20,6 +23,10 @@ interface ObserverInstance {
 const mocks = vi.hoisted(() => {
   return {
     trackGuideVideoPlay: vi.fn(),
+    startWatch: vi.fn(),
+    updateWatch: vi.fn(),
+    upgradeWatchToUser: vi.fn(() => true),
+    endWatch: vi.fn(),
     generate: vi.fn(),
     players: [] as FakePlayer[],
     lastOptions: null as Record<string, unknown> | null,
@@ -31,6 +38,9 @@ const mocks = vi.hoisted(() => {
 vi.mock('plyr', () => {
   class FakePlyr {
     handlers: Record<string, (() => void)[]> = {}
+    currentTime = 0
+    duration = 60
+    muted = true
     paused = true
     pip = false
     destroyed = false
@@ -82,6 +92,18 @@ mockNuxtImport('useKeyGuideAnalytics', () => {
   }
 })
 
+mockNuxtImport('useVideoWatchAnalytics', () => {
+  return () => {
+    return {
+      start: mocks.startWatch,
+      update: mocks.updateWatch,
+      upgradeToUser: mocks.upgradeWatchToUser,
+      end: mocks.endWatch,
+      isActive: vi.fn(),
+    }
+  }
+})
+
 mockNuxtImport('useLandingVideoThumbnails', () => {
   return () => {
     return { generate: mocks.generate }
@@ -120,6 +142,10 @@ async function mountVideo(extraProps: Record<string, unknown> = {}) {
 describe('Profile/Keys/GuideVideo.client', () => {
   beforeEach(() => {
     mocks.trackGuideVideoPlay.mockReset()
+    mocks.startWatch.mockReset()
+    mocks.updateWatch.mockReset()
+    mocks.upgradeWatchToUser.mockReset().mockReturnValue(true)
+    mocks.endWatch.mockReset()
     mocks.players.length = 0
     mocks.observers.length = 0
     mocks.lastOptions = null
@@ -369,6 +395,125 @@ describe('Profile/Keys/GuideVideo.client', () => {
 
     expect(mocks.trackGuideVideoPlay)
       .toHaveBeenCalledExactlyOnceWith('google', true)
+  })
+
+  it('starts a watch session with the autoplay trigger', async () => {
+    await mountVideo()
+
+    setVisibility(true)
+    await flushPromises()
+
+    expect(mocks.startWatch).toHaveBeenCalledExactlyOnceWith('autoplay', 0)
+  })
+
+  it('starts a watch session with the user trigger', async () => {
+    stubMotionPreference(true)
+    await mountVideo()
+
+    mocks.players[0]!.emit('play')
+    mocks.players[0]!.emit('playing')
+
+    expect(mocks.startWatch).toHaveBeenCalledExactlyOnceWith('user', 0)
+  })
+
+  it('ignores a playing event that is not preceded by play', async () => {
+    stubMotionPreference(true)
+    await mountVideo()
+
+    mocks.players[0]!.emit('playing')
+
+    expect(mocks.trackGuideVideoPlay).not.toHaveBeenCalled()
+    expect(mocks.startWatch).not.toHaveBeenCalled()
+  })
+
+  it('does not count a rebuffer after autoplay as a user play', async () => {
+    await mountVideo()
+
+    setVisibility(true)
+    await flushPromises()
+    mocks.players[0]!.emit('playing')
+
+    expect(mocks.trackGuideVideoPlay)
+      .toHaveBeenCalledExactlyOnceWith('google', false)
+    expect(mocks.startWatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('forwards timeupdate to the watch session', async () => {
+    await mountVideo()
+
+    mocks.players[0]!.currentTime = 4.5
+    mocks.players[0]!.emit('timeupdate')
+
+    expect(mocks.updateWatch).toHaveBeenCalledWith(4.5, 60)
+  })
+
+  it('ends the watch session as offscreen when scrolling away pauses it',
+    async () => {
+      await mountVideo()
+
+      setVisibility(true)
+      setVisibility(false)
+
+      expect(mocks.endWatch).toHaveBeenCalledExactlyOnceWith('offscreen')
+    })
+
+  it('ends the watch session as pause when the user pauses', async () => {
+    await mountVideo()
+
+    setVisibility(true)
+    await flushPromises()
+    mocks.players[0]!.paused = true
+    mocks.players[0]!.emit('pause')
+
+    expect(mocks.endWatch).toHaveBeenCalledExactlyOnceWith('pause')
+  })
+
+  it('starts an autoplay session as user when the video is unmuted',
+    async () => {
+      await mountVideo()
+
+      mocks.players[0]!.muted = false
+      setVisibility(true)
+      await flushPromises()
+
+      expect(mocks.startWatch).toHaveBeenCalledExactlyOnceWith('user', 0)
+    })
+
+  it('counts unmuting an autoplayed video as a user play', async () => {
+    await mountVideo()
+
+    setVisibility(true)
+    await flushPromises()
+    mocks.trackGuideVideoPlay.mockClear()
+
+    mocks.players[0]!.muted = false
+    mocks.players[0]!.emit('volumechange')
+
+    expect(mocks.upgradeWatchToUser).toHaveBeenCalledTimes(1)
+    expect(mocks.trackGuideVideoPlay)
+      .toHaveBeenCalledExactlyOnceWith('google', true)
+  })
+
+  it('does not count unmuting when the session is already a user play',
+    async () => {
+      mocks.upgradeWatchToUser.mockReturnValue(false)
+      await mountVideo()
+
+      mocks.players[0]!.muted = false
+      mocks.players[0]!.emit('volumechange')
+
+      expect(mocks.trackGuideVideoPlay).not.toHaveBeenCalled()
+    })
+
+  it('does not count muting again as a user play', async () => {
+    await mountVideo()
+
+    mocks.players[0]!.muted = false
+    mocks.players[0]!.emit('volumechange')
+    mocks.players[0]!.muted = true
+    mocks.players[0]!.emit('volumechange')
+
+    expect(mocks.upgradeWatchToUser).toHaveBeenCalledTimes(1)
   })
 
   it('falls back to native controls when Plyr fails to initialise',

@@ -57,6 +57,14 @@ const emit = defineEmits<{
 const VISIBILITY_THRESHOLD = 0.5
 
 const { trackGuideVideoPlay } = useKeyGuideAnalytics()
+const {
+  start: startWatch,
+  update: updateWatch,
+  upgradeToUser: upgradeWatchToUser,
+  end: endWatch,
+} = useVideoWatchAnalytics(() => {
+  return props.provider
+})
 
 const containerRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
@@ -70,6 +78,8 @@ let isVisible = false
 let isAutoplayRequested = false
 let isProgrammaticPause = false
 let hasUserPaused = false
+let isPlayPending = false
+let wasMuted = true
 
 const {
   sprite,
@@ -159,17 +169,48 @@ function registerListeners(instance: Plyr) {
   })
 
   instance.on('playing', () => {
-    trackGuideVideoPlay(props.provider, !isAutoplayRequested)
+    if (!isPlayPending) {
+      return
+    }
+
+    isPlayPending = false
+
+    const isUserInitiated = !isAutoplayRequested
+
+    trackGuideVideoPlay(props.provider, isUserInitiated)
+    startWatch(
+      isUserInitiated || !instance.muted ? 'user' : 'autoplay',
+      instance.currentTime,
+    )
     isAutoplayRequested = false
   })
 
   instance.on('play', () => {
+    isPlayPending = true
+
     if (!isAutoplayRequested) {
       hasUserPaused = false
     }
   })
 
+  instance.on('timeupdate', () => {
+    updateWatch(instance.currentTime, instance.duration)
+  })
+
+  instance.on('volumechange', () => {
+    const isUnmuted = wasMuted && !instance.muted
+
+    wasMuted = instance.muted
+
+    if (isUnmuted && upgradeWatchToUser()) {
+      trackGuideVideoPlay(props.provider, true)
+    }
+  })
+
   instance.on('pause', () => {
+    isPlayPending = false
+    endWatch(isProgrammaticPause ? 'offscreen' : 'pause')
+
     if (isProgrammaticPause) {
       isProgrammaticPause = false
 

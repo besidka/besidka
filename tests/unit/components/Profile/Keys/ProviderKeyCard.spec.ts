@@ -367,6 +367,8 @@ describe('Profile/Keys/ProviderKeyCard', () => {
     expect(eventBodies('key_guide_open')).toHaveLength(1)
     expect(eventBodies('key_guide_open')[0]).toMatchObject({
       target: 'anthropic',
+      value: 0,
+      trigger: 'auto',
     })
   })
 
@@ -399,5 +401,31 @@ describe('Profile/Keys/ProviderKeyCard', () => {
       await flushPromises()
 
       expect(eventBodies('key_guide_open')).toHaveLength(1)
+    })
+
+  it('tracks key_guide_open as user when the user expands the card',
+    async () => {
+      summaryFor([{ provider: 'anthropic', hasKey: false }])
+
+      const wrapper = await mountSuspended(ProviderKeyCard, {
+        props: { providerId: 'anthropic', guide: guideDoc, open: false },
+        global: { stubs: guideStubs },
+      })
+
+      await flushPromises()
+
+      const details = wrapper.get('details').element as HTMLDetailsElement
+
+      await wrapper.get('summary').trigger('click')
+      details.open = true
+      details.dispatchEvent(new Event('toggle'))
+      await flushPromises()
+
+      expect(eventBodies('key_guide_open')).toHaveLength(1)
+      expect(eventBodies('key_guide_open')[0]).toMatchObject({
+        target: 'anthropic',
+        value: 1,
+        trigger: 'user',
+      })
     })
 })

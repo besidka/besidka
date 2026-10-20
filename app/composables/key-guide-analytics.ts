@@ -1,3 +1,5 @@
+import type { KeyGuideOpenTrigger } from '#shared/types/analytics.d'
+
 const openedProviders = new Set<string>()
 const playedVideos = new Set<string>()
 
@@ -9,13 +11,20 @@ export function resetKeyGuideTracking(): void {
 export function useKeyGuideAnalytics() {
   const { track } = useLandingAnalytics()
 
-  function trackGuideOpen(provider: string): void {
+  function trackGuideOpen(
+    provider: string,
+    trigger: KeyGuideOpenTrigger,
+  ): void {
     if (openedProviders.has(provider)) {
       return
     }
 
     openedProviders.add(provider)
-    track('key_guide_open', { target: provider })
+    track('key_guide_open', {
+      target: provider,
+      value: trigger === 'user' ? 1 : 0,
+      trigger,
+    })
   }
 
   function trackGuideVideoPlay(
@@ -30,7 +39,11 @@ export function useKeyGuideAnalytics() {
     }
 
     playedVideos.add(playKey)
-    track('key_guide_video_play', { target: provider, value })
+    track('key_guide_video_play', {
+      target: provider,
+      value,
+      trigger: isUserInitiated ? 'user' : 'autoplay',
+    })
   }
 
   return { trackGuideOpen, trackGuideVideoPlay }

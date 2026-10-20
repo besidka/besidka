@@ -419,6 +419,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/video.spec.ts',
     'tests/unit/utils/landing/stats.spec.ts',
     'tests/unit/utils/landing/analytics-events.spec.ts',
+    'tests/unit/utils/landing/client-events.spec.ts',
+    'tests/unit/composables/video-watch-analytics.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
@@ -446,12 +448,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/utm-attribution.spec.ts',
     'tests/unit/composables/landing-analytics.spec.ts',
     'tests/unit/composables/key-guide-analytics.spec.ts',
+    'tests/unit/composables/video-watch-analytics.spec.ts',
+    'tests/unit/utils/analytics/key-events.spec.ts',
+    'tests/unit/utils/landing/client-events.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
     'tests/integration/api/profile-keys-qwen.spec.ts',
     'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
     'tests/integration/api/profile-keys-openrouter.spec.ts',
+    'tests/integration/api/profile-keys-key-events.spec.ts',
     'tests/e2e/attribution/utm-signup.spec.ts',
   ]
 
@@ -519,6 +525,8 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
     'tests/integration/api/profile-keys-openrouter.spec.ts',
+    'tests/integration/api/profile-keys-key-events.spec.ts',
+    'tests/unit/utils/analytics/key-events.spec.ts',
     'tests/unit/components/Profile/Keys/Card.spec.ts',
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
     'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
@@ -536,6 +544,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/config/content-frontmatter.spec.ts',
     'tests/unit/pages/guides/[slug].spec.ts',
     'tests/unit/composables/key-guide-analytics.spec.ts',
+    'tests/unit/composables/video-watch-analytics.spec.ts',
     'tests/unit/utils/key-guide-video.spec.ts',
     'tests/unit/components/Profile/Keys/Guide.spec.ts',
     'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
@@ -871,7 +880,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/key-guide-analytics\.ts|app\/utils\/key-guide-video\.ts|shared\/utils\/key-guide-schema\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
+        /^(app\/composables\/(key-guide-analytics|video-watch-analytics)\.ts|app\/utils\/key-guide-video\.ts|shared\/utils\/key-guide-schema\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
       tests: profileKeyGuideTests,
     },
     {
@@ -971,7 +980,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/utm\.ts|shared\/types\/analytics\.d\.ts|server\/utils\/analytics\/.*\.ts|server\/db\/schemas\/attribution\.ts|app\/composables\/(utm-attribution|landing-analytics)\.ts|app\/plugins\/utm-attribution\.client\.ts)$/,
+        /^(shared\/utils\/utm\.ts|shared\/types\/analytics\.d\.ts|server\/utils\/analytics\/.*\.ts|server\/db\/schemas\/attribution\.ts|app\/composables\/(utm-attribution|landing-analytics|video-watch-analytics)\.ts|app\/plugins\/utm-attribution\.client\.ts)$/,
       tests: utmAttributionTests,
     },
     {

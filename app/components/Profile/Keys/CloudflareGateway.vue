@@ -157,6 +157,7 @@
       :doc="guide"
       :status="status"
       :card-open="isCardExpanded"
+      :card-open-trigger="cardOpenTrigger"
     />
   </ProfileKeysCard>
 </template>
@@ -164,6 +165,7 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import type { KeyGuidesCollectionItem } from '@nuxt/content'
+import type { KeyGuideOpenTrigger } from '#shared/types/analytics.d'
 import { providerMeta } from '#shared/utils/provider-meta'
 import type { UserKeyStatus } from '~/composables/user-keys'
 import UiForm from '~/components/ui/Form.vue'
@@ -192,9 +194,14 @@ const emit = defineEmits<{
 }>()
 
 const isCardExpanded = shallowRef<boolean>(props.open)
+const cardOpenTrigger = shallowRef<KeyGuideOpenTrigger>('auto')
 
-function onExpandedChange(isExpanded: boolean) {
+function onExpandedChange(
+  isExpanded: boolean,
+  trigger: KeyGuideOpenTrigger,
+) {
   isCardExpanded.value = isExpanded
+  cardOpenTrigger.value = trigger
   emit('expandedChange', isExpanded)
 }
 

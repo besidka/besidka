@@ -84,6 +84,7 @@
           :caption="guide.video.caption"
           :captions="guide.video.captions ?? []"
           :markers="guide.video.markers ?? []"
+          :guide-provider="guide.provider"
         />
         <template #fallback>
           <div
