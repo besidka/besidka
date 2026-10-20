@@ -62,10 +62,13 @@ const GUIDE = {
   },
 }
 
-function mountPage() {
+function mountPage(options: { showClientOnlyFallback?: boolean } = {}) {
   return mountSuspended(GuidePage, {
     global: {
       stubs: {
+        ...(options.showClientOnlyFallback
+          ? { ClientOnly: { template: '<slot name="fallback" />' } }
+          : {}),
         ContentRenderer: { template: '<div data-testid="body" />' },
         NuxtLink: {
           props: ['to'],
@@ -232,6 +235,46 @@ describe('key guide page', () => {
     expect(wrapper.find('[data-testid="key-guide-video"]').exists())
       .toBe(true)
   })
+
+  it('shows the poster as the placeholder before the player mounts',
+    async () => {
+      mocks.guide = {
+        ...GUIDE,
+        video: {
+          src: '/videos/key.mp4',
+          poster: '/videos/key.webp',
+          duration: 'PT1M12S',
+          uploadDate: '2026-10-20',
+          captions: [],
+        },
+      }
+
+      const wrapper = await mountPage({ showClientOnlyFallback: true })
+      const video = wrapper.get('[data-testid="key-guide-video"]')
+
+      expect(video.get('img').attributes('src')).toBe('/videos/key.webp')
+      expect(video.get('img').attributes('alt')).toBe('')
+      expect(video.find('.skeleton').exists()).toBe(false)
+    })
+
+  it('keeps the skeleton placeholder when the video has no poster',
+    async () => {
+      mocks.guide = {
+        ...GUIDE,
+        video: {
+          src: '/videos/key.mp4',
+          duration: 'PT1M12S',
+          uploadDate: '2026-10-20',
+          captions: [],
+        },
+      }
+
+      const wrapper = await mountPage({ showClientOnlyFallback: true })
+      const video = wrapper.get('[data-testid="key-guide-video"]')
+
+      expect(video.find('img').exists()).toBe(false)
+      expect(video.find('.skeleton').exists()).toBe(true)
+    })
 
   it('passes the chapter markers to the video player', async () => {
     const markers = [{ time: '0:00', label: 'Start' }]

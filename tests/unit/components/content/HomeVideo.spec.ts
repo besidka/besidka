@@ -91,6 +91,51 @@ describe('HomeVideo.vue', () => {
     expect(wrapper.text()).toContain('A 54-second tour')
   })
 
+  it('renders the poster instead of the skeleton before intersection',
+    async () => {
+      const wrapper = await mountSuspended(HomeVideo, {
+        props: { ...mountOptions.props, poster: '/videos/demo.webp' },
+      })
+
+      await flushPromises()
+
+      const poster = wrapper.get('img')
+
+      expect(poster.attributes('src')).toBe('/videos/demo.webp')
+      expect(poster.attributes('alt')).toBe('')
+      expect(poster.attributes('loading')).toBe('lazy')
+      expect(poster.attributes('decoding')).toBe('async')
+      expect(poster.attributes('width')).toBe('1920')
+      expect(poster.attributes('height')).toBe('1080')
+      expect(poster.classes()).toEqual(
+        expect.arrayContaining(['aspect-video', 'rounded-2xl']),
+      )
+      expect(wrapper.find('.skeleton').exists()).toBe(false)
+      expect(wrapper.text()).toContain('A 54-second tour')
+    })
+
+  it('removes the poster once the player mounts', async () => {
+    const wrapper = await mountSuspended(HomeVideo, {
+      props: { ...mountOptions.props, poster: '/videos/demo.webp' },
+    })
+
+    await flushPromises()
+    intersect(true)
+    await flushPromises()
+
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.find('.player-stub').exists()).toBe(true)
+  })
+
+  it('keeps the skeleton without a poster', async () => {
+    const wrapper = await mountSuspended(HomeVideo, mountOptions)
+
+    await flushPromises()
+
+    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.find('.skeleton').exists()).toBe(true)
+  })
+
   it('observes the section with a 300px root margin', async () => {
     await mountSuspended(HomeVideo, mountOptions)
 

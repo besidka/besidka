@@ -18,7 +18,19 @@
       v-else
       class="w-full"
     >
+      <img
+        v-if="resolvedPoster"
+        :src="resolvedPoster"
+        alt=""
+        width="1920"
+        height="1080"
+        loading="lazy"
+        decoding="async"
+        class="w-full aspect-video rounded-2xl object-cover bg-base-300
+          ring-1 ring-base-content/10 shadow-xl"
+      >
       <div
+        v-else
         class="skeleton skeleton--default w-full aspect-video rounded-2xl"
       />
       <p
