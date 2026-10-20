@@ -406,7 +406,7 @@ describe('Profile/Keys/Guide', () => {
     async () => {
       await mountGuide({ status: 'missing', cardOpen: true })
 
-      expect(mocks.trackGuideOpen).toHaveBeenCalledExactlyOnceWith('google')
+      expect(mocks.trackGuideOpen).toHaveBeenCalledExactlyOnceWith('google', 'auto')
     })
 
   it('does not track while the card is collapsed, then tracks once the '
@@ -417,8 +417,34 @@ describe('Profile/Keys/Guide', () => {
 
     await wrapper.setProps({ cardOpen: true })
 
-    expect(mocks.trackGuideOpen).toHaveBeenCalledExactlyOnceWith('google')
+    expect(mocks.trackGuideOpen).toHaveBeenCalledExactlyOnceWith('google', 'auto')
   })
+
+  it('tracks as user when the user expanding the card reveals the guide',
+    async () => {
+      const wrapper = await mountGuide({
+        status: 'missing',
+        cardOpen: false,
+      })
+
+      await wrapper.setProps({ cardOpen: true, cardOpenTrigger: 'user' })
+
+      expect(mocks.trackGuideOpen)
+        .toHaveBeenCalledExactlyOnceWith('google', 'user')
+    })
+
+  it('tracks as auto when the card expands without a user action',
+    async () => {
+      const wrapper = await mountGuide({
+        status: 'missing',
+        cardOpen: false,
+      })
+
+      await wrapper.setProps({ cardOpen: true, cardOpenTrigger: 'auto' })
+
+      expect(mocks.trackGuideOpen)
+        .toHaveBeenCalledExactlyOnceWith('google', 'auto')
+    })
 
   it('tracks when the status resolves to missing inside an expanded card',
     async () => {
@@ -428,7 +454,7 @@ describe('Profile/Keys/Guide', () => {
 
       await wrapper.setProps({ status: 'missing' })
 
-      expect(mocks.trackGuideOpen).toHaveBeenCalledExactlyOnceWith('google')
+      expect(mocks.trackGuideOpen).toHaveBeenCalledExactlyOnceWith('google', 'auto')
     })
 
   it('does not track a guide that stays closed', async () => {
@@ -445,8 +471,17 @@ describe('Profile/Keys/Guide', () => {
     element.dispatchEvent(new Event('toggle'))
     await flushPromises()
 
-    expect(mocks.trackGuideOpen).toHaveBeenCalledExactlyOnceWith('google')
+    expect(mocks.trackGuideOpen)
+      .toHaveBeenCalledExactlyOnceWith('google', 'user')
   })
+
+  it('tracks a guide that opens because the key is missing as auto',
+    async () => {
+      await mountGuide({ status: 'missing', cardOpen: true })
+
+      expect(mocks.trackGuideOpen)
+        .toHaveBeenCalledExactlyOnceWith('google', 'auto')
+    })
 
   it('does not track when the user opens the guide of a collapsed card',
     async () => {

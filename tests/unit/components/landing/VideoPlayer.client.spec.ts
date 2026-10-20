@@ -26,6 +26,9 @@ vi.mock('plyr', () => {
     handlers: Record<string, ((...args: unknown[]) => void)[]> = {}
     source: unknown = null
     destroyed = false
+    currentTime = 0
+    duration = 100
+    ended = false
 
     constructor(_element: unknown, options: unknown) {
       if (mocks.shouldThrow) {
@@ -158,6 +161,108 @@ describe('VideoPlayer.client.vue', () => {
       })
     })
 
+  it('reports a watch session on pause with the user trigger', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: false },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      emit: (event: string) => void
+    }
+
+    player.emit('play')
+
+    for (const second of [0.5, 1, 1.5, 2]) {
+      player.currentTime = second
+      player.emit('timeupdate')
+    }
+
+    player.emit('pause')
+
+    expect(mocks.track).toHaveBeenCalledWith(
+      'video_watch',
+      {
+        target: 'demo',
+        value: 2,
+        trigger: 'user',
+        watchedSeconds: 2,
+        durationSeconds: 100,
+        completionPercent: 2,
+        endReason: 'pause',
+      },
+      { keepalive: false },
+    )
+  })
+
+  it('reports ended when pause fires at the end of playback', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: false },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      duration: number
+      ended: boolean
+      emit: (event: string) => void
+    }
+
+    player.duration = 3
+    player.emit('play')
+
+    for (const second of [1, 2, 3]) {
+      player.currentTime = second
+      player.emit('timeupdate')
+    }
+
+    player.ended = true
+    player.emit('pause')
+    player.emit('ended')
+
+    const watchCalls = mocks.track.mock.calls.filter((call) => {
+      return call[0] === 'video_watch'
+    })
+
+    expect(watchCalls).toHaveLength(1)
+    expect(watchCalls[0]![1]).toMatchObject({
+      endReason: 'ended',
+      completionPercent: 100,
+    })
+  })
+
+  it('tracks a key guide play when a guide provider is set', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: {
+        src: '/videos/key.mp4',
+        thumbnails: false,
+        guideProvider: 'google',
+      },
+    })
+
+    await flushPromises()
+
+    mocks.instances[0]!.emit('play')
+    mocks.instances[0]!.emit('ended')
+
+    expect(mocks.track).toHaveBeenCalledWith('key_guide_video_play', {
+      target: 'google',
+      value: 1,
+      trigger: 'user',
+    })
+    expect(mocks.track).toHaveBeenCalledWith(
+      'video_complete',
+      { target: 'google' },
+    )
+    expect(mocks.track).not.toHaveBeenCalledWith(
+      'video_play',
+      expect.anything(),
+    )
+  })
+
   it('tracks video_play once and video_complete on ended', async () => {
     await mountSuspended(VideoPlayer, {
       props: { src: '/videos/demo.mp4', thumbnails: false },
@@ -176,7 +281,11 @@ describe('VideoPlayer.client.vue', () => {
     })
 
     expect(playCalls).toHaveLength(1)
-    expect(mocks.track).toHaveBeenCalledWith('video_play', { target: 'demo' })
+    expect(mocks.track).toHaveBeenCalledWith('video_play', {
+      target: 'demo',
+      value: 1,
+      trigger: 'user',
+    })
     expect(mocks.track).toHaveBeenCalledWith(
       'video_complete',
       { target: 'demo' },
@@ -351,6 +460,49 @@ describe('VideoPlayer.client.vue', () => {
     await flushPromises()
 
     expect(mocks.generate).not.toHaveBeenCalled()
+  })
+
+  it('shows the poster under the spinner while loading', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', poster: '/videos/demo.webp' },
+    })
+
+    await flushPromises()
+
+    const poster = wrapper.get('[data-testid="player-loading-poster"]')
+
+    expect(poster.attributes('src')).toBe('/videos/demo.webp')
+    expect(poster.attributes('alt')).toBe('')
+    expect(poster.classes()).toContain('object-cover')
+    expect(wrapper.find('.skeleton').exists()).toBe(false)
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+  })
+
+  it('keeps the grey skeleton while loading without a poster', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4' },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="player-loading-poster"]').exists())
+      .toBe(false)
+    expect(wrapper.find('.skeleton').exists()).toBe(true)
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+  })
+
+  it('removes the loading overlay once Plyr is ready', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', poster: '/videos/demo.webp' },
+    })
+
+    await flushPromises()
+    mocks.instances[0]!.emit('ready')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="player-loading-poster"]').exists())
+      .toBe(false)
+    expect(wrapper.find('.animate-spin').exists()).toBe(false)
   })
 
   it('falls back to native controls when Plyr throws', async () => {

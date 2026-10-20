@@ -33,14 +33,26 @@
 
       <div
         v-if="!isReady && !hasError"
-        class="skeleton skeleton--default absolute inset-0 z-10
-          flex items-center justify-center"
+        class="absolute inset-0 z-10 flex items-center justify-center
+          overflow-hidden rounded-2xl"
+        :class="{ 'skeleton skeleton--default': !poster }"
         aria-hidden="true"
       >
+        <img
+          v-if="poster"
+          :src="poster"
+          alt=""
+          decoding="async"
+          data-testid="player-loading-poster"
+          class="absolute inset-0 size-full object-cover"
+        >
         <Icon
           name="lucide:loader-circle"
           size="32"
-          class="animate-spin text-base-content/40"
+          class="relative animate-spin"
+          :class="poster
+            ? 'text-white drop-shadow-md'
+            : 'text-base-content/40'"
         />
       </div>
     </div>
@@ -73,6 +85,7 @@ const props = withDefaults(defineProps<{
   captions?: VideoCaption[]
   markers?: VideoMarker[]
   thumbnails?: boolean
+  guideProvider?: string
 }>(), {
   src: '/videos/demo.mp4',
   poster: undefined,
@@ -81,9 +94,19 @@ const props = withDefaults(defineProps<{
   captions: () => [],
   markers: () => [],
   thumbnails: true,
+  guideProvider: undefined,
 })
 
+const DEMO_TARGET = 'demo'
+
 const { track } = useLandingAnalytics()
+const {
+  start: startWatch,
+  update: updateWatch,
+  end: endWatch,
+} = useVideoWatchAnalytics(() => {
+  return analyticsTarget()
+})
 const { isAllowed, onConsentChange } = useCookieConsent()
 
 const DEFAULT_QUALITY = 720
@@ -125,6 +148,30 @@ const {
     return player?.duration ?? 0
   },
 })
+
+function analyticsTarget(): string {
+  return props.guideProvider ?? DEMO_TARGET
+}
+
+function trackFirstPlay() {
+  if (hasTrackedPlay) {
+    return
+  }
+
+  hasTrackedPlay = true
+
+  if (props.guideProvider) {
+    track('key_guide_video_play', {
+      target: props.guideProvider,
+      value: 1,
+      trigger: 'user',
+    })
+
+    return
+  }
+
+  track('video_play', { target: DEMO_TARGET, value: 1, trigger: 'user' })
+}
 
 function sortedQualities(): VideoQuality[] {
   return [...props.qualities].sort((a, b) => {
@@ -216,16 +263,21 @@ function registerListeners(instance: Plyr) {
   })
 
   instance.on('play', () => {
-    if (hasTrackedPlay) {
-      return
-    }
+    trackFirstPlay()
+    startWatch('user', instance.currentTime)
+  })
 
-    hasTrackedPlay = true
-    track('video_play', { target: 'demo' })
+  instance.on('timeupdate', () => {
+    updateWatch(instance.currentTime, instance.duration)
+  })
+
+  instance.on('pause', () => {
+    endWatch(instance.ended ? 'ended' : 'pause')
   })
 
   instance.on('ended', () => {
-    track('video_complete', { target: 'demo' })
+    endWatch('ended')
+    track('video_complete', { target: analyticsTarget() })
   })
 }
 

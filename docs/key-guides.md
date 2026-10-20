@@ -93,9 +93,9 @@ restart.
   one is not an error. `cms:files:download` only pulls the known demo assets,
   not the guides. Encode like the demo: H.264, `yuv420p`, fixed 2-second GOP,
   `+faststart`. The player autoplays muted and loops, so no audio is needed.
-- Posters are committed at `public/key-guides/<id>.webp`, 16:9. The two
-  committed files are neutral gradients. The component tolerates a missing
-  poster and shows a plain box.
+- Posters are committed at `public/key-guides/<id>.webp`, 16:9, taken from
+  the paste step of the recording. The component tolerates a missing poster
+  and shows a plain box.
 
 ## Where it renders
 
@@ -181,7 +181,9 @@ still go to bare `/signin`. The full `next` contract is in `docs/seo.md`
 `key_guide_open` fires once per provider per visit to the keys page when the
 guide is open and its card is expanded. The condition comes from explicit
 state, not from a native `toggle` event, so a card server-rendered open still
-reports. `key_guide_video_play` fires on the first `playing` for each of two
+reports. It carries `trigger` `auto` (value `0`, the guide opened because the
+key is missing) or `user` (value `1`, the user expanded the guide).
+`key_guide_video_play` fires on the first `playing` for each of two
 values per provider and visit: `0` for autoplay and `1` when the user started
 it, so an autoplay does not hide a later user play. Both use `target` =
 provider id and no personal data. The events endpoint rejects a `target` that

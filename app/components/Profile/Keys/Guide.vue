@@ -134,6 +134,7 @@
 
 <script setup lang="ts">
 import type { KeyGuidesCollectionItem } from '@nuxt/content'
+import type { KeyGuideOpenTrigger } from '#shared/types/analytics.d'
 import { providerMeta } from '#shared/utils/provider-meta'
 import type { UserKeyStatus } from '~/composables/user-keys'
 import { formatUtcDate } from '~/utils/utc-date'
@@ -143,9 +144,11 @@ const props = withDefaults(defineProps<{
   status: UserKeyStatus
   doc?: KeyGuidesCollectionItem | null
   cardOpen?: boolean
+  cardOpenTrigger?: KeyGuideOpenTrigger
 }>(), {
   doc: null,
   cardOpen: true,
+  cardOpenTrigger: 'auto',
 })
 
 const VIDEO_ROOT_MARGIN = '300px'
@@ -159,6 +162,7 @@ const isPosterMissing = shallowRef<boolean>(false)
 const isVideoFailed = shallowRef<boolean>(false)
 
 let hasSettledOpenState = false
+let openTrigger: KeyGuideOpenTrigger = 'auto'
 
 const shouldMountPlayer = computed<boolean>(() => {
   return isOpen.value && isNearViewport.value && !isVideoFailed.value
@@ -222,15 +226,21 @@ watch(() => props.status, (status) => {
   isOpen.value = status === 'missing'
 }, { immediate: true })
 
+function resolveOpenTrigger(): KeyGuideOpenTrigger {
+  return openTrigger === 'user' || props.cardOpenTrigger === 'user'
+    ? 'user'
+    : 'auto'
+}
+
 watch(isGuideVisible, (isVisible) => {
   if (isVisible) {
-    trackGuideOpen(props.provider)
+    trackGuideOpen(props.provider, resolveOpenTrigger())
   }
 })
 
 onMounted(() => {
   if (isGuideVisible.value) {
-    trackGuideOpen(props.provider)
+    trackGuideOpen(props.provider, resolveOpenTrigger())
   }
 })
 
@@ -242,6 +252,11 @@ function onToggle(event: Event) {
   }
 
   hasSettledOpenState = true
+
+  if (nextOpen) {
+    openTrigger = 'user'
+  }
+
   isOpen.value = nextOpen
 }
 </script>

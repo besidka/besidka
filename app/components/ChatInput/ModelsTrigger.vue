@@ -48,17 +48,20 @@
             class="bubble-without-background flex flex-col max-h-[60dvh] bg-base-100 border border-base-content/10 shadow-xl"
           >
             <ChatInputModelsTriggerKeyPrompt
-              v-if="!hasAnyKey && !isActiveGatewayKeyless"
+              v-if="keyBanner"
               compact
-              title="No API keys yet"
-              description="Besidka runs on your own keys. Add one to start."
-              action-label="Add a key"
+              :test-id="keyBanner.testId"
+              :title="keyBanner.title"
+              :description="keyBanner.description"
+              :action-label="keyBanner.actionLabel"
+              :to="keyBanner.to"
               @navigate="close"
             />
             <div
               v-if="activeGateway"
               data-testid="models-picker-gateway-banner"
-              class="shrink-0 flex items-center gap-2 px-2.5 py-2 rounded-t-2xl border-b border-accent/30 bg-accent/10"
+              class="shrink-0 flex items-center gap-2 px-2.5 py-2 border-b border-accent/30 bg-accent/10"
+              :class="{ 'rounded-t-2xl': !keyBanner }"
             >
               <ProviderIcon
                 :provider-id="activeGateway.id"
@@ -132,10 +135,9 @@
               >
                 <ChatInputModelsTriggerKeyPrompt
                   v-if="isActiveGatewayKeyless"
+                  hide-action
                   :title="activeGatewayPrompt.title"
                   :description="activeGatewayPrompt.description"
-                  :action-label="activeGatewayPrompt.actionLabel"
-                  @navigate="close"
                 />
                 <ChatInputModelsTriggerGatewayModelList
                   v-else-if="activeGateway"
@@ -354,6 +356,14 @@ const GATEWAY_CAPABILITY_FILTER_TOOLS: Partial<
   'image-generation': 'image_generation',
 }
 
+interface KeyBanner {
+  testId: string
+  title: string
+  description: string
+  actionLabel: string
+  to: string
+}
+
 interface GatewayListHandle {
   moveHighlight: (step: number) => void
   highlightFirst: () => void
@@ -459,9 +469,75 @@ const activeGatewayPrompt = computed(() => {
   const label = activeGateway.value?.label ?? 'This gateway'
 
   return {
-    title: `${label} needs an API key`,
-    description: `Add your ${label} key to browse its models here.`,
-    actionLabel: `Add ${label} key`,
+    title: `${label} models`,
+    description: `Add your ${label} key to browse them here.`,
+  }
+})
+
+/**
+ * The `/profile/keys?provider=` deep link opens and scrolls to that provider's
+ * card, where its "How to get a key" guide lives. A gateway id is also a
+ * `providerMeta` id, so the same link shape serves both modes.
+ */
+function getKeysLink(providerId: string | null): string {
+  return providerId
+    ? `/profile/keys?provider=${providerId}`
+    : '/profile/keys'
+}
+
+const selectedRailProvider = computed(() => {
+  if (!isRailFilterApplied.value || !activeProviderId.value) {
+    return null
+  }
+
+  return providers.find((provider) => {
+    return provider.id === activeProviderId.value
+  }) ?? null
+})
+
+const keyBanner = computed<KeyBanner | null>(() => {
+  const gateway = activeGateway.value
+
+  if (gateway) {
+    if (!isActiveGatewayKeyless.value) {
+      return null
+    }
+
+    return {
+      testId: 'models-picker-gateway-key-banner',
+      title: `${gateway.label} needs a key`,
+      description: 'Add one to browse its models.',
+      actionLabel: 'Add key',
+      to: getKeysLink(gateway.id),
+    }
+  }
+
+  const provider = selectedRailProvider.value
+
+  if (!hasAnyKey.value) {
+    return {
+      testId: 'models-picker-key-banner',
+      title: 'No API keys yet',
+      description: 'Besidka runs on your own keys. Add one to start.',
+      actionLabel: 'Add a key',
+      to: getKeysLink(provider?.id ?? null),
+    }
+  }
+
+  if (!provider || hasKeyForProvider(provider.id)) {
+    return null
+  }
+
+  const label = providerMeta[provider.id]?.shortLabel
+    ?? providerMeta[provider.id]?.label
+    ?? provider.name
+
+  return {
+    testId: 'models-picker-provider-key-banner',
+    title: `No ${label} key yet`,
+    description: 'Add one to use these models.',
+    actionLabel: 'Add key',
+    to: getKeysLink(provider.id),
   }
 })
 

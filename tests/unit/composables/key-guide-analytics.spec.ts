@@ -24,16 +24,20 @@ describe('useKeyGuideAnalytics', () => {
   it('tracks key_guide_open once per provider', () => {
     const { trackGuideOpen } = useKeyGuideAnalytics()
 
-    trackGuideOpen('google')
-    trackGuideOpen('google')
-    trackGuideOpen('openrouter')
+    trackGuideOpen('google', 'auto')
+    trackGuideOpen('google', 'user')
+    trackGuideOpen('openrouter', 'user')
 
     expect(mocks.track).toHaveBeenCalledTimes(2)
     expect(mocks.track).toHaveBeenNthCalledWith(1, 'key_guide_open', {
       target: 'google',
+      value: 0,
+      trigger: 'auto',
     })
     expect(mocks.track).toHaveBeenNthCalledWith(2, 'key_guide_open', {
       target: 'openrouter',
+      value: 1,
+      trigger: 'user',
     })
   })
 
@@ -47,6 +51,7 @@ describe('useKeyGuideAnalytics', () => {
     expect(mocks.track).toHaveBeenCalledWith('key_guide_video_play', {
       target: 'google',
       value: 1,
+      trigger: 'user',
     })
   })
 
@@ -60,6 +65,7 @@ describe('useKeyGuideAnalytics', () => {
     expect(mocks.track).toHaveBeenCalledWith('key_guide_video_play', {
       target: 'google',
       value: 0,
+      trigger: 'autoplay',
     })
   })
 
@@ -73,10 +79,12 @@ describe('useKeyGuideAnalytics', () => {
     expect(mocks.track).toHaveBeenNthCalledWith(1, 'key_guide_video_play', {
       target: 'google',
       value: 0,
+      trigger: 'autoplay',
     })
     expect(mocks.track).toHaveBeenNthCalledWith(2, 'key_guide_video_play', {
       target: 'google',
       value: 1,
+      trigger: 'user',
     })
   })
 
@@ -97,6 +105,7 @@ describe('useKeyGuideAnalytics', () => {
     expect(mocks.track).toHaveBeenCalledWith('key_guide_video_play', {
       target: 'exa',
       value: 0,
+      trigger: 'autoplay',
     })
   })
 

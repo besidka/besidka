@@ -33,7 +33,7 @@ jobs:
   build-production:
     name: Build and Deploy to Production
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 20
+    timeout-minutes: 30
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
       bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}

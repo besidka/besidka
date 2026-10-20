@@ -312,6 +312,92 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
       expect(wrapper.find('[data-testid="models-picker-key-banner"]').exists())
         .toBe(false)
     })
+
+    it('deep-links to the selected provider card', async () => {
+      keyedProviderIds.value = []
+
+      const wrapper = await openPicker()
+
+      await wrapper.get('[data-testid="models-picker-rail-openai"]')
+        .trigger('click')
+
+      expect(
+        wrapper.get('[data-testid="models-picker-key-banner-link"]')
+          .attributes('href'),
+      ).toBe('/profile/keys?provider=openai')
+      expect(
+        wrapper.find('[data-testid="models-picker-provider-key-banner"]')
+          .exists(),
+      ).toBe(false)
+    })
+  })
+
+  describe('selected provider without a key', () => {
+    it('shows the warning banner with the provider deep link', async () => {
+      const wrapper = await openPicker()
+
+      await wrapper.get('[data-testid="models-picker-rail-openai"]')
+        .trigger('click')
+
+      const banner = wrapper
+        .get('[data-testid="models-picker-provider-key-banner"]')
+
+      expect(banner.text()).toContain('No OpenAI key yet')
+      expect(banner.text()).toContain('Add one to use these models.')
+      expect(banner.classes()).toContain('bg-warning/10')
+      expect(
+        banner.get('[data-testid="models-picker-provider-key-banner-link"]')
+          .attributes('href'),
+      ).toBe('/profile/keys?provider=openai')
+    })
+
+    it('uses the short provider name from the provider meta', async () => {
+      keyedProviderIds.value = ['openai']
+
+      const wrapper = await openPicker()
+
+      await wrapper.get('[data-testid="models-picker-rail-google"]')
+        .trigger('click')
+
+      expect(
+        wrapper.get('[data-testid="models-picker-provider-key-banner"]')
+          .text(),
+      ).toContain('No Google key yet')
+    })
+
+    it('stays hidden on the all-models view', async () => {
+      const wrapper = await openPicker()
+
+      expect(
+        wrapper.find('[data-testid="models-picker-provider-key-banner"]')
+          .exists(),
+      ).toBe(false)
+    })
+
+    it('stays hidden when the selected provider has a key', async () => {
+      const wrapper = await openPicker()
+
+      await wrapper.get('[data-testid="models-picker-rail-google"]')
+        .trigger('click')
+
+      expect(
+        wrapper.find('[data-testid="models-picker-provider-key-banner"]')
+          .exists(),
+      ).toBe(false)
+    })
+
+    it('disappears when the provider is deselected', async () => {
+      const wrapper = await openPicker()
+      const rail = wrapper.get('[data-testid="models-picker-rail-openai"]')
+
+      await rail.trigger('click')
+      await rail.trigger('click')
+
+      expect(
+        wrapper.find('[data-testid="models-picker-provider-key-banner"]')
+          .exists(),
+      ).toBe(false)
+    })
   })
 
   describe('gateway mode', () => {
@@ -321,16 +407,50 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
       await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
         .trigger('click')
 
+      const banner = wrapper
+        .get('[data-testid="models-picker-gateway-key-banner"]')
       const prompt = wrapper.get('[data-testid="models-picker-key-prompt"]')
 
-      expect(prompt.text()).toContain('Vercel AI Gateway needs an API key')
+      expect(banner.text()).toContain('Vercel AI Gateway needs a key')
+      expect(banner.classes()).toContain('bg-warning/10')
       expect(
-        prompt.get('[data-testid="models-picker-key-prompt-link"]')
+        banner.get('[data-testid="models-picker-gateway-key-banner-link"]')
           .attributes('href'),
-      ).toBe('/profile/keys')
+      ).toBe('/profile/keys?provider=vercel')
+      expect(prompt.text()).toContain('Add your Vercel AI Gateway key')
+      expect(
+        prompt.find('[data-testid="models-picker-key-prompt-link"]').exists(),
+      ).toBe(false)
       expect(mocks.useGatewayCatalog).not.toHaveBeenCalled()
       expect(wrapper.find('[data-testid="gateway-models-loading"]').exists())
         .toBe(false)
+    })
+
+    it('deep-links the banner to the active gateway', async () => {
+      const wrapper = await openPicker()
+
+      await wrapper.get('[data-testid="models-picker-gateway-openrouter"]')
+        .trigger('click')
+
+      expect(
+        wrapper
+          .get('[data-testid="models-picker-gateway-key-banner-link"]')
+          .attributes('href'),
+      ).toBe('/profile/keys?provider=openrouter')
+    })
+
+    it('hides the gateway banner once the gateway key exists', async () => {
+      keyedProviderIds.value = ['google', 'vercel']
+
+      const wrapper = await openPicker()
+
+      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .trigger('click')
+
+      expect(
+        wrapper.find('[data-testid="models-picker-gateway-key-banner"]')
+          .exists(),
+      ).toBe(false)
     })
 
     it('drops the search and filter controls with no catalog to search', async () => {

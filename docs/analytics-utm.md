@@ -21,13 +21,16 @@ Four events form the funnel.
 | `first_chat_message` | A user's first assistant message is persisted | Analytics Engine, Axiom, D1 ledger |
 
 The other landing events (`cta_click`, `header_cta_click`, `footer_link_click`,
-`video_play`, `video_complete`, `github_click`, `new_chat_created`) still write
+`video_play`, `video_complete`, `video_watch`, `github_click`,
+`new_chat_created`) still write
 to Analytics Engine. They are not part of the funnel. `new_chat_created` is not
 `first_chat_message`.
 
 Two more landing-family events measure the "How to get a key" guides on
 `/profile/keys` (`key_guide_open`, `key_guide_video_play`). They are not part
-of the funnel either. See "Key guide events" below.
+of the funnel either. See "Key guide events" below. Video viewing time
+(`video_watch`) and key saves (`attributes.keys`) are described in "Video
+and key events in Axiom".
 
 ### Where the data lives
 
@@ -165,8 +168,9 @@ so `index1` and `blob1` hold the same value.
 
 `key_guide_open` and `key_guide_video_play` use the landing column layout. The
 client sends `path` `/profile/keys`, so the events endpoint allows that path
-next to the public landing slugs. Without it every guide event gets a 400, and
-the client swallows the error. The endpoint also requires `target` to be a
+next to the public landing slugs and, since the video analytics change, `/byok`
+and `/guides/<slug>`. Without an allowed path every event gets a 400, and the
+client swallows the error. The endpoint also requires `target` to be a
 `providerMeta` id (checked with `Object.hasOwn`) for these two events, and it
 strips a trailing slash from `path`, so `/profile/keys/` is accepted.
 
@@ -174,9 +178,11 @@ strips a trailing slash from `path`, so `/profile/keys/` is accepted.
 | --- | --- | --- |
 | `blob2` | `/profile/keys` | `/profile/keys` |
 | `blob3` | provider id, e.g. `google` | provider id |
-| `double1` | `0` | `1` when the user started playback, `0` for muted autoplay |
+| `double1` | `0` when the guide opened on its own, `1` when the user expanded it | `1` when the user started playback, `0` for muted autoplay |
 
-`key_guide_open` fires at most once per provider per visit to the keys page.
+`key_guide_open` fires at most once per provider per visit to the keys page,
+so the first open decides the value: an auto-open (`0`) that the user later
+collapses and expands again is not counted a second time as `1`.
 `key_guide_video_play` fires at most once per provider and per value, so an
 autoplay (`0`) never hides a later user-started play (`1`). The client resets
 this memory when the page is created. The writes carry no
@@ -205,6 +211,200 @@ Activation events carry no `content`. Campaign content is stored in
 Rows written before this change have `blob6` to `blob9` empty (`''`), not
 `none`. They report as campaign `''`. `none` means "the visit had no valid
 UTM". `''` means "the row predates attribution".
+
+## Video and key events in Axiom
+
+The owner questions this section answers: how often and for which providers
+people add keys, whether they open the video guides, whether a play was
+autoplay or a click, and how long they watched. It covers the keys page, the
+public `/guides/<slug>` pages and the home page video.
+
+Only `attributes.*` carries the new fields. `attributes` is a declared Axiom
+map field (see `docs/axiom-map-fields.md`), so none of them adds to the
+256-field schema. The only flat field involved is `analytics.event`, which
+already existed. Query a nested key with `attributes.analytics.<key>` and cast
+it (`todouble(...)`, `tostring(...)`) because a map value is untyped.
+
+### Client events (`POST /api/v1/events`)
+
+Every accepted client event logs `analytics.event` (flat) and
+`attributes.analytics.target`, `.surface` and `.path`. A key is omitted when
+the client did not send it. The server derives `surface` from `path`.
+
+`target` is logged only when it is validated. For `key_guide_open`,
+`key_guide_video_play` and `video_watch` the endpoint already rejects anything
+but a provider id (or `demo` for `video_watch`), so the value is logged as is.
+For every other event `target` is free text from the client, so it is logged
+only when it matches `^[a-z0-9/_#.:-]{1,100}$` and is otherwise omitted from
+the wide event. Analytics Engine keeps its own 100-character truncation of the
+raw `target` regardless of this rule.
+
+| `surface` | `path` |
+| --- | --- |
+| `home` | `/` |
+| `keys` | `/profile/keys` |
+| `guide` | `/guides/<slug>` (`^/guides/[a-z0-9-]{1,64}$`) |
+| `byok` | `/byok` |
+| `legal` | `/privacy-policy`, `/terms-of-use`, `/cookie-policy` |
+
+The endpoint used to reject `/byok` and `/guides/<slug>` with a 400 (the client
+swallows the error), so every event from those pages was lost. A trailing slash
+is stripped before the path is checked.
+
+| `analytics.event` | Fires when | `target` |
+| --- | --- | --- |
+| `key_guide_open` | A key guide accordion on `/profile/keys` becomes open, either by the user (`trigger` `user`) or on its own because the key is missing (`trigger` `auto`). Never on collapse. Once per provider per visit. | provider id |
+| `key_guide_video_play` | A guide video starts. Keys page: the guide player. `/guides/<slug>`: the shared landing player with `guideProvider` set. | provider id |
+| `video_play` | The home page demo video starts. Once per page view. | `demo` |
+| `video_complete` | Playback ends. | `demo`, or the provider id on a guide page |
+| `video_watch` | A viewing session ends. See below. | `demo` or provider id |
+
+`/guides/<slug>` has no accordion, so it sends no `key_guide_open`.
+
+Extra `attributes.analytics.*` keys:
+
+| Key | Events | Values |
+| --- | --- | --- |
+| `trigger` | `video_play`, `key_guide_video_play`, `video_watch` | `autoplay` or `user` |
+| `trigger` | `key_guide_open` | `auto` or `user` |
+| `watchedSeconds` | `video_watch` | played media time, rounded to 0.1 s, 0 to 86400 |
+| `durationSeconds` | `video_watch` | video length, rounded to 0.1 s, 0 to 86400 |
+| `completionPercent` | `video_watch` | furthest position reached / duration, integer 0 to 100 |
+| `endReason` | `video_watch` | `pause`, `ended`, `hidden`, `offscreen`, `unmount` |
+
+The Analytics Engine `value` (`double1`) stays as before: `0` autoplay and
+`1` user for the two play events, `0` auto and `1` user for `key_guide_open`,
+and `watchedSeconds` for `video_watch`. The
+server fills `value` from `watchedSeconds` when the client omits it.
+`video_watch` needs `target`, `trigger`, `watchedSeconds`, `durationSeconds`,
+`completionPercent` and `endReason`, and a `target` of `demo` or a provider id,
+or it gets a 400. It also gets a 400 when `watchedSeconds` exceeds
+`durationSeconds` by more than 1 s; the client clamps `watchedSeconds` to the
+duration, so a larger value is not a real session.
+
+The endpoint checks `trigger` per event. `key_guide_open` accepts only `auto`
+or `user`, the three video events accept only `autoplay` or `user`, and a value
+from the other family gets a 400. `trigger` stays optional for
+`key_guide_open`. `user` means the user acted to see the guide: expanding the
+guide's own accordion, or expanding the key card whose guide inside was already
+open. `auto` means the guide became visible without a user action: the page
+loaded with a `?provider=` deep link or the default card expanded, or the key
+status resolved to missing. The key card reports who expanded it (a native
+toggle is `user`, the `open` prop flipping is `auto`) and the guide reads that
+when it becomes visible.
+
+#### Autoplay or user
+
+Only the keys page guide player autoplays: muted, when it is at least half
+visible, unless the user prefers reduced motion or has data saver on. A play
+that comes from that path is `autoplay`. A play from the Plyr button, a click
+on the video, or the keyboard is `user`. The home video and the `/guides/<slug>`
+player never autoplay, so their plays are always `user`.
+
+An autoplayed video that the user then unmutes counts as a `user` play: the
+guide player sends a `key_guide_video_play` with `trigger: 'user'` (once per
+provider and visit) and the open watch session switches to `user`. A play after
+a user pause is also `user`. A scroll-out pause followed by an automatic
+resume stays `autoplay`.
+
+The session trigger is decided when the session starts: a video that is
+unmuted at play start is `user`, so a viewer who unmuted earlier stays `user`
+on later autoplay resumes. The one-time upgrade on unmute still applies to a
+session that started muted. A `playing` event after a rebuffer is not a new play.
+
+#### Watch sessions
+
+`app/composables/video-watch-analytics.ts` is shared by both players. One
+session starts at a play and ends at the first of: `pause` (a real user pause),
+`offscreen` (the guide player paused itself because it scrolled out of view,
+or PiP closed while off screen), `ended`, `visibilitychange` to hidden or
+`pagehide` (`hidden`), or the component unmounting (`unmount`). Each session is sent at
+most once. The next play starts a new session with its own trigger. If the tab
+is hidden while the video keeps playing, a new `autoplay` or `user` session
+(same trigger) starts when the tab is visible again and playback continues.
+
+- `watchedSeconds` adds the `timeupdate` deltas. A delta above 1.5 s (a seek)
+  or below 0 (a seek back, a loop restart) adds nothing. The total is capped at
+  `durationSeconds`, so a looping guide video tops out at its length.
+- The guide videos loop, so `ended` never fires for them. A session
+  that watches several loops ends by `pause`, `offscreen`, `hidden` or
+  `unmount`, and its `watchedSeconds` clamps at the duration instead of
+  counting every loop. Read `watchedSeconds` equal to `durationSeconds` as
+  "watched at least one full pass".
+- `completionPercent` uses the furthest position, not the played time.
+- A session under 1 s of played time is not sent.
+- `hidden` and `unmount` use `fetch` with `keepalive: true` so the request
+  survives the page unload. `pause` and `ended` use a normal request.
+
+The consent behaviour is unchanged: these events carry no user id and no
+cookie and use the same endpoint as the other landing events.
+
+```kusto
+['besidka-prod']
+| where ['analytics.event'] == 'video_watch'
+| summarize avg(todouble(attributes.analytics.watchedSeconds)) by tostring(attributes.analytics.target)
+```
+
+Watch time and completion by surface and trigger:
+
+```kusto
+['besidka-prod']
+| where ['analytics.event'] == 'video_watch'
+| summarize
+    sessions = count(),
+    avg_watched = avg(todouble(attributes.analytics.watchedSeconds)),
+    avg_completion = avg(todouble(attributes.analytics.completionPercent))
+  by tostring(attributes.analytics.surface), tostring(attributes.analytics.trigger)
+```
+
+Autoplay versus user plays per provider:
+
+```kusto
+['besidka-prod']
+| where ['analytics.event'] == 'key_guide_video_play'
+| summarize plays = count() by tostring(attributes.analytics.target), tostring(attributes.analytics.trigger)
+```
+
+Guide opens by provider:
+
+```kusto
+['besidka-prod']
+| where ['analytics.event'] == 'key_guide_open'
+| summarize opens = count() by tostring(attributes.analytics.target)
+```
+
+Open to play to watched, per provider (events, not people):
+
+```kusto
+['besidka-prod']
+| where ['analytics.event'] in ('key_guide_open', 'key_guide_video_play', 'video_watch')
+| summarize count() by tostring(attributes.analytics.target), tostring(['analytics.event'])
+```
+
+### Key saves (server)
+
+Every key `POST` and `DELETE` handler under `server/api/v1/profiles/keys/<provider>/`
+calls `recordKeyEvent` from `server/utils/analytics/key-events.ts`, which logs:
+
+| Field | Values |
+| --- | --- |
+| `attributes.keys.provider` | the `providerMeta` id: `google`, `openai`, `anthropic`, `xai`, `deepseek`, `moonshotai`, `qwen`, `openrouter`, `brave`, `exa`, `vercel`, `cloudflare` |
+| `attributes.keys.action` | `created`, `updated`, `deleted` |
+
+The `vercel-gateway` and `cloudflare-gateway` routes log `vercel` and
+`cloudflare`. `attributes.activation.provider` (first key only) still holds the
+stored `keys.provider` value, so it reads `vercel-gateway` and
+`cloudflare-gateway`. The helper never sets `analytics.event`, so it does not
+clobber `first_provider_key_added` on the same request. A `deleted` row is
+logged even when no key existed, because the handler does not check first.
+These events live on the request's own wide event, so filter on the route to
+isolate them, or on the field being present.
+
+```kusto
+['besidka-prod']
+| where isnotnull(attributes.keys.provider)
+| summarize saves = count() by tostring(attributes.keys.provider), tostring(attributes.keys.action)
+```
 
 ## Analytics Engine queries
 

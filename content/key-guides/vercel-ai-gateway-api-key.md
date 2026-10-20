@@ -7,6 +7,27 @@ keyUrlLabel: Open Vercel AI Gateway keys page
 updatedAt: '2026-10-20'
 checkedAt: '2026-10-20'
 summary: One key for models from many providers, with a monthly spend budget you set yourself.
+video:
+  src: /videos/key-guide-vercel.mp4
+  poster: /key-guides/vercel.webp
+  duration: PT36S
+  uploadDate: '2026-10-20'
+  alt: Screen recording of Vercel AI Gateway. The API Keys page, the Create API Key dialog with a name and a $5 monthly budget, the new key shown once and masked, then the key pasted into Besidka Gateways and a first answer.
+  markers:
+    - time: "0:00"
+      label: Intro
+    - time: "0:03"
+      label: Open AI Gateway
+    - time: "0:07"
+      label: Set a $5 budget
+    - time: "0:14"
+      label: Copy your key
+    - time: "0:19"
+      label: Paste into Besidka
+    - time: "0:26"
+      label: First answer
+    - time: "0:32"
+      label: Done
 requirements:
   card: true
   cardNote: Yes. Vercel needs a payment method even for the free monthly credit.

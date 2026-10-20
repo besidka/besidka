@@ -22,6 +22,12 @@ const activationMocks = vi.hoisted(() => ({
 
 vi.mock('~~/server/utils/analytics/activation', () => activationMocks)
 
+const keyEventMocks = vi.hoisted(() => ({
+  recordKeyEvent: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/analytics/key-events', () => keyEventMocks)
+
 function createFakeKv() {
   const store = new Map<string, string>()
 
@@ -217,6 +223,12 @@ describe('openrouter key API', () => {
     await deleteHandler({} as any)
     expect(dbMock.spies.deleteFn).toHaveBeenCalledTimes(1)
     expect(await getHandler({} as any)).toEqual({ hasKey: false })
+
+    expect(keyEventMocks.recordKeyEvent.mock.calls).toEqual([
+      ['openrouter', 'created'],
+      ['openrouter', 'updated'],
+      ['openrouter', 'deleted'],
+    ])
   })
 
   it('never returns the stored key to the client', async () => {

@@ -7,10 +7,33 @@ keyUrlLabel: Open Anthropic Console keys page
 updatedAt: '2026-10-20'
 checkedAt: '2026-10-20'
 summary: Buy a small prepaid balance, create a key, and chat with Claude on your own bill.
+video:
+  src: /videos/key-guide-anthropic.mp4
+  poster: /key-guides/anthropic.webp
+  duration: PT38S
+  uploadDate: '2026-10-20'
+  alt: Screen recording of Claude Console. The API keys page, the Continue with an API key screen, the dialog for naming the new key, the new key shown once, then the key pasted into Besidka and a first answer from Claude.
+  markers:
+    - time: "0:00"
+      label: Get a Claude key
+    - time: "0:03"
+      label: Create key
+    - time: "0:07"
+      label: Continue with an API key
+    - time: "0:11"
+      label: Name the key
+    - time: "0:16"
+      label: Copy your key
+    - time: "0:21"
+      label: Paste into Besidka
+    - time: "0:28"
+      label: First answer
+    - time: "0:34"
+      label: Done
 requirements:
   card: true
   cardNote: Yes, to buy prepaid credits.
-  minimumTopUp: No minimum is published. Start with $5 (max $10).
+  minimumTopUp: No minimum is published. Start with $5.
   freeTier: No. The Claude API has no free tier.
   sources:
     - label: Anthropic API keys
@@ -26,7 +49,7 @@ requirements:
 ---
 
 1. Open the [Anthropic Console keys page](https://platform.claude.com/settings/keys) and sign in. New users verify a phone number first.
-2. Add credits before you create a key. In **Billing**, click **Buy credits**. Anthropic publishes no minimum, so start with $5 (max $10).
+2. Add credits before you create a key. In **Billing**, click **Buy credits**. Anthropic publishes no minimum, so start with $5.
 3. Back on the keys page, click **Create key**. If Anthropic shows a screen about identity federation, click **Continue with an API key**.
 4. Type a **Name** such as `Besidka` and pick **Expires**. The default is 30 days, so choose a later date if you do not want to create a new key next month. Leave **Linked account** and **Scope** as they are, then click **Create key**.
 5. In **Save your API key**, click **Copy key**, then **Done**. Anthropic shows the key only once, and it starts with `sk-ant-`.

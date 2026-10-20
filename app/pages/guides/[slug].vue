@@ -84,9 +84,22 @@
           :caption="guide.video.caption"
           :captions="guide.video.captions ?? []"
           :markers="guide.video.markers ?? []"
+          :guide-provider="guide.provider"
         />
         <template #fallback>
+          <img
+            v-if="guide.video.poster"
+            :src="guide.video.poster"
+            alt=""
+            width="1920"
+            height="1080"
+            loading="lazy"
+            decoding="async"
+            class="w-full aspect-video rounded-2xl object-cover bg-base-300
+              ring-1 ring-base-content/10 shadow-xl"
+          >
           <div
+            v-else
             class="skeleton skeleton--default w-full aspect-video
               rounded-2xl"
           />

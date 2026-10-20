@@ -80,6 +80,40 @@ describe('useLandingAnalytics utm', () => {
     expect(lastRequestBody().utm).toBeUndefined()
   })
 
+  it('sends video fields and keepalive when requested', () => {
+    useLandingAnalytics().track('video_watch', {
+      target: 'google',
+      value: 4.2,
+      trigger: 'autoplay',
+      watchedSeconds: 4.2,
+      durationSeconds: 60,
+      completionPercent: 10,
+      endReason: 'hidden',
+    }, { keepalive: true })
+
+    const [, options] = fetchMock.mock.calls.at(-1) ?? []
+
+    expect(options.keepalive).toBe(true)
+    expect(options.body).toMatchObject({
+      event: 'video_watch',
+      target: 'google',
+      value: 4.2,
+      trigger: 'autoplay',
+      watchedSeconds: 4.2,
+      durationSeconds: 60,
+      completionPercent: 10,
+      endReason: 'hidden',
+    })
+  })
+
+  it('does not set keepalive by default', () => {
+    useLandingAnalytics().track('cta_click', { target: '/signup' })
+
+    const [, options] = fetchMock.mock.calls.at(-1) ?? []
+
+    expect(options.keepalive).toBeUndefined()
+  })
+
   it('swallows request failures', async () => {
     fetchMock.mockRejectedValue(new Error('offline'))
 
