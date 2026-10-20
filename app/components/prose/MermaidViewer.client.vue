@@ -78,7 +78,8 @@
           >
             <button
               type="button"
-              class="btn btn-sm btn-square join-item"
+              class="btn btn-sm btn-square join-item tooltip tooltip-left"
+              data-tip="Zoom in"
               aria-label="Zoom in"
               data-testid="mermaid-zoom-in"
               @click="zoomIn"
@@ -87,12 +88,23 @@
             </button>
             <button
               type="button"
-              class="btn btn-sm btn-square join-item"
+              class="btn btn-sm btn-square join-item tooltip tooltip-left"
+              data-tip="Zoom out"
               aria-label="Zoom out"
               data-testid="mermaid-zoom-out"
               @click="zoomOut"
             >
               <Icon name="lucide:minus" size="16" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm btn-square join-item tooltip tooltip-left"
+              data-tip="Fit to screen"
+              aria-label="Fit to screen"
+              data-testid="mermaid-zoom-reset"
+              @click="fitToViewport"
+            >
+              <Icon name="lucide:locate-fixed" size="16" aria-hidden="true" />
             </button>
           </div>
         </div>

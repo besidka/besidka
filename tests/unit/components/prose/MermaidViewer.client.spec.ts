@@ -208,11 +208,52 @@ describe('prose/MermaidViewer.client.vue', () => {
 
     expect(mocks.instance.zoomOut).toHaveBeenCalledTimes(1)
 
-    expect(wrapper.findAll('.join-vertical button')).toHaveLength(2)
-    expect(wrapper.get('[data-testid="mermaid-zoom-in"]')
-      .attributes('aria-label')).toBe('Zoom in')
-    expect(wrapper.get('[data-testid="mermaid-zoom-out"]')
-      .attributes('aria-label')).toBe('Zoom out')
+    mocks.instance.reset.mockClear()
+
+    await wrapper.get('[data-testid="mermaid-zoom-reset"]').trigger('click')
+
+    expect(mocks.instance.reset).toHaveBeenCalledTimes(1)
+    expect(mocks.instance.reset).toHaveBeenCalledWith({ animate: false })
+  })
+
+  it('renders three labelled zoom buttons with left tooltips', async () => {
+    const wrapper = await mountViewer()
+
+    await vi.waitFor(() => {
+      expect(mocks.panzoom).toHaveBeenCalledTimes(1)
+    })
+
+    const buttons = wrapper.findAll('.join-vertical button')
+
+    expect(buttons).toHaveLength(3)
+
+    const expectations = [
+      { testId: 'mermaid-zoom-in', label: 'Zoom in', icon: 'lucide:plus' },
+      { testId: 'mermaid-zoom-out', label: 'Zoom out', icon: 'lucide:minus' },
+      {
+        testId: 'mermaid-zoom-reset',
+        label: 'Fit to screen',
+        icon: 'lucide:locate-fixed',
+      },
+    ]
+
+    expectations.forEach((expectation, index) => {
+      const button = buttons[index]!
+
+      expect(button.attributes('data-testid')).toBe(expectation.testId)
+      expect(button.attributes('aria-label')).toBe(expectation.label)
+      expect(button.attributes('data-tip')).toBe(expectation.label)
+      expect(button.classes()).toEqual(expect.arrayContaining([
+        'btn',
+        'btn-sm',
+        'btn-square',
+        'join-item',
+        'tooltip',
+        'tooltip-left',
+      ]))
+      expect(button.classes()).not.toContain('hitslop')
+      expect(button.html()).toContain(expectation.icon)
+    })
   })
 
   it('zooms with a plain wheel and prevents page scrolling', async () => {

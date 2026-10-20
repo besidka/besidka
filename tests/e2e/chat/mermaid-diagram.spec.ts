@@ -256,7 +256,7 @@ test.describe('Mermaid diagram viewer', () => {
     await expect(getViewer(page)).toHaveCount(0)
   })
 
-  test('zooms in and zooms out', async ({ page }) => {
+  test('zooms in, zooms out and fits to screen', async ({ page }) => {
     await waitForAllDiagrams(page)
     await openViewerFromButton(page, 0)
 
@@ -279,6 +279,56 @@ test.describe('Mermaid diagram viewer', () => {
     await expect
       .poll(() => readViewerScale(page))
       .toBeLessThan(fittedScale * 0.9)
+
+    await getViewer(page).locator('[data-testid="mermaid-zoom-reset"]').click()
+
+    await expect
+      .poll(() => readViewerScale(page))
+      .toBeCloseTo(fittedScale, 2)
+
+    await getViewer(page).locator('[data-testid="mermaid-zoom-in"]').click()
+
+    await expect
+      .poll(() => readViewerScale(page))
+      .toBeGreaterThan(fittedScale * 1.1)
+
+    await getViewer(page).locator('[data-testid="mermaid-zoom-reset"]').click()
+
+    await expect
+      .poll(() => readViewerScale(page))
+      .toBeCloseTo(fittedScale, 2)
+  })
+
+  test('shows a tooltip when hovering a zoom button', async ({ page }) => {
+    await waitForAllDiagrams(page)
+    await openViewerFromButton(page, 0)
+    await waitForSettledScale(page)
+
+    const zoomIn = getViewer(page).locator('[data-testid="mermaid-zoom-in"]')
+
+    await expect(zoomIn).toHaveAttribute('data-tip', 'Zoom in')
+    await expect(
+      getViewer(page).locator('[data-testid="mermaid-zoom-out"]'),
+    ).toHaveAttribute('data-tip', 'Zoom out')
+    await expect(
+      getViewer(page).locator('[data-testid="mermaid-zoom-reset"]'),
+    ).toHaveAttribute('data-tip', 'Fit to screen')
+
+    await zoomIn.hover()
+
+    await expect
+      .poll(() => zoomIn.evaluate((element) => {
+        const pseudo = getComputedStyle(element, '::before')
+
+        return {
+          content: pseudo.content,
+          opacity: pseudo.opacity,
+        }
+      }))
+      .toMatchObject({
+        content: expect.stringContaining('Zoom in'),
+        opacity: '1',
+      })
   })
 
   test('zooms around the cursor with the mouse wheel', async ({ page }) => {
