@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="compact"
-    data-testid="models-picker-key-banner"
+    :data-testid="testId"
     class="shrink-0 flex items-center gap-2 px-2.5 py-2 rounded-t-2xl border-b border-warning/30 bg-warning/10"
   >
     <Icon
@@ -18,8 +18,8 @@
       </span>
     </span>
     <NuxtLink
-      to="/profile/keys"
-      data-testid="models-picker-key-banner-link"
+      :to="to"
+      :data-testid="`${testId}-link`"
       class="btn btn-warning btn-xs shrink-0 gap-1 rounded-full"
       @click="emit('navigate')"
     >
@@ -43,7 +43,8 @@
       {{ description }}
     </p>
     <NuxtLink
-      to="/profile/keys"
+      v-if="!hideAction"
+      :to="to"
       data-testid="models-picker-key-prompt-link"
       class="btn btn-warning btn-xs mt-1 gap-1 rounded-full"
       @click="emit('navigate')"
@@ -64,9 +65,15 @@ withDefaults(
     description: string
     actionLabel?: string
     compact?: boolean
+    to?: string
+    testId?: string
+    hideAction?: boolean
   }>(),
   {
     actionLabel: 'Add a key',
+    to: '/profile/keys',
+    testId: 'models-picker-key-banner',
+    hideAction: false,
   },
 )
 
