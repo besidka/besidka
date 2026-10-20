@@ -10,7 +10,7 @@ summary: One key for models from many providers. Free models work before you buy
 video:
   src: /videos/key-guide-openrouter.mp4
   poster: /key-guides/openrouter.webp
-  duration: PT38S
+  duration: PT39S
   uploadDate: '2026-10-20'
   alt: Screen recording of OpenRouter. The API Keys page, the Create API Key dialog with a name, expiration and credit limit, the email verification step, the new key shown once and masked, then the key pasted into Besidka and a first answer.
   markers:
@@ -20,15 +20,15 @@ video:
       label: New Key
     - time: "0:07"
       label: Name and credit limit
-    - time: "0:13"
+    - time: "0:14"
       label: Email code
-    - time: "0:16"
+    - time: "0:17"
       label: Copy your key
-    - time: "0:21"
+    - time: "0:22"
       label: Paste into Besidka
-    - time: "0:28"
+    - time: "0:29"
       label: First answer
-    - time: "0:34"
+    - time: "0:35"
       label: Done
 requirements:
   card: false
