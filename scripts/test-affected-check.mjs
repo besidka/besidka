@@ -216,6 +216,30 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/context-menu-image.spec.ts',
     'tests/e2e/chat/context-menu-image-desktop.spec.ts',
     'tests/e2e/chat/gateway-image-generation.spec.ts',
+    'tests/e2e/chat/mermaid-diagram.spec.ts',
+  ]
+  const mermaidDiagramTests = [
+    'tests/unit/utils/markdown-fences.spec.ts',
+    'tests/unit/composables/diagram-renderer.spec.ts',
+    'tests/unit/utils/diagram-fonts.spec.ts',
+    'tests/unit/utils/diagram-export-color.spec.ts',
+    'tests/unit/utils/diagram-export-drawio.spec.ts',
+    'tests/unit/utils/diagram-export-fonts.spec.ts',
+    'tests/unit/utils/diagram-export-png.spec.ts',
+    'tests/unit/utils/diagram-export-svg.spec.ts',
+    'tests/unit/utils/diagram-export-theme.spec.ts',
+    'tests/unit/composables/diagram-export.spec.ts',
+    'tests/unit/utils/pele-examples.spec.ts',
+    'tests/unit/utils/diagram-theme-contrast.spec.ts',
+    'tests/unit/workers/diagram.worker.spec.ts',
+    'tests/unit/composables/markdown-source.spec.ts',
+    'tests/unit/components/prose/PreStream.spec.ts',
+    'tests/unit/components/prose/MermaidDiagram.spec.ts',
+    'tests/unit/components/prose/MermaidViewer.client.spec.ts',
+    'tests/unit/components/prose/MermaidActionMenu.spec.ts',
+    'tests/unit/components/prose/MermaidEditor.spec.ts',
+    'tests/unit/components/Chat/MarkdownSource.spec.ts',
+    'tests/e2e/chat/mermaid-diagram.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -1243,6 +1267,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/prose\/A\.vue|app\/composables\/chat-format\.ts)$/,
       tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/prose\/(PreStream|MermaidDiagram|MermaidViewer\.client|MermaidActionMenu|MermaidEditor)\.vue|server\/utils\/chats\/test\/mermaid-fixture\.ts|app\/composables\/(diagram-renderer|diagram-export|markdown-source|chat-format)\.ts|app\/utils\/(markdown-fences|mermaid-menu-actions|diagram-render-core|diagram-fonts|diagram-export-[a-z-]+)\.ts|app\/assets\/css\/(main|diagram-theme)\.css|tests\/utils\/diagram-theme-colors\.ts|tests\/fixtures\/pele-examples\.json|app\/workers\/diagram\.worker\.ts|app\/types\/diagram(-export)?\.d\.ts|app\/components\/Chat\/MarkdownSource\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: mermaidDiagramTests,
     },
     {
       pattern:

@@ -33,6 +33,7 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - [Evlog](https://evlog.dev/) (observability and logging)
 - [Mediabunny](https://mediabunny.dev/) (high-performance streaming video from a Cloudflare R2 bucket)
 - [Plyr](https://plyr.io/) (video player)
+- [Pele](https://pele.run/) (Mermaid diagrams rendered to SVG)
 
 ## Features
 
@@ -50,6 +51,7 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - **Resumable Streams:** Refresh the page and pick up right where you left off
 - **Chat History:** Search, pin and rename past conversations
 - **Syntax Highlighting:** Clean, readable code blocks out of the box
+- **Mermaid Diagrams:** Flowcharts, sequence, class, state, ER, Gantt, pie and more render as themed SVG diagrams right in the chat, with a one-click toggle back to the source
 - **No Install Required:** Works in any browser, sign in and go
 - **Better Auth:** Email/password, Google or GitHub sign-in
 

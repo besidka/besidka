@@ -9,6 +9,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 */
 
 @import "tailwindcss";
+@import "./diagram-theme.css";
 
 @source "../../";
 
@@ -518,8 +519,8 @@ html body[data-studio-active][data-expand-sidebar]::before {
     @apply font-semibold;
   }
 
-  ol,
-  ul {
+  ol:not(.menu),
+  ul:not(.menu) {
     @apply list my-4 ml-8 marker:text-accent;
   }
 
@@ -527,7 +528,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
     @apply list-decimal;
   }
 
-  ul {
+  ul:not(.menu) {
     @apply list-disc;
   }
 
@@ -543,7 +544,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
     }
   }
 
-  li {
+  :is(ol, ul):not(.menu) > li {
     @apply pl-1;
   }
 
