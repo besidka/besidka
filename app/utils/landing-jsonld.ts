@@ -114,6 +114,10 @@ export function buildSoftwareApplicationLd(
   }
 }
 
+function stripMarkdownLinks(text: string): string {
+  return text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+}
+
 export function buildFaqPageLd(
   faqs: FaqItem[],
   ids?: LandingLdIds,
@@ -124,7 +128,7 @@ export function buildFaqPageLd(
       'name': faq.question,
       'acceptedAnswer': {
         '@type': 'Answer',
-        'text': faq.answer,
+        'text': stripMarkdownLinks(faq.answer),
       },
     }
   })

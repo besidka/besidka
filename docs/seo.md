@@ -459,7 +459,11 @@ explainers above:
   [Deliberate non-actions](#deliberate-non-actions)).
 - **Footer.** `LandingFooter.vue` generates the key-guide links from the
   `keyGuides` collection, so a new guide appears there without a code change.
-  `/byok` does not link to any key guide yet, to avoid dead links.
+  The home page links `/guides/gemini-api-key` from the hero (a "How to get
+  the key" text link, the optional `hero.guideLink` frontmatter field), the
+  "Can I start for free?" FAQ answer and the subscriptions answer, and `/byok`
+  links it from its free Gemini key section. `buildFaqPageLd()` strips
+  markdown links so the FAQPage JSON-LD answer text stays plain.
 - **Gateway guides.** A guide's `provider` may be a gateway id (for example
   `openrouter`). The "Add your key" deep link then opens the Gateways tab and
   that gateway's card; see [Sign-up redirect (`next`)](#sign-up-redirect-next).

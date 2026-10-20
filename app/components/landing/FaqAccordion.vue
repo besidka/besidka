@@ -26,7 +26,7 @@
         <MDCCached
           :value="item.answer"
           :cache-key="`faq-${index}`"
-          :components="components"
+          :components="faqComponents"
           :parser-options="{ highlight: false }"
           class="chat-markdown text-sm text-base-content/70 leading-relaxed"
           unwrap="p"
@@ -37,6 +37,8 @@
 </template>
 
 <script setup lang="ts">
+import type { DefineComponent } from 'vue'
+
 withDefaults(defineProps<{
   items: { question: string, answer: string }[]
   groupName?: string
@@ -45,4 +47,9 @@ withDefaults(defineProps<{
 })
 
 const { components } = useChatFormat()
+
+const faqComponents = {
+  ...components,
+  a: resolveComponent('NuxtLink') as DefineComponent,
+}
 </script>

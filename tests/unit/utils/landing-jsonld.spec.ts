@@ -134,6 +134,18 @@ describe('buildFaqPageLd', () => {
     ])
   })
 
+  it('strips markdown links from the answer text', () => {
+    const faqPage = buildFaqPageLd([
+      {
+        question: 'Can I start for free?',
+        answer: 'Yes. [How to get a key](/guides/gemini-api-key) has steps.',
+      },
+    ])
+
+    expect(faqPage.mainEntity[0].acceptedAnswer.text)
+      .toBe('Yes. How to get a key has steps.')
+  })
+
   it('omits @id and isPartOf when called without ids', () => {
     const faqPage = buildFaqPageLd(FAQS)
 

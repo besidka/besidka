@@ -251,7 +251,7 @@ more colons, indented two spaces:
 | ------------ | -------------------- | ---------------------------------------------------------- |
 | `title`      | text                 | Page `<title>` tag                                         |
 | `description`| textarea             | SEO meta description and OG description                    |
-| `hero`       | object               | headline, subheadline, eyebrow, CTAs (each CTA: `label`, `href`, optional `icon`) |
+| `hero`       | object               | headline, subheadline, eyebrow, CTAs (each CTA: `label`, `href`, optional `icon`), optional `guideLink` (`label`, `href`; small text link under the CTAs) |
 | `carousel`   | array of objects     | `src`, `alt`, `caption` per slide                          |
 | `steps`      | array of objects     | `icon`, `title`, `body` per step                           |
 | `features`   | array of objects     | `icon`, `title`, `body` per feature                        |

@@ -67,6 +67,9 @@ export default defineContentConfig({
             secondaryCta: cta
               .optional()
               .describe('Secondary call-to-action button'),
+            guideLink: cta
+              .optional()
+              .describe('Small text link under the call-to-action buttons'),
           })
           .describe('Hero section'),
         carousel: z

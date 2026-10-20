@@ -34,7 +34,7 @@ To start, create a key on the [OpenAI API keys page](https://platform.openai.com
 
 ## How to get a free Gemini API key without a card
 
-Google AI Studio is the easiest way to get a first key. You need a Google account. You do not need a card or a billing account.
+Google AI Studio is the easiest way to get a first key. You need a Google account. You do not need a card or a billing account. Step-by-step guide with a video: [How to get a Google AI Studio (Gemini) API key](/guides/gemini-api-key).
 
 1. Open the [Google AI Studio API keys page](https://aistudio.google.com/apikey).
 2. Sign in with a Google account and accept the terms if asked.
