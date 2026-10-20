@@ -445,6 +445,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth.spec.ts',
     'tests/unit/composables/utm-attribution.spec.ts',
     'tests/unit/composables/landing-analytics.spec.ts',
+    'tests/unit/composables/key-guide-analytics.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
     'tests/integration/api/profile-keys-qwen.spec.ts',
@@ -471,6 +472,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-redirect.spec.ts',
     'tests/unit/components/LandingFooter.spec.ts',
     'tests/unit/config/seo-pages.spec.ts',
+    'tests/unit/content/key-guides.spec.ts',
   ]
 
   const pushNotificationTests = [
@@ -522,9 +524,27 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
     'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
     'tests/unit/components/Profile/Keys/GatewaysInfo.spec.ts',
+    'tests/unit/components/Profile/Keys/Guide.spec.ts',
+    'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
     'tests/unit/components/ProviderIcon.spec.ts',
     'tests/unit/utils/provider-meta.spec.ts',
+    'tests/e2e/profile/key-guides.spec.ts',
+  ]
+  const profileKeyGuideTests = [
+    'tests/unit/content/key-guides.spec.ts',
+    'tests/unit/config/content-frontmatter.spec.ts',
+    'tests/unit/pages/guides/[slug].spec.ts',
+    'tests/unit/composables/key-guide-analytics.spec.ts',
+    'tests/unit/utils/key-guide-video.spec.ts',
+    'tests/unit/components/Profile/Keys/Guide.spec.ts',
+    'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
+    'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
+    'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/server/routes/videos/[name].spec.ts',
+    'tests/integration/api/events-ingest.spec.ts',
+    'tests/e2e/profile/key-guides.spec.ts',
   ]
 
   const turnstileTests = [
@@ -534,6 +554,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/(auth)/signin.spec.ts',
     'tests/unit/pages/(auth)/signup.spec.ts',
     'tests/unit/pages/(auth)/reset-password.spec.ts',
+  ]
+
+  const postAuthRedirectTests = [
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/middleware/00.auth.global.spec.ts',
+    'tests/unit/composables/social-oauth.spec.ts',
+    'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/unit/pages/(auth)/signup.spec.ts',
+    'tests/unit/pages/(auth)/2fa.spec.ts',
+    'tests/e2e/auth/signin.spec.ts',
   ]
 
   const seoTests = [
@@ -840,6 +870,11 @@ export function getAffectedTests(changedFiles) {
       tests: [...keysApiTests, ...userKeysTests],
     },
     {
+      pattern:
+        /^(app\/composables\/key-guide-analytics\.ts|app\/utils\/key-guide-video\.ts|shared\/utils\/key-guide-schema\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
+      tests: profileKeyGuideTests,
+    },
+    {
       pattern: /^app\/composables\/clipboard\.ts$/,
       tests: [
         'tests/unit/composables/clipboard.spec.ts',
@@ -875,6 +910,11 @@ export function getAffectedTests(changedFiles) {
       tests: turnstileTests,
     },
     {
+      pattern:
+        /^(shared\/utils\/auth-redirect\.ts|app\/middleware\/00\.auth\.global\.ts|app\/composables\/social-oauth\.ts|app\/pages\/\(auth\)\/(signin|signup|2fa)\.vue|tests\/e2e\/helpers\/auth\.ts)$/,
+      tests: postAuthRedirectTests,
+    },
+    {
       pattern: /^nuxt\.config\.ts$/,
       tests: [...seoTests, ...cookieConsentTests],
     },
@@ -887,7 +927,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/config/seo-pages.spec.ts'],
     },
     {
-      pattern: /^content\/(index|guides\/.*|legal\/.*)\.md$/,
+      pattern: /^content\/(index|guides\/.*|legal\/.*|key-guides\/.*)\.md$/,
       tests: ['tests/unit/config/content-frontmatter.spec.ts'],
     },
     {

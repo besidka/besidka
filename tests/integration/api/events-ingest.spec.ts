@@ -239,6 +239,85 @@ describe('events ingest API', () => {
     })
   })
 
+  it('accepts the key guide events from the keys page path', async () => {
+    const handler = await getEventsHandler()
+    const event = makeEvent(
+      {
+        event: 'key_guide_video_play',
+        path: '/profile/keys',
+        target: 'google',
+        value: 0,
+      },
+      { 'sec-fetch-site': 'same-origin' },
+    )
+
+    const result = await handler(event as any)
+
+    expect(result).toEqual({ ok: true })
+    expect(mocks.trackLandingEvent).toHaveBeenCalledWith(
+      'key_guide_video_play',
+      { path: '/profile/keys', target: 'google', value: 0, utm: {} },
+      expect.anything(),
+    )
+  })
+
+  it('normalises a trailing slash on the keys page path', async () => {
+    const handler = await getEventsHandler()
+    const event = makeEvent(
+      {
+        event: 'key_guide_open',
+        path: '/profile/keys/',
+        target: 'openrouter',
+      },
+      { 'sec-fetch-site': 'same-origin' },
+    )
+
+    const result = await handler(event as any)
+
+    expect(result).toEqual({ ok: true })
+    expect(mocks.trackLandingEvent).toHaveBeenCalledWith(
+      'key_guide_open',
+      { path: '/profile/keys', target: 'openrouter', value: undefined, utm: {} },
+      expect.anything(),
+    )
+  })
+
+  it('still rejects an unknown path with a trailing slash (400)', async () => {
+    const handler = await getEventsHandler()
+    const event = makeEvent(
+      { event: 'cta_click', path: '/admin/' },
+      { 'sec-fetch-site': 'same-origin' },
+    )
+
+    await expect(handler(event as any)).rejects.toMatchObject({
+      statusCode: 400,
+    })
+  })
+
+  for (const eventName of ['key_guide_open', 'key_guide_video_play']) {
+    for (const target of [
+      undefined,
+      'not-a-provider',
+      '__proto__',
+      'constructor',
+      'toString',
+    ]) {
+      it(`rejects ${eventName} with target ${String(target)} (400)`,
+        async () => {
+          const handler = await getEventsHandler()
+          const event = makeEvent(
+            { event: eventName, path: '/profile/keys', target },
+            { 'sec-fetch-site': 'same-origin' },
+          )
+
+          await expect(handler(event as any)).rejects.toMatchObject({
+            statusCode: 400,
+          })
+          expect(mocks.trackLandingEvent).not.toHaveBeenCalled()
+        })
+    }
+  }
+
   it('accepts all client-allowed event names', async () => {
     const allowedEvents = [
       'landing_page_view',
@@ -248,6 +327,8 @@ describe('events ingest API', () => {
       'video_play',
       'video_complete',
       'github_click',
+      'key_guide_open',
+      'key_guide_video_play',
     ]
 
     mocks.trackLandingEvent.mockResolvedValue(undefined)
@@ -255,7 +336,7 @@ describe('events ingest API', () => {
     for (const name of allowedEvents) {
       const handler = await getEventsHandler()
       const event = makeEvent(
-        { event: name },
+        { event: name, target: 'google' },
         { 'sec-fetch-site': 'same-origin' },
       )
 

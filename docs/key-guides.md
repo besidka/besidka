@@ -1,0 +1,179 @@
+# Key guides
+
+Every provider card on `/profile/keys` can show a "How to get a key" guide: a
+short video, four to seven steps, a "What you need" block and a button that
+opens the provider's console. The text lives in Nuxt Content, one Markdown
+file per provider. The same file is also the public SEO page at
+`/guides/<slug>` (`app/pages/guides/[slug].vue`, TechArticle and VideoObject
+JSON-LD, sitemap, footer links); that route, its SEO rules and the
+`/guides` prefix are documented in `docs/seo.md` ("Public key guides"). Do not
+put key guides in the `guides` collection: that one holds the `/byok`
+explainer and stays capped (see `docs/seo.md`).
+
+Related docs: `docs/seo.md` (public route, sign-up `next` redirect),
+`docs/landing-studio.md` ("Demo video player", the R2 video route),
+`docs/analytics-utm.md` (the two guide events).
+
+## Content
+
+One file per provider in `content/key-guides/<slug>.md`, where the slug is
+query-shaped and ends in `-api-key` (`gemini-api-key.md`,
+`openrouter-api-key.md`). The slug is the public URL `/guides/<slug>`; the
+`provider` frontmatter ties the file to a card. Provider ids come from
+`shared/utils/provider-meta.ts`: `anthropic`, `google`, `openai`, `xai`,
+`deepseek`, `moonshotai`, `qwen`, `brave`, `exa`, `vercel`, `openrouter`,
+`cloudflare`. The collection is `keyGuides` in `content.config.ts`, type
+`page`, source `key-guides/*.md` with `prefix: '/guides'`.
+
+The field schema lives in `shared/utils/key-guide-schema.ts` together with
+the `httpsUrl` and `siteRelativeOrHttpsUrl` helpers. `content.config.ts`
+imports it and adds only `sitemap: defineSitemapSchema()`. It is not inline in
+`content.config.ts` so `tests/unit/content/key-guides.spec.ts` can validate
+the same schema: importing `content.config.ts` itself fails under Vitest. That
+spec checks every `content/key-guides/*.md` file: the `-api-key` slug, a known
+`provider`, at most one guide per provider, and that the frontmatter parses
+against the schema. `tests/unit/config/content-frontmatter.spec.ts` also
+covers these files (title, description and summary stay strings).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `title` | string | Page title and H1 on `/guides/<slug>` |
+| `description` | string | Meta description and social text |
+| `provider` | enum | Provider id from `providerMeta`. One guide per id |
+| `summary` | string, optional | One line above the steps on the keys page |
+| `updatedAt` | string | ISO date the guide last changed. `dateModified` and sitemap `lastmod` |
+| `checkedAt` | string | ISO date the facts were verified. Shown as "Checked <date>" |
+| `keyUrl` | https URL | Console page where the key is created |
+| `keyUrlLabel` | string, optional | Full button text, e.g. "Open Google AI Studio keys page". Falls back to "Open <provider label> keys page" on the keys page |
+| `requirements.card` | boolean | Whether a payment card is needed to start |
+| `requirements.cardNote` | string, optional | Plain-language card answer shown instead of Required / Not required |
+| `requirements.minimumTopUp` | string, optional | Smallest prepaid top-up |
+| `requirements.freeTier` | string, optional | What the free tier offers |
+| `requirements.sources` | `{ label, url }[]` | Official https pages the facts come from |
+| `video.src` | path or https URL | `/videos/key-guide-<id>.mp4` |
+| `video.poster` | path or https URL | `/key-guides/<id>.webp` |
+| `video.duration` | ISO 8601 | e.g. `PT34S`, for VideoObject |
+| `video.uploadDate` | string | ISO date the video was published |
+| `video.caption` | string, optional | Visible caption under the player on `/guides/<slug>`, also the VideoObject name |
+| `video.alt` | string, optional | What the video shows. Accessible name of the poster and player on the keys page |
+| `video.captions` | `{ src, label, srclang, default? }[]` | WebVTT tracks for the public page player |
+
+Omit `video` entirely when there is no real video yet: VideoObject JSON-LD is
+only emitted when it is set, and the keys page then shows no video block.
+
+The Markdown body is the ordered steps list plus optional short notes, such as
+the Google free-tier data-use caveat or the "when a gateway makes sense"
+sentence. It is rendered with `ContentRenderer` and the project prose styles
+on both pages.
+
+`content/key-guides/gemini-api-key.md` and `openrouter-api-key.md` carry
+verified copy. When a console flow or a price changes, re-verify the facts
+against `requirements.sources` and bump `checkedAt` and `updatedAt`.
+
+After a schema change, reset the local content database, or Studio fails with
+"table _content_keyGuides has N columns but M values":
+
+```bash
+rm -f .data/content/contents.sqlite
+```
+
+If `no such table _content_*` appears in dev, `rm -rf .data/content` and
+restart.
+
+## Video and poster
+
+- Videos are served from the `CMS_BUCKET` R2 bucket by
+  `server/routes/videos/[name].ts` as `key-guide-<id>.mp4`. The allow-list is
+  derived from the `providerMeta` ids, so a name outside the 12 ids is a 404.
+  The route keeps its single-read, range and conditional-request behavior.
+- Put the encoded file in `.files/key-guide-<id>.mp4` (gitignored) and run
+  `pnpm run cms:files:upload`. Every `.files/key-guide-*.mp4` that exists is
+  validated with mediabunny like the demo renditions and uploaded. A missing
+  one is not an error. `cms:files:download` only pulls the known demo assets,
+  not the guides. Encode like the demo: H.264, `yuv420p`, fixed 2-second GOP,
+  `+faststart`. The player autoplays muted and loops, so no audio is needed.
+- Posters are committed at `public/key-guides/<id>.webp`, 16:9. The two
+  committed files are neutral gradients. The component tolerates a missing
+  poster and shows a plain box.
+
+## Where it renders
+
+- `app/pages/profile/keys.vue` loads every guide once with `useAsyncData` and
+  `queryCollection('keyGuides').all()`, keys them by provider, and passes each
+  card its `guide`. No guide for a provider means no disclosure.
+- `app/components/Profile/Keys/Guide.vue` is one `<details>` below the key form
+  and Save/Delete row, so the key input stays at the top of the card on
+  mobile. It takes `provider`, `doc` and `status`. The status comes from the
+  card, not from `useUserKeys()`, because the Cloudflare card derives its own
+  status from its endpoint.
+- Default state: server-rendered and hydrated closed. It opens once the key
+  status resolves to missing and stays closed when saved. The first resolved
+  status wins. A user toggle is never overridden. The status is `unknown`
+  during hydration (`ProviderKeyCard.vue` reads `useNuxtApp().isHydrating`),
+  because the user-keys summary can already be loaded by the time the lazy
+  card hydrates and would otherwise cause a hydration mismatch. On an in-app
+  navigation the cached summary is used on the first render, so the badge and
+  the guide state do not flash.
+- `Card.vue` binds `open` directly, so an explicit `?provider=` card is
+  server-rendered open with no layout shift. It emits `expandedChange` on
+  mount, on an `open` prop change and on every native `toggle`; the key cards
+  pass it up and give the guide `card-open`. The guide counts as visible when
+  the card is open and the guide is open.
+- `app/components/Profile/Keys/GuideVideo.client.vue` is a lean Plyr player
+  with the `.landing-player` theme. It is not `LandingVideoPlayer`: that one
+  hard-codes the demo analytics, markers, qualities and thumbnails. The poster
+  `<img loading="lazy">` shows first. The player mounts only once the guide is
+  open and the video box is within 300px of the viewport, observed against the
+  `.js-page-content` scroll container. It autoplays muted and looping when at
+  least half visible, and pauses when out of view or after the user pauses. It
+  never autoplays under `prefers-reduced-motion: reduce` or
+  `navigator.connection.saveData`. Then the poster and a play button show. If
+  the `<video>` fires `error` (missing file, 404), the player emits `failed`,
+  `Guide.vue` unmounts it and shows the poster with the note "Video
+  unavailable. Follow the steps below.". The poster `alt` carries the
+  `video.alt` accessible name; the player's `<video>` uses the same label.
+- The steps text is the full alternative to the video.
+
+## Deep link contract
+
+`/profile/keys?provider=<id>` accepts the same ids as `resolveSafeNextPath` in
+`shared/utils/auth-redirect.ts`: an enabled direct provider (providers tab),
+an enabled gateway (gateways tab) or an enabled search provider (search tab).
+Anything else, including inherited object keys such as `__proto__` and
+`constructor` (`Object.hasOwn` guard), is ignored. The page expands that card
+and scrolls it to the top of the `.js-page-content` scroller. The target
+`<li>` carries `data-testid="key-provider-target"` for tests. It has no
+`scroll-margin-top`: the re-alignment below measures drift from the scroller
+top, so a scroll margin would read as permanent drift.
+
+The scroll starts only after the target card has rendered and reported itself
+expanded (`expandedChange`), so it works on a hard load and when the lazy card
+mounts late after an in-app navigation. The router's own scroll-to-top and
+late layout above the card (the async Cloudflare card) would undo a single
+scroll, so the page keeps re-aligning the card, on list resize and on scroll
+drift, until the user wheels, touches, presses a key or clicks, or two seconds
+pass. `provider` wins over `?tab=`. `?tab=` still works alone;
+`app/composables/chat-input.ts` links to `?tab=search`.
+
+With neither query and no saved key at all, the page opens the providers tab
+and expands the Google card. That decision waits for hydration to finish, so
+this is the only case where a card expands after mount.
+
+A signed-out visitor who opens `/profile/keys?provider=google` is sent to
+`/signin?next=/profile/keys?provider=google` by
+`app/middleware/00.auth.global.ts`, and sign-in, sign-up, OAuth, passkey and
+2FA return to it. The middleware only adds `next` when `resolveSafeNextPath`
+accepts the page and it is not the default `/chats/new`; other protected pages
+still go to bare `/signin`. The full `next` contract is in `docs/seo.md`
+("Sign-up redirect (`next`)").
+
+## Analytics
+
+`key_guide_open` fires once per provider per visit to the keys page when the
+guide is open and its card is expanded. The condition comes from explicit
+state, not from a native `toggle` event, so a card server-rendered open still
+reports. `key_guide_video_play` fires on the first `playing` for each of two
+values per provider and visit: `0` for autoplay and `1` when the user started
+it, so an autoplay does not hide a later user play. Both use `target` =
+provider id and no personal data. The events endpoint rejects a `target` that
+is not a provider id. Columns and queries are in `docs/analytics-utm.md`.

@@ -467,8 +467,10 @@ explainers above:
   templated page type, each page a distinct query. The condition is that every
   guide carries `checkedAt` and sources, so a guide whose provider UI has
   changed is visibly dated rather than silently wrong.
-- **Status:** template only. The content is pending a separate task;
-  `content/key-guides/` has no files yet.
+- **Status:** live guides are `content/key-guides/gemini-api-key.md` and
+  `openrouter-api-key.md`. The same files feed the "How to get a key" guide on
+  each `/profile/keys` card; schema, video and keys-page behavior are in
+  `docs/key-guides.md`.
 
 ### Sign-up redirect (`next`)
 
@@ -487,6 +489,10 @@ owns the rule:
 - `next` is threaded through the email verification callback, OAuth, passkey
   and 2FA sign-in, and the guest middleware (`app/middleware/00.auth.global.ts`),
   and the sign-in and sign-up pages link to each other with it preserved.
+- The same middleware sends a signed-out visitor on a user-only page to
+  `/signin?next=<that page>` when `resolveSafeNextPath` accepts it and it is
+  not the default `/chats/new`, so an opened `/profile/keys?provider=google`
+  link survives sign-in. Other protected pages go to bare `/signin`.
 - On `/profile/keys`, `provider` forces the matching tab and opens that card,
   then scrolls it into view.
 - UTM keys stay top-level on the sign-up URL and are never nested in `next`

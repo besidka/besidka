@@ -8,6 +8,8 @@ export type LandingEventName
     | 'video_play'
     | 'video_complete'
     | 'github_click'
+    | 'key_guide_open'
+    | 'key_guide_video_play'
     | 'new_chat_created'
 
 export type ClientLandingEventName = Exclude<

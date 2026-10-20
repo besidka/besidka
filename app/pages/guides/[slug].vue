@@ -26,7 +26,7 @@
         <div class="flex flex-wrap gap-x-2">
           <dt class="font-bold">Payment card:</dt>
           <dd data-testid="key-guide-fact-card">
-            {{ guide.requirements.card ? 'Required' : 'Not required' }}
+            {{ cardRequirement }}
           </dd>
         </div>
         <div
@@ -187,6 +187,15 @@ const formattedUpdatedAt = computed<string>(() => {
 })
 const formattedCheckedAt = computed<string>(() => {
   return formatUtcDate(guide.value?.checkedAt)
+})
+const cardRequirement = computed<string>(() => {
+  const requirements = guide.value?.requirements
+
+  if (requirements?.cardNote) {
+    return requirements.cardNote
+  }
+
+  return requirements?.card ? 'Required' : 'Not required'
 })
 
 const signupLink = computed<string>(() => {

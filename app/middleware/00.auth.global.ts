@@ -46,7 +46,20 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
 
     if (to.meta.auth?.only === 'user') {
-      return navigateTo(redirectGuestTo)
+      const next = resolveSafeNextPath(to.fullPath)
+
+      if (
+        !next
+        || next === redirectUserTo
+        || typeof redirectGuestTo !== 'string'
+      ) {
+        return navigateTo(redirectGuestTo)
+      }
+
+      return navigateTo({
+        path: redirectGuestTo,
+        query: { next },
+      })
     }
   }
 })

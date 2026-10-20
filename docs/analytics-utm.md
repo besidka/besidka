@@ -25,6 +25,10 @@ The other landing events (`cta_click`, `header_cta_click`, `footer_link_click`,
 to Analytics Engine. They are not part of the funnel. `new_chat_created` is not
 `first_chat_message`.
 
+Two more landing-family events measure the "How to get a key" guides on
+`/profile/keys` (`key_guide_open`, `key_guide_video_play`). They are not part
+of the funnel either. See "Key guide events" below.
+
 ### Where the data lives
 
 | Store | Name | Contents | Exact or sampled |
@@ -156,6 +160,40 @@ so `index1` and `blob1` hold the same value.
 | `blob8` | medium (`none` if absent) | not written |
 | `blob9` | content (`none` if absent) | not written |
 | `double1` | value (landing) | `1` |
+
+### Key guide events
+
+`key_guide_open` and `key_guide_video_play` use the landing column layout. The
+client sends `path` `/profile/keys`, so the events endpoint allows that path
+next to the public landing slugs. Without it every guide event gets a 400, and
+the client swallows the error. The endpoint also requires `target` to be a
+`providerMeta` id (checked with `Object.hasOwn`) for these two events, and it
+strips a trailing slash from `path`, so `/profile/keys/` is accepted.
+
+| Column | `key_guide_open` | `key_guide_video_play` |
+| --- | --- | --- |
+| `blob2` | `/profile/keys` | `/profile/keys` |
+| `blob3` | provider id, e.g. `google` | provider id |
+| `double1` | `0` | `1` when the user started playback, `0` for muted autoplay |
+
+`key_guide_open` fires at most once per provider per visit to the keys page.
+`key_guide_video_play` fires at most once per provider and per value, so an
+autoplay (`0`) never hides a later user-started play (`1`). The client resets
+this memory when the page is created. The writes carry no
+user id. The campaign blobs `blob6` to `blob9` are `none`, because only
+`landing_page_view` sends a campaign.
+
+```sql
+SELECT
+  blob1 AS event,
+  blob3 AS provider,
+  sum(_sample_interval) AS events
+FROM besidka_cms_events
+WHERE blob1 IN ('key_guide_open', 'key_guide_video_play')
+  AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, provider
+ORDER BY provider, event
+```
 
 Mixing the families gives wrong answers. `blob2` is a path on a landing row
 and a campaign on an activation row, so `GROUP BY blob2` without a `blob1`
@@ -502,4 +540,5 @@ and the Privacy Policy. Do not set it before consent.
 - `server/utils/auth.ts`: sign-up hook
 - `app/composables/utm-attribution.ts`, `app/plugins/utm-attribution.client.ts`:
   client capture
+- `app/composables/key-guide-analytics.ts`: once-per-provider guide events
 - `scripts/utm-report.mjs`: funnel report

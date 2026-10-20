@@ -4,6 +4,7 @@
     :open="open"
     class="group collapse"
     data-testid="key-card"
+    @toggle="onToggle"
   >
     <summary
       class="collapse-title flex min-h-0 items-center gap-3 px-0 py-1"
@@ -54,7 +55,7 @@
 <script setup lang="ts" vapor>
 import type { UserKeyStatus } from '~/composables/user-keys'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   providerId: string
   label: string
   status: UserKeyStatus
@@ -64,4 +65,29 @@ withDefaults(defineProps<{
   group: undefined,
   open: false,
 })
+
+const emit = defineEmits<{
+  expandedChange: [isExpanded: boolean]
+}>()
+
+let lastReportedExpanded = false
+
+function reportExpanded(isExpanded: boolean) {
+  if (isExpanded === lastReportedExpanded) {
+    return
+  }
+
+  lastReportedExpanded = isExpanded
+  emit('expandedChange', isExpanded)
+}
+
+watch(() => props.open, reportExpanded, { flush: 'post' })
+
+onMounted(() => {
+  reportExpanded(props.open)
+})
+
+function onToggle(event: Event) {
+  reportExpanded((event.target as HTMLDetailsElement).open)
+}
 </script>

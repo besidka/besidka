@@ -47,12 +47,9 @@
       <li
         v-for="provider in enabledProviders"
         :key="provider.id"
-        class="scroll-mt-20"
-        :class="{
-          'js-key-provider-target': provider.id === initialProviderId,
-        }"
+        :ref="(element) => registerItem(provider.id, element)"
         :data-testid="
-          provider.id === initialProviderId
+          provider.id === requestedProviderId
             ? 'key-provider-target'
             : undefined
         "
@@ -61,7 +58,9 @@
           <LazyProfileKeysProviderKeyCard
             :provider-id="provider.id"
             :group="providersAccordionGroup"
-            :open="provider.id === initialProviderId"
+            :open="expandedProviderId === provider.id"
+            :guide="guidesByProvider[provider.id] ?? null"
+            @expanded-change="onExpandedChange(provider.id, $event)"
           />
         </UiBubble>
       </li>
@@ -79,12 +78,9 @@
       <li
         v-for="providerId in enabledSearchProviders"
         :key="providerId"
-        class="scroll-mt-20"
-        :class="{
-          'js-key-provider-target': providerId === initialProviderId,
-        }"
+        :ref="(element) => registerItem(providerId, element)"
         :data-testid="
-          providerId === initialProviderId
+          providerId === requestedProviderId
             ? 'key-provider-target'
             : undefined
         "
@@ -93,7 +89,9 @@
           <LazyProfileKeysProviderKeyCard
             :provider-id="providerId"
             :group="searchAccordionGroup"
-            :open="providerId === initialProviderId"
+            :open="expandedProviderId === providerId"
+            :guide="guidesByProvider[providerId] ?? null"
+            @expanded-change="onExpandedChange(providerId, $event)"
           />
         </UiBubble>
       </li>
@@ -111,12 +109,9 @@
       <li
         v-for="gatewayId in enabledGateways"
         :key="gatewayId"
-        class="scroll-mt-20"
-        :class="{
-          'js-key-provider-target': gatewayId === initialProviderId,
-        }"
+        :ref="(element) => registerItem(gatewayId, element)"
         :data-testid="
-          gatewayId === initialProviderId
+          gatewayId === requestedProviderId
             ? 'key-provider-target'
             : undefined
         "
@@ -125,13 +120,17 @@
           <LazyProfileKeysCloudflareGateway
             v-if="gatewayId === 'cloudflare'"
             :group="gatewaysAccordionGroup"
-            :open="gatewayId === initialProviderId"
+            :open="expandedProviderId === gatewayId"
+            :guide="guidesByProvider[gatewayId] ?? null"
+            @expanded-change="onExpandedChange(gatewayId, $event)"
           />
           <LazyProfileKeysProviderKeyCard
             v-else
             :provider-id="gatewayId"
             :group="gatewaysAccordionGroup"
-            :open="gatewayId === initialProviderId"
+            :open="expandedProviderId === gatewayId"
+            :guide="guidesByProvider[gatewayId] ?? null"
+            @expanded-change="onExpandedChange(gatewayId, $event)"
           />
         </UiBubble>
       </li>
@@ -139,6 +138,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import type { KeyGuidesCollectionItem } from '@nuxt/content'
 import type { Providers, Provider } from '#shared/types/providers.d'
 import {
   enabledGateways,
@@ -160,9 +160,13 @@ interface KeyTab {
 const providersTabId = 'providers'
 const searchTabId = 'search'
 const gatewaysTabId = 'gateways'
+const defaultProviderId = 'google'
 const providersAccordionGroup = 'profile-provider-keys'
 const searchAccordionGroup = 'profile-search-provider-keys'
 const gatewaysAccordionGroup = 'profile-gateway-keys'
+const ALIGN_SETTLE_MS = 2000
+const ALIGN_TOLERANCE_PX = 2
+const USER_INPUT_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown']
 
 definePageMeta({
   layout: 'profile',
@@ -179,6 +183,8 @@ useSeoMeta({
 const config = useRuntimeConfig().public
 const route = useRoute()
 
+resetKeyGuideTracking()
+
 const tabIds = [providersTabId, searchTabId, gatewaysTabId]
 
 const providers = computed<Providers>(() => {
@@ -191,10 +197,27 @@ const enabledProviders = computed<Providers>(() => {
   })
 })
 
-function resolveInitialProviderTarget(): ProviderTarget | null {
+const { data: keyGuides } = await useAsyncData('key-guides', () => {
+  return queryCollection('keyGuides').all()
+})
+
+const guidesByProvider = computed<Record<string, KeyGuidesCollectionItem>>(
+  () => {
+    return Object.fromEntries(
+      (keyGuides.value ?? []).map((guide) => {
+        return [guide.provider, guide]
+      }),
+    )
+  },
+)
+
+function resolveRequestedProviderTarget(): ProviderTarget | null {
   const providerParam = route.query.provider
 
-  if (typeof providerParam !== 'string') {
+  if (
+    typeof providerParam !== 'string'
+    || !Object.hasOwn(providerMeta, providerParam)
+  ) {
     return null
   }
 
@@ -217,39 +240,139 @@ function resolveInitialProviderTarget(): ProviderTarget | null {
   return null
 }
 
-const initialProviderTarget = resolveInitialProviderTarget()
-const initialProviderId = shallowRef<string | null>(
-  initialProviderTarget?.id ?? null,
-)
-
-function resolveInitialTab(): string {
-  if (initialProviderTarget) {
-    return initialProviderTarget.tab
-  }
-
+function resolveRequestedTab(): string | null {
   const tabParam = route.query.tab
 
   if (typeof tabParam === 'string' && tabIds.includes(tabParam)) {
     return tabParam
   }
 
-  return providersTabId
+  return null
 }
 
-const activeTab = shallowRef<string>(resolveInitialTab())
+const requestedProviderTarget = resolveRequestedProviderTarget()
+const requestedProviderId = requestedProviderTarget?.id ?? null
+const requestedTab = resolveRequestedTab()
+const hasExplicitTarget = !!requestedProviderTarget || !!requestedTab
 
-onMounted(async () => {
-  if (!initialProviderId.value) {
+const activeTab = shallowRef<string>(
+  requestedProviderTarget?.tab ?? requestedTab ?? providersTabId,
+)
+const expandedProviderId = shallowRef<string | null>(requestedProviderId)
+
+const itemElements = new Map<string, HTMLElement>()
+
+const { hasAnyKey, keyStatusForProvider } = useUserKeys()
+
+const hasLoadedKeys = computed<boolean>(() => {
+  return keyStatusForProvider(defaultProviderId) !== 'unknown'
+})
+
+const isHydrating = shallowRef<boolean>(!!useNuxtApp().isHydrating)
+
+onMounted(() => {
+  isHydrating.value = false
+})
+
+let hasDecidedDefaultProvider = false
+let pendingScrollProviderId: string | null = requestedProviderId
+let stopAligning: (() => void) | null = null
+
+function registerItem(providerId: string, element: unknown) {
+  if (element instanceof HTMLElement) {
+    itemElements.set(providerId, element)
+
     return
   }
 
-  await nextTick()
+  itemElements.delete(providerId)
+}
 
-  document.querySelector('.js-key-provider-target')?.scrollIntoView({
-    behavior: 'smooth',
-    block: 'start',
+async function onExpandedChange(providerId: string, isExpanded: boolean) {
+  if (!isExpanded || pendingScrollProviderId !== providerId) {
+    return
+  }
+
+  pendingScrollProviderId = null
+
+  await nextTick()
+  alignToProvider(providerId)
+}
+
+function alignToProvider(providerId: string) {
+  const element = itemElements.get(providerId)
+  const list = element?.parentElement
+
+  if (!element || !list) {
+    return
+  }
+
+  stopAligning?.()
+
+  const scrollToElement = () => {
+    element.scrollIntoView({ block: 'start', behavior: 'instant' })
+  }
+  const realignIfDrifted = () => {
+    if (!element.isConnected) {
+      return
+    }
+
+    const scroller = element.closest('.js-page-content')
+    const drift = element.getBoundingClientRect().top
+      - (scroller?.getBoundingClientRect().top ?? 0)
+
+    if (Math.abs(drift) > ALIGN_TOLERANCE_PX) {
+      scrollToElement()
+    }
+  }
+  const resizeObserver = new ResizeObserver(realignIfDrifted)
+  const settleTimer = setTimeout(stopCurrentAlignment, ALIGN_SETTLE_MS)
+
+  function stopCurrentAlignment() {
+    clearTimeout(settleTimer)
+    resizeObserver.disconnect()
+    window.removeEventListener('scroll', realignIfDrifted, true)
+
+    for (const inputEvent of USER_INPUT_EVENTS) {
+      window.removeEventListener(inputEvent, stopCurrentAlignment)
+    }
+
+    stopAligning = null
+  }
+
+  for (const inputEvent of USER_INPUT_EVENTS) {
+    window.addEventListener(inputEvent, stopCurrentAlignment, {
+      passive: true,
+    })
+  }
+
+  stopAligning = stopCurrentAlignment
+  scrollToElement()
+  resizeObserver.observe(list)
+  window.addEventListener('scroll', realignIfDrifted, {
+    capture: true,
+    passive: true,
   })
+}
+
+onBeforeUnmount(() => {
+  stopAligning?.()
 })
+
+watch([hasLoadedKeys, hasAnyKey, isHydrating], ([isLoaded, anyKey]) => {
+  if (!isLoaded || isHydrating.value || hasDecidedDefaultProvider) {
+    return
+  }
+
+  hasDecidedDefaultProvider = true
+
+  if (anyKey || hasExplicitTarget) {
+    return
+  }
+
+  activeTab.value = providersTabId
+  expandedProviderId.value = defaultProviderId
+}, { immediate: true })
 
 const tabs: KeyTab[] = [
   { id: providersTabId, label: 'Direct Providers', icon: 'lucide:key-round' },

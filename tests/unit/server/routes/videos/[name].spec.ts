@@ -385,6 +385,45 @@ describe('GET /videos/[name]', () => {
       expect(mocks.get).not.toHaveBeenCalled()
     })
 
+  it.each([
+    'anthropic',
+    'google',
+    'openai',
+    'xai',
+    'deepseek',
+    'moonshotai',
+    'qwen',
+    'brave',
+    'exa',
+    'vercel',
+    'openrouter',
+    'cloudflare',
+  ])('serves the key guide video for %s from the bucket', async (id) => {
+    mocks.params.name = `key-guide-${id}.mp4`
+    mocks.get.mockResolvedValue(createBody())
+
+    const event = createEvent()
+    const result = await callRoute(event)
+
+    expect(result).toBe(BODY)
+    expect(mocks.get.mock.calls[0]![0]).toBe(`key-guide-${id}.mp4`)
+    expect(event.res.headers.get('Content-Type')).toBe('video/mp4')
+  })
+
+  it.each([
+    'key-guide-unknown.mp4',
+    'key-guide-google.mov',
+    'key-guide-.mp4',
+    'key-guide-google.en.vtt',
+  ])('returns 404 for the non-allow-listed key guide name %s',
+    async (name) => {
+      mocks.params.name = name
+
+      await expect(callRoute(createEvent()))
+        .rejects.toMatchObject({ status: 404 })
+      expect(mocks.get).not.toHaveBeenCalled()
+    })
+
   it('returns 404 with no-store when the object is missing in the bucket',
     async () => {
       mocks.get.mockResolvedValue(null)

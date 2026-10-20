@@ -33,6 +33,10 @@
  *   - demo-1080.mp4   1080p
  *   - demo.en.vtt     English captions (scripts/cms-assets/demo.en.vtt)
  *
+ * Optional assets: every `.files/key-guide-<provider id>.mp4` present is
+ * uploaded too (uploads only; see docs/key-guides.md). Absent ones are not an
+ * error.
+ *
  * Hover-preview thumbnails are NOT generated here; the player builds them on
  * the client at runtime via mediabunny's CanvasSink.
  *
@@ -49,7 +53,7 @@
  *   pnpm run cms:files:download --remote -e production pull from prod bucket
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { copyFile, mkdir, stat } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -106,6 +110,23 @@ const ASSETS = [
     kind: 'captions',
   },
 ]
+
+const KEY_GUIDE_VIDEO_PATTERN = /^key-guide-[a-z0-9]+\.mp4$/
+
+function discoverKeyGuideAssets() {
+  if (!existsSync(FILES_DIR)) {
+    return []
+  }
+
+  return readdirSync(FILES_DIR)
+    .filter((name) => {
+      return KEY_GUIDE_VIDEO_PATTERN.test(name)
+    })
+    .sort()
+    .map((name) => {
+      return { key: name, contentType: 'video/mp4', kind: 'video' }
+    })
+}
 
 /**
  * Parse CLI args forwarded by pnpm.
@@ -495,7 +516,7 @@ function printUploadPlan(prepared) {
 async function runUpload(bucketName, { remote, force, yes, environment }) {
   const prepared = []
 
-  for (const asset of ASSETS) {
+  for (const asset of [...ASSETS, ...discoverKeyGuideAssets()]) {
     prepared.push(await prepareLocalAsset(asset))
   }
 

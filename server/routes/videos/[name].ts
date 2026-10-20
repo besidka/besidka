@@ -7,6 +7,7 @@ import {
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 import { defineEventHandler, setResponseStatus } from 'nuxt/server'
+import { providerMeta } from '#shared/utils/provider-meta'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 
@@ -15,6 +16,9 @@ const ALLOWED_FILES = new Set([
   'demo-360.mp4',
   'demo-1080.mp4',
   'demo.en.vtt',
+  ...Object.keys(providerMeta).map((providerId) => {
+    return `key-guide-${providerId}.mp4`
+  }),
 ])
 
 const ALLOWED_METHODS = 'GET, HEAD'

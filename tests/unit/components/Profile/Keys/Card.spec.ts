@@ -24,10 +24,52 @@ describe('Profile/Keys/Card', () => {
       expect(wrapper.find('details').attributes('open')).toBeUndefined()
     })
 
-  it('renders expanded when asked to open', async () => {
+  it('renders expanded on the first render when asked to open, so the '
+    + 'server markup carries no layout shift', async () => {
     const wrapper = await mountCard({ open: true })
 
     expect(wrapper.find('details').attributes('open')).toBeDefined()
+  })
+
+  it('expands later when the open prop flips after mount', async () => {
+    const wrapper = await mountCard()
+
+    await wrapper.setProps({ open: true })
+
+    expect(wrapper.find('details').attributes('open')).toBeDefined()
+  })
+
+  it('reports an expanded card on mount', async () => {
+    const wrapper = await mountCard({ open: true })
+
+    expect(wrapper.emitted('expandedChange')).toEqual([[true]])
+  })
+
+  it('reports nothing on mount for a collapsed card', async () => {
+    const wrapper = await mountCard()
+
+    expect(wrapper.emitted('expandedChange')).toBeUndefined()
+  })
+
+  it('reports the open prop flipping after mount', async () => {
+    const wrapper = await mountCard()
+
+    await wrapper.setProps({ open: true })
+    await nextTick()
+
+    expect(wrapper.emitted('expandedChange')).toEqual([[true]])
+  })
+
+  it('reports a native toggle with the details state', async () => {
+    const wrapper = await mountCard()
+    const details = wrapper.get('details').element as HTMLDetailsElement
+
+    details.open = true
+    details.dispatchEvent(new Event('toggle'))
+    details.open = false
+    details.dispatchEvent(new Event('toggle'))
+
+    expect(wrapper.emitted('expandedChange')).toEqual([[true], [false]])
   })
 
   it('always renders the provider name and body in the markup', async () => {

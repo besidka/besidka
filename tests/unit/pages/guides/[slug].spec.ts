@@ -127,6 +127,22 @@ describe('key guide page', () => {
       .toBe(false)
   })
 
+  it('shows the card note instead of Required / Not required', async () => {
+    mocks.guide = {
+      ...GUIDE,
+      requirements: {
+        ...GUIDE.requirements,
+        card: false,
+        cardNote: 'Only to buy credits.',
+      },
+    }
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.get('[data-testid="key-guide-fact-card"]').text())
+      .toBe('Only to buy credits.')
+  })
+
   it('links the official key page in a new tab with noopener', async () => {
     const wrapper = await mountPage()
     const link = wrapper.get('[data-testid="key-guide-key-link"]')

@@ -31,9 +31,11 @@ function buildRoute(
   path: string,
   query: Record<string, unknown>,
   only: 'guest' | 'user' | undefined = 'guest',
+  fullPath: string = path,
 ) {
   return {
     path,
+    fullPath,
     query,
     meta: { auth: only ? { only } : undefined },
   } as any
@@ -113,13 +115,64 @@ describe('global auth middleware', () => {
     expect(mocks.navigateTo).not.toHaveBeenCalled()
   })
 
-  it('still sends a signed-out visitor away from a user-only page',
-    async () => {
+  describe('user-only page visited while signed out', () => {
+    it('sends the visitor to /signin and remembers an allowlisted page',
+      async () => {
+        await authMiddleware(
+          buildRoute(
+            '/profile/keys',
+            { provider: 'google' },
+            'user',
+            '/profile/keys?provider=google',
+          ),
+          {} as any,
+        )
+
+        expect(mocks.navigateTo).toHaveBeenCalledWith({
+          path: '/signin',
+          query: { next: '/profile/keys?provider=google' },
+        })
+      })
+
+    it('remembers the bare keys page', async () => {
       await authMiddleware(
         buildRoute('/profile/keys', {}, 'user'),
         {} as any,
       )
 
+      expect(mocks.navigateTo).toHaveBeenCalledWith({
+        path: '/signin',
+        query: { next: '/profile/keys' },
+      })
+    })
+
+    it('omits next when the page is the default destination', async () => {
+      await authMiddleware(
+        buildRoute('/chats/new', {}, 'user', '/chats/new?project=abc'),
+        {} as any,
+      )
+
       expect(mocks.navigateTo).toHaveBeenCalledWith('/signin')
     })
+
+    it('omits next for a page outside the allowlist', async () => {
+      await authMiddleware(
+        buildRoute('/chats/abc', {}, 'user', '/chats/abc#message-3'),
+        {} as any,
+      )
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith('/signin')
+    })
+
+    it('does not loop when already on the guest redirect target',
+      async () => {
+        const result = await authMiddleware(
+          buildRoute('/signin', {}, 'user'),
+          {} as any,
+        )
+
+        expect(result).toBeUndefined()
+        expect(mocks.navigateTo).not.toHaveBeenCalled()
+      })
+  })
 })

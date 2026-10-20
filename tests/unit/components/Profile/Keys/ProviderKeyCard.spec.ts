@@ -1,6 +1,7 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../../../app/composables/messages'
+import { resetKeyGuideTracking } from '../../../../../app/composables/key-guide-analytics'
 import ProviderKeyCard
   from '../../../../../app/components/Profile/Keys/ProviderKeyCard.vue'
 
@@ -46,6 +47,17 @@ function dashboardLink(wrapper: any, host: string) {
   })
 }
 
+const guideDoc = {
+  provider: 'anthropic',
+  keyUrl: 'https://example.com/keys',
+  checkedAt: '2026-10-20',
+  requirements: { card: false, sources: [] },
+}
+
+const guideStubs = {
+  ContentRenderer: { template: '<div data-testid="guide-steps" />' },
+}
+
 async function mountCard(providerId: string) {
   const wrapper = await mountSuspended(ProviderKeyCard, {
     props: { providerId },
@@ -59,6 +71,7 @@ async function mountCard(providerId: string) {
 describe('Profile/Keys/ProviderKeyCard', () => {
   beforeEach(() => {
     clearNuxtData()
+    resetKeyGuideTracking()
     mocks.fetch.mockReset()
     mocks.confirm.mockReset()
     mocks.confirm.mockResolvedValue({ label: 'Confirm', index: 0 })
@@ -70,6 +83,10 @@ describe('Profile/Keys/ProviderKeyCard', () => {
 
       if (url.startsWith('/api/v1/profiles/keys/')) {
         return Promise.resolve({})
+      }
+
+      if (url === '/api/v1/events') {
+        return Promise.resolve({ ok: true })
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -235,5 +252,152 @@ describe('Profile/Keys/ProviderKeyCard', () => {
       expect(link).toBeDefined()
       expect(link?.classes()).toContain('link')
       expect(link?.attributes('target')).toBe('_blank')
+    })
+
+  it('renders the key guide below the key form when a guide is passed',
+    async () => {
+      summaryFor([{ provider: 'anthropic', hasKey: false }])
+
+      const wrapper = await mountSuspended(ProviderKeyCard, {
+        props: { providerId: 'anthropic', guide: guideDoc },
+        global: { stubs: guideStubs },
+      })
+
+      await flushPromises()
+
+      const form = wrapper.get('form')
+      const guide = wrapper.get('[data-testid="key-guide-anthropic"]')
+
+      expect(
+        form.element.compareDocumentPosition(guide.element)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    })
+
+  it('renders no guide when none is passed', async () => {
+    summaryFor([{ provider: 'anthropic', hasKey: false }])
+
+    const wrapper = await mountCard('anthropic')
+
+    expect(wrapper.find('[data-testid="key-guide-anthropic"]').exists())
+      .toBe(false)
+  })
+
+  it('opens the guide when the key is missing', async () => {
+    summaryFor([{ provider: 'anthropic', hasKey: false }])
+
+    const wrapper = await mountSuspended(ProviderKeyCard, {
+      props: { providerId: 'anthropic', guide: guideDoc },
+      global: { stubs: guideStubs },
+    })
+
+    await flushPromises()
+
+    const guide = wrapper
+      .get('[data-testid="key-guide-anthropic"]')
+      .element as HTMLDetailsElement
+
+    expect(guide.open).toBe(true)
+  })
+
+  it('keeps the guide closed when the key is saved',
+    async () => {
+      summaryFor([{ provider: 'anthropic', hasKey: true }])
+
+      const wrapper = await mountSuspended(ProviderKeyCard, {
+        props: { providerId: 'anthropic', guide: guideDoc },
+        global: { stubs: guideStubs },
+      })
+
+      await flushPromises()
+
+      const guide = wrapper
+        .get('[data-testid="key-guide-anthropic"]')
+        .element as HTMLDetailsElement
+
+      expect(guide.open).toBe(false)
+    })
+
+  it('shows the key badge on the first render when the key summary is '
+    + 'already cached', async () => {
+    summaryFor([{ provider: 'anthropic', hasKey: false }])
+    await mountCard('anthropic')
+
+    const wrapper = await mountSuspended(ProviderKeyCard, {
+      props: { providerId: 'anthropic' },
+    })
+
+    expect(wrapper.find('[data-testid="key-status-missing"]').exists())
+      .toBe(true)
+  })
+
+  it('passes the card expansion up to its parent', async () => {
+    summaryFor([{ provider: 'anthropic', hasKey: false }])
+
+    const wrapper = await mountSuspended(ProviderKeyCard, {
+      props: { providerId: 'anthropic', open: true },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.emitted('expandedChange')).toEqual([[true]])
+  })
+
+  function eventBodies(eventName: string) {
+    return mocks.fetch.mock.calls
+      .filter(([url, options]) => {
+        return url === '/api/v1/events' && options?.body?.event === eventName
+      })
+      .map(([, options]) => {
+        return options.body
+      })
+  }
+
+  it('tracks key_guide_open for an SSR-open card once the key status '
+    + 'resolves to missing', async () => {
+    summaryFor([{ provider: 'anthropic', hasKey: false }])
+
+    await mountSuspended(ProviderKeyCard, {
+      props: { providerId: 'anthropic', guide: guideDoc, open: true },
+      global: { stubs: guideStubs },
+    })
+
+    await flushPromises()
+
+    expect(eventBodies('key_guide_open')).toHaveLength(1)
+    expect(eventBodies('key_guide_open')[0]).toMatchObject({
+      target: 'anthropic',
+    })
+  })
+
+  it('does not track key_guide_open while the card stays collapsed',
+    async () => {
+      summaryFor([{ provider: 'anthropic', hasKey: false }])
+
+      await mountSuspended(ProviderKeyCard, {
+        props: { providerId: 'anthropic', guide: guideDoc, open: false },
+        global: { stubs: guideStubs },
+      })
+
+      await flushPromises()
+
+      expect(eventBodies('key_guide_open')).toHaveLength(0)
+    })
+
+  it('tracks key_guide_open once the collapsed card later expands',
+    async () => {
+      summaryFor([{ provider: 'anthropic', hasKey: false }])
+
+      const wrapper = await mountSuspended(ProviderKeyCard, {
+        props: { providerId: 'anthropic', guide: guideDoc, open: false },
+        global: { stubs: guideStubs },
+      })
+
+      await flushPromises()
+      await wrapper.setProps({ open: true })
+      await nextTick()
+      await flushPromises()
+
+      expect(eventBodies('key_guide_open')).toHaveLength(1)
     })
 })
