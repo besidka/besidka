@@ -388,7 +388,7 @@ describe('profile keys page', () => {
         expect(scrollIntoView).toHaveBeenCalledTimes(1)
       })
 
-      const target = wrapper.get('.js-key-provider-target')
+      const target = wrapper.get('[data-testid="key-provider-target"]')
 
       expect(target.find('[data-provider="google"]').exists()).toBe(true)
       expect(scrollIntoView).toHaveBeenCalledWith({
@@ -481,7 +481,7 @@ describe('profile keys page', () => {
         expect(scrollIntoView).toHaveBeenCalledTimes(1)
       })
 
-      const target = wrapper.get('.js-key-provider-target')
+      const target = wrapper.get('[data-testid="key-provider-target"]')
 
       expect(target.find('[data-provider="openrouter"]').exists()).toBe(true)
 
@@ -501,7 +501,7 @@ describe('profile keys page', () => {
           expect(scrollIntoView).toHaveBeenCalledTimes(1)
         })
 
-        const target = wrapper.get('.js-key-provider-target')
+        const target = wrapper.get('[data-testid="key-provider-target"]')
 
         expect(
           target.find('[data-testid="cloudflare-gateway-card"]').exists(),

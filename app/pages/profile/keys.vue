@@ -51,6 +51,11 @@
         :class="{
           'js-key-provider-target': provider.id === initialProviderId,
         }"
+        :data-testid="
+          provider.id === initialProviderId
+            ? 'key-provider-target'
+            : undefined
+        "
       >
         <UiBubble>
           <LazyProfileKeysProviderKeyCard
@@ -78,6 +83,11 @@
         :class="{
           'js-key-provider-target': providerId === initialProviderId,
         }"
+        :data-testid="
+          providerId === initialProviderId
+            ? 'key-provider-target'
+            : undefined
+        "
       >
         <UiBubble>
           <LazyProfileKeysProviderKeyCard
@@ -105,6 +115,11 @@
         :class="{
           'js-key-provider-target': gatewayId === initialProviderId,
         }"
+        :data-testid="
+          gatewayId === initialProviderId
+            ? 'key-provider-target'
+            : undefined
+        "
       >
         <UiBubble>
           <LazyProfileKeysCloudflareGateway
