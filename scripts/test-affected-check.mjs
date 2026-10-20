@@ -430,6 +430,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/content/HomeStats.spec.ts',
     'tests/unit/components/content/HomeVideo.spec.ts',
     'tests/unit/components/content/HomeBubble.spec.ts',
+    'tests/unit/components/content/HomeComparison.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
     'tests/integration/api/stats.spec.ts',
     'tests/integration/server/landing-cache-refresh.spec.ts',
@@ -451,6 +452,25 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
     'tests/integration/api/profile-keys-openrouter.spec.ts',
     'tests/e2e/attribution/utm-signup.spec.ts',
+  ]
+
+  const authNextRedirectTests = [
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/middleware/00.auth.global.spec.ts',
+    'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/unit/pages/(auth)/signup.spec.ts',
+    'tests/unit/pages/(auth)/2fa.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/pages/guides/[slug].spec.ts',
+  ]
+
+  const keyGuideTests = [
+    'tests/unit/utils/external-url.spec.ts',
+    'tests/unit/pages/guides/[slug].spec.ts',
+    'tests/unit/utils/landing-jsonld.spec.ts',
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/components/LandingFooter.spec.ts',
+    'tests/unit/config/seo-pages.spec.ts',
   ]
 
   const pushNotificationTests = [
@@ -867,6 +887,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/config/seo-pages.spec.ts'],
     },
     {
+      pattern: /^content\/(index|guides\/.*|legal\/.*)\.md$/,
+      tests: ['tests/unit/config/content-frontmatter.spec.ts'],
+    },
+    {
       pattern: /^(content\/guides\/.*\.md|app\/pages\/byok\.vue|content\.config\.ts|app\/components\/LegalDocument\.vue)$/,
       tests: [
         'tests/unit/config/seo-pages.spec.ts',
@@ -909,6 +933,16 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(shared\/utils\/utm\.ts|shared\/types\/analytics\.d\.ts|server\/utils\/analytics\/.*\.ts|server\/db\/schemas\/attribution\.ts|app\/composables\/(utm-attribution|landing-analytics)\.ts|app\/plugins\/utm-attribution\.client\.ts)$/,
       tests: utmAttributionTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/auth-redirect\.ts|app\/middleware\/00\.auth\.global\.ts|app\/pages\/\(auth\)\/(signin|signup|2fa)\.vue|app\/pages\/profile\/keys\.vue)$/,
+      tests: authNextRedirectTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/guides\/.*\.vue|shared\/utils\/external-url\.ts|app\/utils\/(landing-jsonld|utc-date)\.ts|content\/key-guides\/.*\.md)$/,
+      tests: keyGuideTests,
     },
     {
       pattern: /^server\/api\/v1\/(events|stats)\/.*\.ts$/,
@@ -1256,6 +1290,14 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/chats\/filter-ui-message-stream\.ts$/,
       tests: chatStreamBranchTests,
+    },
+    {
+      pattern: /^shared\/utils\/external-url\.ts$/,
+      tests: [
+        'tests/unit/utils/external-url.spec.ts',
+        'tests/unit/components/content/HomeComparison.spec.ts',
+        'tests/unit/pages/guides/[slug].spec.ts',
+      ],
     },
     {
       pattern: /^shared\/utils\/http-url\.ts$/,

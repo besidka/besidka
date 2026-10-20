@@ -216,3 +216,112 @@ describe('BYOK guide page', () => {
     expect(readPageSource('content/index.md')).toContain('](/byok)')
   })
 })
+
+describe('key guide pages', () => {
+  it(
+    'serves /guides/<slug> from the keyGuides collection and 404s when the '
+    + 'entry is missing',
+    () => {
+      const source = readPageSource('app/pages/guides/[slug].vue')
+
+      expect(source).toContain('queryCollection(\'keyGuides\')')
+      expect(source).toMatch(/\.path\(`\/guides\/\$\{slug\.value\}`\)/)
+      expect(source).toMatch(/createError\(\{\s*statusCode:\s*404/)
+    },
+  )
+
+  it(
+    'stays indexable: the page must not set its own noindex, and /guides/ '
+    + 'must not be disallowed in robots or excluded from the sitemap',
+    () => {
+      const source = readPageSource('app/pages/guides/[slug].vue')
+
+      expect(source).not.toMatch(/noindex/)
+      expect(source).not.toMatch(/nofollow/)
+
+      const nuxtConfigSource = readPageSource('nuxt.config.ts')
+
+      expect(nuxtConfigSource).not.toMatch(/['"]\/guides/)
+      expect(nuxtConfigSource).not.toMatch(/['"]\/key-guides/)
+    },
+  )
+
+  it(
+    'emits its structured data through the shared builder instead of '
+    + 'declaring its own Organization',
+    () => {
+      const source = readPageSource('app/pages/guides/[slug].vue')
+
+      expect(source).toContain('buildKeyGuidePageLd(')
+      expect(source).not.toContain('Organization')
+    },
+  )
+
+  it(
+    'maps the content folder to the public URL in the collection itself, so '
+    + 'the sitemap lists /guides/<slug> and never /key-guides/<slug>',
+    () => {
+      const source = readPageSource('content.config.ts')
+
+      expect(source).toContain('include: \'key-guides/*.md\'')
+      expect(source).toContain('prefix: \'/guides\'')
+      expect(source).toContain('sitemap: defineSitemapSchema()')
+    },
+  )
+})
+
+describe('homepage title and H1 brand-entity association', () => {
+  function readHomepageFrontmatter(): string {
+    const source = readPageSource('content/index.md')
+
+    return source.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? ''
+  }
+
+  it(
+    'keeps the brand adjacent to "BYOK" in the title: the page renders '
+    + '"Besidka: <title>", so the frontmatter title must start with "BYOK" '
+    + 'for the brand-entity association (docs/seo.md, "The brand-entity '
+    + 'problem")',
+    () => {
+      expect(readHomepageFrontmatter()).toMatch(/^title: BYOK AI chat app/m)
+    },
+  )
+
+  it(
+    'keeps "Besidka" adjacent to "BYOK" in the H1 (hero headline) for the '
+    + 'brand-entity association (docs/seo.md, "The brand-entity problem")',
+    () => {
+      expect(readHomepageFrontmatter()).toMatch(
+        /^ {2}headline: ["']?Besidka: BYOK AI chat/m,
+      )
+    },
+  )
+
+  it(
+    'joins the site name to the content title with "<siteName>: " in the '
+    + 'page title, so the brand stays first and adjacent to the BYOK title '
+    + 'chunk',
+    () => {
+      const source = readPageSource('app/pages/index.vue')
+
+      expect(source).toContain('`${siteName}: ${chunk}`')
+    },
+  )
+
+  it(
+    'takes the Organization, WebSite and SoftwareApplication description '
+    + 'from app config, not from the page meta description, so a call to '
+    + 'action never becomes the entity description',
+    () => {
+      const source = readPageSource('app/pages/index.vue')
+
+      expect(source).toMatch(/description:\s*entityDescription/)
+      expect(source).toMatch(/\bentityDescription,\s*\n\s*faqs:/)
+      expect(source).not.toMatch(/description:\s*description\.value,\s*\n\s*faqs:/)
+    },
+  )
+
+  it('has no em dashes in the homepage content, per the copy rules', () => {
+    expect(readPageSource('content/index.md')).not.toContain('\u2014')
+  })
+})

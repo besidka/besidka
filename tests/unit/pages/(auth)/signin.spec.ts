@@ -1,4 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../../app/composables/messages'
 import SigninPage from '../../../../app/pages/(auth)/signin.vue'
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   fetchSession: vi.fn(async () => undefined),
   navigateTo: vi.fn(async () => undefined),
   reloadNuxtApp: vi.fn(async () => undefined),
+  signInSocial: vi.fn(async (..._args: any[]) => ({ data: {}, error: null })),
 }))
 
 const errorCodes = {
@@ -27,7 +29,11 @@ const errorCodes = {
 
 mockNuxtImport('useAuth', () => {
   return () => ({
-    signIn: { email: mocks.signInEmail, passkey: mocks.signInPasskey },
+    signIn: {
+      email: mocks.signInEmail,
+      passkey: mocks.signInPasskey,
+      social: mocks.signInSocial,
+    },
     errorCodes,
     lastLoginMethod: { value: null },
     options: {
@@ -36,6 +42,20 @@ mockNuxtImport('useAuth', () => {
     },
     fetchSession: mocks.fetchSession,
   })
+})
+
+const mockRoute = reactive<{
+  query: Record<string, unknown>
+  params: Record<string, unknown>
+  path: string
+}>({
+  query: {},
+  params: {},
+  path: '/signin',
+})
+
+mockNuxtImport('useRoute', () => {
+  return () => mockRoute
 })
 
 mockNuxtImport('navigateTo', () => mocks.navigateTo)
@@ -98,6 +118,8 @@ describe('signin page', () => {
     mocks.fetchSession.mockClear()
     mocks.navigateTo.mockClear()
     mocks.reloadNuxtApp.mockClear()
+    mocks.signInSocial.mockClear()
+    mockRoute.query = {}
     mocks.signInEmail.mockResolvedValue({
       data: { redirect: false, token: 'session-token', user: {} },
       error: null,
@@ -439,5 +461,151 @@ describe('signin page', () => {
     await flushPromises()
 
     expect(mocks.reloadNuxtApp).toHaveBeenCalledTimes(1)
+  })
+  describe('post-signin next path', () => {
+    const SAFE_NEXT = '/profile/keys?provider=google'
+
+    function findButton(wrapper: any, text: string) {
+      return wrapper.findAll('button').find((button: any) => {
+        return button.text().includes(text)
+      })
+    }
+
+    it('uses the safe next value as the email sign-in callback', async () => {
+      mockRoute.query = { next: SAFE_NEXT }
+
+      const wrapper = await mountSuspended(SigninPage, {
+        global: { stubs: stubs() },
+      })
+
+      await fillValidForm(wrapper)
+      await wrapper.get('form').trigger('submit')
+      await flushPromises()
+
+      expect(mocks.signInEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ callbackURL: SAFE_NEXT }),
+      )
+    })
+
+    it('keeps /chats/new as the email sign-in callback by default',
+      async () => {
+        const wrapper = await mountSuspended(SigninPage, {
+          global: { stubs: stubs() },
+        })
+
+        await fillValidForm(wrapper)
+        await wrapper.get('form').trigger('submit')
+        await flushPromises()
+
+        expect(mocks.signInEmail).toHaveBeenCalledWith(
+          expect.objectContaining({ callbackURL: '/chats/new' }),
+        )
+      })
+
+    it.each([
+      ['//evil.com'],
+      ['/\\evil.com'],
+      ['https://evil.com'],
+      ['/chats/123'],
+    ])('falls back to /chats/new for the unsafe next value %j',
+      async (unsafeNext) => {
+        mockRoute.query = { next: unsafeNext }
+
+        const wrapper = await mountSuspended(SigninPage, {
+          global: { stubs: stubs() },
+        })
+
+        await fillValidForm(wrapper)
+        await wrapper.get('form').trigger('submit')
+        await flushPromises()
+
+        expect(mocks.signInEmail).toHaveBeenCalledWith(
+          expect.objectContaining({ callbackURL: '/chats/new' }),
+        )
+      })
+
+    it('carries the safe next value into the two-factor redirect',
+      async () => {
+        mockRoute.query = { next: SAFE_NEXT }
+        mocks.signInEmail.mockResolvedValue({
+          data: { twoFactorRedirect: true, twoFactorMethods: ['totp'] },
+          error: null,
+        })
+
+        const wrapper = await mountSuspended(SigninPage, {
+          global: { stubs: stubs() },
+        })
+
+        await fillValidForm(wrapper)
+        await wrapper.get('form').trigger('submit')
+        await flushPromises()
+
+        const [target] = mocks.navigateTo.mock.calls[0] as unknown as [string]
+        const parsedTarget = new URL(target, 'http://localhost')
+
+        expect(parsedTarget.pathname).toBe('/2fa')
+        expect(parsedTarget.searchParams.get('next')).toBe(SAFE_NEXT)
+      })
+
+    it('reloads into the safe next value after a passkey sign-in',
+      async () => {
+        mockRoute.query = { next: SAFE_NEXT }
+
+        const wrapper = await mountSuspended(SigninPage, {
+          global: { stubs: stubs() },
+        })
+
+        await wrapper.get('[data-testid="signin-passkey"]').trigger('click')
+        await flushPromises()
+
+        expect(mocks.reloadNuxtApp)
+          .toHaveBeenCalledWith({ path: SAFE_NEXT, force: true })
+      })
+
+    it('uses the safe next value as the social sign-in target, keeping '
+      + 'the UTM parameters', async () => {
+      mockRoute.query = { next: SAFE_NEXT, utm_source: 'reddit' }
+
+      const wrapper = await mountSuspended(SigninPage, {
+        global: { stubs: stubs() },
+      })
+
+      await findButton(wrapper, 'Sign in with Google').trigger('click')
+      await flushPromises()
+
+      const [payload] = mocks.signInSocial.mock.calls[0] as [
+        { callbackURL: string },
+      ]
+      const target = new URL(payload.callbackURL, 'http://localhost')
+
+      expect(target.pathname).toBe('/profile/keys')
+      expect(target.searchParams.get('provider')).toBe('google')
+      expect(target.searchParams.get('utm_source')).toBe('reddit')
+    })
+
+    it('carries the safe next value on the link to the sign-up page',
+      async () => {
+        mockRoute.query = { next: SAFE_NEXT }
+
+        const wrapper = await mountSuspended(SigninPage, {
+          global: {
+            stubs: {
+              ...stubs(),
+              NuxtLink: {
+                props: ['to'],
+                template: '<a :href="to"><slot /></a>',
+              },
+            },
+          },
+        })
+
+        const link = wrapper.findAll('a').find((anchor: any) => {
+          return anchor.text() === 'Sign up'
+        })
+        const href = new URL(link!.attributes('href')!, 'http://localhost')
+
+        expect(href.pathname).toBe('/signup')
+        expect(href.searchParams.get('next')).toBe(SAFE_NEXT)
+      })
   })
 })

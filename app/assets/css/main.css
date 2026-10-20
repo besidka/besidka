@@ -494,6 +494,21 @@ html body[data-studio-active][data-expand-sidebar]::before {
   @apply size-6;
 }
 
+.landing-prose {
+  & > ol,
+  & > ul {
+    @apply ml-5 sm:ml-8 marker:text-accent;
+  }
+
+  & > ol {
+    @apply list-decimal;
+  }
+
+  & > ul {
+    @apply list-disc;
+  }
+}
+
 .chat-markdown {
   @apply overflow-x-hidden leading-7 text-base-content/80;
 

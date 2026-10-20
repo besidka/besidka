@@ -222,7 +222,7 @@
       </UiFormFieldset>
     </UiForm>
     <p class="py-2 text-center">
-      Already have an account? <NuxtLink :to="withUtm('/signin')" class="underline hover:no-underline">Sign in</NuxtLink>
+      Already have an account? <NuxtLink :to="signinLink" class="underline hover:no-underline">Sign in</NuxtLink>
     </p>
   </UiBubble>
 </template>
@@ -354,6 +354,14 @@ const timeToCrackHighlight = computed(() => {
 
 const { signUp } = useAuth()
 const { resolveUtm, withUtm } = useUtmAttribution()
+const route = useRoute()
+
+const safeNext = computed<string | null>(() => {
+  return resolveSafeNextPath(route.query.next)
+})
+const signinLink = computed<string>(() => {
+  return withUtm(appendNextToPath('/signin', safeNext.value))
+})
 
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
 const { requestToken } = useCaptcha(() => turnstile.value)
@@ -375,7 +383,7 @@ async function socialSignIn(provider: 'google' | 'github') {
   try {
     await signInWithSocialOAuth(
       provider,
-      appendUtmToPath('/chats/new', resolveUtm()),
+      appendUtmToPath(safeNext.value ?? '/chats/new', resolveUtm()),
     )
   } finally {
     pending.value = false
@@ -400,7 +408,10 @@ async function onSubmit() {
       name: data.name,
       email: data.email,
       password: data.password,
-      callbackURL: appendUtmToPath('/signin', resolveUtm()),
+      callbackURL: appendUtmToPath(
+        appendNextToPath('/signin', safeNext.value),
+        resolveUtm(),
+      ),
       fetchOptions: {
         headers: token ? { 'x-captcha-response': token } : {},
         onSuccess() {

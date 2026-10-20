@@ -4,7 +4,7 @@
     :wide="wide"
     :sr-label="heading ? undefined : (srLabel || undefined)"
   >
-    <div class="flex flex-col gap-3">
+    <div class="landing-prose flex flex-col gap-3">
       <h2
         v-if="heading"
         :id="id || undefined"

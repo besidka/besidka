@@ -117,6 +117,19 @@
                 >
                   BYOK guide
                 </NuxtLink>
+                <NuxtLink
+                  v-for="keyGuide in keyGuides"
+                  :key="keyGuide.path"
+                  :to="keyGuide.path"
+                  :data-testid="`landing-footer-guide-link-${
+                    resolveGuideSlug(keyGuide.path)}`"
+                  class="link link-hover text-sm"
+                  @click="track('footer_link_click', {
+                    target: resolveGuideSlug(keyGuide.path),
+                  })"
+                >
+                  {{ keyGuide.title }}
+                </NuxtLink>
               </nav>
             </div>
 
@@ -235,6 +248,26 @@ const sections = [
 ]
 const { track } = useLandingAnalytics()
 const route = useRoute()
+
+const { data: keyGuides } = await useAsyncData(
+  'footer-key-guides',
+  async () => {
+    try {
+      return await queryCollection('keyGuides')
+        .select('path', 'title')
+        .order('path', 'ASC')
+        .all()
+    } catch {
+      return []
+    }
+  },
+  { default: () => [] },
+)
+
+function resolveGuideSlug(path: string): string {
+  return path.split('/').filter(Boolean).pop() ?? ''
+}
+
 const isHomePage = computed<boolean>(() => route.path === '/')
 
 function openCookieSettings(event: MouseEvent): void {

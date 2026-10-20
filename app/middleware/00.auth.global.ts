@@ -35,7 +35,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return
     }
 
-    return navigateTo(redirectUserTo)
+    return navigateTo(
+      resolveSafeNextPath(to.query.next) ?? redirectUserTo,
+    )
   }
 
   if (!loggedIn.value) {

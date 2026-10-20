@@ -1,4 +1,5 @@
 import { defineCollection, defineContentConfig } from '@nuxt/content'
+import { defineSitemapSchema } from '@nuxtjs/sitemap/content'
 import { z } from 'zod'
 
 /**
@@ -11,7 +12,8 @@ import { z } from 'zod'
  *   - carousel   – product screenshots
  *   - steps      – how-it-works steps
  *   - features   – feature grid items
- *   - useCases   – who Besidka is for (replaces the old testimonials key)
+ *   - useCases   – optional and currently unused; the landing page renders no
+ *                  use-case cards, so content/index.md does not set it
  *   - faqs       – FAQ entries (also emitted as FAQPage JSON-LD)
  *
  * The markdown body is the chat-style conversation built from custom MDC
@@ -28,6 +30,18 @@ import { z } from 'zod'
  *   rm .data/content/contents.sqlite
  * (Do NOT run `pnpm run db:reset` — that resets the app D1, not this one.)
  */
+const HTTPS_ONLY_MESSAGE = 'Must be an https:// URL'
+const SITE_RELATIVE_OR_HTTPS_MESSAGE
+  = 'Must be a site-relative path starting with a single / or an https:// URL'
+
+const httpsUrl = z.url({ protocol: /^https$/, message: HTTPS_ONLY_MESSAGE })
+
+const siteRelativeOrHttpsUrl = z
+  .string()
+  .refine((value) => {
+    return /^\/(?![/\\])/.test(value) || httpsUrl.safeParse(value).success
+  }, { message: SITE_RELATIVE_OR_HTTPS_MESSAGE })
+
 const cta = z.object({
   label: z.string().describe('Button text'),
   href: z.string().describe('Link target — an in-app path (/signup) or a URL'),
@@ -183,7 +197,24 @@ export default defineContentConfig({
               .string()
               .optional()
               .describe(
-                'As-of date for competitor prices, e.g. "June 2026"',
+                'Date competitor prices were checked, ISO format, e.g.'
+                + ' 2026-10-20. Shown as "Checked 20 October 2026";'
+                + ' any other text is shown as written.',
+              ),
+            sources: z
+              .array(
+                z.object({
+                  label: z
+                    .string()
+                    .describe('Link text, e.g. "ChatGPT Go"'),
+                  url: httpsUrl
+                    .describe('Official page the price or feature came from'),
+                }),
+              )
+              .optional()
+              .describe(
+                'Official pages the comparison was checked against,'
+                + ' shown as a Sources line under the table',
               ),
           })
           .optional()
@@ -277,8 +308,7 @@ export default defineContentConfig({
           .string()
           .describe(
             'ISO date this document last changed, e.g. 2026-07-26. Shown to'
-            + ' users and used as the sitemap lastmod — bump it whenever the'
-            + ' substance changes.',
+            + ' users — bump it whenever the substance changes.',
           ),
         summary: z
           .string()
@@ -309,6 +339,112 @@ export default defineContentConfig({
           .string()
           .optional()
           .describe('Short plain-language answer shown above the guide'),
+      }),
+    }),
+    // Public "how to get an API key" pages (content/key-guides/*.md), served at
+    // /guides/<slug> by app/pages/guides/[slug].vue. The `/guides` prefix makes
+    // the content path equal the public URL, so the sitemap needs no rewrite.
+    keyGuides: defineCollection({
+      type: 'page',
+      source: {
+        include: 'key-guides/*.md',
+        prefix: '/guides',
+      },
+      schema: z.object({
+        sitemap: defineSitemapSchema(),
+        provider: z
+          .string()
+          .describe(
+            'Provider id from shared/utils/provider-meta, e.g. google or'
+            + ' openai. Drives the "Add your key" deep link.',
+          ),
+        description: z
+          .string()
+          .describe('SEO meta description and social share text'),
+        updatedAt: z
+          .string()
+          .describe(
+            'ISO date this guide last changed, e.g. 2026-10-20. Shown to'
+            + ' users, emitted as dateModified and used as the sitemap'
+            + ' lastmod.',
+          ),
+        checkedAt: z
+          .string()
+          .describe(
+            'ISO date the third-party facts below were last verified against'
+            + ' the provider. Shown to users next to the sources.',
+          ),
+        keyUrl: httpsUrl
+          .describe('Official page where the user creates the API key'),
+        keyUrlLabel: z
+          .string()
+          .optional()
+          .describe('Button text for the key page link'),
+        requirements: z
+          .object({
+            card: z
+              .boolean()
+              .describe('Whether the provider requires a payment card'),
+            minimumTopUp: z
+              .string()
+              .optional()
+              .describe('Smallest prepaid top-up, e.g. $5'),
+            freeTier: z
+              .string()
+              .optional()
+              .describe('Short description of the free tier, if any'),
+            sources: z
+              .array(
+                z.object({
+                  label: z.string().describe('Link text, e.g. Pricing page'),
+                  url: httpsUrl.describe('Official source URL'),
+                }),
+              )
+              .default([])
+              .describe('Official pages that back these facts'),
+          })
+          .describe('Facts a reader needs before creating the key'),
+        video: z
+          .object({
+            src: siteRelativeOrHttpsUrl
+              .describe('Video URL, e.g. /videos/gemini-api-key.mp4'),
+            poster: siteRelativeOrHttpsUrl
+              .describe('Poster image URL, also used as the schema thumbnail'),
+            duration: z
+              .string()
+              .describe('ISO 8601 duration, e.g. PT1M12S'),
+            uploadDate: z
+              .string()
+              .describe('ISO date the video was published, e.g. 2026-10-20'),
+            caption: z
+              .string()
+              .optional()
+              .describe('Short caption displayed below the video player'),
+            captions: z
+              .array(
+                z.object({
+                  src: siteRelativeOrHttpsUrl
+                    .describe('WebVTT URL, e.g. /videos/key.en.vtt'),
+                  label: z
+                    .string()
+                    .describe('Menu label, e.g. "English"'),
+                  srclang: z
+                    .string()
+                    .describe('BCP 47 language tag, e.g. "en"'),
+                  default: z
+                    .boolean()
+                    .optional()
+                    .describe('Active by default when true'),
+                }),
+              )
+              .default([])
+              .describe('WebVTT caption tracks'),
+          })
+          .optional()
+          .describe(
+            'Walkthrough video. Omit it entirely until a real video exists:'
+            + ' VideoObject structured data is only emitted when it is set.',
+          ),
       }),
     }),
   },

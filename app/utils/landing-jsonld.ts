@@ -25,7 +25,7 @@ export type FaqItem = {
 export type LandingLdInput = {
   baseUrl: string
   siteName: string
-  description: string
+  entityDescription: string
   faqs?: FaqItem[]
 }
 
@@ -59,7 +59,7 @@ export function buildOrganizationLd(
     'name': input.siteName,
     'alternateName': ALTERNATE_NAMES,
     'url': ids.siteUrl,
-    'description': input.description,
+    'description': input.entityDescription,
     'logo': `${ids.siteUrl}web-app-manifest-512x512.png`,
     'sameAs': [
       CODE_REPOSITORY,
@@ -78,7 +78,7 @@ export function buildWebSiteLd(
     'name': input.siteName,
     'alternateName': ALTERNATE_NAMES,
     'url': ids.siteUrl,
-    'description': input.description,
+    'description': input.entityDescription,
     'inLanguage': 'en',
     'publisher': { '@id': ids.organizationId },
   }
@@ -93,7 +93,7 @@ export function buildSoftwareApplicationLd(
     '@id': ids.applicationId,
     'name': input.siteName,
     'alternateName': ALTERNATE_NAMES,
-    'description': input.description,
+    'description': input.entityDescription,
     'url': ids.siteUrl,
     'applicationCategory': 'CommunicationApplication',
     'operatingSystem': 'Web',
@@ -105,7 +105,7 @@ export function buildSoftwareApplicationLd(
       'priceCurrency': 'USD',
     },
     'screenshot': `${ids.siteUrl}og-image.png`,
-    'codeRepository': CODE_REPOSITORY,
+    'sameAs': [CODE_REPOSITORY],
     'publisher': { '@id': ids.organizationId },
     'isPartOf': { '@id': ids.websiteId },
   }
@@ -165,8 +165,94 @@ export function buildGuidePageLd(input: GuidePageLdInput) {
     'inLanguage': 'en',
     ...(input.dateModified ? { dateModified: input.dateModified } : {}),
     'isPartOf': { '@id': ids.websiteId },
+    'author': { '@id': ids.organizationId },
     'publisher': { '@id': ids.organizationId },
     'about': { '@id': ids.applicationId },
+  }
+}
+
+export type KeyGuideVideoLdInput = {
+  src?: string
+  poster?: string
+  duration?: string
+  uploadDate?: string
+  caption?: string
+}
+
+export type KeyGuidePageLdInput = GuidePageLdInput & {
+  video?: KeyGuideVideoLdInput | null
+}
+
+type CompleteKeyGuideVideo = Required<
+  Omit<KeyGuideVideoLdInput, 'caption'>
+> & Pick<KeyGuideVideoLdInput, 'caption'>
+
+const WEB_PROTOCOLS: ReadonlySet<string> = new Set(['http:', 'https:'])
+
+function isCompleteVideo(
+  video: KeyGuideVideoLdInput | null | undefined,
+): video is CompleteKeyGuideVideo {
+  return !!video?.src
+    && !!video.poster
+    && !!video.duration
+    && !!video.uploadDate
+}
+
+function resolveWebUrl(value: string, baseUrl: string): string | null {
+  try {
+    const resolvedUrl = new URL(value, baseUrl)
+
+    return WEB_PROTOCOLS.has(resolvedUrl.protocol) ? resolvedUrl.href : null
+  } catch {
+    return null
+  }
+}
+
+function buildVideoObjectLd(
+  input: KeyGuidePageLdInput,
+  video: CompleteKeyGuideVideo,
+  videoId: string,
+): Record<string, unknown> | null {
+  const thumbnailUrl = resolveWebUrl(video.poster, input.baseUrl)
+  const contentUrl = resolveWebUrl(video.src, input.baseUrl)
+
+  if (!thumbnailUrl || !contentUrl) {
+    return null
+  }
+
+  return {
+    '@type': 'VideoObject',
+    '@id': videoId,
+    'name': video.caption || `${input.headline} (video)`,
+    'description': input.description,
+    'thumbnailUrl': thumbnailUrl,
+    'uploadDate': video.uploadDate,
+    'duration': video.duration,
+    'contentUrl': contentUrl,
+    'inLanguage': 'en',
+  }
+}
+
+export function buildKeyGuidePageLd(input: KeyGuidePageLdInput) {
+  const { '@context': context, ...articleLd } = buildGuidePageLd(input)
+  const videoId = `${input.url}#video`
+  const videoLd = isCompleteVideo(input.video)
+    ? buildVideoObjectLd(input, input.video, videoId)
+    : null
+
+  const graph: Array<Record<string, unknown>> = [
+    videoLd
+      ? { ...articleLd, video: { '@id': videoId } }
+      : articleLd,
+  ]
+
+  if (videoLd) {
+    graph.push(videoLd)
+  }
+
+  return {
+    '@context': context,
+    '@graph': graph,
   }
 }
 

@@ -149,8 +149,8 @@ the `::home-*` components appear as editable blocks.
 
 ## 3. The editing model: data in frontmatter, prose in the body
 
-Structured data (hero, carousel, steps, features, useCases, benefits,
-comparison, video, faqs) lives in the **frontmatter** so Studio edits it as
+Structured data (hero, carousel, steps, features, benefits, comparison,
+video, faqs, and the optional, currently unused useCases) lives in the **frontmatter** so Studio edits it as
 clean **Page Settings forms**. The markdown **body** holds the editable
 conversation prose and **data-less widget placeholders** that pull from that
 frontmatter. This split exists on purpose: Studio's inline property popover
@@ -238,7 +238,7 @@ more colons, indented two spaces:
 | `:home-features{set="steps"}`        | `steps`                                | the "How it works" grid                          |
 | `:home-features{set="features"}`     | `features`                             | the full feature grid                            |
 | `:home-features{set="benefits"}`     | `benefits`                             | customer-outcome benefits grid (3 items)         |
-| `:home-testimonials`                 | `useCases`                             | use-case cards (renamed from `testimonials`)     |
+| `:home-testimonials`                 | `useCases` (optional)                  | **unused by the landing**: the "Who is it for?" bubble is plain markdown now; component and key kept for reuse |
 | `:home-comparison`                   | `comparison`                           | competitor comparison table with cost footnote   |
 | `:home-video`                        | `video`                                | custom Plyr player (DaisyUI-themed): quality switch, captions, chapter markers, hover thumbnails; streamed from CMS_BUCKET with Range |
 | `:home-faq`                          | `faqs`                                 | also emitted as FAQPage structured data          |
@@ -256,7 +256,7 @@ more colons, indented two spaces:
 | `steps`      | array of objects     | `icon`, `title`, `body` per step                           |
 | `features`   | array of objects     | `icon`, `title`, `body` per feature                        |
 | `benefits`   | array of objects     | `icon`, `title`, `body` — customer-outcome wording         |
-| `useCases`   | array of objects     | `icon`, `persona`, `scenario`, `payoff`                    |
+| `useCases`   | array of objects     | optional and currently unused (see `:home-testimonials`); `icon`, `persona`, `scenario`, `payoff` |
 | `comparison` | object               | `caption`, `columns[]`, `rows[]{label, values[]}`          |
 | `video`      | object               | `src`, `poster?`, `caption?`, `qualities[]{src,size,label?}`, `captions[]{src,label,srclang,default?}`, `markers[]{time:"m:ss",label}`, `thumbnails?` — see Demo video player note below |
 | `faqs`       | array of objects     | `question`, `answer` — also powers FAQPage JSON-LD         |

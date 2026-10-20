@@ -5,9 +5,12 @@ import LandingFooter from '../../../app/components/LandingFooter.vue'
 const mocks = vi.hoisted(() => ({
   useCookieConsentUi: vi.fn(),
   expand: vi.fn(),
+  keyGuides: [] as Array<{ path: string, title: string, provider: string }>,
+  queryCollection: vi.fn(),
 }))
 
 mockNuxtImport('useCookieConsentUi', () => mocks.useCookieConsentUi)
+mockNuxtImport('queryCollection', () => mocks.queryCollection)
 
 const COOKIE_SETTINGS = '[data-testid="footer-cookie-settings"]'
 
@@ -16,6 +19,17 @@ describe('LandingFooter.vue', () => {
     mocks.expand.mockReset()
     mocks.useCookieConsentUi.mockReset()
     mocks.useCookieConsentUi.mockReturnValue({ expand: mocks.expand })
+    mocks.keyGuides = []
+    mocks.queryCollection.mockReset()
+    mocks.queryCollection.mockImplementation(() => {
+      const query = {
+        select: () => query,
+        order: () => query,
+        all: async () => mocks.keyGuides,
+      }
+
+      return query
+    })
   })
 
   it('renders a Cookie settings button that opens a dialog', async () => {
@@ -72,6 +86,86 @@ describe('LandingFooter.vue', () => {
     expect(link.text()).toBe('BYOK guide')
 
     wrapper.unmount()
+  })
+
+  describe('key guide links', () => {
+    const linkStub = {
+      NuxtLink: {
+        props: ['to'],
+        template: '<a :href="to"><slot /></a>',
+      },
+    }
+
+    it('renders nothing extra in the Guides list when there are no key '
+      + 'guides', async () => {
+      const wrapper = await mountSuspended(LandingFooter, {
+        global: { stubs: linkStub },
+      })
+      const guideLinks = wrapper.findAll('nav[aria-label="Guides"] a')
+
+      expect(mocks.queryCollection).toHaveBeenCalledWith('keyGuides')
+      expect(guideLinks).toHaveLength(1)
+      expect(guideLinks[0]!.attributes('data-testid'))
+        .toBe('landing-footer-byok-link')
+
+      wrapper.unmount()
+    })
+
+    it('appends one link per key guide after the BYOK link', async () => {
+      mocks.keyGuides = [
+        {
+          path: '/guides/gemini-api-key',
+          title: 'How to get a Gemini API key',
+          provider: 'google',
+        },
+        {
+          path: '/guides/openai-api-key',
+          title: 'How to get an OpenAI API key',
+          provider: 'openai',
+        },
+      ]
+
+      const wrapper = await mountSuspended(LandingFooter, {
+        global: { stubs: linkStub },
+      })
+      const guideLinks = wrapper.findAll('nav[aria-label="Guides"] a')
+
+      expect(guideLinks.map((link: any) => link.attributes('href')))
+        .toEqual([
+          '/byok',
+          '/guides/gemini-api-key',
+          '/guides/openai-api-key',
+        ])
+
+      const geminiLink = wrapper.get(
+        '[data-testid="landing-footer-guide-link-gemini-api-key"]',
+      )
+
+      expect(geminiLink.text()).toBe('How to get a Gemini API key')
+      expect(
+        wrapper.find(
+          '[data-testid="landing-footer-guide-link-openai-api-key"]',
+        ).exists(),
+      ).toBe(true)
+
+      wrapper.unmount()
+    })
+
+    it('still renders the footer when the guides query fails', async () => {
+      mocks.queryCollection.mockImplementation(() => {
+        throw new Error('content database unavailable')
+      })
+
+      const wrapper = await mountSuspended(LandingFooter, {
+        global: { stubs: linkStub },
+      })
+
+      expect(
+        wrapper.find('[data-testid="landing-footer-byok-link"]').exists(),
+      ).toBe(true)
+
+      wrapper.unmount()
+    })
   })
 
   it('keeps footer link lists left-aligned on desktop, so the Cookie '
