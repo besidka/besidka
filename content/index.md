@@ -249,15 +249,15 @@ hero:
   headline: "Besidka: BYOK AI chat. Pay only for the AI you use"
   subheadline: Use GPT, Gemini, Claude, DeepSeek and more in one chat with your own API keys. No subscription, no markup, and you see the price of every message.
   primaryCta:
-    label: Start free with a Gemini key
-    href: /signup?next=%2Fprofile%2Fkeys%3Fprovider%3Dgoogle
+    label: Start chatting
+    href: /signup
     icon: lucide:arrow-right
   secondaryCta:
     label: Self-host on GitHub
     href: https://github.com/besidka/besidka
     icon: streamline-logos:github-logo-2-solid
   guideLink:
-    label: How to get the key
+    label: The fastest way to start chatting with AI
     href: /guides/gemini-api-key
 steps:
   - icon: lucide:user-plus
@@ -360,8 +360,8 @@ New to BYOK? The [BYOK guide](/byok) walks through getting a key, adding it, how
   :::home-cta
   ---
   primary:
-    label: Start free with a Gemini key
-    href: /signup?next=%2Fprofile%2Fkeys%3Fprovider%3Dgoogle
+    label: Start chatting
+    href: /signup
     icon: lucide:arrow-right
   secondary:
     label: How it works
@@ -535,8 +535,8 @@ Add your own API key, see what each message costs, and stop paying for months yo
   :::home-cta
   ---
   primary:
-    label: Start free with a Gemini key
-    href: /signup?next=%2Fprofile%2Fkeys%3Fprovider%3Dgoogle
+    label: Start chatting
+    href: /signup
     icon: lucide:arrow-right
   secondary:
     label: Self-host on GitHub
