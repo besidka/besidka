@@ -290,6 +290,13 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   previews, shared preview resources, passkeys only on the long-lived
   host), the bootstrap-PR hazard, owner OAuth-callback steps, and revert
   criteria
+- `docs/nuxt-entry-import-map.md` - Why `experimental.entryImportMap` is
+  pinned to `false`: with it on, lazy chunks keep the same filename while
+  their embedded `entry.<hash>.css` preload changes, so immutable-cached
+  stale chunks inject the previous build's full CSS after the new one
+  (breaking the DaisyUI cascade) or 404; detection, the upstream issue
+  (nuxt/nuxt#36136), rejected alternatives, the more-chunk-renames trade-off,
+  revert criteria, and the build-comparison verification recipe
 
 ### Tech Stack
 

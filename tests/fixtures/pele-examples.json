@@ -1,0 +1,206 @@
+[
+  {
+    "id": "block-detail-28",
+    "type": "block",
+    "title": "Block: Documentation examples",
+    "source": "block\n  columns 3\n  Start((\"Start\")) space:2\n  down<[\" \"]>(down) space:2\n  Decision{{\"Make Decision\"}} right<[\"Yes\"]>(right) Process1[\"Process A\"]\n  downAgain<[\"No\"]>(down) space r3<[\"Done\"]>(down)\n  Process2[\"Process B\"] r2<[\"Done\"]>(right) End((\"End\"))\n\n  style Start fill:#969;\n  style End fill:#696;"
+  },
+  {
+    "id": "c4-detail-7",
+    "type": "c4",
+    "title": "C4: Documentation examples",
+    "source": "    C4Deployment\n    title Deployment Diagram for Internet Banking System - Live\n\n    Deployment_Node(mob, \"Customer's mobile device\", \"Apple IOS or Android\"){\n        Container(mobile, \"Mobile App\", \"Xamarin\", \"Provides a limited subset of the Internet Banking functionality to customers via their mobile device.\")\n    }\n\n    Deployment_Node(comp, \"Customer's computer\", \"Microsoft Windows or Apple macOS\"){\n        Deployment_Node(browser, \"Web Browser\", \"Google Chrome, Mozilla Firefox,<br/> Apple Safari or Microsoft Edge\"){\n            Container(spa, \"Single Page Application\", \"JavaScript and Angular\", \"Provides all of the Internet Banking functionality to customers via their web browser.\")\n        }\n    }\n\n    Deployment_Node(plc, \"Big Bank plc\", \"Big Bank plc data center\"){\n        Deployment_Node(dn, \"bigbank-api*** x8\", \"Ubuntu 16.04 LTS\"){\n            Deployment_Node(apache, \"Apache Tomcat\", \"Apache Tomcat 8.x\"){\n                Container(api, \"API Application\", \"Java and Spring MVC\", \"Provides Internet Banking functionality via a JSON/HTTPS API.\")\n            }\n        }\n        Deployment_Node(bb2, \"bigbank-web*** x4\", \"Ubuntu 16.04 LTS\"){\n            Deployment_Node(apache2, \"Apache Tomcat\", \"Apache Tomcat 8.x\"){\n                Container(web, \"Web Application\", \"Java and Spring MVC\", \"Delivers the static content and the Internet Banking single page application.\")\n            }\n        }\n        Deployment_Node(bigbankdb01, \"bigbank-db01\", \"Ubuntu 16.04 LTS\"){\n            Deployment_Node(oracle, \"Oracle - Primary\", \"Oracle 12c\"){\n                ContainerDb(db, \"Database\", \"Relational Database Schema\", \"Stores user registration information, hashed authentication credentials, access logs, etc.\")\n            }\n        }\n        Deployment_Node(bigbankdb02, \"bigbank-db02\", \"Ubuntu 16.04 LTS\") {\n            Deployment_Node(oracle2, \"Oracle - Secondary\", \"Oracle 12c\") {\n                ContainerDb(db2, \"Database\", \"Relational Database Schema\", \"Stores user registration information, hashed authentication credentials, access logs, etc.\")\n            }\n        }\n    }\n\n    Rel(mobile, api, \"Makes API calls to\", \"json/HTTPS\")\n    Rel(spa, api, \"Makes API calls to\", \"json/HTTPS\")\n    Rel_U(web, spa, \"Delivers to the customer's web browser\")\n    Rel(api, db, \"Reads from and writes to\", \"JDBC\")\n    Rel(api, db2, \"Reads from and writes to\", \"JDBC\")\n    Rel_R(db, db2, \"Replicates data to\")\n\n    UpdateRelStyle(spa, api, $offsetY=\"-40\")\n    UpdateRelStyle(web, spa, $offsetY=\"-40\")\n    UpdateRelStyle(api, db, $offsetY=\"-20\", $offsetX=\"5\")\n    UpdateRelStyle(api, db2, $offsetX=\"-40\", $offsetY=\"-20\")\n    UpdateRelStyle(db, db2, $offsetY=\"-10\")"
+  },
+  {
+    "id": "class-2",
+    "type": "class",
+    "title": "Class 2",
+    "source": "---\ntitle: Reef animal example\n---\nclassDiagram\n    note \"From Turtle till Whale\"\n    Animal <|-- Turtle\n    note for Turtle \"can swim<br>can dive<br>can nest on beaches<br>can live for decades\"\n    Animal <|-- Shark\n    Animal <|-- Whale\n    Animal : +int age\n    Animal : +String name\n    Animal: +isMammal()\n    Animal: +migrate()\n    class Turtle{\n        +String shellColor\n        +swim()\n        +nest()\n    }\n    class Shark{\n        -int sizeInFeet\n        -canHunt()\n    }\n    class Whale{\n        +bool is_humpback\n        +sing()\n    }"
+  },
+  {
+    "id": "entity-relationship-2",
+    "type": "er",
+    "title": "Entity relationship 2",
+    "source": "erDiagram\n    CAR ||--o{ NAMED-DRIVER : allows\n    CAR {\n        string registrationNumber PK\n        string make\n        string model\n        string[] parts\n    }\n    PERSON ||--o{ NAMED-DRIVER : is\n    PERSON {\n        string driversLicense PK \"The license #\"\n        string(99) firstName \"Only 99 characters are allowed\"\n        string lastName\n        string phone UK\n        int age\n    }\n    NAMED-DRIVER {\n        string carRegistrationNumber PK, FK\n        string driverLicense PK, FK\n    }\n    MANUFACTURER only one to zero or more CAR : makes"
+  },
+  {
+    "id": "event-modeling",
+    "type": "eventmodeling",
+    "title": "Event modeling 1",
+    "source": "eventmodeling\n\ntimeframe 01 ui CartUI\ntimeframe 02 command AddItem [[AddItem01]]\ntimeframe 03 event ItemAdded [[ItemAdded]]\ntimeframe 04 command AddItem [[AddItem02]]\ntimeframe 05 event ItemAdded [[ItemAdded]]\n\ndata AddItem01 {\n  description: 'john'\n  image: 'avatar_john'\n  price: 20.4\n}\n\ndata AddItem02 {\n  description: 'jack'\n  image: 'avatar_jack'\n  price: 12.5\n}\n\ndata ItemAdded {\n  description: string\n  image: string\n  price: number\n}"
+  },
+  {
+    "id": "flowchart-detail-56",
+    "type": "flowchart",
+    "title": "Flowchart: Fan in, 30",
+    "source": "---\nconfig:\n  flowchart:\n    curve: step\n---\nflowchart TD\n  n1[Note 1] --> hub[Hub]\n  n2[Note 2] --> hub[Hub]\n  n3[Note 3] --> hub[Hub]\n  n4[Note 4] --> hub[Hub]\n  n5[Note 5] --> hub[Hub]\n  n6[Note 6] --> hub[Hub]\n  n7[Note 7] --> hub[Hub]\n  n8[Note 8] --> hub[Hub]\n  n9[Note 9] --> hub[Hub]\n  n10[Note 10] --> hub[Hub]\n  n11[Note 11] --> hub[Hub]\n  n12[Note 12] --> hub[Hub]\n  n13[Note 13] --> hub[Hub]\n  n14[Note 14] --> hub[Hub]\n  n15[Note 15] --> hub[Hub]\n  n16[Note 16] --> hub[Hub]\n  n17[Note 17] --> hub[Hub]\n  n18[Note 18] --> hub[Hub]\n  n19[Note 19] --> hub[Hub]\n  n20[Note 20] --> hub[Hub]\n  n21[Note 21] --> hub[Hub]\n  n22[Note 22] --> hub[Hub]\n  n23[Note 23] --> hub[Hub]\n  n24[Note 24] --> hub[Hub]\n  n25[Note 25] --> hub[Hub]\n  n26[Note 26] --> hub[Hub]\n  n27[Note 27] --> hub[Hub]\n  n28[Note 28] --> hub[Hub]\n  n29[Note 29] --> hub[Hub]\n  n30[Note 30] --> hub[Hub]"
+  },
+  {
+    "id": "gantt-detail-11",
+    "type": "gantt",
+    "title": "Gantt detail 11",
+    "source": "---\n    # Frontmatter config, YAML comments\n    title: Ignored if specified in chart\n    displayMode: compact     #gantt specific setting but works at this level too\n    config:\n#        theme: forest\n#        themeCSS: \" #item36 { fill: CadetBlue } \"\n        themeCSS: \" // YAML supports multiline strings using a newline markers: \\n\n            #item36 { fill: CadetBlue }       \\n\n\n            // Custom marker workaround CSS from forum (below)    \\n\n            rect[id^=workaround] { height: calc(100% - 50px) ; transform: translate(9px, 25px); y: 0; width: 1.5px; stroke: none; fill: red; }   \\n\n            text[id^=workaround] { fill: red; y: 100%; font-size: 15px;}\n        \"\n        gantt:\n            useWidth: 400\n            rightPadding: 0\n            topAxis: true  #false\n            numberSectionStyles: 2\n---\ngantt\n    title Timeline - Gantt Sampler\n    dateFormat YYYY\n    axisFormat %y\n    %% this next line doesn't recognize 'decade' or 'year', but will silently ignore\n    tickInterval 1decade\n\n    section Issue19062\n    71   :            item71, 1900, 1930\n    section Issue19401\n    36   :            item36, 1913, 1935\n    section Issue1300\n    94   :            item94, 1910, 1915\n    5    :            item5,  1920, 1925\n    0    : milestone, item0,  1918, 1s\n    9    : vert,              1906, 1s   %% not yet official\n    64   : workaround,        1923, 1s   %% custom CSS object https://github.com/mermaid-js/mermaid/issues/3250"
+  },
+  {
+    "id": "git-graph-detail-14",
+    "type": "gitGraph",
+    "title": "Git graph detail 14",
+    "source": "---\nconfig:\n  logLevel: 'debug'\n  theme: 'base'\n  gitGraph:\n    showBranches: false\n    showCommitLabel: false\n---\n      gitGraph\n        commit\n        branch hotfix\n        checkout hotfix\n        commit\n        branch develop\n        checkout develop\n        commit id:\"ash\"\n        branch featureB\n        checkout featureB\n        commit type:HIGHLIGHT\n        checkout main\n        checkout hotfix\n        commit type:NORMAL\n        checkout develop\n        commit type:REVERSE\n        checkout featureB\n        commit\n        checkout main\n        merge hotfix\n        checkout featureB\n        commit\n        checkout develop\n        branch featureA\n        commit\n        checkout develop\n        merge hotfix\n        checkout featureA\n        commit\n        checkout featureB\n        commit\n        checkout develop\n        merge featureA\n        branch release\n        checkout release\n        commit\n        checkout main\n        commit\n        checkout release\n        merge main\n        checkout develop\n        merge release"
+  },
+  {
+    "id": "kanban-2",
+    "type": "kanban",
+    "title": "Kanban 2",
+    "source": "---\nconfig:\n  kanban:\n    ticketBaseUrl: 'https://mermaidchart.atlassian.net/browse/#TICKET#'\n---\nkanban\n  Todo\n    [Create Documentation]\n    docs[Create Blog about the new diagram]\n  [In progress]\n    id6[Create renderer so that it works in all cases. We also add some extra text here for testing purposes. And some more just for the extra flare.]\n  id9[Ready for deploy]\n    id8[Design grammar]@{ assigned: 'knsv' }\n  id10[Ready for test]\n    id4[Create parsing tests]@{ ticket: MC-2038, assigned: 'K.Sveidqvist', priority: 'High' }\n    id66[last item]@{ priority: 'Very Low', assigned: 'knsv' }\n  id11[Done]\n    id5[define getData]\n    id2[Title of diagram is more than 100 chars when user duplicates diagram with 100 char]@{ ticket: MC-2036, priority: 'Very High'}\n    id3[Update DB function]@{ ticket: MC-2037, assigned: knsv, priority: 'High' }\n\n  id12[Can't reproduce]\n    id3[Weird flickering in Firefox]"
+  },
+  {
+    "id": "mindmap-detail-1",
+    "type": "mindmap",
+    "title": "Mindmap detail 1",
+    "source": "mindmap\n  root((mindmap))\n    Origins\n      Long history\n      ::icon(fa fa-book)\n      Popularization\n        British popular psychology author Tony Buzan\n    Research\n      On effectiveness<br/>and features\n      On Automatic creation\n        Uses\n            Creative techniques\n            Strategic planning\n            Argument mapping\n    Tools\n      Pen and paper\n      Mermaid"
+  },
+  {
+    "id": "packet",
+    "type": "packet",
+    "title": "Packet 1",
+    "source": "---\ntitle: \"TCP Packet\"\n---\npacket\n0-15: \"Source Port\"\n16-31: \"Destination Port\"\n32-63: \"Sequence Number\"\n64-95: \"Acknowledgment Number\"\n96-99: \"Data Offset\"\n100-105: \"Reserved\"\n106: \"URG\"\n107: \"ACK\"\n108: \"PSH\"\n109: \"RST\"\n110: \"SYN\"\n111: \"FIN\"\n112-127: \"Window\"\n128-143: \"Checksum\"\n144-159: \"Urgent Pointer\"\n160-191: \"(Options and Padding)\"\n192-255: \"Data (variable length)\""
+  },
+  {
+    "id": "pie-detail-2",
+    "type": "pie",
+    "title": "Pie detail 2",
+    "source": "---\nconfig:\n  pie:\n    textPosition: 0.5\n    donutHole: 0.2\n    highlightSlice: Potassium\n  themeVariables:\n    pieOuterStrokeWidth: \"5px\"\n---\npie showData\n    title Key elements in Product X\n    \"Calcium\" : 42.96\n    \"Potassium\" : 50.05\n    \"Magnesium\" : 10.01\n    \"Iron\" :  5"
+  },
+  {
+    "id": "quadrant-chart-detail-4",
+    "type": "quadrantChart",
+    "title": "Quadrant chart: Documentation examples",
+    "source": "quadrantChart\n  title Reach and engagement of campaigns\n  x-axis Low Reach --> High Reach\n  y-axis Low Engagement --> High Engagement\n  quadrant-1 We should expand\n  quadrant-2 Need to promote\n  quadrant-3 Re-evaluate\n  quadrant-4 May be improved\n  Campaign A: [0.9, 0.0] radius: 12\n  Campaign B:::class1: [0.8, 0.1] color: #ff3300, radius: 10\n  Campaign C: [0.7, 0.2] radius: 25, color: #00ff33, stroke-color: #10f0f0\n  Campaign D: [0.6, 0.3] radius: 15, stroke-color: #00ff0f, stroke-width: 5px ,color: #ff33f0\n  Campaign E:::class2: [0.5, 0.4]\n  Campaign F:::class3: [0.4, 0.5] color: #0000ff\n  classDef class1 color: #109060\n  classDef class2 color: #908342, radius : 10, stroke-color: #310085, stroke-width: 10px\n  classDef class3 color: #f00fff, radius : 10"
+  },
+  {
+    "id": "requirement-detail-6",
+    "type": "requirement",
+    "title": "Requirement: Documentation examples",
+    "source": "    requirementDiagram\n\n    requirement test_req {\n    id: 1\n    text: the test text.\n    risk: high\n    verifymethod: test\n    }\n\n    functionalRequirement test_req2 {\n    id: 1.1\n    text: the second test text.\n    risk: low\n    verifymethod: inspection\n    }\n\n    performanceRequirement test_req3 {\n    id: 1.2\n    text: the third test text.\n    risk: medium\n    verifymethod: demonstration\n    }\n\n    interfaceRequirement test_req4 {\n    id: 1.2.1\n    text: the fourth test text.\n    risk: medium\n    verifymethod: analysis\n    }\n\n    physicalRequirement test_req5 {\n    id: 1.2.2\n    text: the fifth test text.\n    risk: medium\n    verifymethod: analysis\n    }\n\n    designConstraint test_req6 {\n    id: 1.2.3\n    text: the sixth test text.\n    risk: medium\n    verifymethod: analysis\n    }\n\n    element test_entity {\n    type: simulation\n    }\n\n    element test_entity2 {\n    type: word doc\n    docRef: reqs/test_entity\n    }\n\n    element test_entity3 {\n    type: \"test suite\"\n    docRef: github.com/all_the_tests\n    }\n\n\n    test_entity - satisfies -> test_req2\n    test_req - traces -> test_req2\n    test_req - contains -> test_req3\n    test_req3 - contains -> test_req4\n    test_req4 - derives -> test_req5\n    test_req5 - refines -> test_req6\n    test_entity3 - verifies -> test_req5\n    test_req <- copies - test_entity2"
+  },
+  {
+    "id": "sankey-detail-1",
+    "type": "sankey",
+    "title": "Sankey detail 1",
+    "source": "---\nconfig:\n  sankey:\n    showValues: false\n---\nsankey\n\nAgricultural 'waste',Bio-conversion,124.729\nBio-conversion,Liquid,0.597\nBio-conversion,Losses,26.862\nBio-conversion,Solid,280.322\nBio-conversion,Gas,81.144\nBiofuel imports,Liquid,35\nBiomass imports,Solid,35\nCoal imports,Coal,11.606\nCoal reserves,Coal,63.965\nCoal,Solid,75.571\nDistrict heating,Industry,10.639\nDistrict heating,Heating and cooling - commercial,22.505\nDistrict heating,Heating and cooling - homes,46.184\nElectricity grid,Over generation / exports,104.453\nElectricity grid,Heating and cooling - homes,113.726\nElectricity grid,H2 conversion,27.14\nElectricity grid,Industry,342.165\nElectricity grid,Road transport,37.797\nElectricity grid,Agriculture,4.412\nElectricity grid,Heating and cooling - commercial,40.858\nElectricity grid,Losses,56.691\nElectricity grid,Rail transport,7.863\nElectricity grid,Lighting & appliances - commercial,90.008\nElectricity grid,Lighting & appliances - homes,93.494\nGas imports,Ngas,40.719\nGas reserves,Ngas,82.233\nGas,Heating and cooling - commercial,0.129\nGas,Losses,1.401\nGas,Thermal generation,151.891\nGas,Agriculture,2.096\nGas,Industry,48.58\nGeothermal,Electricity grid,7.013\nH2 conversion,H2,20.897\nH2 conversion,Losses,6.242\nH2,Road transport,20.897\nHydro,Electricity grid,6.995\nLiquid,Industry,121.066\nLiquid,International shipping,128.69\nLiquid,Road transport,135.835\nLiquid,Domestic aviation,14.458\nLiquid,International aviation,206.267\nLiquid,Agriculture,3.64\nLiquid,National navigation,33.218\nLiquid,Rail transport,4.413\nMarine algae,Bio-conversion,4.375\nNgas,Gas,122.952\nNuclear,Thermal generation,839.978\nOil imports,Oil,504.287\nOil reserves,Oil,107.703\nOil,Liquid,611.99\nOther waste,Solid,56.587\nOther waste,Bio-conversion,77.81\nPumped heat,Heating and cooling - homes,193.026\nPumped heat,Heating and cooling - commercial,70.672\nSolar PV,Electricity grid,59.901\nSolar Thermal,Heating and cooling - homes,19.263\nSolar,Solar Thermal,19.263\nSolar,Solar PV,59.901\nSolid,Agriculture,0.882\nSolid,Thermal generation,400.12\nSolid,Industry,46.477\nThermal generation,Electricity grid,525.531\nThermal generation,Losses,787.129\nThermal generation,District heating,79.329\nTidal,Electricity grid,9.452\nUK land based bioenergy,Bio-conversion,182.01\nWave,Electricity grid,19.013\nWind,Electricity grid,289.366"
+  },
+  {
+    "id": "sequence-detail-34",
+    "type": "sequence",
+    "title": "Sequence: Documentation examples",
+    "source": "sequenceDiagram\n    participant Alice\n    participant John\n\n    rect rgb(191, 223, 255)\n    note right of Alice: Alice calls John.\n    Alice->>+John: Hello John, how are you?\n    rect rgb(200, 150, 255)\n    Alice->>+John: John, can you hear me?\n    John-->>-Alice: Hi Alice, I can hear you!\n    end\n    John-->>-Alice: I feel great!\n    end\n    Alice ->>+ John: Did you want to go to the game tonight?\n    John -->>- Alice: Yeah! See you there."
+  },
+  {
+    "id": "state-detail-23",
+    "type": "state",
+    "title": "State: Documentation examples",
+    "source": "   stateDiagram\n   direction TB\n\n   accTitle: This is the accessible title\n   accDescr: This is an accessible description\n\n   classDef notMoving fill:white\n   classDef movement font-style:italic\n   classDef badBadEvent fill:#f00,color:white,font-weight:bold,stroke-width:2px,stroke:yellow\n\n   [*]--> Still\n   Still --> [*]\n   Still --> Moving\n   Moving --> Still\n   Moving --> Crash\n   Crash --> [*]\n\n   class Still notMoving\n   class Moving, Crash movement\n   class Crash badBadEvent\n   class end badBadEvent"
+  },
+  {
+    "id": "timeline-detail-4",
+    "type": "timeline",
+    "title": "Timeline detail 4",
+    "source": "timeline\n        title England's History Timeline\n        section Stone Age\n          7600 BC : Britain's oldest known house was built in Orkney, Scotland\n          6000 BC : Sea levels rise and Britain becomes an island.<br> The people who live here are hunter-gatherers.\n        section Bronze Age\n          2300 BC : People arrive from Europe and settle in Britain. <br>They bring farming and metalworking.\n                  : New styles of pottery and ways of burying the dead appear.\n          2200 BC : The last major building works are completed at Stonehenge.<br> People now bury their dead in stone circles.\n                  : The first metal objects are made in Britain.Some other nice things happen. it is a good time to be alive."
+  },
+  {
+    "id": "user-journey",
+    "type": "journey",
+    "title": "User journey 1",
+    "source": "journey\n    title My working day\n    section Go to work\n      Make tea: 5: Me\n      Go upstairs: 3: Me\n      Do work: 1: Me, Cat\n    section Go home\n      Go downstairs: 5: Me\n      Sit down: 5: Me"
+  },
+  {
+    "id": "xy-chart-detail-8",
+    "type": "xychart",
+    "title": "XY chart detail 8",
+    "source": "---\nconfig:\n    xyChart:\n        width: 900\n        height: 600\n        showDataLabel: true\n    themeVariables:\n        xyChart:\n            titleColor: \"#ff0000\"\n---\nxychart\n    title \"Sales Revenue\"\n    x-axis [jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec]\n    y-axis \"Revenue (in $)\" 4000 --> 11000\n    bar [5000, 6000, 7500, 8200, 9500, 10500, 11000, 10200, 9200, 8500, 7000, 6000]\n    line [5000, 6000, 7500, 8200, 9500, 10500, 11000, 10200, 9200, 8500, 7000, 6000]"
+  },
+  {
+    "id": "agentflow-2",
+    "type": "agentflow",
+    "title": "Agentflow 2",
+    "source": "agentflow-beta TB\n  connector llm[\"LLM API\"]\n  llm@{ protocol: \"http\", endpoint: \"https://api.example.com/chat\" }\n\n  flow coffee_team[\"Coffee Team\"]\n    city[\"city\"]@{ shape: input, value: \"Stockholm\" }\n\n    flow researcher[\"Researcher\"]\n      research[\"research_location\"]@{ shape: tool, params: \"city :: String\", returns: \"Report\" }\n      write[\"write_copy\"]@{ shape: tool, connectorRef: \"llm.chat\", returns: \"CoffeeCopy\" }\n      city --> research --> write\n    end\n    researcher@{ instruction: \"Research the city and draft English coffee copy citing sources.\" }\n\n    flow designer[\"Designer\"]\n      render[\"generate_html\"]@{ shape: tool, connectorRef: \"llm.chat\", returns: \"String\" }\n      brand[\"Nordic Brand Guide\"]@{ shape: refdoc }\n      render -.- brand\n    end\n\n    researcher --> designer\n  end"
+  },
+  {
+    "id": "architecture-2",
+    "type": "architecture",
+    "title": "Architecture 2",
+    "source": "architecture-beta\n    group sources(cloud)[Sources]\n        service src_a(server)[Source A] in sources\n        service src_b(server)[Source B] in sources\n        service src_c(server)[Source C] in sources\n\n    group storage(database)[Storage]\n        service db_one(database)[DB One] in storage\n        service db_two(database)[DB Two] in storage\n        service db_three(database)[DB Three] in storage\n\n    group output(disk)[Output]\n        service brief(disk)[Brief] in output\n        service analyst(server)[Analyst] in output\n        service delivery(cloud)[Delivery] in output\n\n    src_a:B --> T:db_one\n    src_b:B --> T:db_two\n    src_c:B --> T:db_three\n    db_two:B --> T:brief\n    brief:R --> L:analyst\n    analyst:R --> L:delivery\n\n    align row src_a src_b src_c\n    align row db_one db_two db_three\n    align row brief analyst delivery\n\n    align column src_a db_one\n    align column src_b db_two brief\n    align column src_c db_three"
+  },
+  {
+    "id": "cynefin",
+    "type": "cynefin",
+    "title": "Cynefin 1",
+    "source": "cynefin-beta\n  title Strategy Categorization\n\n  complex\n    \"Market research\"\n\n  complicated\n    \"Competitive analysis\"\n\n  clear\n    \"Standard pricing\"\n\n  chaotic\n    \"Crisis management\"\n\n  complex --> complicated : \"Pattern identified\"\n  complicated --> clear : \"Best practice codified\"\n  clear --> chaotic : \"Complacency\"\n  chaotic --> complex : \"Stabilized\""
+  },
+  {
+    "id": "cynefin-detail-1",
+    "type": "cynefin",
+    "title": "Cynefin detail 1",
+    "source": "cynefin-beta\n  title Incident Response\n\n  complex\n    \"Investigate root cause\"\n    \"Run chaos experiment\"\n\n  complicated\n    \"Analyze performance data\"\n    \"Expert review needed\"\n\n  clear\n    \"Restart service\"\n    \"Apply known fix\"\n\n  chaotic\n    \"Page on-call immediately\"\n\n  confusion\n    \"Unknown failure mode\""
+  },
+  {
+    "id": "cynefin-detail-3",
+    "type": "cynefin",
+    "title": "Cynefin detail 3",
+    "source": "cynefin-beta\n  title Cynefin Framework\n\n  complex\n  complicated\n  clear\n  chaotic"
+  },
+  {
+    "id": "ishikawa",
+    "type": "ishikawa",
+    "title": "Ishikawa 1",
+    "source": "ishikawa-beta\n    Blurry Photo\n    Process\n        Out of focus\n        Shutter speed too slow\n        Protective film not removed\n        Beautification filter applied\n    User\n        Shaky hands\n    Equipment\n        LENS\n            Inappropriate lens\n            Damaged lens\n            Dirty lens\n        SENSOR\n            Damaged sensor\n            Dirty sensor\n    Environment\n        Subject moved too quickly\n        Too dark"
+  },
+  {
+    "id": "radar",
+    "type": "radar",
+    "title": "Radar 1",
+    "source": "radar-beta\n  title Restaurant Comparison\n  axis food[\"Food Quality\"], service[\"Service\"], price[\"Price\"]\n  axis ambiance[\"Ambiance\"]\n\n  curve a[\"Restaurant A\"]{4, 3, 2, 4}\n  curve b[\"Restaurant B\"]{3, 4, 3, 3}\n  curve c[\"Restaurant C\"]{2, 3, 4, 2}\n  curve d[\"Restaurant D\"]{2, 2, 4, 3}\n\n  graticule polygon\n  max 5"
+  },
+  {
+    "id": "railroad-2",
+    "type": "railroad",
+    "title": "Railroad 2",
+    "source": "railroad-beta\ntitle Expression Grammar\n\nexpression = sequence(\n    nonterminal(\"term\"),\n    zeroOrMore(sequence(\n        choice(terminal(\"+\"), terminal(\"-\")),\n        nonterminal(\"term\")\n    ))\n) ;\nterm = sequence(\n    nonterminal(\"factor\"),\n    zeroOrMore(sequence(\n        choice(terminal(\"*\"), terminal(\"/\")),\n        nonterminal(\"factor\")\n    ))\n) ;\nfactor = choice(\n    nonterminal(\"number\"),\n    sequence(terminal(\"(\"), nonterminal(\"expression\"), terminal(\")\"))\n) ;\nnumber = oneOrMore(nonterminal(\"digit\")) ;\ndigit = choice(terminal(\"0\"), terminal(\"1\"), terminal(\"2\"), terminal(\"3\"), terminal(\"4\"), terminal(\"5\"), terminal(\"6\"), terminal(\"7\"), terminal(\"8\"), terminal(\"9\")) ;"
+  },
+  {
+    "id": "swimlane",
+    "type": "swimlane",
+    "title": "Swimlane 1",
+    "source": "swimlane-beta LR\n  subgraph Customer\n    request[Request service]\n    receive[Receive update]\n  end\n\n  subgraph Support\n    triage[Triage request]\n    answer[Send answer]\n  end\n\n  subgraph Engineering\n    investigate[Investigate issue]\n    fix[Prepare fix]\n  end\n\n  request --> triage\n  triage -->|Known issue| answer\n  triage -->|Needs code change| investigate\n  investigate --> fix --> answer\n  answer --> receive"
+  },
+  {
+    "id": "tree-view",
+    "type": "treeView",
+    "title": "Tree view 1",
+    "source": "---\nconfig:\n  treeView:\n    showIcons: true\n    defaultIconPack: material-icon-theme\n    filenameIcons:\n      Dockerfile: docker\n    extensionIcons:\n      .ts: typescript\n      .tsx: react-ts\n      .txt: none\n---\ntreeView-beta\n    src/\n        App.tsx\n        utils.ts\n    Dockerfile\n    notes.txt\n    README.md"
+  },
+  {
+    "id": "treemap",
+    "type": "treemap",
+    "title": "Treemap 1",
+    "source": "---\nconfig:\n  treemap:\n    valueFormat: '$0,0'\n---\ntreemap-beta\n\"Budget\"\n    \"Operations\"\n        \"Salaries\": 700000\n        \"Equipment\": 200000\n        \"Supplies\": 100000\n    \"Marketing\"\n        \"Advertising\": 400000\n        \"Events\": 100000"
+  },
+  {
+    "id": "use-case-detail-23",
+    "type": "usecase",
+    "title": "Use case detail 23",
+    "source": "usecase-beta\ndirection LR\naccTitle: Online ordering use cases\naccDescr {\n  A customer places an order through the storefront.\n  Staff review the order and inspect its data.\n}\nactor Customer(\"Customer\")\nactor Staff(\"Order staff\")@{ type: hollow, business: true } <<Employee>>\nsystemBoundary ordering[\"Ordering System\"]@{ type: package }:::system\n  Browse(\"Browse products\")\n  Checkout(\"Checkout\") <<Core>>:::critical\n  Payment(\"Process payment\")\n  Review[Review order]\nend\njson OrderData@{\n  \"status\": \"pending\",\n  \"items\": [{ \"name\": \"Book\", \"quantity\": 1 }],\n  \"total\": 29.95\n}:::data\nnote for Checkout \"`Validates the **cart** before payment`\"\nCustomer starts@-- \"places order\" ---> Checkout\nCustomer --> Browse\nCheckout pays@..> : include Payment\nStaff --> Review\nReview --> OrderData\nclassDef system stroke:#c8a02a,stroke-width:2px\nclassDef critical stroke:#c33,stroke-width:3px\nclassDef data stroke:#3572a5\nstarts@{ animation: fast }\nstyle pays stroke:#6b46c1,stroke-width:2px"
+  },
+  {
+    "id": "venn",
+    "type": "venn",
+    "title": "Venn 1",
+    "source": "---\nconfig:\n  theme: default\n  look: classic\n---\nvenn-beta\n  title What makes a good feature\n  set Desirable\n  set Feasible\n  set Viable\n  union Desirable,Feasible[\"Buildable\"]\n  union Feasible,Viable[\"Sustainable\"]\n  union Desirable,Viable[\"Marketable\"]\n  union Desirable,Feasible,Viable[\"Ship it\"]"
+  },
+  {
+    "id": "wardley-map-detail-20",
+    "type": "wardley",
+    "title": "Wardley map: Documentation examples",
+    "source": "wardley-beta\ntitle Software Platform Strategy\nsize [1100, 800]\n\nevolution Genesis@0.25 -> Custom@0.5 -> Product@0.75 -> Commodity@1.0\n\nanchor Customer [0.90, 0.95]\n\ncomponent \"Mobile App\" [0.80, 0.85] (build)\ncomponent \"Web App\" [0.75, 0.80] label [-60, 10] (build)\ncomponent \"API Gateway\" [0.70, 0.65] (buy)\ncomponent \"Auth Service\" [0.60, 0.55] (outsource)\ncomponent \"Database\" [0.50, 0.45] (buy) (inertia)\ncomponent \"Cloud Platform\" [0.30, 0.95] (market)\n\nCustomer -> \"Mobile App\"\nCustomer -> \"Web App\"\n\"Mobile App\" -> \"API Gateway\"\n\"Web App\" -> \"API Gateway\"\n\"API Gateway\" -> \"Auth Service\"\n\"API Gateway\" -> \"Database\"\n\"Database\" -> \"Cloud Platform\"\n\nevolve \"API Gateway\" 0.85\nevolve \"Database\" 0.75\n\naccelerator \"Cloud Native\" [0.20, 0.85]\ndeaccelerator \"Legacy Data\" [0.45, 0.35]\n\nannotations [0.10, 0.20]\nannotation 1,[0.78, 0.82] \"User touchpoints\"\nannotation 2,[0.70, 0.60] \"Integration layer\"\nannotation 3,[0.50, 0.40] \"Data persistence\"\n\nnote \"Build mobile-first experience\" [0.85, 0.90]\nnote \"Migrate to cloud-native database\" [0.60, 0.50]"
+  }
+]

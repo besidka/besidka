@@ -14,6 +14,7 @@ import {
   toChatTestErrorPayload,
 } from '#shared/utils/chat-test-errors'
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
+import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture'
 import {
   defineEventHandler,
   getRequestHeader,
@@ -291,6 +292,8 @@ function getChunksForScenario(
       })
     case 'gateway-image':
       return buildGatewayImageGenerationChunks()
+    case 'mermaid':
+      return buildTextChunks(TEST_MERMAID_MESSAGE, 'test-text-0')
     default:
       return buildTextChunks(SHORT_TEXT, 'test-text-0')
   }

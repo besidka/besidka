@@ -421,6 +421,9 @@ export default defineNuxtConfig({
       // before changing or reverting this.
       cssMinify: 'esbuild',
     },
+    worker: {
+      format: 'es',
+    },
     optimizeDeps: {
       include: [
         'better-auth/vue',
@@ -484,6 +487,7 @@ export default defineNuxtConfig({
     // https://github.com/nuxt/nuxt/issues/34142#issuecomment-3791192527
     nitroAutoImports: true,
     prefetchPreloadTags: true,
+    entryImportMap: false,
   },
   hooks: {
     // App-level cookie texts must merge through the same lazy locale-file

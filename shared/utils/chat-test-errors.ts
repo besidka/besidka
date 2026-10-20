@@ -7,6 +7,7 @@ export const chatTestScenarios = [
   'reasoning',
   'image',
   'gateway-image',
+  'mermaid',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]
