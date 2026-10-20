@@ -94,15 +94,6 @@
             >
               <Icon name="lucide:minus" size="16" aria-hidden="true" />
             </button>
-            <button
-              type="button"
-              class="btn btn-sm btn-square join-item"
-              aria-label="Fit diagram to screen"
-              data-testid="mermaid-zoom-reset"
-              @click="resetZoom"
-            >
-              <Icon name="lucide:scan" size="16" aria-hidden="true" />
-            </button>
           </div>
         </div>
       </div>
@@ -201,7 +192,7 @@ function getFitScale(viewport: HTMLElement, target: HTMLElement): number {
   )
 }
 
-function fitToViewport(animate: boolean) {
+function fitToViewport() {
   const viewport = viewportRef.value
   const target = targetRef.value
 
@@ -218,7 +209,7 @@ function fitToViewport(animate: boolean) {
     startX: 0,
     startY: 0,
   })
-  panzoom.reset({ animate })
+  panzoom.reset({ animate: false })
 }
 
 function clampPan(viewport: HTMLElement, target: HTMLElement) {
@@ -273,7 +264,7 @@ const refitAfterResize = useDebounceFn(() => {
     return
   }
 
-  fitToViewport(false)
+  fitToViewport()
 }, RESIZE_DEBOUNCE_MS)
 
 function observeViewport(viewport: HTMLElement) {
@@ -308,7 +299,7 @@ function setupPanzoom() {
   viewport.addEventListener('wheel', onWheel, { passive: false })
   wheelTarget = viewport
 
-  fitToViewport(false)
+  fitToViewport()
   observeViewport(viewport)
 }
 
@@ -318,10 +309,6 @@ function zoomIn() {
 
 function zoomOut() {
   panzoom?.zoomOut()
-}
-
-function resetZoom() {
-  fitToViewport(true)
 }
 
 watch(

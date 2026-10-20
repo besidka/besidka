@@ -256,9 +256,7 @@ test.describe('Mermaid diagram viewer', () => {
     await expect(getViewer(page)).toHaveCount(0)
   })
 
-  test('zooms in, zooms out and resets to the fitted scale', async ({
-    page,
-  }) => {
+  test('zooms in and zooms out', async ({ page }) => {
     await waitForAllDiagrams(page)
     await openViewerFromButton(page, 0)
 
@@ -270,7 +268,7 @@ test.describe('Mermaid diagram viewer', () => {
       .poll(() => readViewerScale(page))
       .toBeGreaterThan(fittedScale * 1.1)
 
-    await getViewer(page).locator('[data-testid="mermaid-zoom-reset"]').click()
+    await getViewer(page).locator('[data-testid="mermaid-zoom-out"]').click()
 
     await expect
       .poll(() => readViewerScale(page))
@@ -281,12 +279,6 @@ test.describe('Mermaid diagram viewer', () => {
     await expect
       .poll(() => readViewerScale(page))
       .toBeLessThan(fittedScale * 0.9)
-
-    await getViewer(page).locator('[data-testid="mermaid-zoom-reset"]').click()
-
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeCloseTo(fittedScale, 2)
   })
 
   test('zooms around the cursor with the mouse wheel', async ({ page }) => {

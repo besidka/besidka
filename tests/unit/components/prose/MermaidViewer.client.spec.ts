@@ -208,17 +208,11 @@ describe('prose/MermaidViewer.client.vue', () => {
 
     expect(mocks.instance.zoomOut).toHaveBeenCalledTimes(1)
 
-    mocks.instance.reset.mockClear()
-
-    await wrapper.get('[data-testid="mermaid-zoom-reset"]').trigger('click')
-
-    expect(mocks.instance.reset).toHaveBeenCalledWith({ animate: true })
+    expect(wrapper.findAll('.join-vertical button')).toHaveLength(2)
     expect(wrapper.get('[data-testid="mermaid-zoom-in"]')
       .attributes('aria-label')).toBe('Zoom in')
     expect(wrapper.get('[data-testid="mermaid-zoom-out"]')
       .attributes('aria-label')).toBe('Zoom out')
-    expect(wrapper.get('[data-testid="mermaid-zoom-reset"]')
-      .attributes('aria-label')).toBe('Fit diagram to screen')
   })
 
   it('zooms with a plain wheel and prevents page scrolling', async () => {
