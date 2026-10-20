@@ -87,6 +87,12 @@ the URL and in in-memory client state only.
    claims the `signup_completed` ledger row, and writes the Analytics Engine
    point and the log fields.
 
+After sign-up the visitor does not always land on `/chats/new`: a `next`
+parameter on `/signup` or `/signin` (see `docs/seo.md`) may send them to the
+keys page instead, for example from a key guide. The UTM stays top-level
+(`utm_*` keys on the sign-up URL, never inside `next`), so attribution is
+unaffected.
+
 If the visitor reaches `/signup` without a campaign link, there is no row. No
 row means no campaign. Reports show those users as `none`.
 

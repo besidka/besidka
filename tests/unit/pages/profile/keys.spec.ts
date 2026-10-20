@@ -292,4 +292,228 @@ describe('profile keys page', () => {
 
       expect(providersTab.classes()).toContain('tab-active')
     })
+  describe('provider deep link', () => {
+    const scrollIntoView = vi.fn()
+
+    beforeEach(() => {
+      scrollIntoView.mockReset()
+      Element.prototype.scrollIntoView = scrollIntoView
+    })
+
+    function readOpenStates(wrapper: any): Record<string, string> {
+      const providersPanel = wrapper.get(
+        '[data-testid="key-panel-providers"]',
+      )
+      const states: Record<string, string> = {}
+
+      providersPanel
+        .findAll('[data-testid="provider-card"]')
+        .forEach((card: any) => {
+          states[card.attributes('data-provider')]
+            = card.attributes('data-open')
+        })
+
+      return states
+    }
+
+    it('opens only the card named by the provider query param', async () => {
+      mockRoute.query = { provider: 'google' }
+
+      const wrapper = await mountPage()
+
+      expect(readOpenStates(wrapper)).toEqual({
+        anthropic: 'false',
+        google: 'true',
+        openai: 'false',
+        xai: 'false',
+        deepseek: 'false',
+        moonshotai: 'false',
+      })
+    })
+
+    it('forces the providers tab even when another tab is requested',
+      async () => {
+        mockRoute.query = { provider: 'google', tab: 'search' }
+
+        const wrapper = await mountPage()
+
+        expect(wrapper.get('[data-testid="key-tab-providers"]').classes())
+          .toContain('tab-active')
+        expect(wrapper.get('[data-testid="key-tab-search"]').classes())
+          .not.toContain('tab-active')
+      })
+
+    it('opens nothing for an unknown provider id', async () => {
+      mockRoute.query = { provider: 'not-a-provider' }
+
+      const wrapper = await mountPage()
+
+      Object.values(readOpenStates(wrapper)).forEach((state) => {
+        expect(state).toBe('false')
+      })
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    })
+
+    it('opens nothing for a provider that is not in the enabled list',
+      async () => {
+        mockRoute.query = { provider: 'qwen' }
+
+        const wrapper = await mountPage()
+
+        Object.values(readOpenStates(wrapper)).forEach((state) => {
+          expect(state).toBe('false')
+        })
+      })
+
+    it('opens nothing when the provider query param is repeated',
+      async () => {
+        mockRoute.query = { provider: ['google', 'openai'] }
+
+        const wrapper = await mountPage()
+
+        Object.values(readOpenStates(wrapper)).forEach((state) => {
+          expect(state).toBe('false')
+        })
+      })
+
+    it('scrolls the opened card into view on mount', async () => {
+      mockRoute.query = { provider: 'google' }
+
+      const wrapper = await mountSuspended(KeysPage, {
+        attachTo: document.body,
+        global: { stubs: stubs() },
+      })
+
+      await vi.waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledTimes(1)
+      })
+
+      const target = wrapper.get('.js-key-provider-target')
+
+      expect(target.find('[data-provider="google"]').exists()).toBe(true)
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'start',
+      })
+
+      wrapper.unmount()
+    })
+
+    function readPanelOpenStates(
+      wrapper: any,
+      panelId: string,
+      cardTestId: string,
+    ): Record<string, string> {
+      const states: Record<string, string> = {}
+
+      wrapper
+        .get(`[data-testid="key-panel-${panelId}"]`)
+        .findAll(`[data-testid="${cardTestId}"]`)
+        .forEach((card: any, index: number) => {
+          const key = card.attributes('data-provider') ?? `card-${index}`
+
+          states[key] = card.attributes('data-open')
+        })
+
+      return states
+    }
+
+    it('forces the gateways tab and opens a gateway provider card',
+      async () => {
+        mockRoute.query = { provider: 'openrouter', tab: 'search' }
+
+        const wrapper = await mountPage()
+
+        expect(wrapper.get('[data-testid="key-tab-gateways"]').classes())
+          .toContain('tab-active')
+        expect(wrapper.get('[data-testid="key-tab-providers"]').classes())
+          .not.toContain('tab-active')
+        expect(
+          readPanelOpenStates(wrapper, 'gateways', 'provider-card'),
+        ).toEqual({ openrouter: 'true', vercel: 'false' })
+        expect(
+          wrapper
+            .get('[data-testid="cloudflare-gateway-card"]')
+            .attributes('data-open'),
+        ).toBe('false')
+      })
+
+    it('opens the Cloudflare gateway card for provider=cloudflare',
+      async () => {
+        mockRoute.query = { provider: 'cloudflare' }
+
+        const wrapper = await mountPage()
+
+        expect(wrapper.get('[data-testid="key-tab-gateways"]').classes())
+          .toContain('tab-active')
+        expect(
+          wrapper
+            .get('[data-testid="cloudflare-gateway-card"]')
+            .attributes('data-open'),
+        ).toBe('true')
+        expect(
+          readPanelOpenStates(wrapper, 'gateways', 'provider-card'),
+        ).toEqual({ openrouter: 'false', vercel: 'false' })
+      })
+
+    it('forces the search tab and opens a search provider card',
+      async () => {
+        mockRoute.query = { provider: 'exa' }
+
+        const wrapper = await mountPage()
+
+        expect(wrapper.get('[data-testid="key-tab-search"]').classes())
+          .toContain('tab-active')
+        expect(
+          readPanelOpenStates(wrapper, 'search', 'provider-card'),
+        ).toEqual({ brave: 'false', exa: 'true' })
+      })
+
+    it('scrolls a gateway card into view on mount', async () => {
+      mockRoute.query = { provider: 'openrouter' }
+
+      const wrapper = await mountSuspended(KeysPage, {
+        attachTo: document.body,
+        global: { stubs: stubs() },
+      })
+
+      await vi.waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledTimes(1)
+      })
+
+      const target = wrapper.get('.js-key-provider-target')
+
+      expect(target.find('[data-provider="openrouter"]').exists()).toBe(true)
+
+      wrapper.unmount()
+    })
+
+    it('scrolls the Cloudflare gateway card into view on mount',
+      async () => {
+        mockRoute.query = { provider: 'cloudflare' }
+
+        const wrapper = await mountSuspended(KeysPage, {
+          attachTo: document.body,
+          global: { stubs: stubs() },
+        })
+
+        await vi.waitFor(() => {
+          expect(scrollIntoView).toHaveBeenCalledTimes(1)
+        })
+
+        const target = wrapper.get('.js-key-provider-target')
+
+        expect(
+          target.find('[data-testid="cloudflare-gateway-card"]').exists(),
+        ).toBe(true)
+
+        wrapper.unmount()
+      })
+
+    it('does not scroll when no provider is requested', async () => {
+      await mountPage()
+
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    })
+  })
 })

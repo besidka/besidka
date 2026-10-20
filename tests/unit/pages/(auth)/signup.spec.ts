@@ -1,4 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../../app/composables/messages'
 import SignupPage from '../../../../app/pages/(auth)/signup.vue'
@@ -9,12 +10,28 @@ const mocks = vi.hoisted(() => ({
     data: { user: {} } as any,
     error: null as { message?: string } | null,
   })),
+  signInSocial: vi.fn(async (..._args: any[]) => ({ data: {}, error: null })),
 }))
 
 mockNuxtImport('useAuth', () => {
   return () => ({
     signUp: { email: mocks.signUpEmail },
+    signIn: { social: mocks.signInSocial },
   })
+})
+
+const mockRoute = reactive<{
+  query: Record<string, unknown>
+  params: Record<string, unknown>
+  path: string
+}>({
+  query: {},
+  params: {},
+  path: '/signup',
+})
+
+mockNuxtImport('useRoute', () => {
+  return () => mockRoute
 })
 
 mockNuxtImport('useRuntimeConfig', (original) => {
@@ -70,7 +87,9 @@ describe('signup page', () => {
     vi.stubGlobal('definePageMeta', vi.fn())
     vi.stubGlobal('useSeoMeta', vi.fn())
     mocks.signUpEmail.mockClear()
+    mocks.signInSocial.mockClear()
     mocks.signUpEmail.mockResolvedValue({ data: { user: {} }, error: null })
+    mockRoute.query = {}
   })
 
   afterEach(() => {
@@ -186,5 +205,158 @@ describe('signup page', () => {
 
     resolveRequest({ data: {}, error: null })
     await flushPromises()
+  })
+  describe('post-signup next path', () => {
+    function readCallbackUrl(): URL {
+      const [payload] = mocks.signUpEmail.mock.calls[0] as [
+        { callbackURL: string },
+      ]
+
+      return new URL(payload.callbackURL, 'http://localhost')
+    }
+
+    function findButton(wrapper: any, text: string) {
+      return wrapper.findAll('button').find((button: any) => {
+        return button.text().includes(text)
+      })
+    }
+
+    it('sends the verification callback to /signin without a next value '
+      + 'by default', async () => {
+      const wrapper = await mountSuspended(SignupPage, {
+        global: { stubs: stubs() },
+      })
+
+      await submitValidForm(wrapper)
+
+      const callbackUrl = readCallbackUrl()
+
+      expect(callbackUrl.pathname).toBe('/signin')
+      expect(callbackUrl.searchParams.has('next')).toBe(false)
+    })
+
+    it('carries a safe next value through the verification callback '
+      + 'next to the UTM parameters', async () => {
+      mockRoute.query = {
+        next: '/profile/keys?provider=google',
+        utm_source: 'reddit',
+        utm_campaign: 'launch',
+      }
+
+      const wrapper = await mountSuspended(SignupPage, {
+        global: { stubs: stubs() },
+      })
+
+      await submitValidForm(wrapper)
+
+      const callbackUrl = readCallbackUrl()
+
+      expect(callbackUrl.pathname).toBe('/signin')
+      expect(callbackUrl.searchParams.get('next'))
+        .toBe('/profile/keys?provider=google')
+      expect(callbackUrl.searchParams.get('utm_source')).toBe('reddit')
+      expect(callbackUrl.searchParams.get('utm_campaign')).toBe('launch')
+    })
+
+    it('drops an unsafe next value from the verification callback',
+      async () => {
+        mockRoute.query = { next: '//evil.com' }
+
+        const wrapper = await mountSuspended(SignupPage, {
+          global: { stubs: stubs() },
+        })
+
+        await submitValidForm(wrapper)
+
+        const callbackUrl = readCallbackUrl()
+
+        expect(callbackUrl.pathname).toBe('/signin')
+        expect(callbackUrl.searchParams.has('next')).toBe(false)
+        expect(callbackUrl.href).not.toContain('evil.com')
+      })
+
+    it('uses the safe next value as the social sign-up target, keeping '
+      + 'the UTM parameters', async () => {
+      mockRoute.query = {
+        next: '/profile/keys?provider=google',
+        utm_source: 'reddit',
+      }
+
+      const wrapper = await mountSuspended(SignupPage, {
+        global: { stubs: stubs() },
+      })
+
+      await findButton(wrapper, 'Sign up with Google').trigger('click')
+      await flushPromises()
+
+      const [payload] = mocks.signInSocial.mock.calls[0] as [
+        { provider: string, callbackURL: string },
+      ]
+      const target = new URL(payload.callbackURL, 'http://localhost')
+
+      expect(payload.provider).toBe('google')
+      expect(target.pathname).toBe('/profile/keys')
+      expect(target.searchParams.get('provider')).toBe('google')
+      expect(target.searchParams.get('utm_source')).toBe('reddit')
+    })
+
+    it('keeps /chats/new as the social sign-up target by default',
+      async () => {
+        const wrapper = await mountSuspended(SignupPage, {
+          global: { stubs: stubs() },
+        })
+
+        await findButton(wrapper, 'Sign up with GitHub').trigger('click')
+        await flushPromises()
+
+        expect(mocks.signInSocial).toHaveBeenCalledWith(
+          expect.objectContaining({
+            provider: 'github',
+            callbackURL: '/chats/new',
+          }),
+        )
+      })
+
+    it('does not use an unsafe next value as the social sign-up target',
+      async () => {
+        mockRoute.query = { next: 'https://evil.com' }
+
+        const wrapper = await mountSuspended(SignupPage, {
+          global: { stubs: stubs() },
+        })
+
+        await findButton(wrapper, 'Sign up with Google').trigger('click')
+        await flushPromises()
+
+        expect(mocks.signInSocial).toHaveBeenCalledWith(
+          expect.objectContaining({ callbackURL: '/chats/new' }),
+        )
+      })
+
+    it('carries the safe next value on the link to the sign-in page',
+      async () => {
+        mockRoute.query = { next: '/profile/keys?provider=google' }
+
+        const wrapper = await mountSuspended(SignupPage, {
+          global: {
+            stubs: {
+              ...stubs(),
+              NuxtLink: {
+                props: ['to'],
+                template: '<a :href="to"><slot /></a>',
+              },
+            },
+          },
+        })
+
+        const link = wrapper.findAll('a').find((anchor: any) => {
+          return anchor.text() === 'Sign in'
+        })
+        const href = new URL(link!.attributes('href')!, 'http://localhost')
+
+        expect(href.pathname).toBe('/signin')
+        expect(href.searchParams.get('next'))
+          .toBe('/profile/keys?provider=google')
+      })
   })
 })

@@ -7,6 +7,67 @@ ones that look like omissions).
 Companion reading: `docs/landing-studio.md` for how the landing copy is edited,
 `CLAUDE.md` → "SEO and canonical host" for the short version.
 
+## Audience and message (2026-10-20)
+
+The owner decided who the site is for, and the landing copy, the BYOK guide
+and the README follow from it.
+
+- **Audience.** People who use AI every day (search, translation, PDFs,
+  images, code), do not want a subscription and are fine creating an API key:
+  developers and IT-adjacent people. Not the mass non-technical audience.
+- **Message.** Pay the provider only for what you use and see the price of
+  every message; all models in one chat; no subscription, no ads, no markup;
+  open source and self-hostable. The maintainer's own non-work use costs $1 to
+  $5 a month. That figure is owner-supplied and may be quoted only as one
+  person's usage, never as a promise or a typical bill.
+- **Real price competitors** are ChatGPT Go ($8/month) and Google AI Plus
+  ($4.99/month), not only the $20 plans, so both are now columns in the
+  comparison table.
+- **Activation is the first API key**, not sign-up (see `docs/analytics-utm.md`
+  for the funnel). The easiest first key is a free Gemini key from Google AI
+  Studio: no card or billing account. The CTA is therefore `Start free with a
+  Gemini key`, deep-linking to `/signup?next=/profile/keys?provider=google`
+  (written percent-encoded in `content/index.md`, since the inner `?` and `=`
+  would otherwise be read as part of the outer query). The honest caveat ships
+  with it: on Google's free tier, prompts may be used to improve Google's
+  products. It appears in the FAQ (`Can I start for free?`) and in the guide.
+- **Target queries**: `chatgpt byok`, `byok ai chat`, `byok chat app`,
+  `chatgpt alternative without subscription`, `free gemini api key`, `how to
+  get gemini api key`, `openrouter api key`. Volumes are unknown; write for the
+  person searching and do not over-optimise.
+- **Baseline for comparison.** Search Console, 3-month window
+  2026-07-18 to 2026-10-17:
+
+  | Query | Impressions | Avg position | Clicks |
+  | --- | --- | --- | --- |
+  | `chatgpt byok` | 41 | 17.3 | 0 |
+  | `byok chatgpt` | 31 | 23.8 | 0 |
+  | `byok chat app` | 17 | 23.8 | 1 |
+  | `besidka` | 12 | 1.5 | 3 |
+  | `byok chat` | 4 | 12.2 | 1 |
+  | `byok ai chat` | 2 | 12.5 | 1 |
+
+  | Page | Impressions | Clicks | Avg position |
+  | --- | --- | --- | --- |
+  | `/` | 475 | 26 | 9.3 |
+  | `www.besidka.com/` | 135 | 9 | 8.6 |
+  | `/byok` | 45 | 1 | 42.2 |
+
+  The owner-quoted shorter window (data up to 2026-10-11) is a second
+  line: `chatgpt byok`, average position 8.5, 20 impressions, 0 clicks.
+
+  At this volume CTR comparisons are noise. Judge over at least four weeks
+  and do not change the title again in the meantime.
+- **Copy rules** for all landing, guide and README text: plain and specific, no
+  em dashes, no marketing clichés, no invented user counts, costs or metrics.
+
+Still deferred, unchanged by this decision:
+
+- **No `/uk` locale.** The Ukrainian audience is a hypothesis. Revisit if
+  Threads or Telegram traffic shows up as activations in the funnel.
+- No `llms.txt`, no dynamic OG images, no `/shared` URLs in the sitemap (see
+  [Deliberate non-actions](#deliberate-non-actions)).
+
 ## Canonical host
 
 Canonical host is the bare apex `besidka.com`. A Cloudflare redirect rule 301s
@@ -56,7 +117,7 @@ canonical too.
 ## Indexable surface
 
 Indexable: `/`, `/byok`, `/privacy-policy`, `/terms-of-use`, `/cookie-policy`,
-and any `/shared/<publicId>` whose share row has `indexable = true`. The old
+every `/guides/<slug>` key guide, and any `/shared/<publicId>` whose share row has `indexable = true`. The old
 `/privacy` and `/terms` URLs 301 to the `-policy`/`-of-use` routes
 (`routeRules` in `nuxt.config.ts`).
 
@@ -69,7 +130,7 @@ and any `/shared/<publicId>` whose share row has `indexable = true`. The old
 They used to be both, which is self-defeating: a `Disallow`-ed URL is never
 fetched, so its `noindex` is never read — and the bare URL can still be indexed
 without content if anything links to it. Crawlers reach these pages regardless:
-the landing hero's primary CTA links to `/signup`, and `/signin` links to
+the landing hero's primary CTA links to `/signup?next=<path>`, and `/signin` links to
 `/reset-password`.
 
 So for `/signin`, `/signup` and `/reset-password` the fix is to allow the crawl
@@ -136,8 +197,11 @@ Consequences that drive real decisions:
 ### How the association is asserted
 
 `app/utils/landing-jsonld.ts` emits one `application/ld+json` block containing an
-`@graph` of four cross-referenced nodes — `Organization`, `WebSite`,
-`SoftwareApplication`, `FAQPage`. All three entity nodes carry:
+`@graph` of four cross-referenced nodes: `Organization`, `WebSite`,
+`SoftwareApplication`, `FAQPage`. The `Organization`, `WebSite` and
+`SoftwareApplication` descriptions come from the `description` in
+`app/app.config.ts` (passed as `entityDescription`), not from the page meta
+description. All three entity nodes carry:
 
 ```ts
 alternateName: ['Besidka AI', 'Бесідка', 'Бесідка AI']
@@ -160,10 +224,16 @@ the graph, so a rename cannot silently produce a dangling reference.
 Each of these was investigated and rejected. Re-litigate with new evidence, not
 by assuming it was overlooked.
 
-- **`lastmod` in the sitemap.** No page has a real modification date — legal
-  pages carry an `updatedAt` date and the landing content has no reliable
-  timestamp. A build-time `lastmod` restamped on every deploy is a signal
-  search engines learn to distrust. Add it only when backed by real dates.
+- **`lastmod` in the sitemap, except for key guides.** Most pages have no
+  real modification date: the landing content has no reliable timestamp, and
+  legal and explainer pages carry an `updatedAt` that is not wired into the
+  sitemap. A build-time `lastmod` restamped on every deploy is a signal search
+  engines learn to distrust, so those pages still emit none. Key guides are
+  the one accepted exception: they are the first sitemap entries with
+  `<lastmod>`, taken from `updatedAt`, which is a hand-maintained real date
+  (bump it only on a substantive change, never as a deploy stamp). Add
+  `lastmod` for any other page only when it is backed by a real date like
+  that.
 - **`/shared/*` in the sitemap.** Tempting (it is the only scalable source of
   unique content) but rejected. In August 2025 roughly 4,500 opt-in-shared
   ChatGPT conversations were indexed by Google, became a privacy incident, and
@@ -309,7 +379,8 @@ actions, roughly in leverage order:
 The keyword clusters with real, evidenced intent that the current copy does not
 match. Not built — deliberately, because each is a page someone has to write
 well; thin pages on a three-page site dilute rather than help. Cap new routes at
-two or three.
+two or three, with one exception: the owner lifted the cap on 2026-10-20 for
+public key guides (see [Public key guides](#public-key-guides)).
 
 - **Cost-comparison utility** — `chatgpt plus vs api cost`, `cheaper than
   chatgpt plus`, `openai api cost calculator`. Highest achievability: this
@@ -318,7 +389,7 @@ two or three.
   the closest match to an existing product feature (per-message cost breakdown).
 - **A BYOK explainer** — **built** as `/byok`, see
   [The BYOK guide](#the-byok-guide-byok). It is the first of the two or three
-  new routes the cap allows.
+  new routes the cap allows. Key guides are counted separately.
 - **Comparison pages** (`/vs/...`) rank for this category — Open WebUI maintains
   its own `/alternatives/` page — but they multiply factual claims about named
   third parties, which is the highest-risk content type here. Only with
@@ -326,24 +397,100 @@ two or three.
 
 ### The comparison table is a dated factual claim
 
-The `comparison` block in `content/index.md` names four third-party products
-and states their prices and features. Every cell was re-checked against the
-vendors' own pricing pages and help-centre articles in October 2026 and
-`priceDate` moved to `October 2026` (sources are listed in the PR that made the
-change). Rules for the next refresh:
+The `comparison` block in `content/index.md` names five third-party plans
+(ChatGPT Go, ChatGPT Plus, Google AI Plus, Google AI Pro, Claude Pro) and
+states their prices and features. Every cell was re-checked against the
+vendors' own pricing pages and help-centre articles on 2026-10-20 and
+`priceDate` is the ISO date `2026-10-20`, rendered as "Prices checked 20
+October 2026". Changes in that pass:
+
+- **Sources are rendered.** The optional `comparison.sources` list
+  (`label` and `url`) shows as a "Sources" line of links under the note, in
+  `app/components/content/HomeComparison.vue`. Add a source whenever a new
+  cell depends on a page.
+- **T3 Chat was removed.** Its price could not be verified on official pages
+  (the pricing page returned 404 or a sign-in wall), and a price we cannot cite
+  does not belong in a dated table.
+- **The `Message caps from the app` row was removed.** ChatGPT Free text chats
+  have been unlimited, subject to abuse-prevention safeguards, since mid-August
+  2026, so "usage limits apply" no longer held for every plan, and no plan
+  publishes a comparable number. The real differences are files, images and
+  which model you get, and those are covered in the `#subscriptions` copy.
+- **Cells that could not be verified say `Not listed`**, not a guess. On
+  2026-10-20 that is deep research on ChatGPT Go. Shared links on ChatGPT Go and
+  Google AI Plus are marked the same as Plus and AI Pro because the vendors'
+  sharing help pages describe the feature without any plan restriction.
+
+Rules for the next refresh:
 
 - Re-verify **every** competitor cell, not only the prices, and bump
   `priceDate` in the same commit. A stale date on a pricing table is a trust
   problem for readers and for anything that quotes the page.
 - A claim that can only be sourced from forum posts, feedback boards or a
-  founder's social posts is softened to what those sources actually show
-  (e.g. T3 Chat's sharing is just "Share links"), never stated more strongly.
+  founder's social posts is softened to what those sources actually show, or
+  the column is dropped, never stated more strongly.
 - Use exact list prices (`$19.99/mo`), and a range when monthly and annual
   billing differ (`$17–20/mo`), instead of a rounded "from $20" that is
-  wrong in both directions.
+  wrong in both directions. Prices are US list prices.
 - Besidka's own cost example (`note`) names the model and its per-token rates
-  so the arithmetic can be re-checked; "a flagship model" was unfalsifiable and,
-  on Opus-class pricing, wrong.
+  so the arithmetic can be re-checked against `providers/data`; "a flagship
+  model" was unfalsifiable and, on Opus-class pricing, wrong.
+
+### Public key guides
+
+Pages at `/guides/<slug>` (for example `/guides/gemini-api-key`), one per
+provider, each answering a distinct query (for example `how to get gemini api
+key`, `openrouter api key`). They are a separate content type from the
+explainers above:
+
+- Collection `keyGuides` in `content.config.ts`, files in
+  `content/key-guides/*.md`, route `app/pages/guides/[slug].vue`. The
+  collection sets `source.prefix: '/guides'`, so the content path IS the public
+  URL `/guides/<slug>`. No `/key-guides` URL ever exists; that name is only the
+  folder on disk.
+- A missing slug is a 404, and so is `/guides/byok`: that file belongs to the
+  `guides` collection and is not a key guide. `/byok` stays the canonical URL
+  of the explainer.
+- `TechArticle` JSON-LD always; `VideoObject` only when a guide has a video.
+- **Sitemap.** The collection schema includes `sitemap: defineSitemapSchema()`
+  (from `@nuxtjs/sitemap/content`), so entries come from the collection with
+  no rewrite. `asSitemapCollection` is deprecated since `@nuxtjs/sitemap` 9.1
+  and is not used. `<lastmod>` comes from `updatedAt` (see
+  [Deliberate non-actions](#deliberate-non-actions)).
+- **Footer.** `LandingFooter.vue` generates the key-guide links from the
+  `keyGuides` collection, so a new guide appears there without a code change.
+  `/byok` does not link to any key guide yet, to avoid dead links.
+- **Gateway guides.** A guide's `provider` may be a gateway id (for example
+  `openrouter`). The "Add your key" deep link then opens the Gateways tab and
+  that gateway's card; see [Sign-up redirect (`next`)](#sign-up-redirect-next).
+- The owner lifted the two-or-three-route cap for these on 2026-10-20: one
+  templated page type, each page a distinct query. The condition is that every
+  guide carries `checkedAt` and sources, so a guide whose provider UI has
+  changed is visibly dated rather than silently wrong.
+- **Status:** template only. The content is pending a separate task;
+  `content/key-guides/` has no files yet.
+
+### Sign-up redirect (`next`)
+
+The key guides and the landing CTA send visitors to `/signup?next=<path>` (and
+`/signin?next=<path>`), so the first screen after authentication is the place
+to add an API key rather than an empty chat. `shared/utils/auth-redirect.ts`
+owns the rule:
+
+- `resolveSafeNextPath` is an open-redirect guard. It accepts only same-origin
+  relative paths whose pathname is allowlisted: `/profile/keys` and
+  `/chats/new`. On `/profile/keys` it keeps only `provider` (a direct provider,
+  an enabled gateway or a search provider id from `provider-meta`) and `tab`
+  (`providers`, `search`, `gateways`); every other query key is dropped, as are
+  the hash and anything on `/chats/new`. Anything else resolves to `null` and
+  the normal default applies.
+- `next` is threaded through the email verification callback, OAuth, passkey
+  and 2FA sign-in, and the guest middleware (`app/middleware/00.auth.global.ts`),
+  and the sign-in and sign-up pages link to each other with it preserved.
+- On `/profile/keys`, `provider` forces the matching tab and opens that card,
+  then scrolls it into view.
+- UTM keys stay top-level on the sign-up URL and are never nested in `next`
+  (see `docs/analytics-utm.md`).
 
 ### Legal pages are no longer stubs
 
@@ -353,6 +500,10 @@ stubs (then at `/privacy` and `/terms`). They are now full documents in
 resolved.
 
 ## Homepage title and meta description (BYOK demand)
+
+This section records two decisions: the 2026-10-11 pass (columns "Before" and
+"After") and the 2026-10-20 revision described under it, which is the
+current state.
 
 Search Console showed the homepage already on page 1 for `chatgpt byok` and
 `byok chatgpt` with zero clicks, and on page 2 for `byok chat app`,
@@ -398,6 +549,81 @@ Options considered and not chosen:
 
 Measure in Search Console: CTR on the five BYOK queries above, and whether
 the page-2 queries move. Titles shown in SERPs can lag deploys by weeks.
+
+### 2026-10-20: final title, H1 and entity description
+
+| Field | Current value |
+| --- | --- |
+| `<title>` | `Besidka: BYOK AI chat app for GPT, Claude and Gemini` (52 chars; the frontmatter `title` is the 43 chars after `Besidka: `) |
+| Meta description | `Open-source BYOK AI chat app. Use GPT, Claude and Gemini with your own API key, see the price of every message, no subscription. Start free with Gemini.` (152 chars) |
+| `<h1>` | `Besidka: BYOK AI chat. Pay only for the AI you use` (50 chars) |
+| Hero eyebrow | `OPEN SOURCE · SELF-HOSTABLE · NO SUBSCRIPTION` |
+| Entity description | `app/app.config.ts` `description`, used by the JSON-LD (see below) |
+
+- **Title: the live title with its em dash changed to a colon, nothing else.** The page
+  already ranks (see the baseline above), so the title takes the minimum
+  change. The join is `Besidka: `, not an em dash: `app/pages/index.vue`
+  joins the site name to the content `title` with a colon and a space, so the
+  frontmatter `title` is the part after the brand. Do not put the brand in
+  the frontmatter.
+- **Decision: "GPT", not "ChatGPT", in the title and description.**
+  Evidence:
+  - [OpenAI brand guidelines](https://openai.com/brand/): for API developers,
+    names and taglines should be free of OpenAI product names. Besidka calls
+    GPT models through the API and does not run ChatGPT.
+  - Google rewrites titles it judges inaccurate
+    ([title links](https://developers.google.com/search/blog/2021/09/more-info-about-titles)),
+    and a title that names a product the page does not offer is that risk.
+  - Search Console shows the page already earns `chatgpt byok` and
+    `byok chatgpt` impressions with the GPT title (41 and 31 in the
+    3-month window), so the query is matched without the trademark.
+  - "ChatGPT" stays in nominative body copy: the FAQ, the comparison table
+    and the `#subscriptions` heading.
+- **This reverses the brief that asked for ChatGPT in the title.** To
+  override it, change `title` in `content/index.md` only. Nothing else
+  depends on the wording, but the regression guard in
+  `tests/unit/config/seo-pages.spec.ts` expects the title to start with
+  `BYOK AI chat app`.
+- **H1: brand and BYOK adjacent (owner rule).** `Besidka: BYOK AI chat. Pay
+  only for the AI you use` keeps "Besidka" next to "BYOK" for the
+  brand-entity association (see [The brand-entity
+  problem](#the-brand-entity-problem)), as the title does. Its first 21
+  characters, `Besidka: BYOK AI chat`, are also the start of the title, and
+  title and H1 agreement lowers rewrite rates
+  ([Zyppy title rewrite study](https://zyppy.com/seo/google-title-rewrite-study/)).
+  It fits on 3 lines at 390px. "Open source" moved out of the H1 into the
+  eyebrow, which no longer repeats BYOK.
+- **Entity description decoupled from the meta description.** The
+  `Organization`, `WebSite` and `SoftwareApplication` nodes used to reuse the
+  page meta description, so a call to action (`Start free with Gemini`) ended
+  up as the entity description. `buildLandingGraphLd` now takes
+  `entityDescription`, which `app/pages/index.vue` fills from
+  `useAppConfig().description`. Google's [structured data
+  policies](https://developers.google.com/search/docs/appearance/structured-data/sd-policies)
+  ask for markup that describes the entity, and an Organization description
+  should describe the organization. `app/app.vue` also uses the same app
+  config value as the global fallback meta description, which is intended.
+- **`SoftwareApplication` links the repository through `sameAs`.** It used to
+  carry `codeRepository`, which the schema.org validator flagged because that
+  property does not belong to `SoftwareApplication`. A unit test asserts
+  `sameAs` is set and `codeRepository` is absent.
+- **The hero primary CTA links to `/signup?next=...`**, not bare `/signup`
+  (see [Sign-up redirect](#sign-up-redirect-next)).
+- **No gazebo metaphor** in title, H1 or description (unchanged rule).
+
+Edge cases to expect:
+
+- Google may hide the repeated "Besidka" from the visible title link, because
+  it shows the site name separately above the result. The adjacency of
+  "Besidka" and "BYOK" then remains in the HTML `<title>`, `og:title` and H1,
+  which is where the association is asserted, but not in the snippet.
+- Search Console reports `www.besidka.com/_scripts` and `/_nuxt/` as 404. Those
+  are the known asset-path 404s covered in [Asset-path 404s on
+  `www`](#asset-path-404s-on-www-_nuxt-_scripts); no action.
+- "Page with redirect" for `www` URLs is the intentional www to apex 301.
+- Titles shown in results can lag a deploy by weeks. Compare against the
+  baseline in [Audience and message](#audience-and-message-2026-10-20) after at
+  least four weeks.
 
 ## The BYOK guide (`/byok`)
 

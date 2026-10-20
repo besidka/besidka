@@ -47,11 +47,16 @@
       <li
         v-for="provider in enabledProviders"
         :key="provider.id"
+        class="scroll-mt-20"
+        :class="{
+          'js-key-provider-target': provider.id === initialProviderId,
+        }"
       >
         <UiBubble>
           <LazyProfileKeysProviderKeyCard
             :provider-id="provider.id"
             :group="providersAccordionGroup"
+            :open="provider.id === initialProviderId"
           />
         </UiBubble>
       </li>
@@ -69,11 +74,16 @@
       <li
         v-for="providerId in enabledSearchProviders"
         :key="providerId"
+        class="scroll-mt-20"
+        :class="{
+          'js-key-provider-target': providerId === initialProviderId,
+        }"
       >
         <UiBubble>
           <LazyProfileKeysProviderKeyCard
             :provider-id="providerId"
             :group="searchAccordionGroup"
+            :open="providerId === initialProviderId"
           />
         </UiBubble>
       </li>
@@ -91,16 +101,22 @@
       <li
         v-for="gatewayId in enabledGateways"
         :key="gatewayId"
+        class="scroll-mt-20"
+        :class="{
+          'js-key-provider-target': gatewayId === initialProviderId,
+        }"
       >
         <UiBubble>
           <LazyProfileKeysCloudflareGateway
             v-if="gatewayId === 'cloudflare'"
             :group="gatewaysAccordionGroup"
+            :open="gatewayId === initialProviderId"
           />
           <LazyProfileKeysProviderKeyCard
             v-else
             :provider-id="gatewayId"
             :group="gatewaysAccordionGroup"
+            :open="gatewayId === initialProviderId"
           />
         </UiBubble>
       </li>
@@ -114,6 +130,11 @@ import {
   enabledSearchProviders,
   providerMeta,
 } from '#shared/utils/provider-meta'
+
+interface ProviderTarget {
+  id: string
+  tab: string
+}
 
 interface KeyTab {
   id: string
@@ -145,7 +166,52 @@ const route = useRoute()
 
 const tabIds = [providersTabId, searchTabId, gatewaysTabId]
 
+const providers = computed<Providers>(() => {
+  return config?.providers as Providers ?? []
+})
+
+const enabledProviders = computed<Providers>(() => {
+  return providers.value.filter((provider: Provider) => {
+    return !!providerMeta[provider.id]
+  })
+})
+
+function resolveInitialProviderTarget(): ProviderTarget | null {
+  const providerParam = route.query.provider
+
+  if (typeof providerParam !== 'string') {
+    return null
+  }
+
+  const isEnabledProvider = enabledProviders.value.some((provider) => {
+    return provider.id === providerParam
+  })
+
+  if (isEnabledProvider) {
+    return { id: providerParam, tab: providersTabId }
+  }
+
+  if ((enabledGateways as string[]).includes(providerParam)) {
+    return { id: providerParam, tab: gatewaysTabId }
+  }
+
+  if (enabledSearchProviders.includes(providerParam)) {
+    return { id: providerParam, tab: searchTabId }
+  }
+
+  return null
+}
+
+const initialProviderTarget = resolveInitialProviderTarget()
+const initialProviderId = shallowRef<string | null>(
+  initialProviderTarget?.id ?? null,
+)
+
 function resolveInitialTab(): string {
+  if (initialProviderTarget) {
+    return initialProviderTarget.tab
+  }
+
   const tabParam = route.query.tab
 
   if (typeof tabParam === 'string' && tabIds.includes(tabParam)) {
@@ -157,13 +223,16 @@ function resolveInitialTab(): string {
 
 const activeTab = shallowRef<string>(resolveInitialTab())
 
-const providers = computed<Providers>(() => {
-  return config?.providers as Providers ?? []
-})
+onMounted(async () => {
+  if (!initialProviderId.value) {
+    return
+  }
 
-const enabledProviders = computed<Providers>(() => {
-  return providers.value.filter((provider: Provider) => {
-    return !!providerMeta[provider.id]
+  await nextTick()
+
+  document.querySelector('.js-key-provider-target')?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
   })
 })
 
