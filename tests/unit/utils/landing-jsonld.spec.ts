@@ -363,6 +363,45 @@ describe('buildKeyGuidePageLd', () => {
     })
   })
 
+  it('emits chapter markers as Clip parts that end at the next chapter '
+    + 'or the video end', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: {
+        ...VIDEO,
+        duration: 'PT20S',
+        markers: [
+          { time: '0:12', label: 'Copy your key' },
+          { time: '0:00', label: 'Open the page' },
+        ],
+      },
+    })['@graph']
+
+    expect(video!.hasPart).toEqual([
+      {
+        '@type': 'Clip',
+        'name': 'Open the page',
+        'startOffset': 0,
+        'endOffset': 12,
+      },
+      {
+        '@type': 'Clip',
+        'name': 'Copy your key',
+        'startOffset': 12,
+        'endOffset': 20,
+      },
+    ])
+  })
+
+  it('omits hasPart when the video has no markers', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, markers: [] },
+    })['@graph']
+
+    expect(video).not.toHaveProperty('hasPart')
+  })
+
   it('names the VideoObject after the video caption when one is set', () => {
     const [, video] = buildKeyGuidePageLd({
       ...KEY_GUIDE_INPUT,

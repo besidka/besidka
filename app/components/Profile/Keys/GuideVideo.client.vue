@@ -19,6 +19,15 @@
         Your browser does not support the video element.
       </p>
     </video>
+
+    <VideoProgressPreview
+      :target="plyrRef"
+      :visible="!!sprite && preview.visible"
+      :label="preview.label"
+      :time-label="preview.timeLabel"
+      :overlay-style="overlayStyle"
+      :thumb-style="thumbStyle"
+    />
   </div>
 </template>
 
@@ -26,6 +35,8 @@
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
 import '~/assets/css/plyr-theme.css'
+import type { VideoMarker } from '#shared/types/video.d'
+import { toMarkerPoints } from '#shared/utils/video'
 import { canAutoplayGuideVideo } from '~/utils/key-guide-video'
 
 const props = withDefaults(defineProps<{
@@ -33,8 +44,10 @@ const props = withDefaults(defineProps<{
   src: string
   label: string
   poster?: string
+  markers?: VideoMarker[]
 }>(), {
   poster: undefined,
+  markers: () => [],
 })
 
 const emit = defineEmits<{
@@ -47,14 +60,41 @@ const { trackGuideVideoPlay } = useKeyGuideAnalytics()
 
 const containerRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
+const plyrRef = shallowRef<HTMLElement | null>(null)
 
 const canAutoplay = canAutoplayGuideVideo()
+const markerPoints = toMarkerPoints(props.markers)
 
 let player: Plyr | null = null
 let isVisible = false
 let isAutoplayRequested = false
 let isProgrammaticPause = false
 let hasUserPaused = false
+
+const {
+  sprite,
+  preview,
+  overlayStyle,
+  thumbStyle,
+  attach: attachProgressPreview,
+  dispose: disposeProgressPreview,
+} = useVideoProgressPreview({
+  containerRef,
+  plyrRef,
+  markerPoints,
+  isEnabled: true,
+  getThumbnailSource: () => {
+    return props.src
+  },
+  seekTo: (time) => {
+    if (player) {
+      player.currentTime = time
+    }
+  },
+  getDuration: () => {
+    return player?.duration ?? 0
+  },
+})
 
 async function requestAutoplay() {
   isAutoplayRequested = true
@@ -72,6 +112,10 @@ function syncPlayback() {
   }
 
   if (!isVisible) {
+    if (player.pip) {
+      return
+    }
+
     if (!player.paused) {
       isProgrammaticPause = true
       player.pause()
@@ -105,7 +149,15 @@ useEventListener(videoRef, 'error', () => {
   emit('failed')
 })
 
+useEventListener(videoRef, 'leavepictureinpicture', syncPlayback)
+useEventListener(videoRef, 'webkitpresentationmodechanged', syncPlayback)
+
 function registerListeners(instance: Plyr) {
+  instance.on('ready', () => {
+    plyrRef.value = containerRef.value?.querySelector('.plyr') ?? null
+    attachProgressPreview()
+  })
+
   instance.on('playing', () => {
     trackGuideVideoPlay(props.provider, !isAutoplayRequested)
     isAutoplayRequested = false
@@ -137,7 +189,18 @@ onMounted(() => {
 
   try {
     player = new Plyr(element, {
-      controls: ['play-large', 'play', 'progress', 'mute', 'fullscreen'],
+      controls: [
+        'play-large',
+        'play',
+        'progress',
+        'mute',
+        'pip',
+        'fullscreen',
+      ],
+      markers: {
+        enabled: markerPoints.length > 0,
+        points: markerPoints,
+      },
       muted: true,
       loop: { active: true },
       clickToPlay: true,
@@ -157,6 +220,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  plyrRef.value = null
+  disposeProgressPreview()
   player?.destroy()
   player = null
 })

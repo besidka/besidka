@@ -13,6 +13,21 @@ video:
   duration: PT34S
   uploadDate: '2026-10-20'
   alt: Screen recording of Google AI Studio. The API Keys page, the Create a new key dialog, the API key details dialog with a masked key, then the key pasted into Besidka and a first answer from Gemini.
+  markers:
+    - time: "0:00"
+      label: Get a free Gemini key
+    - time: "0:03"
+      label: Create API key
+    - time: "0:07"
+      label: Name the key
+    - time: "0:12"
+      label: Copy your key
+    - time: "0:17"
+      label: Paste into Besidka
+    - time: "0:24"
+      label: First answer
+    - time: "0:30"
+      label: Done
 requirements:
   card: false
   cardNote: Not for the free tier. No billing account needed.

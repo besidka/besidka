@@ -47,6 +47,7 @@
           :provider="provider"
           :src="doc.video.src"
           :poster="doc.video.poster"
+          :markers="doc.video.markers"
           :label="videoLabel"
           @failed="isVideoFailed = true"
         />

@@ -6,6 +6,7 @@ import GuideVideo
 
 interface FakePlayer {
   paused: boolean
+  pip: boolean
   destroyed: boolean
   play: ReturnType<typeof vi.fn>
   pause: ReturnType<typeof vi.fn>
@@ -19,6 +20,7 @@ interface ObserverInstance {
 const mocks = vi.hoisted(() => {
   return {
     trackGuideVideoPlay: vi.fn(),
+    generate: vi.fn(),
     players: [] as FakePlayer[],
     lastOptions: null as Record<string, unknown> | null,
     shouldThrow: false,
@@ -30,6 +32,7 @@ vi.mock('plyr', () => {
   class FakePlyr {
     handlers: Record<string, (() => void)[]> = {}
     paused = true
+    pip = false
     destroyed = false
 
     constructor(_element: unknown, options: unknown) {
@@ -79,6 +82,12 @@ mockNuxtImport('useKeyGuideAnalytics', () => {
   }
 })
 
+mockNuxtImport('useLandingVideoThumbnails', () => {
+  return () => {
+    return { generate: mocks.generate }
+  }
+})
+
 function stubMotionPreference(prefersReducedMotion: boolean) {
   vi.stubGlobal('matchMedia', vi.fn(() => {
     return { matches: prefersReducedMotion }
@@ -92,13 +101,14 @@ function setVisibility(isIntersecting: boolean) {
   )
 }
 
-async function mountVideo() {
+async function mountVideo(extraProps: Record<string, unknown> = {}) {
   const wrapper = await mountSuspended(GuideVideo, {
     props: {
       provider: 'google',
       src: '/videos/key-guide-google.mp4',
       poster: '/key-guides/google.webp',
       label: 'Creating a key',
+      ...extraProps,
     },
   })
 
@@ -114,6 +124,7 @@ describe('Profile/Keys/GuideVideo.client', () => {
     mocks.observers.length = 0
     mocks.lastOptions = null
     mocks.shouldThrow = false
+    mocks.generate.mockReset().mockResolvedValue(null)
 
     class FakeIntersectionObserver {
       constructor(callback: IntersectionObserverCallback) {
@@ -160,6 +171,98 @@ describe('Profile/Keys/GuideVideo.client', () => {
     })
   })
 
+  it('offers picture-in-picture and never disables it on the video',
+    async () => {
+      const wrapper = await mountVideo()
+
+      expect(mocks.lastOptions!.controls).toEqual([
+        'play-large',
+        'play',
+        'progress',
+        'mute',
+        'pip',
+        'fullscreen',
+      ])
+      expect(wrapper.get('video').element.hasAttribute(
+        'disablepictureinpicture',
+      )).toBe(false)
+    })
+
+  it('passes parsed chapter markers to Plyr', async () => {
+    await mountVideo({
+      markers: [
+        { time: '0:12', label: 'Copy your key' },
+        { time: '0:00', label: 'Open the page' },
+      ],
+    })
+
+    expect(mocks.lastOptions!.markers).toEqual({
+      enabled: true,
+      points: [
+        { time: 0, label: 'Open the page' },
+        { time: 12, label: 'Copy your key' },
+      ],
+    })
+  })
+
+  it('disables markers when the guide has none', async () => {
+    await mountVideo()
+
+    expect(mocks.lastOptions!.markers).toEqual({
+      enabled: false,
+      points: [],
+    })
+  })
+
+  it('does not generate thumbnails until the progress bar is used',
+    async () => {
+      await mountVideo()
+
+      mocks.players[0]!.emit('ready')
+      await flushPromises()
+
+      expect(mocks.generate).not.toHaveBeenCalled()
+    })
+
+  it('generates thumbnails once on the first progress bar pointerenter',
+    async () => {
+      const wrapper = await mountVideo()
+      const progress = document.createElement('div')
+
+      progress.className = 'plyr__progress'
+      wrapper.element.append(progress)
+
+      mocks.players[0]!.emit('ready')
+      progress.dispatchEvent(new Event('pointerenter'))
+      progress.dispatchEvent(new Event('pointerenter'))
+      await flushPromises()
+
+      expect(mocks.generate).toHaveBeenCalledExactlyOnceWith(
+        '/videos/key-guide-google.mp4',
+        { count: 12, signal: expect.any(AbortSignal) },
+      )
+    })
+
+  it('aborts thumbnail generation on unmount', async () => {
+    const wrapper = await mountVideo()
+    const progress = document.createElement('div')
+
+    progress.className = 'plyr__progress'
+    wrapper.element.append(progress)
+
+    mocks.players[0]!.emit('ready')
+    progress.dispatchEvent(new Event('focusin'))
+    await flushPromises()
+
+    const { signal } = mocks.generate.mock.calls[0]![1] as {
+      signal: AbortSignal
+    }
+
+    wrapper.unmount()
+
+    expect(signal.aborted).toBe(true)
+  })
+
   it('autoplays muted when it becomes visible', async () => {
     await mountVideo()
 
@@ -183,6 +286,29 @@ describe('Profile/Keys/GuideVideo.client', () => {
 
     setVisibility(true)
     setVisibility(false)
+
+    expect(mocks.players[0]!.pause).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps playing in picture-in-picture when it scrolls out of view',
+    async () => {
+      await mountVideo()
+
+      setVisibility(true)
+      mocks.players[0]!.pip = true
+      setVisibility(false)
+
+      expect(mocks.players[0]!.pause).not.toHaveBeenCalled()
+    })
+
+  it('pauses again once picture-in-picture closes off screen', async () => {
+    const wrapper = await mountVideo()
+
+    setVisibility(true)
+    mocks.players[0]!.pip = true
+    setVisibility(false)
+    mocks.players[0]!.pip = false
+    await wrapper.get('video').trigger('leavepictureinpicture')
 
     expect(mocks.players[0]!.pause).toHaveBeenCalledTimes(1)
   })

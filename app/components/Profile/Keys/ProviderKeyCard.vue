@@ -59,7 +59,7 @@
               v-if="status === 'saved'"
               class="mt-1 block"
             >
-              A saved key is never sent back to the browser — enter a new one
+              A saved key is never sent back to the browser. Enter a new one
               to replace it.
             </span>
           </template>

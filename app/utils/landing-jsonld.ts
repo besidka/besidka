@@ -7,6 +7,9 @@
  * sentence. See docs/seo.md.
  */
 
+import type { VideoMarker } from '#shared/types/video.d'
+import { parseIsoDurationToSeconds, toMarkerPoints } from '#shared/utils/video'
+
 const ALTERNATE_NAMES = [
   'Besidka AI',
   'Бесідка',
@@ -177,6 +180,7 @@ export type KeyGuideVideoLdInput = {
   duration?: string
   uploadDate?: string
   caption?: string
+  markers?: VideoMarker[]
 }
 
 export type KeyGuidePageLdInput = GuidePageLdInput & {
@@ -184,8 +188,8 @@ export type KeyGuidePageLdInput = GuidePageLdInput & {
 }
 
 type CompleteKeyGuideVideo = Required<
-  Omit<KeyGuideVideoLdInput, 'caption'>
-> & Pick<KeyGuideVideoLdInput, 'caption'>
+  Omit<KeyGuideVideoLdInput, 'caption' | 'markers'>
+> & Pick<KeyGuideVideoLdInput, 'caption' | 'markers'>
 
 const WEB_PROTOCOLS: ReadonlySet<string> = new Set(['http:', 'https:'])
 
@@ -208,6 +212,24 @@ function resolveWebUrl(value: string, baseUrl: string): string | null {
   }
 }
 
+function buildClipsLd(
+  video: CompleteKeyGuideVideo,
+): Array<Record<string, unknown>> {
+  const points = toMarkerPoints(video.markers)
+  const totalSeconds = parseIsoDurationToSeconds(video.duration)
+
+  return points.map((point, index) => {
+    const endOffset = points[index + 1]?.time ?? totalSeconds
+
+    return {
+      '@type': 'Clip',
+      'name': point.label,
+      'startOffset': point.time,
+      ...(endOffset !== null && endOffset > point.time ? { endOffset } : {}),
+    }
+  })
+}
+
 function buildVideoObjectLd(
   input: KeyGuidePageLdInput,
   video: CompleteKeyGuideVideo,
@@ -220,6 +242,8 @@ function buildVideoObjectLd(
     return null
   }
 
+  const clips = buildClipsLd(video)
+
   return {
     '@type': 'VideoObject',
     '@id': videoId,
@@ -230,6 +254,7 @@ function buildVideoObjectLd(
     'duration': video.duration,
     'contentUrl': contentUrl,
     'inLanguage': 'en',
+    ...(clips.length ? { hasPart: clips } : {}),
   }
 }
 

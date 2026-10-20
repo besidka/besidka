@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { parseTimecodeToSeconds, toMarkerPoints } from '#shared/utils/video'
+import {
+  parseIsoDurationToSeconds,
+  parseTimecodeToSeconds,
+  toMarkerPoints,
+} from '#shared/utils/video'
 
 describe('parseTimecodeToSeconds', () => {
   it('parses m:ss', () => {
@@ -74,5 +78,20 @@ describe('toMarkerPoints', () => {
     ])
 
     expect(points).toEqual([{ time: 3, label: 'Valid' }])
+  })
+})
+
+describe('parseIsoDurationToSeconds', () => {
+  it('parses seconds, minutes and hours', () => {
+    expect(parseIsoDurationToSeconds('PT34S')).toBe(34)
+    expect(parseIsoDurationToSeconds('PT1M12S')).toBe(72)
+    expect(parseIsoDurationToSeconds('PT1H2M3S')).toBe(3723)
+    expect(parseIsoDurationToSeconds('PT2M')).toBe(120)
+  })
+
+  it('returns null for anything else', () => {
+    expect(parseIsoDurationToSeconds('PT')).toBeNull()
+    expect(parseIsoDurationToSeconds('34s')).toBeNull()
+    expect(parseIsoDurationToSeconds('P1D')).toBeNull()
   })
 })

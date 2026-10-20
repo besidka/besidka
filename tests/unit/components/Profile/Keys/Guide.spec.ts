@@ -31,7 +31,7 @@ mockNuxtImport('useKeyGuideAnalytics', () => {
 mockComponent('ProfileKeysGuideVideo', () => {
   return {
     name: 'ProfileKeysGuideVideo',
-    props: ['provider', 'src', 'poster', 'label'],
+    props: ['provider', 'src', 'poster', 'label', 'markers'],
     emits: ['failed'],
     template: '<div class="video-stub" :data-src="src" />',
   }
@@ -273,6 +273,23 @@ describe('Profile/Keys/Guide', () => {
 
     expect(wrapper.find('.video-stub').attributes('data-src'))
       .toBe('/videos/key-guide-google.mp4')
+  })
+
+  it('passes the chapter markers to the video player', async () => {
+    const markers = [{ time: '0:00', label: 'Start' }]
+    const wrapper = await mountGuide({
+      status: 'missing',
+      doc: createDoc({
+        video: { ...createDoc().video, markers },
+      }),
+    })
+
+    intersectLastObserver()
+    await flushPromises()
+
+    expect(
+      wrapper.findComponent({ name: 'ProfileKeysGuideVideo' }).props('markers'),
+    ).toEqual(markers)
   })
 
   it('keeps the video unmounted while the guide is closed', async () => {

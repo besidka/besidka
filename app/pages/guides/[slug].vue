@@ -83,6 +83,7 @@
           :poster="guide.video.poster"
           :caption="guide.video.caption"
           :captions="guide.video.captions ?? []"
+          :markers="guide.video.markers ?? []"
         />
         <template #fallback>
           <div

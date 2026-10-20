@@ -13,6 +13,23 @@ video:
   duration: PT38S
   uploadDate: '2026-10-20'
   alt: Screen recording of OpenRouter. The API Keys page, the Create API Key dialog with a name, expiration and credit limit, the email verification step, the new key shown once and masked, then the key pasted into Besidka and a first answer.
+  markers:
+    - time: "0:00"
+      label: "One key, many models"
+    - time: "0:03"
+      label: New Key
+    - time: "0:07"
+      label: Name and credit limit
+    - time: "0:13"
+      label: Email code
+    - time: "0:16"
+      label: Copy your key
+    - time: "0:21"
+      label: Paste into Besidka
+    - time: "0:28"
+      label: First answer
+    - time: "0:34"
+      label: Done
 requirements:
   card: false
   cardNote: Only to buy credits. Free models work without a card.
@@ -33,7 +50,7 @@ requirements:
 
 1. Open the [OpenRouter keys page](https://openrouter.ai/settings/keys) and sign in.
 2. Click **New Key**.
-3. In **Create API Key**, type a **Name** such as `Besidka`, pick an **Expiration** and a **Credit limit**, then click **Create**. The credit limit caps what this key can spend.
+3. In **Create API Key**, type a **Name** such as `Besidka` and pick an **Expiration**. Under **Credit limit**, choose **Custom amount** and enter `5`, then click **Create**. The limit caps what this key can spend, and $5 lasts a long time for everyday chats.
 4. If OpenRouter shows **Verification required**, enter the code from your email and click **Continue**.
 5. Copy the key under **Your new key**. It starts with `sk-or-v1-`, and OpenRouter shows it only once.
 6. In Besidka, go to **Profile**, **API Keys**, **Gateways**, then the **OpenRouter** card. Paste the key into **API Key** and click **Save**.

@@ -18,7 +18,7 @@ mockNuxtImport('queryCollection', () => mocks.queryCollection)
 mockComponent('LandingVideoPlayer', () => {
   return {
     name: 'LandingVideoPlayer',
-    props: ['src', 'poster', 'caption', 'captions'],
+    props: ['src', 'poster', 'caption', 'captions', 'markers'],
     template: '<div data-testid="video-player" />',
   }
 })
@@ -224,6 +224,28 @@ describe('key guide page', () => {
 
     expect(wrapper.find('[data-testid="key-guide-video"]').exists())
       .toBe(true)
+  })
+
+  it('passes the chapter markers to the video player', async () => {
+    const markers = [{ time: '0:00', label: 'Start' }]
+
+    mocks.guide = {
+      ...GUIDE,
+      video: {
+        src: '/videos/key.mp4',
+        poster: '/videos/key.webp',
+        duration: 'PT1M12S',
+        uploadDate: '2026-10-20',
+        captions: [],
+        markers,
+      },
+    }
+
+    const wrapper = await mountPage()
+
+    expect(
+      wrapper.findComponent({ name: 'LandingVideoPlayer' }).props('markers'),
+    ).toEqual(markers)
   })
 
   it('throws a 404 when the guide does not exist', async () => {

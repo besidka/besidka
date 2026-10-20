@@ -75,3 +75,23 @@ export function toMarkerPoints(
     return a.time - b.time
   })
 }
+
+const ISO_DURATION_PATTERN = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/
+
+/**
+ * Parse an ISO 8601 time duration such as "PT1M12S" into total seconds.
+ * Returns null for anything that is not a plain PT...H...M...S duration.
+ */
+export function parseIsoDurationToSeconds(duration: string): number | null {
+  const match = ISO_DURATION_PATTERN.exec(duration)
+
+  if (!match || duration === 'PT') {
+    return null
+  }
+
+  const [, hours, minutes, seconds] = match
+
+  return Number(hours ?? 0) * 3600
+    + Number(minutes ?? 0) * 60
+    + Number(seconds ?? 0)
+}

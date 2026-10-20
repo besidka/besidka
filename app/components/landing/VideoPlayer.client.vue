@@ -22,34 +22,14 @@
         </p>
       </video>
 
-      <Teleport
-        v-if="plyrRef"
-        :to="plyrRef"
-      >
-        <div
-          v-if="sprite && preview.visible"
-          class="landing-player__preview pointer-events-none absolute z-20
-            flex flex-col gap-1 p-1.5 rounded-2xl bubble w-fit"
-          :style="overlayStyle"
-          aria-hidden="true"
-        >
-          <div
-            class="rounded-xl overflow-hidden ring-1 ring-accent/40"
-            :style="thumbStyle"
-          />
-          <div class="flex items-center justify-between gap-2 px-1 pb-0.5">
-            <span
-              v-if="preview.label"
-              class="text-xs font-medium text-base-content truncate max-w-[7rem]"
-            >
-              {{ preview.label }}
-            </span>
-            <span class="text-xs tabular-nums text-base-content/70 ml-auto">
-              {{ preview.timeLabel }}
-            </span>
-          </div>
-        </div>
-      </Teleport>
+      <VideoProgressPreview
+        :target="plyrRef"
+        :visible="!!sprite && preview.visible"
+        :label="preview.label"
+        :time-label="preview.timeLabel"
+        :overlay-style="overlayStyle"
+        :thumb-style="thumbStyle"
+      />
 
       <div
         v-if="!isReady && !hasError"
@@ -75,7 +55,6 @@
 </template>
 
 <script setup lang="ts">
-import type { ThumbnailSprite } from '~/composables/landing-video-thumbnails'
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
 import '~/assets/css/plyr-theme.css'
@@ -83,7 +62,6 @@ import type {
   VideoQuality,
   VideoCaption,
   VideoMarker,
-  VideoMarkerPoint,
 } from '#shared/types/video.d'
 import { toMarkerPoints } from '#shared/utils/video'
 
@@ -106,84 +84,47 @@ const props = withDefaults(defineProps<{
 })
 
 const { track } = useLandingAnalytics()
-const { generate } = useLandingVideoThumbnails()
 const { isAllowed, onConsentChange } = useCookieConsent()
 
 const DEFAULT_QUALITY = 720
-const THUMBNAIL_COUNT = 12
 
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
 const containerRef = shallowRef<HTMLElement | null>(null)
 const plyrRef = shallowRef<HTMLElement | null>(null)
 const isReady = shallowRef<boolean>(false)
 const hasError = shallowRef<boolean>(false)
-const sprite = shallowRef<ThumbnailSprite | null>(null)
 
-const preview = reactive({
-  visible: false,
-  left: 0,
-  top: 0,
-  bgX: 0,
-  bgY: 0,
-  timeLabel: '0:00',
-  label: '',
-})
-
-const markerPoints: VideoMarkerPoint[] = toMarkerPoints(props.markers)
+const markerPoints = toMarkerPoints(props.markers)
 
 let player: Plyr | null = null
 let hasTrackedPlay = false
-let progressElement: HTMLElement | null = null
-let detachPreview: (() => void) | null = null
-let detachThumbnailTrigger: (() => void) | null = null
-let hasStartedThumbnails = false
-let cancelled = false
 
-const thumbnailsAbortController = new AbortController()
-
-const overlayStyle = computed(() => {
-  return {
-    left: `${preview.left}px`,
-    top: `${preview.top}px`,
-  }
-})
-
-const thumbStyle = computed(() => {
-  if (!sprite.value) {
-    return {}
-  }
-
-  return {
-    width: `${sprite.value.tileWidth}px`,
-    height: `${sprite.value.tileHeight}px`,
-    backgroundImage: `url(${sprite.value.url})`,
-    backgroundPosition: `-${preview.bgX}px -${preview.bgY}px`,
-    backgroundRepeat: 'no-repeat',
-  }
-})
-
-function formatClock(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds))
-  const minutes = Math.floor(total / 60)
-  const secs = total % 60
-
-  return `${minutes}:${String(secs).padStart(2, '0')}`
-}
-
-function chapterAt(time: number): string {
-  let label = ''
-
-  for (const point of markerPoints) {
-    if (point.time <= time + 0.001) {
-      label = point.label
-      continue
+const {
+  sprite,
+  preview,
+  overlayStyle,
+  thumbStyle,
+  attach: attachProgressPreview,
+  dispose: disposeProgressPreview,
+} = useVideoProgressPreview({
+  containerRef,
+  plyrRef,
+  markerPoints,
+  isEnabled: props.thumbnails,
+  getThumbnailSource: () => {
+    return props.qualities.find((quality) => {
+      return quality.size === DEFAULT_QUALITY
+    })?.src ?? props.src
+  },
+  seekTo: (time) => {
+    if (player) {
+      player.currentTime = time
     }
-
-    break
-  }
-
-  return label
-}
+  },
+  getDuration: () => {
+    return player?.duration ?? 0
+  },
+})
 
 function sortedQualities(): VideoQuality[] {
   return [...props.qualities].sort((a, b) => {
@@ -258,119 +199,6 @@ function buildOptions(): Plyr.Options {
   return options
 }
 
-// p-1.5 is 6px per side = 12px total horizontal padding
-const OVERLAY_H_PADDING = 12
-
-function onPreviewMove(event: PointerEvent) {
-  const data = sprite.value
-  const plyrElement = plyrRef.value ?? containerRef.value
-
-  if (!data || !plyrElement || !progressElement) {
-    return
-  }
-
-  const bar = progressElement.getBoundingClientRect()
-  const box = plyrElement.getBoundingClientRect()
-  const ratio = (event.clientX - bar.left) / bar.width
-  const fraction = Math.min(1, Math.max(0, ratio))
-  const time = fraction * data.duration
-  const index = Math.min(data.count - 1, Math.floor(fraction * data.count))
-  const column = index % data.columns
-
-  preview.bgX = column * data.tileWidth
-  preview.bgY = Math.floor(index / data.columns) * data.tileHeight
-  preview.timeLabel = formatClock(time)
-  preview.label = chapterAt(time)
-
-  const overlayWidth = data.tileWidth + OVERLAY_H_PADDING
-  const left = (event.clientX - box.left) - overlayWidth / 2
-
-  preview.left = Math.min(
-    box.width - overlayWidth - 8,
-    Math.max(8, left),
-  )
-  preview.top = Math.max(
-    8,
-    (bar.top - box.top) - data.tileHeight - 42,
-  )
-  preview.visible = true
-}
-
-function onPreviewLeave() {
-  preview.visible = false
-}
-
-// Maximum pixel movement between pointerdown and pointerup to count as a click
-const CLICK_DRAG_THRESHOLD = 6
-// Snap radius as a fraction of duration; never less than 0.4 s
-const SNAP_FRACTION = 0.04
-
-let pointerDownX = 0
-
-function onProgressPointerDown(event: PointerEvent) {
-  pointerDownX = event.clientX
-}
-
-function onProgressPointerUp(event: PointerEvent) {
-  if (!player || !markerPoints.length || !progressElement) {
-    return
-  }
-
-  const moved = Math.abs(event.clientX - pointerDownX)
-
-  if (moved >= CLICK_DRAG_THRESHOLD) {
-    return
-  }
-
-  const bar = progressElement.getBoundingClientRect()
-  const ratio = (event.clientX - bar.left) / bar.width
-  const fraction = Math.min(1, Math.max(0, ratio))
-  const clickedTime = fraction * player.duration
-  const snapRadius = Math.max(0.4, player.duration * SNAP_FRACTION)
-  let nearest: VideoMarkerPoint | null = null
-  let nearestDistance = Infinity
-
-  for (const point of markerPoints) {
-    const distance = Math.abs(point.time - clickedTime)
-
-    if (distance < nearestDistance) {
-      nearestDistance = distance
-      nearest = point
-    }
-  }
-
-  if (nearest && nearestDistance <= snapRadius) {
-    player.currentTime = nearest.time
-  }
-}
-
-function setupPreview() {
-  const container = containerRef.value
-
-  if (!sprite.value || !container || detachPreview) {
-    return
-  }
-
-  progressElement = container.querySelector('.plyr__progress')
-
-  if (!progressElement) {
-    return
-  }
-
-  progressElement.addEventListener('pointermove', onPreviewMove)
-  progressElement.addEventListener('pointerleave', onPreviewLeave)
-  progressElement.addEventListener('pointerdown', onProgressPointerDown)
-  progressElement.addEventListener('pointerup', onProgressPointerUp)
-
-  detachPreview = () => {
-    progressElement?.removeEventListener('pointermove', onPreviewMove)
-    progressElement?.removeEventListener('pointerleave', onPreviewLeave)
-    progressElement?.removeEventListener('pointerdown', onProgressPointerDown)
-    progressElement?.removeEventListener('pointerup', onProgressPointerUp)
-    progressElement = null
-  }
-}
-
 function keepMetadataPreload() {
   const media = containerRef.value?.querySelector('video')
 
@@ -379,38 +207,12 @@ function keepMetadataPreload() {
   }
 }
 
-function startThumbnails() {
-  if (!props.thumbnails || hasStartedThumbnails) {
-    return
-  }
-
-  hasStartedThumbnails = true
-  loadThumbnails()
-}
-
-function setupThumbnailTrigger() {
-  const progress = containerRef.value?.querySelector('.plyr__progress')
-
-  if (!props.thumbnails || !progress || detachThumbnailTrigger) {
-    return
-  }
-
-  progress.addEventListener('pointerenter', startThumbnails, { once: true })
-  progress.addEventListener('focusin', startThumbnails, { once: true })
-
-  detachThumbnailTrigger = () => {
-    progress.removeEventListener('pointerenter', startThumbnails)
-    progress.removeEventListener('focusin', startThumbnails)
-  }
-}
-
 function registerListeners(instance: Plyr) {
   instance.on('ready', () => {
     isReady.value = true
     keepMetadataPreload()
     plyrRef.value = containerRef.value?.querySelector('.plyr') ?? null
-    setupPreview()
-    setupThumbnailTrigger()
+    attachProgressPreview()
   })
 
   instance.on('play', () => {
@@ -459,40 +261,6 @@ function fallbackToNative(element: HTMLVideoElement) {
   }
 }
 
-/**
- * Generate hover thumbnails in the background and attach the overlay once they
- * land. Started lazily by startThumbnails on the first progress-bar
- * interaction so playback never competes with a second download of the same
- * file, and aborted on unmount. Never gates playback — frame decoding can take
- * seconds.
- */
-async function loadThumbnails() {
-  const thumbnailSource
-    = props.qualities.find((quality) => {
-      return quality.size === DEFAULT_QUALITY
-    })?.src ?? props.src
-
-  const result = await generate(thumbnailSource, {
-    count: THUMBNAIL_COUNT,
-    signal: thumbnailsAbortController.signal,
-  })
-
-  if (!result) {
-    return
-  }
-
-  // The component may have unmounted while frames were decoding — discard the
-  // late sprite so its object URL is revoked rather than leaked.
-  if (cancelled) {
-    result.cleanup()
-
-    return
-  }
-
-  sprite.value = result
-  setupPreview()
-}
-
 onMounted(() => {
   const element = videoRef.value
 
@@ -520,20 +288,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  cancelled = true
-  thumbnailsAbortController.abort()
   plyrRef.value = null
-  detachPreview?.()
-  detachThumbnailTrigger?.()
+  disposeProgressPreview()
 
   if (player) {
     player.destroy()
     player = null
-  }
-
-  if (sprite.value) {
-    sprite.value.cleanup()
-    sprite.value = null
   }
 })
 </script>

@@ -157,4 +157,35 @@ describe('keyGuideSchema', () => {
 
     expect(result.success).toBe(false)
   })
+
+  it('accepts video markers and defaults them to an empty list', () => {
+    const withMarkers = keyGuideSchema.safeParse({
+      ...validGuide(),
+      video: validVideo({
+        markers: [
+          { time: '0:00', label: 'Start' },
+          { time: '1:05', label: 'Next' },
+        ],
+      }),
+    })
+    const withoutMarkers = keyGuideSchema.parse({
+      ...validGuide(),
+      video: validVideo(),
+    })
+
+    expect(withMarkers.success).toBe(true)
+    expect(withoutMarkers.video?.markers).toEqual([])
+  })
+
+  it.each(['12', '0:75', 'soon', '0:3.5'])(
+    'rejects the marker timecode %s',
+    (time) => {
+      const result = keyGuideSchema.safeParse({
+        ...validGuide(),
+        video: validVideo({ markers: [{ time, label: 'Bad' }] }),
+      })
+
+      expect(result.success).toBe(false)
+    },
+  )
 })

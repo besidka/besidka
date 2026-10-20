@@ -57,6 +57,7 @@ covers these files (title, description and summary stay strings).
 | `video.caption` | string, optional | Visible caption under the player on `/guides/<slug>`, also the VideoObject name |
 | `video.alt` | string, optional | What the video shows. Accessible name of the poster and player on the keys page |
 | `video.captions` | `{ src, label, srclang, default? }[]` | WebVTT tracks for the public page player |
+| `video.markers` | `{ time, label }[]` | Chapter markers, same shape as `video.markers` in `content/index.md`. `time` is `m:ss`, `mm:ss` or `h:mm:ss`. Shown on the progress bar of both players, labelled in the hover preview, and emitted as `Clip` entries in `VideoObject.hasPart` (each ends at the next marker or the video duration) |
 
 Omit `video` entirely when there is no real video yet: VideoObject JSON-LD is
 only emitted when it is set, and the keys page then shows no video block.
@@ -121,7 +122,15 @@ restart.
   the card is open and the guide is open.
 - `app/components/Profile/Keys/GuideVideo.client.vue` is a lean Plyr player
   with the `.landing-player` theme. It is not `LandingVideoPlayer`: that one
-  hard-codes the demo analytics, markers, qualities and thumbnails. The poster
+  hard-codes the demo analytics, qualities and captions. It shares the
+  chapter markers and the lazy hover-preview thumbnails with it through
+  `useVideoProgressPreview` and `Video/ProgressPreview.vue`; frames are
+  generated on the first progress-bar hover or focus, never on mount, and the
+  markers appear once the video has loaded its metadata (`preload="none"`).
+  The control bar has a picture-in-picture button (Plyr handles Chromium's
+  PiP API and Safari's presentation mode; `disablepictureinpicture` must never
+  be set on the `<video>`). While it is in PiP the scroll-out pause is
+  skipped, and it pauses once PiP closes with the box off screen. The poster
   `<img loading="lazy">` shows first. The player mounts only once the guide is
   open and the video box is within 300px of the viewport, observed against the
   `.js-page-content` scroll container. It autoplays muted and looping when at

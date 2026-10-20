@@ -1054,6 +1054,11 @@ export function getAffectedTests(changedFiles) {
       tests: landingTests,
     },
     {
+      pattern:
+        /^(app\/composables\/video-progress-preview\.ts|app\/components\/Video\/.*\.vue)$/,
+      tests: landingTests,
+    },
+    {
       pattern: /^app\/assets\/css\/plyr-theme\.css$/,
       tests: landingTests,
     },

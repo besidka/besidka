@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { providerMeta } from './provider-meta'
+import { parseTimecodeToSeconds } from './video'
 
 const HTTPS_ONLY_MESSAGE = 'Must be an https:// URL'
 const SITE_RELATIVE_OR_HTTPS_MESSAGE
@@ -137,6 +138,26 @@ export const keyGuideSchema = z.object({
         )
         .default([])
         .describe('WebVTT caption tracks'),
+      markers: z
+        .array(
+          z.object({
+            time: z
+              .string()
+              .refine((value) => {
+                return parseTimecodeToSeconds(value) !== null
+              }, { message: 'Must be a timecode like 0:12 or 1:05:30' })
+              .describe('Timecode "m:ss"/"mm:ss"/"h:mm:ss", e.g. 0:12'),
+            label: z
+              .string()
+              .describe('Chapter label shown on hover, e.g. "Copy your key"'),
+          }),
+        )
+        .default([])
+        .describe(
+          'Chapter markers rendered on the progress bar, with hover'
+          + ' preview thumbnails. Also emitted as Clip entries in the'
+          + ' VideoObject structured data on the public page.',
+        ),
     })
     .optional()
     .describe(
