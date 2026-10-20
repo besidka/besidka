@@ -59,6 +59,7 @@ comparison:
     - Google AI Plus
     - Google AI Pro
     - Claude Pro
+    - T3 Chat
   rows:
     - label: Monthly fee
       values:
@@ -68,9 +69,11 @@ comparison:
         - $4.99/mo
         - $19.99/mo
         - $17–20/mo
+        - Shown after sign-in
     - label: Pay only for what you use
       values:
         - yes
+        - no
         - no
         - no
         - no
@@ -84,9 +87,11 @@ comparison:
         - no
         - no
         - no
+        - no
     - label: Self-hostable
       values:
         - yes
+        - no
         - no
         - no
         - no
@@ -100,6 +105,7 @@ comparison:
         - no
         - no
         - no
+        - yes
     - label: Image generation
       values:
         - yes
@@ -108,6 +114,7 @@ comparison:
         - yes
         - yes
         - no
+        - yes
     - label: Shareable chat links
       values:
         - yes
@@ -116,6 +123,7 @@ comparison:
         - Link + branch, no access controls
         - Link + branch, no access controls
         - Link or email invite, view-only
+        - Not listed by T3
     - label: Bring your own keys
       values:
         - Required
@@ -124,6 +132,7 @@ comparison:
         - no
         - no
         - no
+        - For some models
     - label: Bring your own search key (Brave / Exa)
       values:
         - yes
@@ -132,6 +141,7 @@ comparison:
         - no
         - no
         - no
+        - Not listed by T3
     - label: Route through your own AI gateway (BYOK)
       values:
         - yes
@@ -140,6 +150,7 @@ comparison:
         - no
         - no
         - no
+        - Not listed by T3
     - label: Deep research
       values:
         - yes
@@ -148,6 +159,7 @@ comparison:
         - yes
         - yes
         - yes
+        - Not listed by T3
     - label: Per-message cost breakdown
       values:
         - yes
@@ -156,6 +168,7 @@ comparison:
         - no
         - no
         - no
+        - Not listed by T3
   note: Besidka is free; you pay the AI provider for what you use. A casual user sending around 100 messages a month uses roughly 50 k input and 50 k output tokens. At Claude Sonnet 5.5's API rates ($2 input / $10 output per million tokens) that is about $0.60; on Claude Opus 5.5 ($4 / $20) about $1.20. Sending 1,000 messages a month lands near $6 on Sonnet 5.5 or $12 on Opus 5.5. Long chats resend earlier messages as input, so real input counts run higher, and prompt caching bills those repeated tokens at a discount. Web search, image generation and deep research are billed separately at the provider's published rates. There is no Besidka markup. Subscription prices are US list prices. The subscription apps bundle features and limits Besidka does not copy, and the free tiers of ChatGPT and Gemini cover plain text chat at no cost.
   priceDate: "2026-10-20"
   sources:
@@ -185,6 +198,12 @@ comparison:
       url: https://support.claude.com/en/articles/16762496-share-a-chat-with-specific-people
     - label: Claude Research
       url: https://support.claude.com/en/articles/11088861-use-research-on-claude
+    - label: T3 Chat FAQ
+      url: https://t3.chat/faq
+    - label: T3 Chat terms
+      url: https://t3.chat/terms-of-service
+    - label: T3 Chat keys and images (Theo, 2025)
+      url: https://x.com/theo/status/1924951096684118118
 description: Open-source BYOK AI chat app. Use GPT, Claude and Gemini with your own API key, see the price of every message, no subscription. Start free with Gemini.
 faqs:
   - question: What does BYOK mean?

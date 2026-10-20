@@ -397,9 +397,9 @@ public key guides (see [Public key guides](#public-key-guides)).
 
 ### The comparison table is a dated factual claim
 
-The `comparison` block in `content/index.md` names five third-party plans
-(ChatGPT Go, ChatGPT Plus, Google AI Plus, Google AI Pro, Claude Pro) and
-states their prices and features. Every cell was re-checked against the
+The `comparison` block in `content/index.md` names six third-party plans
+(ChatGPT Go, ChatGPT Plus, Google AI Plus, Google AI Pro, Claude Pro, T3 Chat)
+and states their prices and features. Every cell was re-checked against the
 vendors' own pricing pages and help-centre articles on 2026-10-20 and
 `priceDate` is the ISO date `2026-10-20`, rendered as "Prices checked 20
 October 2026". Changes in that pass:
@@ -408,9 +408,13 @@ October 2026". Changes in that pass:
   (`label` and `url`) shows as a "Sources" line of links under the note, in
   `app/components/content/HomeComparison.vue`. Add a source whenever a new
   cell depends on a page.
-- **T3 Chat was removed.** Its price could not be verified on official pages
-  (the pricing page returned 404 or a sign-in wall), and a price we cannot cite
-  does not belong in a dated table.
+- **T3 Chat was restored on 2026-10-21** at the owner's request. Its public
+  pricing page returns 404 and plans show only after sign-in, so the price
+  cell says `Shown after sign-in` instead of a figure. The cells that could be
+  verified cite the T3 FAQ, the T3 terms and Theo's 2025 post on keys and
+  images; everything else says `Not listed by T3`, per the table's rule for
+  unverifiable cells. Re-check the column, and replace the price cell, when
+  T3 publishes a public pricing page.
 - **The `Message caps from the app` row was removed.** ChatGPT Free text chats
   have been unlimited, subject to abuse-prevention safeguards, since mid-August
   2026, so "usage limits apply" no longer held for every plan, and no plan

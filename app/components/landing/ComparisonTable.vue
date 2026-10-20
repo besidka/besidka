@@ -2,7 +2,7 @@
   <div class="overflow-x-auto w-full rounded-box focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
     <table
       class="table table-sm table-pin-rows table-pin-cols w-full table-fixed
-        min-w-[56rem]"
+        min-w-[64rem]"
       aria-labelledby="comparison-caption-id"
     >
       <caption id="comparison-caption-id" class="sr-only">
