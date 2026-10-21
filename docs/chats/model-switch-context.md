@@ -114,7 +114,7 @@ sending right now. Observed per provider:
 
 | Provider | PDF on the newest message |
 | --- | --- |
-| xAI (Grok) | Always throws. `@ai-sdk/xai` (`^5.0.24`) `xai()` selects the Responses API, which rejects non-image inline data, yet `providers/xai.ts` (lines 99 and 120) and models.dev declare `pdf` input for Grok |
+| xAI (Grok) | Always throws. `@ai-sdk/xai` (`^5.0.24`) `xai()` selects the Responses API, which rejects non-image inline data, yet the models.dev snapshot (`providers/data/models-dev-snapshot.json`) declares `pdf` input for the Grok chat models (for example `grok-4.7` and `grok-4.20-*`) |
 | Moonshot AI (Kimi) | Throws in `@ai-sdk/moonshotai` |
 | DeepSeek | Silently dropped; the SDK emits only a warning that is never logged |
 | Qwen, and GPT models without `pdf` | Suspected 400 from the provider; not verified live |
@@ -145,8 +145,14 @@ whitelist sanitizer landed: the part is dropped before the request is built.
 
 ### Test gap
 
-Every chat-route integration spec mocks the sanitizer as identity, so no test
-exercises the real model-switch path end to end.
+Most chat-route integration specs mock `sanitizeMessagesForModelContext` as
+identity. `tests/integration/api/chats-carried-files.spec.ts` is the exception:
+it spreads the real `assistant-files` module, so the real sanitizer runs, and
+it covers the model-switch image case ('omits an earlier image after
+switching to a text-only model'). The route-level gap is everything else the
+sanitizer does: dropping reasoning, tool and source parts, the empty-turn
+skip, and PDFs on the newest message. Those are covered only by the unit
+spec `tests/integration/server/assistant-files.spec.ts`.
 
 ## Child PRs
 
