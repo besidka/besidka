@@ -64,6 +64,10 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatOmittedContextFiles
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
           <ChatDeepResearchMeta
             v-if="hasResearchMetaPart(m)"
             :message="m"

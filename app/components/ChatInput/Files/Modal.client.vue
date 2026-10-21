@@ -57,7 +57,7 @@
             />
             <ChatInputFilesModalUpload
               v-else-if="activeTab === 'upload'"
-              :is-image-input-supported="isImageInputSupported"
+              :can-attach-media-type="canAttachMediaType"
               @upload="onFilesUploaded"
             />
           </KeepAlive>
@@ -86,8 +86,10 @@ type SelectTabRef = {
 withDefaults(defineProps<{
   attachedIds: Set<string>
   isImageInputSupported?: boolean
+  canAttachMediaType?: (mediaType: string) => boolean
 }>(), {
   isImageInputSupported: true,
+  canAttachMediaType: () => true,
 })
 
 const emit = defineEmits<{

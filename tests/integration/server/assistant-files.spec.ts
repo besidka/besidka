@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import { convertToModelMessages } from 'ai'
 import {
+  buildModelContextMessages,
   getGeneratedImageFileIds,
   getModelContextFileStorageKeys,
   normalizeAssistantMessagePartsForPersistence,
@@ -2446,5 +2447,416 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
         createAssistantMessage('assistant-only'),
       ])).toEqual([])
     })
+  })
+})
+
+describe('buildModelContextMessages omitted files', () => {
+  const oneKilobyte = 1024
+  const allowAnyMediaType = () => true
+  const imageOnlyPredicate = (mediaType: string) => {
+    return mediaType.startsWith('image/')
+  }
+
+  interface TestFile {
+    name: string
+    mediaType?: string
+    url?: string
+  }
+
+  function createUserMessage(id: string, files: TestFile[]): UIMessage {
+    return {
+      id,
+      role: 'user',
+      parts: [
+        { type: 'text', text: `message ${id}` },
+        ...files.map((file) => {
+          return {
+            type: 'file',
+            mediaType: file.mediaType ?? 'application/pdf',
+            filename: file.name,
+            url: file.url ?? `/files/${file.name}`,
+          }
+        }),
+      ],
+    } as UIMessage
+  }
+
+  function createAssistantMessage(
+    id: string,
+    parts: UIMessage['parts'] = [{ type: 'text', text: `answer ${id}` }],
+  ): UIMessage {
+    return { id, role: 'assistant', parts } as UIMessage
+  }
+
+  function createConversation(userMessages: UIMessage[]): UIMessage[] {
+    return userMessages.flatMap((message, index) => {
+      if (index === userMessages.length - 1) {
+        return [message]
+      }
+
+      return [message, createAssistantMessage(`assistant-${index}`)]
+    })
+  }
+
+  function createSizes(
+    entries: Record<string, number>,
+  ): ReadonlyMap<string, number> {
+    return new Map(Object.entries(entries))
+  }
+
+  function createPdfConversation(count: number): UIMessage[] {
+    return createConversation(
+      Array.from({ length: count }, (_value, index) => {
+        return createUserMessage(`user-${index + 1}`, [
+          { name: `file-${index + 1}.pdf` },
+        ])
+      }),
+    )
+  }
+
+  it('reports unsupported-by-model for a window file the model cannot read', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [
+        { name: 'photo.png', mediaType: 'image/png' },
+        { name: 'doc.pdf' },
+      ]),
+      createUserMessage('user-2', [{ name: 'latest.png', mediaType: 'image/png' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: imageOnlyPredicate,
+      fileSizesByStorageKey: createSizes({
+        'photo.png': oneKilobyte,
+        'doc.pdf': oneKilobyte,
+        'latest.png': oneKilobyte,
+      }),
+    })
+
+    expect(omittedFiles).toEqual([
+      {
+        filename: 'doc.pdf',
+        mediaType: 'application/pdf',
+        reason: 'unsupported-by-model',
+      },
+    ])
+  })
+
+  it('reports over-limit for a file over the carried bytes budget', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [{ name: 'big.pdf' }]),
+      createUserMessage('user-2', [{ name: 'latest.pdf' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        'big.pdf': CARRIED_FILES_MAX_BYTES + 1,
+        'latest.pdf': oneKilobyte,
+      }),
+    })
+
+    expect(omittedFiles).toEqual([
+      {
+        filename: 'big.pdf',
+        mediaType: 'application/pdf',
+        reason: 'over-limit',
+      },
+    ])
+  })
+
+  it('reports over-limit for a text file over the text size cap', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [
+        { name: 'notes.txt', mediaType: 'text/plain' },
+      ]),
+      createUserMessage('user-2', [{ name: 'latest.pdf' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        'notes.txt': CARRIED_TEXT_FILE_MAX_BYTES + 1,
+        'latest.pdf': oneKilobyte,
+      }),
+    })
+
+    expect(omittedFiles.map(file => file.reason)).toEqual(['over-limit'])
+  })
+
+  it('reports over-limit once the carried file count is spent', () => {
+    const fileNames = Array.from(
+      { length: CARRIED_FILES_MAX_COUNT + 1 },
+      (_value, index) => `file-${index}.pdf`,
+    )
+    const messages = createConversation([
+      createUserMessage('user-1', fileNames.map(name => ({ name }))),
+      createUserMessage('user-2', [{ name: 'latest.pdf' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        ...Object.fromEntries(fileNames.map(name => [name, oneKilobyte])),
+        'latest.pdf': oneKilobyte,
+      }),
+    })
+
+    expect(omittedFiles).toEqual([
+      {
+        filename: fileNames.at(-1),
+        mediaType: 'application/pdf',
+        reason: 'over-limit',
+      },
+    ])
+  })
+
+  it('reports unsupported-by-model before over-limit', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [{ name: 'huge.pdf' }]),
+      createUserMessage('user-2', [{ name: 'latest.png', mediaType: 'image/png' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: imageOnlyPredicate,
+      fileSizesByStorageKey: createSizes({
+        'huge.pdf': CARRIED_FILES_MAX_BYTES + 1,
+        'latest.png': oneKilobyte,
+      }),
+    })
+
+    expect(omittedFiles.map(file => file.reason))
+      .toEqual(['unsupported-by-model'])
+  })
+
+  it('reports outside-window only for the message that just left it', () => {
+    const conversationLength = CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES + 3
+    const messages = createPdfConversation(conversationLength)
+    const sizes: Record<string, number> = {}
+
+    for (let index = 1; index <= conversationLength; index += 1) {
+      sizes[`file-${index}.pdf`] = oneKilobyte
+    }
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes(sizes),
+    })
+
+    expect(omittedFiles).toEqual([
+      {
+        filename: 'file-2.pdf',
+        mediaType: 'application/pdf',
+        reason: 'outside-window',
+      },
+    ])
+  })
+
+  it('reports the just-exited message after the window files', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [{ name: 'exited.pdf' }]),
+      createUserMessage('user-2', [{ name: 'huge.pdf' }]),
+      createUserMessage('user-3', [{ name: 'fine.pdf' }]),
+      createUserMessage('user-4', [{ name: 'fine-too.pdf' }]),
+      createUserMessage('user-5', [{ name: 'latest.pdf' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        'huge.pdf': CARRIED_FILES_MAX_BYTES + 1,
+        'fine.pdf': oneKilobyte,
+        'fine-too.pdf': oneKilobyte,
+        'latest.pdf': oneKilobyte,
+      }),
+    })
+
+    expect(omittedFiles.map(file => [file.filename, file.reason])).toEqual([
+      ['huge.pdf', 'over-limit'],
+      ['exited.pdf', 'outside-window'],
+    ])
+  })
+
+  it('does not report outside-window files the model cannot read anyway', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [{ name: 'exited.pdf' }]),
+      createUserMessage('user-2', []),
+      createUserMessage('user-3', []),
+      createUserMessage('user-4', []),
+      createUserMessage('user-5', [{ name: 'latest.png', mediaType: 'image/png' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: imageOnlyPredicate,
+      fileSizesByStorageKey: createSizes({ 'latest.png': oneKilobyte }),
+    })
+
+    expect(omittedFiles).toEqual([])
+  })
+
+  it('reports outside-window even when no sizes were looked up', () => {
+    const messages = createPdfConversation(
+      CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES + 2,
+    )
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: new Map(),
+    })
+
+    expect(omittedFiles).toEqual([
+      {
+        filename: 'file-1.pdf',
+        mediaType: 'application/pdf',
+        reason: 'outside-window',
+      },
+    ])
+  })
+
+  it('does not report window files of unknown size', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [
+        { name: 'inline.pdf', url: 'data:application/pdf;base64,AAAA' },
+        { name: 'missing.pdf' },
+      ]),
+      createUserMessage('user-2', [{ name: 'latest.pdf' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({ 'latest.pdf': oneKilobyte }),
+    })
+
+    expect(omittedFiles).toEqual([])
+  })
+
+  it('never reports the latest user message files', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', []),
+      createUserMessage('user-2', [
+        { name: 'latest.pdf' },
+        { name: 'latest.png', mediaType: 'image/png' },
+      ]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: imageOnlyPredicate,
+      fileSizesByStorageKey: createSizes({
+        'latest.pdf': REQUEST_FILES_MAX_BYTES + 1,
+        'latest.png': oneKilobyte,
+      }),
+    })
+
+    expect(omittedFiles).toEqual([])
+  })
+
+  it('never reports assistant file parts', () => {
+    const messages: UIMessage[] = [
+      createUserMessage('user-1', []),
+      createAssistantMessage('assistant-1', [
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'generated.png',
+          url: '/files/generated.png',
+        },
+      ]),
+      createUserMessage('user-2', [{ name: 'latest.png', mediaType: 'image/png' }]),
+    ]
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        'generated.png': oneKilobyte,
+        'latest.png': oneKilobyte,
+      }),
+    })
+
+    expect(omittedFiles).toEqual([])
+  })
+
+  it('reports gateway-no-carry for every window file without a predicate', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [{ name: 'exited.pdf' }]),
+      createUserMessage('user-2', [{ name: 'a.pdf' }]),
+      createUserMessage('user-3', [{ name: 'b.png', mediaType: 'image/png' }]),
+      createUserMessage('user-4', [{ name: 'c.pdf' }]),
+      createUserMessage('user-5', [{ name: 'latest.pdf' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages, {
+      fileSizesByStorageKey: new Map(),
+    })
+
+    expect(omittedFiles.map(file => [file.filename, file.reason])).toEqual([
+      ['c.pdf', 'gateway-no-carry'],
+      ['b.png', 'gateway-no-carry'],
+      ['a.pdf', 'gateway-no-carry'],
+    ])
+  })
+
+  it('trims filenames and leaves blank ones undefined', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [{ name: '  spaced.pdf  ' }, { name: '   ' }]),
+      createUserMessage('user-2', [{ name: 'latest.pdf' }]),
+    ])
+
+    const { omittedFiles } = buildModelContextMessages(messages)
+
+    expect(omittedFiles.map(file => file.filename))
+      .toEqual(['spaced.pdf', undefined])
+  })
+
+  it('reports nothing without a latest user message', () => {
+    const { omittedFiles } = buildModelContextMessages([
+      createAssistantMessage('assistant-1'),
+    ], {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({ 'a.pdf': oneKilobyte }),
+    })
+
+    expect(omittedFiles).toEqual([])
+  })
+
+  it('returns the same messages as sanitizeMessagesForModelContext', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [{ name: 'exited.pdf' }]),
+      createUserMessage('user-2', [{ name: 'huge.pdf' }]),
+      createUserMessage('user-3', [{ name: 'fine.pdf' }]),
+      createUserMessage('user-4', [{ name: 'photo.png', mediaType: 'image/png' }]),
+      createUserMessage('user-5', [{ name: 'latest.pdf' }]),
+    ])
+    const options = {
+      canCarryMediaType: imageOnlyPredicate,
+      fileSizesByStorageKey: createSizes({
+        'huge.pdf': CARRIED_FILES_MAX_BYTES + 1,
+        'fine.pdf': oneKilobyte,
+        'photo.png': oneKilobyte,
+        'latest.pdf': oneKilobyte,
+      }),
+    }
+
+    expect(buildModelContextMessages(messages, options).messages)
+      .toEqual(sanitizeMessagesForModelContext(messages, options))
+  })
+
+  it('does not mutate the input messages', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', [{ name: 'exited.pdf' }]),
+      createUserMessage('user-2', [{ name: 'huge.pdf' }]),
+      createUserMessage('user-3', []),
+      createUserMessage('user-4', []),
+      createUserMessage('user-5', [{ name: 'latest.pdf' }]),
+    ])
+    const snapshot = structuredClone(messages)
+
+    buildModelContextMessages(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        'huge.pdf': CARRIED_FILES_MAX_BYTES + 1,
+        'latest.pdf': oneKilobyte,
+      }),
+    })
+
+    expect(messages).toEqual(snapshot)
   })
 })

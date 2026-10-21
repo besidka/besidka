@@ -170,6 +170,13 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   min; the 120s lease + heartbeat fix, the deterministic tab-close repro, the
   Axiom investigation runbook, and unresolved options (waitUntil,
   Queues/Workflows, Durable Objects) for surviving the disconnect itself
+- `docs/chats/model-switch-context.md` - What the model sees when a user
+  switches model/provider mid-chat: history rebuilt from D1 on every send, the
+  whitelist sanitizer (only text survives past assistant turns, so no
+  cross-provider reasoning/tool incompatibility but lost sources and
+  generated pixels), modality-gated earlier user files, the newest-message
+  file gap (PDFs to Grok/Kimi throw, DeepSeek drops silently), the missing
+  omitted-context indicator, suspected edge cases, and the three child PRs
 - `docs/pwa-safari-dock-app-launch.md` - Two macOS Safari Dock app launch
   bugs: WebKit not applying SW-`respondWith` stylesheet responses on a Web
   App process's first document load (fixed, push-only service worker), and

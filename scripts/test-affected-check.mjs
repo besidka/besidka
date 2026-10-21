@@ -206,6 +206,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/current-date-instruction.spec.ts',
     'tests/unit/utils/ai/native-search-instruction.spec.ts',
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
+    'tests/integration/api/chats-model-context-real-sanitizer.spec.ts',
+    'tests/integration/server/model-turns.spec.ts',
     'tests/integration/api/chats-external-search-validation.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
     'tests/integration/api/chats-gateway.spec.ts',
@@ -308,6 +310,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/gateway-capabilities.spec.ts',
     'tests/unit/utils/gateway-model-id.spec.ts',
     'tests/unit/utils/gateway-pricing.spec.ts',
+  ]
+
+  const modelTurnsTests = [
+    'tests/integration/server/model-turns.spec.ts',
+    'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
+    'tests/integration/api/chats-model-context-real-sanitizer.spec.ts',
   ]
 
   const gatewayChatTests = [
@@ -668,8 +676,41 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...imageGenerationTests,
         ...filesModuleTests,
+        'tests/unit/composables/image-input-support.spec.ts',
         'tests/unit/components/Chat/GeneratedImage.spec.ts',
       ],
+    },
+    {
+      pattern: /^shared\/utils\/input-media-types\.ts$/,
+      tests: [
+        ...filesModuleTests,
+        'tests/unit/utils/input-media-types.spec.ts',
+        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/utils/chats/input-file-support.spec.ts',
+        'tests/integration/server/assistant-files.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/chats\/input-file-support\.ts$/,
+      tests: [
+        'tests/unit/utils/chats/input-file-support.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+        'tests/integration/api/chats-gateway.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/ai\/sdk-warnings\.ts$/,
+      tests: [
+        'tests/unit/utils/ai/sdk-warnings.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+      ],
+    },
+    {
+      pattern: /^providers\/(merge|xai)\.ts$/,
+      tests: ['tests/integration/api/chats-message-id-stream.spec.ts'],
     },
     {
       pattern: /^server\/utils\/ai\/generation-guard\.ts$/,
@@ -1115,6 +1156,7 @@ export function getAffectedTests(changedFiles) {
         ...chatTestEndpointTests,
         'tests/unit/composables/chat-image-ui.spec.ts',
         'tests/unit/composables/haptics.spec.ts',
+        'tests/unit/components/Chat/OmittedContextFiles.spec.ts',
       ],
     },
     {
@@ -1551,7 +1593,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/files\/(assistant-files|persist-file)\.ts$/,
-      tests: gatewayChatTests,
+      tests: [...gatewayChatTests, ...modelTurnsTests],
+    },
+    {
+      pattern: /^server\/utils\/chats\/model-turns\.ts$/,
+      tests: modelTurnsTests,
     },
     {
       pattern: /^server\/utils\/files\/carried-media-types\.ts$/,
@@ -1659,6 +1705,20 @@ export function getAffectedTests(changedFiles) {
         ...searchStepTests,
         'tests/unit/components/Chat/Reasoning.spec.ts',
         'tests/unit/components/Chat/UrlSources.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/Chat\/OmittedContextFiles\.vue$/,
+      tests: ['tests/unit/components/Chat/OmittedContextFiles.spec.ts'],
+    },
+    {
+      pattern:
+        /^shared\/(utils\/model-context-omissions\.ts|types\/model-context\.d\.ts)$/,
+      tests: [
+        'tests/unit/utils/model-context-omissions.spec.ts',
+        'tests/unit/components/Chat/OmittedContextFiles.spec.ts',
+        'tests/integration/server/assistant-files.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
       ],
     },
     {

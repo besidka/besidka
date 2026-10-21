@@ -7,6 +7,7 @@ import {
   getControllerModelId,
   getImageGenerationModelId,
   getImageGenerationProviders,
+  getModelInputModalities,
   getRequiredModelTools,
   isImageGenerationModel,
 } from '../../../shared/utils/model'
@@ -143,5 +144,59 @@ describe('image generation models', () => {
 
       expect(imageGenerationProviders).toContain(provider.id)
     }
+  })
+})
+
+describe('getModelInputModalities', () => {
+  it('returns the model\'s own modalities for a regular model', () => {
+    const model = getConfiguredModel('gpt-5-mini')
+
+    expect(getModelInputModalities(model)).toEqual(model.modalities.input)
+  })
+
+  it('returns the controller modalities for every image-generation model',
+    () => {
+      for (const provider of providers) {
+        for (const model of provider.models) {
+          if (!model.imageGeneration) {
+            continue
+          }
+
+          const controllerModel = provider.models.find((candidate) => {
+            return candidate.id === getControllerModelId(model)
+          })
+
+          expect(controllerModel).toBeDefined()
+          expect(getModelInputModalities(model))
+            .toEqual(controllerModel!.modalities.input)
+        }
+      }
+    })
+
+  it('lets a PDF reach the OpenAI controller of an image model', () => {
+    const imageModel = getConfiguredModel('gpt-image-2')
+    const controllerModel = getConfiguredModel('gpt-6-luna')
+
+    expect(controllerModel.modalities.input).toContain('pdf')
+    expect(getModelInputModalities(imageModel)).toContain('pdf')
+  })
+
+  it('falls back to the model\'s own modalities when the controller '
+    + 'is not in the catalog', () => {
+    const model = {
+      ...getConfiguredModel('gpt-image-2'),
+      imageGeneration: { controllerModel: 'missing-controller' },
+    }
+
+    expect(getModelInputModalities(model)).toEqual(model.modalities.input)
+  })
+
+  it('ignores a controller id that exists only under another provider', () => {
+    const model = {
+      ...getConfiguredModel('gpt-image-2'),
+      imageGeneration: { controllerModel: 'gemini-2.5-flash-lite' },
+    }
+
+    expect(getModelInputModalities(model)).toEqual(model.modalities.input)
   })
 })

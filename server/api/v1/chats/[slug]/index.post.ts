@@ -22,6 +22,7 @@ import type {
   ImageGenerationProvider,
 } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { OmittedContextFilesData } from '#shared/types/model-context.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import {
   isExternalWebSearchTool,
@@ -84,7 +85,9 @@ import {
   filterRecoverableUIMessageStreamErrors,
   insertParagraphBreakAfterNonTextGap,
 } from '~~/server/utils/chats/filter-ui-message-stream'
+import { assertInputFilesSupported } from '~~/server/utils/chats/input-file-support'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
+import { buildMessagesForModel } from '~~/server/utils/chats/model-turns'
 import {
   hasMeaningfulAssistantParts,
   persistUserMessage,
@@ -97,18 +100,20 @@ import {
   getActiveShareForChat,
   syncChatShareFiles,
 } from '~~/server/utils/chats/share'
+import { summarizeSdkWarnings } from '~~/server/utils/ai/sdk-warnings'
 import { createCarriedMediaTypePredicate } from '~~/server/utils/files/carried-media-types'
+import { assertGatewayImageInputSupported } from '~~/server/utils/gateways/image-input-support'
 import {
   getOwnedFilesByStorageKeys,
   validateMessageFilePolicy,
 } from '~~/server/utils/files/file-governance'
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
+  buildModelContextMessages,
   getGeneratedImageFileIds,
   getModelContextFileStorageKeys,
   isKnownImageGenerationModel,
   persistGatewayGeneratedImageParts,
-  sanitizeMessagesForModelContext,
   stripUndeliveredInlineDataParts,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
@@ -303,6 +308,13 @@ export default defineEventHandler(async (event) => {
 
   if (gatewayId) {
     requestedTools = selectedTools
+
+    await assertGatewayImageInputSupported({
+      gatewayId,
+      modelId: userModel,
+      parts: newMessage.parts,
+      logger,
+    })
   } else {
     const resolved = useChatProvider(userModel)
 
@@ -311,18 +323,11 @@ export default defineEventHandler(async (event) => {
 
     reasoningLevel = resolveReasoningLevelForModel(model, reasoningLevel)
 
-    const hasImageAttachment = newMessage.parts.some((part) => {
-      return part.type === 'file' && part.mediaType.startsWith('image/')
-    })
-
-    if (hasImageAttachment && !model.modalities.input.includes('image')) {
-      throw createError({
-        message: `${model.name} does not support image input.`,
-        status: 400,
-        why: 'The message includes an image attachment, but the selected model does not advertise image support.',
-        fix: 'Remove the image attachment, or switch to a vision-capable model.',
-      })
-    }
+    assertInputFilesSupported(
+      newMessage.parts,
+      getModelInputModalities(model),
+      model.name,
+    )
 
     const requiredTools = getRequiredModelTools(model)
 
@@ -566,10 +571,13 @@ export default defineEventHandler(async (event) => {
     fileSizesByStorageKey.set(storageKey, file.size)
   }
 
-  const modelContextMessages = sanitizeMessagesForModelContext(allMessages, {
+  const {
+    messages: modelContextMessages,
+    omittedFiles,
+  } = buildModelContextMessages(allMessages, {
     fileSizesByStorageKey,
     canCarryMediaType: model
-      ? createCarriedMediaTypePredicate(model.modalities.input)
+      ? createCarriedMediaTypePredicate(getModelInputModalities(model))
       : undefined,
   })
 
@@ -581,6 +589,7 @@ export default defineEventHandler(async (event) => {
   logger.set({
     filesCount: newMessage.parts.filter(part => part.type === 'file').length,
     carriedFilesCount: countCarriedFileParts(modelContextMessages),
+    omittedContextFilesCount: omittedFiles.length,
     missingFilesCount: missingFiles.length,
   })
 
@@ -615,15 +624,18 @@ export default defineEventHandler(async (event) => {
   }
 
   let modelId: string
+  let modelProviderId: string | undefined
   let telemetryProviderId: string
   let errorProviderId: SupportedProviderId | GatewayId | undefined
 
   if (gatewayId) {
     modelId = userModel
+    modelProviderId = modelId.split('/')[0]
     telemetryProviderId = keyProviderIdForGateway(gatewayId)
     errorProviderId = gatewayId
   } else if (provider && model) {
     modelId = model.id
+    modelProviderId = provider.id
     telemetryProviderId = provider.id
     errorProviderId = toSupportedProviderId(provider.id)
   } else {
@@ -638,7 +650,7 @@ export default defineEventHandler(async (event) => {
       attributes: {
         chat: {
           gateway: gatewayId,
-          gatewayProvider: modelId.split('/')[0],
+          gatewayProvider: modelProviderId,
           gatewayModel: modelId,
         },
       },
@@ -1157,19 +1169,44 @@ export default defineEventHandler(async (event) => {
           })
         }
 
+        if (omittedFiles.length > 0) {
+          writer.write({
+            type: 'data-omitted-context-files',
+            data: {
+              modelName: model?.name,
+              files: omittedFiles,
+            } satisfies OmittedContextFilesData,
+          })
+        }
+
         let result: MultiConsumerStreamTextResult
         let modelMessages: ModelMessage[] = []
         let mainLoopSteps: SearchAnswerContinuationStep[] = []
         const messagesForModel = buildMessagesForModel(
           messagesForAI,
-          errorProviderId,
+          modelProviderId,
         )
+
+        function recordSdkWarnings(
+          key: 'aiWarnings' | 'aiContinuationWarnings',
+          steps: readonly SearchAnswerContinuationStep[],
+        ) {
+          const summary = summarizeSdkWarnings(steps)
+
+          if (!summary) {
+            return
+          }
+
+          aiLogger.set({ attributes: { [key]: summary } })
+        }
 
         function recordToolLoopOutcome(outcome: SearchAnswerOutcome) {
           const { continuation } = outcome
 
           if (continuation) {
             const steps = [...mainLoopSteps, ...continuation.steps]
+
+            recordSdkWarnings('aiContinuationWarnings', continuation.steps)
 
             recordAiStreamUsage({
               usage: sumLanguageModelUsages(steps.map(step => step.usage)),
@@ -1299,6 +1336,7 @@ export default defineEventHandler(async (event) => {
             onEnd({ usage, providerMetadata, steps }) {
               mainLoopSteps = [...steps]
               recordAiStreamUsage({ usage, steps, providerMetadata })
+              recordSdkWarnings('aiWarnings', steps)
             },
             ...parsedTools,
             ...(toolLoopOptions ?? {}),
@@ -2624,38 +2662,6 @@ function toSupportedProviderId(
   return supportedProviderIds.find((id) => {
     return id === providerId
   })
-}
-
-const GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT = '(earlier message deleted)'
-
-// Google's Generative Language API rejects a `contents` array whose first
-// turn is not `user` — a chat's persisted history can legitimately start
-// with an assistant message after the single-message-delete feature removes
-// the original leading user turn. This prepends a synthetic user turn for
-// the Google provider only, scoped to the array actually sent to the model.
-// It must never replace `messagesForAI` itself, since that array also backs
-// `originalMessages` for AI SDK stream bookkeeping and must stay the true,
-// unmodified message history.
-function buildMessagesForModel(
-  messages: UIMessage[],
-  providerId: SupportedProviderId | GatewayId | undefined,
-): UIMessage[] {
-  if (providerId !== 'google' || messages[0]?.role !== 'assistant') {
-    return messages
-  }
-
-  return [buildGoogleLeadingAssistantPlaceholder(), ...messages]
-}
-
-function buildGoogleLeadingAssistantPlaceholder(): UIMessage {
-  return {
-    id: `google-leading-placeholder-${ulid()}`,
-    role: 'user',
-    parts: [{
-      type: 'text',
-      text: GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT,
-    }],
-  }
 }
 
 function emitChatErrorLog(input: {

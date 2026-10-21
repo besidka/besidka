@@ -6,6 +6,7 @@ import type {
 import {
   formatPrice,
   mergeModelMetadata,
+  mergeProvider,
   parseUpperBoundPrice,
 } from '../../../providers/merge'
 import { providers } from '../../../providers'
@@ -396,6 +397,164 @@ describe('mergeModelMetadata', () => {
       },
       undefined,
     )).toThrowError(/test-chat-model/)
+  })
+})
+
+describe('mergeProvider excludedInputModalities', () => {
+  const fullyCuratedModel: CuratedModel = {
+    id: 'fully-curated-model',
+    name: 'Fully Curated',
+    description: 'Curated description',
+    contextLength: 64_000,
+    maxOutputTokens: 0,
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['image'],
+    },
+    toolCall: false,
+    price: { tokens: 1 },
+    tools: [],
+  }
+
+  it('removes excluded modalities from snapshot-backed models', () => {
+    const provider = mergeProvider(
+      {
+        id: 'test',
+        name: 'Test',
+        excludedInputModalities: ['pdf'],
+        models: [chatModel],
+      },
+      { [chatModel.id]: snapshotEntry },
+    )
+
+    expect(provider.models[0]?.modalities).toEqual({
+      input: ['text', 'image'],
+      output: ['text'],
+    })
+  })
+
+  it('removes excluded modalities from fully curated models', () => {
+    const provider = mergeProvider(
+      {
+        id: 'test',
+        name: 'Test',
+        excludedInputModalities: ['pdf'],
+        models: [fullyCuratedModel],
+      },
+      {},
+    )
+
+    expect(provider.models[0]?.modalities.input).toEqual(['text', 'image'])
+  })
+
+  it('does not mutate the snapshot entry', () => {
+    mergeProvider(
+      {
+        id: 'test',
+        name: 'Test',
+        excludedInputModalities: ['pdf'],
+        models: [chatModel],
+      },
+      { [chatModel.id]: snapshotEntry },
+    )
+
+    expect(snapshotEntry.modalities.input).toEqual(['text', 'image', 'pdf'])
+  })
+
+  it('keeps snapshot modalities when nothing is excluded', () => {
+    const provider = mergeProvider(
+      { id: 'test', name: 'Test', models: [chatModel] },
+      { [chatModel.id]: snapshotEntry },
+    )
+
+    expect(provider.models[0]?.modalities).toEqual(snapshotEntry.modalities)
+  })
+})
+
+describe('mergeProvider impliedInputModalities', () => {
+  const imageOnlySnapshotEntry = {
+    ...snapshotEntry,
+    modalities: { input: ['text', 'image'], output: ['text'] },
+  }
+  const textOnlySnapshotEntry = {
+    ...snapshotEntry,
+    modalities: { input: ['text'], output: ['text'] },
+  }
+
+  function mergeWithImplied(
+    entry: typeof snapshotEntry,
+    excludedInputModalities?: string[],
+  ) {
+    return mergeProvider(
+      {
+        id: 'test',
+        name: 'Test',
+        impliedInputModalities: { image: ['pdf'] },
+        excludedInputModalities,
+        models: [chatModel],
+      },
+      { [chatModel.id]: entry },
+    ).models[0]!
+  }
+
+  it('adds the implied modality to a model whose input has the key', () => {
+    expect(mergeWithImplied(imageOnlySnapshotEntry).modalities.input)
+      .toEqual(['text', 'image', 'pdf'])
+  })
+
+  it('does not add it to a model without the key', () => {
+    expect(mergeWithImplied(textOnlySnapshotEntry).modalities.input)
+      .toEqual(['text'])
+  })
+
+  it('does not duplicate a modality the model already lists', () => {
+    expect(mergeWithImplied(snapshotEntry).modalities.input)
+      .toEqual(['text', 'image', 'pdf'])
+  })
+
+  it('applies exclusions after implied modalities', () => {
+    expect(mergeWithImplied(imageOnlySnapshotEntry, ['pdf']).modalities.input)
+      .toEqual(['text', 'image'])
+  })
+
+  it('does not mutate the snapshot entry', () => {
+    mergeWithImplied(imageOnlySnapshotEntry)
+
+    expect(imageOnlySnapshotEntry.modalities.input).toEqual(['text', 'image'])
+  })
+})
+
+describe('OpenAI implied PDF input', () => {
+  const openai = providers.find(provider => provider.id === 'openai')!
+
+  it('gives every OpenAI model that reads images PDF input', () => {
+    const imageModels = openai.models.filter((model) => {
+      return model.modalities.input.includes('image')
+    })
+
+    expect(imageModels.length).toBeGreaterThan(0)
+
+    for (const model of imageModels) {
+      expect(model.modalities.input, model.id).toContain('pdf')
+    }
+  })
+
+  it('keeps text-only OpenAI models without PDF input', () => {
+    const textOnlyModels = openai.models.filter((model) => {
+      return !model.modalities.input.includes('image')
+    })
+
+    for (const model of textOnlyModels) {
+      expect(model.modalities.input, model.id).not.toContain('pdf')
+    }
+  })
+
+  it('does not give xAI models PDF input', () => {
+    const xai = providers.find(provider => provider.id === 'xai')!
+
+    for (const model of xai.models) {
+      expect(model.modalities.input, model.id).not.toContain('pdf')
+    }
   })
 })
 

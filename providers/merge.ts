@@ -46,6 +46,21 @@ export interface CuratedProvider {
    * Defaults to `id` when omitted.
    */
   modelsDevKey?: string
+  /**
+   * Input modalities removed from every merged model's `modalities.input`,
+   * overriding both the models.dev snapshot and curated `modalities`. For a
+   * delivery-pipeline limit the models themselves do not have — for example
+   * xAI's Responses API rejects inline (data URL) PDFs, so Grok models read
+   * PDFs on the xAI side but cannot receive them from this app.
+   */
+  excludedInputModalities?: string[]
+  /**
+   * Extra input modalities granted to every merged model whose input includes
+   * the key (`{ image: ['pdf'] }`: a model that reads images also reads PDFs).
+   * For a provider rule the models.dev catalog under-reports, applied before
+   * `excludedInputModalities`.
+   */
+  impliedInputModalities?: Record<string, string[]>
   models: CuratedModel[]
 }
 
@@ -338,15 +353,52 @@ export function mergeModelMetadata(
   }
 }
 
+function adjustInputModalities(
+  model: Model,
+  curated: CuratedProvider,
+): Model {
+  const { impliedInputModalities = {}, excludedInputModalities = [] } = curated
+  const inputModalities = new Set(model.modalities.input)
+
+  for (const [modality, impliedModalities] of Object.entries(
+    impliedInputModalities,
+  )) {
+    if (!model.modalities.input.includes(modality)) {
+      continue
+    }
+
+    for (const impliedModality of impliedModalities) {
+      inputModalities.add(impliedModality)
+    }
+  }
+
+  return {
+    ...model,
+    modalities: {
+      ...model.modalities,
+      input: [...inputModalities].filter((modality) => {
+        return !excludedInputModalities.includes(modality)
+      }),
+    },
+  }
+}
+
 export function mergeProvider(
   curated: CuratedProvider,
   snapshot: ModelSnapshot,
 ): Provider {
+  const hasModalityRules = !!curated.excludedInputModalities?.length
+    || Object.keys(curated.impliedInputModalities ?? {}).length > 0
+
   return {
     id: curated.id,
     name: curated.name,
     models: curated.models.map((model) => {
-      return mergeModelMetadata(model, snapshot[model.id])
+      const merged = mergeModelMetadata(model, snapshot[model.id])
+
+      return hasModalityRules
+        ? adjustInputModalities(merged, curated)
+        : merged
     }),
   }
 }

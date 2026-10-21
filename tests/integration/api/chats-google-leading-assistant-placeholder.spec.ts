@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  keyProviderIdForGateway,
+} from '../../../server/utils/gateways/index'
 
 const mocks = vi.hoisted(() => ({
   streamTextOptions: [] as Array<Record<string, any>>,
@@ -88,12 +91,36 @@ vi.mock('evlog', () => ({
 vi.mock('~~/server/utils/files/assistant-files', () => ({
   getModelContextFileStorageKeys: vi.fn(() => []),
   getGeneratedImageFileIds: vi.fn(() => []),
+  buildModelContextMessages: vi.fn(
+    (messages: unknown) => ({ messages, omittedFiles: [] }),
+  ),
   sanitizeMessagesForModelContext: vi.fn((messages: unknown) => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(
     async (input: { parts: unknown }) => input.parts,
   ),
+  isKnownImageGenerationModel: vi.fn(() => true),
+  persistGatewayGeneratedImageParts: vi.fn(
+    async (input: { parts: unknown }) => ({
+      parts: input.parts,
+      fileIds: [],
+    }),
+  ),
   isPersistedOversizedResponseFailureText: vi.fn(() => false),
   stripUndeliveredInlineDataParts: vi.fn((parts: unknown) => parts),
+}))
+
+vi.mock('~~/server/utils/projects/memory', () => ({
+  markProjectsMemoryStale: vi.fn(async () => undefined),
+}))
+
+vi.mock('../../../server/utils/gateways/catalog', () => ({
+  findGatewayCatalogModel: vi.fn(async () => ({
+    id: 'catalog-model',
+    name: 'Catalog model',
+    toolCall: true,
+  })),
+  getCachedGatewayCatalog: vi.fn(async () => []),
+  getCachedCloudflareGatewayCatalog: vi.fn(async () => []),
 }))
 
 async function getHandler() {
@@ -174,6 +201,20 @@ function createDb(chatMessages: unknown[]) {
             messages: chatMessages,
           })),
         },
+        keys: {
+          findFirst: vi.fn(async () => ({ apiKey: 'encrypted-key' })),
+        },
+        messages: {
+          findFirst: vi.fn(async () => ({
+            usage: {
+              model: 'x',
+              provider: 'x',
+              inputTokens: 0,
+              outputTokens: 0,
+              totalTokens: 0,
+            },
+          })),
+        },
       },
       insert: insertCall,
       transaction,
@@ -231,7 +272,53 @@ describe('google leading-assistant placeholder', () => {
       put: vi.fn(async () => undefined),
       delete: vi.fn(async () => undefined),
     }))
+    vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
+    vi.stubGlobal('getRequiredModelTools', vi.fn(() => []))
+    vi.stubGlobal('buildPersistedAssistantReplayChunks', vi.fn(() => []))
+    vi.stubGlobal('sendPushNotificationToUser', vi.fn(async () => undefined))
+    vi.stubGlobal('buildVapidSubject', vi.fn(() => 'mailto:test@example.com'))
+    vi.stubGlobal('useRuntimeConfig', vi.fn(() => ({ public: {} })))
+    vi.stubGlobal('keyProviderIdForGateway', keyProviderIdForGateway)
   })
+
+  function stubGateway() {
+    vi.stubGlobal('useChatProvider', vi.fn(() => {
+      throw new Error('useChatProvider must not run on the gateway path')
+    }))
+    vi.stubGlobal('useGateway', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    })))
+  }
+
+  async function runGatewayRequest(
+    model: string,
+    gateway: 'vercel' | 'openrouter',
+    chatMessages: unknown[],
+  ) {
+    const handler = await getHandler()
+    const { db } = createDb(chatMessages)
+
+    vi.stubGlobal('useDb', () => db)
+    stubGateway()
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model,
+        gateway,
+        tools: [],
+        reasoning: 'off',
+        messages: [createNewUserMessage('Follow-up question')],
+      },
+    } as any)
+
+    await response.ready
+
+    return mocks.streamTextOptions[0]?.messages as Array<any>
+  }
 
   function stubGoogleProvider() {
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
@@ -312,7 +399,7 @@ describe('google leading-assistant placeholder', () => {
     )
   })
 
-  it('does not prepend a placeholder for a Google request when history starts with a user message', async () => {
+  it('does not prepend a leading placeholder for a Google request when history starts with a user message, but bridges the unanswered turn', async () => {
     const handler = await getHandler()
     const { db } = createDb(createUserFirstHistory())
 
@@ -333,12 +420,16 @@ describe('google leading-assistant placeholder', () => {
 
     const modelMessages = mocks.streamTextOptions[0]?.messages as Array<any>
 
-    expect(modelMessages).toHaveLength(2)
+    expect(modelMessages).toHaveLength(3)
     expect(modelMessages[0]).toMatchObject({
       role: 'user',
       parts: [{ type: 'text', text: 'Original question' }],
     })
     expect(modelMessages[1]).toMatchObject({
+      role: 'assistant',
+      parts: [{ type: 'text', text: '(no reply)' }],
+    })
+    expect(modelMessages[2]).toMatchObject({
       role: 'user',
       parts: [{ type: 'text', text: 'Follow-up question' }],
     })
@@ -374,5 +465,50 @@ describe('google leading-assistant placeholder', () => {
       role: 'user',
       parts: [{ type: 'text', text: 'Follow-up question' }],
     })
+  })
+
+  it('prepends a synthetic user placeholder for a Vercel gateway Gemini request when history starts with an assistant message', async () => {
+    const modelMessages = await runGatewayRequest(
+      'google/gemini-3.1-flash',
+      'vercel',
+      createAssistantFirstHistory(),
+    )
+
+    expect(modelMessages).toHaveLength(3)
+    expect(modelMessages[0]).toMatchObject({
+      role: 'user',
+      parts: [{ type: 'text', text: '(earlier message deleted)' }],
+    })
+    expect(modelMessages[1]).toMatchObject({ role: 'assistant' })
+    expect(modelMessages[2]).toMatchObject({ role: 'user' })
+  })
+
+  it('prepends a synthetic user placeholder for an OpenRouter gateway Gemini request when history starts with an assistant message', async () => {
+    const modelMessages = await runGatewayRequest(
+      'google/gemini-3.1-flash',
+      'openrouter',
+      createAssistantFirstHistory(),
+    )
+
+    expect(modelMessages).toHaveLength(3)
+    expect(modelMessages[0]).toMatchObject({
+      role: 'user',
+      parts: [{ type: 'text', text: '(earlier message deleted)' }],
+    })
+  })
+
+  it('does not prepend a placeholder for a Vercel gateway request routed to a non-Google vendor', async () => {
+    const modelMessages = await runGatewayRequest(
+      'openai/gpt-4o',
+      'vercel',
+      createAssistantFirstHistory(),
+    )
+
+    expect(modelMessages).toHaveLength(2)
+    expect(modelMessages[0]).toMatchObject({
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Stored answer' }],
+    })
+    expect(modelMessages[1]).toMatchObject({ role: 'user' })
   })
 })
