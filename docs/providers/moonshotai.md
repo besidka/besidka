@@ -196,9 +196,12 @@ real caller. Note: `platform.moonshot.ai` redirects (301) to
   through every part type other than `tool-generate_image`) stores it in
   `messages.parts` unchanged, same as any other tool result. Moonshot's own
   docs only describe the *immediate* next `/chat/completions` call reusing
-  this blob — they say nothing about an app like this one that keeps full
-  multi-turn chat history and resends it on every subsequent turn of the
-  *same* chat, potentially for as long as the chat exists. **The shared-chat
+  this blob, and that is exactly what the app does: the blob goes back to
+  Moonshot only inside the turn that produced it, as the tool result the
+  loop's follow-up step carries. **Later turns never resend it.**
+  `sanitizeMessagesForModelContext` keeps only `text` and `file` parts of
+  earlier messages and drops every `tool-*` part, including this one (see
+  [`general.md`](./general.md#multi-step-tool-loop)). **The shared-chat
   path is confirmed clean, not a risk**: `server/api/v1/shared/[slug]/
   index.get.ts`'s `filterPublicParts()` strips every `isToolUIPart` part
   (matching this tool's `tool-web_search` result) from the public JSON
@@ -206,28 +209,27 @@ real caller. Note: `platform.moonshot.ai` redirects (301) to
   (`server/utils/chats/branch.ts`) does the same when a shared chat is
   branched into another user's own chat — both filter on part *type*, so
   this holds regardless of what the ciphertext actually contains. The real,
-  narrower open question is retention within the *owner's own* chat: because
+  narrower open question is retention only: the blob stays stored in the
+  owner's `messages.parts` for as long as the chat exists. Because
   Moonshot's actual encryption scheme (algorithm, key custody,
   ciphertext-reuse safety) is undocumented and unverifiable from outside,
-  indefinite storage and repeated resend of this blob to Moonshot on every
-  future turn has **not** been independently confirmed safe as a
-  data-minimization matter — it is passed through exactly as documented,
-  but the product owner should explicitly sign off on this retention/re-send
-  behavior rather than it being an implicit consequence of following the
-  docs. Nothing is decrypted, transformed, or given any bespoke DB handling
-  here; it lives in the exact same `messages.parts` JSON column every other
-  tool result already uses.
-- **Cross-provider resend on a mid-chat model switch — functional gap, not
-  a security issue.** This app resolves the model fresh from each request
-  and resends the full persisted history regardless of which provider
-  handled earlier turns. If a chat has a `tool-web_search` part from a
-  Moonshot turn and the user then switches the same chat to a different
-  provider, that opaque part is resent verbatim to a backend that never
-  declared the tool and cannot interpret it — at best inert (a third party
-  never learns anything from ciphertext it has no key for), at worst a
-  provider that validates tool-call/result pairing strictly could reject the
-  request. Not verified live (no provider-switch-after-search scenario has
-  been exercised with real keys); tracked here rather than guessed at.
+  indefinite storage of the blob has **not** been independently confirmed
+  safe as a data-minimization matter — nothing sends it to Moonshot after
+  the turn that produced it, but the product owner should explicitly sign
+  off on keeping it rather than that being an implicit consequence of
+  following the docs. Nothing is decrypted, transformed, or given any
+  bespoke DB handling here; it lives in the exact same `messages.parts`
+  JSON column every other tool result already uses.
+- **No cross-provider resend on a mid-chat model switch.** The app resolves
+  the model fresh from each request, but it never replays the stored
+  `tool-web_search` part to any provider, same or different, on a later
+  turn: the sanitizer drops all `tool-*` parts from history. So an opaque
+  Moonshot blob never reaches a backend that never declared the tool, and
+  there is no tool-call/result pairing risk from history. The consequence
+  is that a later turn, on any provider, sees only the earlier answer text
+  and not the search results behind it. Not verified live (no
+  provider-switch-after-search scenario has been exercised with real
+  keys); the behavior follows from the sanitizer's part whitelist.
 - **Billing — still self-contradictory as of 2026-08-10, not resolved
   here.** Two Moonshot doc pages disagree, same as round 3/4 found:
   - `use-official-tools`: "official tools are currently free for a limited

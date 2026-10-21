@@ -16,27 +16,35 @@ umbrella reference they link back to.
 - The cost is lost context: follow-ups cannot see earlier sources, web search
   results, or generated pixels unless they appear in the answer text.
 - Files are the real switch hazard. Earlier user files are gated by the new
-  model's input modalities, but the newest message's files are checked only
-  for images, so some PDF sends fail or are silently dropped.
-- Nothing tells the user that context was omitted.
+  model's input modalities, and since #481 the newest message's files are
+  too, so an unsupported PDF fails with a clear 400 instead of a provider
+  error or a silent drop.
+- Since #476 the assistant turn tells the user when earlier files were left
+  out of the model context.
 
 ## How history is rebuilt on every send
 
 All paths are in `server/api/v1/chats/[slug]/index.post.ts` unless noted.
 
 1. The request body carries exactly one message
-   (`messages: z.array(incomingUserMessageSchema).length(1)`, line 181). The
+   (`messages: z.array(incomingUserMessageSchema).length(1)`, line 186). The
    client never sends history.
 2. The route loads the earlier messages from D1, then runs
-   `sanitizeMessagesForModelContext` (call at line 569, definition at
-   `server/utils/files/assistant-files.ts:61`) with the current model's
-   `modalities.input` wired in through `createCarriedMediaTypePredicate`
-   (line 572).
-3. `convertFilesForAI` (lines 575-579) turns file URLs into data the SDK can
+   `buildModelContextMessages` (call at line 577), which wraps
+   `sanitizeMessagesForModelContext`
+   (`server/utils/files/assistant-files.ts:75`), with the current model's
+   input modalities wired in through `createCarriedMediaTypePredicate`
+   (line 580).
+3. `convertFilesForAI` (lines 584-587) turns file URLs into data the SDK can
    send and reports `missingFiles`.
-4. `buildMessagesForModel` (call at line 1163, definition at line 2639) adds
-   the Google leading-assistant placeholder when needed.
-5. `convertToModelMessages` (line 1275) produces the AI SDK model messages
+4. `buildMessagesForModel` (call at line 1185, definition in
+   `server/utils/chats/model-turns.ts`) keeps the model-facing turns
+   alternating: a `(no reply)` assistant turn between adjacent user turns, an
+   `(earlier message deleted)` user turn between adjacent assistant turns,
+   and the Google leading-assistant placeholder. It keys on the underlying
+   model provider (`modelProviderId`), so gateway-routed `google/*` models get
+   the placeholder too.
+5. `convertToModelMessages` (line 1312) produces the AI SDK model messages
    passed to `streamText`.
 
 Because the model is resolved fresh from each request, switching model or
@@ -104,67 +112,131 @@ early return at `assistant-files.ts:163-169`).
 
 ## Gaps found
 
-### Newest-message files are only checked for images
+Each gap below names the child PR that closed it. Items marked "by design"
+are intentional trade-offs, and "still open" items are not addressed by
+this work.
 
-The pre-flight check at `index.post.ts:314-327` rejects a message with an
-image attachment when the model does not advertise `image` input. There is
-no equivalent check for PDFs or other media types on the newest message, so
-the model's declared modalities are not enforced for the file the user is
-sending right now. Observed per provider:
+### Newest-message files were only checked for images (closed by #481)
+
+The pre-flight check only rejected an image attachment for a model without
+`image` input. PDFs on the newest message always went through. Observed per
+provider before the fix:
 
 | Provider | PDF on the newest message |
 | --- | --- |
-| xAI (Grok) | Always throws. `@ai-sdk/xai` (`^5.0.24`) `xai()` selects the Responses API, which rejects non-image inline data, yet the models.dev snapshot (`providers/data/models-dev-snapshot.json`) declares `pdf` input for the Grok chat models (for example `grok-4.7` and `grok-4.20-*`) |
-| Moonshot AI (Kimi) | Throws in `@ai-sdk/moonshotai` |
-| DeepSeek | Silently dropped; the SDK emits only a warning that is never logged |
+| xAI (Grok) | Always threw. `@ai-sdk/xai` (`^5.0.24`) only has the Responses model, whose converter rejects inline PDFs, yet models.dev declares `pdf` input for the Grok chat models |
+| Moonshot AI (Kimi) | Threw in `@ai-sdk/moonshotai` |
+| DeepSeek | Silently dropped; the SDK warning was never logged |
 | Qwen, and GPT models without `pdf` | Suspected 400 from the provider; not verified live |
 
-### No user-visible indicator
+#481 moves the media-type predicate to `shared/utils/input-media-types.ts`
+and checks every newest-message file against the model's input modalities
+before the user message is persisted (so regenerate after a switch is
+covered too). Image-generation models are checked against their controller
+model. xAI gets a curated `excludedInputModalities: ['pdf']`, and OpenAI
+vision models get `pdf` through `impliedInputModalities`, since OpenAI's
+docs say they parse PDFs. `streamText` SDK warnings are now logged
+(`attributes.aiWarnings`, `attributes.aiContinuationWarnings`), and provider
+"does not support PDF" errors are rewritten into a clear message.
 
-Omitted earlier files, dropped parts and gateway-stripped files are all
-invisible to the user. The chat looks complete while the model answers from
-a reduced context.
+Still open after #481:
 
-### Stale documentation
+- Gateways gate images only, and only when the catalog positively lists
+  input modalities without `image`; PDFs are never gated (catalogs say
+  `file`, not `pdf`), and Cloudflare is skipped because its catalog needs
+  user credentials.
+- The deep research route does not run this check.
+- No real provider calls were made; the OpenAI PDF rule rests on OpenAI's
+  docs.
 
-`docs/providers/moonshotai.md` (lines 220-230, "Cross-provider resend on a
-mid-chat model switch") claims a `tool-web_search` part is resent verbatim to
-a different provider after a switch. That has not been true since the
-whitelist sanitizer landed: the part is dropped before the request is built.
+### No user-visible indicator (closed by #476)
 
-### Suspected edge cases (not reproduced)
+Omitted earlier files were invisible to the user. #476 streams a
+`data-omitted-context-files` part, and the assistant turn shows a collapsed
+note listing each left-out earlier file with its reason
+(`unsupported-by-model`, `over-limit`, `outside-window`,
+`gateway-no-carry`). `buildModelContextMessages()` in `assistant-files.ts`
+returns the list; `sanitizeMessagesForModelContext()` stays as a wrapper.
 
-- Back-to-back user messages when an assistant turn sanitizes to empty. The
-  skip at `assistant-files.ts:84-86` removes the assistant message and leaves
-  two adjacent user messages, which some providers reject or merge.
-- The gateway-routed Gemini leading-assistant placeholder is missed.
-  `buildMessagesForModel` (`index.post.ts:2639-2647`) keys on
-  `providerId !== 'google'`, and `errorProviderId` is the gateway id on
-  gateway sends (lines 619-628), so a Gemini model reached through a gateway
-  never gets the placeholder.
+By design, there is still no notice for parts the sanitizer always drops
+(reasoning, tool calls and results, sources). Still open: no notice for
+window files of unknown size (missing, unowned or `data:` URLs), and the
+notice lives on the live turn only, so it is not persisted. See
+`docs/files.md`.
 
-### Test gap
+### Gateway sends carry no earlier files (by design)
+
+On the gateway branch `model` is undefined, so no earlier user files are
+carried. Since #476 the user sees this as `gateway-no-carry`.
+
+### Stale documentation (closed by #478)
+
+`docs/providers/moonshotai.md` claimed a `tool-web_search` part is resent
+verbatim to a different provider after a switch, and to Moonshot itself on
+every later turn. Neither is true: the whitelist sanitizer drops every
+`tool-*` part from earlier turns, so the part stays in `messages.parts` and
+only flows back within the turn that produced it. #478 corrects the Moonshot
+and xAI docs and describes the whitelist in `docs/providers/general.md`.
+
+### Lost context from dropped parts (by design)
+
+Follow-ups cannot see earlier sources, search results or generated pixels
+unless they are in the answer text (see "Consequences"). This is the price
+of having no cross-provider incompatibility, and it is not changed.
+
+### Adjacent same-role turns (closed by #478)
+
+Reasoning-, source-, tool- or failure-notice-only replies are persisted,
+but they sanitize to nothing, so the skip at `assistant-files.ts:84-86`
+removes the whole message. Two user turns then reached the provider back to
+back. Only `@ai-sdk/anthropic` merges adjacent user turns; the Google,
+OpenAI, openai-compatible, xAI, DeepSeek and OpenRouter converters send them
+separately. Single-message delete can likewise leave two assistant turns in
+a row. #478 adds `buildMessagesForModel` in
+`server/utils/chats/model-turns.ts`: a `(no reply)` assistant turn between
+adjacent user turns, and an `(earlier message deleted)` user turn between
+adjacent assistant turns, for every provider. The placeholders only exist
+in the array sent to the model, never in `originalMessages` or persisted
+history.
+
+### Gateway-routed Gemini missed the leading-assistant placeholder (closed by #478)
+
+The placeholder was keyed on `errorProviderId === 'google'`, and
+`errorProviderId` is the gateway id on gateway sends, so a Gemini model
+reached through a gateway never got it. #478 keys it on `modelProviderId`
+(the gateway model id's vendor prefix, or the direct `provider.id`) and
+leaves `errorProviderId` unchanged.
+`tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts`
+covers Vercel `google/*`, OpenRouter `google/*`, and a Vercel non-Google
+negative case; both Gemini gateway cases fail on the old keying. Cloudflare
+ids are `@cf/...`, so they never match `google`.
+
+### Test gap (narrowed by #478)
 
 Most chat-route integration specs mock `sanitizeMessagesForModelContext` as
-identity. `tests/integration/api/chats-carried-files.spec.ts` is the exception:
-it spreads the real `assistant-files` module, so the real sanitizer runs, and
-it covers the model-switch image case ('omits an earlier image after
-switching to a text-only model'). The route-level gap is everything else the
-sanitizer does: dropping reasoning, tool and source parts, the empty-turn
-skip, and PDFs on the newest message. Those are covered only by the unit
-spec `tests/integration/server/assistant-files.spec.ts`.
+identity. Two run the real sanitizer:
+`tests/integration/api/chats-carried-files.spec.ts` spreads the real
+`assistant-files` module and covers the model-switch image case ('omits an
+earlier image after switching to a text-only model'), and
+`tests/integration/api/chats-model-context-real-sanitizer.spec.ts` sends a
+history with an Anthropic reasoning signature, an OpenAI `itemId` and a Brave
+tool result and checks that only metadata-free text with strictly alternating
+roles reaches `convertToModelMessages`. #481 adds route-level integration
+specs for newest-message PDF rejection.
 
 ## Child PRs
 
 This branch (`feat/model-switch-context`) is the umbrella parent. The three
 children target it rather than `main`.
 
-1. Gate the newest message's files by the model's input modalities and log
-   SDK warnings, so unsupported PDFs fail with a clear 400 and DeepSeek-style
-   silent drops become visible in the logs. (PR link added when opened)
-2. A user-visible indicator for omitted context. (PR link added when opened)
-3. Stale docs plus the empty-turn and placeholder edge cases. (PR link added
-   when opened)
+1. [besidka/besidka#481](https://github.com/besidka/besidka/pull/481): gate
+   newest-message files by the model's input modalities and log SDK
+   warnings.
+2. [besidka/besidka#476](https://github.com/besidka/besidka/pull/476): a
+   user-visible notice for earlier files left out of the model context.
+3. [besidka/besidka#478](https://github.com/besidka/besidka/pull/478):
+   stale provider docs, adjacent same-role turns, and the gateway-routed
+   Gemini placeholder.
 
 Children get no CI of their own. This PR builds and deploys the Cloudflare
 preview with every merged child; merge the children first, then squash-merge

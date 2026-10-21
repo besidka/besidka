@@ -87,6 +87,7 @@ import {
 } from '~~/server/utils/chats/filter-ui-message-stream'
 import { assertInputFilesSupported } from '~~/server/utils/chats/input-file-support'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
+import { buildMessagesForModel } from '~~/server/utils/chats/model-turns'
 import {
   hasMeaningfulAssistantParts,
   persistUserMessage,
@@ -623,15 +624,18 @@ export default defineEventHandler(async (event) => {
   }
 
   let modelId: string
+  let modelProviderId: string | undefined
   let telemetryProviderId: string
   let errorProviderId: SupportedProviderId | GatewayId | undefined
 
   if (gatewayId) {
     modelId = userModel
+    modelProviderId = modelId.split('/')[0]
     telemetryProviderId = keyProviderIdForGateway(gatewayId)
     errorProviderId = gatewayId
   } else if (provider && model) {
     modelId = model.id
+    modelProviderId = provider.id
     telemetryProviderId = provider.id
     errorProviderId = toSupportedProviderId(provider.id)
   } else {
@@ -646,7 +650,7 @@ export default defineEventHandler(async (event) => {
       attributes: {
         chat: {
           gateway: gatewayId,
-          gatewayProvider: modelId.split('/')[0],
+          gatewayProvider: modelProviderId,
           gatewayModel: modelId,
         },
       },
@@ -1180,7 +1184,7 @@ export default defineEventHandler(async (event) => {
         let mainLoopSteps: SearchAnswerContinuationStep[] = []
         const messagesForModel = buildMessagesForModel(
           messagesForAI,
-          errorProviderId,
+          modelProviderId,
         )
 
         function recordSdkWarnings(
@@ -2658,38 +2662,6 @@ function toSupportedProviderId(
   return supportedProviderIds.find((id) => {
     return id === providerId
   })
-}
-
-const GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT = '(earlier message deleted)'
-
-// Google's Generative Language API rejects a `contents` array whose first
-// turn is not `user` — a chat's persisted history can legitimately start
-// with an assistant message after the single-message-delete feature removes
-// the original leading user turn. This prepends a synthetic user turn for
-// the Google provider only, scoped to the array actually sent to the model.
-// It must never replace `messagesForAI` itself, since that array also backs
-// `originalMessages` for AI SDK stream bookkeeping and must stay the true,
-// unmodified message history.
-function buildMessagesForModel(
-  messages: UIMessage[],
-  providerId: SupportedProviderId | GatewayId | undefined,
-): UIMessage[] {
-  if (providerId !== 'google' || messages[0]?.role !== 'assistant') {
-    return messages
-  }
-
-  return [buildGoogleLeadingAssistantPlaceholder(), ...messages]
-}
-
-function buildGoogleLeadingAssistantPlaceholder(): UIMessage {
-  return {
-    id: `google-leading-placeholder-${ulid()}`,
-    role: 'user',
-    parts: [{
-      type: 'text',
-      text: GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT,
-    }],
-  }
 }
 
 function emitChatErrorLog(input: {
