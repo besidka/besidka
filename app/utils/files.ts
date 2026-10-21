@@ -1,13 +1,9 @@
 import type { FileUIPart } from 'ai'
 import type { FileMetadata } from '#shared/types/files.d'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
+import { getInputMediaKind } from '#shared/utils/input-media-types'
 
 const FILE_URL_ORIGIN = 'https://besidka.local'
-
-export const IMAGE_INPUT_UNSUPPORTED_MESSAGE = [
-  'This model does not support image input.',
-  'Attach a PDF or text file instead, or switch models.',
-].join(' ')
 
 export interface SafeFileLinks {
   storageKey: string
@@ -97,6 +93,68 @@ function buildSafeFileUrl(
 
 export function isImageFile(type: FileMetadata['type']): boolean {
   return type.startsWith('image/')
+}
+
+/**
+ * Only images and PDFs are gated by model capability. Other types keep going
+ * through the existing format and server validation instead of being
+ * reported as a model limitation.
+ */
+export function isMediaTypeRejectedByModel(
+  mediaType: string,
+  canAttachMediaType: (mediaType: string) => boolean,
+): boolean {
+  const mediaKind = getInputMediaKind(mediaType)
+
+  if (mediaKind !== 'image' && mediaKind !== 'pdf') {
+    return false
+  }
+
+  return !canAttachMediaType(mediaType)
+}
+
+function joinWithOr(items: string[]): string {
+  if (items.length <= 1) {
+    return items.join('')
+  }
+
+  return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`
+}
+
+/**
+ * Builds the warning shown when attachments are dropped because the selected
+ * model can't read them. Names what was rejected (image, PDF, or both) and
+ * suggests only the kinds the model still accepts.
+ */
+export function getUnsupportedInputMessage(
+  rejectedMediaTypes: string[],
+  canAttachMediaType: (mediaType: string) => boolean,
+): string {
+  const rejectedKinds = new Set(rejectedMediaTypes.map(getInputMediaKind))
+  const rejectedLabels: string[] = []
+  const alternativeLabels: string[] = []
+
+  if (rejectedKinds.has('image')) {
+    rejectedLabels.push('image')
+  } else if (canAttachMediaType('image/png')) {
+    alternativeLabels.push('image')
+  }
+
+  if (rejectedKinds.has('pdf')) {
+    rejectedLabels.push('PDF')
+  } else if (canAttachMediaType('application/pdf')) {
+    alternativeLabels.push('PDF')
+  }
+
+  alternativeLabels.push('text')
+
+  const article = alternativeLabels[0] === 'image' ? 'an' : 'a'
+
+  return [
+    `This model does not support ${joinWithOr(rejectedLabels)} input.`,
+    `Attach ${article} ${joinWithOr(alternativeLabels)} file instead,`,
+    'or switch models.',
+  ].join(' ')
 }
 
 export function getFileIcon(type: FileMetadata['type']): string {

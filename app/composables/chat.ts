@@ -561,7 +561,7 @@ export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
       return Boolean(part.text?.trim().length)
     }
 
-    return true
+    return part.type !== 'data-omitted-context-files'
   })
 }
 

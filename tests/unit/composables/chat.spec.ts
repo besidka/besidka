@@ -10,6 +10,7 @@ import {
   findLastUserMessageTools,
   foldReasoningSegment,
   getRenderableChatMessages,
+  hasMeaningfulAssistantParts,
   hasVisibleAssistantContent,
   hasRetryableAssistantFailure,
   isAutoRecoverableTransportInterruption,
@@ -1591,5 +1592,34 @@ describe('findLastUserMessageTools', () => {
     const messages = [userMessage(null as unknown as Message['tools'])]
 
     expect(findLastUserMessageTools(messages)).toEqual([])
+  })
+})
+
+describe('hasMeaningfulAssistantParts omitted context files notice', () => {
+  const noticePart = {
+    type: 'data-omitted-context-files',
+    data: {
+      files: [{
+        filename: 'old.pdf',
+        mediaType: 'application/pdf',
+        reason: 'outside-window',
+      }],
+    },
+  }
+
+  it('does not count a lone omitted context files notice', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [noticePart],
+    } as unknown as UIMessage)).toBe(false)
+  })
+
+  it('still counts real content next to the notice', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [noticePart, { type: 'text', text: 'An answer.' }],
+    } as unknown as UIMessage)).toBe(true)
   })
 })

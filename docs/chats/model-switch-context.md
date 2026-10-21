@@ -25,23 +25,24 @@ umbrella reference they link back to.
 All paths are in `server/api/v1/chats/[slug]/index.post.ts` unless noted.
 
 1. The request body carries exactly one message
-   (`messages: z.array(incomingUserMessageSchema).length(1)`, line 181). The
+   (`messages: z.array(incomingUserMessageSchema).length(1)`, line 186). The
    client never sends history.
 2. The route loads the earlier messages from D1, then runs
-   `sanitizeMessagesForModelContext` (call at line 569, definition at
-   `server/utils/files/assistant-files.ts:61`) with the current model's
-   `modalities.input` wired in through `createCarriedMediaTypePredicate`
-   (line 572).
-3. `convertFilesForAI` (lines 575-579) turns file URLs into data the SDK can
+   `buildModelContextMessages` (call at line 577), which wraps
+   `sanitizeMessagesForModelContext`
+   (`server/utils/files/assistant-files.ts:75`), with the current model's
+   input modalities wired in through `createCarriedMediaTypePredicate`
+   (line 580).
+3. `convertFilesForAI` (lines 584-587) turns file URLs into data the SDK can
    send and reports `missingFiles`.
-4. `buildMessagesForModel` (call at line 1167, definition in
+4. `buildMessagesForModel` (call at line 1185, definition in
    `server/utils/chats/model-turns.ts`) keeps the model-facing turns
    alternating: a `(no reply)` assistant turn between adjacent user turns, an
    `(earlier message deleted)` user turn between adjacent assistant turns,
    and the Google leading-assistant placeholder. It keys on the underlying
    model provider (`modelProviderId`), so gateway-routed `google/*` models get
    the placeholder too.
-5. `convertToModelMessages` (line 1279) produces the AI SDK model messages
+5. `convertToModelMessages` (line 1312) produces the AI SDK model messages
    passed to `streamText`.
 
 Because the model is resolved fresh from each request, switching model or
@@ -119,7 +120,7 @@ sending right now. Observed per provider:
 
 | Provider | PDF on the newest message |
 | --- | --- |
-| xAI (Grok) | Always throws. `@ai-sdk/xai` (`^5.0.24`) `xai()` selects the Responses API, which rejects non-image inline data, yet `providers/xai.ts` (lines 99 and 120) and models.dev declare `pdf` input for Grok |
+| xAI (Grok) | Always throws. `@ai-sdk/xai` (`^5.0.24`) `xai()` selects the Responses API, which rejects non-image inline data, yet the models.dev snapshot (`providers/data/models-dev-snapshot.json`) declares `pdf` input for the Grok chat models (for example `grok-4.7` and `grok-4.20-*`) |
 | Moonshot AI (Kimi) | Throws in `@ai-sdk/moonshotai` |
 | DeepSeek | Silently dropped; the SDK emits only a warning that is never logged |
 | Qwen, and GPT models without `pdf` | Suspected 400 from the provider; not verified live |
@@ -154,11 +155,17 @@ and `docs/providers/general.md` now say so.
 
 ### Test gap (narrowed)
 
-Chat-route integration specs still mock the sanitizer as identity, except
-`tests/integration/api/chats-model-context-real-sanitizer.spec.ts`, which
-runs the real sanitizer on a history with an Anthropic reasoning signature,
-an OpenAI `itemId` and a Brave tool result and checks what reaches
-`convertToModelMessages`.
+Most chat-route integration specs mock `sanitizeMessagesForModelContext` as
+identity. Two run the real sanitizer:
+`tests/integration/api/chats-carried-files.spec.ts` spreads the real
+`assistant-files` module and covers the model-switch image case ('omits an
+earlier image after switching to a text-only model'), and
+`tests/integration/api/chats-model-context-real-sanitizer.spec.ts` sends a
+history with an Anthropic reasoning signature, an OpenAI `itemId` and a Brave
+tool result and checks that only metadata-free text with strictly alternating
+roles reaches `convertToModelMessages`, with the empty turn replaced by the
+`(no reply)` placeholder. PDFs on the newest message are still covered only
+by the unit spec `tests/integration/server/assistant-files.spec.ts`.
 
 ## Child PRs
 

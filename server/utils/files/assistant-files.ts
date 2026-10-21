@@ -1,5 +1,9 @@
 import type { UIMessage } from 'ai'
 import type { ImageGenerationReady } from '#shared/types/image-generation.d'
+import type {
+  ModelContextOmissionReason,
+  ModelContextOmittedFile,
+} from '#shared/types/model-context.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   extractLocalFileStorageKey,
@@ -44,6 +48,16 @@ export interface ModelContextFileOptions {
   canCarryMediaType?: (mediaType: string) => boolean
 }
 
+export interface ModelContextMessages {
+  messages: UIMessage[]
+  omittedFiles: ModelContextOmittedFile[]
+}
+
+interface CarriedFileSelection {
+  carriedFileParts: ReadonlySet<MessagePart>
+  omittedFiles: ModelContextOmittedFile[]
+}
+
 type MessagePart = UIMessage['parts'][number]
 type FileMessagePart = Extract<MessagePart, { type: 'file' }>
 
@@ -62,9 +76,16 @@ export function sanitizeMessagesForModelContext(
   messages: UIMessage[],
   options: ModelContextFileOptions = {},
 ): UIMessage[] {
+  return buildModelContextMessages(messages, options).messages
+}
+
+export function buildModelContextMessages(
+  messages: UIMessage[],
+  options: ModelContextFileOptions = {},
+): ModelContextMessages {
   const sanitizedMessages: UIMessage[] = []
   const latestUserMessage = findLatestUserMessage(messages)
-  const carriedFileParts = selectCarriedFileParts(
+  const { carriedFileParts, omittedFiles } = selectCarriedFileParts(
     messages,
     options,
   )
@@ -92,7 +113,10 @@ export function sanitizeMessagesForModelContext(
     })
   }
 
-  return sanitizedMessages
+  return {
+    messages: sanitizedMessages,
+    omittedFiles,
+  }
 }
 
 /**
@@ -132,84 +156,137 @@ function getUserFileParts(message: UIMessage): FileMessagePart[] {
   })
 }
 
-function getCarryOverWindowMessages(messages: UIMessage[]): UIMessage[] {
+function getPreviousUserMessages(
+  messages: UIMessage[],
+  limit: number,
+): UIMessage[] {
   const latestUserMessage = findLatestUserMessage(messages)
-  const windowMessages: UIMessage[] = []
+  const previousUserMessages: UIMessage[] = []
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
 
-    if (
-      windowMessages.length >= CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES
-    ) {
+    if (previousUserMessages.length >= limit) {
       break
     }
 
     if (message?.role === 'user' && message !== latestUserMessage) {
-      windowMessages.push(message)
+      previousUserMessages.push(message)
     }
   }
 
-  return windowMessages
+  return previousUserMessages
+}
+
+function getCarryOverWindowMessages(messages: UIMessage[]): UIMessage[] {
+  return getPreviousUserMessages(
+    messages,
+    CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES,
+  )
+}
+
+function getJustExitedWindowMessage(
+  messages: UIMessage[],
+): UIMessage | undefined {
+  return getPreviousUserMessages(
+    messages,
+    CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES + 1,
+  )[CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES]
+}
+
+function toOmittedFile(
+  part: FileMessagePart,
+  reason: ModelContextOmissionReason,
+): ModelContextOmittedFile {
+  return {
+    filename: part.filename?.trim() || undefined,
+    mediaType: part.mediaType,
+    reason,
+  }
 }
 
 function selectCarriedFileParts(
   messages: UIMessage[],
   options: ModelContextFileOptions,
-): ReadonlySet<MessagePart> {
+): CarriedFileSelection {
   const carriedFileParts = new Set<MessagePart>()
+  const omittedFiles: ModelContextOmittedFile[] = []
   const latestUserMessage = findLatestUserMessage(messages)
   const { fileSizesByStorageKey, canCarryMediaType } = options
 
-  if (
-    !fileSizesByStorageKey
-    || fileSizesByStorageKey.size === 0
-    || !canCarryMediaType
-  ) {
-    return carriedFileParts
-  }
-
   if (!latestUserMessage) {
-    return carriedFileParts
+    return { carriedFileParts, omittedFiles }
   }
 
-  let remainingCount = CARRIED_FILES_MAX_COUNT
-  let remainingBytes = Math.min(
-    CARRIED_FILES_MAX_BYTES,
-    Math.max(
-      0,
-      REQUEST_FILES_MAX_BYTES - sumKnownFileBytes(
-        getUserFileParts(latestUserMessage),
-        fileSizesByStorageKey,
-      ),
-    ),
-  )
+  const windowMessages = getCarryOverWindowMessages(messages)
 
-  for (const message of getCarryOverWindowMessages(messages)) {
-    for (const part of getUserFileParts(message)) {
-      const storageKey = extractLocalFileStorageKey(part.url)
-      const size = storageKey
-        ? fileSizesByStorageKey.get(storageKey)
-        : undefined
-
-      if (
-        size === undefined
-        || remainingCount < 1
-        || size > remainingBytes
-        || !canCarryMediaType(part.mediaType)
-        || (isTextMediaType(part.mediaType)
-          && size > CARRIED_TEXT_FILE_MAX_BYTES)
-      ) {
-        continue
+  if (!canCarryMediaType) {
+    for (const message of windowMessages) {
+      for (const part of getUserFileParts(message)) {
+        omittedFiles.push(toOmittedFile(part, 'gateway-no-carry'))
       }
+    }
 
-      carriedFileParts.add(part)
-      remainingCount -= 1
-      remainingBytes -= size
+    return { carriedFileParts, omittedFiles }
+  }
+
+  if (fileSizesByStorageKey && fileSizesByStorageKey.size > 0) {
+    let remainingCount = CARRIED_FILES_MAX_COUNT
+    let remainingBytes = Math.min(
+      CARRIED_FILES_MAX_BYTES,
+      Math.max(
+        0,
+        REQUEST_FILES_MAX_BYTES - sumKnownFileBytes(
+          getUserFileParts(latestUserMessage),
+          fileSizesByStorageKey,
+        ),
+      ),
+    )
+
+    for (const message of windowMessages) {
+      for (const part of getUserFileParts(message)) {
+        const storageKey = extractLocalFileStorageKey(part.url)
+        const size = storageKey
+          ? fileSizesByStorageKey.get(storageKey)
+          : undefined
+
+        if (size === undefined) {
+          continue
+        }
+
+        if (!canCarryMediaType(part.mediaType)) {
+          omittedFiles.push(toOmittedFile(part, 'unsupported-by-model'))
+          continue
+        }
+
+        if (
+          remainingCount < 1
+          || size > remainingBytes
+          || (isTextMediaType(part.mediaType)
+            && size > CARRIED_TEXT_FILE_MAX_BYTES)
+        ) {
+          omittedFiles.push(toOmittedFile(part, 'over-limit'))
+          continue
+        }
+
+        carriedFileParts.add(part)
+        remainingCount -= 1
+        remainingBytes -= size
+      }
     }
   }
 
-  return carriedFileParts
+  const justExitedMessage = getJustExitedWindowMessage(messages)
+
+  if (justExitedMessage) {
+    for (const part of getUserFileParts(justExitedMessage)) {
+      if (canCarryMediaType(part.mediaType)) {
+        omittedFiles.push(toOmittedFile(part, 'outside-window'))
+      }
+    }
+  }
+
+  return { carriedFileParts, omittedFiles }
 }
 
 function sumKnownFileBytes(

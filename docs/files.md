@@ -127,6 +127,145 @@ turn. One past chat re-sent 29 images (17 MB) per turn. Prompt caching does not
 remove the re-send bytes from the Worker, and it only discounts the cached
 prefix within its TTL, so it is not a substitute for bounding what is sent.
 
+#### Telling the user what was left out
+
+`buildModelContextMessages()` is the same function plus a report:
+`{ messages, omittedFiles }`. `sanitizeMessagesForModelContext()` is a thin
+wrapper returning only `messages`. When `omittedFiles` is non-empty the
+handler writes a `data-omitted-context-files` part
+(`{ modelName, files: [{ filename?, mediaType, reason }] }`, types in
+`shared/types/model-context.d.ts`) before the model output, and
+`Chat/OmittedContextFiles.vue` renders it as a collapsed
+"N earlier files weren't sent to the model" row above the answer text. The
+`chats` wide event records `omittedContextFilesCount`.
+
+| Reason | Copy | When |
+| --- | --- | --- |
+| `unsupported-by-model` | `<model> can't read this file type` | window file the modality gate rejects |
+| `over-limit` | `Over the size or count limit for earlier files` | window file skipped by the text cap, the count cap or the byte budget |
+| `outside-window` | `Attached too many messages ago` | file of the one message that just left the window (readable media type only) |
+| `gateway-no-carry` | `Gateway models only see files from the latest message` | every window file on a gateway send |
+
+Classification of a file on a user message other than the latest one:
+
+1. No latest user message: nothing is reported.
+2. No predicate (gateway send): every window file is `gateway-no-carry`, and
+   nothing else is reported.
+3. Window file with no known size: not reported (see the gap below).
+4. Window file with a known size: `unsupported-by-model` first, then
+   `over-limit`. This reorders the checks of the carry rules but not their
+   outcome, since each check only skips a file without spending budget.
+5. `outside-window`: only the files of the single user message that has just
+   left the window on this send, the
+   (`CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES` + 1)-th previous user message,
+   and only if a predicate exists and accepts the media type. No size is
+   needed, so none is looked up for them.
+
+Assistant file parts and latest-message files are never reported.
+
+Why only the just-exited message: the server is stateless per request and
+never knows what an earlier turn already told the user. Reporting every older
+file would repeat the same notice on every turn of a long chat. A message
+leaves the window exactly once, so reporting only that message tells the user
+once, without storing anything. Files that were already unreadable by the
+model are not reported as `outside-window`, since being older made no
+difference to them.
+
+Known gap: window files of unknown size (`data:` URLs, other users' files,
+missing rows) stay silent. The missing-files toast only fires for parts that
+reach `convertFilesForAI()`, and omitted parts reach it as plain text, so
+neither surface mentions them.
+
+The part is live-only. It is written with `writer.write()` outside the
+persistence tee, so it never reaches the stored assistant message: it
+disappears on reload and shared chats never show it (the shared page does not
+render the component). The client's `hasMeaningfulAssistantParts()` ignores
+it, so a lone notice does not turn an empty assistant message into a
+"meaningful" one.
+
+Reasoning, tool calls, tool results, sources and data parts from earlier turns
+are dropped from the model context on every turn by design and get no notice.
+
+Open questions (not built):
+
+- Should there be a one-time explainer that sources/URLs and tool results from
+  earlier turns are never carried to the model?
+- Should the notice be persisted with the assistant message so it survives a
+  reload? That would need a stored part type and a decision on whether
+  shared chats should show it.
+
+### Files in the newest message
+
+The newest user message is gated against the selected model before anything
+is persisted or sent to a provider, so a send the model cannot read fails
+fast with a 400 instead of reaching the provider. Regenerate re-posts the last
+user message through the same handler (same message id, body parts), so
+switching model and regenerating hits the same gate; it runs before the
+already-persisted-reply replay and before `persistUserMessage()`.
+
+- **Direct providers**: every image and PDF `file` part is checked against
+  the model's input modalities
+  (`shared/utils/input-media-types.ts`, the same kind detection the client
+  picker and the carried-files rule use). `assertInputFilesSupported()`
+  (`server/utils/chats/input-file-support.ts`) rejects an image without
+  `image` and a PDF without `pdf`, each with its own message; `text/*` always
+  passes, and other types (audio, video, archives) are left to
+  `validateMessageFilePolicy()`. The modalities come from
+  `getModelInputModalities()` (`shared/utils/model.ts`): an image-generation
+  model (`gpt-image-*`, `gemini-*-image`, `grok-imagine-*`) streams through
+  its controller model, so the controller's modalities apply, and "make an
+  infographic from this PDF" is accepted although the image model itself
+  lists no `pdf`. The same list drives the carried-files predicate and the
+  client picker. Before this, only images were checked: Moonshot threw inside
+  `@ai-sdk/moonshotai` and DeepSeek silently dropped the PDF.
+- **Gateways (Vercel, OpenRouter)**: images only, and only on positive
+  evidence. `assertGatewayImageInputSupported()`
+  (`server/utils/gateways/image-input-support.ts`) looks the model up in the
+  cached gateway catalog, and only when the message carries an image, then
+  rejects only if the entry has a non-empty `modalities.input` that omits
+  `image`. A catalog miss, an outage or missing modalities fail open. PDFs are
+  never gated on gateways: catalogs use a different vocabulary (OpenRouter
+  says `file`, not `pdf`) and OpenRouter parses PDFs for any routed model, so a
+  catalog-derived gate would reject sends that work. Cloudflare is skipped
+  entirely: its catalog needs the user's credentials and exposes no reliable
+  input modalities (see `docs/providers/gateways.md`).
+- **Provider-side fallback**: when a provider still rejects a PDF at request
+  time, `normalizeChatError()` rewrites the raw upstream text into
+  "This model does not support PDF input..." (the PDF counterpart of the image
+  rewrite in `server/utils/chats/errors.ts`). Only wording that says the
+  model, input, file or media type does not support PDF matches; unrelated PDF
+  errors (encrypted file, unsupported page size, parse failure) pass through
+  unchanged.
+
+OpenAI models that read images are treated as reading PDFs: OpenAI's PDF guide
+(<https://developers.openai.com/api/docs/guides/pdf-files>) requires "models
+with vision capabilities, such as gpt-4o and later", and `@ai-sdk/openai`
+has no per-model restriction, while models.dev omits `pdf` for several of
+them (gpt-5, gpt-5-mini, o4-mini, ...). `providers/openai.ts` sets
+`impliedInputModalities: { image: ['pdf'] }` (see
+`docs/models-data-fetching.md`); text-only models stay without `pdf`.
+
+xAI never advertises `pdf`. `@ai-sdk/xai` 5.0.24 only exposes the Responses
+model, whose converter throws `UnsupportedFunctionalityError` for non-image
+inline data ("requires a URL or a Files API reference for non-image files"),
+and `convertFilesForAI()` always produces `data:` URLs. Grok models can read
+PDFs on xAI's side, but this app cannot deliver them, so
+`providers/xai.ts` sets `excludedInputModalities: ['pdf']`, which
+`mergeProvider()` applies on top of the models.dev snapshot for every xAI
+model (see `docs/models-data-fetching.md`). Uploading each PDF through the xAI
+Files API was rejected as larger: an extra request per file, a file lifecycle
+with deletion to manage, and more cost surface.
+
+The AI SDK's per-call `warnings` (for example a file type an adapter dropped)
+are written to the `ai-stream` wide event as
+`attributes.aiWarnings = { count, warnings }` (first 10, each
+`{ type, feature?, setting?, message?, details? }`) only when a step produced
+any. The search-answer continuation call records its own warnings under
+`attributes.aiContinuationWarnings`, because evlog concatenates arrays on
+repeated `set()` and would otherwise inflate the main call's list. Both live
+under `attributes` per `docs/axiom-map-fields.md`. The serializer is
+`server/utils/ai/sdk-warnings.ts`.
+
 ## Data Model Reference
 
 ### `files`

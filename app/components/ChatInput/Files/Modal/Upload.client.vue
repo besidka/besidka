@@ -59,9 +59,9 @@
 
 <script setup lang="ts">
 const props = withDefaults(defineProps<{
-  isImageInputSupported?: boolean
+  canAttachMediaType?: (mediaType: string) => boolean
 }>(), {
-  isImageInputSupported: true,
+  canAttachMediaType: () => true,
 })
 
 const emit = defineEmits<{
@@ -89,11 +89,9 @@ const { focused: isInputFocused } = useFocus(fileInput)
 const effectiveFileFormats = computed<string[]>(() => {
   const formats = allowedFileFormats as string[]
 
-  if (props.isImageInputSupported) {
-    return formats
-  }
-
-  return formats.filter(format => !isImageFile(format))
+  return formats.filter((format) => {
+    return !isMediaTypeRejectedByModel(format, props.canAttachMediaType)
+  })
 })
 
 const formattedFileFormats = computed<string>(() => {
