@@ -517,4 +517,125 @@ describe('VideoPlayer.client.vue', () => {
     expect(mocks.instances).toHaveLength(0)
     expect(wrapper.find('video').element.controls).toBe(true)
   })
+
+  it('seeks to startAt once the player is ready without playing',
+    async () => {
+      await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/key.mp4', thumbnails: false, startAt: 7 },
+      })
+
+      await flushPromises()
+
+      const player = mocks.instances[0] as unknown as {
+        currentTime: number
+        emit: (event: string) => void
+      }
+
+      player.emit('ready')
+
+      expect(player.currentTime).toBe(7)
+      expect(mocks.track).not.toHaveBeenCalledWith(
+        'key_guide_video_play',
+        expect.anything(),
+      )
+    })
+
+  it('waits for loadedmetadata when the duration is not known at ready',
+    async () => {
+      await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/key.mp4', thumbnails: false, startAt: 12 },
+      })
+
+      await flushPromises()
+
+      const player = mocks.instances[0] as unknown as {
+        currentTime: number
+        duration: number
+        emit: (event: string) => void
+      }
+
+      player.duration = 0
+      player.emit('ready')
+
+      expect(player.currentTime).toBe(0)
+
+      player.duration = 34
+      player.emit('loadedmetadata')
+
+      expect(player.currentTime).toBe(12)
+    })
+
+  it('applies startAt only once', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/key.mp4', thumbnails: false, startAt: 7 },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      emit: (event: string) => void
+    }
+
+    player.emit('ready')
+    player.currentTime = 20
+    player.emit('loadedmetadata')
+
+    expect(player.currentTime).toBe(20)
+  })
+
+  it('treats startAt 0 as a valid start', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/key.mp4', thumbnails: false, startAt: 0 },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      emit: (event: string) => void
+    }
+
+    player.currentTime = 5
+    player.emit('ready')
+
+    expect(player.currentTime).toBe(0)
+  })
+
+  it('does not seek when startAt is not below the real duration',
+    async () => {
+      await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/key.mp4', thumbnails: false, startAt: 100 },
+      })
+
+      await flushPromises()
+
+      const player = mocks.instances[0] as unknown as {
+        currentTime: number
+        emit: (event: string) => void
+      }
+
+      player.emit('ready')
+
+      expect(player.currentTime).toBe(0)
+    })
+
+  it('does not seek without startAt', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/key.mp4', thumbnails: false },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      emit: (event: string) => void
+    }
+
+    player.currentTime = 3
+    player.emit('ready')
+    player.emit('loadedmetadata')
+
+    expect(player.currentTime).toBe(3)
+  })
 })

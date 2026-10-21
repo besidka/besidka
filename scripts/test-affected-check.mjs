@@ -473,6 +473,9 @@ export function getAffectedTests(changedFiles) {
 
   const keyGuideTests = [
     'tests/unit/utils/external-url.spec.ts',
+    'tests/unit/utils/iso-datetime.spec.ts',
+    'tests/unit/utils/video.spec.ts',
+    'tests/unit/components/landing/VideoPlayer.client.spec.ts',
     'tests/unit/pages/guides/[slug].spec.ts',
     'tests/unit/utils/landing-jsonld.spec.ts',
     'tests/unit/utils/auth-redirect.spec.ts',
@@ -541,6 +544,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const profileKeyGuideTests = [
     'tests/unit/content/key-guides.spec.ts',
+    'tests/unit/utils/iso-datetime.spec.ts',
     'tests/unit/config/content-frontmatter.spec.ts',
     'tests/unit/pages/guides/[slug].spec.ts',
     'tests/unit/composables/key-guide-analytics.spec.ts',
@@ -880,7 +884,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/(key-guide-analytics|video-watch-analytics)\.ts|app\/utils\/key-guide-video\.ts|shared\/utils\/key-guide-schema\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
+        /^(app\/composables\/(key-guide-analytics|video-watch-analytics)\.ts|app\/utils\/key-guide-video\.ts|shared\/utils\/(key-guide-schema|iso-datetime)\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
       tests: profileKeyGuideTests,
     },
     {
@@ -990,7 +994,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/guides\/.*\.vue|shared\/utils\/external-url\.ts|app\/utils\/(landing-jsonld|utc-date)\.ts|content\/key-guides\/.*\.md)$/,
+        /^(app\/pages\/guides\/.*\.vue|shared\/utils\/(external-url|iso-datetime|video)\.ts|app\/utils\/(landing-jsonld|utc-date)\.ts|content\/key-guides\/.*\.md)$/,
       tests: keyGuideTests,
     },
     {

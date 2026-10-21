@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   guide: null as Record<string, unknown> | null,
   queryCollection: vi.fn(),
   path: vi.fn(),
+  scrollIntoView: vi.fn(),
 }))
 
 mockNuxtImport('queryCollection', () => mocks.queryCollection)
@@ -25,6 +26,7 @@ mockComponent('LandingVideoPlayer', () => {
       'captions',
       'markers',
       'guideProvider',
+      'startAt',
     ],
     template: '<div data-testid="video-player" />',
   }
@@ -85,6 +87,9 @@ describe('key guide page', () => {
     vi.stubGlobal('useSeoMeta', vi.fn())
     clearNuxtData()
     mockRoute.params = { slug: 'gemini-api-key' }
+    mockRoute.query = {}
+    mocks.scrollIntoView.mockReset()
+    Element.prototype.scrollIntoView = mocks.scrollIntoView
     mocks.guide = { ...GUIDE }
     mocks.path.mockReset()
     mocks.queryCollection.mockReset()
@@ -319,6 +324,95 @@ describe('key guide page', () => {
           .props('guideProvider'),
       ).toBe('google')
     })
+
+  describe('?t= start offset', () => {
+    function guideWithVideo() {
+      mocks.guide = {
+        ...GUIDE,
+        video: {
+          src: '/videos/key.mp4',
+          poster: '/videos/key.webp',
+          duration: 'PT1M12S',
+          uploadDate: '2026-10-20',
+          captions: [],
+          markers: [],
+        },
+      }
+    }
+
+    async function startAtFor(query: Record<string, unknown>) {
+      guideWithVideo()
+      mockRoute.query = query
+
+      const wrapper = await mountPage()
+
+      return wrapper
+        .findComponent({ name: 'LandingVideoPlayer' })
+        .props('startAt')
+    }
+
+    it.each([
+      ['0', 0],
+      ['7', 7],
+      ['71', 71],
+    ])('starts the player at t=%s', async (value, expected) => {
+      expect(await startAtFor({ t: value })).toBe(expected)
+    })
+
+    it.each([
+      '72',
+      '999',
+      '-1',
+      '7.5',
+      'abc',
+      '',
+      '1e1',
+    ])('ignores the invalid t=%j', async (value) => {
+      expect(await startAtFor({ t: value })).toBeUndefined()
+    })
+
+    it('ignores a repeated t parameter', async () => {
+      expect(await startAtFor({ t: ['7', '8'] })).toBeUndefined()
+    })
+
+    it('does not set startAt without a t parameter', async () => {
+      expect(await startAtFor({})).toBeUndefined()
+    })
+
+    it('scrolls the video into view for a valid t', async () => {
+      guideWithVideo()
+      mockRoute.query = { t: '7' }
+
+      await mountPage()
+      await nextTick()
+
+      expect(mocks.scrollIntoView).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([{}, { t: '999' }, { t: 'abc' }])(
+      'does not scroll for the query %j',
+      async (query) => {
+        guideWithVideo()
+        mockRoute.query = query
+
+        await mountPage()
+        await nextTick()
+
+        expect(mocks.scrollIntoView).not.toHaveBeenCalled()
+      },
+    )
+
+    it('does not scroll or seek when the guide has no video', async () => {
+      mockRoute.query = { t: '7' }
+
+      const wrapper = await mountPage()
+      await nextTick()
+
+      expect(wrapper.find('[data-testid="key-guide-video"]').exists())
+        .toBe(false)
+      expect(mocks.scrollIntoView).not.toHaveBeenCalled()
+    })
+  })
 
   it('throws a 404 when the guide does not exist', async () => {
     mocks.guide = null

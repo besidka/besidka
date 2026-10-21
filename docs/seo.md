@@ -456,6 +456,34 @@ explainers above:
   `guides` collection and is not a key guide. `/byok` stays the canonical URL
   of the explainer.
 - `TechArticle` JSON-LD always; `VideoObject` only when a guide has a video.
+- **`VideoObject` datetime rule.** Google rejects a date-only `uploadDate`
+  ("missing a timezone", "invalid datetime"). `toIsoDateTimeWithOffset()` in
+  `shared/utils/iso-datetime.ts` turns the frontmatter `video.uploadDate`
+  `YYYY-MM-DD` into `YYYY-MM-DDT00:00:00+00:00` and passes through a full
+  datetime that already has `Z` or `±hh:mm`. The schema in
+  `shared/utils/key-guide-schema.ts` accepts only those two shapes (it calls
+  the same function), so content files can keep the short date. A value the
+  helper rejects omits the whole `VideoObject` rather than emitting an
+  invalid one. `dateModified` on the `TechArticle` is not covered: it is
+  not part of the video report and the date-only form is accepted there.
+- **`Clip` url / `?t=` contract.** Every `Clip` in `VideoObject.hasPart`
+  needs a `url` (Search Console: `Missing field "url" (in "hasPart")`). It is
+  the canonical page URL plus `?t=<startOffset seconds>`, for example
+  `https://besidka.com/guides/gemini-api-key?t=7`, built in
+  `buildClipsLd()` from the same `buildCanonicalUrl(siteOrigin, route.path)`
+  the page uses for `url`, with any other query or hash dropped. The page
+  honors it: `app/pages/guides/[slug].vue` reads `route.query.t`, accepts
+  only one plain non-negative integer below the video duration
+  (`parseVideoStartOffset()` in `shared/utils/video.ts`; `0` is valid, a
+  repeated, negative, decimal or too-large value is ignored), passes it to
+  `LandingVideoPlayer` as `startAt` and scrolls the video block into view on
+  mount. The player seeks once, when Plyr reports a known duration (`ready`
+  or `loadedmetadata`), and never calls `play()`, so there is no autoplay.
+  `?t=` URLs are not separate pages: `app.vue` derives canonical and
+  `og:url` from `route.path` and `buildCanonicalUrl()` strips the query, and
+  the sitemap comes from the `keyGuides` collection, so no `?t=` URL is
+  listed. The home video has no `VideoObject` or `Clip` markup, so none of
+  this applies to it.
 - **Sitemap.** The collection schema includes `sitemap: defineSitemapSchema()`
   (from `@nuxtjs/sitemap/content`), so entries come from the collection with
   no rewrite. `asSitemapCollection` is deprecated since `@nuxtjs/sitemap` 9.1

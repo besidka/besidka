@@ -138,6 +138,38 @@ describe('keyGuideSchema', () => {
   })
 
   it.each([
+    '2026-10-20',
+    '2026-10-20T00:00:00+00:00',
+    '2026-10-20T09:30:00+02:00',
+    '2026-10-20T09:30:00Z',
+  ])('accepts video.uploadDate = %s', (uploadDate) => {
+    const result = keyGuideSchema.safeParse({
+      ...validGuide(),
+      video: validVideo({ uploadDate }),
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it.each([
+    '',
+    'yesterday',
+    '20/10/2026',
+    '2026-10-20T00:00:00',
+    '2026-10-20T00:00',
+    '2026-10-20 00:00:00+00:00',
+    '2026-02-30',
+    '2026-10-20T00:00:00+0000',
+  ])('rejects video.uploadDate = %j', (uploadDate) => {
+    const result = keyGuideSchema.safeParse({
+      ...validGuide(),
+      video: validVideo({ uploadDate }),
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it.each([
     '/videos/key-guide-google.mp4',
     'https://cdn.example.com/key-guide-google.mp4',
   ])('accepts the video url %s', (src) => {

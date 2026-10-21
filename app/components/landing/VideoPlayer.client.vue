@@ -86,6 +86,7 @@ const props = withDefaults(defineProps<{
   markers?: VideoMarker[]
   thumbnails?: boolean
   guideProvider?: string
+  startAt?: number
 }>(), {
   src: '/videos/demo.mp4',
   poster: undefined,
@@ -95,6 +96,7 @@ const props = withDefaults(defineProps<{
   markers: () => [],
   thumbnails: true,
   guideProvider: undefined,
+  startAt: undefined,
 })
 
 const DEMO_TARGET = 'demo'
@@ -121,6 +123,7 @@ const markerPoints = toMarkerPoints(props.markers)
 
 let player: Plyr | null = null
 let hasTrackedPlay = false
+let hasAppliedStartAt = false
 
 const {
   sprite,
@@ -254,12 +257,30 @@ function keepMetadataPreload() {
   }
 }
 
+function applyStartAt(instance: Plyr) {
+  if (hasAppliedStartAt || props.startAt === undefined) {
+    return
+  }
+
+  if (!instance.duration || props.startAt >= instance.duration) {
+    return
+  }
+
+  hasAppliedStartAt = true
+  instance.currentTime = props.startAt
+}
+
 function registerListeners(instance: Plyr) {
   instance.on('ready', () => {
     isReady.value = true
     keepMetadataPreload()
     plyrRef.value = containerRef.value?.querySelector('.plyr') ?? null
     attachProgressPreview()
+    applyStartAt(instance)
+  })
+
+  instance.on('loadedmetadata', () => {
+    applyStartAt(instance)
   })
 
   instance.on('play', () => {

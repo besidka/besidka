@@ -95,3 +95,29 @@ export function parseIsoDurationToSeconds(duration: string): number | null {
     + Number(minutes ?? 0) * 60
     + Number(seconds ?? 0)
 }
+
+/**
+ * Read a `?t=<seconds>` deep-link value. Only a single plain non-negative
+ * integer string below the video duration is accepted; arrays, decimals,
+ * signs and anything out of range return null so the player starts at 0.
+ */
+export function parseVideoStartOffset(
+  value: unknown,
+  durationSeconds: number | null,
+): number | null {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    return null
+  }
+
+  const offset = Number(value)
+
+  if (
+    !Number.isSafeInteger(offset)
+    || durationSeconds === null
+    || offset >= durationSeconds
+  ) {
+    return null
+  }
+
+  return offset
+}

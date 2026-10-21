@@ -8,6 +8,7 @@
  */
 
 import type { VideoMarker } from '#shared/types/video.d'
+import { toIsoDateTimeWithOffset } from '#shared/utils/iso-datetime'
 import { parseIsoDurationToSeconds, toMarkerPoints } from '#shared/utils/video'
 
 const ALTERNATE_NAMES = [
@@ -216,8 +217,19 @@ function resolveWebUrl(value: string, baseUrl: string): string | null {
   }
 }
 
+function buildClipUrl(pageUrl: string, startOffset: number): string {
+  const clipUrl = new URL(pageUrl)
+
+  clipUrl.search = ''
+  clipUrl.hash = ''
+  clipUrl.searchParams.set('t', String(startOffset))
+
+  return clipUrl.href
+}
+
 function buildClipsLd(
   video: CompleteKeyGuideVideo,
+  pageUrl: string,
 ): Array<Record<string, unknown>> {
   const points = toMarkerPoints(video.markers)
   const totalSeconds = parseIsoDurationToSeconds(video.duration)
@@ -228,6 +240,7 @@ function buildClipsLd(
     return {
       '@type': 'Clip',
       'name': point.label,
+      'url': buildClipUrl(pageUrl, point.time),
       'startOffset': point.time,
       ...(endOffset !== null && endOffset > point.time ? { endOffset } : {}),
     }
@@ -241,12 +254,13 @@ function buildVideoObjectLd(
 ): Record<string, unknown> | null {
   const thumbnailUrl = resolveWebUrl(video.poster, input.baseUrl)
   const contentUrl = resolveWebUrl(video.src, input.baseUrl)
+  const uploadDate = toIsoDateTimeWithOffset(video.uploadDate)
 
-  if (!thumbnailUrl || !contentUrl) {
+  if (!thumbnailUrl || !contentUrl || !uploadDate) {
     return null
   }
 
-  const clips = buildClipsLd(video)
+  const clips = buildClipsLd(video, input.url)
 
   return {
     '@type': 'VideoObject',
@@ -254,7 +268,7 @@ function buildVideoObjectLd(
     'name': video.caption || `${input.headline} (video)`,
     'description': input.description,
     'thumbnailUrl': thumbnailUrl,
-    'uploadDate': video.uploadDate,
+    'uploadDate': uploadDate,
     'duration': video.duration,
     'contentUrl': contentUrl,
     'inLanguage': 'en',
