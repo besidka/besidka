@@ -415,9 +415,14 @@ October 2026". Changes in that pass:
   price cell says `Shown at checkout` instead of a figure. Pro includes image
   generation, web search and file uploads, so image generation says `Paid
   plans`. The API Keys settings say "Bring your own API keys for select
-  models" and mark it a "Paid Feature", so bring-your-own-keys says `Paid
-  plans, select models`. These three cells come from an account view, not a
-  public page, and `priceDate` was not bumped for them: it still covers the
+  models" and mark it a "Paid Feature", so bring-your-own-keys first said `Paid
+  plans, select models`. Settings → Models then marks exactly four models
+  BYOK instead of a price tier (Claude 4.1 Opus, GPT 5.2 Pro, GPT 5.5 Pro and
+  o3 Pro), so the bring-your-own-keys cell names them; this restores the
+  pre-#426 claim that T3 BYOK covers only expensive models, now with a source
+  (`T3 Chat models (signed in)`). Re-check that list when re-checking the
+  column. These three cells come from an account view, not a public page,
+  and `priceDate` was not bumped for them: it still covers the
   other columns, which were not re-checked on 2026-10-21. The other cells that
   could be verified cite the T3 FAQ, the T3 terms and Theo's 2025 post on keys
   and images; everything else says `Not listed by T3`, per the table's rule for

@@ -132,7 +132,7 @@ comparison:
         - no
         - no
         - no
-        - Paid plans, select models
+        - Paid plans, only Claude Opus 4.1, GPT-5.2 Pro, GPT-5.5 Pro and o3 Pro
     - label: Bring your own search key (Brave / Exa)
       values:
         - yes
@@ -204,6 +204,8 @@ comparison:
       url: https://t3.chat/terms-of-service
     - label: T3 Chat keys and images (Theo, 2025)
       url: https://x.com/theo/status/1924951096684118118
+    - label: T3 Chat models (signed in)
+      url: https://t3.chat/settings/models
 description: Open-source BYOK AI chat app. Use GPT, Claude and Gemini with your own API key, see the price of every message, no subscription. Start free with Gemini.
 faqs:
   - question: What does BYOK mean?
