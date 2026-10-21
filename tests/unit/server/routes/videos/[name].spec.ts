@@ -115,6 +115,22 @@ describe('GET /videos/[name]', () => {
       expect(event.res.headers.has('Content-Range')).toBe(false)
     })
 
+  it('reads the object named by the route param when the URL carries a '
+    + 'cache-busting query', async () => {
+    mocks.params.name = 'key-guide-exa.mp4'
+    mocks.get.mockResolvedValue(createBody())
+
+    const event = createEvent()
+
+    Object.assign(event.req, { url: '/videos/key-guide-exa.mp4?v=2' })
+
+    const result = await callRoute(event)
+
+    expect(result).toBe(BODY)
+    expect(event.res.status).toBe(200)
+    expect(mocks.get.mock.calls[0]![0]).toBe('key-guide-exa.mp4')
+  })
+
   it('performs a single R2 read and never calls head on success',
     async () => {
       mocks.get.mockResolvedValue(createBody())

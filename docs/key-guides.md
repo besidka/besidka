@@ -50,8 +50,8 @@ covers these files (title, description and summary stay strings).
 | `requirements.minimumTopUp` | string, optional | Smallest prepaid top-up |
 | `requirements.freeTier` | string, optional | What the free tier offers |
 | `requirements.sources` | `{ label, url }[]` | Official https pages the facts come from |
-| `video.src` | path or https URL | `/videos/key-guide-<id>.mp4` |
-| `video.poster` | path or https URL | `/key-guides/<id>.webp` |
+| `video.src` | path or https URL | `/videos/key-guide-<id>.mp4`, with `?v=<n>` once the file has been replaced (see "Replacing a video or poster") |
+| `video.poster` | path or https URL | `/key-guides/<id>.webp`, with the same `?v=<n>` |
 | `video.duration` | ISO 8601 | e.g. `PT34S`, for VideoObject |
 | `video.uploadDate` | string | `YYYY-MM-DD` (read as 00:00 UTC) or a full ISO 8601 datetime with `Z` or `±hh:mm`. Emitted as a datetime with an offset, see `docs/seo.md` |
 | `video.caption` | string, optional | Visible caption under the player on `/guides/<slug>`, also the VideoObject name |
@@ -96,6 +96,29 @@ restart.
 - Posters are committed at `public/key-guides/<id>.webp`, 16:9, taken from
   the paste step of the recording. The component tolerates a missing poster
   and shows a plain box.
+
+### Replacing a video or poster
+
+The video route answers with `Cache-Control: public, max-age=86400` and the
+posters are static public files, so a replaced file under the same URL can
+stay stale in browsers and at the edge for a day. Version the URLs in the
+guide frontmatter instead of renaming files: bump `?v=<n>` on both
+`video.src` and `video.poster` (`/videos/key-guide-<id>.mp4?v=3`,
+`/key-guides/<id>.webp?v=3`) in the same change that replaces either file,
+and upload the new mp4 with `pnpm run cms:files:upload --force`. A guide
+that was never replaced has no query.
+
+The query is harmless everywhere it flows. Router params never contain it, so
+`server/routes/videos/[name].ts` still resolves `key-guide-<id>.mp4` against
+the allow-list and the R2 key. `siteRelativeOrHttpsUrl` only checks the start
+of the value. The `VideoObject` `contentUrl` and `thumbnailUrl` are resolved
+with `new URL()` and stay valid absolute URLs with the query. The players use
+`src` as an opaque URL: Plyr, the `<video>` element and the mediabunny
+hover-preview thumbnails (`new URL(src, location.href)` then `UrlSource`) all
+keep it. Analytics derive the provider from the `provider` prop, never from
+the filename. `tests/unit/content/key-guides.spec.ts` pins the shape: the
+file name must match the provider id, the query may only be `?v=<digits>`,
+and the poster file must exist.
 
 ## Where it renders
 

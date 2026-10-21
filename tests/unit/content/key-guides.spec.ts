@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseMarkdown } from '@nuxtjs/mdc/runtime'
@@ -69,6 +69,32 @@ describe('content/key-guides', () => {
 
         expect(Object.hasOwn(providerMeta, String(frontmatter.provider)))
           .toBe(true)
+      })
+
+      it('points the video and poster at the provider files, with an '
+        + 'optional ?v=<n> cache-busting version', async () => {
+        const frontmatter = await readFrontmatter(fileName)
+        const video = frontmatter.video as
+          | { src: string, poster: string }
+          | undefined
+
+        if (!video) {
+          return
+        }
+
+        const provider = String(frontmatter.provider)
+
+        expect(video.src).toMatch(
+          new RegExp(`^/videos/key-guide-${provider}\\.mp4(\\?v=\\d+)?$`),
+        )
+        expect(video.poster).toMatch(
+          new RegExp(`^/key-guides/${provider}\\.webp(\\?v=\\d+)?$`),
+        )
+        expect(existsSync(join(
+          process.cwd(),
+          'public',
+          video.poster.split('?')[0]!,
+        ))).toBe(true)
       })
 
       it('parses against the keyGuides schema', async () => {
@@ -176,6 +202,19 @@ describe('keyGuideSchema', () => {
     const result = keyGuideSchema.safeParse({
       ...validGuide(),
       video: validVideo({ src }),
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it.each([
+    ['src', '/videos/key-guide-google.mp4?v=2'],
+    ['poster', '/key-guides/google.webp?v=2'],
+    ['src', 'https://cdn.example.com/key-guide-google.mp4?v=2'],
+  ])('accepts a cache-busting query on video.%s = %s', (field, value) => {
+    const result = keyGuideSchema.safeParse({
+      ...validGuide(),
+      video: validVideo({ [field]: value }),
     })
 
     expect(result.success).toBe(true)

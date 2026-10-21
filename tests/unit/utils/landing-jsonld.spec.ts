@@ -375,6 +375,23 @@ describe('buildKeyGuidePageLd', () => {
     })
   })
 
+  it('keeps the cache-busting query in absolute contentUrl and '
+    + 'thumbnailUrl', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: {
+        ...VIDEO,
+        src: '/videos/key-guide-exa.mp4?v=2',
+        poster: '/key-guides/exa.webp?v=2',
+      },
+    })['@graph']
+
+    expect(video!.contentUrl)
+      .toBe('https://besidka.com/videos/key-guide-exa.mp4?v=2')
+    expect(video!.thumbnailUrl)
+      .toBe('https://besidka.com/key-guides/exa.webp?v=2')
+  })
+
   it('emits chapter markers as Clip parts that end at the next chapter '
     + 'or the video end', () => {
     const [, video] = buildKeyGuidePageLd({
