@@ -278,6 +278,32 @@ keeps only `text` and (converted) `file` parts of previous messages, so
 re-enter the model's prompt; page content costs input tokens only on the
 turn that gathered it (and on that turn's later loop steps).
 
+**History is a whitelist: text and files only.** `sanitizeMessagesForModelContext`
+and `sanitizeMessageParts` (`server/utils/files/assistant-files.ts`) rebuild
+every earlier message from `text` parts, as bare `{ type, text }` objects,
+and `file` parts. A user file is carried or replaced by an omitted-file
+note, and an assistant file becomes a text note. `reasoning`, `source-url`
+and `tool-*` parts, and any `providerMetadata` (Anthropic reasoning
+signatures, OpenAI item ids, Moonshot's encrypted blob), stay in
+`messages.parts` but never go back to a provider on a later turn. They
+reach a provider only within the turn that produced them, between the steps
+of one `streamText` call. So a mid-chat provider switch never sends one
+provider's signatures, item ids or tool results to another. The whitelist
+has been in place since commit `9c79d6ab` (2026-05-04).
+
+**Adjacent user turns get a placeholder.** An assistant reply that holds
+only reasoning, sources, tool parts or a failure notice is persisted but
+sanitizes to nothing, so two user turns could reach the provider back to
+back. `buildMessagesForModel` (`server/utils/chats/model-turns.ts`) inserts
+a model-only `(no reply)` assistant placeholder between adjacent user turns
+for every provider. When the underlying model provider is Google (direct,
+or a gateway-routed `google/*` model) and the history starts with an
+assistant turn, it also prepends `(earlier message deleted)`. Only
+`@ai-sdk/anthropic` merges consecutive user turns itself; the Google,
+OpenAI, openai-compatible, xAI, DeepSeek and OpenRouter converters send them
+separately, and DeepSeek's reasoner rejects successive same-role messages.
+The placeholders never enter `originalMessages` or persisted history.
+
 **Source URL scheme.** Brave/Exa result URLs are third-party content. Only
 `http:`/`https:` URLs become `source-url` parts
 (`emitSourcesForExternalSearchResults`), and `Chat/UrlSources.vue` ignores a

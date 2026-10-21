@@ -74,7 +74,11 @@ What the docs say:
 - **Otherwise the trace is encrypted.** The guide's key features list says
   usage exposes `reasoning_tokens` and "Some models can also return
   encrypted reasoning" via `include: ["reasoning.encrypted_content"]`. That
-  blob exists to be sent back for multi-turn context; it is not readable.
+  blob exists to be sent back for multi-turn context, which is xAI's API
+  design; it is not readable. This app neither requests it (no `include`,
+  no `store: false`) nor would it replay it, because reasoning parts are
+  dropped from earlier turns before a send (see
+  [`general.md`](./general.md#multi-step-tool-loop)).
   The docs' own encrypted example item carries `"summary": []` next to
   `encrypted_content`
   ([generate-text guide](https://docs.x.ai/developers/model-capabilities/text/generate-text)).
