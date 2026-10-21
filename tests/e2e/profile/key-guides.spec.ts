@@ -250,7 +250,9 @@ test.describe('Profile keys — how to get a key guides', () => {
 
       await expect(page.getByTestId('key-guide-video-failed-google'))
         .toHaveText('Video unavailable. Follow the steps below.')
-      await expect(page.getByTestId('key-guide-video-google').locator('.plyr'))
+      await expect(
+        page.getByTestId('key-guide-video-google').getByTestId('video-player'),
+      )
         .toHaveCount(0)
     })
 
