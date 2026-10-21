@@ -1,8 +1,8 @@
-import type { Ref } from 'vue'
 import { computed, defineComponent, nextTick, reactive, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createInputMediaTypePredicate } from '../../../shared/utils/input-media-types'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
@@ -119,6 +119,7 @@ describe('ChatInput.client', () => {
       isImageGenerationSupported: shallowRef(false),
       isImageGenerationRequired: shallowRef(false),
       isImageInputSupported: shallowRef(true),
+      canAttachMediaType: shallowRef(() => true),
       isReasoningSupported: shallowRef(false),
       isReasoningAlwaysOn: shallowRef(false),
       reasoningCapability: shallowRef(null),
@@ -264,6 +265,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef(null),
@@ -418,7 +420,7 @@ describe('ChatInput.client', () => {
     })
   })
 
-  describe('image-input gating', () => {
+  describe('attachment input gating', () => {
     const imageFile = {
       id: '1',
       storageKey: 'image-key',
@@ -433,19 +435,37 @@ describe('ChatInput.client', () => {
       size: 10,
       type: 'text/plain',
     }
-    const expectedWarning = 'This model does not support image input. '
+    const pdfFile = {
+      id: '3',
+      storageKey: 'pdf-key',
+      name: 'a.pdf',
+      size: 10,
+      type: 'application/pdf',
+    }
+    const allowEverything = createInputMediaTypePredicate(['image', 'pdf'])
+    const withoutImages = createInputMediaTypePredicate(['pdf'])
+    const withoutPdf = createInputMediaTypePredicate(['image'])
+    const textOnly = createInputMediaTypePredicate([])
+    const imageWarning = 'This model does not support image input. '
       + 'Attach a PDF or text file instead, or switch models.'
+    const pdfWarning = 'This model does not support PDF input. '
+      + 'Attach an image or text file instead, or switch models.'
+    const combinedWarning = 'This model does not support image or PDF input. '
+      + 'Attach a text file instead, or switch models.'
 
     function useSelection(
-      isImageInputSupported: Ref<boolean> = shallowRef(true),
+      predicate: (mediaType: string) => boolean = allowEverything,
     ) {
+      const canAttachMediaType = shallowRef(predicate)
+
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
         isToolCallingSupported: shallowRef(false),
         webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
-        isImageInputSupported,
+        isImageInputSupported: shallowRef(predicate('image/png')),
+        canAttachMediaType,
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef(null),
@@ -459,7 +479,7 @@ describe('ChatInput.client', () => {
         isSelectedModelUnavailable: shallowRef(false),
       })
 
-      return isImageInputSupported
+      return canAttachMediaType
     }
 
     function attachedFileNames(wrapper: Awaited<ReturnType<
@@ -471,7 +491,7 @@ describe('ChatInput.client', () => {
     }
 
     it('drops an attached image and warns when unsupported', async () => {
-      useSelection(shallowRef(false))
+      useSelection(withoutImages)
 
       const wrapper = await mountChatInput()
       const filesModal = wrapper.findComponent(filesModalStub)
@@ -480,11 +500,24 @@ describe('ChatInput.client', () => {
       await nextTick()
 
       expect(attachedFileNames(wrapper)).toEqual([])
-      expect(mocks.useWarningMessage).toHaveBeenCalledWith(expectedWarning)
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(imageWarning)
     })
 
-    it('keeps a non-image file when image input is unsupported', async () => {
-      useSelection(shallowRef(false))
+    it('drops an attached PDF and warns when unsupported', async () => {
+      useSelection(withoutPdf)
+
+      const wrapper = await mountChatInput()
+      const filesModal = wrapper.findComponent(filesModalStub)
+
+      filesModal.vm.$emit('attach', [pdfFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual([])
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(pdfWarning)
+    })
+
+    it('keeps a text file when images and PDFs are unsupported', async () => {
+      useSelection(textOnly)
 
       const wrapper = await mountChatInput()
       const filesModal = wrapper.findComponent(filesModalStub)
@@ -496,22 +529,39 @@ describe('ChatInput.client', () => {
       expect(mocks.useWarningMessage).not.toHaveBeenCalled()
     })
 
-    it('strips an already-attached image after the model loses support', async () => {
-      const isImageInputSupported = useSelection()
+    it('strips attached images and PDFs once after the model loses support', async () => {
+      const canAttachMediaType = useSelection()
 
       const wrapper = await mountChatInput()
       const filesModal = wrapper.findComponent(filesModalStub)
 
-      filesModal.vm.$emit('attach', [imageFile])
+      filesModal.vm.$emit('attach', [imageFile, pdfFile, textFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual(['a.png', 'a.pdf', 'a.txt'])
+
+      canAttachMediaType.value = textOnly
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual(['a.txt'])
+      expect(mocks.useWarningMessage).toHaveBeenCalledTimes(1)
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(combinedWarning)
+    })
+
+    it('strips only the PDFs when only PDF support is lost', async () => {
+      const canAttachMediaType = useSelection()
+
+      const wrapper = await mountChatInput()
+      const filesModal = wrapper.findComponent(filesModalStub)
+
+      filesModal.vm.$emit('attach', [imageFile, pdfFile])
+      await nextTick()
+
+      canAttachMediaType.value = withoutPdf
       await nextTick()
 
       expect(attachedFileNames(wrapper)).toEqual(['a.png'])
-
-      isImageInputSupported.value = false
-      await nextTick()
-
-      expect(attachedFileNames(wrapper)).toEqual([])
-      expect(mocks.useWarningMessage).toHaveBeenCalledWith(expectedWarning)
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(pdfWarning)
     })
   })
 
@@ -554,6 +604,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef({ mode: 'toggle' }),
@@ -576,6 +627,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef({
@@ -601,6 +653,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef({ mode: 'toggle' }),
@@ -747,6 +800,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(true),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef(null),
@@ -1086,6 +1140,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(true),
         isImageGenerationRequired,
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability,
@@ -1338,6 +1393,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported,
         isImageGenerationRequired,
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported,
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability,
@@ -1544,6 +1600,7 @@ describe('ChatInput.client', () => {
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef(null),
@@ -1611,6 +1668,7 @@ describe('ChatInput.client', () => {
           !!input.isImageGenerationRequired,
         ),
         isImageInputSupported: shallowRef(true),
+        canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(isConfigurable),
         isReasoningAlwaysOn: shallowRef(input.state === 'always-on'),
         reasoningCapability: shallowRef(isConfigurable

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import xai from '../../../providers/xai'
+import { providers } from '../../../providers'
 import snapshot from '../../../providers/data/models-dev-snapshot.json'
 import { parseModelFamily } from '../../../scripts/detect-model-successors.mjs'
 
@@ -201,6 +202,21 @@ describe('curated xai provider', () => {
       input: ['text', 'image', 'pdf'],
       output: ['image'],
     })
+  })
+
+  it('excludes pdf input at provider level, because the xAI Responses '
+    + 'API only accepts non-image files by URL or Files API reference', () => {
+    expect(xai.excludedInputModalities).toEqual(['pdf'])
+  })
+
+  it('never advertises pdf input on any merged xAI model', () => {
+    const mergedXai = providers.find(provider => provider.id === 'xai')
+
+    expect(mergedXai?.models.length).toBe(expectedModelIds.length)
+
+    for (const model of mergedXai?.models ?? []) {
+      expect(model.modalities.input).not.toContain('pdf')
+    }
   })
 
   it('fully hand-curates grok-imagine-image since models.dev lists it '

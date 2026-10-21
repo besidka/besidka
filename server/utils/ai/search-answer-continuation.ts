@@ -3,6 +3,7 @@ import type {
   LanguageModelUsage,
   ModelMessage,
   UIMessageChunk,
+  Warning,
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import {
@@ -49,6 +50,7 @@ export interface SearchAnswerContinuationStep {
   usage: LanguageModelUsage
   providerMetadata?: unknown
   content?: unknown
+  warnings?: readonly Warning[]
 }
 
 export interface SearchAnswerContinuationResult {

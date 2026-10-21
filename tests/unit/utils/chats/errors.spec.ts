@@ -168,3 +168,62 @@ describe('normalizeModelToolCallError', () => {
     })).toBeUndefined()
   })
 })
+
+describe('normalizeChatError PDF input rejection', () => {
+  const pdfRejectionMessage = 'This model does not support PDF input.'
+    + ' Remove the attached PDF or switch to a model that reads PDFs.'
+
+  it.each([
+    'application/pdf is not supported by this model',
+    'PDF input is not supported',
+    'This model does not support PDF files',
+    'Unsupported file type: application/pdf',
+    'The model cannot read PDF documents',
+  ])('rewrites a raw provider rejection: %s', (message) => {
+    const chatError = normalizeChatError({
+      error: { statusCode: 400, message },
+    })
+
+    expect(chatError.message).toBe(pdfRejectionMessage)
+  })
+
+  it.each([
+    'Rate limit reached for requests',
+    'Could not parse the PDF document',
+    'Your PDF exceeds the 32 MB request size limit',
+    'Tool calling is not supported for this model',
+    'The PDF is password-protected or uses unsupported encryption',
+    'PDF has an unsupported page size',
+    'Could not parse PDF: unsupported feature',
+  ])('leaves an unrelated error untouched: %s', (message) => {
+    const chatError = normalizeChatError({
+      error: { statusCode: 400, message },
+    })
+
+    expect(chatError.message).not.toBe(pdfRejectionMessage)
+  })
+
+  it('resolves a message naming both image and PDF as the image error',
+    () => {
+      const chatError = normalizeChatError({
+        error: {
+          statusCode: 400,
+          message: 'This model does not support image or PDF input',
+        },
+      })
+
+      expect(chatError.message).toContain('image')
+      expect(chatError.message).not.toBe(pdfRejectionMessage)
+    })
+
+  it('does not override auth failures that mention a PDF', () => {
+    const chatError = normalizeChatError({
+      error: {
+        statusCode: 401,
+        message: 'PDF access is not supported for this key',
+      },
+    })
+
+    expect(chatError.message).not.toBe(pdfRejectionMessage)
+  })
+})

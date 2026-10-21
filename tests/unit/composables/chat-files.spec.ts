@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
+import { createInputMediaTypePredicate } from '../../../shared/utils/input-media-types'
 import { useChatFiles } from '../../../app/composables/chat-files'
 
 const {
@@ -43,6 +44,14 @@ function createImageFile(name: string, size = 4): File {
   return new File(['x'.repeat(size)], name, { type: 'image/png' })
 }
 
+function createPdfFile(name: string, size = 4): File {
+  return new File(['x'.repeat(size)], name, { type: 'application/pdf' })
+}
+
+const textAndPdf = createInputMediaTypePredicate(['text', 'pdf'])
+const textAndImages = createInputMediaTypePredicate(['text', 'image'])
+const textOnly = createInputMediaTypePredicate(['text'])
+
 describe('useChatFiles', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -76,7 +85,7 @@ describe('useChatFiles', () => {
     const attachedFiles = ref([]) as any
     const { uploadFiles, uploadingFiles } = useChatFiles(
       attachedFiles,
-      ref(true),
+      ref(() => true),
     )
 
     const files = Array.from({ length: 11 }, (_, index) => {
@@ -111,7 +120,7 @@ describe('useChatFiles', () => {
     const attachedFiles = ref([]) as any
     const { uploadFiles, uploadingFiles } = useChatFiles(
       attachedFiles,
-      ref(true),
+      ref(() => true),
     )
 
     await uploadFiles([createTextFile('big.txt', 8)])
@@ -122,7 +131,7 @@ describe('useChatFiles', () => {
 
   it('uploads files sequentially', async () => {
     const attachedFiles = ref([]) as any
-    const { uploadFiles } = useChatFiles(attachedFiles, ref(true))
+    const { uploadFiles } = useChatFiles(attachedFiles, ref(() => true))
     const order: string[] = []
 
     uploadWithProgressMock.mockImplementation(async ({ file }) => {
@@ -160,7 +169,7 @@ describe('useChatFiles', () => {
 
   it('retries once for retryable upload errors', async () => {
     const attachedFiles = ref([]) as any
-    const { uploadFiles } = useChatFiles(attachedFiles, ref(true))
+    const { uploadFiles } = useChatFiles(attachedFiles, ref(() => true))
     let calls = 0
 
     uploadWithProgressMock.mockImplementation(async ({ file }) => {
@@ -196,7 +205,7 @@ describe('useChatFiles', () => {
     const attachedFiles = ref([]) as any
     const { uploadFiles, uploadingFiles } = useChatFiles(
       attachedFiles,
-      ref(true),
+      ref(() => true),
     )
     let calls = 0
 
@@ -219,10 +228,10 @@ describe('useChatFiles', () => {
 
   it('rejects an image at enqueue time when unsupported', async () => {
     const attachedFiles = ref([]) as any
-    const isImageInputSupported = ref(false)
+    const canAttachMediaType = ref(textAndPdf)
     const { uploadFiles, uploadingFiles } = useChatFiles(
       attachedFiles,
-      isImageInputSupported,
+      canAttachMediaType,
     )
 
     await uploadFiles([createImageFile('photo.png')])
@@ -235,10 +244,49 @@ describe('useChatFiles', () => {
     )
   })
 
-  it('uploads a non-image file even when image input is unsupported', async () => {
+  it('rejects a PDF at enqueue time when unsupported', async () => {
     const attachedFiles = ref([]) as any
-    const isImageInputSupported = ref(false)
-    const { uploadFiles } = useChatFiles(attachedFiles, isImageInputSupported)
+    const canAttachMediaType = ref(textAndImages)
+    const { uploadFiles, uploadingFiles } = useChatFiles(
+      attachedFiles,
+      canAttachMediaType,
+    )
+
+    await uploadFiles([createPdfFile('doc.pdf')])
+
+    expect(uploadingFiles.value.size).toBe(0)
+    expect(uploadWithProgressMock).not.toHaveBeenCalled()
+    expect(useWarningMessageMock).toHaveBeenCalledWith(
+      'This model does not support PDF input. Attach an image or text '
+      + 'file instead, or switch models.',
+    )
+  })
+
+  it('warns once with a combined message when both kinds are rejected', async () => {
+    const attachedFiles = ref([]) as any
+    const canAttachMediaType = ref(textOnly)
+    const { uploadFiles, uploadingFiles } = useChatFiles(
+      attachedFiles,
+      canAttachMediaType,
+    )
+
+    await uploadFiles([
+      createImageFile('photo.png'),
+      createPdfFile('doc.pdf'),
+    ])
+
+    expect(uploadingFiles.value.size).toBe(0)
+    expect(useWarningMessageMock).toHaveBeenCalledTimes(1)
+    expect(useWarningMessageMock).toHaveBeenCalledWith(
+      'This model does not support image or PDF input. Attach a text '
+      + 'file instead, or switch models.',
+    )
+  })
+
+  it('uploads a non-media file even when images and PDFs are unsupported', async () => {
+    const attachedFiles = ref([]) as any
+    const canAttachMediaType = ref(textOnly)
+    const { uploadFiles } = useChatFiles(attachedFiles, canAttachMediaType)
 
     uploadWithProgressMock.mockImplementation(async ({ file }) => {
       return {
@@ -260,13 +308,44 @@ describe('useChatFiles', () => {
     expect(useWarningMessageMock).not.toHaveBeenCalled()
   })
 
-  it('drops a completed image upload if support is revoked mid-flight', async () => {
+  it('keeps supported files from a mixed batch and warns about the rest', async () => {
     const attachedFiles = ref([]) as any
-    const isImageInputSupported = ref(true)
-    const { uploadFiles } = useChatFiles(attachedFiles, isImageInputSupported)
+    const canAttachMediaType = ref(textAndPdf)
+    const { uploadFiles } = useChatFiles(attachedFiles, canAttachMediaType)
 
     uploadWithProgressMock.mockImplementation(async ({ file }) => {
-      isImageInputSupported.value = false
+      return {
+        data: {
+          id: file.name,
+          storageKey: file.name,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          source: 'upload',
+          expiresAt: null,
+        },
+      }
+    })
+
+    await uploadFiles([
+      createImageFile('photo.png'),
+      createPdfFile('doc.pdf'),
+    ])
+    await waitFor(() => attachedFiles.value.length === 1)
+
+    expect(attachedFiles.value[0].name).toBe('doc.pdf')
+    expect(useWarningMessageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops a completed image upload if support is revoked mid-flight', async () => {
+    const attachedFiles = ref([]) as any
+    const canAttachMediaType = ref<(mediaType: string) => boolean>(
+      () => true,
+    )
+    const { uploadFiles } = useChatFiles(attachedFiles, canAttachMediaType)
+
+    uploadWithProgressMock.mockImplementation(async ({ file }) => {
+      canAttachMediaType.value = textAndPdf
 
       return {
         data: {
@@ -287,6 +366,39 @@ describe('useChatFiles', () => {
     expect(attachedFiles.value).toEqual([])
     expect(useWarningMessageMock).toHaveBeenCalledWith(
       'This model does not support image input. Attach a PDF or text '
+      + 'file instead, or switch models.',
+    )
+  })
+
+  it('drops a completed PDF upload if support is revoked mid-flight', async () => {
+    const attachedFiles = ref([]) as any
+    const canAttachMediaType = ref<(mediaType: string) => boolean>(
+      () => true,
+    )
+    const { uploadFiles } = useChatFiles(attachedFiles, canAttachMediaType)
+
+    uploadWithProgressMock.mockImplementation(async ({ file }) => {
+      canAttachMediaType.value = textAndImages
+
+      return {
+        data: {
+          id: file.name,
+          storageKey: file.name,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          source: 'upload',
+          expiresAt: null,
+        },
+      }
+    })
+
+    await uploadFiles([createPdfFile('mid-flight.pdf')])
+    await waitFor(() => useWarningMessageMock.mock.calls.length > 0)
+
+    expect(attachedFiles.value).toEqual([])
+    expect(useWarningMessageMock).toHaveBeenCalledWith(
+      'This model does not support PDF input. Attach an image or text '
       + 'file instead, or switch models.',
     )
   })

@@ -244,6 +244,14 @@ const NO_ENDPOINTS_AVAILABLE_PATTERN = /no endpoints (found|available)/i
 const IMAGE_TERM_PATTERN = /image/i
 const IMAGE_INPUT_REJECTION_MESSAGE = 'This model does not support image'
   + ' input. Remove the attached image or switch to a vision-capable model.'
+const MODEL_CANNOT_READ_PDF_PATTERN
+  = /(?:(?:does not|doesn't|do not|don't|not) support(?:ed)?|cannot read|can't read|unable to read)[^.\n]{0,40}\b(?:pdf|application\/pdf)\b/i
+const PDF_INPUT_NOT_SUPPORTED_PATTERN
+  = /\b(?:pdf|application\/pdf)\b(?:\s+(?:input|inputs|files?|content|documents?|media type))?\s+(?:is|are)\s+not\s+supported/i
+const UNSUPPORTED_MEDIA_TYPE_PDF_PATTERN
+  = /\bunsupported\s+(?:file |media |mime |content )?(?:type|format)\b[^.\n]{0,30}\b(?:pdf|application\/pdf)\b/i
+const PDF_INPUT_REJECTION_MESSAGE = 'This model does not support PDF input.'
+  + ' Remove the attached PDF or switch to a model that reads PDFs.'
 
 /**
  * Some gateways/providers reject an image attachment at request time with a
@@ -263,6 +271,21 @@ function looksLikeImageInputRejection(message: string): boolean {
 
   return NO_ENDPOINTS_AVAILABLE_PATTERN.test(message)
     && IMAGE_TERM_PATTERN.test(message)
+}
+
+/**
+ * A provider that cannot read an attached PDF rejects it with a raw upstream
+ * message (for example `application/pdf is not supported`). The newest-message
+ * gate in the chat handler normally catches this first; this is the fallback
+ * for providers whose catalog advertises `pdf` the account's routing cannot
+ * honor. The patterns only match wording that says the model, input,
+ * file or media type does not support PDF, so unrelated PDF errors (an
+ * encrypted file, an unsupported page size, a parse failure) never match.
+ */
+function looksLikePdfInputRejection(message: string): boolean {
+  return MODEL_CANNOT_READ_PDF_PATTERN.test(message)
+    || PDF_INPUT_NOT_SUPPORTED_PATTERN.test(message)
+    || UNSUPPORTED_MEDIA_TYPE_PDF_PATTERN.test(message)
 }
 
 /**
@@ -291,6 +314,10 @@ function getPreferredChatMessage(input: {
 
   if (looksLikeImageInputRejection(input.errorMessage)) {
     return IMAGE_INPUT_REJECTION_MESSAGE
+  }
+
+  if (looksLikePdfInputRejection(input.errorMessage)) {
+    return PDF_INPUT_REJECTION_MESSAGE
   }
 
   if (input.code === 'chat-request-invalid') {

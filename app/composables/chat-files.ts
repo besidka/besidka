@@ -27,7 +27,7 @@ function delay(ms: number): Promise<void> {
 
 export function useChatFiles(
   attachedFiles: ModelRef<FileMetadata[]>,
-  isImageInputSupported: Ref<boolean>,
+  canAttachMediaType: Ref<(mediaType: string) => boolean>,
 ) {
   const nuxtApp = useNuxtApp()
   const uploadingFiles = ref<Map<string, UploadingFile>>(new Map())
@@ -161,20 +161,25 @@ export function useChatFiles(
   /**
    * Central choke point for every upload path (the modal, the full-page
    * drop zone, and clipboard paste) — filtering here instead of in each
-   * caller guarantees an image never reaches the server for a model that
-   * can't take it, regardless of which affordance the user picked.
+   * caller guarantees an image or PDF never reaches the server for a model
+   * that can't take it, regardless of which affordance the user picked.
    */
-  function rejectUnsupportedImages(candidateFiles: File[]): File[] {
-    if (isImageInputSupported.value) {
-      return candidateFiles
-    }
-
+  function rejectUnsupportedFiles(candidateFiles: File[]): File[] {
     const allowedFiles = candidateFiles.filter((file) => {
-      return !isImageFile(file.type)
+      return !isMediaTypeRejectedByModel(file.type, canAttachMediaType.value)
     })
 
     if (allowedFiles.length < candidateFiles.length) {
-      useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+      const rejectedMediaTypes = candidateFiles
+        .filter(file => !allowedFiles.includes(file))
+        .map(file => file.type)
+
+      useWarningMessage(
+        getUnsupportedInputMessage(
+          rejectedMediaTypes,
+          canAttachMediaType.value,
+        ),
+      )
     }
 
     return allowedFiles
@@ -184,7 +189,7 @@ export function useChatFiles(
    * Add files to upload queue
    */
   async function uploadFiles(candidateFiles: File[]) {
-    const newFiles = rejectUnsupportedImages(candidateFiles)
+    const newFiles = rejectUnsupportedFiles(candidateFiles)
 
     if (newFiles.length === 0) {
       return
@@ -299,10 +304,17 @@ export function useChatFiles(
 
       if (response.data) {
         if (
-          !isImageInputSupported.value
-          && isImageFile(response.data.type)
+          isMediaTypeRejectedByModel(
+            response.data.type,
+            canAttachMediaType.value,
+          )
         ) {
-          useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+          useWarningMessage(
+            getUnsupportedInputMessage(
+              [response.data.type],
+              canAttachMediaType.value,
+            ),
+          )
         } else {
           attachedFiles.value.push(response.data)
         }
