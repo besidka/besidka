@@ -3,6 +3,7 @@ import type { CuratedProvider } from './merge'
 export default {
   id: 'openai',
   name: 'OpenAI',
+  impliedInputModalities: { image: ['pdf'] },
   models: [
     {
       id: 'o3-deep-research',

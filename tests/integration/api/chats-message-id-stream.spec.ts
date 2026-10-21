@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   GENERATION_GUARD_HEARTBEAT_INTERVAL_MS,
   GENERATION_GUARD_LEASE_TTL_SECONDS,
@@ -639,6 +639,308 @@ describe('chat stream message ids', () => {
     )
 
     expect(insertValues).not.toHaveBeenCalled()
+  })
+
+  it('logs AI SDK call warnings onto the ai-stream event only when present', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    const { onEnd } = mocks.streamTextOptions[0]!
+    const usage = { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+
+    onEnd({ usage, providerMetadata: undefined, steps: [{ usage }] })
+
+    expect(mocks.aiLoggerSet).not.toHaveBeenCalledWith({
+      attributes: { aiWarnings: expect.anything() },
+    })
+
+    onEnd({
+      usage,
+      providerMetadata: undefined,
+      steps: [{
+        usage,
+        warnings: [{
+          type: 'unsupported',
+          feature: 'file part media type application/pdf',
+        }],
+      }],
+    })
+
+    expect(mocks.aiLoggerSet).toHaveBeenCalledWith({
+      attributes: {
+        aiWarnings: {
+          count: 1,
+          warnings: [{
+            type: 'unsupported',
+            feature: 'file part media type application/pdf',
+          }],
+        },
+      },
+    })
+  })
+
+  describe('PDF input gating on the newest message', () => {
+    function createMessageWithPdf(id = 'message-1') {
+      return {
+        id,
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'Summarize this document.' },
+          {
+            type: 'file',
+            mediaType: 'application/pdf',
+            url: 'https://example.com/report.pdf',
+          },
+        ],
+      }
+    }
+
+    afterEach(() => {
+      vi.doUnmock('~~/server/utils/files/file-governance')
+    })
+
+    function mockFileGovernance() {
+      vi.doMock('~~/server/utils/files/file-governance', () => ({
+        validateMessageFilePolicy: vi.fn(async () => undefined),
+        getOwnedFilesByStorageKeys: vi.fn(async () => new Map()),
+      }))
+    }
+
+    function stubModel(model: Record<string, any>, providerId: string) {
+      vi.stubGlobal('useChatProvider', vi.fn(() => ({
+        provider: { id: providerId },
+        model: { tools: [], ...model },
+        modelName: model.name,
+      })))
+    }
+
+    it('rejects a PDF before persisting when the model has no pdf modality', async () => {
+      const handler = await getHandler()
+      const { db, insertValues } = createDb()
+
+      vi.stubGlobal('useDb', () => db)
+      stubModel({
+        id: 'deepseek-chat',
+        name: 'DeepSeek Chat',
+        modalities: { input: ['text'], output: ['text'] },
+      }, 'deepseek')
+
+      await expect(handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'deepseek-chat',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessageWithPdf()],
+        },
+      } as any)).rejects.toMatchObject({
+        status: 400,
+        message: 'DeepSeek Chat does not support PDF input.',
+        fix: 'Remove the PDF, attach its text as a .txt file, or switch to a model that reads PDFs.',
+      })
+
+      expect(insertValues).not.toHaveBeenCalled()
+      expect(mocks.streamTextOptions).toHaveLength(0)
+    })
+
+    it('rejects a PDF sent to a Grok model because xAI never advertises pdf', async () => {
+      const { providers } = await import('../../../providers')
+      const grokModel = providers
+        .find(provider => provider.id === 'xai')
+        ?.models.find(model => model.id === 'grok-4.3')
+
+      expect(grokModel).toBeDefined()
+
+      const handler = await getHandler()
+      const { db, insertValues } = createDb()
+
+      vi.stubGlobal('useDb', () => db)
+      stubModel(grokModel!, 'xai')
+
+      await expect(handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'grok-4.3',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessageWithPdf()],
+        },
+      } as any)).rejects.toMatchObject({
+        status: 400,
+        message: `${grokModel!.name} does not support PDF input.`,
+      })
+
+      expect(insertValues).not.toHaveBeenCalled()
+      expect(mocks.streamTextOptions).toHaveLength(0)
+    })
+
+    it('rejects a regenerated user message with a PDF after switching to a model without pdf', async () => {
+      const handler = await getHandler()
+      const { db, insertValues } = createDb()
+      const persistedUserMessage = {
+        ...createPersistedUserMessage('Summarize this document.'),
+        parts: createMessageWithPdf().parts,
+      }
+
+      db.query.chats.findFirst = vi.fn(async () => ({
+        id: 'chat-1',
+        projectId: null,
+        project: null,
+        messages: [persistedUserMessage],
+      }))
+      vi.stubGlobal('useDb', () => db)
+      stubModel({
+        id: 'kimi-k2.7',
+        name: 'Kimi K2.7',
+        modalities: { input: ['text', 'image'], output: ['text'] },
+      }, 'moonshotai')
+
+      await expect(handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'kimi-k2.7',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessageWithPdf('message-1')],
+        },
+      } as any)).rejects.toMatchObject({
+        status: 400,
+        message: 'Kimi K2.7 does not support PDF input.',
+      })
+
+      expect(insertValues).not.toHaveBeenCalled()
+      expect(db.update).not.toHaveBeenCalled()
+      expect(mocks.streamTextOptions).toHaveLength(0)
+    })
+
+    it('lets a PDF through to a model that advertises pdf', async () => {
+      mockFileGovernance()
+
+      const handler = await getHandler()
+      const { db, insertValues } = createDb()
+
+      vi.stubGlobal('useDb', () => db)
+      stubModel({
+        id: 'gpt-5-mini',
+        name: 'GPT-5 mini',
+        modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      }, 'openai')
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'gpt-5-mini',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessageWithPdf()],
+        },
+      } as any)
+
+      await response.ready
+
+      expect(insertValues).toHaveBeenCalled()
+      expect(mocks.streamTextOptions).toHaveLength(1)
+    })
+
+    it('lets a PDF through to an image model because its controller reads PDFs', async () => {
+      mockFileGovernance()
+
+      const { providers } = await import('../../../providers')
+      const imageModel = providers
+        .find(provider => provider.id === 'openai')
+        ?.models.find(model => model.id === 'gpt-image-2')
+
+      expect(imageModel).toBeDefined()
+
+      const handler = await getHandler()
+      const { db, insertValues } = createDb()
+
+      vi.stubGlobal('useDb', () => db)
+      stubModel({
+        ...imageModel!,
+        modalities: { input: ['text', 'image'], output: ['image'] },
+      }, 'openai')
+      vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+        instance: {},
+        imageModel: {},
+        imageModelId: 'gpt-image-2',
+        tools: {},
+        providerOptions: {},
+      })))
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'gpt-image-2',
+          tools: [],
+          reasoning: 'off',
+          messages: [createMessageWithPdf()],
+        },
+      } as any)
+
+      await response.ready
+
+      expect(insertValues).toHaveBeenCalled()
+      expect(mocks.streamTextOptions).toHaveLength(1)
+    })
+
+    it('lets a text attachment through to a text-only model', async () => {
+      mockFileGovernance()
+
+      const handler = await getHandler()
+      const { db, insertValues } = createDb()
+
+      vi.stubGlobal('useDb', () => db)
+      stubModel({
+        id: 'deepseek-chat',
+        name: 'DeepSeek Chat',
+        modalities: { input: ['text'], output: ['text'] },
+      }, 'deepseek')
+      vi.stubGlobal('useDeepSeek', vi.fn(async () => ({
+        instance: {},
+        tools: {},
+        providerOptions: {},
+      })))
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'deepseek-chat',
+          tools: [],
+          reasoning: 'off',
+          messages: [{
+            id: 'message-1',
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'Read this.' },
+              {
+                type: 'file',
+                mediaType: 'text/plain',
+                url: 'https://example.com/notes.txt',
+              },
+            ],
+          }],
+        },
+      } as any)
+
+      await response.ready
+
+      expect(insertValues).toHaveBeenCalled()
+    })
   })
 
   it('rejects a deep research model with a 400', async () => {
@@ -1466,6 +1768,7 @@ describe('chat stream message ids', () => {
         id: 'gpt-5-mini',
         name: 'GPT-5 mini',
         tools: ['web_search'],
+        modalities: { input: ['text'], output: ['text'] },
       },
     })))
 

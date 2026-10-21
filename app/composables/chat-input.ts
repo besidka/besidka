@@ -18,7 +18,10 @@ const searchProvidersKeysHref = '/profile/keys?tab=search'
 export function useChatInput() {
   const { selection, userModel } = useUserModel()
   const { hasKeyForProvider } = useUserKeys()
-  const { isImageInputSupported } = useImageInputSupport()
+  const {
+    isImageInputSupported,
+    canAttachMediaType,
+  } = useImageInputSupport()
   const { gatewayModel } = useSelectedModelInfo()
   const gatewayCatalogCache = useGatewayCatalogCache()
 
@@ -378,6 +381,7 @@ export function useChatInput() {
     isImageGenerationSupported,
     isImageGenerationRequired,
     isImageInputSupported,
+    canAttachMediaType,
     reasoningCapability,
     reasoningMode,
     reasoningMenuLevels,

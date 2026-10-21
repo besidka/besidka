@@ -85,6 +85,7 @@ import {
   filterRecoverableUIMessageStreamErrors,
   insertParagraphBreakAfterNonTextGap,
 } from '~~/server/utils/chats/filter-ui-message-stream'
+import { assertInputFilesSupported } from '~~/server/utils/chats/input-file-support'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
   hasMeaningfulAssistantParts,
@@ -98,7 +99,9 @@ import {
   getActiveShareForChat,
   syncChatShareFiles,
 } from '~~/server/utils/chats/share'
+import { summarizeSdkWarnings } from '~~/server/utils/ai/sdk-warnings'
 import { createCarriedMediaTypePredicate } from '~~/server/utils/files/carried-media-types'
+import { assertGatewayImageInputSupported } from '~~/server/utils/gateways/image-input-support'
 import {
   getOwnedFilesByStorageKeys,
   validateMessageFilePolicy,
@@ -304,6 +307,13 @@ export default defineEventHandler(async (event) => {
 
   if (gatewayId) {
     requestedTools = selectedTools
+
+    await assertGatewayImageInputSupported({
+      gatewayId,
+      modelId: userModel,
+      parts: newMessage.parts,
+      logger,
+    })
   } else {
     const resolved = useChatProvider(userModel)
 
@@ -312,18 +322,11 @@ export default defineEventHandler(async (event) => {
 
     reasoningLevel = resolveReasoningLevelForModel(model, reasoningLevel)
 
-    const hasImageAttachment = newMessage.parts.some((part) => {
-      return part.type === 'file' && part.mediaType.startsWith('image/')
-    })
-
-    if (hasImageAttachment && !model.modalities.input.includes('image')) {
-      throw createError({
-        message: `${model.name} does not support image input.`,
-        status: 400,
-        why: 'The message includes an image attachment, but the selected model does not advertise image support.',
-        fix: 'Remove the image attachment, or switch to a vision-capable model.',
-      })
-    }
+    assertInputFilesSupported(
+      newMessage.parts,
+      getModelInputModalities(model),
+      model.name,
+    )
 
     const requiredTools = getRequiredModelTools(model)
 
@@ -573,7 +576,7 @@ export default defineEventHandler(async (event) => {
   } = buildModelContextMessages(allMessages, {
     fileSizesByStorageKey,
     canCarryMediaType: model
-      ? createCarriedMediaTypePredicate(model.modalities.input)
+      ? createCarriedMediaTypePredicate(getModelInputModalities(model))
       : undefined,
   })
 
@@ -1180,11 +1183,26 @@ export default defineEventHandler(async (event) => {
           errorProviderId,
         )
 
+        function recordSdkWarnings(
+          key: 'aiWarnings' | 'aiContinuationWarnings',
+          steps: readonly SearchAnswerContinuationStep[],
+        ) {
+          const summary = summarizeSdkWarnings(steps)
+
+          if (!summary) {
+            return
+          }
+
+          aiLogger.set({ attributes: { [key]: summary } })
+        }
+
         function recordToolLoopOutcome(outcome: SearchAnswerOutcome) {
           const { continuation } = outcome
 
           if (continuation) {
             const steps = [...mainLoopSteps, ...continuation.steps]
+
+            recordSdkWarnings('aiContinuationWarnings', continuation.steps)
 
             recordAiStreamUsage({
               usage: sumLanguageModelUsages(steps.map(step => step.usage)),
@@ -1314,6 +1332,7 @@ export default defineEventHandler(async (event) => {
             onEnd({ usage, providerMetadata, steps }) {
               mainLoopSteps = [...steps]
               recordAiStreamUsage({ usage, steps, providerMetadata })
+              recordSdkWarnings('aiWarnings', steps)
             },
             ...parsedTools,
             ...(toolLoopOptions ?? {}),

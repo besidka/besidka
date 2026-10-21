@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { streamText } from 'ai'
 import {
   keyProviderIdForGateway,
@@ -1297,4 +1297,155 @@ describe('gateway chat completion routing', () => {
       expect(getAssistantInsert(insertValues)?.usage?.totalCost)
         .toBeUndefined()
     })
+
+  describe('newest-message image gate', () => {
+    function bodyWithAttachment(
+      mediaType: string,
+      overrides: Record<string, unknown> = {},
+    ) {
+      return baseBody({
+        model: 'meta/text-only-model',
+        gateway: 'openrouter',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Look at this.' },
+            {
+              type: 'file',
+              mediaType,
+              url: 'https://example.com/attachment',
+            },
+          ],
+        }],
+        ...overrides,
+      })
+    }
+
+    async function mockCatalogModel(
+      model: Record<string, unknown> | undefined,
+    ) {
+      const catalog = await import('../../../server/utils/gateways/catalog')
+
+      vi.mocked(catalog.findGatewayCatalogModel).mockResolvedValue(
+        model as any,
+      )
+
+      return catalog
+    }
+
+    beforeEach(() => {
+      vi.doMock('~~/server/utils/files/file-governance', () => ({
+        validateMessageFilePolicy: vi.fn(async () => undefined),
+        getOwnedFilesByStorageKeys: vi.fn(async () => new Map()),
+      }))
+      vi.stubGlobal('useGateway', vi.fn(async () => ({
+        instance: {},
+        tools: {},
+        providerOptions: {},
+        generateChatTitle: vi.fn(),
+      })))
+    })
+
+    afterEach(() => {
+      vi.doUnmock('~~/server/utils/files/file-governance')
+    })
+
+    it.each(['openrouter', 'vercel'])(
+      'rejects an image on %s when the catalog lists no image input',
+      async (gateway) => {
+        await mockCatalogModel({
+          id: 'meta/text-only-model',
+          name: 'Text Only',
+          modalities: { input: ['text'], output: ['text'] },
+        })
+
+        const handler = await getHandler()
+        const { db, insertValues } = createDb()
+
+        vi.stubGlobal('useDb', () => db)
+
+        await expect(handler({
+          params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+          body: bodyWithAttachment('image/png', { gateway }),
+        } as any)).rejects.toMatchObject({
+          status: 400,
+          message: 'Text Only does not support image input.',
+        })
+
+        expect(insertValues).not.toHaveBeenCalled()
+        expect(streamText).not.toHaveBeenCalled()
+      },
+    )
+
+    it('allows an image when the catalog has no entry for the model',
+      async () => {
+        await mockCatalogModel(undefined)
+
+        await runHandler(bodyWithAttachment('image/png'))
+
+        expect(streamText).toHaveBeenCalledTimes(1)
+      })
+
+    it('allows an image when the catalog entry carries no modalities',
+      async () => {
+        await mockCatalogModel({ id: 'meta/text-only-model', name: 'Bare' })
+
+        await runHandler(bodyWithAttachment('image/png'))
+
+        expect(streamText).toHaveBeenCalledTimes(1)
+      })
+
+    it('allows an image when the catalog lists image input', async () => {
+      await mockCatalogModel({
+        id: 'meta/text-only-model',
+        name: 'Vision',
+        modalities: { input: ['text', 'image'], output: ['text'] },
+      })
+
+      await runHandler(bodyWithAttachment('image/png'))
+
+      expect(streamText).toHaveBeenCalledTimes(1)
+    })
+
+    it('never gates a PDF on a gateway, whatever the catalog lists',
+      async () => {
+        const catalog = await mockCatalogModel({
+          id: 'meta/text-only-model',
+          name: 'Text Only',
+          modalities: { input: ['text'], output: ['text'] },
+        })
+
+        await runHandler(bodyWithAttachment('application/pdf'))
+
+        expect(catalog.findGatewayCatalogModel).not.toHaveBeenCalled()
+        expect(streamText).toHaveBeenCalledTimes(1)
+      })
+
+    it('skips the catalog lookup for cloudflare', async () => {
+      const catalog = await mockCatalogModel({
+        id: 'meta/text-only-model',
+        name: 'Text Only',
+        modalities: { input: ['text'], output: ['text'] },
+      })
+
+      await runHandler(bodyWithAttachment('image/png', {
+        gateway: 'cloudflare',
+      }))
+
+      expect(catalog.findGatewayCatalogModel).not.toHaveBeenCalled()
+      expect(streamText).toHaveBeenCalledTimes(1)
+    })
+
+    it('skips the catalog lookup when the message has no image', async () => {
+      const catalog = await mockCatalogModel(undefined)
+
+      await runHandler(baseBody({
+        model: 'meta/text-only-model',
+        gateway: 'vercel',
+      }))
+
+      expect(catalog.findGatewayCatalogModel).not.toHaveBeenCalled()
+    })
+  })
 })

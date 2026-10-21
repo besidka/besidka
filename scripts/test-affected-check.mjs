@@ -668,8 +668,41 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...imageGenerationTests,
         ...filesModuleTests,
+        'tests/unit/composables/image-input-support.spec.ts',
         'tests/unit/components/Chat/GeneratedImage.spec.ts',
       ],
+    },
+    {
+      pattern: /^shared\/utils\/input-media-types\.ts$/,
+      tests: [
+        ...filesModuleTests,
+        'tests/unit/utils/input-media-types.spec.ts',
+        'tests/unit/composables/image-input-support.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/utils/chats/input-file-support.spec.ts',
+        'tests/integration/server/assistant-files.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/chats\/input-file-support\.ts$/,
+      tests: [
+        'tests/unit/utils/chats/input-file-support.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+        'tests/integration/api/chats-gateway.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/ai\/sdk-warnings\.ts$/,
+      tests: [
+        'tests/unit/utils/ai/sdk-warnings.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+      ],
+    },
+    {
+      pattern: /^providers\/(merge|xai)\.ts$/,
+      tests: ['tests/integration/api/chats-message-id-stream.spec.ts'],
     },
     {
       pattern: /^server\/utils\/ai\/generation-guard\.ts$/,

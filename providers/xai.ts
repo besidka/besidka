@@ -3,6 +3,7 @@ import type { CuratedProvider } from './merge'
 export default {
   id: 'xai',
   name: 'xAI',
+  excludedInputModalities: ['pdf'],
   models: [
     {
       id: 'grok-4.20-0309-non-reasoning',
