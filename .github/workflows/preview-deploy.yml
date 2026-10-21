@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 20
     if: github.event.workflow_run.conclusion == 'success'
     permissions:
+      actions: read
       id-token: write
       contents: read
       pull-requests: write
@@ -26,34 +27,59 @@ jobs:
       - name: Get PR metadata from event context
         id: pr
         run: |
-          PR_NUMBER=$(printf '%s' "$PULL_REQUESTS_JSON" | jq -r '.[0].number // empty')
           PR_SHA_SHORT=$(echo "$HEAD_SHA" | cut -c1-7)
+
+          BUILD_ARTIFACT_COUNT=$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" --jq '[.artifacts[] | select(.name == "preview-build" and .expired == false)] | length')
+
+          if [ "$BUILD_ARTIFACT_COUNT" = "0" ]; then
+            echo "::notice::Preview deploy skipped: build run $RUN_ID uploaded no preview-build artifact. The run built nothing, for example a non-top layer of a stacked PR."
+            {
+              echo "sha=$HEAD_SHA"
+              echo "sha-short=$PR_SHA_SHORT"
+              echo "skip=true"
+              echo "skip-reason=no-build"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PR_NUMBER=$(printf '%s' "$PULL_REQUESTS_JSON" | jq -r '.[0].number // empty')
 
           if [ -z "$PR_NUMBER" ]; then
             SHA_PULLS_JSON=$(gh api "repos/$REPOSITORY/commits/$HEAD_SHA/pulls")
             PR_NUMBER=$(printf '%s' "$SHA_PULLS_JSON" | jq -r --arg sha "$HEAD_SHA" --arg repo "$HEAD_REPOSITORY" '[.[] | select(.state == "open" and .head.sha == $sha and .head.repo.full_name == $repo)][0].number // empty')
           fi
 
-          echo "sha=$HEAD_SHA" >> $GITHUB_OUTPUT
-          echo "sha-short=$PR_SHA_SHORT" >> $GITHUB_OUTPUT
+          echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "sha-short=$PR_SHA_SHORT" >> "$GITHUB_OUTPUT"
 
           if [ -z "$PR_NUMBER" ]; then
             echo "::notice::Preview deploy skipped: no open PR has $PR_SHA_SHORT as its head in $HEAD_REPOSITORY. The PR was likely closed or merged before its build finished."
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ github.token }}
           PULL_REQUESTS_JSON: ${{ toJSON(github.event.workflow_run.pull_requests) }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
           REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+
+      - name: Resolve deploy status for run without build
+        if: steps.pr.outputs.skip-reason == 'no-build'
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ steps.pr.outputs.sha }}" \
+            -f state=success \
+            -f context="Preview Deploy" \
+            -f description="Skipped (no build for this commit)"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Resolve pending deploy status for closed PR
-        if: steps.pr.outputs.skip == 'true'
+        if: steps.pr.outputs.skip == 'true' && steps.pr.outputs.skip-reason != 'no-build'
         run: |
           gh api "repos/${{ github.repository }}/statuses/${{ steps.pr.outputs.sha }}" \
             -f state=success \
@@ -69,10 +95,10 @@ jobs:
           HEAD_REPO="${{ github.event.workflow_run.head_repository.full_name }}"
           BASE_REPO="${{ github.event.workflow_run.repository.full_name }}"
           if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
-            echo "is-fork=true" >> $GITHUB_OUTPUT
+            echo "is-fork=true" >> "$GITHUB_OUTPUT"
             echo "Fork PR detected ($HEAD_REPO != $BASE_REPO)"
           else
-            echo "is-fork=false" >> $GITHUB_OUTPUT
+            echo "is-fork=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Skip deploy for fork PRs
@@ -155,7 +181,7 @@ jobs:
       - name: Record deploy start time
         if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
         id: deploy-start
-        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+        run: echo "start-time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Apply migrations to preview database
         if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
@@ -239,7 +265,7 @@ jobs:
         run: |
           END=$(date +%s)
           DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
           echo "Deploy completed in ${DURATION}s"
 
       - name: Extract preview URLs
@@ -265,8 +291,8 @@ jobs:
             echo "::warning::wrangler preview returned no workers.dev URL (previews_enabled may be off on the besidka Worker)"
           fi
 
-          echo "preview-url=${PREVIEW_URL:-$FALLBACK_URL}" >> $GITHUB_OUTPUT
-          echo "deployment-url=${DEPLOYMENT_URL:-n/a}" >> $GITHUB_OUTPUT
+          echo "preview-url=${PREVIEW_URL:-$FALLBACK_URL}" >> "$GITHUB_OUTPUT"
+          echo "deployment-url=${DEPLOYMENT_URL:-n/a}" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL on PR
         if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
