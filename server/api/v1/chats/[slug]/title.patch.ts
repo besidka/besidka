@@ -221,7 +221,7 @@ export default defineEventHandler(async (event) => {
 
   title = title.trim() || CHAT_TITLE_DEFAULT
 
-  const { title: savedTitle } = await db.update(schema.chats)
+  const updatedChat = await db.update(schema.chats)
     .set({
       title,
     })
@@ -229,7 +229,15 @@ export default defineEventHandler(async (event) => {
     .returning({ title: schema.chats.title })
     .get()
 
-  return savedTitle
+  if (!updatedChat) {
+    throw createError({
+      message: 'Chat not found.',
+      status: 404,
+      why: 'The chat was deleted before its title could be saved.',
+    })
+  }
+
+  return updatedChat.title
 })
 
 function getFirstTextPart(parts: UIMessage['parts'] | null | undefined) {
