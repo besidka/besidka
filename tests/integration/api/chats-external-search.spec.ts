@@ -66,6 +66,9 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   getModelContextFileStorageKeys: vi.fn(() => []),
   getGeneratedImageFileIds: vi.fn(() => []),
   isKnownImageGenerationModel: vi.fn(() => false),
+  buildModelContextMessages: vi.fn(
+    (messages: unknown) => ({ messages, omittedFiles: [] }),
+  ),
   sanitizeMessagesForModelContext: vi.fn((messages: unknown) => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(
     async (input: { parts: unknown }) => input.parts,

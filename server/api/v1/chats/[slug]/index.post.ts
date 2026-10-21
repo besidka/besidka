@@ -22,6 +22,7 @@ import type {
   ImageGenerationProvider,
 } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { OmittedContextFilesData } from '#shared/types/model-context.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import {
   isExternalWebSearchTool,
@@ -104,11 +105,11 @@ import {
 } from '~~/server/utils/files/file-governance'
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
+  buildModelContextMessages,
   getGeneratedImageFileIds,
   getModelContextFileStorageKeys,
   isKnownImageGenerationModel,
   persistGatewayGeneratedImageParts,
-  sanitizeMessagesForModelContext,
   stripUndeliveredInlineDataParts,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
@@ -566,7 +567,10 @@ export default defineEventHandler(async (event) => {
     fileSizesByStorageKey.set(storageKey, file.size)
   }
 
-  const modelContextMessages = sanitizeMessagesForModelContext(allMessages, {
+  const {
+    messages: modelContextMessages,
+    omittedFiles,
+  } = buildModelContextMessages(allMessages, {
     fileSizesByStorageKey,
     canCarryMediaType: model
       ? createCarriedMediaTypePredicate(model.modalities.input)
@@ -581,6 +585,7 @@ export default defineEventHandler(async (event) => {
   logger.set({
     filesCount: newMessage.parts.filter(part => part.type === 'file').length,
     carriedFilesCount: countCarriedFileParts(modelContextMessages),
+    omittedContextFilesCount: omittedFiles.length,
     missingFilesCount: missingFiles.length,
   })
 
@@ -1154,6 +1159,16 @@ export default defineEventHandler(async (event) => {
                 .map(file => file.filename)
                 .filter((name): name is string => Boolean(name)),
             },
+          })
+        }
+
+        if (omittedFiles.length > 0) {
+          writer.write({
+            type: 'data-omitted-context-files',
+            data: {
+              modelName: model?.name,
+              files: omittedFiles,
+            } satisfies OmittedContextFilesData,
           })
         }
 
