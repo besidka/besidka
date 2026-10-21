@@ -163,7 +163,7 @@
       </UiFormFieldset>
     </UiForm>
     <p class="py-2 text-center">
-      Don't have an account? <NuxtLink :to="withUtm('/signup')" class="underline hover:no-underline">Sign up</NuxtLink>
+      Don't have an account? <NuxtLink :to="signupLink" class="underline hover:no-underline">Sign up</NuxtLink>
     </p>
   </UiBubble>
 </template>
@@ -229,6 +229,14 @@ const {
 } = useAuth()
 
 const { resolveUtm, withUtm } = useUtmAttribution()
+const route = useRoute()
+
+const safeNext = computed<string | null>(() => {
+  return resolveSafeNextPath(route.query.next)
+})
+const signupLink = computed<string>(() => {
+  return withUtm(appendNextToPath('/signup', safeNext.value))
+})
 
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
 const { requestToken } = useCaptcha(() => turnstile.value)
@@ -294,7 +302,10 @@ async function runPasskeySignIn(
     ? options.redirectUserTo
     : options.redirectUserTo?.path
 
-  reloadNuxtApp({ path: path || '/chats/new', force: true })
+  reloadNuxtApp({
+    path: safeNext.value || path || '/chats/new',
+    force: true,
+  })
 }
 
 async function socialSignIn(provider: 'google' | 'github') {
@@ -303,7 +314,7 @@ async function socialSignIn(provider: 'google' | 'github') {
   try {
     await signInWithSocialOAuth(
       provider,
-      appendUtmToPath('/chats/new', resolveUtm()),
+      appendUtmToPath(safeNext.value ?? '/chats/new', resolveUtm()),
     )
   } finally {
     pending.value = false
@@ -338,7 +349,7 @@ async function onSubmit() {
       email: data.email,
       password: data.password,
       rememberMe: data.rememberMe,
-      callbackURL: '/chats/new',
+      callbackURL: safeNext.value ?? '/chats/new',
       fetchOptions: {
         headers: token ? { 'x-captcha-response': token } : {},
       },
@@ -357,7 +368,7 @@ async function onSubmit() {
     }
 
     if (result && 'twoFactorRedirect' in result && result.twoFactorRedirect) {
-      await navigateTo('/2fa')
+      await navigateTo(appendNextToPath('/2fa', safeNext.value))
 
       return
     }

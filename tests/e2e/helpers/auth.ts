@@ -246,8 +246,11 @@ export async function signIn(
   page: Page,
   email: string = 'test@example.com',
   password: string = DEFAULT_PASSWORD,
+  options: { startPath?: string, expectedUrl?: string } = {},
 ): Promise<void> {
-  await page.goto('/signin')
+  const { startPath = '/signin', expectedUrl = '/chats/new' } = options
+
+  await page.goto(startPath)
   await waitForHydration(page)
   const form = page.locator('form')
   const emailInput = form.getByPlaceholder('example@example.com')
@@ -278,7 +281,7 @@ export async function signIn(
     await expect(passwordInput).toHaveValue(password)
 
     await signInButton.click()
-    await page.waitForURL('/chats/new', { timeout: 4_000 })
+    await page.waitForURL(expectedUrl, { timeout: 4_000 })
   }).toPass({ timeout: 14_000 })
 }
 

@@ -216,6 +216,30 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/context-menu-image.spec.ts',
     'tests/e2e/chat/context-menu-image-desktop.spec.ts',
     'tests/e2e/chat/gateway-image-generation.spec.ts',
+    'tests/e2e/chat/mermaid-diagram.spec.ts',
+  ]
+  const mermaidDiagramTests = [
+    'tests/unit/utils/markdown-fences.spec.ts',
+    'tests/unit/composables/diagram-renderer.spec.ts',
+    'tests/unit/utils/diagram-fonts.spec.ts',
+    'tests/unit/utils/diagram-export-color.spec.ts',
+    'tests/unit/utils/diagram-export-drawio.spec.ts',
+    'tests/unit/utils/diagram-export-fonts.spec.ts',
+    'tests/unit/utils/diagram-export-png.spec.ts',
+    'tests/unit/utils/diagram-export-svg.spec.ts',
+    'tests/unit/utils/diagram-export-theme.spec.ts',
+    'tests/unit/composables/diagram-export.spec.ts',
+    'tests/unit/utils/pele-examples.spec.ts',
+    'tests/unit/utils/diagram-theme-contrast.spec.ts',
+    'tests/unit/workers/diagram.worker.spec.ts',
+    'tests/unit/composables/markdown-source.spec.ts',
+    'tests/unit/components/prose/PreStream.spec.ts',
+    'tests/unit/components/prose/MermaidDiagram.spec.ts',
+    'tests/unit/components/prose/MermaidViewer.client.spec.ts',
+    'tests/unit/components/prose/MermaidActionMenu.spec.ts',
+    'tests/unit/components/prose/MermaidEditor.spec.ts',
+    'tests/unit/components/Chat/MarkdownSource.spec.ts',
+    'tests/e2e/chat/mermaid-diagram.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -226,6 +250,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/history-race.spec.ts',
     'tests/unit/composables/history-load-more-race.spec.ts',
     'tests/unit/composables/projects.spec.ts',
+    'tests/unit/composables/project-picker.spec.ts',
     'tests/unit/composables/projects-rename.spec.ts',
     'tests/unit/composables/projects-rename-sort.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
@@ -247,6 +272,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-project-instructions.spec.ts',
     'tests/integration/pages/history-cache.spec.ts',
     'tests/e2e/history/dropdown-touch.spec.ts',
+    'tests/e2e/projects/picker.spec.ts',
     'tests/e2e/search/pin.spec.ts',
   ]
 
@@ -391,18 +417,24 @@ export function getAffectedTests(changedFiles) {
 
   const landingTests = [
     'tests/unit/utils/landing-video-range.spec.ts',
+    'tests/unit/server/routes/videos/[name].spec.ts',
     'tests/unit/utils/video.spec.ts',
     'tests/unit/utils/landing/stats.spec.ts',
     'tests/unit/utils/landing/analytics-events.spec.ts',
+    'tests/unit/utils/landing/client-events.spec.ts',
+    'tests/unit/composables/video-watch-analytics.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
+    'tests/unit/assets/css/plyr-theme.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/unit/components/landing/FeatureGrid.spec.ts',
     'tests/unit/components/landing/MessageBubble.spec.ts',
     'tests/unit/components/landing/Carousel.spec.ts',
     'tests/unit/components/content/HomeStats.spec.ts',
+    'tests/unit/components/content/HomeVideo.spec.ts',
     'tests/unit/components/content/HomeBubble.spec.ts',
+    'tests/unit/components/content/HomeComparison.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
     'tests/integration/api/stats.spec.ts',
     'tests/integration/server/landing-cache-refresh.spec.ts',
@@ -417,13 +449,41 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth.spec.ts',
     'tests/unit/composables/utm-attribution.spec.ts',
     'tests/unit/composables/landing-analytics.spec.ts',
+    'tests/unit/composables/key-guide-analytics.spec.ts',
+    'tests/unit/composables/video-watch-analytics.spec.ts',
+    'tests/unit/utils/analytics/key-events.spec.ts',
+    'tests/unit/utils/landing/client-events.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
     'tests/integration/api/profile-keys-qwen.spec.ts',
     'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
     'tests/integration/api/profile-keys-openrouter.spec.ts',
+    'tests/integration/api/profile-keys-key-events.spec.ts',
     'tests/e2e/attribution/utm-signup.spec.ts',
+  ]
+
+  const authNextRedirectTests = [
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/middleware/00.auth.global.spec.ts',
+    'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/unit/pages/(auth)/signup.spec.ts',
+    'tests/unit/pages/(auth)/2fa.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/pages/guides/[slug].spec.ts',
+  ]
+
+  const keyGuideTests = [
+    'tests/unit/utils/external-url.spec.ts',
+    'tests/unit/utils/iso-datetime.spec.ts',
+    'tests/unit/utils/video.spec.ts',
+    'tests/unit/components/landing/VideoPlayer.client.spec.ts',
+    'tests/unit/pages/guides/[slug].spec.ts',
+    'tests/unit/utils/landing-jsonld.spec.ts',
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/components/LandingFooter.spec.ts',
+    'tests/unit/config/seo-pages.spec.ts',
+    'tests/unit/content/key-guides.spec.ts',
   ]
 
   const pushNotificationTests = [
@@ -470,14 +530,36 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
     'tests/integration/api/profile-keys-openrouter.spec.ts',
+    'tests/integration/api/profile-keys-key-events.spec.ts',
+    'tests/unit/utils/analytics/key-events.spec.ts',
     'tests/unit/components/Profile/Keys/Card.spec.ts',
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
     'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
     'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
     'tests/unit/components/Profile/Keys/GatewaysInfo.spec.ts',
+    'tests/unit/components/Profile/Keys/Guide.spec.ts',
+    'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
     'tests/unit/components/ProviderIcon.spec.ts',
     'tests/unit/utils/provider-meta.spec.ts',
+    'tests/e2e/profile/key-guides.spec.ts',
+  ]
+  const profileKeyGuideTests = [
+    'tests/unit/content/key-guides.spec.ts',
+    'tests/unit/utils/iso-datetime.spec.ts',
+    'tests/unit/config/content-frontmatter.spec.ts',
+    'tests/unit/pages/guides/[slug].spec.ts',
+    'tests/unit/composables/key-guide-analytics.spec.ts',
+    'tests/unit/composables/video-watch-analytics.spec.ts',
+    'tests/unit/utils/key-guide-video.spec.ts',
+    'tests/unit/components/Profile/Keys/Guide.spec.ts',
+    'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
+    'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
+    'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/server/routes/videos/[name].spec.ts',
+    'tests/integration/api/events-ingest.spec.ts',
+    'tests/e2e/profile/key-guides.spec.ts',
   ]
 
   const turnstileTests = [
@@ -487,6 +569,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/(auth)/signin.spec.ts',
     'tests/unit/pages/(auth)/signup.spec.ts',
     'tests/unit/pages/(auth)/reset-password.spec.ts',
+  ]
+
+  const postAuthRedirectTests = [
+    'tests/unit/utils/auth-redirect.spec.ts',
+    'tests/unit/middleware/00.auth.global.spec.ts',
+    'tests/unit/composables/social-oauth.spec.ts',
+    'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/unit/pages/(auth)/signup.spec.ts',
+    'tests/unit/pages/(auth)/2fa.spec.ts',
+    'tests/e2e/auth/signin.spec.ts',
   ]
 
   const seoTests = [
@@ -793,6 +885,11 @@ export function getAffectedTests(changedFiles) {
       tests: [...keysApiTests, ...userKeysTests],
     },
     {
+      pattern:
+        /^(app\/composables\/(key-guide-analytics|video-watch-analytics)\.ts|app\/utils\/key-guide-video\.ts|shared\/utils\/(key-guide-schema|iso-datetime)\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
+      tests: profileKeyGuideTests,
+    },
+    {
       pattern: /^app\/composables\/clipboard\.ts$/,
       tests: [
         'tests/unit/composables/clipboard.spec.ts',
@@ -828,6 +925,11 @@ export function getAffectedTests(changedFiles) {
       tests: turnstileTests,
     },
     {
+      pattern:
+        /^(shared\/utils\/auth-redirect\.ts|app\/middleware\/00\.auth\.global\.ts|app\/composables\/social-oauth\.ts|app\/pages\/\(auth\)\/(signin|signup|2fa)\.vue|tests\/e2e\/helpers\/auth\.ts)$/,
+      tests: postAuthRedirectTests,
+    },
+    {
       pattern: /^nuxt\.config\.ts$/,
       tests: [...seoTests, ...cookieConsentTests],
     },
@@ -838,6 +940,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^content\/legal\/.*\.md$/,
       tests: ['tests/unit/config/seo-pages.spec.ts'],
+    },
+    {
+      pattern: /^content\/(index|guides\/.*|legal\/.*|key-guides\/.*)\.md$/,
+      tests: ['tests/unit/config/content-frontmatter.spec.ts'],
     },
     {
       pattern: /^(content\/guides\/.*\.md|app\/pages\/byok\.vue|content\.config\.ts|app\/components\/LegalDocument\.vue)$/,
@@ -880,8 +986,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/utm\.ts|shared\/types\/analytics\.d\.ts|server\/utils\/analytics\/.*\.ts|server\/db\/schemas\/attribution\.ts|app\/composables\/(utm-attribution|landing-analytics)\.ts|app\/plugins\/utm-attribution\.client\.ts)$/,
+        /^(shared\/utils\/utm\.ts|shared\/types\/analytics\.d\.ts|server\/utils\/analytics\/.*\.ts|server\/db\/schemas\/attribution\.ts|app\/composables\/(utm-attribution|landing-analytics|video-watch-analytics)\.ts|app\/plugins\/utm-attribution\.client\.ts)$/,
       tests: utmAttributionTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/auth-redirect\.ts|app\/middleware\/00\.auth\.global\.ts|app\/pages\/\(auth\)\/(signin|signup|2fa)\.vue|app\/pages\/profile\/keys\.vue)$/,
+      tests: authNextRedirectTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/guides\/.*\.vue|shared\/utils\/(external-url|iso-datetime|video)\.ts|app\/utils\/(landing-jsonld|utc-date)\.ts|content\/key-guides\/.*\.md)$/,
+      tests: keyGuideTests,
     },
     {
       pattern: /^server\/api\/v1\/(events|stats)\/.*\.ts$/,
@@ -950,6 +1066,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/landing-video-thumbnails\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern:
+        /^(app\/composables\/video-progress-preview\.ts|app\/components\/Video\/.*\.vue)$/,
       tests: landingTests,
     },
     {
@@ -1209,6 +1330,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(app\/components\/prose\/(PreStream|MermaidDiagram|MermaidViewer\.client|MermaidActionMenu|MermaidEditor)\.vue|server\/utils\/chats\/test\/mermaid-fixture\.ts|app\/composables\/(diagram-renderer|diagram-export|markdown-source|chat-format)\.ts|app\/utils\/(markdown-fences|mermaid-menu-actions|diagram-render-core|diagram-fonts|diagram-export-[a-z-]+)\.ts|app\/assets\/css\/(main|diagram-theme)\.css|tests\/utils\/diagram-theme-colors\.ts|tests\/fixtures\/pele-examples\.json|app\/workers\/diagram\.worker\.ts|app\/types\/diagram(-export)?\.d\.ts|app\/components\/Chat\/MarkdownSource\.vue|app\/pages\/chats\/\[slug\]\.vue)$/,
+      tests: mermaidDiagramTests,
+    },
+    {
+      pattern:
         /^(server\/db\/schemas\/research-jobs\.ts|server\/utils\/research\/.*\.ts|server\/plugins\/research-job-sweep\.ts|server\/api\/v1\/chats\/research\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/research\/.*\.ts)$/,
       tests: deepResearchTests,
     },
@@ -1224,6 +1350,14 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/chats\/filter-ui-message-stream\.ts$/,
       tests: chatStreamBranchTests,
+    },
+    {
+      pattern: /^shared\/utils\/external-url\.ts$/,
+      tests: [
+        'tests/unit/utils/external-url.spec.ts',
+        'tests/unit/components/content/HomeComparison.spec.ts',
+        'tests/unit/pages/guides/[slug].spec.ts',
+      ],
     },
     {
       pattern: /^shared\/utils\/http-url\.ts$/,
@@ -1257,7 +1391,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/composables\/(history|projects|project-chats)\.ts$/,
+      pattern: /^app\/composables\/(history|projects|project-chats|project-picker)\.ts$/,
       tests: historyProjectsTests,
     },
     {
@@ -1339,6 +1473,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/pages\/chats\/projects\/.*\.vue$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^server\/utils\/db\/like\.ts$/,
+      tests: [
+        'tests/unit/server/utils/db/like.spec.ts',
+        'tests/integration/api/projects.spec.ts',
+        'tests/integration/api/chats-history.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/(ChatInput|Projects)\/ProjectPicker\.client\.vue$/,
       tests: historyProjectsTests,
     },
     {

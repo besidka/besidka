@@ -7,6 +7,7 @@
       :subheadline="hero.subheadline"
       :primary-cta="hero.primaryCta"
       :secondary-cta="hero.secondaryCta"
+      :guide-link="hero.guideLink"
     />
 
     <div id="content" class="h-24 -mt-24"/>
@@ -25,7 +26,11 @@
 import type { FaqItem } from '~/utils/landing-jsonld'
 import { buildLandingGraphLd } from '~/utils/landing-jsonld'
 
-const { siteName, themeColor } = useAppConfig()
+const {
+  siteName,
+  themeColor,
+  description: entityDescription,
+} = useAppConfig()
 
 type HomeData = Record<string, unknown>
 
@@ -78,7 +83,7 @@ const description = computed<string>(() => page.value?.description ?? '')
 const fullTitle = computed<string>(() => {
   const chunk = page.value?.title
 
-  return chunk ? `${siteName} — ${chunk}` : siteName
+  return chunk ? `${siteName}: ${chunk}` : siteName
 })
 
 useSeoMeta({
@@ -114,7 +119,7 @@ useHead({
       innerHTML: () => JSON.stringify(buildLandingGraphLd({
         baseUrl: siteOrigin,
         siteName: siteName as string,
-        description: description.value,
+        entityDescription,
         faqs: faqs.value,
       })).replace(/</g, '\\u003c'),
     },

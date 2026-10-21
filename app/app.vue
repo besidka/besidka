@@ -7,6 +7,7 @@
   <NuxtLoadingIndicator />
   <div class="flex flex-col h-svh overflow-hidden">
     <div
+      class="js-page-content"
       :class="{
         'contents': $route.name === 'chats-slug',
         [`

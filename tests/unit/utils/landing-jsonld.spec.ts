@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildFaqPageLd,
   buildGuidePageLd,
+  buildKeyGuidePageLd,
   buildLandingGraphLd,
   buildLandingLdIds,
   buildOrganizationLd,
@@ -14,7 +15,7 @@ const BASE_URL = 'https://besidka.com'
 const INPUT = {
   baseUrl: BASE_URL,
   siteName: 'Besidka',
-  description: 'An open-source AI chat application.',
+  entityDescription: 'An open-source AI chat application.',
 }
 
 const FAQS = [
@@ -94,6 +95,13 @@ describe('buildSoftwareApplicationLd', () => {
     expect(application.alternateName).toContain('Бесідка AI')
   })
 
+  it('links the source repository through sameAs, not codeRepository', () => {
+    const application = buildSoftwareApplicationLd(INPUT)
+
+    expect(application.sameAs).toEqual(['https://github.com/besidka/besidka'])
+    expect(application).not.toHaveProperty('codeRepository')
+  })
+
   it('joins the screenshot URL onto siteUrl without a double slash', () => {
     const application = buildSoftwareApplicationLd(INPUT)
     const [, pathAfterScheme] = application.screenshot.split('://')
@@ -126,6 +134,18 @@ describe('buildFaqPageLd', () => {
     ])
   })
 
+  it('strips markdown links from the answer text', () => {
+    const faqPage = buildFaqPageLd([
+      {
+        question: 'Can I start for free?',
+        answer: 'Yes. [How to get a key](/guides/gemini-api-key) has steps.',
+      },
+    ])
+
+    expect(faqPage.mainEntity[0].acceptedAnswer.text)
+      .toBe('Yes. How to get a key has steps.')
+  })
+
   it('omits @id and isPartOf when called without ids', () => {
     const faqPage = buildFaqPageLd(FAQS)
 
@@ -143,6 +163,30 @@ describe('buildFaqPageLd', () => {
 })
 
 describe('buildLandingGraphLd', () => {
+  it('uses entityDescription for the Organization, WebSite and '
+    + 'SoftwareApplication descriptions, so a page meta description written '
+    + 'as a call to action never becomes the entity description', () => {
+    const entityDescription = 'Besidka is an open-source AI chat app.'
+    const graphLd = buildLandingGraphLd({
+      ...INPUT,
+      entityDescription,
+    })
+    const entityDescriptions = graphLd['@graph']
+      .filter((node) => {
+        return ['Organization', 'WebSite', 'SoftwareApplication']
+          .includes(node['@type'] as string)
+      })
+      .map((node) => {
+        return node.description
+      })
+
+    expect(entityDescriptions).toEqual([
+      entityDescription,
+      entityDescription,
+      entityDescription,
+    ])
+  })
+
   it('emits exactly one @context at the top level and none per node', () => {
     const graphLd = buildLandingGraphLd({ ...INPUT, faqs: FAQS })
 
@@ -233,6 +277,16 @@ describe('buildGuidePageLd', () => {
     expect(homeIds).toContain(articleLd.about['@id'])
   })
 
+  it('credits the organization as author of the article', () => {
+    const articleLd = buildGuidePageLd(GUIDE_INPUT)
+    const graphLd = buildLandingGraphLd(INPUT)
+    const organization = graphLd['@graph'].find((node) => {
+      return node['@type'] === 'Organization'
+    })
+
+    expect(articleLd.author).toEqual({ '@id': organization!['@id'] })
+  })
+
   it('omits dateModified when no date is given', () => {
     const articleLd = buildGuidePageLd({
       ...GUIDE_INPUT,
@@ -240,5 +294,280 @@ describe('buildGuidePageLd', () => {
     })
 
     expect(articleLd).not.toHaveProperty('dateModified')
+  })
+})
+
+describe('buildKeyGuidePageLd', () => {
+  const KEY_GUIDE_INPUT = {
+    baseUrl: BASE_URL,
+    url: 'https://besidka.com/guides/gemini-api-key',
+    headline: 'How to get a Gemini API key',
+    description: 'Create a free Gemini API key in Google AI Studio.',
+    dateModified: '2026-10-20',
+  }
+
+  const VIDEO = {
+    src: '/videos/gemini-api-key.mp4',
+    poster: '/videos/gemini-api-key.webp',
+    duration: 'PT1M12S',
+    uploadDate: '2026-10-20',
+  }
+
+  it('emits a single-node graph with only the article when there is no '
+    + 'video, and never placeholder video values', () => {
+    const keyGuideLd = buildKeyGuidePageLd(KEY_GUIDE_INPUT)
+
+    expect(keyGuideLd['@context']).toBe('https://schema.org')
+    expect(keyGuideLd['@graph']).toHaveLength(1)
+
+    const [article] = keyGuideLd['@graph']
+
+    expect(article!['@type']).toBe('TechArticle')
+    expect(article!['@id'])
+      .toBe('https://besidka.com/guides/gemini-api-key#article')
+    expect(article).not.toHaveProperty('video')
+    expect(JSON.stringify(keyGuideLd)).not.toContain('VideoObject')
+  })
+
+  it('shares the article node of buildGuidePageLd, minus its own context',
+    () => {
+      const keyGuideLd = buildKeyGuidePageLd(KEY_GUIDE_INPUT)
+      const { '@context': _context, ...expectedArticle }
+        = buildGuidePageLd(KEY_GUIDE_INPUT)
+
+      expect(keyGuideLd['@graph'][0]).toEqual(expectedArticle)
+    })
+
+  it('references the same website, organization and software @ids the '
+    + 'home page graph declares', () => {
+    const [article] = buildKeyGuidePageLd(KEY_GUIDE_INPUT)['@graph']
+    const homeIds = new Set(buildLandingGraphLd(INPUT)['@graph'].map((node) => {
+      return node['@id']
+    }))
+
+    expect(homeIds).toContain((article!.isPartOf as { '@id': string })['@id'])
+    expect(homeIds).toContain((article!.publisher as { '@id': string })['@id'])
+    expect(homeIds).toContain((article!.about as { '@id': string })['@id'])
+  })
+
+  it('adds a VideoObject and links it from the article when a complete '
+    + 'video is given', () => {
+    const keyGuideLd = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: VIDEO,
+    })
+    const [article, video] = keyGuideLd['@graph']
+
+    expect(keyGuideLd['@graph']).toHaveLength(2)
+    expect(article!.video).toEqual({
+      '@id': 'https://besidka.com/guides/gemini-api-key#video',
+    })
+    expect(video).toEqual({
+      '@type': 'VideoObject',
+      '@id': 'https://besidka.com/guides/gemini-api-key#video',
+      'name': 'How to get a Gemini API key (video)',
+      'description': 'Create a free Gemini API key in Google AI Studio.',
+      'thumbnailUrl': 'https://besidka.com/videos/gemini-api-key.webp',
+      'uploadDate': '2026-10-20T00:00:00+00:00',
+      'duration': 'PT1M12S',
+      'contentUrl': 'https://besidka.com/videos/gemini-api-key.mp4',
+      'inLanguage': 'en',
+    })
+  })
+
+  it('keeps the cache-busting query in absolute contentUrl and '
+    + 'thumbnailUrl', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: {
+        ...VIDEO,
+        src: '/videos/key-guide-exa.mp4?v=2',
+        poster: '/key-guides/exa.webp?v=2',
+      },
+    })['@graph']
+
+    expect(video!.contentUrl)
+      .toBe('https://besidka.com/videos/key-guide-exa.mp4?v=2')
+    expect(video!.thumbnailUrl)
+      .toBe('https://besidka.com/key-guides/exa.webp?v=2')
+  })
+
+  it('emits chapter markers as Clip parts that end at the next chapter '
+    + 'or the video end', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: {
+        ...VIDEO,
+        duration: 'PT20S',
+        markers: [
+          { time: '0:12', label: 'Copy your key' },
+          { time: '0:00', label: 'Open the page' },
+        ],
+      },
+    })['@graph']
+
+    expect(video!.hasPart).toEqual([
+      {
+        '@type': 'Clip',
+        'name': 'Open the page',
+        'url': 'https://besidka.com/guides/gemini-api-key?t=0',
+        'startOffset': 0,
+        'endOffset': 12,
+      },
+      {
+        '@type': 'Clip',
+        'name': 'Copy your key',
+        'url': 'https://besidka.com/guides/gemini-api-key?t=12',
+        'startOffset': 12,
+        'endOffset': 20,
+      },
+    ])
+  })
+
+  it('gives every Clip a url that is the page url plus ?t=startOffset',
+    () => {
+      const [, video] = buildKeyGuidePageLd({
+        ...KEY_GUIDE_INPUT,
+        video: {
+          ...VIDEO,
+          duration: 'PT34S',
+          markers: [
+            { time: '0:00', label: 'Get a key' },
+            { time: '0:03', label: 'Create' },
+            { time: '0:07', label: 'Name' },
+          ],
+        },
+      })['@graph']
+      const clips = video!.hasPart as Array<Record<string, unknown>>
+
+      expect(clips).toHaveLength(3)
+
+      for (const clip of clips) {
+        expect(clip.url)
+          .toBe(`${KEY_GUIDE_INPUT.url}?t=${clip.startOffset}`)
+      }
+    })
+
+  it('builds the Clip url from the page url without extra query or hash',
+    () => {
+      const [, video] = buildKeyGuidePageLd({
+        ...KEY_GUIDE_INPUT,
+        url: 'https://besidka.com/guides/gemini-api-key?utm=x#top',
+        video: {
+          ...VIDEO,
+          markers: [{ time: '0:07', label: 'Name' }],
+        },
+      })['@graph']
+
+      expect(video!.hasPart).toEqual([
+        expect.objectContaining({
+          url: 'https://besidka.com/guides/gemini-api-key?t=7',
+        }),
+      ])
+    })
+
+  it.each([
+    ['2026-10-20', '2026-10-20T00:00:00+00:00'],
+    ['2026-10-20T09:30:00+02:00', '2026-10-20T09:30:00+02:00'],
+    ['2026-10-20T09:30:00Z', '2026-10-20T09:30:00Z'],
+  ])('emits uploadDate %s as %s', (uploadDate, expected) => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, uploadDate },
+    })['@graph']
+
+    expect(video!.uploadDate).toBe(expected)
+    expect(String(video!.uploadDate))
+      .toMatch(/T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/)
+  })
+
+  it('omits the VideoObject instead of emitting an invalid uploadDate', () => {
+    const keyGuideLd = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, uploadDate: '2026-10-20T09:30:00' },
+    })
+
+    expect(keyGuideLd['@graph']).toHaveLength(1)
+    expect(JSON.stringify(keyGuideLd)).not.toContain('VideoObject')
+  })
+
+  it('omits hasPart when the video has no markers', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, markers: [] },
+    })['@graph']
+
+    expect(video).not.toHaveProperty('hasPart')
+  })
+
+  it('names the VideoObject after the video caption when one is set', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, caption: 'Watch the key being created' },
+    })['@graph']
+
+    expect(video!.name).toBe('Watch the key being created')
+  })
+
+  it('omits the VideoObject instead of throwing on an invalid video URL', () => {
+    const invalidBaseLd = () => buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, src: 'http://[invalid' },
+    })
+
+    expect(invalidBaseLd).not.toThrow()
+
+    const keyGuideLd = invalidBaseLd()
+
+    expect(keyGuideLd['@graph']).toHaveLength(1)
+    expect(keyGuideLd['@graph'][0]).not.toHaveProperty('video')
+  })
+
+  it('omits the VideoObject for a non-web video URL scheme', () => {
+    const keyGuideLd = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, src: 'javascript:alert(1)' },
+    })
+
+    expect(keyGuideLd['@graph']).toHaveLength(1)
+    expect(JSON.stringify(keyGuideLd)).not.toContain('javascript:')
+  })
+
+  it('keeps already-absolute video URLs as they are', () => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: {
+        ...VIDEO,
+        src: 'https://cdn.besidka.com/key.mp4',
+        poster: 'https://cdn.besidka.com/key.webp',
+      },
+    })['@graph']
+
+    expect(video!.contentUrl).toBe('https://cdn.besidka.com/key.mp4')
+    expect(video!.thumbnailUrl).toBe('https://cdn.besidka.com/key.webp')
+  })
+
+  it.each([
+    ['src'],
+    ['poster'],
+    ['duration'],
+    ['uploadDate'],
+  ])('omits the VideoObject when the video has no %s', (missingKey) => {
+    const keyGuideLd = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, [missingKey]: undefined },
+    })
+
+    expect(keyGuideLd['@graph']).toHaveLength(1)
+    expect(keyGuideLd['@graph'][0]).not.toHaveProperty('video')
+  })
+
+  it('omits the VideoObject for a null video', () => {
+    const keyGuideLd = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: null,
+    })
+
+    expect(keyGuideLd['@graph']).toHaveLength(1)
   })
 })

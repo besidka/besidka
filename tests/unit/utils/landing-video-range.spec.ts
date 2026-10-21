@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   parseRangeHeader,
+  parseRangeSpec,
 } from '../../../server/utils/landing/video'
 
 describe('parseRangeHeader', () => {
@@ -42,8 +43,26 @@ describe('parseRangeHeader', () => {
     expect(parseRangeHeader('bytes=1000-1000', 1000)).toBe('invalid')
   })
 
-  it('returns invalid when end equals size', () => {
-    expect(parseRangeHeader('bytes=0-1000', 1000)).toBe('invalid')
+  it('clamps an end equal to the size to the last byte', () => {
+    const result = parseRangeHeader('bytes=0-1000', 1000)
+
+    expect(result).toEqual({ offset: 0, length: 1000, end: 999 })
+  })
+
+  it('clamps an end far beyond the size to the last byte', () => {
+    const result = parseRangeHeader('bytes=900-99999999', 1000)
+
+    expect(result).toEqual({ offset: 900, length: 100, end: 999 })
+  })
+
+  it('clamps an open-ended range to the last byte', () => {
+    const result = parseRangeHeader('bytes=999-', 1000)
+
+    expect(result).toEqual({ offset: 999, length: 1, end: 999 })
+  })
+
+  it('returns invalid when start is beyond the size with an open end', () => {
+    expect(parseRangeHeader('bytes=9000-', 1000)).toBe('invalid')
   })
 
   it('returns invalid for garbage input', () => {
@@ -61,4 +80,39 @@ describe('parseRangeHeader', () => {
   it('returns invalid for suffix range with zero suffix', () => {
     expect(parseRangeHeader('bytes=-0', 1000)).toBe('invalid')
   })
+})
+
+describe('parseRangeSpec', () => {
+  it('returns null when no header is provided', () => {
+    expect(parseRangeSpec(null)).toBeNull()
+    expect(parseRangeSpec('')).toBeNull()
+  })
+
+  it('parses a bounded range', () => {
+    expect(parseRangeSpec('bytes=0-99'))
+      .toEqual({ kind: 'bounded', start: 0, end: 99 })
+  })
+
+  it('parses an open-ended range', () => {
+    expect(parseRangeSpec('bytes=500-'))
+      .toEqual({ kind: 'bounded', start: 500, end: null })
+  })
+
+  it('parses a suffix range', () => {
+    expect(parseRangeSpec('bytes=-200'))
+      .toEqual({ kind: 'suffix', suffix: 200 })
+  })
+
+  it('does not need the object size to accept a huge end', () => {
+    expect(parseRangeSpec('bytes=0-99999999'))
+      .toEqual({ kind: 'bounded', start: 0, end: 99999999 })
+  })
+
+  it('returns invalid for unknown units, multi-range and reversed ranges',
+    () => {
+      expect(parseRangeSpec('items=0-10')).toBe('invalid')
+      expect(parseRangeSpec('bytes=0-1,5-6')).toBe('invalid')
+      expect(parseRangeSpec('bytes=10-5')).toBe('invalid')
+      expect(parseRangeSpec('bytes=-0')).toBe('invalid')
+    })
 })

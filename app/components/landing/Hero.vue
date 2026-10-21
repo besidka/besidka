@@ -70,6 +70,16 @@
         </NuxtLink>
       </div>
 
+      <NuxtLink
+        v-if="guideLink"
+        :to="guideLink.href"
+        class="link link-hover text-sm text-base-content/70"
+        data-testid="landing-hero-guide-link"
+        @click="track('cta_click', { target: 'hero-key-guide' })"
+      >
+        {{ guideLink.label }}
+      </NuxtLink>
+
       <div
         class="flex flex-wrap items-center justify-center gap-2 mt-1"
         aria-label="Project highlights"
@@ -102,10 +112,12 @@ withDefaults(defineProps<{
   eyebrow?: string
   primaryCta: { label: string, href: string, icon?: string }
   secondaryCta?: { label: string, href: string, icon?: string }
+  guideLink?: { label: string, href: string }
 }>(), {
   subheadline: undefined,
   eyebrow: undefined,
   secondaryCta: undefined,
+  guideLink: undefined,
 })
 
 const { track } = useLandingAnalytics()

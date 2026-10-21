@@ -26,6 +26,9 @@ vi.mock('plyr', () => {
     handlers: Record<string, ((...args: unknown[]) => void)[]> = {}
     source: unknown = null
     destroyed = false
+    currentTime = 0
+    duration = 100
+    ended = false
 
     constructor(_element: unknown, options: unknown) {
       if (mocks.shouldThrow) {
@@ -158,6 +161,108 @@ describe('VideoPlayer.client.vue', () => {
       })
     })
 
+  it('reports a watch session on pause with the user trigger', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: false },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      emit: (event: string) => void
+    }
+
+    player.emit('play')
+
+    for (const second of [0.5, 1, 1.5, 2]) {
+      player.currentTime = second
+      player.emit('timeupdate')
+    }
+
+    player.emit('pause')
+
+    expect(mocks.track).toHaveBeenCalledWith(
+      'video_watch',
+      {
+        target: 'demo',
+        value: 2,
+        trigger: 'user',
+        watchedSeconds: 2,
+        durationSeconds: 100,
+        completionPercent: 2,
+        endReason: 'pause',
+      },
+      { keepalive: false },
+    )
+  })
+
+  it('reports ended when pause fires at the end of playback', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: false },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      duration: number
+      ended: boolean
+      emit: (event: string) => void
+    }
+
+    player.duration = 3
+    player.emit('play')
+
+    for (const second of [1, 2, 3]) {
+      player.currentTime = second
+      player.emit('timeupdate')
+    }
+
+    player.ended = true
+    player.emit('pause')
+    player.emit('ended')
+
+    const watchCalls = mocks.track.mock.calls.filter((call) => {
+      return call[0] === 'video_watch'
+    })
+
+    expect(watchCalls).toHaveLength(1)
+    expect(watchCalls[0]![1]).toMatchObject({
+      endReason: 'ended',
+      completionPercent: 100,
+    })
+  })
+
+  it('tracks a key guide play when a guide provider is set', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: {
+        src: '/videos/key.mp4',
+        thumbnails: false,
+        guideProvider: 'google',
+      },
+    })
+
+    await flushPromises()
+
+    mocks.instances[0]!.emit('play')
+    mocks.instances[0]!.emit('ended')
+
+    expect(mocks.track).toHaveBeenCalledWith('key_guide_video_play', {
+      target: 'google',
+      value: 1,
+      trigger: 'user',
+    })
+    expect(mocks.track).toHaveBeenCalledWith(
+      'video_complete',
+      { target: 'google' },
+    )
+    expect(mocks.track).not.toHaveBeenCalledWith(
+      'video_play',
+      expect.anything(),
+    )
+  })
+
   it('tracks video_play once and video_complete on ended', async () => {
     await mountSuspended(VideoPlayer, {
       props: { src: '/videos/demo.mp4', thumbnails: false },
@@ -176,42 +281,228 @@ describe('VideoPlayer.client.vue', () => {
     })
 
     expect(playCalls).toHaveLength(1)
-    expect(mocks.track).toHaveBeenCalledWith('video_play', { target: 'demo' })
+    expect(mocks.track).toHaveBeenCalledWith('video_play', {
+      target: 'demo',
+      value: 1,
+      trigger: 'user',
+    })
     expect(mocks.track).toHaveBeenCalledWith(
       'video_complete',
       { target: 'demo' },
     )
   })
 
-  it('requests thumbnail generation from the default-quality source',
+  it('sets preload to metadata on the video element', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: true },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('video').attributes('preload')).toBe('metadata')
+  })
+
+  it('restores preload metadata when Plyr swaps the media element',
     async () => {
-      await mountSuspended(VideoPlayer, {
-        props: {
-          src: '/videos/demo.mp4',
-          qualities: [
-            { src: '/videos/demo-1080.mp4', size: 1080 },
-            { src: '/videos/demo.mp4', size: 720 },
-          ],
-          thumbnails: true,
-        },
+      const wrapper = await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/demo.mp4' },
       })
 
       await flushPromises()
 
-      expect(mocks.generate).toHaveBeenCalledWith(
-        '/videos/demo.mp4',
-        { count: 12 },
-      )
+      const video = wrapper.find('video').element
+
+      video.removeAttribute('preload')
+      mocks.instances[0]!.emit('ready')
+
+      expect(video.preload).toBe('metadata')
     })
 
-  it('skips thumbnail generation when disabled', async () => {
+  it('does not generate thumbnails on mount', async () => {
     await mountSuspended(VideoPlayer, {
-      props: { src: '/videos/demo.mp4', thumbnails: false },
+      props: { src: '/videos/demo.mp4', thumbnails: true },
     })
 
     await flushPromises()
 
     expect(mocks.generate).not.toHaveBeenCalled()
+  })
+
+  it('does not generate thumbnails on play', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: true },
+    })
+
+    await flushPromises()
+
+    mocks.instances[0]!.emit('play')
+    mocks.instances[0]!.emit('play')
+    await flushPromises()
+
+    expect(mocks.generate).not.toHaveBeenCalled()
+  })
+
+  it('requests thumbnails from the default-quality source with an abort '
+    + 'signal on progress bar pointerenter', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: {
+        src: '/videos/demo.mp4',
+        qualities: [
+          { src: '/videos/demo-1080.mp4', size: 1080 },
+          { src: '/videos/demo.mp4', size: 720 },
+        ],
+        thumbnails: true,
+      },
+    })
+
+    await flushPromises()
+
+    const progress = document.createElement('div')
+
+    progress.className = 'plyr__progress'
+    wrapper.find('.js-landing-player').element.append(progress)
+
+    mocks.instances[0]!.emit('ready')
+    progress.dispatchEvent(new Event('pointerenter'))
+    await flushPromises()
+
+    expect(mocks.generate).toHaveBeenCalledTimes(1)
+    expect(mocks.generate).toHaveBeenCalledWith(
+      '/videos/demo.mp4',
+      { count: 12, signal: expect.any(AbortSignal) },
+    )
+  })
+
+  it('aborts thumbnail generation on unmount', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: true },
+    })
+
+    await flushPromises()
+
+    const progress = document.createElement('div')
+
+    progress.className = 'plyr__progress'
+    wrapper.find('.js-landing-player').element.append(progress)
+
+    mocks.instances[0]!.emit('ready')
+    progress.dispatchEvent(new Event('pointerenter'))
+    await flushPromises()
+
+    const { signal } = mocks.generate.mock.calls[0]![1] as {
+      signal: AbortSignal
+    }
+
+    expect(signal.aborted).toBe(false)
+
+    wrapper.unmount()
+
+    expect(signal.aborted).toBe(true)
+  })
+
+  it('generates thumbnails once on the first progress bar pointerenter',
+    async () => {
+      const wrapper = await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/demo.mp4', thumbnails: true },
+      })
+
+      await flushPromises()
+
+      const progress = document.createElement('div')
+
+      progress.className = 'plyr__progress'
+      wrapper.find('.js-landing-player').element.append(progress)
+
+      mocks.instances[0]!.emit('ready')
+
+      progress.dispatchEvent(new Event('pointerenter'))
+      progress.dispatchEvent(new Event('pointerenter'))
+      await flushPromises()
+
+      expect(mocks.generate).toHaveBeenCalledTimes(1)
+    })
+
+  it('generates thumbnails when the progress bar receives focus',
+    async () => {
+      const wrapper = await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/demo.mp4', thumbnails: true },
+      })
+
+      await flushPromises()
+
+      const progress = document.createElement('div')
+
+      progress.className = 'plyr__progress'
+      wrapper.find('.js-landing-player').element.append(progress)
+
+      mocks.instances[0]!.emit('ready')
+
+      progress.dispatchEvent(new Event('focusin'))
+      await flushPromises()
+
+      expect(mocks.generate).toHaveBeenCalledTimes(1)
+    })
+
+  it('skips thumbnail generation when disabled', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', thumbnails: false },
+    })
+
+    await flushPromises()
+
+    const progress = document.createElement('div')
+
+    progress.className = 'plyr__progress'
+    wrapper.find('.js-landing-player').element.append(progress)
+
+    mocks.instances[0]!.emit('ready')
+    progress.dispatchEvent(new Event('pointerenter'))
+    await flushPromises()
+
+    expect(mocks.generate).not.toHaveBeenCalled()
+  })
+
+  it('shows the poster under the spinner while loading', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', poster: '/videos/demo.webp' },
+    })
+
+    await flushPromises()
+
+    const poster = wrapper.get('[data-testid="player-loading-poster"]')
+
+    expect(poster.attributes('src')).toBe('/videos/demo.webp')
+    expect(poster.attributes('alt')).toBe('')
+    expect(poster.classes()).toContain('object-cover')
+    expect(wrapper.find('.skeleton').exists()).toBe(false)
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+  })
+
+  it('keeps the grey skeleton while loading without a poster', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4' },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="player-loading-poster"]').exists())
+      .toBe(false)
+    expect(wrapper.find('.skeleton').exists()).toBe(true)
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+  })
+
+  it('removes the loading overlay once Plyr is ready', async () => {
+    const wrapper = await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/demo.mp4', poster: '/videos/demo.webp' },
+    })
+
+    await flushPromises()
+    mocks.instances[0]!.emit('ready')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="player-loading-poster"]').exists())
+      .toBe(false)
+    expect(wrapper.find('.animate-spin').exists()).toBe(false)
   })
 
   it('falls back to native controls when Plyr throws', async () => {
@@ -225,5 +516,126 @@ describe('VideoPlayer.client.vue', () => {
 
     expect(mocks.instances).toHaveLength(0)
     expect(wrapper.find('video').element.controls).toBe(true)
+  })
+
+  it('seeks to startAt once the player is ready without playing',
+    async () => {
+      await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/key.mp4', thumbnails: false, startAt: 7 },
+      })
+
+      await flushPromises()
+
+      const player = mocks.instances[0] as unknown as {
+        currentTime: number
+        emit: (event: string) => void
+      }
+
+      player.emit('ready')
+
+      expect(player.currentTime).toBe(7)
+      expect(mocks.track).not.toHaveBeenCalledWith(
+        'key_guide_video_play',
+        expect.anything(),
+      )
+    })
+
+  it('waits for loadedmetadata when the duration is not known at ready',
+    async () => {
+      await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/key.mp4', thumbnails: false, startAt: 12 },
+      })
+
+      await flushPromises()
+
+      const player = mocks.instances[0] as unknown as {
+        currentTime: number
+        duration: number
+        emit: (event: string) => void
+      }
+
+      player.duration = 0
+      player.emit('ready')
+
+      expect(player.currentTime).toBe(0)
+
+      player.duration = 34
+      player.emit('loadedmetadata')
+
+      expect(player.currentTime).toBe(12)
+    })
+
+  it('applies startAt only once', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/key.mp4', thumbnails: false, startAt: 7 },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      emit: (event: string) => void
+    }
+
+    player.emit('ready')
+    player.currentTime = 20
+    player.emit('loadedmetadata')
+
+    expect(player.currentTime).toBe(20)
+  })
+
+  it('treats startAt 0 as a valid start', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/key.mp4', thumbnails: false, startAt: 0 },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      emit: (event: string) => void
+    }
+
+    player.currentTime = 5
+    player.emit('ready')
+
+    expect(player.currentTime).toBe(0)
+  })
+
+  it('does not seek when startAt is not below the real duration',
+    async () => {
+      await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/key.mp4', thumbnails: false, startAt: 100 },
+      })
+
+      await flushPromises()
+
+      const player = mocks.instances[0] as unknown as {
+        currentTime: number
+        emit: (event: string) => void
+      }
+
+      player.emit('ready')
+
+      expect(player.currentTime).toBe(0)
+    })
+
+  it('does not seek without startAt', async () => {
+    await mountSuspended(VideoPlayer, {
+      props: { src: '/videos/key.mp4', thumbnails: false },
+    })
+
+    await flushPromises()
+
+    const player = mocks.instances[0] as unknown as {
+      currentTime: number
+      emit: (event: string) => void
+    }
+
+    player.currentTime = 3
+    player.emit('ready')
+    player.emit('loadedmetadata')
+
+    expect(player.currentTime).toBe(3)
   })
 })

@@ -76,6 +76,11 @@ useSeoMeta({
 })
 
 const { client, errorCodes, options, fetchSession } = useAuth()
+const route = useRoute()
+
+const safeNext = computed<string | null>(() => {
+  return resolveSafeNextPath(route.query.next)
+})
 
 const otpField = ref<InstanceType<typeof UiFormOtp> | null>(null)
 
@@ -142,7 +147,7 @@ async function handleVerifyError(error: { code?: string, message?: string }) {
       'Sign-in attempt timed out',
       'Please sign in again to start a new verification.',
     )
-    await navigateTo('/signin')
+    await navigateTo(appendNextToPath('/signin', safeNext.value))
 
     return
   }
@@ -175,7 +180,7 @@ async function verify() {
   }
 
   await fetchSession()
-  await navigateTo(options.redirectUserTo)
+  await navigateTo(safeNext.value ?? options.redirectUserTo)
 
   pending.value = false
 }

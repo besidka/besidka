@@ -1,8 +1,8 @@
 ---
 title: "BYOK: use GPT, Claude and Gemini with your own API key"
-description: What BYOK (bring your own key) means, how to use GPT, Claude, Gemini and other models with your own API key in Besidka, how cost works, and where keys are stored.
-updatedAt: 2026-10-11
-summary: BYOK means you paste an API key from an AI provider such as OpenAI, Anthropic or Google into Besidka. Your chats run on that key, the provider bills you directly at its published API rates, and Besidka charges nothing on top.
+description: "How to use GPT, Claude and Gemini with your own API key in Besidka, a BYOK AI chat app: a free Gemini API key without a card, adding keys, cost and key storage."
+updatedAt: 2026-10-20
+summary: 'Besidka is a BYOK AI chat app: you paste an API key from an AI provider such as OpenAI, Anthropic or Google into Besidka. Your chats run on that key, the provider bills you directly at its published API rates, and Besidka charges nothing on top. A free Gemini key from Google AI Studio needs no card.'
 ---
 
 ## What BYOK means
@@ -15,12 +15,36 @@ In Besidka that means:
 - Each message is billed by the provider to your own account, at the provider's published API rates.
 - Besidka has no subscription, no seat fee and no markup on provider usage.
 
-BYOK is an alternative to a flat monthly subscription such as ChatGPT Plus. A ChatGPT subscription and OpenAI API usage are two separate products with separate billing, so an API key is needed either way for a BYOK app, and a subscription is not.
+BYOK is an alternative to a flat monthly subscription such as ChatGPT Go or ChatGPT Plus. With a subscription you pay a fixed fee whatever you use. With your own key you pay for each message and can see its price.
+
+## Using ChatGPT with your own API key
+
+The ChatGPT app itself does not accept an API key. A ChatGPT subscription and OpenAI API billing are two separate products with separate accounts and billing, so paying for one gives you nothing on the other.
+
+What does work: an OpenAI API key lets a BYOK app such as Besidka call the same GPT models that ChatGPT uses, and OpenAI bills you per use. You pay for credit in advance in the OpenAI developer console. As of 2026-10-20 the minimum purchase is $5 ([OpenAI help](https://help.openai.com/en/articles/8264778)), and there is no standing free credit.
+
+What does not carry over: features that belong to the ChatGPT app, such as its voice mode and its own apps. Besidka has its own chat features, listed on the [home page](/).
+
+To start, create a key on the [OpenAI API keys page](https://platform.openai.com/api-keys) and follow the steps below.
 
 ## What you need
 
 - A Besidka account, free, with email and password, Google or GitHub sign-in.
-- An API key from at least one supported provider, with billing or prepaid credit set up on that provider's side. Most providers need a payment method before the API accepts requests.
+- An API key from at least one supported provider. Most providers need a payment method or prepaid credit on their side before the API accepts requests. The exception is Google AI Studio, which gives you a Gemini API key on a free tier without a card.
+
+## How to get a free Gemini API key without a card
+
+Google AI Studio is the easiest way to get a first key. You need a Google account. You do not need a card or a billing account. Step-by-step guide with a video: [How to get a Google AI Studio (Gemini) API key](/guides/gemini-api-key).
+
+1. Open the [Google AI Studio API keys page](https://aistudio.google.com/apikey).
+2. Sign in with a Google account and accept the terms if asked.
+3. Create a key, or copy the one AI Studio created for you after you accepted the terms.
+4. In Besidka, open **Profile → API Keys** and find the **Google AI Studio** card. Paste the key and save.
+5. Open a new chat and pick a Gemini model.
+
+**Free tier caveat.** On the free tier, Google may use your prompts and responses to improve its products. Do not send anything sensitive on the free tier. Moving to the paid tier, which needs a billing account (new accounts start on prepaid credit), stops that, because Google does not use paid-tier content to improve its products. The free tier also has rate limits, so heavy use will hit them.
+
+Checked 2026-10-20 against Google's [billing](https://ai.google.dev/gemini-api/docs/billing), [terms](https://ai.google.dev/gemini-api/terms) and [pricing](https://ai.google.dev/gemini-api/docs/pricing) pages. Those terms can change, so read them before you rely on them.
 
 ## Step by step
 
@@ -88,6 +112,7 @@ Instead of, or alongside, direct provider keys, you can connect your own account
 - Gateways are always your choice. Direct provider keys are the default and are never routed through a gateway.
 - When you use a gateway model, the gateway bills you at its own rates, which can differ from the provider's direct prices.
 - A gateway is useful when you already have an account there, or want one key for many providers.
+- OpenRouter also offers some free models, with IDs ending in `:free`. As of 2026-10-20 they are limited to 50 requests a day if you have bought less than $10 of credit and 1,000 a day with $10 or more, at 20 requests a minute ([OpenRouter limits](https://openrouter.ai/docs/api-reference/limits)). OpenRouter charges a 5.5% fee when you buy credit ([pricing](https://openrouter.ai/pricing)).
 
 ## Get started
 

@@ -11,6 +11,7 @@ import {
   TEST_IMAGE_PROMPT,
   TEST_IMAGE_USAGE,
 } from '~~/server/utils/chats/test/image-fixture'
+import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture'
 import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
 
 const shortMessage = 'Test message'
@@ -109,7 +110,9 @@ export default defineEventHandler(async (event) => {
             : []),
           {
             type: 'text',
-            text,
+            text: role === 'assistant' && effectiveScenario === 'mermaid'
+              ? TEST_MERMAID_MESSAGE
+              : text,
           } as TextUIPart,
         ],
         tools: [],

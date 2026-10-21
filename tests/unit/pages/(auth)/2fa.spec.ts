@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../../app/composables/messages'
 import TwoFactorPage from '../../../../app/pages/(auth)/2fa.vue'
@@ -54,6 +55,20 @@ mockNuxtImport('useAuth', () => {
 
 mockNuxtImport('navigateTo', () => mocks.navigateTo)
 
+const mockRoute = reactive<{
+  query: Record<string, unknown>
+  params: Record<string, unknown>
+  path: string
+}>({
+  query: {},
+  params: {},
+  path: '/2fa',
+})
+
+mockNuxtImport('useRoute', () => {
+  return () => mockRoute
+})
+
 async function flushPromises() {
   for (let tick = 0; tick < 6; tick += 1) {
     await Promise.resolve()
@@ -72,6 +87,7 @@ describe('two-factor verification page', () => {
     mocks.verifyBackupCode.mockClear()
     mocks.fetchSession.mockClear()
     mocks.navigateTo.mockClear()
+    mockRoute.query = {}
     mocks.verifyTotp.mockResolvedValue({
       data: { status: true },
       error: null,
@@ -223,5 +239,51 @@ describe('two-factor verification page', () => {
         'Please sign in again to start a new verification.',
       )
       expect(mocks.navigateTo).toHaveBeenCalledWith('/signin')
+    })
+  it('navigates to the safe next value after a successful verification',
+    async () => {
+      mockRoute.query = { next: '/profile/keys?provider=google' }
+
+      const wrapper = await mountSuspended(TwoFactorPage)
+
+      await codeInput(wrapper).setValue('123456')
+      await flushPromises()
+
+      expect(mocks.navigateTo)
+        .toHaveBeenCalledWith('/profile/keys?provider=google')
+    })
+
+  it('ignores an unsafe next value after a successful verification',
+    async () => {
+      mockRoute.query = { next: '//evil.com' }
+
+      const wrapper = await mountSuspended(TwoFactorPage)
+
+      await codeInput(wrapper).setValue('123456')
+      await flushPromises()
+
+      expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/new')
+      expect(mocks.navigateTo).not.toHaveBeenCalledWith('//evil.com')
+    })
+
+  it('keeps the safe next value when sending the person back to sign in',
+    async () => {
+      mockRoute.query = { next: '/profile/keys?provider=google' }
+      mocks.verifyTotp.mockResolvedValue({
+        data: null,
+        error: errorCodes.INVALID_TWO_FACTOR_COOKIE,
+      })
+
+      const wrapper = await mountSuspended(TwoFactorPage)
+
+      await codeInput(wrapper).setValue('123456')
+      await flushPromises()
+
+      const [target] = mocks.navigateTo.mock.calls[0] as unknown as [string]
+      const parsedTarget = new URL(target, 'http://localhost')
+
+      expect(parsedTarget.pathname).toBe('/signin')
+      expect(parsedTarget.searchParams.get('next'))
+        .toBe('/profile/keys?provider=google')
     })
 })

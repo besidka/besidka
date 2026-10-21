@@ -1,6 +1,6 @@
 export default defineAppConfig({
   siteName: 'Besidka',
-  description: 'Besidka is an open-source, self-hostable AI chat app. Connect any supported LLM with your own API key and pay the provider directly.',
+  description: 'Besidka is an open-source, self-hostable AI chat app where users bring their own API keys (BYOK) for providers such as OpenAI, Google and Anthropic and pay those providers directly.',
   themeColor: {
     light: '#fde4f1',
     // when in dark mode, but need light theme color

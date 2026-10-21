@@ -7,6 +7,10 @@
  * sentence. See docs/seo.md.
  */
 
+import type { VideoMarker } from '#shared/types/video.d'
+import { toIsoDateTimeWithOffset } from '#shared/utils/iso-datetime'
+import { parseIsoDurationToSeconds, toMarkerPoints } from '#shared/utils/video'
+
 const ALTERNATE_NAMES = [
   'Besidka AI',
   'Бесідка',
@@ -25,7 +29,7 @@ export type FaqItem = {
 export type LandingLdInput = {
   baseUrl: string
   siteName: string
-  description: string
+  entityDescription: string
   faqs?: FaqItem[]
 }
 
@@ -59,7 +63,7 @@ export function buildOrganizationLd(
     'name': input.siteName,
     'alternateName': ALTERNATE_NAMES,
     'url': ids.siteUrl,
-    'description': input.description,
+    'description': input.entityDescription,
     'logo': `${ids.siteUrl}web-app-manifest-512x512.png`,
     'sameAs': [
       CODE_REPOSITORY,
@@ -78,7 +82,7 @@ export function buildWebSiteLd(
     'name': input.siteName,
     'alternateName': ALTERNATE_NAMES,
     'url': ids.siteUrl,
-    'description': input.description,
+    'description': input.entityDescription,
     'inLanguage': 'en',
     'publisher': { '@id': ids.organizationId },
   }
@@ -93,7 +97,7 @@ export function buildSoftwareApplicationLd(
     '@id': ids.applicationId,
     'name': input.siteName,
     'alternateName': ALTERNATE_NAMES,
-    'description': input.description,
+    'description': input.entityDescription,
     'url': ids.siteUrl,
     'applicationCategory': 'CommunicationApplication',
     'operatingSystem': 'Web',
@@ -105,10 +109,14 @@ export function buildSoftwareApplicationLd(
       'priceCurrency': 'USD',
     },
     'screenshot': `${ids.siteUrl}og-image.png`,
-    'codeRepository': CODE_REPOSITORY,
+    'sameAs': [CODE_REPOSITORY],
     'publisher': { '@id': ids.organizationId },
     'isPartOf': { '@id': ids.websiteId },
   }
+}
+
+function stripMarkdownLinks(text: string): string {
+  return text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
 }
 
 export function buildFaqPageLd(
@@ -121,7 +129,7 @@ export function buildFaqPageLd(
       'name': faq.question,
       'acceptedAnswer': {
         '@type': 'Answer',
-        'text': faq.answer,
+        'text': stripMarkdownLinks(faq.answer),
       },
     }
   })
@@ -165,8 +173,129 @@ export function buildGuidePageLd(input: GuidePageLdInput) {
     'inLanguage': 'en',
     ...(input.dateModified ? { dateModified: input.dateModified } : {}),
     'isPartOf': { '@id': ids.websiteId },
+    'author': { '@id': ids.organizationId },
     'publisher': { '@id': ids.organizationId },
     'about': { '@id': ids.applicationId },
+  }
+}
+
+export type KeyGuideVideoLdInput = {
+  src?: string
+  poster?: string
+  duration?: string
+  uploadDate?: string
+  caption?: string
+  markers?: VideoMarker[]
+}
+
+export type KeyGuidePageLdInput = GuidePageLdInput & {
+  video?: KeyGuideVideoLdInput | null
+}
+
+type CompleteKeyGuideVideo = Required<
+  Omit<KeyGuideVideoLdInput, 'caption' | 'markers'>
+> & Pick<KeyGuideVideoLdInput, 'caption' | 'markers'>
+
+const WEB_PROTOCOLS: ReadonlySet<string> = new Set(['http:', 'https:'])
+
+function isCompleteVideo(
+  video: KeyGuideVideoLdInput | null | undefined,
+): video is CompleteKeyGuideVideo {
+  return !!video?.src
+    && !!video.poster
+    && !!video.duration
+    && !!video.uploadDate
+}
+
+function resolveWebUrl(value: string, baseUrl: string): string | null {
+  try {
+    const resolvedUrl = new URL(value, baseUrl)
+
+    return WEB_PROTOCOLS.has(resolvedUrl.protocol) ? resolvedUrl.href : null
+  } catch {
+    return null
+  }
+}
+
+function buildClipUrl(pageUrl: string, startOffset: number): string {
+  const clipUrl = new URL(pageUrl)
+
+  clipUrl.search = ''
+  clipUrl.hash = ''
+  clipUrl.searchParams.set('t', String(startOffset))
+
+  return clipUrl.href
+}
+
+function buildClipsLd(
+  video: CompleteKeyGuideVideo,
+  pageUrl: string,
+): Array<Record<string, unknown>> {
+  const points = toMarkerPoints(video.markers)
+  const totalSeconds = parseIsoDurationToSeconds(video.duration)
+
+  return points.map((point, index) => {
+    const endOffset = points[index + 1]?.time ?? totalSeconds
+
+    return {
+      '@type': 'Clip',
+      'name': point.label,
+      'url': buildClipUrl(pageUrl, point.time),
+      'startOffset': point.time,
+      ...(endOffset !== null && endOffset > point.time ? { endOffset } : {}),
+    }
+  })
+}
+
+function buildVideoObjectLd(
+  input: KeyGuidePageLdInput,
+  video: CompleteKeyGuideVideo,
+  videoId: string,
+): Record<string, unknown> | null {
+  const thumbnailUrl = resolveWebUrl(video.poster, input.baseUrl)
+  const contentUrl = resolveWebUrl(video.src, input.baseUrl)
+  const uploadDate = toIsoDateTimeWithOffset(video.uploadDate)
+
+  if (!thumbnailUrl || !contentUrl || !uploadDate) {
+    return null
+  }
+
+  const clips = buildClipsLd(video, input.url)
+
+  return {
+    '@type': 'VideoObject',
+    '@id': videoId,
+    'name': video.caption || `${input.headline} (video)`,
+    'description': input.description,
+    'thumbnailUrl': thumbnailUrl,
+    'uploadDate': uploadDate,
+    'duration': video.duration,
+    'contentUrl': contentUrl,
+    'inLanguage': 'en',
+    ...(clips.length ? { hasPart: clips } : {}),
+  }
+}
+
+export function buildKeyGuidePageLd(input: KeyGuidePageLdInput) {
+  const { '@context': context, ...articleLd } = buildGuidePageLd(input)
+  const videoId = `${input.url}#video`
+  const videoLd = isCompleteVideo(input.video)
+    ? buildVideoObjectLd(input, input.video, videoId)
+    : null
+
+  const graph: Array<Record<string, unknown>> = [
+    videoLd
+      ? { ...articleLd, video: { '@id': videoId } }
+      : articleLd,
+  ]
+
+  if (videoLd) {
+    graph.push(videoLd)
+  }
+
+  return {
+    '@context': context,
+    '@graph': graph,
   }
 }
 

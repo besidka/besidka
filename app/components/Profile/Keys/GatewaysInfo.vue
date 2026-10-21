@@ -21,13 +21,13 @@
           separate bill per provider.
         </li>
         <li>
-          An extra hop — the gateway sees your prompts too (see our
+          An extra hop: the gateway sees your prompts too (see our
           <NuxtLink
             to="/privacy-policy"
             class="link link-hover"
           >
             Privacy Policy
-          </NuxtLink>) — and may add its own fees or credit markup on
+          </NuxtLink>), and may add its own fees or credit markup on
           top of the model's price.
         </li>
         <li>
@@ -37,7 +37,7 @@
           models only.
         </li>
         <li>
-          Direct providers are used by default — a gateway is only used
+          Direct providers are used by default: a gateway is only used
           when you pick a gateway model.
         </li>
       </ul>

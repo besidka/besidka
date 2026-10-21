@@ -112,22 +112,32 @@
                 :error="getPersistedFailureErrorPayload(m, part)"
               />
             </div>
-            <MDCCached
+            <ChatMarkdownSource
               v-else-if="part.type === 'text'"
               :key="`mdc-${m.id}-part-${index}`"
-              :value="m.role === 'user'
+              :source="m.role === 'user'
                 ? $sanitizeHtml(part.text)
                 : stripModelCitationMarkers(part.text)
               "
-              :cache-key="isLastAssistantMessage(messageIndex)
-                ? `mdc-${m.id}-part-${index}-${chatSdk.status}`
-                : `mdc-${m.id}-part-${index}`
+              :streaming="isLastAssistantMessage(messageIndex)
+                && ['submitted', 'streaming'].includes(chatSdk.status)
               "
-              :components="messageComponents"
-              :parser-options="{ highlight: false }"
-              class="chat-markdown js-message-text"
-              :unwrap="getUnwrap(m.role)"
-            />
+            >
+              <MDCCached
+                :value="m.role === 'user'
+                  ? $sanitizeHtml(part.text)
+                  : stripModelCitationMarkers(part.text)
+                "
+                :cache-key="isLastAssistantMessage(messageIndex)
+                  ? `mdc-${m.id}-part-${index}-${chatSdk.status}`
+                  : `mdc-${m.id}-part-${index}`
+                "
+                :components="messageComponents"
+                :parser-options="{ highlight: false }"
+                class="chat-markdown js-message-text"
+                :unwrap="getUnwrap(m.role)"
+              />
+            </ChatMarkdownSource>
           </div>
           <ChatGeneratedImage
             v-if="isLastAssistantMessage(messageIndex)

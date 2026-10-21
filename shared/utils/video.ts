@@ -75,3 +75,49 @@ export function toMarkerPoints(
     return a.time - b.time
   })
 }
+
+const ISO_DURATION_PATTERN = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/
+
+/**
+ * Parse an ISO 8601 time duration such as "PT1M12S" into total seconds.
+ * Returns null for anything that is not a plain PT...H...M...S duration.
+ */
+export function parseIsoDurationToSeconds(duration: string): number | null {
+  const match = ISO_DURATION_PATTERN.exec(duration)
+
+  if (!match || duration === 'PT') {
+    return null
+  }
+
+  const [, hours, minutes, seconds] = match
+
+  return Number(hours ?? 0) * 3600
+    + Number(minutes ?? 0) * 60
+    + Number(seconds ?? 0)
+}
+
+/**
+ * Read a `?t=<seconds>` deep-link value. Only a single plain non-negative
+ * integer string below the video duration is accepted; arrays, decimals,
+ * signs and anything out of range return null so the player starts at 0.
+ */
+export function parseVideoStartOffset(
+  value: unknown,
+  durationSeconds: number | null,
+): number | null {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    return null
+  }
+
+  const offset = Number(value)
+
+  if (
+    !Number.isSafeInteger(offset)
+    || durationSeconds === null
+    || offset >= durationSeconds
+  ) {
+    return null
+  }
+
+  return offset
+}

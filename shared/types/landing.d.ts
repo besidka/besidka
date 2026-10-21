@@ -13,10 +13,16 @@ export interface ComparisonRow {
   values: string[]
 }
 
+export interface ComparisonSource {
+  label: string
+  url: string
+}
+
 export interface ComparisonData {
   caption?: string
   columns: string[]
   rows: ComparisonRow[]
   note?: string
   priceDate?: string
+  sources?: ComparisonSource[]
 }

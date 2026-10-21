@@ -1,5 +1,10 @@
 import { defineCollection, defineContentConfig } from '@nuxt/content'
+import { defineSitemapSchema } from '@nuxtjs/sitemap/content'
 import { z } from 'zod'
+import {
+  httpsUrl,
+  keyGuideSchema,
+} from './shared/utils/key-guide-schema'
 
 /**
  * Nuxt Content collections.
@@ -11,7 +16,8 @@ import { z } from 'zod'
  *   - carousel   – product screenshots
  *   - steps      – how-it-works steps
  *   - features   – feature grid items
- *   - useCases   – who Besidka is for (replaces the old testimonials key)
+ *   - useCases   – optional and currently unused; the landing page renders no
+ *                  use-case cards, so content/index.md does not set it
  *   - faqs       – FAQ entries (also emitted as FAQPage JSON-LD)
  *
  * The markdown body is the chat-style conversation built from custom MDC
@@ -61,6 +67,9 @@ export default defineContentConfig({
             secondaryCta: cta
               .optional()
               .describe('Secondary call-to-action button'),
+            guideLink: cta
+              .optional()
+              .describe('Small text link under the call-to-action buttons'),
           })
           .describe('Hero section'),
         carousel: z
@@ -69,7 +78,7 @@ export default defineContentConfig({
               src: z
                 .string()
                 .describe(
-                  'Image path, e.g. /carousel/01-any-model.webp',
+                  'Image path, e.g. /carousel/any-model.webp',
                 ),
               alt: z
                 .string()
@@ -183,7 +192,24 @@ export default defineContentConfig({
               .string()
               .optional()
               .describe(
-                'As-of date for competitor prices, e.g. "June 2026"',
+                'Date competitor prices were checked, ISO format, e.g.'
+                + ' 2026-10-20. Shown as "Checked 20 October 2026";'
+                + ' any other text is shown as written.',
+              ),
+            sources: z
+              .array(
+                z.object({
+                  label: z
+                    .string()
+                    .describe('Link text, e.g. "ChatGPT Go"'),
+                  url: httpsUrl
+                    .describe('Official page the price or feature came from'),
+                }),
+              )
+              .optional()
+              .describe(
+                'Official pages the comparison was checked against,'
+                + ' shown as a Sources line under the table',
               ),
           })
           .optional()
@@ -277,8 +303,7 @@ export default defineContentConfig({
           .string()
           .describe(
             'ISO date this document last changed, e.g. 2026-07-26. Shown to'
-            + ' users and used as the sitemap lastmod — bump it whenever the'
-            + ' substance changes.',
+            + ' users — bump it whenever the substance changes.',
           ),
         summary: z
           .string()
@@ -309,6 +334,19 @@ export default defineContentConfig({
           .string()
           .optional()
           .describe('Short plain-language answer shown above the guide'),
+      }),
+    }),
+    // Public "how to get an API key" pages (content/key-guides/*.md), served at
+    // /guides/<slug> by app/pages/guides/[slug].vue. The `/guides` prefix makes
+    // the content path equal the public URL, so the sitemap needs no rewrite.
+    keyGuides: defineCollection({
+      type: 'page',
+      source: {
+        include: 'key-guides/*.md',
+        prefix: '/guides',
+      },
+      schema: keyGuideSchema.extend({
+        sitemap: defineSitemapSchema(),
       }),
     }),
   },

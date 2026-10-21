@@ -1,6 +1,7 @@
 import type {
   ClientLandingEventName,
   LandingEventData,
+  LandingTrackOptions,
 } from '#shared/types/analytics.d'
 
 export function useLandingAnalytics() {
@@ -25,6 +26,7 @@ export function useLandingAnalytics() {
   function track(
     event: ClientLandingEventName,
     data?: LandingEventData,
+    options?: LandingTrackOptions,
   ): void {
     if (import.meta.server) {
       return
@@ -37,8 +39,14 @@ export function useLandingAnalytics() {
         path: window.location.pathname,
         target: data?.target,
         value: data?.value,
+        trigger: data?.trigger,
+        watchedSeconds: data?.watchedSeconds,
+        durationSeconds: data?.durationSeconds,
+        completionPercent: data?.completionPercent,
+        endReason: data?.endReason,
         utm: readLandingUtm(event),
       },
+      keepalive: options?.keepalive,
     }).catch(() => {})
   }
 

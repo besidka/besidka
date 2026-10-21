@@ -7,6 +7,7 @@ import {
   readValidatedBody,
   setResponseStatus,
 } from 'nuxt/server'
+import { recordKeyEvent } from '~~/server/utils/analytics/key-events'
 
 const RATE_LIMIT_RULE = { window: 60, max: 10 }
 const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:vercel-gateway:post'
@@ -56,6 +57,8 @@ export default defineEventHandler(async (event) => {
       eq(schema.keys.provider, 'vercel-gateway'),
     ))
 
+    recordKeyEvent('vercel-gateway', 'updated')
+
     return setResponseStatus(event, 204, 'Key updated successfully')
   }
 
@@ -69,6 +72,8 @@ export default defineEventHandler(async (event) => {
     parseInt(session.user.id),
     'vercel-gateway',
   )
+
+  recordKeyEvent('vercel-gateway', 'created')
 
   return setResponseStatus(event, 201, 'Key created successfully')
 })
