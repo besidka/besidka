@@ -915,6 +915,51 @@ default at `xhigh` and documents `reasoning_effort` rather than
 accepts `reasoning_effort: 'none'`. Details live in
 `docs/providers/alibaba.md` ("Omni models" and "Reasoning effort wiring").
 
+## 2026-10-21 drift review (PR #465)
+
+**`gemini-4-argon`** (Google) was added to `providers/google.ts` as its own
+newer 4.x version group, ahead of `gemini-3.8-flash`. It went GA on the Gemini
+API on 2026-10-13
+(https://ai.google.dev/gemini-api/docs/models/gemini-4-argon). Thinking is
+controlled by `thinkingLevel` (`low`/`medium`/`high`), defaults to `medium`,
+and has no off switch, hence `cannotDisable: true` (pinned in
+`tests/unit/providers/reasoning-control-state.spec.ts`). `@ai-sdk/google`
+treats any non-2.x `gemini-` id as Gemini-3-style, so it sends
+`thinkingLevel` and never the deprecated `thinkingBudget`, which returns a
+400 when combined with `thinkingLevel` on Argon. Search grounding and
+function calling are supported; `tools: ['image_generation']` is the same
+sibling-convention copy described above, not a per-model confirmation.
+
+**Price watch item.** $2/$10 per 1M tokens through 2026-11-30, rising to
+$4/$20 from 2026-12-01 per Google's pricing page. At the new price it is
+about 2x `gemini-3.1-pro-preview` on input but equal to `gpt-5.6-sol` and
+below Opus, so it stays a same-tier flagship rather than a declined premium
+tier (compare `claude-fable-5` and `gpt-6-astra` below). The snapshot picks
+up the new rate when models.dev updates.
+
+Other items from the same report:
+
+- DeepSeek's `deepseek-flash` is now the 2026-10-17 "V4.1 Flash 1017" update
+  upstream: a name/description/date refresh only, same id and same price.
+- The 7 OpenAI ids flagged DEPRECATED in the report were already
+  `status: 'deprecated'` with `retiredAt: '2026-10-23'`; no change.
+
+**Qwen retirements and the rest of the snapshot drift.** After the bot run
+for #465, models.dev flagged 25 curated Qwen ids as deprecated (they were
+already shut down on 2026-10-10). Those are now hand-curated as
+`status: 'deprecated'` (with `retiredAt: '2026-10-10'` where Alibaba gives a
+date); the id list, successors and sources are in `docs/providers/alibaba.md`
+("Retired 2026-10-10"). The refreshed snapshot also took the other upstream
+drift:
+
+- DeepSeek `deepseek-flash` and `deepseek-v4-pro` context window is now
+  1,048,576 (`deepseek-v4-pro` release date 2026-08-13).
+- `kimi-k2.6` release date 2026-04-20.
+- `qwen3.6-flash` and `qwen3.6-35b-a3b` price changes.
+- Audio input dropped from the `qwen3.5`/`qwen3.6` open models.
+- `tieredPricing` flagged on several Qwen plus/flash models.
+- `qwen-plus-character-ja` `toolCall` is now `false`.
+
 ## Ids deliberately not auto-added (owner review needed)
 
 Found upstream via the audit report above but intentionally left out of
@@ -956,12 +1001,24 @@ automatic add:
   active. OpenAI's deprecations page is authoritative (see "Retirement dates
   and how we learn about them"), so they were not added.
 - **`deepseek-v4-flash`** — deprecated on models.dev and identical to the
-  already curated `deepseek-flash`.
+  already curated `deepseek-flash`. **`deepseek-v4-flash-vision-exp`** is an
+  experimental duplicate of `deepseek-flash` and stays out for the same
+  reason.
 - **`gemini-omni-flash-preview`** — models.dev shows `tool_call: false`
   and a video-only output modality; not a chat model, and still preview
   status besides.
 - **`claude-fable-5-1`** — the same declined premium tier as
   `claude-fable-5` above, just a later dated release (2026-09-01).
+- **`gpt-daybreak-red-latest`, `gpt-daybreak-blue-latest`** — rolling
+  "-latest" aliases for cybersecurity-specialised models ($12.50/$75 and
+  $4/$20); specialised positioning plus a moving target (the same reasons as
+  the `gpt-5.3-codex` and `gpt-5.2-chat-latest` entries above).
+- **`gemini-flash-latest`, `gemini-flash-lite-latest`** — rolling aliases of
+  the already curated Flash and Flash-Lite ids; same rule as
+  `gpt-5.2-chat-latest` above.
+- **`gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`** —
+  preview ids of the already curated stable `gemini-3.1-flash-image` and
+  `gemini-3-pro-image`.
 
 From the model catalog expansion (`docs/model-catalog-expansion-plan.md`):
 
@@ -973,7 +1030,8 @@ From the model catalog expansion (`docs/model-catalog-expansion-plan.md`):
   are also absent from models.dev entirely, so each would need its own
   `EXEMPT_IDS` entry plus full hand curation.
 - **xAI video and realtime models** (`grok-imagine-video`,
-  `grok-imagine-video-1.5`, `Experimental_XaiRealtimeModel`) — video
+  `grok-imagine-video-1.5`, `grok-imagine-video-1.5-lite`,
+  `Experimental_XaiRealtimeModel`) — video
   generation and realtime voice are outside this app's capability set (chat
   + image generation + deep research only).
 - **`grok-imagine-image-quality`** — retires 2026-11-02, roughly seven

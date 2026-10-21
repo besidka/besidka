@@ -92,6 +92,8 @@ export default {
     },
     {
       id: 'qwen3.6-max-preview',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
@@ -224,6 +226,8 @@ export default {
     },
     {
       id: 'qwen3-235b-a22b',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoning: {
         mode: 'toggle',
@@ -234,6 +238,8 @@ export default {
     },
     {
       id: 'qwen3-32b',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoning: {
         mode: 'toggle',
@@ -244,6 +250,8 @@ export default {
     },
     {
       id: 'qwen3-14b',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoning: {
         mode: 'toggle',
@@ -254,6 +262,8 @@ export default {
     },
     {
       id: 'qwen3-8b',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoning: {
         mode: 'toggle',
@@ -284,6 +294,8 @@ export default {
     },
     {
       id: 'qwen-turbo',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoning: {
         mode: 'toggle',
@@ -294,6 +306,8 @@ export default {
     },
     {
       id: 'qwq-plus',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoningAlwaysOn: true,
       price: {
@@ -302,6 +316,8 @@ export default {
     },
     {
       id: 'qvq-max',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoningAlwaysOn: true,
       price: {
@@ -310,6 +326,8 @@ export default {
     },
     {
       id: 'qwen3-next-80b-a3b-thinking',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoningAlwaysOn: true,
       price: {
@@ -318,6 +336,8 @@ export default {
     },
     {
       id: 'qwen3-vl-235b-a22b',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       reasoningAlwaysOn: true,
       price: {
@@ -334,6 +354,8 @@ export default {
     },
     {
       id: 'qwen3-max',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: ['web_search'],
       price: {
         tokens: 1_000_000,
@@ -341,6 +363,8 @@ export default {
     },
     {
       id: 'qwen3-next-80b-a3b-instruct',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -348,6 +372,8 @@ export default {
     },
     {
       id: 'qwen3-coder-plus',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -362,6 +388,8 @@ export default {
     },
     {
       id: 'qwen3-coder-480b-a35b-instruct',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -369,6 +397,8 @@ export default {
     },
     {
       id: 'qwen3-coder-30b-a3b-instruct',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -383,6 +413,8 @@ export default {
     },
     {
       id: 'qwen-vl-max',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -390,6 +422,8 @@ export default {
     },
     {
       id: 'qwen-vl-plus',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -418,6 +452,8 @@ export default {
     },
     {
       id: 'qwen-mt-turbo',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -425,6 +461,8 @@ export default {
     },
     {
       id: 'qwen-omni-turbo',
+      status: 'deprecated',
+      retiredAt: '2026-10-10',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -432,6 +470,7 @@ export default {
     },
     {
       id: 'qwen2-5-vl-72b-instruct',
+      status: 'deprecated',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -439,6 +478,7 @@ export default {
     },
     {
       id: 'qwen2-5-vl-7b-instruct',
+      status: 'deprecated',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -446,6 +486,7 @@ export default {
     },
     {
       id: 'qwen2-5-72b-instruct',
+      status: 'deprecated',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -453,6 +494,7 @@ export default {
     },
     {
       id: 'qwen2-5-32b-instruct',
+      status: 'deprecated',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -460,6 +502,7 @@ export default {
     },
     {
       id: 'qwen2-5-14b-instruct',
+      status: 'deprecated',
       tools: [],
       price: {
         tokens: 1_000_000,
@@ -467,6 +510,7 @@ export default {
     },
     {
       id: 'qwen2-5-7b-instruct',
+      status: 'deprecated',
       tools: [],
       price: {
         tokens: 1_000_000,
