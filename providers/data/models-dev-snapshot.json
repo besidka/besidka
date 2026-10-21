@@ -370,6 +370,33 @@
     },
     "tieredPricing": true
   },
+  "gemini-4-argon": {
+    "name": "Gemini 4 Argon",
+    "description": "Google's flagship reasoning model for complex software engineering, deep math and science, and long-horizon autonomous agents",
+    "releaseDate": "2026-10-13",
+    "toolCall": true,
+    "limit": {
+      "context": 1048576,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.1
+    }
+  },
   "gemini-3.8-flash": {
     "name": "Gemini 3.8 Flash",
     "description": "Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows",

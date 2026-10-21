@@ -59,6 +59,7 @@ const cannotDisableDefaults: Record<string, 'low' | 'medium' | 'high'> = {
   'gpt-5-nano': 'medium',
   'o3': 'medium',
   'o4-mini': 'medium',
+  'gemini-4-argon': 'medium',
   'gemini-3.8-flash': 'medium',
   'gemini-3.6-flash': 'medium',
   'gemini-3.5-flash': 'medium',

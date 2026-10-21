@@ -39,6 +39,19 @@ export default {
       },
     },
     {
+      id: 'gemini-4-argon',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
+      },
+    },
+    {
       id: 'gemini-3.8-flash',
       price: {
         tokens: 1_000_000,
