@@ -183,19 +183,15 @@ describe('Video/Shell', () => {
       )).toBe(true)
     })
 
-    it('forwards the poster and container class', async () => {
-      const wrapper = await mountShell({
-        poster: '/videos/demo.webp',
-        containerClass: 'js-custom-hook',
-      })
+    it('forwards the container class', async () => {
+      const wrapper = await mountShell({ containerClass: 'js-custom-hook' })
 
-      expect(readPoster(wrapper)).toBe('/videos/demo.webp')
       expect(wrapper.get('[data-testid="video-player"]').classes())
         .toContain('js-custom-hook')
     })
 
-    it('omits the poster attribute when none is given', async () => {
-      const wrapper = await mountShell({ poster: '' })
+    it('leaves the poster to the slotted video element', async () => {
+      const wrapper = await mountShell()
 
       expect(readPoster(wrapper)).toBeFalsy()
     })
@@ -392,6 +388,111 @@ describe('Video/Shell', () => {
 
       expect(wrapper.emitted('selectQuality')).toBeUndefined()
       expect(wrapper.emitted('selectSpeed')).toBeUndefined()
+    })
+  })
+
+  describe('settings availability', () => {
+    it('keeps the settings button visible without caption tracks',
+      async () => {
+        const wrapper = await mountShell({
+          qualities: QUALITIES,
+          selectedQuality: '720',
+          speeds: SPEEDS,
+          selectedSpeed: '1',
+        })
+
+        await waitForPlayerReady(wrapper)
+
+        expect(wrapper.find('track[kind="captions"]').exists()).toBe(false)
+
+        const trigger = wrapper.get('[data-testid="video-settings-button"]')
+
+        expect(trigger.element.hasAttribute('hidden')).toBe(false)
+        expect(has(wrapper, 'video-settings-menu')).toBe(true)
+      })
+
+    it('keeps the settings button visible with only the speed menu',
+      async () => {
+        const wrapper = await mountShell({
+          speeds: SPEEDS,
+          selectedSpeed: '1',
+        })
+
+        await waitForPlayerReady(wrapper)
+
+        expect(wrapper.get('[data-testid="video-settings-button"]')
+          .element.hasAttribute('hidden')).toBe(false)
+      })
+
+    it('relies on a radio-group publishMenuOptionState method that still '
+      + 'exists', async () => {
+      const wrapper = await mountShell({ speeds: SPEEDS })
+
+      await waitForPlayerReady(wrapper)
+
+      const radioGroup = customElements.get('media-menu-radio-group')
+
+      expect(radioGroup).toBeDefined()
+      expect(typeof radioGroup?.prototype.publishMenuOptionState)
+        .toBe('function')
+    })
+
+    function getOptionGroups(wrapper: VueWrapper) {
+      return wrapper.findAll('.js-video-custom-options').map((group) => {
+        return group.element as HTMLElement & {
+          publishMenuOptionState?: (...args: unknown[]) => void
+        }
+      })
+    }
+
+    it('publishes the available state on each custom option group',
+      async () => {
+        const wrapper = await mountShell({
+          qualities: QUALITIES,
+          selectedQuality: '720',
+          speeds: SPEEDS,
+          selectedSpeed: '1',
+        })
+
+        await waitForPlayerReady(wrapper)
+
+        const groups = getOptionGroups(wrapper)
+
+        expect(groups).toHaveLength(2)
+
+        const spies = groups.map((group) => {
+          return vi.spyOn(group, 'publishMenuOptionState')
+        })
+
+        await wrapper.setProps({ selectedSpeed: '2' })
+        await flushPromises()
+
+        for (const spy of spies) {
+          expect(spy).toHaveBeenCalledWith(false, false, 'available')
+        }
+      })
+
+    it('does not throw when publishMenuOptionState is missing', async () => {
+      const wrapper = await mountShell({
+        qualities: QUALITIES,
+        selectedQuality: '720',
+        speeds: SPEEDS,
+        selectedSpeed: '1',
+      })
+
+      await waitForPlayerReady(wrapper)
+
+      for (const group of getOptionGroups(wrapper)) {
+        Object.defineProperty(group, 'publishMenuOptionState', {
+          configurable: true,
+          value: undefined,
+        })
+      }
+
+      await wrapper.setProps({ selectedSpeed: '2' })
+      await flushPromises()
+
+      expect(has(wrapper, 'video-settings-button')).toBe(true)
     })
   })
 

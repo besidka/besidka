@@ -5,7 +5,6 @@
   >
     <VideoShell
       variant="lean"
-      :poster="poster"
       @ready="onPlayerReady"
       @failed="fallbackToNative"
     >

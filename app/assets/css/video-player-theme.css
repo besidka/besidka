@@ -403,6 +403,7 @@
   width: max-content;
   max-width: 11rem;
   padding: 0.375rem;
+  translate: var(--video-preview-shift, 0px) 0;
 }
 
 .landing-player .video-preview__thumbnail {
@@ -644,7 +645,7 @@
   width: 8px;
   height: 8px;
   border-radius: 100%;
-  background: #fff;
+  background: var(--color-accent-content);
   opacity: 0;
   translate: 0 -50%;
   scale: 0;

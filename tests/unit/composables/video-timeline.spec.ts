@@ -5,6 +5,7 @@ import type { EffectScope } from 'vue'
 import {
   buildChaptersVtt,
   buildThumbnailsVtt,
+  computePreviewShift,
   useVideoTimeline,
 } from '../../../app/composables/video-timeline'
 import type { ThumbnailSprite } from '../../../app/composables/landing-video-thumbnails'
@@ -134,6 +135,87 @@ describe('buildThumbnailsVtt', () => {
 
     expect(vtt).toContain('00:00:00.000 --> 00:00:03.333')
     expect(vtt).toContain('00:00:06.667 --> 00:00:10.000')
+  })
+})
+
+describe('computePreviewShift', () => {
+  const CARD_WIDTH = 172
+  const player = { containerLeft: 0, containerWidth: 343 }
+
+  function shiftFor(pointerX: number, slider = { left: 60, width: 90 }) {
+    return computePreviewShift({
+      pointerX,
+      sliderLeft: slider.left,
+      sliderWidth: slider.width,
+      cardWidth: CARD_WIDTH,
+      ...player,
+    })
+  }
+
+  it('does not move a card that fits inside the player', () => {
+    expect(computePreviewShift({
+      pointerX: 400,
+      sliderLeft: 60,
+      sliderWidth: 700,
+      cardWidth: CARD_WIDTH,
+      containerLeft: 0,
+      containerWidth: 820,
+    })).toBe(0)
+  })
+
+  it('pulls the card back inside the left edge with an 8px inset', () => {
+    const centeredLeft = 60 - CARD_WIDTH / 2
+
+    expect(shiftFor(60) + centeredLeft).toBe(8)
+  })
+
+  it('pulls the card back inside the right edge with an 8px inset', () => {
+    const wide = { left: 200, width: 140 }
+    const centeredLeft = 340 - CARD_WIDTH / 2
+
+    expect(shiftFor(340, wide) + centeredLeft).toBe(343 - CARD_WIDTH - 8)
+  })
+
+  it('clamps the pointer to the slider before measuring', () => {
+    expect(shiftFor(-500)).toBe(shiftFor(60))
+    expect(shiftFor(9000)).toBe(shiftFor(150))
+  })
+
+  it('respects the player offset on the page', () => {
+    const shift = computePreviewShift({
+      pointerX: 90,
+      sliderLeft: 80,
+      sliderWidth: 90,
+      cardWidth: CARD_WIDTH,
+      containerLeft: 20,
+      containerWidth: 343,
+    })
+
+    expect(90 - CARD_WIDTH / 2 + shift).toBe(28)
+  })
+
+  it('returns zero for a collapsed slider or card', () => {
+    expect(shiftFor(60, { left: 60, width: 0 })).toBe(0)
+    expect(computePreviewShift({
+      pointerX: 10,
+      sliderLeft: 0,
+      sliderWidth: 100,
+      cardWidth: 0,
+      ...player,
+    })).toBe(0)
+  })
+
+  it('prefers the left inset when the card is wider than the player', () => {
+    const shift = computePreviewShift({
+      pointerX: 50,
+      sliderLeft: 0,
+      sliderWidth: 100,
+      cardWidth: 400,
+      containerLeft: 0,
+      containerWidth: 300,
+    })
+
+    expect(50 - 200 + shift).toBe(8)
   })
 })
 
@@ -459,6 +541,166 @@ describe('useVideoTimeline', () => {
 
       expect(currentTimeSetter).not.toHaveBeenCalled()
     })
+  })
+
+  describe('preview clamp', () => {
+    const PREVIEW_WIDTH = 172
+    const PLAYER_WIDTH = 343
+
+    function rect(left: number, width: number): DOMRect {
+      return {
+        left,
+        width,
+        right: left + width,
+        top: 0,
+        bottom: 10,
+        height: 10,
+        x: left,
+        y: 0,
+        toJSON: () => {
+          return {}
+        },
+      }
+    }
+
+    function createPlayerSlider(left = 60, width = 90) {
+      const container = document.createElement('media-container')
+      const slider = document.createElement('div')
+      const preview = document.createElement('media-slider-preview')
+
+      container.getBoundingClientRect = () => {
+        return rect(0, PLAYER_WIDTH)
+      }
+      slider.getBoundingClientRect = () => {
+        return rect(left, width)
+      }
+      Object.defineProperty(preview, 'offsetWidth', {
+        configurable: true,
+        value: PREVIEW_WIDTH,
+      })
+      slider.append(preview)
+      container.append(slider)
+
+      return slider
+    }
+
+    function readShift(slider: HTMLElement): string {
+      return slider.style.getPropertyValue('--video-preview-shift')
+    }
+
+    function move(slider: HTMLElement, clientX: number) {
+      slider.dispatchEvent(new MouseEvent('pointermove', { clientX }))
+    }
+
+    it('pulls the card inside the left edge while the pointer moves', () => {
+      const { attach } = mountTimeline()
+      const slider = createPlayerSlider()
+
+      attach(slider)
+      move(slider, 60)
+
+      expect(readShift(slider)).toBe(`${8 - (60 - PREVIEW_WIDTH / 2)}px`)
+    })
+
+    it('pulls the card inside the right edge while the pointer moves', () => {
+      const { attach } = mountTimeline()
+      const slider = createPlayerSlider(200, 140)
+
+      attach(slider)
+      move(slider, 340)
+
+      expect(readShift(slider)).toBe(
+        `${PLAYER_WIDTH - PREVIEW_WIDTH - 8 - (340 - PREVIEW_WIDTH / 2)}px`,
+      )
+    })
+
+    it('keeps the card centered on the pointer in the middle', () => {
+      const { attach } = mountTimeline()
+      const slider = createPlayerSlider()
+
+      attach(slider)
+      move(slider, 120)
+
+      expect(readShift(slider)).toBe('0px')
+    })
+
+    it('measures on pointerenter and pointerdown as well', () => {
+      const { attach } = mountTimeline()
+      const slider = createPlayerSlider()
+
+      attach(slider)
+      slider.dispatchEvent(new MouseEvent('pointerenter', { clientX: 60 }))
+
+      expect(readShift(slider)).not.toBe('')
+
+      slider.style.removeProperty('--video-preview-shift')
+      slider.dispatchEvent(new MouseEvent('pointerdown', { clientX: 60 }))
+
+      expect(readShift(slider)).not.toBe('')
+    })
+
+    it('writes nothing without a preview or a player container', () => {
+      const { attach } = mountTimeline()
+      const slider = createSlider()
+
+      attach(slider)
+      move(slider, 100)
+
+      expect(readShift(slider)).toBe('')
+    })
+
+    it('stops moving the card and clears the shift after dispose', () => {
+      const { attach } = mountTimeline()
+      const slider = createPlayerSlider()
+
+      attach(slider)
+      move(slider, 60)
+      scope.stop()
+
+      expect(readShift(slider)).toBe('')
+
+      move(slider, 80)
+
+      expect(readShift(slider)).toBe('')
+    })
+
+    it('recomputes when the preview card resizes under a held pointer',
+      () => {
+        const callbacks: Array<() => void> = []
+        const disconnect = vi.fn()
+
+        vi.stubGlobal('ResizeObserver', class {
+          constructor(callback: () => void) {
+            callbacks.push(callback)
+          }
+
+          observe() {}
+
+          disconnect = disconnect
+        })
+
+        const { attach } = mountTimeline()
+        const slider = createPlayerSlider()
+
+        attach(slider)
+        move(slider, 60)
+
+        const narrow = readShift(slider)
+        const preview = slider.querySelector('media-slider-preview')!
+
+        Object.defineProperty(preview, 'offsetWidth', {
+          configurable: true,
+          value: 60,
+        })
+        callbacks[0]!()
+
+        expect(readShift(slider)).not.toBe(narrow)
+
+        scope.stop()
+
+        expect(disconnect).toHaveBeenCalled()
+        vi.unstubAllGlobals()
+      })
   })
 
   describe('lazy thumbnails', () => {

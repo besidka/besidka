@@ -14,6 +14,18 @@ const SNAP_FRACTION = 0.04
 const MINIMUM_SNAP_RADIUS = 0.4
 const OPEN_CHAPTER_END_SECONDS = 359999
 const VTT_MIME_TYPE = 'text/vtt'
+const PREVIEW_EDGE_INSET = 8
+const PREVIEW_SHIFT_PROPERTY = '--video-preview-shift'
+
+interface PreviewShiftInput {
+  pointerX: number
+  sliderLeft: number
+  sliderWidth: number
+  cardWidth: number
+  containerLeft: number
+  containerWidth: number
+  inset?: number
+}
 
 function formatVttTimestamp(seconds: number): string {
   const totalMilliseconds = Math.max(0, Math.round(seconds * 1000))
@@ -89,6 +101,35 @@ export function buildThumbnailsVtt(sprite: ThumbnailSprite): string {
   return buildVttDocument(cues)
 }
 
+/**
+ * Horizontal shift, in pixels, that keeps the hover preview card inside the
+ * player box. The card is positioned centered on the pointer (clamped to the
+ * slider); on narrow players the slider is much narrower than the card, so
+ * the card is pulled back to `inset` pixels from the player edges instead.
+ */
+export function computePreviewShift(input: PreviewShiftInput): number {
+  const inset = input.inset ?? PREVIEW_EDGE_INSET
+
+  if (input.sliderWidth <= 0 || input.cardWidth <= 0) {
+    return 0
+  }
+
+  const sliderRight = input.sliderLeft + input.sliderWidth
+  const pointerX = Math.min(
+    Math.max(input.pointerX, input.sliderLeft),
+    sliderRight,
+  )
+  const centeredLeft = pointerX - input.cardWidth / 2
+  const minimumLeft = input.containerLeft + inset
+  const maximumLeft = input.containerLeft
+    + input.containerWidth
+    - input.cardWidth
+    - inset
+  const clampedLeft = Math.max(minimumLeft, Math.min(centeredLeft, maximumLeft))
+
+  return clampedLeft - centeredLeft
+}
+
 function createVttUrl(content: string): string {
   return URL.createObjectURL(new Blob([content], { type: VTT_MIME_TYPE }))
 }
@@ -110,6 +151,8 @@ export function useVideoTimeline(options: VideoTimelineOptions) {
   let hasStartedThumbnails = false
   let isDisposed = false
   let pointerDownX = 0
+  let lastPointerX: number | null = null
+  let previewResizeObserver: ResizeObserver | null = null
   let snapTimer: ReturnType<typeof setTimeout> | null = null
 
   const thumbnailsAbortController = new AbortController()
@@ -165,8 +208,40 @@ export function useVideoTimeline(options: VideoTimelineOptions) {
     return nearest.time
   }
 
+  function updatePreviewShift() {
+    if (!slider || lastPointerX === null) {
+      return
+    }
+
+    const preview = slider.querySelector<HTMLElement>('media-slider-preview')
+    const container = slider.closest<HTMLElement>('media-container')
+
+    if (!preview || !container) {
+      return
+    }
+
+    const sliderRect = slider.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    const shift = computePreviewShift({
+      pointerX: lastPointerX,
+      sliderLeft: sliderRect.left,
+      sliderWidth: sliderRect.width,
+      cardWidth: preview.offsetWidth,
+      containerLeft: containerRect.left,
+      containerWidth: containerRect.width,
+    })
+
+    slider.style.setProperty(PREVIEW_SHIFT_PROPERTY, `${shift}px`)
+  }
+
+  function onSliderPointerMove(event: PointerEvent) {
+    lastPointerX = event.clientX
+    updatePreviewShift()
+  }
+
   function onSliderPointerDown(event: PointerEvent) {
     pointerDownX = event.clientX
+    onSliderPointerMove(event)
   }
 
   function onSliderPointerUp(event: PointerEvent) {
@@ -242,9 +317,26 @@ export function useVideoTimeline(options: VideoTimelineOptions) {
 
     slider.removeEventListener('pointerdown', onSliderPointerDown)
     slider.removeEventListener('pointerup', onSliderPointerUp)
+    slider.removeEventListener('pointerenter', onSliderPointerMove)
+    slider.removeEventListener('pointermove', onSliderPointerMove)
     slider.removeEventListener('pointerenter', startThumbnails)
     slider.removeEventListener('focusin', startThumbnails)
+    slider.style.removeProperty(PREVIEW_SHIFT_PROPERTY)
+    previewResizeObserver?.disconnect()
+    previewResizeObserver = null
+    lastPointerX = null
     slider = null
+  }
+
+  function observePreviewWidth() {
+    const preview = slider?.querySelector<HTMLElement>('media-slider-preview')
+
+    if (!preview || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    previewResizeObserver = new ResizeObserver(updatePreviewShift)
+    previewResizeObserver.observe(preview)
   }
 
   function attach(element: HTMLElement | null) {
@@ -256,6 +348,9 @@ export function useVideoTimeline(options: VideoTimelineOptions) {
     slider = element
     slider.addEventListener('pointerdown', onSliderPointerDown)
     slider.addEventListener('pointerup', onSliderPointerUp)
+    slider.addEventListener('pointerenter', onSliderPointerMove)
+    slider.addEventListener('pointermove', onSliderPointerMove)
+    observePreviewWidth()
 
     if (options.isThumbnailsEnabled && !hasStartedThumbnails) {
       slider.addEventListener('pointerenter', startThumbnails, { once: true })

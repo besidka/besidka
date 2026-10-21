@@ -72,4 +72,22 @@ describe('video-player-theme.css', () => {
     expect(stylesheet).not.toMatch(/\.bubble:has\(/)
     expect(stylesheet).not.toMatch(/\.plyr/)
   })
+
+  it('shifts the preview card by the clamp custom property', () => {
+    expectDeclaration(
+      '.landing-player .video-preview__card',
+      /translate\s*:\s*var\(--video-preview-shift,\s*0px\)\s+0\s*;/,
+    )
+  })
+
+  it('paints the radio dot with the accent content color', () => {
+    expectDeclaration(
+      '.landing-player .video-menu__radio::after',
+      /background\s*:\s*var\(--color-accent-content\)\s*;/,
+    )
+    expect(getDeclarationBlocks('.landing-player .video-menu__radio::after')
+      .some((block) => {
+        return /background\s*:\s*#fff\s*;/.test(block)
+      })).toBe(false)
+  })
 })

@@ -2,7 +2,6 @@
   <video-player
     ref="playerRef"
     class="video-shell block w-full"
-    :poster="poster || undefined"
   >
     <media-container
       ref="containerRef"
@@ -75,7 +74,7 @@
                   />
                   <media-slider-preview
                     class="video-preview"
-                    overflow="clamp"
+                    overflow="visible"
                   >
                     <div class="video-preview__card bubble">
                       <media-slider-thumbnail
@@ -212,76 +211,24 @@
                           />
                         </span>
                       </media-menu-item>
-                      <media-menu-content
-                        :id="ids.captionsMenu"
-                        class="video-menu__page video-menu__submenu"
+
+                      <media-menu-item
+                        v-if="hasQualityMenu"
+                        :commandfor="ids.qualityMenu"
+                        class="video-menu__item video-menu__trigger"
+                        data-testid="video-settings-quality"
                       >
-                        <media-menu-item
-                          class="video-menu__item video-menu__back"
-                        >
+                        <span>Quality</span>
+                        <span class="video-menu__hint">
+                          <span class="video-menu__value">
+                            {{ selectedQualityLabel }}
+                          </span>
                           <span
-                            class="video-menu__arrow video-menu__arrow--back"
+                            class="video-menu__arrow"
                             aria-hidden="true"
                           />
-                          <span>Captions</span>
-                        </media-menu-item>
-                        <media-captions-radio-group
-                          class="video-menu__group"
-                          data-testid="video-captions-options"
-                        >
-                          <template v-html="RADIO_ITEM_TEMPLATE" />
-                        </media-captions-radio-group>
-                      </media-menu-content>
-
-                      <template v-if="qualities.length > 1">
-                        <media-menu-item
-                          :commandfor="ids.qualityMenu"
-                          class="video-menu__item video-menu__trigger"
-                          data-testid="video-settings-quality"
-                        >
-                          <span>Quality</span>
-                          <span class="video-menu__hint">
-                            <span class="video-menu__value">
-                              {{ selectedQualityLabel }}
-                            </span>
-                            <span
-                              class="video-menu__arrow"
-                              aria-hidden="true"
-                            />
-                          </span>
-                        </media-menu-item>
-                        <media-menu-content
-                          :id="ids.qualityMenu"
-                          class="video-menu__page video-menu__submenu"
-                        >
-                          <media-menu-item
-                            class="video-menu__item video-menu__back"
-                          >
-                            <span
-                              class="video-menu__arrow video-menu__arrow--back"
-                              aria-hidden="true"
-                            />
-                            <span>Quality</span>
-                          </media-menu-item>
-                          <media-menu-radio-group
-                            class="video-menu__group js-video-custom-options"
-                            aria-label="Quality"
-                            :value="selectedQuality"
-                            data-testid="video-quality-options"
-                            @value-change="onQualityChange"
-                          >
-                            <media-menu-radio-item
-                              v-for="option in qualities"
-                              :key="option.value"
-                              :value="option.value"
-                              class="video-menu__item video-menu__radio"
-                              :data-testid="`video-quality-${option.value}`"
-                            >
-                              <span data-part="label">{{ option.label }}</span>
-                            </media-menu-radio-item>
-                          </media-menu-radio-group>
-                        </media-menu-content>
-                      </template>
+                        </span>
+                      </media-menu-item>
 
                       <media-menu-item
                         :commandfor="ids.speedMenu"
@@ -299,37 +246,92 @@
                           />
                         </span>
                       </media-menu-item>
-                      <media-menu-content
-                        :id="ids.speedMenu"
-                        class="video-menu__page video-menu__submenu"
+                    </media-menu-content>
+
+                    <media-menu-content
+                      :id="ids.captionsMenu"
+                      class="video-menu__page video-menu__submenu"
+                    >
+                      <media-menu-item
+                        class="video-menu__item video-menu__back"
                       >
-                        <media-menu-item
-                          class="video-menu__item video-menu__back"
+                        <span
+                          class="video-menu__arrow video-menu__arrow--back"
+                          aria-hidden="true"
+                        />
+                        <span>Captions</span>
+                      </media-menu-item>
+                      <media-captions-radio-group
+                        class="video-menu__group"
+                        data-testid="video-captions-options"
+                      >
+                        <template v-html="RADIO_ITEM_TEMPLATE" />
+                      </media-captions-radio-group>
+                    </media-menu-content>
+
+                    <media-menu-content
+                      v-if="hasQualityMenu"
+                      :id="ids.qualityMenu"
+                      class="video-menu__page video-menu__submenu"
+                    >
+                      <media-menu-item
+                        class="video-menu__item video-menu__back"
+                      >
+                        <span
+                          class="video-menu__arrow video-menu__arrow--back"
+                          aria-hidden="true"
+                        />
+                        <span>Quality</span>
+                      </media-menu-item>
+                      <media-menu-radio-group
+                        class="video-menu__group js-video-custom-options"
+                        aria-label="Quality"
+                        :value="selectedQuality"
+                        data-testid="video-quality-options"
+                        @value-change="onQualityChange"
+                      >
+                        <media-menu-radio-item
+                          v-for="option in qualities"
+                          :key="option.value"
+                          :value="option.value"
+                          class="video-menu__item video-menu__radio"
+                          :data-testid="`video-quality-${option.value}`"
                         >
-                          <span
-                            class="video-menu__arrow video-menu__arrow--back"
-                            aria-hidden="true"
-                          />
-                          <span>Speed</span>
-                        </media-menu-item>
-                        <media-menu-radio-group
-                          class="video-menu__group js-video-custom-options"
-                          aria-label="Speed"
-                          :value="selectedSpeed"
-                          data-testid="video-speed-options"
-                          @value-change="onSpeedChange"
+                          <span data-part="label">{{ option.label }}</span>
+                        </media-menu-radio-item>
+                      </media-menu-radio-group>
+                    </media-menu-content>
+
+                    <media-menu-content
+                      :id="ids.speedMenu"
+                      class="video-menu__page video-menu__submenu"
+                    >
+                      <media-menu-item
+                        class="video-menu__item video-menu__back"
+                      >
+                        <span
+                          class="video-menu__arrow video-menu__arrow--back"
+                          aria-hidden="true"
+                        />
+                        <span>Speed</span>
+                      </media-menu-item>
+                      <media-menu-radio-group
+                        class="video-menu__group js-video-custom-options"
+                        aria-label="Speed"
+                        :value="selectedSpeed"
+                        data-testid="video-speed-options"
+                        @value-change="onSpeedChange"
+                      >
+                        <media-menu-radio-item
+                          v-for="option in speeds"
+                          :key="option.value"
+                          :value="option.value"
+                          class="video-menu__item video-menu__radio"
+                          :data-testid="`video-speed-${option.value}`"
                         >
-                          <media-menu-radio-item
-                            v-for="option in speeds"
-                            :key="option.value"
-                            :value="option.value"
-                            class="video-menu__item video-menu__radio"
-                            :data-testid="`video-speed-${option.value}`"
-                          >
-                            <span data-part="label">{{ option.label }}</span>
-                          </media-menu-radio-item>
-                        </media-menu-radio-group>
-                      </media-menu-content>
+                          <span data-part="label">{{ option.label }}</span>
+                        </media-menu-radio-item>
+                      </media-menu-radio-group>
                     </media-menu-content>
                   </media-menu>
                 </template>
@@ -445,7 +447,6 @@ import '~/assets/css/video-player-theme.css'
 
 const props = withDefaults(defineProps<{
   variant?: 'full' | 'lean'
-  poster?: string
   containerClass?: string
   qualities?: VideoMenuOption[]
   selectedQuality?: string
@@ -453,7 +454,6 @@ const props = withDefaults(defineProps<{
   selectedSpeed?: string
 }>(), {
   variant: 'full',
-  poster: undefined,
   containerClass: undefined,
   qualities: () => [],
   selectedQuality: '',
@@ -560,6 +560,10 @@ const hotkeys = computed<HotkeyBinding[]>(() => {
   })
 })
 
+const hasQualityMenu = computed<boolean>(() => {
+  return props.qualities.length > 1
+})
+
 const selectedQualityLabel = computed<string>(() => {
   return props.qualities.find((option) => {
     return option.value === props.selectedQuality
@@ -573,6 +577,7 @@ const selectedSpeedLabel = computed<string>(() => {
 })
 
 let isUnmounted = false
+let hasWarnedMissingMenuOptionPublisher = false
 let stopWaitingForMedia: (() => void) | null = null
 let releaseControlsLock: (() => void) | null = null
 
@@ -614,13 +619,32 @@ function onSpeedChange(event: Event) {
   }
 }
 
+function warnMissingMenuOptionPublisher() {
+  if (!import.meta.dev || hasWarnedMissingMenuOptionPublisher) {
+    return
+  }
+
+  hasWarnedMissingMenuOptionPublisher = true
+  console.warn(
+    '[video-player] media-menu-radio-group.publishMenuOptionState is gone: '
+    + 'the Settings button will disappear on pages without caption tracks. '
+    + 'See "Fragile seams" in docs/video-player.md.',
+  )
+}
+
 function publishCustomOptionsAvailability() {
   const groups = containerRef.value?.querySelectorAll<MenuOptionStatePublisher>(
     '.js-video-custom-options',
   ) ?? []
 
   for (const group of groups) {
-    group.publishMenuOptionState?.(false, false, 'available')
+    if (typeof group.publishMenuOptionState !== 'function') {
+      warnMissingMenuOptionPublisher()
+
+      continue
+    }
+
+    group.publishMenuOptionState(false, false, 'available')
   }
 }
 
