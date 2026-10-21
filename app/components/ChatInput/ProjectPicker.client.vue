@@ -2,6 +2,7 @@
   <Teleport to="body">
     <dialog
       ref="dialogRef"
+      data-testid="project-picker-dialog"
       class="modal modal-bottom sm:modal-middle"
     >
       <div class="modal-box max-w-2xl">
@@ -27,15 +28,19 @@
         <UiSearchInput
           ref="searchInputRef"
           v-model="search"
-          :is-searching="isLoadingProjects"
+          :is-searching="isSearching"
           placeholder="Search projects..."
           :show-keyboard-hint="false"
           class="mb-4"
         />
 
-        <div class="rounded-box border border-base-200 max-h-80 overflow-y-auto p-2">
+        <div
+          ref="scrollContainerRef"
+          data-testid="project-picker-list"
+          class="rounded-box border border-base-200 max-h-80 overflow-y-auto p-2"
+        >
           <div
-            v-if="isLoadingProjects"
+            v-if="isLoadingInitial"
             class="flex items-center justify-center py-8"
           >
             <span class="loading loading-spinner loading-md" />
@@ -60,11 +65,12 @@
                 </button>
               </li>
 
-              <li v-if="visiblePinnedProjects.length > 0">
+              <li v-if="pinned.length > 0">
                 <h4 class="menu-title px-2">Pinned projects</h4>
                 <button
-                  v-for="project in visiblePinnedProjects"
+                  v-for="project in pinned"
                   :key="project.id"
+                  data-testid="project-picker-item"
                   type="button"
                   :class="{
                     'menu-active': project.id === selectedProjectId,
@@ -82,11 +88,12 @@
                 </button>
               </li>
 
-              <li v-if="visibleProjects.length > 0">
+              <li v-if="projects.length > 0">
                 <h4 class="menu-title px-2">All projects</h4>
                 <button
-                  v-for="project in visibleProjects"
+                  v-for="project in projects"
                   :key="project.id"
+                  data-testid="project-picker-item"
                   type="button"
                   :class="{
                     'menu-active': project.id === selectedProjectId,
@@ -126,6 +133,18 @@
                   : 'Create a project to organize chats.' }}
               </p>
             </div>
+
+            <div
+              v-if="hasMore"
+              ref="sentinelRef"
+              :key="pageVersion"
+              class="js-project-picker-sentinel flex min-h-8 items-center justify-center py-2"
+            >
+              <span
+                v-if="isLoadingMore"
+                class="loading loading-spinner loading-sm"
+              />
+            </div>
           </template>
         </div>
 
@@ -163,7 +182,6 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
-import type { Project } from '#shared/types/projects.d'
 
 const emit = defineEmits<{
   submit: [payload: {
@@ -185,70 +203,64 @@ const nuxtApp = useNuxtApp()
 const dialogRef = shallowRef<HTMLDialogElement | null>(null)
 const projectNameModalRef = shallowRef<ProjectNameModalInstance | null>(null)
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
-const search = shallowRef<string>('')
-const allProjects = shallowRef<Project[]>([])
-const isLoadingProjects = shallowRef<boolean>(false)
+const scrollContainerRef = shallowRef<HTMLElement | null>(null)
+const sentinelRef = shallowRef<HTMLElement | null>(null)
 const selectedProjectId = shallowRef<string | null>(null)
 const isProjectModalSubmitting = shallowRef<boolean>(false)
 
-const searchedProjects = computed(() => {
-  if (!search.value.length) {
-    return allProjects.value
-  }
-
-  const query = search.value.toLowerCase()
-
-  return allProjects.value.filter((project) => {
-    return project.name.toLowerCase().includes(query)
-  })
-})
-
-const visiblePinnedProjects = computed(() => {
-  return searchedProjects.value.filter(project => !!project.pinnedAt)
-})
-
-const visibleProjects = computed(() => {
-  return searchedProjects.value.filter(project => !project.pinnedAt)
-})
+const {
+  search,
+  pinned,
+  projects,
+  pageVersion,
+  hasMore,
+  isLoadingInitial,
+  isLoadingMore,
+  isSearching,
+  reset,
+  fetchFirstPage,
+  loadMore,
+  prependProject,
+} = useProjectPicker()
 
 const hasVisibleProjects = computed(() => {
-  return visiblePinnedProjects.value.length > 0
-    || visibleProjects.value.length > 0
+  return pinned.value.length > 0 || projects.value.length > 0
 })
 
-async function loadProjects() {
-  isLoadingProjects.value = true
+useIntersectionObserver(
+  sentinelRef,
+  ([entry]) => {
+    if (entry?.isIntersecting) {
+      loadMore()
+    }
+  },
+  { root: scrollContainerRef },
+)
 
-  try {
-    const response = await $fetch('/api/v1/projects')
-
-    allProjects.value = [...response.pinned, ...response.projects]
-  } catch (exception) {
-    const parsedException = parseError(exception)
-
-    nuxtApp.runWithContext(() => {
-      useErrorMessage(
-        parsedException.message || 'Failed to load projects',
-        parsedException.why,
-      )
-    })
-  } finally {
-    isLoadingProjects.value = false
+watch(isSearching, async (isSearchingNow, wasSearching) => {
+  if (!wasSearching || isSearchingNow) {
+    return
   }
-}
+
+  await nextTick()
+
+  if (scrollContainerRef.value) {
+    scrollContainerRef.value.scrollTop = 0
+  }
+})
 
 async function open(projectId: string | null) {
   selectedProjectId.value = projectId
-  search.value = ''
+  reset()
   dialogRef.value?.showModal()
-  await loadProjects()
+  await fetchFirstPage()
   await nextTick()
   searchInputRef.value?.inputRef?.focus()
 }
 
 function close() {
   dialogRef.value?.close()
-  search.value = ''
+  reset()
 }
 
 function onSelect(projectId: string | null, projectName: string | null) {
@@ -270,7 +282,6 @@ async function onProjectModalSubmit(payload: {
   }
 
   isProjectModalSubmitting.value = true
-  isLoadingProjects.value = true
 
   try {
     const result = await $fetch('/api/v1/projects', {
@@ -278,7 +289,7 @@ async function onProjectModalSubmit(payload: {
       body: { name: payload.name },
     })
 
-    allProjects.value = [result, ...allProjects.value]
+    prependProject(result)
     projectNameModalRef.value?.close()
     onSelect(result.id, result.name)
   } catch (exception) {
@@ -292,7 +303,6 @@ async function onProjectModalSubmit(payload: {
     })
   } finally {
     isProjectModalSubmitting.value = false
-    isLoadingProjects.value = false
   }
 }
 
