@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import Database from 'better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
 import {
   createProject,
   createHistoryChat,
@@ -100,6 +102,16 @@ async function getProjectChatsHandler() {
   return module.default
 }
 
+const sqlDialect = drizzle(new Database(':memory:')).dialect
+
+function getCompiledWhereParams(chain: {
+  where: { mock: { calls: unknown[][] } }
+}) {
+  const [condition] = chain.where.mock.calls[0] as [never]
+
+  return sqlDialect.sqlToQuery(condition).params
+}
+
 function createSelectChain() {
   const chain = {
     from: vi.fn(() => chain),
@@ -194,6 +206,38 @@ describe('projects API', () => {
       projects: [activeProject],
       nextCursor: null,
     })
+  })
+
+  it.each([
+    ['ножі', ['%ножі%', '%НОЖІ%', '%Ножі%']],
+    ['польщі', ['%польщі%', '%ПОЛЬЩІ%', '%Польщі%']],
+    ['н', ['%н%', '%Н%']],
+  ])('matches Cyrillic project search %s in any letter case', async (
+    search,
+    expectedParams,
+  ) => {
+    const handler = await getProjectsHandler()
+    const project = createProject({ id: 'project-cyrillic', name: 'Ножі' })
+    const projectsChain = createSelectChain()
+    const pinnedChain = createSelectChain()
+    const db = {
+      select: vi.fn()
+        .mockReturnValueOnce(projectsChain)
+        .mockReturnValueOnce(pinnedChain),
+      batch: vi.fn(async () => [[], [project]]),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({ query: { search } } as any)
+
+    expect(response.projects).toEqual([project])
+    expect(getCompiledWhereParams(projectsChain)).toEqual(
+      expect.arrayContaining(expectedParams),
+    )
+    expect(getCompiledWhereParams(pinnedChain)).toEqual(
+      expect.arrayContaining(expectedParams),
+    )
   })
 
   it('creates, renames, pins, and archives projects', async () => {

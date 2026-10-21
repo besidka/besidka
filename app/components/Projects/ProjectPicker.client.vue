@@ -2,6 +2,7 @@
   <Teleport to="body">
     <dialog
       ref="dialogRef"
+      data-testid="project-picker-dialog"
       class="modal modal-bottom sm:modal-middle"
     >
       <div class="modal-box max-w-2xl">
@@ -27,15 +28,19 @@
         <UiSearchInput
           ref="searchInputRef"
           v-model="search"
-          :is-searching="isLoadingProjects"
+          :is-searching="isSearching"
           placeholder="Search projects..."
           :show-keyboard-hint="false"
           class="mb-4"
         />
 
-        <div class="rounded-box border border-base-200 max-h-80 overflow-y-auto p-2">
+        <div
+          ref="scrollContainerRef"
+          data-testid="project-picker-list"
+          class="rounded-box border border-base-200 max-h-80 overflow-y-auto p-2"
+        >
           <div
-            v-if="isLoadingProjects"
+            v-if="isLoadingInitial"
             class="flex items-center justify-center py-8"
           >
             <span class="loading loading-spinner loading-md" />
@@ -80,6 +85,7 @@
                 <button
                   v-for="project in visiblePinnedProjects"
                   :key="project.id"
+                  data-testid="project-picker-item"
                   type="button"
                   :class="{
                     'menu-active': project.id === currentChat?.projectId,
@@ -102,6 +108,7 @@
                 <button
                   v-for="project in visibleProjects"
                   :key="project.id"
+                  data-testid="project-picker-item"
                   type="button"
                   :class="{
                     'menu-active': project.id === currentChat?.projectId,
@@ -141,6 +148,18 @@
                   : 'Create a project to organize chats.' }}
               </p>
             </div>
+
+            <div
+              v-if="hasMore"
+              ref="sentinelRef"
+              :key="pageVersion"
+              class="js-project-picker-sentinel flex min-h-8 items-center justify-center py-2"
+            >
+              <span
+                v-if="isLoadingMore"
+                class="loading loading-spinner loading-sm"
+              />
+            </div>
           </template>
         </div>
 
@@ -179,7 +198,6 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import type { HistoryChat } from '#shared/types/history.d'
-import type { Project } from '#shared/types/projects.d'
 
 const emit = defineEmits<{
   submit: [payload: {
@@ -205,42 +223,53 @@ const dialogRef = shallowRef<HTMLDialogElement | null>(null)
 const projectNameModalRef = shallowRef<ProjectNameModalInstance | null>(null)
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 const currentChat = shallowRef<HistoryChat | null>(null)
-const search = shallowRef<string>('')
-const allProjects = shallowRef<Project[]>([])
-const isLoadingProjects = shallowRef<boolean>(false)
+const scrollContainerRef = shallowRef<HTMLElement | null>(null)
+const sentinelRef = shallowRef<HTMLElement | null>(null)
 const isProjectModalSubmitting = shallowRef<boolean>(false)
 
+const {
+  search,
+  pinned,
+  projects,
+  pageVersion,
+  hasMore,
+  isLoadingInitial,
+  isLoadingMore,
+  isSearching,
+  reset,
+  fetchFirstPage,
+  loadMore,
+  prependProject,
+} = useProjectPicker()
+
 const currentProject = computed(() => {
-  if (!currentChat.value?.projectId) {
+  const chat = currentChat.value
+
+  if (!chat?.projectId || !chat.projectName) {
     return null
   }
 
-  return allProjects.value.find((project) => {
-    return project.id === currentChat.value?.projectId
-  }) || null
-})
+  const query = search.value.trim().toLowerCase()
 
-const searchedProjects = computed(() => {
-  if (search.value.length < 1) {
-    return allProjects.value
+  if (query && !chat.projectName.toLowerCase().includes(query)) {
+    return null
   }
 
-  const query = search.value.toLowerCase()
-
-  return allProjects.value.filter((project) => {
-    return project.name.toLowerCase().includes(query)
-  })
+  return {
+    id: chat.projectId,
+    name: chat.projectName,
+  }
 })
 
 const visiblePinnedProjects = computed(() => {
-  return searchedProjects.value.filter((project) => {
-    return project.pinnedAt && project.id !== currentProject.value?.id
+  return pinned.value.filter((project) => {
+    return project.id !== currentChat.value?.projectId
   })
 })
 
 const visibleProjects = computed(() => {
-  return searchedProjects.value.filter((project) => {
-    return !project.pinnedAt && project.id !== currentProject.value?.id
+  return projects.value.filter((project) => {
+    return project.id !== currentChat.value?.projectId
   })
 })
 
@@ -250,32 +279,33 @@ const hasVisibleProjects = computed(() => {
     || visibleProjects.value.length > 0
 })
 
-async function loadProjects() {
-  isLoadingProjects.value = true
+useIntersectionObserver(
+  sentinelRef,
+  ([entry]) => {
+    if (entry?.isIntersecting) {
+      loadMore()
+    }
+  },
+  { root: scrollContainerRef },
+)
 
-  try {
-    const response = await $fetch('/api/v1/projects')
-
-    allProjects.value = [...response.pinned, ...response.projects]
-  } catch (exception) {
-    const parsedException = parseError(exception)
-
-    nuxtApp.runWithContext(() => {
-      useErrorMessage(
-        parsedException.message || 'Failed to load projects',
-        parsedException.why,
-      )
-    })
-  } finally {
-    isLoadingProjects.value = false
+watch(isSearching, async (isSearchingNow, wasSearching) => {
+  if (!wasSearching || isSearchingNow) {
+    return
   }
-}
+
+  await nextTick()
+
+  if (scrollContainerRef.value) {
+    scrollContainerRef.value.scrollTop = 0
+  }
+})
 
 async function open(chat: HistoryChat) {
   currentChat.value = chat
-  search.value = ''
+  reset()
   dialogRef.value?.showModal()
-  await loadProjects()
+  await fetchFirstPage()
   await nextTick()
   searchInputRef.value?.inputRef?.focus()
 }
@@ -283,7 +313,7 @@ async function open(chat: HistoryChat) {
 function close() {
   dialogRef.value?.close()
   currentChat.value = null
-  search.value = ''
+  reset()
 }
 
 function onSelect(projectId: string | null, projectName: string | null) {
@@ -315,7 +345,6 @@ async function onProjectModalSubmit(payload: {
   }
 
   isProjectModalSubmitting.value = true
-  isLoadingProjects.value = true
 
   try {
     const project = await $fetch('/api/v1/projects', {
@@ -323,7 +352,7 @@ async function onProjectModalSubmit(payload: {
       body: { name: payload.name },
     })
 
-    allProjects.value = [project, ...allProjects.value]
+    prependProject(project)
     projectNameModalRef.value?.close()
     onSelect(project.id, project.name)
   } catch (exception) {
@@ -337,7 +366,6 @@ async function onProjectModalSubmit(payload: {
     })
   } finally {
     isProjectModalSubmitting.value = false
-    isLoadingProjects.value = false
   }
 }
 

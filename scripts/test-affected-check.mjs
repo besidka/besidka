@@ -250,6 +250,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/history-race.spec.ts',
     'tests/unit/composables/history-load-more-race.spec.ts',
     'tests/unit/composables/projects.spec.ts',
+    'tests/unit/composables/project-picker.spec.ts',
     'tests/unit/composables/projects-rename.spec.ts',
     'tests/unit/composables/projects-rename-sort.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
@@ -271,6 +272,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-project-instructions.spec.ts',
     'tests/integration/pages/history-cache.spec.ts',
     'tests/e2e/history/dropdown-touch.spec.ts',
+    'tests/e2e/projects/picker.spec.ts',
     'tests/e2e/search/pin.spec.ts',
   ]
 
@@ -1389,7 +1391,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/composables\/(history|projects|project-chats)\.ts$/,
+      pattern: /^app\/composables\/(history|projects|project-chats|project-picker)\.ts$/,
       tests: historyProjectsTests,
     },
     {
@@ -1471,6 +1473,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/pages\/chats\/projects\/.*\.vue$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^server\/utils\/db\/like\.ts$/,
+      tests: [
+        'tests/unit/server/utils/db/like.spec.ts',
+        'tests/integration/api/projects.spec.ts',
+        'tests/integration/api/chats-history.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/(ChatInput|Projects)\/ProjectPicker\.client\.vue$/,
       tests: historyProjectsTests,
     },
     {

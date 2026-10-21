@@ -53,12 +53,12 @@ export default defineEventHandler(async (event) => {
     userId,
     sortBy,
     archived,
-    hasSearch: search.length >= 2,
+    hasSearch: search.length >= 1,
     hasCursor: !!parsedCursor,
     limit,
   })
 
-  const searchFilter = search.length >= 2
+  const searchFilter = search.length >= 1
     ? containsLikeEscaped(schema.projects.name, search)
     : undefined
 

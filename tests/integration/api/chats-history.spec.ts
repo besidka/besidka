@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import Database from 'better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
 import {
   createHistoryChat,
 } from '../../setup/helpers/history-fixtures'
@@ -103,6 +105,8 @@ async function getBulkProjectMoveHandler() {
 
   return module.default
 }
+
+const sqlDialect = drizzle(new Database(':memory:')).dialect
 
 function createSelectChain<T>(result?: T) {
   const chain = {
@@ -248,6 +252,36 @@ describe('chat history API', () => {
     ).toEqual(['chat-second'])
     expect(nextPageResponse.nextCursor).toBeNull()
     expect(db.batch).toHaveBeenCalledTimes(2)
+  })
+
+  it('matches Cyrillic title search in any letter case', async () => {
+    const handler = await getHistoryHandler()
+    const match = withDateFields(createHistoryChat({
+      id: 'chat-cyrillic',
+      title: 'Вибір автівки в Польщі',
+    }))
+    const titleSelectChain = createSelectChain()
+    const db = {
+      select: vi.fn()
+        .mockReturnValueOnce(titleSelectChain)
+        .mockReturnValueOnce(createSelectChain()),
+      batch: vi.fn(async () => [[], [match]]),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
+
+    const response = await handler({
+      query: { search: 'вибір', searchIn: 'title' },
+    } as never)
+    const [condition] = titleSelectChain.where.mock.calls[0] as [never]
+
+    expect(response.chats.map((chat: { id: string }) => chat.id)).toEqual([
+      'chat-cyrillic',
+    ])
+    expect(sqlDialect.sqlToQuery(condition).params).toEqual(
+      expect.arrayContaining(['%вибір%', '%ВИБІР%', '%Вибір%']),
+    )
   })
 
   it('falls back to the default limit when the history limit is invalid', async () => {
