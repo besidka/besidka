@@ -64,6 +64,27 @@ export function getControllerModelId(model: Model): string {
   return model.imageGeneration?.controllerModel ?? model.id
 }
 
+/**
+ * Image-generation models stream through their controller model, so the
+ * attachments they can receive are the controller's, not their own image-only
+ * modalities. Falls back to the model's own list when the controller is not
+ * a catalog model of the same provider.
+ */
+export function getModelInputModalities(model: Model): string[] {
+  const controllerModelId = model.imageGeneration?.controllerModel
+
+  if (!controllerModelId) {
+    return model.modalities.input
+  }
+
+  const { provider } = getModel(model.id)
+  const controllerModel = provider?.models.find((candidate) => {
+    return candidate.id === controllerModelId
+  })
+
+  return controllerModel?.modalities.input ?? model.modalities.input
+}
+
 export function getImageGenerationModelId(
   model: Model | null | undefined,
   fallbackModelId: string,

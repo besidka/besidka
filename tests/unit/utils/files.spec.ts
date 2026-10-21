@@ -5,6 +5,8 @@ import {
   getFileDownloadUrl,
   getFileIcon,
   getSafeFileLinks,
+  getUnsupportedInputMessage,
+  isMediaTypeRejectedByModel,
   getFileUrl,
   truncateFilename,
   truncateFilenameMiddle,
@@ -89,5 +91,83 @@ describe('files utils', () => {
         url: '/files/f1.webp',
       },
     ])
+  })
+
+  describe('getUnsupportedInputMessage', () => {
+    const everything = () => true
+    const textAndImages = (type: string) => type !== 'application/pdf'
+    const textAndPdf = (type: string) => !type.startsWith('image/')
+    const textOnly = (type: string) => type.startsWith('text/')
+
+    it('suggests PDF or text when only images are rejected', () => {
+      expect(getUnsupportedInputMessage(['image/png'], textAndPdf)).toBe(
+        'This model does not support image input. '
+        + 'Attach a PDF or text file instead, or switch models.',
+      )
+    })
+
+    it('suggests only text when images are rejected and PDFs are unsupported', () => {
+      expect(getUnsupportedInputMessage(['image/png'], textOnly)).toBe(
+        'This model does not support image input. '
+        + 'Attach a text file instead, or switch models.',
+      )
+    })
+
+    it('names PDF when a PDF is rejected and images are unsupported', () => {
+      expect(
+        getUnsupportedInputMessage(['application/pdf'], textOnly),
+      ).toBe(
+        'This model does not support PDF input. '
+        + 'Attach a text file instead, or switch models.',
+      )
+    })
+
+    it('suggests an image when a PDF is rejected and images are supported', () => {
+      expect(
+        getUnsupportedInputMessage(['application/pdf'], textAndImages),
+      ).toBe(
+        'This model does not support PDF input. '
+        + 'Attach an image or text file instead, or switch models.',
+      )
+    })
+
+    it('combines both kinds when images and PDFs are rejected', () => {
+      expect(
+        getUnsupportedInputMessage(
+          ['image/png', 'application/pdf', 'image/webp'],
+          textOnly,
+        ),
+      ).toBe(
+        'This model does not support image or PDF input. '
+        + 'Attach a text file instead, or switch models.',
+      )
+    })
+
+    it('does not suggest a rejected kind when the predicate is permissive', () => {
+      expect(getUnsupportedInputMessage(['image/png'], everything)).toBe(
+        'This model does not support image input. '
+        + 'Attach a PDF or text file instead, or switch models.',
+      )
+    })
+  })
+
+  describe('isMediaTypeRejectedByModel', () => {
+    const textOnly = (type: string) => type.startsWith('text/')
+
+    it('rejects images and PDFs the model cannot read', () => {
+      expect(isMediaTypeRejectedByModel('image/png', textOnly)).toBe(true)
+      expect(isMediaTypeRejectedByModel('application/pdf', textOnly))
+        .toBe(true)
+    })
+
+    it('never rejects text or unrelated types', () => {
+      expect(isMediaTypeRejectedByModel('text/plain', textOnly)).toBe(false)
+      expect(isMediaTypeRejectedByModel('application/zip', textOnly))
+        .toBe(false)
+    })
+
+    it('accepts media the model can read', () => {
+      expect(isMediaTypeRejectedByModel('image/png', () => true)).toBe(false)
+    })
   })
 })

@@ -127,6 +127,78 @@ turn. One past chat re-sent 29 images (17 MB) per turn. Prompt caching does not
 remove the re-send bytes from the Worker, and it only discounts the cached
 prefix within its TTL, so it is not a substitute for bounding what is sent.
 
+### Files in the newest message
+
+The newest user message is gated against the selected model before anything
+is persisted or sent to a provider, so a send the model cannot read fails
+fast with a 400 instead of reaching the provider. Regenerate re-posts the last
+user message through the same handler (same message id, body parts), so
+switching model and regenerating hits the same gate; it runs before the
+already-persisted-reply replay and before `persistUserMessage()`.
+
+- **Direct providers**: every image and PDF `file` part is checked against
+  the model's input modalities
+  (`shared/utils/input-media-types.ts`, the same kind detection the client
+  picker and the carried-files rule use). `assertInputFilesSupported()`
+  (`server/utils/chats/input-file-support.ts`) rejects an image without
+  `image` and a PDF without `pdf`, each with its own message; `text/*` always
+  passes, and other types (audio, video, archives) are left to
+  `validateMessageFilePolicy()`. The modalities come from
+  `getModelInputModalities()` (`shared/utils/model.ts`): an image-generation
+  model (`gpt-image-*`, `gemini-*-image`, `grok-imagine-*`) streams through
+  its controller model, so the controller's modalities apply, and "make an
+  infographic from this PDF" is accepted although the image model itself
+  lists no `pdf`. The same list drives the carried-files predicate and the
+  client picker. Before this, only images were checked: Moonshot threw inside
+  `@ai-sdk/moonshotai` and DeepSeek silently dropped the PDF.
+- **Gateways (Vercel, OpenRouter)**: images only, and only on positive
+  evidence. `assertGatewayImageInputSupported()`
+  (`server/utils/gateways/image-input-support.ts`) looks the model up in the
+  cached gateway catalog, and only when the message carries an image, then
+  rejects only if the entry has a non-empty `modalities.input` that omits
+  `image`. A catalog miss, an outage or missing modalities fail open. PDFs are
+  never gated on gateways: catalogs use a different vocabulary (OpenRouter
+  says `file`, not `pdf`) and OpenRouter parses PDFs for any routed model, so a
+  catalog-derived gate would reject sends that work. Cloudflare is skipped
+  entirely: its catalog needs the user's credentials and exposes no reliable
+  input modalities (see `docs/providers/gateways.md`).
+- **Provider-side fallback**: when a provider still rejects a PDF at request
+  time, `normalizeChatError()` rewrites the raw upstream text into
+  "This model does not support PDF input..." (the PDF counterpart of the image
+  rewrite in `server/utils/chats/errors.ts`). Only wording that says the
+  model, input, file or media type does not support PDF matches; unrelated PDF
+  errors (encrypted file, unsupported page size, parse failure) pass through
+  unchanged.
+
+OpenAI models that read images are treated as reading PDFs: OpenAI's PDF guide
+(<https://developers.openai.com/api/docs/guides/pdf-files>) requires "models
+with vision capabilities, such as gpt-4o and later", and `@ai-sdk/openai`
+has no per-model restriction, while models.dev omits `pdf` for several of
+them (gpt-5, gpt-5-mini, o4-mini, ...). `providers/openai.ts` sets
+`impliedInputModalities: { image: ['pdf'] }` (see
+`docs/models-data-fetching.md`); text-only models stay without `pdf`.
+
+xAI never advertises `pdf`. `@ai-sdk/xai` 5.0.24 only exposes the Responses
+model, whose converter throws `UnsupportedFunctionalityError` for non-image
+inline data ("requires a URL or a Files API reference for non-image files"),
+and `convertFilesForAI()` always produces `data:` URLs. Grok models can read
+PDFs on xAI's side, but this app cannot deliver them, so
+`providers/xai.ts` sets `excludedInputModalities: ['pdf']`, which
+`mergeProvider()` applies on top of the models.dev snapshot for every xAI
+model (see `docs/models-data-fetching.md`). Uploading each PDF through the xAI
+Files API was rejected as larger: an extra request per file, a file lifecycle
+with deletion to manage, and more cost surface.
+
+The AI SDK's per-call `warnings` (for example a file type an adapter dropped)
+are written to the `ai-stream` wide event as
+`attributes.aiWarnings = { count, warnings }` (first 10, each
+`{ type, feature?, setting?, message?, details? }`) only when a step produced
+any. The search-answer continuation call records its own warnings under
+`attributes.aiContinuationWarnings`, because evlog concatenates arrays on
+repeated `set()` and would otherwise inflate the main call's list. Both live
+under `attributes` per `docs/axiom-map-fields.md`. The serializer is
+`server/utils/ai/sdk-warnings.ts`.
+
 ## Data Model Reference
 
 ### `files`

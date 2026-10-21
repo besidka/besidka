@@ -41,6 +41,8 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 | `name` | fetched, unless the model is a research agent or models.dev publishes the bare id as the name |
 | `description` | fetched, unless the model is a research agent |
 | `contextLength`, `maxOutputTokens`, `modalities`, `toolCall` | fetched |
+| `modalities.input` entries named in the provider's `impliedInputModalities` | curated (added to every model of that provider whose input has the key, applied first) |
+| `modalities.input` entries named in the provider's `excludedInputModalities` | curated (removed from every model of that provider, snapshot-backed or fully curated, applied after implied) |
 | `status` | fetched, unless hand-set in curated (curated wins — the owner can outrank models.dev) |
 | `retiredAt` | curated only — the provider's official shutdown date; models.dev has no retirement dates |
 | `price.input`, `price.output` | fetched, unless the model is a research agent (billed per task) |
@@ -51,6 +53,41 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 
 Research agents are recognised by their curated `research` block, so the
 policy never hardcodes model ids.
+
+### `excludedInputModalities`: a delivery limit, not a model capability
+
+models.dev always wins for `modalities`, which is right for what a model can
+do but wrong when this app cannot deliver an input type to it. A provider can
+declare `excludedInputModalities` (`CuratedProvider` in `providers/merge.ts`);
+`mergeProvider()` removes those entries from every merged model's
+`modalities.input`, after the snapshot merge, without mutating the snapshot.
+`providers/xai.ts` sets `['pdf']`: models.dev lists `pdf` for Grok, but
+`@ai-sdk/xai` 5.0.24 only has the Responses model, which rejects inline
+(`data:` URL) non-image files, and `convertFilesForAI()` always produces
+`data:` URLs. With `pdf` gone from the merged catalog, the client picker and
+the newest-message gate (`docs/files.md`) both treat Grok as unable to read
+PDFs, including `grok-imagine-image*`, which are fully curated. Uploading PDFs
+through the xAI Files API would lift the exclusion but was rejected as larger:
+an extra request per file, file deletion and lifecycle, and more cost surface.
+Drop the entry from `providers/xai.ts` if the package gains a chat-completions
+model or inline-PDF support.
+
+### `impliedInputModalities`: a provider rule models.dev under-reports
+
+The opposite correction: a provider can declare `impliedInputModalities`
+(`CuratedProvider` in `providers/merge.ts`), a map from a modality to the
+modalities it implies. `mergeProvider()` adds them, deduplicated and without
+mutating inputs, to every merged model whose input includes the key, before
+`excludedInputModalities` is applied. `providers/openai.ts` sets
+`{ image: ['pdf'] }`: OpenAI's PDF guide
+(<https://developers.openai.com/api/docs/guides/pdf-files>) says PDF parsing
+"requires models with vision capabilities, such as gpt-4o and later models",
+and `@ai-sdk/openai` has no per-model restriction, yet models.dev omits `pdf`
+for gpt-5, gpt-5-mini, gpt-5-nano, gpt-5.1, gpt-5.2, gpt-5.4-mini,
+gpt-5.4-nano, o4-mini, gpt-4.1-nano and gpt-4-turbo while listing it for
+gpt-4o, gpt-4.1, o3 and gpt-5.4. Text-only models (o3-mini, gpt-4,
+gpt-3.5-turbo) stay without `pdf`. Drop the entry if models.dev starts
+reporting OpenAI PDF support accurately.
 
 ## Reasoning capability sync rule
 

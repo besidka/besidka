@@ -277,6 +277,7 @@
       ref="filesModalRef"
       :attached-ids="attachedIds"
       :is-image-input-supported="isImageInputSupported"
+      :can-attach-media-type="canAttachMediaType"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
       @upload="uploadFiles"
@@ -327,6 +328,7 @@ const {
   isImageGenerationSupported,
   isImageGenerationRequired,
   isImageInputSupported,
+  canAttachMediaType,
   isReasoningSupported,
   isReasoningAlwaysOn,
   reasoningCapability,
@@ -518,23 +520,24 @@ const {
   cancelAllUploads,
   removeAttachedFile,
   removeAllFiles,
-} = useChatFiles(files, isImageInputSupported)
+} = useChatFiles(files, canAttachMediaType)
 
-watch(isImageInputSupported, (supported) => {
-  if (supported) {
-    return
-  }
-
-  const remainingFiles = files.value.filter((file) => {
-    return !isImageFile(file.type)
+watch(canAttachMediaType, (canAttach) => {
+  const rejectedFiles = files.value.filter((file) => {
+    return isMediaTypeRejectedByModel(file.type, canAttach)
   })
 
-  if (remainingFiles.length === files.value.length) {
+  if (rejectedFiles.length === 0) {
     return
   }
 
-  files.value = remainingFiles
-  useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+  files.value = files.value.filter(file => !rejectedFiles.includes(file))
+  useWarningMessage(
+    getUnsupportedInputMessage(
+      rejectedFiles.map(file => file.type),
+      canAttach,
+    ),
+  )
 }, { flush: 'post' })
 
 /**
@@ -930,12 +933,20 @@ function onFilesAttached(
   const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
   )
-  const newFiles = isImageInputSupported.value
-    ? incomingFiles
-    : incomingFiles.filter(file => !isImageFile(file.type))
+  const rejectedFiles = incomingFiles.filter((file) => {
+    return isMediaTypeRejectedByModel(file.type, canAttachMediaType.value)
+  })
+  const newFiles = incomingFiles.filter((file) => {
+    return !rejectedFiles.includes(file)
+  })
 
-  if (newFiles.length < incomingFiles.length) {
-    useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+  if (rejectedFiles.length > 0) {
+    useWarningMessage(
+      getUnsupportedInputMessage(
+        rejectedFiles.map(file => file.type),
+        canAttachMediaType.value,
+      ),
+    )
   }
 
   if (newFiles.length === 0) {
