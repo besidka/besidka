@@ -20,6 +20,11 @@ New to API keys? Read the [BYOK guide](https://besidka.com/byok).
 
 Project board is available [here](https://github.com/orgs/besidka/projects/2).
 
+## Contributing
+
+Issues are welcome. Code contributions are by invitation only; see
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Tech stack
 
 - [Nuxt (Vue + Nitro + Cloudflare workers)](https://nuxt.com/)
