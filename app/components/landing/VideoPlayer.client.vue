@@ -267,6 +267,10 @@ function applySpeed(rate: number) {
   video.playbackRate = rate
 }
 
+function syncCurrentSpeed() {
+  currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_SPEED
+}
+
 function isValidStartAt(startAt: number | undefined): startAt is number {
   return startAt !== undefined && Number.isFinite(startAt) && startAt >= 0
 }
@@ -316,6 +320,7 @@ function selectQuality(size: number) {
       : resumeTime
     mediaElement.defaultPlaybackRate = rate
     mediaElement.playbackRate = rate
+    syncCurrentSpeed()
 
     if (wasPaused) {
       return
@@ -370,11 +375,11 @@ function applyStartAt() {
 
 useEventListener(videoRef, 'loadedmetadata', applyStartAt)
 
+useEventListener(videoRef, 'loadedmetadata', syncCurrentSpeed)
+
 tryOnScopeDispose(cancelPendingQualitySwitch)
 
-useEventListener(videoRef, 'ratechange', () => {
-  currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_SPEED
-})
+useEventListener(videoRef, 'ratechange', syncCurrentSpeed)
 
 useEventListener(videoRef, 'play', () => {
   const video = videoRef.value

@@ -414,6 +414,27 @@ describe('VideoPlayer.client.vue', () => {
           .toContain('2×')
       })
 
+    it('shows the restored speed after a quality restore drops ratechange',
+      async () => {
+        localStorage.setItem('video-player', JSON.stringify({
+          volume: 0.4,
+          muted: false,
+          speed: 1.5,
+          quality: 1080,
+          captions: { enabled: false, language: null },
+        }))
+
+        const wrapper = await mountPlayer({ qualities: QUALITIES })
+        const video = getVideo(wrapper)
+
+        video.dispatchEvent(new Event('loadedmetadata'))
+        await flushPromises()
+
+        expect(video.playbackRate).toBe(1.5)
+        expect(wrapper.get('[data-testid="video-settings-speed"]').text())
+          .toContain('1.5×')
+      })
+
     it('ignores speeds outside the fixed list', async () => {
       const wrapper = await mountPlayer()
       const video = getVideo(wrapper)
