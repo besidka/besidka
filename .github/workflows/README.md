@@ -25,7 +25,7 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │      └─ Comment preview URLs + metrics on PR                     │
 │                                                                  │
 │  Pull Request closed (merged or not)                             │
-│  └─ preview-cleanup.yml (pull_request_target, base branch only)  │
+│  └─ preview-cleanup.yml (pull_request_target, any base branch)   │
 │      └─ wrangler preview delete --name pr-{number}               │
 │                                                                  │
 │  Pull Request (fork)                                             │
@@ -66,18 +66,26 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 
 ### `preview-build.yml` - PR Build & Test
 
-Triggers on `pull_request` events targeting `main` only (`branches: [main]`). A
-stacked PR whose base is another feature branch never triggers this workflow,
-and since `preview-deploy.yml` only runs off this workflow's `workflow_run`
-completion, stacked sub-PRs get no build or deploy — only the PR targeting
-`main` does. Runs in the PR author's context without access to secrets.
+Triggers on `pull_request` events targeting `main` only (`branches: [main]`).
+An umbrella child PR (base is the parent feature branch) never triggers this
+workflow, and since `preview-deploy.yml` only runs off this workflow's
+`workflow_run` completion, it gets no build or deploy; the parent PR that
+targets `main` builds everything. A native GitHub stacked PR is evaluated as if
+it targeted the base of the stack, so every layer triggers the workflow, but the
+`check-pr-state` guard (`stack == null || stack.position == stack.size`) skips
+every job unless the PR is the top layer. `preview-deploy.yml` detects such a
+run by the missing `preview-build` artifact and exits without deploying. The
+affected-tests base is `stack.base.ref || base_ref`, so the top layer tests
+every layer below it. See `docs/stacked-prs.md`. Runs in the PR author's
+context without access to secrets.
 
 1. Check PR is still open
 2. `check-latest-commit` runs `scripts/ci/resolve-preview-build-source.mjs`
    to decide between building and reusing an earlier build (see below)
 3. Install dependencies
 4. Lint + typecheck
-5. Run affected tests only (based on changed files vs base branch)
+5. Run affected tests only (based on changed files vs the base branch, or
+   the stack's base branch for a stacked PR)
 6. Build application
 7. Upload build output, `.drizzle`, and metrics as artifacts
 
@@ -105,7 +113,10 @@ the copy on the default branch. See `docs/cloudflare-previews.md` →
 
 Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's context with access to secrets.
 
-1. Extract PR number and SHA from `workflow_run` event context (not from artifacts). When `pull_requests` is empty (GitHub clears it once the PR is closed or merged), look up the open PR whose own head is that SHA in the head repository (so stacked PRs whose history merely contains the commit are never matched); if none is open, emit a notice, set the pending `Preview Deploy` status to `success` with a "Skipped" description, and end the run successfully without deploying
+1. Check that the build run uploaded a live `preview-build` artifact; if not
+   (a skipped non-top stack layer), set the `Preview Deploy` status to
+   `success` with "Skipped (no build for this commit)" and stop. Then extract
+   PR number and SHA from `workflow_run` event context (not from artifacts). When `pull_requests` is empty (GitHub clears it once the PR is closed or merged), look up the open PR whose own head is that SHA in the head repository (so stacked PRs whose history merely contains the commit are never matched); if none is open, emit a notice, set the pending `Preview Deploy` status to `success` with a "Skipped" description, and end the run successfully without deploying
 2. Check if PR is from a fork - skip deploy if so
 3. Download build and `.drizzle` artifacts from the same build run
 4. Apply preview D1 migrations from the downloaded `.drizzle` artifact
@@ -119,7 +130,11 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
 
 ### `preview-cleanup.yml` - PR Preview Cleanup
 
-Triggers on `pull_request_target` `closed` (merged or abandoned). It runs with
+Triggers on `pull_request_target` `closed` (merged or abandoned) for a PR
+with any base branch; there is no `branches` filter, so umbrella children and
+stack layers also run it (a missing Preview counts as success, so they cost
+about one to two runner minutes each), and a PR retargeted after it deployed
+still gets its Preview deleted. It runs with
 secrets, which is safe here because the job checks out only the default branch
 and never PR code. It runs `wrangler preview delete --name pr-{number} --env
 production --skip-confirmation`; a preview that no longer exists is treated as
@@ -178,7 +193,9 @@ changed) is a harmless no-op.
 ### `claude-code-review.yml` - Claude Code Review
 
 Triggers on `pull_request` events `opened`, `synchronize`,
-`ready_for_review` and `reopened`. Runs the `/code-review:code-review
+`ready_for_review` and `reopened`, only for PRs targeting `main`
+(`branches: [main]`). Umbrella children are not reviewed, the parent reviews the
+combined diff; every native stack layer is reviewed (see `docs/stacked-prs.md`). Runs the `/code-review:code-review
 --comment` plugin through `anthropics/claude-code-action@v1` and posts inline
 review comments on the PR. Requires the `ANTHROPIC_API_KEY` secret.
 
