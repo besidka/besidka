@@ -408,13 +408,21 @@ October 2026". Changes in that pass:
   (`label` and `url`) shows as a "Sources" line of links under the note, in
   `app/components/content/HomeComparison.vue`. Add a source whenever a new
   cell depends on a page.
-- **T3 Chat was restored on 2026-10-21** at the owner's request. Its public
-  pricing page returns 404 and plans show only after sign-in, so the price
-  cell says `Shown after sign-in` instead of a figure. The cells that could be
-  verified cite the T3 FAQ, the T3 terms and Theo's 2025 post on keys and
-  images; everything else says `Not listed by T3`, per the table's rule for
-  unverifiable cells. Re-check the column, and replace the price cell, when
-  T3 publishes a public pricing page.
+- **T3 Chat was restored on 2026-10-21** at the owner's request, and its
+  cells were then checked signed in on the same day. Its public pricing page
+  returns 404 and plans show only after sign-in. Signed in, the plans are Free,
+  Pro and Premier, and the paid prices read "Price shown at checkout", so the
+  price cell says `Shown at checkout` instead of a figure. Pro includes image
+  generation, web search and file uploads, so image generation says `Paid
+  plans`. The API Keys settings say "Bring your own API keys for select
+  models" and mark it a "Paid Feature", so bring-your-own-keys says `Paid
+  plans, select models`. These three cells come from an account view, not a
+  public page, and `priceDate` was not bumped for them: it still covers the
+  other columns, which were not re-checked on 2026-10-21. The other cells that
+  could be verified cite the T3 FAQ, the T3 terms and Theo's 2025 post on keys
+  and images; everything else says `Not listed by T3`, per the table's rule for
+  unverifiable cells. Re-check the column, and replace the price cell, when T3
+  publishes a public pricing page.
 - **The `Message caps from the app` row was removed.** ChatGPT Free text chats
   have been unlimited, subject to abuse-prevention safeguards, since mid-August
   2026, so "usage limits apply" no longer held for every plan, and no plan
@@ -456,6 +464,34 @@ explainers above:
   `guides` collection and is not a key guide. `/byok` stays the canonical URL
   of the explainer.
 - `TechArticle` JSON-LD always; `VideoObject` only when a guide has a video.
+- **`VideoObject` datetime rule.** Google rejects a date-only `uploadDate`
+  ("missing a timezone", "invalid datetime"). `toIsoDateTimeWithOffset()` in
+  `shared/utils/iso-datetime.ts` turns the frontmatter `video.uploadDate`
+  `YYYY-MM-DD` into `YYYY-MM-DDT00:00:00+00:00` and passes through a full
+  datetime that already has `Z` or `±hh:mm`. The schema in
+  `shared/utils/key-guide-schema.ts` accepts only those two shapes (it calls
+  the same function), so content files can keep the short date. A value the
+  helper rejects omits the whole `VideoObject` rather than emitting an
+  invalid one. `dateModified` on the `TechArticle` is not covered: it is
+  not part of the video report and the date-only form is accepted there.
+- **`Clip` url / `?t=` contract.** Every `Clip` in `VideoObject.hasPart`
+  needs a `url` (Search Console: `Missing field "url" (in "hasPart")`). It is
+  the canonical page URL plus `?t=<startOffset seconds>`, for example
+  `https://besidka.com/guides/gemini-api-key?t=7`, built in
+  `buildClipsLd()` from the same `buildCanonicalUrl(siteOrigin, route.path)`
+  the page uses for `url`, with any other query or hash dropped. The page
+  honors it: `app/pages/guides/[slug].vue` reads `route.query.t`, accepts
+  only one plain non-negative integer below the video duration
+  (`parseVideoStartOffset()` in `shared/utils/video.ts`; `0` is valid, a
+  repeated, negative, decimal or too-large value is ignored), passes it to
+  `LandingVideoPlayer` as `startAt` and scrolls the video block into view on
+  mount. The player seeks once, when Plyr reports a known duration (`ready`
+  or `loadedmetadata`), and never calls `play()`, so there is no autoplay.
+  `?t=` URLs are not separate pages: `app.vue` derives canonical and
+  `og:url` from `route.path` and `buildCanonicalUrl()` strips the query, and
+  the sitemap comes from the `keyGuides` collection, so no `?t=` URL is
+  listed. The home video has no `VideoObject` or `Clip` markup, so none of
+  this applies to it.
 - **Sitemap.** The collection schema includes `sitemap: defineSitemapSchema()`
   (from `@nuxtjs/sitemap/content`), so entries come from the collection with
   no rewrite. `asSitemapCollection` is deprecated since `@nuxtjs/sitemap` 9.1

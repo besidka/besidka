@@ -74,7 +74,8 @@
 
     <div
       v-if="guide.video"
-      class="w-full"
+      ref="videoContainer"
+      class="w-full scroll-mt-24"
       data-testid="key-guide-video"
     >
       <ClientOnly>
@@ -85,6 +86,7 @@
           :captions="guide.video.captions ?? []"
           :markers="guide.video.markers ?? []"
           :guide-provider="guide.provider"
+          :start-at="videoStartAt"
         />
         <template #fallback>
           <img
@@ -165,6 +167,10 @@
 import { buildKeyGuidePageLd } from '~/utils/landing-jsonld'
 import { formatUtcDate } from '~/utils/utc-date'
 import { isSafeExternalUrl } from '#shared/utils/external-url'
+import {
+  parseIsoDurationToSeconds,
+  parseVideoStartOffset,
+} from '#shared/utils/video'
 
 definePageMeta({
   layout: 'legal',
@@ -212,12 +218,39 @@ const cardRequirement = computed<string>(() => {
   return requirements?.card ? 'Required' : 'Not required'
 })
 
+const videoContainer = useTemplateRef<HTMLElement>('videoContainer')
+
+const videoStartAt = computed<number | undefined>(() => {
+  const duration = guide.value?.video?.duration
+
+  if (!duration) {
+    return undefined
+  }
+
+  return parseVideoStartOffset(
+    route.query.t,
+    parseIsoDurationToSeconds(duration),
+  ) ?? undefined
+})
+
 const signupLink = computed<string>(() => {
   const keysPath = resolveSafeNextPath(
     `/profile/keys?provider=${guide.value?.provider ?? ''}`,
   )
 
   return withUtm(appendNextToPath('/signup', keysPath))
+})
+
+onMounted(async () => {
+  if (videoStartAt.value === undefined) {
+    return
+  }
+
+  await nextTick()
+  videoContainer.value?.scrollIntoView({
+    block: 'start',
+    behavior: 'instant',
+  })
 })
 
 useSeoMeta({

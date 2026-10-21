@@ -368,7 +368,7 @@ describe('buildKeyGuidePageLd', () => {
       'name': 'How to get a Gemini API key (video)',
       'description': 'Create a free Gemini API key in Google AI Studio.',
       'thumbnailUrl': 'https://besidka.com/videos/gemini-api-key.webp',
-      'uploadDate': '2026-10-20',
+      'uploadDate': '2026-10-20T00:00:00+00:00',
       'duration': 'PT1M12S',
       'contentUrl': 'https://besidka.com/videos/gemini-api-key.mp4',
       'inLanguage': 'en',
@@ -393,16 +393,85 @@ describe('buildKeyGuidePageLd', () => {
       {
         '@type': 'Clip',
         'name': 'Open the page',
+        'url': 'https://besidka.com/guides/gemini-api-key?t=0',
         'startOffset': 0,
         'endOffset': 12,
       },
       {
         '@type': 'Clip',
         'name': 'Copy your key',
+        'url': 'https://besidka.com/guides/gemini-api-key?t=12',
         'startOffset': 12,
         'endOffset': 20,
       },
     ])
+  })
+
+  it('gives every Clip a url that is the page url plus ?t=startOffset',
+    () => {
+      const [, video] = buildKeyGuidePageLd({
+        ...KEY_GUIDE_INPUT,
+        video: {
+          ...VIDEO,
+          duration: 'PT34S',
+          markers: [
+            { time: '0:00', label: 'Get a key' },
+            { time: '0:03', label: 'Create' },
+            { time: '0:07', label: 'Name' },
+          ],
+        },
+      })['@graph']
+      const clips = video!.hasPart as Array<Record<string, unknown>>
+
+      expect(clips).toHaveLength(3)
+
+      for (const clip of clips) {
+        expect(clip.url)
+          .toBe(`${KEY_GUIDE_INPUT.url}?t=${clip.startOffset}`)
+      }
+    })
+
+  it('builds the Clip url from the page url without extra query or hash',
+    () => {
+      const [, video] = buildKeyGuidePageLd({
+        ...KEY_GUIDE_INPUT,
+        url: 'https://besidka.com/guides/gemini-api-key?utm=x#top',
+        video: {
+          ...VIDEO,
+          markers: [{ time: '0:07', label: 'Name' }],
+        },
+      })['@graph']
+
+      expect(video!.hasPart).toEqual([
+        expect.objectContaining({
+          url: 'https://besidka.com/guides/gemini-api-key?t=7',
+        }),
+      ])
+    })
+
+  it.each([
+    ['2026-10-20', '2026-10-20T00:00:00+00:00'],
+    ['2026-10-20T09:30:00+02:00', '2026-10-20T09:30:00+02:00'],
+    ['2026-10-20T09:30:00Z', '2026-10-20T09:30:00Z'],
+  ])('emits uploadDate %s as %s', (uploadDate, expected) => {
+    const [, video] = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, uploadDate },
+    })['@graph']
+
+    expect(video!.uploadDate).toBe(expected)
+    expect(String(video!.uploadDate))
+      .toMatch(/T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/)
+  })
+
+  it('omits the VideoObject instead of emitting an invalid uploadDate', () => {
+    const keyGuideLd = buildKeyGuidePageLd({
+      ...KEY_GUIDE_INPUT,
+      video: { ...VIDEO, uploadDate: '2026-10-20T09:30:00' },
+    })
+
+    expect(keyGuideLd['@graph']).toHaveLength(1)
+    expect(JSON.stringify(keyGuideLd)).not.toContain('VideoObject')
   })
 
   it('omits hasPart when the video has no markers', () => {

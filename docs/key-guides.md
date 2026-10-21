@@ -53,11 +53,11 @@ covers these files (title, description and summary stay strings).
 | `video.src` | path or https URL | `/videos/key-guide-<id>.mp4` |
 | `video.poster` | path or https URL | `/key-guides/<id>.webp` |
 | `video.duration` | ISO 8601 | e.g. `PT34S`, for VideoObject |
-| `video.uploadDate` | string | ISO date the video was published |
+| `video.uploadDate` | string | `YYYY-MM-DD` (read as 00:00 UTC) or a full ISO 8601 datetime with `Z` or `±hh:mm`. Emitted as a datetime with an offset, see `docs/seo.md` |
 | `video.caption` | string, optional | Visible caption under the player on `/guides/<slug>`, also the VideoObject name |
 | `video.alt` | string, optional | What the video shows. Accessible name of the poster and player on the keys page |
 | `video.captions` | `{ src, label, srclang, default? }[]` | WebVTT tracks for the public page player |
-| `video.markers` | `{ time, label }[]` | Chapter markers, same shape as `video.markers` in `content/index.md`. `time` is `m:ss`, `mm:ss` or `h:mm:ss`. Shown on the progress bar of both players, labelled in the hover preview, and emitted as `Clip` entries in `VideoObject.hasPart` (each ends at the next marker or the video duration) |
+| `video.markers` | `{ time, label }[]` | Chapter markers, same shape as `video.markers` in `content/index.md`. `time` is `m:ss`, `mm:ss` or `h:mm:ss`. Shown on the progress bar of both players, labelled in the hover preview, and emitted as `Clip` entries in `VideoObject.hasPart` (each ends at the next marker or the video duration, and its `url` is the guide URL plus `?t=<start seconds>`, which `/guides/<slug>` honors by starting the player there) |
 
 Omit `video` entirely when there is no real video yet: VideoObject JSON-LD is
 only emitted when it is set, and the keys page then shows no video block.

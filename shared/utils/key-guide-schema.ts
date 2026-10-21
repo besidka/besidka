@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { providerMeta } from './provider-meta'
+import { toIsoDateTimeWithOffset } from './iso-datetime'
 import { parseTimecodeToSeconds } from './video'
 
 const HTTPS_ONLY_MESSAGE = 'Must be an https:// URL'
@@ -107,7 +108,16 @@ export const keyGuideSchema = z.object({
         .describe('ISO 8601 duration, e.g. PT1M12S'),
       uploadDate: z
         .string()
-        .describe('ISO date the video was published, e.g. 2026-10-20'),
+        .refine((value) => {
+          return toIsoDateTimeWithOffset(value) !== null
+        }, {
+          message: 'Must be YYYY-MM-DD or a datetime with Z or ±hh:mm',
+        })
+        .describe(
+          'Date the video was published: YYYY-MM-DD (read as 00:00 UTC) or'
+          + ' a full ISO 8601 datetime with Z or a ±hh:mm offset, e.g.'
+          + ' 2026-10-20 or 2026-10-20T09:30:00+02:00',
+        ),
       caption: z
         .string()
         .optional()

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseIsoDurationToSeconds,
   parseTimecodeToSeconds,
+  parseVideoStartOffset,
   toMarkerPoints,
 } from '#shared/utils/video'
 
@@ -93,5 +94,32 @@ describe('parseIsoDurationToSeconds', () => {
     expect(parseIsoDurationToSeconds('PT')).toBeNull()
     expect(parseIsoDurationToSeconds('34s')).toBeNull()
     expect(parseIsoDurationToSeconds('P1D')).toBeNull()
+  })
+})
+
+describe('parseVideoStartOffset', () => {
+  it('accepts an integer below the duration, including 0', () => {
+    expect(parseVideoStartOffset('0', 34)).toBe(0)
+    expect(parseVideoStartOffset('7', 34)).toBe(7)
+    expect(parseVideoStartOffset('33', 34)).toBe(33)
+  })
+
+  it.each(['34', '999', '-1', '7.5', '1e1', '+7', ' 7', '', 'abc'])(
+    'rejects %j',
+    (value) => {
+      expect(parseVideoStartOffset(value, 34)).toBeNull()
+    },
+  )
+
+  it('rejects non-string and repeated query values', () => {
+    expect(parseVideoStartOffset(undefined, 34)).toBeNull()
+    expect(parseVideoStartOffset(null, 34)).toBeNull()
+    expect(parseVideoStartOffset(7, 34)).toBeNull()
+    expect(parseVideoStartOffset(['7'], 34)).toBeNull()
+    expect(parseVideoStartOffset(['7', '8'], 34)).toBeNull()
+  })
+
+  it('rejects everything when the duration is unknown', () => {
+    expect(parseVideoStartOffset('7', null)).toBeNull()
   })
 })
