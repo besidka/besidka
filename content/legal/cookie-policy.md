@@ -1,7 +1,7 @@
 ---
 title: "Cookie Policy"
 description: "Every cookie and browser storage entry Besidka uses, what it is for, how long it lasts, and how to change or withdraw your consent."
-updatedAt: 2026-10-18
+updatedAt: 2026-10-21
 summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, and hand a tapped push notification to the open app. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree. The only third-party script is a security check on the sign-in forms. There is no analytics or marketing category: my page-view counting happens on the server with no cookie, no identifier and no stored IP address, and the campaign tags in a link you click are read from the web address, never stored on your device. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
 ---
 
@@ -78,7 +78,7 @@ These only remember how you like the app set up. They are kept **only if you agr
 | `settings_web_search_tool` | localStorage | Besidka | Which web search tool you last chose for new chats | Until removed |
 | `model` | localStorage | Besidka | The model you used last, so a new chat starts with it | Until removed |
 | `chat_input` | localStorage | Besidka | The draft of the message currently in the input box, so it is still there if you navigate away and come back. Like the backup above it holds **your text verbatim**, in your browser only. Unlike the backup it is a convenience, so it is consent-gated and is deleted if you deny preferences | Until sent, cleared, or removed |
-| `plyr` | localStorage | Besidka | Video player preferences such as volume, captions and quality | Until removed |
+| `video-player` | localStorage | Besidka | Video player preferences such as volume, mute, speed, quality and captions | Until removed |
 
 ## Security check on sign-in forms
 

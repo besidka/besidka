@@ -39,7 +39,7 @@
           width="1280"
           height="720"
           loading="lazy"
-          class="size-full rounded-2xl object-cover"
+          class="size-full rounded-2xl object-contain"
           @error="isPosterMissing = true"
         >
         <LazyProfileKeysGuideVideo

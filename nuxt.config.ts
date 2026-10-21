@@ -102,6 +102,45 @@ const buildId = process.env.NUXT_BUILD_ID
 
 const iconCollections = ['lucide', 'simple-icons', 'bxl', 'streamline-logos']
 
+const videoJsElements = new Set([
+  'video-player',
+  'media-container',
+  'media-controls',
+  'media-controls-content',
+  'media-controls-group',
+  'media-tooltip-group',
+  'media-tooltip',
+  'media-tooltip-label',
+  'media-play-button',
+  'media-mute-button',
+  'media-volume-slider',
+  'media-time',
+  'media-time-slider',
+  'media-time-slider-chapters',
+  'media-time-slider-chapter-title',
+  'media-slider-track',
+  'media-slider-buffer',
+  'media-slider-fill',
+  'media-slider-thumb',
+  'media-slider-preview',
+  'media-slider-thumbnail',
+  'media-slider-value',
+  'media-captions-button',
+  'media-captions-radio-group',
+  'media-menu',
+  'media-menu-content',
+  'media-menu-item',
+  'media-menu-radio-group',
+  'media-menu-radio-item',
+  'media-menu-item-indicator',
+  'media-pip-button',
+  'media-airplay-button',
+  'media-fullscreen-button',
+  'media-hotkey',
+  'media-gesture',
+  'media-icon',
+])
+
 const modules = [
   '@nuxt/content',
   'nuxt-studio',
@@ -409,6 +448,11 @@ export default defineNuxtConfig({
   },
   vue: {
     vapor: true,
+    compilerOptions: {
+      isCustomElement: (tag) => {
+        return videoJsElements.has(tag)
+      },
+    },
   },
   typescript: {
     typeCheck: process.env.CI !== 'true',
@@ -646,8 +690,8 @@ export default defineNuxtConfig({
             type: 'localStorage',
           },
           {
-            id: 'plyr',
-            name: 'plyr',
+            id: 'video-player',
+            name: 'video-player',
             type: 'localStorage',
           },
           {
