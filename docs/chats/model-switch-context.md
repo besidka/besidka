@@ -34,9 +34,14 @@ All paths are in `server/api/v1/chats/[slug]/index.post.ts` unless noted.
    (line 572).
 3. `convertFilesForAI` (lines 575-579) turns file URLs into data the SDK can
    send and reports `missingFiles`.
-4. `buildMessagesForModel` (call at line 1163, definition at line 2639) adds
-   the Google leading-assistant placeholder when needed.
-5. `convertToModelMessages` (line 1275) produces the AI SDK model messages
+4. `buildMessagesForModel` (call at line 1167, definition in
+   `server/utils/chats/model-turns.ts`) keeps the model-facing turns
+   alternating: a `(no reply)` assistant turn between adjacent user turns, an
+   `(earlier message deleted)` user turn between adjacent assistant turns,
+   and the Google leading-assistant placeholder. It keys on the underlying
+   model provider (`modelProviderId`), so gateway-routed `google/*` models get
+   the placeholder too.
+5. `convertToModelMessages` (line 1279) produces the AI SDK model messages
    passed to `streamText`.
 
 Because the model is resolved fresh from each request, switching model or
@@ -125,28 +130,35 @@ Omitted earlier files, dropped parts and gateway-stripped files are all
 invisible to the user. The chat looks complete while the model answers from
 a reduced context.
 
-### Stale documentation
+### Stale documentation (fixed)
 
-`docs/providers/moonshotai.md` (lines 220-230, "Cross-provider resend on a
-mid-chat model switch") claims a `tool-web_search` part is resent verbatim to
-a different provider after a switch. That has not been true since the
-whitelist sanitizer landed: the part is dropped before the request is built.
+`docs/providers/moonshotai.md` claimed a `tool-web_search` part is resent
+verbatim to a different provider after a switch, and to Moonshot itself on
+every later turn. Neither is true: the whitelist sanitizer drops every
+`tool-*` part from earlier turns, so the part stays in `messages.parts` and
+only flows back within the turn that produced it. The Moonshot and xAI docs
+and `docs/providers/general.md` now say so.
 
-### Suspected edge cases (not reproduced)
+### Edge cases (confirmed and fixed)
 
-- Back-to-back user messages when an assistant turn sanitizes to empty. The
-  skip at `assistant-files.ts:84-86` removes the assistant message and leaves
-  two adjacent user messages, which some providers reject or merge.
-- The gateway-routed Gemini leading-assistant placeholder is missed.
-  `buildMessagesForModel` (`index.post.ts:2639-2647`) keys on
-  `providerId !== 'google'`, and `errorProviderId` is the gateway id on
-  gateway sends (lines 619-628), so a Gemini model reached through a gateway
-  never gets the placeholder.
+- Back-to-back user messages when an assistant turn sanitizes to empty.
+  Reasoning-, source-, tool- or failure-notice-only replies are persisted
+  but the skip at `assistant-files.ts:84-86` removes them. Only
+  `@ai-sdk/anthropic` merges adjacent user turns; the other converters send
+  them separately. `buildMessagesForModel` now inserts a `(no reply)`
+  assistant turn, and also bridges adjacent assistant turns left by
+  single-message delete.
+- The gateway-routed Gemini leading-assistant placeholder was missed because
+  it keyed on `errorProviderId`, which is the gateway id on gateway sends. It
+  now keys on `modelProviderId` (the gateway model id's vendor prefix).
 
-### Test gap
+### Test gap (narrowed)
 
-Every chat-route integration spec mocks the sanitizer as identity, so no test
-exercises the real model-switch path end to end.
+Chat-route integration specs still mock the sanitizer as identity, except
+`tests/integration/api/chats-model-context-real-sanitizer.spec.ts`, which
+runs the real sanitizer on a history with an Anthropic reasoning signature,
+an OpenAI `itemId` and a Brave tool result and checks what reaches
+`convertToModelMessages`.
 
 ## Child PRs
 
