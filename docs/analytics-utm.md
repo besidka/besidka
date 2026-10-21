@@ -297,7 +297,7 @@ when it becomes visible.
 
 Only the keys page guide player autoplays: muted, when it is at least half
 visible, unless the user prefers reduced motion or has data saver on. A play
-that comes from that path is `autoplay`. A play from the Plyr button, a click
+that comes from that path is `autoplay`. A play from the player's play button, a click
 on the video, or the keyboard is `user`. The home video and the `/guides/<slug>`
 player never autoplay, so their plays are always `user`.
 
@@ -311,6 +311,14 @@ The session trigger is decided when the session starts: a video that is
 unmuted at play start is `user`, so a viewer who unmuted earlier stays `user`
 on later autoplay resumes. The one-time upgrade on unmute still applies to a
 session that started muted. A `playing` event after a rebuffer is not a new play.
+
+#### Event source
+
+Both players bind analytics to the native `<video>` events (`play`,
+`playing`, `pause`, `ended`, `timeupdate`, `volumechange`), not to a player
+library API. The Video.js v10 skin only renders the controls and drives the
+same `<video>`, so a change of skin or library does not change what is
+tracked. See `docs/video-player.md`.
 
 #### Watch sessions
 

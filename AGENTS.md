@@ -246,10 +246,22 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   same `keyGuides` files are the public `/guides/<slug>` pages in
   `docs/seo.md`): the shared schema in `shared/utils/key-guide-schema.ts`,
   `-api-key` slugs, content DB reset, the `key-guide-<id>.mp4` R2 names and
-  `pnpm run cms:files:upload`, why the lean `GuideVideo.client.vue` Plyr
+  `pnpm run cms:files:upload`, why the lean `GuideVideo.client.vue` Video.js
   player is not `LandingVideoPlayer` (lazy mount, autoplay gates), the
   `?provider=<id>` deep link, scroll alignment and default Google card, the
   signed-out `?next=` capture, and the two `key_guide_*` analytics events
+- `docs/video-player.md` - The Plyr -> Video.js v10 migration (Plyr deprecated
+  2026-10-06): HTML custom elements and the composed light-DOM skin
+  `Video/Shell.vue` (`full | lean`) instead of the packaged `<video-skin>`,
+  the shell contract, element registration and the rule that a new `media-*`
+  tag goes in both `videojs-elements.ts` and the `isCustomElement` Set in
+  `nuxt.config.ts`, every Video.js gap and its workaround (MP4 quality menu,
+  fixed speed list, consent-gated `video-player` preferences, Blob-URL VTT
+  chapters and storyboard thumbnails, controls hover lock), the fragile seams
+  to re-check on every `@videojs/html` upgrade (`publishMenuOptionState`,
+  `<template>` via `v-html`, stale store `playbackRate`), the `tsconfig`
+  `watchOptions` fix for the dev `EBADF` / "DB binding missing" failure, the
+  vendored agent skill, and upgrade/revert criteria
 - `docs/domain-migration-www-to-apex.md` - The `www.besidka.com` →
   `besidka.com` canonical-host migration: D1 Time Travel bookmarks and
   read-only scan, blast radius for existing sessions/push/passkeys, and the

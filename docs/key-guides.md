@@ -113,7 +113,7 @@ The query is harmless everywhere it flows. Router params never contain it, so
 the allow-list and the R2 key. `siteRelativeOrHttpsUrl` only checks the start
 of the value. The `VideoObject` `contentUrl` and `thumbnailUrl` are resolved
 with `new URL()` and stay valid absolute URLs with the query. The players use
-`src` as an opaque URL: Plyr, the `<video>` element and the mediabunny
+`src` as an opaque URL: the Video.js player, the `<video>` element and the mediabunny
 hover-preview thumbnails (`new URL(src, location.href)` then `UrlSource`) all
 keep it. Analytics derive the provider from the `provider` prop, never from
 the filename. `tests/unit/content/key-guides.spec.ts` pins the shape: the
@@ -143,16 +143,18 @@ and the poster file must exist.
   mount, on an `open` prop change and on every native `toggle`; the key cards
   pass it up and give the guide `card-open`. The guide counts as visible when
   the card is open and the guide is open.
-- `app/components/Profile/Keys/GuideVideo.client.vue` is a lean Plyr player
-  with the `.landing-player` theme. It is not `LandingVideoPlayer`: that one
-  hard-codes the demo analytics, qualities and captions. It shares the
-  chapter markers and the lazy hover-preview thumbnails with it through
-  `useVideoProgressPreview` and `Video/ProgressPreview.vue`; frames are
-  generated on the first progress-bar hover or focus, never on mount, and the
-  markers appear once the video has loaded its metadata (`preload="none"`).
-  The control bar has a picture-in-picture button (Plyr handles Chromium's
-  PiP API and Safari's presentation mode; `disablepictureinpicture` must never
-  be set on the `<video>`). While it is in PiP the scroll-out pause is
+- `app/components/Profile/Keys/GuideVideo.client.vue` is a lean Video.js v10
+  player: the shared `Video/Shell.vue` skin with `variant="lean"` and the
+  `.landing-player` theme (see `docs/video-player.md`). It is not
+  `LandingVideoPlayer`: that one hard-codes the demo analytics, qualities,
+  captions, speed menu and preference persistence. It shares the chapter
+  markers and the lazy hover-preview thumbnails with it through
+  `useVideoTimeline` (a Blob-URL chapters track and a Blob-URL storyboard
+  track); frames are generated on the first time-slider hover or focus, never
+  on mount, and the markers appear once the video has loaded its metadata
+  (`preload="none"`). The control bar has a picture-in-picture button
+  (`media-pip-button` covers Chromium's PiP API and Safari's presentation
+  mode; `disablepictureinpicture` must never be set on the `<video>`). While it is in PiP the scroll-out pause is
   skipped, and it pauses once PiP closes with the box off screen. The poster
   `<img loading="lazy">` shows first. The player mounts only once the guide is
   open and the video box is within 300px of the viewport, observed against the

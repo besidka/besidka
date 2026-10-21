@@ -240,7 +240,7 @@ more colons, indented two spaces:
 | `:home-features{set="benefits"}`     | `benefits`                             | customer-outcome benefits grid (3 items)         |
 | `:home-testimonials`                 | `useCases` (optional)                  | **unused by the landing**: the "Who is it for?" bubble is plain markdown now; component and key kept for reuse |
 | `:home-comparison`                   | `comparison`                           | competitor comparison table with cost footnote   |
-| `:home-video`                        | `video`                                | custom Plyr player (DaisyUI-themed): quality switch, captions, chapter markers, hover thumbnails; streamed from CMS_BUCKET with Range |
+| `:home-video`                        | `video`                                | custom Video.js v10 player (DaisyUI-themed): quality switch, captions, chapter markers, hover thumbnails; streamed from CMS_BUCKET with Range |
 | `:home-faq`                          | `faqs`                                 | also emitted as FAQPage structured data          |
 | `:home-stars`                        | — (live from `/api/v1/github/stars`)   | live GitHub star count                           |
 | `:::home-cta`                        | inline `primary`/`secondary`/`align`   | small CTA block, edited in place; each CTA accepts optional `icon` |
@@ -387,9 +387,12 @@ is published in Studio, the rebuild + redeploy refreshes it.
 
 ### Demo video player
 
-- The player is `app/components/landing/VideoPlayer.client.vue` ([Plyr](https://github.com/sampotts/plyr),
-  client-only), themed to DaisyUI via `app/assets/css/plyr-theme.css`
-  (maps `--plyr-*` onto `--color-accent`/glass; scoped to `.landing-player`).
+- The player is `app/components/landing/VideoPlayer.client.vue` (client-only),
+  rendered through the shared Video.js v10 skin `app/components/Video/Shell.vue`
+  and themed to DaisyUI via `app/assets/css/video-player-theme.css`
+  (`--video-*` custom properties on `--color-accent`/glass; scoped to
+  `.landing-player`). Architecture, workarounds and upgrade notes:
+  `docs/video-player.md`.
   The section is the `::home-video` bubble in `content/index.md`; the player
   config lives in the `video:` frontmatter.
 
@@ -502,11 +505,11 @@ traffic is far inside the free quotas. The risk is abuse (a script hammering
   it the margin would be measured against the window and the lookahead would
   never fire. Until then the component renders the skeleton, so a visitor who
   never scrolls down makes **zero** `/videos/*` requests.
-- The `<video>` uses `preload="metadata"` (re-asserted after Plyr swaps the
-  media element), so mounting costs only the metadata range plus the captions
+- The `<video>` uses `preload="metadata"` (set on the `<video>` the
+  page renders; Video.js does not replace the media element), so mounting costs only the metadata range plus the captions
   file.
 - Hover thumbnails are **not** generated on mount or on play. `loadThumbnails()`
-  starts once, on the first `pointerenter`/`focusin` on the Plyr progress bar
+  starts once, on the first `pointerenter`/`focusin` on the Video.js time slider
   (the only moment a preview is needed). Starting it on `play` would run a
   second full decode of the same file alongside playback and double the
   download. Generation takes an `AbortSignal`
@@ -528,13 +531,16 @@ repo configures it. Tighten after checking Workers/R2 analytics.
 
 - **Markers** are authored in the `video.markers` frontmatter as `"m:ss"`
   timecodes (quote them — unquoted `0:12` is parsed by YAML as a number) and
-  rendered as accent pins on the progress bar. The promo has eight chapters:
-  Any model, Desktop and phone, Search and cost, Images and files, Projects,
-  Code and diagrams, Reasoning, Get started.
+  turned into a Blob-URL WebVTT chapters track, which the Video.js time slider
+  renders as segments separated by gaps (cue-point pins are not implemented
+  upstream, https://github.com/videojs/v10/issues/1442). A click near a
+  chapter start snaps to it. The promo has eight chapters: Any model, Desktop
+  and phone, Search and cost, Images and files, Projects, Code and diagrams,
+  Reasoning, Get started.
 - **Hover thumbnails** are generated on the client: mediabunny streams the MP4
   via `UrlSource` (Range) and decodes frames with `CanvasSink` into a sprite,
-  drawn by a custom overlay (Plyr's `previewThumbnails` can't load `blob:` URLs).
-  A hidden-`<video>` canvas-seek fallback covers browsers without WebCodecs.
+  exposed as a Blob-URL WebVTT storyboard track (cues carry `#xywh` into the
+  sprite) that the slider preview renders (`useVideoTimeline`). A hidden-`<video>` canvas-seek fallback covers browsers without WebCodecs.
 - mediabunny is in `vite.optimizeDeps.exclude` (`nuxt.config.ts`) — its Web
   Worker breaks under Vite's dep pre-bundler otherwise.
 

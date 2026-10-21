@@ -965,40 +965,42 @@ is `SameSite=Lax`, so it is sent on the top-level OAuth callback navigation.
    change handler (see
    [Just-in-time prompt](#just-in-time-remember-your-preferences-prompt)).
 
-### Plyr VideoPlayer
+### Video player preferences
 
-`app/components/landing/VideoPlayer.client.vue` gates Plyr's `storage` option
-on the `preferences` consent, both at mount and reactively:
+`app/composables/video-player-preferences.ts` (`useVideoPlayerPreferences`,
+used by `app/components/landing/VideoPlayer.client.vue`) persists the Video.js
+player's volume, mute, speed, quality and captions choice as JSON under the
+localStorage key `video-player`. The key is declared in the `preferences`
+category manifest (`id: 'video-player'`). Video.js has no built-in persistence
+(https://github.com/videojs/v10/issues/944), so the composable gates it:
 
 ```ts
-import Plyr from 'plyr'
-
 const { isAllowed, onConsentChange } = useCookieConsent()
 
-let player: Plyr | null = null
-
-function initPlayer(element: HTMLElement) {
-  player = new Plyr(element, {
-    storage: { enabled: isAllowed('preferences'), key: 'plyr' },
-  })
-}
+let isEnabled = isAllowed('preferences')
 
 onConsentChange(({ granted, denied }) => {
-  if (!player) return
-
   if (granted.includes('preferences')) {
-    player.storage.enabled = true
+    isEnabled = true
+    persist()
   }
 
   if (denied.includes('preferences')) {
-    player.storage.enabled = false
-    localStorage.removeItem('plyr')
+    isEnabled = false
+    localStorage.removeItem('video-player')
   }
 })
 ```
 
-Plyr's default `storageKey` is `'plyr'`, which is already declared in the
-`preferences` category manifest so the cleanup routine removes it on deny.
+Writes happen only while `isEnabled`; a deny removes the key at once. The
+composable does its own gating and does not use `usePreferenceStorage()`. The
+lean key-guide player does not persist anything.
+
+The player used to be Plyr, which stored its settings under the `plyr` key
+(also declared in the manifest). That manifest entry was replaced by
+`video-player`, so the deny cleanup no longer covers `plyr`; the player removes
+it itself on mount through `removeLegacyPlyrPreferences()`, which clears values
+left by earlier visits. Architecture of the player: `docs/video-player.md`.
 
 ---
 
