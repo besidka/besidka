@@ -2,5 +2,9 @@
   "extends": "./.nuxt/tsconfig.json",
   "exclude": [
     "auth-schema.ts"
-  ]
+  ],
+  "watchOptions": {
+    "excludeDirectories": ["**/node_modules"],
+    "excludeFiles": ["**/node_modules/**"]
+  }
 }
