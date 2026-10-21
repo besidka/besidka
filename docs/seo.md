@@ -786,10 +786,10 @@ The key is public by design: IndexNow verifies ownership by fetching it from
 the site. It is stored as a secret only so it is not committed before the
 owner chooses one.
 
-Known gap: `production.yml` has `cancel-in-progress: true`, so a run cancelled
-by a newer push never submits; the next run diffs from its own `before` SHA
-and can miss the cancelled push's page changes. Re-run with
-`workflow_dispatch` if that matters.
+Known gap: `production.yml` queues instead of cancelling, but a pending run
+that a newer push replaces never starts, so it never submits; the next run
+diffs from its own `before` SHA and can miss the replaced push's page changes.
+Re-run with `workflow_dispatch` if that matters.
 
 ## Owner action checklist
 

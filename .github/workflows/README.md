@@ -1,3 +1,8 @@
+One production deployment at a time. A new merge queues behind the running
+deploy (newest pending run wins) instead of cancelling it, because a cancel
+between `migrations apply` and the Worker deploy can leave production with a
+new schema and old code.
+
 # GitHub Actions Workflows
 
 CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Workers.
@@ -347,9 +352,13 @@ Previews also auto-expire at the 500-per-Worker limit.
 ### `production.yml`
 ```yaml
 group: production
-cancel-in-progress: true
+cancel-in-progress: false
 ```
-One production deployment at a time.
+One production deployment at a time. A new merge queues behind the running
+deploy instead of cancelling it, because a cancellation between
+`migrations apply` and the Worker deploy can leave production with a new schema
+and old code. GitHub keeps at most one pending run; a newer pending run
+replaces the older one, so the newest commit still deploys last.
 
 ### `preview-cleanup.yml`
 ```yaml
