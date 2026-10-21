@@ -104,9 +104,12 @@ the copy on the default branch. See `docs/cloudflare-previews.md` →
 
 Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's context with access to secrets.
 
-1. Check that the build run uploaded a live `preview-build` artifact; if not
+1. Check the build run's `preview-build` artifact. If the run uploaded none
    (a skipped non-top stack layer), set the `Preview Deploy` status to
-   `success` with "Skipped (no build for this commit)" and stop. Then extract
+   `success` with "Skipped (no build for this commit)" and stop. If it
+   uploaded one that has since expired (a late re-run), fail the step with an
+   error asking for a Preview Build re-run and set the `Preview Deploy` status
+   to `failure`. Then extract
    PR number and SHA from `workflow_run` event context (not from artifacts). When `pull_requests` is empty (GitHub clears it once the PR is closed or merged), look up the open PR whose own head is that SHA in the head repository (so stacked PRs whose history merely contains the commit are never matched); if none is open, emit a notice, set the pending `Preview Deploy` status to `success` with a "Skipped" description, and end the run successfully without deploying
 2. Download build and `.drizzle` artifacts from the same build run
 3. Apply preview D1 migrations from the downloaded `.drizzle` artifact
@@ -121,10 +124,10 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
 ### `preview-cleanup.yml` - PR Preview Cleanup
 
 Triggers on `pull_request_target` `closed` (merged or abandoned) for a
-same-repository PR with any base branch; there is no `branches` filter, so umbrella children and
-stack layers also run it (a missing Preview counts as success, so they cost
-about one to two runner minutes each), and a PR retargeted after it deployed
-still gets its Preview deleted. It runs with
+same-repository PR with any base branch; there is no `branches` filter, so
+umbrella children and stack layers also run it (a missing Preview counts as
+success, so they cost about one to two runner minutes each), and a PR
+retargeted after it deployed still gets its Preview deleted. It runs with
 secrets, which is safe here because the job checks out only the default branch
 and never PR code. It runs `wrangler preview delete --name pr-{number} --env
 production --skip-confirmation`; a preview that no longer exists is treated as
@@ -175,9 +178,10 @@ changed) is a harmless no-op.
 Triggers on `pull_request` events `opened`, `synchronize`,
 `ready_for_review` and `reopened`, only for PRs targeting `main`
 (`branches: [main]`). Umbrella children are not reviewed, the parent reviews the
-combined diff; every native stack layer is reviewed (see `docs/stacked-prs.md`). Runs the `/code-review:code-review
---comment` plugin through `anthropics/claude-code-action@v1` and posts inline
-review comments on the PR. Requires the `ANTHROPIC_API_KEY` secret.
+combined diff; every native stack layer is reviewed (see
+`docs/stacked-prs.md`). Runs the `/code-review:code-review --comment` plugin
+through `anthropics/claude-code-action@v1` and posts inline review comments on
+the PR. Requires the `ANTHROPIC_API_KEY` secret.
 
 Cost controls:
 

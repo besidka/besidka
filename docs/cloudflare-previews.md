@@ -203,10 +203,11 @@ Rules:
 `preview-cleanup.yml` triggers on `pull_request_target` so it has secrets. This
 is safe because it checks out only the default branch and never PR code, and it
 runs only for same-repository PRs (`head.repo.full_name == github.repository`).
-It has no `branches` filter, so it runs for every closed PR whatever its base: umbrella children and stack layers run it too and find no
-Preview to delete, and a PR retargeted after it deployed still gets its Preview
-removed. An unfiltered run costs about one to two runner minutes, which is why
-it is not filtered.
+It has no `branches` filter, so it runs for every closed PR whatever its base:
+umbrella children and stack layers run it too and find no Preview to delete,
+and a PR retargeted after it deployed still gets its Preview removed. An
+unfiltered run costs about one to two runner minutes, which is why it is not
+filtered.
 
 Grouped PRs (umbrella parent with children, native GitHub stacks) only ever get
 one Preview, `pr-<n>`, for the parent or the top layer. `preview-build.yml`

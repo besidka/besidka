@@ -29,9 +29,11 @@ jobs:
         run: |
           PR_SHA_SHORT=$(echo "$HEAD_SHA" | cut -c1-7)
 
-          BUILD_ARTIFACT_COUNT=$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" --jq '[.artifacts[] | select(.name == "preview-build" and .expired == false)] | length')
+          ARTIFACTS_JSON=$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100")
+          BUILD_ARTIFACT_TOTAL=$(printf '%s' "$ARTIFACTS_JSON" | jq '[(.artifacts // [])[] | select(.name == "preview-build")] | length')
+          BUILD_ARTIFACT_VALID=$(printf '%s' "$ARTIFACTS_JSON" | jq '[(.artifacts // [])[] | select(.name == "preview-build" and .expired == false)] | length')
 
-          if [ "$BUILD_ARTIFACT_COUNT" = "0" ]; then
+          if [ "$BUILD_ARTIFACT_TOTAL" = "0" ]; then
             echo "::notice::Preview deploy skipped: build run $RUN_ID uploaded no preview-build artifact. The run built nothing, for example a non-top layer of a stacked PR."
             {
               echo "sha=$HEAD_SHA"
@@ -40,6 +42,16 @@ jobs:
               echo "skip-reason=no-build"
             } >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+
+          if [ "$BUILD_ARTIFACT_VALID" = "0" ]; then
+            {
+              echo "sha=$HEAD_SHA"
+              echo "sha-short=$PR_SHA_SHORT"
+              echo "skip=false"
+            } >> "$GITHUB_OUTPUT"
+            echo "::error::The preview-build artifact of build run $RUN_ID has expired (retention-days: 1), so this commit cannot be deployed. Re-run the Preview Build workflow for $PR_SHA_SHORT to produce a fresh artifact."
+            exit 1
           fi
 
           PR_NUMBER=$(printf '%s' "$PULL_REQUESTS_JSON" | jq -r '.[0].number // empty')

@@ -57,9 +57,12 @@ After a child lands in the parent, pull the parent into any other open child
 ## Merging an umbrella
 
 Pushes to child branches cost nothing: the `branches: [main]` filter skips
-every workflow on them. The cost appears when a child merges, because that is a
-push to the parent branch and runs one `preview-build.yml` and one
-`claude-code-review.yml` on the parent PR. Both workflows use
+`preview-build.yml` and `claude-code-review.yml` on them. Two workflows are not
+filtered by base branch: `preview-cleanup.yml` runs when a child PR closes (see
+`docs/cloudflare-previews.md`), and `update.yml` runs when a child PR opens.
+The cost appears when a child merges, because that is a push to the parent
+branch and runs one `preview-build.yml` and one `claude-code-review.yml` on the
+parent PR. Both workflows use
 `cancel-in-progress`, so a newer merge cancels the run of the previous one and
 the newest state wins.
 
