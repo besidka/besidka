@@ -4,31 +4,33 @@ description: Create an OpenRouter API key and add it to Besidka. One key and one
 provider: openrouter
 keyUrl: https://openrouter.ai/settings/keys
 keyUrlLabel: Open OpenRouter keys page
-updatedAt: '2026-10-20'
+updatedAt: '2026-10-21'
 checkedAt: '2026-10-20'
 summary: One key for models from many providers. Free models work before you buy credits.
 video:
-  src: /videos/key-guide-openrouter.mp4
-  poster: /key-guides/openrouter.webp
-  duration: PT39S
-  uploadDate: '2026-10-20'
-  alt: Screen recording of OpenRouter. The API Keys page, the Create API Key dialog with a name, expiration and credit limit, the email verification step, the new key shown once and masked, then the key pasted into Besidka and a first answer.
+  src: /videos/key-guide-openrouter.mp4?v=2
+  poster: /key-guides/openrouter.webp?v=2
+  duration: PT45S
+  uploadDate: '2026-10-21'
+  alt: Screen recording of OpenRouter. The API Keys page, the Create API Key dialog with a name, expiration and credit limit, the new key shown once and masked, then the key pasted into Besidka. In a new chat the model picker opens, OpenRouter is picked in the Gateways bar, a model is chosen and a first answer follows.
   markers:
     - time: "0:00"
-      label: "One key, many models"
+      label: Intro
     - time: "0:03"
-      label: New Key
+      label: Open OpenRouter
     - time: "0:07"
-      label: Name and credit limit
+      label: Set a credit limit
     - time: "0:14"
-      label: Email code
-    - time: "0:17"
       label: Copy your key
-    - time: "0:22"
+    - time: "0:19"
       label: Paste into Besidka
-    - time: "0:29"
+    - time: "0:26"
+      label: Pick the gateway
+    - time: "0:30"
+      label: Choose a model
+    - time: "0:36"
       label: First answer
-    - time: "0:35"
+    - time: "0:41"
       label: Done
 requirements:
   card: false
@@ -51,9 +53,9 @@ requirements:
 1. Open the [OpenRouter keys page](https://openrouter.ai/settings/keys) and sign in.
 2. Click **New Key**.
 3. In **Create API Key**, type a **Name** such as `Besidka` and pick an **Expiration**. Under **Credit limit**, choose **Custom amount** and enter `5`, then click **Create**. The limit caps what this key can spend, and $5 lasts a long time for everyday chats.
-4. If OpenRouter shows **Verification required**, enter the code from your email and click **Continue**.
+4. If OpenRouter shows **Verification required**, enter the code from your email and click **Continue**. Not everyone sees this step.
 5. Copy the key under **Your new key**. It starts with `sk-or-v1-`, and OpenRouter shows it only once.
 6. In Besidka, go to **Profile**, **API Keys**, **Gateways**, then the **OpenRouter** card. Paste the key into **API Key** and click **Save**.
-7. Start a new chat and pick a model from the OpenRouter list. The **Free** category shows models that cost nothing.
+7. Start a new chat and open the model picker. In the **Gateways** bar at the bottom, pick **OpenRouter**, then choose a model from the list. The **Free** category shows models that cost nothing.
 
 **When a gateway makes sense.** Use OpenRouter when you want one key and one balance for models from many providers. If you mostly use one provider, a direct key from that provider is simpler and skips the 5.5% credit fee. OpenRouter bills models at the provider's list price.

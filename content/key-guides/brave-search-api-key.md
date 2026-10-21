@@ -4,15 +4,15 @@ description: Create a Brave Search API key and add it to Besidka for web search 
 provider: brave
 keyUrl: https://api-dashboard.search.brave.com/app/keys
 keyUrlLabel: Open Brave Search API keys page
-updatedAt: '2026-10-20'
+updatedAt: '2026-10-21'
 checkedAt: '2026-10-20'
 summary: Activate the Search plan, create a key, and add web search to your chats.
 video:
-  src: /videos/key-guide-brave.mp4
-  poster: /key-guides/brave.webp
-  duration: PT34S
-  uploadDate: '2026-10-20'
-  alt: Screen recording of the Brave Search API dashboard. The API keys page with its monthly usage limit, the Add API key dialog with a name and the Search plan, the new key in the list, then the key pasted into Besidka and a chat answer marked as searched with Brave.
+  src: /videos/key-guide-brave.mp4?v=2
+  poster: /key-guides/brave.webp?v=2
+  duration: PT43S
+  uploadDate: '2026-10-21'
+  alt: Screen recording of the Brave Search API dashboard. The API keys page with its monthly usage limit, the Add API key dialog with a name and the Search plan, the new key in the list, then the key pasted into Besidka. In a new chat the web search menu in the chat input is opened, Brave Search is chosen, and the answer is marked Searched with Brave.
   markers:
     - time: "0:00"
       label: Intro
@@ -25,8 +25,12 @@ video:
     - time: "0:17"
       label: Paste into Besidka
     - time: "0:24"
+      label: Turn on web search
+    - time: "0:29"
+      label: Switch to Brave Search
+    - time: "0:33"
       label: Search the web
-    - time: "0:30"
+    - time: "0:39"
       label: Done
 requirements:
   card: true
@@ -47,6 +51,7 @@ requirements:
 3. Back on the keys page, click **Add API key**. Type an **API Key Name** such as `Besidka`, keep **Plan** on Search, and click **Add**.
 4. The new key appears in the list, masked. Click the copy icon next to it.
 5. In Besidka, go to **Profile**, **API Keys**, **Search Providers**, then the **Brave Search** card. Paste the key into **API Key** and click **Save**.
-6. Start a new chat, turn on web search, and pick Brave.
+6. Start a new chat and click the globe icon in the chat input to open the **Web search** menu. **Model's built-in search** is the default, so choose **Brave Search** instead. **Off** turns web search off.
+7. Ask a question that needs current information. The answer shows **Searched with Brave**.
 
 **Costs.** Search costs $5 per 1,000 requests, and Brave gives $5 of free credit every month per plan. Using the free credit requires attribution to Brave. To cap spending, open the Usage limits page and set **Monthly usage limit** to $5.

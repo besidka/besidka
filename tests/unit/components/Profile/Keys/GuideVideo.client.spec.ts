@@ -269,6 +269,28 @@ describe('Profile/Keys/GuideVideo.client', () => {
       )
     })
 
+  it('passes a versioned src to the thumbnail generator unchanged',
+    async () => {
+      const wrapper = await mountVideo({
+        src: '/videos/key-guide-google.mp4?v=2',
+      })
+      const progress = document.createElement('div')
+
+      progress.className = 'plyr__progress'
+      wrapper.element.append(progress)
+
+      mocks.players[0]!.emit('ready')
+      progress.dispatchEvent(new Event('pointerenter'))
+      await flushPromises()
+
+      expect(wrapper.get('video').attributes('src'))
+        .toBe('/videos/key-guide-google.mp4?v=2')
+      expect(mocks.generate).toHaveBeenCalledExactlyOnceWith(
+        '/videos/key-guide-google.mp4?v=2',
+        { count: 12, signal: expect.any(AbortSignal) },
+      )
+    })
+
   it('aborts thumbnail generation on unmount', async () => {
     const wrapper = await mountVideo()
     const progress = document.createElement('div')
