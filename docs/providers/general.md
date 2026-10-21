@@ -283,26 +283,39 @@ and `sanitizeMessageParts` (`server/utils/files/assistant-files.ts`) rebuild
 every earlier message from `text` parts, as bare `{ type, text }` objects,
 and `file` parts. A user file is carried or replaced by an omitted-file
 note, and an assistant file becomes a text note. `reasoning`, `source-url`
-and `tool-*` parts, and any `providerMetadata` (Anthropic reasoning
-signatures, OpenAI item ids, Moonshot's encrypted blob), stay in
-`messages.parts` but never go back to a provider on a later turn. They
-reach a provider only within the turn that produced them, between the steps
-of one `streamText` call. So a mid-chat provider switch never sends one
-provider's signatures, item ids or tool results to another. The whitelist
-has been in place since commit `9c79d6ab` (2026-05-04).
+and `tool-*` parts (including Moonshot's encrypted blob, which is the output
+of its `tool-web_search` part), and any `providerMetadata` (Anthropic
+reasoning signatures, OpenAI item ids), stay in `messages.parts` but never go
+back to a provider on a later turn. They reach a provider only within the
+turn that produced them, between the steps of one `streamText` call. So a
+mid-chat provider switch never sends one provider's signatures, item ids or
+tool results to another. The whitelist has been in place since commit
+`9c79d6ab` (2026-05-04).
 
-**Adjacent user turns get a placeholder.** An assistant reply that holds
-only reasoning, sources, tool parts or a failure notice is persisted but
-sanitizes to nothing, so two user turns could reach the provider back to
-back. `buildMessagesForModel` (`server/utils/chats/model-turns.ts`) inserts
-a model-only `(no reply)` assistant placeholder between adjacent user turns
-for every provider. When the underlying model provider is Google (direct,
-or a gateway-routed `google/*` model) and the history starts with an
-assistant turn, it also prepends `(earlier message deleted)`. Only
-`@ai-sdk/anthropic` merges consecutive user turns itself; the Google,
+**Turn order gets placeholders.** `buildMessagesForModel`
+(`server/utils/chats/model-turns.ts`) keeps the model-facing array strictly
+alternating, for every provider, with three model-only placeholders:
+
+- Adjacent user turns get a `(no reply)` assistant turn between them. An
+  assistant reply that holds only reasoning, sources, tool parts or a failure
+  notice is persisted but sanitizes to nothing, so two user turns could
+  otherwise reach the provider back to back.
+- Adjacent assistant turns get an `(earlier message deleted)` user turn
+  between them. Single-message delete (`messages/[id].delete.ts`) removes one
+  user turn and leaves its neighbouring replies adjacent.
+- When the underlying model provider is Google (direct, or a gateway-routed
+  `google/*` model) and the history starts with an assistant turn, the same
+  `(earlier message deleted)` user turn is prepended, because Google rejects
+  a first turn that is not `user`. This one is Google-only.
+
+Only `@ai-sdk/anthropic` merges adjacent same-role turns itself; the Google,
 OpenAI, openai-compatible, xAI, DeepSeek and OpenRouter converters send them
-separately, and DeepSeek's reasoner rejects successive same-role messages.
-The placeholders never enter `originalMessages` or persisted history.
+separately. The alternating shape is kept so the fix does not depend on each
+backend tolerating same-role runs. The placeholders never enter
+`originalMessages` or persisted history. Their text is a constant, so the
+prompt prefix stays stable across turns. For Anthropic, which used to merge
+such turns, a chat that already holds one sees its prompt prefix change once
+from that point (one cache miss, then stable).
 
 **Source URL scheme.** Brave/Exa result URLs are third-party content. Only
 `http:`/`https:` URLs become `source-url` parts

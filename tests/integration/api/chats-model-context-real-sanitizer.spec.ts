@@ -303,7 +303,8 @@ describe('chat model context through the real sanitizer', () => {
     })))
   })
 
-  it('sends only alternating, metadata-free text turns to the provider and keeps placeholders out of originalMessages', async () => {
+  it('sends only alternating, metadata-free text turns to the provider '
+    + 'and keeps placeholders out of originalMessages', async () => {
     const handler = await getHandler()
     const { db } = createDb(createMixedProviderHistory())
 

@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai'
 import { ulid } from 'ulid'
 
-export const GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT
+export const DELETED_USER_MESSAGE_PLACEHOLDER_TEXT
   = '(earlier message deleted)'
 
 export const MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT = '(no reply)'
@@ -18,10 +18,14 @@ export const MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT = '(no reply)'
  * Consecutive user turns arise because reasoning-only, source-only,
  * tool-only and failure-text-only assistant replies are persisted but then
  * sanitized away for the model, which drops the whole assistant message
- * (a turn whose reply was never persisted does the same). Only the
- * Anthropic converter merges adjacent user turns; the other providers send
- * them as separate entries and some (DeepSeek's reasoner) reject them, so a
- * synthetic assistant turn is inserted between them for every provider.
+ * (a turn whose reply was never persisted does the same). Consecutive
+ * assistant turns arise from single-message delete removing the user turn
+ * between two replies. Only the Anthropic converter merges adjacent
+ * same-role turns; the other providers send them separately. A synthetic
+ * assistant turn between adjacent user turns, and a synthetic user turn
+ * between adjacent assistant turns, keeps the model-facing array strictly
+ * alternating for every provider instead of depending on each backend to
+ * tolerate same-role runs.
  *
  * The result is scoped to the array actually sent to the model. It must
  * never replace `messagesForAI`, since that array also backs
@@ -35,23 +39,30 @@ export function buildMessagesForModel(
 ): UIMessage[] {
   const needsLeadingPlaceholder = modelProviderId === 'google'
     && messages[0]?.role === 'assistant'
-  const hasAdjacentUserTurns = messages.some((message, index) => {
-    return message.role === 'user' && messages[index - 1]?.role === 'user'
+  const hasAdjacentSameRoleTurns = messages.some((message, index) => {
+    return isConversationRole(message.role)
+      && messages[index - 1]?.role === message.role
   })
 
-  if (!needsLeadingPlaceholder && !hasAdjacentUserTurns) {
+  if (!needsLeadingPlaceholder && !hasAdjacentSameRoleTurns) {
     return messages
   }
 
   const alternatingMessages: UIMessage[] = []
 
   if (needsLeadingPlaceholder) {
-    alternatingMessages.push(buildGoogleLeadingAssistantPlaceholder())
+    alternatingMessages.push(buildDeletedUserMessagePlaceholder())
   }
 
   for (const message of messages) {
-    if (message.role === 'user' && alternatingMessages.at(-1)?.role === 'user') {
+    const previousMessage = alternatingMessages.at(-1)
+
+    if (message.role === 'user' && previousMessage?.role === 'user') {
       alternatingMessages.push(buildMissingAssistantReplyPlaceholder())
+    }
+
+    if (message.role === 'assistant' && previousMessage?.role === 'assistant') {
+      alternatingMessages.push(buildDeletedUserMessagePlaceholder())
     }
 
     alternatingMessages.push(message)
@@ -60,13 +71,17 @@ export function buildMessagesForModel(
   return alternatingMessages
 }
 
-function buildGoogleLeadingAssistantPlaceholder(): UIMessage {
+function isConversationRole(role: UIMessage['role']): boolean {
+  return role === 'user' || role === 'assistant'
+}
+
+function buildDeletedUserMessagePlaceholder(): UIMessage {
   return {
-    id: `google-leading-placeholder-${ulid()}`,
+    id: `deleted-user-placeholder-${ulid()}`,
     role: 'user',
     parts: [{
       type: 'text',
-      text: GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT,
+      text: DELETED_USER_MESSAGE_PLACEHOLDER_TEXT,
     }],
   }
 }

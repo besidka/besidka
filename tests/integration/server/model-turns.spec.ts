@@ -5,7 +5,7 @@ import { getPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-t
 import { sanitizeMessagesForModelContext } from '../../../server/utils/files/assistant-files'
 import {
   buildMessagesForModel,
-  GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT,
+  DELETED_USER_MESSAGE_PLACEHOLDER_TEXT,
   MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT,
 } from '../../../server/utils/chats/model-turns'
 
@@ -155,7 +155,7 @@ describe('model-facing turn order', () => {
     expect(messagesForModel[0]).toMatchObject({
       parts: [{
         type: 'text',
-        text: GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT,
+        text: DELETED_USER_MESSAGE_PLACEHOLDER_TEXT,
       }],
     })
     expect(messages).toHaveLength(2)
@@ -183,6 +183,100 @@ describe('model-facing turn order', () => {
       }]),
       createUserMessage('user-2', 'Follow-up'),
     ]
+
+    expect(buildMessagesForModel(messages, 'google')).toBe(messages)
+    expect(buildMessagesForModel(messages, 'openai')).toBe(messages)
+  })
+
+  it('inserts a user placeholder between adjacent assistant turns for '
+    + 'every provider', () => {
+    const messages = [
+      createUserMessage('user-1', 'First question'),
+      createAssistantMessage('assistant-1', [{
+        type: 'text',
+        text: 'First answer',
+      }]),
+      createAssistantMessage('assistant-2', [{
+        type: 'text',
+        text: 'Second answer',
+      }]),
+      createUserMessage('user-3', 'Third question'),
+    ]
+
+    const messagesForModel = buildMessagesForModel(messages, 'openai')
+
+    expect(messagesForModel.map(message => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+      'assistant',
+      'user',
+    ])
+    expect(messagesForModel[2]?.id).toMatch(/^deleted-user-placeholder-/)
+    expect(messagesForModel[2]).toMatchObject({
+      parts: [{
+        type: 'text',
+        text: DELETED_USER_MESSAGE_PLACEHOLDER_TEXT,
+      }],
+    })
+    expect(messages).toHaveLength(4)
+  })
+
+  it('bridges a run of three adjacent assistant turns', () => {
+    const messages = [
+      createAssistantMessage('assistant-1', [{ type: 'text', text: 'One' }]),
+      createAssistantMessage('assistant-2', [{ type: 'text', text: 'Two' }]),
+      createAssistantMessage('assistant-3', [{ type: 'text', text: 'Three' }]),
+    ]
+
+    const messagesForModel = buildMessagesForModel(messages, 'anthropic')
+
+    expect(messagesForModel.map(message => message.role)).toEqual([
+      'assistant',
+      'user',
+      'assistant',
+      'user',
+      'assistant',
+    ])
+  })
+
+  it('combines the google leading placeholder with adjacent user turns',
+    () => {
+      const messages = [
+        createAssistantMessage('assistant-1', [{
+          type: 'text',
+          text: 'Stored answer',
+        }]),
+        createUserMessage('user-1', 'One'),
+        createUserMessage('user-2', 'Two'),
+      ]
+
+      const messagesForModel = buildMessagesForModel(messages, 'google')
+
+      expect(messagesForModel.map(message => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+        'user',
+      ])
+      expect(messagesForModel[0]).toMatchObject({
+        parts: [{
+          type: 'text',
+          text: DELETED_USER_MESSAGE_PLACEHOLDER_TEXT,
+        }],
+      })
+      expect(messagesForModel[3]).toMatchObject({
+        parts: [{
+          type: 'text',
+          text: MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT,
+        }],
+      })
+      expect(messages).toHaveLength(3)
+    })
+
+  it('returns the same reference for an empty history', () => {
+    const messages: UIMessage[] = []
 
     expect(buildMessagesForModel(messages, 'google')).toBe(messages)
     expect(buildMessagesForModel(messages, 'openai')).toBe(messages)

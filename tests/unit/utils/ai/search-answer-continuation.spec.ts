@@ -461,6 +461,28 @@ describe('buildSearchAnswerContinuationMessages', () => {
     }])
   })
 
+  it('keeps a placeholder assistant turn and merges into the final user '
+    + 'message', () => {
+    const messages = buildSearchAnswerContinuationMessages([
+      { role: 'user', content: 'Earlier question' },
+      { role: 'assistant', content: [{ type: 'text', text: '(no reply)' }] },
+      { role: 'user', content: 'What shipped?' },
+    ], searchResults)
+
+    expect(messages.map(message => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+    ])
+    expect(messages[1]?.content).toEqual([{ type: 'text', text: '(no reply)' }])
+    expect(messages[2]?.content).toEqual([{
+      type: 'text',
+      text: expect.stringMatching(
+        /^What shipped\?\n\nWeb search results[\s\S]*Answer the user's last message now/,
+      ),
+    }])
+  })
+
   it('collapses several user text parts and the context into one text part',
     () => {
       const messages = buildSearchAnswerContinuationMessages([{
