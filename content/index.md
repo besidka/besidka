@@ -69,7 +69,7 @@ comparison:
         - $4.99/mo
         - $19.99/mo
         - $17–20/mo
-        - Shown after sign-in
+        - Shown at checkout
     - label: Pay only for what you use
       values:
         - yes
@@ -114,7 +114,7 @@ comparison:
         - yes
         - yes
         - no
-        - yes
+        - Paid plans
     - label: Shareable chat links
       values:
         - yes
@@ -132,7 +132,7 @@ comparison:
         - no
         - no
         - no
-        - For some models
+        - Paid plans, select models
     - label: Bring your own search key (Brave / Exa)
       values:
         - yes

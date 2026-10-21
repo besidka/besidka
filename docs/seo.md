@@ -408,13 +408,21 @@ October 2026". Changes in that pass:
   (`label` and `url`) shows as a "Sources" line of links under the note, in
   `app/components/content/HomeComparison.vue`. Add a source whenever a new
   cell depends on a page.
-- **T3 Chat was restored on 2026-10-21** at the owner's request. Its public
-  pricing page returns 404 and plans show only after sign-in, so the price
-  cell says `Shown after sign-in` instead of a figure. The cells that could be
-  verified cite the T3 FAQ, the T3 terms and Theo's 2025 post on keys and
-  images; everything else says `Not listed by T3`, per the table's rule for
-  unverifiable cells. Re-check the column, and replace the price cell, when
-  T3 publishes a public pricing page.
+- **T3 Chat was restored on 2026-10-21** at the owner's request, and its
+  cells were then checked signed in on the same day. Its public pricing page
+  returns 404 and plans show only after sign-in. Signed in, the plans are Free,
+  Pro and Premier, and the paid prices read "Price shown at checkout", so the
+  price cell says `Shown at checkout` instead of a figure. Pro includes image
+  generation, web search and file uploads, so image generation says `Paid
+  plans`. The API Keys settings say "Bring your own API keys for select
+  models" and mark it a "Paid Feature", so bring-your-own-keys says `Paid
+  plans, select models`. These three cells come from an account view, not a
+  public page, and `priceDate` was not bumped for them: it still covers the
+  other columns, which were not re-checked on 2026-10-21. The other cells that
+  could be verified cite the T3 FAQ, the T3 terms and Theo's 2025 post on keys
+  and images; everything else says `Not listed by T3`, per the table's rule for
+  unverifiable cells. Re-check the column, and replace the price cell, when T3
+  publishes a public pricing page.
 - **The `Message caps from the app` row was removed.** ChatGPT Free text chats
   have been unlimited, subject to abuse-prevention safeguards, since mid-August
   2026, so "usage limits apply" no longer held for every plan, and no plan
