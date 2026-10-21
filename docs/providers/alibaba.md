@@ -91,8 +91,10 @@ tracks them under the `alibaba` key, so their metadata comes from
   (`tools: []`): the Omni capability table lists search as unsupported.
 - **`qwen-omni-turbo`** (released 2025-01-19): text output by default, no
   thinking (no `reasoning` field), no web search (`tools: []`). Alibaba's
-  docs say it is "no longer updated", but it is not deprecated, so it stays
-  under the owner's policy of offering every non-deprecated model.
+  docs said it was "no longer updated" and it stayed under the owner's
+  policy of offering every non-deprecated model, until it was retired on
+  2026-10-10 (see "Retired 2026-10-10" below); it is now curated as
+  `status: 'deprecated'`.
 - **Still excluded:** `qwen2.5-omni-7b` (Alibaba's docs state Qwen2.5 models
   are no longer callable), and every `*-realtime`, ASR and `livetranslate`
   model, which are different transports or audio-only products. The unit
@@ -401,6 +403,47 @@ later round's icon-system rewrite, which replaced every provider's bespoke
 SVG component with real Iconify marks resolved at runtime through
 `icon.serverBundle.remote` — Qwen now renders `simple-icons:qwen`, alongside
 every other provider.
+
+## Retired 2026-10-10
+
+Alibaba shut down a batch of models on the international (Singapore)
+endpoint on 2026-10-10. Under the lifecycle rule in
+`docs/models-data-fetching.md` ("Model status"), an already shut down model
+is curated as `status: 'deprecated'` plus `retiredAt`, so it moves to the
+legacy picker section and `useChatProvider()` rejects it with a 400.
+
+Curated with `status: 'deprecated'` and `retiredAt: '2026-10-10'`:
+
+| Retired id | Successor |
+|---|---|
+| `qwen3-max`, `qwen3.6-max-preview` | `qwen3.7-max` |
+| `qwen3-coder-plus`, `qwen3-coder-480b-a35b-instruct`, `qwen3-coder-30b-a3b-instruct`, `qwen3-32b`, `qwen3-235b-a22b`, `qwen3-next-80b-a3b-instruct`, `qwen3-next-80b-a3b-thinking`, `qwen3-vl-235b-a22b` | `qwen3.7-plus` |
+| `qwen3-8b`, `qwen3-14b` | `qwen3.6-flash` |
+| `qwen-mt-turbo` | `qwen-mt-flash` (not curated) |
+| `qwen-omni-turbo` | `qwen3.5-omni-plus` (not curated) |
+| `qwen-turbo`, `qwq-plus`, `qvq-max`, `qwen-vl-max`, `qwen-vl-plus` | none named |
+
+Curated with `status: 'deprecated'` only, no `retiredAt`, because Alibaba
+publishes no date: `qwen2-5-7b-instruct`, `qwen2-5-14b-instruct`,
+`qwen2-5-32b-instruct`, `qwen2-5-72b-instruct`, `qwen2-5-vl-7b-instruct`,
+`qwen2-5-vl-72b-instruct`. Alibaba's pricing page marks Qwen2.5 as no longer
+available for calling.
+
+Sources:
+
+- https://www.alibabacloud.com/en/notice/detail?_p_lc=1&id=1841 and
+  `id=2009`, `id=2000`, `id=1949`, `id=1950` (Alibaba Cloud notices)
+- https://www.alibabacloud.com/help/en/model-studio/model-depreciation
+- https://www.alibabacloud.com/help/en/model-studio/model-pricing
+
+models.dev flagged these through anomalyco/models.dev PR #10558 (merged
+2026-10-20) after a live 404 probe. That landed after the drift bot ran for
+PR #465, which is why that PR's own audit report did not list them.
+
+No curated helper (`forProjectMemory`, `assistModel`, a default) pointed at a
+retired id, so nothing was repointed. `qwen-mt-flash` and
+`qwen3.5-omni-plus` are not curated here; the retired `qwen-mt-turbo` and
+`qwen-omni-turbo` have no in-catalog successor today.
 
 ## Known gaps requiring live verification
 

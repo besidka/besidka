@@ -83,7 +83,7 @@ describe('ChatInput/ModelsTrigger', () => {
     const wrapper = await openPicker()
 
     expect(findModelButton(wrapper, 'GPT-5.4')).toBeTruthy()
-    expect(findModelButton(wrapper, 'Qwen3 Max')).toBeTruthy()
+    expect(findModelButton(wrapper, 'Qwen3.7 Max')).toBeTruthy()
 
     await wrapper.get('[data-testid="models-picker-filter-trigger"]')
       .trigger('click')
@@ -91,7 +91,7 @@ describe('ChatInput/ModelsTrigger', () => {
       .trigger('click')
 
     expect(findModelButton(wrapper, 'GPT-5.4')).toBeTruthy()
-    expect(findModelButton(wrapper, 'Qwen3 Max')).toBeUndefined()
+    expect(findModelButton(wrapper, 'Qwen3.7 Max')).toBeUndefined()
   })
 
   it('narrows the list to a single provider through the rail', async () => {

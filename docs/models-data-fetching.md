@@ -944,6 +944,22 @@ Other items from the same report:
 - The 7 OpenAI ids flagged DEPRECATED in the report were already
   `status: 'deprecated'` with `retiredAt: '2026-10-23'`; no change.
 
+**Qwen retirements and the rest of the snapshot drift.** After the bot run
+for #465, models.dev flagged 25 curated Qwen ids as deprecated (they were
+already shut down on 2026-10-10). Those are now hand-curated as
+`status: 'deprecated'` (with `retiredAt: '2026-10-10'` where Alibaba gives a
+date); the id list, successors and sources are in `docs/providers/alibaba.md`
+("Retired 2026-10-10"). The refreshed snapshot also took the other upstream
+drift:
+
+- DeepSeek `deepseek-flash` and `deepseek-v4-pro` context window is now
+  1,048,576 (`deepseek-v4-pro` release date 2026-08-13).
+- `kimi-k2.6` release date 2026-04-20.
+- `qwen3.6-flash` and `qwen3.6-35b-a3b` price changes.
+- Audio input dropped from the `qwen3.5`/`qwen3.6` open models.
+- `tieredPricing` flagged on several Qwen plus/flash models.
+- `qwen-plus-character-ja` `toolCall` is now `false`.
+
 ## Ids deliberately not auto-added (owner review needed)
 
 Found upstream via the audit report above but intentionally left out of
