@@ -32,6 +32,7 @@ concurrency:
 jobs:
   check-pr-state:
     name: Check PR state
+    if: github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.stack == null || github.event.pull_request.stack.position == github.event.pull_request.stack.size)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -177,10 +178,12 @@ jobs:
       contents: read
       statuses: write
       pull-requests: write
+    env:
+      AFFECTED_BASE_REF: ${{ github.event.pull_request.stack.base.ref || github.base_ref }}
     steps:
       - name: Record start time
         id: start-time
-        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+        run: echo "start-time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout PR code
         uses: actions/checkout@v7
@@ -214,32 +217,32 @@ jobs:
         id: test-unit
         run: |
           START=$(date +%s)
-          node scripts/test-affected.mjs --base=origin/${{ github.base_ref }} --type=unit
+          node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=unit
           END=$(date +%s)
           DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
           echo "✅ Affected unit tests completed in ${DURATION}s"
 
       - name: Run affected integration tests
         id: test-integration
         run: |
           START=$(date +%s)
-          node scripts/test-affected.mjs --base=origin/${{ github.base_ref }} --type=integration
+          node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=integration
           END=$(date +%s)
           DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
           echo "✅ Affected integration tests completed in ${DURATION}s"
 
       - name: Check affected E2E tests
         id: check-e2e
         run: >-
           node scripts/test-affected-check.mjs
-          --base=origin/${{ github.base_ref }}
+          --base="origin/$AFFECTED_BASE_REF"
           --type=e2e
 
       - name: Set Playwright browsers path
         if: steps.check-e2e.outputs.has-tests == 'true'
-        run: echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> $GITHUB_ENV
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
 
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -280,7 +283,7 @@ jobs:
           pnpm run build 2>&1 | tee build-output.log
           END=$(date +%s)
           DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
           echo "✅ Build completed in ${DURATION}s"
 
       - name: Extract bundle size
@@ -288,7 +291,7 @@ jobs:
         run: |
           SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
           echo "Bundle Size: $SIZE_INFO"
-          echo "bundle-size=$SIZE_INFO" >> $GITHUB_OUTPUT
+          echo "bundle-size=$SIZE_INFO" >> "$GITHUB_OUTPUT"
 
       - name: Verify build output exists
         run: |
@@ -322,10 +325,10 @@ jobs:
         timeout-minutes: 12
         run: |
           START=$(date +%s)
-          node scripts/test-affected.mjs --base=origin/${{ github.base_ref }} --type=e2e
+          node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=e2e
           END=$(date +%s)
           DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
           echo "✅ Affected E2E tests completed in ${DURATION}s"
         env:
           CI: true
@@ -382,8 +385,8 @@ jobs:
         id: pr
         run: |
           SHA="${{ github.event.pull_request.head.sha }}"
-          echo "sha=$SHA" >> $GITHUB_OUTPUT
-          echo "sha-short=$(echo "$SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "sha-short=$(echo "$SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - name: Calculate total duration
         if: success()
@@ -399,7 +402,7 @@ jobs:
           else
             DURATION="${SECONDS}s"
           fi
-          echo "total=$DURATION" >> $GITHUB_OUTPUT
+          echo "total=$DURATION" >> "$GITHUB_OUTPUT"
 
       - name: Comment build results on PR
         if: success()

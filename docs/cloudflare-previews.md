@@ -197,22 +197,33 @@ Rules:
 | Event | Workflow | What happens |
 |-------|----------|--------------|
 | PR build succeeds (same-repo) | `preview-deploy.yml` | Migrate preview D1s, then `wrangler preview --env production --name pr-<n> --message <PR url> --json`; URLs read from the JSON (`.preview.urls[0]`, `.deployment.urls[0]`) with the deterministic `pr-<n>-besidka` URL as fallback; PR comment and commit status |
-| Maintainer comments `/deploy-preview` on a fork PR | `preview-fork-deploy.yml` | Same deploy for the fork's build artifact |
 | PR closed (merged or not) | `preview-cleanup.yml` | `wrangler preview delete --name pr-<n> --env production --skip-confirmation`; missing Preview counts as success |
 | Push to `main` | `production.yml` → `deploy-preview` | Migrate preview D1s, then `wrangler preview --env production --name preview --message main@<sha>` from the `preview-build` artifact |
 
-`preview-cleanup.yml` triggers on `pull_request_target` so it has secrets for
-fork PRs too. This is safe because it checks out only the default branch and
-never PR code.
+`preview-cleanup.yml` triggers on `pull_request_target` so it has secrets. This
+is safe because it checks out only the default branch and never PR code, and it
+runs only for same-repository PRs (`head.repo.full_name == github.repository`).
+It has no `branches` filter, so it runs for every closed PR whatever its base:
+umbrella children and stack layers run it too and find no Preview to delete,
+and a PR retargeted after it deployed still gets its Preview removed. An
+unfiltered run costs about one to two runner minutes, which is why it is not
+filtered.
+
+Grouped PRs (umbrella parent with children, native GitHub stacks) only ever get
+one Preview, `pr-<n>`, for the parent or the top layer. `preview-build.yml`
+builds only a PR that is not part of a stack or is its top layer, and
+`preview-deploy.yml` exits before deploying when the build run has no
+`preview-build` artifact. Umbrella children (base is not `main`) never trigger
+the build at all. See `docs/stacked-prs.md` for the full per-workflow table.
 
 Deploy/cleanup race: `preview-cleanup.yml` runs in its own concurrency group
 (`preview-cleanup-<n>`, `cancel-in-progress: false`), so a deploy queued after
-the PR closes cannot cancel a delete mid-flight. `preview-deploy.yml` and
-`preview-fork-deploy.yml` read the PR state (`gh api repos/<repo>/pulls/<n>
---jq .state`) before migrating/deploying and skip all deploy, comment and
-status steps when the PR is not `open`. After `wrangler preview` succeeds they
-check again; if the PR closed during the deploy, they run the same
-`wrangler preview delete` (missing Preview counts as success) and skip the PR
+the PR closes cannot cancel a delete mid-flight. `preview-deploy.yml`
+reads the PR state (`gh api repos/<repo>/pulls/<n> --jq .state`) before
+migrating/deploying and skips all deploy, comment and status steps when the PR
+is not `open`. After `wrangler preview` succeeds it checks again; if the PR
+closed during the deploy, it runs the same
+`wrangler preview delete` (missing Preview counts as success) and skips the PR
 comment and success status.
 
 Remaining window: a preview-deploy run cancelled (`cancel-in-progress` by a
@@ -239,8 +250,8 @@ Current behavior, implemented in `scripts/ci/resolve-preview-build-source.mjs`
 `source-sha`):
 
 1. List successful `preview-build.yml` runs on the PR head branch, keep the
-   ones belonging to this PR (by PR number; fork runs have no
-   `pull_requests`, so they match head repo + branch), and exclude the current
+   ones belonging to this PR (by PR number; runs without
+   `pull_requests` match head repo + branch), and exclude the current
    run.
 2. Walk them newest first. A candidate qualifies when both `preview-build`
    and `preview-drizzle` exist with `expired: false` and its `head_sha` is an
@@ -251,6 +262,12 @@ Current behavior, implemented in `scripts/ci/resolve-preview-build-source.mjs`
    is ignorable, or nothing changed (a re-run of the same SHA), the run skips
    and records the source. Otherwise it builds.
 
+Only successful runs are candidates; cancelled and failed runs never become the
+baseline even when they uploaded artifacts. A successful run that built nothing
+(for example a skipped non-top stack layer) has no artifacts and is passed over,
+and a PR with no earlier built commit falls through to a full build
+(`tests/unit/scripts/resolve-preview-build-source.spec.ts` covers all three).
+
 Any failure (no candidate, artifacts expired, force-push or rebase making the
 source a non-ancestor, API or git error) resolves to a normal build. Because
 the diff base is the last built commit and not the previous commit, a docs
@@ -258,8 +275,7 @@ commit on top of an unbuilt code commit now sees the code in range and builds.
 
 When skipping, `reuse-build` downloads both artifacts from `source-run-id` and
 re-uploads them under the same names and `retention-days: 1`, so the skipping
-run looks like a build run to its consumers: `preview-deploy.yml` (and
-`preview-fork-deploy.yml`, which looks up a successful run by head SHA)
+run looks like a build run to its consumers: `preview-deploy.yml`
 re-deploys the last built code. This also heals a preview whose deploy was
 cancelled by a newer `workflow_run`. Each relay refreshes the one-day artifact
 clock; once the source artifacts have expired the next run builds.
@@ -391,7 +407,7 @@ Revert to the `besidka-preview` Worker if Workers Previews proves unusable
 for this app: OAuth through the proxy cannot be made to work, Preview
 deployments are unreliable enough to block merges, or the beta changes in
 a way that removes `preview` secrets or bindings handling. Reverting means
-restoring the previous `preview-deploy.yml`, `preview-fork-deploy.yml` and
+restoring the previous `preview-deploy.yml` and
 `production.yml` from git history, deleting `preview-cleanup.yml`, and setting
 the top-level `wrangler.jsonc` back to `besidka-preview` with
 `workers_dev: true`.

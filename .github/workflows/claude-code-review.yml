@@ -2,6 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request:
+    branches: [main]
     types: [opened, synchronize, ready_for_review, reopened]
 
 concurrency:
@@ -10,7 +11,7 @@ concurrency:
 
 jobs:
   claude-review:
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

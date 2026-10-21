@@ -282,6 +282,67 @@ describe('resolveSource', () => {
     expect(decision.sourceSha).toBe('c'.repeat(40))
   })
 
+  it('builds when the only earlier runs were cancelled or failed', async () => {
+    const listedRunIds: number[] = []
+    const decision = await resolve({
+      runs: [
+        createRun({ id: 101, head_sha: sourceSha, conclusion: 'cancelled' }),
+        createRun({ id: 102, head_sha: sourceSha, conclusion: 'failure' }),
+      ],
+      listArtifacts: async (runId: number) => {
+        listedRunIds.push(runId)
+
+        return liveArtifacts
+      },
+    })
+
+    expect(decision.shouldSkip).toBe(false)
+    expect(decision.sourceRunId).toBeUndefined()
+    expect(listedRunIds).toEqual([])
+  })
+
+  it('never takes the baseline from a cancelled run newer than a built one', async () => {
+    const decision = await resolve({
+      runs: [
+        createRun({
+          id: 200,
+          head_sha: 'c'.repeat(40),
+          conclusion: 'cancelled',
+          created_at: '2026-10-13T12:00:00Z',
+        }),
+        createRun({
+          id: 100,
+          head_sha: sourceSha,
+          created_at: '2026-10-13T10:00:00Z',
+        }),
+      ],
+      listChangedFiles: (baselineSha: string) => {
+        return baselineSha === sourceSha ? ['docs/a.md'] : ['app/app.vue']
+      },
+    })
+
+    expect(decision.shouldSkip).toBe(true)
+    expect(decision.sourceRunId).toBe('100')
+    expect(decision.sourceSha).toBe(sourceSha)
+  })
+
+  it('builds when earlier successful runs built nothing', async () => {
+    const decision = await resolve({
+      runs: [
+        createRun({ id: 100, head_sha: sourceSha }),
+        createRun({
+          id: 200,
+          head_sha: 'c'.repeat(40),
+          created_at: '2026-10-13T12:00:00Z',
+        }),
+      ],
+      listArtifacts: async () => [],
+    })
+
+    expect(decision.shouldSkip).toBe(false)
+    expect(decision.sourceRunId).toBeUndefined()
+  })
+
   it('never reuses the current run', async () => {
     const decision = await resolve({
       runs: [createRun({ id: 300, head_sha: sourceSha })],

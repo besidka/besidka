@@ -298,6 +298,14 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   previews, shared preview resources, passkeys only on the long-lived
   host), the bootstrap-PR hazard, owner OAuth-callback steps, and revert
   criteria
+- `docs/stacked-prs.md` - When to group PRs and how: the umbrella pattern
+  (children `--base` the parent branch, no CI on children, parent builds
+  everything) versus native `gh stack` layers (only the top layer builds,
+  affected tests diff against the stack base) versus a plain PR; exact
+  commands, the per-workflow CI table, merge order and squash semantics, the
+  no-build gate in `preview-deploy.yml`, and warnings (the "Add to stack"
+  banner, retarget-on-merge firing only `edited`, previews only for the
+  parent/top, unverified stack-event behavior, migrations in children)
 - `docs/nuxt-entry-import-map.md` - Why `experimental.entryImportMap` is
   pinned to `false`: with it on, lazy chunks keep the same filename while
   their embedded `entry.<hash>.css` preload changes, so immutable-cached
@@ -976,6 +984,13 @@ try {
 Conventional commits with types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`, `security`, `legal`, `kludge`
 
 Subject must be sentence-case or lower-case.
+
+## Pull Requests
+
+When a feature thread spawns parallel fix sessions, use the umbrella pattern:
+children `--base` the parent branch, get no CI, and the parent builds
+everything. For dependent layers use native `gh stack`. A small or unrelated
+change is a plain PR. See `docs/stacked-prs.md`. Merges are done by the owner.
 
 ## GitHub Actions
 
