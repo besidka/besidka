@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   uiMessageStreamChunks: null as Array<Record<string, any>> | null,
   persistAssistantError: null as Record<string, any> | null,
   generatedFileIds: [] as string[],
+  omittedContextFiles: [] as Array<Record<string, any>>,
   streamTextOptions: [] as Array<Record<string, any>>,
   getActiveShareForChat: vi.fn(),
   syncChatShareFiles: vi.fn(),
@@ -150,6 +151,10 @@ vi.mock('evlog', () => ({
 vi.mock('~~/server/utils/files/assistant-files', () => ({
   getModelContextFileStorageKeys: vi.fn(() => []),
   getGeneratedImageFileIds: vi.fn(() => mocks.generatedFileIds),
+  buildModelContextMessages: vi.fn(messages => ({
+    messages,
+    omittedFiles: mocks.omittedContextFiles,
+  })),
   sanitizeMessagesForModelContext: vi.fn(messages => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(async (input) => {
     if (mocks.persistAssistantError) {
@@ -290,6 +295,7 @@ describe('chat stream message ids', () => {
     mocks.uiMessageStreamChunks = null
     mocks.persistAssistantError = null
     mocks.generatedFileIds.length = 0
+    mocks.omittedContextFiles.length = 0
     mocks.streamTextOptions.length = 0
     mocks.getActiveShareForChat.mockResolvedValue(null)
     mocks.syncChatShareFiles.mockResolvedValue(undefined)
@@ -404,6 +410,65 @@ describe('chat stream message ids', () => {
       reasoning: 'off',
       publicId: generatedId,
     }))
+  })
+
+  it('streams the omitted context files notice before the model output', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    mocks.omittedContextFiles.push({
+      filename: 'old.pdf',
+      mediaType: 'application/pdf',
+      reason: 'outside-window',
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(response.writer.write).toHaveBeenCalledWith({
+      type: 'data-omitted-context-files',
+      data: {
+        files: [{
+          filename: 'old.pdf',
+          mediaType: 'application/pdf',
+          reason: 'outside-window',
+        }],
+      },
+    })
+  })
+
+  it('does not stream an omitted context files notice when nothing was omitted', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(response.writer.write).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'data-omitted-context-files' }),
+    )
   })
 
   it('persists image tool usage on the normalized assistant row', async () => {
