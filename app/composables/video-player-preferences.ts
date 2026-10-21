@@ -26,7 +26,6 @@ interface VideoPlayerPreferencesOptions {
 export const VIDEO_PLAYER_STORAGE_KEY = 'video-player'
 export const LEGACY_PLYR_STORAGE_KEY = 'plyr'
 
-const CONSENT_CATEGORY = 'preferences'
 const CAPTION_KINDS = new Set(['captions', 'subtitles'])
 
 function isFiniteNumber(value: unknown): value is number {
@@ -101,35 +100,6 @@ export function removeLegacyPlyrPreferences(): void {
   }
 }
 
-function readStoredPreferences(): VideoPlayerPreferences | null {
-  try {
-    return parseVideoPlayerPreferences(
-      localStorage.getItem(VIDEO_PLAYER_STORAGE_KEY),
-    )
-  } catch {
-    return null
-  }
-}
-
-function removeStoredPreferences(): void {
-  try {
-    localStorage.removeItem(VIDEO_PLAYER_STORAGE_KEY)
-  } catch {
-    return
-  }
-}
-
-function writeStoredPreferences(preferences: VideoPlayerPreferences): void {
-  try {
-    localStorage.setItem(
-      VIDEO_PLAYER_STORAGE_KEY,
-      JSON.stringify(preferences),
-    )
-  } catch {
-    return
-  }
-}
-
 function captionTracks(store: VideoPlayerStore): MediaTextTrack[] {
   const tracks: MediaTextTrack[] = store.textTrackList
 
@@ -164,22 +134,50 @@ function isSamePreferences(
 
 /**
  * Persists volume, mute, speed, quality and captions for the landing player
- * under the `video-player` localStorage key, gated by the `preferences`
- * consent category. Saved values are restored once the store attaches to the
- * media; captions are restored when the first caption track list arrives.
+ * under the `video-player` key through `usePreferenceStorage()`, which gates
+ * it on the `preferences` consent category (see docs/cookie-consent.md).
+ * Saved values are restored once the store attaches to the media; captions
+ * are restored when the first caption track list arrives.
  */
 export function useVideoPlayerPreferences(
   options: VideoPlayerPreferencesOptions,
 ) {
-  const { isAllowed, onConsentChange } = useCookieConsent()
+  const nuxtApp = useNuxtApp()
+  const preferenceStorage = usePreferenceStorage()
 
   let store: VideoPlayerStore | null = null
   let unsubscribe: (() => void) | null = null
-  let isEnabled = isAllowed(CONSENT_CATEGORY)
   let pendingCaptions: VideoPlayerCaptionsPreference | null = null
   let hasSeenCaptions = false
   let hasRestored = false
   let lastSaved: VideoPlayerPreferences | null = null
+
+  function readStoredPreferences(): VideoPlayerPreferences | null {
+    try {
+      const raw = nuxtApp.runWithContext(() => {
+        return preferenceStorage.getItem(VIDEO_PLAYER_STORAGE_KEY)
+      })
+
+      return parseVideoPlayerPreferences(typeof raw === 'string' ? raw : null)
+    } catch (exception) {
+      void exception
+
+      return null
+    }
+  }
+
+  function writeStoredPreferences(preferences: VideoPlayerPreferences) {
+    try {
+      nuxtApp.runWithContext(() => {
+        preferenceStorage.setItem(
+          VIDEO_PLAYER_STORAGE_KEY,
+          JSON.stringify(preferences),
+        )
+      })
+    } catch (exception) {
+      void exception
+    }
+  }
 
   function snapshot(): VideoPlayerPreferences | null {
     if (!store) {
@@ -190,7 +188,7 @@ export function useVideoPlayerPreferences(
       volume: store.volume,
       muted: store.muted,
       speed: options.getSpeed(),
-      quality: options.getQuality(),
+      quality: options.getQuality() ?? lastSaved?.quality ?? null,
       captions: hasSeenCaptions || !pendingCaptions
         ? readCaptions(store)
         : pendingCaptions,
@@ -198,10 +196,6 @@ export function useVideoPlayerPreferences(
   }
 
   function persist() {
-    if (!isEnabled) {
-      return
-    }
-
     const next = snapshot()
 
     if (!next || isSamePreferences(lastSaved, next)) {
@@ -245,7 +239,7 @@ export function useVideoPlayerPreferences(
 
     hasRestored = true
 
-    const saved = isEnabled ? readStoredPreferences() : null
+    const saved = readStoredPreferences()
 
     if (!saved) {
       return
@@ -296,20 +290,6 @@ export function useVideoPlayerPreferences(
     unsubscribe = null
     store = null
   }
-
-  onConsentChange(({ granted, denied }) => {
-    if (granted.includes(CONSENT_CATEGORY)) {
-      isEnabled = true
-      lastSaved = null
-      persist()
-    }
-
-    if (denied.includes(CONSENT_CATEGORY)) {
-      isEnabled = false
-      lastSaved = null
-      removeStoredPreferences()
-    }
-  })
 
   tryOnScopeDispose(detach)
 

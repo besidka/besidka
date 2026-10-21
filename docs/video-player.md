@@ -59,7 +59,8 @@ selectors in `video-player-theme.css` are scoped under `.landing-player`
 | `app/components/landing/VideoPlayer.client.vue` | Landing/guide player (`LandingVideoPlayer`): full variant, qualities, captions, speed, chapters, thumbnails, `startAt`, demo/guide analytics, preferences |
 | `app/components/Profile/Keys/GuideVideo.client.vue` | Profile key-guide player: lean variant, autoplay/visibility logic, PiP-aware pause, chapters, thumbnails, watch analytics |
 | `app/composables/video-timeline.ts` | `useVideoTimeline`: chapters track, thumbnails track, snap-seek |
-| `app/composables/video-player-preferences.ts` | `useVideoPlayerPreferences`: consent-gated persistence |
+| `app/composables/video-player-preferences.ts` | `useVideoPlayerPreferences`: persistence through `usePreferenceStorage()` (consent-gated) |
+| `app/plugins/video-legacy-plyr-cleanup.client.ts` | Removes the legacy `plyr` localStorage key once per app load |
 | `app/utils/videojs-elements.ts` | Registers elements, icons and the i18n override |
 | `app/types/video-player.d.ts` | `VideoMenuOption`, `VideoShellReadyPayload` |
 
@@ -70,7 +71,6 @@ Props:
 | Prop | Type | Meaning |
 |------|------|---------|
 | `variant` | `'full' \| 'lean'` | `full`: remaining-time label, volume slider, captions button, settings menu (captions, quality, speed), AirPlay, all hotkeys. `lean`: play, timeline, mute, PiP, fullscreen and a reduced hotkey set (no volume/caption/speed controls) |
-| `poster` | `string` | Passed to `<video-player>` |
 | `containerClass` | `string` | Extra classes on the container (the landing player adds `js-landing-player shadow-xl`) |
 | `qualities` | `VideoMenuOption[]` | Quality menu items; the Quality entry only renders with more than one |
 | `selectedQuality` | `string` | Checked quality value |
@@ -85,6 +85,16 @@ Emits:
 | `failed` | none | The dynamic import of the elements threw. Both players then fall back to native controls |
 | `selectQuality` | `value: string` | A quality radio changed |
 | `selectSpeed` | `value: string` | A speed radio changed |
+
+There is no `poster` prop: `<video-player>` has no poster property, so the
+poster is set on the slotted `<video poster>` and drawn by the players' own
+loading overlay.
+
+The settings menu follows the Video.js menu docs: the root
+`<media-menu-content>` holds the trigger items and each submenu
+`<media-menu-content>` (captions, quality, speed) is a sibling of it inside
+`<media-menu>`. Nesting submenus in the root content made Video.js move them
+out from under Vue's ownership.
 
 Slots: default (the `<video>` element, with its `<track>` children) and
 `overlay` (rendered after the controls; the landing player puts its loading
@@ -106,6 +116,14 @@ toggles fullscreen.
   caption tracks. Quality renditions come from the `video.qualities`
   frontmatter; changing quality swaps `src` and restores position, paused
   state and rate on `loadedmetadata`. Speeds are `0.5, 0.75, 1, 1.25, 1.5, 2`.
+  A quality switch keeps one pending record (`listener`, `resumeTime`,
+  `wasPaused`, `rate`). A second switch before `loadedmetadata` removes the
+  old listener and reuses the original captured values, so the second
+  `currentTime` of 0 is never mistaken for the resume point. While `startAt`
+  has not been applied yet, `resumeTime` is seeded with `startAt`, so a saved
+  quality restored at mount lands on `startAt` instead of seeking back to 0;
+  a `resumeTime` at or past the new duration falls back to 0. The restore
+  never autoplays unless the video was playing.
 - **`ProfileKeysGuideVideo`** is `muted loop playsinline preload="none"` and
   keeps its visibility/autoplay/PiP logic; see `docs/key-guides.md`. It does
   not persist preferences.
@@ -148,6 +166,7 @@ element.
 | No hover-thumbnail source other than a VTT thumbnails track | Blob-URL WebVTT storyboard with `#xywh` cues pointing at the mediabunny sprite |
 | No full-window fullscreen fallback | Native element fullscreen only. On iPhone Safari the video's native fullscreen presentation takes over with system controls, which matches Plyr's `iosNative` behavior |
 | Controls auto-hide delay not configurable ([#1728](https://github.com/videojs/v10/issues/1728)) | While a mouse pointer is over the control bar, the shell holds `store.requestControlsLock()` and releases it on `pointerleave`, so the bar and the preview never hide under the pointer (as in Plyr). Touch pointers are ignored |
+| Slider preview card clamps to the slider, not the player | `overflow="visible"` plus a CSS shift, see "Preview card clamp" |
 | Captions: tracks flagged `default` show on load | Caption `<track>`s carry no `default`, so captions start off. The Off option reads "Disabled" through `registerI18n` |
 
 ### Chapters, thumbnails and snap-seek
@@ -170,6 +189,33 @@ element.
   `max(0.4 s, 4% of duration)` the video seeks to that start. The seek is
   deferred with `setTimeout(0)`, after the slider's own pointer handling.
 
+### Preview card clamp
+
+`<media-slider-preview overflow="clamp">` keeps the card inside the time
+slider. On a ~343 px mobile player the slider is about 90 px wide while the
+card is about 172 px, so the card ended up ~30 px outside the player's left
+edge and stopped following the finger. Plyr clamped to the player box
+instead, so the shell uses `overflow="visible"` (card centered on the
+pointer) and `useVideoTimeline` writes the correction:
+
+- `computePreviewShift` (exported, pure) clamps the pointer to the slider,
+  centers the card on it, clamps the card's left edge to
+  `[player.left + 8, player.right - cardWidth - 8]` and returns the
+  difference in pixels.
+- On `pointerenter`, `pointermove` and `pointerdown` on the time slider the
+  composable measures the slider, the `media-container` and the preview, and
+  sets `--video-preview-shift` on the slider element (it inherits to the
+  card). A `ResizeObserver` on the preview recomputes under a held pointer
+  when the sprite arrives and the card grows. Dispose removes the listeners,
+  disconnects the observer and clears the property.
+- `.video-preview__card` applies `translate: var(--video-preview-shift, 0px) 0`.
+  The property is not on the preview element itself, whose inline
+  `left`/`position`/`width` Video.js rewrites on every update.
+- The card does not show on keyboard focus (Video.js only sets
+  `data-pointing` for pointers), so there is no focus path.
+- On a desktop-width player the card is now clamped to the player edges
+  rather than the slider edges, the same as Plyr.
+
 `enableMetadataTracks` flips `chapters` and `metadata` tracks from `disabled`
 to `hidden` so the cues load without rendering as captions.
 
@@ -181,21 +227,39 @@ captions: { enabled, language } }` as JSON under the localStorage key
 consent manifest in `nuxt.config.ts` (`id: 'video-player'`) and listed in the
 cookie policy and `i18n/locales/cookie-consent.*.ts`.
 
-- Reads and writes are gated on `useCookieConsent().isAllowed('preferences')`
-  and re-gated through `onConsentChange`: a grant writes immediately, a deny
-  removes the key. The composable owns this gating itself and does not go
-  through `usePreferenceStorage()`.
+- Reads and writes go through `usePreferenceStorage()` (see
+  `docs/cookie-consent.md`). While `preferences` is granted they hit
+  localStorage; while it is denied they stay in the in-memory pending map,
+  so choices survive in-session (SPA navigation) without touching storage,
+  and are flushed to localStorage by the consent gate plugin on a grant.
+  A deny removes the declared key through the consent module's cleanup. The
+  calls run inside `nuxtApp.runWithContext` because the store callbacks fire
+  outside the Nuxt context that `useCookieConsent()` needs.
+- The saved quality is kept when the page has no quality options: the
+  snapshot uses `getQuality() ?? lastSaved?.quality ?? null`, so a
+  `/guides/[slug]` page without renditions does not overwrite a saved 1080
+  with `null`.
+- The composable does not call `requestPersistence()`, so the "Remember your
+  preferences?" prompt is not triggered by player changes. Add it to the
+  quality and speed handlers if that is wanted.
 - Values are validated with `parseVideoPlayerPreferences`; anything malformed
   is ignored.
 - Restore happens once, after the store has a `target`. Captions restore when
   the first caption track list arrives.
 - Speed is read from the native `<video>`, not from the store, because the
   store keeps a stale `playbackRate` after a source switch.
-- The legacy Plyr key is removed on mount by
-  `removeLegacyPlyrPreferences()` (`localStorage.removeItem('plyr')`). The
-  `plyr` manifest entry was replaced by `video-player`, so the consent cleanup
-  routine no longer covers `plyr`; this on-mount removal is what clears old
-  values. See `docs/cookie-consent.md`.
+- The legacy Plyr key is removed by the `video-legacy-plyr-cleanup.client.ts`
+  plugin through `removeLegacyPlyrPreferences()`
+  (`localStorage.removeItem('plyr')`, errors swallowed), once per app load on
+  every route. The `plyr` manifest entry was replaced by `video-player`, so
+  the consent cleanup routine no longer covers `plyr`; this removal is what
+  clears old values. See `docs/cookie-consent.md`.
+
+### Accepted behavior changes versus Plyr
+
+- The lean key-guide player is `preload="none"`, and Video.js hides the PiP
+  button until the media has loaded metadata, so the button appears after the
+  first play rather than at mount. Accepted.
 
 ## Fragile seams: re-check on every `@videojs/html` upgrade
 
@@ -206,7 +270,12 @@ cookie policy and `i18n/locales/cookie-consent.*.ts`.
    `.js-video-custom-options` group (quality, speed) on define, on attach and
    whenever the selection or quality list changes. This method is undocumented.
    If a release renames it or changes the propagation, the settings button
-   vanishes on caption-less pages (the key guides).
+   vanishes on caption-less pages (the key guides). Guards: a `Shell.spec.ts`
+   test asserts `customElements.get('media-menu-radio-group').prototype
+   .publishMenuOptionState` is a function and that the settings trigger is not
+   `hidden` with zero caption tracks, and in development the shell logs one
+   `console.warn` naming this doc when the method is missing (the call is
+   skipped, not thrown).
 2. **`<template>` content through `v-html`.** `media-time-slider-chapters` and
    `media-captions-radio-group` clone `template.content`. Vue children of a
    `<template>` element do not populate `.content`, so the item templates

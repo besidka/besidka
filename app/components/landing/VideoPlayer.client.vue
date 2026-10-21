@@ -5,7 +5,6 @@
   >
     <VideoShell
       variant="full"
-      :poster="poster"
       container-class="js-landing-player shadow-xl"
       :qualities="qualityOptions"
       :selected-quality="selectedQualityValue"
@@ -179,8 +178,16 @@ const selectedQualityValue = computed<string>(() => {
 
 const markerPoints = toMarkerPoints(props.markers)
 
+interface PendingQualitySwitch {
+  listener: () => void
+  resumeTime: number
+  wasPaused: boolean
+  rate: number
+}
+
 let hasTrackedPlay = false
 let hasAppliedStartAt = false
+let pendingQualitySwitch: PendingQualitySwitch | null = null
 
 const {
   chaptersTrackUrl,
@@ -260,6 +267,22 @@ function applySpeed(rate: number) {
   video.playbackRate = rate
 }
 
+function isValidStartAt(startAt: number | undefined): startAt is number {
+  return startAt !== undefined && Number.isFinite(startAt) && startAt >= 0
+}
+
+function cancelPendingQualitySwitch(): PendingQualitySwitch | null {
+  const pending = pendingQualitySwitch
+
+  pendingQualitySwitch = null
+
+  if (pending) {
+    videoRef.value?.removeEventListener('loadedmetadata', pending.listener)
+  }
+
+  return pending
+}
+
 function selectQuality(size: number) {
   const video = videoRef.value
   const isKnown = sortedQualities.value.some((quality) => {
@@ -270,26 +293,50 @@ function selectQuality(size: number) {
     return
   }
 
-  const resumeTime = video.currentTime
-  const wasPaused = video.paused
-  const rate = video.playbackRate
+  const mediaElement: HTMLVideoElement = video
+  const previous = cancelPendingQualitySwitch()
+  const startAt = props.startAt
+  const resumeTime = previous?.resumeTime
+    ?? (!hasAppliedStartAt && isValidStartAt(startAt)
+      ? startAt
+      : video.currentTime)
+  const wasPaused = previous?.wasPaused ?? video.paused
+  const rate = previous?.rate ?? video.playbackRate
 
-  video.addEventListener('loadedmetadata', async () => {
-    video.currentTime = resumeTime
-    video.defaultPlaybackRate = rate
-    video.playbackRate = rate
+  async function resumePlayback() {
+    if (pendingQualitySwitch?.listener === resumePlayback) {
+      pendingQualitySwitch = null
+    }
+
+    const hasKnownDuration = Number.isFinite(mediaElement.duration)
+
+    mediaElement.currentTime = hasKnownDuration
+      && resumeTime >= mediaElement.duration
+      ? 0
+      : resumeTime
+    mediaElement.defaultPlaybackRate = rate
+    mediaElement.playbackRate = rate
 
     if (wasPaused) {
       return
     }
 
     try {
-      await video.play()
+      await mediaElement.play()
     } catch {
       return
     }
-  }, { once: true })
+  }
 
+  pendingQualitySwitch = {
+    listener: resumePlayback,
+    resumeTime,
+    wasPaused,
+    rate,
+  }
+  mediaElement.addEventListener('loadedmetadata', resumePlayback, {
+    once: true,
+  })
   currentQuality.value = size
 }
 
@@ -322,6 +369,8 @@ function applyStartAt() {
 }
 
 useEventListener(videoRef, 'loadedmetadata', applyStartAt)
+
+tryOnScopeDispose(cancelPendingQualitySwitch)
 
 useEventListener(videoRef, 'ratechange', () => {
   currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_SPEED
@@ -374,8 +423,4 @@ function fallbackToNative() {
     video.src = props.src
   }
 }
-
-onMounted(() => {
-  removeLegacyPlyrPreferences()
-})
 </script>

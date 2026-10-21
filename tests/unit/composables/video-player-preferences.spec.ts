@@ -9,6 +9,7 @@ import {
   removeLegacyPlyrPreferences,
   useVideoPlayerPreferences,
 } from '../../../app/composables/video-player-preferences'
+import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import { createStorageStub } from '../../setup/helpers/video-player'
 
 interface FakeTextTrack {
@@ -16,11 +17,6 @@ interface FakeTextTrack {
   kind: string
   language: string
   mode: 'disabled' | 'hidden' | 'showing'
-}
-
-interface ConsentChange {
-  granted: string[]
-  denied: string[]
 }
 
 const mocks = vi.hoisted(() => {
@@ -244,34 +240,22 @@ describe('useVideoPlayerPreferences', () => {
     )
   }
 
-  function emitConsentChange(change: ConsentChange) {
-    const listener = mocks.onConsentChange.mock.calls[0]![0] as (
-      change: ConsentChange,
-    ) => void
-
-    listener(change)
-  }
-
   beforeEach(() => {
     storage = createStorageStub()
     scope = effectScope()
     vi.stubGlobal('localStorage', storage)
     mocks.isAllowed.mockReset().mockReturnValue(true)
     mocks.onConsentChange.mockReset()
+    usePreferenceStorage().removeItem(VIDEO_PLAYER_STORAGE_KEY)
   })
 
   afterEach(() => {
     scope.stop()
+    usePreferenceStorage().removeItem(VIDEO_PLAYER_STORAGE_KEY)
     vi.unstubAllGlobals()
   })
 
   describe('consent gating', () => {
-    it('checks the preferences consent category', () => {
-      mountPreferences()
-
-      expect(mocks.isAllowed).toHaveBeenCalledWith('preferences')
-    })
-
     it('writes the current state when consent is granted', () => {
       const { attach } = mountPreferences()
       const store = createFakeStore({ volume: 0.8, muted: true })
@@ -287,7 +271,7 @@ describe('useVideoPlayerPreferences', () => {
       })
     })
 
-    it('writes nothing when consent is denied', () => {
+    it('writes nothing to localStorage when consent is denied', () => {
       mocks.isAllowed.mockReturnValue(false)
 
       const { attach, persist } = mountPreferences()
@@ -301,7 +285,7 @@ describe('useVideoPlayerPreferences', () => {
       expect(storage.getItem(VIDEO_PLAYER_STORAGE_KEY)).toBeNull()
     })
 
-    it('ignores saved preferences when consent is denied', () => {
+    it('ignores saved localStorage values when consent is denied', () => {
       mocks.isAllowed.mockReturnValue(false)
       storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize(DEFAULT_PREFERENCES))
 
@@ -315,53 +299,97 @@ describe('useVideoPlayerPreferences', () => {
       expect(store.setVolume).not.toHaveBeenCalled()
     })
 
-    it('removes the stored key when preferences consent is denied',
+    it('removes the real key when a write happens after consent is denied',
       () => {
-        storage.setItem(
-          VIDEO_PLAYER_STORAGE_KEY,
-          serialize(DEFAULT_PREFERENCES),
-        )
+        const { attach } = mountPreferences()
+        const store = createFakeStore()
 
-        mountPreferences()
-        emitConsentChange({ granted: [], denied: ['preferences'] })
+        attach(createPlayer(store))
+
+        expect(storage.getItem(VIDEO_PLAYER_STORAGE_KEY)).not.toBeNull()
+
+        mocks.isAllowed.mockReturnValue(false)
+        store.setVolume(0.2)
+        store.notify()
 
         expect(storage.getItem(VIDEO_PLAYER_STORAGE_KEY)).toBeNull()
       })
 
-    it('stops persisting after consent is denied', () => {
-      const { attach } = mountPreferences()
+    it('remembers choices in-session while denied and flushes on grant',
+      () => {
+        mocks.isAllowed.mockReturnValue(false)
+
+        const { attach } = mountPreferences()
+        const store = createFakeStore({ volume: 0.6 })
+
+        attach(createPlayer(store))
+
+        expect(storage.getItem(VIDEO_PLAYER_STORAGE_KEY)).toBeNull()
+
+        mocks.isAllowed.mockReturnValue(true)
+        usePreferenceStorage().flushPending()
+
+        expect(readStored()).toMatchObject({ volume: 0.6 })
+      })
+
+    it('restores the in-session choices in a later instance while denied',
+      () => {
+        mocks.isAllowed.mockReturnValue(false)
+
+        const first = mountPreferences()
+        const firstStore = createFakeStore({ volume: 0.3, muted: true })
+
+        first.attach(createPlayer(firstStore))
+        first.detach()
+
+        const second = mountPreferences()
+        const secondStore = createFakeStore()
+
+        second.attach(createPlayer(secondStore))
+
+        expect(secondStore.setVolume).toHaveBeenCalledWith(0.3)
+        expect(secondStore.setMuted).toHaveBeenCalledWith(true)
+        expect(storage.getItem(VIDEO_PLAYER_STORAGE_KEY)).toBeNull()
+      })
+  })
+
+  describe('quality without options', () => {
+    it('keeps the saved quality on a player without quality options', () => {
+      storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize(DEFAULT_PREFERENCES))
+
+      const { attach, persist, options } = mountPreferences()
+      const store = createFakeStore()
+
+      options.getQuality.mockReturnValue(null)
+      attach(createPlayer(store))
+      store.setVolume(0.9)
+      store.notify()
+      persist()
+
+      expect(readStored()).toMatchObject({ volume: 0.9, quality: 1080 })
+    })
+
+    it('stores a null quality when nothing was ever saved', () => {
+      const { attach, options } = mountPreferences()
+      const store = createFakeStore()
+
+      options.getQuality.mockReturnValue(null)
+      attach(createPlayer(store))
+
+      expect(readStored()).toMatchObject({ quality: null })
+    })
+
+    it('prefers the live quality over the saved one', () => {
+      storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize(DEFAULT_PREFERENCES))
+
+      const { attach, persist, options } = mountPreferences()
       const store = createFakeStore()
 
       attach(createPlayer(store))
-      emitConsentChange({ granted: [], denied: ['preferences'] })
-      store.setVolume(0.2)
-      store.notify()
+      options.getQuality.mockReturnValue(360)
+      persist()
 
-      expect(storage.getItem(VIDEO_PLAYER_STORAGE_KEY)).toBeNull()
-    })
-
-    it('writes the current state when consent is granted later', () => {
-      mocks.isAllowed.mockReturnValue(false)
-
-      const { attach } = mountPreferences()
-      const store = createFakeStore({ volume: 0.6 })
-
-      attach(createPlayer(store))
-
-      expect(storage.getItem(VIDEO_PLAYER_STORAGE_KEY)).toBeNull()
-
-      emitConsentChange({ granted: ['preferences'], denied: [] })
-
-      expect(readStored()).toMatchObject({ volume: 0.6 })
-    })
-
-    it('ignores consent changes for other categories', () => {
-      storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize(DEFAULT_PREFERENCES))
-
-      mountPreferences()
-      emitConsentChange({ granted: ['analytics'], denied: ['marketing'] })
-
-      expect(storage.getItem(VIDEO_PLAYER_STORAGE_KEY)).not.toBeNull()
+      expect(readStored()).toMatchObject({ quality: 360 })
     })
   })
 

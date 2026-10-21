@@ -438,6 +438,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Video/Shell.spec.ts',
     'tests/unit/composables/video-timeline.spec.ts',
     'tests/unit/composables/video-player-preferences.spec.ts',
+    'tests/unit/plugins/video-legacy-plyr-cleanup.client.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/unit/components/landing/FeatureGrid.spec.ts',
     'tests/unit/components/landing/MessageBubble.spec.ts',
@@ -1117,7 +1118,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Video\/.*\.vue|app\/composables\/(video-timeline|video-player-preferences)\.ts|app\/utils\/videojs-elements\.ts|app\/types\/video-player\.d\.ts|app\/assets\/css\/video-player-theme\.css)$/,
+        /^(app\/components\/Video\/.*\.vue|app\/composables\/(video-timeline|video-player-preferences)\.ts|app\/plugins\/video-legacy-plyr-cleanup\.client\.ts|app\/utils\/videojs-elements\.ts|app\/types\/video-player\.d\.ts|app\/assets\/css\/video-player-theme\.css)$/,
       tests: [...landingTests, ...profileKeyGuideTests],
     },
     {

@@ -155,28 +155,27 @@ describe('VideoPlayer.client.vue', () => {
       expect(localStorage.getItem('video-player')).toBeNull()
     })
 
-    it('removes the legacy plyr key on mount', async () => {
-      localStorage.setItem('plyr', JSON.stringify({ volume: 1 }))
-
-      await mountPlayer()
-
-      expect(localStorage.getItem('plyr')).toBeNull()
-    })
-
-    it('removes the legacy plyr key even without consent', async () => {
-      mocks.isAllowed.mockReturnValue(false)
-      localStorage.setItem('plyr', JSON.stringify({ volume: 1 }))
-
-      await mountPlayer()
-
-      expect(localStorage.getItem('plyr')).toBeNull()
-    })
-
-    it('registers a consent listener that removes stored preferences',
+    it('keeps a saved quality on a page without quality renditions',
       async () => {
-        await mountPlayer()
+        localStorage.setItem('video-player', JSON.stringify({
+          volume: 0.4,
+          muted: false,
+          speed: 1,
+          quality: 1080,
+          captions: { enabled: false, language: null },
+        }))
 
-        expect(mocks.onConsentChange).toHaveBeenCalledTimes(1)
+        const wrapper = await mountPlayer()
+        const video = getVideo(wrapper)
+
+        video.volume = 0.7
+        video.dispatchEvent(new Event('volumechange'))
+        await flushPromises()
+
+        expect(readStoredPreferences()).toMatchObject({
+          volume: 0.7,
+          quality: 1080,
+        })
       })
 
     it('restores saved speed, quality and volume once the player is ready',
@@ -297,6 +296,65 @@ describe('VideoPlayer.client.vue', () => {
       await flushPromises()
 
       expect(video.getAttribute('src')).toBe('/videos/demo-360.mp4')
+      expect(video.currentTime).toBe(30)
+      expect(play).not.toHaveBeenCalled()
+    })
+
+    it('keeps the original resume point across back-to-back switches',
+      async () => {
+        const wrapper = await mountPlayer({ qualities: QUALITIES })
+        const video = getVideo(wrapper)
+
+        video.currentTime = 12
+        video.playbackRate = 1.5
+        await video.play()
+
+        const play = vi.spyOn(video, 'play').mockResolvedValue()
+
+        chooseMenuOption(wrapper, 'video-quality-options', '1080')
+        await flushPromises()
+
+        video.currentTime = 0
+        video.playbackRate = 1
+
+        chooseMenuOption(wrapper, 'video-quality-options', '360')
+        await flushPromises()
+
+        expect(video.getAttribute('src')).toBe('/videos/demo-360.mp4')
+
+        video.dispatchEvent(new Event('loadedmetadata'))
+        await flushPromises()
+
+        expect(video.currentTime).toBe(12)
+        expect(video.playbackRate).toBe(1.5)
+        expect(play).toHaveBeenCalledTimes(1)
+
+        video.currentTime = 40
+        video.dispatchEvent(new Event('loadedmetadata'))
+        await flushPromises()
+
+        expect(video.currentTime).toBe(40)
+        expect(play).toHaveBeenCalledTimes(1)
+      })
+
+    it('keeps a paused state across back-to-back switches', async () => {
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+      const video = getVideo(wrapper)
+      const play = vi.spyOn(video, 'play').mockResolvedValue()
+
+      video.currentTime = 30
+
+      chooseMenuOption(wrapper, 'video-quality-options', '1080')
+      await flushPromises()
+
+      video.currentTime = 0
+
+      chooseMenuOption(wrapper, 'video-quality-options', '360')
+      await flushPromises()
+
+      video.dispatchEvent(new Event('loadedmetadata'))
+      await flushPromises()
+
       expect(video.currentTime).toBe(30)
       expect(play).not.toHaveBeenCalled()
     })
@@ -795,6 +853,62 @@ describe('VideoPlayer.client.vue', () => {
           'key_guide_video_play',
           expect.anything(),
         )
+      })
+
+    it('lands a restored quality on startAt instead of the old position',
+      async () => {
+        localStorage.setItem('video-player', JSON.stringify({
+          volume: 1,
+          muted: false,
+          speed: 1,
+          quality: 1080,
+          captions: { enabled: false, language: null },
+        }))
+
+        const wrapper = await mountPlayer({
+          src: '/videos/key.mp4',
+          qualities: QUALITIES,
+          startAt: 7,
+        })
+        const video = getVideo(wrapper)
+        const play = vi.spyOn(video, 'play').mockResolvedValue()
+
+        expect(video.getAttribute('src')).toBe('/videos/demo-1080.mp4')
+
+        video.currentTime = 0
+        video.dispatchEvent(new Event('loadedmetadata'))
+        await flushPromises()
+
+        expect(video.currentTime).toBe(7)
+        expect(play).not.toHaveBeenCalled()
+      })
+
+    it('falls back to the start when startAt is beyond the new rendition',
+      async () => {
+        localStorage.setItem('video-player', JSON.stringify({
+          volume: 1,
+          muted: false,
+          speed: 1,
+          quality: 1080,
+          captions: { enabled: false, language: null },
+        }))
+        media.duration = NaN
+        media.readyState = 0
+
+        const wrapper = await mountPlayer({
+          src: '/videos/key.mp4',
+          qualities: QUALITIES,
+          startAt: 50,
+        })
+        const video = getVideo(wrapper)
+
+        media.duration = 34
+        media.readyState = 1
+        video.currentTime = 9
+        video.dispatchEvent(new Event('loadedmetadata'))
+        await flushPromises()
+
+        expect(video.currentTime).toBe(0)
       })
 
     it('waits for loadedmetadata when the duration is not known at ready',

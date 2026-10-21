@@ -972,35 +972,33 @@ used by `app/components/landing/VideoPlayer.client.vue`) persists the Video.js
 player's volume, mute, speed, quality and captions choice as JSON under the
 localStorage key `video-player`. The key is declared in the `preferences`
 category manifest (`id: 'video-player'`). Video.js has no built-in persistence
-(https://github.com/videojs/v10/issues/944), so the composable gates it:
+(https://github.com/videojs/v10/issues/944), so the composable stores it
+through `usePreferenceStorage()` like every other preference key:
 
 ```ts
-const { isAllowed, onConsentChange } = useCookieConsent()
+const nuxtApp = useNuxtApp()
+const preferenceStorage = usePreferenceStorage()
 
-let isEnabled = isAllowed('preferences')
-
-onConsentChange(({ granted, denied }) => {
-  if (granted.includes('preferences')) {
-    isEnabled = true
-    persist()
-  }
-
-  if (denied.includes('preferences')) {
-    isEnabled = false
-    localStorage.removeItem('video-player')
-  }
+nuxtApp.runWithContext(() => {
+  preferenceStorage.setItem('video-player', JSON.stringify(preferences))
 })
 ```
 
-Writes happen only while `isEnabled`; a deny removes the key at once. The
-composable does its own gating and does not use `usePreferenceStorage()`. The
-lean key-guide player does not persist anything.
+`runWithContext` is needed because the writes happen in player-store
+callbacks, outside the Nuxt context that `useCookieConsent()` (called inside
+`setItem`) requires. While `preferences` is denied the values stay in the
+in-memory pending map (the player remembers them in-session), a grant flushes
+them through the gate plugin, and a deny removes the key through the module's
+cleanup. The composable has no consent listener of its own. The lean
+key-guide player does not persist anything. Player changes do not call
+`requestPersistence()`.
 
 The player used to be Plyr, which stored its settings under the `plyr` key
 (also declared in the manifest). That manifest entry was replaced by
-`video-player`, so the deny cleanup no longer covers `plyr`; the player removes
-it itself on mount through `removeLegacyPlyrPreferences()`, which clears values
-left by earlier visits. Architecture of the player: `docs/video-player.md`.
+`video-player`, so the deny cleanup no longer covers `plyr`; the
+`app/plugins/video-legacy-plyr-cleanup.client.ts` plugin removes it once per
+app load through `removeLegacyPlyrPreferences()`, which clears values left by
+earlier visits. Architecture of the player: `docs/video-player.md`.
 
 ---
 
