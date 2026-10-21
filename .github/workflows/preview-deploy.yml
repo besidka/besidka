@@ -15,7 +15,7 @@ jobs:
     name: Deploy Preview
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository
     permissions:
       actions: read
       id-token: write
@@ -88,42 +88,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Check if PR is from fork
-        id: fork-check
-        if: steps.pr.outputs.skip == 'false'
-        run: |
-          HEAD_REPO="${{ github.event.workflow_run.head_repository.full_name }}"
-          BASE_REPO="${{ github.event.workflow_run.repository.full_name }}"
-          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
-            echo "is-fork=true" >> "$GITHUB_OUTPUT"
-            echo "Fork PR detected ($HEAD_REPO != $BASE_REPO)"
-          else
-            echo "is-fork=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Skip deploy for fork PRs
-        if: steps.fork-check.outputs.is-fork == 'true'
-        uses: mshick/add-pr-comment@v3
-        with:
-          issue: ${{ steps.pr.outputs.number }}
-          allow-repeats: false
-          message: |
-            Preview deployment skipped for fork PRs (security policy).
-            A maintainer can comment `/deploy-preview` to trigger deployment.
-
-      - name: Set deploy status for fork PRs
-        if: steps.fork-check.outputs.is-fork == 'true'
-        run: |
-          gh api "repos/${{ github.repository }}/statuses/${{ steps.pr.outputs.sha }}" \
-            -f state=success \
-            -f context="Preview Deploy" \
-            -f description="Skipped (fork PR - use /deploy-preview)"
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: Check PR is still open
         id: pr-state
-        if: steps.fork-check.outputs.is-fork == 'false'
+        if: steps.pr.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -139,13 +106,13 @@ jobs:
           echo "::notice::PR #${PR_NUMBER} is ${PR_STATE}; skipping preview deploy"
 
       - name: Checkout PR head
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.pr.outputs.sha }}
 
       - name: Download build artifact
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: actions/download-artifact@v8
         with:
           run-id: ${{ github.event.workflow_run.id }}
@@ -154,7 +121,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download drizzle artifact
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: actions/download-artifact@v8
         with:
           run-id: ${{ github.event.workflow_run.id }}
@@ -163,28 +130,28 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Setup PNPM
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: pnpm/action-setup@v6
         with:
           run_install: false
 
       - name: Install Node.js
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Record deploy start time
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Apply migrations to preview database
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -194,7 +161,7 @@ jobs:
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
       - name: Apply consent migrations to preview database
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -204,7 +171,7 @@ jobs:
           postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote
 
       - name: Deploy PR preview to Cloudflare
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -220,7 +187,7 @@ jobs:
 
       - name: Delete preview if PR closed during deploy
         id: post-deploy-state
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true'
+        if: steps.pr-state.outputs.is-open == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -258,7 +225,7 @@ jobs:
           exit 1
 
       - name: Calculate deploy time
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
+        if: steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
         id: deploy-time
         env:
           START: ${{ steps.deploy-start.outputs.start-time }}
@@ -269,7 +236,7 @@ jobs:
           echo "Deploy completed in ${DURATION}s"
 
       - name: Extract preview URLs
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
+        if: steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
         id: urls
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -295,7 +262,7 @@ jobs:
           echo "deployment-url=${DEPLOYMENT_URL:-n/a}" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL on PR
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
+        if: steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
         uses: mshick/add-pr-comment@v3
         with:
           issue: ${{ steps.pr.outputs.number }}
@@ -317,7 +284,7 @@ jobs:
             The PR preview URL ${{ steps.urls.outputs.preview-url }} always points at the latest deployment._
 
       - name: Set deploy status success
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true' && success()
+        if: steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true' && success()
         env:
           GH_TOKEN: ${{ github.token }}
           PR_SHA: ${{ steps.pr.outputs.sha }}
@@ -330,7 +297,7 @@ jobs:
             -f target_url="$PREVIEW_URL"
 
       - name: Set deploy status failure
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open != 'false' && failure()
+        if: steps.pr.outputs.skip == 'false' && steps.pr-state.outputs.is-open != 'false' && failure()
         env:
           GH_TOKEN: ${{ github.token }}
           PR_SHA: ${{ steps.pr.outputs.sha }}

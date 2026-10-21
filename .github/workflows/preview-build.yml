@@ -32,7 +32,7 @@ concurrency:
 jobs:
   check-pr-state:
     name: Check PR state
-    if: github.event.pull_request.stack == null || github.event.pull_request.stack.position == github.event.pull_request.stack.size
+    if: github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.stack == null || github.event.pull_request.stack.position == github.event.pull_request.stack.size)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
