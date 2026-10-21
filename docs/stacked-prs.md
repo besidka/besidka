@@ -54,6 +54,33 @@ Keep the parent branch updated from `main` with a merge or rebase as usual.
 After a child lands in the parent, pull the parent into any other open child
 (`git merge origin/<parent-branch>`) before pushing it.
 
+## Merging an umbrella
+
+Pushes to child branches cost nothing: the `branches: [main]` filter skips
+every workflow on them. The cost appears when a child merges, because that is a
+push to the parent branch and runs one `preview-build.yml` and one
+`claude-code-review.yml` on the parent PR. Both workflows use
+`cancel-in-progress`, so a newer merge cancels the run of the previous one and
+the newest state wins.
+
+Rules:
+
+- Merge the children in the agreed order, in one sitting.
+- Rebase a child onto `origin/<parent-branch>` only after the previous child has
+  landed. Never pre-rebase children onto each other's branches: a squash merge
+  gives the commits new SHAs, so the replayed commits conflict.
+- With `N` children merged back to back the cost is `N-1` cancelled partial runs
+  (the Claude review included) plus one full run.
+- The parent only builds once the first code child lands. A docs-only commit is
+  in `paths-ignore`, and a docs-only change on top of a built commit reuses that
+  build (`docs/cloudflare-previews.md`, "Skipping builds").
+
+Escalation for large umbrellas (not implemented, documented only): replace the
+`cancel-in-progress` value in `preview-build.yml` with
+`${{ !contains(github.event.pull_request.labels.*.name, 'umbrella') }}` and put
+the `umbrella` label on the parent PR. A labelled parent then queues instead of
+cancelling, which gives at most one running and one pending build at a time.
+
 ## Native stack (S)
 
 GitHub stacked PRs, driven by the `gh-stack` extension.
