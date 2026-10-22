@@ -117,6 +117,27 @@ describe('video-player-theme.css', () => {
     )
   })
 
+  it.each([
+    '.landing-player .video-menu',
+    '.landing-player .video-tooltip',
+  ])('blurs the video behind the popup for %s', (selector) => {
+    expectDeclaration(
+      selector,
+      /backdrop-filter\s*:\s*var\(--video-popup-blur\)\s*;/,
+    )
+    expectDeclaration(
+      selector,
+      /-webkit-backdrop-filter\s*:\s*var\(--video-popup-blur\)\s*;/,
+    )
+  })
+
+  it('defines the popup blur like the control bar glass', () => {
+    expectDeclaration(
+      '.landing-player',
+      /--video-popup-blur\s*:\s*blur\(16px\)\s+saturate\(150%\)\s*;/,
+    )
+  })
+
   it('does not clip the player so menus can leave the 16:9 frame', () => {
     expectDeclaration('.landing-player', /overflow\s*:\s*visible\s*;/)
   })

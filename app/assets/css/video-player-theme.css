@@ -10,8 +10,9 @@
   --video-track-color: color-mix(in oklab, var(--color-base-content) 22%, transparent);
   --video-buffer-color: color-mix(in oklab, var(--color-base-content) 28%, transparent);
   --video-glass-border: color-mix(in oklab, var(--color-base-content) 10%, transparent);
-  --video-menu-background: color-mix(in oklab, var(--color-base-100) 82%, transparent);
+  --video-menu-background: color-mix(in oklab, var(--color-base-100) 88%, transparent);
   --video-tooltip-background: color-mix(in oklab, var(--color-base-100) 88%, transparent);
+  --video-popup-blur: blur(16px) saturate(150%);
   --video-popup-shadow: 0 1px 2px rgb(0 0 0 / 0.15), 0 8px 24px -8px rgb(0 0 0 / 0.25);
   --media-font-family: inherit;
   --media-tooltip-side-offset: 10px;
@@ -461,6 +462,8 @@
   border-radius: var(--radius-field, 0.5rem);
   color: var(--color-base-content);
   background: var(--video-tooltip-background);
+  backdrop-filter: var(--video-popup-blur);
+  -webkit-backdrop-filter: var(--video-popup-blur);
   box-shadow: var(--video-popup-shadow);
   font-family: inherit;
   font-size: var(--video-font-size-small);
@@ -498,6 +501,8 @@
   border-radius: var(--radius-box, 0.75rem);
   color: var(--color-base-content);
   background: var(--video-menu-background);
+  backdrop-filter: var(--video-popup-blur);
+  -webkit-backdrop-filter: var(--video-popup-blur);
   box-shadow: var(--video-popup-shadow);
   font-family: inherit;
   font-size: var(--video-font-size);
