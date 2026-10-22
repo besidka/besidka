@@ -49,9 +49,7 @@ export function readUserAttributionByEmail(
     'JOIN users u ON u.id = a.user_id',
     `WHERE u.email = '${email.replaceAll('\'', '\'\'')}'`,
   ].join(' ')
-  const output = execFileSync('pnpm', [
-    'exec',
-    'wrangler',
+  const output = execFileSync('node_modules/.bin/wrangler', [
     'd1',
     'execute',
     LOCAL_D1_BINDING,

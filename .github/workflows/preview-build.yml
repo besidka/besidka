@@ -191,27 +191,34 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v6
-        with:
-          run_install: false
-
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: 'pnpm'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: Cache Bun packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Run ESLint
-        run: pnpm run lint
+        run: bun run lint
 
       - name: Run TypeScript type checks
         run: |
-          pnpm run dev:prepare
-          pnpm run typecheck
+          bun run dev:prepare
+          bun run typecheck
 
       - name: Run affected unit tests
         id: test-unit
@@ -254,23 +261,23 @@ jobs:
 
       - name: Install Playwright browsers
         if: steps.check-e2e.outputs.has-tests == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
+        run: bunx playwright install --with-deps chromium
 
       - name: Generate DB migrations for E2E
         if: steps.check-e2e.outputs.has-tests == 'true'
-        run: pnpm run db:generate
+        run: bun run db:generate
 
       - name: Apply DB migrations for E2E
         if: steps.check-e2e.outputs.has-tests == 'true'
-        run: yes | pnpm exec wrangler d1 migrations apply DB --local
+        run: yes | bunx wrangler d1 migrations apply DB --local
 
       - name: Generate consent DB migrations for E2E
         if: steps.check-e2e.outputs.has-tests == 'true'
-        run: pnpm run db:consents:generate
+        run: bun run db:consents:generate
 
       - name: Apply consent DB migrations for E2E
         if: steps.check-e2e.outputs.has-tests == 'true'
-        run: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --local
+        run: yes | bunx wrangler d1 migrations apply CONSENT_DB --local
 
       - name: Build application
         id: build-app
@@ -280,7 +287,7 @@ jobs:
         run: |
           set -o pipefail
           START=$(date +%s)
-          pnpm run build 2>&1 | tee build-output.log
+          bun run build 2>&1 | tee build-output.log
           END=$(date +%s)
           DURATION=$((END - START))
           echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"

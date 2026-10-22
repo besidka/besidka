@@ -123,8 +123,8 @@ export default defineConfig({
   ],
   webServer: {
     command: process.env.CI
-      ? `pnpm exec wrangler dev --port ${E2E_PORT}`
-      : 'pnpm run db:migrate && pnpm run dev',
+      ? `node_modules/.bin/wrangler dev --port ${E2E_PORT}`
+      : 'node --run db:migrate && node --run dev',
     env: WEB_SERVER_ENV,
     url: E2E_BASE_URL,
     timeout: 120_000,

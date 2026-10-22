@@ -22,7 +22,7 @@ import type { Page } from '@playwright/test'
 // `nuxt dev` cannot reproduce this: Vite serves unminified CSS in dev
 // mode, so the cascade never goes through the minifier that introduces
 // the bug. This spec therefore asserts against the actual production
-// CSS bundle (`pnpm run build` output) rather than the dev server used
+// CSS bundle (`node --run build` output) rather than the dev server used
 // by the rest of the e2e suite.
 const projectRoot = fileURLToPath(new URL('../../../', import.meta.url))
 const builtNuxtDir = path.join(projectRoot, '.output/public/_nuxt')
@@ -51,7 +51,7 @@ function ensureBuiltCss(): string {
     return readFileSync(existingCssPath, 'utf-8')
   }
 
-  execFileSync('pnpm', ['run', 'build'], {
+  execFileSync('node', ['--run', 'build'], {
     cwd: projectRoot,
     stdio: 'inherit',
     env: { ...process.env, ROLLDOWN_OPTIONS_VALIDATION: 'loose' },
@@ -62,7 +62,7 @@ function ensureBuiltCss(): string {
   if (!builtCssPath) {
     throw new Error(
       'Could not locate .output/public/_nuxt/entry.*.css after '
-      + '`pnpm run build`. This spec needs the production CSS bundle '
+      + '`node --run build`. This spec needs the production CSS bundle '
       + 'to check for the DaisyUI stock-theme cascade regression.',
     )
   }

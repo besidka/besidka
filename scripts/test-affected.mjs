@@ -32,14 +32,14 @@ function runTests(tests, testType) {
   if (tests === 'all') {
     console.log('🔄 Running ALL tests (core files changed)...\n')
     if (testType === 'unit' || testType === 'all') {
-      execSync('pnpm run test:unit', { stdio: 'inherit' })
-      execSync('pnpm run test:cookie-consent', { stdio: 'inherit' })
+      execSync('node --run test:unit', { stdio: 'inherit' })
+      execSync('node --run test:cookie-consent', { stdio: 'inherit' })
     }
     if (testType === 'integration' || testType === 'all') {
-      execSync('pnpm run test:integration', { stdio: 'inherit' })
+      execSync('node --run test:integration', { stdio: 'inherit' })
     }
     if (testType === 'e2e' || testType === 'all') {
-      execSync('pnpm run test:e2e', { stdio: 'inherit' })
+      execSync('node --run test:e2e', { stdio: 'inherit' })
     }
     return
   }
@@ -58,7 +58,7 @@ function runTests(tests, testType) {
   if (unitTests.length > 0 && (testType === 'unit' || testType === 'all')) {
     console.log('📝 Running unit tests...\n')
     const quotedTests = unitTests.map(test => `'${test}'`).join(' ')
-    execSync(`pnpm exec vitest run --reporter=verbose --silent=passed-only --run ${quotedTests}`, {
+    execSync(`node_modules/.bin/vitest run --reporter=verbose --silent=passed-only --run ${quotedTests}`, {
       stdio: 'inherit',
       shell: true,
     })
@@ -69,13 +69,13 @@ function runTests(tests, testType) {
     && (testType === 'unit' || testType === 'all')
   ) {
     console.log('🍪 Running cookie-consent module tests...\n')
-    execSync('pnpm run test:cookie-consent', { stdio: 'inherit' })
+    execSync('node --run test:cookie-consent', { stdio: 'inherit' })
   }
 
   if (integrationTests.length > 0 && (testType === 'integration' || testType === 'all')) {
     console.log('🔗 Running integration tests...\n')
     const quotedTests = integrationTests.map(test => `'${test}'`).join(' ')
-    execSync(`pnpm exec vitest run --reporter=verbose --silent=passed-only --run ${quotedTests}`, {
+    execSync(`node_modules/.bin/vitest run --reporter=verbose --silent=passed-only --run ${quotedTests}`, {
       stdio: 'inherit',
       shell: true,
     })
@@ -84,7 +84,7 @@ function runTests(tests, testType) {
   if (e2eTests.length > 0 && (testType === 'e2e' || testType === 'all')) {
     console.log('\n🎭 Running e2e tests...\n')
     e2eTests.forEach((test) => {
-      execSync(`pnpm exec playwright test '${test}'`, { stdio: 'inherit' })
+      execSync(`node_modules/.bin/playwright test '${test}'`, { stdio: 'inherit' })
     })
   }
 }

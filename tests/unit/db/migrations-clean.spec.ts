@@ -51,9 +51,16 @@ function runGenerateAgainstCopy(
     )
 
     execFileSync(
-      'pnpm',
-      ['exec', 'drizzle-kit', 'generate', `--config=${configPath}`],
-      { cwd: process.cwd(), stdio: 'pipe' },
+      join(process.cwd(), 'node_modules/.bin/drizzle-kit'),
+      ['generate', `--config=${configPath}`],
+      {
+        cwd: process.cwd(),
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          NODE_PATH: join(process.cwd(), 'node_modules'),
+        },
+      },
     )
 
     const after = readdirSync(outDir)

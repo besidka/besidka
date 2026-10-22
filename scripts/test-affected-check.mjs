@@ -1780,7 +1780,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(nuxt\.config\.ts|vitest\.config\.mts|playwright\.config\.ts|package\.json|pnpm-lock\.yaml)$/,
+        /^(nuxt\.config\.ts|vitest\.config\.mts|playwright\.config\.ts|package\.json|pnpm-lock\.yaml|bun\.lock|bunfig\.toml)$/,
       tests: 'all',
     },
     {
