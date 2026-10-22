@@ -126,6 +126,7 @@ const CONSTRAINED_EFFECTIVE_TYPES = new Set(['slow-2g', '2g', '3g'])
 const MIN_DEVICE_PIXEL_RATIO = 1
 const MAX_DEVICE_PIXEL_RATIO = 2
 const VIDEO_ASPECT_RATIO = 9 / 16
+const QUALITY_HEADROOM = 1.25
 
 export interface InitialQualityInput {
   sizes: number[]
@@ -150,8 +151,10 @@ function clampDevicePixelRatio(devicePixelRatio: number): number {
  * Pick the rendition height a player should start on. A data-saver or slow
  * connection gets the lowest rendition. Otherwise the target height is the
  * rendered width times the pixel ratio (clamped to 2, so a 3x phone does not
- * pull a rendition it cannot show) times 9/16, and the smallest rendition
- * that covers it wins, or the largest when none does. Returns null when no
+ * pull a rendition it cannot show) times 9/16 times a 1.25 headroom factor
+ * (screen-recorded UI text needs a little more than 1:1 pixels to stay crisp,
+ * and the player can grow in fullscreen), and the smallest rendition that
+ * covers it wins, or the largest when none does. Returns null when no
  * rendition exists or the width cannot be measured, so the caller applies its
  * own default.
  */
@@ -182,6 +185,7 @@ export function pickInitialQuality(
   const targetHeight = input.playerWidth
     * clampDevicePixelRatio(input.devicePixelRatio)
     * VIDEO_ASPECT_RATIO
+    * QUALITY_HEADROOM
 
   return sizes.find((size) => {
     return size >= targetHeight

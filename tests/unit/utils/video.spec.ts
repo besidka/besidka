@@ -129,14 +129,17 @@ describe('pickInitialQuality', () => {
   const sizes = [1080, 720, 360]
 
   it.each([
+    ['home player 640px at 1x', 640, 1, 720],
+    ['home player 640px at 2x', 640, 2, 1080],
     ['desktop 672px at 1x', 672, 1, 720],
     ['desktop 672px at 2x', 672, 2, 1080],
+    ['phone 334px at 3x, clamped to 2x', 334, 3, 720],
     ['phone 343px at 3x, clamped to 2x', 343, 3, 720],
     ['phone 343px at 1x', 343, 1, 360],
     ['wide 1400px at 2x, no rendition large enough', 1400, 2, 1080],
     ['wide 1400px at 1x', 1400, 1, 1080],
-    ['exact match 640px at 1x', 640, 1, 360],
-    ['just above 360p', 641, 1, 720],
+    ['exact 360p boundary 512px at 1x', 512, 1, 360],
+    ['just above the 360p boundary 513px at 1x', 513, 1, 720],
   ])('%s picks %i', (_name, playerWidth, devicePixelRatio, expected) => {
     expect(pickInitialQuality({ sizes, playerWidth, devicePixelRatio }))
       .toBe(expected)

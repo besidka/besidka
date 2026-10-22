@@ -187,17 +187,28 @@ the first `src` is now chosen at mount, in this order:
      `navigator.connection` is Chromium-only, so Safari and Firefox always skip
      this step.
    - Otherwise the target height is `playerWidth x clamp(devicePixelRatio, 1,
-     2) x 9/16`, and the smallest rendition whose height is at least the target
-     wins; when none is large enough the largest is used. The width is the
-     player root's `getBoundingClientRect().width` at mount.
+     2) x 9/16 x 1.25` (`QUALITY_HEADROOM`), and the smallest rendition whose
+     height is at least the target wins; when none is large enough the largest
+     is used. The width is the player root's `getBoundingClientRect().width`
+     at mount.
 3. **720 fallback** when the heuristic cannot measure (zero or non-finite
    width, so happy-dom in tests). With no 720 rendition the largest is used.
 
-Examples for renditions 1080/720/360: 672 px at 1x is 378 and picks 720; 672
-px at 2x is 756 and picks 1080; a 343 px phone at 3x clamps to 2x, is 386 and
-picks 720; the same phone at 1x is 193 and picks 360; 1400 px at 2x picks 1080;
-save-data picks 360. A 640 px player at 1x (a 1280 px desktop window) targets
-exactly 360 and picks 360.
+Examples for renditions 1080/720/360: 672 px at 1x is 472 and picks 720; 672
+px at 2x is 945 and picks 1080; a 343 px phone at 3x clamps to 2x, is 482 and
+picks 720; the same phone at 1x is 241 and picks 360; 1400 px at 2x picks 1080;
+save-data picks 360. A 640 px player (the home player in a 1280 px desktop
+window) is 450 at 1x and picks 720, and 900 at 2x and picks 1080. At 1x the
+360p boundary is a 512 px player, so only phone-sized players start on 360p.
+
+**Why the headroom.** The demo is a screen recording, and its subject is UI
+text. At exactly 1:1 pixels a 360p rendition of a 640 px player looked too
+blurry to read on ordinary 1x desktop monitors, which is the most common
+visitor. The 1.25 factor asks for a rendition slightly larger than the
+rendered size, so the browser downscales instead of upscaling: text stays
+crisp, and the player can grow (fullscreen, a resized window) without an
+immediate quality drop. It costs one rendition step on some screens, and the
+network cap above still wins for data-saver and slow connections.
 
 **Why the DPR clamp.** A 3x phone shows a ~390 px player, which at 3x would
 want a 658 px-tall rendition and pull 1080p for a screen that cannot show the
