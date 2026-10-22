@@ -1118,7 +1118,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/Video\/.*\.vue|app\/composables\/(video-timeline|video-player-preferences)\.ts|app\/plugins\/video-legacy-plyr-cleanup\.client\.ts|app\/utils\/videojs-elements\.ts|app\/types\/video-player\.d\.ts|app\/assets\/css\/video-player-theme\.css)$/,
+        /^(app\/components\/Video\/.*\.vue|app\/composables\/(video-timeline|video-player-preferences)\.ts|app\/plugins\/video-legacy-plyr-cleanup\.client\.ts|app\/utils\/(videojs-elements|video-speed)\.ts|app\/types\/video-player\.d\.ts|app\/assets\/css\/video-player-theme\.css)$/,
       tests: [...landingTests, ...profileKeyGuideTests],
     },
     {

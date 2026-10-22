@@ -57,11 +57,12 @@ selectors in `video-player-theme.css` are scoped under `.landing-player`
 |------|------|
 | `app/components/Video/Shell.vue` | The skin. Renders `<video-player>` > `<media-container class="landing-player">`, the slot for the `<video>`, the controls, hotkeys and gestures, and an `overlay` slot |
 | `app/components/landing/VideoPlayer.client.vue` | Landing/guide player (`LandingVideoPlayer`): full variant, qualities, captions, speed, chapters, thumbnails, `startAt`, demo/guide analytics, preferences |
-| `app/components/Profile/Keys/GuideVideo.client.vue` | Profile key-guide player: lean variant, autoplay/visibility logic, PiP-aware pause, chapters, thumbnails, watch analytics |
+| `app/components/Profile/Keys/GuideVideo.client.vue` | Profile key-guide player: lean variant with a speed-only settings menu, autoplay/visibility logic, PiP-aware pause, chapters, thumbnails, watch analytics |
 | `app/composables/video-timeline.ts` | `useVideoTimeline`: chapters track, thumbnails track, snap-seek |
 | `app/composables/video-player-preferences.ts` | `useVideoPlayerPreferences`: persistence through `usePreferenceStorage()` (consent-gated) |
 | `app/plugins/video-legacy-plyr-cleanup.client.ts` | Removes the legacy `plyr` localStorage key once per app load |
 | `app/utils/videojs-elements.ts` | Registers elements, icons and the i18n override |
+| `app/utils/video-speed.ts` | The shared speed list (`0.5 ... 2`, "Normal" for 1) both players feed to the shell |
 | `app/types/video-player.d.ts` | `VideoMenuOption`, `VideoShellReadyPayload` |
 
 ### `Video/Shell.vue`
@@ -70,11 +71,11 @@ Props:
 
 | Prop | Type | Meaning |
 |------|------|---------|
-| `variant` | `'full' \| 'lean'` | `full`: remaining-time label, volume slider, captions button, settings menu (captions, quality, speed), AirPlay, all hotkeys. `lean`: play, timeline, mute, PiP, fullscreen and a reduced hotkey set (no volume/caption/speed controls) |
+| `variant` | `'full' \| 'lean'` | `full`: remaining-time label, volume slider, captions button, settings menu (captions, quality, speed), AirPlay, all hotkeys. `lean`: play, timeline, mute, PiP, fullscreen and a reduced hotkey set (no volume or caption controls). A lean player that is given `speeds` also gets the settings button with only the Speed submenu; without `speeds` it has no settings button |
 | `containerClass` | `string` | Extra classes on the container (the landing player adds `js-landing-player shadow-xl`) |
 | `qualities` | `VideoMenuOption[]` | Quality menu items; the Quality entry only renders with more than one |
 | `selectedQuality` | `string` | Checked quality value |
-| `speeds` | `VideoMenuOption[]` | Speed menu items |
+| `speeds` | `VideoMenuOption[]` | Speed menu items. Required for the lean variant to render its settings menu |
 | `selectedSpeed` | `string` | Checked speed value |
 
 Emits:
@@ -129,7 +130,11 @@ toggles fullscreen.
   `startAt` is applied by the ordinary `loadedmetadata` handler.
 - **`ProfileKeysGuideVideo`** is `muted loop playsinline preload="none"` and
   keeps its visibility/autoplay/PiP logic; see `docs/key-guides.md`. It does
-  not persist preferences.
+  not persist preferences. Its settings menu holds only the Speed submenu:
+  the guides have burned-in captions and no caption tracks, and a single
+  source, so there is no Captions or Quality entry. The chosen speed lives on
+  the `<video>` (`playbackRate` and `defaultPlaybackRate`) and resets on every
+  mount.
 
 Both only render client-side (`.client.vue`).
 

@@ -192,18 +192,20 @@ describe('Profile/Keys/GuideVideo.client', () => {
         'video-mute-button',
         'video-pip-button',
         'video-fullscreen-button',
+        'video-settings-button',
+        'video-settings-menu',
+        'video-settings-speed',
+        'video-speed-options',
       ]) {
         expect(wrapper.find(`[data-testid="${testId}"]`).exists(), testId)
           .toBe(true)
       }
 
       for (const testId of [
-        'video-settings-button',
-        'video-settings-menu',
+        'video-settings-captions',
+        'video-captions-options',
         'video-settings-quality',
         'video-quality-options',
-        'video-settings-speed',
-        'video-speed-options',
         'video-volume-slider',
         'video-captions-button',
         'video-time',
@@ -218,6 +220,74 @@ describe('Profile/Keys/GuideVideo.client', () => {
       const { wrapper } = await mountVideo()
 
       expect(wrapper.html()).not.toContain('js-key-guide')
+    })
+  })
+
+  describe('speed menu', () => {
+    function chooseSpeed(wrapper: VueWrapper, value: string) {
+      wrapper.get('[data-testid="video-speed-options"]').element
+        .dispatchEvent(new CustomEvent('value-change', { detail: { value } }))
+    }
+
+    it('lists 0.5x to 2x with Normal selected by default', async () => {
+      const { wrapper } = await mountVideo()
+
+      for (const rate of ['0.5', '0.75', '1', '1.25', '1.5', '2']) {
+        expect(
+          wrapper.find(`[data-testid="video-speed-${rate}"]`).exists(),
+          rate,
+        ).toBe(true)
+      }
+
+      expect(wrapper.get('[data-testid="video-speed-1"]').text())
+        .toBe('Normal')
+      expect(wrapper.get('[data-testid="video-settings-speed"]').text())
+        .toContain('Normal')
+    })
+
+    it('keeps the settings button visible without caption tracks',
+      async () => {
+        const { wrapper } = await mountVideo()
+
+        expect(wrapper.find('track[kind="captions"]').exists()).toBe(false)
+        expect(wrapper.get('[data-testid="video-settings-button"]')
+          .element.hasAttribute('hidden')).toBe(false)
+      })
+
+    it('applies the chosen speed to the video and the menu label',
+      async () => {
+        const { wrapper, video } = await mountVideo()
+
+        chooseSpeed(wrapper, '1.5')
+        await flushPromises()
+
+        expect(video.playbackRate).toBe(1.5)
+        expect(video.defaultPlaybackRate).toBe(1.5)
+
+        video.dispatchEvent(new Event('ratechange'))
+        await flushPromises()
+
+        expect(wrapper.get('[data-testid="video-settings-speed"]').text())
+          .toContain('1.5×')
+      })
+
+    it('ignores a speed that is not offered', async () => {
+      const { wrapper, video } = await mountVideo()
+
+      chooseSpeed(wrapper, '3')
+
+      expect(video.playbackRate).toBe(1)
+    })
+
+    it('does not persist the chosen speed', async () => {
+      localStorage.removeItem('video-player')
+
+      const { wrapper } = await mountVideo()
+
+      chooseSpeed(wrapper, '2')
+      await flushPromises()
+
+      expect(localStorage.getItem('video-player')).toBeNull()
     })
   })
 

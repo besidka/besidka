@@ -9,7 +9,7 @@
       container-class="js-landing-player shadow-xl"
       :qualities="qualityOptions"
       :selected-quality="selectedQualityValue"
-      :speeds="SPEED_OPTIONS"
+      :speeds="VIDEO_SPEED_OPTIONS"
       :selected-speed="String(currentSpeed)"
       @ready="onPlayerReady"
       @failed="fallbackToNative"
@@ -104,6 +104,11 @@ import type {
   VideoShellReadyPayload,
 } from '~/types/video-player.d'
 import { pickInitialQuality, toMarkerPoints } from '#shared/utils/video'
+import {
+  DEFAULT_VIDEO_SPEED,
+  VIDEO_SPEED_OPTIONS,
+  VIDEO_SPEED_RATES,
+} from '~/utils/video-speed'
 
 const props = withDefaults(defineProps<{
   src?: string
@@ -130,15 +135,6 @@ const props = withDefaults(defineProps<{
 const DEMO_TARGET = 'demo'
 const FALLBACK_QUALITY = 720
 const THUMBNAIL_QUALITY = 720
-const DEFAULT_SPEED = 1
-const SPEED_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
-const SPEED_OPTIONS: VideoMenuOption[] = SPEED_RATES.map((rate) => {
-  return {
-    value: String(rate),
-    label: rate === DEFAULT_SPEED ? 'Normal' : `${rate}×`,
-  }
-})
-
 const { track } = useLandingAnalytics()
 const {
   start: startWatch,
@@ -152,7 +148,7 @@ const rootRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
 const isReady = shallowRef<boolean>(false)
 const hasError = shallowRef<boolean>(false)
-const currentSpeed = shallowRef<number>(DEFAULT_SPEED)
+const currentSpeed = shallowRef<number>(DEFAULT_VIDEO_SPEED)
 
 const sortedQualities = computed<VideoQuality[]>(() => {
   return [...props.qualities].sort((a, b) => {
@@ -223,7 +219,7 @@ const {
     return userQuality
   },
   getSpeed: () => {
-    return videoRef.value?.playbackRate ?? DEFAULT_SPEED
+    return videoRef.value?.playbackRate ?? DEFAULT_VIDEO_SPEED
   },
   applyQuality: (size) => {
     selectQuality(size)
@@ -312,7 +308,7 @@ function trackFirstPlay() {
 function applySpeed(rate: number) {
   const video = videoRef.value
 
-  if (!video || !SPEED_RATES.includes(rate)) {
+  if (!video || !VIDEO_SPEED_RATES.includes(rate)) {
     return
   }
 
@@ -321,7 +317,7 @@ function applySpeed(rate: number) {
 }
 
 function syncCurrentSpeed() {
-  currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_SPEED
+  currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_VIDEO_SPEED
 }
 
 function isValidStartAt(startAt: number | undefined): startAt is number {

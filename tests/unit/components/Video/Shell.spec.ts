@@ -26,9 +26,16 @@ const FULL_ONLY_TEST_IDS = [
   'video-time',
   'video-volume-slider',
   'video-captions-button',
+  'video-settings-captions',
+  'video-captions-options',
+  'video-airplay-button',
+]
+
+const SETTINGS_TEST_IDS = [
   'video-settings-button',
   'video-settings-menu',
-  'video-airplay-button',
+  'video-settings-speed',
+  'video-speed-options',
 ]
 
 const SHARED_TEST_IDS = [
@@ -113,20 +120,83 @@ describe('Video/Shell', () => {
       }
     }, PLAYER_TIMEOUT_MS)
 
-    it('hides settings, volume, captions, time and AirPlay when lean',
+    it('hides settings, volume, captions, time and AirPlay when lean '
+      + 'without speeds', async () => {
+      const wrapper = await mountShell({ variant: 'lean' })
+
+      await waitForPlayerReady(wrapper)
+
+      for (const testId of SHARED_TEST_IDS) {
+        expect(has(wrapper, testId), testId).toBe(true)
+      }
+
+      for (const testId of [...FULL_ONLY_TEST_IDS, ...SETTINGS_TEST_IDS]) {
+        expect(has(wrapper, testId), testId).toBe(false)
+      }
+    })
+
+    it('adds a speed-only settings menu when lean has speeds', async () => {
+      const wrapper = await mountShell({
+        variant: 'lean',
+        speeds: SPEEDS,
+        selectedSpeed: '1',
+      })
+
+      await waitForPlayerReady(wrapper)
+
+      for (const testId of [...SHARED_TEST_IDS, ...SETTINGS_TEST_IDS]) {
+        expect(has(wrapper, testId), testId).toBe(true)
+      }
+
+      for (const testId of [
+        ...FULL_ONLY_TEST_IDS,
+        'video-settings-quality',
+        'video-quality-options',
+      ]) {
+        expect(has(wrapper, testId), testId).toBe(false)
+      }
+    })
+
+    it('keeps the lean settings button visible with no caption tracks',
       async () => {
-        const wrapper = await mountShell({ variant: 'lean' })
+        const wrapper = await mountShell({
+          variant: 'lean',
+          speeds: SPEEDS,
+          selectedSpeed: '1',
+        })
 
         await waitForPlayerReady(wrapper)
 
-        for (const testId of SHARED_TEST_IDS) {
-          expect(has(wrapper, testId), testId).toBe(true)
-        }
-
-        for (const testId of FULL_ONLY_TEST_IDS) {
-          expect(has(wrapper, testId), testId).toBe(false)
-        }
+        expect(wrapper.find('track[kind="captions"]').exists()).toBe(false)
+        expect(wrapper.get('[data-testid="video-settings-button"]')
+          .element.hasAttribute('hidden')).toBe(false)
+        expect(wrapper.get('[data-testid="video-settings-speed"]').text())
+          .toContain('Normal')
       })
+
+    it('emits selectSpeed from the lean speed menu', async () => {
+      const wrapper = await mountShell({
+        variant: 'lean',
+        speeds: SPEEDS,
+        selectedSpeed: '1',
+      })
+
+      await waitForPlayerReady(wrapper)
+
+      dispatchValueChange(wrapper, 'video-speed-options', { value: '2' })
+
+      expect(wrapper.emitted('selectSpeed')).toEqual([['2']])
+    })
+
+    it('renders the settings menu in the full variant', async () => {
+      const wrapper = await mountShell()
+
+      await waitForPlayerReady(wrapper)
+
+      for (const testId of ['video-settings-button', 'video-settings-menu']) {
+        expect(has(wrapper, testId), testId).toBe(true)
+      }
+    })
 
     it('limits the lean hotkeys to playback, seek, mute, fullscreen and PiP',
       async () => {

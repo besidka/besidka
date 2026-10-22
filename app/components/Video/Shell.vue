@@ -163,7 +163,9 @@
                   >
                     <media-tooltip-label />
                   </media-tooltip>
+                </template>
 
+                <template v-if="hasSettingsMenu">
                   <button
                     :id="ids.settings"
                     type="button"
@@ -195,6 +197,7 @@
                   >
                     <media-menu-content class="video-menu__page">
                       <media-menu-item
+                        v-if="isFull"
                         :commandfor="ids.captionsMenu"
                         class="video-menu__item video-menu__trigger"
                         data-testid="video-settings-captions"
@@ -249,6 +252,7 @@
                     </media-menu-content>
 
                     <media-menu-content
+                      v-if="isFull"
                       :id="ids.captionsMenu"
                       class="video-menu__page video-menu__submenu"
                     >
@@ -558,6 +562,10 @@ const hotkeys = computed<HotkeyBinding[]>(() => {
   return FULL_HOTKEYS.filter((hotkey) => {
     return LEAN_HOTKEY_ACTIONS.has(hotkey.action)
   })
+})
+
+const hasSettingsMenu = computed<boolean>(() => {
+  return isFull.value || props.speeds.length > 0
 })
 
 const hasQualityMenu = computed<boolean>(() => {

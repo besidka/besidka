@@ -5,7 +5,10 @@
   >
     <VideoShell
       variant="lean"
+      :speeds="VIDEO_SPEED_OPTIONS"
+      :selected-speed="String(currentSpeed)"
       @ready="onPlayerReady"
+      @select-speed="onSelectSpeed"
       @failed="fallbackToNative"
     >
       <video
@@ -48,6 +51,11 @@ import type { VideoMarker } from '#shared/types/video.d'
 import type { VideoShellReadyPayload } from '~/types/video-player.d'
 import { toMarkerPoints } from '#shared/utils/video'
 import { canAutoplayGuideVideo } from '~/utils/key-guide-video'
+import {
+  DEFAULT_VIDEO_SPEED,
+  VIDEO_SPEED_OPTIONS,
+  VIDEO_SPEED_RATES,
+} from '~/utils/video-speed'
 
 const props = withDefaults(defineProps<{
   provider: string
@@ -83,6 +91,7 @@ const {
 
 const containerRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
+const currentSpeed = shallowRef<number>(DEFAULT_VIDEO_SPEED)
 
 const canAutoplay = canAutoplayGuideVideo()
 const markerPoints = toMarkerPoints(props.markers)
@@ -238,6 +247,25 @@ useEventListener(videoRef, 'pause', () => {
 
   hasUserPaused = true
 })
+
+function syncCurrentSpeed() {
+  currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_VIDEO_SPEED
+}
+
+function onSelectSpeed(value: string) {
+  const video = videoRef.value
+  const rate = Number(value)
+
+  if (!video || !VIDEO_SPEED_RATES.includes(rate)) {
+    return
+  }
+
+  video.defaultPlaybackRate = rate
+  video.playbackRate = rate
+}
+
+useEventListener(videoRef, 'loadedmetadata', syncCurrentSpeed)
+useEventListener(videoRef, 'ratechange', syncCurrentSpeed)
 
 function onPlayerReady({ timeSlider }: VideoShellReadyPayload) {
   isPlayerReady = true
