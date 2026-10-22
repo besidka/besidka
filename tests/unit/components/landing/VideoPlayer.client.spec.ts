@@ -699,6 +699,25 @@ describe('VideoPlayer.client.vue', () => {
       expect(play).not.toHaveBeenCalled()
     })
 
+    it('stops the pending resume when the new rendition fails to load',
+      async () => {
+        const wrapper = await mountPlayer({ qualities: QUALITIES })
+        const video = getVideo(wrapper)
+
+        video.currentTime = 12
+        await video.play()
+
+        const play = vi.spyOn(video, 'play').mockResolvedValue()
+
+        chooseMenuOption(wrapper, 'video-quality-options', '1080')
+        await flushPromises()
+        video.dispatchEvent(new Event('error'))
+        video.dispatchEvent(new Event('loadedmetadata'))
+        await flushPromises()
+
+        expect(play).not.toHaveBeenCalled()
+      })
+
     it('ignores unknown quality values and the current quality',
       async () => {
         const wrapper = await mountPlayer({ qualities: QUALITIES })
