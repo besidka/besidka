@@ -370,7 +370,6 @@
                     class="video-button video-pip-button
                       js-video-pip-fallback"
                     :aria-label="pipFallbackLabel"
-                    :aria-pressed="isPipFallbackActive"
                     :data-pip="isPipFallbackActive ? '' : undefined"
                     data-testid="video-pip-fallback-button"
                     @click="togglePipFallback"

@@ -737,7 +737,7 @@ describe('Video/Shell', () => {
         expect(button.classes()).toContain('js-video-pip-fallback')
         expect(button.attributes('aria-label'))
           .toBe('Enter picture-in-picture')
-        expect(button.attributes('aria-pressed')).toBe('false')
+        expect(button.attributes('aria-pressed')).toBeUndefined()
         expect(button.attributes('data-pip')).toBeUndefined()
         expect(wrapper.get('.video-controls__bar')
           .attributes('data-pip-fallback')).toBeDefined()
@@ -826,7 +826,7 @@ describe('Video/Shell', () => {
         expect(setPresentationMode).toHaveBeenCalledTimes(2)
       })
 
-    it('reflects the presentation mode in the label, pressed state and icon',
+    it('reflects the presentation mode in the label and icon',
       async () => {
         const { wrapper, video } = await mountWithWebKitPip()
 
@@ -840,7 +840,6 @@ describe('Video/Shell', () => {
 
         expect(button.attributes('aria-label'))
           .toBe('Exit picture-in-picture')
-        expect(button.attributes('aria-pressed')).toBe('true')
         expect(button.attributes('data-pip')).toBeDefined()
         expect(button.find('media-icon').exists()).toBe(true)
 
@@ -850,7 +849,6 @@ describe('Video/Shell', () => {
 
         expect(button.attributes('aria-label'))
           .toBe('Enter picture-in-picture')
-        expect(button.attributes('aria-pressed')).toBe('false')
         expect(button.attributes('data-pip')).toBeUndefined()
       })
 
