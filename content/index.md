@@ -14,6 +14,9 @@ carousel:
   - src: /carousel/any-model.webp
     alt: Besidka on desktop and on a phone, labelled desktop and mobile, installable PWA and push notifications, with a push notification saying the response is ready.
     caption: Desktop and mobile, installable PWA, push notifications
+  - src: /carousel/cost-per-answer.webp
+    alt: Message menu showing the model, provider, output tokens and the cost of the message, up to that message and for the whole chat.
+    caption: Model, tokens and cost on every answer
   - src: /carousel/dark-theme.webp
     alt: Besidka in dark theme on a desktop chat comparing D1 and Postgres and on a phone showing a Vue composable answer.
     caption: Light or dark theme, desktop and phone
@@ -23,9 +26,6 @@ carousel:
   - src: /carousel/gateways.webp
     alt: Model picker switched to OpenRouter, listing Anthropic models available through the gateway, next to Cloudflare AI Gateway and Vercel AI Gateway.
     caption: "Optional gateways: OpenRouter, Vercel, Cloudflare"
-  - src: /carousel/cost-per-answer.webp
-    alt: Message menu showing the model, provider, output tokens and the cost of the message, up to that message and for the whole chat.
-    caption: Model, tokens and cost on every answer
   - src: /carousel/web-search-prices.webp
     alt: Search provider settings with prices per 1,000 searches for Brave, Exa and the built-in search of Gemini, Anthropic, OpenAI and DeepSeek.
     caption: Web search providers and their prices
