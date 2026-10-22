@@ -57,12 +57,14 @@ selectors in `video-player-theme.css` are scoped under `.landing-player`
 |------|------|
 | `app/components/Video/Shell.vue` | The skin. Renders `<video-player>` > `<media-container class="landing-player">`, the slot for the `<video>`, the controls, hotkeys and gestures, and an `overlay` slot |
 | `app/components/landing/VideoPlayer.client.vue` | Landing/guide player (`LandingVideoPlayer`): full variant, qualities, captions, speed, chapters, thumbnails, `startAt`, demo/guide analytics, preferences |
-| `app/components/Profile/Keys/GuideVideo.client.vue` | Profile key-guide player: lean variant, autoplay/visibility logic, PiP-aware pause, chapters, thumbnails, watch analytics |
+| `app/composables/video-quality.ts` | `useVideoQuality`: renditions, start pick and quality switching shared by both players |
+| `app/components/Profile/Keys/GuideVideo.client.vue` | Profile key-guide player: lean variant with a quality and speed settings menu, autoplay/visibility logic, PiP-aware pause, chapters, thumbnails, watch analytics |
 | `app/composables/video-timeline.ts` | `useVideoTimeline`: chapters track, thumbnails track, snap-seek |
 | `app/composables/video-player-preferences.ts` | `useVideoPlayerPreferences`: persistence through `usePreferenceStorage()` (consent-gated) |
 | `app/plugins/video-legacy-plyr-cleanup.client.ts` | Removes the legacy `plyr` localStorage key once per app load |
 | `app/utils/videojs-elements.ts` | Registers elements, icons and the i18n override |
-| `app/types/video-player.d.ts` | `VideoMenuOption`, `VideoShellReadyPayload` |
+| `app/utils/video-speed.ts` | The shared speed list (`0.5 ... 2`, "Normal" for 1) both players feed to the shell |
+| `app/types/video-player.d.ts` | `VideoMenuOption`, `VideoShellReadyPayload`, `WebKitPresentationVideo` |
 
 ### `Video/Shell.vue`
 
@@ -70,11 +72,11 @@ Props:
 
 | Prop | Type | Meaning |
 |------|------|---------|
-| `variant` | `'full' \| 'lean'` | `full`: remaining-time label, volume slider, captions button, settings menu (captions, quality, speed), AirPlay, all hotkeys. `lean`: play, timeline, mute, PiP, fullscreen and a reduced hotkey set (no volume/caption/speed controls) |
+| `variant` | `'full' \| 'lean'` | `full`: remaining-time label, volume slider, captions button, settings menu (captions, quality, speed), AirPlay, all hotkeys. `lean`: play, timeline, mute, PiP, fullscreen and a reduced hotkey set (no volume or caption controls). A lean player that is given `speeds` also gets the settings button with only the Speed submenu; without `speeds` it has no settings button |
 | `containerClass` | `string` | Extra classes on the container (the landing player adds `js-landing-player shadow-xl`) |
 | `qualities` | `VideoMenuOption[]` | Quality menu items; the Quality entry only renders with more than one |
 | `selectedQuality` | `string` | Checked quality value |
-| `speeds` | `VideoMenuOption[]` | Speed menu items |
+| `speeds` | `VideoMenuOption[]` | Speed menu items. Required for the lean variant to render its settings menu |
 | `selectedSpeed` | `string` | Checked speed value |
 
 Emits:
@@ -114,19 +116,30 @@ toggles fullscreen.
   `<video>` events (`play`, `timeupdate`, `pause`, `ended`, `loadedmetadata`,
   `ratechange`). `preload="metadata"`, `crossorigin="anonymous"` for the
   caption tracks. Quality renditions come from the `video.qualities`
-  frontmatter; changing quality swaps `src` and restores position, paused
+  frontmatter; the starting rendition is picked by the "Starting quality"
+  heuristic below; changing quality swaps `src` and restores position, paused
   state and rate on `loadedmetadata`. Speeds are `0.5, 0.75, 1, 1.25, 1.5, 2`.
-  A quality switch keeps one pending record (`listener`, `resumeTime`,
+  All of this quality machinery lives in `useVideoQuality`, shared with the
+  key-guide player (see "Shared quality composable"). A quality switch keeps
+  one pending record (`listener`, `resumeTime`,
   `wasPaused`, `rate`). A second switch before `loadedmetadata` removes the
   old listener and reuses the original captured values, so the second
   `currentTime` of 0 is never mistaken for the resume point. While `startAt`
   has not been applied yet, `resumeTime` is seeded with `startAt`, so a saved
-  quality restored at mount lands on `startAt` instead of seeking back to 0;
-  a `resumeTime` at or past the new duration falls back to 0. The restore
-  never autoplays unless the video was playing.
+  quality switched before `startAt` is applied lands on `startAt` instead of
+  seeking back to 0; a `resumeTime` at or past the new duration falls back to
+  0. The restore never autoplays unless the video was playing. A saved quality
+  is no longer a switch: it is the first `src` (see "Starting quality"), so
+  `startAt` is applied by the ordinary `loadedmetadata` handler.
 - **`ProfileKeysGuideVideo`** is `muted loop playsinline preload="none"` and
   keeps its visibility/autoplay/PiP logic; see `docs/key-guides.md`. It does
-  not persist preferences.
+  not persist preferences. Its settings menu holds a Quality submenu (1080p,
+  720p, 360p, from the guide's `video.qualities`, shown when there is more
+  than one) and the Speed submenu; the guides have burned-in captions and no
+  caption tracks, so there is no Captions entry. A guide without
+  `video.qualities` has one source and no Quality entry. The chosen speed lives on
+  the `<video>` (`playbackRate` and `defaultPlaybackRate`) and resets on every
+  mount.
 
 Both only render client-side (`.client.vue`).
 
@@ -167,7 +180,171 @@ element.
 | No full-window fullscreen fallback | Native element fullscreen only. On iPhone Safari the video's native fullscreen presentation takes over with system controls, which matches Plyr's `iosNative` behavior |
 | Controls auto-hide delay not configurable ([#1728](https://github.com/videojs/v10/issues/1728)) | While a mouse pointer is over the control bar, the shell holds `store.requestControlsLock()` and releases it on `pointerleave`, so the bar and the preview never hide under the pointer (as in Plyr). Touch pointers are ignored |
 | Slider preview card clamps to the slider, not the player | `overflow="visible"` plus a CSS shift, see "Preview card clamp" |
+| Safari standalone web apps (installed Dock or Home Screen apps) report `pictureInPictureAvailability: 'unsupported'` even when the WebKit presentation-mode API exists, so `<media-pip-button>` hides there. Plyr showed a PiP button | Fallback button in `Shell.vue` (both variants), see "Safari web app PiP fallback" below. Unverified on a real device |
 | Captions: tracks flagged `default` show on load | Caption `<track>`s carry no `default`, so captions start off. The Off option reads "Disabled" through `registerI18n` |
+
+### Shared quality composable
+
+`app/composables/video-quality.ts` (`useVideoQuality`, unit-tested in
+`tests/unit/composables/video-quality.spec.ts`) owns everything about
+renditions for one `<video>`, so `VideoPlayer.client.vue` and
+`GuideVideo.client.vue` cannot drift apart:
+
+- `sortedQualities`, `qualityOptions` (`{ value: '1080', label: '1080p' }`,
+  highest first), `currentQuality`, `selectedQualityValue` and `currentSrc`
+  (`undefined` until the start rendition is resolved, the single-`src`
+  guarantee in "Starting quality").
+- `resolveStartQuality(savedQuality)` called from the component's `onMounted`.
+  The home player passes `readSavedQuality()` from
+  `useVideoPlayerPreferences`; the guide player passes nothing, so its start is
+  the heuristic with the 720 fallback and nothing is read or written.
+  `rememberUserQuality` and `getUserQuality` hold the deliberate pick that only
+  the home player persists (see "Persistence decision").
+- `selectQuality(size)` with the pending-switch record described under
+  "Players". The component supplies `getPendingStartAt` (the unapplied
+  `startAt`), `onRestored` (resync the speed label) and `onSettled`.
+- `thumbnailSource()`, the 720 rendition whatever is playing.
+- `isResumingAfterSwitch()`, true from a switch of a playing video until the
+  resumed `play()` settles (it is also cleared by a `error` event on the new
+  source and on scope disposal). A src change makes browsers drop the element
+  to paused and fire `emptied`/`loadstart`, and the resume calls `play()`, so
+  `play`, `playing` and `pause` events during that window are the switch, not
+  the user. `GuideVideo.client.vue` returns early from its `play`/`pause`
+  handlers and from `syncPlayback` while it is true (otherwise the resume
+  would be counted as a user play and a pause as the user pausing, and a
+  scroll-out during the load would autoplay or be missed) and passes
+  `syncPlayback` as `onSettled`, so a guide that left the viewport while its
+  new rendition loaded is paused as soon as the resume ends. The home player
+  keeps its previous event handling.
+- A guide mounts with `preload="none"`. A switch lifts it to `metadata`,
+  otherwise a paused guide would never load the new source and the restore on
+  `loadedmetadata` would wait for the next play.
+
+### Starting quality
+
+The landing player used to start every visitor on 720p. With renditions
+present (the home page and, since the guide renditions, both key-guide
+players), the first `src` is now chosen at mount, in this order:
+
+1. **Saved deliberate choice** (`video-player` quality with
+   `qualityChosen: true`, if it is one of the offered renditions). A stored
+   quality without that flag is not a choice and is ignored here, see
+   "Persistence decision".
+2. **Heuristic**, `pickInitialQuality` in `shared/utils/video.ts` (pure,
+   unit-tested in `tests/unit/utils/video.spec.ts`):
+   - Network cap first: `navigator.connection.saveData === true` or an
+     `effectiveType` of `slow-2g`, `2g` or `3g` selects the lowest rendition.
+     `navigator.connection` is Chromium-only, so Safari and Firefox always skip
+     this step.
+   - Otherwise the target height is `playerWidth x clamp(devicePixelRatio, 1,
+     2) x 9/16 x 1.25` (`QUALITY_HEADROOM`), and the smallest rendition whose
+     height is at least the target wins; when none is large enough the largest
+     is used. The width is the player root's `getBoundingClientRect().width`
+     at mount.
+3. **720 fallback** when the heuristic cannot measure (zero or non-finite
+   width, so happy-dom in tests). With no 720 rendition the largest is used.
+
+Examples for renditions 1080/720/360: 672 px at 1x is 472 and picks 720; 672
+px at 2x is 945 and picks 1080; a 343 px phone at 3x clamps to 2x, is 482 and
+picks 720; the same phone at 1x is 241 and picks 360; 1400 px at 2x picks 1080;
+save-data picks 360. A 640 px player (the home player in a 1280 px desktop
+window) is 450 at 1x and picks 720, and 900 at 2x and picks 1080. At 1x the
+360p boundary is a 512 px player, so only phone-sized players start on 360p.
+
+**Why the headroom.** The demo is a screen recording, and its subject is UI
+text. At exactly 1:1 pixels a 360p rendition of a 640 px player looked too
+blurry to read on ordinary 1x desktop monitors, which is the most common
+visitor. The 1.25 factor asks for a rendition slightly larger than the
+rendered size, so the browser downscales instead of upscaling: text stays
+crisp, and the player can grow (fullscreen, a resized window) without an
+immediate quality drop. It costs one rendition step on some screens, and the
+network cap above still wins for data-saver and slow connections.
+
+**Why the DPR clamp.** A 3x phone shows a ~390 px player, which at 3x would
+want a 658 px-tall rendition and pull 1080p for a screen that cannot show the
+extra detail at that viewing distance. Clamping to 2x keeps phones on 720p. The
+user can still pick 1080p from the menu.
+
+**No double download.** The `<video>` element must never load one rendition and
+then switch. While renditions exist and the start quality is unresolved,
+`currentSrc` is `undefined`, so Vue writes no real `src` on render. The first
+`onMounted` of `VideoPlayer.client.vue` (the root element is in the document,
+so it can be measured) resolves saved preference, then heuristic, then
+fallback, sets `currentQuality` directly (not through `selectQuality`, so no
+resume listener or seek) and flips `hasResolvedStartQuality`. Exactly one `src`
+is assigned afterwards. Vue's mount-time `undefined` still writes
+`video.src = ''` once, which starts no network request (verified in a headless
+Chromium network log). Without renditions `src` is the prop from the first
+render. Reading the saved quality at mount (`readSavedQuality` from
+`useVideoPlayerPreferences`) matters: before, a saved 1080 first loaded the
+720 default and then switched when the store attached.
+
+**Thumbnails stay on the 720p file** (`THUMBNAIL_QUALITY`) whatever the
+playback rendition, falling back to `props.src` when 720 is absent.
+
+**Persistence decision.** The heuristic pick must not look like a user choice,
+or one visit on a phone or a slow network would freeze that rendition as the
+saved quality for every later visit (`persist()` runs on every store change,
+such as a volume tweak). The player therefore keeps a separate `userQuality`,
+set only by a manual menu selection or by a restored deliberate value, and the
+preferences `getQuality` returns that instead of the current rendition. A
+heuristic-only session stores `quality: null, qualityChosen: false`, which
+restore skips, and the snapshot keeps a stored value the page could not apply
+(for example a rendition that was removed, or a page without renditions). The
+previous behavior of storing 720 on the first volume change is gone on purpose.
+
+**`qualityChosen` and legacy records.** Before the heuristic existed,
+`getQuality` returned the current rendition (720 by default), so any
+consenting visitor who ever touched volume, speed or captions has
+`quality: 720` stored without having picked it. Treating that as a choice
+would keep the heuristic from ever reaching returning visitors. The stored
+shape therefore carries a boolean `qualityChosen`, written `true` only when
+the quality comes from a manual menu pick or from a stored record that
+already had `qualityChosen: true`. `readSavedQuality()` (start resolution) and
+the quality half of `restore()` act only on `qualityChosen === true`; a record
+without the flag (every pre-existing record) or with `false` is a legacy
+record: volume, mute, speed and captions keep restoring, the quality is
+ignored, and the heuristic picks the start. A legacy `quality: 720` is carried
+forward as-is with `qualityChosen: false` (never promoted) until the visitor
+picks a quality, which overwrites it with `qualityChosen: true`.
+`parseVideoPlayerPreferences` stays backward-compatible: the flag is optional,
+defaults to `false` and is forced to `false` when `quality` is `null`, so old
+records are never invalidated. Pages without renditions carry both
+the stored quality and its flag unchanged.
+
+Why the first `src` rather than a mid-play adaptive switch: see
+`docs/landing-studio.md`, "Why progressive MP4 on R2".
+
+### Safari web app PiP fallback
+
+`Video.js` deliberately reports `pictureInPictureAvailability: 'unsupported'` in
+Safari standalone web apps even when the API exists, and `<media-pip-button>`
+hides itself in that state. `Shell.vue` renders its own button
+(`js-video-pip-fallback`, `data-testid="video-pip-fallback-button"`, same
+classes, icons and tooltip as the media button) only when all of these hold:
+
+- the store's `pictureInPictureAvailability` is `'unsupported'`;
+- the `<video>` has `webkitSupportsPresentationMode` as a function and
+  `webkitSupportsPresentationMode('picture-in-picture') === true`;
+- the media has loaded metadata (`readyState >= HAVE_METADATA`).
+
+The check re-runs on every store change and on `loadstart`, `loadedmetadata`,
+`emptied` and `webkitpresentationmodechanged`. The click handler calls
+`webkitSetPresentationMode` with `picture-in-picture` or `inline` directly (the
+user gesture must not be lost to an await) and swallows a throw. While the
+fallback is rendered the bar carries `data-pip-fallback`, and the theme hides
+`media-pip-button`, because Video.js re-shows its own button as soon as the
+presentation mode is `picture-in-picture` (the store's `isPictureInPicture`
+turns true), and both must never be visible together. The guide player's
+offscreen logic already reads `webkitPresentationMode`, so a fallback entry
+keeps playing off screen and pauses when PiP closes.
+
+**Unverified on a real device.** It is not known whether WebKit actually allows
+picture-in-picture inside a standalone web app; Video.js disables the button
+there on purpose. If the owner reports that the button does nothing in the
+installed app, remove the fallback (the template block, `syncPipFallback`,
+`togglePipFallback`, the CSS rule, the types and the tests) and keep the
+Video.js behavior.
 
 ### Chapters, thumbnails and snap-seek
 
@@ -188,6 +365,28 @@ element.
   position is mapped to a time; if the nearest chapter start is within
   `max(0.4 s, 4% of duration)` the video seeks to that start. The seek is
   deferred with `setTimeout(0)`, after the slider's own pointer handling.
+
+### Settings menu boundary
+
+`<media-menu>` positions its popup against a boundary that defaults to the
+player container. On a small player (a 320x180 guide card, or a 348px-wide
+home player on a phone) the room between the settings button and the top of
+the frame is about 120-140px, so `--media-menu-available-height` capped the
+menu there and the Speed submenu (7 rows, 223px) became a scrolling box that
+cut off the top rows and ran under the control bar. Plyr let the menu rise
+above the 16:9 frame.
+
+`Shell.vue` therefore sets `boundary="viewport"` on `<media-menu>`. The menu
+is a `popover="manual"` element in the top layer, so no ancestor clips it;
+only the boundary limited it. With the viewport boundary the available height
+is the whole space above the button (about 460px on a phone), the menu keeps
+its `20rem` cap from `.video-menu`, and a viewport shorter than the menu
+falls back to the internal scroll of `.video-menu__page` (`max-height:
+inherit`, `overflow: auto`). Fullscreen works the same way because the
+viewport is then the screen. `--media-popover-side-offset` is 18px (12px on
+phones) so the menu clears the control bar, whose padding puts the button
+11px below the bar edge. `tests/unit/assets/css/video-player-theme.spec.ts`
+and `Shell.spec.ts` pin the three pieces.
 
 ### Preview card clamp
 
@@ -222,7 +421,7 @@ to `hidden` so the cues load without rendering as captions.
 ### Preferences and consent
 
 `useVideoPlayerPreferences` persists `{ volume, muted, speed, quality,
-captions: { enabled, language } }` as JSON under the localStorage key
+qualityChosen, captions: { enabled, language } }` as JSON under the localStorage key
 `video-player`. The key is declared in the `preferences` category of the
 consent manifest in `nuxt.config.ts` (`id: 'video-player'`) and listed in the
 cookie policy and `i18n/locales/cookie-consent.*.ts`.
@@ -235,10 +434,10 @@ cookie policy and `i18n/locales/cookie-consent.*.ts`.
   A deny removes the declared key through the consent module's cleanup. The
   calls run inside `nuxtApp.runWithContext` because the store callbacks fire
   outside the Nuxt context that `useCookieConsent()` needs.
-- The saved quality is kept when the page has no quality options: the
-  snapshot uses `getQuality() ?? lastSaved?.quality ?? null`, so a
+- The saved quality and its `qualityChosen` flag are kept when the page has
+  no quality options: the snapshot falls back to `lastSaved`, so a
   `/guides/[slug]` page without renditions does not overwrite a saved 1080
-  with `null`.
+  with `null` and does not promote a legacy 720 into a deliberate choice.
 - The composable does not call `requestPersistence()`, so the "Remember your
   preferences?" prompt is not triggered by player changes. Add it to the
   quality and speed handlers if that is wanted.
@@ -247,7 +446,11 @@ cookie policy and `i18n/locales/cookie-consent.*.ts`.
 - Restore happens once, after the store has a `target`. Captions restore when
   the first caption track list arrives.
 - Speed is read from the native `<video>`, not from the store, because the
-  store keeps a stale `playbackRate` after a source switch.
+  store keeps a stale `playbackRate` after a source switch. Both players share
+  `useVideoSpeed(videoRef)` (`app/composables/video-speed.ts`), which owns
+  `currentSpeed`, `applySpeed` (sets `playbackRate` and `defaultPlaybackRate`
+  for the known rates only) and `syncSpeed`, re-synced on `ratechange` and
+  `loadedmetadata`. Only the landing player persists it.
 - The legacy Plyr key is removed by the `video-legacy-plyr-cleanup.client.ts`
   plugin through `removeLegacyPlyrPreferences()`
   (`localStorage.removeItem('plyr')`, errors swallowed), once per app load on
@@ -286,7 +489,13 @@ cookie policy and `i18n/locales/cookie-consent.*.ts`.
    `<video>` directly. Re-test once the store tracks `ratechange` reliably.
 4. **Store `target` as the ready signal.** `ready` relies on `store.target`
    and `store.subscribe`. Re-check them against the changelog.
-5. **Cue-point and slider internals.** Segment gaps, the slider preview and the
+5. **Safari web app PiP fallback.** It depends on `store.pictureInPictureAvailability`
+   being `'unsupported'` and on the `webkit*PresentationMode` members; both
+   are undocumented for this use. It is unverified on a real device (see
+   "Safari web app PiP fallback"): remove it if the button is inert there. If a
+   release changes how Video.js reports availability in standalone web apps,
+   re-check that the media button and the fallback are never both visible.
+6. **Cue-point and slider internals.** Segment gaps, the slider preview and the
    `data-controls-visible` caption shift in the theme target current element
    structure and attributes.
 

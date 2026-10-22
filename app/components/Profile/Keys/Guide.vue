@@ -48,6 +48,7 @@
           :src="doc.video.src"
           :poster="doc.video.poster"
           :markers="doc.video.markers"
+          :qualities="doc.video.qualities"
           :label="videoLabel"
           @failed="isVideoFailed = true"
         />

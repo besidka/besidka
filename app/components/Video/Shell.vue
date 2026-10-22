@@ -32,6 +32,7 @@
               <media-controls-group
                 class="video-controls__bar"
                 aria-label="Video controls"
+                :data-pip-fallback="isPipFallbackVisible ? '' : undefined"
                 @pointerenter="lockControlsWhileHovered"
                 @pointerleave="releaseHoverLock"
               >
@@ -163,7 +164,9 @@
                   >
                     <media-tooltip-label />
                   </media-tooltip>
+                </template>
 
+                <template v-if="hasSettingsMenu">
                   <button
                     :id="ids.settings"
                     type="button"
@@ -190,11 +193,13 @@
                     :id="ids.menu"
                     side="top"
                     align="end"
+                    boundary="viewport"
                     class="video-menu"
                     data-testid="video-settings-menu"
                   >
                     <media-menu-content class="video-menu__page">
                       <media-menu-item
+                        v-if="isFull"
                         :commandfor="ids.captionsMenu"
                         class="video-menu__item video-menu__trigger"
                         data-testid="video-settings-captions"
@@ -249,6 +254,7 @@
                     </media-menu-content>
 
                     <media-menu-content
+                      v-if="isFull"
                       :id="ids.captionsMenu"
                       class="video-menu__page video-menu__submenu"
                     >
@@ -358,6 +364,35 @@
                   <media-tooltip-label />
                 </media-tooltip>
 
+                <template v-if="isPipFallbackVisible">
+                  <button
+                    :id="ids.pipFallback"
+                    type="button"
+                    class="video-button video-pip-button
+                      js-video-pip-fallback"
+                    :aria-label="pipFallbackLabel"
+                    :data-pip="isPipFallbackActive ? '' : undefined"
+                    data-testid="video-pip-fallback-button"
+                    @click="togglePipFallback"
+                  >
+                    <media-icon
+                      name="pip-enter"
+                      class="video-icon video-pip-button__enter"
+                    />
+                    <media-icon
+                      name="pip-exit"
+                      class="video-icon video-pip-button__exit"
+                    />
+                  </button>
+                  <media-tooltip
+                    :trigger="ids.pipFallback"
+                    side="top"
+                    class="video-tooltip"
+                  >
+                    {{ pipFallbackLabel }}
+                  </media-tooltip>
+                </template>
+
                 <template v-if="isFull">
                   <media-airplay-button
                     :id="ids.airplay"
@@ -442,6 +477,7 @@ import type { VideoPlayerElement } from '@videojs/html/video'
 import type {
   VideoMenuOption,
   VideoShellReadyPayload,
+  WebKitPresentationVideo,
 } from '~/types/video-player.d'
 import '~/assets/css/video-player-theme.css'
 
@@ -483,6 +519,8 @@ interface HotkeyBinding {
 }
 
 const ATTACH_TIMEOUT_MS = 4000
+const WEBKIT_PIP_MODE = 'picture-in-picture'
+const WEBKIT_INLINE_MODE = 'inline'
 
 const FULL_HOTKEYS: HotkeyBinding[] = [
   { keys: 'Space', action: 'togglePaused' },
@@ -529,7 +567,10 @@ const RADIO_ITEM_TEMPLATE = [
 const playerRef = shallowRef<VideoPlayerElement | null>(null)
 const containerRef = shallowRef<HTMLElement | null>(null)
 const timeSliderRef = shallowRef<HTMLElement | null>(null)
+const videoRef = shallowRef<WebKitPresentationVideo | null>(null)
 const isDefined = shallowRef<boolean>(false)
+const isPipFallbackVisible = shallowRef<boolean>(false)
+const isPipFallbackActive = shallowRef<boolean>(false)
 
 const baseId = useId()
 const ids = {
@@ -542,6 +583,7 @@ const ids = {
   qualityMenu: `${baseId}-quality-menu`,
   speedMenu: `${baseId}-speed-menu`,
   pip: `${baseId}-pip`,
+  pipFallback: `${baseId}-pip-fallback`,
   airplay: `${baseId}-airplay`,
   fullscreen: `${baseId}-fullscreen`,
 }
@@ -558,6 +600,16 @@ const hotkeys = computed<HotkeyBinding[]>(() => {
   return FULL_HOTKEYS.filter((hotkey) => {
     return LEAN_HOTKEY_ACTIONS.has(hotkey.action)
   })
+})
+
+const pipFallbackLabel = computed<string>(() => {
+  return isPipFallbackActive.value
+    ? 'Exit picture-in-picture'
+    : 'Enter picture-in-picture'
+})
+
+const hasSettingsMenu = computed<boolean>(() => {
+  return isFull.value || props.speeds.length > 0
 })
 
 const hasQualityMenu = computed<boolean>(() => {
@@ -579,6 +631,7 @@ const selectedSpeedLabel = computed<string>(() => {
 let isUnmounted = false
 let hasWarnedMissingMenuOptionPublisher = false
 let stopWaitingForMedia: (() => void) | null = null
+let stopWatchingPipAvailability: (() => void) | null = null
 let releaseControlsLock: (() => void) | null = null
 
 function lockControlsWhileHovered(event: PointerEvent) {
@@ -618,6 +671,56 @@ function onSpeedChange(event: Event) {
     emit('selectSpeed', value)
   }
 }
+
+function supportsWebKitPip(video: WebKitPresentationVideo): boolean {
+  return typeof video.webkitSupportsPresentationMode === 'function'
+    && video.webkitSupportsPresentationMode(WEBKIT_PIP_MODE) === true
+}
+
+function syncPipFallback() {
+  const video = videoRef.value
+  const availability = playerRef.value?.store.pictureInPictureAvailability
+
+  if (!video) {
+    isPipFallbackVisible.value = false
+    isPipFallbackActive.value = false
+
+    return
+  }
+
+  isPipFallbackVisible.value = availability === 'unsupported'
+    && supportsWebKitPip(video)
+    && video.readyState >= HTMLMediaElement.HAVE_METADATA
+  isPipFallbackActive.value = video.webkitPresentationMode === WEBKIT_PIP_MODE
+}
+
+function togglePipFallback() {
+  const video = videoRef.value
+
+  if (!video?.webkitSetPresentationMode) {
+    return
+  }
+
+  const nextMode = video.webkitPresentationMode === WEBKIT_PIP_MODE
+    ? WEBKIT_INLINE_MODE
+    : WEBKIT_PIP_MODE
+
+  try {
+    video.webkitSetPresentationMode(nextMode)
+  } catch (exception) {
+    if (import.meta.dev) {
+      console.warn(
+        '[video-player] picture-in-picture fallback failed',
+        exception,
+      )
+    }
+  }
+}
+
+useEventListener(videoRef, 'loadstart', syncPipFallback)
+useEventListener(videoRef, 'loadedmetadata', syncPipFallback)
+useEventListener(videoRef, 'emptied', syncPipFallback)
+useEventListener(videoRef, 'webkitpresentationmodechanged', syncPipFallback)
 
 function warnMissingMenuOptionPublisher() {
   if (!import.meta.dev || hasWarnedMissingMenuOptionPublisher) {
@@ -719,6 +822,9 @@ async function enhance() {
   }
 
   publishCustomOptionsAvailability()
+  videoRef.value = containerRef.value?.querySelector('video') ?? null
+  stopWatchingPipAvailability = player.store.subscribe(syncPipFallback)
+  syncPipFallback()
   emit('ready', { player, timeSlider: timeSliderRef.value })
 }
 
@@ -729,6 +835,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   isUnmounted = true
   stopWaitingForMedia?.()
+  stopWatchingPipAvailability?.()
   releaseHoverLock()
 })
 </script>

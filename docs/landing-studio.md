@@ -404,7 +404,7 @@ The video is a real 54-second silent promo, not a placeholder. Renditions
 | Key | Rendition |
 | --- | --- |
 | `demo-1080.mp4` | 1920×1080 |
-| `demo.mp4` | 1280×720, default quality, also the hover-thumbnail source |
+| `demo.mp4` | 1280×720, the fallback starting quality and the hover-thumbnail source |
 | `demo-360.mp4` | 640×360 |
 | `demo.en.vtt` | English captions, committed at `scripts/cms-assets/demo.en.vtt` |
 
@@ -526,6 +526,52 @@ the zone: **Security → WAF → Rate limiting rules → Create rule**, match
 seconds (a normal viewer issues well under a dozen), action *Block* (or
 *Managed challenge*) for 10 minutes. This is a dashboard step; nothing in the
 repo configures it. Tighten after checking Workers/R2 analytics.
+
+#### Why progressive MP4 on R2 (not HLS, Stream or Media Transformations)
+
+Decision record from the 2026-10-22 investigation into adaptive delivery for
+the demo video. Dollar figures and per-play request counts are estimates, not
+measurements.
+
+- **HLS is not Cloudflare Stream.** HLS is a file format (playlists plus
+  segments) and can be served as static files from R2 with no per-minute
+  billing. Stream is the per-minute service: about $5 per 1000 minutes stored
+  (prepaid) plus $1 per 1000 minutes delivered. For the current scenario (11
+  clips, about 6.6 minutes in total, about 10k plays a month) that is roughly
+  $11-14 a month. The same traffic through R2 and the Worker route is about
+  $0: tens of thousands of Worker requests and R2 Class B reads against 10M
+  free each, and R2 egress is free.
+- **Why not static CMAF HLS on R2 now.**
+  - The clips run 34-54 s, so adaptive bitrate has nothing to adapt to: the
+    player would pick a rendition once and finish before it could switch.
+  - A play costs roughly 10-12 requests (master playlist, media playlist,
+    init segment, then the segments) against a few Range reads for one MP4.
+  - It needs an encode step, a cache-everything rule, and route changes
+    (allow-list entries and playlist/segment `Content-Type`s).
+  - Video.js `<hls-video>` (SPF) is beta and unverified on iPhone.
+    `<hlsjs-video>` hides the renditions on Safari's native HLS path unless
+    MSE is forced.
+  - mediabunny reads the MP4 for hover thumbnails anyway, so the MP4 stays
+    regardless.
+- **Why not Cloudflare Media Transformations.** It belongs to the Stream
+  product family, outputs H.264 only, has no adaptive bitrate, does not
+  document Range or seek behavior on transformed output, does not document
+  its spritesheet layout, and adds first-request encode latency.
+- **Why not `<source media>`.** The `media` attribute is evaluated once at
+  load (WHATWG), it is untested under Video.js, and it would remove the
+  manual quality menu.
+- **What we do instead.** Progressive H.264 MP4 with `+faststart`, three
+  renditions, the manual quality menu, and a starting rendition chosen by the
+  rendered player width, the pixel density and the network (see
+  `docs/video-player.md`, "Starting quality").
+- **Revisit triggers.** Clips longer than about 2-3 minutes, millions of plays
+  a month, or measured mobile start-up problems. The next step is static CMAF
+  HLS on R2 (mediabunny's `HlsOutputFormat`, or ffmpeg
+  `-hls_segment_type fmp4 -hls_flags single_file`), still not Stream.
+- **Edge caching.** The current route has no CDN cache in front: Workers run
+  before the cache, so every request is a Worker plus an R2 read. If traffic
+  grows, serve the bucket through an R2 custom domain with a Cache Rule; that
+  is the documented way to edge-cache R2 objects.
 
 #### Player behaviour
 

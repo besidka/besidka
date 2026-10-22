@@ -13,6 +13,13 @@ video:
   duration: PT38S
   uploadDate: '2026-10-20'
   alt: Screen recording of Claude Console. The API keys page, the Continue with an API key screen, the dialog for naming the new key, the new key shown once, then the key pasted into Besidka and a first answer from Claude.
+  qualities:
+    - src: /videos/key-guide-anthropic-1080.mp4
+      size: 1080
+    - src: /videos/key-guide-anthropic.mp4
+      size: 720
+    - src: /videos/key-guide-anthropic-360.mp4
+      size: 360
   markers:
     - time: "0:00"
       label: Get a Claude key

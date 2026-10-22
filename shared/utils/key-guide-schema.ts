@@ -102,6 +102,30 @@ export const keyGuideSchema = z.object({
         .describe('Video URL, e.g. /videos/key-guide-google.mp4'),
       poster: siteRelativeOrHttpsUrl
         .describe('Poster image URL, also used as the schema thumbnail'),
+      qualities: z
+        .array(
+          z.object({
+            src: siteRelativeOrHttpsUrl
+              .describe(
+                'Rendition URL, e.g. /videos/key-guide-google-1080.mp4',
+              ),
+            size: z
+              .number()
+              .int()
+              .positive()
+              .describe('Frame height in px, e.g. 720 (quality key)'),
+            label: z
+              .string()
+              .optional()
+              .describe('Optional label; defaults to "${size}p"'),
+          }),
+        )
+        .default([])
+        .describe(
+          'Selectable resolutions for the quality menu, e.g. 1080, 720 and'
+          + ' 360. The 720 entry is the same file as video.src. Without'
+          + ' entries the player has one source and no quality menu.',
+        ),
       duration: z
         .string()
         .regex(/^PT(\d+H)?(\d+M)?(\d+S)?$/, 'Must be an ISO 8601 duration')

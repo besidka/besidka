@@ -414,22 +414,33 @@ describe('GET /videos/[name]', () => {
     'vercel',
     'openrouter',
     'cloudflare',
-  ])('serves the key guide video for %s from the bucket', async (id) => {
-    mocks.params.name = `key-guide-${id}.mp4`
-    mocks.get.mockResolvedValue(createBody())
+  ])('serves the key guide video and its 1080/360 renditions for %s '
+    + 'from the bucket', async (id) => {
+    for (const suffix of ['', '-1080', '-360']) {
+      mocks.get.mockReset()
+      mocks.params.name = `key-guide-${id}${suffix}.mp4`
+      mocks.get.mockResolvedValue(createBody())
 
-    const event = createEvent()
-    const result = await callRoute(event)
+      const event = createEvent()
+      const result = await callRoute(event)
 
-    expect(result).toBe(BODY)
-    expect(mocks.get.mock.calls[0]![0]).toBe(`key-guide-${id}.mp4`)
-    expect(event.res.headers.get('Content-Type')).toBe('video/mp4')
+      expect(result).toBe(BODY)
+      expect(mocks.get.mock.calls[0]![0])
+        .toBe(`key-guide-${id}${suffix}.mp4`)
+      expect(event.res.headers.get('Content-Type')).toBe('video/mp4')
+    }
   })
 
   it.each([
     'key-guide-unknown.mp4',
+    'key-guide-unknown-1080.mp4',
+    'key-guide-google-720.mp4',
+    'key-guide-google-480.mp4',
+    'key-guide-google-1080-360.mp4',
+    'key-guide-google-1080.mov',
     'key-guide-google.mov',
     'key-guide-.mp4',
+    'key-guide--1080.mp4',
     'key-guide-google.en.vtt',
   ])('returns 404 for the non-allow-listed key guide name %s',
     async (name) => {

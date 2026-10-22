@@ -13,6 +13,13 @@ video:
   duration: PT34S
   uploadDate: '2026-10-20'
   alt: Screen recording of the Kimi platform. The API Keys page, the Create API Key dialog with a name and a project, the new key shown once and masked, then the key pasted into Besidka and a first answer from Kimi.
+  qualities:
+    - src: /videos/key-guide-moonshotai-1080.mp4
+      size: 1080
+    - src: /videos/key-guide-moonshotai.mp4
+      size: 720
+    - src: /videos/key-guide-moonshotai-360.mp4
+      size: 360
   markers:
     - time: "0:00"
       label: Get a Kimi key

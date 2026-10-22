@@ -34,6 +34,14 @@ function expectDeclaration(selector: string, declaration: RegExp) {
 }
 
 describe('video-player-theme.css', () => {
+  it('hides the media PiP button while the fallback button is rendered',
+    () => {
+      expectDeclaration(
+        '.landing-player .video-controls__bar[data-pip-fallback] media-pip-button',
+        /display\s*:\s*none\s*;/,
+      )
+    })
+
   it('does not crop the 16:9 frame with object-fit: cover', () => {
     expect(stylesheet).not.toMatch(/object-fit\s*:\s*cover/)
   })
@@ -89,5 +97,48 @@ describe('video-player-theme.css', () => {
       .some((block) => {
         return /background\s*:\s*#fff\s*;/.test(block)
       })).toBe(false)
+  })
+
+  it('caps the settings menu by the space available in its boundary', () => {
+    expectDeclaration(
+      '.landing-player .video-menu',
+      /max-height\s*:\s*min\(var\(--media-menu-available-height,\s*20rem\),\s*20rem\)\s*;/,
+    )
+  })
+
+  it('scrolls an overflowing menu page inside the capped menu', () => {
+    expectDeclaration(
+      '.landing-player .video-menu__page',
+      /max-height\s*:\s*inherit\s*;/,
+    )
+    expectDeclaration(
+      '.landing-player .video-menu__page',
+      /overflow\s*:\s*auto\s*;/,
+    )
+  })
+
+  it.each([
+    '.landing-player .video-menu',
+    '.landing-player .video-tooltip',
+  ])('blurs the video behind the popup for %s', (selector) => {
+    expectDeclaration(
+      selector,
+      /backdrop-filter\s*:\s*var\(--video-popup-blur\)\s*;/,
+    )
+    expectDeclaration(
+      selector,
+      /-webkit-backdrop-filter\s*:\s*var\(--video-popup-blur\)\s*;/,
+    )
+  })
+
+  it('defines the popup blur like the control bar glass', () => {
+    expectDeclaration(
+      '.landing-player',
+      /--video-popup-blur\s*:\s*blur\(16px\)\s+saturate\(150%\)\s*;/,
+    )
+  })
+
+  it('does not clip the player so menus can leave the 16:9 frame', () => {
+    expectDeclaration('.landing-player', /overflow\s*:\s*visible\s*;/)
   })
 })

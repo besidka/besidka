@@ -9,3 +9,18 @@ export interface VideoShellReadyPayload {
   player: VideoPlayerElement
   timeSlider: HTMLElement | null
 }
+
+export interface NetworkConnectionHints {
+  saveData?: boolean
+  effectiveType?: string
+}
+
+export interface NavigatorWithConnection extends Navigator {
+  connection?: NetworkConnectionHints
+}
+
+export interface WebKitPresentationVideo extends HTMLVideoElement {
+  webkitSupportsPresentationMode?: (mode: string) => boolean
+  webkitSetPresentationMode?: (mode: string) => void
+  webkitPresentationMode?: string
+}

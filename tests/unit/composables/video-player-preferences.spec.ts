@@ -40,6 +40,7 @@ const DEFAULT_PREFERENCES = {
   muted: true,
   speed: 1.5,
   quality: 1080,
+  qualityChosen: true,
   captions: { enabled: false, language: null },
 }
 
@@ -94,6 +95,31 @@ describe('parseVideoPlayerPreferences', () => {
     expect(parseVideoPlayerPreferences(
       serialize({ ...DEFAULT_PREFERENCES, volume: -3 }),
     )?.volume).toBe(0)
+  })
+
+  it('parses a record without qualityChosen as not chosen', () => {
+    const { qualityChosen: _qualityChosen, ...legacy } = DEFAULT_PREFERENCES
+
+    expect(parseVideoPlayerPreferences(serialize(legacy))).toEqual({
+      ...DEFAULT_PREFERENCES,
+      qualityChosen: false,
+    })
+  })
+
+  it.each([
+    ['a string flag', 'true'],
+    ['a numeric flag', 1],
+    ['a null flag', null],
+  ])('treats %s as not chosen', (_label, qualityChosen) => {
+    expect(parseVideoPlayerPreferences(
+      serialize({ ...DEFAULT_PREFERENCES, qualityChosen }),
+    )?.qualityChosen).toBe(false)
+  })
+
+  it('never reports a chosen quality without a quality', () => {
+    expect(parseVideoPlayerPreferences(
+      serialize({ ...DEFAULT_PREFERENCES, quality: null }),
+    )).toMatchObject({ quality: null, qualityChosen: false })
   })
 
   it('falls back to a null quality for non-numeric values', () => {
@@ -267,6 +293,7 @@ describe('useVideoPlayerPreferences', () => {
         muted: true,
         speed: 1,
         quality: 720,
+        qualityChosen: true,
         captions: { enabled: false, language: null },
       })
     })
@@ -366,8 +393,36 @@ describe('useVideoPlayerPreferences', () => {
       store.notify()
       persist()
 
-      expect(readStored()).toMatchObject({ volume: 0.9, quality: 1080 })
+      expect(readStored()).toMatchObject({
+        volume: 0.9,
+        quality: 1080,
+        qualityChosen: true,
+      })
     })
+
+    it('keeps a legacy unflagged quality unchosen without quality options',
+      () => {
+        storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize({
+          ...DEFAULT_PREFERENCES,
+          quality: 720,
+          qualityChosen: undefined,
+        }))
+
+        const { attach, persist, options } = mountPreferences()
+        const store = createFakeStore()
+
+        options.getQuality.mockReturnValue(null)
+        attach(createPlayer(store))
+        store.setVolume(0.9)
+        store.notify()
+        persist()
+
+        expect(readStored()).toMatchObject({
+          volume: 0.9,
+          quality: 720,
+          qualityChosen: false,
+        })
+      })
 
     it('stores a null quality when nothing was ever saved', () => {
       const { attach, options } = mountPreferences()
@@ -376,7 +431,10 @@ describe('useVideoPlayerPreferences', () => {
       options.getQuality.mockReturnValue(null)
       attach(createPlayer(store))
 
-      expect(readStored()).toMatchObject({ quality: null })
+      expect(readStored()).toMatchObject({
+        quality: null,
+        qualityChosen: false,
+      })
     })
 
     it('prefers the live quality over the saved one', () => {
@@ -389,7 +447,53 @@ describe('useVideoPlayerPreferences', () => {
       options.getQuality.mockReturnValue(360)
       persist()
 
-      expect(readStored()).toMatchObject({ quality: 360 })
+      expect(readStored()).toMatchObject({ quality: 360, qualityChosen: true })
+    })
+
+    it('flags a legacy unflagged quality as chosen once the user picks one',
+      () => {
+        storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize({
+          ...DEFAULT_PREFERENCES,
+          quality: 720,
+          qualityChosen: undefined,
+        }))
+
+        const { attach, persist, options } = mountPreferences()
+
+        options.getQuality.mockReturnValue(null)
+        attach(createPlayer(createFakeStore()))
+        options.getQuality.mockReturnValue(720)
+        persist()
+
+        expect(readStored()).toMatchObject({
+          quality: 720,
+          qualityChosen: true,
+        })
+      })
+  })
+
+  describe('saved quality for the starting rendition', () => {
+    it('returns a deliberately chosen quality', () => {
+      storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize(DEFAULT_PREFERENCES))
+
+      expect(mountPreferences().readSavedQuality()).toBe(1080)
+    })
+
+    it.each([
+      ['no flag', { qualityChosen: undefined }],
+      ['a false flag', { qualityChosen: false }],
+    ])('returns null for a quality saved with %s', (_label, overrides) => {
+      storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize({
+        ...DEFAULT_PREFERENCES,
+        quality: 720,
+        ...overrides,
+      }))
+
+      expect(mountPreferences().readSavedQuality()).toBeNull()
+    })
+
+    it('returns null when nothing is stored', () => {
+      expect(mountPreferences().readSavedQuality()).toBeNull()
     })
   })
 
@@ -406,6 +510,24 @@ describe('useVideoPlayerPreferences', () => {
 
       expect(options.applySpeed).toHaveBeenCalledWith(1.5)
       expect(options.applyQuality).toHaveBeenCalledWith(1080)
+      expect(store.setVolume).toHaveBeenCalledWith(0.4)
+      expect(store.setMuted).toHaveBeenCalledWith(true)
+    })
+
+    it('keeps restoring volume, mute and speed from a legacy record', () => {
+      storage.setItem(VIDEO_PLAYER_STORAGE_KEY, serialize({
+        ...DEFAULT_PREFERENCES,
+        quality: 720,
+        qualityChosen: undefined,
+      }))
+
+      const { attach, options } = mountPreferences()
+      const store = createFakeStore()
+
+      attach(createPlayer(store))
+
+      expect(options.applySpeed).toHaveBeenCalledWith(1.5)
+      expect(options.applyQuality).not.toHaveBeenCalled()
       expect(store.setVolume).toHaveBeenCalledWith(0.4)
       expect(store.setMuted).toHaveBeenCalledWith(true)
     })

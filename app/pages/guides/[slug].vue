@@ -83,6 +83,7 @@
           :src="guide.video.src"
           :poster="guide.video.poster"
           :caption="guide.video.caption"
+          :qualities="guide.video.qualities ?? []"
           :captions="guide.video.captions ?? []"
           :markers="guide.video.markers ?? []"
           :guide-provider="guide.provider"

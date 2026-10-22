@@ -97,6 +97,29 @@ describe('content/key-guides', () => {
         ))).toBe(true)
       })
 
+      it('offers 1080, 720 and 360 renditions of its own provider, the '
+        + '720 one being video.src', async () => {
+        const frontmatter = await readFrontmatter(fileName)
+        const video = frontmatter.video as
+          | {
+            src: string
+            qualities: Array<{ src: string, size: number }>
+          }
+          | undefined
+
+        if (!video) {
+          return
+        }
+
+        const provider = String(frontmatter.provider)
+
+        expect(video.qualities).toEqual([
+          { src: `/videos/key-guide-${provider}-1080.mp4`, size: 1080 },
+          { src: video.src, size: 720 },
+          { src: `/videos/key-guide-${provider}-360.mp4`, size: 360 },
+        ])
+      })
+
       it('parses against the keyGuides schema', async () => {
         const frontmatter = await readFrontmatter(fileName)
         const result = keyGuideSchema.safeParse(frontmatter)
@@ -218,6 +241,49 @@ describe('keyGuideSchema', () => {
     })
 
     expect(result.success).toBe(true)
+  })
+
+  it('accepts video qualities and defaults them to an empty list', () => {
+    const withQualities = keyGuideSchema.safeParse({
+      ...validGuide(),
+      video: validVideo({
+        qualities: [
+          { src: '/videos/key-guide-google-1080.mp4', size: 1080 },
+          { src: '/videos/key-guide-google.mp4?v=2', size: 720, label: 'HD' },
+        ],
+      }),
+    })
+    const withoutQualities = keyGuideSchema.safeParse({
+      ...validGuide(),
+      video: validVideo(),
+    })
+
+    expect(withQualities.success).toBe(true)
+    expect(withoutQualities.success && withoutQualities.data.video?.qualities)
+      .toEqual([])
+  })
+
+  it.each([
+    ['src', '//evil.example/key-guide-google-360.mp4'],
+    ['src', 'http://example.com/key-guide-google-360.mp4'],
+    ['src', 'key-guide-google-360.mp4'],
+    ['size', 0],
+    ['size', -360],
+    ['size', 360.5],
+    ['size', '360'],
+  ])('rejects video.qualities %s = %s', (field, value) => {
+    const result = keyGuideSchema.safeParse({
+      ...validGuide(),
+      video: validVideo({
+        qualities: [{
+          src: '/videos/key-guide-google-360.mp4',
+          size: 360,
+          [field]: value,
+        }],
+      }),
+    })
+
+    expect(result.success).toBe(false)
   })
 
   it('rejects an unknown provider id', () => {

@@ -5,7 +5,13 @@
   >
     <VideoShell
       variant="lean"
+      :qualities="qualityOptions"
+      :selected-quality="selectedQualityValue"
+      :speeds="VIDEO_SPEED_OPTIONS"
+      :selected-speed="String(currentSpeed)"
       @ready="onPlayerReady"
+      @select-quality="onSelectQuality"
+      @select-speed="onSelectSpeed"
       @failed="fallbackToNative"
     >
       <video
@@ -15,7 +21,7 @@
         loop
         playsinline
         preload="none"
-        :src="src"
+        :src="currentSrc"
         :poster="poster || undefined"
         :aria-label="label"
         data-testid="video-media"
@@ -44,10 +50,14 @@
 </template>
 
 <script setup lang="ts">
-import type { VideoMarker } from '#shared/types/video.d'
-import type { VideoShellReadyPayload } from '~/types/video-player.d'
+import type { VideoMarker, VideoQuality } from '#shared/types/video.d'
+import type {
+  VideoShellReadyPayload,
+  WebKitPresentationVideo,
+} from '~/types/video-player.d'
 import { toMarkerPoints } from '#shared/utils/video'
 import { canAutoplayGuideVideo } from '~/utils/key-guide-video'
+import { VIDEO_SPEED_OPTIONS } from '~/utils/video-speed'
 
 const props = withDefaults(defineProps<{
   provider: string
@@ -55,18 +65,16 @@ const props = withDefaults(defineProps<{
   label: string
   poster?: string
   markers?: VideoMarker[]
+  qualities?: VideoQuality[]
 }>(), {
   poster: undefined,
   markers: () => [],
+  qualities: () => [],
 })
 
 const emit = defineEmits<{
   failed: []
 }>()
-
-interface WebKitPresentationVideo extends HTMLVideoElement {
-  webkitPresentationMode?: string
-}
 
 const VISIBILITY_THRESHOLD = 0.5
 const WEBKIT_PIP_MODE = 'picture-in-picture'
@@ -83,6 +91,7 @@ const {
 
 const containerRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
+const { currentSpeed, applySpeed, syncSpeed } = useVideoSpeed(videoRef)
 
 const canAutoplay = canAutoplayGuideVideo()
 const markerPoints = toMarkerPoints(props.markers)
@@ -96,6 +105,29 @@ let isPlayPending = false
 let wasMuted = true
 
 const {
+  qualityOptions,
+  selectedQualityValue,
+  currentSrc,
+  thumbnailSource,
+  resolveStartQuality,
+  selectQuality,
+  isResumingAfterSwitch,
+} = useVideoQuality({
+  videoRef,
+  qualities: () => {
+    return props.qualities
+  },
+  fallbackSrc: () => {
+    return props.src
+  },
+  measureElement: () => {
+    return containerRef.value
+  },
+  onRestored: syncSpeed,
+  onSettled: syncPlayback,
+})
+
+const {
   chaptersTrackUrl,
   thumbnailsTrackUrl,
   attach: attachTimeline,
@@ -103,9 +135,7 @@ const {
   videoRef,
   markerPoints,
   isThumbnailsEnabled: true,
-  getThumbnailSource: () => {
-    return props.src
-  },
+  getThumbnailSource: thumbnailSource,
 })
 
 function isPictureInPicture(video: HTMLVideoElement): boolean {
@@ -130,7 +160,7 @@ async function requestAutoplay(video: HTMLVideoElement) {
 function syncPlayback() {
   const video = videoRef.value
 
-  if (!video || !isPlayerReady || !canAutoplay) {
+  if (!video || !isPlayerReady || !canAutoplay || isResumingAfterSwitch()) {
     return
   }
 
@@ -178,7 +208,7 @@ useEventListener(videoRef, 'webkitpresentationmodechanged', syncPlayback)
 useEventListener(videoRef, 'playing', () => {
   const video = videoRef.value
 
-  if (!video || !isPlayPending) {
+  if (!video || !isPlayPending || isResumingAfterSwitch()) {
     return
   }
 
@@ -195,6 +225,10 @@ useEventListener(videoRef, 'playing', () => {
 })
 
 useEventListener(videoRef, 'play', () => {
+  if (isResumingAfterSwitch()) {
+    return
+  }
+
   isPlayPending = true
 
   if (!isAutoplayRequested) {
@@ -227,6 +261,10 @@ useEventListener(videoRef, 'volumechange', () => {
 })
 
 useEventListener(videoRef, 'pause', () => {
+  if (isResumingAfterSwitch()) {
+    return
+  }
+
   isPlayPending = false
   endWatch(isProgrammaticPause ? 'offscreen' : 'pause')
 
@@ -237,6 +275,18 @@ useEventListener(videoRef, 'pause', () => {
   }
 
   hasUserPaused = true
+})
+
+function onSelectQuality(value: string) {
+  selectQuality(Number(value))
+}
+
+function onSelectSpeed(value: string) {
+  applySpeed(Number(value))
+}
+
+onMounted(() => {
+  resolveStartQuality()
 })
 
 function onPlayerReady({ timeSlider }: VideoShellReadyPayload) {
@@ -253,5 +303,9 @@ function fallbackToNative() {
   }
 
   video.controls = true
+
+  if (!video.getAttribute('src')) {
+    video.src = props.src
+  }
 }
 </script>

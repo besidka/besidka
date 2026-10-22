@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootRef"
     class="w-full"
     :aria-label="caption || 'Besidka demo video'"
   >
@@ -8,7 +9,7 @@
       container-class="js-landing-player shadow-xl"
       :qualities="qualityOptions"
       :selected-quality="selectedQualityValue"
-      :speeds="SPEED_OPTIONS"
+      :speeds="VIDEO_SPEED_OPTIONS"
       :selected-speed="String(currentSpeed)"
       @ready="onPlayerReady"
       @failed="fallbackToNative"
@@ -97,11 +98,12 @@ import type {
   VideoCaption,
   VideoMarker,
 } from '#shared/types/video.d'
-import type {
-  VideoMenuOption,
-  VideoShellReadyPayload,
-} from '~/types/video-player.d'
+import type { VideoShellReadyPayload } from '~/types/video-player.d'
 import { toMarkerPoints } from '#shared/utils/video'
+import {
+  DEFAULT_VIDEO_SPEED,
+  VIDEO_SPEED_OPTIONS,
+} from '~/utils/video-speed'
 
 const props = withDefaults(defineProps<{
   src?: string
@@ -126,15 +128,6 @@ const props = withDefaults(defineProps<{
 })
 
 const DEMO_TARGET = 'demo'
-const DEFAULT_QUALITY = 720
-const DEFAULT_SPEED = 1
-const SPEED_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
-const SPEED_OPTIONS: VideoMenuOption[] = SPEED_RATES.map((rate) => {
-  return {
-    value: String(rate),
-    label: rate === DEFAULT_SPEED ? 'Normal' : `${rate}×`,
-  }
-})
 
 const { track } = useLandingAnalytics()
 const {
@@ -145,49 +138,44 @@ const {
   return analyticsTarget()
 })
 
+const rootRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
 const isReady = shallowRef<boolean>(false)
 const hasError = shallowRef<boolean>(false)
-const currentSpeed = shallowRef<number>(DEFAULT_SPEED)
-
-const sortedQualities = computed<VideoQuality[]>(() => {
-  return [...props.qualities].sort((a, b) => {
-    return b.size - a.size
-  })
-})
-
-const qualityOptions = computed<VideoMenuOption[]>(() => {
-  return sortedQualities.value.map((quality) => {
-    return { value: String(quality.size), label: `${quality.size}p` }
-  })
-})
-
-const currentQuality = shallowRef<number | null>(defaultQualitySize())
-
-const currentSrc = computed<string>(() => {
-  const quality = sortedQualities.value.find((item) => {
-    return item.size === currentQuality.value
-  })
-
-  return quality?.src ?? props.src
-})
-
-const selectedQualityValue = computed<string>(() => {
-  return currentQuality.value === null ? '' : String(currentQuality.value)
-})
-
-const markerPoints = toMarkerPoints(props.markers)
-
-interface PendingQualitySwitch {
-  listener: () => void
-  resumeTime: number
-  wasPaused: boolean
-  rate: number
-}
+const { currentSpeed, applySpeed, syncSpeed } = useVideoSpeed(videoRef)
 
 let hasTrackedPlay = false
 let hasAppliedStartAt = false
-let pendingQualitySwitch: PendingQualitySwitch | null = null
+
+const {
+  qualityOptions,
+  selectedQualityValue,
+  currentSrc,
+  thumbnailSource,
+  resolveStartQuality,
+  selectQuality,
+  rememberUserQuality,
+  getUserQuality,
+} = useVideoQuality({
+  videoRef,
+  qualities: () => {
+    return props.qualities
+  },
+  fallbackSrc: () => {
+    return props.src
+  },
+  measureElement: () => {
+    return rootRef.value
+  },
+  getPendingStartAt: () => {
+    return !hasAppliedStartAt && isValidStartAt(props.startAt)
+      ? props.startAt
+      : undefined
+  },
+  onRestored: syncSpeed,
+})
+
+const markerPoints = toMarkerPoints(props.markers)
 
 const {
   chaptersTrackUrl,
@@ -198,39 +186,27 @@ const {
   markerPoints,
   isThumbnailsEnabled: props.thumbnails,
   getThumbnailSource: () => {
-    return props.qualities.find((quality) => {
-      return quality.size === DEFAULT_QUALITY
-    })?.src ?? props.src
+    return thumbnailSource()
   },
 })
 
-const { attach: attachPreferences, persist: persistPreferences }
-  = useVideoPlayerPreferences({
-    getQuality: () => {
-      return currentQuality.value
-    },
-    getSpeed: () => {
-      return videoRef.value?.playbackRate ?? DEFAULT_SPEED
-    },
-    applyQuality: (size) => {
-      selectQuality(size)
-    },
-    applySpeed: (rate) => {
-      applySpeed(rate)
-    },
-  })
-
-function defaultQualitySize(): number | null {
-  const sizes = sortedQualities.value.map((quality) => {
-    return quality.size
-  })
-
-  if (!sizes.length) {
-    return null
-  }
-
-  return sizes.includes(DEFAULT_QUALITY) ? DEFAULT_QUALITY : sizes[0]!
-}
+const {
+  attach: attachPreferences,
+  persist: persistPreferences,
+  readSavedQuality,
+} = useVideoPlayerPreferences({
+  getQuality: getUserQuality,
+  getSpeed: () => {
+    return videoRef.value?.playbackRate ?? DEFAULT_VIDEO_SPEED
+  },
+  applyQuality: (size) => {
+    selectQuality(size)
+    rememberUserQuality(size)
+  },
+  applySpeed: (rate) => {
+    applySpeed(rate)
+  },
+})
 
 function analyticsTarget(): string {
   return props.guideProvider ?? DEMO_TARGET
@@ -256,97 +232,15 @@ function trackFirstPlay() {
   track('video_play', { target: DEMO_TARGET, value: 1, trigger: 'user' })
 }
 
-function applySpeed(rate: number) {
-  const video = videoRef.value
-
-  if (!video || !SPEED_RATES.includes(rate)) {
-    return
-  }
-
-  video.defaultPlaybackRate = rate
-  video.playbackRate = rate
-}
-
-function syncCurrentSpeed() {
-  currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_SPEED
-}
-
 function isValidStartAt(startAt: number | undefined): startAt is number {
   return startAt !== undefined && Number.isFinite(startAt) && startAt >= 0
 }
 
-function cancelPendingQualitySwitch(): PendingQualitySwitch | null {
-  const pending = pendingQualitySwitch
-
-  pendingQualitySwitch = null
-
-  if (pending) {
-    videoRef.value?.removeEventListener('loadedmetadata', pending.listener)
-  }
-
-  return pending
-}
-
-function selectQuality(size: number) {
-  const video = videoRef.value
-  const isKnown = sortedQualities.value.some((quality) => {
-    return quality.size === size
-  })
-
-  if (!video || !isKnown || size === currentQuality.value) {
-    return
-  }
-
-  const mediaElement: HTMLVideoElement = video
-  const previous = cancelPendingQualitySwitch()
-  const startAt = props.startAt
-  const resumeTime = previous?.resumeTime
-    ?? (!hasAppliedStartAt && isValidStartAt(startAt)
-      ? startAt
-      : video.currentTime)
-  const wasPaused = previous?.wasPaused ?? video.paused
-  const rate = previous?.rate ?? video.playbackRate
-
-  async function resumePlayback() {
-    if (pendingQualitySwitch?.listener === resumePlayback) {
-      pendingQualitySwitch = null
-    }
-
-    const hasKnownDuration = Number.isFinite(mediaElement.duration)
-
-    mediaElement.currentTime = hasKnownDuration
-      && resumeTime >= mediaElement.duration
-      ? 0
-      : resumeTime
-    mediaElement.defaultPlaybackRate = rate
-    mediaElement.playbackRate = rate
-    syncCurrentSpeed()
-
-    if (wasPaused) {
-      return
-    }
-
-    try {
-      await mediaElement.play()
-    } catch {
-      return
-    }
-  }
-
-  pendingQualitySwitch = {
-    listener: resumePlayback,
-    resumeTime,
-    wasPaused,
-    rate,
-  }
-  mediaElement.addEventListener('loadedmetadata', resumePlayback, {
-    once: true,
-  })
-  currentQuality.value = size
-}
-
 function onSelectQuality(value: string) {
-  selectQuality(Number(value))
+  const size = Number(value)
+
+  selectQuality(size)
+  rememberUserQuality(size)
   persistPreferences()
 }
 
@@ -373,13 +267,11 @@ function applyStartAt() {
   video.currentTime = props.startAt
 }
 
+onMounted(() => {
+  resolveStartQuality(readSavedQuality())
+})
+
 useEventListener(videoRef, 'loadedmetadata', applyStartAt)
-
-useEventListener(videoRef, 'loadedmetadata', syncCurrentSpeed)
-
-tryOnScopeDispose(cancelPendingQualitySwitch)
-
-useEventListener(videoRef, 'ratechange', syncCurrentSpeed)
 
 useEventListener(videoRef, 'play', () => {
   const video = videoRef.value

@@ -13,6 +13,13 @@ video:
   duration: PT33S
   uploadDate: '2026-10-20'
   alt: Recording of QwenCloud and Besidka. The API Keys page with Create API key, the identity verification notice, the remaining key creation steps shown as text rather than a recording, then the key pasted into Besidka and a first answer from Qwen.
+  qualities:
+    - src: /videos/key-guide-qwen-1080.mp4
+      size: 1080
+    - src: /videos/key-guide-qwen.mp4
+      size: 720
+    - src: /videos/key-guide-qwen-360.mp4
+      size: 360
   markers:
     - time: "0:00"
       label: Get a Qwen key

@@ -24,6 +24,7 @@ mockComponent('LandingVideoPlayer', () => {
       'poster',
       'caption',
       'captions',
+      'qualities',
       'markers',
       'guideProvider',
       'startAt',
@@ -280,6 +281,55 @@ describe('key guide page', () => {
       expect(video.find('img').exists()).toBe(false)
       expect(video.find('.skeleton').exists()).toBe(true)
     })
+
+  it('passes the quality renditions to the video player', async () => {
+    const qualities = [
+      { src: '/videos/key-guide-google-1080.mp4', size: 1080 },
+      { src: '/videos/key-guide-google.mp4?v=2', size: 720 },
+      { src: '/videos/key-guide-google-360.mp4', size: 360 },
+    ]
+
+    mocks.guide = {
+      ...GUIDE,
+      video: {
+        src: '/videos/key-guide-google.mp4?v=2',
+        poster: '/videos/key.webp',
+        duration: 'PT1M12S',
+        uploadDate: '2026-10-20',
+        qualities,
+        captions: [],
+        markers: [],
+      },
+    }
+
+    const wrapper = await mountPage()
+
+    expect(
+      wrapper.findComponent({ name: 'LandingVideoPlayer' })
+        .props('qualities'),
+    ).toEqual(qualities)
+  })
+
+  it('passes no renditions when the guide has none', async () => {
+    mocks.guide = {
+      ...GUIDE,
+      video: {
+        src: '/videos/key.mp4',
+        poster: '/videos/key.webp',
+        duration: 'PT1M12S',
+        uploadDate: '2026-10-20',
+        captions: [],
+        markers: [],
+      },
+    }
+
+    const wrapper = await mountPage()
+
+    expect(
+      wrapper.findComponent({ name: 'LandingVideoPlayer' })
+        .props('qualities'),
+    ).toEqual([])
+  })
 
   it('passes the chapter markers to the video player', async () => {
     const markers = [{ time: '0:00', label: 'Start' }]
