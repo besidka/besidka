@@ -107,7 +107,6 @@ import { pickInitialQuality, toMarkerPoints } from '#shared/utils/video'
 import {
   DEFAULT_VIDEO_SPEED,
   VIDEO_SPEED_OPTIONS,
-  VIDEO_SPEED_RATES,
 } from '~/utils/video-speed'
 
 const props = withDefaults(defineProps<{
@@ -135,6 +134,7 @@ const props = withDefaults(defineProps<{
 const DEMO_TARGET = 'demo'
 const FALLBACK_QUALITY = 720
 const THUMBNAIL_QUALITY = 720
+
 const { track } = useLandingAnalytics()
 const {
   start: startWatch,
@@ -148,7 +148,7 @@ const rootRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
 const isReady = shallowRef<boolean>(false)
 const hasError = shallowRef<boolean>(false)
-const currentSpeed = shallowRef<number>(DEFAULT_VIDEO_SPEED)
+const { currentSpeed, applySpeed, syncSpeed } = useVideoSpeed(videoRef)
 
 const sortedQualities = computed<VideoQuality[]>(() => {
   return [...props.qualities].sort((a, b) => {
@@ -305,21 +305,6 @@ function trackFirstPlay() {
   track('video_play', { target: DEMO_TARGET, value: 1, trigger: 'user' })
 }
 
-function applySpeed(rate: number) {
-  const video = videoRef.value
-
-  if (!video || !VIDEO_SPEED_RATES.includes(rate)) {
-    return
-  }
-
-  video.defaultPlaybackRate = rate
-  video.playbackRate = rate
-}
-
-function syncCurrentSpeed() {
-  currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_VIDEO_SPEED
-}
-
 function isValidStartAt(startAt: number | undefined): startAt is number {
   return startAt !== undefined && Number.isFinite(startAt) && startAt >= 0
 }
@@ -369,7 +354,7 @@ function selectQuality(size: number) {
       : resumeTime
     mediaElement.defaultPlaybackRate = rate
     mediaElement.playbackRate = rate
-    syncCurrentSpeed()
+    syncSpeed()
 
     if (wasPaused) {
       return
@@ -429,11 +414,7 @@ onMounted(resolveStartQuality)
 
 useEventListener(videoRef, 'loadedmetadata', applyStartAt)
 
-useEventListener(videoRef, 'loadedmetadata', syncCurrentSpeed)
-
 tryOnScopeDispose(cancelPendingQualitySwitch)
-
-useEventListener(videoRef, 'ratechange', syncCurrentSpeed)
 
 useEventListener(videoRef, 'play', () => {
   const video = videoRef.value
