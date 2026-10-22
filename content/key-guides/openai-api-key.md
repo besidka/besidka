@@ -13,6 +13,13 @@ video:
   duration: PT35S
   uploadDate: '2026-10-20'
   alt: Screen recording of the OpenAI platform. The API keys page, the Create new secret key dialog with a name and an expiration, the new key shown once, then the key pasted into Besidka and a first answer.
+  qualities:
+    - src: /videos/key-guide-openai-1080.mp4
+      size: 1080
+    - src: /videos/key-guide-openai.mp4
+      size: 720
+    - src: /videos/key-guide-openai-360.mp4
+      size: 360
   markers:
     - time: "0:00"
       label: Intro

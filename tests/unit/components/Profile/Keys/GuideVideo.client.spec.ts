@@ -55,7 +55,43 @@ mockNuxtImport('useLandingVideoThumbnails', () => {
 })
 
 const SOURCE = '/videos/key-guide-google.mp4'
+const VERSIONED_SOURCE = `${SOURCE}?v=2`
+const QUALITIES = [
+  { src: '/videos/key-guide-google-1080.mp4', size: 1080 },
+  { src: VERSIONED_SOURCE, size: 720 },
+  { src: '/videos/key-guide-google-360.mp4', size: 360 },
+]
 const PLAYER_TIMEOUT_MS = 15000
+
+const originalMediaSrcDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLMediaElement.prototype,
+  'src',
+)!
+
+function recordSrcAssignments(): string[] {
+  const assigned: string[] = []
+
+  Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+    configurable: true,
+    get: originalMediaSrcDescriptor.get,
+    set(value: string) {
+      assigned.push(value)
+      originalMediaSrcDescriptor.set!.call(this, value)
+    },
+  })
+
+  return assigned
+}
+
+function stubStartQualityEnvironment(
+  width: number,
+  devicePixelRatio: number,
+) {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    width,
+  } as DOMRect)
+  vi.stubGlobal('devicePixelRatio', devicePixelRatio)
+}
 
 let environment: ReturnType<typeof installVideoPlayerEnvironment>
 let media: MediaState
@@ -154,6 +190,11 @@ describe('Profile/Keys/GuideVideo.client', () => {
     })
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    Object.defineProperty(
+      HTMLMediaElement.prototype,
+      'src',
+      originalMediaSrcDescriptor,
+    )
   })
 
   describe('media element', () => {
@@ -286,6 +327,369 @@ describe('Profile/Keys/GuideVideo.client', () => {
 
       expect(localStorage.getItem('video-player')).toBeNull()
     })
+  })
+
+  describe('quality menu', () => {
+    function chooseQuality(wrapper: VueWrapper, value: string) {
+      wrapper.get('[data-testid="video-quality-options"]').element
+        .dispatchEvent(new CustomEvent('value-change', { detail: { value } }))
+    }
+
+    function finishLoading(video: HTMLVideoElement) {
+      video.dispatchEvent(new Event('loadedmetadata'))
+
+      return flushPromises()
+    }
+
+    function clearAnalytics() {
+      mocks.trackGuideVideoPlay.mockClear()
+      mocks.startWatch.mockClear()
+      mocks.endWatch.mockClear()
+    }
+
+    async function mountAutoplaying() {
+      const mounted = await mountVideo({ qualities: QUALITIES })
+
+      setVisibility(true)
+      await flushPromises()
+      clearAnalytics()
+      mounted.play.mockClear()
+
+      return mounted
+    }
+
+    it('offers 1080p, 720p and 360p from highest to lowest', async () => {
+      const { wrapper } = await mountVideo({ qualities: QUALITIES })
+      const options = wrapper.get('[data-testid="video-quality-options"]')
+        .element
+
+      expect(wrapper.find('[data-testid="video-settings-quality"]').exists())
+        .toBe(true)
+      expect(Array.from(options.querySelectorAll('[data-testid]')).map(
+        (item) => {
+          return item.getAttribute('data-testid')
+        },
+      )).toEqual([
+        'video-quality-1080',
+        'video-quality-720',
+        'video-quality-360',
+      ])
+      expect(wrapper.get('[data-testid="video-quality-720"]').text())
+        .toBe('720p')
+    }, PLAYER_TIMEOUT_MS)
+
+    it('keeps the speed menu beside the quality menu', async () => {
+      const { wrapper } = await mountVideo({ qualities: QUALITIES })
+
+      expect(wrapper.find('[data-testid="video-settings-speed"]').exists())
+        .toBe(true)
+    })
+
+    it('shows the picked rendition in the menu label', async () => {
+      const { wrapper } = await mountVideo({ qualities: QUALITIES })
+
+      expect(wrapper.get('[data-testid="video-settings-quality"]').text())
+        .toContain('720p')
+
+      chooseQuality(wrapper, '360')
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="video-settings-quality"]').text())
+        .toContain('360p')
+    })
+
+    it('hides the quality menu with fewer than two renditions', async () => {
+      const { wrapper } = await mountVideo({ qualities: [QUALITIES[1]!] })
+
+      expect(wrapper.find('[data-testid="video-settings-quality"]').exists())
+        .toBe(false)
+    })
+
+    it.each([
+      ['a desktop player at 1x density', 672, 1, VERSIONED_SOURCE],
+      [
+        'a desktop player at 2x density',
+        672,
+        2,
+        '/videos/key-guide-google-1080.mp4',
+      ],
+      [
+        'a phone at 1x density',
+        343,
+        1,
+        '/videos/key-guide-google-360.mp4',
+      ],
+    ])('starts %s on the matching rendition', async (
+      _name,
+      width,
+      ratio,
+      expected,
+    ) => {
+      stubStartQualityEnvironment(width, ratio)
+
+      const { video } = await mountVideo({ qualities: QUALITIES })
+
+      expect(video.getAttribute('src')).toBe(expected)
+    }, PLAYER_TIMEOUT_MS)
+
+    it('starts on the lowest rendition with data saver on', async () => {
+      stubStartQualityEnvironment(672, 2)
+      Object.defineProperty(navigator, 'connection', {
+        value: { saveData: true },
+        configurable: true,
+      })
+
+      const { video } = await mountVideo({ qualities: QUALITIES })
+
+      expect(video.getAttribute('src'))
+        .toBe('/videos/key-guide-google-360.mp4')
+    })
+
+    it('falls back to the 720p source, query included, when the player '
+      + 'cannot be measured', async () => {
+      const { video } = await mountVideo({ qualities: QUALITIES })
+
+      expect(video.getAttribute('src')).toBe(VERSIONED_SOURCE)
+    })
+
+    it('assigns the source exactly once on first mount', async () => {
+      stubStartQualityEnvironment(343, 1)
+
+      const assigned = recordSrcAssignments()
+      const { video } = await mountVideo({ qualities: QUALITIES })
+
+      expect(video.getAttribute('src'))
+        .toBe('/videos/key-guide-google-360.mp4')
+      expect(assigned.filter(Boolean))
+        .toEqual(['/videos/key-guide-google-360.mp4'])
+    }, PLAYER_TIMEOUT_MS)
+
+    it('keeps the single src prop without renditions', async () => {
+      const assigned = recordSrcAssignments()
+      const { video } = await mountVideo()
+
+      expect(video.getAttribute('src')).toBe(SOURCE)
+      expect(assigned.filter(Boolean)).toEqual([SOURCE])
+    })
+
+    it('does not persist the picked rendition', async () => {
+      localStorage.removeItem('video-player')
+
+      const { wrapper } = await mountVideo({ qualities: QUALITIES })
+
+      chooseQuality(wrapper, '1080')
+      await flushPromises()
+
+      expect(localStorage.getItem('video-player')).toBeNull()
+    })
+
+    it('keeps the hover thumbnails on the 720p file whatever is playing',
+      async () => {
+        stubStartQualityEnvironment(343, 1)
+
+        const { wrapper, video } = await mountVideo({ qualities: QUALITIES })
+
+        expect(video.getAttribute('src'))
+          .toBe('/videos/key-guide-google-360.mp4')
+
+        getTimeSlider(wrapper).dispatchEvent(new Event('pointerenter'))
+        await flushPromises()
+
+        expect(mocks.generate).toHaveBeenCalledExactlyOnceWith(
+          VERSIONED_SOURCE,
+          { count: 12, signal: expect.any(AbortSignal) },
+        )
+      })
+
+    it('switches the source and restores time and speed', async () => {
+      const { wrapper, video } = await mountVideo({ qualities: QUALITIES })
+
+      video.currentTime = 12
+      video.playbackRate = 1.5
+      chooseQuality(wrapper, '1080')
+      await flushPromises()
+
+      expect(video.getAttribute('src'))
+        .toBe('/videos/key-guide-google-1080.mp4')
+
+      video.currentTime = 0
+      video.playbackRate = 1
+      await finishLoading(video)
+
+      expect(video.currentTime).toBe(12)
+      expect(video.playbackRate).toBe(1.5)
+      expect(video.defaultPlaybackRate).toBe(1.5)
+    })
+
+    it('loads the metadata of a paused guide so the position survives',
+      async () => {
+        const { wrapper, video } = await mountVideo({
+          qualities: QUALITIES,
+        })
+
+        expect(video.getAttribute('preload')).toBe('none')
+
+        chooseQuality(wrapper, '360')
+        await flushPromises()
+
+        expect(video.getAttribute('preload')).toBe('metadata')
+      })
+
+    it('keeps a paused guide paused after a switch', async () => {
+      const { wrapper, video, play } = await mountVideo({
+        qualities: QUALITIES,
+      })
+
+      video.currentTime = 30
+      chooseQuality(wrapper, '360')
+      await flushPromises()
+      video.currentTime = 0
+      await finishLoading(video)
+
+      expect(video.currentTime).toBe(30)
+      expect(play).not.toHaveBeenCalled()
+      expect(mocks.trackGuideVideoPlay).not.toHaveBeenCalled()
+    })
+
+    it('keeps an autoplaying guide playing through a switch', async () => {
+      const { wrapper, video, play } = await mountAutoplaying()
+
+      video.currentTime = 9
+      chooseQuality(wrapper, '1080')
+      await flushPromises()
+      video.currentTime = 0
+      await finishLoading(video)
+
+      expect(play).toHaveBeenCalledTimes(1)
+      expect(video.currentTime).toBe(9)
+      expect(video.paused).toBe(false)
+    })
+
+    it('does not count a switch as a user play or pause', async () => {
+      const { wrapper, video } = await mountAutoplaying()
+
+      chooseQuality(wrapper, '1080')
+      await flushPromises()
+      video.dispatchEvent(new Event('pause'))
+      video.dispatchEvent(new Event('emptied'))
+      video.dispatchEvent(new Event('loadstart'))
+      await finishLoading(video)
+      video.dispatchEvent(new Event('playing'))
+
+      expect(mocks.trackGuideVideoPlay).not.toHaveBeenCalled()
+      expect(mocks.startWatch).not.toHaveBeenCalled()
+      expect(mocks.endWatch).not.toHaveBeenCalled()
+    })
+
+    it('keeps autoplay and the offscreen pause working after a switch',
+      async () => {
+        const { wrapper, video, pause, play } = await mountAutoplaying()
+
+        chooseQuality(wrapper, '1080')
+        await flushPromises()
+        video.dispatchEvent(new Event('pause'))
+        await finishLoading(video)
+
+        setVisibility(false)
+
+        expect(pause).toHaveBeenCalledTimes(1)
+        expect(mocks.endWatch).toHaveBeenCalledExactlyOnceWith('offscreen')
+
+        play.mockClear()
+        setVisibility(true)
+
+        expect(play).toHaveBeenCalledTimes(1)
+      })
+
+    it('pauses a guide that scrolled out of view while a switch loaded',
+      async () => {
+        const { wrapper, video, pause } = await mountAutoplaying()
+
+        chooseQuality(wrapper, '1080')
+        await flushPromises()
+        setVisibility(false)
+
+        expect(pause).not.toHaveBeenCalled()
+
+        await finishLoading(video)
+
+        expect(pause).toHaveBeenCalledTimes(1)
+        expect(mocks.endWatch).toHaveBeenCalledExactlyOnceWith('offscreen')
+      })
+
+    it('does not autoplay again while a switch loads', async () => {
+      const { wrapper, video, play } = await mountAutoplaying()
+
+      chooseQuality(wrapper, '1080')
+      await flushPromises()
+      setVisibility(true)
+
+      expect(play).not.toHaveBeenCalled()
+
+      await finishLoading(video)
+
+      expect(play).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps playing in picture-in-picture through a switch and still '
+      + 'pauses once it closes off screen', async () => {
+      const { wrapper, video, pause } = await mountAutoplaying()
+
+      setPictureInPictureElement(video)
+      setVisibility(false)
+      chooseQuality(wrapper, '360')
+      await flushPromises()
+      await finishLoading(video)
+
+      expect(pause).not.toHaveBeenCalled()
+
+      setPictureInPictureElement(null)
+      video.dispatchEvent(new Event('leavepictureinpicture'))
+
+      expect(pause).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not autoplay after the user paused, even after a switch',
+      async () => {
+        const { wrapper, video, play } = await mountAutoplaying()
+
+        video.pause()
+        play.mockClear()
+        chooseQuality(wrapper, '1080')
+        await flushPromises()
+        await finishLoading(video)
+        setVisibility(true)
+
+        expect(play).not.toHaveBeenCalled()
+      })
+
+    it('still counts a real user play after a switch settled', async () => {
+      stubMotionPreference(true)
+
+      const { wrapper, video } = await mountVideo({ qualities: QUALITIES })
+
+      chooseQuality(wrapper, '1080')
+      await flushPromises()
+      await finishLoading(video)
+      video.dispatchEvent(new Event('play'))
+      video.dispatchEvent(new Event('playing'))
+
+      expect(mocks.trackGuideVideoPlay)
+        .toHaveBeenCalledExactlyOnceWith('google', true)
+    })
+
+    it('stays on the failure path when a rendition fails to load',
+      async () => {
+        const { wrapper, video } = await mountVideo({
+          qualities: QUALITIES,
+        })
+
+        chooseQuality(wrapper, '1080')
+        await flushPromises()
+        video.dispatchEvent(new Event('error'))
+
+        expect(wrapper.emitted('failed')).toHaveLength(1)
+      })
   })
 
   describe('chapters', () => {

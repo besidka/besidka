@@ -13,6 +13,13 @@ video:
   duration: PT44S
   uploadDate: '2026-10-21'
   alt: Screen recording of the Exa dashboard. The API Keys page, the Create a Key dialog with a name, the new key, then the key pasted into Besidka. In a new chat the web search menu in the chat input is opened, Exa is chosen, and the answer is marked Searched with Exa.
+  qualities:
+    - src: /videos/key-guide-exa-1080.mp4
+      size: 1080
+    - src: /videos/key-guide-exa.mp4?v=2
+      size: 720
+    - src: /videos/key-guide-exa-360.mp4
+      size: 360
   markers:
     - time: "0:00"
       label: Intro

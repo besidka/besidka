@@ -52,6 +52,7 @@ covers these files (title, description and summary stay strings).
 | `requirements.sources` | `{ label, url }[]` | Official https pages the facts come from |
 | `video.src` | path or https URL | `/videos/key-guide-<id>.mp4`, with `?v=<n>` once the file has been replaced (see "Replacing a video or poster") |
 | `video.poster` | path or https URL | `/key-guides/<id>.webp`, with the same `?v=<n>` |
+| `video.qualities` | `{ src, size, label? }[]` | Quality menu renditions, same shape as `video.qualities` in `content/index.md`: 1080, 720 and 360. The 720 entry is the same URL as `video.src`, query included. Without entries the player has one source and no Quality menu. See "Renditions" |
 | `video.duration` | ISO 8601 | e.g. `PT34S`, for VideoObject |
 | `video.uploadDate` | string | `YYYY-MM-DD` (read as 00:00 UTC) or a full ISO 8601 datetime with `Z` or `±hh:mm`. Emitted as a datetime with an offset, see `docs/seo.md` |
 | `video.caption` | string, optional | Visible caption under the player on `/guides/<slug>`, also the VideoObject name |
@@ -71,7 +72,8 @@ on both pages.
 verified copy. When a console flow or a price changes, re-verify the facts
 against `requirements.sources` and bump `checkedAt` and `updatedAt`.
 
-After a schema change, reset the local content database, or Studio fails with
+After a schema change (the `video.qualities` field was one), reset the local
+content database, or Studio fails with
 "table _content_keyGuides has N columns but M values":
 
 ```bash
@@ -84,15 +86,51 @@ restart.
 ## Video and poster
 
 - Videos are served from the `CMS_BUCKET` R2 bucket by
-  `server/routes/videos/[name].ts` as `key-guide-<id>.mp4`. The allow-list is
-  derived from the `providerMeta` ids, so a name outside the 12 ids is a 404.
-  The route keeps its single-read, range and conditional-request behavior.
-- Put the encoded file in `.files/key-guide-<id>.mp4` (gitignored) and run
-  `pnpm run cms:files:upload`. Every `.files/key-guide-*.mp4` that exists is
+  `server/routes/videos/[name].ts` as `key-guide-<id>.mp4`,
+  `key-guide-<id>-1080.mp4` and `key-guide-<id>-360.mp4`. The allow-list is
+  explicit and derived from the `providerMeta` ids (12 ids, 3 files each), so
+  any other name, such as `-720` or `-480`, is a 404. The route keeps its
+  single-read, range and conditional-request behavior.
+- Put the encoded files in `.files/` (gitignored) and run
+  `pnpm run cms:files:upload`. Every `.files/key-guide-<id>.mp4`,
+  `key-guide-<id>-1080.mp4` and `key-guide-<id>-360.mp4` that exists is
   validated with mediabunny like the demo renditions and uploaded. A missing
   one is not an error. `cms:files:download` only pulls the known demo assets,
   not the guides. Encode like the demo: H.264, `yuv420p`, fixed 2-second GOP,
   `+faststart`. The player autoplays muted and loops, so no audio is needed.
+- Encode recipe: see the encoding section of `docs/landing-studio.md`. The
+  key-guide renditions were encoded with mediabunny and `@mediabunny/server`
+  because the local Homebrew ffmpeg was broken.
+  TODO(owner): record the exact per-rendition settings here (codec profile,
+  bitrate or CRF, GOP, frame rate) once the encode run is final.
+
+### Renditions
+
+Each guide has three files, picked from the quality menu on both surfaces:
+
+| Height | File | Where it is in the frontmatter |
+| --- | --- | --- |
+| 1080 | `key-guide-<id>-1080.mp4` | `video.qualities`, no query |
+| 720 | `key-guide-<id>.mp4` | `video.src` and `video.qualities`, with `?v=<n>` if replaced |
+| 360 | `key-guide-<id>-360.mp4` | `video.qualities`, no query |
+
+The 720 file keeps the original name so every existing URL, R2 object and
+cached copy stays valid. It is also what the hover-preview thumbnails always
+use, whatever rendition is playing. `tests/unit/content/key-guides.spec.ts`
+pins the three entries per guide and that the 720 one equals `video.src`.
+`video.src` stays required: it is the JSON-LD `contentUrl` and the single
+source for a guide without `qualities`.
+
+The starting rendition is chosen at mount by `pickInitialQuality` (player
+width, pixel ratio, data saver, slow network) and falls back to 720; see
+"Starting quality" in `docs/video-player.md`. The pick is never saved: only the
+`/guides/<slug>` player shares the `video-player` preference with the home
+page (a deliberate menu pick is stored there), while the `/profile/keys`
+player persists nothing.
+
+A rendition replaced later is versioned on its own entry
+(`/videos/key-guide-<id>-1080.mp4?v=2`); the query is harmless for the same
+reasons as on the 720 file below.
 - Posters are committed at `public/key-guides/<id>.webp`, 16:9, taken from
   the paste step of the recording. The component tolerates a missing poster
   and shows a plain box.
@@ -105,6 +143,8 @@ stay stale in browsers and at the edge for a day. Version the URLs in the
 guide frontmatter instead of renaming files: bump `?v=<n>` on both
 `video.src` and `video.poster` (`/videos/key-guide-<id>.mp4?v=3`,
 `/key-guides/<id>.webp?v=3`) in the same change that replaces either file,
+and on the 720 entry of `video.qualities`, which must stay identical to
+`video.src` (a `-1080` or `-360` file is versioned on its own entry only),
 and upload the new mp4 with `pnpm run cms:files:upload --force`. A guide
 that was never replaced has no query.
 
@@ -146,8 +186,8 @@ and the poster file must exist.
 - `app/components/Profile/Keys/GuideVideo.client.vue` is a lean Video.js v10
   player: the shared `Video/Shell.vue` skin with `variant="lean"` and the
   `.landing-player` theme (see `docs/video-player.md`). It is not
-  `LandingVideoPlayer`: that one hard-codes the demo analytics, qualities,
-  captions, speed menu and preference persistence. It shares the chapter
+  `LandingVideoPlayer`: that one hard-codes the demo analytics, captions and
+  preference persistence. It shares the chapter
   markers and the lazy hover-preview thumbnails with it through
   `useVideoTimeline` (a Blob-URL chapters track and a Blob-URL storyboard
   track); frames are generated on the first time-slider hover or focus, never
@@ -164,7 +204,13 @@ and the poster file must exist.
   `navigator.connection.saveData`. Then the poster and a play button show. If
   the `<video>` fires `error` (missing file, 404), the player emits `failed`,
   `Guide.vue` unmounts it and shows the poster with the note "Video
-  unavailable. Follow the steps below.". The poster `alt` carries the
+  unavailable. Follow the steps below.". The settings menu has Quality
+  (1080p, 720p, 360p) above Speed. A quality switch swaps `src` and restores
+  time, rate and play state (`useVideoQuality`, shared with the home player);
+  a muted autoplay keeps playing, and the pause, `play` and `playing` events
+  it causes are ignored by the autoplay, offscreen and analytics bookkeeping
+  until the resumed `play()` settles, so a switch is never counted as a user
+  play or pause. The poster `alt` carries the
   `video.alt` accessible name; the player's `<video>` uses the same label.
 - The steps text is the full alternative to the video.
 

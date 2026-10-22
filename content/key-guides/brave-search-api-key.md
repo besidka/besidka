@@ -13,6 +13,13 @@ video:
   duration: PT43S
   uploadDate: '2026-10-21'
   alt: Screen recording of the Brave Search API dashboard. The API keys page with its monthly usage limit, the Add API key dialog with a name and the Search plan, the new key in the list, then the key pasted into Besidka. In a new chat the web search menu in the chat input is opened, Brave Search is chosen, and the answer is marked Searched with Brave.
+  qualities:
+    - src: /videos/key-guide-brave-1080.mp4
+      size: 1080
+    - src: /videos/key-guide-brave.mp4?v=2
+      size: 720
+    - src: /videos/key-guide-brave-360.mp4
+      size: 360
   markers:
     - time: "0:00"
       label: Intro

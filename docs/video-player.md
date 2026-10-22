@@ -57,7 +57,8 @@ selectors in `video-player-theme.css` are scoped under `.landing-player`
 |------|------|
 | `app/components/Video/Shell.vue` | The skin. Renders `<video-player>` > `<media-container class="landing-player">`, the slot for the `<video>`, the controls, hotkeys and gestures, and an `overlay` slot |
 | `app/components/landing/VideoPlayer.client.vue` | Landing/guide player (`LandingVideoPlayer`): full variant, qualities, captions, speed, chapters, thumbnails, `startAt`, demo/guide analytics, preferences |
-| `app/components/Profile/Keys/GuideVideo.client.vue` | Profile key-guide player: lean variant with a speed-only settings menu, autoplay/visibility logic, PiP-aware pause, chapters, thumbnails, watch analytics |
+| `app/composables/video-quality.ts` | `useVideoQuality`: renditions, start pick and quality switching shared by both players |
+| `app/components/Profile/Keys/GuideVideo.client.vue` | Profile key-guide player: lean variant with a quality and speed settings menu, autoplay/visibility logic, PiP-aware pause, chapters, thumbnails, watch analytics |
 | `app/composables/video-timeline.ts` | `useVideoTimeline`: chapters track, thumbnails track, snap-seek |
 | `app/composables/video-player-preferences.ts` | `useVideoPlayerPreferences`: persistence through `usePreferenceStorage()` (consent-gated) |
 | `app/plugins/video-legacy-plyr-cleanup.client.ts` | Removes the legacy `plyr` localStorage key once per app load |
@@ -118,7 +119,9 @@ toggles fullscreen.
   frontmatter; the starting rendition is picked by the "Starting quality"
   heuristic below; changing quality swaps `src` and restores position, paused
   state and rate on `loadedmetadata`. Speeds are `0.5, 0.75, 1, 1.25, 1.5, 2`.
-  A quality switch keeps one pending record (`listener`, `resumeTime`,
+  All of this quality machinery lives in `useVideoQuality`, shared with the
+  key-guide player (see "Shared quality composable"). A quality switch keeps
+  one pending record (`listener`, `resumeTime`,
   `wasPaused`, `rate`). A second switch before `loadedmetadata` removes the
   old listener and reuses the original captured values, so the second
   `currentTime` of 0 is never mistaken for the resume point. While `startAt`
@@ -130,9 +133,11 @@ toggles fullscreen.
   `startAt` is applied by the ordinary `loadedmetadata` handler.
 - **`ProfileKeysGuideVideo`** is `muted loop playsinline preload="none"` and
   keeps its visibility/autoplay/PiP logic; see `docs/key-guides.md`. It does
-  not persist preferences. Its settings menu holds only the Speed submenu:
-  the guides have burned-in captions and no caption tracks, and a single
-  source, so there is no Captions or Quality entry. The chosen speed lives on
+  not persist preferences. Its settings menu holds a Quality submenu (1080p,
+  720p, 360p, from the guide's `video.qualities`, shown when there is more
+  than one) and the Speed submenu; the guides have burned-in captions and no
+  caption tracks, so there is no Captions entry. A guide without
+  `video.qualities` has one source and no Quality entry. The chosen speed lives on
   the `<video>` (`playbackRate` and `defaultPlaybackRate`) and resets on every
   mount.
 
@@ -178,11 +183,48 @@ element.
 | Safari standalone web apps (installed Dock or Home Screen apps) report `pictureInPictureAvailability: 'unsupported'` even when the WebKit presentation-mode API exists, so `<media-pip-button>` hides there. Plyr showed a PiP button | Fallback button in `Shell.vue` (both variants), see "Safari web app PiP fallback" below. Unverified on a real device |
 | Captions: tracks flagged `default` show on load | Caption `<track>`s carry no `default`, so captions start off. The Off option reads "Disabled" through `registerI18n` |
 
+### Shared quality composable
+
+`app/composables/video-quality.ts` (`useVideoQuality`, unit-tested in
+`tests/unit/composables/video-quality.spec.ts`) owns everything about
+renditions for one `<video>`, so `VideoPlayer.client.vue` and
+`GuideVideo.client.vue` cannot drift apart:
+
+- `sortedQualities`, `qualityOptions` (`{ value: '1080', label: '1080p' }`,
+  highest first), `currentQuality`, `selectedQualityValue` and `currentSrc`
+  (`undefined` until the start rendition is resolved, the single-`src`
+  guarantee in "Starting quality").
+- `resolveStartQuality(savedQuality)` called from the component's `onMounted`.
+  The home player passes `readSavedQuality()` from
+  `useVideoPlayerPreferences`; the guide player passes nothing, so its start is
+  the heuristic with the 720 fallback and nothing is read or written.
+  `rememberUserQuality` and `getUserQuality` hold the deliberate pick that only
+  the home player persists (see "Persistence decision").
+- `selectQuality(size)` with the pending-switch record described under
+  "Players". The component supplies `getPendingStartAt` (the unapplied
+  `startAt`), `onRestored` (resync the speed label) and `onSettled`.
+- `thumbnailSource()`, the 720 rendition whatever is playing.
+- `isResumingAfterSwitch()`, true from a switch of a playing video until the
+  resumed `play()` settles (it is also cleared by a `error` event on the new
+  source and on scope disposal). A src change makes browsers drop the element
+  to paused and fire `emptied`/`loadstart`, and the resume calls `play()`, so
+  `play`, `playing` and `pause` events during that window are the switch, not
+  the user. `GuideVideo.client.vue` returns early from its `play`/`pause`
+  handlers and from `syncPlayback` while it is true (otherwise the resume
+  would be counted as a user play and a pause as the user pausing, and a
+  scroll-out during the load would autoplay or be missed) and passes
+  `syncPlayback` as `onSettled`, so a guide that left the viewport while its
+  new rendition loaded is paused as soon as the resume ends. The home player
+  keeps its previous event handling.
+- A guide mounts with `preload="none"`. A switch lifts it to `metadata`,
+  otherwise a paused guide would never load the new source and the restore on
+  `loadedmetadata` would wait for the next play.
+
 ### Starting quality
 
 The landing player used to start every visitor on 720p. With renditions
-present (the home page; guide pages have a single source and are unaffected),
-the first `src` is now chosen at mount, in this order:
+present (the home page and, since the guide renditions, both key-guide
+players), the first `src` is now chosen at mount, in this order:
 
 1. **Saved deliberate choice** (`video-player` quality with
    `qualityChosen: true`, if it is one of the offered renditions). A stored
@@ -267,7 +309,7 @@ forward as-is with `qualityChosen: false` (never promoted) until the visitor
 picks a quality, which overwrites it with `qualityChosen: true`.
 `parseVideoPlayerPreferences` stays backward-compatible: the flag is optional,
 defaults to `false` and is forced to `false` when `quality` is `null`, so old
-records are never invalidated. Pages without renditions (guides) carry both
+records are never invalidated. Pages without renditions carry both
 the stored quality and its flag unchanged.
 
 Why the first `src` rather than a mid-play adaptive switch: see
@@ -323,6 +365,26 @@ Video.js behavior.
   position is mapped to a time; if the nearest chapter start is within
   `max(0.4 s, 4% of duration)` the video seeks to that start. The seek is
   deferred with `setTimeout(0)`, after the slider's own pointer handling.
+
+### Settings menu boundary
+
+`<media-menu>` positions its popup against a boundary that defaults to the
+player container. On a small player (a 320x180 guide card, or a 348px-wide
+home player on a phone) the room between the settings button and the top of
+the frame is about 120-140px, so `--media-menu-available-height` capped the
+menu there and the Speed submenu (7 rows, 223px) became a scrolling box that
+cut off the top rows and ran under the control bar. Plyr let the menu rise
+above the 16:9 frame.
+
+`Shell.vue` therefore sets `boundary="viewport"` on `<media-menu>`. The menu
+is a `popover="manual"` element in the top layer, so no ancestor clips it;
+only the boundary limited it. With the viewport boundary the available height
+is the whole space above the button (about 460px on a phone), the menu keeps
+its `20rem` cap from `.video-menu`, and a viewport shorter than the menu
+falls back to the internal scroll of `.video-menu__page` (`max-height:
+inherit`, `overflow: auto`). Fullscreen works the same way because the
+viewport is then the screen. `tests/unit/assets/css/video-player-theme.spec.ts`
+and `Shell.spec.ts` pin the three pieces.
 
 ### Preview card clamp
 

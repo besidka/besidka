@@ -11,13 +11,17 @@ import { providerMeta } from '#shared/utils/provider-meta'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 
+const KEY_GUIDE_RENDITION_SUFFIXES = ['', '-1080', '-360']
+
 const ALLOWED_FILES = new Set([
   'demo.mp4',
   'demo-360.mp4',
   'demo-1080.mp4',
   'demo.en.vtt',
-  ...Object.keys(providerMeta).map((providerId) => {
-    return `key-guide-${providerId}.mp4`
+  ...Object.keys(providerMeta).flatMap((providerId) => {
+    return KEY_GUIDE_RENDITION_SUFFIXES.map((suffix) => {
+      return `key-guide-${providerId}${suffix}.mp4`
+    })
   }),
 ])
 

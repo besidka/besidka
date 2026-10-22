@@ -13,6 +13,13 @@ video:
   duration: PT34S
   uploadDate: '2026-10-20'
   alt: Screen recording of DeepSeek Platform. The API keys page, the Create new API key dialog with a name, the new key shown once, then the key pasted into Besidka and a first answer from DeepSeek.
+  qualities:
+    - src: /videos/key-guide-deepseek-1080.mp4
+      size: 1080
+    - src: /videos/key-guide-deepseek.mp4
+      size: 720
+    - src: /videos/key-guide-deepseek-360.mp4
+      size: 360
   markers:
     - time: "0:00"
       label: Intro
