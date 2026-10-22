@@ -332,13 +332,14 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   (breaking the DaisyUI cascade) or 404; detection, the upstream issue
   (nuxt/nuxt#36136), rejected alternatives, the more-chunk-renames trade-off,
   revert criteria, and the build-comparison verification recipe
-- `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: Bun as a
-  package manager only (Node stays the runtime) saves at most ~1s locally and
-  single-digit seconds per CI job; Dependabot has no security updates for the
-  `bun` ecosystem; the nested `fontless>esbuild` override needs Bun >=1.4;
-  pnpm 12's multi-document lockfile breaks `bun pm migrate` on 1.3.x; the
-  scratch trial results (install, lint, typecheck, tests, build) and the
-  criteria for revisiting the decision
+- `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
+  trial (#489) and local benchmarks measured no speed gain, because every
+  tool runs on Node under both package managers; warm Bun install ~= pnpm,
+  cold is slower (cache save); Dependabot has no security updates for `bun`;
+  the Bun >=1.4 floor (nested `fontless>esbuild` override, Workers Builds
+  defaults to 1.2.15); the migration friction list (`bunfig.toml` release
+  age, `trustedDependencies`, missing `NODE_PATH` in bin shims, hardcoded
+  `pnpm` call sites); and the criteria for revisiting the decision
 
 ### Tech Stack
 
