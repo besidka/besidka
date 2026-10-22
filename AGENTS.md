@@ -16,6 +16,14 @@ an agent default.
 
 Use **pnpm** exclusively for this project. Do not use npm, npx, bun, bunx, or other package managers.
 
+Migrating to Bun was evaluated and rejected on 2026-10-22, with a real CI
+trial (besidka/besidka#489, closed unmerged): no measurable speed gain,
+because every tool still runs on Node, and Dependabot has no security
+updates for `bun`. Do not propose or start a Bun migration, and do not add
+`bun.lock`, `bunfig.toml` or `oven-sh/setup-bun`. The decision is closed;
+reopen it only when a "Revisit when" condition in
+`docs/pnpm-to-bun-evaluation.md` is met, and say which one.
+
 ## Commands
 
 ```bash

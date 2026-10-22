@@ -1,5 +1,10 @@
 # pnpm to Bun evaluation: why the project stays on pnpm
 
+**Status: closed, 2026-10-23.** The project stays on pnpm. The owner asked
+for everything to remain on pnpm and for this record to stop the question
+from coming back. Do not reopen it unless one of the conditions under
+"Revisit when" is met; name that condition when you do.
+
 Evaluated on 2026-10-22 against pnpm 12.10.1, Bun 1.3.14 (local) and Bun
 1.4.3/1.4.4 (1.4.4 was published the same day), then trialled in CI the same
 day on Bun 1.4.3 (draft PR besidka/besidka#489, closed unmerged).
@@ -11,7 +16,9 @@ only, but the measurable gain is a few seconds per CI job. There is one policy
 blocker (Dependabot security updates are not available for Bun) and several
 friction points. The CI trial confirmed this on real runs: the experiment
 measured no speed advantage anywhere; the decision is cost versus a gain of
-roughly zero. Nothing in the project was changed beyond this document.
+roughly zero. Nothing outside the documentation changed: `main` has no Bun
+files, workflow steps or `package.json` fields, and the trial branch was
+deleted.
 
 ## The ceiling: what a package manager can speed up
 
