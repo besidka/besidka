@@ -17,6 +17,11 @@ export async function insertMessageWithPublicId(input: {
       publicId: input.publicId,
     })
 
+  const returningFields = {
+    id: schema.messages.id,
+    publicId: schema.messages.publicId,
+  }
+
   // Belt-and-suspenders idempotency for issue #263. The in-memory duplicate
   // scan reads a single chat snapshot, so two near-simultaneous retries of the
   // same user message (before either commits, and before any assistant reply
@@ -31,14 +36,14 @@ export async function insertMessageWithPublicId(input: {
   // unrelated constraint still throws. Only the user-message insert opts in;
   // the assistant insert keeps strict behavior so a genuine DB failure still
   // surfaces loudly.
-  const statement = input.ignoreConflict
-    ? insert.onConflictDoNothing({ target: schema.messages.publicId })
-    : insert
+  if (input.ignoreConflict) {
+    return await insert
+      .onConflictDoNothing({ target: schema.messages.publicId })
+      .returning(returningFields)
+      .get()
+  }
 
-  return await statement
-    .returning({
-      id: schema.messages.id,
-      publicId: schema.messages.publicId,
-    })
+  return await insert
+    .returning(returningFields)
     .get()
 }

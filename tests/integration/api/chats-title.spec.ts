@@ -9,6 +9,17 @@ vi.mock('evlog', () => ({
   useLogger: () => ({
     set: mocks.loggerSet,
   }),
+  createError: (input: {
+    status?: number
+    message?: string
+    why?: string
+  }) => {
+    const exception = new Error(input.message || 'Error')
+
+    Object.assign(exception, input)
+
+    return exception
+  },
 }))
 
 async function getTitleHandler() {
@@ -327,6 +338,46 @@ describe('chat title API', () => {
       'Create a roadmap for Q2',
     )
   })
+
+  it('throws a 404 when the chat is deleted before the title is saved',
+    async () => {
+      const handler = await getTitleHandler()
+      const set = vi.fn(() => ({
+        where: vi.fn(() => ({
+          returning: vi.fn(() => ({
+            get: vi.fn(() => undefined),
+          })),
+        })),
+      }))
+      const db = {
+        query: {
+          chats: {
+            findFirst: vi.fn(async () => ({
+              id: 'chat-1',
+              title: null,
+              projectId: 'project-1',
+              messages: [
+                {
+                  parts: [{ type: 'text', text: 'Create a roadmap for Q2' }],
+                },
+              ],
+            })),
+          },
+        },
+        update: vi.fn(() => ({ set })),
+      }
+
+      vi.stubGlobal('useDb', () => db)
+
+      await expect(handler({
+        body: { model: 'openai:gpt-4.1-mini' },
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      } as any)).rejects.toMatchObject({
+        status: 404,
+        message: 'Chat not found.',
+      })
+      expect(set).toHaveBeenCalledWith({ title: 'Generated title' })
+    })
 })
 
 describe('chat title API first message guards', () => {

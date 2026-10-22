@@ -5,7 +5,7 @@ packages:
 overrides:
   '@cloudflare/workers-types': ^5.20261018.1
   '@types/node': 24.19.2
-  drizzle-orm: 1.0.0-rc.5-5935859
+  drizzle-orm: 1.0.0-rc.5
   fontless>esbuild: '>=0.28.1'
   unhead: 3.4.2
   '@unhead/vue': 3.4.2
