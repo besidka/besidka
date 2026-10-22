@@ -184,8 +184,10 @@ The landing player used to start every visitor on 720p. With renditions
 present (the home page; guide pages have a single source and are unaffected),
 the first `src` is now chosen at mount, in this order:
 
-1. **Saved preference** (`video-player` quality, if it is one of the offered
-   renditions). Unchanged semantics, now applied up front.
+1. **Saved deliberate choice** (`video-player` quality with
+   `qualityChosen: true`, if it is one of the offered renditions). A stored
+   quality without that flag is not a choice and is ignored here, see
+   "Persistence decision".
 2. **Heuristic**, `pickInitialQuality` in `shared/utils/video.ts` (pure,
    unit-tested in `tests/unit/utils/video.spec.ts`):
    - Network cap first: `navigator.connection.saveData === true` or an
@@ -242,12 +244,31 @@ playback rendition, falling back to `props.src` when 720 is absent.
 or one visit on a phone or a slow network would freeze that rendition as the
 saved quality for every later visit (`persist()` runs on every store change,
 such as a volume tweak). The player therefore keeps a separate `userQuality`,
-set only by a manual menu selection or by a restored saved value, and the
+set only by a manual menu selection or by a restored deliberate value, and the
 preferences `getQuality` returns that instead of the current rendition. A
-heuristic-only session stores `quality: null`, which restore skips, and the
-snapshot's existing `getQuality() ?? lastSaved?.quality ?? null` keeps a stored
-value the page could not apply (for example a rendition that was removed). The
+heuristic-only session stores `quality: null, qualityChosen: false`, which
+restore skips, and the snapshot keeps a stored value the page could not apply
+(for example a rendition that was removed, or a page without renditions). The
 previous behavior of storing 720 on the first volume change is gone on purpose.
+
+**`qualityChosen` and legacy records.** Before the heuristic existed,
+`getQuality` returned the current rendition (720 by default), so any
+consenting visitor who ever touched volume, speed or captions has
+`quality: 720` stored without having picked it. Treating that as a choice
+would keep the heuristic from ever reaching returning visitors. The stored
+shape therefore carries a boolean `qualityChosen`, written `true` only when
+the quality comes from a manual menu pick or from a stored record that
+already had `qualityChosen: true`. `readSavedQuality()` (start resolution) and
+the quality half of `restore()` act only on `qualityChosen === true`; a record
+without the flag (every pre-existing record) or with `false` is a legacy
+record: volume, mute, speed and captions keep restoring, the quality is
+ignored, and the heuristic picks the start. A legacy `quality: 720` is carried
+forward as-is with `qualityChosen: false` (never promoted) until the visitor
+picks a quality, which overwrites it with `qualityChosen: true`.
+`parseVideoPlayerPreferences` stays backward-compatible: the flag is optional,
+defaults to `false` and is forced to `false` when `quality` is `null`, so old
+records are never invalidated. Pages without renditions (guides) carry both
+the stored quality and its flag unchanged.
 
 Why the first `src` rather than a mid-play adaptive switch: see
 `docs/landing-studio.md`, "Why progressive MP4 on R2".
@@ -336,7 +357,7 @@ to `hidden` so the cues load without rendering as captions.
 ### Preferences and consent
 
 `useVideoPlayerPreferences` persists `{ volume, muted, speed, quality,
-captions: { enabled, language } }` as JSON under the localStorage key
+qualityChosen, captions: { enabled, language } }` as JSON under the localStorage key
 `video-player`. The key is declared in the `preferences` category of the
 consent manifest in `nuxt.config.ts` (`id: 'video-player'`) and listed in the
 cookie policy and `i18n/locales/cookie-consent.*.ts`.
@@ -349,10 +370,10 @@ cookie policy and `i18n/locales/cookie-consent.*.ts`.
   A deny removes the declared key through the consent module's cleanup. The
   calls run inside `nuxtApp.runWithContext` because the store callbacks fire
   outside the Nuxt context that `useCookieConsent()` needs.
-- The saved quality is kept when the page has no quality options: the
-  snapshot uses `getQuality() ?? lastSaved?.quality ?? null`, so a
+- The saved quality and its `qualityChosen` flag are kept when the page has
+  no quality options: the snapshot falls back to `lastSaved`, so a
   `/guides/[slug]` page without renditions does not overwrite a saved 1080
-  with `null`.
+  with `null` and does not promote a legacy 720 into a deliberate choice.
 - The composable does not call `requestPersistence()`, so the "Remember your
   preferences?" prompt is not triggered by player changes. Add it to the
   quality and speed handlers if that is wanted.
@@ -361,7 +382,11 @@ cookie policy and `i18n/locales/cookie-consent.*.ts`.
 - Restore happens once, after the store has a `target`. Captions restore when
   the first caption track list arrives.
 - Speed is read from the native `<video>`, not from the store, because the
-  store keeps a stale `playbackRate` after a source switch.
+  store keeps a stale `playbackRate` after a source switch. Both players share
+  `useVideoSpeed(videoRef)` (`app/composables/video-speed.ts`), which owns
+  `currentSpeed`, `applySpeed` (sets `playbackRate` and `defaultPlaybackRate`
+  for the known rates only) and `syncSpeed`, re-synced on `ratechange` and
+  `loadedmetadata`. Only the landing player persists it.
 - The legacy Plyr key is removed by the `video-legacy-plyr-cleanup.client.ts`
   plugin through `removeLegacyPlyrPreferences()`
   (`localStorage.removeItem('plyr')`, errors swallowed), once per app load on

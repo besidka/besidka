@@ -13,6 +13,7 @@ export interface VideoPlayerPreferences {
   muted: boolean
   speed: number
   quality: number | null
+  qualityChosen: boolean
   captions: VideoPlayerCaptionsPreference
 }
 
@@ -83,11 +84,14 @@ export function parseVideoPlayerPreferences(
     return null
   }
 
+  const quality = isFiniteNumber(candidate.quality) ? candidate.quality : null
+
   return {
     volume: Math.min(1, Math.max(0, candidate.volume)),
     muted: candidate.muted,
     speed: candidate.speed,
-    quality: isFiniteNumber(candidate.quality) ? candidate.quality : null,
+    quality,
+    qualityChosen: quality !== null && candidate.qualityChosen === true,
     captions,
   }
 }
@@ -128,6 +132,7 @@ function isSamePreferences(
     && left.muted === right.muted
     && left.speed === right.speed
     && left.quality === right.quality
+    && left.qualityChosen === right.qualityChosen
     && left.captions.enabled === right.captions.enabled
     && left.captions.language === right.captions.language
 }
@@ -180,7 +185,13 @@ export function useVideoPlayerPreferences(
   }
 
   function readSavedQuality(): number | null {
-    return readStoredPreferences()?.quality ?? null
+    const saved = readStoredPreferences()
+
+    if (!saved?.qualityChosen) {
+      return null
+    }
+
+    return saved.quality
   }
 
   function snapshot(): VideoPlayerPreferences | null {
@@ -188,11 +199,15 @@ export function useVideoPlayerPreferences(
       return null
     }
 
+    const chosenQuality = options.getQuality()
+
     return {
       volume: store.volume,
       muted: store.muted,
       speed: options.getSpeed(),
-      quality: options.getQuality() ?? lastSaved?.quality ?? null,
+      quality: chosenQuality ?? lastSaved?.quality ?? null,
+      qualityChosen: chosenQuality !== null
+        || (lastSaved?.qualityChosen ?? false),
       captions: hasSeenCaptions || !pendingCaptions
         ? readCaptions(store)
         : pendingCaptions,
@@ -254,7 +269,7 @@ export function useVideoPlayerPreferences(
 
     options.applySpeed(saved.speed)
 
-    if (saved.quality !== null) {
+    if (saved.qualityChosen && saved.quality !== null) {
       options.applyQuality(saved.quality)
     }
     currentStore.setVolume(saved.volume)

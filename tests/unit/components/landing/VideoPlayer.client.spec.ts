@@ -181,6 +181,7 @@ describe('VideoPlayer.client.vue', () => {
         muted: false,
         speed: 1,
         quality: null,
+        qualityChosen: false,
         captions: { enabled: false },
       })
     }, PLAYER_TIMEOUT_MS)
@@ -206,6 +207,7 @@ describe('VideoPlayer.client.vue', () => {
           muted: false,
           speed: 1,
           quality: 1080,
+          qualityChosen: true,
           captions: { enabled: false, language: null },
         }))
 
@@ -219,8 +221,33 @@ describe('VideoPlayer.client.vue', () => {
         expect(readStoredPreferences()).toMatchObject({
           volume: 0.7,
           quality: 1080,
+          qualityChosen: true,
         })
       })
+
+    it('keeps a legacy unflagged quality unchosen on a page without '
+      + 'quality renditions', async () => {
+      localStorage.setItem('video-player', JSON.stringify({
+        volume: 0.4,
+        muted: false,
+        speed: 1,
+        quality: 720,
+        captions: { enabled: false, language: null },
+      }))
+
+      const wrapper = await mountPlayer()
+      const video = getVideo(wrapper)
+
+      video.volume = 0.7
+      video.dispatchEvent(new Event('volumechange'))
+      await flushPromises()
+
+      expect(readStoredPreferences()).toMatchObject({
+        volume: 0.7,
+        quality: 720,
+        qualityChosen: false,
+      })
+    })
 
     it('restores saved speed, quality and volume once the player is ready',
       async () => {
@@ -229,6 +256,7 @@ describe('VideoPlayer.client.vue', () => {
           muted: true,
           speed: 1.5,
           quality: 1080,
+          qualityChosen: true,
           captions: { enabled: false, language: null },
         }))
 
@@ -256,7 +284,8 @@ describe('VideoPlayer.client.vue', () => {
       chooseMenuOption(wrapper, 'video-quality-options', '1080')
       await flushPromises()
 
-      expect(readStoredPreferences()).toMatchObject({ quality: 1080 })
+      expect(readStoredPreferences())
+        .toMatchObject({ quality: 1080, qualityChosen: true })
     })
   })
 
@@ -348,6 +377,7 @@ describe('VideoPlayer.client.vue', () => {
         muted: false,
         speed: 1,
         quality: 360,
+        qualityChosen: true,
         captions: { enabled: false, language: null },
       }))
 
@@ -366,6 +396,7 @@ describe('VideoPlayer.client.vue', () => {
         muted: false,
         speed: 1,
         quality: 480,
+        qualityChosen: true,
         captions: { enabled: false, language: null },
       }))
 
@@ -389,8 +420,38 @@ describe('VideoPlayer.client.vue', () => {
         expect(readStoredPreferences()).toMatchObject({
           volume: 0.5,
           quality: null,
+          qualityChosen: false,
         })
       }, PLAYER_TIMEOUT_MS)
+
+    it('lets the heuristic start a legacy unflagged quality and does not '
+      + 'promote it to a deliberate choice', async () => {
+      stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+      localStorage.setItem('video-player', JSON.stringify({
+        volume: 0.4,
+        muted: false,
+        speed: 1,
+        quality: 720,
+        captions: { enabled: false, language: null },
+      }))
+
+      const assigned = recordSrcAssignments()
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+      const video = getVideo(wrapper)
+
+      expect(video.getAttribute('src')).toBe('/videos/demo-360.mp4')
+      expect(assigned.filter(Boolean)).toEqual(['/videos/demo-360.mp4'])
+
+      video.volume = 0.6
+      video.dispatchEvent(new Event('volumechange'))
+      await flushPromises()
+
+      expect(readStoredPreferences()).toMatchObject({
+        volume: 0.6,
+        quality: 720,
+        qualityChosen: false,
+      })
+    }, PLAYER_TIMEOUT_MS)
 
     it('persists a manual quality choice made after a heuristic start',
       async () => {
@@ -403,7 +464,8 @@ describe('VideoPlayer.client.vue', () => {
 
         expect(getVideo(wrapper).getAttribute('src'))
           .toBe('/videos/demo-1080.mp4')
-        expect(readStoredPreferences()).toMatchObject({ quality: 1080 })
+        expect(readStoredPreferences())
+          .toMatchObject({ quality: 1080, qualityChosen: true })
       }, PLAYER_TIMEOUT_MS)
 
     it('persists choosing the heuristic rendition itself', async () => {
@@ -414,7 +476,8 @@ describe('VideoPlayer.client.vue', () => {
       chooseMenuOption(wrapper, 'video-quality-options', '360')
       await flushPromises()
 
-      expect(readStoredPreferences()).toMatchObject({ quality: 360 })
+      expect(readStoredPreferences())
+        .toMatchObject({ quality: 360, qualityChosen: true })
     }, PLAYER_TIMEOUT_MS)
 
     it('keeps a stored quality when the volume changes after a '
@@ -425,6 +488,7 @@ describe('VideoPlayer.client.vue', () => {
         muted: false,
         speed: 1,
         quality: 480,
+        qualityChosen: true,
         captions: { enabled: false, language: null },
       }))
 
@@ -438,6 +502,7 @@ describe('VideoPlayer.client.vue', () => {
       expect(readStoredPreferences()).toMatchObject({
         volume: 0.6,
         quality: 480,
+        qualityChosen: true,
       })
     }, PLAYER_TIMEOUT_MS)
 
@@ -696,6 +761,7 @@ describe('VideoPlayer.client.vue', () => {
           muted: false,
           speed: 1.5,
           quality: 1080,
+          qualityChosen: true,
           captions: { enabled: false, language: null },
         }))
 
@@ -1158,6 +1224,7 @@ describe('VideoPlayer.client.vue', () => {
           muted: false,
           speed: 1,
           quality: 1080,
+          qualityChosen: true,
           captions: { enabled: false, language: null },
         }))
 
@@ -1187,6 +1254,7 @@ describe('VideoPlayer.client.vue', () => {
           muted: false,
           speed: 1,
           quality: 1080,
+          qualityChosen: true,
           captions: { enabled: false, language: null },
         }))
         media.duration = NaN
