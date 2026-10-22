@@ -116,8 +116,11 @@ unnoticed on the day it starts to matter.
 
 Every contributor, every CI job and Cloudflare Workers Builds (which defaults
 to Bun 1.2.15 and is overridden with `BUN_VERSION`) would need Bun 1.4 or newer
-pinned. Bun 1.4.4 was published on the day of this evaluation, so the
-project's own 1-day release-age policy would block it.
+pinned. Bun 1.4.4 was published on the day of this evaluation. pnpm's
+`minimumReleaseAge` does not gate the Bun binary itself (it arrives via
+`oven-sh/setup-bun`, `BUN_VERSION` or Homebrew), but the project's practice of
+waiting a day on new releases means 1.4.4 would not be adopted on release
+day.
 
 ## Friction found in the scratch trial
 
@@ -154,7 +157,7 @@ Fixable, but each item is work with no offsetting gain:
   - `scripts/test-affected.mjs`
   - `tests/unit/db/migrations-clean.spec.ts`, which executes
     `pnpm exec drizzle-kit generate`
-  - 67 `pnpm` references across 6 workflow files (`pnpm/action-setup`,
+  - 67 `pnpm` references across 5 workflow files (`pnpm/action-setup`,
     `setup-node` with `cache: pnpm`, and `cloudflare/wrangler-action` with
     `packageManager: pnpm`; wrangler-action v4.1.3 does accept `bun`)
   - `.npmrc` (`save-exact`) and the Dependabot cooldown comment
