@@ -101,8 +101,36 @@ restart.
 - Encode recipe: see the encoding section of `docs/landing-studio.md`. The
   key-guide renditions were encoded with mediabunny and `@mediabunny/server`
   because the local Homebrew ffmpeg was broken.
-  TODO(owner): record the exact per-rendition settings here (codec profile,
-  bitrate or CRF, GOP, frame rate) once the encode run is final.
+  The 1080 and 360 renditions were encoded on 2026-10-22 from the 1080
+  masters (`key guides 2026-10/finals/key-guide-<id>-1080.mp4` in iCloud). The
+  720 `key-guide-<id>.mp4` files are the earlier encodes and were not
+  re-encoded. Settings, same for every guide:
+  - Codec: libx264 High profile, `yuv420p`, preset `slow`, tune `animation`,
+    no audio.
+  - Quality: CRF 21 for 1080 (about 1.3 to 1.8 Mbps) and CRF 26 for 360
+    (640x360, about 115 to 160 kbps). CRF, not a bitrate target, so flat UI
+    frames stay small and busy ones get what they need.
+  - GOP: `keyint=60:min-keyint=60:scenecut=0`, a fixed 2-second GOP at 30 fps,
+    so every rendition has keyframes at the same timestamps and a quality
+    switch can resume cleanly.
+  - Scaling: lanczos. Colour tags are set explicitly to bt709 limited range,
+    because the scale filter dropped them otherwise and players then guessed.
+  - Container: faststart (moov before mdat), so playback and range requests
+    start without reading the tail of the file.
+  - 360p legibility: headlines and buttons are readable, fine UI text is soft.
+    It is a low-bandwidth fallback, not a reading rendition.
+- Tooling: mediabunny 1.55.3 with `@mediabunny/server` 1.62.0 (node-av 6.1.1,
+  its postinstall build is not approved) running in Node. Stock
+  `@mediabunny/server` encodes with x264 `medium` and exposes no CRF or
+  scenecut control, so the encode script monkeypatches node-av in-process:
+  `CodecContext.open2` for the x264 options and `FilterGraph.parsePtr` for the
+  lanczos scaler. `hardwareAcceleration: 'prefer-software'` keeps it off
+  VideoToolbox. The scripts (`encode.mjs`, `encode-all.sh`,
+  `validate-all.mjs`, `inspect.mjs`, `still.mjs`, `color.mjs`) are kept in the
+  main checkout's gitignored `.files/encode-scripts/`, not in git.
+- Upload: `pnpm run cms:files:upload --remote -e preview`, then
+  `-e production --yes`. The 24 new objects (12 guides, 1080 and 360) were
+  uploaded on 2026-10-22; existing objects are skipped without `--force`.
 
 ### Renditions
 
