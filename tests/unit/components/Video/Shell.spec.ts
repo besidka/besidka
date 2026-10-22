@@ -202,6 +202,17 @@ describe('Video/Shell', () => {
       }
     })
 
+    it('positions the settings menu against the viewport, not the player',
+      async () => {
+        const wrapper = await mountShell()
+
+        await waitForPlayerReady(wrapper)
+
+        const menu = wrapper.find('[data-testid="video-settings-menu"]')
+
+        expect(menu.element).toHaveProperty('boundary', 'viewport')
+      })
+
     it('limits the lean hotkeys to playback, seek, mute, fullscreen and PiP',
       async () => {
         const full = await mountShell()

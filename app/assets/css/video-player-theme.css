@@ -15,7 +15,7 @@
   --video-popup-shadow: 0 1px 2px rgb(0 0 0 / 0.15), 0 8px 24px -8px rgb(0 0 0 / 0.25);
   --media-font-family: inherit;
   --media-tooltip-side-offset: 10px;
-  --media-popover-side-offset: 10px;
+  --media-popover-side-offset: 18px;
   --media-tooltip-boundary-offset: 8px;
   --media-popover-boundary-offset: 8px;
 
@@ -702,6 +702,7 @@
     --video-control-spacing: 6px;
     --video-font-size: 0.75rem;
     --video-font-size-time: 0.6875rem;
+    --media-popover-side-offset: 12px;
   }
 
   .landing-player .video-controls__content {

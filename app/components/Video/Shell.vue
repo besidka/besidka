@@ -193,6 +193,7 @@
                     :id="ids.menu"
                     side="top"
                     align="end"
+                    boundary="viewport"
                     class="video-menu"
                     data-testid="video-settings-menu"
                   >

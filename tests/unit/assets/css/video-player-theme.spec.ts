@@ -98,4 +98,26 @@ describe('video-player-theme.css', () => {
         return /background\s*:\s*#fff\s*;/.test(block)
       })).toBe(false)
   })
+
+  it('caps the settings menu by the space available in its boundary', () => {
+    expectDeclaration(
+      '.landing-player .video-menu',
+      /max-height\s*:\s*min\(var\(--media-menu-available-height,\s*20rem\),\s*20rem\)\s*;/,
+    )
+  })
+
+  it('scrolls an overflowing menu page inside the capped menu', () => {
+    expectDeclaration(
+      '.landing-player .video-menu__page',
+      /max-height\s*:\s*inherit\s*;/,
+    )
+    expectDeclaration(
+      '.landing-player .video-menu__page',
+      /overflow\s*:\s*auto\s*;/,
+    )
+  })
+
+  it('does not clip the player so menus can leave the 16:9 frame', () => {
+    expectDeclaration('.landing-player', /overflow\s*:\s*visible\s*;/)
+  })
 })

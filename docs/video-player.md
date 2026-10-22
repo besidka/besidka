@@ -383,7 +383,9 @@ is the whole space above the button (about 460px on a phone), the menu keeps
 its `20rem` cap from `.video-menu`, and a viewport shorter than the menu
 falls back to the internal scroll of `.video-menu__page` (`max-height:
 inherit`, `overflow: auto`). Fullscreen works the same way because the
-viewport is then the screen. `tests/unit/assets/css/video-player-theme.spec.ts`
+viewport is then the screen. `--media-popover-side-offset` is 18px (12px on
+phones) so the menu clears the control bar, whose padding puts the button
+11px below the bar edge. `tests/unit/assets/css/video-player-theme.spec.ts`
 and `Shell.spec.ts` pin the three pieces.
 
 ### Preview card clamp
