@@ -438,7 +438,10 @@ describe('Video/Shell', () => {
     })
 
     function getOptionGroups(wrapper: VueWrapper) {
-      return wrapper.findAll('.js-video-custom-options').map((group) => {
+      return wrapper.findAll([
+        '[data-testid="video-quality-options"]',
+        '[data-testid="video-speed-options"]',
+      ].join(', ')).map((group) => {
         return group.element as HTMLElement & {
           publishMenuOptionState?: (...args: unknown[]) => void
         }
