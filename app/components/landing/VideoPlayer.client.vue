@@ -3,59 +3,84 @@
     class="w-full"
     :aria-label="caption || 'Besidka demo video'"
   >
-    <div
-      ref="containerRef"
-      class="landing-player js-landing-player relative w-full aspect-video
-        rounded-2xl bg-base-300
-        ring-1 ring-base-content/10 shadow-xl"
+    <VideoShell
+      variant="full"
+      container-class="js-landing-player shadow-xl"
+      :qualities="qualityOptions"
+      :selected-quality="selectedQualityValue"
+      :speeds="SPEED_OPTIONS"
+      :selected-speed="String(currentSpeed)"
+      @ready="onPlayerReady"
+      @failed="fallbackToNative"
+      @select-quality="onSelectQuality"
+      @select-speed="onSelectSpeed"
     >
       <video
         ref="videoRef"
-        class="w-full h-full"
+        class="video-media"
         playsinline
         preload="metadata"
         crossorigin="anonymous"
+        :src="currentSrc"
         :poster="poster || undefined"
+        data-testid="video-media"
       >
+        <track
+          v-for="captionTrack in captions"
+          :key="captionTrack.src"
+          kind="captions"
+          :src="captionTrack.src"
+          :srclang="captionTrack.srclang"
+          :label="captionTrack.label"
+        >
+        <track
+          v-if="chaptersTrackUrl"
+          kind="chapters"
+          srclang="en"
+          label="Chapters"
+          :src="chaptersTrackUrl"
+          default
+        >
+        <track
+          v-if="thumbnailsTrackUrl"
+          kind="metadata"
+          label="thumbnails"
+          :src="thumbnailsTrackUrl"
+          default
+        >
         <p class="sr-only">
           Your browser does not support the video element.
         </p>
       </video>
 
-      <VideoProgressPreview
-        :target="plyrRef"
-        :visible="!!sprite && preview.visible"
-        :label="preview.label"
-        :time-label="preview.timeLabel"
-        :overlay-style="overlayStyle"
-        :thumb-style="thumbStyle"
-      />
-
-      <div
-        v-if="!isReady && !hasError"
-        class="absolute inset-0 z-10 flex items-center justify-center
-          overflow-hidden rounded-2xl"
-        :class="{ 'skeleton skeleton--default': !poster }"
-        aria-hidden="true"
-      >
-        <img
-          v-if="poster"
-          :src="poster"
-          alt=""
-          decoding="async"
-          data-testid="player-loading-poster"
-          class="absolute inset-0 size-full object-cover"
+      <template #overlay>
+        <div
+          v-if="!isReady && !hasError"
+          class="absolute inset-0 z-10 flex items-center justify-center
+            overflow-hidden rounded-2xl"
+          :class="{ 'skeleton skeleton--default': !poster }"
+          aria-hidden="true"
+          data-testid="player-loading"
         >
-        <Icon
-          name="lucide:loader-circle"
-          size="32"
-          class="relative animate-spin"
-          :class="poster
-            ? 'text-white drop-shadow-md'
-            : 'text-base-content/40'"
-        />
-      </div>
-    </div>
+          <img
+            v-if="poster"
+            :src="poster"
+            alt=""
+            decoding="async"
+            data-testid="player-loading-poster"
+            class="absolute inset-0 size-full object-contain"
+          >
+          <Icon
+            name="lucide:loader-circle"
+            size="32"
+            class="relative animate-spin"
+            :class="poster
+              ? 'text-white drop-shadow-md'
+              : 'text-base-content/40'"
+          />
+        </div>
+      </template>
+    </VideoShell>
 
     <p
       v-if="caption"
@@ -67,14 +92,15 @@
 </template>
 
 <script setup lang="ts">
-import Plyr from 'plyr'
-import 'plyr/dist/plyr.css'
-import '~/assets/css/plyr-theme.css'
 import type {
   VideoQuality,
   VideoCaption,
   VideoMarker,
 } from '#shared/types/video.d'
+import type {
+  VideoMenuOption,
+  VideoShellReadyPayload,
+} from '~/types/video-player.d'
 import { toMarkerPoints } from '#shared/utils/video'
 
 const props = withDefaults(defineProps<{
@@ -100,6 +126,15 @@ const props = withDefaults(defineProps<{
 })
 
 const DEMO_TARGET = 'demo'
+const DEFAULT_QUALITY = 720
+const DEFAULT_SPEED = 1
+const SPEED_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
+const SPEED_OPTIONS: VideoMenuOption[] = SPEED_RATES.map((rate) => {
+  return {
+    value: String(rate),
+    label: rate === DEFAULT_SPEED ? 'Normal' : `${rate}×`,
+  }
+})
 
 const { track } = useLandingAnalytics()
 const {
@@ -109,48 +144,93 @@ const {
 } = useVideoWatchAnalytics(() => {
   return analyticsTarget()
 })
-const { isAllowed, onConsentChange } = useCookieConsent()
-
-const DEFAULT_QUALITY = 720
 
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
-const containerRef = shallowRef<HTMLElement | null>(null)
-const plyrRef = shallowRef<HTMLElement | null>(null)
 const isReady = shallowRef<boolean>(false)
 const hasError = shallowRef<boolean>(false)
+const currentSpeed = shallowRef<number>(DEFAULT_SPEED)
+
+const sortedQualities = computed<VideoQuality[]>(() => {
+  return [...props.qualities].sort((a, b) => {
+    return b.size - a.size
+  })
+})
+
+const qualityOptions = computed<VideoMenuOption[]>(() => {
+  return sortedQualities.value.map((quality) => {
+    return { value: String(quality.size), label: `${quality.size}p` }
+  })
+})
+
+const currentQuality = shallowRef<number | null>(defaultQualitySize())
+
+const currentSrc = computed<string>(() => {
+  const quality = sortedQualities.value.find((item) => {
+    return item.size === currentQuality.value
+  })
+
+  return quality?.src ?? props.src
+})
+
+const selectedQualityValue = computed<string>(() => {
+  return currentQuality.value === null ? '' : String(currentQuality.value)
+})
 
 const markerPoints = toMarkerPoints(props.markers)
 
-let player: Plyr | null = null
+interface PendingQualitySwitch {
+  listener: () => void
+  resumeTime: number
+  wasPaused: boolean
+  rate: number
+}
+
 let hasTrackedPlay = false
 let hasAppliedStartAt = false
+let pendingQualitySwitch: PendingQualitySwitch | null = null
 
 const {
-  sprite,
-  preview,
-  overlayStyle,
-  thumbStyle,
-  attach: attachProgressPreview,
-  dispose: disposeProgressPreview,
-} = useVideoProgressPreview({
-  containerRef,
-  plyrRef,
+  chaptersTrackUrl,
+  thumbnailsTrackUrl,
+  attach: attachTimeline,
+} = useVideoTimeline({
+  videoRef,
   markerPoints,
-  isEnabled: props.thumbnails,
+  isThumbnailsEnabled: props.thumbnails,
   getThumbnailSource: () => {
     return props.qualities.find((quality) => {
       return quality.size === DEFAULT_QUALITY
     })?.src ?? props.src
   },
-  seekTo: (time) => {
-    if (player) {
-      player.currentTime = time
-    }
-  },
-  getDuration: () => {
-    return player?.duration ?? 0
-  },
 })
+
+const { attach: attachPreferences, persist: persistPreferences }
+  = useVideoPlayerPreferences({
+    getQuality: () => {
+      return currentQuality.value
+    },
+    getSpeed: () => {
+      return videoRef.value?.playbackRate ?? DEFAULT_SPEED
+    },
+    applyQuality: (size) => {
+      selectQuality(size)
+    },
+    applySpeed: (rate) => {
+      applySpeed(rate)
+    },
+  })
+
+function defaultQualitySize(): number | null {
+  const sizes = sortedQualities.value.map((quality) => {
+    return quality.size
+  })
+
+  if (!sizes.length) {
+    return null
+  }
+
+  return sizes.includes(DEFAULT_QUALITY) ? DEFAULT_QUALITY : sizes[0]!
+}
 
 function analyticsTarget(): string {
   return props.guideProvider ?? DEMO_TARGET
@@ -176,197 +256,176 @@ function trackFirstPlay() {
   track('video_play', { target: DEMO_TARGET, value: 1, trigger: 'user' })
 }
 
-function sortedQualities(): VideoQuality[] {
-  return [...props.qualities].sort((a, b) => {
-    return b.size - a.size
-  })
-}
+function applySpeed(rate: number) {
+  const video = videoRef.value
 
-function buildSources(): Plyr.Source[] {
-  const qualities = sortedQualities()
-
-  if (qualities.length) {
-    return qualities.map((quality) => {
-      return { src: quality.src, type: 'video/mp4', size: quality.size }
-    })
-  }
-
-  return [{ src: props.src, type: 'video/mp4' }]
-}
-
-function buildTracks(): Plyr.Track[] {
-  return props.captions.map((caption) => {
-    return {
-      kind: 'captions',
-      label: caption.label,
-      srcLang: caption.srclang,
-      src: caption.src,
-      default: caption.default ?? false,
-    }
-  })
-}
-
-function buildOptions(): Plyr.Options {
-  const sizes = sortedQualities().map((quality) => {
-    return quality.size
-  })
-
-  const options: Plyr.Options = {
-    controls: [
-      'play-large',
-      'play',
-      'progress',
-      'current-time',
-      'mute',
-      'volume',
-      'captions',
-      'settings',
-      'pip',
-      'airplay',
-      'fullscreen',
-    ],
-    settings: ['captions', 'quality', 'speed'],
-    speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-    captions: { active: false, language: 'en', update: false },
-    fullscreen: { enabled: true, iosNative: true },
-    tooltips: { controls: true, seek: false },
-    clickToPlay: true,
-    ratio: '16:9',
-    storage: { enabled: isAllowed('preferences'), key: 'plyr' },
-  }
-
-  if (sizes.length) {
-    options.quality = {
-      default: sizes.includes(DEFAULT_QUALITY) ? DEFAULT_QUALITY : sizes[0]!,
-      options: sizes,
-    }
-  }
-
-  if (markerPoints.length) {
-    options.markers = { enabled: true, points: markerPoints }
-  }
-
-  return options
-}
-
-function keepMetadataPreload() {
-  const media = containerRef.value?.querySelector('video')
-
-  if (media) {
-    media.preload = 'metadata'
-  }
-}
-
-function applyStartAt(instance: Plyr) {
-  if (hasAppliedStartAt || props.startAt === undefined) {
+  if (!video || !SPEED_RATES.includes(rate)) {
     return
   }
 
-  if (!instance.duration || props.startAt >= instance.duration) {
+  video.defaultPlaybackRate = rate
+  video.playbackRate = rate
+}
+
+function syncCurrentSpeed() {
+  currentSpeed.value = videoRef.value?.playbackRate ?? DEFAULT_SPEED
+}
+
+function isValidStartAt(startAt: number | undefined): startAt is number {
+  return startAt !== undefined && Number.isFinite(startAt) && startAt >= 0
+}
+
+function cancelPendingQualitySwitch(): PendingQualitySwitch | null {
+  const pending = pendingQualitySwitch
+
+  pendingQualitySwitch = null
+
+  if (pending) {
+    videoRef.value?.removeEventListener('loadedmetadata', pending.listener)
+  }
+
+  return pending
+}
+
+function selectQuality(size: number) {
+  const video = videoRef.value
+  const isKnown = sortedQualities.value.some((quality) => {
+    return quality.size === size
+  })
+
+  if (!video || !isKnown || size === currentQuality.value) {
+    return
+  }
+
+  const mediaElement: HTMLVideoElement = video
+  const previous = cancelPendingQualitySwitch()
+  const startAt = props.startAt
+  const resumeTime = previous?.resumeTime
+    ?? (!hasAppliedStartAt && isValidStartAt(startAt)
+      ? startAt
+      : video.currentTime)
+  const wasPaused = previous?.wasPaused ?? video.paused
+  const rate = previous?.rate ?? video.playbackRate
+
+  async function resumePlayback() {
+    if (pendingQualitySwitch?.listener === resumePlayback) {
+      pendingQualitySwitch = null
+    }
+
+    const hasKnownDuration = Number.isFinite(mediaElement.duration)
+
+    mediaElement.currentTime = hasKnownDuration
+      && resumeTime >= mediaElement.duration
+      ? 0
+      : resumeTime
+    mediaElement.defaultPlaybackRate = rate
+    mediaElement.playbackRate = rate
+    syncCurrentSpeed()
+
+    if (wasPaused) {
+      return
+    }
+
+    try {
+      await mediaElement.play()
+    } catch {
+      return
+    }
+  }
+
+  pendingQualitySwitch = {
+    listener: resumePlayback,
+    resumeTime,
+    wasPaused,
+    rate,
+  }
+  mediaElement.addEventListener('loadedmetadata', resumePlayback, {
+    once: true,
+  })
+  currentQuality.value = size
+}
+
+function onSelectQuality(value: string) {
+  selectQuality(Number(value))
+  persistPreferences()
+}
+
+function onSelectSpeed(value: string) {
+  applySpeed(Number(value))
+}
+
+function applyStartAt() {
+  const video = videoRef.value
+
+  if (!video || hasAppliedStartAt || props.startAt === undefined) {
+    return
+  }
+
+  if (
+    video.readyState < HTMLMediaElement.HAVE_METADATA
+    || !Number.isFinite(video.duration)
+    || props.startAt >= video.duration
+  ) {
     return
   }
 
   hasAppliedStartAt = true
-  instance.currentTime = props.startAt
+  video.currentTime = props.startAt
 }
 
-function registerListeners(instance: Plyr) {
-  instance.on('ready', () => {
-    isReady.value = true
-    keepMetadataPreload()
-    plyrRef.value = containerRef.value?.querySelector('.plyr') ?? null
-    attachProgressPreview()
-    applyStartAt(instance)
-  })
+useEventListener(videoRef, 'loadedmetadata', applyStartAt)
 
-  instance.on('loadedmetadata', () => {
-    applyStartAt(instance)
-  })
+useEventListener(videoRef, 'loadedmetadata', syncCurrentSpeed)
 
-  instance.on('play', () => {
-    trackFirstPlay()
-    startWatch('user', instance.currentTime)
-  })
+tryOnScopeDispose(cancelPendingQualitySwitch)
 
-  instance.on('timeupdate', () => {
-    updateWatch(instance.currentTime, instance.duration)
-  })
+useEventListener(videoRef, 'ratechange', syncCurrentSpeed)
 
-  instance.on('pause', () => {
-    endWatch(instance.ended ? 'ended' : 'pause')
-  })
+useEventListener(videoRef, 'play', () => {
+  const video = videoRef.value
 
-  instance.on('ended', () => {
-    endWatch('ended')
-    track('video_complete', { target: analyticsTarget() })
-  })
-}
+  trackFirstPlay()
+  startWatch('user', video?.currentTime)
+})
 
-function setPlyrStorageEnabled(enabled: boolean) {
-  if (!player) {
-    return
-  }
+useEventListener(videoRef, 'timeupdate', () => {
+  const video = videoRef.value
 
-  const storage = (player as unknown as { storage: { enabled: boolean } })
-    .storage
-
-  storage.enabled = enabled
-}
-
-onConsentChange(({ granted, denied }) => {
-  if (granted.includes('preferences')) {
-    setPlyrStorageEnabled(true)
-  }
-
-  if (denied.includes('preferences')) {
-    setPlyrStorageEnabled(false)
-    localStorage.removeItem('plyr')
+  if (video) {
+    updateWatch(video.currentTime, video.duration)
   }
 })
 
-/** Native HTML5 fallback when Plyr fails to initialize. */
-function fallbackToNative(element: HTMLVideoElement) {
+useEventListener(videoRef, 'pause', () => {
+  endWatch(videoRef.value?.ended ? 'ended' : 'pause')
+})
+
+useEventListener(videoRef, 'ended', () => {
+  endWatch('ended')
+  track('video_complete', { target: analyticsTarget() })
+})
+
+function onPlayerReady({ player, timeSlider }: VideoShellReadyPayload) {
+  isReady.value = true
+  attachTimeline(timeSlider)
+  attachPreferences(player)
+  applyStartAt()
+}
+
+/** Native HTML5 fallback when the Video.js elements fail to load. */
+function fallbackToNative() {
+  const video = videoRef.value
+
   hasError.value = true
-  element.controls = true
 
-  if (!element.src && props.src) {
-    element.src = props.src
+  if (!video) {
+    return
+  }
+
+  video.controls = true
+
+  if (!video.getAttribute('src') && props.src) {
+    video.src = props.src
   }
 }
-
-onMounted(() => {
-  const element = videoRef.value
-
-  if (!element) {
-    return
-  }
-
-  try {
-    player = new Plyr(element, buildOptions())
-  } catch {
-    fallbackToNative(element)
-
-    return
-  }
-
-  registerListeners(player)
-
-  player.source = {
-    type: 'video',
-    title: 'Besidka demo',
-    poster: props.poster,
-    sources: buildSources(),
-    tracks: buildTracks(),
-  }
-})
-
-onUnmounted(() => {
-  plyrRef.value = null
-  disposeProgressPreview()
-
-  if (player) {
-    player.destroy()
-    player = null
-  }
-})
 </script>

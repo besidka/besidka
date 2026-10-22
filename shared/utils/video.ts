@@ -49,7 +49,7 @@ export function parseTimecodeToSeconds(timecode: string): number | null {
 }
 
 /**
- * Convert authored markers into Plyr marker points: timecodes resolved to
+ * Convert authored markers into chapter points: timecodes resolved to
  * seconds, invalid entries dropped, and the result sorted by time.
  */
 export function toMarkerPoints(

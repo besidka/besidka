@@ -97,7 +97,7 @@
             height="1080"
             loading="lazy"
             decoding="async"
-            class="w-full aspect-video rounded-2xl object-cover bg-base-300
+            class="w-full aspect-video rounded-2xl object-contain bg-base-300
               ring-1 ring-base-content/10 shadow-xl"
           >
           <div

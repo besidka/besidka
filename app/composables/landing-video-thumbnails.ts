@@ -8,10 +8,8 @@ import { Input, UrlSource, MP4, CanvasSink } from 'mediabunny'
  * WebCodecs — no full download, no FFmpeg. Frames are composited into one
  * sprite canvas exposed as an object URL.
  *
- * The player renders its own hover overlay from this sprite (background-image
- * + background-position) rather than using Plyr's `previewThumbnails`, because
- * Plyr concatenates a path prefix onto non-http(s) image URLs, which breaks
- * `blob:` sprites generated on the client.
+ * The player exposes the sprite to Video.js as a Blob-URL storyboard track
+ * (`#xywh=` cues) so the time slider's native thumbnail preview renders it.
  *
  * If mediabunny/WebCodecs is unavailable it falls back to seeking a hidden
  * <video> element; if both fail the player renders without hover previews.

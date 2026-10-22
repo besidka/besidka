@@ -165,11 +165,11 @@ export default defineI18nLocale(() => ({
           + 'so it is pre-loaded on your next chat.',
         duration: 'Until deleted',
       },
-      'plyr': {
+      'video-player': {
         description:
-          'Stores video-player preferences such as volume '
-          + 'and playback speed (used by the Plyr player on '
-          + 'the home page).',
+          'Stores video-player preferences such as volume, '
+          + 'playback speed, quality and captions (used by the '
+          + 'video player on the home page and key guides).',
         duration: 'Until deleted',
       },
       'sidebar-pinned': {

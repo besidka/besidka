@@ -434,7 +434,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
-    'tests/unit/assets/css/plyr-theme.spec.ts',
+    'tests/unit/assets/css/video-player-theme.spec.ts',
+    'tests/unit/components/Video/Shell.spec.ts',
+    'tests/unit/composables/video-timeline.spec.ts',
+    'tests/unit/composables/video-player-preferences.spec.ts',
+    'tests/unit/plugins/video-legacy-plyr-cleanup.client.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/unit/components/landing/FeatureGrid.spec.ts',
     'tests/unit/components/landing/MessageBubble.spec.ts',
@@ -559,6 +563,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/guides/[slug].spec.ts',
     'tests/unit/composables/key-guide-analytics.spec.ts',
     'tests/unit/composables/video-watch-analytics.spec.ts',
+    'tests/unit/composables/video-timeline.spec.ts',
+    'tests/unit/components/Video/Shell.spec.ts',
+    'tests/unit/assets/css/video-player-theme.spec.ts',
     'tests/unit/utils/key-guide-video.spec.ts',
     'tests/unit/components/Profile/Keys/Guide.spec.ts',
     'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
@@ -1111,12 +1118,8 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/video-progress-preview\.ts|app\/components\/Video\/.*\.vue)$/,
-      tests: landingTests,
-    },
-    {
-      pattern: /^app\/assets\/css\/plyr-theme\.css$/,
-      tests: landingTests,
+        /^(app\/components\/Video\/.*\.vue|app\/composables\/(video-timeline|video-player-preferences)\.ts|app\/plugins\/video-legacy-plyr-cleanup\.client\.ts|app\/utils\/videojs-elements\.ts|app\/types\/video-player\.d\.ts|app\/assets\/css\/video-player-theme\.css)$/,
+      tests: [...landingTests, ...profileKeyGuideTests],
     },
     {
       pattern: /^app\/components\/Chat\/(Message|ContextMenu\.client)\.vue$/,

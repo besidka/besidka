@@ -1,41 +1,51 @@
 <template>
   <div
     ref="containerRef"
-    class="landing-player relative w-full aspect-video
-      rounded-2xl bg-base-300 ring-1 ring-base-content/10"
+    class="w-full"
   >
-    <video
-      ref="videoRef"
-      class="size-full"
-      muted
-      loop
-      playsinline
-      preload="none"
-      :src="src"
-      :poster="poster || undefined"
-      :aria-label="label"
+    <VideoShell
+      variant="lean"
+      @ready="onPlayerReady"
+      @failed="fallbackToNative"
     >
-      <p class="sr-only">
-        Your browser does not support the video element.
-      </p>
-    </video>
-
-    <VideoProgressPreview
-      :target="plyrRef"
-      :visible="!!sprite && preview.visible"
-      :label="preview.label"
-      :time-label="preview.timeLabel"
-      :overlay-style="overlayStyle"
-      :thumb-style="thumbStyle"
-    />
+      <video
+        ref="videoRef"
+        class="video-media"
+        muted
+        loop
+        playsinline
+        preload="none"
+        :src="src"
+        :poster="poster || undefined"
+        :aria-label="label"
+        data-testid="video-media"
+      >
+        <track
+          v-if="chaptersTrackUrl"
+          kind="chapters"
+          srclang="en"
+          label="Chapters"
+          :src="chaptersTrackUrl"
+          default
+        >
+        <track
+          v-if="thumbnailsTrackUrl"
+          kind="metadata"
+          label="thumbnails"
+          :src="thumbnailsTrackUrl"
+          default
+        >
+        <p class="sr-only">
+          Your browser does not support the video element.
+        </p>
+      </video>
+    </VideoShell>
   </div>
 </template>
 
 <script setup lang="ts">
-import Plyr from 'plyr'
-import 'plyr/dist/plyr.css'
-import '~/assets/css/plyr-theme.css'
 import type { VideoMarker } from '#shared/types/video.d'
+import type { VideoShellReadyPayload } from '~/types/video-player.d'
 import { toMarkerPoints } from '#shared/utils/video'
 import { canAutoplayGuideVideo } from '~/utils/key-guide-video'
 
@@ -54,7 +64,12 @@ const emit = defineEmits<{
   failed: []
 }>()
 
+interface WebKitPresentationVideo extends HTMLVideoElement {
+  webkitPresentationMode?: string
+}
+
 const VISIBILITY_THRESHOLD = 0.5
+const WEBKIT_PIP_MODE = 'picture-in-picture'
 
 const { trackGuideVideoPlay } = useKeyGuideAnalytics()
 const {
@@ -68,12 +83,11 @@ const {
 
 const containerRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
-const plyrRef = shallowRef<HTMLElement | null>(null)
 
 const canAutoplay = canAutoplayGuideVideo()
 const markerPoints = toMarkerPoints(props.markers)
 
-let player: Plyr | null = null
+let isPlayerReady = false
 let isVisible = false
 let isAutoplayRequested = false
 let isProgrammaticPause = false
@@ -82,63 +96,62 @@ let isPlayPending = false
 let wasMuted = true
 
 const {
-  sprite,
-  preview,
-  overlayStyle,
-  thumbStyle,
-  attach: attachProgressPreview,
-  dispose: disposeProgressPreview,
-} = useVideoProgressPreview({
-  containerRef,
-  plyrRef,
+  chaptersTrackUrl,
+  thumbnailsTrackUrl,
+  attach: attachTimeline,
+} = useVideoTimeline({
+  videoRef,
   markerPoints,
-  isEnabled: true,
+  isThumbnailsEnabled: true,
   getThumbnailSource: () => {
     return props.src
   },
-  seekTo: (time) => {
-    if (player) {
-      player.currentTime = time
-    }
-  },
-  getDuration: () => {
-    return player?.duration ?? 0
-  },
 })
 
-async function requestAutoplay() {
+function isPictureInPicture(video: HTMLVideoElement): boolean {
+  if (document.pictureInPictureElement === video) {
+    return true
+  }
+
+  return (video as WebKitPresentationVideo)
+    .webkitPresentationMode === WEBKIT_PIP_MODE
+}
+
+async function requestAutoplay(video: HTMLVideoElement) {
   isAutoplayRequested = true
 
   try {
-    await player?.play()
-  } catch (_exception) {
+    await video.play()
+  } catch {
     isAutoplayRequested = false
   }
 }
 
 function syncPlayback() {
-  if (!player || !canAutoplay) {
+  const video = videoRef.value
+
+  if (!video || !isPlayerReady || !canAutoplay) {
     return
   }
 
   if (!isVisible) {
-    if (player.pip) {
+    if (isPictureInPicture(video)) {
       return
     }
 
-    if (!player.paused) {
+    if (!video.paused) {
       isProgrammaticPause = true
-      player.pause()
+      video.pause()
     }
 
     return
   }
 
-  if (hasUserPaused || !player.paused) {
+  if (hasUserPaused || !video.paused) {
     return
   }
 
-  requestAutoplay()
+  requestAutoplay(video)
 }
 
 useIntersectionObserver(
@@ -162,108 +175,83 @@ useEventListener(videoRef, 'error', () => {
 useEventListener(videoRef, 'leavepictureinpicture', syncPlayback)
 useEventListener(videoRef, 'webkitpresentationmodechanged', syncPlayback)
 
-function registerListeners(instance: Plyr) {
-  instance.on('ready', () => {
-    plyrRef.value = containerRef.value?.querySelector('.plyr') ?? null
-    attachProgressPreview()
-  })
+useEventListener(videoRef, 'playing', () => {
+  const video = videoRef.value
 
-  instance.on('playing', () => {
-    if (!isPlayPending) {
-      return
-    }
+  if (!video || !isPlayPending) {
+    return
+  }
 
-    isPlayPending = false
+  isPlayPending = false
 
-    const isUserInitiated = !isAutoplayRequested
+  const isUserInitiated = !isAutoplayRequested
 
-    trackGuideVideoPlay(props.provider, isUserInitiated)
-    startWatch(
-      isUserInitiated || !instance.muted ? 'user' : 'autoplay',
-      instance.currentTime,
-    )
-    isAutoplayRequested = false
-  })
+  trackGuideVideoPlay(props.provider, isUserInitiated)
+  startWatch(
+    isUserInitiated || !video.muted ? 'user' : 'autoplay',
+    video.currentTime,
+  )
+  isAutoplayRequested = false
+})
 
-  instance.on('play', () => {
-    isPlayPending = true
+useEventListener(videoRef, 'play', () => {
+  isPlayPending = true
 
-    if (!isAutoplayRequested) {
-      hasUserPaused = false
-    }
-  })
+  if (!isAutoplayRequested) {
+    hasUserPaused = false
+  }
+})
 
-  instance.on('timeupdate', () => {
-    updateWatch(instance.currentTime, instance.duration)
-  })
+useEventListener(videoRef, 'timeupdate', () => {
+  const video = videoRef.value
 
-  instance.on('volumechange', () => {
-    const isUnmuted = wasMuted && !instance.muted
+  if (video) {
+    updateWatch(video.currentTime, video.duration)
+  }
+})
 
-    wasMuted = instance.muted
+useEventListener(videoRef, 'volumechange', () => {
+  const video = videoRef.value
 
-    if (isUnmuted && upgradeWatchToUser()) {
-      trackGuideVideoPlay(props.provider, true)
-    }
-  })
+  if (!video) {
+    return
+  }
 
-  instance.on('pause', () => {
-    isPlayPending = false
-    endWatch(isProgrammaticPause ? 'offscreen' : 'pause')
+  const isUnmuted = wasMuted && !video.muted
 
-    if (isProgrammaticPause) {
-      isProgrammaticPause = false
+  wasMuted = video.muted
 
-      return
-    }
+  if (isUnmuted && upgradeWatchToUser()) {
+    trackGuideVideoPlay(props.provider, true)
+  }
+})
 
-    hasUserPaused = true
-  })
+useEventListener(videoRef, 'pause', () => {
+  isPlayPending = false
+  endWatch(isProgrammaticPause ? 'offscreen' : 'pause')
+
+  if (isProgrammaticPause) {
+    isProgrammaticPause = false
+
+    return
+  }
+
+  hasUserPaused = true
+})
+
+function onPlayerReady({ timeSlider }: VideoShellReadyPayload) {
+  isPlayerReady = true
+  attachTimeline(timeSlider)
+  syncPlayback()
 }
 
-onMounted(() => {
-  const element = videoRef.value
+function fallbackToNative() {
+  const video = videoRef.value
 
-  if (!element) {
+  if (!video) {
     return
   }
 
-  try {
-    player = new Plyr(element, {
-      controls: [
-        'play-large',
-        'play',
-        'progress',
-        'mute',
-        'pip',
-        'fullscreen',
-      ],
-      markers: {
-        enabled: markerPoints.length > 0,
-        points: markerPoints,
-      },
-      muted: true,
-      loop: { active: true },
-      clickToPlay: true,
-      ratio: '16:9',
-      tooltips: { controls: true, seek: false },
-      fullscreen: { enabled: true, iosNative: true },
-      storage: { enabled: false },
-    })
-  } catch (_exception) {
-    element.controls = true
-
-    return
-  }
-
-  registerListeners(player)
-  syncPlayback()
-})
-
-onUnmounted(() => {
-  plyrRef.value = null
-  disposeProgressPreview()
-  player?.destroy()
-  player = null
-})
+  video.controls = true
+}
 </script>

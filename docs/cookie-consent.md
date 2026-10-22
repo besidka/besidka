@@ -965,40 +965,40 @@ is `SameSite=Lax`, so it is sent on the top-level OAuth callback navigation.
    change handler (see
    [Just-in-time prompt](#just-in-time-remember-your-preferences-prompt)).
 
-### Plyr VideoPlayer
+### Video player preferences
 
-`app/components/landing/VideoPlayer.client.vue` gates Plyr's `storage` option
-on the `preferences` consent, both at mount and reactively:
+`app/composables/video-player-preferences.ts` (`useVideoPlayerPreferences`,
+used by `app/components/landing/VideoPlayer.client.vue`) persists the Video.js
+player's volume, mute, speed, quality and captions choice as JSON under the
+localStorage key `video-player`. The key is declared in the `preferences`
+category manifest (`id: 'video-player'`). Video.js has no built-in persistence
+(https://github.com/videojs/v10/issues/944), so the composable stores it
+through `usePreferenceStorage()` like every other preference key:
 
 ```ts
-import Plyr from 'plyr'
+const nuxtApp = useNuxtApp()
+const preferenceStorage = usePreferenceStorage()
 
-const { isAllowed, onConsentChange } = useCookieConsent()
-
-let player: Plyr | null = null
-
-function initPlayer(element: HTMLElement) {
-  player = new Plyr(element, {
-    storage: { enabled: isAllowed('preferences'), key: 'plyr' },
-  })
-}
-
-onConsentChange(({ granted, denied }) => {
-  if (!player) return
-
-  if (granted.includes('preferences')) {
-    player.storage.enabled = true
-  }
-
-  if (denied.includes('preferences')) {
-    player.storage.enabled = false
-    localStorage.removeItem('plyr')
-  }
+nuxtApp.runWithContext(() => {
+  preferenceStorage.setItem('video-player', JSON.stringify(preferences))
 })
 ```
 
-Plyr's default `storageKey` is `'plyr'`, which is already declared in the
-`preferences` category manifest so the cleanup routine removes it on deny.
+`runWithContext` is needed because the writes happen in player-store
+callbacks, outside the Nuxt context that `useCookieConsent()` (called inside
+`setItem`) requires. While `preferences` is denied the values stay in the
+in-memory pending map (the player remembers them in-session), a grant flushes
+them through the gate plugin, and a deny removes the key through the module's
+cleanup. The composable has no consent listener of its own. The lean
+key-guide player does not persist anything. Player changes do not call
+`requestPersistence()`.
+
+The player used to be Plyr, which stored its settings under the `plyr` key
+(also declared in the manifest). That manifest entry was replaced by
+`video-player`, so the deny cleanup no longer covers `plyr`; the
+`app/plugins/video-legacy-plyr-cleanup.client.ts` plugin removes it once per
+app load through `removeLegacyPlyrPreferences()`, which clears values left by
+earlier visits. Architecture of the player: `docs/video-player.md`.
 
 ---
 

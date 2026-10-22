@@ -490,8 +490,9 @@ explainers above:
   (`parseVideoStartOffset()` in `shared/utils/video.ts`; `0` is valid, a
   repeated, negative, decimal or too-large value is ignored), passes it to
   `LandingVideoPlayer` as `startAt` and scrolls the video block into view on
-  mount. The player seeks once, when Plyr reports a known duration (`ready`
-  or `loadedmetadata`), and never calls `play()`, so there is no autoplay.
+  mount. The player seeks once, when the native `<video>` reports a known
+  duration (`loadedmetadata`, or the player's `ready` if metadata arrived
+  first), and never calls `play()`, so there is no autoplay.
   `?t=` URLs are not separate pages: `app.vue` derives canonical and
   `og:url` from `route.path` and `buildCanonicalUrl()` strips the query, and
   the sitemap comes from the `keyGuides` collection, so no `?t=` URL is

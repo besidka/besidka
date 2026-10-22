@@ -37,7 +37,7 @@ Issues are welcome. Code contributions are by invitation only; see
 - [Vercel AI SDK](https://ai-sdk.dev/docs)
 - [Evlog](https://evlog.dev/) (observability and logging)
 - [Mediabunny](https://mediabunny.dev/) (high-performance streaming video from a Cloudflare R2 bucket)
-- [Plyr](https://plyr.io/) (video player)
+- [Video.js](https://videojs.org/) v10 (video player)
 - [Pele](https://pele.run/) (Mermaid diagrams rendered to SVG)
 
 ## Features

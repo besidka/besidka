@@ -2,16 +2,16 @@
  * Landing demo video player types.
  *
  * These describe the `video` frontmatter object in content/index.md (edited in
- * Nuxt Studio) and are consumed by the themed Plyr player on the home page.
- * Kept framework-agnostic (no Plyr import) so they can be shared by the
- * content schema, the player component, and the thumbnail composable.
+ * Nuxt Studio) and are consumed by the themed Video.js player on the home
+ * page. Kept framework-agnostic (no player import) so they can be shared by
+ * the content schema, the player component, and the thumbnail composable.
  */
 
 /** A single selectable resolution for the quality menu. */
 export interface VideoQuality {
   /** Source URL, e.g. /videos/demo-720.mp4 served from CMS_BUCKET. */
   src: string
-  /** Frame height in pixels (Plyr keys the quality menu off this), e.g. 720. */
+  /** Frame height in pixels (the quality menu keys off this), e.g. 720. */
   size: number
   /** Optional human label; falls back to `${size}p` when omitted. */
   label?: string
@@ -37,7 +37,7 @@ export interface VideoMarker {
   label: string
 }
 
-/** Normalized marker with the timecode resolved to seconds for Plyr. */
+/** Normalized marker with the timecode resolved to seconds. */
 export interface VideoMarkerPoint {
   time: number
   label: string

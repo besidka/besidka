@@ -31,7 +31,6 @@ allowBuilds:
   core-js: false
   esbuild: true
   msw: false
-  plyr: false
   prisma: false
   sharp: true
   unrs-resolver: true

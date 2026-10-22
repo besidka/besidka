@@ -107,6 +107,12 @@
       "sourceType": "github",
       "computedHash": "7e297aaf887e11fdc03e52bdbf44974e161e8f7c393170ced7dc66cace4f6d46"
     },
+    "videojs": {
+      "source": "videojs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/videojs/SKILL.md",
+      "computedHash": "b4d248a0dcb01d24e5612c8318b8e30212127a0bcf39196dee49afefb7e2dedd"
+    },
     "vite": {
       "source": "onmax/nuxt-skills",
       "sourceType": "github",
