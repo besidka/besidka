@@ -34,6 +34,14 @@ function expectDeclaration(selector: string, declaration: RegExp) {
 }
 
 describe('video-player-theme.css', () => {
+  it('hides the media PiP button while the fallback button is rendered',
+    () => {
+      expectDeclaration(
+        '.landing-player .video-controls__bar[data-pip-fallback] media-pip-button',
+        /display\s*:\s*none\s*;/,
+      )
+    })
+
   it('does not crop the 16:9 frame with object-fit: cover', () => {
     expect(stylesheet).not.toMatch(/object-fit\s*:\s*cover/)
   })

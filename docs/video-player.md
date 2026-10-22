@@ -63,7 +63,7 @@ selectors in `video-player-theme.css` are scoped under `.landing-player`
 | `app/plugins/video-legacy-plyr-cleanup.client.ts` | Removes the legacy `plyr` localStorage key once per app load |
 | `app/utils/videojs-elements.ts` | Registers elements, icons and the i18n override |
 | `app/utils/video-speed.ts` | The shared speed list (`0.5 ... 2`, "Normal" for 1) both players feed to the shell |
-| `app/types/video-player.d.ts` | `VideoMenuOption`, `VideoShellReadyPayload` |
+| `app/types/video-player.d.ts` | `VideoMenuOption`, `VideoShellReadyPayload`, `WebKitPresentationVideo` |
 
 ### `Video/Shell.vue`
 
@@ -175,6 +175,7 @@ element.
 | No full-window fullscreen fallback | Native element fullscreen only. On iPhone Safari the video's native fullscreen presentation takes over with system controls, which matches Plyr's `iosNative` behavior |
 | Controls auto-hide delay not configurable ([#1728](https://github.com/videojs/v10/issues/1728)) | While a mouse pointer is over the control bar, the shell holds `store.requestControlsLock()` and releases it on `pointerleave`, so the bar and the preview never hide under the pointer (as in Plyr). Touch pointers are ignored |
 | Slider preview card clamps to the slider, not the player | `overflow="visible"` plus a CSS shift, see "Preview card clamp" |
+| Safari standalone web apps (installed Dock or Home Screen apps) report `pictureInPictureAvailability: 'unsupported'` even when the WebKit presentation-mode API exists, so `<media-pip-button>` hides there. Plyr showed a PiP button | Fallback button in `Shell.vue` (both variants), see "Safari web app PiP fallback" below. Unverified on a real device |
 | Captions: tracks flagged `default` show on load | Caption `<track>`s carry no `default`, so captions start off. The Off option reads "Disabled" through `registerI18n` |
 
 ### Starting quality
@@ -250,6 +251,37 @@ previous behavior of storing 720 on the first volume change is gone on purpose.
 
 Why the first `src` rather than a mid-play adaptive switch: see
 `docs/landing-studio.md`, "Why progressive MP4 on R2".
+
+### Safari web app PiP fallback
+
+`Video.js` deliberately reports `pictureInPictureAvailability: 'unsupported'` in
+Safari standalone web apps even when the API exists, and `<media-pip-button>`
+hides itself in that state. `Shell.vue` renders its own button
+(`js-video-pip-fallback`, `data-testid="video-pip-fallback-button"`, same
+classes, icons and tooltip as the media button) only when all of these hold:
+
+- the store's `pictureInPictureAvailability` is `'unsupported'`;
+- the `<video>` has `webkitSupportsPresentationMode` as a function and
+  `webkitSupportsPresentationMode('picture-in-picture') === true`;
+- the media has loaded metadata (`readyState >= HAVE_METADATA`).
+
+The check re-runs on every store change and on `loadstart`, `loadedmetadata`,
+`emptied` and `webkitpresentationmodechanged`. The click handler calls
+`webkitSetPresentationMode` with `picture-in-picture` or `inline` directly (the
+user gesture must not be lost to an await) and swallows a throw. While the
+fallback is rendered the bar carries `data-pip-fallback`, and the theme hides
+`media-pip-button`, because Video.js re-shows its own button as soon as the
+presentation mode is `picture-in-picture` (the store's `isPictureInPicture`
+turns true), and both must never be visible together. The guide player's
+offscreen logic already reads `webkitPresentationMode`, so a fallback entry
+keeps playing off screen and pauses when PiP closes.
+
+**Unverified on a real device.** It is not known whether WebKit actually allows
+picture-in-picture inside a standalone web app; Video.js disables the button
+there on purpose. If the owner reports that the button does nothing in the
+installed app, remove the fallback (the template block, `syncPipFallback`,
+`togglePipFallback`, the CSS rule, the types and the tests) and keep the
+Video.js behavior.
 
 ### Chapters, thumbnails and snap-seek
 
@@ -368,7 +400,13 @@ cookie policy and `i18n/locales/cookie-consent.*.ts`.
    `<video>` directly. Re-test once the store tracks `ratechange` reliably.
 4. **Store `target` as the ready signal.** `ready` relies on `store.target`
    and `store.subscribe`. Re-check them against the changelog.
-5. **Cue-point and slider internals.** Segment gaps, the slider preview and the
+5. **Safari web app PiP fallback.** It depends on `store.pictureInPictureAvailability`
+   being `'unsupported'` and on the `webkit*PresentationMode` members; both
+   are undocumented for this use. It is unverified on a real device (see
+   "Safari web app PiP fallback"): remove it if the button is inert there. If a
+   release changes how Video.js reports availability in standalone web apps,
+   re-check that the media button and the fallback are never both visible.
+6. **Cue-point and slider internals.** Segment gaps, the slider preview and the
    `data-controls-visible` caption shift in the theme target current element
    structure and attributes.
 

@@ -9,13 +9,10 @@ import {
 import type { MediaState } from '../../../../setup/helpers/video-player'
 import GuideVideo
   from '../../../../../app/components/Profile/Keys/GuideVideo.client.vue'
+import type { WebKitPresentationVideo } from '../../../../../app/types/video-player.d'
 
 interface ObserverInstance {
   callback: IntersectionObserverCallback
-}
-
-interface WebKitPresentationVideo extends HTMLVideoElement {
-  webkitPresentationMode?: string
 }
 
 const mocks = vi.hoisted(() => {
@@ -453,6 +450,43 @@ describe('Profile/Keys/GuideVideo.client', () => {
       setVisibility(false)
 
       expect(pause).not.toHaveBeenCalled()
+    })
+
+    it('keeps playing off screen when the WebKit fallback button enters '
+      + 'picture-in-picture', async () => {
+      const { wrapper, video, pause } = await mountVideo()
+      const webKitVideo = video as WebKitPresentationVideo
+
+      webKitVideo.webkitPresentationMode = 'inline'
+      Object.defineProperty(webKitVideo, 'webkitSupportsPresentationMode', {
+        configurable: true,
+        value: () => {
+          return true
+        },
+      })
+      Object.defineProperty(webKitVideo, 'webkitSetPresentationMode', {
+        configurable: true,
+        value: (mode: string) => {
+          webKitVideo.webkitPresentationMode = mode
+          video.dispatchEvent(new Event('webkitpresentationmodechanged'))
+        },
+      })
+      media.readyState = 1
+      video.dispatchEvent(new Event('loadedmetadata'))
+      await flushPromises()
+
+      setVisibility(true)
+      await wrapper.get('[data-testid="video-pip-fallback-button"]')
+        .trigger('click')
+      setVisibility(false)
+
+      expect(webKitVideo.webkitPresentationMode).toBe('picture-in-picture')
+      expect(pause).not.toHaveBeenCalled()
+
+      webKitVideo.webkitPresentationMode = 'inline'
+      video.dispatchEvent(new Event('webkitpresentationmodechanged'))
+
+      expect(pause).toHaveBeenCalledTimes(1)
     })
 
     it('pauses again once picture-in-picture closes off screen',

@@ -18,3 +18,9 @@ export interface NetworkConnectionHints {
 export interface NavigatorWithConnection extends Navigator {
   connection?: NetworkConnectionHints
 }
+
+export interface WebKitPresentationVideo extends HTMLVideoElement {
+  webkitSupportsPresentationMode?: (mode: string) => boolean
+  webkitSetPresentationMode?: (mode: string) => void
+  webkitPresentationMode?: string
+}

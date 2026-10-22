@@ -218,6 +218,10 @@
   display: block;
 }
 
+.landing-player .video-controls__bar[data-pip-fallback] media-pip-button {
+  display: none;
+}
+
 .landing-player .video-captions-button:not([data-active]) {
   opacity: 0.75;
 }

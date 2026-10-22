@@ -48,7 +48,10 @@
 
 <script setup lang="ts">
 import type { VideoMarker } from '#shared/types/video.d'
-import type { VideoShellReadyPayload } from '~/types/video-player.d'
+import type {
+  VideoShellReadyPayload,
+  WebKitPresentationVideo,
+} from '~/types/video-player.d'
 import { toMarkerPoints } from '#shared/utils/video'
 import { canAutoplayGuideVideo } from '~/utils/key-guide-video'
 import {
@@ -71,10 +74,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   failed: []
 }>()
-
-interface WebKitPresentationVideo extends HTMLVideoElement {
-  webkitPresentationMode?: string
-}
 
 const VISIBILITY_THRESHOLD = 0.5
 const WEBKIT_PIP_MODE = 'picture-in-picture'

@@ -8,6 +8,8 @@ import {
   installVideoPlayerEnvironment,
   waitForPlayerReady,
 } from '../../../setup/helpers/video-player'
+import type { MediaState } from '../../../setup/helpers/video-player'
+import type { WebKitPresentationVideo } from '../../../../app/types/video-player.d'
 import VideoShell from '../../../../app/components/Video/Shell.vue'
 
 const PLAYER_TIMEOUT_MS = 15000
@@ -47,6 +49,8 @@ const SHARED_TEST_IDS = [
   'video-pip-button',
   'video-fullscreen-button',
 ]
+
+let media: MediaState
 
 enableAutoUnmount(afterEach)
 
@@ -101,7 +105,7 @@ function dispatchValueChange(
 
 describe('Video/Shell', () => {
   beforeEach(() => {
-    installVideoPlayerEnvironment()
+    media = installVideoPlayerEnvironment().media
   })
 
   afterEach(() => {
@@ -642,6 +646,242 @@ describe('Video/Shell', () => {
       wrapper.unmount()
 
       expect(release).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('picture-in-picture fallback', () => {
+    const FALLBACK_TEST_ID = 'video-pip-fallback-button'
+    const WEBKIT_PIP_MEMBERS = [
+      'webkitSupportsPresentationMode',
+      'webkitSetPresentationMode',
+    ]
+
+    afterEach(() => {
+      for (const member of WEBKIT_PIP_MEMBERS) {
+        Reflect.deleteProperty(HTMLVideoElement.prototype, member)
+      }
+    })
+
+    function getVideo(wrapper: VueWrapper): WebKitPresentationVideo {
+      return wrapper.get('[data-testid="video-media"]')
+        .element as WebKitPresentationVideo
+    }
+
+    function stubWebKitPresentation(
+      video: WebKitPresentationVideo,
+      supportsPip: boolean = true,
+    ) {
+      const setPresentationMode = vi.fn((mode: string) => {
+        video.webkitPresentationMode = mode
+      })
+
+      video.webkitPresentationMode = 'inline'
+      Object.defineProperty(video, 'webkitSupportsPresentationMode', {
+        configurable: true,
+        value: vi.fn(() => {
+          return supportsPip
+        }),
+      })
+      Object.defineProperty(video, 'webkitSetPresentationMode', {
+        configurable: true,
+        value: setPresentationMode,
+      })
+
+      return setPresentationMode
+    }
+
+    async function loadMetadata(video: HTMLVideoElement) {
+      media.readyState = 1
+      video.dispatchEvent(new Event('loadedmetadata'))
+      await flushPromises()
+    }
+
+    async function mountWithWebKitPip(options: {
+      supportsPip?: boolean
+      variant?: 'full' | 'lean'
+    } = {}) {
+      const wrapper = await mountShell({ variant: options.variant ?? 'full' })
+
+      await waitForPlayerReady(wrapper)
+
+      const video = getVideo(wrapper)
+      const setPresentationMode = stubWebKitPresentation(
+        video,
+        options.supportsPip,
+      )
+
+      return { wrapper, video, setPresentationMode }
+    }
+
+    it('reports unsupported in the test environment', async () => {
+      const wrapper = await mountShell()
+
+      await waitForPlayerReady(wrapper)
+
+      expect(getPlayer(wrapper).store.pictureInPictureAvailability)
+        .toBe('unsupported')
+    })
+
+    it.each(['full', 'lean'] as const)(
+      'shows the fallback on the %s variant when Video.js reports '
+      + 'unsupported and WebKit can present PiP',
+      async (variant) => {
+        const { wrapper, video } = await mountWithWebKitPip({ variant })
+
+        expect(has(wrapper, FALLBACK_TEST_ID)).toBe(false)
+
+        await loadMetadata(video)
+
+        const button = wrapper.get(`[data-testid="${FALLBACK_TEST_ID}"]`)
+
+        expect(button.classes()).toContain('js-video-pip-fallback')
+        expect(button.attributes('aria-label'))
+          .toBe('Enter picture-in-picture')
+        expect(button.attributes('aria-pressed')).toBe('false')
+        expect(button.attributes('data-pip')).toBeUndefined()
+        expect(wrapper.get('.video-controls__bar')
+          .attributes('data-pip-fallback')).toBeDefined()
+      },
+    )
+
+    it('stays hidden until metadata has loaded', async () => {
+      const { wrapper, video } = await mountWithWebKitPip()
+
+      video.dispatchEvent(new Event('loadstart'))
+      await flushPromises()
+
+      expect(has(wrapper, FALLBACK_TEST_ID)).toBe(false)
+    })
+
+    it('stays hidden when the WebKit API is missing', async () => {
+      const wrapper = await mountShell()
+
+      await waitForPlayerReady(wrapper)
+      await loadMetadata(getVideo(wrapper))
+
+      expect(has(wrapper, FALLBACK_TEST_ID)).toBe(false)
+      expect(wrapper.get('.video-controls__bar')
+        .attributes('data-pip-fallback')).toBeUndefined()
+    })
+
+    it('stays hidden when WebKit cannot present picture-in-picture',
+      async () => {
+        const { wrapper, video } = await mountWithWebKitPip({
+          supportsPip: false,
+        })
+
+        await loadMetadata(video)
+
+        expect(has(wrapper, FALLBACK_TEST_ID)).toBe(false)
+      })
+
+    it('stays hidden when Video.js reports picture-in-picture available',
+      async () => {
+        Object.defineProperty(
+          HTMLVideoElement.prototype,
+          'webkitSupportsPresentationMode',
+          { configurable: true, value: () => true },
+        )
+        Object.defineProperty(
+          HTMLVideoElement.prototype,
+          'webkitSetPresentationMode',
+          { configurable: true, value: vi.fn() },
+        )
+        media.readyState = 1
+
+        const wrapper = await mountShell()
+
+        await waitForPlayerReady(wrapper)
+        await loadMetadata(getVideo(wrapper))
+
+        expect(getPlayer(wrapper).store.pictureInPictureAvailability)
+          .toBe('available')
+        expect(has(wrapper, FALLBACK_TEST_ID)).toBe(false)
+        expect(has(wrapper, 'video-pip-button')).toBe(true)
+        expect(wrapper.get('.video-controls__bar')
+          .attributes('data-pip-fallback')).toBeUndefined()
+      })
+
+    it('toggles the WebKit presentation mode from the click handler',
+      async () => {
+        const { wrapper, video, setPresentationMode }
+          = await mountWithWebKitPip()
+
+        await loadMetadata(video)
+
+        const button = wrapper.get(`[data-testid="${FALLBACK_TEST_ID}"]`)
+
+        await button.trigger('click')
+
+        expect(setPresentationMode).toHaveBeenLastCalledWith(
+          'picture-in-picture',
+        )
+
+        video.dispatchEvent(new Event('webkitpresentationmodechanged'))
+        await flushPromises()
+
+        await button.trigger('click')
+
+        expect(setPresentationMode).toHaveBeenLastCalledWith('inline')
+        expect(setPresentationMode).toHaveBeenCalledTimes(2)
+      })
+
+    it('reflects the presentation mode in the label, pressed state and icon',
+      async () => {
+        const { wrapper, video } = await mountWithWebKitPip()
+
+        await loadMetadata(video)
+
+        video.webkitPresentationMode = 'picture-in-picture'
+        video.dispatchEvent(new Event('webkitpresentationmodechanged'))
+        await flushPromises()
+
+        const button = wrapper.get(`[data-testid="${FALLBACK_TEST_ID}"]`)
+
+        expect(button.attributes('aria-label'))
+          .toBe('Exit picture-in-picture')
+        expect(button.attributes('aria-pressed')).toBe('true')
+        expect(button.attributes('data-pip')).toBeDefined()
+        expect(button.find('media-icon').exists()).toBe(true)
+
+        video.webkitPresentationMode = 'inline'
+        video.dispatchEvent(new Event('webkitpresentationmodechanged'))
+        await flushPromises()
+
+        expect(button.attributes('aria-label'))
+          .toBe('Enter picture-in-picture')
+        expect(button.attributes('aria-pressed')).toBe('false')
+        expect(button.attributes('data-pip')).toBeUndefined()
+      })
+
+    it('survives a presentation mode request that throws', async () => {
+      const { wrapper, video, setPresentationMode }
+        = await mountWithWebKitPip()
+
+      await loadMetadata(video)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      setPresentationMode.mockImplementation(() => {
+        throw new DOMException('Not allowed', 'NotAllowedError')
+      })
+
+      await expect(
+        wrapper.get(`[data-testid="${FALLBACK_TEST_ID}"]`).trigger('click'),
+      ).resolves.toBeUndefined()
+      expect(has(wrapper, FALLBACK_TEST_ID)).toBe(true)
+    })
+
+    it('hides the fallback again when the source is emptied', async () => {
+      const { wrapper, video } = await mountWithWebKitPip()
+
+      await loadMetadata(video)
+
+      expect(has(wrapper, FALLBACK_TEST_ID)).toBe(true)
+
+      media.readyState = 0
+      video.dispatchEvent(new Event('emptied'))
+      await flushPromises()
+
+      expect(has(wrapper, FALLBACK_TEST_ID)).toBe(false)
     })
   })
 })
