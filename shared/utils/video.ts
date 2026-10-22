@@ -121,3 +121,69 @@ export function parseVideoStartOffset(
 
   return offset
 }
+
+const CONSTRAINED_EFFECTIVE_TYPES = new Set(['slow-2g', '2g', '3g'])
+const MIN_DEVICE_PIXEL_RATIO = 1
+const MAX_DEVICE_PIXEL_RATIO = 2
+const VIDEO_ASPECT_RATIO = 9 / 16
+
+export interface InitialQualityInput {
+  sizes: number[]
+  playerWidth: number
+  devicePixelRatio: number
+  saveData?: boolean
+  effectiveType?: string
+}
+
+function clampDevicePixelRatio(devicePixelRatio: number): number {
+  if (!Number.isFinite(devicePixelRatio)) {
+    return MIN_DEVICE_PIXEL_RATIO
+  }
+
+  return Math.min(
+    MAX_DEVICE_PIXEL_RATIO,
+    Math.max(MIN_DEVICE_PIXEL_RATIO, devicePixelRatio),
+  )
+}
+
+/**
+ * Pick the rendition height a player should start on. A data-saver or slow
+ * connection gets the lowest rendition. Otherwise the target height is the
+ * rendered width times the pixel ratio (clamped to 2, so a 3x phone does not
+ * pull a rendition it cannot show) times 9/16, and the smallest rendition
+ * that covers it wins, or the largest when none does. Returns null when no
+ * rendition exists or the width cannot be measured, so the caller applies its
+ * own default.
+ */
+export function pickInitialQuality(
+  input: InitialQualityInput,
+): number | null {
+  const sizes = input.sizes.filter((size) => {
+    return Number.isFinite(size) && size > 0
+  }).sort((a, b) => {
+    return a - b
+  })
+
+  if (!sizes.length) {
+    return null
+  }
+
+  const isConstrained = input.saveData === true
+    || CONSTRAINED_EFFECTIVE_TYPES.has(input.effectiveType ?? '')
+
+  if (isConstrained) {
+    return sizes[0]!
+  }
+
+  if (!Number.isFinite(input.playerWidth) || input.playerWidth <= 0) {
+    return null
+  }
+
+  const targetHeight = input.playerWidth
+    * clampDevicePixelRatio(input.devicePixelRatio)
+    * VIDEO_ASPECT_RATIO
+
+  return sizes.find((size) => {
+    return size >= targetHeight
+  }) ?? sizes[sizes.length - 1]!
+}

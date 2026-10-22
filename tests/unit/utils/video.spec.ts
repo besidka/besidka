@@ -3,6 +3,7 @@ import {
   parseIsoDurationToSeconds,
   parseTimecodeToSeconds,
   parseVideoStartOffset,
+  pickInitialQuality,
   toMarkerPoints,
 } from '#shared/utils/video'
 
@@ -121,5 +122,134 @@ describe('parseVideoStartOffset', () => {
 
   it('rejects everything when the duration is unknown', () => {
     expect(parseVideoStartOffset('7', null)).toBeNull()
+  })
+})
+
+describe('pickInitialQuality', () => {
+  const sizes = [1080, 720, 360]
+
+  it.each([
+    ['desktop 672px at 1x', 672, 1, 720],
+    ['desktop 672px at 2x', 672, 2, 1080],
+    ['phone 343px at 3x, clamped to 2x', 343, 3, 720],
+    ['phone 343px at 1x', 343, 1, 360],
+    ['wide 1400px at 2x, no rendition large enough', 1400, 2, 1080],
+    ['wide 1400px at 1x', 1400, 1, 1080],
+    ['exact match 640px at 1x', 640, 1, 360],
+    ['just above 360p', 641, 1, 720],
+  ])('%s picks %i', (_name, playerWidth, devicePixelRatio, expected) => {
+    expect(pickInitialQuality({ sizes, playerWidth, devicePixelRatio }))
+      .toBe(expected)
+  })
+
+  it('treats a 3x ratio the same as 2x', () => {
+    const threeTimes = pickInitialQuality({
+      sizes,
+      playerWidth: 500,
+      devicePixelRatio: 3,
+    })
+    const twoTimes = pickInitialQuality({
+      sizes,
+      playerWidth: 500,
+      devicePixelRatio: 2,
+    })
+
+    expect(threeTimes).toBe(twoTimes)
+  })
+
+  it('treats a ratio below 1 or a non-finite ratio as 1x', () => {
+    expect(pickInitialQuality({
+      sizes,
+      playerWidth: 672,
+      devicePixelRatio: 0.5,
+    })).toBe(720)
+    expect(pickInitialQuality({
+      sizes,
+      playerWidth: 672,
+      devicePixelRatio: Number.NaN,
+    })).toBe(720)
+  })
+
+  it('does not depend on the order of the sizes', () => {
+    expect(pickInitialQuality({
+      sizes: [360, 1080, 720],
+      playerWidth: 672,
+      devicePixelRatio: 2,
+    })).toBe(1080)
+  })
+
+  it('picks the lowest rendition on save-data', () => {
+    expect(pickInitialQuality({
+      sizes,
+      playerWidth: 1400,
+      devicePixelRatio: 2,
+      saveData: true,
+    })).toBe(360)
+  })
+
+  it.each(['slow-2g', '2g', '3g'])(
+    'picks the lowest rendition on a %s connection',
+    (effectiveType) => {
+      expect(pickInitialQuality({
+        sizes,
+        playerWidth: 1400,
+        devicePixelRatio: 2,
+        effectiveType,
+      })).toBe(360)
+    },
+  )
+
+  it('does not cap a 4g connection or an unknown type', () => {
+    expect(pickInitialQuality({
+      sizes,
+      playerWidth: 1400,
+      devicePixelRatio: 2,
+      effectiveType: '4g',
+    })).toBe(1080)
+    expect(pickInitialQuality({
+      sizes,
+      playerWidth: 1400,
+      devicePixelRatio: 2,
+      saveData: false,
+    })).toBe(1080)
+  })
+
+  it('applies the network cap even when the width cannot be measured', () => {
+    expect(pickInitialQuality({
+      sizes,
+      playerWidth: 0,
+      devicePixelRatio: 1,
+      saveData: true,
+    })).toBe(360)
+  })
+
+  it('returns null when the width cannot be measured', () => {
+    expect(pickInitialQuality({
+      sizes,
+      playerWidth: 0,
+      devicePixelRatio: 2,
+    })).toBeNull()
+    expect(pickInitialQuality({
+      sizes,
+      playerWidth: Number.NaN,
+      devicePixelRatio: 2,
+    })).toBeNull()
+  })
+
+  it('returns null without renditions', () => {
+    expect(pickInitialQuality({
+      sizes: [],
+      playerWidth: 672,
+      devicePixelRatio: 1,
+      saveData: true,
+    })).toBeNull()
+  })
+
+  it('returns the only rendition', () => {
+    expect(pickInitialQuality({
+      sizes: [480],
+      playerWidth: 1400,
+      devicePixelRatio: 2,
+    })).toBe(480)
   })
 })

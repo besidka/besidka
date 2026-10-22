@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootRef"
     class="w-full"
     :aria-label="caption || 'Besidka demo video'"
   >
@@ -98,10 +99,11 @@ import type {
   VideoMarker,
 } from '#shared/types/video.d'
 import type {
+  NavigatorWithConnection,
   VideoMenuOption,
   VideoShellReadyPayload,
 } from '~/types/video-player.d'
-import { toMarkerPoints } from '#shared/utils/video'
+import { pickInitialQuality, toMarkerPoints } from '#shared/utils/video'
 
 const props = withDefaults(defineProps<{
   src?: string
@@ -126,7 +128,8 @@ const props = withDefaults(defineProps<{
 })
 
 const DEMO_TARGET = 'demo'
-const DEFAULT_QUALITY = 720
+const FALLBACK_QUALITY = 720
+const THUMBNAIL_QUALITY = 720
 const DEFAULT_SPEED = 1
 const SPEED_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 const SPEED_OPTIONS: VideoMenuOption[] = SPEED_RATES.map((rate) => {
@@ -145,6 +148,7 @@ const {
   return analyticsTarget()
 })
 
+const rootRef = shallowRef<HTMLElement | null>(null)
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
 const isReady = shallowRef<boolean>(false)
 const hasError = shallowRef<boolean>(false)
@@ -162,9 +166,14 @@ const qualityOptions = computed<VideoMenuOption[]>(() => {
   })
 })
 
-const currentQuality = shallowRef<number | null>(defaultQualitySize())
+const currentQuality = shallowRef<number | null>(null)
+const hasResolvedStartQuality = shallowRef<boolean>(false)
 
-const currentSrc = computed<string>(() => {
+const currentSrc = computed<string | undefined>(() => {
+  if (sortedQualities.value.length && !hasResolvedStartQuality.value) {
+    return undefined
+  }
+
   const quality = sortedQualities.value.find((item) => {
     return item.size === currentQuality.value
   })
@@ -185,6 +194,7 @@ interface PendingQualitySwitch {
   rate: number
 }
 
+let userQuality: number | null = null
 let hasTrackedPlay = false
 let hasAppliedStartAt = false
 let pendingQualitySwitch: PendingQualitySwitch | null = null
@@ -199,37 +209,80 @@ const {
   isThumbnailsEnabled: props.thumbnails,
   getThumbnailSource: () => {
     return props.qualities.find((quality) => {
-      return quality.size === DEFAULT_QUALITY
+      return quality.size === THUMBNAIL_QUALITY
     })?.src ?? props.src
   },
 })
 
-const { attach: attachPreferences, persist: persistPreferences }
-  = useVideoPlayerPreferences({
-    getQuality: () => {
-      return currentQuality.value
-    },
-    getSpeed: () => {
-      return videoRef.value?.playbackRate ?? DEFAULT_SPEED
-    },
-    applyQuality: (size) => {
-      selectQuality(size)
-    },
-    applySpeed: (rate) => {
-      applySpeed(rate)
-    },
-  })
+const {
+  attach: attachPreferences,
+  persist: persistPreferences,
+  readSavedQuality,
+} = useVideoPlayerPreferences({
+  getQuality: () => {
+    return userQuality
+  },
+  getSpeed: () => {
+    return videoRef.value?.playbackRate ?? DEFAULT_SPEED
+  },
+  applyQuality: (size) => {
+    selectQuality(size)
+    rememberUserQuality(size)
+  },
+  applySpeed: (rate) => {
+    applySpeed(rate)
+  },
+})
 
-function defaultQualitySize(): number | null {
-  const sizes = sortedQualities.value.map((quality) => {
+function qualitySizes(): number[] {
+  return sortedQualities.value.map((quality) => {
     return quality.size
   })
+}
+
+function isKnownQuality(size: number): boolean {
+  return qualitySizes().includes(size)
+}
+
+function rememberUserQuality(size: number) {
+  if (isKnownQuality(size)) {
+    userQuality = size
+  }
+}
+
+function fallbackQualitySize(): number | null {
+  const sizes = qualitySizes()
 
   if (!sizes.length) {
     return null
   }
 
-  return sizes.includes(DEFAULT_QUALITY) ? DEFAULT_QUALITY : sizes[0]!
+  return sizes.includes(FALLBACK_QUALITY) ? FALLBACK_QUALITY : sizes[0]!
+}
+
+function measureStartQuality(): number | null {
+  const connection = (navigator as NavigatorWithConnection).connection
+
+  return pickInitialQuality({
+    sizes: qualitySizes(),
+    playerWidth: rootRef.value?.getBoundingClientRect().width ?? 0,
+    devicePixelRatio: window.devicePixelRatio,
+    saveData: connection?.saveData,
+    effectiveType: connection?.effectiveType,
+  })
+}
+
+function resolveStartQuality() {
+  const savedQuality = readSavedQuality()
+
+  if (savedQuality !== null && isKnownQuality(savedQuality)) {
+    userQuality = savedQuality
+    currentQuality.value = savedQuality
+  } else {
+    currentQuality.value = measureStartQuality() ?? fallbackQualitySize()
+  }
+
+  hasResolvedStartQuality.value = true
 }
 
 function analyticsTarget(): string {
@@ -346,7 +399,10 @@ function selectQuality(size: number) {
 }
 
 function onSelectQuality(value: string) {
-  selectQuality(Number(value))
+  const size = Number(value)
+
+  selectQuality(size)
+  rememberUserQuality(size)
   persistPreferences()
 }
 
@@ -372,6 +428,8 @@ function applyStartAt() {
   hasAppliedStartAt = true
   video.currentTime = props.startAt
 }
+
+onMounted(resolveStartQuality)
 
 useEventListener(videoRef, 'loadedmetadata', applyStartAt)
 

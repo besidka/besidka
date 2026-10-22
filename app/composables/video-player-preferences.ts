@@ -179,6 +179,10 @@ export function useVideoPlayerPreferences(
     }
   }
 
+  function readSavedQuality(): number | null {
+    return readStoredPreferences()?.quality ?? null
+  }
+
   function snapshot(): VideoPlayerPreferences | null {
     if (!store) {
       return null
@@ -293,5 +297,5 @@ export function useVideoPlayerPreferences(
 
   tryOnScopeDispose(detach)
 
-  return { attach, detach, persist }
+  return { attach, detach, persist, readSavedQuality }
 }

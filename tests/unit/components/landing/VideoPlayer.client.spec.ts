@@ -66,6 +66,44 @@ async function mountPlayer(props: Record<string, unknown> = {}) {
   return wrapper
 }
 
+interface StartQualityEnvironment {
+  width: number
+  devicePixelRatio?: number
+  connection?: { saveData?: boolean, effectiveType?: string }
+}
+
+function stubStartQualityEnvironment(environment: StartQualityEnvironment) {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    width: environment.width,
+  } as DOMRect)
+  vi.stubGlobal('devicePixelRatio', environment.devicePixelRatio ?? 1)
+
+  Object.defineProperty(navigator, 'connection', {
+    configurable: true,
+    value: environment.connection,
+  })
+}
+
+const originalMediaSrcDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLMediaElement.prototype,
+  'src',
+)!
+
+function recordSrcAssignments(): string[] {
+  const assigned: string[] = []
+
+  Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+    configurable: true,
+    get: originalMediaSrcDescriptor.get,
+    set(value: string) {
+      assigned.push(value)
+      originalMediaSrcDescriptor.set!.call(this, value)
+    },
+  })
+
+  return assigned
+}
+
 function getVideo(wrapper: VueWrapper): HTMLVideoElement {
   return wrapper.get('[data-testid="video-media"]').element as HTMLVideoElement
 }
@@ -116,6 +154,12 @@ describe('VideoPlayer.client.vue', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    Reflect.deleteProperty(navigator, 'connection')
+    Object.defineProperty(
+      HTMLMediaElement.prototype,
+      'src',
+      originalMediaSrcDescriptor,
+    )
   })
 
   describe('preferences storage', () => {
@@ -136,7 +180,7 @@ describe('VideoPlayer.client.vue', () => {
         volume: 0.3,
         muted: false,
         speed: 1,
-        quality: 720,
+        quality: null,
         captions: { enabled: false },
       })
     }, PLAYER_TIMEOUT_MS)
@@ -216,6 +260,219 @@ describe('VideoPlayer.client.vue', () => {
     })
   })
 
+  describe('starting quality', () => {
+    const STARTING_CASES = [
+      {
+        name: 'a desktop player at 1x density starts on 720p',
+        environment: { width: 672, devicePixelRatio: 1 },
+        expected: '/videos/demo.mp4',
+      },
+      {
+        name: 'a desktop player at 2x density starts on 1080p',
+        environment: { width: 672, devicePixelRatio: 2 },
+        expected: '/videos/demo-1080.mp4',
+      },
+      {
+        name: 'a phone at 3x density is clamped to 2x and starts on 720p',
+        environment: { width: 343, devicePixelRatio: 3 },
+        expected: '/videos/demo.mp4',
+      },
+      {
+        name: 'a phone at 1x density starts on 360p',
+        environment: { width: 343, devicePixelRatio: 1 },
+        expected: '/videos/demo-360.mp4',
+      },
+      {
+        name: 'a wide 2x player on a fast network starts on 1080p',
+        environment: {
+          width: 1400,
+          devicePixelRatio: 2,
+          connection: { effectiveType: '4g' },
+        },
+        expected: '/videos/demo-1080.mp4',
+      },
+      {
+        name: 'save-data starts on the lowest rendition',
+        environment: {
+          width: 1400,
+          devicePixelRatio: 2,
+          connection: { saveData: true, effectiveType: '4g' },
+        },
+        expected: '/videos/demo-360.mp4',
+      },
+      {
+        name: 'a 3g connection starts on the lowest rendition',
+        environment: {
+          width: 1400,
+          devicePixelRatio: 2,
+          connection: { effectiveType: '3g' },
+        },
+        expected: '/videos/demo-360.mp4',
+      },
+    ]
+
+    it.each(STARTING_CASES)('$name', async ({ environment, expected }) => {
+      stubStartQualityEnvironment(environment)
+
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+
+      expect(getVideo(wrapper).getAttribute('src')).toBe(expected)
+    }, PLAYER_TIMEOUT_MS)
+
+    it('falls back to 720p when the player width cannot be measured',
+      async () => {
+        stubStartQualityEnvironment({ width: 0, devicePixelRatio: 2 })
+
+        const wrapper = await mountPlayer({ qualities: QUALITIES })
+
+        expect(getVideo(wrapper).getAttribute('src'))
+          .toBe('/videos/demo.mp4')
+      })
+
+    it('assigns the source exactly once on first mount', async () => {
+      stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+
+      const assigned = recordSrcAssignments()
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+
+      expect(getVideo(wrapper).getAttribute('src'))
+        .toBe('/videos/demo-360.mp4')
+      expect(assigned.filter(Boolean)).toEqual(['/videos/demo-360.mp4'])
+    }, PLAYER_TIMEOUT_MS)
+
+    it('lets a saved quality win over the heuristic without a second '
+      + 'source', async () => {
+      stubStartQualityEnvironment({ width: 1400, devicePixelRatio: 2 })
+      localStorage.setItem('video-player', JSON.stringify({
+        volume: 1,
+        muted: false,
+        speed: 1,
+        quality: 360,
+        captions: { enabled: false, language: null },
+      }))
+
+      const assigned = recordSrcAssignments()
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+
+      expect(getVideo(wrapper).getAttribute('src'))
+        .toBe('/videos/demo-360.mp4')
+      expect(assigned.filter(Boolean)).toEqual(['/videos/demo-360.mp4'])
+    }, PLAYER_TIMEOUT_MS)
+
+    it('ignores a saved quality that is not offered', async () => {
+      stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+      localStorage.setItem('video-player', JSON.stringify({
+        volume: 1,
+        muted: false,
+        speed: 1,
+        quality: 480,
+        captions: { enabled: false, language: null },
+      }))
+
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+
+      expect(getVideo(wrapper).getAttribute('src'))
+        .toBe('/videos/demo-360.mp4')
+    }, PLAYER_TIMEOUT_MS)
+
+    it('does not persist the heuristic pick over a stored null quality',
+      async () => {
+        stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+
+        const wrapper = await mountPlayer({ qualities: QUALITIES })
+        const video = getVideo(wrapper)
+
+        video.volume = 0.5
+        video.dispatchEvent(new Event('volumechange'))
+        await flushPromises()
+
+        expect(readStoredPreferences()).toMatchObject({
+          volume: 0.5,
+          quality: null,
+        })
+      }, PLAYER_TIMEOUT_MS)
+
+    it('persists a manual quality choice made after a heuristic start',
+      async () => {
+        stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+
+        const wrapper = await mountPlayer({ qualities: QUALITIES })
+
+        chooseMenuOption(wrapper, 'video-quality-options', '1080')
+        await flushPromises()
+
+        expect(getVideo(wrapper).getAttribute('src'))
+          .toBe('/videos/demo-1080.mp4')
+        expect(readStoredPreferences()).toMatchObject({ quality: 1080 })
+      }, PLAYER_TIMEOUT_MS)
+
+    it('persists choosing the heuristic rendition itself', async () => {
+      stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+
+      chooseMenuOption(wrapper, 'video-quality-options', '360')
+      await flushPromises()
+
+      expect(readStoredPreferences()).toMatchObject({ quality: 360 })
+    }, PLAYER_TIMEOUT_MS)
+
+    it('keeps a stored quality when the volume changes after a '
+      + 'heuristic start with an unknown saved value', async () => {
+      stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+      localStorage.setItem('video-player', JSON.stringify({
+        volume: 0.4,
+        muted: false,
+        speed: 1,
+        quality: 480,
+        captions: { enabled: false, language: null },
+      }))
+
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+      const video = getVideo(wrapper)
+
+      video.volume = 0.6
+      video.dispatchEvent(new Event('volumechange'))
+      await flushPromises()
+
+      expect(readStoredPreferences()).toMatchObject({
+        volume: 0.6,
+        quality: 480,
+      })
+    }, PLAYER_TIMEOUT_MS)
+
+    it('keeps thumbnails on the 720p source whatever the playback '
+      + 'rendition', async () => {
+      stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+
+      const wrapper = await mountPlayer({
+        qualities: QUALITIES,
+        thumbnails: true,
+      })
+
+      getTimeSlider(wrapper).dispatchEvent(new Event('pointerenter'))
+      await flushPromises()
+
+      expect(getVideo(wrapper).getAttribute('src'))
+        .toBe('/videos/demo-360.mp4')
+      expect(mocks.generate).toHaveBeenCalledWith(
+        '/videos/demo.mp4',
+        { count: 12, signal: expect.any(AbortSignal) },
+      )
+    }, PLAYER_TIMEOUT_MS)
+
+    it('keeps a single source on pages without renditions', async () => {
+      stubStartQualityEnvironment({ width: 343, devicePixelRatio: 1 })
+
+      const assigned = recordSrcAssignments()
+      const wrapper = await mountPlayer({ src: '/videos/guide.mp4' })
+
+      expect(getVideo(wrapper).getAttribute('src'))
+        .toBe('/videos/guide.mp4')
+      expect(assigned.filter(Boolean)).toEqual(['/videos/guide.mp4'])
+    }, PLAYER_TIMEOUT_MS)
+  })
+
   describe('quality menu', () => {
     it('lists qualities from highest to lowest and defaults to 720p',
       async () => {
@@ -279,6 +536,24 @@ describe('VideoPlayer.client.vue', () => {
       expect(video.playbackRate).toBe(1.5)
       expect(video.defaultPlaybackRate).toBe(1.5)
       expect(play).toHaveBeenCalledTimes(1)
+    })
+
+    it('falls back to the start when the resume point is beyond the new '
+      + 'rendition', async () => {
+      const wrapper = await mountPlayer({ qualities: QUALITIES })
+      const video = getVideo(wrapper)
+
+      media.duration = 100
+      video.currentTime = 60
+      chooseMenuOption(wrapper, 'video-quality-options', '1080')
+      await flushPromises()
+
+      media.duration = 34
+      video.dispatchEvent(new Event('loadedmetadata'))
+      await flushPromises()
+
+      expect(video.getAttribute('src')).toBe('/videos/demo-1080.mp4')
+      expect(video.currentTime).toBe(0)
     })
 
     it('does not resume playback when the video was paused', async () => {
@@ -896,7 +1171,8 @@ describe('VideoPlayer.client.vue', () => {
 
         expect(video.getAttribute('src')).toBe('/videos/demo-1080.mp4')
 
-        video.currentTime = 0
+        media.duration = 34
+        media.readyState = 1
         video.dispatchEvent(new Event('loadedmetadata'))
         await flushPromises()
 
@@ -904,7 +1180,7 @@ describe('VideoPlayer.client.vue', () => {
         expect(play).not.toHaveBeenCalled()
       })
 
-    it('falls back to the start when startAt is beyond the new rendition',
+    it('stays at the start when startAt is beyond a restored rendition',
       async () => {
         localStorage.setItem('video-player', JSON.stringify({
           volume: 1,
@@ -925,10 +1201,10 @@ describe('VideoPlayer.client.vue', () => {
 
         media.duration = 34
         media.readyState = 1
-        video.currentTime = 9
         video.dispatchEvent(new Event('loadedmetadata'))
         await flushPromises()
 
+        expect(video.getAttribute('src')).toBe('/videos/demo-1080.mp4')
         expect(video.currentTime).toBe(0)
       })
 

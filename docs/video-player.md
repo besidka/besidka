@@ -114,16 +114,19 @@ toggles fullscreen.
   `<video>` events (`play`, `timeupdate`, `pause`, `ended`, `loadedmetadata`,
   `ratechange`). `preload="metadata"`, `crossorigin="anonymous"` for the
   caption tracks. Quality renditions come from the `video.qualities`
-  frontmatter; changing quality swaps `src` and restores position, paused
+  frontmatter; the starting rendition is picked by the "Starting quality"
+  heuristic below; changing quality swaps `src` and restores position, paused
   state and rate on `loadedmetadata`. Speeds are `0.5, 0.75, 1, 1.25, 1.5, 2`.
   A quality switch keeps one pending record (`listener`, `resumeTime`,
   `wasPaused`, `rate`). A second switch before `loadedmetadata` removes the
   old listener and reuses the original captured values, so the second
   `currentTime` of 0 is never mistaken for the resume point. While `startAt`
   has not been applied yet, `resumeTime` is seeded with `startAt`, so a saved
-  quality restored at mount lands on `startAt` instead of seeking back to 0;
-  a `resumeTime` at or past the new duration falls back to 0. The restore
-  never autoplays unless the video was playing.
+  quality switched before `startAt` is applied lands on `startAt` instead of
+  seeking back to 0; a `resumeTime` at or past the new duration falls back to
+  0. The restore never autoplays unless the video was playing. A saved quality
+  is no longer a switch: it is the first `src` (see "Starting quality"), so
+  `startAt` is applied by the ordinary `loadedmetadata` handler.
 - **`ProfileKeysGuideVideo`** is `muted loop playsinline preload="none"` and
   keeps its visibility/autoplay/PiP logic; see `docs/key-guides.md`. It does
   not persist preferences.
@@ -168,6 +171,69 @@ element.
 | Controls auto-hide delay not configurable ([#1728](https://github.com/videojs/v10/issues/1728)) | While a mouse pointer is over the control bar, the shell holds `store.requestControlsLock()` and releases it on `pointerleave`, so the bar and the preview never hide under the pointer (as in Plyr). Touch pointers are ignored |
 | Slider preview card clamps to the slider, not the player | `overflow="visible"` plus a CSS shift, see "Preview card clamp" |
 | Captions: tracks flagged `default` show on load | Caption `<track>`s carry no `default`, so captions start off. The Off option reads "Disabled" through `registerI18n` |
+
+### Starting quality
+
+The landing player used to start every visitor on 720p. With renditions
+present (the home page; guide pages have a single source and are unaffected),
+the first `src` is now chosen at mount, in this order:
+
+1. **Saved preference** (`video-player` quality, if it is one of the offered
+   renditions). Unchanged semantics, now applied up front.
+2. **Heuristic**, `pickInitialQuality` in `shared/utils/video.ts` (pure,
+   unit-tested in `tests/unit/utils/video.spec.ts`):
+   - Network cap first: `navigator.connection.saveData === true` or an
+     `effectiveType` of `slow-2g`, `2g` or `3g` selects the lowest rendition.
+     `navigator.connection` is Chromium-only, so Safari and Firefox always skip
+     this step.
+   - Otherwise the target height is `playerWidth x clamp(devicePixelRatio, 1,
+     2) x 9/16`, and the smallest rendition whose height is at least the target
+     wins; when none is large enough the largest is used. The width is the
+     player root's `getBoundingClientRect().width` at mount.
+3. **720 fallback** when the heuristic cannot measure (zero or non-finite
+   width, so happy-dom in tests). With no 720 rendition the largest is used.
+
+Examples for renditions 1080/720/360: 672 px at 1x is 378 and picks 720; 672
+px at 2x is 756 and picks 1080; a 343 px phone at 3x clamps to 2x, is 386 and
+picks 720; the same phone at 1x is 193 and picks 360; 1400 px at 2x picks 1080;
+save-data picks 360. A 640 px player at 1x (a 1280 px desktop window) targets
+exactly 360 and picks 360.
+
+**Why the DPR clamp.** A 3x phone shows a ~390 px player, which at 3x would
+want a 658 px-tall rendition and pull 1080p for a screen that cannot show the
+extra detail at that viewing distance. Clamping to 2x keeps phones on 720p. The
+user can still pick 1080p from the menu.
+
+**No double download.** The `<video>` element must never load one rendition and
+then switch. While renditions exist and the start quality is unresolved,
+`currentSrc` is `undefined`, so Vue writes no real `src` on render. The first
+`onMounted` of `VideoPlayer.client.vue` (the root element is in the document,
+so it can be measured) resolves saved preference, then heuristic, then
+fallback, sets `currentQuality` directly (not through `selectQuality`, so no
+resume listener or seek) and flips `hasResolvedStartQuality`. Exactly one `src`
+is assigned afterwards. Vue's mount-time `undefined` still writes
+`video.src = ''` once, which starts no network request (verified in a headless
+Chromium network log). Without renditions `src` is the prop from the first
+render. Reading the saved quality at mount (`readSavedQuality` from
+`useVideoPlayerPreferences`) matters: before, a saved 1080 first loaded the
+720 default and then switched when the store attached.
+
+**Thumbnails stay on the 720p file** (`THUMBNAIL_QUALITY`) whatever the
+playback rendition, falling back to `props.src` when 720 is absent.
+
+**Persistence decision.** The heuristic pick must not look like a user choice,
+or one visit on a phone or a slow network would freeze that rendition as the
+saved quality for every later visit (`persist()` runs on every store change,
+such as a volume tweak). The player therefore keeps a separate `userQuality`,
+set only by a manual menu selection or by a restored saved value, and the
+preferences `getQuality` returns that instead of the current rendition. A
+heuristic-only session stores `quality: null`, which restore skips, and the
+snapshot's existing `getQuality() ?? lastSaved?.quality ?? null` keeps a stored
+value the page could not apply (for example a rendition that was removed). The
+previous behavior of storing 720 on the first volume change is gone on purpose.
+
+Why the first `src` rather than a mid-play adaptive switch: see
+`docs/landing-studio.md`, "Why progressive MP4 on R2".
 
 ### Chapters, thumbnails and snap-seek
 
