@@ -92,6 +92,12 @@
       "sourceType": "github",
       "computedHash": "851c4f603ee36725fbddd6ba3f86c7b953da33dc437de256bf64484105de054b"
     },
+    "security-audit": {
+      "source": "cloudflare/security-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/security-audit/SKILL.md",
+      "computedHash": "98b97aad2873b3b9a8e064007c25e7827b493ba27fda8bfbdb41dab586767973"
+    },
     "ts-library": {
       "source": "onmax/nuxt-skills",
       "sourceType": "github",
