@@ -446,21 +446,23 @@ describe('ChatInput/WebSearchMenuItems', () => {
         .toBe('$12/1k')
     })
 
-    it('keeps the badge readable on the active accent background',
-      async () => {
-        mocks.exaRates = {
-          exaSearchCostPerThousandRequestsUsd: '7',
-        }
+    it('uses a soft badge for both active and inactive levels', async () => {
+      mocks.exaRates = {
+        exaLiteSearchCostPerThousandRequestsUsd: '4',
+        exaSearchCostPerThousandRequestsUsd: '7',
+      }
 
-        const { wrapper } = await mountMenuItems({
-          selected: 'web_search_exa',
-          options: exaOptions,
-          isToolCallingSupported: true,
-        })
-
-        expect(levelButton(wrapper, 'auto').find('.badge').classes())
-          .toContain('text-accent-content')
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_exa',
+        options: exaOptions,
+        isToolCallingSupported: true,
       })
+
+      expect(levelButton(wrapper, 'auto').find('.badge').classes())
+        .toContain('badge-soft')
+      expect(levelButton(wrapper, 'lite').find('.badge').classes())
+        .toContain('badge-soft')
+    })
 
     it('hides a badge whose rate is missing or invalid', async () => {
       mocks.exaRates = {

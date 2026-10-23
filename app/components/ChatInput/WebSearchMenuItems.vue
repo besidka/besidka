@@ -111,11 +111,7 @@
           </span>
           <span
             v-if="levelPrices[level]"
-            class="badge badge-xs shrink-0"
-            :class="exaSearchLevel === level
-              ? 'bg-transparent border-accent-content/40 text-accent-content'
-              : 'badge-ghost'
-            "
+            class="badge badge-xs shrink-0 badge-soft"
           >
             {{ levelPrices[level] }}
           </span>
