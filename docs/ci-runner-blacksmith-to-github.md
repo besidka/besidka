@@ -1,8 +1,11 @@
-# CI runners: Blacksmith → GitHub-hosted → reverted to Blacksmith
+# CI runners: Blacksmith → GitHub-hosted → Blacksmith → GitHub-hosted
 
-**Status: reverted 2026-09-20. This was a dead end — see
-`docs/ci-pull-request-checkout-ref.md` for the real root cause and
-resolution.** All workflows briefly used `runs-on: ubuntu-24.04`
+**Status: moved to GitHub-hosted `ubuntu-24.04` on 2026-10-23 for cost — see
+"Moved for cost (2026-10-23)" at the end.** The sections below record the
+earlier 2026-09 switch and revert, which was a dead end for a CI-only test
+failure (real cause in `docs/ci-pull-request-checkout-ref.md`).
+
+All workflows briefly used `runs-on: ubuntu-24.04`
 (GitHub-hosted) instead of `runs-on: blacksmith-2vcpu-ubuntu-2404`, on the
 hypothesis that Blacksmith's runner fleet had host-level non-determinism.
 That hypothesis was wrong (see "Result" below), the actual bug was a
@@ -119,3 +122,41 @@ green again on a genuine Blacksmith runner
 (`blacksmith-2vcpu-ubuntu-2404-Runner-d7400d0d9f`, PR #362 commit
 `459e9d5`), verifying the checkout-ref fix is runner-independent, as
 expected.
+
+## Moved for cost (2026-10-23)
+
+The Blacksmith dashboard "Free Tier Usage" showed 3,000/3,000 min on
+2026-10-23 for the October billing period (it resets monthly; the dashboard
+showed $12.00 of usage fully covered by the free-tier discount). On
+2026-10-21 it was 2,768/3,000; about 234 weighted minutes were used in the
+two days after that, 147 of them in the last 24 hours.
+
+Blacksmith bills `4vcpu` runner minutes at 2× the free-tier rate and
+`2vcpu` at 1×. The PR `build` job ran on `blacksmith-4vcpu-ubuntu-2404`, so
+it used the free tier twice as fast.
+
+GitHub-hosted runners are free and unlimited for this public repository, so
+the move costs nothing. This time the reason is cost only, not flakiness or
+a suspected runner bug.
+
+Changed jobs: `preview-build.yml` `build` (was
+`blacksmith-4vcpu-ubuntu-2404`), `preview-deploy.yml` deploy job, and the
+two Blacksmith jobs in `production.yml` (were
+`blacksmith-2vcpu-ubuntu-2404`). All now use `ubuntu-24.04`, the same
+Ubuntu version as before, so it is a provider swap, not an OS upgrade.
+
+No Blacksmith-specific actions (`useblacksmith/*` cache, setup-node, sticky
+disks) were in use, so only `runs-on` changed.
+
+GitHub-hosted public-repo runners have 4 vCPU / 16 GB. Vitest uses its
+default worker count (CPUs − 1), so the build job keeps the same
+parallelism as on Blacksmith 4vcpu; the former 2vcpu jobs get more CPU.
+Playwright stays at `workers: 1`.
+
+Trade-off to watch: the PR build took about 11 minutes on Blacksmith 4vcpu.
+If GitHub-hosted runs get close to the `build` job's `timeout-minutes: 20`,
+raise that timeout.
+
+Revisit only if GitHub-hosted runners stop being free for public repos or
+builds become much slower; moving back would need a paid Blacksmith plan or
+a new free-tier period.
