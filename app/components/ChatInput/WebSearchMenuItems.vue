@@ -160,11 +160,11 @@ const isExaSelected = computed<boolean>(() => {
 })
 
 function formatLevelPrice(level: ExaSearchLevel): string {
-  const rate = Number(
+  const rate = parseRatePerThousandUsd(
     runtimeConfigPublic[EXA_SEARCH_LEVEL_RATE_CONFIG_KEYS[level]],
   )
 
-  return Number.isFinite(rate) && rate > 0 ? `$${rate}/1k` : ''
+  return rate === undefined ? '' : `$${rate}/1k`
 }
 
 const levelPrices = computed<Record<ExaSearchLevel, string>>(() => {

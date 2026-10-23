@@ -117,6 +117,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
     'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
     'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+    'tests/e2e/chat/exa-search-level.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/image-generation-lock.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
@@ -682,6 +683,23 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(WebSearch(Trigger|MenuItems)|ToolbarMore\.client|ReasoningTrigger)\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
+    },
+    {
+      pattern: /^shared\/utils\/exa-search-level\.ts$/,
+      tests: [
+        'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
+        'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
+        'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+        'tests/e2e/chat/exa-search-level.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/utils\/search-rate\.ts$/,
+      tests: [
+        'tests/unit/utils/search-rate.spec.ts',
+        'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
+        'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/image-input-support\.ts$/,

@@ -210,7 +210,7 @@ describe('web_search_exa tool execute()', () => {
   )
 
   it.each(['lite', 'auto', 'deep'] as const)(
-    'reports searchLevel %s on the tool output',
+    'does not put searchLevel %s on the tool output',
     async (searchLevel) => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
         jsonResponse(EXA_SEARCH_RESPONSE),
@@ -223,24 +223,35 @@ describe('web_search_exa tool execute()', () => {
         createExecutionOptions(),
       )
 
-      expect(output.searchLevel).toBe(searchLevel)
+      expect(output).not.toHaveProperty('searchLevel')
     },
   )
 
-  it('reports searchLevel auto on the tool output when none is passed',
+  it('logs searchLevel auto in the attributes when none is passed',
     async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
         jsonResponse(EXA_SEARCH_RESPONSE),
       ))
 
+      const logger = { set: vi.fn() }
       const { getExaWebSearchTools } = await importModule()
-      const result = await getExaWebSearchTools('exa-key')
-      const output = await result.tools?.web_search_exa.execute(
+      const result = await getExaWebSearchTools(
+        'exa-key',
+        undefined,
+        undefined,
+        logger,
+      )
+
+      await result.tools?.web_search_exa.execute(
         { query: 'x' },
         createExecutionOptions(),
       )
 
-      expect(output.searchLevel).toBe('auto')
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          exaWebSearch: expect.objectContaining({ searchLevel: 'auto' }),
+        },
+      })
     })
 
   it('logs the search level in the exaWebSearch attributes', async () => {
@@ -276,7 +287,7 @@ describe('web_search_exa tool execute()', () => {
   it.each([
     ['lite', 15_000],
     ['auto', 15_000],
-    ['deep', 60_000],
+    ['deep', 55_000],
   ] as const)(
     'uses the %s request timeout of %i ms',
     async (searchLevel, expectedTimeoutMs) => {

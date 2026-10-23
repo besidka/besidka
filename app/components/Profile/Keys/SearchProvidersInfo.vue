@@ -72,9 +72,9 @@ interface SearchPricingRow {
 function formatRatePerThousandUsd(
   value: string | number | undefined,
 ): string {
-  const parsed = Number(value)
+  const parsed = parseRatePerThousandUsd(value)
 
-  return Number.isFinite(parsed) && parsed > 0 ? `$${parsed}` : '—'
+  return parsed === undefined ? '—' : `$${parsed}`
 }
 
 const {

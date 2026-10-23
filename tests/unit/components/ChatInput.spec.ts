@@ -1064,6 +1064,27 @@ describe('ChatInput.client', () => {
         .not.toContain('bg-accent')
     })
 
+    it('follows an Exa search level changed outside the component',
+      async () => {
+        useWebSearchSelection()
+
+        const wrapper = await mountChatInput({ tools: ['web_search_exa'] })
+
+        await nextTick()
+
+        expect(exaLevelButton(wrapper, 'auto')?.className)
+          .toContain('bg-accent')
+
+        usePreferenceStorage().setItem('settings_exa_search_level', 'deep')
+
+        await nextTick()
+
+        expect(exaLevelButton(wrapper, 'deep')?.className)
+          .toContain('bg-accent')
+        expect(exaLevelButton(wrapper, 'auto')?.className)
+          .not.toContain('bg-accent')
+      })
+
     it('falls back to Auto when the saved Exa search level is invalid',
       async () => {
         useWebSearchSelection()

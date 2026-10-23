@@ -30,7 +30,7 @@ import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 
 const EXA_SEARCH_API_URL = 'https://api.exa.ai/search'
 const EXA_SEARCH_REQUEST_TIMEOUT_MS = 15_000
-const EXA_DEEP_SEARCH_REQUEST_TIMEOUT_MS = 60_000
+const EXA_DEEP_SEARCH_REQUEST_TIMEOUT_MS = 55_000
 const EXA_SEARCH_NUM_RESULTS = 10
 const EXA_SEARCH_TEXT_MAX_CHARACTERS = 1500
 const EXA_SEARCH_QUERY_MAX_LENGTH = 400
@@ -182,7 +182,6 @@ async function executeExaSearch(
   return {
     results,
     provider: 'exa',
-    searchLevel,
     ...(costDollars === undefined ? {} : { costDollars }),
   }
 }

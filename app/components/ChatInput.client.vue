@@ -653,9 +653,11 @@ const canShowRegenerate = computed<boolean>(() => {
   return !!props.displayRegenerate && !hasMessage.value
 })
 
-const exaSearchLevel = shallowRef<ExaSearchLevel>(
-  normalizeExaSearchLevel(prefStorage.getItem('settings_exa_search_level')),
-)
+const exaSearchLevel = computed<ExaSearchLevel>(() => {
+  return normalizeExaSearchLevel(
+    prefStorage.getItem('settings_exa_search_level'),
+  )
+})
 
 const selectedWebSearchProvider = computed<WebSearchSelection>(() => {
   if (tools.value.includes('web_search_brave')) {
@@ -798,7 +800,6 @@ function selectWebSearchProvider(option: WebSearchSelection) {
 }
 
 function selectExaSearchLevel(level: ExaSearchLevel) {
-  exaSearchLevel.value = level
   prefStorage.setItem('settings_exa_search_level', level)
   requestPersistence()
 }

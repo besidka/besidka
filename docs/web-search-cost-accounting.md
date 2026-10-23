@@ -787,11 +787,13 @@ same shape as `auto`.
   (`ExternalSearchRates.exaPerSearchUsdByLevel`). A missing level rate
   resolves to `undefined`, never `0`. All three rates are config-only.
 - **Timeout.** `lite` and `auto` keep the 15s request timeout; `deep` uses
-  60s (`EXA_DEEP_SEARCH_REQUEST_TIMEOUT_MS`) because it is slower (9.25s
-  observed, 4-15s documented). Up to 3 calls per turn are covered by the
+  55s (`EXA_DEEP_SEARCH_REQUEST_TIMEOUT_MS`) because it is slower (9.25s
+  observed, 4-15s documented); 55s stays under the tool loop's 60s
+  `TOOL_LOOP_TOOL_TIMEOUT_MS`, so the request timeout always fires first. Up to 3 calls per turn are covered by the
   120s generation lease plus heartbeat.
-- **Telemetry.** The tool output carries `searchLevel` next to `provider`
-  and `costDollars`, and `attributes.exaWebSearch.searchLevel` is logged.
+- **Telemetry.** `attributes.exaWebSearch.searchLevel` is logged; the tool
+  output does not carry it (nothing consumes it, and it would bloat persisted
+  parts and model context).
 
 ### Richer page content, same unit
 
