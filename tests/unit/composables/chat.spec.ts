@@ -1,7 +1,9 @@
 import type { UIMessage } from 'ai'
-import { computed, nextTick, shallowRef, triggerRef } from 'vue'
+import { computed, defineComponent, nextTick, shallowRef, triggerRef } from 'vue'
+import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '../../../shared/types/chats.d'
+import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import {
   applyChatErrorToMessages,
   buildChatErrorLines,
@@ -28,7 +30,42 @@ import {
   shouldRecoverInterruptedGeneration,
   shouldSurfaceChatError,
   shouldSurfaceEmptyAssistantResponse,
+  useChat,
 } from '../../../app/composables/chat'
+
+const sdkMocks = vi.hoisted(() => ({
+  transportOptions: [] as Array<{
+    prepareSendMessagesRequest: (context: {
+      messages: unknown[]
+    }) => { body: Record<string, unknown> }
+  }>,
+}))
+
+vi.mock('ai', async (importOriginal) => {
+  const original = await importOriginal<typeof import('ai')>()
+
+  const DefaultChatTransport = vi.fn(function (
+    options: (typeof sdkMocks.transportOptions)[number],
+  ) {
+    sdkMocks.transportOptions.push(options)
+  })
+
+  return { ...original, DefaultChatTransport }
+})
+
+vi.mock('@ai-sdk/vue', () => {
+  return {
+    useChat: () => ({
+      messages: shallowRef([]),
+      status: shallowRef('ready'),
+      error: shallowRef(undefined),
+      regenerate: vi.fn(),
+      stop: vi.fn(),
+      clearError: vi.fn(),
+      sendMessage: vi.fn(),
+    }),
+  }
+})
 
 describe('chat error helpers', () => {
   it('parses structured stream errors from the AI SDK', () => {
@@ -1621,5 +1658,94 @@ describe('hasMeaningfulAssistantParts omitted context files notice', () => {
       role: 'assistant',
       parts: [noticePart, { type: 'text', text: 'An answer.' }],
     } as unknown as UIMessage)).toBe(true)
+  })
+})
+
+describe('useChat request body exaSearchLevel', () => {
+  const prefStorage = usePreferenceStorage()
+
+  async function buildRequestBody(): Promise<Record<string, unknown>> {
+    sdkMocks.transportOptions.length = 0
+
+    const host = defineComponent({
+      setup() {
+        useChat({ id: 'chat-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    const transportOptions = sdkMocks.transportOptions.at(-1)
+
+    if (!transportOptions) {
+      throw new Error('Chat transport was not created')
+    }
+
+    const lastMessage = {
+      id: 'user-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    }
+
+    return transportOptions.prepareSendMessagesRequest({
+      messages: [lastMessage],
+    }).body
+  }
+
+  beforeEach(() => {
+    prefStorage.removeItem('settings_exa_search_level')
+  })
+
+  afterEach(() => {
+    prefStorage.removeItem('settings_exa_search_level')
+  })
+
+  it('defaults to auto when nothing is stored', async () => {
+    const body = await buildRequestBody()
+
+    expect(body.exaSearchLevel).toBe('auto')
+  })
+
+  it('sends the stored level', async () => {
+    prefStorage.setItem('settings_exa_search_level', 'deep')
+
+    const body = await buildRequestBody()
+
+    expect(body.exaSearchLevel).toBe('deep')
+  })
+
+  it('falls back to auto for an invalid stored level', async () => {
+    prefStorage.setItem('settings_exa_search_level', 'turbo')
+
+    const body = await buildRequestBody()
+
+    expect(body.exaSearchLevel).toBe('auto')
+  })
+
+  it('reads the level at send time so the latest choice wins', async () => {
+    sdkMocks.transportOptions.length = 0
+
+    const host = defineComponent({
+      setup() {
+        useChat({ id: 'chat-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    const transportOptions = sdkMocks.transportOptions.at(-1)!
+    const send = () => transportOptions.prepareSendMessagesRequest({
+      messages: [{ id: 'user-1', role: 'user', parts: [] }],
+    }).body.exaSearchLevel
+
+    expect(send()).toBe('auto')
+
+    prefStorage.setItem('settings_exa_search_level', 'lite')
+
+    expect(send()).toBe('lite')
   })
 })

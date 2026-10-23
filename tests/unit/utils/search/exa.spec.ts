@@ -151,8 +151,9 @@ describe('web_search_exa tool execute()', () => {
     expect(init.headers).not.toHaveProperty('Authorization')
   })
 
-  it('always sends the fixed, non-configurable request body: type auto, '
-    + 'numResults 10, contents.text.maxCharacters 1500', async () => {
+  it('sends the fixed request body with the default type auto when no '
+    + 'search level is passed: numResults 10, '
+    + 'contents.text.maxCharacters 1500', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(EXA_SEARCH_RESPONSE),
     )
@@ -178,6 +179,128 @@ describe('web_search_exa tool execute()', () => {
       contents: { text: { maxCharacters: 1500 } },
     })
   })
+
+  it.each(['lite', 'auto', 'deep'] as const)(
+    'sends type %s when that search level is selected',
+    async (searchLevel) => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(EXA_SEARCH_RESPONSE),
+      )
+
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { getExaWebSearchTools } = await importModule()
+      const result = await getExaWebSearchTools('exa-key', searchLevel)
+      const searchTool = result.tools?.web_search_exa
+
+      await searchTool.execute(
+        { query: 'battery breakthroughs' },
+        createExecutionOptions(),
+      )
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+
+      expect(JSON.parse(init.body as string)).toEqual({
+        query: 'battery breakthroughs',
+        type: searchLevel,
+        numResults: 10,
+        contents: { text: { maxCharacters: 1500 } },
+      })
+    },
+  )
+
+  it.each(['lite', 'auto', 'deep'] as const)(
+    'reports searchLevel %s on the tool output',
+    async (searchLevel) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        jsonResponse(EXA_SEARCH_RESPONSE),
+      ))
+
+      const { getExaWebSearchTools } = await importModule()
+      const result = await getExaWebSearchTools('exa-key', searchLevel)
+      const output = await result.tools?.web_search_exa.execute(
+        { query: 'x' },
+        createExecutionOptions(),
+      )
+
+      expect(output.searchLevel).toBe(searchLevel)
+    },
+  )
+
+  it('reports searchLevel auto on the tool output when none is passed',
+    async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        jsonResponse(EXA_SEARCH_RESPONSE),
+      ))
+
+      const { getExaWebSearchTools } = await importModule()
+      const result = await getExaWebSearchTools('exa-key')
+      const output = await result.tools?.web_search_exa.execute(
+        { query: 'x' },
+        createExecutionOptions(),
+      )
+
+      expect(output.searchLevel).toBe('auto')
+    })
+
+  it('logs the search level in the exaWebSearch attributes', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse(EXA_SEARCH_RESPONSE),
+    ))
+
+    const logger = { set: vi.fn() }
+    const { getExaWebSearchTools } = await importModule()
+    const result = await getExaWebSearchTools(
+      'exa-key',
+      'deep',
+      undefined,
+      logger,
+    )
+
+    await result.tools?.web_search_exa.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )
+
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        exaWebSearch: {
+          searchLevel: 'deep',
+          resultCount: 4,
+          costDollars: 0.007,
+        },
+      },
+    })
+  })
+
+  it.each([
+    ['lite', 15_000],
+    ['auto', 15_000],
+    ['deep', 60_000],
+  ] as const)(
+    'uses the %s request timeout of %i ms',
+    async (searchLevel, expectedTimeoutMs) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        jsonResponse(EXA_SEARCH_RESPONSE),
+      ))
+
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+
+      try {
+        const { getExaWebSearchTools } = await importModule()
+        const result = await getExaWebSearchTools('exa-key', searchLevel)
+
+        await result.tools?.web_search_exa.execute(
+          { query: 'x' },
+          createExecutionOptions(),
+        )
+
+        expect(timeoutSpy).toHaveBeenCalledWith(expectedTimeoutMs)
+      } finally {
+        timeoutSpy.mockRestore()
+      }
+    },
+  )
 
   it('maps freshness to startPublishedDate relative to now', async () => {
     vi.useFakeTimers()

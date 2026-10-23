@@ -1,5 +1,11 @@
 import type { SearchBillingUnit } from '#shared/types/message-usage.d'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
+import {
+  DEFAULT_EXA_SEARCH_LEVEL,
+  EXA_SEARCH_LEVELS,
+  EXA_SEARCH_LEVEL_RATE_CONFIG_KEYS,
+} from '#shared/utils/exa-search-level'
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 
 export type ExternalSearchUsage = {
   searches: number
@@ -9,12 +15,14 @@ export type ExternalSearchUsage = {
 
 export type ExternalSearchRates = {
   bravePerSearchUsd: number | undefined
-  exaPerSearchUsd: number | undefined
+  exaPerSearchUsdByLevel: Record<ExaSearchLevel, number | undefined>
 }
 
 export type ExternalSearchCostConfig = {
   braveSearchCostPerThousandRequestsUsd?: string | number
+  exaLiteSearchCostPerThousandRequestsUsd?: string | number
   exaSearchCostPerThousandRequestsUsd?: string | number
+  exaDeepSearchCostPerThousandRequestsUsd?: string | number
 }
 
 export type ExternalSearchStep = {
@@ -112,13 +120,21 @@ function parsePerThousandRate(
 export function resolveExternalSearchRates(
   config: ExternalSearchCostConfig,
 ): ExternalSearchRates {
+  const exaPerSearchUsdByLevel = {} as ExternalSearchRates[
+    'exaPerSearchUsdByLevel'
+  ]
+
+  for (const level of EXA_SEARCH_LEVELS) {
+    exaPerSearchUsdByLevel[level] = parsePerThousandRate(
+      config[EXA_SEARCH_LEVEL_RATE_CONFIG_KEYS[level]],
+    )
+  }
+
   return {
     bravePerSearchUsd: parsePerThousandRate(
       config.braveSearchCostPerThousandRequestsUsd,
     ),
-    exaPerSearchUsd: parsePerThousandRate(
-      config.exaSearchCostPerThousandRequestsUsd,
-    ),
+    exaPerSearchUsdByLevel,
   }
 }
 
@@ -128,13 +144,16 @@ export function resolveExternalSearchRates(
  * because a reported cost is a real invoiced figure and the rate is a
  * documentation-derived fallback. Falls back to `searches × rate` when no
  * cost was reported (Brave never reports one; Exa only if the field was
- * absent). Mirrors `getGoogleSearchCost()`/`getWebSearchCost()`'s contract:
- * an unresolvable cost is `undefined`, never a fabricated `0`.
+ * absent). The Exa fallback rate is picked by the user-selected
+ * `exaSearchLevel`, because lite/auto/deep are priced differently. Mirrors
+ * `getGoogleSearchCost()`/`getWebSearchCost()`'s contract: an unresolvable
+ * cost is `undefined`, never a fabricated `0`.
  */
 export function getExternalSearchCost(
   usage: ExternalSearchUsage | undefined,
   provider: ExternalSearchProviderId,
   rates: ExternalSearchRates,
+  exaSearchLevel: ExaSearchLevel = DEFAULT_EXA_SEARCH_LEVEL,
 ): number | undefined {
   if (!usage || usage.searches === 0) {
     return undefined
@@ -146,7 +165,7 @@ export function getExternalSearchCost(
 
   const rate = provider === 'brave'
     ? rates.bravePerSearchUsd
-    : rates.exaPerSearchUsd
+    : rates.exaPerSearchUsdByLevel[exaSearchLevel]
 
   if (rate === undefined) {
     return undefined

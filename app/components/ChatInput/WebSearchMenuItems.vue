@@ -87,24 +87,93 @@
         <span class="grow text-left">{{ option.label }}</span>
       </button>
     </li>
+    <template v-if="isExaSelected">
+      <li class="menu-title text-xs mt-1 pt-2 border-t border-base-content/10">
+        Exa search level
+      </li>
+      <li
+        v-for="level in EXA_SEARCH_LEVELS"
+        :key="level"
+      >
+        <button
+          type="button"
+          class="flex items-center gap-2"
+          :class="{
+            'bg-accent text-accent-content pointer-events-none':
+              exaSearchLevel === level,
+          }"
+          :data-testid="`exa-search-level-${level}`"
+          :title="exaSearchLevelHints[level]"
+          @click="emit('select-exa-search-level', level)"
+        >
+          <span class="grow text-left">
+            {{ EXA_SEARCH_LEVEL_LABELS[level] }}
+          </span>
+          <span
+            v-if="levelPrices[level]"
+            class="badge badge-xs shrink-0"
+            :class="exaSearchLevel === level
+              ? 'bg-transparent border-accent-content/40 text-accent-content'
+              : 'badge-ghost'
+            "
+          >
+            {{ levelPrices[level] }}
+          </span>
+        </button>
+      </li>
+    </template>
   </template>
 </template>
 
 <script setup lang="ts">
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type {
   WebSearchOption,
   WebSearchSelection,
 } from '~/types/web-search'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   selected: WebSearchSelection
   options: WebSearchOption[]
   isToolCallingSupported: boolean
-}>()
+  exaSearchLevel?: ExaSearchLevel
+}>(), {
+  exaSearchLevel: 'auto',
+})
 
 const emit = defineEmits<{
   'select-provider': [value: WebSearchSelection]
+  'select-exa-search-level': [level: ExaSearchLevel]
 }>()
+
+const exaSearchLevelHints: Record<ExaSearchLevel, string> = {
+  lite: 'Fastest and cheapest',
+  auto: 'Balanced default',
+  deep: 'Multi-step research, slower',
+}
+
+const runtimeConfigPublic = useRuntimeConfig().public
+
+const isExaSelected = computed<boolean>(() => {
+  return props.selected === 'web_search_exa'
+    && props.isToolCallingSupported
+})
+
+function formatLevelPrice(level: ExaSearchLevel): string {
+  const rate = Number(
+    runtimeConfigPublic[EXA_SEARCH_LEVEL_RATE_CONFIG_KEYS[level]],
+  )
+
+  return Number.isFinite(rate) && rate > 0 ? `$${rate}/1k` : ''
+}
+
+const levelPrices = computed<Record<ExaSearchLevel, string>>(() => {
+  return {
+    lite: formatLevelPrice('lite'),
+    auto: formatLevelPrice('auto'),
+    deep: formatLevelPrice('deep'),
+  }
+})
 
 const nativeOption = computed<WebSearchOption | undefined>(() => {
   return props.options.find((option) => {

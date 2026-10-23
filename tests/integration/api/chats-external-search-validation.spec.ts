@@ -446,6 +446,32 @@ describe('chats external search validation', () => {
     }))
   })
 
+  it('rejects an unknown exaSearchLevel with a 400', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb(
+      vi.fn(async () => ({ apiKey: 'encrypted-exa-key' })),
+    )
+
+    vi.stubGlobal('useDb', () => db)
+    stubToolCallingModel()
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: ['web_search_exa'],
+        reasoning: 'off',
+        exaSearchLevel: 'fast',
+        messages: [createMessage('Search the web')],
+      },
+    } as any)).rejects.toEqual(expect.objectContaining({
+      message: 'Invalid request body',
+      status: 400,
+    }))
+
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
   it('rejects a web search tool for a model that always generates images', async () => {
     const handler = await getHandler()
     const { db, insertValues } = createDb()

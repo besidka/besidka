@@ -25,9 +25,12 @@ import {
 import type {
   ExternalSearchBudget,
 } from '~~/server/utils/search/search-budget'
+import { DEFAULT_EXA_SEARCH_LEVEL } from '#shared/utils/exa-search-level'
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 
 const EXA_SEARCH_API_URL = 'https://api.exa.ai/search'
 const EXA_SEARCH_REQUEST_TIMEOUT_MS = 15_000
+const EXA_DEEP_SEARCH_REQUEST_TIMEOUT_MS = 60_000
 const EXA_SEARCH_NUM_RESULTS = 10
 const EXA_SEARCH_TEXT_MAX_CHARACTERS = 1500
 const EXA_SEARCH_QUERY_MAX_LENGTH = 400
@@ -88,26 +91,36 @@ function normalizeExaResults(
 }
 
 /**
- * Calls Exa's `/search` endpoint with a fixed request body that the model
- * cannot configure apart from `freshness` (mapped to `startPublishedDate`):
- * `type: 'auto'`, `numResults: 10` and `contents.text.maxCharacters: 1500`.
- * `contents` is mandatory, not optional — a bare Exa query returns no body
- * text at all, only title/url/date/author. The exact shape is a module
- * constant because `NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD`'s
- * fallback rate (see `external-search-cost.ts`) is derived from this exact
- * request shape; a different `numResults` or content mode would silently
- * invalidate it. Text with `maxCharacters: 1500` was verified live on
- * 2026-10-04 to be bundled in the search price (`costDollars.total: 0.007`).
+ * Calls Exa's `/search` endpoint with a request body that the model cannot
+ * configure apart from `freshness` (mapped to `startPublishedDate`):
+ * `type` is the user-selected search level (`lite` | `auto` | `deep`),
+ * `numResults` is 10 and `contents.text.maxCharacters` is 1500. `contents` is
+ * mandatory, not optional — a bare Exa query returns no body text at all,
+ * only title/url/date/author. The shape (apart from `type`) is a module
+ * constant because the per-level fallback rates
+ * (`NUXT_PUBLIC_EXA_[LITE_|DEEP_]SEARCH_COST_PER_THOUSAND_REQUESTS_USD`, see
+ * `external-search-cost.ts`) are derived from this exact request shape; a
+ * different `numResults` or content mode would silently invalidate them.
+ * Text with `maxCharacters: 1500` was verified live to be bundled in the
+ * search price: `costDollars.total` was 0.007 for `auto` (2026-10-04), and
+ * 0.004 for `lite` and 0.012 for `deep` (2026-10-23, both HTTP 200 with
+ * 10/10 results carrying text). `deep` is slow (9.25s observed, 4-15s
+ * documented), so it gets a longer timeout than `lite`/`auto`.
  * Auth is `x-api-key`, not `Bearer`.
  */
 async function executeExaSearch(
   apiKey: string,
   query: string,
+  searchLevel: ExaSearchLevel,
   freshness: SearchFreshness | undefined,
   abortSignal: AbortSignal | undefined,
   logger?: LoggerLike,
 ): Promise<ExternalSearchToolOutput> {
-  const timeoutSignal = AbortSignal.timeout(EXA_SEARCH_REQUEST_TIMEOUT_MS)
+  const timeoutSignal = AbortSignal.timeout(
+    searchLevel === 'deep'
+      ? EXA_DEEP_SEARCH_REQUEST_TIMEOUT_MS
+      : EXA_SEARCH_REQUEST_TIMEOUT_MS,
+  )
   const signal = abortSignal
     ? AbortSignal.any([abortSignal, timeoutSignal])
     : timeoutSignal
@@ -123,7 +136,7 @@ async function executeExaSearch(
       },
       body: JSON.stringify({
         query,
-        type: 'auto',
+        type: searchLevel,
         numResults: EXA_SEARCH_NUM_RESULTS,
         contents: {
           text: { maxCharacters: EXA_SEARCH_TEXT_MAX_CHARACTERS },
@@ -159,6 +172,7 @@ async function executeExaSearch(
   logger?.set({
     attributes: {
       exaWebSearch: {
+        searchLevel,
         resultCount: results.length,
         ...(costDollars === undefined ? {} : { costDollars }),
       },
@@ -168,6 +182,7 @@ async function executeExaSearch(
   return {
     results,
     provider: 'exa',
+    searchLevel,
     ...(costDollars === undefined ? {} : { costDollars }),
   }
 }
@@ -185,6 +200,7 @@ async function executeExaSearch(
  */
 export async function getExaWebSearchTools(
   apiKey: string,
+  searchLevel: ExaSearchLevel = DEFAULT_EXA_SEARCH_LEVEL,
   searchBudget: ExternalSearchBudget = createExternalSearchBudget(),
   logger?: LoggerLike,
 ): Promise<FormattedTools> {
@@ -208,6 +224,7 @@ export async function getExaWebSearchTools(
           return await executeExaSearch(
             apiKey,
             input.query,
+            searchLevel,
             input.freshness,
             options.abortSignal,
             logger,

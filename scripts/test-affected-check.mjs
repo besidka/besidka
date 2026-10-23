@@ -631,6 +631,7 @@ export function getAffectedTests(changedFiles) {
   const externalSearchTests = [
     'tests/unit/utils/search/brave.spec.ts',
     'tests/unit/utils/search/exa.spec.ts',
+    'tests/unit/utils/exa-search-level.spec.ts',
     'tests/unit/utils/search/freshness.spec.ts',
     'tests/unit/utils/search/search-budget.spec.ts',
     'tests/unit/utils/search/search-error.spec.ts',
@@ -1219,7 +1220,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/search\/(brave|exa|freshness|iso-date|search-budget|search-error|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
+        /^(server\/utils\/search\/(brave|exa|freshness|iso-date|search-budget|search-error|types\.d)\.ts|shared\/utils\/exa-search-level\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
       tests: externalSearchTests,
     },
     {

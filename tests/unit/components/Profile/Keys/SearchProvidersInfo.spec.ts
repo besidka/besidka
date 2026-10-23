@@ -52,7 +52,9 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
   it('renders each rate read from runtime config in its own row', async () => {
     mocks.searchRates = {
       braveSearchCostPerThousandRequestsUsd: '5',
+      exaLiteSearchCostPerThousandRequestsUsd: '4',
       exaSearchCostPerThousandRequestsUsd: '7',
+      exaDeepSearchCostPerThousandRequestsUsd: '12',
       googleSearchCostPerThousandQueriesUsd: '14',
       googleSearchCostPerThousandGroundedPromptsUsd: '35',
       anthropicWebSearchCostPerThousandSearchesUsd: '10',
@@ -68,7 +70,9 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
 
     expect(names).toEqual([
       'Brave Search',
-      'Exa',
+      'Exa Lite',
+      'Exa Auto (default)',
+      'Exa Deep',
       'Gemini 3.x built-in',
       'Gemini 2.5 built-in',
       'Anthropic built-in',
@@ -77,7 +81,9 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
     ])
     expect(prices).toEqual([
       '$5',
+      '$4',
       '$7',
+      '$12',
       '$14',
       '$35',
       '$10',
@@ -89,7 +95,9 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
   it('shows a dash when a rate is unset or invalid', async () => {
     mocks.searchRates = {
       braveSearchCostPerThousandRequestsUsd: '',
+      exaLiteSearchCostPerThousandRequestsUsd: '',
       exaSearchCostPerThousandRequestsUsd: '0',
+      exaDeepSearchCostPerThousandRequestsUsd: 'not-a-number',
       googleSearchCostPerThousandQueriesUsd: '',
       googleSearchCostPerThousandGroundedPromptsUsd: '',
       anthropicWebSearchCostPerThousandSearchesUsd: 'not-a-number',
@@ -102,7 +110,7 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
     const rows = wrapper.findAll('tbody tr')
     const prices = rows.map(row => row.findAll('td')[1]?.text())
 
-    expect(prices).toEqual(['—', '—', '—', '—', '—', '—', '—'])
+    expect(prices).toEqual(Array(9).fill('—'))
   })
 
   it('shows the verified free-tier allowance for each search provider',
@@ -126,12 +134,42 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
       )
     })
 
+  it('lists three Exa rows with the credit only on the first one',
+    async () => {
+      const wrapper = await mountSuspended(SearchProvidersInfo)
+
+      const exaRows = wrapper.findAll('tbody tr').filter((row) => {
+        return row.findAll('td')[0]?.text().startsWith('Exa')
+      })
+
+      expect(exaRows.map(row => row.findAll('td')[0]?.text())).toEqual([
+        'Exa Lite',
+        'Exa Auto (default)',
+        'Exa Deep',
+      ])
+      expect(exaRows.map(row => row.findAll('td')[2]?.text())).toEqual([
+        '$10 credit / month (no card)',
+        'Same credit',
+        'Same credit',
+      ])
+    })
+
+  it('explains that Exa searches at Lite, Auto or Deep in the chat menu',
+    async () => {
+      const wrapper = await mountSuspended(SearchProvidersInfo)
+
+      expect(wrapper.text()).toContain(
+        'Exa searches at Lite, Auto (default) or Deep, chosen in the '
+        + 'chat\'s web search menu.',
+      )
+    })
+
   it('discloses that Gemini search is estimated at list price from the '
     + 'first query', async () => {
     const wrapper = await mountSuspended(SearchProvidersInfo)
 
     expect(wrapper.text()).toContain(
-      'List prices as of September 2026 and may change. Besidka '
+      'List prices as of October 2026 and may change. Besidka '
       + 'estimates Gemini search at list price from the first query, '
       + 'which has matched real Google invoices more closely than the '
       + 'documented allowance.',

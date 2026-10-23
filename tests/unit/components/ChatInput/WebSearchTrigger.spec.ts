@@ -2,6 +2,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import type { VueWrapper } from '@vue/test-utils'
+import type { ExaSearchLevel } from '../../../../shared/utils/exa-search-level'
 import type {
   WebSearchOption,
   WebSearchSelection,
@@ -43,8 +44,14 @@ async function mountTrigger(props: {
   align?: 'start' | 'end'
   options?: WebSearchOption[]
   isToolCallingSupported?: boolean
-}): Promise<{ wrapper: VueWrapper, selectedProviders: WebSearchSelection[] }> {
+  exaSearchLevel?: ExaSearchLevel
+}): Promise<{
+  wrapper: VueWrapper
+  selectedProviders: WebSearchSelection[]
+  selectedLevels: ExaSearchLevel[]
+}> {
   const selectedProviders: WebSearchSelection[] = []
+  const selectedLevels: ExaSearchLevel[] = []
 
   const host = defineComponent({
     setup() {
@@ -53,8 +60,12 @@ async function mountTrigger(props: {
         options: props.options ?? options,
         isToolCallingSupported: props.isToolCallingSupported ?? true,
         align: props.align,
+        exaSearchLevel: props.exaSearchLevel,
         onSelectProvider: (value: WebSearchSelection) => {
           selectedProviders.push(value)
+        },
+        onSelectExaSearchLevel: (level: ExaSearchLevel) => {
+          selectedLevels.push(level)
         },
       })
     },
@@ -62,7 +73,7 @@ async function mountTrigger(props: {
 
   const wrapper = await mountSuspended(host, { attachTo: document.body })
 
-  return { wrapper, selectedProviders }
+  return { wrapper, selectedProviders, selectedLevels }
 }
 
 describe('ChatInput/WebSearchTrigger', () => {
@@ -114,7 +125,53 @@ describe('ChatInput/WebSearchTrigger', () => {
     const trigger = wrapper.get('[data-testid="web-search-trigger"]')
 
     expect(trigger.find(':scope > span:last-child').text()).toBe('Search')
-    expect(trigger.attributes('title')).toBe('Web search: Exa')
+    expect(trigger.attributes('title')).toBe('Web search: Exa (Auto)')
+  })
+
+  it('includes the Exa search level in the trigger title', async () => {
+    const { wrapper } = await mountTrigger({
+      selected: 'web_search_exa',
+      exaSearchLevel: 'deep',
+    })
+
+    expect(
+      wrapper.get('[data-testid="web-search-trigger"]').attributes('title'),
+    ).toBe('Web search: Exa (Deep)')
+  })
+
+  it('defaults the Exa trigger title to the Auto level', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'web_search_exa' })
+
+    expect(
+      wrapper.get('[data-testid="web-search-trigger"]').attributes('title'),
+    ).toBe('Web search: Exa (Auto)')
+  })
+
+  it('passes the level to the menu and re-emits a chosen level',
+    async () => {
+      const { wrapper, selectedLevels, selectedProviders }
+        = await mountTrigger({
+          selected: 'web_search_exa',
+          exaSearchLevel: 'lite',
+        })
+
+      expect(
+        wrapper.get('[data-testid="exa-search-level-lite"]').classes(),
+      ).toContain('bg-accent')
+
+      await wrapper
+        .get('[data-testid="exa-search-level-deep"]')
+        .trigger('click')
+
+      expect(selectedLevels).toEqual(['deep'])
+      expect(selectedProviders).toEqual([])
+    })
+
+  it('does not render the level section for other providers', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'web_search_brave' })
+
+    expect(wrapper.find('[data-testid^="exa-search-level-"]').exists())
+      .toBe(false)
   })
 
   it('opens the dropdown on hover on desktop', async () => {
