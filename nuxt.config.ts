@@ -682,6 +682,11 @@ export default defineNuxtConfig({
             type: 'localStorage',
           },
           {
+            id: 'exa-search-level',
+            name: 'settings_exa_search_level',
+            type: 'localStorage',
+          },
+          {
             id: 'chat-input',
             name: 'chat_input',
             type: 'localStorage',

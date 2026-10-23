@@ -153,6 +153,12 @@ export default defineI18nLocale(() => ({
           + '(e.g. low, medium, high) for supported models.',
         duration: 'Until deleted',
       },
+      'exa-search-level': {
+        description:
+          'Remembers the Exa web search level '
+          + '(Lite, Auto or Deep) you picked in the chat input.',
+        duration: 'Until deleted',
+      },
       'chat-input': {
         description:
           'Preserves the draft text in the chat input box '
