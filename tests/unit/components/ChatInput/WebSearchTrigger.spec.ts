@@ -2,7 +2,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import type { VueWrapper } from '@vue/test-utils'
-import type { ExaSearchLevel } from '../../../../shared/utils/exa-search-level'
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type {
   WebSearchOption,
   WebSearchSelection,

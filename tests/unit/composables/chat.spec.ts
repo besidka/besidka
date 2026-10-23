@@ -2,7 +2,7 @@ import type { UIMessage } from 'ai'
 import { computed, defineComponent, nextTick, shallowRef, triggerRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Message } from '../../../shared/types/chats.d'
+import type { Message } from '#shared/types/chats.d'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import {
   applyChatErrorToMessages,
