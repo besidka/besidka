@@ -29,6 +29,9 @@ carousel:
   - src: /carousel/web-search-prices.webp
     alt: Search provider settings with prices per 1,000 searches for Brave, Exa and the built-in search of Gemini, Anthropic, OpenAI and DeepSeek.
     caption: Web search providers and their prices
+  - src: /carousel/exa-search-levels.webp
+    alt: The web search menu with Exa selected and its three search levels, Lite $4/1k, Auto $7/1k and Deep $12/1k with Deep active, next to the message info cards for a Lite answer (~$0.004) and a Deep answer (~$0.012).
+    caption: Pick Lite, Auto or Deep for Exa web search, and see what each answer cost
   - src: /carousel/projects.webp
     alt: A project page with project instructions marked Active and project memory synthesized from the project's chats.
     caption: Projects with shared instructions and memory
@@ -216,6 +219,8 @@ faqs:
     answer: Yes, with a Gemini API key from Google AI Studio. Creating one needs a Google account but no card or billing account, and Besidka itself is free. [How to get a free Gemini API key](/guides/gemini-api-key) has the steps and a short video. The free tier has rate limits, and Google may use your prompts and responses on the free tier to improve its products, so do not send anything sensitive. Moving to the paid tier (a billing account; new accounts start on prepaid credit) stops Google using your prompts to improve its products. Other providers need prepaid credit or a card before their API accepts requests.
   - question: Which AI providers are supported?
     answer: "Besidka connects directly to seven AI providers: Anthropic (Claude Opus 5, Claude Sonnet 5 and Claude Haiku 4.5), OpenAI (GPT-5.6, GPT-5.5 and the wider GPT family), Google AI Studio (Gemini 3.8 Flash, Gemini 3.1 Pro Preview and other Gemini models), xAI (Grok 4.6 and other Grok models), DeepSeek (DeepSeek V4 Pro and DeepSeek V4.1 Flash), Moonshot AI (Kimi K3 and Kimi K2.6) and Qwen (Qwen3.8 Max, Qwen3.8 Flash and other Qwen models). Instead of per-provider keys, you can also route chats through your own AI gateway account (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), using the models that gateway makes available to your account. For web search, you can add your own Brave Search or Exa key and use it with any model that supports tool calling, whichever provider or gateway runs it. Check the GitHub repository for the full, current model list."
+  - question: Can I choose how deep web search goes?
+    answer: Yes, with your own Exa key. You pick a search level for each message in the web search menu of the chat input, and the price shows next to every level. Lite costs $4 per 1,000 searches and is the fastest, Auto costs $7 per 1,000 and is the default, and Deep costs $12 per 1,000, searches in several steps and is slower. Exa bills your own key, and the info menu of each answer shows what its search cost.
   - question: Can Besidka generate images and documents?
     answer: Yes for images. Select Create image with a supported OpenAI, Google or xAI chat model, and Besidka generates one image per request. The image is stored privately in your file library, counts toward your storage quota, and remains available to download. Besidka does not generate PDF, PPTX, or XLSX files yet.
   - question: Do you store my API keys?
@@ -243,7 +248,7 @@ features:
     body: Switch between the latest models from Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI and Qwen in one place, on your own keys or through your own AI gateway.
   - icon: lucide:globe
     title: Web search
-    body: "Ground AI answers with real-time web context and inline sources. Pick your search provider: the model's built-in search, or your own Brave or Exa key."
+    body: "Ground AI answers with real-time web context and inline sources. Pick your search provider: the model's built-in search, or your own Brave or Exa key. With Exa, choose the Lite, Auto or Deep level for each message."
   - icon: lucide:brain
     title: Reasoning mode
     body: Enable step-by-step thinking for complex questions. The model works through its reasoning before giving a final answer.
