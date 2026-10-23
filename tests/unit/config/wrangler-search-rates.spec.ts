@@ -83,6 +83,24 @@ describe('wrangler.jsonc search-cost rates', () => {
       expect(previewsRates).toEqual(productionRates)
     })
 
+  it.each([
+    ['top-level (preview)', (config: any) => config.vars],
+    ['production', (config: any) => config.env.production.vars],
+    [
+      'production previews',
+      (config: any) => config.env.production.previews.vars,
+    ],
+  ])('sets the Exa lite and deep rates in the %s vars block',
+    (_label, readVars) => {
+      const rates = extractSearchCostRates(readVars(parseWranglerConfig()))
+
+      expect(rates).toMatchObject({
+        NUXT_PUBLIC_EXA_LITE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD: '4',
+        NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD: '7',
+        NUXT_PUBLIC_EXA_DEEP_SEARCH_COST_PER_THOUSAND_REQUESTS_USD: '12',
+      })
+    })
+
   it('includes the Brave, Exa and DeepSeek search rates alongside the '
     + 'four pre-existing native rates', () => {
     const config = parseWranglerConfig()

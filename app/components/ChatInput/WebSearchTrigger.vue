@@ -34,7 +34,11 @@
               :selected="selected"
               :options="options"
               :is-tool-calling-supported="isToolCallingSupported"
+              :exa-search-level="exaSearchLevel"
               @select-provider="emit('select-provider', $event)"
+              @select-exa-search-level="
+                emit('select-exa-search-level', $event)
+              "
             />
           </ul>
         </div>
@@ -44,20 +48,25 @@
 </template>
 
 <script setup lang="ts">
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type {
   WebSearchOption,
   WebSearchSelection,
 } from '~/types/web-search'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   selected: WebSearchSelection
   options: WebSearchOption[]
   isToolCallingSupported: boolean
+  exaSearchLevel?: ExaSearchLevel
   align?: 'start' | 'end'
-}>()
+}>(), {
+  exaSearchLevel: 'auto',
+})
 
 const emit = defineEmits<{
   'select-provider': [value: WebSearchSelection]
+  'select-exa-search-level': [level: ExaSearchLevel]
 }>()
 
 const { isIos, isAndroid } = useDevice()
@@ -94,6 +103,10 @@ const providerTitles: Record<Exclude<WebSearchSelection, 'off'>, string> = {
 const triggerTitle = computed<string>(() => {
   if (props.selected === 'off') {
     return 'Choose a web search provider'
+  }
+
+  if (props.selected === 'web_search_exa') {
+    return `Web search: Exa (${EXA_SEARCH_LEVEL_LABELS[props.exaSearchLevel]})`
   }
 
   return `Web search: ${providerTitles[props.selected]}`

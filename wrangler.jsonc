@@ -68,21 +68,18 @@
 		// docs/gateway-restoration-and-search-providers-plan.md Epic 1.
 		// Public, provider-published rates. Brave: $5 / 1,000 requests,
 		// documentation-only (as of 2026-09-22), api-dashboard.search.brave.com
-		// pricing, NOT invoice-verified. Exa: $7 / 1,000 base search requests
-		// (exa.ai/pricing) — this fallback rate is used only when Exa's own
-		// response omits `costDollars`, which the live path always prefers.
-		// Exa's pricing page separately lists a $1/1,000-per-extracted-page
-		// charge that would put this app's fixed 10-result request shape at
-		// $17/1,000 — but a live call on 2026-10-04 with the shipped shape
-		// (`contents.text.maxCharacters: 1500`) reported `costDollars.total:
-		// 0.007` ($7/1,000, base fee only; text content bundled in the search
-		// price). An earlier highlights-shape call on 2026-09-22 reported the
-		// same. Set to the empirically-observed $7, not the theoretical $17 the
-		// pricing page alone would suggest — re-verify with more samples before
-		// raising it back. Brave's LLM Context endpoint is part of the same
-		// Search plan ($5/1,000 requests), so the Brave rate is unchanged.
+		// pricing, NOT invoice-verified. Exa rates are per search level
+		// (exa.ai/pricing as of 2026-10-23: lite $4, auto $7, deep $12 per 1,000
+		// requests, up to 10 results). Auto stays on the existing key. Live-verified
+		// costDollars.total with the shipped request shape (10 results,
+		// `contents.text.maxCharacters: 1500`): 0.007 auto (2026-10-04), 0.004 lite
+		// and 0.012 deep (2026-10-23). These fallback rates are used only when Exa's
+		// response omits `costDollars`. Brave's LLM Context endpoint is part of the
+		// same Search plan ($5/1,000 requests), so the Brave rate is unchanged.
 		"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
+		"NUXT_PUBLIC_EXA_LITE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "4",
 		"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7",
+		"NUXT_PUBLIC_EXA_DEEP_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "12",
 		// DeepSeek Search API (client-executed `web_search` tool, direct DeepSeek
 		// sends only): $0.75 / 1,000 successful requests, where successful means
 		// HTTP 200 with a non-empty `results` array — empty-result and failed
@@ -250,21 +247,18 @@
 				// docs/gateway-restoration-and-search-providers-plan.md Epic 1.
 				// Public, provider-published rates. Brave: $5 / 1,000 requests,
 				// documentation-only (as of 2026-09-22), api-dashboard.search.brave.com
-				// pricing, NOT invoice-verified. Exa: $7 / 1,000 base search requests
-				// (exa.ai/pricing) — this fallback rate is used only when Exa's own
-				// response omits `costDollars`, which the live path always prefers.
-				// Exa's pricing page separately lists a $1/1,000-per-extracted-page
-				// charge that would put this app's fixed 10-result request shape at
-				// $17/1,000 — but a live call on 2026-10-04 with the shipped shape
-				// (`contents.text.maxCharacters: 1500`) reported `costDollars.total:
-				// 0.007` ($7/1,000, base fee only; text content bundled in the search
-				// price). An earlier highlights-shape call on 2026-09-22 reported the
-				// same. Set to the empirically-observed $7, not the theoretical $17 the
-				// pricing page alone would suggest — re-verify with more samples before
-				// raising it back. Brave's LLM Context endpoint is part of the same
-				// Search plan ($5/1,000 requests), so the Brave rate is unchanged.
+				// pricing, NOT invoice-verified. Exa rates are per search level
+				// (exa.ai/pricing as of 2026-10-23: lite $4, auto $7, deep $12 per 1,000
+				// requests, up to 10 results). Auto stays on the existing key. Live-verified
+				// costDollars.total with the shipped request shape (10 results,
+				// `contents.text.maxCharacters: 1500`): 0.007 auto (2026-10-04), 0.004 lite
+				// and 0.012 deep (2026-10-23). These fallback rates are used only when Exa's
+				// response omits `costDollars`. Brave's LLM Context endpoint is part of the
+				// same Search plan ($5/1,000 requests), so the Brave rate is unchanged.
 				"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
+				"NUXT_PUBLIC_EXA_LITE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "4",
 				"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7",
+				"NUXT_PUBLIC_EXA_DEEP_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "12",
 				// DeepSeek Search API (client-executed `web_search` tool, direct DeepSeek
 				// sends only): $0.75 / 1,000 successful requests, where successful means
 				// HTTP 200 with a non-empty `results` array — empty-result and failed
@@ -366,7 +360,9 @@
 					"NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
 					"NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10",
 					"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
+					"NUXT_PUBLIC_EXA_LITE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "4",
 					"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7",
+					"NUXT_PUBLIC_EXA_DEEP_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "12",
 					"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75",
 					"NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS": "*-besidka.chernenko.workers.dev"
 				},

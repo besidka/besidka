@@ -76,6 +76,7 @@ These only remember how you like the app set up. They are kept **only if you agr
 | `settings_favorite_models` | localStorage | Besidka | Your favorited models in the model picker, mirrored from your account settings | Until removed |
 | `settings_favorite_gateway_models` | localStorage | Besidka | Your favorited models for each AI gateway in the model picker, mirrored from your account settings | Until removed |
 | `settings_web_search_tool` | localStorage | Besidka | Which web search tool you last chose for new chats | Until removed |
+| `settings_exa_search_level` | localStorage | Besidka | Which Exa web search level (Lite, Auto or Deep) you last chose | Until removed |
 | `model` | localStorage | Besidka | The model you used last, so a new chat starts with it | Until removed |
 | `chat_input` | localStorage | Besidka | The draft of the message currently in the input box, so it is still there if you navigate away and come back. Like the backup above it holds **your text verbatim**, in your browser only. Unlike the backup it is a convenience, so it is consent-gated and is deleted if you deny preferences | Until sent, cleared, or removed |
 | `video-player` | localStorage | Besidka | Video player preferences such as volume, mute, speed, quality and captions | Until removed |

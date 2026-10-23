@@ -926,6 +926,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             reasoning: canSendCapabilityGatedFields
               ? reasoning.value
               : 'off',
+            exaSearchLevel: normalizeExaSearchLevel(
+              prefStorage.getItem('settings_exa_search_level'),
+            ),
           },
         }
       },

@@ -56,7 +56,11 @@
               :selected="selectedWebSearchProvider ?? 'off'"
               :options="webSearchOptions ?? []"
               :is-tool-calling-supported="!!isToolCallingSupported"
+              :exa-search-level="exaSearchLevel"
               @select-provider="emit('select-web-search-provider', $event)"
+              @select-exa-search-level="
+                emit('select-exa-search-level', $event)
+              "
             />
           </template>
           <li
@@ -140,6 +144,7 @@ import type {
 } from '#shared/types/reasoning.d'
 import type { ModelResearchConfig } from '#shared/types/research.d'
 import { REASONING_ALWAYS_ON_TITLE } from '#shared/utils/reasoning'
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type {
   WebSearchOption,
   WebSearchSelection,
@@ -151,6 +156,7 @@ const props = withDefaults(defineProps<{
   isToolCallingSupported?: boolean
   webSearchOptions?: WebSearchOption[]
   selectedWebSearchProvider?: WebSearchSelection
+  exaSearchLevel?: ExaSearchLevel
   isImageGenerationSupported?: boolean
   isImageGenerationEnabled?: boolean
   isImageGenerationRequired?: boolean
@@ -174,6 +180,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'select-web-search-provider': [value: WebSearchSelection]
+  'select-exa-search-level': [level: ExaSearchLevel]
   'toggle-image-generation': []
   'open-project-picker': []
   'clear-project-context': []

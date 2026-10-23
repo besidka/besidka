@@ -28,7 +28,9 @@ const rates = resolveSearchRates({
   anthropicWebSearchCostPerThousandSearchesUsd: '10',
   openaiWebSearchCostPerThousandCallsUsd: '10',
   braveSearchCostPerThousandRequestsUsd: '5',
+  exaLiteSearchCostPerThousandRequestsUsd: '4',
   exaSearchCostPerThousandRequestsUsd: '17',
+  exaDeepSearchCostPerThousandRequestsUsd: '12',
   deepseekSearchCostPerThousandRequestsUsd: '0.75',
 })
 
@@ -41,7 +43,7 @@ function externalToolResultStep(toolName: string, output: unknown = {}) {
 }
 
 describe('resolveSearchRates', () => {
-  it('maps all seven config keys into google, web and external rate groups', () => {
+  it('maps all nine config keys into google, web and external rate groups', () => {
     expect(rates).toEqual({
       google: {
         perQueryUsd: 0.014,
@@ -54,7 +56,11 @@ describe('resolveSearchRates', () => {
       },
       external: {
         bravePerSearchUsd: 0.005,
-        exaPerSearchUsd: 0.017,
+        exaPerSearchUsdByLevel: {
+          lite: 0.004,
+          auto: 0.017,
+          deep: 0.012,
+        },
       },
     })
   })
@@ -284,6 +290,49 @@ describe('resolveSearchUsage', () => {
       googleGroundedSteps: undefined,
       provider: 'exa',
     })
+  })
+
+  it.each([
+    ['lite', 0.004],
+    ['auto', 0.017],
+    ['deep', 0.012],
+  ] as const)('threads the %s Exa search level into the fallback rate when '
+    + 'no costDollars was reported', (exaSearchLevel, expectedCost) => {
+    const result = resolveSearchUsage({
+      providerId: 'anthropic',
+      modelId: 'claude-opus-4-6',
+      steps: [externalToolResultStep('web_search_exa')],
+      rates,
+      externalSearchProvider: 'exa',
+      exaSearchLevel,
+    })
+
+    expect(result?.cost).toBeCloseTo(expectedCost)
+  })
+
+  it('defaults the Exa fallback rate to auto when no level is passed', () => {
+    const result = resolveSearchUsage({
+      providerId: 'anthropic',
+      modelId: 'claude-opus-4-6',
+      steps: [externalToolResultStep('web_search_exa')],
+      rates,
+      externalSearchProvider: 'exa',
+    })
+
+    expect(result?.cost).toBeCloseTo(0.017)
+  })
+
+  it('ignores the Exa search level for a Brave turn', () => {
+    const result = resolveSearchUsage({
+      providerId: 'openai',
+      modelId: 'gpt-5.4',
+      steps: [externalToolResultStep('web_search_brave')],
+      rates,
+      externalSearchProvider: 'brave',
+      exaSearchLevel: 'deep',
+    })
+
+    expect(result?.cost).toBe(0.005)
   })
 
   it('returns undefined when externalSearchProvider is set but the tool '

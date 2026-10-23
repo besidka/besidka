@@ -15,7 +15,8 @@
         with a Brave or Exa key if they support tool calling — models
         with native search keep using their own. One search provider
         runs per message, and you're billed by the provider on your
-        own key.
+        own key. Exa searches at Lite, Auto (default) or Deep, chosen in
+        the chat's web search menu.
       </p>
       <p class="font-semibold">
         Pricing per 1,000 searches
@@ -52,7 +53,7 @@
         </table>
       </div>
       <p class="text-xs opacity-75">
-        List prices as of September 2026 and may change. Besidka
+        List prices as of October 2026 and may change. Besidka
         estimates Gemini search at list price from the first query, which
         has matched real Google invoices more closely than the documented
         allowance. DeepSeek charges only for searches that return results.
@@ -71,14 +72,16 @@ interface SearchPricingRow {
 function formatRatePerThousandUsd(
   value: string | number | undefined,
 ): string {
-  const parsed = Number(value)
+  const parsed = parseRatePerThousandUsd(value)
 
-  return Number.isFinite(parsed) && parsed > 0 ? `$${parsed}` : '—'
+  return parsed === undefined ? '—' : `$${parsed}`
 }
 
 const {
   braveSearchCostPerThousandRequestsUsd,
+  exaLiteSearchCostPerThousandRequestsUsd,
   exaSearchCostPerThousandRequestsUsd,
+  exaDeepSearchCostPerThousandRequestsUsd,
   anthropicWebSearchCostPerThousandSearchesUsd,
   openaiWebSearchCostPerThousandCallsUsd,
   deepseekSearchCostPerThousandRequestsUsd,
@@ -100,9 +103,19 @@ const byokPricingRows: SearchPricingRow[] = [
     freeAllowance: '$5 credit / month (card required)',
   },
   {
-    name: 'Exa',
-    price: formatRatePerThousandUsd(exaSearchCostPerThousandRequestsUsd),
+    name: 'Exa Lite',
+    price: formatRatePerThousandUsd(exaLiteSearchCostPerThousandRequestsUsd),
     freeAllowance: '$10 credit / month (no card)',
+  },
+  {
+    name: 'Exa Auto (default)',
+    price: formatRatePerThousandUsd(exaSearchCostPerThousandRequestsUsd),
+    freeAllowance: 'Same credit',
+  },
+  {
+    name: 'Exa Deep',
+    price: formatRatePerThousandUsd(exaDeepSearchCostPerThousandRequestsUsd),
+    freeAllowance: 'Same credit',
   },
 ]
 

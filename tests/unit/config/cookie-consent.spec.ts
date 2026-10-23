@@ -123,6 +123,7 @@ describe('cookie consent manifest contract', () => {
         'settings_favorite_models',
         'settings_favorite_gateway_models',
         'settings_web_search_tool',
+        'settings_exa_search_level',
       ]))
     })
 })

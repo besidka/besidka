@@ -2,7 +2,7 @@ import { computed, defineComponent, nextTick, reactive, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createInputMediaTypePredicate } from '../../../shared/utils/input-media-types'
+import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
@@ -160,6 +160,7 @@ describe('ChatInput.client', () => {
 
     prefStorage.removeItem('settings_web_search_tool')
     prefStorage.removeItem('settings_reasoning_level')
+    prefStorage.removeItem('settings_exa_search_level')
   })
 
   afterEach(() => {
@@ -989,6 +990,117 @@ describe('ChatInput.client', () => {
       expect(usePreferenceStorage().getItem('settings_web_search_tool'))
         .toBe('web_search_brave')
     })
+
+    function exaLevelButton(
+      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
+      level: string,
+    ) {
+      return webSearchDropdown(wrapper)?.querySelector(
+        `[data-testid="exa-search-level-${level}"]`,
+      ) as HTMLButtonElement | null
+    }
+
+    it('shows the Exa search level menu only while Exa is selected',
+      async () => {
+        useWebSearchSelection()
+
+        const wrapper = await mountChatInput()
+
+        expect(exaLevelButton(wrapper, 'auto')).toBeNull()
+
+        clickWebSearchOption(wrapper, 'Exa')
+        await nextTick()
+
+        expect(exaLevelButton(wrapper, 'lite')).not.toBeNull()
+        expect(exaLevelButton(wrapper, 'auto')?.className)
+          .toContain('bg-accent')
+
+        clickWebSearchOption(wrapper, 'Brave Search')
+        await nextTick()
+
+        expect(exaLevelButton(wrapper, 'auto')).toBeNull()
+      })
+
+    it('persists a chosen Exa search level, updates the menu and the '
+      + 'trigger title, and asks to remember preferences', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+
+      clickWebSearchOption(wrapper, 'Exa')
+      await nextTick()
+
+      mocks.requestPersistence.mockClear()
+      exaLevelButton(wrapper, 'deep')?.dispatchEvent(
+        new Event('click', { bubbles: true }),
+      )
+      await nextTick()
+
+      expect(usePreferenceStorage().getItem('settings_exa_search_level'))
+        .toBe('deep')
+      expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
+      expect(exaLevelButton(wrapper, 'deep')?.className)
+        .toContain('bg-accent')
+      expect(exaLevelButton(wrapper, 'auto')?.className)
+        .not.toContain('bg-accent')
+      expect(
+        wrapper.get('[data-testid="web-search-trigger"]')
+          .attributes('title'),
+      ).toBe('Web search: Exa (Deep)')
+    })
+
+    it('restores the saved Exa search level from storage', async () => {
+      useWebSearchSelection()
+
+      usePreferenceStorage().setItem('settings_exa_search_level', 'lite')
+
+      const wrapper = await mountChatInput({ tools: ['web_search_exa'] })
+
+      await nextTick()
+
+      expect(exaLevelButton(wrapper, 'lite')?.className)
+        .toContain('bg-accent')
+      expect(exaLevelButton(wrapper, 'auto')?.className)
+        .not.toContain('bg-accent')
+    })
+
+    it('follows an Exa search level changed outside the component',
+      async () => {
+        useWebSearchSelection()
+
+        const wrapper = await mountChatInput({ tools: ['web_search_exa'] })
+
+        await nextTick()
+
+        expect(exaLevelButton(wrapper, 'auto')?.className)
+          .toContain('bg-accent')
+
+        usePreferenceStorage().setItem('settings_exa_search_level', 'deep')
+
+        await nextTick()
+
+        expect(exaLevelButton(wrapper, 'deep')?.className)
+          .toContain('bg-accent')
+        expect(exaLevelButton(wrapper, 'auto')?.className)
+          .not.toContain('bg-accent')
+      })
+
+    it('falls back to Auto when the saved Exa search level is invalid',
+      async () => {
+        useWebSearchSelection()
+
+        usePreferenceStorage().setItem(
+          'settings_exa_search_level',
+          'turbo',
+        )
+
+        const wrapper = await mountChatInput({ tools: ['web_search_exa'] })
+
+        await nextTick()
+
+        expect(exaLevelButton(wrapper, 'auto')?.className)
+          .toContain('bg-accent')
+      })
 
     it('persists "off" as the new-chat default when the user explicitly '
       + 'clears the selection', async () => {

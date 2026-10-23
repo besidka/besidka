@@ -207,11 +207,12 @@ function createDb() {
   }
 }
 
-function baseBody(tool: string | undefined) {
+function baseBody(tool: string | undefined, exaSearchLevel?: string) {
   return {
     model: EXTERNAL_SEARCH_MODEL_ID,
     tools: tool ? [tool] : [],
     reasoning: 'off',
+    ...(exaSearchLevel === undefined ? {} : { exaSearchLevel }),
     messages: [{
       id: 'user-public-1',
       role: 'user',
@@ -238,6 +239,7 @@ async function readClientChunks() {
 
 async function runExternalSearchSend(input: {
   tool: 'web_search_brave' | 'web_search_exa' | undefined
+  exaSearchLevel?: string
   toolName: string
   steps: Array<Array<Record<string, unknown>>>
   fetchImpl: typeof fetch
@@ -258,7 +260,7 @@ async function runExternalSearchSend(input: {
 
   const result = await handler({
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
-    body: baseBody(input.tool),
+    body: baseBody(input.tool, input.exaSearchLevel),
   } as any)
 
   await result.ready
@@ -463,6 +465,51 @@ describe('external search send-path wiring', () => {
       searchBillingUnit: 'search',
       searchCost: 0.021,
     }))
+  })
+
+  it('sends the selected deep search level to Exa as type deep and '
+    + 'prices the turn from the response\'s costDollars', async () => {
+    const fetchImpl = exaFetch(0.012)
+    const { assistantInsert } = await runExternalSearchSend({
+      tool: 'web_search_exa',
+      exaSearchLevel: 'deep',
+      toolName: 'web_search_exa',
+      steps: [
+        createToolCallChunks('call-1', 'web_search_exa', 'besidka release'),
+        createTextChunks('Here is what shipped, via Exa deep.'),
+      ],
+      fetchImpl,
+    })
+    const [, init] = vi.mocked(fetchImpl).mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ]
+
+    expect(JSON.parse(init.body as string)).toMatchObject({ type: 'deep' })
+    expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+      searchProvider: 'exa',
+      searchCost: 0.012,
+    }))
+  })
+
+  it('sends type auto to Exa when exaSearchLevel is omitted', async () => {
+    const fetchImpl = exaFetch(0.007)
+
+    await runExternalSearchSend({
+      tool: 'web_search_exa',
+      toolName: 'web_search_exa',
+      steps: [
+        createToolCallChunks('call-1', 'web_search_exa', 'besidka release'),
+        createTextChunks('Here is what shipped, via Exa.'),
+      ],
+      fetchImpl,
+    })
+    const [, init] = vi.mocked(fetchImpl).mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ]
+
+    expect(JSON.parse(init.body as string)).toMatchObject({ type: 'auto' })
   })
 
   it.each([

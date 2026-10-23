@@ -224,7 +224,7 @@ applied it uniformly to every Google model regardless of generation.
 The real values live in `wrangler.jsonc`, in two places kept in sync by
 hand: the top-level (preview) `vars` block, `env.production.vars` and
 `env.production.previews.vars` (`wrangler-search-rates.spec.ts` enforces
-that they agree). Seven keys today, all under the `NUXT_PUBLIC_` prefix:
+that they agree). Nine keys today, all under the `NUXT_PUBLIC_` prefix:
 
 ```
 NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=14
@@ -232,7 +232,9 @@ NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=35
 NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=10
 NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=10
 NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=5
+NUXT_PUBLIC_EXA_LITE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=4
 NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=7
+NUXT_PUBLIC_EXA_DEEP_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=12
 NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=0.75
 ```
 
@@ -715,7 +717,9 @@ Separately, and more interesting than the passthrough question: Vercel AI
 Gateway ships its **own** model-agnostic search tools usable with any model
 regardless of native support — Perplexity $5/1,000, Exa $7/1,000, Tako
 $7-12/1,000, Parallel $5/1,000 (same source). That's a genuine alternative
-to building a Brave/Exa integration from scratch.
+to building a Brave/Exa integration from scratch. (Exa's own
+`/search` is priced per search level in the shipped BYOK tool: lite $4,
+auto $7, deep $12 per 1,000 requests, see "Exa search levels" below.)
 
 | | Build our own BYOK search tool | Adopt a Gateway's bundled tools |
 |---|---|---|
@@ -753,7 +757,43 @@ request $17/1,000 ($7 base plus 10 pages), but live calls on 2026-09-22
 1500`) all reported `costDollars.total: 0.007`. The live path therefore
 prefers the vendor-reported `costDollars` and falls back to the committed
 $7/1,000 rate only when the response omits it; revisit the $17 figure with
-more samples before raising that fallback.
+more samples before raising that fallback. That 2026-10-04 figure is the
+`auto` level; see "Exa search levels" below for `lite` and `deep`.
+
+### Exa search levels
+
+The user picks the Exa `type` per send (`exaSearchLevel` on
+`POST /api/v1/chats/[slug]`, default `auto`; the shared constants live in
+`shared/utils/exa-search-level.ts`). It is the only request field that is
+user-selected; `numResults: 10` and `contents.text.maxCharacters: 1500`
+stay fixed module constants.
+
+| Level | Price per 1,000 requests | Fallback rate config (`runtimeConfig.public`) |
+|---|---|---|
+| `lite` | $4 | `exaLiteSearchCostPerThousandRequestsUsd` |
+| `auto` (default) | $7 | `exaSearchCostPerThousandRequestsUsd` (the pre-existing key) |
+| `deep` | $12 | `exaDeepSearchCostPerThousandRequestsUsd` |
+
+(exa.ai/pricing as of 2026-10-23, up to 10 results.) Live calls on
+2026-10-23 with a real key and the exact shipped request shape confirmed
+the prices: `lite` returned HTTP 200 in 0.73s, 10/10 results with text and
+`costDollars.total: 0.004`; `deep` returned HTTP 200 in 9.25s, 10/10
+results with text and `costDollars.total: 0.012`. Both responses have the
+same shape as `auto`.
+
+- **Cost.** The vendor-reported `costDollars` still wins.
+  `getExternalSearchCost()` falls back to `searches x rate` only when it is
+  missing, picking the rate for the request's level
+  (`ExternalSearchRates.exaPerSearchUsdByLevel`). A missing level rate
+  resolves to `undefined`, never `0`. All three rates are config-only.
+- **Timeout.** `lite` and `auto` keep the 15s request timeout; `deep` uses
+  55s (`EXA_DEEP_SEARCH_REQUEST_TIMEOUT_MS`) because it is slower (9.25s
+  observed, 4-15s documented); 55s stays under the tool loop's 60s
+  `TOOL_LOOP_TOOL_TIMEOUT_MS`, so the request timeout always fires first. Up to 3 calls per turn are covered by the
+  120s generation lease plus heartbeat.
+- **Telemetry.** `attributes.exaWebSearch.searchLevel` is logged; the tool
+  output does not carry it (nothing consumes it, and it would bloat persisted
+  parts and model context).
 
 ### Richer page content, same unit
 
@@ -765,15 +805,17 @@ call) or to either rate:
 | | Request | Snippet |
 |---|---|---|
 | Brave | `GET /res/v1/llm/context` with `q`, `count=8`, `maximum_number_of_tokens=3072`, `maximum_number_of_tokens_per_url=1024`, `enable_source_metadata=true` (was `/res/v1/web/search`, `count=10`, `result_filter=web`) | `grounding.generic[].snippets` joined with `\n`; title falls back to `sources[url].title`, then hostname; `publishedDate` is `sources[url].age[3]` (full ISO timestamp), falling back to `age[1]`, and only when the value matches an ISO date/datetime pattern |
-| Exa | `POST /search` with `type: 'auto'`, `numResults: 10`, `contents.text.maxCharacters: 1500` (was `contents.highlights: true`) | `results[].text`, falling back to joined `highlights`, else empty |
+| Exa | `POST /search` with `type` = the selected level (default `auto`), `numResults: 10`, `contents.text.maxCharacters: 1500` (was `contents.highlights: true`) | `results[].text`, falling back to joined `highlights`, else empty |
 
 Why the rate is unchanged:
 
 - **Exa** — the 2026-10-04 live call with exactly this body returned
   `costDollars {"total":0.007,"search":{"neural":0.007}}`: text content up
   to 1,500 characters is bundled into the $7/1,000 search price, same as
-  the highlights shape. The rate constant stays derived from this exact
-  request shape, which is why `exa.ts` documents it as an invariant.
+  the highlights shape. The per-level rate constants stay derived from this
+  exact request shape, which is why `exa.ts` documents it as an invariant.
+  The 2026-10-23 `lite` ($0.004) and `deep` ($0.012) calls with the same
+  body confirm text stays bundled at every level.
 - **Brave** — the LLM Context endpoint is part of the same Search plan at
   $5/1,000 requests as Web Search, so one call is still one billed request.
   The `braveWebSearch.resultCount` log attribute is unchanged.
@@ -831,10 +873,10 @@ request as invalid" error instead of "temporarily unavailable".
 
 | | Brave Search API | Exa.ai |
 |---|---|---|
-| Price | $5 / 1,000 requests (Search plan) | $7 / 1,000 standard Search |
+| Price | $5 / 1,000 requests (Search plan) | $7 / 1,000 standard Search (shipped tool: lite $4, auto $7, deep $12) |
 | Free | no always-free tier since Feb 2026; $5/mo recurring credit (~1,000 queries), card required, no default overage cap | $20 new-account credit (~2,800 searches) + $10/mo recurring credit, no subscription |
 | Returns | structured JSON — URLs, titles, snippets, up to 5/query, plus news/image results (shipped tool uses the LLM Context endpoint instead, see above) | full page content, highlights and citations for the first 10 results; +$1/1,000 beyond 10 |
-| Other endpoints | — | Answer $5/1,000; Deep Search $12-15/1,000 |
+| Other endpoints | — | Answer $5/1,000; Deep Search $12-15/1,000 (the shipped `deep` level is `/search` with `type: 'deep'`, $12) |
 | Model | keyword search | neural/semantic, auto/fast/instant modes |
 
 (brave.com/search/api/ and exa.ai/pricing, both as of 2026-09-22.)

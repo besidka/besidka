@@ -154,6 +154,11 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 import { getBraveWebSearchTools } from '~~/server/utils/search/brave'
 import { getExaWebSearchTools } from '~~/server/utils/search/exa'
+import {
+  DEFAULT_EXA_SEARCH_LEVEL,
+  EXA_SEARCH_LEVELS,
+} from '#shared/utils/exa-search-level'
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import { createExternalSearchBudget } from '~~/server/utils/search/search-budget'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
 import {
@@ -183,6 +188,8 @@ export default defineEventHandler(async (event) => {
     gateway: z.enum(gatewayIds).optional(),
     tools: chatToolsSchema,
     reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
+    exaSearchLevel: z.enum(EXA_SEARCH_LEVELS)
+      .default(DEFAULT_EXA_SEARCH_LEVEL),
     messages: z.array(incomingUserMessageSchema).length(1),
   }).safeParse)
 
@@ -193,6 +200,8 @@ export default defineEventHandler(async (event) => {
       why: body.error.message,
     })
   }
+
+  const exaSearchLevel = body.data.exaSearchLevel
 
   let reasoningLevel: ReasoningLevel = body.data.gateway
     && !isGatewayReasoningSupported(body.data.gateway)
@@ -1103,6 +1112,7 @@ export default defineEventHandler(async (event) => {
   if (externalSearchProvider === 'exa' && encryptedExaApiKey) {
     const { tools: exaTools } = await getExaWebSearchTools(
       await useDecryptText(encryptedExaApiKey),
+      exaSearchLevel,
       externalSearchBudget,
       aiLogger,
     )
@@ -1256,6 +1266,7 @@ export default defineEventHandler(async (event) => {
             steps: input.steps,
             rates: searchRates,
             externalSearchProvider,
+            exaSearchLevel,
           })
           const searchCost = search?.cost
           const hasCost = textCost !== undefined
@@ -1415,6 +1426,7 @@ export default defineEventHandler(async (event) => {
             steps,
             rates: searchRates,
             externalSearchProvider,
+            exaSearchLevel,
           })
           const usageWithCosts = addSearchUsage(
             addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
@@ -1600,6 +1612,7 @@ export default defineEventHandler(async (event) => {
           publicId: messagePublicId,
           searchRates,
           externalSearchProvider,
+          exaSearchLevel,
           logger,
           gatewayId,
           gatewayPricing,
@@ -1918,6 +1931,7 @@ function resolveUnbundledSearchUsage(input: {
   steps: ReadonlyArray<WebSearchStep>
   rates: SearchRates
   externalSearchProvider: ExternalSearchProviderId | undefined
+  exaSearchLevel: ExaSearchLevel
 }): SearchUsage | undefined {
   if (input.gatewayId && !input.externalSearchProvider) {
     return undefined
@@ -1929,6 +1943,7 @@ function resolveUnbundledSearchUsage(input: {
     steps: input.steps,
     rates: input.rates,
     externalSearchProvider: input.externalSearchProvider,
+    exaSearchLevel: input.exaSearchLevel,
   })
 }
 
@@ -2139,6 +2154,7 @@ async function persistAssistantMessageFromStream(input: {
   publicId: string
   searchRates: SearchRates
   externalSearchProvider: ExternalSearchProviderId | undefined
+  exaSearchLevel: ExaSearchLevel
   logger: {
     set: (fields: Record<string, unknown>) => void
   }
@@ -2307,6 +2323,7 @@ async function persistAssistantMessageFromStream(input: {
         steps: usageSteps,
         rates: input.searchRates,
         externalSearchProvider: input.externalSearchProvider,
+        exaSearchLevel: input.exaSearchLevel,
       })
       const usageWithCosts = addSearchUsage(
         addImageGenerationCostToUsage(baseUsage, imageGenerationCost),

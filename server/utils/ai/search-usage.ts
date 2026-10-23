@@ -16,6 +16,7 @@ import type {
   WebSearchStep,
 } from '~~/server/utils/ai/web-search-cost'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import {
   getExternalSearchCost,
   getExternalSearchUsage,
@@ -78,6 +79,7 @@ export function resolveSearchUsage(input: {
   steps: ReadonlyArray<WebSearchStep>
   rates: SearchRates
   externalSearchProvider?: ExternalSearchProviderId
+  exaSearchLevel?: ExaSearchLevel
 }): SearchUsage | undefined {
   if (input.externalSearchProvider) {
     const usage = getExternalSearchUsage(
@@ -96,6 +98,7 @@ export function resolveSearchUsage(input: {
         usage,
         input.externalSearchProvider,
         input.rates.external,
+        input.exaSearchLevel,
       ),
       googleQueries: undefined,
       googleGroundedSteps: undefined,

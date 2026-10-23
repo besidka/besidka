@@ -156,8 +156,10 @@
                   :selected="selectedWebSearchProvider"
                   :options="webSearchProviderOptions"
                   :is-tool-calling-supported="isToolCallingSupported"
+                  :exa-search-level="exaSearchLevel"
                   :align="toolbarDropdownAlign"
                   @select-provider="selectWebSearchProvider"
+                  @select-exa-search-level="selectExaSearchLevel"
                 />
                 <LazyChatInputReasoningTrigger
                   v-if="isReasoningTriggerVisible"
@@ -196,6 +198,7 @@
                 :is-tool-calling-supported="isToolCallingSupported"
                 :web-search-options="webSearchProviderOptions"
                 :selected-web-search-provider="selectedWebSearchProvider"
+                :exa-search-level="exaSearchLevel"
                 :is-image-generation-supported="isImageGenerationSupported"
                 :is-image-generation-enabled="isImageGenerationEnabled"
                 :is-image-generation-required="isImageGenerationRequired"
@@ -210,6 +213,7 @@
                 :project-context="projectContext"
                 :files-count="files.length"
                 @select-web-search-provider="selectWebSearchProvider"
+                @select-exa-search-level="selectExaSearchLevel"
                 @toggle-image-generation="toggleImageGeneration"
                 @open-project-picker="emit('open-project-picker')"
                 @clear-project-context="emit('clear-project-context')"
@@ -292,6 +296,7 @@ import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { REASONING_ALWAYS_ON_TITLE } from '#shared/utils/reasoning'
 import type { FileSourceFilter } from '~/types/file-manager'
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
 import { LazyChatInputFilesModal } from '#components'
 
@@ -648,6 +653,12 @@ const canShowRegenerate = computed<boolean>(() => {
   return !!props.displayRegenerate && !hasMessage.value
 })
 
+const exaSearchLevel = computed<ExaSearchLevel>(() => {
+  return normalizeExaSearchLevel(
+    prefStorage.getItem('settings_exa_search_level'),
+  )
+})
+
 const selectedWebSearchProvider = computed<WebSearchSelection>(() => {
   if (tools.value.includes('web_search_brave')) {
     return 'web_search_brave'
@@ -786,6 +797,11 @@ function selectWebSearchProvider(option: WebSearchSelection) {
     }),
     option,
   ]
+}
+
+function selectExaSearchLevel(level: ExaSearchLevel) {
+  prefStorage.setItem('settings_exa_search_level', level)
+  requestPersistence()
 }
 
 function selectReasoningLevel(level: ReasoningLevel) {

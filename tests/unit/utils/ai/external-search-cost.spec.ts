@@ -111,11 +111,27 @@ describe('resolveExternalSearchRates', () => {
   it('parses configured per-thousand rates into per-search USD', () => {
     const rates = resolveExternalSearchRates({
       braveSearchCostPerThousandRequestsUsd: '5',
-      exaSearchCostPerThousandRequestsUsd: '17',
+      exaLiteSearchCostPerThousandRequestsUsd: '4',
+      exaSearchCostPerThousandRequestsUsd: '7',
+      exaDeepSearchCostPerThousandRequestsUsd: 12,
     })
 
     expect(rates.bravePerSearchUsd).toBeCloseTo(0.005)
-    expect(rates.exaPerSearchUsd).toBeCloseTo(0.017)
+    expect(rates.exaPerSearchUsdByLevel.lite).toBeCloseTo(0.004)
+    expect(rates.exaPerSearchUsdByLevel.auto).toBeCloseTo(0.007)
+    expect(rates.exaPerSearchUsdByLevel.deep).toBeCloseTo(0.012)
+  })
+
+  it('leaves an Exa level undefined when only its own config key is '
+    + 'missing', () => {
+    const rates = resolveExternalSearchRates({
+      exaSearchCostPerThousandRequestsUsd: '7',
+      exaDeepSearchCostPerThousandRequestsUsd: '',
+    })
+
+    expect(rates.exaPerSearchUsdByLevel.lite).toBeUndefined()
+    expect(rates.exaPerSearchUsdByLevel.auto).toBeCloseTo(0.007)
+    expect(rates.exaPerSearchUsdByLevel.deep).toBeUndefined()
   })
 
   it('returns undefined for empty, non-finite or non-positive values', () => {
@@ -133,7 +149,14 @@ describe('resolveExternalSearchRates', () => {
 })
 
 describe('getExternalSearchCost', () => {
-  const rates = { bravePerSearchUsd: 0.005, exaPerSearchUsd: 0.017 }
+  const rates = {
+    bravePerSearchUsd: 0.005,
+    exaPerSearchUsdByLevel: {
+      lite: 0.004,
+      auto: 0.007,
+      deep: 0.012,
+    },
+  }
 
   it('prefers a vendor-reported cost over the configured rate', () => {
     const cost = getExternalSearchCost(
@@ -160,7 +183,68 @@ describe('getExternalSearchCost', () => {
     const cost = getExternalSearchCost(
       { searches: 1, billingUnit: 'search', reportedCostDollars: undefined },
       'brave',
-      { bravePerSearchUsd: undefined, exaPerSearchUsd: undefined },
+      {
+        bravePerSearchUsd: undefined,
+        exaPerSearchUsdByLevel: {
+          lite: undefined,
+          auto: undefined,
+          deep: undefined,
+        },
+      },
+    )
+
+    expect(cost).toBeUndefined()
+  })
+
+  it.each([
+    ['lite', 0.008],
+    ['auto', 0.014],
+    ['deep', 0.024],
+  ] as const)('falls back to the %s Exa rate when no cost was reported',
+    (level, expectedCost) => {
+      const cost = getExternalSearchCost(
+        { searches: 2, billingUnit: 'search', reportedCostDollars: undefined },
+        'exa',
+        rates,
+        level,
+      )
+
+      expect(cost).toBeCloseTo(expectedCost)
+    })
+
+  it('defaults the Exa fallback rate to the auto level', () => {
+    const cost = getExternalSearchCost(
+      { searches: 1, billingUnit: 'search', reportedCostDollars: undefined },
+      'exa',
+      rates,
+    )
+
+    expect(cost).toBeCloseTo(0.007)
+  })
+
+  it('still prefers a reported cost over the selected level rate', () => {
+    const cost = getExternalSearchCost(
+      { searches: 1, billingUnit: 'search', reportedCostDollars: 0.012 },
+      'exa',
+      rates,
+      'lite',
+    )
+
+    expect(cost).toBe(0.012)
+  })
+
+  it('returns undefined when only the selected level has no rate', () => {
+    const cost = getExternalSearchCost(
+      { searches: 1, billingUnit: 'search', reportedCostDollars: undefined },
+      'exa',
+      {
+        ...rates,
+        exaPerSearchUsdByLevel: {
+          ...rates.exaPerSearchUsdByLevel,
+          deep: undefined,
+        },
+      },
+      'deep',
     )
 
     expect(cost).toBeUndefined()

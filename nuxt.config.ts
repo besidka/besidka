@@ -311,7 +311,9 @@ export default defineNuxtConfig({
       anthropicWebSearchCostPerThousandSearchesUsd: '',
       openaiWebSearchCostPerThousandCallsUsd: '',
       braveSearchCostPerThousandRequestsUsd: '',
+      exaLiteSearchCostPerThousandRequestsUsd: '',
       exaSearchCostPerThousandRequestsUsd: '',
+      exaDeepSearchCostPerThousandRequestsUsd: '',
       deepseekSearchCostPerThousandRequestsUsd: '',
     },
   },
@@ -677,6 +679,11 @@ export default defineNuxtConfig({
           {
             id: 'reasoning-level',
             name: 'settings_reasoning_level',
+            type: 'localStorage',
+          },
+          {
+            id: 'exa-search-level',
+            name: 'settings_exa_search_level',
             type: 'localStorage',
           },
           {

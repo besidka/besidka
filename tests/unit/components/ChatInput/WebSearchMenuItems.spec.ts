@@ -1,12 +1,24 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import type { VueWrapper } from '@vue/test-utils'
+import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type {
   WebSearchOption,
   WebSearchSelection,
 } from '../../../../app/types/web-search'
 import WebSearchMenuItems from '../../../../app/components/ChatInput/WebSearchMenuItems.vue'
+
+const mocks = vi.hoisted(() => ({
+  exaRates: {} as Record<string, string>,
+}))
+
+mockNuxtImport('useRuntimeConfig', () => {
+  return () => ({
+    app: { baseURL: '/' },
+    public: { ...mocks.exaRates },
+  })
+})
 
 function nativeOption(enabled = true): WebSearchOption {
   return {
@@ -61,8 +73,14 @@ async function mountMenuItems(props: {
   selected: WebSearchSelection
   options: WebSearchOption[]
   isToolCallingSupported: boolean
-}): Promise<{ wrapper: VueWrapper, selectedProviders: WebSearchSelection[] }> {
+  exaSearchLevel?: ExaSearchLevel
+}): Promise<{
+  wrapper: VueWrapper
+  selectedProviders: WebSearchSelection[]
+  selectedLevels: ExaSearchLevel[]
+}> {
   const selectedProviders: WebSearchSelection[] = []
+  const selectedLevels: ExaSearchLevel[] = []
 
   const host = defineComponent({
     setup() {
@@ -71,8 +89,12 @@ async function mountMenuItems(props: {
           selected: props.selected,
           options: props.options,
           isToolCallingSupported: props.isToolCallingSupported,
+          exaSearchLevel: props.exaSearchLevel,
           onSelectProvider: (value: WebSearchSelection) => {
             selectedProviders.push(value)
+          },
+          onSelectExaSearchLevel: (level: ExaSearchLevel) => {
+            selectedLevels.push(level)
           },
         }),
       ])
@@ -81,7 +103,7 @@ async function mountMenuItems(props: {
 
   const wrapper = await mountSuspended(host)
 
-  return { wrapper, selectedProviders }
+  return { wrapper, selectedProviders, selectedLevels }
 }
 
 function optionButtons(wrapper: VueWrapper) {
@@ -109,6 +131,10 @@ function rowLi(wrapper: VueWrapper, text: string) {
 }
 
 describe('ChatInput/WebSearchMenuItems', () => {
+  beforeEach(() => {
+    mocks.exaRates = {}
+  })
+
   it('renders Off, native search, Brave and Exa in that order', async () => {
     const { wrapper } = await mountMenuItems({
       selected: 'off',
@@ -318,5 +344,175 @@ describe('ChatInput/WebSearchMenuItems', () => {
     await offButton?.trigger('click')
 
     expect(selectedProviders).toEqual(['off'])
+  })
+
+  describe('Exa search level section', () => {
+    const exaOptions = [nativeOption(), braveOption(), exaOption()]
+
+    function levelButton(wrapper: VueWrapper, level: ExaSearchLevel) {
+      return wrapper.get(`[data-testid="exa-search-level-${level}"]`)
+    }
+
+    it('is hidden unless Exa is the selected provider', async () => {
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_brave',
+        options: exaOptions,
+        isToolCallingSupported: true,
+      })
+
+      expect(wrapper.text()).not.toContain('Exa search level')
+      expect(wrapper.find('[data-testid^="exa-search-level-"]').exists())
+        .toBe(false)
+    })
+
+    it('is hidden when the model cannot call tools', async () => {
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_exa',
+        options: exaOptions,
+        isToolCallingSupported: false,
+      })
+
+      expect(wrapper.text()).not.toContain('Exa search level')
+      expect(wrapper.find('[data-testid^="exa-search-level-"]').exists())
+        .toBe(false)
+    })
+
+    it('renders Lite, Auto and Deep under a titled section when Exa is '
+      + 'selected', async () => {
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_exa',
+        options: exaOptions,
+        isToolCallingSupported: true,
+      })
+
+      expect(wrapper.text()).toContain('Exa search level')
+
+      const labels = wrapper
+        .findAll('[data-testid^="exa-search-level-"]')
+        .map(button => button.find('span.grow').text())
+
+      expect(labels).toEqual(['Lite', 'Auto', 'Deep'])
+    })
+
+    it('marks only the current level active and defaults to Auto',
+      async () => {
+        const { wrapper } = await mountMenuItems({
+          selected: 'web_search_exa',
+          options: exaOptions,
+          isToolCallingSupported: true,
+        })
+
+        expect(levelButton(wrapper, 'auto').classes())
+          .toContain('bg-accent')
+        expect(levelButton(wrapper, 'auto').classes())
+          .toContain('pointer-events-none')
+        expect(levelButton(wrapper, 'lite').classes())
+          .not.toContain('bg-accent')
+        expect(levelButton(wrapper, 'deep').classes())
+          .not.toContain('bg-accent')
+      })
+
+    it('marks the passed level active', async () => {
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_exa',
+        options: exaOptions,
+        isToolCallingSupported: true,
+        exaSearchLevel: 'deep',
+      })
+
+      expect(levelButton(wrapper, 'deep').classes()).toContain('bg-accent')
+      expect(levelButton(wrapper, 'auto').classes())
+        .not.toContain('bg-accent')
+    })
+
+    it('shows each price from runtime config as a badge', async () => {
+      mocks.exaRates = {
+        exaLiteSearchCostPerThousandRequestsUsd: '4',
+        exaSearchCostPerThousandRequestsUsd: '7',
+        exaDeepSearchCostPerThousandRequestsUsd: '12',
+      }
+
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_exa',
+        options: exaOptions,
+        isToolCallingSupported: true,
+      })
+
+      expect(levelButton(wrapper, 'lite').find('.badge').text())
+        .toBe('$4/1k')
+      expect(levelButton(wrapper, 'auto').find('.badge').text())
+        .toBe('$7/1k')
+      expect(levelButton(wrapper, 'deep').find('.badge').text())
+        .toBe('$12/1k')
+    })
+
+    it('uses a soft badge for both active and inactive levels', async () => {
+      mocks.exaRates = {
+        exaLiteSearchCostPerThousandRequestsUsd: '4',
+        exaSearchCostPerThousandRequestsUsd: '7',
+      }
+
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_exa',
+        options: exaOptions,
+        isToolCallingSupported: true,
+      })
+
+      expect(levelButton(wrapper, 'auto').find('.badge').classes())
+        .toContain('badge-soft')
+      expect(levelButton(wrapper, 'lite').find('.badge').classes())
+        .toContain('badge-soft')
+    })
+
+    it('hides a badge whose rate is missing or invalid', async () => {
+      mocks.exaRates = {
+        exaLiteSearchCostPerThousandRequestsUsd: '',
+        exaSearchCostPerThousandRequestsUsd: '7',
+        exaDeepSearchCostPerThousandRequestsUsd: 'not-a-number',
+      }
+
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_exa',
+        options: exaOptions,
+        isToolCallingSupported: true,
+      })
+
+      expect(levelButton(wrapper, 'lite').find('.badge').exists())
+        .toBe(false)
+      expect(levelButton(wrapper, 'auto').find('.badge').exists())
+        .toBe(true)
+      expect(levelButton(wrapper, 'deep').find('.badge').exists())
+        .toBe(false)
+    })
+
+    it('gives each level a hint title', async () => {
+      const { wrapper } = await mountMenuItems({
+        selected: 'web_search_exa',
+        options: exaOptions,
+        isToolCallingSupported: true,
+      })
+
+      expect(levelButton(wrapper, 'lite').attributes('title'))
+        .toBe('Fastest and cheapest')
+      expect(levelButton(wrapper, 'auto').attributes('title'))
+        .toBe('Balanced default')
+      expect(levelButton(wrapper, 'deep').attributes('title'))
+        .toBe('Multi-step research, slower')
+    })
+
+    it('emits the chosen level and not a provider change', async () => {
+      const { wrapper, selectedLevels, selectedProviders }
+        = await mountMenuItems({
+          selected: 'web_search_exa',
+          options: exaOptions,
+          isToolCallingSupported: true,
+        })
+
+      await levelButton(wrapper, 'deep').trigger('click')
+      await levelButton(wrapper, 'lite').trigger('click')
+
+      expect(selectedLevels).toEqual(['deep', 'lite'])
+      expect(selectedProviders).toEqual([])
+    })
   })
 })

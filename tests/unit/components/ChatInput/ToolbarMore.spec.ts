@@ -157,6 +157,44 @@ describe('ChatInput/ToolbarMore', () => {
       ])
     })
 
+  it('shows the Exa search level section only when Exa is selected, '
+    + 'with the passed level active', async () => {
+    const wrapper = await mountToolbarMore()
+
+    expect(wrapper.find('[data-testid^="exa-search-level-"]').exists())
+      .toBe(false)
+
+    const exaWrapper = await mountToolbarMore({
+      selectedWebSearchProvider: 'web_search_exa',
+      exaSearchLevel: 'deep',
+    })
+
+    expect(exaWrapper.text()).toContain('Exa search level')
+    expect(
+      exaWrapper.get('[data-testid="exa-search-level-deep"]').classes(),
+    ).toContain('bg-accent')
+    expect(
+      exaWrapper.get('[data-testid="exa-search-level-auto"]').classes(),
+    ).not.toContain('bg-accent')
+  })
+
+  it('re-emits select-exa-search-level when a level is chosen',
+    async () => {
+      const wrapper = await mountToolbarMore({
+        selectedWebSearchProvider: 'web_search_exa',
+      })
+
+      await wrapper
+        .get('[data-testid="exa-search-level-lite"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('select-exa-search-level')).toEqual([
+        ['lite'],
+      ])
+      expect(wrapper.emitted('select-web-search-provider'))
+        .toBeUndefined()
+    })
+
   it('renders a single add-key link for a provider without a key, '
     + 'instead of a disabled option', async () => {
     const wrapper = await mountToolbarMore()
