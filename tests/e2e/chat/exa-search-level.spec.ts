@@ -132,7 +132,6 @@ test('does not render the Exa search level picker when another search '
 test('sends the chosen Exa search level with the chat request',
   async ({ page }) => {
     const chatSlug = 'e2e-exa-search-level'
-    let capturedBody: Record<string, unknown> | null = null
 
     await seedWebSearchTool(page, 'web_search_exa')
 
@@ -172,8 +171,6 @@ test('sends the chosen Exa search level with the chat request',
         return
       }
 
-      capturedBody = route.request().postDataJSON()
-
       await route.abort()
     })
 
@@ -186,13 +183,18 @@ test('sends the chosen Exa search level with the chat request',
       .locator('[data-testid="exa-search-level-deep"]')
       .click()
 
+    const chatRequestPromise = page.waitForRequest((request) => {
+      return request.method() === 'POST'
+        && request.url().endsWith(`/api/v1/chats/${chatSlug}`)
+    }, { timeout: 30_000 })
+
     await page.locator('textarea').fill('latest exa news')
     await page.getByRole('button', { name: 'Send Message' }).click()
     await page.waitForURL(`**/chats/${chatSlug}`)
 
-    await expect
-      .poll(() => capturedBody, { timeout: 15_000 })
-      .not.toBeNull()
+    const chatRequest = await chatRequestPromise
 
-    expect(capturedBody).toMatchObject({ exaSearchLevel: 'deep' })
+    expect(chatRequest.postDataJSON()).toMatchObject({
+      exaSearchLevel: 'deep',
+    })
   })

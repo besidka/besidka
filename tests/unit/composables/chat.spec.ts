@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 import { computed, defineComponent, nextTick, shallowRef, triggerRef } from 'vue'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '../../../shared/types/chats.d'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
@@ -51,6 +51,10 @@ vi.mock('ai', async (importOriginal) => {
   })
 
   return { ...original, DefaultChatTransport }
+})
+
+mockNuxtImport('useSetChatTitle', () => {
+  return () => undefined
 })
 
 vi.mock('@ai-sdk/vue', () => {
