@@ -172,7 +172,7 @@ jobs:
       - check-pr-state
       - check-latest-commit
     if: needs.check-latest-commit.outputs.should-skip != 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read

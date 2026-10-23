@@ -300,10 +300,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `nuxt/server` API (Nuxt 5 / Nitro v3 / h3 v2 readiness): importing
   `defineEventHandler` and request helpers together, the `NUXT_E8012`
   failure mode, and test conventions
-- `docs/ci-runner-blacksmith-to-github.md` - Why CI runners moved from
-  Blacksmith to GitHub-hosted `ubuntu-24.04`: kept as a reasonable
-  default, but this was a dead end for the CI-only failure it was meant
-  to fix — see the doc below for the real cause
+- `docs/ci-runner-blacksmith-to-github.md` - Why CI runners are on
+  GitHub-hosted `ubuntu-24.04`: moved on 2026-10-23 because the Blacksmith
+  free tier (3,000 min/month, `4vcpu` billed 2×) was exhausted; also
+  records the earlier 2026-09 switch and revert, which was a dead end for
+  a CI-only test failure — see the doc below for the real cause
 - `docs/ci-pull-request-checkout-ref.md` - The real root cause of a
   CI-only integration test failure chased across many diagnostic rounds:
   `preview-build.yml`'s `build` job checked out `refs/pull/<n>/merge`
