@@ -1,14 +1,24 @@
 # pnpm to Bun evaluation: why the project stays on pnpm
 
+**Status: closed, 2026-10-23.** The project stays on pnpm. The owner asked
+for everything to remain on pnpm and for this record to stop the question
+from coming back. Do not reopen it unless one of the conditions under
+"Revisit when" is met; name that condition when you do.
+
 Evaluated on 2026-10-22 against pnpm 12.10.1, Bun 1.3.14 (local) and Bun
-1.4.3/1.4.4 (1.4.4 was published the same day).
+1.4.3/1.4.4 (1.4.4 was published the same day), then trialled in CI the same
+day on Bun 1.4.3 (draft PR besidka/besidka#489, closed unmerged).
 
 ## Verdict
 
 Stay on pnpm. A migration is technically feasible as a package manager swap
 only, but the measurable gain is a few seconds per CI job. There is one policy
 blocker (Dependabot security updates are not available for Bun) and several
-friction points. Nothing in the project was changed beyond this document.
+friction points. The CI trial confirmed this on real runs: the experiment
+measured no speed advantage anywhere; the decision is cost versus a gain of
+roughly zero. Nothing outside the documentation changed: `main` has no Bun
+files, workflow steps or `package.json` fields, and the trial branch was
+deleted.
 
 ## The ceiling: what a package manager can speed up
 
@@ -60,7 +70,7 @@ of script invocations per CI job that is under a second.
 The CI install step already includes store restore through
 `actions/setup-node` with `cache: pnpm`. Bun would need `oven-sh/setup-bun@v2`
 plus a manual `actions/cache` on `~/.bun/install/cache` keyed on `bun.lock`, so
-the CI delta is unproven and likely smaller than the local one.
+the CI delta is smaller than the local one. The CI trial below measured it.
 
 ### Bun as a runtime is out of scope
 
@@ -191,18 +201,124 @@ The failures, explained:
   `NUXT_PUBLIC_BASE_URL` leaked from the evaluator's shell, a known pitfall.
   Run these with `env -u NUXT_PUBLIC_BASE_URL`.
 
-Not run: E2E (needs `.dev.vars`), `wrangler dev`, `wrangler preview`,
-`deploy`, and CI.
+Not run in the scratch trial: E2E (needs `.dev.vars`), `wrangler dev`,
+`wrangler preview` and `deploy`. The CI trial below covers E2E and the build.
 
-## What a trial would look like, and why it was not run
+## Local comparison
 
-The cheapest honest measurement is a draft pull request that swaps only the
-install step of `preview-build.yml` to `oven-sh/setup-bun@v2`, `actions/cache`
-and `bun install --frozen-lockfile`, keeps Node for everything else, and
-compares the step time over several runs.
+Same commit, same Apple Silicon machine, isolated copies, Node 24.18 as the
+runtime, two rounds. pnpm always ran before Bun in each round, so Bun ran with
+warmer OS file caches: an ordering bias in Bun's favour.
 
-It was not run because blocker 1 alone decides the question and the upside is
-bounded at a few seconds per job.
+| Command | pnpm r1 / r2 | Bun r1 / r2 |
+| --- | --- | --- |
+| lint | 17.3s / 15.2s | 14.8s / 13.9s |
+| typecheck | 16.4s / 13.8s | 13.9s / 12.5s |
+| test:unit | 60.5s / 49.1s | 57.9s / 49.6s |
+| test:integration | 15.0s / 14.8s | 14.6s / 15.5s |
+| cookie-consent tests | 2.9s / 2.4s | 2.2s / 2.2s |
+| nuxt build (cold, cold, warm, warm) | 55.5 / 54.1 / 52.8 / 51.8s | 51.1 / 53.8 / 51.6 / 52.1s |
+| nuxt dev to first 200 (cold / warm, single run) | 38.0s / 21.5s | 35.1s / 20.1s |
+
+The two Bun `test:unit` failures in those local copies came from the old
+scratch copy still calling `pnpm exec drizzle-kit`. On the trial branch all
+5992 tests pass. E2E was not run locally (it needs `.dev.vars`); the CI trial
+covers it.
+
+The differences are within noise and the ordering bias. No tool here runs on
+Bun, so there is nothing for the faster installer to speed up.
+
+## CI trial (besidka/besidka#489)
+
+Setup: branch `experiment/bun-ci-trial`. Only the `Build PR` job in
+`preview-build.yml` was switched to `oven-sh/setup-bun@v2` (Bun 1.4.3),
+`actions/cache@v6` on `~/.bun/install/cache` keyed on `bun.lock`, and
+`bun install --frozen-lockfile`, with scripts run through `bun run` and `bunx`
+(still Node). The repository was a hybrid: `pnpm-lock.yaml`,
+`pnpm-workspace.yaml` and `packageManager: pnpm` were kept, because
+`preview-deploy.yml` is a `workflow_run` workflow that always runs main's
+(pnpm) copy against the PR head. Changing `package.json` forced the full unit,
+integration and e2e suites, so every step below is a full-suite number.
+
+Build PR job, full suites:
+
+| Step | Bun cold cache (attempt 1) | Bun warm cache (attempt 2) | pnpm `8a2baf7c` (#484) | pnpm `e6e9dce9` |
+| --- | --- | --- | --- | --- |
+| Setup Bun / Setup PNPM | 2s | 0s | 5s | 6s |
+| Install Node.js (pnpm: incl. store cache restore) | 0s | 1s | 1s | 7s |
+| Cache restore (Bun only) | 0s (miss) | 10s | - | - |
+| Install dependencies | 6s | 7s | 10s | 12s |
+| Cache save (post step) | 17s | 0s (hit, no save) | 3s | 0s |
+| Package-manager total | 25s | 18s | 19s | 25s |
+| ESLint | 26s | 22s | 23s | 26s |
+| Typecheck | 24s | 18s | 26s | 20s |
+| Unit tests (full) | 2:26 | 2:15 | 2:58 | 2:21 |
+| Integration tests (full) | 33s | 31s | 39s | 43s |
+| Build | 1:35 | 1:04 | 1:17 | 1:52 |
+| E2E (full) | 7:47 | 6:04 | 6:27 | 7:45 |
+| Whole job | 14:42 | 11:28 | 13:32 | 14:32 |
+
+Baseline context: across 50 successful pnpm `preview-build` runs
+(2026-10-13..22) the package-manager steps had a median of 17s (max 104s, one
+76s `Setup PNPM` outlier). Across 14 production runs the median was 19s (max
+32s) of a 15m11s median job, where unit tests (3:58), e2e (7:26) and build
+(1:09) dominate.
+
+Reading:
+
+- Warm Bun is about equal to pnpm on the install path. Cache restore dominates
+  both.
+- Cold Bun is slower because `actions/cache` spends about 17s saving the cache
+  on a miss.
+- Every other step falls within pnpm's own run-to-run spread, because the tools
+  run on Node either way.
+- The warm attempt finished in 11:28, faster than both pnpm baselines, but the
+  whole difference sits in build (1:04) and e2e (6:04), which run on Node
+  regardless of package manager. The cold attempt of the same commit took
+  14:42. A three-minute swing between two runs of identical code on the same
+  runner type is runner variance, an order of magnitude larger than anything
+  the package manager can move, so the whole-job totals are not evidence for
+  either tool.
+
+Gotcha: re-running a finished `Preview Build` deletes and replaces its
+artifacts, so the `Preview Deploy` already triggered by the first attempt
+failed with "Artifact not found for name: preview-build". This is not
+Bun-related; the deploy for the re-run is the valid one. The deploy of the
+warm re-run succeeded: main's pnpm 12 workflow installed the hybrid tree with
+`pnpm install --frozen-lockfile --ignore-scripts` in 5s, applied both D1
+migration sets and deployed `pr-489`. This confirms the hybrid branch stays
+pnpm-compatible in CI, not only locally.
+
+Friction the trial needed (12 files touched):
+
+- `package.json` needed `workspaces`, `overrides` and `trustedDependencies`.
+- `bunfig.toml` needed `minimumReleaseAge = 86400`.
+- `bun.lock` is `lockfileVersion` 3. Main's `.gitignore` deliberately ignores
+  `bun.lock*`, so the trial un-ignored it on the branch only.
+- The 1.4.3 migrator injects `"."` into `workspaces` (removed by hand).
+- Bun's bin shims do not set `NODE_PATH` the way pnpm's do, so
+  `tests/unit/db/migrations-clean.spec.ts` could not resolve `drizzle-kit`
+  until `NODE_PATH` was set explicitly.
+- Every hardcoded `pnpm` in `postinstall`, `playwright.config.ts`,
+  `scripts/test-affected*.mjs` and three e2e/unit specs had to become
+  `node --run` or `node_modules/.bin`.
+- pnpm 12 still installs the hybrid tree, but warns that `workspaces` differs
+  from `pnpm-workspace.yaml`.
+
+## Should Bun be used in general here?
+
+No. Production runs on workerd, and every dev, test and build tool runs on Node
+under both package managers. Bun as a runtime is not viable (see "Bun as a
+runtime is out of scope" above). The remaining package-manager-level gain is
+about 0s per CI job and about 1s per local install.
+
+Against that gain stand:
+
+- Dependabot has no security updates for `bun`.
+- The Bun 1.4 floor (Workers Builds defaults to 1.2.15).
+- Recreating pnpm 12's supply-chain defaults in `bunfig.toml`: a one-day
+  release age by default, `allowBuilds` and lockfile policy verification.
+- The friction list above.
 
 ## Revisit when
 
