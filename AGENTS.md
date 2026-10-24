@@ -349,6 +349,14 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   defaults to 1.2.15); the migration friction list (`bunfig.toml` release
   age, `trustedDependencies`, missing `NODE_PATH` in bin shims, hardcoded
   `pnpm` call sites); and the criteria for revisiting the decision
+- `docs/security-audit-2026-10.md` - The 2026-10-24 security-audit skill run
+  (source-only, standard profile, 21 leads + 2 rejected): the table of fixes
+  (Better Auth rate limit and reset revocation, MDC directive-prop stripping,
+  evlog client-ingest confinement, upload and chat input caps, push limits,
+  Studio guard middleware, preview artifact path), the owner actions required
+  before deploy (`NUXT_STUDIO_AUTH_SESSION_SECRET`, WAF rules), open policy
+  questions, the deliberately unfixed leads, and the `NODE_ENV`-unset-in-Worker
+  lesson
 
 ### Tech Stack
 

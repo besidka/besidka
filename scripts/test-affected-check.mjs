@@ -343,6 +343,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-shares-handoff.spec.ts',
     'tests/integration/api/chats-share-create.spec.ts',
     'tests/integration/api/chats-share-revoke.spec.ts',
+    'tests/integration/api/chats-share-reshare-slug.spec.ts',
     'tests/integration/api/shared-chat-view.spec.ts',
     'tests/unit/composables/chat-share.spec.ts',
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
@@ -1845,6 +1846,42 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/plugins\/file-retention-cleanup\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/utils\/files\/upload-request\.ts$/,
+      tests: ['tests/integration/api/files-upload.spec.ts'],
+    },
+    {
+      pattern: /^(shared\/utils\/mdc\/.*|nuxt\.config\.ts)$/,
+      tests: ['tests/unit/utils/mdc-vbind-policy.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/evlog-drains\.ts$/,
+      tests: [
+        'tests/unit/utils/evlog-drains.spec.ts',
+        'tests/integration/server/evlog-client-ingest-guard-plugin.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/plugins\/00\.evlog-client-ingest-guard\.ts$/,
+      tests: [
+        'tests/integration/server/evlog-client-ingest-guard-plugin.spec.ts',
+      ],
+    },
+    {
+      pattern: /^shared\/utils\/safe-redirect-path\.ts$/,
+      tests: [
+        'tests/unit/utils/safe-redirect-path.spec.ts',
+        'tests/unit/server/middleware/studio-guard.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/middleware\/00\.studio-guard\.ts$/,
+      tests: ['tests/unit/server/middleware/studio-guard.spec.ts'],
+    },
+    {
+      pattern: /^server\/plugins\/landing-cache-control\.ts$/,
+      tests: ['tests/unit/server/plugins/landing-cache-control.spec.ts'],
     },
   ]
 
