@@ -135,6 +135,21 @@
     </a>
 
     <section
+      v-if="guide.faq?.length"
+      class="flex flex-col gap-3"
+      data-testid="key-guide-faq"
+      aria-labelledby="key-guide-faq-heading"
+    >
+      <h2 id="key-guide-faq-heading" class="text-xl font-black">
+        Common questions
+      </h2>
+      <LandingFaqAccordion
+        :items="guide.faq"
+        :group-name="`key-guide-faq-${slug}`"
+      />
+    </section>
+
+    <section
       class="rounded-box bg-base-200/60 border border-base-300 p-4
         flex flex-col gap-3"
       data-testid="key-guide-cta"

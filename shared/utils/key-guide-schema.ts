@@ -96,6 +96,24 @@ export const keyGuideSchema = z.object({
         .describe('Official pages that back these facts'),
     })
     .describe('Facts a reader needs before creating the key'),
+  faq: z
+    .array(
+      z.object({
+        question: z
+          .string()
+          .describe('Question shown as the accordion heading'),
+        answer: z
+          .string()
+          .describe(
+            'Answer in Markdown, shown only on the public /guides page',
+          ),
+      }),
+    )
+    .optional()
+    .describe(
+      'Optional FAQ shown only on the public /guides/<slug> page, not on'
+      + ' the /profile/keys card',
+    ),
   video: z
     .object({
       src: siteRelativeOrHttpsUrl

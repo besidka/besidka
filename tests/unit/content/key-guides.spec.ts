@@ -138,6 +138,44 @@ describe('keyGuideSchema', () => {
     expect(keyGuideSchema.safeParse(validGuide()).success).toBe(true)
   })
 
+  it('accepts a guide with a faq and without one', () => {
+    const withFaq = keyGuideSchema.safeParse({
+      ...validGuide(),
+      faq: [{ question: 'Why?', answer: 'Because **markdown**.' }],
+    })
+    const withoutFaq = keyGuideSchema.safeParse(validGuide())
+
+    expect(withFaq.success).toBe(true)
+    expect(withoutFaq.success && withoutFaq.data.faq).toBeUndefined()
+  })
+
+  it.each([
+    [{ question: 'Why?' }],
+    [{ answer: 'Because.' }],
+    [{ question: 1, answer: 'Because.' }],
+  ])('rejects the malformed faq item %j', (item) => {
+    const result = keyGuideSchema.safeParse({
+      ...validGuide(),
+      faq: [item],
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('carries a faq in the Gemini guide that parses against the schema',
+    async () => {
+      const frontmatter = await readFrontmatter('gemini-api-key.md')
+      const faq = frontmatter.faq as Array<Record<string, unknown>>
+      const result = keyGuideSchema.safeParse(frontmatter)
+
+      expect(faq.length).toBeGreaterThan(0)
+      expect(
+        result.success ? [] : result.error.issues,
+        'gemini-api-key.md frontmatter issues',
+      ).toEqual([])
+      expect(result.success).toBe(true)
+    })
+
   it('accepts a guide with a complete video', () => {
     const result = keyGuideSchema.safeParse({
       ...validGuide(),

@@ -73,6 +73,14 @@ function mountPage(options: { showClientOnlyFallback?: boolean } = {}) {
           ? { ClientOnly: { template: '<slot name="fallback" />' } }
           : {}),
         ContentRenderer: { template: '<div data-testid="body" />' },
+        LandingFaqAccordion: {
+          props: ['items', 'groupName'],
+          template: `<div :data-group="groupName">
+            <p v-for="item in items" :key="item.question">
+              {{ item.question }}
+            </p>
+          </div>`,
+        },
         NuxtLink: {
           props: ['to'],
           template: '<a :href="to"><slot /></a>',
@@ -166,6 +174,59 @@ describe('key guide page', () => {
     expect(link.attributes('href')).toBe(GUIDE.keyUrl)
     expect(link.attributes('target')).toBe('_blank')
     expect(link.attributes('rel')).toContain('noopener')
+  })
+
+  describe('faq', () => {
+    const FAQ = [
+      { question: 'Why does my key not work?', answer: 'Create a new one.' },
+      { question: 'What are the limits?', answer: 'Per project.' },
+    ]
+
+    it('renders the questions in a slug-scoped accordion', async () => {
+      mocks.guide = { ...GUIDE, faq: FAQ }
+
+      const wrapper = await mountPage()
+      const section = wrapper.get('[data-testid="key-guide-faq"]')
+
+      expect(section.attributes('aria-labelledby'))
+        .toBe('key-guide-faq-heading')
+      expect(section.get('h2').text()).toBe('Common questions')
+      expect(section.text()).toContain('Why does my key not work?')
+      expect(section.text()).toContain('What are the limits?')
+      expect(section.get('[data-group]').attributes('data-group'))
+        .toBe('key-guide-faq-gemini-api-key')
+    })
+
+    it('sits after the key link and before the CTA', async () => {
+      mocks.guide = { ...GUIDE, faq: FAQ }
+
+      const wrapper = await mountPage()
+      const keyLink = wrapper.get('[data-testid="key-guide-key-link"]')
+        .element
+      const faq = wrapper.get('[data-testid="key-guide-faq"]').element
+      const cta = wrapper.get('[data-testid="key-guide-cta"]').element
+
+      expect(
+        keyLink.compareDocumentPosition(faq)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+      expect(
+        faq.compareDocumentPosition(cta)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    })
+
+    it.each([
+      ['missing', undefined],
+      ['empty', []],
+    ])('is absent when faq is %s', async (_label, faq) => {
+      mocks.guide = { ...GUIDE, faq }
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.find('[data-testid="key-guide-faq"]').exists())
+        .toBe(false)
+    })
   })
 
   it('renders non-https links as plain text instead of anchors', async () => {
