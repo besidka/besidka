@@ -176,7 +176,7 @@ test.describe('Cookie consent banner', () => {
 
       const consent = await getConsentCookie(page)
 
-      expect(consent.v).toBe(1)
+      expect(consent.v).toBe(2)
       expect(consent.granted).toContain('necessary')
       expect(consent.granted).toContain('preferences')
     })
