@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test'
 // granted consent cookie so the banner stays hidden and the gate lets the
 // color-mode key persist — otherwise the gate purges it on every write.
 const grantedConsent = encodeURIComponent(JSON.stringify({
-  v: 1,
+  v: 2,
   granted: ['necessary', 'preferences'],
   id: 'e2e-theme',
   date: '2026-01-01T00:00:00.000Z',

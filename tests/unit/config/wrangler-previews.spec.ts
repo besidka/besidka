@@ -96,6 +96,7 @@ describe('wrangler.jsonc previews block', () => {
       const overriddenKeys = [
         'NUXT_PUBLIC_BASE_URL',
         'NUXT_PUBLIC_TURNSTILE_SITE_KEY',
+        'NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN',
       ]
       const excludedKeys = [...previewOnlyKeys, ...overriddenKeys]
 
@@ -135,6 +136,15 @@ describe('wrangler.jsonc previews block', () => {
       .not.toBe(config.vars[turnstileSiteKey])
     expect(previews.vars[turnstileSiteKey]).toBe(previewWidgetSiteKey)
   })
+
+  it('keeps the Cloudflare Web Analytics beacon off outside production',
+    () => {
+      const analyticsToken = 'NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN'
+
+      expect(production.vars[analyticsToken]).toMatch(/^[0-9a-f]{32}$/)
+      expect(config.vars[analyticsToken]).toBe('')
+      expect(previews.vars[analyticsToken]).toBe('')
+    })
 
   it('never references a production resource id or name', () => {
     const serializedPreviews = JSON.stringify(previews)

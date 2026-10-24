@@ -62,7 +62,7 @@ function stubBindings() {
     public: {
       baseUrl: 'https://example.com',
       turnstileSiteKey: '',
-      cookieConsent: { cookieName: 'cookies_consent', revision: 1 },
+      cookieConsent: { cookieName: 'cookies_consent', revision: 2 },
     },
     turnstileSecretKey: '',
     turnstileEnforced: false,
@@ -875,7 +875,7 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
 
   it('sets no last-login cookie when preferences were not granted', async () => {
     const setCookies = await runLastLoginMethodHook(
-      encodeConsentCookie({ v: 1, granted: ['necessary'] }),
+      encodeConsentCookie({ v: 2, granted: ['necessary'] }),
     )
 
     expect(setCookies).toEqual([])
@@ -899,7 +899,7 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
 
   it('sets the last-login cookie when preferences were granted', async () => {
     const setCookies = await runLastLoginMethodHook(
-      encodeConsentCookie({ v: 1, granted: ['necessary', 'preferences'] }),
+      encodeConsentCookie({ v: 2, granted: ['necessary', 'preferences'] }),
     )
 
     expect(setCookies).toHaveLength(1)
@@ -909,7 +909,7 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
 
   it('sets the last-login cookie on an OAuth callback with preferences', async () => {
     const setCookies = await runLastLoginMethodHook(
-      encodeConsentCookie({ v: 1, granted: ['necessary', 'preferences'] }),
+      encodeConsentCookie({ v: 2, granted: ['necessary', 'preferences'] }),
       { path: '/callback/:id', params: { id: 'google' } },
     )
 
@@ -918,7 +918,7 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
 
   it('sets no last-login cookie on an OAuth callback without preferences', async () => {
     const setCookies = await runLastLoginMethodHook(
-      encodeConsentCookie({ v: 1, granted: ['necessary'] }),
+      encodeConsentCookie({ v: 2, granted: ['necessary'] }),
       { path: '/callback/:id', params: { id: 'google' } },
     )
 

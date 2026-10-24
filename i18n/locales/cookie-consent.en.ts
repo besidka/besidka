@@ -2,8 +2,18 @@ export default defineI18nLocale(() => ({
   cookieConsent: {
     description:
       'Besidka stores only what it needs to run and, with your permission, '
-      + 'your preferences on this device. No analytics or advertising '
-      + 'cookies.',
+      + 'your preferences on this device. It sets no analytics or '
+      + 'advertising cookies. You can also allow a cookieless analytics '
+      + 'script that measures page views and page speed.',
+    categories: {
+      analytics: {
+        title: 'Analytics',
+        description:
+          'Lets Cloudflare Web Analytics measure page views and page '
+          + 'speed. It sets no cookies and stores nothing on your device, '
+          + 'and it is loaded only if you allow it.',
+      },
+    },
     firstLayer: {
       benefit:
         'Allow preferences so Besidka remembers your theme, model, drafts '

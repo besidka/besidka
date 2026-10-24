@@ -1,5 +1,6 @@
 const COLOR_MODE_STORAGE_KEY = 'nuxt-color-mode'
 const RECEIPT_DELAY_MS = 150
+const RECEIPT_TIMEOUT_MS = 5000
 
 interface ConsentReceipt {
   id: string
@@ -24,6 +25,7 @@ async function sendConsentReceipt(receipt: ConsentReceipt): Promise<void> {
     await $fetch('/api/v1/consents', {
       method: 'POST',
       body: receipt,
+      timeout: RECEIPT_TIMEOUT_MS,
     })
   } catch (exception) {
     void exception
@@ -38,7 +40,7 @@ async function sendConsentReceipt(receipt: ConsentReceipt): Promise<void> {
  * window is never persisted across a reload; the head script only reads the
  * key on the next load, by which time it is gone.
  */
-export default defineNuxtPlugin((): void => {
+export default defineNuxtPlugin((nuxtApp): void => {
   const {
     isAllowed,
     onConsentChange,
@@ -82,26 +84,29 @@ export default defineNuxtPlugin((): void => {
 
     const id = consentId.value
     const date = consentDate.value
+    const payload = { granted, denied, changed }
 
-    if (id && date) {
-      const cookieConsent = config.public.cookieConsent as {
-        revision: number
-      }
-
-      // Deferred: useCookie flushes document.cookie on the next tick;
-      // sending immediately would race ahead of the consent cookie and
-      // break the server-side corroboration (consistent flag).
-      setTimeout((): void => {
-        sendConsentReceipt({
-          id,
-          date,
-          revision: cookieConsent.revision,
-          granted,
-          denied,
-          changed,
-        })
-      }, RECEIPT_DELAY_MS)
+    if (!id || !date) {
+      return
     }
+
+    const cookieConsent = config.public.cookieConsent as {
+      revision: number
+    }
+
+    // Deferred: useCookie flushes document.cookie on the next tick;
+    // sending immediately would race ahead of the consent cookie and
+    // break the server-side corroboration (consistent flag).
+    setTimeout(async (): Promise<void> => {
+      await sendConsentReceipt({
+        id,
+        date,
+        revision: cookieConsent.revision,
+        ...payload,
+      })
+
+      await nuxtApp.callHook('cookie-consent:receipt-sent', payload)
+    }, RECEIPT_DELAY_MS)
   })
 
   watch(

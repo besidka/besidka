@@ -16,7 +16,7 @@ test.beforeEach(async ({ page, context }) => {
     {
       name: 'cookies_consent',
       value: JSON.stringify({
-        v: 1,
+        v: 2,
         granted: ['necessary', 'preferences'],
         id: 'e2e-consent',
         date: new Date().toISOString(),

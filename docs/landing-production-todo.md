@@ -28,7 +28,9 @@ For how Studio editing works across environments, see
   `/` (set in `nuxt.config.ts` `routeRules`) require it. A Worker that binds
   `analytics_engine_datasets` will **fail to deploy on the Free plan**.
 - [x] Enable **Cloudflare Web Analytics** in the dashboard (manual owner
-  action).
+  action). The site must be in **Enable with JS Snippet installation** mode,
+  not automatic injection, otherwise the edge injects the beacon without
+  consent; see [`cookie-consent.md`](./cookie-consent.md#cloudflare-web-analytics).
 
 ---
 

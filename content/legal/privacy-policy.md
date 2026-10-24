@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-10-18
+updatedAt: 2026-10-24
 summary: "Besidka stores your account, chats, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway whose account you chose to route it through, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. Each of them is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
 ---
 
@@ -88,6 +88,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Publish a chat behind a share link | Your consent — Art. 6(1)(a) |
 | Let search engines index a shared chat | A separate consent — Art. 6(1)(a) |
 | Store non-essential preferences in your browser | Your consent — Art. 6(1)(a) and PKE Art. 399 |
+| Measure page views and page-load speed with Cloudflare Web Analytics, only if you allow the Analytics category | Your consent — Art. 6(1)(a) and PKE Art. 399 |
 | Remember which campaign link brought you to Besidka, and count the milestones above, so I can tell which of my own campaigns work | Legitimate interests — Art. 6(1)(f) |
 | Count page views and interface events as aggregate counters | Legitimate interests — Art. 6(1)(f) |
 | Error and operational logging | Legitimate interests — Art. 6(1)(f) |
@@ -167,7 +168,7 @@ Exa states that its query fields are not intended for the submission of personal
 
 | Recipient | What they receive | Where | Safeguard |
 | --- | --- | --- | --- |
-| Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing — plus Turnstile bot-protection signals on sign-in, sign-up and password reset forms | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
+| Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing — plus Turnstile bot-protection signals on sign-in, sign-up and password reset forms, plus, only if you allow the Analytics category in the cookie banner, the page-view and page-load measurements sent by Cloudflare Web Analytics | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
 | Axiom | Operational and error logs | US | Processor for me. Standard Contractual Clauses. |
 | Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen | Your prompts, message history and attachments, sent with your own API key | Depends on your provider account | Independent controller. Your own terms with them apply. |
 | Vercel (AI Gateway) | Only if you route a chat through it: your prompts, message history and attachments, in transit to the model vendor you selected, sent with your own gateway key | Depends on your gateway account | Independent controller. Your own terms with them apply. Vercel's DPA describes it as a processor for its own customers, but does not name AI Gateway; the zero-data-retention and no-training commitments are in Vercel's product documentation, not its contract. [Vercel Privacy Notice](https://vercel.com/legal/privacy-notice) |
@@ -181,7 +182,9 @@ Exa states that its query fields are not intended for the submission of personal
 
 Sign-in, sign-up and password reset forms are protected by **Cloudflare Turnstile**, a bot-detection check that runs as part of Cloudflare, the same infrastructure provider listed above. On most visits it runs without any action from you; if a visit looks automated, it may present a challenge before letting the form through. To do this, Turnstile looks at signals about your browser and device. See Cloudflare's [Turnstile Privacy Addendum](https://www.cloudflare.com/en-gb/turnstile-privacy-policy/) for what a Turnstile check itself collects from your visit.
 
-I do not sell your data. I do not share it with advertisers, data brokers or analytics networks. There are no advertising or tracking scripts on the site.
+Cloudflare Web Analytics, which loads only if you allow the Analytics category in the cookie banner, is run by Cloudflare as the same infrastructure provider listed above. See [Analytics](#analytics).
+
+I do not sell your data. I do not share it with advertisers, data brokers or analytics networks. There are no advertising scripts on the site, and the only analytics script is Cloudflare Web Analytics, which stays off until you allow it.
 
 I may disclose data if I am legally required to, for example in response to a valid order from a Polish authority. If that happens and I am allowed to tell you, I will.
 
@@ -217,6 +220,7 @@ My logs are deliberately narrow. Specifically:
 | Sessions | Until they expire or you sign out |
 | Campaign attribution and milestone records | Until you delete your account. They are deleted together with it. |
 | Aggregate analytics counters | About three months, which is how long Cloudflare keeps Workers Analytics Engine data |
+| Cloudflare Web Analytics measurements (only if you allow the Analytics category) | Held by Cloudflare, not by me. Cloudflare states that it keeps unsampled data for the past 7 days and then aggregates it, and that its dashboard shows the previous six months. It does not state how long the aggregated data is stored. See Cloudflare's [Web Analytics FAQ](https://developers.cloudflare.com/web-analytics/faq/). |
 | Operational logs | As kept by Axiom under my plan, and only in the reduced form described above |
 | Consent records | Stored in a separate database, pseudonymously — see [Cookie consent records](#cookie-consent-records) |
 
@@ -265,11 +269,15 @@ That is all. **I never send marketing email**, newsletters or product announceme
 
 ## Analytics
 
-I measure two things, and neither uses a cookie or any storage on your device.
+I measure three things. Two of them use no cookie and nothing on your device and run without a banner choice. The third is optional and is off until you allow it.
 
 **Aggregate counters.** I count page views and a small set of interface events (for example, that a call-to-action was clicked) **on the server**, in Cloudflare Workers Analytics Engine. A counter holds the event name, the path, a coarse country, a device class (mobile, tablet or desktop) derived from the User-Agent string, and the campaign tags from the link you opened, if it had any. It holds **no user id, no email address and no IP address**, and no cookie is set or read. Cloudflare keeps this data for about three months.
 
 Because those counters are aggregate and cannot be linked back to you, they are not personal data, and they are not gated behind consent.
+
+**Cloudflare Web Analytics, only if you allow it.** The cookie banner has an optional **Analytics** category that is off until you turn it on. Only if you do, Besidka loads a script from `static.cloudflareinsights.com` that measures page views and page-load performance (the browser's Navigation Timing data and the Core Web Vitals) and sends the measurements to Cloudflare at `cloudflareinsights.com`. I see the result as aggregate figures in a Cloudflare dashboard. Cloudflare states that this product sets no cookie, uses no localStorage and does no fingerprinting, and that it does not track individual end users across its customers' sites; see [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/) and [how it collects data](https://developers.cloudflare.com/web-analytics/data-metrics/data-origin-and-collection/). Because your browser contacts Cloudflare to send the measurements, Cloudflare receives your IP address and browser details in that request, as in any web request. Cloudflare is my processor for this, as it is for the hosting listed above.
+
+My legal basis is your consent: GDPR Art. 6(1)(a) for the processing, and PKE Art. 399 for reading information from your device. You can withdraw it at any time by turning Analytics off in the cookie settings. If the script was already running, the page reloads once so it stops; on a chat page I wait until you next move to another page, so I never interrupt a reply that is being written. It is not loaded again until you turn the category back on. Withdrawing does not affect what was measured before. Retention is described under [How long I keep things](#how-long-i-keep-things). The script is loaded on the production site only.
 
 **Campaign attribution on your account.** When you create an account after opening a campaign link, I store the link's tags with your account. For every account created after this feature started, with or without a campaign link, I also record the three early milestones described under [Campaign attribution](#campaign-attribution). Accounts that already existed are not tracked. These records are stored with your account and deleted with it. They are personal data, because they are tied to your account. It is separate from the aggregate counters, which never receive your user id. The log lines for those milestones are covered under [Operational logging](#operational-logging).
 
@@ -279,7 +287,7 @@ My legal basis for the account-level record is legitimate interests under GDPR A
 
 ## Cookies and browser storage
 
-I use a small number of cookies and browser storage keys. The necessary ones keep you signed in and remember your cookie choice. The optional ones remember preferences such as your theme. Nothing is used for advertising or cross-site tracking.
+I use a small number of cookies and browser storage keys. The necessary ones keep you signed in and remember your cookie choice. The optional ones remember preferences such as your theme, and a separate optional Analytics category controls whether Cloudflare Web Analytics loads at all. Nothing is used for advertising or cross-site tracking.
 
 The full list, with names and durations, is in the [Cookie Policy](/cookie-policy).
 

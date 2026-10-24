@@ -305,6 +305,7 @@ export default defineNuxtConfig({
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
       vapidPublicKey: '',
       turnstileSiteKey: '',
+      cloudflareWebAnalyticsToken: '',
       e2eTestHooksEnabled: false,
       googleSearchCostPerThousandQueriesUsd: '',
       googleSearchCostPerThousandGroundedPromptsUsd: '',
@@ -572,6 +573,7 @@ export default defineNuxtConfig({
     },
   },
   cookieConsent: {
+    revision: 2,
     categories: [
       {
         id: 'necessary',
@@ -723,10 +725,10 @@ export default defineNuxtConfig({
           },
         ],
       },
-      // {
-      //   id: 'analytics',
-      //   entries: [],
-      // },
+      {
+        id: 'analytics',
+        entries: [],
+      },
       // {
       //   id: 'marketing',
       //   entries: [],

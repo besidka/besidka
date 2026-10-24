@@ -156,6 +156,23 @@ override was applied, remove it with `pnpm exec wrangler preview secret delete
 NUXT_TURNSTILE_SECRET_KEY --name pr-<n> --env production` so the Preview falls
 back to the base-config secret.
 
+## Web Analytics on Previews
+
+`NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN` is the Cloudflare Web Analytics
+site token for `besidka.com`. It is set **only** in `env.production.vars` and is
+explicitly set to an empty string in `env.production.previews.vars`, so a
+Preview never inherits it. An empty token makes the consent-gated loader do
+nothing, so a Preview never requests the beacon and never sends page views or
+performance data to the production site in Cloudflare's dashboard, even when a
+tester allows the `analytics` category. Local development leaves it empty for
+the same reason.
+
+If this ever needs verifying on a Preview, check the page source and the network
+panel for `static.cloudflareinsights.com` after allowing `analytics`; there must
+be none. How the beacon is loaded, why it must stay behind consent and the
+dashboard setting it depends on are in
+[cookie-consent.md](cookie-consent.md#cloudflare-web-analytics).
+
 ## Secrets runbook
 
 Secrets are **not** inherited from production and **not** managed by CI. CI
