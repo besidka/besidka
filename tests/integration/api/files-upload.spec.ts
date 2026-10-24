@@ -80,13 +80,56 @@ function createDbMock(options: DbMockOptions = {}) {
   }
 }
 
-function createEvent(headers: Record<string, string>, body = 'data') {
+function createEvent(
+  headers: Record<string, string>,
+  body = 'data',
+  arrayBuffer = vi.fn(),
+  bodyStream: ReadableStream<Uint8Array> | null = new Blob([body]).stream(),
+) {
   return {
-    headers,
+    headers: {
+      'content-length': String(new TextEncoder().encode(body).length),
+      ...headers,
+    },
     req: {
-      arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+      arrayBuffer,
+      body: bodyStream,
     },
   }
+}
+
+function createChunkedStream(chunks: Uint8Array[]) {
+  let nextChunkIndex = 0
+
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks[nextChunkIndex]
+
+      if (!chunk) {
+        controller.close()
+
+        return
+      }
+
+      nextChunkIndex += 1
+      controller.enqueue(chunk)
+    },
+  }, { highWaterMark: 0 })
+}
+
+function createEndlessStream(chunkSize: number) {
+  const state = { pulledChunks: 0, cancelled: false }
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      state.pulledChunks += 1
+      controller.enqueue(new Uint8Array(chunkSize))
+    },
+    cancel() {
+      state.cancelled = true
+    },
+  }, { highWaterMark: 0 })
+
+  return { stream, state }
 }
 
 function createFilePolicy(overrides: Partial<FilePolicy> = {}): FilePolicy {
@@ -104,6 +147,12 @@ function createFilePolicy(overrides: Partial<FilePolicy> = {}): FilePolicy {
 
 async function getHandler() {
   const module = await import('../../../server/api/v1/files/upload.put')
+
+  return module.default
+}
+
+async function getCreateHandler() {
+  const module = await import('../../../server/api/v1/files/create.post')
 
   return module.default
 }
@@ -197,8 +246,9 @@ describe('files upload API', () => {
       'content-type': 'text/plain',
       'x-filename': encodeURIComponent('notes.txt'),
       'x-filesize': '1',
+      'content-length': '5',
     }, '123456') as any)).rejects.toMatchObject({
-      status: 400,
+      status: 413,
     })
   })
 
@@ -388,5 +438,181 @@ describe('files upload API', () => {
     })
 
     expect(remove).toHaveBeenCalledWith('stored.txt')
+  })
+
+  describe.each([
+    ['upload.put', getHandler],
+    ['create.post', getCreateHandler],
+  ])('%s request guards', (_name, loadHandler) => {
+    it('rejects 413 on oversized Content-Length without reading the body', async () => {
+      const handler = await loadHandler()
+      const arrayBuffer = vi.fn()
+
+      mocks.getEffectiveUserFilePolicy.mockResolvedValue(createFilePolicy({
+        maxStorageBytes: 20 * 1024 * 1024,
+      }))
+      mocks.getUserStorageUsageBytes.mockResolvedValue(0)
+
+      await expect(handler(createEvent({
+        'content-type': 'text/plain',
+        'x-filename': encodeURIComponent('big.txt'),
+        'content-length': '104857600',
+      }, 'data', arrayBuffer) as any)).rejects.toMatchObject({
+        status: 413,
+      })
+
+      expect(arrayBuffer).not.toHaveBeenCalled()
+    })
+
+    it('rejects 413 when Content-Length exceeds the remaining quota', async () => {
+      const handler = await loadHandler()
+      const arrayBuffer = vi.fn()
+
+      mocks.getEffectiveUserFilePolicy.mockResolvedValue(createFilePolicy({
+        maxStorageBytes: 100,
+      }))
+      mocks.getUserStorageUsageBytes.mockResolvedValue(90)
+
+      await expect(handler(createEvent({
+        'content-type': 'text/plain',
+        'x-filename': encodeURIComponent('notes.txt'),
+        'content-length': '11',
+      }, 'data', arrayBuffer) as any)).rejects.toMatchObject({
+        status: 413,
+      })
+
+      expect(arrayBuffer).not.toHaveBeenCalled()
+    })
+
+    it('rejects 413 without draining the stream when Content-Length is missing and the body exceeds the quota', async () => {
+      const handler = await loadHandler()
+      const arrayBuffer = vi.fn()
+      const { stream, state } = createEndlessStream(4)
+      const event = createEvent({
+        'content-type': 'text/plain',
+        'x-filename': encodeURIComponent('notes.txt'),
+      }, 'data', arrayBuffer, stream)
+
+      delete (event.headers as Record<string, string>)['content-length']
+      mocks.getEffectiveUserFilePolicy.mockResolvedValue(createFilePolicy({
+        maxStorageBytes: 15,
+      }))
+      mocks.getUserStorageUsageBytes.mockResolvedValue(5)
+
+      await expect(handler(event as any)).rejects.toMatchObject({
+        status: 413,
+        message: 'Not enough storage space. Please delete some files.',
+      })
+
+      expect(arrayBuffer).not.toHaveBeenCalled()
+      expect(state.cancelled).toBe(true)
+      expect(state.pulledChunks).toBe(3)
+    })
+
+    it('rejects 413 when the streamed body outgrows a smaller declared Content-Length', async () => {
+      const handler = await loadHandler()
+      const { stream, state } = createEndlessStream(4)
+
+      mocks.getEffectiveUserFilePolicy.mockResolvedValue(createFilePolicy({
+        maxStorageBytes: 10,
+      }))
+      mocks.getUserStorageUsageBytes.mockResolvedValue(0)
+
+      await expect(handler(createEvent({
+        'content-type': 'text/plain',
+        'x-filename': encodeURIComponent('notes.txt'),
+        'content-length': '5',
+      }, 'data', vi.fn(), stream) as any)).rejects.toMatchObject({
+        status: 413,
+      })
+
+      expect(state.cancelled).toBe(true)
+    })
+
+    it('uploads a streamed body within quota when Content-Length is missing', async () => {
+      const handler = await loadHandler()
+      const arrayBuffer = vi.fn()
+      const { db } = createDbMock()
+      const put = vi.fn().mockResolvedValue({ key: 'stored.txt' })
+      const event = createEvent({
+        'content-type': 'text/plain',
+        'x-filename': encodeURIComponent('notes.txt'),
+      }, 'data', arrayBuffer, createChunkedStream([
+        new TextEncoder().encode('ab'),
+        new TextEncoder().encode('cd'),
+        new TextEncoder().encode('ef'),
+      ]))
+
+      delete (event.headers as Record<string, string>)['content-length']
+      vi.stubGlobal('useDb', () => db)
+      vi.stubGlobal('useFileStorage', () => ({ put, delete: vi.fn() }))
+      mocks.getEffectiveUserFilePolicy.mockResolvedValue(createFilePolicy({
+        maxStorageBytes: 6,
+      }))
+      mocks.getUserStorageUsageBytes.mockResolvedValue(0)
+
+      await handler(event as any)
+
+      expect(arrayBuffer).not.toHaveBeenCalled()
+      expect(new TextDecoder().decode(put.mock.calls[0]?.[1])).toBe('abcdef')
+    })
+
+    it('rejects 400 when the request has no body', async () => {
+      const handler = await loadHandler()
+
+      await expect(handler(createEvent({
+        'content-type': 'text/plain',
+        'x-filename': encodeURIComponent('notes.txt'),
+        'content-length': '0',
+      }, '', vi.fn(), null) as any)).rejects.toMatchObject({
+        status: 400,
+        message: 'No file data provided',
+      })
+    })
+
+    it('rejects 400 on a malformed Content-Length', async () => {
+      const handler = await loadHandler()
+      const arrayBuffer = vi.fn()
+
+      await expect(handler(createEvent({
+        'content-type': 'text/plain',
+        'x-filename': encodeURIComponent('notes.txt'),
+        'content-length': '12abc',
+      }, 'data', arrayBuffer) as any)).rejects.toMatchObject({
+        status: 400,
+      })
+
+      expect(arrayBuffer).not.toHaveBeenCalled()
+    })
+
+    it('rejects 400 when x-filename is longer than 255 characters', async () => {
+      const handler = await loadHandler()
+      const arrayBuffer = vi.fn()
+
+      await expect(handler(createEvent({
+        'content-type': 'text/plain',
+        'x-filename': encodeURIComponent(`${'a'.repeat(256)}.txt`),
+      }, 'data', arrayBuffer) as any)).rejects.toMatchObject({
+        status: 400,
+        message: 'File name is too long',
+      })
+
+      expect(arrayBuffer).not.toHaveBeenCalled()
+    })
+
+    it('rejects 400 when x-filename is malformed percent-encoding', async () => {
+      const handler = await loadHandler()
+      const arrayBuffer = vi.fn()
+
+      await expect(handler(createEvent({
+        'content-type': 'text/plain',
+        'x-filename': '%E0%A4%A',
+      }, 'data', arrayBuffer) as any)).rejects.toMatchObject({
+        status: 400,
+        message: 'Invalid file name',
+      })
+
+      expect(arrayBuffer).not.toHaveBeenCalled()
+    })
   })
 })
