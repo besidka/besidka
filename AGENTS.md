@@ -341,6 +341,13 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   (breaking the DaisyUI cascade) or 404; detection, the upstream issue
   (nuxt/nuxt#36136), rejected alternatives, the more-chunk-renames trade-off,
   revert criteria, and the build-comparison verification recipe
+- `docs/memory-architecture.md` - Memory proposal (2026-10-24): claude.ai's
+  observed design (small MD entries + one-line descriptions as an index), the
+  audit of today's project-memory blob and its bugs, the target layers
+  (memory entries, cached index, on-demand memory/search tools over the
+  existing FTS5, cron-sweep extraction), the code-enforced compliance gate
+  (never-store list, GDPR Art. 9 opt-in), token budgets incl. the Cyrillic
+  multiplier, owner-overridable defaults, and the parallel workstreams
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,
