@@ -138,7 +138,7 @@ jobs:
         with:
           run-id: ${{ github.event.workflow_run.id }}
           name: preview-drizzle
-          path: .
+          path: .drizzle/
           github-token: ${{ github.token }}
 
       - name: Setup PNPM
