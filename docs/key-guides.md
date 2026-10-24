@@ -50,6 +50,7 @@ covers these files (title, description and summary stay strings).
 | `requirements.minimumTopUp` | string, optional | Smallest prepaid top-up |
 | `requirements.freeTier` | string, optional | What the free tier offers |
 | `requirements.sources` | `{ label, url }[]` | Official https pages the facts come from |
+| `faq` | `{ question, answer }[]`, optional | FAQ accordion shown only on `/guides/<slug>`, after the key button and before the Besidka CTA. Not shown on the keys card. Answers are Markdown. No `FAQPage` JSON-LD is emitted |
 | `video.src` | path or https URL | `/videos/key-guide-<id>.mp4`, with `?v=<n>` once the file has been replaced (see "Replacing a video or poster") |
 | `video.poster` | path or https URL | `/key-guides/<id>.webp`, with the same `?v=<n>` |
 | `video.qualities` | `{ src, size, label? }[]` | Quality menu renditions, same shape as `video.qualities` in `content/index.md`: 1080, 720 and 360. The 720 entry is the same URL as `video.src`, query included. Without entries the player has one source and no Quality menu. See "Renditions" |
@@ -66,7 +67,9 @@ only emitted when it is set, and the keys page then shows no video block.
 The Markdown body is the ordered steps list plus optional short notes, such as
 the Google free-tier data-use caveat or the "when a gateway makes sense"
 sentence. It is rendered with `ContentRenderer` and the project prose styles
-on both pages.
+on both pages. That is why the FAQ is a frontmatter field and not part of the
+body: a body section would also render on the keys card, and the FAQ is meant
+for the public page only.
 
 `content/key-guides/gemini-api-key.md` and `openrouter-api-key.md` carry
 verified copy. When a console flow or a price changes, re-verify the facts

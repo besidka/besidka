@@ -448,6 +448,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/landing/FeatureGrid.spec.ts',
     'tests/unit/components/landing/MessageBubble.spec.ts',
     'tests/unit/components/landing/Carousel.spec.ts',
+    'tests/unit/components/landing/FaqAccordion.spec.ts',
     'tests/unit/components/content/HomeStats.spec.ts',
     'tests/unit/components/content/HomeVideo.spec.ts',
     'tests/unit/components/content/HomeBubble.spec.ts',
