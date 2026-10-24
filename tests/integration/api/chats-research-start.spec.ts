@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MAX_USER_MESSAGE_TEXT_LENGTH } from '~~/server/utils/chats/request-schema'
 
 const mocks = vi.hoisted(() => ({
   startResearchJobForChat: vi.fn(async () => ({
@@ -239,6 +240,83 @@ describe('research start API', () => {
     )
     expect(insertValues).not.toHaveBeenCalled()
     expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { type: 'text', text: 1 },
+    { type: 'text', text: { nested: 'value' } },
+    { type: 'text' },
+    { type: 'unknown', text: 'Research this topic' },
+  ])('rejects a malformed part %j with a 400 and persists nothing', async (part) => {
+    const handler = await getStartHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5.4',
+        userMessage: {
+          id: 'user-message-1',
+          parts: [
+            { type: 'text', text: 'Research this topic' },
+            part,
+          ],
+        },
+      },
+    } as any)).rejects.toMatchObject({
+      message: 'Invalid request body',
+      status: 400,
+    })
+    expect(insertValues).not.toHaveBeenCalled()
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
+  })
+
+  it('rejects a message whose only part has a non-string text', async () => {
+    const handler = await getStartHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5.4',
+        userMessage: {
+          id: 'user-message-1',
+          parts: [{ type: 'text', text: 1 }],
+        },
+      },
+    } as any)).rejects.toMatchObject({
+      message: 'Invalid request body',
+      status: 400,
+    })
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
+  it('rejects an oversized text part', async () => {
+    const handler = await getStartHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5.4',
+        userMessage: {
+          id: 'user-message-1',
+          parts: [
+            { type: 'text', text: 'a'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH + 1) },
+          ],
+        },
+      },
+    } as any)).rejects.toMatchObject({
+      message: 'Invalid request body',
+      status: 400,
+    })
+    expect(insertValues).not.toHaveBeenCalled()
   })
 
   it('404s when the chat does not belong to the user', async () => {

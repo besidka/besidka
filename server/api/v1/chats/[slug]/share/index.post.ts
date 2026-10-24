@@ -1,5 +1,6 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
+import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
 import {
   durationToExpiresAt,
@@ -81,6 +82,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const expiresAt = durationToExpiresAt(body.data.duration)
+  const freshSlug = ulid()
+  const nowInSeconds = Math.floor(Date.now() / 1000)
+  const slugAfterReshare = sql`CASE
+    WHEN ${schema.chatShares.expiresAt} IS NOT NULL
+      AND ${schema.chatShares.expiresAt} <= ${nowInSeconds}
+    THEN ${freshSlug}
+    ELSE ${schema.chatShares.slug}
+  END`
 
   const shareRow = await db
     .insert(schema.chatShares)
@@ -96,6 +105,7 @@ export default defineEventHandler(async (event) => {
     .onConflictDoUpdate({
       target: schema.chatShares.chatId,
       set: {
+        slug: slugAfterReshare,
         revoked: false,
         indexable: body.data.indexable,
         showFiles: body.data.showFiles,

@@ -89,25 +89,40 @@ export async function sweepMessageSearchIndex(input: {
         break
       }
 
-      const parsedMessages = userRows.map((row) => {
-        return {
-          id: encodePublicId(row.messageId),
-          parts: parseBackfillMessageParts(row.parts),
-        }
-      })
+      try {
+        const parsedMessages = userRows.map((row) => {
+          return {
+            id: encodePublicId(row.messageId),
+            parts: parseBackfillMessageParts(row.parts),
+          }
+        })
 
-      const result = await indexMessagesForSearch({
-        db,
-        userId,
-        messages: parsedMessages,
-        logger: input.logger,
-        stage: 'sweeper-backfill',
-      })
+        const result = await indexMessagesForSearch({
+          db,
+          userId,
+          messages: parsedMessages,
+          logger: input.logger,
+          stage: 'sweeper-backfill',
+        })
 
-      backfilledCount += result.indexedCount
-      emptyBodyBackfilledCount += parsedMessages.filter((message) => {
-        return !extractMessageSearchText(message.parts)
-      }).length
+        backfilledCount += result.indexedCount
+        emptyBodyBackfilledCount += parsedMessages.filter((message) => {
+          return !extractMessageSearchText(message.parts)
+        }).length
+      } catch (exception) {
+        input.logger.set({
+          messageSearchSweep: {
+            phase: 'user-backfill',
+            userId,
+            rowCount: userRows.length,
+          },
+          attributes: {
+            messageSearchSweep: {
+              error: exceptionMessage(exception),
+            },
+          },
+        })
+      }
     }
 
     // A timed-out pass must NOT advance the cursor past rows it never
