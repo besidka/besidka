@@ -79,16 +79,27 @@ const ALLOWED_PUSH_SERVICE_HOST_SUFFIXES = [
   '.notify.windows.com',
 ]
 
+export const MAX_PUSH_ENDPOINT_LENGTH = 2048
+export const MAX_PUSH_P256DH_KEY_LENGTH = 128
+export const MAX_PUSH_AUTH_KEY_LENGTH = 64
+export const MAX_PUSH_SUBSCRIPTIONS_PER_USER = 20
+
 export function isAllowedPushServiceEndpoint(endpoint: string): boolean {
-  let host: string
+  let url: URL
 
   try {
-    host = new URL(endpoint).host
+    url = new URL(endpoint)
   } catch (exception) {
     void exception
 
     return false
   }
+
+  if (url.protocol !== 'https:') {
+    return false
+  }
+
+  const host = url.host
 
   if (ALLOWED_PUSH_SERVICE_HOSTS.has(host)) {
     return true

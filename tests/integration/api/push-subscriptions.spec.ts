@@ -3,6 +3,9 @@ import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { drizzle } from 'drizzle-orm/d1'
 import type { SQL } from 'drizzle-orm'
 import * as schema from '../../../server/db/schema'
+import {
+  MAX_PUSH_SUBSCRIPTIONS_PER_USER,
+} from '~~/server/utils/push'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -37,17 +40,20 @@ function renderCondition(condition: SQL) {
 function createDb(
   existing: { id: number, userId?: number } | null = null,
   deletedRows: { id: number }[] = [],
+  userRows: { id: number }[] = [],
 ) {
   const insertValues = vi.fn(async () => undefined)
   const updateSet = vi.fn(() => ({ where: vi.fn(async () => undefined) }))
   const returning = vi.fn(async () => deletedRows)
   const deleteWhere = vi.fn(() => ({ returning }))
+  const findManyUserRows = vi.fn(async () => userRows)
 
   return {
     db: {
       query: {
         pushSubscriptions: {
           findFirst: vi.fn(async () => existing),
+          findMany: findManyUserRows,
         },
       },
       insert: vi.fn(() => ({ values: insertValues })),
@@ -58,7 +64,14 @@ function createDb(
     updateSet,
     deleteWhere,
     returning,
+    findManyUserRows,
   }
+}
+
+function createRows(count: number) {
+  return Array.from({ length: count }, (_row, index) => {
+    return { id: count - index }
+  })
 }
 
 describe('push subscription API', () => {
@@ -297,6 +310,163 @@ describe('push subscription API', () => {
           previousEndpoint: longEndpoint,
         },
       } as any)).rejects.toThrow('Invalid push subscription body')
+    })
+
+    it('rejects a p256dh key longer than 128 chars', async () => {
+      const { db, insertValues } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'a'.repeat(129), auth: 'auth-key' },
+        },
+      } as any)).rejects.toThrow('Invalid push subscription body')
+      expect(insertValues).not.toHaveBeenCalled()
+    })
+
+    it('rejects an auth key longer than 64 chars', async () => {
+      const { db, insertValues } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'a'.repeat(65) },
+        },
+      } as any)).rejects.toThrow('Invalid push subscription body')
+      expect(insertValues).not.toHaveBeenCalled()
+    })
+
+    it('accepts real-world sized p256dh and auth keys', async () => {
+      const { db, insertValues } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'a'.repeat(87), auth: 'b'.repeat(22) },
+        },
+      } as any)
+
+      expect(insertValues).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not evict anything while the user is below the cap', async () => {
+      const { db, deleteWhere, insertValues } = createDb(
+        null,
+        [],
+        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1),
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-new',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+        },
+      } as any)
+
+      expect(deleteWhere).not.toHaveBeenCalled()
+      expect(insertValues).toHaveBeenCalledTimes(1)
+    })
+
+    it('evicts the oldest rows, scoped to the user, when at the cap', async () => {
+      const { db, deleteWhere, insertValues, findManyUserRows } = createDb(
+        null,
+        [],
+        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER),
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-new',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+        },
+      } as any)
+
+      expect(findManyUserRows).toHaveBeenCalledWith(expect.objectContaining({
+        where: { userId: 7 },
+        limit: MAX_PUSH_SUBSCRIPTIONS_PER_USER,
+      }))
+      expect(deleteWhere).toHaveBeenCalledTimes(1)
+
+      const rendered = renderCondition(
+        (deleteWhere.mock.calls[0] as unknown[])[0] as SQL,
+      )
+      const keptIds = createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER)
+        .slice(0, MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1)
+        .map(row => row.id)
+
+      expect(rendered.sql).toContain('"user_id"')
+      expect(rendered.sql).toContain('not in')
+      expect(rendered.params).toEqual([7, ...keptIds])
+      expect(insertValues).toHaveBeenCalledTimes(1)
+      expect(deleteWhere.mock.invocationCallOrder[0])
+        .toBeLessThan(insertValues.mock.invocationCallOrder[0]!)
+    })
+
+    it('still inserts the new endpoint when the user is at the cap', async () => {
+      const { db, insertValues } = createDb(
+        null,
+        [],
+        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER),
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-new',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+        },
+      } as any)
+
+      expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+        userId: 7,
+        endpoint: 'https://push.example.com/sub-new',
+      }))
+    })
+
+    it('does not run the cap check when re-subscribing an existing endpoint', async () => {
+      const { db, deleteWhere, findManyUserRows, updateSet } = createDb(
+        { id: 99, userId: 7 },
+        [],
+        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER),
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'new-p256dh', auth: 'new-auth' },
+        },
+      } as any)
+
+      expect(findManyUserRows).not.toHaveBeenCalled()
+      expect(deleteWhere).not.toHaveBeenCalled()
+      expect(updateSet).toHaveBeenCalledTimes(1)
     })
 
     it('captures the request origin server-side, not from client input', async () => {
@@ -620,6 +790,21 @@ describe('push subscription API', () => {
       } as any)
 
       expect(deleteWhere).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects an endpoint longer than 2048 chars', async () => {
+      const { db, deleteWhere } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        body: {
+          endpoint: `https://push.example.com/${'a'.repeat(2050)}`,
+        },
+      } as any)).rejects.toThrow('Invalid unsubscribe body')
+      expect(deleteWhere).not.toHaveBeenCalled()
     })
 
     it('rejects an invalid unsubscribe body', async () => {

@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, notInArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
   defineEventHandler,
@@ -8,8 +8,12 @@ import {
   setResponseStatus,
 } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
-
-const MAX_PUSH_ENDPOINT_LENGTH = 2048
+import {
+  MAX_PUSH_AUTH_KEY_LENGTH,
+  MAX_PUSH_ENDPOINT_LENGTH,
+  MAX_PUSH_P256DH_KEY_LENGTH,
+  MAX_PUSH_SUBSCRIPTIONS_PER_USER,
+} from '~~/server/utils/push'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -27,8 +31,8 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
     endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
     keys: z.object({
-      p256dh: z.string().nonempty(),
-      auth: z.string().nonempty(),
+      p256dh: z.string().nonempty().max(MAX_PUSH_P256DH_KEY_LENGTH),
+      auth: z.string().nonempty().max(MAX_PUSH_AUTH_KEY_LENGTH),
     }),
     previousEndpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH).optional(),
   }).safeParse)
@@ -110,6 +114,25 @@ export default defineEventHandler(async (event) => {
         userId,
       },
     })
+
+    const newestSubscriptions = await db.query.pushSubscriptions.findMany({
+      columns: { id: true },
+      where: { userId },
+      orderBy: { lastSeenAt: 'desc', createdAt: 'desc', id: 'desc' },
+      limit: MAX_PUSH_SUBSCRIPTIONS_PER_USER,
+    })
+
+    if (newestSubscriptions.length >= MAX_PUSH_SUBSCRIPTIONS_PER_USER) {
+      const retainedIds = newestSubscriptions
+        .slice(0, MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1)
+        .map(subscription => subscription.id)
+
+      await db.delete(schema.pushSubscriptions)
+        .where(and(
+          eq(schema.pushSubscriptions.userId, userId),
+          notInArray(schema.pushSubscriptions.id, retainedIds),
+        ))
+    }
 
     await db.insert(schema.pushSubscriptions).values({
       userId,

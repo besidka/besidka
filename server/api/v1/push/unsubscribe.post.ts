@@ -7,6 +7,7 @@ import {
   setResponseStatus,
 } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { MAX_PUSH_ENDPOINT_LENGTH } from '~~/server/utils/push'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -22,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const userId = parseInt(session.user.id)
 
   const body = await readValidatedBody(event, z.object({
-    endpoint: z.string().url(),
+    endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
   }).safeParse)
 
   if (body.error) {
