@@ -185,8 +185,11 @@ Rules:
 - Never print secret values, never paste them into issues, PRs or logs, and
   never commit `.dev.vars.preview`.
 - The file should contain the runtime secrets only (encryption keys, Better
-  Auth secret, OAuth client secrets, `STUDIO_GITHUB_*`, VAPID private key,
-  Turnstile secret, maintenance token, email/IndexNow keys as applicable).
+  Auth secret, OAuth client secrets, `STUDIO_GITHUB_*`,
+  `NUXT_STUDIO_AUTH_SESSION_SECRET` (random, 32+ chars; without it
+  `server/middleware/00.studio-guard.ts` returns 404 for `/_studio` and
+  `/__nuxt_studio/**`), VAPID private key, Turnstile secret, maintenance
+  token, email/IndexNow keys as applicable).
   Public values belong in `env.production.previews.vars`.
 - Changing `NUXT_ENCRYPTION_KEY` or `NUXT_BETTER_AUTH_SECRET` makes the
   data they protect undecryptable (see `docs/auth-security.md`); the shared
