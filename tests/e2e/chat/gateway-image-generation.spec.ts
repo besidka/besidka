@@ -283,7 +283,7 @@ async ({ page, context }) => {
     {
       name: 'cookies_consent',
       value: JSON.stringify({
-        v: 1,
+        v: 2,
         granted: ['necessary', 'preferences'],
         id: 'e2e-consent',
         date: new Date().toISOString(),
@@ -362,7 +362,7 @@ test('first turn sent from /chats/new shows the pending image card '
     {
       name: 'cookies_consent',
       value: JSON.stringify({
-        v: 1,
+        v: 2,
         granted: ['necessary', 'preferences'],
         id: 'e2e-consent',
         date: new Date().toISOString(),
@@ -469,7 +469,7 @@ async ({ page, context }) => {
     {
       name: 'cookies_consent',
       value: JSON.stringify({
-        v: 1,
+        v: 2,
         granted: ['necessary', 'preferences'],
         id: 'e2e-consent',
         date: new Date().toISOString(),
@@ -525,7 +525,7 @@ test('never paints the search/reasoning triggers reloading an existing '
     {
       name: 'cookies_consent',
       value: JSON.stringify({
-        v: 1,
+        v: 2,
         granted: ['necessary', 'preferences'],
         id: 'e2e-consent',
         date: new Date().toISOString(),

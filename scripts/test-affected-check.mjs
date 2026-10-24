@@ -365,6 +365,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/auth-last-login-method.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
     'tests/unit/composables/theme-toggle.spec.ts',
+    'tests/unit/plugins/cloudflare-web-analytics.client.spec.ts',
+    'tests/unit/plugins/cookie-consent-gate.client.spec.ts',
     'modules/cookie-consent/test/cleanup.spec.ts',
     'modules/cookie-consent/test/consent-plugin.spec.ts',
     'modules/cookie-consent/test/consent.spec.ts',
@@ -1275,7 +1277,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db|-rate-limit)?\.ts$|server\/db\/consent\/)/,
+        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/(cookie-consent-gate|cloudflare-web-analytics)\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db|-rate-limit)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
     },
     {

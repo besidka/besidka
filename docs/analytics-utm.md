@@ -719,13 +719,26 @@ whenever this changes. Both state that no cookie is used for attribution.
 ## Decision: no analytics-consent cookie
 
 An earlier draft added an optional cookie that remembered the campaign across
-visits, behind a new consent category. It is not built.
+visits, behind a new consent category. It is not built. The reasoning below
+is about that cookie, not about the category.
 
-- A cookie would need the `analytics` consent category. That category is
-  commented out in `nuxt.config.ts` (`cookieConsent.categories`) today,
-  because nothing needs it. Enabling it
-  adds a banner category and re-prompts every user whose stored choice does not
-  include it.
+The optional `analytics` category now exists, but for a different purpose: it
+gates the Cloudflare Web Analytics beacon (page views and page-load
+performance), and nothing else. It was added with consent revision `2` on
+2026-10-24 (see
+[`docs/cookie-consent.md`](cookie-consent.md#cloudflare-web-analytics)). It does
+not touch UTM attribution. Campaign capture, the `user_attribution` row and the
+activation ledger work the same whether a visitor allows `analytics` or not,
+and the Analytics Engine counters described in this doc are still not
+consent-gated.
+
+- A campaign cookie would also need consent, so it would sit in the `analytics`
+  category. Visitors who decline it, or who dismiss the banner, would not be
+  covered, and the one-off `analytics` banner choice would now decide whether
+  attribution works. Revision `2` already re-prompted everyone once for the
+  beacon; re-prompting again for a cookie would need another bump, because
+  only a revision bump re-prompts. Adding a category or an entry in
+  `nuxt.config.ts` alone does not.
 - Most users would decline, or the banner would be dismissed. The cookie would
   then cover few visits and bias the data toward people who accept cookies.
 - URL propagation covers the case that matters: the user clicks a campaign
@@ -734,9 +747,11 @@ visits, behind a new consent category. It is not built.
 - The cost of URL propagation is that a visitor who leaves and returns later
   through a plain link is not attributed to the campaign. That is accepted.
 
-If you add a UTM cookie in the future, put it in the `analytics` category with
-consent, add it to the Cookie Policy table, and update `docs/cookie-consent.md`
-and the Privacy Policy. Do not set it before consent.
+If you add a UTM cookie in the future, put it in the existing `analytics`
+category with its entries declared in the manifest, add it to the Cookie Policy
+table, and update `docs/cookie-consent.md` and the Privacy Policy. Do not set
+it before consent. Bump `cookieConsent.revision` again if the change means a
+past "yes" to `analytics` would no longer cover it, as a new cookie would.
 
 ## Files
 

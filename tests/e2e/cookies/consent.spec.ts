@@ -53,7 +53,7 @@ async function readLayoutSize(locator: Locator) {
 
 function buildConsentCookieHeader(): string {
   const value = encodeURIComponent(JSON.stringify({
-    v: 1,
+    v: 2,
     granted: ['necessary', 'preferences'],
     id: '550e8400-e29b-41d4-a716-446655440000',
     date: '2026-06-11T12:00:00.000Z',
