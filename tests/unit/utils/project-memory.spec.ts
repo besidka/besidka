@@ -4,11 +4,22 @@ import { PROJECT_MEMORY_LIMITS } from '../../../server/utils/projects/memory-lim
 
 const mocks = vi.hoisted(() => ({
   generateText: vi.fn(),
+  useGateway: vi.fn(),
 }))
 
 vi.mock('ai', () => ({
   generateText: mocks.generateText,
 }))
+
+vi.mock('~~/server/utils/gateways/index', async (importOriginal) => {
+  const original
+    = await importOriginal<typeof import('~~/server/utils/gateways/index')>()
+
+  return {
+    ...original,
+    useGateway: mocks.useGateway,
+  }
+})
 
 const LEASE_KEY = 'project-memory-refreshing:project-1'
 const OMITTED_MARKER = '[earlier messages omitted]'
@@ -32,6 +43,7 @@ interface MessageFixture {
   role: 'user' | 'assistant'
   parts: unknown[]
   createdAt: Date
+  usage?: { model: string, provider: string } | null
 }
 
 interface ChatFixture {
@@ -44,12 +56,14 @@ interface ChatFixture {
 
 interface HarnessOptions {
   keys?: string[]
+  keysError?: Error
   projectStatus?: string
   previousMemory?: string | null
   snapshotDirtyAt?: Date | null
   leaseValue?: string | null
   chats?: ChatFixture[]
   rereadState?: Record<string, unknown>
+  settings?: Record<string, unknown> | null
 }
 
 interface UpdateCondition {
@@ -142,8 +156,17 @@ function createHarness(options: HarnessOptions = {}) {
 
   const db = {
     query: {
+      userSettings: {
+        findFirst: vi.fn(async () => {
+          return options.settings ?? undefined
+        }),
+      },
       keys: {
         findMany: vi.fn(async () => {
+          if (options.keysError) {
+            throw options.keysError
+          }
+
           return (options.keys ?? ['google']).map((provider) => {
             return { provider }
           })
@@ -172,14 +195,18 @@ function createHarness(options: HarnessOptions = {}) {
       },
       messages: {
         findMany: vi.fn(async (query: {
-          where: { chatId: string }
+          where: { chatId: string, role: unknown }
           limit: number
         }) => {
           const chat = chats.find((candidate) => {
             return candidate.id === query.where.chatId
           })
+          const chatMessages = chat?.messages ?? []
+          const scopedMessages = query.where.role === 'assistant'
+            ? chatMessages.filter(message => message.role === 'assistant')
+            : chatMessages
 
-          return [...(chat?.messages ?? [])]
+          return [...scopedMessages]
             .reverse()
             .slice(0, query.limit)
         }),
@@ -205,6 +232,10 @@ async function loadMemoryModule() {
   return await import('../../../server/utils/projects/memory')
 }
 
+async function loadResolverModule() {
+  return await import('../../../server/utils/memory/resolve-model')
+}
+
 function stubGoogle() {
   const useGoogle = vi.fn(async () => ({
     instance: { id: 'google-memory-model' },
@@ -213,6 +244,19 @@ function stubGoogle() {
   vi.stubGlobal('useGoogle', useGoogle)
 
   return useGoogle
+}
+
+function isTranscriptRead(query: { where: { role: unknown } }) {
+  return typeof query.where.role === 'object'
+}
+
+function getTranscriptReadChatIds(db: {
+  query: { messages: { findMany: { mock: { calls: unknown[][] } } } }
+}) {
+  return db.query.messages.findMany.mock.calls
+    .map(([query]) => query as { where: { chatId: string, role: unknown } })
+    .filter(isTranscriptRead)
+    .map(query => query.where.chatId)
 }
 
 function getCallContent(callIndex: number) {
@@ -271,12 +315,19 @@ describe('project memory utils', () => {
   describe('model resolution', () => {
     it('falls back to openai when it is the only saved key', async () => {
       const { db } = createHarness({ keys: ['openai'] })
-      const { resolveProjectMemoryModel } = await loadMemoryModule()
+      const { resolveMemoryModel } = await loadResolverModule()
 
-      const selection = await resolveProjectMemoryModel(1, db as never)
+      const selection = await resolveMemoryModel({
+        userId: 1,
+        scope: 'project',
+        db: db as never,
+      })
 
-      expect(selection).toEqual({
+      expect(selection).toMatchObject({
+        scope: 'project',
+        source: 'fallback',
         providerId: 'openai',
+        gatewayId: null,
         modelId: openAIProjectMemoryModel.id,
         modelName: openAIProjectMemoryModel.name,
       })
@@ -284,9 +335,13 @@ describe('project memory utils', () => {
 
     it('returns null when no saved key has a memory model', async () => {
       const { db } = createHarness({ keys: [] })
-      const { resolveProjectMemoryModel } = await loadMemoryModule()
+      const { resolveMemoryModel } = await loadResolverModule()
 
-      expect(await resolveProjectMemoryModel(1, db as never)).toBeNull()
+      expect(await resolveMemoryModel({
+        userId: 1,
+        scope: 'project',
+        db: db as never,
+      })).toBeNull()
     })
 
     it.each([
@@ -304,14 +359,20 @@ describe('project memory utils', () => {
       [['qwen', 'anthropic'], 'anthropic'],
     ])('resolves %j to %s', async (keys, expectedProviderId) => {
       const { db } = createHarness({ keys })
-      const { resolveProjectMemoryModel } = await loadMemoryModule()
+      const { resolveMemoryModel } = await loadResolverModule()
       const expectedModel = findProjectMemoryModel(expectedProviderId)
 
-      const selection = await resolveProjectMemoryModel(1, db as never)
+      const selection = await resolveMemoryModel({
+        userId: 1,
+        scope: 'project',
+        db: db as never,
+      })
 
       expect(expectedModel).toBeDefined()
-      expect(selection).toEqual({
+      expect(selection).toMatchObject({
+        source: 'fallback',
         providerId: expectedProviderId,
+        gatewayId: null,
         modelId: expectedModel?.id,
         modelName: expectedModel?.name,
       })
@@ -405,6 +466,255 @@ describe('project memory utils', () => {
       for (const [options] of mocks.generateText.mock.calls) {
         expect(options).toMatchObject({ reasoning: 'low' })
       }
+    })
+  })
+
+  describe('memory model selection', () => {
+    const anthropicProjectMemoryModel = findProjectMemoryModel('anthropic')
+    const GATEWAY_MODEL_ID = 'anthropic/claude-haiku-5-5'
+    const singleChat: ChatFixture[] = [{
+      id: 'c1',
+      messages: [textMessage('user', 'Chat c1 text', 1)],
+    }]
+
+    function getModelAttributes(logger: { set: ReturnType<typeof vi.fn> }) {
+      const call = logger.set.mock.calls.find(([fields]) => {
+        return !!fields?.attributes?.memoryModel
+      })
+
+      return call?.[0].attributes.memoryModel
+    }
+
+    it('uses the model chosen in the user settings', async () => {
+      const useAnthropic = vi.fn(async () => ({
+        instance: { id: 'anthropic-memory-model' },
+        reasoning: undefined,
+        providerOptions: { marker: 'anthropic' },
+      }))
+      const logger = { set: vi.fn() }
+
+      vi.stubGlobal('useAnthropic', useAnthropic)
+      mockSummaryAndSynthesis()
+
+      const { updateCalls } = createHarness({
+        keys: ['openai', 'anthropic'],
+        settings: { projectMemoryModel: anthropicProjectMemoryModel?.id },
+        chats: singleChat,
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, undefined, logger)
+
+      expect(useAnthropic).toHaveBeenCalledWith(
+        '1',
+        anthropicProjectMemoryModel?.id,
+        [],
+        'off',
+      )
+      expect(getModelAttributes(logger)).toMatchObject({
+        scope: 'project',
+        source: 'setting',
+        providerId: 'anthropic',
+        gatewayId: null,
+      })
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'refreshing',
+        memoryProvider: 'anthropic',
+        memoryModel: anthropicProjectMemoryModel?.id,
+      }))
+
+      for (const [options] of mocks.generateText.mock.calls) {
+        expect(options.providerOptions).toEqual({
+          anthropic: { marker: 'anthropic' },
+        })
+      }
+    })
+
+    it.each([
+      ['vercel', 'vercel-gateway'],
+      ['openrouter', 'openrouter'],
+      ['cloudflare', 'cloudflare-gateway'],
+    ])('stores the %s gateway key-provider id and passes the gateway options through', async (gatewayId, keyProviderId) => {
+      const gatewayInstance = { id: 'gateway-memory-model' }
+      const gatewayProviderOptions = {
+        gateway: { order: ['anthropic'] },
+      }
+      const logger = { set: vi.fn() }
+
+      mocks.useGateway.mockResolvedValue({
+        instance: gatewayInstance,
+        reasoning: undefined,
+        providerOptions: gatewayProviderOptions,
+      })
+      mockSummaryAndSynthesis()
+
+      const { updateCalls } = createHarness({
+        keys: [keyProviderId],
+        settings: {
+          projectMemoryModel: GATEWAY_MODEL_ID,
+          projectMemoryGateway: gatewayId,
+        },
+        chats: singleChat,
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, undefined, logger)
+
+      expect(mocks.useGateway).toHaveBeenCalledWith(
+        gatewayId,
+        '1',
+        GATEWAY_MODEL_ID,
+        [],
+        'off',
+        logger,
+      )
+      expect(getModelAttributes(logger)).toMatchObject({
+        source: 'setting',
+        gatewayId,
+        providerId: null,
+        modelId: GATEWAY_MODEL_ID,
+      })
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'refreshing',
+        memoryProvider: keyProviderId,
+        memoryModel: GATEWAY_MODEL_ID,
+      }))
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'ready',
+        memoryProvider: keyProviderId,
+        memoryModel: GATEWAY_MODEL_ID,
+      }))
+
+      for (const values of updateCalls) {
+        if ('memoryProvider' in values) {
+          expect(values.memoryProvider).toBe(keyProviderId)
+        }
+      }
+
+      expect(mocks.generateText).toHaveBeenCalledTimes(2)
+
+      for (const [options] of mocks.generateText.mock.calls) {
+        expect(options.model).toBe(gatewayInstance)
+        expect(options.providerOptions).toBe(gatewayProviderOptions)
+      }
+    })
+
+    it('uses the model of the latest assistant reply without a setting', async () => {
+      const useAnthropic = vi.fn(async () => ({
+        instance: { id: 'anthropic-memory-model' },
+        reasoning: undefined,
+        providerOptions: {},
+      }))
+      const logger = { set: vi.fn() }
+
+      vi.stubGlobal('useAnthropic', useAnthropic)
+      mockSummaryAndSynthesis()
+
+      const { updateCalls } = createHarness({
+        keys: ['openai', 'anthropic'],
+        chats: [{
+          id: 'c1',
+          messages: [
+            textMessage('user', 'Chat c1 text', 1),
+            {
+              ...textMessage('assistant', 'Reply', 2),
+              usage: {
+                model: anthropicProjectMemoryModel?.id as string,
+                provider: 'anthropic',
+              },
+            },
+          ],
+        }],
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, undefined, logger)
+
+      expect(getModelAttributes(logger)).toMatchObject({
+        source: 'chat',
+        providerId: 'anthropic',
+        modelId: anthropicProjectMemoryModel?.id,
+      })
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'ready',
+        memoryProvider: 'anthropic',
+        memoryModel: anthropicProjectMemoryModel?.id,
+      }))
+    })
+
+    it('keeps the cost-ranked fallback when no setting or chat model applies', async () => {
+      const logger = { set: vi.fn() }
+
+      stubGoogle()
+      mockSummaryAndSynthesis()
+
+      const { updateCalls } = createHarness({ chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, undefined, logger)
+
+      expect(getModelAttributes(logger)).toMatchObject({
+        source: 'fallback',
+        providerId: 'google',
+        modelId: googleProjectMemoryModel.id,
+      })
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'ready',
+        memoryProvider: 'google',
+        memoryModel: googleProjectMemoryModel.id,
+      }))
+    })
+
+    it('falls through when the key for the chosen model is missing', async () => {
+      const logger = { set: vi.fn() }
+
+      vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+        instance: { id: 'openai-memory-model' },
+        reasoning: 'low',
+        providerOptions: {},
+      })))
+      mockSummaryAndSynthesis()
+
+      const { updateCalls } = createHarness({
+        keys: ['openai'],
+        settings: { projectMemoryModel: anthropicProjectMemoryModel?.id },
+        chats: singleChat,
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, undefined, logger)
+
+      expect(getModelAttributes(logger)).toMatchObject({
+        source: 'fallback',
+        providerId: 'openai',
+        skipped: expect.arrayContaining(['setting:no-key']),
+      })
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'ready',
+        memoryProvider: 'openai',
+        memoryModel: openAIProjectMemoryModel.id,
+      }))
+    })
+
+    it('marks the project failed when instantiating the chosen model throws', async () => {
+      vi.stubGlobal('useGoogle', vi.fn(async () => {
+        throw new Error('key unreadable')
+      }))
+
+      const { updateCalls } = createHarness({ chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await expect(refreshProjectMemory('project-1', 1)).rejects.toThrow(
+        'key unreadable',
+      )
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'refreshing',
+        memoryProvider: 'google',
+      }))
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'failed',
+        memoryError: 'key unreadable',
+      }))
     })
   })
 
@@ -530,7 +840,7 @@ describe('project memory utils', () => {
       await refreshProjectMemory('project-1', 1, db as never)
 
       expect(mocks.generateText).toHaveBeenCalledTimes(1)
-      expect(db.query.messages.findMany).not.toHaveBeenCalled()
+      expect(getTranscriptReadChatIds(db)).toEqual([])
       expect(getCallContent(0)).toContain(
         'User prefers milestone-based roadmap updates.',
       )
@@ -645,7 +955,7 @@ describe('project memory utils', () => {
       await refreshProjectMemory('project-1', 1, db as never)
 
       expect(mocks.generateText).not.toHaveBeenCalled()
-      expect(db.query.messages.findMany).not.toHaveBeenCalled()
+      expect(getTranscriptReadChatIds(db)).toEqual([])
     })
 
     it('clears a stored summary when the chat has no persisted messages', async () => {
@@ -752,6 +1062,109 @@ describe('project memory utils', () => {
       expect(updateCalls.every((call) => {
         return !('memory' in call) && !('memoryUpdatedAt' in call)
       })).toBe(true)
+    })
+  })
+
+  describe('keys lookup failure', () => {
+    it('leaves the project untouched and releases the lease', async () => {
+      stubGoogle()
+
+      const { kv, updateCalls } = createHarness({
+        keysError: new Error('keys d1'),
+        previousMemory: 'Previous memory.',
+        chats: [{
+          id: 'c1',
+          messages: [textMessage('user', 'Chat c1 text', 1)],
+        }],
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await expect(refreshProjectMemory('project-1', 1)).rejects.toThrow(
+        'keys d1',
+      )
+      expect(updateCalls).toEqual([])
+      expect(mocks.generateText).not.toHaveBeenCalled()
+      expect(kv.put).toHaveBeenCalledWith(
+        LEASE_KEY,
+        '1',
+        { expirationTtl: 120 },
+      )
+      expect(kv.delete).toHaveBeenCalledWith(LEASE_KEY)
+    })
+  })
+
+  describe('output bound and special-category control', () => {
+    const SPECIAL_CATEGORIES_SENTENCE = 'Omit information about health, religion or beliefs, political opinions, racial or ethnic origin, sex life or orientation, trade-union membership, genetic or biometric data, ongoing legal disputes and drug use.'
+    const singleChat: ChatFixture[] = [{
+      id: 'c1',
+      messages: [textMessage('user', 'Chat c1 text', 1)],
+    }]
+
+    it('bounds the output of both calls', async () => {
+      stubGoogle()
+      mockSummaryAndSynthesis()
+      createHarness({ chats: singleChat })
+
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1)
+
+      const [summaryCall, synthesisCall] = mocks.generateText.mock.calls
+
+      expect(summaryCall?.[0].maxOutputTokens).toBe(
+        PROJECT_MEMORY_LIMITS.maxSummaryChars,
+      )
+      expect(synthesisCall?.[0].maxOutputTokens).toBe(
+        PROJECT_MEMORY_LIMITS.maxMemoryChars,
+      )
+    })
+
+    it.each([
+      ['no settings row', null],
+      ['an unset flag', { memoryIncludeSensitive: null }],
+      ['a false flag', { memoryIncludeSensitive: false }],
+    ])('appends the omission sentence to both instructions for %s', async (
+      _label,
+      settings,
+    ) => {
+      stubGoogle()
+      mockSummaryAndSynthesis()
+
+      const { db } = createHarness({ settings, chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1)
+
+      expect(mocks.generateText).toHaveBeenCalledTimes(2)
+
+      for (const [options] of mocks.generateText.mock.calls) {
+        expect(options.instructions.endsWith(SPECIAL_CATEGORIES_SENTENCE))
+          .toBe(true)
+      }
+
+      expect(db.query.userSettings.findFirst).toHaveBeenCalledWith({
+        where: { userId: 1 },
+        columns: { memoryIncludeSensitive: true },
+      })
+    })
+
+    it('leaves the sentence out when the user opted in', async () => {
+      stubGoogle()
+      mockSummaryAndSynthesis()
+      createHarness({
+        settings: { memoryIncludeSensitive: true },
+        chats: singleChat,
+      })
+
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1)
+
+      expect(mocks.generateText).toHaveBeenCalledTimes(2)
+
+      for (const [options] of mocks.generateText.mock.calls) {
+        expect(options.instructions).not.toContain('Omit information about')
+      }
     })
   })
 
@@ -1057,8 +1470,10 @@ describe('project memory utils', () => {
       const readMessages = db.query.messages.findMany
         .getMockImplementation()
 
-      db.query.messages.findMany.mockImplementationOnce(async (query) => {
-        vi.setSystemTime(new Date('2026-03-13T10:30:05.000Z'))
+      db.query.messages.findMany.mockImplementation(async (query) => {
+        if (isTranscriptRead(query)) {
+          vi.setSystemTime(new Date('2026-03-13T10:30:05.000Z'))
+        }
 
         return await readMessages!(query)
       })
@@ -1413,10 +1828,7 @@ describe('project memory utils', () => {
 
       await refreshProjectMemory('project-1', 1)
 
-      const summarizedChatIds = firstPass.db.query.messages.findMany
-        .mock.calls.map(([query]) => {
-          return query.where.chatId
-        })
+      const summarizedChatIds = getTranscriptReadChatIds(firstPass.db)
 
       expect(summarizedChatIds).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6'])
       expect(mocks.generateText).toHaveBeenCalledTimes(
@@ -1464,10 +1876,7 @@ describe('project memory utils', () => {
 
       await secondModule.refreshProjectMemory('project-1', 1)
 
-      const secondPassChatIds = secondPass.db.query.messages.findMany
-        .mock.calls.map(([query]) => {
-          return query.where.chatId
-        })
+      const secondPassChatIds = getTranscriptReadChatIds(secondPass.db)
 
       expect(secondPassChatIds).toEqual(['c7', 'c8', 'c9'])
       expect(mocks.generateText).toHaveBeenCalledTimes(4)
@@ -1866,6 +2275,183 @@ describe('project memory utils', () => {
       expect(memory.endsWith('…')).toBe(true)
       expect(keptLines.every(keptLine => keptLine.length === 99)).toBe(true)
       expect(keptLines.length).toBeGreaterThan(30)
+    })
+  })
+
+  describe('compliance gate', () => {
+    const TEST_CARD = '4242 4242 4242 4242'
+    const TEST_API_KEY = 'sk-abcdefghijklmnopqrstuvwx1234'
+    const SAFE_SUMMARY = [
+      'Works at Acme GmbH on the platform team.',
+      'Identity masking strategy: keep personas separate.',
+    ].join(' ')
+    const DIRTY_SUMMARY = `${SAFE_SUMMARY} Card ${TEST_CARD} and key ${TEST_API_KEY} were shared.`
+    const REDACTED_SUMMARY = `${SAFE_SUMMARY} Card [redacted] and key [redacted] were shared.`
+    const singleChat: ChatFixture[] = [{
+      id: 'c1',
+      messages: [textMessage('user', 'Chat c1 text', 1)],
+    }]
+
+    function mockModelOutputs(summary: string, synthesis: string) {
+      mocks.generateText.mockImplementation(async (options: {
+        messages: Array<{ content: string }>
+      }) => {
+        const content = options.messages[0]?.content ?? ''
+
+        return {
+          text: content.startsWith('<summary index="1">')
+            ? synthesis
+            : summary,
+        }
+      })
+    }
+
+    function expectNoSecretInLogger(logger: { set: ReturnType<typeof vi.fn> }) {
+      const serialized = JSON.stringify(logger.set.mock.calls)
+
+      expect(serialized).not.toContain('4242')
+      expect(serialized).not.toContain('sk-abc')
+    }
+
+    it('persists a redacted chat summary and logs counts only', async () => {
+      stubGoogle()
+      mockModelOutputs(DIRTY_SUMMARY, 'Merged project memory.')
+
+      const logger = { set: vi.fn() }
+      const { updateCalls } = createHarness({ chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, undefined, logger)
+
+      const summaryWrite = updateCalls.find((values) => {
+        return 'projectMemorySummary' in values
+      })
+
+      expect(summaryWrite?.projectMemorySummary).toBe(REDACTED_SUMMARY)
+      expect(getCallContent(1)).toContain(REDACTED_SUMMARY)
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          memoryCompliance: {
+            origin: 'project-memory-summary',
+            blocked: { 'payment-card': 1, 'api-key': 1 },
+            blockedTotal: 2,
+          },
+        },
+      })
+      expectNoSecretInLogger(logger)
+    })
+
+    it('persists redacted synthesized memory and logs counts only', async () => {
+      stubGoogle()
+      mockModelOutputs(
+        'Works at Acme GmbH.',
+        `${SAFE_SUMMARY} Key ${TEST_API_KEY} and card ${TEST_CARD}.`,
+      )
+
+      const logger = { set: vi.fn() }
+      const { updateCalls } = createHarness({ chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, undefined, logger)
+
+      const finalWrite = updateCalls.find((values) => {
+        return values.memoryStatus === 'ready'
+      })
+
+      expect(finalWrite?.memory).toBe(
+        `${SAFE_SUMMARY} Key [redacted] and card [redacted].`,
+      )
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          memoryCompliance: {
+            origin: 'project-memory',
+            blocked: { 'api-key': 1, 'payment-card': 1 },
+            blockedTotal: 2,
+          },
+        },
+      })
+      expectNoSecretInLogger(logger)
+    })
+
+    it('leaves text without never-store content unchanged and logs nothing', async () => {
+      stubGoogle()
+      mockModelOutputs(SAFE_SUMMARY, SAFE_SUMMARY)
+
+      const logger = { set: vi.fn() }
+      const { updateCalls } = createHarness({ chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, undefined, logger)
+
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        projectMemorySummary: SAFE_SUMMARY,
+      }))
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'ready',
+        memory: SAFE_SUMMARY,
+      }))
+
+      const complianceCalls = logger.set.mock.calls.filter(([fields]) => {
+        return !!fields?.attributes?.memoryCompliance
+      })
+
+      expect(complianceCalls).toEqual([])
+    })
+
+    it('redacts before truncating so a secret straddling the cap is gone', async () => {
+      stubGoogle()
+
+      const filler = 'x'.repeat(PROJECT_MEMORY_LIMITS.maxMemoryChars - 12)
+
+      mockModelOutputs('Works at Acme GmbH.', `${filler} ${TEST_API_KEY}`)
+
+      const { updateCalls } = createHarness({ chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1)
+
+      const finalWrite = updateCalls.find((values) => {
+        return values.memoryStatus === 'ready'
+      })
+      const memory = finalWrite?.memory as string
+
+      expect(memory).toBe(`${filler} [redacted]`)
+      expect(memory).not.toContain('sk-')
+    })
+
+    it('redacts a secret straddling the summary cap before truncating', async () => {
+      stubGoogle()
+
+      const filler = 'x'.repeat(PROJECT_MEMORY_LIMITS.maxSummaryChars - 12)
+
+      mockModelOutputs(`${filler} ${TEST_API_KEY}`, 'Merged project memory.')
+
+      const { updateCalls } = createHarness({ chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1)
+
+      const summaryWrite = updateCalls.find((values) => {
+        return 'projectMemorySummary' in values
+      })
+
+      expect(summaryWrite?.projectMemorySummary).toBe(`${filler} [redacted]`)
+    })
+
+    it('tells both models never to record cards, IDs or credentials', async () => {
+      stubGoogle()
+      mockSummaryAndSynthesis()
+
+      createHarness({ chats: singleChat })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1)
+
+      for (const [options] of mocks.generateText.mock.calls) {
+        expect(options.instructions).toContain(
+          'Never record payment card numbers, bank account or IBAN numbers, government or tax ID numbers, passport numbers, passwords, API keys, tokens or other credentials; omit them even when the user shared them.',
+        )
+      }
     })
   })
 

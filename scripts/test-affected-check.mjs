@@ -103,6 +103,21 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
   ]
+  const memoryContractTests = [
+    'tests/unit/utils/memory-policy.spec.ts',
+    'tests/unit/utils/memory-schemas.spec.ts',
+  ]
+  const memoryComplianceTests = [
+    'tests/unit/utils/memory/compliance.spec.ts',
+  ]
+  const memoryModelTests = [
+    'tests/unit/utils/memory/resolve-model.spec.ts',
+    'tests/unit/utils/memory/catalog-usability.spec.ts',
+    'tests/unit/utils/project-memory.spec.ts',
+  ]
+  const memoryPurgeTests = [
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+  ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
@@ -1738,6 +1753,7 @@ export function getAffectedTests(changedFiles) {
         ...historyProjectsTests,
         ...chatStreamBranchTests,
         ...chatShareTests,
+        ...memoryModelTests,
       ],
     },
     {
@@ -1748,6 +1764,9 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         ...profileSettingsTests,
         ...pushNotificationTests,
+        ...memoryComplianceTests,
+        ...memoryModelTests,
+        ...memoryPurgeTests,
       ],
     },
     {
@@ -1761,11 +1780,65 @@ export function getAffectedTests(changedFiles) {
       },
     },
     {
-      pattern: /^server\/api\/v1\/profiles\/settings\/index\.(get|patch)\.ts$/,
+      pattern: /^server\/api\/v1\/profiles\/settings\/.*\.ts$/,
       tests: profileSettingsTests,
     },
     {
       pattern: /^server\/db\/schemas\/user-settings\.ts$/,
+      tests: [...profileSettingsTests, ...memoryModelTests],
+    },
+    {
+      pattern: /^server\/db\/schemas\/memory-entries\.ts$/,
+      tests: [
+        ...memoryComplianceTests,
+        ...memoryPurgeTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/db\/relations\.ts$/,
+      tests: [
+        ...memoryComplianceTests,
+        ...memoryModelTests,
+        ...memoryPurgeTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^shared\/(types\/memory\.d|utils\/memory-(policy|schemas))\.ts$/,
+      tests: [
+        ...memoryContractTests,
+        ...memoryComplianceTests,
+        ...memoryModelTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/memory\/compliance\.ts$/,
+      tests: [
+        ...memoryComplianceTests,
+        ...memoryModelTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/memory\/resolve-model\.ts$/,
+      tests: [
+        ...memoryModelTests,
+        ...historyProjectsTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/memory\/catalog-usability\.ts$/,
+      tests: [...memoryModelTests, ...profileSettingsTests],
+    },
+    {
+      pattern: /^server\/utils\/memory\/validate-model-choice\.ts$/,
+      tests: profileSettingsTests,
+    },
+    {
+      pattern: /^server\/utils\/gateways\/catalog-rate-limit\.ts$/,
       tests: profileSettingsTests,
     },
     {

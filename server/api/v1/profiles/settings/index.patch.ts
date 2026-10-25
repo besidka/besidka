@@ -1,10 +1,74 @@
 import { createError } from 'evlog'
 import type { GatewayId } from '#shared/types/gateways.d'
+import type { ComplianceBlockedCounts } from '#shared/types/memory.d'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { neverStoreKinds } from '#shared/utils/memory-policy'
+import {
+  memorySettingsPatchShape,
+  refineMemorySettingsPatch,
+} from '#shared/utils/memory-schemas'
+import { enforceGatewayModelsRateLimit } from '~~/server/utils/gateways/catalog-rate-limit'
+import {
+  buildSensitiveMemoryPurge,
+  detectNeverStore,
+  recordBlockedCounts,
+} from '~~/server/utils/memory/compliance'
+import { assertMemoryModelChoice } from '~~/server/utils/memory/validate-model-choice'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const favoriteGatewayModelIds = z.array(z.string().max(100)).max(50)
+
+const memoryModelScopes = [
+  {
+    modelKey: 'profileMemoryModel',
+    gatewayKey: 'profileMemoryGateway',
+  },
+  {
+    modelKey: 'projectMemoryModel',
+    gatewayKey: 'projectMemoryGateway',
+  },
+] as const
+
+interface MemoryModelChoiceToValidate {
+  model: string
+  gateway: GatewayId | null
+}
+
+function assertAboutMeStorable(
+  aboutMe: string,
+  logger: { set: (fields: Record<string, unknown>) => void },
+): void {
+  const matches = detectNeverStore(aboutMe)
+
+  if (!matches.length) {
+    return
+  }
+
+  const blocked: ComplianceBlockedCounts = {}
+
+  for (const match of matches) {
+    blocked[match.kind] = (blocked[match.kind] ?? 0) + 1
+  }
+
+  recordBlockedCounts(blocked, logger, 'settings-about-me')
+
+  const kindLabels = neverStoreKinds
+    .filter((kind) => {
+      return blocked[kind.id] !== undefined
+    })
+    .map((kind) => {
+      return `${kind.label} (${kind.id})`
+    })
+
+  throw createError({
+    message: 'About me contains data that cannot be stored',
+    status: 400,
+    why: `Detected: ${kindLabels.join(', ')}.`,
+    fix: 'Remove the flagged data from "About me" and save again.',
+  })
+}
 
 export default defineEventHandler(async (event) => {
   const session = await useUserSession()
@@ -25,7 +89,8 @@ export default defineEventHandler(async (event) => {
       cloudflare: favoriteGatewayModelIds.optional(),
       openrouter: favoriteGatewayModelIds.optional(),
     }).optional(),
-  }).safeParse)
+    ...memorySettingsPatchShape,
+  }).superRefine(refineMemorySettingsPatch).safeParse)
 
   if (body.error) {
     throw createError({
@@ -37,14 +102,7 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
-  const existingSettings = await db.query.userSettings.findFirst({
-    where: {
-      userId,
-    },
-    columns: {
-      id: true,
-    },
-  })
+  const logger = useRequestLogger(event)
 
   const fieldUpdates: {
     reasoningExpanded?: boolean
@@ -54,6 +112,14 @@ export default defineEventHandler(async (event) => {
     sidebarPinned?: boolean
     favoriteModels?: string[]
     favoriteGatewayModels?: Partial<Record<GatewayId, string[]>>
+    memoryEnabled?: boolean
+    chatSearchEnabled?: boolean
+    memoryIncludeSensitive?: boolean
+    aboutMe?: string | null
+    profileMemoryModel?: string | null
+    profileMemoryGateway?: GatewayId | null
+    projectMemoryModel?: string | null
+    projectMemoryGateway?: GatewayId | null
   } = {}
 
   if (body.data.reasoningExpanded !== undefined) {
@@ -97,6 +163,55 @@ export default defineEventHandler(async (event) => {
     fieldUpdates.favoriteGatewayModels = deduped
   }
 
+  if (body.data.memoryEnabled !== undefined) {
+    fieldUpdates.memoryEnabled = body.data.memoryEnabled
+  }
+
+  if (body.data.chatSearchEnabled !== undefined) {
+    fieldUpdates.chatSearchEnabled = body.data.chatSearchEnabled
+  }
+
+  if (body.data.memoryIncludeSensitive !== undefined) {
+    fieldUpdates.memoryIncludeSensitive = body.data.memoryIncludeSensitive
+  }
+
+  if (body.data.aboutMe !== undefined) {
+    const aboutMe = body.data.aboutMe?.trim() || null
+
+    if (aboutMe) {
+      assertAboutMeStorable(aboutMe, logger)
+    }
+
+    fieldUpdates.aboutMe = aboutMe
+  }
+
+  const memoryModelChoices: MemoryModelChoiceToValidate[] = []
+
+  for (const { modelKey, gatewayKey } of memoryModelScopes) {
+    const model = body.data[modelKey]
+    const gateway = body.data[gatewayKey]
+
+    if (gateway !== undefined && model === undefined) {
+      throw createError({
+        message: 'Invalid request body',
+        status: 400,
+        why: `${gatewayKey} was sent without ${modelKey}.`,
+        fix: `Send ${modelKey} together with its gateway.`,
+      })
+    }
+
+    if (model === undefined) {
+      continue
+    }
+
+    fieldUpdates[modelKey] = model
+    fieldUpdates[gatewayKey] = model === null ? null : (gateway ?? null)
+
+    if (model !== null) {
+      memoryModelChoices.push({ model, gateway: gateway ?? null })
+    }
+  }
+
   if (Object.keys(fieldUpdates).length === 0) {
     throw createError({
       message: 'No fields to update',
@@ -104,15 +219,52 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (existingSettings) {
-    await db.update(schema.userSettings).set(fieldUpdates)
+  for (const { model, gateway } of memoryModelChoices) {
+    if (gateway !== null) {
+      await enforceGatewayModelsRateLimit(event, session.user.id)
+    }
+
+    await assertMemoryModelChoice({ userId, model, gateway, logger })
+  }
+
+  const existingSettings = await db.query.userSettings.findFirst({
+    where: {
+      userId,
+    },
+    columns: {
+      id: true,
+    },
+  })
+  const settingsStatement = existingSettings
+    ? db.update(schema.userSettings).set(fieldUpdates)
       .where(eq(schema.userSettings.userId, userId))
-  } else {
-    await db.insert(schema.userSettings).values({
+    : db.insert(schema.userSettings).values({
       userId,
       ...fieldUpdates,
     })
+
+  if (body.data.memoryIncludeSensitive !== false) {
+    await settingsStatement
+
+    return fieldUpdates
   }
 
-  return fieldUpdates
+  const [, purgedRows] = await db.batch([
+    settingsStatement,
+    buildSensitiveMemoryPurge(userId, db),
+  ])
+  const sensitiveEntriesDeleted = purgedRows.length
+
+  logger.set({
+    attributes: {
+      memorySettings: {
+        sensitiveEntriesDeleted,
+      },
+    },
+  })
+
+  return {
+    ...fieldUpdates,
+    sensitiveEntriesDeleted,
+  }
 })

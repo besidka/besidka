@@ -125,8 +125,10 @@ on or off and trigger a refresh), and also request-time context.
 - Refreshed from chats currently assigned to the project
 - Generated on the user's own BYOK key with the cheapest available provider
   (see "Model selection")
-- No schema change: the behaviour below lives in `server/utils/projects/`
-  (`memory.ts`, `memory-limits.ts`, `memory-lease.ts`, `instructions.ts`)
+- The refresh behaviour below lives in `server/utils/projects/` (`memory.ts`,
+  `memory-limits.ts`, `memory-lease.ts`, `instructions.ts`); the model it runs
+  on is decided by `server/utils/memory/resolve-model.ts` (see "Model choice
+  and redaction (W3, 2026-10-25)")
 
 Refresh triggers:
 
@@ -254,9 +256,12 @@ Rules:
 
 ### Model selection
 
-Each direct provider flags exactly one model with `forProjectMemory`.
-`resolveProjectMemoryModel()` walks `PROJECT_MEMORY_PROVIDER_ORDER` (a cost
-ranking) and picks the first provider the user has a saved key for.
+Each direct provider flags exactly one model with `forProjectMemory`. Since
+W3 this is only the last step of the resolution chain (see "Model choice and
+redaction (W3, 2026-10-25)" below): the fallback walks
+`MEMORY_MODEL_PROVIDER_ORDER` (a cost ranking, still exported from
+`memory.ts` as `PROJECT_MEMORY_PROVIDER_ORDER`) and picks the first provider
+the user has a saved key for.
 
 | Provider | Model | $/1M input | $/1M output |
 |---|---|---|---|
@@ -268,13 +273,66 @@ ranking) and picks the first provider the user has a saved key for.
 | `moonshotai` | `kimi-k2.6` | 0.95 | 4 |
 | `xai` | `grok-4.20-0309-non-reasoning` | 1.25 | 2.50 |
 
-- Users with none of these keys get `unavailable`; gateway-only keys do not
-  qualify because memory only runs on direct providers
+- Users with none of these keys and no other resolvable model get
+  `unavailable`; the fallback step never picks a gateway, a gateway is only
+  used when the user's setting or the source chat selects one
 - `qwen3.7-flash` was skipped: its price is only a "from" lower bound and the
   catalog snapshot carries no cost for it
 - The order puts `openai` before `google`, the reverse of the earlier catalog
   order, because `gemini-3.1-flash-lite` costs more than `gpt-6-luna`
 - Reasoning is off for every provider except OpenAI, which gets `low`
+
+### Model choice and redaction (W3, 2026-10-25)
+
+Workstream W3 of `docs/memory-architecture.md` (sections 3.9 and 3.10) changes
+how a refresh picks its model and what it may store.
+
+- Project memory resolves its model with `resolveMemoryModel({ scope:
+  'project', projectId })`: the user's `projectMemoryModel` setting first,
+  then the model of the project's most recent chats, then the cost-ranked
+  fallback above. Gateway models are supported on the first two steps.
+- `resolveProjectMemoryModel` and `getProjectMemoryModelInstance` are removed
+  from `server/utils/projects/memory.ts`. Building the AI SDK model moved to
+  `server/utils/memory/resolve-model.ts` (`instantiate()` on the resolved
+  selection), so the decision is logged before any credential is read.
+  `PROJECT_MEMORY_PROVIDER_ORDER` stays as a re-export of
+  `MEMORY_MODEL_PROVIDER_ORDER`.
+- `projects.memoryProvider` holds the key-provider id
+  (`keyProviderIdForGateway`: `vercel-gateway`, `cloudflare-gateway`,
+  `openrouter`) when the pick is a gateway model, the direct provider id
+  otherwise, so it joins with `usage.provider` and `providerMeta`;
+  `projects.memoryModel` holds the model id either way.
+- A failing saved-keys lookup is not treated as "no key": the resolver
+  rethrows, the refresh leaves the project status untouched and releases its
+  lease in `finally`. The fallback step applies the same usability filter as
+  the setting and chat steps. A gateway model taken from the latest chat is
+  not catalog-checked at resolution time, so an unusable one fails the
+  refresh instead of falling through.
+- Both the per-chat summaries (`chats.projectMemorySummary`) and the
+  synthesised `projects.memory` pass through never-store redaction
+  (`redactNeverStore`): card, IBAN, government and tax IDs, passports, API
+  keys, JWTs, credentials and private keys become `[redacted]`. Only counts
+  are logged, as `attributes.memoryCompliance` with origin
+  `project-memory-summary` or `project-memory`. A chat summary cached before
+  this change stays unredacted until that chat is next summarised; the
+  synthesised memory is always redacted on write.
+- Both prompts gained one instruction sentence telling the model not to
+  record card, bank, government or tax ID, passport or credential data.
+- Both `generateText` calls now pass `maxOutputTokens`
+  (`PROJECT_MEMORY_LIMITS.maxSummaryChars` for the per-chat summary,
+  `maxMemoryChars` for the synthesis): a generous bound against runaway
+  output, the character caps still truncate.
+- When the user's `memoryIncludeSensitive` is not `true`, both instruction
+  strings also end with a sentence asking the model to omit health, religion
+  or beliefs, political opinions, racial or ethnic origin, sex life or
+  orientation, trade-union membership, genetic or biometric data, ongoing
+  legal disputes and drug use. This is a PROMPT-ONLY control for the legacy
+  blob, not code-enforced (the entry pipeline gets code enforcement through
+  `evaluateMemoryEntry`), and project memory written before W3 is not
+  retro-scrubbed.
+- New nullable column `projects.useAccountMemory` (default `true` in app code,
+  `null` means the default). Nothing reads it yet; the memory UI and the
+  account-memory injection are later workstreams.
 
 UI surfaces:
 
@@ -414,6 +472,14 @@ Covered cases (project memory utils):
   messages arriving mid-pass, the 20-chat window never wiping memory
 - transcript limits, `[earlier messages omitted]`, text-only parts
 - provider order and per-provider memory model selection
+- gateway picks stored as the key-provider id, a failing keys lookup leaving
+  the project untouched, `maxOutputTokens` on both calls, and the
+  special-category omission sentence present only when the flag is not `true`
+- model resolution through `resolveMemoryModel` (setting, chat, fallback,
+  gateway providers) and never-store redaction of summaries and the
+  synthesised memory, with count-only logging
+  (`tests/unit/utils/memory/resolve-model.spec.ts`,
+  `tests/unit/utils/memory/compliance.spec.ts`)
 
 ### Integration coverage
 

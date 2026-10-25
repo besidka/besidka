@@ -48,6 +48,10 @@ export const relations = defineRelations(schema, r => ({
       to: r.userSettings.userId,
       optional: true,
     }),
+    memoryEntries: r.many.memoryEntries({
+      from: r.users.id,
+      to: r.memoryEntries.userId,
+    }),
   },
   accounts: {
     user: r.one.users({
@@ -163,6 +167,22 @@ export const relations = defineRelations(schema, r => ({
     chats: r.many.chats({
       from: r.projects.id,
       to: r.chats.projectId,
+    }),
+    memoryEntries: r.many.memoryEntries({
+      from: r.projects.id,
+      to: r.memoryEntries.projectId,
+    }),
+  },
+  memoryEntries: {
+    user: r.one.users({
+      from: r.memoryEntries.userId,
+      to: r.users.id,
+      optional: false,
+    }),
+    project: r.one.projects({
+      from: r.memoryEntries.projectId,
+      to: r.projects.id,
+      optional: true,
     }),
   },
   userSettings: {
