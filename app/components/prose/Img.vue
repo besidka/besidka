@@ -40,6 +40,8 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ inheritAttrs: false })
+
 const props = withDefaults(defineProps<{
   src?: string
   alt?: string

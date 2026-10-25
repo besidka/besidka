@@ -15,8 +15,23 @@ mockNuxtImport('useResearchLink', () => {
 const EXFILTRATION_URL = 'https://evil.example/p?d=secret%20chat%20text'
 const PNG_DATA_URI = 'data:image/png;base64,iVBORw0KGgo='
 
+const HOSTILE_ATTRIBUTES = {
+  'srcset': 'https://evil.example/x 1x',
+  'style': 'background:url(https://evil.example/s)',
+  'onerror': 'alert(1)',
+  'sizes': '100vw',
+  'data-exfil': 'https://evil.example/d',
+}
+
 async function mountImg(src?: string) {
   return await mountSuspended(Img, { props: { src, alt: 'diagram' } })
+}
+
+async function mountImgWithHostileAttributes(src: string) {
+  return await mountSuspended(Img, {
+    props: { src, alt: 'diagram' },
+    attrs: HOSTILE_ATTRIBUTES,
+  })
 }
 
 describe('prose/Img.vue', () => {
@@ -134,6 +149,59 @@ describe('prose/Img.vue', () => {
       await wrapper.get('[data-testid="prose-img-blocked"]').trigger('click')
 
       expect(mocks.openResearchLink).not.toHaveBeenCalled()
+    })
+
+  it('does not forward undeclared attributes to an allowed image',
+    async () => {
+      const wrapper = await mountImgWithHostileAttributes('/files/a.png')
+      const image = wrapper.get('[data-testid="prose-img"]')
+
+      expect(image.element.tagName).toBe('IMG')
+      expect(image.attributes('src')).toContain('/files/a.png')
+      expect(image.attributes('alt')).toBe('diagram')
+
+      for (const attributeName of Object.keys(HOSTILE_ATTRIBUTES)) {
+        if (attributeName === 'srcset') {
+          continue
+        }
+
+        expect(image.attributes(attributeName)).toBeUndefined()
+      }
+
+      expect(image.attributes('srcset') ?? '').not.toContain('evil.example')
+      expect(wrapper.html()).not.toContain('evil.example')
+      expect(wrapper.html()).not.toContain('alert(1)')
+    })
+
+  it('does not forward undeclared attributes to the blocked button',
+    async () => {
+      const wrapper = await mountImgWithHostileAttributes(EXFILTRATION_URL)
+      const placeholder = wrapper.get('[data-testid="prose-img-blocked"]')
+
+      expect(placeholder.element.tagName).toBe('BUTTON')
+
+      for (const attributeName of Object.keys(HOSTILE_ATTRIBUTES)) {
+        expect(placeholder.attributes(attributeName)).toBeUndefined()
+      }
+
+      expect(wrapper.html()).not.toContain('alert(1)')
+      expect(wrapper.html()).not.toContain('background:url')
+    })
+
+  it('does not forward undeclared attributes to the blocked span',
+    async () => {
+      const wrapper = await mountImgWithHostileAttributes(
+        'javascript:alert(1)',
+      )
+      const placeholder = wrapper.get('[data-testid="prose-img-blocked"]')
+
+      expect(placeholder.element.tagName).toBe('SPAN')
+
+      for (const attributeName of Object.keys(HOSTILE_ATTRIBUTES)) {
+        expect(placeholder.attributes(attributeName)).toBeUndefined()
+      }
+
+      expect(wrapper.html()).not.toContain('evil.example')
     })
 
   it('blocks a missing source', async () => {
