@@ -40,7 +40,16 @@ export default defineEventHandler(async (event) => {
       id: { in: body.data.chatIds },
     },
     columns: {
+      id: true,
       projectId: true,
+    },
+  })
+
+  logger.set({
+    attributes: {
+      chatBulkDelete: {
+        chatIds: chats.map(chat => chat.id),
+      },
     },
   })
 

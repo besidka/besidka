@@ -537,6 +537,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-captcha-plugin.spec.ts',
     'tests/unit/utils/auth-hosts.spec.ts',
     'tests/unit/utils/auth-secondary-storage.spec.ts',
+    'tests/unit/server/auth/session-database-fallback.spec.ts',
     'tests/unit/db/accounts-provider-account-id.spec.ts',
   ]
 
