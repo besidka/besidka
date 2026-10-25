@@ -207,6 +207,37 @@ export function addSearchUsage(
   }
 }
 
+/**
+ * Records what the next send in a project with knowledge needs to measure
+ * its history (design 5.5, 16.2): the first step's prompt size, the output
+ * of the step that produced the final answer (the last step, which is the
+ * continuation's last step when one ran) and the raw knowledge tokens
+ * injected. `inputTokens` itself is a sum across tool-loop steps and would
+ * over-count. Billing totals are untouched; a step without a reported count
+ * leaves its field unset.
+ */
+export function addKnowledgeContextUsage(
+  usage: MessageUsage | undefined,
+  input: {
+    steps: readonly { usage: LanguageModelUsage }[]
+    knowledgeTokens: number
+  },
+): MessageUsage | undefined {
+  if (!usage) {
+    return usage
+  }
+
+  const firstStepInputTokens = input.steps[0]?.usage.inputTokens
+  const lastStepOutputTokens = input.steps.at(-1)?.usage.outputTokens
+
+  return {
+    ...usage,
+    knowledgeTokens: input.knowledgeTokens,
+    ...(firstStepInputTokens === undefined ? {} : { firstStepInputTokens }),
+    ...(lastStepOutputTokens === undefined ? {} : { lastStepOutputTokens }),
+  }
+}
+
 function parseResearchCostEstimate(costEstimate: string): number | undefined {
   const matches = costEstimate.match(/[0-9]+(?:[.,][0-9]+)*/g)
 

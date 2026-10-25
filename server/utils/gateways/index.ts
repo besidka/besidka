@@ -35,6 +35,21 @@ export interface GatewayChatResult {
    */
   maxOutputTokens?: number
   /**
+   * The routed model's catalog context window, set by all three builders
+   * whenever the catalog entry has one. Project knowledge sizes its
+   * full-inject budget from it; `undefined` makes it assume a conservative
+   * default window instead.
+   */
+  contextLength?: number
+  /**
+   * The routed model's catalog `maxOutputTokens`, set by all three builders
+   * for budgeting only (the reserved output in the project knowledge fit
+   * check). Unlike `maxOutputTokens` above it is never used to cap a
+   * request, so OpenRouter can report it without changing its uncapped
+   * behaviour.
+   */
+  catalogMaxOutputTokens?: number
+  /**
    * The selected model's own catalog `pricing`, only ever set by the
    * Cloudflare builder — used to build a token-based cost estimate since
    * Cloudflare has no per-request cost API (see `estimateGatewayMessageCost`

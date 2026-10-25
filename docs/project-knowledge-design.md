@@ -355,8 +355,9 @@ and code × 0.9, rounded down to 0.1. These are the values in
 ### 5.5 Measuring history instead of estimating it
 
 - **Measured** (the newest assistant message was on the same provider family
-  and has usage): `H* = last.inputTokens + last.outputTokens −
-  last.knowledgeTokens`. `H*` already contains `S`, `T`, the previous
+  and has the K2 usage fields): `H* = last.firstStepInputTokens +
+  last.lastStepOutputTokens − last.knowledgeTokens` (see 16.2 for why the
+  first step's input and not the loop total). `H*` already contains `S`, `T`, the previous
   messages and answer. Then `fits = H* + M + ceil(K × MARGIN) + R ≤ W`.
 - **Estimated** (first turn, family switch, no usage): the full formula in
   5.2.
@@ -1237,7 +1238,7 @@ export async function buildKnowledgeExcerpts(input: { userId: number, projectId:
   - `server/utils/gateways/index.ts`: `contextLength` and `maxOutputTokens`
     on `GatewayChatResult`.
   - `shared/types/message-usage.d.ts`: optional `knowledgeTokens`,
-    `lastStepInputTokens`, `lastStepOutputTokens`.
+    `firstStepInputTokens`, `lastStepOutputTokens`.
   - `server/utils/ai/message-usage.ts`: writes those three fields.
 - **Measured history (verified in the K0 review)**: the persisted
   `MessageUsage.inputTokens` is a **sum across tool-loop steps**
@@ -1245,9 +1246,12 @@ export async function buildKnowledgeExcerpts(input: { userId: number, projectId:
   cache-inclusive. Feeding it to `measuredHistoryTokens` would over-count
   history by roughly the number of steps and flip sends to search too early.
   K2 persists three extra optional fields on the assistant message's usage:
-  `lastStepInputTokens`, `lastStepOutputTokens` and `knowledgeTokens` (the
-  **raw** estimate actually injected, without `MARGIN`, 0 in search mode),
-  and feeds only those to `measuredHistoryTokens`. Old messages without them
+  `firstStepInputTokens` (the prompt before any tool result, which the
+  sanitizer drops from later history anyway), `lastStepOutputTokens` (the
+  step that produced the final answer, the continuation's last step when
+  one ran) and `knowledgeTokens` (the **raw** estimate actually injected,
+  without `MARGIN`, 0 in search mode). `H* = firstStepInputTokens +
+  lastStepOutputTokens − knowledgeTokens`. Old messages without the fields
   take the estimated path.
 - **Logging**: `attributes.knowledge = { mode, reason, tokens, budget,
   items, searchCalls, packStale }`. Never text or queries.

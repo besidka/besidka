@@ -401,6 +401,28 @@ describe('useOpenRouterGateway', () => {
         expect(result.toolCall).toBe(false)
       })
 
+    it('exposes the catalog context window and output limit for the '
+      + 'project knowledge budget without capping the send', async () => {
+      stubKeyLookup()
+
+      const { useOpenRouterGateway } = await importWithCatalog({
+        id: 'x',
+        toolCall: true,
+        contextLength: 1_000_000,
+        maxOutputTokens: 128_000,
+      })
+      const result = await useOpenRouterGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        [],
+        'off',
+      )
+
+      expect(result.contextLength).toBe(1_000_000)
+      expect(result.catalogMaxOutputTokens).toBe(128_000)
+      expect(result.maxOutputTokens).toBeUndefined()
+    })
+
     it('leaves toolCall undefined on a catalog miss, which the send path '
       + 'also treats as "do not offer Brave/Exa"', async () => {
       stubKeyLookup()
@@ -414,6 +436,8 @@ describe('useOpenRouterGateway', () => {
       )
 
       expect(result.toolCall).toBeUndefined()
+      expect(result.contextLength).toBeUndefined()
+      expect(result.catalogMaxOutputTokens).toBeUndefined()
     })
 
     it('resolves toolCall on a plain send with no tools, so the cross-chat '

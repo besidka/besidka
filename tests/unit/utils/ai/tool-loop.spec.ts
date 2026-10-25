@@ -17,6 +17,10 @@ import {
   CHAT_SEARCH_INSTRUCTION,
   CHAT_SEARCH_TOOL_NAMES,
 } from '../../../../server/utils/ai/chat-search-tools'
+import {
+  isProjectKnowledgeToolName,
+  PROJECT_KNOWLEDGE_TOOL_NAMES,
+} from '../../../../server/utils/ai/knowledge-tools'
 import { createImageGenerationTool } from '../../../../server/utils/ai/image-generation'
 import { createFixtureFollowUpTool } from '../../../fixtures/follow-up-turn-tool'
 
@@ -543,6 +547,8 @@ describe('tool loop trigger', () => {
       'google_search',
       'search_chats',
       'read_chat',
+      'search_project_knowledge',
+      'read_project_knowledge',
     ])('is set by a %s result in a previous step', async (toolName) => {
       const { guard, prepareStep } = createGuardedPrepareStep()
 
@@ -658,5 +664,109 @@ describe('tool loop trigger', () => {
       expect(await options?.prepareStep({ stepNumber: 0 } as any))
         .toBeUndefined()
     })
+  })
+
+  describe('separate project knowledge step budget', () => {
+    const LOOKUP_STEPS = 3
+    const KNOWLEDGE_STEPS = 3
+
+    function createWebTools() {
+      return { web_search_brave: createFixtureFollowUpTool() }
+    }
+
+    function createLookupTools() {
+      return {
+        search_chats: createFixtureFollowUpTool(),
+        memory_list: createFixtureFollowUpTool(),
+      }
+    }
+
+    function createKnowledgeTools() {
+      return {
+        search_project_knowledge: createFixtureFollowUpTool(),
+        read_project_knowledge: createFixtureFollowUpTool(),
+      }
+    }
+
+    const fullBudget = {
+      chatSearchSteps: LOOKUP_STEPS,
+      knowledgeSteps: KNOWLEDGE_STEPS,
+    }
+
+    it('names the knowledge tools the knowledge module registers', () => {
+      expect(PROJECT_KNOWLEDGE_TOOL_NAMES).toEqual([
+        'search_project_knowledge',
+        'read_project_knowledge',
+      ])
+      expect(isProjectKnowledgeToolName('read_project_knowledge')).toBe(true)
+      expect(isProjectKnowledgeToolName('search_chats')).toBe(false)
+    })
+
+    it('grants only the knowledge steps when knowledge tools are the only '
+      + 'follow-up tools', () => {
+      expect(getToolLoopMaxSteps(createKnowledgeTools(), fullBudget)).toBe(4)
+    })
+
+    it('never counts a knowledge tool as a web tool, so no web rounds are '
+      + 'granted without a web tool', () => {
+      expect(getToolLoopMaxSteps({
+        ...createLookupTools(),
+        ...createKnowledgeTools(),
+      }, fullBudget)).toBe(7)
+    })
+
+    it('adds the knowledge steps on top of web and lookup steps', () => {
+      expect(getToolLoopMaxSteps({
+        ...createWebTools(),
+        ...createLookupTools(),
+        ...createKnowledgeTools(),
+      }, fullBudget)).toBe(10)
+      expect(getToolLoopMaxSteps({
+        ...createWebTools(),
+        ...createKnowledgeTools(),
+      }, fullBudget)).toBe(7)
+    })
+
+    it('ignores the knowledge allowance when no knowledge tool is '
+      + 'registered', () => {
+      expect(getToolLoopMaxSteps(createWebTools(), fullBudget)).toBe(4)
+    })
+
+    it('falls back to the default tool steps when the knowledge budget is '
+      + 'missing or zero', () => {
+      expect(getToolLoopMaxSteps(createKnowledgeTools()))
+        .toBe(TOOL_LOOP_MAX_STEPS)
+      expect(getToolLoopMaxSteps(createKnowledgeTools(), {
+        knowledgeSteps: 0,
+      })).toBe(TOOL_LOOP_MAX_STEPS)
+      expect(getToolLoopMaxSteps(createKnowledgeTools(), {
+        knowledgeSteps: -2,
+      })).toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('forces the answer only on the last step of the ten-step cap',
+      async () => {
+        const resolved = resolveToolLoop({
+          ...createWebTools(),
+          ...createLookupTools(),
+          ...createKnowledgeTools(),
+        }, fullBudget)
+        const forcedStepNumbers: number[] = []
+
+        for (let stepNumber = 0; stepNumber < 10; stepNumber++) {
+          const result = await resolved?.options.prepareStep({
+            stepNumber,
+            model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
+            instructions: undefined,
+          } as any)
+
+          if (result) {
+            forcedStepNumbers.push(stepNumber)
+          }
+        }
+
+        expect(resolved?.maxSteps).toBe(10)
+        expect(forcedStepNumbers).toEqual([9])
+      })
   })
 })

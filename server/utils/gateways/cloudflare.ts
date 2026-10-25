@@ -303,6 +303,8 @@ export async function useCloudflareGateway(
     providerOptions: {},
     maxOutputTokens,
     pricing: catalogModel?.pricing,
+    contextLength: catalogModel?.contextLength,
+    catalogMaxOutputTokens: catalogModel?.maxOutputTokens,
     toolCall: catalogModel?.toolCall,
     supportsReasoning: catalogModel?.supportsReasoning,
   }

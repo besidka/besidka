@@ -102,6 +102,29 @@ describe('useVercelGateway', () => {
     const result = await useVercelGateway('1', 'openai/gpt-4o', [], 'off')
 
     expect(result.maxOutputTokens).toBeUndefined()
+    expect(result.contextLength).toBeUndefined()
+    expect(result.catalogMaxOutputTokens).toBeUndefined()
+  })
+
+  it('exposes the catalog context window and output limit for the '
+    + 'project knowledge budget', async () => {
+    stubKeyLookup()
+    stubVercelCatalog([
+      {
+        id: 'openai/gpt-4o',
+        name: 'GPT-4o',
+        type: 'language',
+        context_window: 128000,
+        max_tokens: 16384,
+      },
+    ])
+
+    const { useVercelGateway } = await importVercelGatewayModule()
+    const result = await useVercelGateway('1', 'openai/gpt-4o', [], 'off')
+
+    expect(result.contextLength).toBe(128000)
+    expect(result.catalogMaxOutputTokens).toBe(16384)
+    expect(result.maxOutputTokens).toBe(16384)
   })
 
   it('exposes the catalog toolCall flag for the Brave/Exa send gate',
