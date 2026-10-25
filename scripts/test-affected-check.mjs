@@ -1852,7 +1852,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/integration/api/files-upload.spec.ts'],
     },
     {
-      pattern: /^(shared\/utils\/mdc\/.*|nuxt\.config\.ts)$/,
+      pattern: /^(shared\/utils\/mdc\/.*|nuxt\.config\.ts|content\/.*\.md)$/,
       tests: ['tests/unit/utils/mdc-vbind-policy.spec.ts'],
     },
     {

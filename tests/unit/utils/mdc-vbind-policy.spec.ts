@@ -1,6 +1,12 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { parseMarkdown } from '@nuxtjs/mdc/runtime'
 import sanitizeHtml from 'sanitize-html'
+import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
+import HomeBubble from '../../../app/components/content/HomeBubble.vue'
+import HomeCta from '../../../app/components/content/HomeCta.vue'
+import MDCRenderer from '@nuxtjs/mdc/runtime/components/MDCRenderer.vue'
 
 interface CompiledNode {
   type: string
@@ -30,7 +36,39 @@ function isForbiddenKey(key: string, tag?: string): boolean {
     return false
   }
 
-  return /^(v-|:|@)/i.test(key) || /^(inner|outer)html$/i.test(key)
+  const bindingName = key.replace(/^:?[.^]?/, '')
+
+  return /^(v-|@|on)/i.test(bindingName)
+    || /^(inner|outer)-?html$/i.test(bindingName)
+    || /^(srcdoc|formaction)$/i.test(bindingName)
+}
+
+function readContentFile(relativePath: string): string {
+  return readFileSync(resolve(process.cwd(), relativePath), 'utf8')
+}
+
+function listContentFiles(directory: string): string[] {
+  return readdirSync(resolve(process.cwd(), directory), {
+    withFileTypes: true,
+  }).flatMap((entry) => {
+    const entryPath = `${directory}/${entry.name}`
+
+    if (entry.isDirectory()) {
+      return listContentFiles(entryPath)
+    }
+
+    return entry.name.endsWith('.md') ? [entryPath] : []
+  })
+}
+
+async function findElements(
+  markdown: string,
+  tag: string,
+): Promise<CompiledNode[]> {
+  const parsed = await parseMarkdown(markdown, { highlight: false })
+
+  return collectElements(parsed.body as CompiledNode)
+    .filter(element => element.tag === tag)
 }
 
 function hasDirectiveKey(propKeys: string[]): boolean {
@@ -107,6 +145,122 @@ describe('mdc directive prop policy', () => {
     const propKeys = await compilePropKeys(markdown)
 
     expect(hasDirectiveKey(propKeys)).toBe(false)
+  })
+
+  it('drops colon-prefixed attributes that reach html or handlers', async () => {
+    const markdown = [
+      '[a]{:innerHTML=\'<b>marker</b>\'}',
+      '',
+      '[b]{:v-bind=\'{"innerHTML":"X"}\'}',
+      '',
+      '[c]{:onclick=\'marker\'}',
+      '',
+      '[d]{:v-model:innerHTML=\'marker\'}',
+      '',
+      '[e]{:.innerHTML=\'marker\'}',
+      '',
+      '[f]{:srcdoc=\'marker\'}',
+    ].join('\n')
+    const propKeys = await compilePropKeys(markdown)
+
+    expect(propKeys.filter(key => /html|v-|^:?on|srcdoc/i.test(key)))
+      .toEqual([])
+    expect(hasDirectiveKey(propKeys)).toBe(false)
+  })
+
+  it('keeps plain colon-prefixed bindings from mdc props', async () => {
+    const [component] = await findElements(
+      '::demo-card{:count=\'3\' :items=\'["a","b"]\' :title=\'marker\'}\n::',
+      'demo-card',
+    )
+
+    expect(component?.props).toHaveProperty(':count', '3')
+    expect(component?.props).toHaveProperty(':items', '["a","b"]')
+    expect(component?.props).toHaveProperty(':title', 'marker')
+  })
+
+  it('keeps yaml object props of the real home-cta blocks', async () => {
+    const homeCtas = await findElements(
+      readContentFile('content/index.md'),
+      'home-cta',
+    )
+
+    expect(homeCtas.length).toBeGreaterThanOrEqual(2)
+
+    for (const homeCta of homeCtas) {
+      const primary = JSON.parse(String(homeCta.props?.[':primary']))
+      const secondary = JSON.parse(String(homeCta.props?.[':secondary']))
+
+      expect(primary.label).toBe('Start chatting')
+      expect(primary.href).toBe('/signup')
+      expect(primary.icon).toBe('lucide:arrow-right')
+      expect(typeof secondary.label).toBe('string')
+      expect(typeof secondary.href).toBe('string')
+    }
+
+    expect(JSON.parse(String(homeCtas[0]?.props?.[':secondary'])).href)
+      .toBe('#how-it-works')
+  })
+
+  it('renders the real home-cta blocks without crashing', async () => {
+    const parsed = await parseMarkdown(
+      readContentFile('content/index.md'),
+      { highlight: false },
+    )
+    const wrapper = await mountSuspended(MDCRenderer, {
+      props: {
+        body: parsed.body,
+        data: parsed.data,
+        components: {
+          'home-bubble': HomeBubble,
+          'home-cta': HomeCta,
+        },
+      },
+      global: {
+        stubs: {
+          Logo: true,
+          Icon: true,
+          HomeCarousel: true,
+          HomeVideo: true,
+          HomeStats: true,
+          HomeStars: true,
+          HomeFaq: true,
+          HomeComparison: true,
+          HomeFeatures: true,
+        },
+      },
+    })
+    const primaryButtons = wrapper.findAll('a.btn-primary')
+      .filter(button => button.text().includes('Start chatting'))
+
+    expect(primaryButtons.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('keeps yaml boolean props of the real home-bubble blocks', async () => {
+    const homeBubbles = await findElements(
+      readContentFile('content/index.md'),
+      'home-bubble',
+    )
+    const headingBubble = homeBubbles.find((bubble) => {
+      return bubble.props?.id === 'benefits'
+    })
+
+    expect(headingBubble?.props?.[':heading']).toBe('true')
+  })
+
+  it('parses every content file without forbidden keys', async () => {
+    const contentFiles = listContentFiles('content')
+
+    expect(contentFiles.length).toBeGreaterThan(10)
+
+    for (const contentFile of contentFiles) {
+      const parsed = await parseMarkdown(
+        readContentFile(contentFile),
+        { highlight: false },
+      )
+
+      expect(collectForbiddenKeys(parsed.body as CompiledNode)).toEqual([])
+    }
   })
 
   it('keeps ordinary markdown output intact', async () => {
@@ -230,6 +384,8 @@ describe('mdc directive prop policy', () => {
       '[a]{v-bind=\'{"title":"m"}\' :title=\'m\' @click=\'m\' innerHTML=\'m\'}',
       '',
       '<p outerHTML="m" v-html="m">y</p>',
+      '',
+      '[b]{:innerHTML=\'m\' :v-bind=\'m\' :onclick=\'m\' :v-model:x=\'m\'}',
     ].join('\n')
     const parsed = await parseMarkdown(markdown, { highlight: false })
 
