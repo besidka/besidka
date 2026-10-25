@@ -2,6 +2,7 @@ import type { Instructions, PrepareStepFunction, ToolSet } from 'ai'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { stepCountIs } from 'ai'
 import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
+import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -27,6 +28,15 @@ export interface ToolLoopOptions {
   prepareStep: PrepareStepFunction<ToolSet>
 }
 
+export interface ToolLoopBudget {
+  chatSearchSteps?: number
+}
+
+export interface ResolvedToolLoop {
+  options: ToolLoopOptions
+  maxSteps: number
+}
+
 /**
  * Opts one tool into the multi-step loop: after this tool produces a result,
  * the model gets another turn so it can answer in natural language using that
@@ -40,8 +50,8 @@ export interface ToolLoopOptions {
  * follow-up turn's purpose of letting the model choose to answer instead.
  * `resolveToolLoopOptions()`'s final step removes the tools for most
  * providers, but Anthropic gets an instructions-only nudge instead (see
- * `toolLoopPrepareStep()`), so a forced choice there would still win and the
- * loop would exhaust its budget without ever answering.
+ * `createToolLoopPrepareStep()`), so a forced choice there would still win
+ * and the loop would exhaust its budget without ever answering.
  */
 export function withFollowUpTurn<Tool extends object>(
   tool: Tool,
@@ -76,11 +86,11 @@ function isAnthropicGatewayModelId(modelId: string): boolean {
 }
 
 /**
- * Forces the loop's last allowed step to answer instead of calling another
- * tool. `stepCountIs(TOOL_LOOP_MAX_STEPS)` stops the loop the instant a step
- * completes, with no regard for whether that step was itself a tool call —
- * without this, the model can spend its entire step budget on tool calls and
- * the send persists zero text.
+ * Forces the loop's last allowed step (`maxSteps - 1`) to answer instead of
+ * calling another tool. `stepCountIs(maxSteps)` stops the loop the instant a
+ * step completes, with no regard for whether that step was itself a tool
+ * call — without this, the model can spend its entire step budget on tool
+ * calls and the send persists zero text.
  *
  * `toolChoice: 'none'` alone is not enough: `@ai-sdk/google` still sends the
  * function declarations with `functionCallingConfig.mode: 'NONE'`, and Gemini
@@ -96,33 +106,33 @@ function isAnthropicGatewayModelId(modelId: string): boolean {
  * Either can still call a tool on this step; the search-answer continuation
  * in the chat route is what guarantees the turn still ends with an answer.
  */
-const toolLoopPrepareStep: PrepareStepFunction<ToolSet> = ({
-  stepNumber,
-  model,
-  instructions,
-}) => {
-  if (stepNumber !== TOOL_LOOP_MAX_STEPS - 1) {
-    return undefined
-  }
+function createToolLoopPrepareStep(
+  maxSteps: number,
+): PrepareStepFunction<ToolSet> {
+  return ({ stepNumber, model, instructions }) => {
+    if (stepNumber !== maxSteps - 1) {
+      return undefined
+    }
 
-  const finalInstructions = buildToolLoopFinalStepInstructions(instructions)
+    const finalInstructions = buildToolLoopFinalStepInstructions(instructions)
 
-  if (typeof model === 'string') {
-    return { toolChoice: 'none' as const, instructions: finalInstructions }
-  }
+    if (typeof model === 'string') {
+      return { toolChoice: 'none' as const, instructions: finalInstructions }
+    }
 
-  if (model.provider.startsWith('anthropic')) {
-    return { instructions: finalInstructions }
-  }
+    if (model.provider.startsWith('anthropic')) {
+      return { instructions: finalInstructions }
+    }
 
-  if (isAnthropicGatewayModelId(model.modelId)) {
-    return { toolChoice: 'none' as const, instructions: finalInstructions }
-  }
+    if (isAnthropicGatewayModelId(model.modelId)) {
+      return { toolChoice: 'none' as const, instructions: finalInstructions }
+    }
 
-  return {
-    toolChoice: 'none' as const,
-    activeTools: [],
-    instructions: finalInstructions,
+    return {
+      toolChoice: 'none' as const,
+      activeTools: [],
+      instructions: finalInstructions,
+    }
   }
 }
 
@@ -140,34 +150,71 @@ const toolLoopPrepareStep: PrepareStepFunction<ToolSet> = ({
  * only counts client tool calls that produced results) if a blanket
  * `stopWhen` were set.
  *
- * `TOOL_LOOP_MAX_TOOL_STEPS` search rounds are allowed, then one guaranteed
- * final step (`TOOL_LOOP_MAX_STEPS`) forces an answer — see
- * `toolLoopPrepareStep()` above for how. Each step is a full provider
- * round-trip, and the KV generation-in-progress guard this route sets is a
- * short heartbeat-renewed lease (see `generation-guard.ts`), so it stays
- * alive for as long as the loop runs without being sized from these timeouts.
+ * The step cap is the tool steps plus one guaranteed final step that forces
+ * an answer — see `createToolLoopPrepareStep()` above for how.
+ * `TOOL_LOOP_MAX_TOOL_STEPS` search rounds are granted when at least one
+ * registered follow-up tool is not a chat-search tool (web search), and
+ * `chatSearchSteps` more when a chat-search tool is registered, so looking up
+ * past chats never eats the web-search rounds. When the chat-search tools are
+ * the only follow-up tools and `chatSearchSteps` is not positive, the cap
+ * falls back to `TOOL_LOOP_MAX_TOOL_STEPS` so the loop never degenerates to a
+ * single step. Each step is a full provider round-trip, and the KV
+ * generation-in-progress guard this route sets is a short heartbeat-renewed
+ * lease (see `generation-guard.ts`), so it stays alive for as long as the
+ * loop runs without being sized from these timeouts.
+ *
+ * Returns the cap next to the options because `ToolLoopOptions` is spread
+ * straight into `streamText()` and must not carry extra keys; the chat route
+ * reads `maxSteps` to derive the forced-answer step index.
  */
-export function resolveToolLoopOptions(
+export function resolveToolLoop(
   tools: FormattedTools['tools'],
-): ToolLoopOptions | undefined {
+  budget?: ToolLoopBudget,
+): ResolvedToolLoop | undefined {
   if (!tools) {
     return undefined
   }
 
-  const hasFollowUpTurnTool = Object.values(tools).some((candidate) => {
-    return toolRequiresFollowUpTurn(candidate)
-  })
+  const followUpToolNames = Object.entries(tools)
+    .filter(([, candidate]) => toolRequiresFollowUpTurn(candidate))
+    .map(([toolName]) => toolName)
 
-  if (!hasFollowUpTurnTool) {
+  if (!followUpToolNames.length) {
     return undefined
   }
 
+  const hasOtherFollowUpTool = followUpToolNames.some((toolName) => {
+    return !isChatSearchToolName(toolName)
+  })
+  const hasChatSearchTool = followUpToolNames.some(isChatSearchToolName)
+  const chatSearchSteps = Math.max(0, budget?.chatSearchSteps ?? 0)
+  const toolSteps = (hasOtherFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
+    + (hasChatSearchTool ? chatSearchSteps : 0)
+  const maxSteps = (toolSteps || TOOL_LOOP_MAX_TOOL_STEPS) + 1
+
   return {
-    stopWhen: stepCountIs(TOOL_LOOP_MAX_STEPS),
-    timeout: {
-      totalMs: TOOL_LOOP_TOTAL_TIMEOUT_MS,
-      toolMs: TOOL_LOOP_TOOL_TIMEOUT_MS,
+    options: {
+      stopWhen: stepCountIs(maxSteps),
+      timeout: {
+        totalMs: TOOL_LOOP_TOTAL_TIMEOUT_MS,
+        toolMs: TOOL_LOOP_TOOL_TIMEOUT_MS,
+      },
+      prepareStep: createToolLoopPrepareStep(maxSteps),
     },
-    prepareStep: toolLoopPrepareStep,
+    maxSteps,
   }
+}
+
+export function resolveToolLoopOptions(
+  tools: FormattedTools['tools'],
+  budget?: ToolLoopBudget,
+): ToolLoopOptions | undefined {
+  return resolveToolLoop(tools, budget)?.options
+}
+
+export function getToolLoopMaxSteps(
+  tools: FormattedTools['tools'],
+  budget?: ToolLoopBudget,
+): number | undefined {
+  return resolveToolLoop(tools, budget)?.maxSteps
 }

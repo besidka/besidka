@@ -8,6 +8,13 @@ import {
 } from '../../../server/utils/gateways/index'
 import { getModelCostMap } from '../../../server/utils/ai/cost-map'
 import {
+  CHAT_SEARCH_INSTRUCTION,
+} from '../../../server/utils/ai/chat-search-tools'
+import {
+  TOOL_LOOP_TOTAL_TIMEOUT_MS,
+  TOOL_LOOP_TOOL_TIMEOUT_MS,
+} from '../../../server/utils/ai/tool-loop'
+import {
   getImageGenerationCost,
 } from '../../../server/utils/ai/image-generation-cost'
 import {
@@ -814,6 +821,82 @@ describe('chat send pipeline: single-step characterization', () => {
     expect(options?.tools).toBeUndefined()
     expect(options?.toolChoice).toBeUndefined()
     expect(options?.maxOutputTokens).toBe(4096)
+  })
+
+  describe('a plain send on a tool-calling direct-provider model', () => {
+    function stubOpenAIModel(toolCall: boolean) {
+      vi.stubGlobal('useChatProvider', vi.fn(() => ({
+        provider: { id: 'openai' },
+        model: {
+          id: 'gpt-5-mini',
+          name: 'GPT-5 mini',
+          tools: [],
+          toolCall,
+          modalities: { input: ['text'], output: ['text'] },
+        },
+      })))
+      vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+        instance: {},
+        tools: {},
+        providerOptions: {},
+      })))
+    }
+
+    it('registers only the two chat tools, grants the loop cap of four '
+      + 'steps and carries the chat instruction line when no tools are '
+      + 'requested', async () => {
+      stubOpenAIModel(true)
+
+      await runHandler(baseBody({ tools: [] }))
+
+      const options = mocks.streamTextOptions[0]
+      const reachedCap = await options?.stopWhen({
+        steps: [{}, {}, {}, {}],
+      })
+      const belowCap = await options?.stopWhen({ steps: [{}, {}, {}] })
+
+      expect(streamText).toHaveBeenCalledTimes(1)
+      expect(Object.keys(options?.tools ?? {}).sort()).toEqual([
+        'read_chat',
+        'search_chats',
+      ])
+      expect(options?.toolChoice).toBeUndefined()
+      expect(typeof options?.prepareStep).toBe('function')
+      expect(belowCap).toBe(false)
+      expect(reachedCap).toBe(true)
+      expect(options?.instructions).toContain(CHAT_SEARCH_INSTRUCTION)
+    })
+
+    it('applies the 540000 ms total timeout to a chat-tools-only send, '
+      + 'not only to web-search sends', async () => {
+      stubOpenAIModel(true)
+
+      await runHandler(baseBody({ tools: [] }))
+
+      expect(TOOL_LOOP_TOTAL_TIMEOUT_MS).toBe(540_000)
+      expect(mocks.streamTextOptions[0]?.timeout).toEqual({
+        totalMs: 540_000,
+        toolMs: TOOL_LOOP_TOOL_TIMEOUT_MS,
+      })
+    })
+
+    it('stays single step with no tools, no loop options and no chat '
+      + 'instruction when the model does not support tool calling',
+    async () => {
+      stubOpenAIModel(false)
+
+      await runHandler(baseBody({ tools: [] }))
+
+      const options = mocks.streamTextOptions[0]
+
+      expect(streamText).toHaveBeenCalledTimes(1)
+      expectSingleStepStreamTextCall(options)
+      expect(options?.tools).toBeUndefined()
+      expect(options?.toolChoice).toBeUndefined()
+      expect(options?.instructions ?? '').not.toContain(
+        CHAT_SEARCH_INSTRUCTION,
+      )
+    })
   })
 
   it('emits exactly one finish-step per send across every path today',

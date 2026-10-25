@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { tool } from 'ai'
 import { z } from 'zod'
 import {
+  getToolLoopMaxSteps,
+  resolveToolLoop,
   resolveToolLoopOptions,
   TOOL_LOOP_MAX_STEPS,
   TOOL_LOOP_MAX_TOOL_STEPS,
@@ -11,6 +13,10 @@ import {
   toolRequiresFollowUpTurn,
   withFollowUpTurn,
 } from '../../../../server/utils/ai/tool-loop'
+import {
+  CHAT_SEARCH_INSTRUCTION,
+  CHAT_SEARCH_TOOL_NAMES,
+} from '../../../../server/utils/ai/chat-search-tools'
 import { createImageGenerationTool } from '../../../../server/utils/ai/image-generation'
 import { createFixtureFollowUpTool } from '../../../fixtures/follow-up-turn-tool'
 
@@ -252,5 +258,174 @@ describe('tool loop trigger', () => {
         expect(result?.toolChoice).toBe('none')
         expect(result?.activeTools).toBeUndefined()
       })
+  })
+
+  describe('separate chat-search step budget', () => {
+    const CHAT_SEARCH_STEPS = 3
+    const WEB_ONLY_CAP = TOOL_LOOP_MAX_TOOL_STEPS + 1
+    const WEB_AND_CHAT_CAP = TOOL_LOOP_MAX_TOOL_STEPS + CHAT_SEARCH_STEPS + 1
+    const CHAT_ONLY_CAP = CHAT_SEARCH_STEPS + 1
+
+    function createWebTools() {
+      return { web_search_brave: createFixtureFollowUpTool() }
+    }
+
+    function createChatTools() {
+      return {
+        search_chats: createFixtureFollowUpTool(),
+        read_chat: createFixtureFollowUpTool(),
+      }
+    }
+
+    async function getForcedStepNumbers(
+      tools: Parameters<typeof resolveToolLoop>[0],
+      stepCount: number,
+    ) {
+      const resolved = resolveToolLoop(tools, {
+        chatSearchSteps: CHAT_SEARCH_STEPS,
+      })
+      const forcedStepNumbers: number[] = []
+
+      for (let stepNumber = 0; stepNumber < stepCount; stepNumber++) {
+        const result = await resolved?.options.prepareStep({
+          stepNumber,
+          model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
+          instructions: undefined,
+        } as any)
+
+        if (result) {
+          forcedStepNumbers.push(stepNumber)
+        }
+      }
+
+      return forcedStepNumbers
+    }
+
+    it('names the chat-search tools the memory module registers', () => {
+      expect(CHAT_SEARCH_TOOL_NAMES).toEqual(['search_chats', 'read_chat'])
+      expect(CHAT_SEARCH_INSTRUCTION).toContain('`search_chats`')
+      expect(CHAT_SEARCH_INSTRUCTION).toContain('`read_chat`')
+    })
+
+    it('keeps the cap at four for web tools only, with or without a budget',
+      () => {
+        expect(getToolLoopMaxSteps(createWebTools())).toBe(WEB_ONLY_CAP)
+        expect(getToolLoopMaxSteps(createWebTools(), {
+          chatSearchSteps: CHAT_SEARCH_STEPS,
+        })).toBe(WEB_ONLY_CAP)
+        expect(WEB_ONLY_CAP).toBe(TOOL_LOOP_MAX_STEPS)
+      })
+
+    it('adds the chat-search steps on top of the web steps', () => {
+      expect(getToolLoopMaxSteps({
+        ...createWebTools(),
+        ...createChatTools(),
+      }, { chatSearchSteps: CHAT_SEARCH_STEPS })).toBe(WEB_AND_CHAT_CAP)
+      expect(WEB_AND_CHAT_CAP).toBe(7)
+    })
+
+    it('grants only the chat-search steps when no web tool is registered',
+      () => {
+        expect(getToolLoopMaxSteps(createChatTools(), {
+          chatSearchSteps: CHAT_SEARCH_STEPS,
+        })).toBe(CHAT_ONLY_CAP)
+        expect(CHAT_ONLY_CAP).toBe(4)
+      })
+
+    it('counts one chat-search tool the same as two', () => {
+      expect(getToolLoopMaxSteps({
+        read_chat: createFixtureFollowUpTool(),
+      }, { chatSearchSteps: CHAT_SEARCH_STEPS })).toBe(CHAT_ONLY_CAP)
+    })
+
+    it('falls back to the default tool steps when the chat-search budget '
+      + 'is zero', () => {
+      expect(getToolLoopMaxSteps(createChatTools())).toBe(TOOL_LOOP_MAX_STEPS)
+      expect(getToolLoopMaxSteps(createChatTools(), {
+        chatSearchSteps: 0,
+      })).toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('is undefined when no tool carries the follow-up marker', () => {
+      expect(getToolLoopMaxSteps(undefined)).toBeUndefined()
+      expect(getToolLoopMaxSteps({
+        search_chats: tool({
+          description: 'unmarked',
+          inputSchema: z.object({}),
+          async execute() {
+            return {}
+          },
+        }),
+      }, { chatSearchSteps: CHAT_SEARCH_STEPS })).toBeUndefined()
+    })
+
+    it('does not leak the cap into the options spread into streamText', () => {
+      const resolved = resolveToolLoop({
+        ...createWebTools(),
+        ...createChatTools(),
+      }, { chatSearchSteps: CHAT_SEARCH_STEPS })
+
+      expect(Object.keys(resolved?.options ?? {}).sort()).toEqual([
+        'prepareStep',
+        'stopWhen',
+        'timeout',
+      ])
+      expect(Object.keys(resolveToolLoopOptions({
+        ...createWebTools(),
+        ...createChatTools(),
+      }, { chatSearchSteps: CHAT_SEARCH_STEPS }) ?? {}).sort()).toEqual([
+        'prepareStep',
+        'stopWhen',
+        'timeout',
+      ])
+    })
+
+    it('stops the raised loop at its own cap', async () => {
+      const options = resolveToolLoopOptions({
+        ...createWebTools(),
+        ...createChatTools(),
+      }, { chatSearchSteps: CHAT_SEARCH_STEPS })
+      const steps = Array.from({ length: WEB_AND_CHAT_CAP }, () => ({}))
+      const atOldCap = await options?.stopWhen({
+        steps: steps.slice(0, TOOL_LOOP_MAX_STEPS),
+      } as any)
+      const beforeCap = await options?.stopWhen({
+        steps: steps.slice(0, WEB_AND_CHAT_CAP - 1),
+      } as any)
+      const atCap = await options?.stopWhen({ steps } as any)
+
+      expect(atOldCap).toBe(false)
+      expect(beforeCap).toBe(false)
+      expect(atCap).toBe(true)
+    })
+
+    it('forces the answer on the last step of the raised cap and not on the '
+      + 'old final index', async () => {
+      const forcedStepNumbers = await getForcedStepNumbers({
+        ...createWebTools(),
+        ...createChatTools(),
+      }, WEB_AND_CHAT_CAP + 1)
+
+      expect(forcedStepNumbers).toEqual([WEB_AND_CHAT_CAP - 1])
+      expect(forcedStepNumbers).not.toContain(TOOL_LOOP_MAX_STEPS - 1)
+    })
+
+    it('forces the answer on the last step of a chat-only loop', async () => {
+      const forcedStepNumbers = await getForcedStepNumbers(
+        createChatTools(),
+        CHAT_ONLY_CAP + 1,
+      )
+
+      expect(forcedStepNumbers).toEqual([CHAT_ONLY_CAP - 1])
+    })
+
+    it('keeps forcing on the old final index for web tools only', async () => {
+      const forcedStepNumbers = await getForcedStepNumbers(
+        createWebTools(),
+        WEB_AND_CHAT_CAP,
+      )
+
+      expect(forcedStepNumbers).toEqual([TOOL_LOOP_MAX_STEPS - 1])
+    })
   })
 })
