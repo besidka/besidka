@@ -6,7 +6,7 @@ import {
   knowledgeModes,
 } from '#shared/utils/project-knowledge-policy'
 
-const SINGLE_LINE_PATTERN = /^[^\r\n]*$/
+const CONTROL_OR_SEPARATOR_PATTERN = /[\p{Cc}\u2028\u2029]/u
 const FOLDER_ID_PATTERN = /^[A-Za-z0-9_-]+$/
 const CONTENT_HASH_PATTERN = /^[a-f0-9]{64}$/
 const MAX_FOLDER_ID_CHARS = 64
@@ -19,6 +19,14 @@ export function knowledgeTextByteLength(text: string): number {
   return new TextEncoder().encode(text).length
 }
 
+function hasNoControlCharacters(value: string): boolean {
+  return !CONTROL_OR_SEPARATOR_PATTERN.test(value)
+}
+
+function hasNoNulCharacter(value: string): boolean {
+  return !value.includes('\u0000')
+}
+
 function hasParentSegment(relativePath: string): boolean {
   return relativePath.split(/[\\/]/).includes('..')
 }
@@ -28,35 +36,52 @@ const titleField = z
   .trim()
   .min(1)
   .max(KNOWLEDGE_LIMITS.maxTitleChars)
-  .refine(value => SINGLE_LINE_PATTERN.test(value), {
-    message: 'Title must be a single line',
+  .refine(hasNoControlCharacters, {
+    message: 'Title must be a single line without control characters',
   })
 
 const descriptionField = z
   .string()
   .trim()
   .max(KNOWLEDGE_LIMITS.maxDescriptionChars)
-  .refine(value => SINGLE_LINE_PATTERN.test(value), {
-    message: 'Description must be a single line',
+  .refine(hasNoControlCharacters, {
+    message: 'Description must be a single line without control characters',
   })
   .nullable()
 
 const extractedTextField = z
   .string()
-  .refine(
-    value => knowledgeTextByteLength(value)
-      <= KNOWLEDGE_LIMITS.maxItemTextBytes,
-    {
-      message: `Text must be at most ${KNOWLEDGE_LIMITS.maxItemTextBytes} bytes`,
-    },
+  .max(KNOWLEDGE_LIMITS.maxItemTextBytes)
+  .pipe(
+    z.string()
+      .refine(
+        value => knowledgeTextByteLength(value)
+          <= KNOWLEDGE_LIMITS.maxItemTextBytes,
+        {
+          message: 'Text must be at most '
+            + `${KNOWLEDGE_LIMITS.maxItemTextBytes} bytes`,
+        },
+      )
+      .refine(hasNoNulCharacter, {
+        message: 'Text must not contain NUL characters',
+      }),
   )
-  .refine(value => !value.includes('\u0000'), {
-    message: 'Text must not contain NUL characters',
+
+const noteBodyField = z
+  .string()
+  .min(1)
+  .max(KNOWLEDGE_LIMITS.maxNoteChars)
+  .refine(hasNoNulCharacter, {
+    message: 'Body must not contain NUL characters',
   })
 
 const relativePathField = z
   .string()
+  .min(1)
   .max(KNOWLEDGE_LIMITS.maxRelativePathChars)
+  .refine(hasNoControlCharacters, {
+    message: 'Path must be a single line without control characters',
+  })
   .refine(value => !value.startsWith('/'), {
     message: 'Path must not start with a slash',
   })
@@ -68,6 +93,9 @@ const folderIdField = z
   .string()
   .max(MAX_FOLDER_ID_CHARS)
   .regex(FOLDER_ID_PATTERN)
+  .refine(hasNoControlCharacters, {
+    message: 'Folder id must not contain control characters',
+  })
 
 function requireAtLeastOneKey(value: object): boolean {
   return Object.values(value).some(entry => entry !== undefined)
@@ -91,7 +119,7 @@ export const knowledgeCharCountsSchema = z.object({
 
 export const knowledgeNoteCreateSchema = z.object({
   title: titleField,
-  body: z.string().min(1).max(KNOWLEDGE_LIMITS.maxNoteChars),
+  body: noteBodyField,
   description: descriptionField.optional(),
 })
 
@@ -125,15 +153,28 @@ export const knowledgeItemCreateSchema = z
       }),
     extractStatus: z.enum(knowledgeExtractStatuses),
     extractError: z.string().max(MAX_EXTRACT_ERROR_CHARS).nullable().optional(),
-    pageCount: z.number().int().nonnegative().nullable().optional(),
+    pageCount: z.number()
+      .int()
+      .min(0)
+      .max(KNOWLEDGE_LIMITS.maxPdfPages)
+      .nullable()
+      .optional(),
     text: extractedTextField,
   })
   .superRefine((value, context) => {
-    if (value.extractStatus === 'ready' && value.text.length === 0) {
+    if (value.extractStatus === 'ready' && value.text.trim().length === 0) {
       context.addIssue({
         code: 'custom',
         path: ['text'],
         message: 'Text is required when the extraction is ready',
+      })
+    }
+
+    if (value.extractStatus !== 'ready' && value.text.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['text'],
+        message: 'Text must be empty unless the extraction is ready',
       })
     }
 

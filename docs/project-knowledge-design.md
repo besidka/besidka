@@ -1125,6 +1125,25 @@ and chunk the text of new or changed items sequentially, write
 knowledge_pack_version IS NULL OR knowledge_pack_version < :built`. Delete
 pack versions older than the previous one.
 
+**K1 hazards found in the K0 review** (each must be handled):
+- The `files → project_knowledge_items` cascade runs with no application
+  code. Retention, orphan cleanup and library deletes therefore drop item
+  rows silently: no version bump, a stale pack, an orphaned
+  `items/<id>.md`. Mitigations: linked files never expire (9.3), the
+  file-delete handlers bump versions first, and the pack builder and GC
+  sweeper reconcile against the items table.
+- `server/api/v1/storage/index.get.ts` caches the `used` figure, which now
+  includes knowledge bytes. Every knowledge write and delete calls
+  `invalidateStorageCache(userId)`.
+- `getUserStorageUsageBytes` now reads `project_knowledge_items`, so it
+  backs every upload path. The migration must be applied before the code
+  deploys (CI already migrates first).
+- `knowledge_version` is nullable without a default: increments are always
+  `coalesce(knowledge_version, 0) + 1`.
+- The zod schemas bound a single request. Cumulative per-project (2 MB,
+  500 items) and per-user (quota) limits are enforced in the handler against
+  the database.
+
 **Other K1 files**:
 - `server/plugins/project-knowledge-sweep.ts`: hourly R2 GC of objects
   under `knowledge/` whose item or project row is gone, and stale pack
@@ -1205,10 +1224,19 @@ export async function buildKnowledgeExcerpts(input: { userId: number, projectId:
   - `server/utils/chats/model-turns.ts`: the leading media turn.
   - `server/utils/gateways/index.ts`: `contextLength` and `maxOutputTokens`
     on `GatewayChatResult`.
-  - `shared/types/message-usage.d.ts`: optional `knowledgeTokens`.
-  - `server/utils/ai/message-usage.ts`: writes `knowledgeTokens`.
-- **K2 must verify** whether `MessageUsage.inputTokens` is the last step or
-  a loop total (5.5), and use the last step for `measuredHistoryTokens`.
+  - `shared/types/message-usage.d.ts`: optional `knowledgeTokens`,
+    `lastStepInputTokens`, `lastStepOutputTokens`.
+  - `server/utils/ai/message-usage.ts`: writes those three fields.
+- **Measured history (verified in the K0 review)**: the persisted
+  `MessageUsage.inputTokens` is a **sum across tool-loop steps**
+  (`sumLanguageModelUsages`, `server/utils/ai/message-usage.ts`), and it is
+  cache-inclusive. Feeding it to `measuredHistoryTokens` would over-count
+  history by roughly the number of steps and flip sends to search too early.
+  K2 persists three extra optional fields on the assistant message's usage:
+  `lastStepInputTokens`, `lastStepOutputTokens` and `knowledgeTokens` (the
+  **raw** estimate actually injected, without `MARGIN`, 0 in search mode),
+  and feeds only those to `measuredHistoryTokens`. Old messages without them
+  take the estimated path.
 - **Logging**: `attributes.knowledge = { mode, reason, tokens, budget,
   items, searchCalls, packStale }`. Never text or queries.
 

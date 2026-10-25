@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   knowledgeCharCountsSchema,
   knowledgeCommitSchema,
@@ -139,6 +139,51 @@ describe('knowledgeNoteCreateSchema', () => {
     }).success).toBe(false)
   })
 
+  it.each([
+    ['U+2028', 'one\u2028two'],
+    ['U+2029', 'one\u2029two'],
+    ['U+0085', 'one\u0085two'],
+    ['vertical tab', 'one\u000Btwo'],
+    ['tab', 'one\ttwo'],
+    ['NUL', 'one\u0000two'],
+  ])('rejects a title containing %s', (_label, title) => {
+    expect(knowledgeNoteCreateSchema.safeParse({
+      title,
+      body: 'Text',
+    }).success).toBe(false)
+  })
+
+  it.each([
+    ['U+2028', 'one\u2028two'],
+    ['U+0085', 'one\u0085two'],
+    ['vertical tab', 'one\u000Btwo'],
+    ['NUL', 'one\u0000two'],
+  ])('rejects a description containing %s', (_label, description) => {
+    expect(knowledgeNoteCreateSchema.safeParse({
+      title: 'Brief',
+      body: 'Text',
+      description,
+    }).success).toBe(false)
+    expect(knowledgeItemPatchSchema.safeParse({ description }).success)
+      .toBe(false)
+  })
+
+  it('accepts a multi-line body', () => {
+    expect(knowledgeNoteCreateSchema.safeParse({
+      title: 'Brief',
+      body: 'one\ntwo\r\nthree\u2028four',
+    }).success).toBe(true)
+  })
+
+  it('rejects a body containing NUL', () => {
+    expect(knowledgeNoteCreateSchema.safeParse({
+      title: 'Brief',
+      body: 'a\u0000b',
+    }).success).toBe(false)
+    expect(knowledgeNoteUpdateSchema.safeParse({ body: 'a\u0000b' }).success)
+      .toBe(false)
+  })
+
   it('rejects an empty body', () => {
     expect(knowledgeNoteCreateSchema.safeParse({
       title: 'Brief',
@@ -272,6 +317,24 @@ describe('knowledgeExtractedTextSchema', () => {
     }).success).toBe(false)
   })
 
+  it('accepts newlines and separators in extracted text', () => {
+    expect(knowledgeExtractedTextSchema.safeParse({
+      text: 'a\nb\r\nc\u2028d\te',
+    }).success).toBe(true)
+  })
+
+  it('rejects an over-long text without measuring its bytes', () => {
+    const encode = vi.spyOn(TextEncoder.prototype, 'encode')
+    const result = knowledgeExtractedTextSchema.safeParse({
+      text: 'a'.repeat(KNOWLEDGE_LIMITS.maxItemTextBytes + 1),
+    })
+
+    expect(result.success).toBe(false)
+    expect(encode).not.toHaveBeenCalled()
+
+    encode.mockRestore()
+  })
+
   it('counts bytes rather than characters', () => {
     const characters = KNOWLEDGE_LIMITS.maxItemTextBytes / 2 + 1
 
@@ -378,6 +441,31 @@ describe('knowledgeItemCreateSchema', () => {
     },
   )
 
+  it('rejects whitespace-only text when the extraction is ready', () => {
+    for (const text of [' ', '\n\n', ' \t\r\n ']) {
+      expect(knowledgeItemCreateSchema.safeParse({
+        ...validPdfItem,
+        text,
+      }).success).toBe(false)
+    }
+  })
+
+  it.each(['no-text', 'failed'] as const)(
+    'rejects non-empty text when the status is %s',
+    (extractStatus) => {
+      const result = knowledgeItemCreateSchema.safeParse({
+        ...validPdfItem,
+        extractStatus,
+        text: 'leftover',
+        extractError: 'encrypted',
+      })
+
+      expect(result.success).toBe(false)
+      expect(result.error?.issues.map(issue => issue.path.join('.')))
+        .toContain('text')
+    },
+  )
+
   it('rejects text with a NUL or above the byte limit', () => {
     expect(knowledgeItemCreateSchema.safeParse({
       ...validPdfItem,
@@ -413,6 +501,32 @@ describe('knowledgeItemCreateSchema', () => {
       }).success).toBe(false)
     })
 
+    it.each([
+      ['U+2028', 'docs/a\u2028b.pdf'],
+      ['U+2029', 'docs/a\u2029b.pdf'],
+      ['U+0085', 'docs/a\u0085b.pdf'],
+      ['vertical tab', 'docs/a\u000Bb.pdf'],
+      ['newline', 'a\nb'],
+      ['carriage return', 'a\rb'],
+      ['NUL', 'docs/a\u0000b.pdf'],
+    ])('rejects a path containing %s', (_label, relativePath) => {
+      expect(knowledgeItemCreateSchema.safeParse({
+        ...validPdfItem,
+        relativePath,
+      }).success).toBe(false)
+    })
+
+    it('rejects an empty path but still allows null', () => {
+      expect(knowledgeItemCreateSchema.safeParse({
+        ...validPdfItem,
+        relativePath: '',
+      }).success).toBe(false)
+      expect(knowledgeItemCreateSchema.safeParse({
+        ...validPdfItem,
+        relativePath: null,
+      }).success).toBe(true)
+    })
+
     it('accepts dots inside a segment name', () => {
       expect(knowledgeItemCreateSchema.safeParse({
         ...validPdfItem,
@@ -446,6 +560,15 @@ describe('knowledgeItemCreateSchema', () => {
 
     it('rejects bad characters, empty and over-long ids', () => {
       for (const folderId of ['a b', 'a/b', '', 'a'.repeat(65)]) {
+        expect(knowledgeItemCreateSchema.safeParse({
+          ...validPdfItem,
+          folderId,
+        }).success).toBe(false)
+      }
+    })
+
+    it('rejects control characters in the id', () => {
+      for (const folderId of ['a\nb', 'a\u2028b', 'a\u0000b', 'abc\n']) {
         expect(knowledgeItemCreateSchema.safeParse({
           ...validPdfItem,
           folderId,
@@ -508,6 +631,18 @@ describe('knowledgeItemCreateSchema', () => {
     }).success).toBe(true)
     expect(knowledgeItemCreateSchema.safeParse({
       ...validPdfItem,
+      pageCount: KNOWLEDGE_LIMITS.maxPdfPages,
+    }).success).toBe(true)
+    expect(knowledgeItemCreateSchema.safeParse({
+      ...validPdfItem,
+      pageCount: KNOWLEDGE_LIMITS.maxPdfPages + 1,
+    }).success).toBe(false)
+    expect(knowledgeItemCreateSchema.safeParse({
+      ...validPdfItem,
+      pageCount: 501,
+    }).success).toBe(false)
+    expect(knowledgeItemCreateSchema.safeParse({
+      ...validPdfItem,
       pageCount: -1,
     }).success).toBe(false)
     expect(knowledgeItemCreateSchema.safeParse({
@@ -520,6 +655,14 @@ describe('knowledgeItemCreateSchema', () => {
     expect(knowledgeItemCreateSchema.safeParse({
       ...validPdfItem,
       title: 'a\nb',
+    }).success).toBe(false)
+    expect(knowledgeItemCreateSchema.safeParse({
+      ...validPdfItem,
+      title: 'a\u2028b',
+    }).success).toBe(false)
+    expect(knowledgeItemCreateSchema.safeParse({
+      ...validPdfItem,
+      title: 'a\u0000b',
     }).success).toBe(false)
     expect(knowledgeItemCreateSchema.safeParse({
       ...validPdfItem,

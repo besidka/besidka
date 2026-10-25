@@ -7,6 +7,7 @@ import {
 
 const listPageLimit = 1000
 const requiredPrefixStart = `${KNOWLEDGE_STORAGE_PREFIX}/u`
+const guardedPrefixPattern = /^knowledge\/u[1-9]\d*\/(?:p[1-9]\d*\/)?$/
 
 export interface KnowledgePurgeResult {
   objectsDeleted: number
@@ -37,10 +38,7 @@ export async function deleteKnowledgePrefix(
   prefix: string,
   storage: KnowledgePurgeBucket = useFileStorage(),
 ): Promise<KnowledgePurgeResult> {
-  const isGuardedPrefix = prefix.startsWith(requiredPrefixStart)
-    && prefix.endsWith('/')
-
-  if (!isGuardedPrefix) {
+  if (!guardedPrefixPattern.test(prefix)) {
     throw createError({
       message: 'Refusing to purge a non-knowledge prefix',
       status: 500,
@@ -67,6 +65,15 @@ export async function deleteKnowledgePrefix(
 
       result.objectsDeleted += keys.length
       result.batches++
+    }
+
+    if (page.truncated && !page.cursor) {
+      throw createError({
+        message: 'Knowledge purge stopped before listing finished',
+        status: 500,
+        why: `R2 reported a truncated page under "${prefix}" without a cursor`,
+        fix: 'Retry the purge; the remaining objects were not deleted',
+      })
     }
 
     cursor = page.truncated ? page.cursor : undefined

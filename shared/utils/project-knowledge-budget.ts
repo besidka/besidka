@@ -118,7 +118,11 @@ export function resolveKnowledgeTokenFamily(input: {
 
   const vendor = getGatewayModelProviderPrefix(input.modelId)
 
-  return gatewayVendorFamilies[vendor] ?? 'default'
+  if (!Object.hasOwn(gatewayVendorFamilies, vendor)) {
+    return 'default'
+  }
+
+  return gatewayVendorFamilies[vendor]!
 }
 
 export function estimateKnowledgeTextTokens(
@@ -226,7 +230,7 @@ export function decideKnowledgeMode(
   const marginKnowledgeTokens = ceilWithEpsilon(
     input.knowledgeTokens * KNOWLEDGE_BUDGET.estimateMargin,
   )
-  const historyTokens = input.measuredHistoryTokens !== null
+  const historyTokens = input.measuredHistoryTokens != null
     ? input.measuredHistoryTokens
     : input.estimatedSystemTokens
       + input.estimatedHistoryTokens

@@ -160,6 +160,13 @@ describe('deleteKnowledgePrefix', () => {
     'knowledge/u1',
     '/knowledge/u1/',
     'files/knowledge/u1/',
+    'knowledge/u/',
+    'knowledge/uploads/',
+    'knowledge/u0/',
+    'knowledge/u01/',
+    'knowledge/u1/p/',
+    'knowledge/u1/p0/',
+    'knowledge/u1/p1/items/',
   ])('refuses the prefix "%s" before touching the bucket', async (prefix) => {
     const bucket = createFakeBucket({ keys: ['users/1/a.png'] })
 
@@ -191,7 +198,7 @@ describe('deleteKnowledgePrefix', () => {
     expect(bucket.delete).not.toHaveBeenCalled()
   })
 
-  it('stops when a truncated page carries no cursor', async () => {
+  it('throws when a truncated page carries no cursor', async () => {
     const bucket = createFakeBucket({ keys: [] })
 
     bucket.list.mockResolvedValueOnce({
@@ -200,9 +207,8 @@ describe('deleteKnowledgePrefix', () => {
       cursor: undefined,
     })
 
-    const result = await deleteKnowledgePrefix('knowledge/u1/', bucket)
-
-    expect(result).toEqual({ objectsDeleted: 1, batches: 1 })
+    await expect(deleteKnowledgePrefix('knowledge/u1/', bucket))
+      .rejects.toThrow('Knowledge purge stopped before listing finished')
     expect(bucket.list).toHaveBeenCalledTimes(1)
   })
 })

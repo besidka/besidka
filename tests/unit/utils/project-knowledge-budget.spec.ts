@@ -156,6 +156,10 @@ describe('resolveKnowledgeTokenFamily', () => {
     ['@cf/meta/llama-3.3-70b', 'default'],
     ['mistralai/mistral-large', 'default'],
     ['no-slash-model', 'default'],
+    ['constructor/x', 'default'],
+    ['__proto__/x', 'default'],
+    ['toString', 'default'],
+    ['hasOwnProperty/x', 'default'],
   ])('resolves gateway id %s to %s', (modelId, family) => {
     expect(resolveKnowledgeTokenFamily({
       providerId: 'openrouter',
@@ -163,6 +167,22 @@ describe('resolveKnowledgeTokenFamily', () => {
       gateway: true,
     })).toBe(family)
   })
+
+  it.each(['constructor/x', '__proto__/x', 'toString'])(
+    'never crashes the token estimate for the gateway id %s',
+    (modelId) => {
+      const family = resolveKnowledgeTokenFamily({
+        providerId: 'openrouter',
+        modelId,
+        gateway: true,
+      })
+
+      expect(() => estimateKnowledgeTextTokens(
+        { latinChars: 100, cyrillicChars: 100, otherChars: 100 },
+        family,
+      )).not.toThrow()
+    },
+  )
 
   it('returns default for a gateway without a model id', () => {
     expect(resolveKnowledgeTokenFamily({
@@ -553,6 +573,21 @@ describe('decideKnowledgeMode', () => {
 
       expect(decision.requiredTokens).toBe(5_000 + 300 + 1_150 + 4_000)
       expect(decision.fits).toBe(true)
+    })
+
+    it('treats an undefined measured history as not measured', () => {
+      const decision = decideKnowledgeMode(buildInput({
+        knowledgeTokens: 1_000,
+        messageTokens: 300,
+        maxOutputTokens: 4_000,
+        measuredHistoryTokens: undefined as unknown as null,
+        estimatedSystemTokens: 100,
+        estimatedHistoryTokens: 2_000,
+        toolTokens: 400,
+      }))
+
+      expect(decision.requiredTokens)
+        .toBe(100 + 2_000 + 300 + 1_150 + 4_000 + 400)
     })
 
     it('uses a measured history of zero instead of the estimates', () => {
