@@ -512,7 +512,10 @@ Steps:
 Recovery: restore the bookmark from step 1 or 3 with
 `npx wrangler d1 time-travel restore <db> [--env production] --bookmark=<bookmark>`.
 Because the migration only adds a column, rolling back the code is enough
-when the data is intact. The old code ignores `provider_account_id`.
+when the data is intact. The old code ignores `provider_account_id`. If you
+do restore, follow `docs/d1-restore-reconciliation.md` right after: a
+restore revives revoked sessions through the D1 fallback, and you must clear
+them in both D1 and KV.
 
 ## Turnstile owner checklist
 
