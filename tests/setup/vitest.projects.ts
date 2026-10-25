@@ -12,6 +12,7 @@ export const nodeSpecDirectories: readonly string[] = [
   'tests/unit/server',
   'tests/unit/utils',
   'tests/unit/workers',
+  'tests/unit/workflows',
   'tests/integration/api',
   'tests/integration/server',
 ]
@@ -34,7 +35,9 @@ export const nuxtSpecExceptions: readonly string[] = [
   'tests/unit/utils/diagram-export-svg.spec.ts',
   'tests/unit/utils/diagram-export-theme.spec.ts',
   'tests/unit/utils/diagram-fonts.spec.ts',
+  'tests/unit/utils/evlog-drains.spec.ts',
   'tests/unit/utils/key-guide-video.spec.ts',
+  'tests/unit/utils/mdc-vbind-policy.spec.ts',
   'tests/integration/api/chats-message-id-stream.spec.ts',
   'tests/integration/server/assistant-files.spec.ts',
   'tests/integration/server/email-templates.spec.ts',

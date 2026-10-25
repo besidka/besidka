@@ -53,7 +53,7 @@ The rule is per top-level directory and lives in
 `tests/setup/vitest.projects.ts`:
 
 - `node`: `tests/unit/{assets,config,content,db,middleware,providers,scripts,
-  server,utils,workers}` and `tests/integration/{api,server}`.
+  server,utils,workers,workflows}` and `tests/integration/{api,server}`.
 - `nuxt`: `tests/unit/{components,composables,layouts,pages,plugins,
   service-worker}` and `tests/integration/pages`.
 - `nuxtSpecExceptions`: a short list of spec files inside a `node` directory
@@ -74,7 +74,9 @@ or when an exception is stale. Add a new directory to `nodeSpecDirectories` or
 - `useNuxtApp()` is not available: the Nuxt app does not exist (`NUXT_E1001`).
 - `window`, `document`, and the `@nuxt/test-utils/runtime` helpers
   (`mountSuspended`, `mockNuxtImport`, `registerEndpoint`) need the `nuxt`
-  project.
+  project. `mockNuxtImport('useRuntimeConfig', …)` is the common trap: it
+  replaces the node project's runtime config mock, so a factory that calls
+  the original `useRuntimeConfig` throws `NUXT_E1001`.
 
 ### Opting a spec in a `node` directory into `nuxt`
 
