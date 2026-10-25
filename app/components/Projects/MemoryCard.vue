@@ -5,18 +5,41 @@
         <h2 class="text-sm font-semibold">
           Project memory
         </h2>
-        <p class="mt-1 text-sm opacity-70">
-          Projects keep their memory up to date automatically; turn it off
-          per project.
+        <p
+          v-if="automaticUpdates"
+          class="mt-1 text-sm opacity-70"
+          data-testid="project-memory-hint"
+        >
+          Updates automatically after chats in this project; turn it off per
+          project.
+        </p>
+        <p
+          v-else
+          class="mt-1 text-sm opacity-70"
+          data-testid="project-memory-hint"
+        >
+          Automatic updates are off. Use Refresh memory, or turn on Generate
+          memory from chats in
+          <NuxtLink
+            to="/profile/memory"
+            class="link"
+            data-testid="project-memory-settings-link"
+          >Memory settings</NuxtLink>.
         </p>
       </div>
       <div
         v-if="displayStatusBadge"
         class="badge badge-ghost badge-sm shrink-0"
         :class="statusBadgeClass"
+        :title="statusExplanation ?? undefined"
         data-testid="project-memory-status"
       >
         {{ statusLabel }}
+        <span
+          v-if="statusExplanation"
+          class="sr-only"
+          data-testid="project-memory-status-explanation"
+        > {{ statusExplanation }}</span>
       </div>
     </div>
 
@@ -96,8 +119,8 @@
           class="rounded-box bg-base-200/60 px-4 py-3 text-sm opacity-70"
           data-testid="project-memory-empty"
         >
-          Nothing remembered for this project yet. Memory builds up from this
-          project's chats.
+          Nothing remembered for this project yet.
+          {{ emptyStateGuidance }}
         </p>
         <details
           v-if="card.legacyMemory"
@@ -197,12 +220,15 @@ import type { MemoryEntryGroup } from '#shared/types/memory-api.d'
 import type { ProjectMemoryCardResponse } from '#shared/types/project-memory.d'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   projectId: string
   card: ProjectMemoryCardResponse | null
   isRefreshing: boolean
   isToggling: boolean
-}>()
+  automaticUpdates?: boolean
+}>(), {
+  automaticUpdates: false,
+})
 
 const emit = defineEmits<{
   refresh: []
@@ -295,7 +321,7 @@ const statusLabel = computed<string>(() => {
     case 'refreshing':
       return 'Refreshing'
     case 'stale':
-      return 'Stale'
+      return 'Out of date'
     case 'failed':
       return 'Failed'
     case 'unavailable':
@@ -305,6 +331,27 @@ const statusLabel = computed<string>(() => {
     default:
       return 'Empty'
   }
+})
+
+const statusExplanation = computed<string | null>(() => {
+  if (memoryStatus.value !== 'stale') {
+    return null
+  }
+
+  if (props.automaticUpdates) {
+    return 'It will update after your next chat in this project, or use '
+      + 'Refresh memory.'
+  }
+
+  return 'Not updated automatically. Use Refresh memory to update it.'
+})
+
+const emptyStateGuidance = computed<string>(() => {
+  if (props.automaticUpdates) {
+    return 'It will build up from chats in this project.'
+  }
+
+  return 'Use Refresh memory to build it from this project\'s chats.'
 })
 
 const statusBadgeClass = computed<string>(() => {
