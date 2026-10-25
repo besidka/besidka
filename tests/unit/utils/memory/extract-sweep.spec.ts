@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '~~/server/db/schema'
+import { buildDueChatsQuery } from '~~/server/utils/memory/extract-sweep'
 import {
   EXTRACTION_NOW,
   createMemoryExtractionTestDb,
@@ -62,7 +63,10 @@ describe('sweepMemoryExtraction', () => {
 
   beforeEach(async () => {
     testDb = createMemoryExtractionTestDb()
-    userId = await seedUser(testDb.db, { memoryEnabled: true })
+    userId = await seedUser(testDb.db, {
+      memoryEnabled: true,
+      memoryExtractionEnabledAt: minutesBefore(1000),
+    })
     mocks.release.mockResolvedValue(undefined)
     mocks.acquireMemoryLease.mockResolvedValue({ release: mocks.release })
     mocks.resolveMemoryModel.mockImplementation(async () => {
@@ -434,47 +438,125 @@ describe('sweepMemoryExtraction', () => {
       return chat?.projectMemorySummaryUpdatedAt !== null
     }
 
-    it('sweeps project chats regardless of the extraction opt-in',
-      async () => {
-        const flagOff = await seedUser(testDb.db, {
-          memoryEnabled: true,
-          memoryExtractionEnabled: false,
-        })
-        const flagNull = await seedUser(testDb.db, {
-          memoryEnabled: true,
-          memoryExtractionEnabled: null,
-        })
-        const noSettings = await seedUser(testDb.db, null)
-        const chats = [
-          await projectChat(flagOff),
-          await projectChat(flagNull),
-          await projectChat(noSettings),
-        ]
-
-        const result = await sweep()
-
-        expect(result).toMatchObject({ selectedCount: 3, extractedCount: 3 })
-
-        for (const chat of chats) {
-          expect(await wasProjectProcessed(chat.id)).toBe(true)
-          expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
-        }
-      })
-
-    it('still skips an account chat with the opt-in off', async () => {
-      const flagOff = await seedUser(testDb.db, {
+    it('selects nothing while the extraction toggle is off', async () => {
+      const toggleOff = await seedUser(testDb.db, {
         memoryEnabled: true,
         memoryExtractionEnabled: false,
+        memoryExtractionEnabledAt: minutesBefore(1000),
       })
-      const accountChat = await dueChat({}, flagOff)
-      const projectOne = await projectChat(flagOff)
+      const toggleNull = await seedUser(testDb.db, {
+        memoryEnabled: true,
+        memoryExtractionEnabled: null,
+        memoryExtractionEnabledAt: minutesBefore(1000),
+      })
+      const noSettings = await seedUser(testDb.db, null)
+      const chats = []
+
+      for (const owner of [toggleOff, toggleNull, noSettings]) {
+        chats.push(await dueChat({}, owner))
+        chats.push(await dueChat({ activityAt: minutesBefore(15) }, owner))
+        chats.push(await projectChat(owner))
+        chats.push(await projectChat(owner, {}, {
+          activityAt: minutesBefore(15),
+        }))
+      }
 
       const result = await sweep()
 
-      expect(result.selectedCount).toBe(1)
-      expect(await wasProcessed(accountChat.id)).toBe(false)
-      expect(await wasProjectProcessed(projectOne.id)).toBe(true)
+      expect(result.selectedCount).toBe(0)
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+
+      for (const chat of chats) {
+        expect(await wasProcessed(chat.id)).toBe(false)
+        expect(await wasProjectProcessed(chat.id)).toBe(false)
+      }
     })
+
+    it('sweeps project chats of an opted-in user', async () => {
+      const chat = await projectChat()
+      const result = await sweep()
+
+      expect(result).toMatchObject({ selectedCount: 1, extractedCount: 1 })
+      expect(await wasProjectProcessed(chat.id)).toBe(true)
+      expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
+    })
+
+    it('selects only project chats active after the cut-over', async () => {
+      const optedIn = await seedUser(testDb.db, {
+        memoryEnabled: true,
+        memoryExtractionEnabledAt: minutesBefore(50),
+      })
+      const before = await projectChat(optedIn, {}, {
+        activityAt: minutesBefore(60),
+      })
+      const after = await projectChat(optedIn, {}, {
+        activityAt: minutesBefore(40),
+      })
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect(await wasProjectProcessed(before.id)).toBe(false)
+      expect(await wasProjectProcessed(after.id)).toBe(true)
+    })
+
+    it('does not select a project chat when the cut-over was never recorded',
+      async () => {
+        const legacy = await seedUser(testDb.db, {
+          memoryEnabled: true,
+          memoryExtractionEnabledAt: null,
+        })
+        const projectOne = await projectChat(legacy)
+        const accountChat = await dueChat({}, legacy)
+        const result = await sweep()
+
+        expect(result.selectedCount).toBe(1)
+        expect(await wasProjectProcessed(projectOne.id)).toBe(false)
+        expect(await wasProcessed(accountChat.id)).toBe(true)
+      })
+
+    it('keeps account chat selection independent of the cut-over', async () => {
+      const lateOptIn = await seedUser(testDb.db, {
+        memoryEnabled: true,
+        memoryExtractionEnabledAt: minutesBefore(5),
+      })
+      const accountChat = await dueChat({}, lateOptIn)
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect(await wasProcessed(accountChat.id)).toBe(true)
+    })
+
+    it('never reads project chat messages from before the cut-over',
+      async () => {
+        const optedIn = await seedUser(testDb.db, {
+          memoryEnabled: true,
+          memoryExtractionEnabledAt: minutesBefore(50),
+        })
+        const chat = await projectChat(optedIn, {}, {
+          activityAt: minutesBefore(20),
+        })
+
+        await seedMessage(testDb.db, chat.id, 'user',
+          [textPart(`Fresh note. ${'I now prefer tabs. '.repeat(20)}`)],
+          minutesBefore(25))
+
+        const result = await sweep()
+        const prompt = mocks.generateObject.mock.calls[0]![0]
+          .messages[0].content as string
+
+        expect(result.extractedCount).toBe(1)
+        expect(prompt).toContain('I now prefer tabs.')
+        expect(prompt).not.toContain('I write Rust on weekends')
+      })
+
+    it('does not create a backfill job when extraction is opted into',
+      async () => {
+        await dueChat()
+        await sweep()
+
+        expect(await testDb.db.select().from(schema.memoryBackfillJobs))
+          .toHaveLength(0)
+      })
 
     it('skips a project chat whose project is disabled', async () => {
       const chat = await projectChat(userId, { memoryStatus: 'disabled' })
@@ -602,6 +684,76 @@ describe('sweepMemoryExtraction', () => {
           reason: 'no-user-text',
         })
         expect(mocks.generateObject).toHaveBeenCalledOnce()
+      })
+  })
+
+  describe('query plan', () => {
+    function explain() {
+      const { sql: statement, params } = buildDueChatsQuery(
+        testDb.db,
+        20,
+        EXTRACTION_NOW,
+      ).toSQL()
+
+      return (testDb.sqlite
+        .prepare(`explain query plan ${statement}`)
+        .all(...params) as { detail: string }[])
+        .map(row => row.detail)
+    }
+
+    function bulkInsertChats(owner: number, count: number) {
+      testDb.sqlite.prepare(`
+        with recursive n(i) as (
+          select 1 union all select i + 1 from n where i < ?
+        )
+        insert into chats (created_at, updated_at, slug, user_id, activity_at)
+        select ?, ?, 'bulk-' || ? || '-' || i, ?, ? from n
+      `).run(
+        count,
+        Math.floor(minutesBefore(500).getTime() / 1000),
+        Math.floor(minutesBefore(500).getTime() / 1000),
+        owner,
+        owner,
+        Math.floor(minutesBefore(120).getTime() / 1000),
+      )
+    }
+
+    it('starts from the partial opted-in index and reaches chats by the '
+      + 'composite user index', () => {
+      const plan = explain()
+
+      expect(plan.some((detail) => {
+        return /user_settings.*idx_user_settings_extraction_enabled/.test(detail)
+      })).toBe(true)
+      expect(plan.some((detail) => {
+        return /SEARCH.*chats.*idx_chats_user_activity/.test(detail)
+      })).toBe(true)
+      expect(plan.some((detail) => {
+        return /SCAN (chats|c)\b/.test(detail)
+      })).toBe(false)
+    })
+
+    it('selects nothing without opted-in users however many chats exist',
+      async () => {
+        const idle = await seedUser(testDb.db, {
+          memoryExtractionEnabled: false,
+        })
+        const unset = await seedUser(testDb.db, null)
+
+        bulkInsertChats(idle, 3000)
+        bulkInsertChats(unset, 3000)
+
+        testDb.sqlite.prepare(
+          'update user_settings set memory_extraction_enabled = 0',
+        ).run()
+
+        const result = await sweep()
+
+        expect(result.selectedCount).toBe(0)
+        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(explain().some((detail) => {
+          return /SCAN (chats|c)\b/.test(detail)
+        })).toBe(false)
       })
   })
 

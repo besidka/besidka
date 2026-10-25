@@ -217,7 +217,7 @@ describe('manual memory extraction', () => {
       expect(await listEntries()).toHaveLength(1)
     })
 
-    it('lets the sweep path run for a project chat with the opt-in off',
+    it('refuses the sweep path for a project chat with the opt-in off',
       async () => {
         const { chat } = await seedProjectChat()
 
@@ -225,12 +225,28 @@ describe('manual memory extraction', () => {
 
         const result = await runSweep(chat)
 
-        expect(result).toMatchObject({
-          status: 'extracted',
-          applied: { created: 1, updated: 0, deleted: 0 },
-        })
+        expect(result).toMatchObject({ status: 'skipped', reason: 'disabled' })
+        expect(mocks.generateObject).not.toHaveBeenCalled()
         expect((await readChat(chat.id))?.projectMemorySummaryUpdatedAt)
-          .toEqual(minutesBefore(70))
+          .toBeNull()
+      })
+
+    it('reads the history from before the opt-in when refreshed by hand',
+      async () => {
+        await testDb.db.update(schema.userSettings)
+          .set({
+            memoryExtractionEnabled: true,
+            memoryExtractionEnabledAt: minutesBefore(10),
+          })
+
+        const { chat } = await seedProjectChat()
+
+        mockOps([createOp()])
+
+        const result = await runManual(chat)
+
+        expect(result).toMatchObject({ status: 'extracted' })
+        expect(mocks.generateObject).toHaveBeenCalledOnce()
       })
 
     it('keeps the sweep path refused for an account chat with the opt-in off',
@@ -432,7 +448,10 @@ describe('manual memory extraction', () => {
   describe('project row after a sweep pass', () => {
     beforeEach(async () => {
       await testDb.db.update(schema.userSettings)
-        .set({ memoryExtractionEnabled: true })
+        .set({
+          memoryExtractionEnabled: true,
+          memoryExtractionEnabledAt: minutesBefore(1000),
+        })
     })
 
     it('bumps the card metadata when the pass applied ops', async () => {
@@ -916,7 +935,10 @@ describe('manual memory extraction', () => {
 
     it('sends the redacted blob and keeps update ops off blob evidence in a sweep pass', async () => {
       await testDb.db.update(schema.userSettings)
-        .set({ memoryExtractionEnabled: true })
+        .set({
+          memoryExtractionEnabled: true,
+          memoryExtractionEnabledAt: minutesBefore(1000),
+        })
 
       const projectId = await seedProject(testDb.db, userId, { memory: BLOB })
       const { chat } = await seedProjectChat({ projectId })
@@ -958,7 +980,10 @@ describe('manual memory extraction', () => {
   describe('sweep bump status', () => {
     beforeEach(async () => {
       await testDb.db.update(schema.userSettings)
-        .set({ memoryExtractionEnabled: true })
+        .set({
+          memoryExtractionEnabled: true,
+          memoryExtractionEnabledAt: minutesBefore(1000),
+        })
     })
 
     it('keeps the project stale while a dirty marker is set and clears the error', async () => {

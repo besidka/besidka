@@ -58,6 +58,7 @@
       :card="memoryCard ?? null"
       :is-refreshing="isRefreshingProjectMemory"
       :is-toggling="isTogglingProjectMemory"
+      :automatic-updates="hasAutomaticMemoryUpdates"
       @refresh="refreshProjectMemory"
       @toggle="toggleProjectMemory"
       @changed="onMemoryEntriesChanged"
@@ -150,6 +151,15 @@ const {
   data: memoryCard,
   refresh: refreshMemoryCard,
 } = await useFetch(() => `/api/v1/projects/${projectId.value}/memory`)
+
+const { data: memorySettings } = await useFetch('/api/v1/profiles/settings', {
+  key: 'profile-memory-settings',
+})
+
+const hasAutomaticMemoryUpdates = computed<boolean>(() => {
+  return memorySettings.value?.memoryEnabled !== false
+    && memorySettings.value?.memoryExtractionEnabled === true
+})
 
 if (import.meta.client && !nuxtApp.isHydrating) {
   groupedAt.value = new Date().toISOString()

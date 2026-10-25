@@ -9,11 +9,11 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  * POST /memory/extract-now
  *
  * Runs one memory extraction pass for one of the caller's chats right away,
- * ignoring the idle window. Previews have no crons, so this is how extraction
- * is exercised there. Needs the same flags as the sweep (memory on, plus the
- * extraction opt-in for account chats; a project chat needs only memory on),
- * is rate limited to one run per minute per user, and answers with counts
- * only.
+ * ignoring the idle window. It is an explicit user action, so it works with
+ * the automatic-updates opt-in off, for account and project chats alike; it
+ * needs only memory on (409 otherwise). It reads the chat's own unprocessed
+ * messages, never touches the sweep's attempt and failure counters, is rate
+ * limited to one run per minute per user, and answers with counts only.
  */
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -54,20 +54,15 @@ export default defineEventHandler(async (event) => {
 
   const settings = await db.query.userSettings.findFirst({
     where: { userId },
-    columns: { memoryEnabled: true, memoryExtractionEnabled: true },
+    columns: { memoryEnabled: true },
   })
 
-  const isExtractionOff = chat.projectId
-    ? settings?.memoryEnabled === false
-    : settings?.memoryEnabled === false
-      || settings?.memoryExtractionEnabled !== true
-
-  if (isExtractionOff) {
+  if (settings?.memoryEnabled === false) {
     throw createError({
-      message: 'Memory extraction is turned off',
+      message: 'Memory is turned off',
       status: 409,
-      why: 'Extraction needs memory and automatic memory updates enabled.',
-      fix: 'Turn on memory and automatic memory updates in settings.',
+      why: 'Extraction needs memory enabled.',
+      fix: 'Turn on memory in settings.',
     })
   }
 
@@ -90,6 +85,7 @@ export default defineEventHandler(async (event) => {
     db,
     logger,
     ignoreIdle: true,
+    explicit: true,
   })
 
   if (result.status === 'extracted' || result.status === 'failed') {

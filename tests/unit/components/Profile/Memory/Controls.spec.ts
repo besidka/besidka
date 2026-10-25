@@ -99,13 +99,15 @@ describe('Profile/Memory/Controls', () => {
       }
     })
 
-  it('explains that generation covers account memory only', async () => {
+  it('explains that generation covers profile and project memory', async () => {
     const wrapper = await mountControls()
     const note = wrapper.get('[data-testid="memory-generation-project-note"]')
 
     expect(note.text()).toBe(
-      'This setting covers your account memory. Project memory updates '
-      + 'automatically unless you turn it off in the project.',
+      'Covers your profile and project memory. Off by default. When on, '
+      + 'chats you have from now on are summarised in the background on '
+      + 'your key. Use "Build memory from past chats" to include older '
+      + 'chats.',
     )
     expect(toggle(wrapper, 'memory-generation-toggle')
       .attributes('aria-describedby'))

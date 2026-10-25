@@ -38,6 +38,7 @@ export const chats = snakeCase.table(
     uniqueIndex('uq_chat_user').on(table.id, table.userId),
     uniqueIndex('uq_chat_slug').on(table.id, table.slug),
     index('idx_chats_activity_at').on(table.activityAt),
+    index('idx_chats_user_activity').on(table.userId, table.activityAt),
   ],
 )
 

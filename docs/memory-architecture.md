@@ -1195,7 +1195,8 @@ model) and nothing is saved. `aboutMe` accepts only `null`.
   ignored (own-chat branches keep original timestamps). W4 may also stamp
   `memory_extracted_at` in the branch endpoints as defence in depth.
 - Turning extraction (or `memoryEnabled`) back on stamps every chat that is
-  not already up to date, so the period it was off is never mined.
+  not already up to date (and, for project chats, records the cut-over
+  `memory_extraction_enabled_at`), so the period it was off is never mined.
 - The KV lease and the `extract-now` cooldown are check-then-set, not atomic;
   a burst can run duplicate passes on the caller's own key. Results stay safe
   (unique slugs, origin rule); an owner-token or Durable Object lease is the
@@ -1246,26 +1247,25 @@ explicit user action implemented by `refreshProjectMemoryFromChats`
   never processed twice. Too-short windows accumulate, as in 3.11;
 - moving chats (single or bulk) no longer calls an LLM and the chat page no
   longer posts a refresh after every send; they only mark the project `stale`.
-  Updating project memory is the server sweep's job (next paragraph) plus the
-  explicit Refresh button.
+  Updating project memory is the explicit Refresh button, or the opt-in sweep
+  (next paragraph).
 
-**Project chats are swept automatically (owner rule, 2026-10-25).** Project
-memory used to update itself after chats in every project where it was enabled;
-that must not regress when the blob pipeline goes away. The cron sweep extracts
-project chats into project-scope entries whenever the account master
-`memoryEnabled` is not off AND the chat's project exists, belongs to the same
-user and has `memoryStatus != 'disabled'`. It does **not** depend on
-`memoryExtractionEnabled`, which governs only account/profile extraction from
-non-project chats. The per-project Disable/Enable stays the user's explicit
-switch: disabling a project stops its sweep. The model is the project memory
-model from `resolveMemoryModel` (scope `project`) on the user's own key.
-Selection, lease, caps, trust boundary and the compliance gate are the same as
-in 3.11.
+**Project chats are swept only with the opt-in (owner, 2026-10-26).** The
+sweep extracts a project chat into project-scope entries only when
+`memoryEnabled` is not off AND `memoryExtractionEnabled` is on, the chat's
+project exists, belongs to the same user and is not `disabled`, and the chat has
+activity after the recorded cut-over (see the final decision section, "No
+background model calls without an explicit opt-in"). With the toggle off the
+only project paths are the explicit Refresh button and `extract-now`. The model
+is the project memory model from `resolveMemoryModel` (scope `project`) on the
+user's own key. Selection, lease, caps, trust boundary and the compliance gate
+are the same as in 3.11.
 
-**Copy for the UI (W5).** Project card hint: "Projects keep their memory up to
-date automatically; turn it off per project." Memory tab note next to
-"Generate memory from chats": "This setting covers your account memory. Project
-memory updates automatically unless you turn it off in the project."
+**Copy for the UI (W5).** Project card hint: "Press Refresh to update this
+project's memory. Turn on 'Generate memory from chats' in your memory settings
+to keep it up to date automatically." Memory tab note next to "Generate memory
+from chats": "Runs on your own API key, only for chats you use after turning it
+on. Past chats are only read when you build memory from them yourself."
 
 **Abuse limits and errors.** The refresh and the enable toggle are guarded by
 the cross-site request check; a per-project KV cooldown
@@ -1805,23 +1805,69 @@ being injected? It would be a cheap deterministic classifier call in
 `chat-context.ts` (a behaviour change that silently disables the user's own
 instructions). Not done.
 
-### Project memory updates automatically (owner, 2026-10-25)
+### No background model calls without an explicit opt-in (owner, 2026-10-26)
 
-**Rule.** Project memory is project-scope entries (3.14). The cron sweep
-(`server/utils/memory/extract-sweep.ts`, `*/5 * * * *`) extracts a project chat
-into them whenever all of these hold: the account master `memoryEnabled` is not
-off (null counts as on), the chat's project exists and belongs to the same
-user, and the project's `memoryStatus` is not `disabled`. It does not depend on
-`memoryExtractionEnabled` ("Generate memory from chats"), which covers only
-account memory extracted from non-project chats. The per-project Disable stops
-that project's sweep and tool writes while keeping its entries. The explicit
-"Refresh memory" click needs `memoryEnabled` and a non-disabled project but not
-`memoryExtractionEnabled`. Project chats use their own watermark
-(`chats.project_memory_summary_updated_at`), account chats use
-`memory_extracted_at` (3.11, 3.14). Model: the project memory model from
-`resolveMemoryModel` (scope `project`) on the user's own key; the compliance
-gate, including the sensitive-topic check, applies like everywhere else.
+**Rule.** This replaces the earlier rule "Project memory updates automatically
+(owner, 2026-10-25)", which let the cron sweep extract project chats without
+the extraction opt-in. Nothing runs in the background on a user's key unless
+the user switched **both** `memoryEnabled` (null counts as on) and
+`memoryExtractionEnabled` ("Generate memory from chats", default off, explicit)
+on. For project and non-project chats alike the sweep selects a chat only then;
+with the toggle off nothing runs in the background: no project sweep and no
+history backfill. A per-project Disable still excludes that project.
 
-**Why.** Before the entries rewrite, project memory refreshed itself after
-chats in every enabled project. Moving it onto the account-level extraction
-opt-in would have silently stopped that for existing users.
+**Cut-over (no implicit history).** The sweep never walks old history just
+because a chat has no watermark. When extraction becomes effective (the toggle
+on, or `memoryEnabled` false to true while it is on) the settings PATCH records
+`user_settings.memory_extraction_enabled_at` (additive nullable column, no
+default) and still stamps `chats.memory_extracted_at` as before (the account
+backfill ceiling depends on it). Account chats are limited by that stamp.
+Project chats share their watermark (`project_memory_summary_updated_at`) with
+the explicit Refresh button, so stamping it would hide a project's history from
+Refresh; they use the cut-over column instead: the sweep takes a project chat
+only when its activity is after `memory_extraction_enabled_at`, and reads only
+messages after the later of that time and the project watermark. A user who
+enabled extraction before the column existed has no cut-over recorded and is
+not swept for project chats until they switch the toggle once. Old history is
+processed only through the explicit "Build memory from past chats" backfill with
+its cost estimate (enabling extraction never creates a job).
+
+**Explicit actions keep working with the toggle off** but still require
+`memoryEnabled`: the project "Refresh memory" button (reads the project's
+history from its own watermark, within its per-click limits) and
+`POST /api/v1/memory/extract-now` (works for project and non-project chats; it
+reads from the chat's own watermark, ignores idle and cut-over, never stamps
+attempted/failures).
+
+**Why.** No spend and no memory creation without consent: a background model
+call on the user's own API key, reading their chats, is only acceptable after an
+explicit opt-in. The earlier owner rule favoured not regressing the old
+automatic project refresh; that was withdrawn for exactly this reason. Model for
+every run is unchanged (`resolveMemoryModel`, project scope for project chats),
+and the compliance gate applies like everywhere else.
+
+**D1 cost of the sweep.** `selectDueChats` starts from the opted-in users, not
+from `chats`: `user_settings` (filtered by a partial index `idx_user_settings_extraction_enabled`
+on `(user_id) WHERE memory_extraction_enabled = 1`, with the same predicate in
+the query) joined to `chats` through the composite index `idx_chats_user_activity`
+on `(user_id, activity_at)`, then a LEFT JOIN to `projects` by primary key. Both
+indexes and the cut-over column ship in one additive migration
+(`ALTER TABLE ... ADD` and two `CREATE INDEX`, no `DROP TABLE`). Query plan on
+the generated SQL (asserted in `extract-sweep.spec.ts`, no `SCAN chats`):
+
+```
+SCAN user_settings USING INDEX idx_user_settings_extraction_enabled
+SEARCH chats USING INDEX idx_chats_user_activity (user_id=? AND activity_at<?)
+SEARCH projects USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+```
+
+Expected rows read per `*/5` tick: with nobody opted in about 0 (a probe of an
+empty partial index; no `chats` rows and no other `user_settings` rows). With K
+opted-in users: K index entries and K `user_settings` rows, plus each such
+user's idle chats through the composite index and one `projects` primary-key
+lookup per project-chat row; D1 billing counts index entries as reads, so
+roughly twice the row count for index-driven reads. Caveats: the `row_number`
+window still reads every idle chat of an opted-in user (the per-user cap and the
+pool apply after the window), already-extracted idle chats are read and then
+filtered because the dirty test is not an index condition, and the plan was
+verified in the in-memory harness without `ANALYZE`, not measured on D1.
