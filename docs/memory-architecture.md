@@ -1,7 +1,8 @@
 # Memory architecture (profile, project, cross-chat, knowledge)
 
-Status: **proposal**, 2026-10-24. Nothing here is implemented yet except what
-section 1 lists as "exists today". Decisions marked **(owner)** are
+Status: **proposal**, 2026-10-24, partly implemented: section 1 lists what
+exists today, and the "As built" notes in 3.3, 3.10 and section 5 record W1-W3.
+Decisions marked **(owner)** are
 recommendations logged per the "minimize questions" preference; the owner can
 overturn any of them before the phase that depends on it starts.
 
@@ -227,7 +228,9 @@ project entry on first read; the column is left in place and writes stop
   extraction window so memory doesn't feed on itself.
 - **Model**: cheapest flagged model on any key the user has — extend
   `forProjectMemory` to Anthropic (Haiku tier), xAI, DeepSeek etc. (fixes G4).
-  ~$0.001–0.004 per pass at 10k in / 0.5k out.
+  ~$0.001–0.004 per pass at 10k in / 0.5k out. Superseded by the owner's
+  model-choice direction in 3.9: the cheapest flagged model is only the last
+  step of the resolution chain.
 - Skip short chats (< ~300 chars of user text) and incognito chats.
 
 ### 3.5 Compliance gate (code-enforced, not prompt-only)
@@ -261,6 +264,10 @@ extraction, import):
    and already sits in the never-store list above. Ongoing legal disputes and
    drug-related topics are treated as category 2 by default **(owner)**. All
    lists live in one constant so they are reviewable.
+
+**As built (W3, 2026-10-25)**: see 3.10. The detector set, the never-store
+priority over Art. 9, the count-only logging and the known limits are
+documented there.
 
 The categories and the never-store list are hardcoded in
 `shared/utils/memory-policy.ts` and quoted verbatim in the privacy policy
@@ -317,10 +324,300 @@ position and whether a DPIA is needed before GA.
   that it runs on the user's key and what is never stored. Rationale: EU
   operator, no counsel review yet, and it spends the user's money.
   `memory_write` on explicit request and chat search work without it.
+  **Deviation (W3, 2026-10-25)**: with the single `memoryEnabled` boolean this
+  does not hold. `memoryEnabled` is the master switch (off = no injection, no
+  tools, no extraction), so `memory_write` does not work while it is off. W4,
+  W5 and W6 must either accept that, or the owner adds a separate extraction
+  toggle (an additive nullable column, no rebuild). See 3.10.
 - Chat search tool **on** by default (no new data processing — it reads the
   user's own chats on demand, nothing stored).
 - Existing project memory: harmonised with the above — existing projects keep
   their current state; new projects follow the account toggle.
+
+### 3.9 Model choice (owner direction 2026-10-25)
+
+The user chooses which model updates profile memory and which updates project
+memory. `null` means "same as chat": the model the user is already chatting
+with. The choice is per scope (`profile` | `project`) and may be a direct
+provider model or a gateway model.
+
+Resolution chain, in `server/utils/memory/resolve-model.ts`
+(`resolveMemoryModel({ userId, scope, sourceChatId?, projectId? })`):
+
+1. **`setting`** — `profileMemoryModel` / `projectMemoryModel` plus the paired
+   `*MemoryGateway`. The key (direct provider key, or the gateway's key
+   provider) must still exist, otherwise the step is skipped. A direct model
+   must still be in the catalog and usable; a gateway model is not re-checked
+   against the live gateway catalog at resolve time.
+2. **`chat`** — the newest assistant message with `usage.model` and
+   `usage.provider` among the 10 most recent assistant messages of the source
+   chat. A `*-gateway` / `openrouter` provider means the chat was a gateway
+   send: it is mapped back to a gateway id through `providerMeta`
+   (`kind: 'gateway'`, `keyProviderId`) and the model id is kept as is.
+   Otherwise the usage provider must match the catalog provider of that model.
+   For project memory with no source chat, the project's 5 most recent chats
+   (by `activityAt`) are scanned in order and the first with usable usage
+   wins. Profile scope with no source chat skips this step without a record.
+   This is the server-side equivalent of the model picker, which lives only in
+   browser `localStorage` and is never sent to the server outside a chat send.
+3. **`fallback`** — cheapest-first provider order
+   (`MEMORY_MODEL_PROVIDER_ORDER`: openai, anthropic, qwen, deepseek, google,
+   moonshotai, xai), the first provider with a saved key and a
+   `forProjectMemory` model that passes the same usability filter as the
+   other steps (a retired or otherwise unusable flagged model is skipped).
+   The flag stays; W5 shows it as "Recommended (cheap)".
+
+`source` is `setting | chat | fallback` (`memoryModelSources`) and records
+which step decided. It is logged as
+`attributes.memoryModel = { scope, source, gatewayId, providerId, modelId,
+skipped, errors }` (`source` is `null` when nothing resolved) and is what the
+UI can show next to a project's memory model.
+
+A failing setting or chat step falls through to the next one. Each
+fall-through is recorded in `attributes.memoryModel.skipped` as
+`<step>:<reason>`: `not-in-catalog`, `unusable-model`, `no-key`, `error` (a
+thrown lookup), `chat:no-usage`, `fallback:no-key`. A thrown lookup also adds
+`{ step, error }` (the error message) to `attributes.memoryModel.errors`. The
+saved-keys lookup is different: if `keys.findMany` throws, the resolver
+rethrows, because "could not read the keys" must never be reported as "no
+key". The project refresh then leaves `memoryStatus` untouched (no
+`unavailable` write) and releases its lease in `finally`, as in W1. `null`
+from the resolver means no step produced a model; project memory then ends
+`unavailable`.
+
+Usability filter, shared by every step of the resolver and the settings
+validation (`isUsableMemoryCatalogModel`, in the light module
+`server/utils/memory/catalog-usability.ts`, which only has type imports and
+pure logic): the model produces text output, is not a deep-research agent, is
+not an image-generation model, and is not past its `retiredAt`. A
+`deprecated` model that is not yet retired stays usable. The PATCH validation
+for a gateway model applies the equivalent check to the live gateway catalog
+entry: rejected when `modalities.output` is declared without `text`, or when
+no modalities are declared and `supportsImageGeneration` is `true`.
+
+Known limit: a gateway model taken from the latest chat (the `chat` step) is
+not catalog-checked at resolution time, because resolution does no network
+calls. If it is unusable (retired upstream, image-only), the refresh fails
+instead of falling through to the next step. A gateway model chosen in the
+settings is checked when it is saved, not when it is used.
+
+Accepted consequence: the `chat` step can pick an expensive model, since the
+owner's rule is that the default is the model the user is chatting with, not
+the cheapest one. Only the `fallback` step optimises for cost. A user who
+wants cheap memory work sets an explicit model.
+
+Resolution is two-phase. `resolveMemoryModel` only decides and logs, and
+returns the selection plus a lazy `instantiate()`; the credential is read and
+the AI SDK model built only when `instantiate()` runs
+(`instantiateMemoryModel`). Callers record the choice first, so a failure
+while building the model is still attributable. `projects.memoryProvider`
+stores the key-provider id (`keyProviderIdForGateway(gatewayId)`:
+`vercel-gateway`, `cloudflare-gateway` or `openrouter`) for gateway picks and
+the provider id for direct picks, so it joins with `usage.provider` and with
+`providerMeta`; `projects.memoryModel` stores the model id. Reasoning is `off` for every provider
+except OpenAI (`low`), and gateway picks run with reasoning `off`.
+
+### 3.10 As built (W3, 2026-10-25)
+
+Branch `feat/w3-memory-contract-8bbac3`. W3 ships the contract only: nothing
+outside the settings API reads `memoryEnabled`, `chatSearchEnabled`,
+`memoryIncludeSensitive`, `aboutMe` or `useAccountMemory` yet, and no code
+creates `memory_entries` rows. The one behavioural change is project memory
+(resolver and redaction, below).
+
+**Settings semantics decided in W3**
+
+- `memoryEnabled`: the master switch. Off means no injection, no memory
+  tools, no extraction; entries are kept. Default `false` (opt-in).
+  **Deviation from 3.8**: 3.8 says `memory_write` works without extraction
+  being on. With a single boolean it does not. W4/W5/W6 must accept this, or
+  the owner adds a separate extraction toggle.
+- `chatSearchEnabled`: default `true`.
+- `memoryIncludeSensitive`: default `false`.
+- `aboutMe`: at most 4000 characters, trimmed; an empty string stores `null`.
+- `projects.useAccountMemory`: default `true`; `null` means the default.
+- All defaults live in app code (`MEMORY_SETTING_DEFAULTS`); the columns are
+  nullable with no SQL `DEFAULT`, per the D1 rebuild rule.
+
+**Settings API** (`/api/v1/profiles/settings`, GET and PATCH)
+
+- Model and gateway are a pair per scope. Sending `<scope>MemoryModel`
+  replaces both columns (a missing gateway means a direct provider); sending
+  `<scope>MemoryGateway` without `<scope>MemoryModel` is a 400; a `null`
+  model clears both.
+- Validation order: body schema (400) → `aboutMe` never-store gate (400) →
+  gateway-without-model (400) → empty patch (400) → per-scope model check
+  (`assertMemoryModelChoice`) → write. The whole request is rejected on any
+  failure and nothing is written, including the opt-out purge.
+- `aboutMe` goes through `detectNeverStore` after trimming. A hit is a 400
+  (`About me contains data that cannot be stored`) whose `why` lists only the
+  kind ids and labels, never the content; the count is logged through
+  `recordBlockedCounts` with origin `settings-about-me`. The text itself is
+  never logged.
+- A direct model is checked against the curated catalog with
+  `isUsableMemoryCatalogModel` (400 when unknown or unusable). A gateway model
+  is checked against the live gateway catalog: not in catalog or no text
+  output (declared modalities without `text`, or no modalities and
+  `supportsImageGeneration: true`) is a 400, a catalog outage is a 503 (not a
+  silent accept). Cloudflare needs the user's Cloudflare AI Gateway
+  credentials, otherwise 400.
+- A gateway choice is a catalog-hitting path, so each one first consumes the
+  shared per-user gateway-catalog rate limit
+  (`enforceGatewayModelsRateLimit` in
+  `server/utils/gateways/catalog-rate-limit.ts`, 20 requests per 60 seconds,
+  the same bucket as `GET /api/v1/gateways/[gateway]/models`); the 429
+  propagates and nothing is written. Direct models, `null` models and
+  boolean-only patches never touch the limiter.
+- There is no key check at save time: a key can be added later, and the
+  resolver falls through when it is missing.
+- `memoryIncludeSensitive: false` runs the settings write and the purge of
+  every `sensitivity = special` entry of the user in ONE `db.batch([...])`
+  (settings statement first, `buildSensitiveMemoryPurge(userId, db)` second),
+  so either both land or neither does. The response then carries
+  `sensitiveEntriesDeleted` (the number of purged rows); the purge is logged
+  as `attributes.memorySettings.sensitiveEntriesDeleted`. Without that flag
+  (`true` or absent) the settings write is a single non-batch statement and
+  no purge runs.
+
+**Schema** (`server/db/schemas/memory-entries.ts`, migration
+`20261025130157_memory_contract`)
+
+- The migration is additive only: `CREATE TABLE memory_entries`, nine
+  `ALTER TABLE ... ADD COLUMN` (eight on `user_settings`, `use_account_memory`
+  on `projects`) and four `CREATE INDEX`. No `DROP TABLE`, no rebuild.
+- `userId` is a cascade FK to `users` and `purgeUserData` also deletes the
+  user's entries explicitly, before the R2/KV work that can abort
+  (`memoryEntriesDeleted` in its result). `AGENTS.md` lists the table among
+  the cascade children.
+- `projectId` is a cascade FK to `projects`: deleting a project removes its
+  project-scope entries (3.7).
+- Two partial unique indexes, because SQLite treats `NULL`s as distinct in a
+  unique index: `uq_memory_entries_account_slug (userId, category, slug)
+  WHERE project_id IS NULL` and `uq_memory_entries_project_slug (userId,
+  projectId, category, slug) WHERE project_id IS NOT NULL`. Plus
+  `idx_memory_entries_user_project` and `idx_memory_entries_user_sensitivity`.
+- `sourceChatIds` defaults to `[]` in app code (`$defaultFn`), not in SQL.
+- The `user_settings` columns are `memory_enabled`, `chat_search_enabled`,
+  `memory_include_sensitive`, `about_me` and the four model/gateway columns
+  (`profile_memory_model`, `profile_memory_gateway`, `project_memory_model`,
+  `project_memory_gateway`); the gateway columns are enum-typed in Drizzle
+  only.
+
+**Compliance gate** (`server/utils/memory/compliance.ts`)
+
+Exported API: `detectNeverStore(text)` → sorted, merged `{ kind, start, end }`
+spans; `redactNeverStore(text)` → `{ text, blocked, blockedTotal }` with each
+span replaced by `[redacted]`; `evaluateMemoryEntry({ title, description,
+body, sensitivity, extractorNeverStoreKind?, includeSensitive })` → a verdict
+`{ allowed: true }`, `{ allowed: false, reason: 'never-store', kinds }` or
+`{ allowed: false, reason: 'sensitive-disabled' }`; `recordBlockedCounts`;
+`buildSensitiveMemoryPurge(userId, db)` (the returning-delete query builder,
+batchable) and `purgeSensitiveMemoryEntries(userId)` (awaits it and returns
+the row count).
+
+Priority: never-store beats Art. 9. An entry with a detector hit is blocked
+even when `memoryIncludeSensitive` is on; `sensitive-disabled` is only
+reported when nothing matched. The title, description and body are each
+scanned, and an extractor-supplied `extractorNeverStoreKind` counts like a
+detector hit.
+
+Detectors (overlapping spans merge into one, the longer kind wins):
+
+| Kind | Rule |
+|---|---|
+| `payment-card` | 13-19 digits in up to 6 space/hyphen-separated groups; first digit 2-6, not one repeated digit, Luhn-valid |
+| `iban` | two letters + two digits; the country length table (32 countries) when the country is known, any length 15-34 otherwise; mod-97 equals 1; also bare Polish NRB (26 digits in 2+6x4 groups) |
+| `national-id` | PESEL (checksum plus a valid date, all century month bands) and US SSN (`NNN-NN-NNNN`, area not 000/666/9xx, group not 00, serial not 0000) |
+| `tax-id` | NIP (checksum, `NNN-NNN-NN-NN` or 10 digits) and РНОКПП (10 digits, checksum); only when a tax keyword (NIP, TIN, VAT, ІПН, РНОКПП, ІНН/ИНН, "tax id", "податковий номер", ...) appears within 40 characters before the number |
+| `passport` | keyword (passport, паспорт, paszport, pasport) within 30 non-digit characters before an optional 1-2 letter series and 6-9 digits; only the identifier is redacted |
+| `api-key` | known shapes: `sk-`, `AIza`, `AQ.`, GitHub (`ghp_` etc. and `github_pat_`), Slack `xox*`, AWS `AKIA`/`ASIA`, Stripe-style `sk_`/`pk_`/`rk_` + `live_`/`test_`, `xai-`, `gsk_`, `hf_`, `npm_`, `glpat-`, SendGrid `SG.`, `Bearer <20+ chars>` |
+| `jwt` | three dot-separated parts, the first two starting `eyJ` |
+| `credential` | a label (password, passwd, pwd, passphrase, secret, api key, token, пароль, токен, ключ, hasło, ...) followed by `:` or `=` and a value of 6+ characters; or label + `is`/`є`/`jest`/`это` + a 6+ character value that contains a non-letter; or URL userinfo (`scheme://user:pass@`). The label stays, only the value is redacted |
+| `private-key` | `-----BEGIN ... PRIVATE KEY-----` through the END marker, or to the end of the text when unterminated |
+
+The topical classes (`criminal-history`, `immigration-status`,
+`home-address`, `live-location`, `other`) have `detection: 'extractor'` in
+`neverStoreKinds`: they are only enforced through `extractorNeverStoreKind`,
+never by `detectNeverStore`. `neverStoreKinds` is the reviewable list quoted
+in the privacy policy.
+
+Logging contract: `recordBlockedCounts(blocked, logger, origin)` writes
+`attributes.memoryCompliance = { origin, blocked, blockedTotal }` and stays
+silent when nothing was blocked. Only counts per kind are logged, never the
+matched text. Origins used so far: `project-memory-summary`,
+`project-memory` and `settings-about-me`.
+
+Known limits (deliberate, covered or implied by the spec):
+
+- Cards inside a digit run of 20+ digits, or glued to a leading `+`, are
+  missed.
+- A bare 11-digit phone number that passes the PESEL checksum and date is
+  redacted as `national-id`.
+- A letters-only password in the "X is <word>" form is missed (the sentence
+  form requires a non-letter in the value); the `label: value` form has no
+  such requirement.
+- `Token: expired` and similar 6+ character values after a credential label
+  are over-redacted.
+- A hyphenated word of 20+ characters after `sk-` matches the key shape.
+- The topical classes above are extractor-label only (see the table note).
+
+**Project memory now goes through the gate.** The summarise and synthesise
+prompts gain one sentence forbidding card, bank, government/tax ID, passport
+and credential data, and both outputs are redacted. The redaction covers the
+per-chat summaries (`chats.projectMemorySummary`) and the synthesised blob
+(`projects.memory`). Chats whose summary was cached before W3 keep an
+unredacted summary until their next refresh; the synthesised blob is always
+redacted on write, so the injected text is clean either way. Summaries and
+the blob are redacted, not blocked: a hit becomes `[redacted]` and the rest of
+the text is kept.
+
+Both `generateText` calls of the project refresh also carry `maxOutputTokens`
+(`PROJECT_MEMORY_LIMITS.maxSummaryChars` for the per-chat summary,
+`maxMemoryChars` for the synthesis). A token budget at least as large as the
+character budget is deliberately generous: it only bounds runaway output, the
+character caps still do the real truncation.
+
+**Art. 9 control on the legacy blob is PROMPT-ONLY.** `refreshLeasedProjectMemory`
+reads `memoryIncludeSensitive`; when it is not `true`, one sentence is
+appended to both instruction strings: omit information about health, religion
+or beliefs, political opinions, racial or ethnic origin, sex life or
+orientation, trade-union membership, genetic or biometric data, ongoing legal
+disputes and drug use. This is a request to the model, not code enforcement:
+the output is not classified or filtered, so special-category data can still
+slip into `projects.memory`. Code enforcement (`evaluateMemoryEntry`) exists
+only for the entry pipeline. Project memory (summaries and blob) written
+before W3 is not retro-scrubbed; the instruction applies from the next refresh
+of each chat summary and of the blob.
+
+**Open follow-ups**
+
+- Art. 9 handling of the existing project blob is prompt-only (above). W6's
+  blob migration to entries should run each derived entry through
+  `evaluateMemoryEntry` before saving.
+- `neverStoreKindIds` in `memory-policy.ts` is a hand-written tuple, kept
+  equal to the ids of `neverStoreKinds` (same ids, same order) by a unit
+  test in `tests/unit/utils/memory-policy.spec.ts`.
+- Nothing consumes the new settings yet: W4 (injection, tools), W5 (UI) and
+  W6 (extraction) own that.
+
+**Hand-over for W4/W5/W6**
+
+- Writers must run `evaluateMemoryEntry` on the exact text that is persisted
+  (title, description and body as stored, after any trimming or rewriting),
+  not on an earlier draft.
+- `memoryEntryInputSchema` accepts client-supplied `origin` and `projectId`.
+  The W4 route must force `origin` itself and verify that the project belongs
+  to the user: the `projectId` foreign key does not tie a project to its user.
+- The patch schema skips cross-field rules for fields that are absent, so the
+  handler must re-validate the merged row (stored values plus patch) before
+  writing.
+- Future writers should insert only when `memoryIncludeSensitive` allows it,
+  inside the same statement (for example `INSERT ... SELECT ... WHERE` on the
+  settings row), to close the race with the opt-out purge that runs in the
+  settings PATCH batch.
+- The fallback tries OpenAI first, a provider the user may not have chatted
+  with; it only needs a saved key. A chosen or chat-derived model may be
+  expensive (3.9); only the fallback optimises for cost.
 
 ## 4. Cost and performance
 
@@ -372,6 +669,18 @@ Ownership is by file set so parallel sessions never touch the same files.
   `server/utils/memory/compliance.ts` (W4 and W6 both call it), Drizzle
   schema + additive migration (`memory_entries`, `user_settings` columns,
   `projects.useAccountMemory`).
+
+  *Implemented* (branch `feat/w3-memory-contract-8bbac3`; details in 3.9 and
+  3.10): the contract files, the additive migration, the compliance gate, the
+  model-choice resolver (`server/utils/memory/resolve-model.ts`) and its
+  settings validation, the settings API fields, and never-store redaction on
+  project memory. Added beyond the original W3 scope: per-scope memory model
+  settings (`profileMemory*`, `projectMemory*`, with gateways) and the
+  resolver that replaces `resolveProjectMemoryModel`. Decisions and
+  deviations: `memoryEnabled` is the master switch, so `memory_write` does
+  not work while it is off (deviation from 3.8); the chosen chat model may be
+  expensive by design; the existing project blob is redacted, and its Art. 9
+  control is prompt-only (no code enforcement, no retro-scrub).
 - Then in parallel:
   - **W4 Memory backend** — CRUD API under `server/api/v1/memory/`, index
     builder + injection in `buildChatInstructions`, `memory_read/list/write/
