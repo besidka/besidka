@@ -194,13 +194,6 @@ export default defineEventHandler(async (event) => {
       memoryExtractionEnabled: true,
     },
   })
-  const settingsStatement = existingSettings
-    ? db.update(schema.userSettings).set(fieldUpdates)
-      .where(eq(schema.userSettings.userId, userId))
-    : db.insert(schema.userSettings).values({
-      userId,
-      ...fieldUpdates,
-    })
   const isExtractionEffectiveBefore = (existingSettings?.memoryEnabled ?? true)
     && existingSettings?.memoryExtractionEnabled === true
   const isExtractionEffectiveAfter
@@ -209,6 +202,17 @@ export default defineEventHandler(async (event) => {
         ?? existingSettings?.memoryExtractionEnabled) === true
   const isEnablingExtraction = !isExtractionEffectiveBefore
     && isExtractionEffectiveAfter
+  const stampedAt = new Date()
+  const settingsValues = isEnablingExtraction
+    ? { ...fieldUpdates, memoryExtractionEnabledAt: stampedAt }
+    : fieldUpdates
+  const settingsStatement = existingSettings
+    ? db.update(schema.userSettings).set(settingsValues)
+      .where(eq(schema.userSettings.userId, userId))
+    : db.insert(schema.userSettings).values({
+      userId,
+      ...settingsValues,
+    })
   const isDisablingBackfillSource = fieldUpdates.memoryEnabled === false
     || fieldUpdates.memoryExtractionEnabled === false
   const statements: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
@@ -216,8 +220,6 @@ export default defineEventHandler(async (event) => {
   ]
 
   if (isEnablingExtraction) {
-    const stampedAt = new Date()
-
     statements.push(
       db.update(schema.chats)
         .set({ memoryExtractedAt: stampedAt })

@@ -1,7 +1,9 @@
 import type { GatewayId } from '#shared/types/gateways.d'
 import { gatewayIds } from '#shared/utils/gateways'
+import { sql } from 'drizzle-orm'
 import {
   snakeCase,
+  index,
   integer,
   text,
   uniqueIndex,
@@ -31,6 +33,7 @@ export const userSettings = snakeCase.table(
       .$type<Partial<Record<GatewayId, string[]>>>(),
     memoryEnabled: integer({ mode: 'boolean' }),
     memoryExtractionEnabled: integer({ mode: 'boolean' }),
+    memoryExtractionEnabledAt: integer({ mode: 'timestamp' }),
     chatSearchEnabled: integer({ mode: 'boolean' }),
     memoryIncludeSensitive: integer({ mode: 'boolean' }),
     aboutMe: text(),
@@ -41,5 +44,8 @@ export const userSettings = snakeCase.table(
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),
+    index('idx_user_settings_extraction_enabled')
+      .on(table.userId)
+      .where(sql`memory_extraction_enabled = 1`),
   ],
 )
