@@ -31,5 +31,10 @@ export default defineEventHandler(async (event) => {
     projectId: params.data.id,
   })
 
-  return await refreshProjectMemory(params.data.id, userId)
+  return await refreshProjectMemory(
+    params.data.id,
+    userId,
+    undefined,
+    logger,
+  )
 })

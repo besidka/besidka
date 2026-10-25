@@ -265,6 +265,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/project-activity.spec.ts',
     'tests/unit/utils/project-instructions.spec.ts',
     'tests/unit/utils/project-memory.spec.ts',
+    'tests/unit/utils/project-memory-lease.spec.ts',
     'tests/unit/components/Projects/InstructionsCard.spec.ts',
     'tests/unit/components/Projects/MemoryCard.spec.ts',
     'tests/unit/components/Chat/ProjectInstructions.spec.ts',
@@ -655,6 +656,21 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Reasoning.spec.ts',
   ]
 
+  const chatSearchToolTests = [
+    'tests/unit/utils/memory/tools/search-chats.spec.ts',
+    'tests/unit/utils/memory/tools/read-chat.spec.ts',
+    'tests/unit/utils/memory/tools/chat-search-budget.spec.ts',
+    'tests/unit/utils/memory/tools/index.spec.ts',
+    'tests/integration/api/chats-chat-search-tools.spec.ts',
+    'tests/integration/api/chats-single-step-characterization.spec.ts',
+    'tests/integration/api/chats-tool-loop.spec.ts',
+    'tests/unit/utils/ai/search-answer-continuation.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/integration/server/assistant-files.spec.ts',
+    'tests/unit/utils/search/query.spec.ts',
+    'tests/unit/utils/chats/history/search.spec.ts',
+  ]
+
   const deepResearchTests = [
     'tests/unit/utils/research.spec.ts',
     'tests/unit/utils/research-ui.spec.ts',
@@ -757,6 +773,7 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/utils\/ai\/tool-loop\.ts|tests\/fixtures\/follow-up-turn-tool\.ts)$/,
       tests: [
+        ...chatSearchToolTests,
         'tests/unit/utils/ai/tool-loop.spec.ts',
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/integration/api/chats-single-step-characterization.spec.ts',
@@ -921,6 +938,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...chatStreamBranchTests,
         'tests/integration/api/chats-title.spec.ts',
+        'tests/integration/api/chats-chat-search-tools.spec.ts',
       ],
     },
     {
@@ -1243,7 +1261,15 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|freshness\.ts|iso-date\.ts|search-budget\.ts|search-error\.ts|types\.d\.ts).*\.ts$/,
-      tests: messageSearchTests,
+      tests: [...messageSearchTests, ...chatSearchToolTests],
+    },
+    {
+      pattern: /^(server\/utils\/memory\/tools\/.*\.ts|server\/utils\/ai\/chat-search-tools\.ts)$/,
+      tests: chatSearchToolTests,
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/search-index-db\.ts$/,
+      tests: [...messageSearchTests, ...chatSearchToolTests],
     },
     {
       pattern:
@@ -1404,6 +1430,15 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/prose\/A\.vue|app\/composables\/chat-format\.ts)$/,
       tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/prose\/Img\.vue|app\/composables\/chat-format\.ts)$/,
+      tests: [
+        'tests/unit/components/prose/Img.spec.ts',
+        'tests/unit/composables/chat-format.spec.ts',
+        'tests/unit/components/Chat/Reasoning.spec.ts',
+      ],
     },
     {
       pattern:
@@ -1774,6 +1809,7 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/utils\/reasoning\.ts$/,
       tests: [
+        ...searchStepTests,
         'tests/unit/utils/reasoning.spec.ts',
         'tests/unit/components/Chat/Reasoning.spec.ts',
       ],

