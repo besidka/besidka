@@ -8,10 +8,7 @@
       :settings="values"
       :save="save"
     />
-    <ProfileMemorySensitive
-      :settings="values"
-      :save="save"
-    />
+    <ProfileMemoryNeverKept />
     <ProfileMemoryAboutMe
       :settings="values"
       :save="save"
@@ -20,7 +17,7 @@
       :settings="values"
       :save="save"
     />
-    <ProfileMemoryEntries />
+    <ProfileMemoryEntries :settings="values" />
   </div>
 </template>
 

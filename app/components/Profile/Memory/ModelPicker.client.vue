@@ -20,10 +20,10 @@
           </span>
         </label>
         <div class="flex flex-wrap items-center gap-3 p-3">
-          <label class="flex items-start gap-3 cursor-pointer">
+          <label class="flex items-center gap-3 cursor-pointer">
             <input
               type="radio"
-              class="radio radio-sm mt-1"
+              class="radio radio-sm"
               :name="groupName"
               :checked="hasSpecificModel"
               data-testid="memory-model-specific"
@@ -91,6 +91,8 @@
               :filter-model="isMemoryModelSelectable"
               :filter-gateway-model="isMemoryGatewayModelSelectable"
               :recommended-model-ids="recommendedModelIds"
+              recommended-filter
+              class="!shadow-none"
               @select="onModelSelected"
               @close="closeModal"
             />

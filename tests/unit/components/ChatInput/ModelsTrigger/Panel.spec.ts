@@ -81,6 +81,7 @@ function mountPanel(props: Partial<{
   selectedGatewayId: GatewayId | null
   filterModel: (model: Model) => boolean
   recommendedModelIds: string[]
+  recommendedFilter: boolean
 }> = {}) {
   return mountSuspended(Panel, {
     attachTo: document.body,
@@ -217,6 +218,93 @@ describe('ChatInput/ModelsTrigger/Panel', () => {
     ).toBe(true)
 
     wrapper.unmount()
+  })
+
+  describe('recommendedFilter', () => {
+    const recommendedProps = {
+      recommendedFilter: true,
+      recommendedModelIds: ['google-model'],
+    }
+
+    it('keeps the filter dropdown and no toggle by default', async () => {
+      const wrapper = await mountPanel()
+
+      expect(wrapper.find('[data-testid="models-picker-filter-trigger"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="memory-picker-filter-all"]').exists())
+        .toBe(false)
+
+      wrapper.unmount()
+    })
+
+    it('swaps the dropdown for an All and Recommended toggle', async () => {
+      const wrapper = await mountPanel(recommendedProps)
+
+      expect(wrapper.find('[data-testid="models-picker-filter-trigger"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="memory-picker-filter-all"]')
+        .attributes('aria-pressed')).toBe('true')
+      expect(wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+        .attributes('aria-pressed')).toBe('false')
+
+      wrapper.unmount()
+    })
+
+    it('narrows to the recommended ids and All restores', async () => {
+      const wrapper = await mountPanel(recommendedProps)
+
+      await wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+        .trigger('click')
+
+      expect(wrapper.find('#model-option-google-model').exists()).toBe(true)
+      expect(wrapper.find('#model-option-image-model').exists()).toBe(false)
+      expect(wrapper.find('#model-option-openai-model').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+        .attributes('aria-pressed')).toBe('true')
+
+      await wrapper.get('[data-testid="memory-picker-filter-all"]')
+        .trigger('click')
+
+      expect(wrapper.find('#model-option-image-model').exists()).toBe(true)
+      expect(wrapper.find('#model-option-openai-model').exists()).toBe(true)
+
+      wrapper.unmount()
+    })
+
+    it('resets to All when the panel is prepared to open again', async () => {
+      const wrapper = await mountPanel(recommendedProps)
+
+      await wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+        .trigger('click')
+      await (wrapper.vm as unknown as {
+        prepareOpen: () => Promise<void>
+      }).prepareOpen()
+
+      expect(wrapper.get('[data-testid="memory-picker-filter-all"]')
+        .attributes('aria-pressed')).toBe('true')
+      expect(wrapper.find('#model-option-image-model').exists()).toBe(true)
+
+      wrapper.unmount()
+    })
+
+    it('hides the toggle and the dropdown in a gateway view', async () => {
+      const wrapper = await mountPanel({
+        ...recommendedProps,
+        selectedModelId: 'anthropic/claude-opus-5',
+        selectedGatewayId: 'vercel',
+      })
+
+      expect(wrapper.find('[data-testid="models-picker-gateway-banner"]')
+        .exists()).toBe(true)
+      expect(wrapper.find('[data-testid="memory-picker-filter-all"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="models-picker-filter-trigger"]').exists())
+        .toBe(false)
+      expect(wrapper.find('button[aria-label="Choose Claude Opus 5"]')
+        .exists()).toBe(true)
+
+      wrapper.unmount()
+    })
   })
 
   it('emits close with focus restore on Escape', async () => {

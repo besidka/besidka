@@ -3,7 +3,7 @@ import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { parseError } from 'evlog'
 import { defineComponent, h } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemoryUiSettings } from '../../../../../app/types/memory-settings.d'
+import type { MemorySettingsFields } from '../../../../../shared/types/memory.d'
 import * as messagesComposable from '../../../../../app/composables/messages'
 import Models from '../../../../../app/components/Profile/Memory/Models.vue'
 
@@ -37,7 +37,7 @@ const PanelStub = defineComponent({
 
 enableAutoUnmount(afterEach)
 
-const defaultSettings: MemoryUiSettings = {
+const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
   memoryExtractionEnabled: false,
   chatSearchEnabled: true,
@@ -51,7 +51,7 @@ const defaultSettings: MemoryUiSettings = {
 
 const save = vi.fn()
 
-async function mountModels(settings: Partial<MemoryUiSettings> = {}) {
+async function mountModels(settings: Partial<MemorySettingsFields> = {}) {
   const wrapper = await mountSuspended(Models, {
     props: {
       settings: { ...defaultSettings, ...settings },

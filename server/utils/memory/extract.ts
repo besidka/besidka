@@ -443,6 +443,7 @@ async function extractLeasedChatMemory(
       entries,
       groundingTexts: extractionWindow.userTexts,
       createGroundingTexts: legacyBlob ? [legacyBlob] : [],
+      logger: input.logger,
     })
 
     result.proposed = applied.proposed
@@ -757,6 +758,7 @@ export async function extractProjectLegacyBlob(
       entries,
       groundingTexts: [],
       createGroundingTexts: [legacyBlob],
+      logger: input.logger,
     })
 
     result.proposed = applied.proposed + invalidOpsCount

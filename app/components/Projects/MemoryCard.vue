@@ -91,6 +91,17 @@
             }}
           </span>
         </button>
+        <NuxtLink
+          v-if="projectId"
+          :to="{
+            path: '/profile/memory',
+            query: { scope: 'project', project: projectId },
+          }"
+          class="btn btn-ghost btn-ghost-legacy btn-sm max-sm:btn-block max-sm:order-3"
+          data-testid="manage-project-memory-entries"
+        >
+          Manage memory entries
+        </NuxtLink>
       </div>
     </div>
   </UiBubble>
@@ -100,6 +111,7 @@
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
 
 const props = defineProps<{
+  projectId?: string
   memory: string | null
   memoryStatus: ProjectMemoryStatus
   memoryUpdatedAt: string | null

@@ -26,14 +26,6 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
 }))
 
-const specialCategoryMocks = vi.hoisted(() => ({
-  detect: vi.fn(),
-}))
-
-vi.mock('~~/server/utils/memory/special-category', () => {
-  return { detectSpecialCategories: specialCategoryMocks.detect }
-})
-
 vi.mock('ai', () => ({
   generateObject: mocks.generateObject,
   generateText: vi.fn(),
@@ -123,13 +115,11 @@ describe('manual memory extraction', () => {
     userId = await seedUserWith({
       memoryEnabled: true,
       memoryExtractionEnabled: false,
-      memoryIncludeSensitive: false,
     })
     mocks.release.mockResolvedValue(undefined)
     mocks.acquireMemoryLease.mockResolvedValue({ release: mocks.release })
     mocks.resolveMemoryModel.mockImplementation(async () => createSelection())
     mockOps([])
-    specialCategoryMocks.detect.mockReset().mockReturnValue([])
   })
 
   afterEach(() => {
@@ -512,7 +502,10 @@ describe('manual memory extraction', () => {
   })
 
   describe('blob-only pass', () => {
-    async function runBlobPass(projectId: string) {
+    async function runBlobPass(
+      projectId: string,
+      logger: { set: ReturnType<typeof vi.fn> } = { set: vi.fn() },
+    ) {
       const { extractProjectLegacyBlob } = await import(
         '~~/server/utils/memory/extract'
       )
@@ -522,7 +515,7 @@ describe('manual memory extraction', () => {
         userId,
         selection: createSelection() as never,
         db: testDb.db,
-        logger: { set: vi.fn() },
+        logger,
         now: EXTRACTION_NOW,
       })
     }
@@ -588,16 +581,28 @@ describe('manual memory extraction', () => {
 
       const projectId = await seedProject(testDb.db, userId, { memory: BLOB })
 
-      specialCategoryMocks.detect.mockReturnValue(['health'])
-      mockOps([blobOp()])
+      const logger = { set: vi.fn() }
 
-      const result = await runBlobPass(projectId)
+      mockOps([blobOp({ body: 'The user has type 2 diabetes.' })])
+
+      const result = await runBlobPass(projectId, logger)
       const options = mocks.generateObject.mock.calls[0]![0]
 
       expect(result.applied.created).toBe(0)
-      expect(result.dropped).toEqual({ 'special-category': 1 })
+      expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
       expect(await listEntries()).toHaveLength(0)
-      expect(JSON.stringify(result)).not.toContain('health')
+      expect(JSON.stringify(result)).not.toContain('diabetes')
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          memoryCompliance: {
+            sensitive: {
+              origin: 'memory-extraction',
+              categories: ['health'],
+            },
+          },
+        },
+      })
+      expect(JSON.stringify(logger.set.mock.calls)).not.toContain('diabetes')
       expect(options.instructions).toContain('Never record anything about')
       expect(options.instructions).not.toContain('may be stored only')
     })

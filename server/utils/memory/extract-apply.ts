@@ -1,6 +1,7 @@
 import type {
   ComplianceBlockedCounts,
   MemoryCategory,
+  MemorySensitiveCategory,
 } from '#shared/types/memory.d'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import {
@@ -9,10 +10,11 @@ import {
 } from '#shared/utils/memory-schemas'
 import { and, eq, isNull } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { evaluateMemoryEntry } from '~~/server/utils/memory/compliance'
 import {
-  detectSpecialCategories,
-} from '~~/server/utils/memory/special-category'
+  evaluateMemoryEntry,
+  recordSensitiveDetection,
+} from '~~/server/utils/memory/compliance'
+import type { ComplianceLogger } from '~~/server/utils/memory/compliance'
 import type { MemoryExtractionOp } from '~~/server/utils/memory/extract-schema'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import {
@@ -24,9 +26,10 @@ import type {
 
 type DbClient = ReturnType<typeof useDb>
 
+const COMPLIANCE_ORIGIN = 'memory-extraction'
 const FALLBACK_SLUG_PREFIX = 'entry'
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint'
-const SPECIAL_CATEGORY_DROP_REASON = 'special-category'
+const SENSITIVE_TOPIC_DROP_REASON = 'sensitive-topic'
 const HASH_MULTIPLIER = 31
 const HASH_RADIX = 36
 const SLUG_SEPARATOR_PATTERN = /[^a-z0-9]+/gu
@@ -89,6 +92,7 @@ export interface MemoryExtractionApplyInput {
   entries: MemoryExtractionIndexEntry[]
   groundingTexts: string[]
   createGroundingTexts?: string[]
+  logger?: ComplianceLogger
 }
 
 export interface MemoryExtractionApplyResult {
@@ -216,6 +220,7 @@ class MemoryExtractionApplier {
   private readonly groundingTexts: string[]
   private readonly createGroundingTexts: string[]
   private readonly result: MemoryExtractionApplyResult
+  private readonly detectedCategories = new Set<MemorySensitiveCategory>()
 
   constructor(input: MemoryExtractionApplyInput) {
     this.input = input
@@ -254,7 +259,27 @@ class MemoryExtractionApplier {
       await this.applyOp(op)
     }
 
+    this.recordDetectedCategories()
+
     return this.result
+  }
+
+  private recordDetectedCategories() {
+    if (!this.input.logger) {
+      return
+    }
+
+    recordSensitiveDetection(
+      [...this.detectedCategories],
+      this.input.logger,
+      COMPLIANCE_ORIGIN,
+    )
+  }
+
+  private collectDetectedCategories(categories: MemorySensitiveCategory[]) {
+    for (const category of categories) {
+      this.detectedCategories.add(category)
+    }
   }
 
   private drop(reason: string) {
@@ -335,10 +360,13 @@ class MemoryExtractionApplier {
       body: values.body,
       sensitivity: 'none',
       extractorNeverStoreKind: op.neverStore,
-      includeSensitive: false,
     })
 
-    if (!verdict.allowed && verdict.reason === 'never-store') {
+    if (verdict.allowed) {
+      return null
+    }
+
+    if (verdict.reason === 'never-store') {
       for (const kind of verdict.kinds) {
         this.result.blocked[kind] = (this.result.blocked[kind] ?? 0) + 1
       }
@@ -346,18 +374,9 @@ class MemoryExtractionApplier {
       return { dropped: 'never-store' }
     }
 
-    if (!verdict.allowed) {
-      return { dropped: SPECIAL_CATEGORY_DROP_REASON }
-    }
+    this.collectDetectedCategories(verdict.detectedCategories)
 
-    const combinedText = [values.title, values.description, values.body]
-      .join('\n')
-
-    if (detectSpecialCategories(combinedText).length > 0) {
-      return { dropped: SPECIAL_CATEGORY_DROP_REASON }
-    }
-
-    return null
+    return { dropped: SENSITIVE_TOPIC_DROP_REASON }
   }
 
   private async applyCreate(
@@ -663,10 +682,12 @@ class MemoryExtractionApplier {
  * Applies the extractor's ops sequentially. Each op is independent: it must
  * quote the user's own words (the code-level defence against text echoed by
  * the assistant), pass schema validation on the exact persisted row, pass the
- * compliance gate and the special-category backstop, and only ever touch an
+ * compliance gate (text the server classifier flags as special-category data
+ * is dropped as `sensitive-topic`), and only ever touch an
  * `extraction`-origin, non-special row of this user and scope. Extraction
- * never writes a special-category entry, whatever the user's opt-in says:
- * every row it persists has `sensitivity: 'none'`. Returns counts only.
+ * never writes a special-category entry: every row it persists has
+ * `sensitivity: 'none'`. Detected category ids (never the text) are logged
+ * once per run. Returns counts only.
  */
 export async function applyMemoryExtractionOps(
   input: MemoryExtractionApplyInput,

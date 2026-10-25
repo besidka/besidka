@@ -20,6 +20,11 @@ export interface MemoryEntryGroup {
   entries: MemoryEntry[]
 }
 
+export interface MemoryEntryChange {
+  reason: 'saved' | 'deleted'
+  categoryChanged: boolean
+}
+
 export interface MemoryEntriesResponse {
   scope: MemoryEntriesScope
   projectId: string | null
@@ -30,6 +35,16 @@ export interface MemoryEntriesResponse {
 
 export interface MemoryEntryResponse {
   entry: MemoryEntry
+}
+
+export interface MemoryEntrySourceChat {
+  id: string
+  slug: string
+  title: string
+}
+
+export interface MemoryEntrySourcesResponse {
+  chats: MemoryEntrySourceChat[]
 }
 
 export interface MemoryEntryDeleteResponse {

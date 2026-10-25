@@ -1,5 +1,6 @@
 import type {
   ComplianceBlockedCounts,
+  MemorySensitiveCategory,
   MemorySensitivity,
   NeverStoreKind,
 } from '#shared/types/memory.d'
@@ -7,6 +8,7 @@ import {
   REDACTION_PLACEHOLDER,
   neverStoreKindIds,
 } from '#shared/utils/memory-policy'
+import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
 
 export interface NeverStoreMatch {
   kind: NeverStoreKind
@@ -16,12 +18,17 @@ export interface NeverStoreMatch {
 
 export interface ComplianceLogger {
   set: (fields: Record<string, unknown>) => void
+  getContext?: () => Record<string, unknown>
 }
 
 export type MemoryWriteVerdict
   = | { allowed: true }
     | { allowed: false, reason: 'never-store', kinds: NeverStoreKind[] }
-    | { allowed: false, reason: 'sensitive-disabled' }
+    | {
+      allowed: false
+      reason: 'sensitive-topic'
+      detectedCategories: MemorySensitiveCategory[]
+    }
 
 export interface MemoryEntryEvaluationInput {
   title: string
@@ -29,7 +36,6 @@ export interface MemoryEntryEvaluationInput {
   body: string
   sensitivity: MemorySensitivity
   extractorNeverStoreKind?: NeverStoreKind | null
-  includeSensitive: boolean
 }
 
 const MAX_CARD_DIGITS = 19
@@ -876,12 +882,76 @@ export function recordBlockedCounts(
   })
 }
 
+export function combineMemoryEntryText(fields: {
+  title: string
+  description: string
+  body: string
+}): string {
+  return [fields.title, fields.description, fields.body].join('\n')
+}
+
+function readLoggedSensitiveCategories(
+  logger: ComplianceLogger,
+): MemorySensitiveCategory[] {
+  const context = logger.getContext?.() as {
+    attributes?: {
+      memoryCompliance?: {
+        sensitive?: {
+          categories?: MemorySensitiveCategory[]
+        }
+      }
+    }
+  } | undefined
+  const logged = context?.attributes?.memoryCompliance?.sensitive
+
+  return Array.isArray(logged?.categories) ? logged.categories : []
+}
+
+/**
+ * Logs the detected category ids (never the text) under
+ * `memoryCompliance.sensitive`. evlog replaces arrays on a repeated `set`, so
+ * when the logger exposes `getContext` the ids already logged in this request
+ * are merged in and the list stays deduplicated. A logger without
+ * `getContext` keeps only the last call's ids, so a caller that records
+ * several detections in one run should aggregate them and call this once.
+ */
+export function recordSensitiveDetection(
+  categories: MemorySensitiveCategory[],
+  logger: ComplianceLogger,
+  origin: string,
+): void {
+  if (categories.length === 0) {
+    return
+  }
+
+  const mergedCategories = [
+    ...new Set([...readLoggedSensitiveCategories(logger), ...categories]),
+  ]
+
+  logger.set({
+    attributes: {
+      memoryCompliance: {
+        sensitive: {
+          origin,
+          categories: mergedCategories,
+        },
+      },
+    },
+  })
+}
+
+/**
+ * Decides whether an entry may be stored. The never-store check wins over
+ * everything. Any text the server classifier flags as special-category data is
+ * refused, as is a declared `special` sensitivity, because memory never
+ * stores special rows. An allowed verdict means the entry is persisted with
+ * `sensitivity: 'none'` and no sensitive category.
+ */
 export function evaluateMemoryEntry(
   input: MemoryEntryEvaluationInput,
 ): MemoryWriteVerdict {
   const detectedKinds = new Set<NeverStoreKind>()
-
-  const combinedText = [input.title, input.description, input.body].join('\n')
+  const combinedText = combineMemoryEntryText(input)
 
   for (const match of detectNeverStore(combinedText)) {
     detectedKinds.add(match.kind)
@@ -897,8 +967,10 @@ export function evaluateMemoryEntry(
     return { allowed: false, reason: 'never-store', kinds }
   }
 
-  if (input.sensitivity === 'special' && !input.includeSensitive) {
-    return { allowed: false, reason: 'sensitive-disabled' }
+  const detectedCategories = classifySensitiveCategories(combinedText)
+
+  if (input.sensitivity === 'special' || detectedCategories.length > 0) {
+    return { allowed: false, reason: 'sensitive-topic', detectedCategories }
   }
 
   return { allowed: true }

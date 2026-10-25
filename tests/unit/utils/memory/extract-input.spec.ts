@@ -330,6 +330,8 @@ describe('memory extraction input', () => {
         '"vegetarian", not "vegetarian for religious reasons"',
       )
       expect(instructions).toContain('Never infer such attributes')
+      expect(instructions).toContain('server also checks every entry')
+      expect(instructions).toContain('"neverStore"')
       expect(instructions).toContain('omit the fact')
 
       for (const topic of [
@@ -431,5 +433,27 @@ describe('memory extraction input', () => {
 
     expect(plain?.bodyHidden).toBe(false)
     expect(special?.bodyHidden).toBe(true)
+  })
+
+  it('does not show the stored sensitivity to the extractor', async () => {
+    const { renderMemoryExtractionIndex } = await loadInput()
+    const rendered = renderMemoryExtractionIndex('profile', [
+      {
+        id: 'e1',
+        category: 'topics',
+        slug: 'one',
+        title: 'One',
+        description: 'desc',
+        body: 'body',
+        sensitivity: 'none',
+        sensitiveCategory: null,
+        origin: 'extraction',
+        sourceChatIds: [],
+        bodyHidden: false,
+      },
+    ])
+
+    expect(rendered).not.toContain('sensitivity')
+    expect(rendered).toContain('<entry ref="topics/one" access="editable">')
   })
 })

@@ -701,11 +701,9 @@ describe('memory send-path wiring', () => {
     })
 
     it('hands the tool factory the persisted user message id, the text, '
-      + 'the chat and a constant false sensitive flag', async () => {
+      + 'the chat', async () => {
       await runSend({
-        scenario: {
-          settings: { memoryEnabled: true, memoryIncludeSensitive: true },
-        },
+        scenario: { settings: MEMORY_ON },
         steps: [createTextChunks('Plain answer.')],
       })
 
@@ -717,7 +715,6 @@ describe('memory send-path wiring', () => {
         useAccountMemory: null,
         sourceMessageId: USER_MESSAGE_ID,
         userMessageText: USER_MESSAGE_TEXT,
-        includeSensitive: false,
         budget: { maxCalls: 3, usedCalls: 0, untrustedResultSeen: false },
       }))
     })
@@ -744,6 +741,54 @@ describe('memory send-path wiring', () => {
       expect(systemPrompt).toBe(CHAT_SEARCH_INSTRUCTION)
       expect(readAttribute('memoryIndex')).toBeUndefined()
       expect(mocks.memoryToolsInputs).toHaveLength(1)
+    })
+  })
+
+  describe('legacy special entries', () => {
+    const specialRow = createMemoryRow({
+      id: 'entry-special-1',
+      slug: 'allergy',
+      title: 'Peanut allergy',
+      description: 'Severe nut allergy',
+      body: 'Allergic to peanuts.',
+      sensitivity: 'special',
+      sensitiveCategory: 'health',
+    })
+    const memoryRows = [createMemoryRow(), specialRow]
+
+    it.each([
+      ['true', true],
+      ['false', false],
+      ['null', null],
+    ])('never injects a special entry whatever memoryIncludeSensitive is '
+      + '(%s) and hands the tools no includeSensitive', async (
+      _label,
+      memoryIncludeSensitive,
+    ) => {
+      const { doStream } = await runSend({
+        scenario: {
+          settings: { memoryEnabled: true, memoryIncludeSensitive },
+          memoryRows,
+        },
+        steps: [createTextChunks('Plain answer.')],
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(systemPrompt).toContain('topics/pasta | Pasta')
+      expect(systemPrompt).not.toContain('withheld')
+      expect(systemPrompt).not.toContain('Peanut allergy')
+      expect(systemPrompt).not.toContain('Severe nut allergy')
+      expect(systemPrompt).not.toContain('Allergic to peanuts')
+      expect(systemPrompt).not.toContain('topics/allergy')
+      expect(mocks.memoryToolsInputs[0]).not.toHaveProperty(
+        'includeSensitive',
+      )
+      expect(readAttribute('memoryIndex')).toEqual({
+        tokens: expect.any(Number),
+        entryCount: 1,
+        trimSteps: [],
+        overBudget: false,
+      })
     })
   })
 

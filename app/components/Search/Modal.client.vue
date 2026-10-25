@@ -243,6 +243,12 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'View All Uploaded Attachments',
           run: openAttachments,
         },
+        {
+          id: 'search-option-projects',
+          iconName: 'lucide:folder',
+          label: 'Projects',
+          run: () => goTo('/chats/projects'),
+        },
       ],
     },
     {
@@ -266,6 +272,12 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           iconName: 'lucide:key-round',
           label: 'API Keys',
           run: () => goTo('/profile/keys'),
+        },
+        {
+          id: 'search-option-memory',
+          iconName: 'lucide:brain',
+          label: 'Memory',
+          run: () => goTo('/profile/memory'),
         },
       ],
     },

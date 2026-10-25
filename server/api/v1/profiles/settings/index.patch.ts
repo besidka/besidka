@@ -18,7 +18,7 @@ import {
   detectNeverStore,
   recordBlockedCounts,
 } from '~~/server/utils/memory/compliance'
-import { detectSpecialCategories } from '~~/server/utils/memory/special-category'
+import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
 import { assertMemoryModelChoice } from '~~/server/utils/memory/validate-model-choice'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -79,7 +79,7 @@ function assertAboutMeHasNoSpecialCategories(
   logger: { set: (fields: Record<string, unknown>) => void },
 ): void {
   const categories: MemorySensitiveCategory[]
-    = detectSpecialCategories(aboutMe)
+    = classifySensitiveCategories(aboutMe)
 
   if (!categories.length) {
     return

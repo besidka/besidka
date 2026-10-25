@@ -2,13 +2,13 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { parseError } from 'evlog'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemoryUiSettings } from '../../../../../app/types/memory-settings.d'
+import type { MemorySettingsFields } from '../../../../../shared/types/memory.d'
 import * as messagesComposable from '../../../../../app/composables/messages'
 import AboutMe from '../../../../../app/components/Profile/Memory/AboutMe.vue'
 
 enableAutoUnmount(afterEach)
 
-const defaultSettings: MemoryUiSettings = {
+const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
   memoryExtractionEnabled: false,
   chatSearchEnabled: true,
@@ -22,7 +22,7 @@ const defaultSettings: MemoryUiSettings = {
 
 const save = vi.fn()
 
-async function mountAboutMe(settings: Partial<MemoryUiSettings> = {}) {
+async function mountAboutMe(settings: Partial<MemorySettingsFields> = {}) {
   return await mountSuspended(AboutMe, {
     props: {
       settings: { ...defaultSettings, ...settings },
@@ -70,6 +70,26 @@ describe('Profile/Memory/AboutMe', () => {
     expect(wrapper.get('[data-testid="memory-about-me-counter"]').text())
       .toBe(`17 / ${MEMORY_LIMITS.maxAboutMeChars}`)
   })
+
+  it('caps the textarea at 50dvh and wires it for auto-resize', async () => {
+    const wrapper = await mountAboutMe()
+    const classes = input(wrapper).classes()
+
+    expect(classes).toContain('max-h-[50dvh]')
+    expect(classes).toContain('min-h-36')
+    expect(classes).toContain('resize-none')
+    expect(classes).toContain('overflow-y-auto')
+    expect(classes).toContain('rounded-box')
+    expect(classes).not.toContain('max-h-[min(300px,33dvh)]')
+  })
+
+  it('applies an inline height from autosize once the draft has content',
+    async () => {
+      const wrapper = await mountAboutMe({ aboutMe: 'Backend developer' })
+      await flushPromises()
+
+      expect(input(wrapper).attributes('style') ?? '').toContain('height')
+    })
 
   it('updates the counter as the user types', async () => {
     const wrapper = await mountAboutMe()
@@ -201,5 +221,45 @@ describe('Profile/Memory/AboutMe', () => {
       await flushPromises()
 
       expect(save).toHaveBeenCalledWith({ aboutMe: '' })
+    })
+
+  it('renders a 422 rejection as message, why and fix without a toast',
+    async () => {
+      const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+      const wrapper = await mountAboutMe()
+
+      save.mockResolvedValue({
+        ok: false,
+        parsed: parseError(Object.assign(new Error('Request failed'), {
+          data: {
+            statusCode: 422,
+            message: 'This looks like sensitive information',
+            data: {
+              why: 'Health details are not stored in memory.',
+              fix: 'Remove that detail and save again.',
+            },
+          },
+        })),
+      })
+
+      await input(wrapper).setValue('I manage a chronic condition')
+      await wrapper.get('[data-testid="memory-about-me-save"]')
+        .trigger('click')
+      await flushPromises()
+
+      const alert = wrapper.get('[data-testid="memory-about-me-error"]')
+      const lines = alert.findAll('p')
+
+      expect(alert.attributes('role')).toBe('alert')
+      expect(lines.map(line => line.text())).toEqual([
+        'This looks like sensitive information',
+        'Health details are not stored in memory.',
+        'Remove that detail and save again.',
+      ])
+      expect(lines[0]!.classes()).toContain('font-bold')
+      expect(lines.every(line => line.classes().includes('break-words')))
+        .toBe(true)
+      expect(alert.text()).not.toContain('422')
+      expect(useErrorMessage).not.toHaveBeenCalled()
     })
 })

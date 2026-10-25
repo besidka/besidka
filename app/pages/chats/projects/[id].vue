@@ -54,6 +54,7 @@
     />
 
     <ProjectsMemoryCard
+      :project-id="project?.id"
       :memory="projectMemory"
       :memory-status="projectMemoryStatus"
       :memory-updated-at="projectMemoryUpdatedAt"

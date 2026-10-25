@@ -24,7 +24,6 @@ describe('loadMemoryRuntimeSettings', () => {
     expect(await load()).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: true,
-      memoryIncludeSensitive: false,
       aboutMe: null,
     })
   })
@@ -35,7 +34,6 @@ describe('loadMemoryRuntimeSettings', () => {
     expect(await load()).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: true,
-      memoryIncludeSensitive: false,
       aboutMe: null,
     })
   })
@@ -51,17 +49,19 @@ describe('loadMemoryRuntimeSettings', () => {
     expect(await load()).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: false,
-      memoryIncludeSensitive: false,
       aboutMe: 'Backend developer',
     })
   })
 
-  it('keeps memoryIncludeSensitive false for a legacy stored true',
-    async () => {
-      testDb.insertUserSettings({ userId: 1, memoryIncludeSensitive: true })
+  it('ignores the stored sensitive opt-in', async () => {
+    testDb.insertUserSettings({ userId: 1, memoryIncludeSensitive: true })
 
-      expect((await load()).memoryIncludeSensitive).toBe(false)
+    expect(await load()).toEqual({
+      memoryEnabled: true,
+      chatSearchEnabled: true,
+      aboutMe: null,
     })
+  })
 
   it('keeps explicit false over a true default', async () => {
     testDb.insertUserSettings({ userId: 1, chatSearchEnabled: false })
@@ -93,7 +93,6 @@ describe('loadMemoryRuntimeSettings', () => {
     expect(await load(1)).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: true,
-      memoryIncludeSensitive: false,
       aboutMe: null,
     })
   })

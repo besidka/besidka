@@ -92,7 +92,7 @@ const mocks = vi.hoisted(() => ({
   getCachedCloudflareGatewayCatalog: vi.fn(),
   getCloudflareGatewayCredentials: vi.fn(),
   enforceGatewayModelsRateLimit: vi.fn(),
-  detectSpecialCategories: vi.fn(),
+  classifySensitiveCategories: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/logging/request-logger', () => ({
@@ -112,8 +112,8 @@ vi.mock('~~/server/utils/gateways/catalog-rate-limit', () => ({
   enforceGatewayModelsRateLimit: mocks.enforceGatewayModelsRateLimit,
 }))
 
-vi.mock('~~/server/utils/memory/special-category', () => ({
-  detectSpecialCategories: mocks.detectSpecialCategories,
+vi.mock('~~/server/utils/memory/sensitivity', () => ({
+  classifySensitiveCategories: mocks.classifySensitiveCategories,
 }))
 
 function createDbMock() {
@@ -244,7 +244,7 @@ describe('profile settings API', () => {
 
     mocks.callOrder.length = 0
     mocks.batchError = null
-    mocks.detectSpecialCategories.mockReturnValue([])
+    mocks.classifySensitiveCategories.mockReturnValue([])
     mocks.enforceGatewayModelsRateLimit.mockResolvedValue(undefined)
     mocks.getCachedGatewayCatalog.mockResolvedValue([])
     mocks.getCachedCloudflareGatewayCatalog.mockResolvedValue([])
@@ -1377,7 +1377,7 @@ describe('profile settings API', () => {
           const patchHandler = await patchSettingsHandler()
           const dbMock = setup()
 
-          mocks.detectSpecialCategories.mockReturnValue([
+          mocks.classifySensitiveCategories.mockReturnValue([
             'health',
             'religion-or-belief',
           ])
@@ -1419,7 +1419,7 @@ describe('profile settings API', () => {
           const dbMock = setup()
 
           dbMock.seed({ memoryIncludeSensitive: true })
-          mocks.detectSpecialCategories.mockReturnValue(['health'])
+          mocks.classifySensitiveCategories.mockReturnValue(['health'])
 
           await expect(patchHandler(patchEvent({
             aboutMe: flaggedText,
@@ -1434,7 +1434,7 @@ describe('profile settings API', () => {
           const patchHandler = await patchSettingsHandler()
           const dbMock = setup()
 
-          mocks.detectSpecialCategories.mockReturnValue(['drugs'])
+          mocks.classifySensitiveCategories.mockReturnValue(['drugs'])
 
           await expect(patchHandler(patchEvent({
             memoryIncludeSensitive: legacyValue,
@@ -1454,7 +1454,7 @@ describe('profile settings API', () => {
           expect(await patchHandler(patchEvent({
             aboutMe: 'Backend engineer',
           }))).toEqual({ aboutMe: 'Backend engineer' })
-          expect(mocks.detectSpecialCategories)
+          expect(mocks.classifySensitiveCategories)
             .toHaveBeenCalledWith('Backend engineer')
           expect(mocks.loggerSet).not.toHaveBeenCalled()
         })
@@ -1465,7 +1465,7 @@ describe('profile settings API', () => {
         setup()
         await patchHandler(patchEvent({ aboutMe: '  ' }))
 
-        expect(mocks.detectSpecialCategories).not.toHaveBeenCalled()
+        expect(mocks.classifySensitiveCategories).not.toHaveBeenCalled()
       })
     })
 

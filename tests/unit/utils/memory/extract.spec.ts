@@ -26,14 +26,6 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
 }))
 
-const specialCategoryMocks = vi.hoisted(() => ({
-  detect: vi.fn(),
-}))
-
-vi.mock('~~/server/utils/memory/special-category', () => {
-  return { detectSpecialCategories: specialCategoryMocks.detect }
-})
-
 vi.mock('ai', () => ({
   generateObject: mocks.generateObject,
   generateText: vi.fn(),
@@ -121,13 +113,11 @@ describe('extractChatMemory', () => {
     testDb = createMemoryExtractionTestDb()
     userId = await seedUser(testDb.db, {
       memoryEnabled: true,
-      memoryIncludeSensitive: false,
     })
     mocks.release.mockResolvedValue(undefined)
     mocks.acquireMemoryLease.mockResolvedValue({ release: mocks.release })
     mocks.resolveMemoryModel.mockImplementation(async () => createSelection())
     mockOps([])
-    specialCategoryMocks.detect.mockReset().mockReturnValue([])
   })
 
   afterEach(() => {
@@ -586,7 +576,34 @@ describe('extractChatMemory', () => {
       return JSON.stringify(logger.set.mock.calls)
     }
 
-    it('ignores memoryIncludeSensitive when the seam flags an op',
+    function sensitiveLogs(logger: { set: ReturnType<typeof vi.fn> }) {
+      return logger.set.mock.calls
+        .map(([fields]) => {
+          return (fields as {
+            attributes?: { memoryCompliance?: { sensitive?: unknown } }
+          }).attributes?.memoryCompliance?.sensitive
+        })
+        .filter(Boolean)
+    }
+
+    it.each([true, false, null])(
+      'drops flagged ops as a sensitive topic with memoryIncludeSensitive %s',
+      async (memoryIncludeSensitive) => {
+        const chat = await seedChatWithMessages()
+
+        await testDb.db.update(schema.userSettings)
+          .set({ memoryIncludeSensitive })
+          .where(eq(schema.userSettings.userId, userId))
+        mockOps([createOp({ body: 'The user has type 2 diabetes.' })])
+
+        const result = await run(chat)
+
+        expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
+        expect(await listEntries()).toHaveLength(0)
+      },
+    )
+
+    it('drops a flagged op and logs category ids, never the text',
       async () => {
         const chat = await seedChatWithMessages()
         const logger = { set: vi.fn() }
@@ -594,17 +611,22 @@ describe('extractChatMemory', () => {
         await testDb.db.update(schema.userSettings)
           .set({ memoryIncludeSensitive: true })
           .where(eq(schema.userSettings.userId, userId))
-        specialCategoryMocks.detect.mockReturnValue(['health'])
-        mockOps([createOp({ title: 'Condition' })])
+        mockOps([createOp({
+          title: 'Condition',
+          body: 'The user has type 2 diabetes.',
+        })])
 
         const result = await run(chat, { logger })
 
         expect(result.applied.created).toBe(0)
-        expect(result.dropped).toEqual({ 'special-category': 1 })
+        expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
         expect(await listEntries()).toHaveLength(0)
-        expect(loggedPayload(logger)).not.toContain('health')
+        expect(sensitiveLogs(logger)).toEqual([
+          { origin: 'memory-extraction', categories: ['health'] },
+        ])
+        expect(loggedPayload(logger)).not.toContain('diabetes')
         expect(loggedPayload(logger)).not.toContain('Condition')
-        expect(JSON.stringify(result)).not.toContain('health')
+        expect(JSON.stringify(result)).not.toContain('diabetes')
         expect(JSON.stringify(result)).not.toContain('Condition')
       })
 
@@ -618,14 +640,16 @@ describe('extractChatMemory', () => {
           title: 'Editor',
           description: 'Old description',
         })
-        specialCategoryMocks.detect.mockReturnValue(['religion'])
         mockOps([
-          createOp({ title: 'Diet' }),
+          createOp({
+            title: 'Diet',
+            body: 'The user has type 2 diabetes.',
+          }),
           createOp({
             op: 'update',
             slug: 'editor',
             title: null,
-            description: 'Updated description',
+            description: 'Has type 2 diabetes',
             body: null,
           }),
         ])
@@ -634,11 +658,14 @@ describe('extractChatMemory', () => {
         const [entry] = await listEntries()
 
         expect(result.proposed).toBe(2)
-        expect(result.dropped).toEqual({ 'special-category': 2 })
+        expect(result.dropped).toEqual({ 'sensitive-topic': 2 })
         expect(result.applied).toEqual({ created: 0, updated: 0, deleted: 0 })
         expect(await listEntries()).toHaveLength(1)
         expect(entry?.description).toBe('Old description')
-        expect(loggedPayload(logger)).not.toContain('religion')
+        expect(sensitiveLogs(logger)).toEqual([
+          { origin: 'memory-extraction', categories: ['health'] },
+        ])
+        expect(loggedPayload(logger)).not.toContain('diabetes')
         expect(loggedPayload(logger)).not.toContain('Diet')
       })
 

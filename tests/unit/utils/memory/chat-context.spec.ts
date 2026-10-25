@@ -52,7 +52,6 @@ describe('chat memory context', () => {
       expect(settings).toEqual({
         memoryEnabled: true,
         chatSearchEnabled: true,
-        memoryIncludeSensitive: false,
         aboutMe: ABOUT_ME,
       })
       expect(loggerSet).not.toHaveBeenCalled()
@@ -68,7 +67,6 @@ describe('chat memory context', () => {
       expect(settings).toEqual({
         memoryEnabled: true,
         chatSearchEnabled: true,
-        memoryIncludeSensitive: false,
         aboutMe: null,
       })
     })
@@ -84,7 +82,6 @@ describe('chat memory context', () => {
         expect(settings).toEqual({
           memoryEnabled: false,
           chatSearchEnabled: false,
-          memoryIncludeSensitive: false,
           aboutMe: null,
         })
         expect(loggerSet).toHaveBeenCalledWith({
@@ -127,7 +124,6 @@ describe('chat memory context', () => {
         settings: {
           memoryEnabled: input.memoryEnabled,
           chatSearchEnabled: true,
-          memoryIncludeSensitive: false,
           aboutMe: input.aboutMe ?? null,
         },
         hasMemoryTools: true,
@@ -192,6 +188,36 @@ describe('chat memory context', () => {
           },
         })
       })
+
+    it('never injects a legacy special entry', async () => {
+      testDb.insertEntry({ userId: USER_ID, slug: 'cooking' })
+      testDb.insertEntry({
+        userId: USER_ID,
+        slug: 'allergy',
+        title: 'Allergy title',
+        description: 'Allergy description',
+        body: 'Allergy body',
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+      })
+
+      const instructions = await instructionsFor({ memoryEnabled: true })
+
+      expect(instructions).toContain('cooking')
+      expect(instructions).not.toContain('Allergy')
+      expect(instructions).not.toContain('allergy')
+      expect(instructions).not.toContain('withheld')
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          memoryIndex: {
+            tokens: expect.any(Number),
+            entryCount: 1,
+            trimSteps: [],
+            overBudget: false,
+          },
+        },
+      })
+    })
 
     it('never reads another user\'s entries into the index', async () => {
       testDb.insertEntry({ userId: 2, slug: 'secret', title: 'Secret' })

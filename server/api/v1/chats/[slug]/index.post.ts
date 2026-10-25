@@ -1204,7 +1204,6 @@ export default defineEventHandler(async (event) => {
       useAccountMemory: chat.project?.useAccountMemory ?? null,
       sourceMessageId: newMessage.id,
       userMessageText,
-      includeSensitive: memorySettings.memoryIncludeSensitive,
       budget: chatSearchBudget,
       logger: aiLogger,
     })
