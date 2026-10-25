@@ -77,12 +77,22 @@
           </span>
         </span>
         <span
+          v-if="isRecommended"
+          data-testid="model-recommended"
+          class="badge badge-xs badge-soft badge-success shrink-0 font-semibold"
+          :class="{
+            'max-xs:ml-5': !isKeyMissing && !model.priceTier
+          }"
+        >
+          Recommended — cheap
+        </span>
+        <span
           v-if="hasCapabilities"
           data-testid="model-capabilities"
           class="shrink-0 flex gap-1 items-center xs:ml-auto"
           :class="{
-            'max-xs:ml-5': !model.priceTier,
-            'max-xs:-ml-1': !!model.priceTier
+            'max-xs:ml-5': !model.priceTier && !isRecommended,
+            'max-xs:-ml-1': !!model.priceTier || !!isRecommended
           }"
         >
           <span
@@ -225,6 +235,7 @@ const props = defineProps<{
   isLegacy?: boolean
   isKeyMissing?: boolean
   providerName?: string
+  isRecommended?: boolean
 }>()
 
 const emit = defineEmits<{

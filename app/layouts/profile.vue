@@ -119,6 +119,12 @@ const tabs = [
     icon: 'lucide:key-round',
     childRoutes: [],
   },
+  {
+    to: '/profile/memory',
+    label: 'Memory',
+    icon: 'lucide:brain',
+    childRoutes: [],
+  },
 ]
 
 function isTabActive(tab: typeof tabs[number]) {
