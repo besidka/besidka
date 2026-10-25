@@ -227,7 +227,12 @@ that come from the PR are the `preview-build` artifact (extracted into
 after `rm -rf .drizzle` removed the default branch's copy, so the applied
 migration set is exactly the PR's). A step before `pnpm install` fails the job
 if `git status --porcelain --ignored --untracked-files=all` shows any change
-outside those two directories. Migrations and deploy run through the plain
+outside those two directories, and a second step requires the artifact's
+`.drizzle/` to match the PR commit's tracked `.drizzle/` blob for blob, so
+build-generated, uncommitted migrations (the build runs `db:generate`) and
+anything planted by build-time code never reach the shared preview D1; a PR
+with uncommitted schema changes fails its preview deploy with instructions.
+Migrations and deploy run through the plain
 `pnpm exec wrangler`; no third-party action ever holds the token, and
 third-party actions in secret-bearing workflows are pinned to commit SHAs. No
 actor filter is needed: Dependabot and other bot PRs get previews through the

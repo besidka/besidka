@@ -159,6 +159,29 @@ describe('preview-deploy workflow', () => {
     expect(verifyStep?.run).toContain('exit 1')
   })
 
+  it('verifies migrations against the PR commit before install', () => {
+    const verifyStepName = 'Verify migrations match the PR commit'
+    const verifyIndex = findStepIndexByName(deploySteps, verifyStepName)
+    const drizzleDownloadIndex = findStepIndex(deploySteps, (step) => {
+      return step.with?.name === 'preview-drizzle'
+    })
+    const integrityIndex = findStepIndexByName(
+      deploySteps,
+      'Verify artifacts stayed inside .output and .drizzle',
+    )
+    const installIndex = findStepIndexByName(
+      deploySteps,
+      'Install dependencies',
+    )
+    const verifyStep = deploySteps[verifyIndex]
+
+    expect(verifyIndex).toBeGreaterThan(drizzleDownloadIndex)
+    expect(verifyIndex).toBeGreaterThan(integrityIndex)
+    expect(verifyIndex).toBeLessThan(installIndex)
+    expect(verifyStep?.run).toContain('git hash-object')
+    expect(verifyStep?.run).toContain('git/trees')
+  })
+
   it('does not use the cloudflare wrangler action', () => {
     for (const step of deploySteps) {
       expect(step.uses ?? '').not.toContain('cloudflare/wrangler-action')

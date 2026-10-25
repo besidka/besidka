@@ -129,19 +129,24 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
    `git status --porcelain --ignored --untracked-files=all` reports any
    change outside `.output/` and `.drizzle/` (an artifact trying to overwrite
    tooling, `package.json` or the lockfile)
-6. Install `pnpm`, Node and dependencies from the default branch's
+6. Verify migrations: the artifact's `.drizzle/` must match the PR commit's
+   tracked `.drizzle/` blob for blob (git blob SHAs from the GitHub trees API
+   against `git hash-object` of each extracted file). A mismatch fails the job
+   with instructions to run `pnpm run db:generate` and
+   `pnpm run db:consents:generate` locally, review the SQL and commit it
+7. Install `pnpm`, Node and dependencies from the default branch's
    `package.json` and lockfile
-7. Apply preview D1 migrations from the PR's `.drizzle` artifact with plain
+8. Apply preview D1 migrations from the PR's `.drizzle` artifact with plain
    `pnpm exec wrangler d1 migrations apply ... --remote` (no
    `cloudflare/wrangler-action`, so no third-party action holds the token)
    - `DB` from `.drizzle/migrations`
    - `CONSENT_DB` from `.drizzle/migrations-consent`
-8. Create or update the Cloudflare Preview named `pr-{number}` with
+9. Create or update the Cloudflare Preview named `pr-{number}` with
    `pnpm exec wrangler preview --env production --name pr-{number} --json`,
    using the default branch's `wrangler.jsonc`; the per-deployment URL and the
    stable PR URL are read from the JSON output (falling back to the
    deterministic `pr-{number}-besidka` URL)
-9. Comment preview URLs and metrics on PR, including a `Wrangler config` row
+10. Comment preview URLs and metrics on PR, including a `Wrangler config` row
    that says `default branch`, or `default branch (this PR's wrangler.jsonc
    changes are not deployed)` when the drift check found a change. The commit
    status reads `Deployed to preview`, or `Deployed (default-branch
@@ -339,6 +344,9 @@ only into `.output/` and the drizzle artifact only into `.drizzle/` (never the
 workspace root). Before `pnpm install`, a step fails the job if
 `git status --porcelain --ignored --untracked-files=all` shows any file
 outside those two directories differing from the default-branch checkout.
+A second step then requires the artifact's `.drizzle/` to equal the PR commit's
+tracked `.drizzle/` blob for blob, so build-generated, uncommitted migrations
+and anything planted by build-time code never reach the shared preview D1.
 
 **SHA-pinned third-party actions in secret-bearing workflows**: in workflows
 that reference `secrets.*` (`preview-deploy.yml`, `preview-cleanup.yml`,
@@ -358,7 +366,13 @@ removes the default branch's tracked `.drizzle/` and extracts the artifact into
 `.drizzle/`, so the applied migration set is exactly the PR's artifact and not
 an overlay on main's files. It then applies migrations for both `DB` and
 `CONSENT_DB` from it before deploy, keeping both preview DB schemas aligned
-with the deployed PR build.
+with the deployed PR build. The "Verify migrations match the PR commit" step
+requires that artifact to equal the PR commit's tracked `.drizzle/` blob for
+blob. `preview-build.yml` runs `db:generate` and `db:consents:generate` before
+uploading, so the artifact could otherwise carry generated-but-uncommitted
+migrations (possibly `DROP TABLE` rebuilds that cascade-wipe children on D1).
+A PR with uncommitted schema changes fails its preview deploy with
+instructions.
 
 **Artifact trust boundary**: only artifacts built from same-repository branches are ever deployed.
 

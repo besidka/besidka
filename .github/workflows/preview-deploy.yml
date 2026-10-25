@@ -178,6 +178,46 @@ jobs:
             exit 1
           fi
 
+      - name: Verify migrations match the PR commit
+        if: steps.pr-state.outputs.is-open == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+
+          EXPECTED="$RUNNER_TEMP/drizzle-expected.txt"
+          ACTUAL="$RUNNER_TEMP/drizzle-actual.txt"
+
+          DRIZZLE_TREE_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/contents?ref=${PR_SHA}" --jq '.[] | select(.name == ".drizzle" and .type == "dir") | .sha')
+
+          if [ -n "$DRIZZLE_TREE_SHA" ]; then
+            TREE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/git/trees/${DRIZZLE_TREE_SHA}?recursive=1")
+
+            if [ "$(printf '%s' "$TREE_JSON" | jq '.truncated')" = "true" ]; then
+              echo "::error::The .drizzle tree of $PR_SHA is too large to list, so its migrations cannot be verified."
+              exit 1
+            fi
+
+            printf '%s' "$TREE_JSON" | jq -r '.tree[] | select(.type == "blob") | "\(.sha) .drizzle/\(.path)"' | sort > "$EXPECTED"
+          else
+            : > "$EXPECTED"
+          fi
+
+          if [ -d .drizzle ]; then
+            find .drizzle ! -type d | while IFS= read -r file; do
+              echo "$(git hash-object --no-filters "$file") $file"
+            done | sort > "$ACTUAL"
+          else
+            : > "$ACTUAL"
+          fi
+
+          if ! diff "$EXPECTED" "$ACTUAL"; then
+            echo "::error::The preview-drizzle artifact does not match the migrations committed in this PR (generated or extra migration files). Run pnpm run db:generate and pnpm run db:consents:generate locally, review the SQL for DROP TABLE, and commit the migrations."
+            exit 1
+          fi
+
       - name: Setup PNPM
         if: steps.pr-state.outputs.is-open == 'true'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
