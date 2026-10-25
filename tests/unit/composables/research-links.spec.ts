@@ -126,4 +126,42 @@ describe('useResearchLink', () => {
 
     windowOpen.mockRestore()
   })
+
+  it.each([
+    'javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'file:///etc/passwd',
+    '/relative/path',
+    'not a url',
+  ])('refuses to open the non-http(s) URL %s', async (url) => {
+    fetchMock.mockResolvedValue({ allowExternalLinks: true })
+
+    const { syncForUser } = useUserSetting()
+
+    await syncForUser('user-1')
+
+    const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    const { openResearchLink } = useResearchLink()
+
+    await openResearchLink(url)
+
+    expect(useConfirmMock).not.toHaveBeenCalled()
+    expect(windowOpen).not.toHaveBeenCalled()
+
+    windowOpen.mockRestore()
+  })
+
+  it('refuses a non-http(s) URL before prompting for confirmation', async () => {
+    const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    const { openResearchLink } = useResearchLink()
+
+    await openResearchLink('javascript:alert(1)')
+
+    expect(useConfirmMock).not.toHaveBeenCalled()
+    expect(windowOpen).not.toHaveBeenCalled()
+
+    windowOpen.mockRestore()
+  })
 })

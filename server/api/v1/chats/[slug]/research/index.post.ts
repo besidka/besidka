@@ -1,6 +1,10 @@
 import type { UIMessage } from 'ai'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { createError } from 'evlog'
+import {
+  MAX_USER_MESSAGE_ID_LENGTH,
+  userMessagePartsSchema,
+} from '~~/server/utils/chats/request-schema'
 import { persistUserMessage } from '~~/server/utils/chats/persist-user-message'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { startResearchJobForChat } from '~~/server/utils/research/start'
@@ -28,8 +32,8 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
     userMessage: z.object({
-      id: z.string().nonempty(),
-      parts: z.array(z.any()).min(1),
+      id: z.string().nonempty().max(MAX_USER_MESSAGE_ID_LENGTH),
+      parts: userMessagePartsSchema,
     }),
     answers: z.array(z.object({
       id: z.string().max(200),

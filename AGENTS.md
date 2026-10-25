@@ -143,6 +143,16 @@ npx wrangler d1 time-travel restore besidka --env production --bookmark=<bookmar
 
 The first bookmark whose timestamp predates the migration is **not necessarily safe** — the migration may have been applied minutes before it became the "active" bookmark for that timestamp window. **Always verify row counts after each restore and walk further back if cascade-children are still empty.**
 
+### After every restore: reconcile (MANDATORY)
+
+A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so every user action after the bookmark is reverted, including security-relevant ones. Full analysis and commands: `docs/d1-restore-reconciliation.md`. In short:
+
+- **Before the restore**: stop deploys and remove or rewrite the bad migration on `main`. `d1_migrations` is restored too, and CI runs `migrations apply --remote` on every deploy, so the destructive migration would run again. Record `SELECT name, seq FROM sqlite_sequence` from the live DB.
+- **Revoked sessions come back.** Better Auth falls back to the D1 `sessions` row when the KV entry is missing (`storeSessionInDatabase: true`), so a restored row is a live session again, even one ended because it was stolen. Right after the restore, run `DELETE FROM sessions` **and** delete every KV key under the `auth:` prefix. Sessions created after the bookmark exist only in KV, and with `users.id` reuse they can authenticate as a different, newly signed-up user. Do **not** rotate `betterAuthSecret` to sign users out: that destroys every 2FA secret.
+- **Revoked shares, deleted accounts, deleted keys/chats/projects and push unsubscribes come back.** Replay them from Axiom (`besidka-prod`) for the bookmark-to-restore window, then delete again.
+- **Files**: restored rows whose R2 object was deleted (404, still counted in quota) and R2 objects uploaded in the window with no row both need a diff of the bucket against `files`.
+- **Password, 2FA, passkey, email and OAuth-link changes revert** and cannot be attributed. Tell all users to redo security changes made after the bookmark.
+
 ### Style consequence — bias schema decisions toward NON-rebuild changes
 
 - Prefer setting defaults in application code over SQL `DEFAULT` constraints (avoids table rebuild later).
@@ -161,6 +171,14 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
+- `docs/d1-restore-reconciliation.md` - What a whole-database D1 Time Travel
+  restore brings back that users had already revoked or deleted: sessions
+  revived through Better Auth's D1 fallback, `users.id` reuse handing
+  window-era KV sessions to new sign-ups, deleted accounts and BYOK keys,
+  revoked shares and their file grants, `files` rows without R2 objects,
+  re-applied migrations; the post-restore runbook (session wipe in D1 and KV,
+  Axiom ledger replay, R2 diff, user notice), and the closed chat_shares
+  `DEFAULT true` flag question
 - `docs/email.md` - Transactional email (Cloudflare Email Sending binding):
   architecture, config, testing, and the Resend-revert runbook
 - `docs/landing-studio.md` - Landing page (Nuxt Content + Studio): editing,
@@ -349,6 +367,15 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   defaults to 1.2.15); the migration friction list (`bunfig.toml` release
   age, `trustedDependencies`, missing `NODE_PATH` in bin shims, hardcoded
   `pnpm` call sites); and the criteria for revisiting the decision
+- `docs/security-audit-2026-10.md` - The 2026-10-24 security-audit skill run
+  (source-only, standard profile, 21 leads + 2 rejected): the table of fixes
+  (Better Auth rate limit and reset revocation, MDC directive-prop stripping,
+  evlog client-ingest confinement, upload and chat input caps, push limits,
+  Studio guard middleware, preview artifact path), how each owner action was
+  resolved (Studio secrets, org Dependabot secrets kept behind #498, the
+  single Free-plan rate-limit slot now used for API paths instead of the
+  leaked-credential rule, `preview_urls` left on), open policy questions, the
+  deliberately unfixed leads, and the `NODE_ENV`-unset-in-Worker lesson
 
 ### Tech Stack
 

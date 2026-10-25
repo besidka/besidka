@@ -7,6 +7,11 @@ import {
   reserveImageTransformSlots,
 } from '~~/server/utils/files/file-governance'
 import { persistFile } from '~~/server/utils/files/persist-file'
+import {
+  assertUploadContentLength,
+  decodeUploadFileName,
+  readUploadBody,
+} from '~~/server/utils/files/upload-request'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { defineEventHandler, getRequestHeader } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -36,8 +41,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const fileType = getRequestHeader(event, 'content-type')
-  const fileName = decodeURIComponent(
-    getRequestHeader(event, 'x-filename') || '',
+  const fileName = decodeUploadFileName(
+    getRequestHeader(event, 'x-filename'),
   )
 
   if (!fileType || !fileName) {
@@ -56,7 +61,33 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const fileBuffer = new Uint8Array(await event.req.arrayBuffer())
+  const userId = parseInt(session.user.id)
+  const config = useRuntimeConfig().public
+  const allowedFileFormats = config.allowedFileFormats as AllowedFileFormats
+
+  if (
+    !allowedFileFormats.includes(normalizedFileType as AllowedFileFormat)
+  ) {
+    throw createError({
+      message: `File type must be one of: ${allowedFileFormats.join(', ')}`,
+      status: 400,
+    })
+  }
+
+  const policy = await getEffectiveUserFilePolicy(userId)
+  const totalFilesSize = await getUserStorageUsageBytes(userId)
+
+  const remainingStorageBytes = policy.maxStorageBytes - totalFilesSize
+
+  assertUploadContentLength(
+    getRequestHeader(event, 'content-length'),
+    remainingStorageBytes,
+  )
+
+  const fileBuffer = await readUploadBody(
+    event.req.body,
+    remainingStorageBytes,
+  )
 
   if (!fileBuffer.length) {
     throw createError({
@@ -65,7 +96,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const userId = parseInt(session.user.id)
   const headerFileSize = Number(getRequestHeader(event, 'x-filesize') || 0)
   const parsedFileSize = fileBuffer.length
 
@@ -85,20 +115,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const config = useRuntimeConfig().public
-  const allowedFileFormats = config.allowedFileFormats as AllowedFileFormats
-
-  if (
-    !allowedFileFormats.includes(normalizedFileType as AllowedFileFormat)
-  ) {
-    throw createError({
-      message: `File type must be one of: ${allowedFileFormats.join(', ')}`,
-      status: 400,
-    })
-  }
-
-  const policy = await getEffectiveUserFilePolicy(userId)
-  const totalFilesSize = await getUserStorageUsageBytes(userId)
   const wouldExceed = totalFilesSize + parsedFileSize > policy.maxStorageBytes
 
   if (wouldExceed) {
