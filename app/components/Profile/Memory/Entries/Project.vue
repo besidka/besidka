@@ -34,6 +34,13 @@
             {{ entries.length }} of {{ limit }}
           </span>
           <span
+            v-if="isArchived"
+            class="badge badge-ghost badge-sm"
+            data-testid="memory-project-archived"
+          >
+            Archived
+          </span>
+          <span
             v-if="isMemoryOff"
             class="badge badge-soft badge-warning badge-sm"
             data-testid="memory-project-off"
@@ -67,6 +74,7 @@
           @click="emit('add', id)"
         />
         <UiButton
+          v-if="entries.length > 0"
           mode="error"
           ghost
           size="sm"
@@ -77,7 +85,17 @@
           @click="resetProjectMemory"
         />
       </div>
-      <ul class="grid gap-2">
+      <p
+        v-if="entries.length === 0"
+        class="text-sm text-base-content/60"
+        data-testid="memory-project-empty"
+      >
+        No memory yet
+      </p>
+      <ul
+        v-else
+        class="grid gap-2"
+      >
         <li
           v-for="entry in entries"
           :key="entry.id"
@@ -103,6 +121,7 @@ const props = defineProps<{
   entries: MemoryEntry[]
   limit: number
   isMemoryOff: boolean
+  isArchived: boolean
   focusRequested: boolean
 }>()
 

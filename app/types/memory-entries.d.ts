@@ -9,5 +9,6 @@ export interface MemoryProjectSection {
   id: string
   name: string
   isMemoryOff: boolean
+  isArchived: boolean
   entries: MemoryEntry[]
 }

@@ -32,12 +32,14 @@ const projects: MemoryProjectSection[] = [
     id: 'project-1',
     name: 'Home lab',
     isMemoryOff: true,
+    isArchived: false,
     entries: [createEntry('a1', 'project-1'), createEntry('a2', 'project-1')],
   },
   {
     id: 'project-2',
     name: 'Side project',
     isMemoryOff: false,
+    isArchived: true,
     entries: [createEntry('b1', 'project-2')],
   },
 ]
@@ -94,6 +96,16 @@ describe('Profile/Memory/Entries/Projects', () => {
       .toBe(true)
     expect(rows[1]!.find('[data-testid="memory-project-off"]').exists())
       .toBe(false)
+  })
+
+  it('marks only the archived project', async () => {
+    const wrapper = await mountProjects()
+    const rows = wrapper.findAll('[data-testid="memory-project"]')
+
+    expect(rows[0]!.find('[data-testid="memory-project-archived"]').exists())
+      .toBe(false)
+    expect(rows[1]!.get('[data-testid="memory-project-archived"]').text())
+      .toBe('Archived')
   })
 
   it('expands only the project that was asked for', async () => {

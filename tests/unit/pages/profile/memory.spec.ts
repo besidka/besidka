@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(async () => ({ label: 'Confirm', index: 0 })),
   useFetch: vi.fn(),
   useLazyFetch: vi.fn(),
+  refreshNuxtData: vi.fn(),
+  settingsRefresh: vi.fn(),
   fetch: vi.fn(),
   patchRequests: [] as Array<Record<string, unknown>>,
   patchError: null as null | Record<string, unknown>,
@@ -22,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useFetch', () => mocks.useFetch)
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
+mockNuxtImport('refreshNuxtData', () => mocks.refreshNuxtData)
 mockNuxtImport('$fetch', () => mocks.fetch)
 
 enableAutoUnmount(afterEach)
@@ -91,15 +94,24 @@ describe('profile memory page', () => {
     mocks.patchError = null
     mocks.patchResponse = {}
 
+    mocks.refreshNuxtData.mockReset()
+    mocks.settingsRefresh.mockReset()
     mocks.useFetch.mockReset()
     mocks.useFetch.mockImplementation(async () => {
-      return {
-        data: shallowRef({
-          ...serverSettings,
-          aboutMeNotMigratedReason: serverReason,
-        }),
-        refresh: vi.fn(),
-      }
+      const data = shallowRef<Record<string, unknown>>({
+        ...serverSettings,
+        aboutMeNotMigratedReason: serverReason,
+      })
+
+      mocks.settingsRefresh.mockImplementation(async () => {
+        data.value = {
+          ...data.value,
+          aboutMe: null,
+          aboutMeNotMigratedReason: null,
+        }
+      })
+
+      return { data, refresh: mocks.settingsRefresh }
     })
     mocks.useLazyFetch.mockReset()
     mocks.useLazyFetch.mockImplementation((url: string) => {
@@ -301,6 +313,65 @@ describe('profile memory page', () => {
       .toBe(false)
     expect(wrapper.find('[data-testid="memory-generation-hint"]').exists())
       .toBe(false)
+  })
+
+  it('re-reads settings and entries after memory is turned on, converting '
+    + 'the leftover about me', async () => {
+    const wrapper = await mountPage(
+      { memoryEnabled: false, aboutMe: 'Backend developer' },
+      'memory-off',
+    )
+
+    expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+      .toBe(true)
+
+    await checkbox(wrapper, 'memory-enabled-toggle').setValue(true)
+    await settle()
+
+    expect(mocks.patchRequests).toEqual([{ memoryEnabled: true }])
+    expect(mocks.settingsRefresh).toHaveBeenCalledOnce()
+    expect(mocks.refreshNuxtData).toHaveBeenCalledOnce()
+    expect(mocks.refreshNuxtData).toHaveBeenCalledWith('memory-entries:all')
+    expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+      .toBe(false)
+  })
+
+  it('does not re-read anything when memory is turned off', async () => {
+    const wrapper = await mountPage()
+
+    await checkbox(wrapper, 'memory-enabled-toggle').setValue(false)
+    await settle()
+
+    expect(mocks.settingsRefresh).not.toHaveBeenCalled()
+    expect(mocks.refreshNuxtData).not.toHaveBeenCalled()
+  })
+
+  it('does not re-read anything when another toggle changes', async () => {
+    const wrapper = await mountPage({ memoryEnabled: false })
+
+    await checkbox(wrapper, 'memory-chat-search-toggle').setValue(false)
+    await settle()
+
+    expect(mocks.settingsRefresh).not.toHaveBeenCalled()
+    expect(mocks.refreshNuxtData).not.toHaveBeenCalled()
+  })
+
+  it('does not re-read anything when turning memory on fails', async () => {
+    const wrapper = await mountPage({ memoryEnabled: false })
+
+    mocks.patchError = {
+      statusCode: 500,
+      message: 'Could not save',
+      data: { why: 'Database unavailable' },
+    }
+
+    await checkbox(wrapper, 'memory-enabled-toggle').setValue(true)
+    await settle()
+
+    expect(checkbox(wrapper, 'memory-enabled-toggle').element.checked)
+      .toBe(false)
+    expect(mocks.settingsRefresh).not.toHaveBeenCalled()
+    expect(mocks.refreshNuxtData).not.toHaveBeenCalled()
   })
 
   it('sends chatSearchEnabled when the chat search toggle changes',

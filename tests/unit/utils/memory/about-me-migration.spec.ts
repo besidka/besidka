@@ -51,12 +51,26 @@ describe('migrateAboutMeToProfileEntry', () => {
     testDb.close()
   })
 
-  function migrate(userId: number = USER_ID) {
+  function migrate(
+    userId: number = USER_ID,
+    extra: Partial<Parameters<typeof migrateAboutMeToProfileEntry>[0]> = {},
+  ) {
     return migrateAboutMeToProfileEntry({
       db: testDb.db,
       userId,
       logger: { set: loggerSet },
+      ...extra,
     })
+  }
+
+  function fillAccountMemory(count: number, userId: number = USER_ID) {
+    for (let index = 0; index < count; index += 1) {
+      testDb.insertEntry({
+        userId,
+        category: 'topics',
+        slug: `topic-${index}`,
+      })
+    }
   }
 
   function readAboutMe(userId: number = USER_ID): string | null {
@@ -288,6 +302,142 @@ describe('migrateAboutMeToProfileEntry', () => {
     })
   })
 
+  describe('entries-full', () => {
+    const accountCap = MEMORY_LIMITS.maxAccountEntries
+
+    it('skips at the account cap and keeps the text', async () => {
+      testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+      fillAccountMemory(accountCap)
+
+      expect(await migrate())
+        .toEqual({ status: 'skipped', reason: 'entries-full' })
+      expect(readAboutMe()).toBe(ABOUT_ME)
+      expect(testDb.countEntries(USER_ID)).toBe(accountCap)
+      expect(readProfileEntries()).toEqual([])
+      expect(loggedOutcomes()).toEqual(['entries-full'])
+    })
+
+    it('does not count project entries toward the account cap', async () => {
+      testDb.insertProject({ id: 7, userId: USER_ID })
+      testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+
+      for (let index = 0; index < accountCap; index += 1) {
+        testDb.insertEntry({
+          userId: USER_ID,
+          projectId: 7,
+          category: 'topics',
+          slug: `project-topic-${index}`,
+        })
+      }
+
+      expect(await migrate()).toEqual({ status: 'migrated' })
+    })
+
+    it('converts on a later call once an entry is freed', async () => {
+      testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+      fillAccountMemory(accountCap)
+
+      await migrate()
+
+      testDb.sqlite
+        .prepare('delete from memory_entries where slug = ?')
+        .run('topic-0')
+
+      expect(await migrate()).toEqual({ status: 'migrated' })
+      expect(readAboutMe()).toBeNull()
+      expect(readProfileEntries()).toHaveLength(1)
+    })
+
+    it('keeps the profile-exists outcome for a full account with a profile',
+      async () => {
+        testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+        fillAccountMemory(accountCap - 1)
+        testDb.insertEntry({
+          userId: USER_ID,
+          category: 'profile',
+          slug: 'profile',
+          title: 'Me',
+        })
+
+        expect(await migrate())
+          .toEqual({ status: 'skipped', reason: 'profile-exists' })
+      })
+  })
+
+  describe('caller-provided settings and compliance logging', () => {
+    it('does not read user_settings when the settings are passed',
+      async () => {
+        testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+
+        const findFirst = vi.spyOn(testDb.db.query.userSettings, 'findFirst')
+
+        expect(await migrate(USER_ID, {
+          settings: { aboutMe: ABOUT_ME, memoryEnabled: true },
+        })).toEqual({ status: 'migrated' })
+        expect(findFirst).not.toHaveBeenCalled()
+        expect(readAboutMe()).toBeNull()
+      })
+
+    it('reads user_settings once when no settings are passed', async () => {
+      testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+
+      const findFirst = vi.spyOn(testDb.db.query.userSettings, 'findFirst')
+
+      await migrate()
+
+      expect(findFirst).toHaveBeenCalledTimes(1)
+    })
+
+    it('treats null settings as no row', async () => {
+      testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+
+      expect(await migrate(USER_ID, { settings: null }))
+        .toEqual({ status: 'skipped', reason: 'empty' })
+      expect(readAboutMe()).toBe(ABOUT_ME)
+    })
+
+    it('trusts the passed memoryEnabled and aboutMe over the stored row',
+      async () => {
+        testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+
+        expect(await migrate(USER_ID, {
+          settings: { aboutMe: ABOUT_ME, memoryEnabled: false },
+        })).toEqual({ status: 'skipped', reason: 'memory-off' })
+      })
+
+    it('logs only the outcome for a rejected text without compliance',
+      async () => {
+        const aboutMe = `I am a dev, my card is ${CARD_NUMBER}`
+
+        testDb.insertUserSettings({ userId: USER_ID, aboutMe })
+
+        expect(await migrate(USER_ID, {
+          settings: { aboutMe, memoryEnabled: true },
+          recordCompliance: false,
+        })).toEqual({ status: 'skipped', reason: 'rejected' })
+        expect(loggerSet).toHaveBeenCalledTimes(1)
+        expect(loggerSet).toHaveBeenCalledWith({
+          attributes: { memoryMigration: { aboutMe: 'rejected' } },
+        })
+      })
+
+    it('records the compliance counts by default', async () => {
+      const aboutMe = `I am a dev, my card is ${CARD_NUMBER}`
+
+      testDb.insertUserSettings({ userId: USER_ID, aboutMe })
+
+      await migrate()
+
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          memoryCompliance: expect.objectContaining({
+            origin: 'about-me-migration',
+          }),
+        },
+      })
+    })
+  })
+
   describe('size boundary is in bytes', () => {
     it('migrates text of exactly 1024 ASCII bytes', async () => {
       const aboutMe = 'a'.repeat(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
@@ -355,15 +505,19 @@ describe('migrateAboutMeToProfileEntry', () => {
         expect(readProfileEntries()[0]?.body).toBe('Written by someone else')
       })
 
-    it('rethrows a 409 that is not a singleton conflict', async () => {
-      testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
-      createOverride.current = async () => {
-        throw createError({ message: 'Memory limit reached', status: 409 })
-      }
+    it('rethrows a 409 that is neither a singleton conflict nor the cap',
+      async () => {
+        testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+        createOverride.current = async () => {
+          throw createError({
+            message: 'The memory entry could not be saved',
+            status: 409,
+          })
+        }
 
-      await expect(migrate()).rejects.toMatchObject({ status: 409 })
-      expect(readAboutMe()).toBe(ABOUT_ME)
-    })
+        await expect(migrate()).rejects.toMatchObject({ status: 409 })
+        expect(readAboutMe()).toBe(ABOUT_ME)
+      })
 
     it('rethrows unexpected failures and keeps the column', async () => {
       testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })

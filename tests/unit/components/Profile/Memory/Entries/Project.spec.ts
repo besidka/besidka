@@ -54,6 +54,7 @@ interface ProjectProps {
   entries: MemoryEntry[]
   limit: number
   isMemoryOff: boolean
+  isArchived: boolean
   focusRequested: boolean
 }
 
@@ -67,6 +68,7 @@ async function mountProject(overrides: Partial<ProjectProps> = {}) {
       entries: [createEntry('p1', 'profile'), createEntry('t1', 'topics')],
       limit: 15,
       isMemoryOff: false,
+      isArchived: false,
       focusRequested: false,
       ...overrides,
     },
@@ -149,6 +151,16 @@ describe('Profile/Memory/Entries/Project', () => {
         .toBe(false)
     })
 
+    it('shows the Archived badge only for an archived project', async () => {
+      const archived = await mountProject({ isArchived: true })
+      const active = await mountProject({ isArchived: false })
+
+      expect(archived.get('[data-testid="memory-project-archived"]').text())
+        .toBe('Archived')
+      expect(active.find('[data-testid="memory-project-archived"]').exists())
+        .toBe(false)
+    })
+
     it('uses the reusable ring instead of the browser default', async () => {
       const wrapper = await mountProject()
       const toggle = wrapper.get('[data-testid="memory-project-toggle"]')
@@ -172,6 +184,32 @@ describe('Profile/Memory/Entries/Project', () => {
 
       return wrapper
     }
+
+    it('says there is no memory yet and offers Add memory when empty',
+      async () => {
+        const wrapper = await mountExpanded({ entries: [] })
+
+        expect(wrapper.get('[data-testid="memory-project-empty"]').text())
+          .toBe('No memory yet')
+        expect(wrapper.find('[data-testid="memory-entry-row"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="memory-project-reset"]').exists())
+          .toBe(false)
+
+        await wrapper.get('[data-testid="memory-project-add"]')
+          .trigger('click')
+
+        expect(wrapper.emitted('add')).toEqual([['project-1']])
+      })
+
+    it('has no empty line and keeps reset when entries exist', async () => {
+      const wrapper = await mountExpanded()
+
+      expect(wrapper.find('[data-testid="memory-project-empty"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="memory-project-reset"]').exists())
+        .toBe(true)
+    })
 
     it('lists the entries as rows labelled with their category', async () => {
       const wrapper = await mountExpanded()

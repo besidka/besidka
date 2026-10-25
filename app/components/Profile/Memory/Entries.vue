@@ -145,16 +145,36 @@
             :entries="group.entries"
             @select="openEntry"
           />
-          <ProfileMemoryEntriesProjects
+          <div
             v-if="projectSections.length > 0"
-            :projects="projectSections"
-            :limit="projectEntryLimit"
-            :focus-project-id="focusProjectId"
-            @select="openEntry"
-            @add="openCreate"
-            @changed="refresh()"
-            @focused="focusProjectId = null"
-          />
+            class="grid gap-2"
+          >
+            <div
+              v-if="projectsError"
+              class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-base-content/70"
+              role="status"
+              data-testid="memory-projects-names-error"
+            >
+              <span>Couldn't load project names.</span>
+              <UiButton
+                ghost
+                size="sm"
+                normal-case
+                text="Try again"
+                data-testid="memory-projects-names-retry"
+                @click="refreshProjects()"
+              />
+            </div>
+            <ProfileMemoryEntriesProjects
+              :projects="projectSections"
+              :limit="projectEntryLimit"
+              :focus-project-id="focusProjectId"
+              @select="openEntry"
+              @add="openCreate"
+              @changed="refresh()"
+              @focused="focusProjectId = null"
+            />
+          </div>
         </div>
       </div>
     </ProfileSecuritySectionCard>
@@ -205,6 +225,8 @@ const legacyAboutMeReasons: Record<AboutMeNotMigratedReason, string> = {
   'profile-exists': 'You already have a Profile entry, so this was not '
     + 'merged. Copy what you need into it, then remove this.',
   'memory-off': 'Turn on Use memory and it will be converted automatically.',
+  'entries-full': 'Your account memory is full (30 entries). Delete one and '
+    + 'this converts automatically.',
   'rejected': 'It contains details Besidka does not save to memory, so it '
     + 'was not converted.',
 }
@@ -221,10 +243,17 @@ const selectedEntry = shallowRef<MemoryEntry | null>(null)
 const modalProjectId = shallowRef<string | null>(null)
 const isDetailOpen = shallowRef<boolean>(false)
 const isRemovingAboutMe = shallowRef<boolean>(false)
-const isAboutMeRemoved = shallowRef<boolean>(false)
-const focusProjectId = shallowRef<string | null>(readProjectQuery())
+const targetProjectId = computed<string | null>(() => {
+  return readProjectQuery(route.query.project)
+})
+const focusProjectId = shallowRef<string | null>(targetProjectId.value)
 
-const { projects, isLoading: isProjectsLoading } = useMemoryProjects()
+const {
+  projects,
+  isLoading: isProjectsLoading,
+  error: projectsError,
+  refresh: refreshProjects,
+} = useMemoryProjects()
 
 const { data, pending, error, refresh } = await useLazyFetch(
   '/api/v1/memory/entries',
@@ -316,7 +345,7 @@ const projectSections = computed<MemoryProjectSection[]>(() => {
   const knownSections = projects.value.flatMap((project) => {
     const entries = entriesByProjectId.value.get(project.id)
 
-    if (!entries) {
+    if (!entries && project.id !== targetProjectId.value) {
       return []
     }
 
@@ -324,7 +353,8 @@ const projectSections = computed<MemoryProjectSection[]>(() => {
       id: project.id,
       name: project.name,
       isMemoryOff: project.memoryStatus === 'disabled',
-      entries,
+      isArchived: project.isArchived,
+      entries: entries ?? [],
     }]
   })
   const unknownSections = [...entriesByProjectId.value]
@@ -334,6 +364,7 @@ const projectSections = computed<MemoryProjectSection[]>(() => {
         id: projectId,
         name: UNKNOWN_PROJECT_NAME,
         isMemoryOff: false,
+        isArchived: false,
         entries,
       }
     })
@@ -351,10 +382,6 @@ const takenSingletonCategories = computed<MemoryCategory[]>(() => {
 })
 
 const hasLegacyAboutMe = computed<boolean>(() => {
-  if (isAboutMeRemoved.value) {
-    return false
-  }
-
   return !!props.settings.aboutMe?.trim()
 })
 
@@ -367,9 +394,7 @@ const legacyAboutMeReason = computed<string>(() => {
     ?? GENERIC_LEGACY_ABOUT_ME_REASON
 })
 
-function readProjectQuery(): string | null {
-  const { project } = route.query
-
+function readProjectQuery(project: unknown): string | null {
   if (typeof project !== 'string' || !project) {
     return null
   }
@@ -377,8 +402,8 @@ function readProjectQuery(): string | null {
   return project
 }
 
-watch(() => route.query.project, () => {
-  focusProjectId.value = readProjectQuery()
+watch(targetProjectId, (projectId) => {
+  focusProjectId.value = projectId
 })
 
 async function focusHeadingWhenSettled() {
@@ -443,7 +468,6 @@ async function removeLegacyAboutMe() {
       body: { aboutMe: null },
     })
 
-    isAboutMeRemoved.value = true
     useInfoMessage('Removed', 'Earlier about me removed.')
     emit('aboutMeRemoved')
   } catch (exception) {

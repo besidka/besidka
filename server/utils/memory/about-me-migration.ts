@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { AboutMeNotMigratedReason } from '#shared/types/memory.d'
 import {
   MEMORY_LIMITS,
@@ -16,9 +16,22 @@ export type AboutMeMigrationOutcome
   = | { status: 'migrated' }
     | { status: 'skipped', reason: 'empty' | AboutMeNotMigratedReason }
 
+export interface AboutMeMigrationSettings {
+  aboutMe: string | null
+  memoryEnabled: boolean | null
+}
+
 interface ExistingProfileEntry {
   title: string
   body: string
+}
+
+export interface AboutMeMigrationInput {
+  db: DbClient
+  userId: number
+  logger: MemoryWriteLogger
+  settings?: AboutMeMigrationSettings | null
+  recordCompliance?: boolean
 }
 
 const ABOUT_ME_ENTRY_TITLE = 'About me'
@@ -94,6 +107,21 @@ async function findAccountProfileEntry(
   return existing ?? null
 }
 
+async function isAccountMemoryFull(
+  db: DbClient,
+  userId: number,
+): Promise<boolean> {
+  const [counted] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(schema.memoryEntries)
+    .where(and(
+      eq(schema.memoryEntries.userId, userId),
+      isNull(schema.memoryEntries.projectId),
+    ))
+
+  return Number(counted?.total ?? 0) >= MEMORY_LIMITS.maxAccountEntries
+}
+
 async function clearAboutMe(db: DbClient, userId: number): Promise<void> {
   await db
     .update(schema.userSettings)
@@ -140,21 +168,34 @@ async function resolveCreateFailure(
     if (existing) {
       return await resolveExistingProfile(db, userId, aboutMe, existing)
     }
+
+    if (await isAccountMemoryFull(db, userId)) {
+      return skipped('entries-full')
+    }
   }
 
   throw exception
 }
 
-async function runMigration(input: {
-  db: DbClient
-  userId: number
-  logger: MemoryWriteLogger
-}): Promise<AboutMeMigrationOutcome> {
-  const { db, userId, logger } = input
+async function readMigrationSettings(
+  db: DbClient,
+  userId: number,
+): Promise<AboutMeMigrationSettings | null> {
   const settings = await db.query.userSettings.findFirst({
     where: { userId },
     columns: { aboutMe: true, memoryEnabled: true },
   })
+
+  return settings ?? null
+}
+
+async function runMigration(
+  input: AboutMeMigrationInput,
+): Promise<AboutMeMigrationOutcome> {
+  const { db, userId, logger, recordCompliance = true } = input
+  const settings = input.settings === undefined
+    ? await readMigrationSettings(db, userId)
+    : input.settings
   const aboutMe = settings?.aboutMe?.trim() ?? ''
 
   if (aboutMe === '') {
@@ -180,7 +221,7 @@ async function runMigration(input: {
 
   try {
     await createMemoryEntry(
-      { db, userId, logger },
+      { db, userId, logger: recordCompliance ? logger : undefined },
       {
         input: {
           category: 'profile',
@@ -210,12 +251,15 @@ async function runMigration(input: {
  * completed by the next call (see `resolveExistingProfile`). The cleared
  * column is the migration marker. Only the outcome label is logged, never
  * the text; the frequent `empty` outcome is not logged.
+ *
+ * `settings` is the caller's already-loaded `user_settings` row (`null` for
+ * no row); it is read here only when omitted. `recordCompliance: false`
+ * keeps the compliance gate from logging counts, for callers that retry the
+ * same rejected text on every request.
  */
-export async function migrateAboutMeToProfileEntry(input: {
-  db: DbClient
-  userId: number
-  logger: MemoryWriteLogger
-}): Promise<AboutMeMigrationOutcome> {
+export async function migrateAboutMeToProfileEntry(
+  input: AboutMeMigrationInput,
+): Promise<AboutMeMigrationOutcome> {
   const outcome = await runMigration(input)
 
   if (outcome.status === 'migrated') {

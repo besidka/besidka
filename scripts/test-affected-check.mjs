@@ -102,10 +102,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
   ]
   const memoryContractTests = [
     'tests/unit/utils/memory-policy.spec.ts',
     'tests/unit/utils/memory-schemas.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
   ]
   const memoryComplianceTests = [
     'tests/unit/utils/memory/compliance.spec.ts',
@@ -133,6 +135,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/runtime-settings.spec.ts',
     'tests/unit/utils/memory/about-me.spec.ts',
     'tests/unit/utils/memory/chat-context.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
     'tests/unit/utils/memory/persist-redaction.spec.ts',
   ]
   const memoryChatDeletionTests = [

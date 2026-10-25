@@ -81,6 +81,7 @@ export type AboutMeNotMigratedReason
     | 'profile-exists'
     | 'memory-off'
     | 'rejected'
+    | 'entries-full'
 
 export interface MemorySettingsFields {
   memoryEnabled: boolean

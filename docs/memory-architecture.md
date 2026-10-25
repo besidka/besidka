@@ -1538,11 +1538,16 @@ compliance gate. The settings PATCH keeps `aboutMe` only as a null-only field
 rebuild (D1 rules in AGENTS.md).
 
 **Migration flow** (`server/utils/memory/about-me-migration.ts`,
-`migrateAboutMeToProfileEntry({ db, userId, logger })`). It runs from the
-settings GET, which the settings sync plugin calls on every app load, so every
-user is covered without a cron or a one-off script; when `about_me` is already
-`NULL` it costs one already-selected column. Steps, in order; every skip leaves
-`about_me` untouched:
+`migrateAboutMeToProfileEntry({ db, userId, logger, settings?, recordCompliance? })`).
+It runs from the settings GET, which the settings sync plugin calls on every
+app load, so every user is covered without a cron or a one-off script. The GET
+reads `user_settings` once and passes `{ aboutMe, memoryEnabled }` in as
+`settings` (the migration reads the row itself only when `settings` is
+omitted), so a user whose `about_me` is already `NULL` costs no extra query.
+The GET also passes `recordCompliance: false`: a `rejected` text is retried on
+every load and would otherwise log the same `memoryCompliance` counts each
+time, so only `memoryMigration.aboutMe = 'rejected'` is recorded there. Steps,
+in order; every skip leaves `about_me` untouched:
 
 1. Read the trimmed `about_me` and the resolved `memoryEnabled` (null counts as
    on). Empty → `empty`; memory off → `memory-off`.
@@ -1559,7 +1564,8 @@ user is covered without a cron or a one-off script; when `about_me` is already
    collapsed, cut at the last word boundary to fit `maxDescriptionChars` (100)
    with an ellipsis when cut (`Things I wrote about myself` if there is no
    text). A compliance refusal (never-store 422 or sensitive-topic 422) →
-   `rejected`, no throw.
+   `rejected`, no throw. The 409 `Memory limit reached` (the account already
+   holds `maxAccountEntries` = 30 entries) → `entries-full`, no throw.
 5. On success, `UPDATE user_settings SET about_me = NULL`. The cleared column
    is the migration marker, so there is no flag and no migration table.
 
@@ -1585,16 +1591,28 @@ nothing needs invalidating; the next chat after the migration sees the entry.
 | `too-long` | unchanged | none | `too-long` | `aboutMe` block |
 | `profile-exists` | unchanged | existing one untouched | `profile-exists` | index (existing entry) plus the `aboutMe` block |
 | `rejected` | unchanged | none | `rejected` | `aboutMe` block |
+| `entries-full` | unchanged | none | `entries-full` | `aboutMe` block |
 
 `aboutMeNotMigratedReason` is derived from the migration outcome of the same
 GET and is `null` whenever the column is empty after the migration (so a call
 that lost a race to a concurrent migration reports `null`). The UI uses it to
 show the leftover text as "Earlier about me (not converted)" with the matching
 explanation until the user shortens or removes it (`PATCH aboutMe: null`).
-A migration that throws (D1 error, or a 409 that is not a singleton conflict
-such as the 30-entry account cap) is logged as
-`attributes.memoryMigration.aboutMeError` and reported as `null`, so a user at
-the cap sees the text with no reason.
+A migration that throws (a D1 error, or a 409 that is neither the singleton
+conflict nor the account cap) is logged as
+`attributes.memoryMigration.aboutMeError` and reported as `null`.
+
+`entries-full`: the account is at the 30-entry cap, so there is no room for the
+profile entry. Nothing is created and the text stays in `about_me`, keeps being
+injected, and is shown with "Your account memory is full (30 entries). Delete
+one and this converts automatically." The user frees an entry; the migration
+runs again on the next load (the next GET) and converts the text. The cap is
+told apart from a lost singleton race by looking for an existing profile entry
+first, then by counting the account's entries.
+
+Turning **Use memory** on from the Memory page re-reads the settings GET (so a
+`memory-off` text converts right away) and refreshes the entries list, instead
+of waiting for the next app load.
 
 **Logging.** Only the outcome label, never the text:
 `attributes.memoryMigration.aboutMe = 'migrated' | <reason>`. The frequent
@@ -1612,6 +1630,9 @@ under `memoryCompliance` with origin `about-me-migration`, as everywhere else.
 3. **Memory-off users are not migrated.** Entries are not injected while memory
    is off but `aboutMe` is, so migrating would silently remove the text from
    every chat. The migration runs when they switch memory on (the next GET).
+4. **A full account is not migrated.** At the 30-entry cap the text stays (and
+   keeps being injected) instead of evicting an entry the user chose to keep or
+   failing the settings GET; it converts once the user deletes an entry.
 
 **Open question (owner).** Text rejected by the classifier (`rejected`) is
 still injected today for un-migrated users: the old PATCH gates blocked it at

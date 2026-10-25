@@ -107,6 +107,15 @@ const projectsData = shallowRef<{
   nextCursor: null
 } | null>(null)
 const projectsPending = shallowRef<boolean>(false)
+const projectsError = shallowRef<unknown>(null)
+const projectsRefresh = vi.fn()
+const archivedProjectsData = shallowRef<{
+  pinned: TestProject[]
+  projects: TestProject[]
+  nextCursor: null
+} | null>(null)
+const archivedProjectsError = shallowRef<unknown>(null)
+const archivedProjectsRefresh = vi.fn()
 const entriesPending = shallowRef<boolean>(false)
 const entriesError = shallowRef<unknown>(null)
 const refresh = vi.fn()
@@ -205,6 +214,11 @@ describe('Profile/Memory/Entries', () => {
       nextCursor: null,
     }
     projectsPending.value = false
+    projectsError.value = null
+    projectsRefresh.mockReset()
+    archivedProjectsData.value = { pinned: [], projects: [], nextCursor: null }
+    archivedProjectsError.value = null
+    archivedProjectsRefresh.mockReset()
     entriesPending.value = false
     entriesError.value = null
     refresh.mockReset()
@@ -213,7 +227,10 @@ describe('Profile/Memory/Entries', () => {
     mocks.info.mockReset()
     mocks.error.mockReset()
     mocks.useLazyFetch.mockReset()
-    mocks.useLazyFetch.mockImplementation((url: string) => {
+    mocks.useLazyFetch.mockImplementation((
+      url: string,
+      options: { query: { archived?: boolean } },
+    ) => {
       if (url === ENTRIES_URL) {
         return {
           data: entriesData,
@@ -223,7 +240,21 @@ describe('Profile/Memory/Entries', () => {
         }
       }
 
-      return { data: projectsData, pending: projectsPending }
+      if (options.query.archived) {
+        return {
+          data: archivedProjectsData,
+          pending: projectsPending,
+          error: archivedProjectsError,
+          refresh: archivedProjectsRefresh,
+        }
+      }
+
+      return {
+        data: projectsData,
+        pending: projectsPending,
+        error: projectsError,
+        refresh: projectsRefresh,
+      }
     })
   })
 
@@ -303,8 +334,10 @@ describe('Profile/Memory/Entries', () => {
           .map(heading => heading.get('span').text())
 
         expect(headings).toEqual(['You', 'People', 'Projects'])
-        expect(wrapper.findAll('[data-testid="memory-entries-list"] > section'))
-          .toHaveLength(3)
+        expect(wrapper.findAll(
+          '[data-testid="memory-entries-list"] > section, '
+          + '[data-testid="memory-entries-list"] > div > section',
+        )).toHaveLength(3)
       })
 
     it('shows a call to action in an empty You group', async () => {
@@ -513,6 +546,84 @@ describe('Profile/Memory/Entries', () => {
         .toBe('Unknown project')
     })
 
+    it('names an archived project and marks it archived', async () => {
+      archivedProjectsData.value = {
+        pinned: [],
+        projects: [{ id: 'old', name: 'Old project', memoryStatus: 'idle' }],
+        nextCursor: null,
+      }
+      entriesData.value = createResponse([
+        {
+          category: 'topics',
+          entries: [
+            createEntry('t1', 'topics', { projectId: 'old' }),
+            createEntry('t2', 'topics', { projectId: 'project-1' }),
+          ],
+        },
+      ])
+
+      const wrapper = await mountEntries()
+      const rows = wrapper.findAll('[data-testid="memory-project"]')
+
+      expect(rows.map(row => row.get('[data-testid="memory-project-name"]')
+        .text())).toEqual(['Home lab', 'Old project'])
+      expect(rows[0]!.find('[data-testid="memory-project-archived"]').exists())
+        .toBe(false)
+      expect(rows[1]!.get('[data-testid="memory-project-archived"]').text())
+        .toBe('Archived')
+      expect(wrapper.text()).not.toContain('Unknown project')
+      expect(wrapper.find('[data-testid="memory-projects-names-error"]')
+        .exists()).toBe(false)
+    })
+
+    it('shows a retry notice instead of silently naming projects Unknown',
+      async () => {
+        archivedProjectsData.value = null
+        archivedProjectsError.value = new Error('Failed')
+        entriesData.value = createMixedResponse()
+
+        const wrapper = await mountEntries()
+        const notice = wrapper.get('[data-testid="memory-projects-names-error"]')
+
+        expect(notice.text()).toContain('Couldn\'t load project names.')
+        expect(notice.get('[data-testid="memory-projects-names-retry"]').text())
+          .toBe('Try again')
+
+        const html = wrapper.get('[data-testid="memory-entries-section"]')
+          .html()
+
+        expect(html.indexOf('memory-projects-names-error'))
+          .toBeLessThan(html.indexOf('data-testid="memory-projects"'))
+
+        await notice.get('[data-testid="memory-projects-names-retry"]')
+          .trigger('click')
+
+        expect(projectsRefresh).toHaveBeenCalledOnce()
+        expect(archivedProjectsRefresh).toHaveBeenCalledOnce()
+      })
+
+    it('shows the retry notice when the active projects failed', async () => {
+      projectsData.value = null
+      projectsError.value = new Error('Failed')
+      entriesData.value = createMixedResponse()
+
+      const wrapper = await mountEntries()
+
+      expect(wrapper.find('[data-testid="memory-projects-names-error"]')
+        .exists()).toBe(true)
+      expect(wrapper.findAll('[data-testid="memory-project-name"]')
+        .map(name => name.text())).toEqual(['Unknown project', 'Unknown project'])
+    })
+
+    it('does not show the notice when there is no project section', async () => {
+      projectsError.value = new Error('Failed')
+
+      const wrapper = await mountEntries()
+
+      expect(wrapper.find('[data-testid="memory-projects-names-error"]')
+        .exists()).toBe(false)
+    })
+
     it('waits for the projects before showing any row', async () => {
       entriesData.value = createMixedResponse()
       projectsData.value = null
@@ -609,20 +720,78 @@ describe('Profile/Memory/Entries', () => {
         expect(document.activeElement).toBe(toggles[1]!.element)
       })
 
-      it('ignores a project that has no entries or does not exist',
+      it('ignores a project that does not exist', async () => {
+        entriesData.value = createMixedResponse()
+
+        const wrapper = await mountEntries({}, '/?project=nope')
+
+        expect(wrapper
+          .findAll('[data-testid="memory-project-toggle"]')
+          .map(toggle => toggle.attributes('aria-expanded')))
+          .toEqual(['false', 'false'])
+      })
+
+      it('shows the targeted project expanded even without entries',
         async () => {
           entriesData.value = createMixedResponse()
 
-          const quiet = await mountEntries({}, '/?project=project-3')
-          const missing = await mountEntries({}, '/?project=nope')
+          const wrapper = await mountEntries({}, '/?project=project-3')
+          const rows = wrapper.findAll('[data-testid="memory-project"]')
 
-          for (const wrapper of [quiet, missing]) {
-            expect(wrapper
-              .findAll('[data-testid="memory-project-toggle"]')
-              .map(toggle => toggle.attributes('aria-expanded')))
-              .toEqual(['false', 'false'])
-          }
+          expect(rows.map(row => row.attributes('data-project-id')))
+            .toEqual(['project-1', 'project-2', 'project-3'])
+
+          const target = rows[2]!
+
+          expect(target.get('[data-testid="memory-project-name"]').text())
+            .toBe('Quiet project')
+          expect(target.get('[data-testid="memory-project-count"]').text())
+            .toBe('0 of 15')
+          expect(target.get('[data-testid="memory-project-toggle"]')
+            .attributes('aria-expanded')).toBe('true')
+          expect(target.get('[data-testid="memory-project-empty"]').text())
+            .toBe('No memory yet')
+          expect(target.find('[data-testid="memory-entry-row"]').exists())
+            .toBe(false)
+          expect(target.find('[data-testid="memory-project-reset"]').exists())
+            .toBe(false)
+          expect(document.activeElement)
+            .toBe(target.get('[data-testid="memory-project-toggle"]').element)
+          expect(wrapper.get('[data-testid="memory-projects-count"]').text())
+            .toBe('3')
         })
+
+      it('keeps the targeted empty project after the focus was consumed',
+        async () => {
+          const wrapper = await mountEntries({}, '/?project=project-3')
+
+          expect(wrapper.find('[data-testid="memory-entries-empty"]').exists())
+            .toBe(false)
+          expect(wrapper.findAll('[data-testid="memory-project"]'))
+            .toHaveLength(1)
+
+          await wrapper.get('[data-testid="memory-project-toggle"]')
+            .trigger('click')
+          await wrapper.get('[data-testid="memory-project-toggle"]')
+            .trigger('click')
+
+          expect(wrapper.findAll('[data-testid="memory-project"]'))
+            .toHaveLength(1)
+          expect(wrapper.get('[data-testid="memory-project-toggle"]')
+            .attributes('aria-expanded')).toBe('true')
+        })
+
+      it('opens the add dialog for the targeted empty project', async () => {
+        const wrapper = await mountEntries({}, '/?project=project-3')
+
+        await wrapper.get('[data-testid="memory-project-add"]')
+          .trigger('click')
+
+        const modal = wrapper.get('[data-testid="detail-modal-stub"]')
+
+        expect(modal.attributes('data-open')).toBe('true')
+        expect(modal.attributes('data-project-id')).toBe('project-3')
+      })
 
       it('does not change which entries are fetched', async () => {
         entriesData.value = createMixedResponse()
@@ -1128,6 +1297,11 @@ describe('Profile/Memory/Entries', () => {
         'It contains details Besidka does not save to memory, so it was not '
         + 'converted.',
       ],
+      [
+        'entries-full',
+        'Your account memory is full (30 entries). Delete one and this '
+        + 'converts automatically.',
+      ],
       [null, 'It is still sent with every chat.'],
     ] as const)('explains the %s reason', async (reason, expected) => {
       const wrapper = await mountLegacy(reason)
@@ -1163,6 +1337,13 @@ describe('Profile/Memory/Entries', () => {
         'Earlier about me removed.',
       )
       expect(wrapper.emitted('aboutMeRemoved')).toHaveLength(1)
+      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+        .toBe(true)
+
+      await wrapper.setProps({
+        settings: { ...defaultSettings, aboutMe: null },
+      })
+
       expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
         .toBe(false)
     })

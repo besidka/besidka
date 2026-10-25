@@ -22,6 +22,7 @@
         :entries="project.entries"
         :limit="limit"
         :is-memory-off="project.isMemoryOff"
+        :is-archived="project.isArchived"
         :focus-requested="project.id === focusProjectId"
         @select="emit('select', $event)"
         @add="emit('add', $event)"

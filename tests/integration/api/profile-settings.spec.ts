@@ -771,30 +771,61 @@ describe('profile settings API', () => {
     })
 
     describe('about me migration on GET', () => {
-      it('runs the migration for the session user before reading settings',
+      it('reads settings once and hands them to the migration', async () => {
+        const getHandler = await getSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ aboutMe: 'Leftover text', memoryEnabled: false })
+        mocks.migrateAboutMe.mockResolvedValue({
+          status: 'skipped',
+          reason: 'memory-off',
+        })
+
+        expect(await getHandler({} as any)).toMatchObject({
+          aboutMe: 'Leftover text',
+          aboutMeNotMigratedReason: 'memory-off',
+        })
+        expect(dbMock.spies.findFirst).toHaveBeenCalledTimes(1)
+        expect(mocks.migrateAboutMe).toHaveBeenCalledTimes(1)
+        expect(mocks.migrateAboutMe).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: 1,
+            db: dbMock.db,
+            recordCompliance: false,
+            settings: expect.objectContaining({
+              aboutMe: 'Leftover text',
+              memoryEnabled: false,
+            }),
+          }),
+        )
+      })
+
+      it('passes null settings when the user has no settings row',
+        async () => {
+          const getHandler = await getSettingsHandler()
+
+          setup()
+
+          await getHandler({} as any)
+
+          expect(mocks.migrateAboutMe).toHaveBeenCalledWith(
+            expect.objectContaining({ settings: null }),
+          )
+        })
+
+      it('returns no text and no reason once the migration moved it',
         async () => {
           const getHandler = await getSettingsHandler()
           const dbMock = setup()
 
-          dbMock.seed({ aboutMe: null })
-          let settingsReadsDuringMigration = -1
-
-          mocks.migrateAboutMe.mockImplementation(async () => {
-            settingsReadsDuringMigration = dbMock.spies.findFirst.mock.calls
-              .length
-
-            return { status: 'migrated' }
-          })
+          dbMock.seed({ aboutMe: 'Leftover text' })
+          mocks.migrateAboutMe.mockResolvedValue({ status: 'migrated' })
 
           expect(await getHandler({} as any)).toMatchObject({
             aboutMe: null,
             aboutMeNotMigratedReason: null,
           })
-          expect(settingsReadsDuringMigration).toBe(0)
-          expect(mocks.migrateAboutMe).toHaveBeenCalledTimes(1)
-          expect(mocks.migrateAboutMe).toHaveBeenCalledWith(
-            expect.objectContaining({ userId: 1, db: dbMock.db }),
-          )
+          expect(dbMock.spies.findFirst).toHaveBeenCalledTimes(1)
         })
 
       it.each([
@@ -802,6 +833,7 @@ describe('profile settings API', () => {
         'profile-exists',
         'memory-off',
         'rejected',
+        'entries-full',
       ])('returns the text and the %s reason when it stays', async (reason) => {
         const getHandler = await getSettingsHandler()
         const dbMock = setup()

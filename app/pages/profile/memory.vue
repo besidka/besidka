@@ -6,12 +6,12 @@
   <div class="grid gap-6">
     <ProfileMemoryControls
       :settings="values"
-      :save="save"
+      :save="saveSettings"
     />
     <ProfileMemoryNeverKept />
     <ProfileMemoryModels
       :settings="values"
-      :save="save"
+      :save="saveSettings"
     />
     <ProfileMemoryEntries
       :settings="values"
@@ -23,6 +23,9 @@
 
 <script setup lang="ts">
 import type { AboutMeNotMigratedReason } from '#shared/types/memory.d'
+import type { MemorySettingsSave } from '~/types/memory-settings.d'
+
+const MEMORY_ENTRIES_KEY = 'memory-entries:all'
 
 definePageMeta({
   layout: 'profile',
@@ -36,11 +39,25 @@ useSeoMeta({
   robots: 'noindex, nofollow',
 })
 
-const { data: settings } = await useFetch('/api/v1/profiles/settings', {
+const { data: settings, refresh: refreshSettings } = await useFetch('/api/v1/profiles/settings', {
   key: 'profile-memory-settings',
 })
 
 const { values, save } = useMemorySettingsSaver(settings)
+
+const saveSettings: MemorySettingsSave = async (patch) => {
+  const wasMemoryEnabled = values.value.memoryEnabled
+  const outcome = await save(patch)
+
+  if (outcome.ok && patch.memoryEnabled === true && !wasMemoryEnabled) {
+    await Promise.all([
+      refreshSettings(),
+      refreshNuxtData(MEMORY_ENTRIES_KEY),
+    ])
+  }
+
+  return outcome
+}
 
 const aboutMeNotMigratedReason = computed<AboutMeNotMigratedReason | null>(
   () => {
