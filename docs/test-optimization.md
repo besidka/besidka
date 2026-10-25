@@ -173,8 +173,8 @@ request (`preview-build.yml`) runs these as parallel jobs:
 ```
 
 A push to `main` (`production.yml`) reuses that result and skips the same jobs
-when the merged PR passed the full suite on a tree that differs from `main`
-only in ignored paths; otherwise it runs them. See
+when the merged PR passed the full suite and the pushed commit differs from the
+tested one only in ignorable, non-blocking paths; otherwise it runs them. See
 `.github/workflows/README.md`. The affected mapping still drives the local
 hooks and `pnpm test:affected`.
 

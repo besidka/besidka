@@ -2,12 +2,32 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import {
   E2E_JOB_NAME_PATTERN,
+  E2E_REQUIRED_STEPS,
   REQUIRED_JOB_STEPS,
+  SKIP_BLOCKING_PATTERNS,
   findFullSuiteGaps,
+  findSkipBlockingPaths,
   isFullSuiteRun,
+  isSkipSafePath,
   resolveTestSource,
   selectMergedPullRequest,
 } from '../../../scripts/ci/resolve-production-test-source.mjs'
+
+const fullSuiteJobSteps: Record<string, string[]> = {
+  'Lint & typecheck': [
+    'Run ESLint',
+    'Run TypeScript type checks',
+    'Check that migrations are committed',
+  ],
+  'Unit tests': [
+    'Run all unit tests',
+    'Run cookie-consent module tests',
+  ],
+  'Integration tests': ['Run all integration tests'],
+  'Build': ['Build application'],
+}
+
+const e2eShardPrefix = /^E2E tests \(/
 
 const mainSha = 'f'.repeat(40)
 const prHeadSha = 'a'.repeat(40)
@@ -65,7 +85,7 @@ function createJob(
 }
 
 function createFullSuiteJobs(shardCount = 3) {
-  const requiredJobs = Object.entries(REQUIRED_JOB_STEPS)
+  const requiredJobs = Object.entries(fullSuiteJobSteps)
     .map(([name, stepNames]) => createJob(name, stepNames))
   const shardJobs = Array.from({ length: shardCount }, (_item, index) => {
     return createJob(
@@ -198,7 +218,7 @@ describe('findFullSuiteGaps', () => {
   it('rejects a reuse-only run whose skipped matrix job is unexpanded', () => {
     const jobs = [
       ...createReuseOnlyJobs().filter((job) => {
-        return !E2E_JOB_NAME_PATTERN.test(job.name)
+        return !e2eShardPrefix.test(job.name)
       }),
       {
         name: 'E2E tests (${{ matrix.shard }}/${{ strategy.job-total }})',
@@ -268,7 +288,7 @@ describe('findFullSuiteGaps', () => {
 
   it('rejects a run with no E2E shards at all', () => {
     const jobs = createFullSuiteJobs().filter((job) => {
-      return !E2E_JOB_NAME_PATTERN.test(job.name)
+      return !e2eShardPrefix.test(job.name)
     })
 
     expect(findFullSuiteGaps(jobs)).toEqual(['no E2E shard job is present'])
@@ -296,27 +316,206 @@ describe('findFullSuiteGaps', () => {
   })
 })
 
-describe('workflow parity', () => {
-  const workflow = readFileSync('.github/workflows/preview-build.yml', 'utf-8')
-  const names = workflow
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.startsWith('name: ') || line.startsWith('- name: '))
-    .map(line => line.replace(/^- /, '').slice('name: '.length))
+describe('required jobs and steps', () => {
+  it('pins the required job and step names to literal values', () => {
+    expect(REQUIRED_JOB_STEPS).toEqual(fullSuiteJobSteps)
+    expect(E2E_REQUIRED_STEPS).toEqual(['Run all E2E tests'])
+  })
 
-  it('names every required job and step in preview-build.yml', () => {
-    for (const [jobName, stepNames] of Object.entries(REQUIRED_JOB_STEPS)) {
-      expect(names).toContain(jobName)
+  it('pins the E2E shard job name pattern', () => {
+    expect(E2E_JOB_NAME_PATTERN.source).toBe('^E2E tests \\((\\d+)\\/(\\d+)\\)$')
+    expect(E2E_JOB_NAME_PATTERN.test('E2E tests (1/3)')).toBe(true)
+    expect(E2E_JOB_NAME_PATTERN.test('E2E tests (12/12)')).toBe(true)
+    expect(E2E_JOB_NAME_PATTERN.test('E2E tests (1/3) extra')).toBe(false)
+    expect(E2E_JOB_NAME_PATTERN.test('Unit tests')).toBe(false)
+    expect(E2E_JOB_NAME_PATTERN.test(
+      'E2E tests (${{ matrix.shard }}/${{ strategy.job-total }})',
+    )).toBe(false)
+  })
+})
 
-      for (const stepName of stepNames) {
-        expect(names).toContain(stepName)
-      }
-    }
+describe('preview-build.yml contract', () => {
+  const workflowLines = readFileSync(
+    '.github/workflows/preview-build.yml',
+    'utf-8',
+  ).split('\n')
 
-    expect(names).toContain('Run all E2E tests')
-    expect(names).toContain(
+  function readJob(jobId: string) {
+    const start = workflowLines.indexOf(`  ${jobId}:`)
+
+    expect(start, `job "${jobId}" exists`).toBeGreaterThan(-1)
+
+    const nextJob = workflowLines.findIndex((line, index) => {
+      return index > start && /^ {2}[A-Za-z0-9_-]+:\s*$/.test(line)
+    })
+
+    return workflowLines.slice(start, nextJob === -1 ? undefined : nextJob)
+  }
+
+  function readStep(jobLines: string[], stepName: string) {
+    const start = jobLines.indexOf(`      - name: ${stepName}`)
+
+    expect(start, `step "${stepName}" exists`).toBeGreaterThan(-1)
+
+    const nextStep = jobLines.findIndex((line, index) => {
+      return index > start && line.startsWith('      - ')
+    })
+
+    return jobLines.slice(start, nextStep === -1 ? undefined : nextStep)
+      .map(line => line.trim())
+  }
+
+  function expectRunStep(
+    jobId: string,
+    stepName: string,
+    command: string,
+  ) {
+    const stepLines = readStep(readJob(jobId), stepName)
+
+    expect(stepLines).toContain(`run: ${command}`)
+    expectUnconditionalStep(stepLines)
+  }
+
+  function expectUnconditionalStep(stepLines: string[]) {
+    const conditionalKeys = stepLines.filter((line) => {
+      return line.startsWith('if:') || line.startsWith('continue-on-error:')
+    })
+
+    expect(conditionalKeys).toEqual([])
+  }
+
+  function expectJobName(jobId: string, name: string) {
+    expect(readJob(jobId)).toContain(`    name: ${name}`)
+  }
+
+  function expectJobCannotBeMasked(jobId: string) {
+    const maskingKeys = readJob(jobId).filter((line) => {
+      return line.startsWith('    continue-on-error:')
+    })
+
+    expect(maskingKeys).toEqual([])
+  }
+
+  it('maps every required job name to its job id', () => {
+    expectJobName('static', 'Lint & typecheck')
+    expectJobName('unit', 'Unit tests')
+    expectJobName('integration', 'Integration tests')
+    expectJobName('build', 'Build')
+    expectJobName(
+      'e2e',
       'E2E tests (${{ matrix.shard }}/${{ strategy.job-total }})',
     )
+  })
+
+  it('runs the exact lint and typecheck commands in static', () => {
+    expectRunStep('static', 'Run ESLint', 'pnpm run lint')
+    expectRunStep(
+      'static',
+      'Run TypeScript type checks',
+      'pnpm run typecheck',
+    )
+  })
+
+  it('checks that migrations are committed in static', () => {
+    const stepLines = readStep(
+      readJob('static'),
+      'Check that migrations are committed',
+    )
+
+    expect(stepLines).toContain(
+      'if ! pnpm run db:generate || ! pnpm run db:consents:generate; then',
+    )
+    expect(stepLines).toContain(
+      'if [ -n "$(git status --porcelain -- .drizzle)" ]; then',
+    )
+    expect(stepLines.filter(line => line === 'exit 1')).toHaveLength(2)
+    expectUnconditionalStep(stepLines)
+  })
+
+  it('runs the full unit suites in unit', () => {
+    expectRunStep('unit', 'Run all unit tests', 'pnpm run test:unit')
+    expectRunStep(
+      'unit',
+      'Run cookie-consent module tests',
+      'pnpm run test:cookie-consent',
+    )
+  })
+
+  it('runs the full integration suite in integration', () => {
+    expectRunStep(
+      'integration',
+      'Run all integration tests',
+      'pnpm run test:integration',
+    )
+  })
+
+  it('builds the application in build', () => {
+    const stepLines = readStep(readJob('build'), 'Build application')
+
+    expect(stepLines.join('\n')).toContain('pnpm run build')
+    expectUnconditionalStep(stepLines)
+  })
+
+  it('runs every E2E shard of the full suite', () => {
+    expectRunStep(
+      'e2e',
+      'Run all E2E tests',
+      'pnpm exec playwright test '
+      + '--shard=${{ matrix.shard }}/${{ strategy.job-total }}',
+    )
+    expect(readJob('e2e').map(line => line.trim()))
+      .toContain('shard: [1, 2, 3]')
+  })
+
+  it('never masks a failing test job', () => {
+    for (const jobId of ['static', 'unit', 'integration', 'build', 'e2e']) {
+      expectJobCannotBeMasked(jobId)
+    }
+  })
+})
+
+describe('isSkipSafePath', () => {
+  it('pins the skip-blocking patterns to literal values', () => {
+    expect(SKIP_BLOCKING_PATTERNS).toEqual([
+      'scripts/**',
+      '.github/actions/**',
+      '.github/workflows/preview-build.yml',
+      '.github/workflows/production.yml',
+    ])
+  })
+
+  it('allows ignorable paths that cannot change what the tests cover', () => {
+    expect(isSkipSafePath('docs/ci-speed-audit.md')).toBe(true)
+    expect(isSkipSafePath('README.md')).toBe(true)
+    expect(isSkipSafePath('.github/workflows/claude.yml')).toBe(true)
+    expect(isSkipSafePath('.github/CODEOWNERS')).toBe(true)
+    expect(isSkipSafePath('.husky/pre-push')).toBe(true)
+    expect(isSkipSafePath('lib/anything.ts')).toBe(true)
+  })
+
+  it('blocks ignorable paths that the CI pipeline itself depends on', () => {
+    expect(isSkipSafePath('scripts/ci/resolve-production-test-source.mjs'))
+      .toBe(false)
+    expect(isSkipSafePath('scripts/test-affected.mjs')).toBe(false)
+    expect(isSkipSafePath('.github/actions/setup/action.yml')).toBe(false)
+    expect(isSkipSafePath('.github/workflows/preview-build.yml')).toBe(false)
+    expect(isSkipSafePath('.github/workflows/production.yml')).toBe(false)
+  })
+
+  it('blocks paths that are not ignorable at all', () => {
+    expect(isSkipSafePath('app/app.vue')).toBe(false)
+    expect(isSkipSafePath('.npmrc')).toBe(false)
+    expect(isSkipSafePath('.nuxtrc')).toBe(false)
+    expect(isSkipSafePath('content/index.md')).toBe(false)
+  })
+
+  it('lists only the blocking paths', () => {
+    expect(findSkipBlockingPaths([
+      'docs/a.md',
+      'scripts/x.mjs',
+      'app/app.vue',
+    ])).toEqual(['scripts/x.mjs', 'app/app.vue'])
+    expect(findSkipBlockingPaths([])).toEqual([])
   })
 })
 
@@ -375,16 +574,66 @@ describe('resolveTestSource', () => {
     expect(fetchPullRequestHead).toHaveBeenCalledWith(442)
   })
 
-  it('skips the tests when only ignorable files changed since', async () => {
+  it('skips the tests when only docs changed since', async () => {
+    const listJobs = vi.fn(async () => createFullSuiteJobs())
     const decision = await resolve({
-      listChangedFiles: () => ['docs/a.md', '.github/workflows/x.yml'],
+      listChangedFiles: () => ['docs/a.md', 'AGENTS.md'],
+      listJobs,
     })
 
     expect(decision.skipTests).toBe(true)
-    expect(decision.changedFiles).toEqual([
-      'docs/a.md',
-      '.github/workflows/x.yml',
-    ])
+    expect(decision.changedFiles).toEqual(['docs/a.md', 'AGENTS.md'])
+    expect(decision.reason).not.toContain('identical')
+    expect(listJobs).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips the tests when an unrelated workflow changed since', async () => {
+    const decision = await resolve({
+      listChangedFiles: () => ['.github/workflows/claude.yml'],
+    })
+
+    expect(decision.skipTests).toBe(true)
+  })
+
+  it('runs the tests when a script changed since the tested commit', async () => {
+    const listJobs = vi.fn(async () => createFullSuiteJobs())
+    const decision = await resolve({
+      listChangedFiles: () => ['docs/a.md', 'scripts/ci/gate.mjs'],
+      listJobs,
+    })
+
+    expect(decision.skipTests).toBe(false)
+    expect(decision.blockingFiles).toEqual(['scripts/ci/gate.mjs'])
+    expect(decision.reason).toContain('scripts/ci/gate.mjs')
+    expect(listJobs).not.toHaveBeenCalled()
+  })
+
+  it('runs the tests when a composite action or CI workflow changed since', async () => {
+    for (const path of [
+      '.github/actions/setup/action.yml',
+      '.github/workflows/preview-build.yml',
+      '.github/workflows/production.yml',
+    ]) {
+      const decision = await resolve({ listChangedFiles: () => [path] })
+
+      expect(decision.skipTests).toBe(false)
+      expect(decision.reason).toContain(path)
+    }
+  })
+
+  it('reports at most five blocking paths in the reason', async () => {
+    const decision = await resolve({
+      listChangedFiles: () => {
+        return Array.from({ length: 8 }, (_item, index) => {
+          return `scripts/file-${index}.mjs`
+        })
+      },
+    })
+
+    expect(decision.skipTests).toBe(false)
+    expect(decision.blockingFiles).toHaveLength(8)
+    expect(decision.reason).toContain('scripts/file-4.mjs and 3 more')
+    expect(decision.reason).not.toContain('scripts/file-5.mjs')
   })
 
   it('runs the tests when a non-ignorable file changed since', async () => {
@@ -396,6 +645,8 @@ describe('resolveTestSource', () => {
 
     expect(decision.skipTests).toBe(false)
     expect(decision.reason).toContain('full-suite')
+    expect(decision.reason).toContain('app/app.vue')
+    expect(decision.blockingFiles).toEqual(['app/app.vue'])
     expect(decision.rejections).toHaveLength(1)
     expect(listJobs).not.toHaveBeenCalled()
   })

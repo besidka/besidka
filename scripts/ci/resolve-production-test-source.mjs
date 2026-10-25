@@ -6,11 +6,11 @@
  *
  * Finds the pull request that produced the pushed commit, then looks for a
  * successful full-suite Preview Build run of that PR whose commit differs from
- * the pushed commit only in ignorable paths. When one exists, the same tree
- * already passed lint, typecheck, unit, integration and E2E, so main only
- * builds and deploys. Anything uncertain (not a push to main, direct push, no
- * qualifying run, rewritten history, API or git failure) resolves to running
- * the tests. See docs/ci-speed-audit.md → F4.
+ * the pushed commit only in ignorable, non-blocking paths. When one exists,
+ * the same code already passed lint, typecheck, unit, integration and E2E, so
+ * main only builds and deploys. Anything uncertain (not a push to main,
+ * direct push, no qualifying run, rewritten history, API or git failure)
+ * resolves to running the tests. See docs/ci-speed-audit.md → F4.
  *
  * Usage:
  *   node scripts/ci/resolve-production-test-source.mjs
@@ -40,7 +40,7 @@ import {
   MAX_LISTED_FILES,
   RUNS_PAGE_SIZE,
   WORKFLOW_FILE,
-  areAllPathsIgnored,
+  globToRegExp,
   isIgnoredPath,
   parseNullSeparated,
   selectCandidateRuns,
@@ -48,6 +48,36 @@ import {
 
 export const PRODUCTION_BRANCH = 'main'
 export const PRODUCTION_REF = `refs/heads/${PRODUCTION_BRANCH}`
+export const MAX_REPORTED_BLOCKING_PATHS = 5
+
+export const SKIP_BLOCKING_PATTERNS = [
+  'scripts/**',
+  '.github/actions/**',
+  '.github/workflows/preview-build.yml',
+  '.github/workflows/production.yml',
+]
+
+const SKIP_BLOCKING_MATCHERS = SKIP_BLOCKING_PATTERNS.map(globToRegExp)
+
+export function isSkipSafePath(path) {
+  return isIgnoredPath(path)
+    && !SKIP_BLOCKING_MATCHERS.some((matcher) => {
+      return matcher.test(path)
+    })
+}
+
+export function findSkipBlockingPaths(paths) {
+  return paths.filter((path) => {
+    return !isSkipSafePath(path)
+  })
+}
+
+function describePaths(paths) {
+  const listed = paths.slice(0, MAX_REPORTED_BLOCKING_PATHS).join(', ')
+  const hidden = paths.length - MAX_REPORTED_BLOCKING_PATHS
+
+  return hidden > 0 ? `${listed} and ${hidden} more` : listed
+}
 
 export const REQUIRED_JOB_STEPS = {
   'Lint & typecheck': [
@@ -234,6 +264,7 @@ async function decide({
   }
 
   const rejections = []
+  let newestBlocked
 
   for (const candidate of candidates) {
     const candidateLabel = `run ${candidate.id} (${shorten(candidate.head_sha)})`
@@ -249,14 +280,13 @@ async function decide({
       continue
     }
 
-    if (!areAllPathsIgnored(changedFiles)) {
-      const blockingFiles = changedFiles.filter((path) => {
-        return !isIgnoredPath(path)
-      })
+    const blockingFiles = findSkipBlockingPaths(changedFiles)
 
+    if (blockingFiles.length > 0) {
+      newestBlocked ??= { candidateLabel, blockingFiles }
       rejections.push(
-        `${candidateLabel}: ${blockingFiles.length} non-ignorable file(s) `
-        + 'changed since it',
+        `${candidateLabel}: ${blockingFiles.length} path(s) block the skip `
+        + `(${describePaths(blockingFiles)})`,
       )
       continue
     }
@@ -274,22 +304,28 @@ async function decide({
       sourceSha: candidate.head_sha,
       pullRequestNumber: pullRequest.number,
       reason: changedFiles.length === 0
-        ? `PR #${pullRequest.number} passed the full suite on an identical `
-        + `tree in ${candidateLabel}; reusing its result.`
+        ? `PR #${pullRequest.number} passed the full suite in `
+        + `${candidateLabel} and nothing changed since; reusing its result.`
         : `PR #${pullRequest.number} passed the full suite in `
-          + `${candidateLabel} and only ignorable files changed since; `
-          + 'reusing its result.',
+          + `${candidateLabel} and only ignorable, non-blocking files `
+          + 'changed since; reusing its result.',
       changedFiles,
       rejections,
     }
   }
+
+  const blockedDetail = newestBlocked
+    ? ` Paths blocking the skip since ${newestBlocked.candidateLabel}: `
+    + `${describePaths(newestBlocked.blockingFiles)}.`
+    : ''
 
   return {
     skipTests: false,
     pullRequestNumber: pullRequest.number,
     reason: `No full-suite Preview Build run on a matching tree found for PR `
       + `#${pullRequest.number} (${rejections.length} candidate(s) `
-      + 'rejected); running the tests.',
+      + `rejected); running the tests.${blockedDetail}`,
+    blockingFiles: newestBlocked?.blockingFiles,
     rejections,
   }
 }
@@ -472,7 +508,7 @@ function buildSummary(context, decision) {
     const hidden = files.length - listed.length
 
     lines.push(
-      '- Ignorable files changed since the tested commit:',
+      '- Ignorable, non-blocking files changed since the tested commit:',
       ...listed,
     )
 

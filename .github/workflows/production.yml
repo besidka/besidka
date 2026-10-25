@@ -20,7 +20,6 @@ on:
       - 'scripts/**'
       - '.gitignore'
       - 'commitlint.config.ts'
-      - '.*rc'
       - '*.md'
       - 'skills-lock.json'
   workflow_dispatch:
@@ -72,7 +71,7 @@ jobs:
   static:
     name: Lint & typecheck
     needs: gate
-    if: needs.gate.outputs.skip-tests != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -92,8 +91,10 @@ jobs:
 
       - name: Check that migrations are committed
         run: |
-          pnpm run db:generate
-          pnpm run db:consents:generate
+          if ! pnpm run db:generate || ! pnpm run db:consents:generate; then
+            echo "::error::drizzle-kit could not generate migrations. It exits non-zero when it needs an interactive answer, for example whether a column was renamed or newly created, and CI cannot answer. Run pnpm run db:generate (and db:consents:generate) locally, answer the prompts, and commit the migration."
+            exit 1
+          fi
 
           if [ -n "$(git status --porcelain -- .drizzle)" ]; then
             echo "::error::The Drizzle schema changed without a committed migration. Run pnpm run db:generate (and db:consents:generate) locally, review the SQL for DROP TABLE (see AGENTS.md → D1 Migration Safety), and commit it."
@@ -104,7 +105,7 @@ jobs:
   unit:
     name: Unit tests
     needs: gate
-    if: needs.gate.outputs.skip-tests != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -125,7 +126,7 @@ jobs:
   integration:
     name: Integration tests
     needs: gate
-    if: needs.gate.outputs.skip-tests != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -143,6 +144,7 @@ jobs:
   build:
     name: Build
     needs: gate
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -201,7 +203,7 @@ jobs:
     needs:
       - gate
       - build
-    if: needs.gate.outputs.skip-tests != 'true'
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.gate.outputs.skip-tests != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -260,6 +262,7 @@ jobs:
     name: Warm Playwright cache
     needs: gate
     if: needs.gate.outputs.skip-tests == 'true'
+    continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -287,7 +290,6 @@ jobs:
       !cancelled()
       && github.ref == 'refs/heads/main'
       && inputs.dry-run != true
-      && needs.gate.result == 'success'
       && needs.build.result == 'success'
       && (needs.gate.outputs.skip-tests == 'true'
       || (needs.static.result == 'success'

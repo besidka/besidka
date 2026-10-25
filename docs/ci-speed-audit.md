@@ -13,10 +13,12 @@ cache, `--only-shell` and no `--with-deps`, the dropped duplicate
 the parallel job graph with 3 job-level E2E shards, a full-suite run on every
 PR (the affected selection is gone from CI), and a `gate` job on main that
 skips lint, typecheck, unit, integration and E2E when the merged PR passed the
-full suite on a matching tree (`scripts/ci/resolve-production-test-source.mjs`;
-main still builds and deploys its own build). Instead of generating migrations
-before applying them to production, `static` now fails a PR whose schema
-changed without a committed migration. Stage 3 remains open. The "Now" column
+full suite and only ignorable, non-blocking files differ from the pushed commit
+(`scripts/ci/resolve-production-test-source.mjs`; main still builds and deploys
+its own build). Instead of generating migrations before applying them to
+production, `static` now fails a PR whose schema changed without a committed
+migration, and `scripts-check.yml` tests scripts-only PRs. Stage 3 remains
+open. The "Now" column
 and the measurements below describe the pipeline as it was before these
 changes.
 
@@ -376,6 +378,12 @@ load.
   reuse logic depends on). A PR that changes only these scripts does not run
   their tests. A cheap fix: a separate lightweight workflow on `scripts/**` +
   `tests/unit/scripts/**` that runs only those specs (~1 min).
+  **Fixed:** `scripts-check.yml` ("Scripts Check") now lints `scripts` and
+  runs `tests/unit/scripts` and `tests/unit/providers` for such PRs. The same
+  review dropped `.*rc` from the ignore lists (it only matches `.npmrc` and
+  `.nuxtrc`, which change installs and the Nuxt build), and the main-side
+  skip rule treats `scripts/**`, `.github/actions/**`, `preview-build.yml` and
+  `production.yml` as blocking even though they are ignored.
 
 ### F7. Small overheads
 
