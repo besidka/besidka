@@ -1416,6 +1416,77 @@ describe('Chat/Reasoning', () => {
         .toHaveLength(0)
     })
 
+  it('renders memory tool parts as memory steps, not generic ones',
+    async () => {
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage([
+            {
+              type: 'tool-memory_write',
+              toolCallId: 'call-1',
+              state: 'output-available',
+              input: { category: 'people', title: 'Anna' },
+              output: {
+                notice: 'saved',
+                action: 'created',
+                entry: {
+                  id: 'entry-9',
+                  handle: 'people/anna',
+                  scope: 'account',
+                  category: 'people',
+                  title: 'Anna',
+                  description: 'Sister',
+                },
+              },
+            },
+            {
+              type: 'tool-memory_list',
+              toolCallId: 'call-2',
+              state: 'output-available',
+              input: {},
+              output: {
+                notice: 'data',
+                entries: [{
+                  id: 'a',
+                  handle: 'topics/gardening',
+                  scope: 'account',
+                  category: 'topics',
+                  title: 'Gardening',
+                  description: 'Tomatoes',
+                  body: 'Body',
+                }],
+              },
+            },
+          ] as UIMessage['parts']),
+          status: 'ready',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+      })
+
+      const titles = wrapper.findAll(
+        '[data-testid="reasoning-memory-step-title"]',
+      )
+
+      expect(titles.map(title => title.text())).toEqual([
+        'Saved to memory',
+        'Looked through your memory',
+      ])
+      expect(
+        wrapper.get('[data-testid="reasoning-memory-step-undo"]').text(),
+      ).toBe('Undo')
+      expect(
+        wrapper.get('[data-testid="reasoning-memory-step-count"]').text(),
+      ).toBe('1 entry')
+      expect(wrapper.findAll('[data-testid="reasoning-step-title"]'))
+        .toHaveLength(0)
+      expect(wrapper.find('[data-testid="reasoning-search-step"]').exists())
+        .toBe(false)
+    })
+
   describe('hidden reasoning indicator', () => {
     function createMessageWithUsage(
       parts: UIMessage['parts'],

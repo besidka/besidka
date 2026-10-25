@@ -50,6 +50,26 @@ const TOOL_STEP_TITLES = new Map<string, {
     done: 'Read a chat',
     failed: 'Reading the chat failed',
   }],
+  ['memory_list', {
+    pending: 'Looking through your memory',
+    done: 'Looked through your memory',
+    failed: 'Memory lookup failed',
+  }],
+  ['memory_read', {
+    pending: 'Reading a memory',
+    done: 'Read a memory',
+    failed: 'Reading the memory failed',
+  }],
+  ['memory_write', {
+    pending: 'Saving to memory',
+    done: 'Saved to memory',
+    failed: 'Saving to memory failed',
+  }],
+  ['memory_forget', {
+    pending: 'Removing from memory',
+    done: 'Removed from memory',
+    failed: 'Removing from memory failed',
+  }],
 ])
 
 interface ToolLikeUIPart {
