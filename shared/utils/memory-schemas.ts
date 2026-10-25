@@ -153,6 +153,7 @@ export const memoryEntryPatchSchema = z
 
 export const memorySettingsPatchShape = {
   memoryEnabled: z.boolean().optional(),
+  memoryExtractionEnabled: z.boolean().optional(),
   chatSearchEnabled: z.boolean().optional(),
   memoryIncludeSensitive: z.boolean().optional(),
   aboutMe: z.string().max(MEMORY_LIMITS.maxAboutMeChars).nullable().optional(),

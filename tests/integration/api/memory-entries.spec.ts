@@ -687,7 +687,7 @@ describe('memory entries API', () => {
         },
       ])
       expect(response.settings).toMatchObject({
-        memoryEnabled: false,
+        memoryEnabled: true,
         chatSearchEnabled: true,
       })
       expect(JSON.stringify(response)).not.toContain('Secret')

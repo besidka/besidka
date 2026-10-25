@@ -22,7 +22,7 @@ describe('loadMemoryRuntimeSettings', () => {
 
   it('returns the defaults when the user has no settings row', async () => {
     expect(await load()).toEqual({
-      memoryEnabled: false,
+      memoryEnabled: true,
       chatSearchEnabled: true,
       memoryIncludeSensitive: false,
       aboutMe: null,
@@ -33,7 +33,7 @@ describe('loadMemoryRuntimeSettings', () => {
     testDb.insertUserSettings({ userId: 1 })
 
     expect(await load()).toEqual({
-      memoryEnabled: false,
+      memoryEnabled: true,
       chatSearchEnabled: true,
       memoryIncludeSensitive: false,
       aboutMe: null,
@@ -80,12 +80,12 @@ describe('loadMemoryRuntimeSettings', () => {
   it('does not read another user settings', async () => {
     testDb.insertUserSettings({
       userId: 2,
-      memoryEnabled: true,
+      memoryEnabled: false,
       aboutMe: 'Someone else',
     })
 
     expect(await load(1)).toEqual({
-      memoryEnabled: false,
+      memoryEnabled: true,
       chatSearchEnabled: true,
       memoryIncludeSensitive: false,
       aboutMe: null,

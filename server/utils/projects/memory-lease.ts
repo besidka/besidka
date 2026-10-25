@@ -46,18 +46,21 @@ export async function isProjectMemoryLeaseHeld(
   }
 }
 
+export function memoryExtractionLeaseKey(chatId: string) {
+  return `memory-extraction:${chatId}`
+}
+
 /**
- * Takes the per-project refresh lease: a short KV flag renewed by a heartbeat
- * for exactly as long as this invocation is alive, so a dead Worker stops
- * blocking refreshes after the lease expires. Returns null when another
- * live refresh already holds it. KV read failures fail open.
+ * Takes a KV lease on `key`: a short flag renewed by a heartbeat for exactly
+ * as long as this invocation is alive, so a dead Worker stops blocking work
+ * after the lease expires. Returns null when another live holder already has
+ * it. KV read failures fail open.
  */
-export async function acquireProjectMemoryLease(
-  projectId: string,
+export async function acquireMemoryLease(
+  key: string,
   logger: ProjectMemoryLogger = noopProjectMemoryLogger,
 ): Promise<ProjectMemoryLease | null> {
   const kv = useKV()
-  const key = projectMemoryRefreshKvKey(projectId)
 
   try {
     const heldLease = await kv.get(key)
@@ -107,4 +110,15 @@ export async function acquireProjectMemoryLease(
   }
 
   return { release }
+}
+
+/**
+ * Takes the per-project refresh lease through the generic lease, under the
+ * project refresh key.
+ */
+export async function acquireProjectMemoryLease(
+  projectId: string,
+  logger: ProjectMemoryLogger = noopProjectMemoryLogger,
+): Promise<ProjectMemoryLease | null> {
+  return await acquireMemoryLease(projectMemoryRefreshKvKey(projectId), logger)
 }

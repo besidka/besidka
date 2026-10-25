@@ -34,7 +34,7 @@ async function mountLayout() {
 }
 
 describe('profile layout', () => {
-  it('lists Security and API Keys tabs in that order', async () => {
+  it('lists Security, API Keys and Memory tabs in that order', async () => {
     mocks.routePath = '/profile/security'
 
     const wrapper = await mountLayout()
@@ -43,10 +43,12 @@ describe('profile layout', () => {
     expect(tabs.map(tab => tab.text())).toEqual([
       'Security',
       'API Keys',
+      'Memory',
     ])
     expect(tabs.map(tab => tab.attributes('to'))).toEqual([
       '/profile/security',
       '/profile/keys',
+      '/profile/memory',
     ])
   })
 
@@ -70,6 +72,17 @@ describe('profile layout', () => {
     expect(tabs[1]?.classes()).toContain('tab-active')
   })
 
+  it('highlights the Memory tab when visiting /profile/memory', async () => {
+    mocks.routePath = '/profile/memory'
+
+    const wrapper = await mountLayout()
+    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+
+    expect(tabs[0]?.classes()).not.toContain('tab-active')
+    expect(tabs[1]?.classes()).not.toContain('tab-active')
+    expect(tabs[2]?.classes()).toContain('tab-active')
+  })
+
   it.each([
     '/profile/email',
     '/profile/password',
@@ -91,5 +104,6 @@ describe('profile layout', () => {
 
     expect(tabs[0]?.classes()).not.toContain('tab-active')
     expect(tabs[1]?.classes()).not.toContain('tab-active')
+    expect(tabs[2]?.classes()).not.toContain('tab-active')
   })
 })

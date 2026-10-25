@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   convertFilesForAICalls: [] as unknown[][],
   streamTextCalls: [] as unknown[],
   markProjectsMemoryStale: vi.fn(async () => undefined),
+  loggerSet: vi.fn(),
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -112,7 +113,7 @@ vi.mock('ai', async (importOriginal) => {
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
-    set: vi.fn(),
+    set: mocks.loggerSet,
     getContext: () => ({ requestId: 'test-request-id' }),
   }),
   createRequestLogger: () => ({
@@ -188,9 +189,10 @@ function createDb(chat: {
     instructions: string | null
     memory: string | null
     memoryStatus: string
+    memoryMigratedAt?: Date | null
   } | null
   messages: unknown[]
-}) {
+}, memoryEntriesFindFirst = vi.fn(async () => undefined)) {
   const insertValues = vi.fn()
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
@@ -237,6 +239,9 @@ function createDb(chat: {
         chats: {
           findFirst: vi.fn(async () => chat),
         },
+        memoryEntries: {
+          findFirst: memoryEntriesFindFirst,
+        },
       },
       insert: insertCall,
       transaction,
@@ -247,6 +252,51 @@ function createDb(chat: {
     insertValues,
     transaction,
     updateSet,
+    memoryEntriesFindFirst,
+  }
+}
+
+const PROJECT_MEMORY_BLOB = 'User prefers milestone-based updates.'
+
+async function sendWithProject(
+  project: {
+    memoryMigratedAt?: Date | null
+  },
+  memoryEntriesFindFirst?: ReturnType<typeof vi.fn>,
+) {
+  const handler = await getHandler()
+  const created = createDb({
+    id: 'chat-1',
+    projectId: 'project-1',
+    project: {
+      id: 'project-1',
+      name: 'Roadmap',
+      instructions: 'Stay focused on milestone decisions',
+      memory: PROJECT_MEMORY_BLOB,
+      memoryStatus: 'ready',
+      ...project,
+    },
+    messages: [],
+  }, memoryEntriesFindFirst as never)
+
+  vi.stubGlobal('useDb', () => created.db)
+
+  const response = await handler({
+    params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    body: {
+      model: 'gpt-5-mini',
+      tools: [],
+      reasoning: 'off',
+      messages: [createMessage('Hello')],
+    },
+  } as any)
+
+  await response.ready
+
+  return {
+    ...created,
+    instructions: (mocks.streamTextCalls[0] as { instructions: string })
+      .instructions,
   }
 }
 
@@ -447,6 +497,59 @@ describe('chat project instructions', () => {
     })
     expect(mocks.streamTextCalls[0]).toMatchObject({
       instructions: expect.stringContaining('milestone-based updates'),
+    })
+  })
+
+  describe('legacy project memory blob deduplication', () => {
+    it('injects the blob when the project has no entries and is not migrated', async () => {
+      const { instructions, memoryEntriesFindFirst } = await sendWithProject({
+        memoryMigratedAt: null,
+      })
+
+      expect(instructions).toContain('Project memory:')
+      expect(instructions).toContain(PROJECT_MEMORY_BLOB)
+      expect(instructions).toContain('Stay focused on milestone decisions')
+      expect(memoryEntriesFindFirst).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not inject the blob once memoryMigratedAt is set', async () => {
+      const { instructions, memoryEntriesFindFirst } = await sendWithProject({
+        memoryMigratedAt: new Date(),
+      })
+
+      expect(instructions).not.toContain('Project memory:')
+      expect(instructions).not.toContain(PROJECT_MEMORY_BLOB)
+      expect(instructions).toContain('Stay focused on milestone decisions')
+      expect(instructions).toContain('Roadmap')
+      expect(memoryEntriesFindFirst).not.toHaveBeenCalled()
+    })
+
+    it('does not inject the blob when the project owns an entry', async () => {
+      const { instructions, memoryEntriesFindFirst } = await sendWithProject(
+        { memoryMigratedAt: null },
+        vi.fn(async () => ({ id: 'entry-1' })),
+      )
+
+      expect(instructions).not.toContain('Project memory:')
+      expect(instructions).not.toContain(PROJECT_MEMORY_BLOB)
+      expect(instructions).toContain('Stay focused on milestone decisions')
+      expect(memoryEntriesFindFirst).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the blob and logs the error when the lookup throws', async () => {
+      const { instructions } = await sendWithProject(
+        { memoryMigratedAt: null },
+        vi.fn(async () => {
+          throw new Error('d1 unavailable')
+        }),
+      )
+
+      expect(instructions).toContain(PROJECT_MEMORY_BLOB)
+      expect(mocks.loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          projectMemory: { dedupeError: 'd1 unavailable' },
+        },
+      })
     })
   })
 })

@@ -88,4 +88,42 @@ describe('project instructions', () => {
       instructions: '   ',
     })).toBeNull()
   })
+
+  describe('memory entries active', () => {
+    it('suppresses the legacy blob but keeps instructions', () => {
+      const prompt = buildProjectSystemPrompt({
+        name: 'Roadmap',
+        instructions: 'Stay focused on milestones',
+        memory: 'User prefers milestone-based plans.',
+        memoryStatus: 'ready',
+        memoryEntriesActive: true,
+      })
+
+      expect(prompt).toContain('Stay focused on milestones')
+      expect(prompt).not.toContain('Project memory:')
+      expect(prompt).not.toContain('milestone-based plans')
+    })
+
+    it('returns null when the blob is the only content', () => {
+      expect(buildProjectSystemPrompt({
+        name: 'Roadmap',
+        instructions: null,
+        memory: 'User prefers milestone-based plans.',
+        memoryStatus: 'ready',
+        memoryEntriesActive: true,
+      })).toBeNull()
+    })
+
+    it('keeps the blob when the flag is false', () => {
+      const prompt = buildProjectSystemPrompt({
+        name: 'Roadmap',
+        instructions: null,
+        memory: 'User prefers milestone-based plans.',
+        memoryStatus: 'ready',
+        memoryEntriesActive: false,
+      })
+
+      expect(prompt).toContain('Project memory:')
+    })
+  })
 })

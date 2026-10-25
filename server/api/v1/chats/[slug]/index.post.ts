@@ -164,6 +164,7 @@ import {
   withSearchAnswerGuarantee,
 } from '~~/server/utils/ai/search-answer-continuation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
+import { resolveLegacyProjectMemory } from '~~/server/utils/projects/legacy-memory'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 import { getBraveWebSearchTools } from '~~/server/utils/search/brave'
@@ -248,6 +249,7 @@ export default defineEventHandler(async (event) => {
           instructions: true,
           memory: true,
           memoryStatus: true,
+          memoryMigratedAt: true,
           useAccountMemory: true,
         },
       },
@@ -568,7 +570,12 @@ export default defineEventHandler(async (event) => {
     ? {
       name: chat.project.name,
       instructions: chat.project.instructions,
-      memory: chat.project.memory,
+      memory: await resolveLegacyProjectMemory(
+        chat.project,
+        userId,
+        db,
+        logger,
+      ),
       memoryStatus: chat.project.memoryStatus,
     }
     : null)

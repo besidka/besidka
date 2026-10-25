@@ -65,7 +65,7 @@ describe('chat memory context', () => {
       )
 
       expect(settings).toEqual({
-        memoryEnabled: false,
+        memoryEnabled: true,
         chatSearchEnabled: true,
         memoryIncludeSensitive: false,
         aboutMe: null,

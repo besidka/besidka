@@ -379,7 +379,10 @@ function createDb(scenario: DbScenario = {}) {
     db: {
       query: {
         userSettings: { findFirst: settingsFindFirst },
-        memoryEntries: { findMany: memoryFindMany },
+        memoryEntries: {
+          findMany: memoryFindMany,
+          findFirst: vi.fn(async () => undefined),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
@@ -595,10 +598,36 @@ describe('memory send-path wiring', () => {
   })
 
   describe('defaults and the memory switch', () => {
-    it('keeps memory off by default: no index, no memory tools, no entry '
-      + 'read, chat search still on', async () => {
+    it('uses the app default (memory on) when there is no settings row',
+      async () => {
+        const { doStream, created } = await runSend({
+          scenario: { settings: undefined, memoryRows: [createMemoryRow()] },
+          steps: [createTextChunks('Plain answer.')],
+        })
+        const callOptions = doStream.mock.calls[0]?.[0] as any
+
+        expect(mocks.memoryToolsInputs).toHaveLength(1)
+        expect(mocks.chatSearchToolsInputs).toHaveLength(1)
+        expect(created.memoryFindMany).toHaveBeenCalled()
+        expect(readToolNames(callOptions).sort()).toEqual([
+          'memory_forget',
+          'memory_list',
+          'memory_read',
+          'memory_write',
+          'read_chat',
+          'search_chats',
+        ])
+        expect(readSystemPrompt(callOptions).startsWith('<memory>'))
+          .toBe(true)
+      })
+
+    it('keeps memory off when the user turned it off: no index, no memory '
+      + 'tools, no entry read, chat search still on', async () => {
       const { doStream, created } = await runSend({
-        scenario: { settings: undefined, memoryRows: [createMemoryRow()] },
+        scenario: {
+          settings: { memoryEnabled: false },
+          memoryRows: [createMemoryRow()],
+        },
         steps: [createTextChunks('Plain answer.')],
       })
       const callOptions = doStream.mock.calls[0]?.[0] as any

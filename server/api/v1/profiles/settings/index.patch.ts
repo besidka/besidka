@@ -1,7 +1,8 @@
-import { createError } from 'evlog'
+import { createError, EvlogError } from 'evlog'
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { ComplianceBlockedCounts } from '#shared/types/memory.d'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull, lt, or } from 'drizzle-orm'
+import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { neverStoreKinds } from '#shared/utils/memory-policy'
@@ -32,8 +33,46 @@ const memoryModelScopes = [
 ] as const
 
 interface MemoryModelChoiceToValidate {
+  modelKey: MemoryModelKey
+  gatewayKey: MemoryGatewayKey
   model: string
   gateway: GatewayId | null
+}
+
+type MemoryModelKey = typeof memoryModelScopes[number]['modelKey']
+type MemoryGatewayKey = typeof memoryModelScopes[number]['gatewayKey']
+
+interface MemoryModelValidationError {
+  message: string
+  why?: string
+  fix?: string
+  status: number
+}
+
+function toModelValidationError(
+  exception: unknown,
+): MemoryModelValidationError {
+  if (!EvlogError.isEvlogError(exception)) {
+    return {
+      message: 'Could not verify the memory model',
+      status: 503,
+    }
+  }
+
+  const validationError: MemoryModelValidationError = {
+    message: exception.message,
+    status: exception.status,
+  }
+
+  if (exception.why) {
+    validationError.why = exception.why
+  }
+
+  if (exception.fix) {
+    validationError.fix = exception.fix
+  }
+
+  return validationError
 }
 
 function assertAboutMeStorable(
@@ -113,6 +152,7 @@ export default defineEventHandler(async (event) => {
     favoriteModels?: string[]
     favoriteGatewayModels?: Partial<Record<GatewayId, string[]>>
     memoryEnabled?: boolean
+    memoryExtractionEnabled?: boolean
     chatSearchEnabled?: boolean
     memoryIncludeSensitive?: boolean
     aboutMe?: string | null
@@ -167,6 +207,10 @@ export default defineEventHandler(async (event) => {
     fieldUpdates.memoryEnabled = body.data.memoryEnabled
   }
 
+  if (body.data.memoryExtractionEnabled !== undefined) {
+    fieldUpdates.memoryExtractionEnabled = body.data.memoryExtractionEnabled
+  }
+
   if (body.data.chatSearchEnabled !== undefined) {
     fieldUpdates.chatSearchEnabled = body.data.chatSearchEnabled
   }
@@ -208,7 +252,12 @@ export default defineEventHandler(async (event) => {
     fieldUpdates[gatewayKey] = model === null ? null : (gateway ?? null)
 
     if (model !== null) {
-      memoryModelChoices.push({ model, gateway: gateway ?? null })
+      memoryModelChoices.push({
+        modelKey,
+        gatewayKey,
+        model,
+        gateway: gateway ?? null,
+      })
     }
   }
 
@@ -219,12 +268,41 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  for (const { model, gateway } of memoryModelChoices) {
-    if (gateway !== null) {
-      await enforceGatewayModelsRateLimit(event, session.user.id)
+  const isOptingOutOfSensitive = body.data.memoryIncludeSensitive === false
+  let modelValidationError: MemoryModelValidationError | null = null
+
+  for (const choice of memoryModelChoices) {
+    const { modelKey, gatewayKey, model, gateway } = choice
+
+    if (!isOptingOutOfSensitive) {
+      if (gateway !== null) {
+        await enforceGatewayModelsRateLimit(event, session.user.id)
+      }
+
+      await assertMemoryModelChoice({ userId, model, gateway, logger })
+
+      continue
     }
 
-    await assertMemoryModelChoice({ userId, model, gateway, logger })
+    try {
+      if (gateway !== null) {
+        await enforceGatewayModelsRateLimit(event, session.user.id)
+      }
+
+      await assertMemoryModelChoice({ userId, model, gateway, logger })
+    } catch (exception) {
+      Reflect.deleteProperty(fieldUpdates, modelKey)
+      Reflect.deleteProperty(fieldUpdates, gatewayKey)
+      modelValidationError ??= toModelValidationError(exception)
+      logger.set({
+        attributes: {
+          memorySettings: {
+            modelValidationFailed: modelKey,
+            modelValidationStatus: modelValidationError.status,
+          },
+        },
+      })
+    }
   }
 
   const existingSettings = await db.query.userSettings.findFirst({
@@ -233,6 +311,8 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
+      memoryEnabled: true,
+      memoryExtractionEnabled: true,
     },
   })
   const settingsStatement = existingSettings
@@ -242,17 +322,54 @@ export default defineEventHandler(async (event) => {
       userId,
       ...fieldUpdates,
     })
+  const isExtractionEffectiveBefore = (existingSettings?.memoryEnabled ?? true)
+    && existingSettings?.memoryExtractionEnabled === true
+  const isExtractionEffectiveAfter
+    = (fieldUpdates.memoryEnabled ?? existingSettings?.memoryEnabled ?? true)
+      && (fieldUpdates.memoryExtractionEnabled
+        ?? existingSettings?.memoryExtractionEnabled) === true
+  const isEnablingExtraction = !isExtractionEffectiveBefore
+    && isExtractionEffectiveAfter
+  const statements: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
+    settingsStatement,
+  ]
 
-  if (body.data.memoryIncludeSensitive !== false) {
-    await settingsStatement
+  if (isEnablingExtraction) {
+    const stampedAt = new Date()
 
-    return fieldUpdates
+    statements.push(
+      db.update(schema.chats)
+        .set({ memoryExtractedAt: stampedAt })
+        .where(and(
+          eq(schema.chats.userId, userId),
+          or(
+            isNull(schema.chats.memoryExtractedAt),
+            lt(schema.chats.memoryExtractedAt, stampedAt),
+          ),
+        )),
+    )
   }
 
-  const [, purgedRows] = await db.batch([
-    settingsStatement,
-    buildSensitiveMemoryPurge(userId, db),
-  ])
+  const response: Record<string, unknown> = { ...fieldUpdates }
+
+  if (modelValidationError) {
+    response.modelValidationError = modelValidationError
+  }
+
+  if (!isOptingOutOfSensitive) {
+    if (statements.length === 1) {
+      await settingsStatement
+    } else {
+      await db.batch(statements)
+    }
+
+    return response
+  }
+
+  statements.push(buildSensitiveMemoryPurge(userId, db))
+
+  const batchResults = await db.batch(statements)
+  const purgedRows = batchResults.at(-1) as unknown as unknown[]
   const sensitiveEntriesDeleted = purgedRows.length
 
   logger.set({
@@ -264,7 +381,7 @@ export default defineEventHandler(async (event) => {
   })
 
   return {
-    ...fieldUpdates,
+    ...response,
     sensitiveEntriesDeleted,
   }
 })

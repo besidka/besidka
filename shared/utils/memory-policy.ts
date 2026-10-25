@@ -136,7 +136,8 @@ export const neverStoreKindIds = [
 ] as const
 
 export const MEMORY_SETTING_DEFAULTS = {
-  memoryEnabled: false,
+  memoryEnabled: true,
+  memoryExtractionEnabled: false,
   chatSearchEnabled: true,
   memoryIncludeSensitive: false,
   aboutMe: null as string | null,

@@ -147,6 +147,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Reasoning/MemoryStep.spec.ts',
     'tests/unit/components/Chat/Reasoning.spec.ts',
   ]
+  const memoryExtractionTests = [
+    'tests/unit/utils/memory/extract-apply.spec.ts',
+    'tests/unit/utils/memory/extract-input.spec.ts',
+    'tests/unit/utils/memory/extract-runtime.spec.ts',
+    'tests/unit/utils/memory/extract-sweep.spec.ts',
+    'tests/unit/utils/memory/extract.spec.ts',
+    'tests/unit/utils/projects/memory-entries.spec.ts',
+    'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
+    'tests/integration/api/memory-extract-now.spec.ts',
+  ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
@@ -183,6 +193,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelList.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/Panel.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
   ]
   const userKeysTests = [
@@ -452,6 +463,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Security/Sessions.spec.ts',
     'tests/unit/components/Profile/Security/LinkedAccounts.spec.ts',
     'tests/unit/components/Profile/Security/Passkeys.spec.ts',
+  ]
+
+  const memoryTabTests = [
+    'tests/unit/pages/profile/memory.spec.ts',
+    'tests/unit/components/Profile/Memory/ModelPicker.spec.ts',
+    'tests/unit/components/Profile/Memory/Controls.spec.ts',
+    'tests/unit/components/Profile/Memory/Sensitive.spec.ts',
+    'tests/unit/components/Profile/Memory/AboutMe.spec.ts',
+    'tests/unit/components/Profile/Memory/Models.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries.spec.ts',
+    'tests/unit/composables/memory-settings.spec.ts',
+    'tests/unit/utils/memory-model-filter.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
   ]
 
   const accountEmailPasswordTests = [
@@ -1332,6 +1356,14 @@ export function getAffectedTests(changedFiles) {
       tests: memoryChatDeletionTests,
     },
     {
+      pattern: /^server\/utils\/projects\/legacy-memory\.ts$/,
+      tests: [
+        'tests/unit/utils/projects/legacy-memory.spec.ts',
+        'tests/integration/api/chats-project-instructions.spec.ts',
+        'tests/integration/api/chats-memory.spec.ts',
+      ],
+    },
+    {
       pattern: /^tests\/setup\/helpers\/memory-db\.ts$/,
       tests: [
         ...memoryEntriesTests,
@@ -1647,6 +1679,11 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/layouts/profile.spec.ts'],
     },
     {
+      pattern:
+        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/composables\/memory-settings\.ts|app\/types\/memory-settings\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
+      tests: memoryTabTests,
+    },
+    {
       pattern: /^app\/components\/ui\/Button\.vue$/,
       tests: ['tests/unit/components/ui/Button.spec.ts'],
     },
@@ -1816,6 +1853,7 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         ...chatShareTests,
         ...memoryModelTests,
+        ...memoryExtractionTests,
       ],
     },
     {
@@ -1829,6 +1867,7 @@ export function getAffectedTests(changedFiles) {
         ...memoryComplianceTests,
         ...memoryModelTests,
         ...memoryPurgeTests,
+        ...memoryExtractionTests,
       ],
     },
     {
@@ -1847,11 +1886,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/db\/schemas\/user-settings\.ts$/,
-      tests: [...profileSettingsTests, ...memoryModelTests],
+      tests: [
+        ...profileSettingsTests,
+        ...memoryModelTests,
+        ...memoryExtractionTests,
+      ],
     },
     {
       pattern: /^server\/db\/schemas\/memory-entries\.ts$/,
       tests: [
+        ...memoryExtractionTests,
         ...memoryComplianceTests,
         ...memoryPurgeTests,
         ...profileSettingsTests,
@@ -1860,6 +1904,7 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/db\/relations\.ts$/,
       tests: [
+        ...memoryExtractionTests,
         ...memoryComplianceTests,
         ...memoryModelTests,
         ...memoryPurgeTests,
@@ -1872,6 +1917,7 @@ export function getAffectedTests(changedFiles) {
         ...memoryContractTests,
         ...memoryComplianceTests,
         ...memoryModelTests,
+        ...memoryExtractionTests,
         ...profileSettingsTests,
       ],
     },
@@ -1880,6 +1926,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,
+        ...memoryExtractionTests,
         ...profileSettingsTests,
       ],
     },
@@ -1887,9 +1934,22 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/memory\/resolve-model\.ts$/,
       tests: [
         ...memoryModelTests,
+        ...memoryExtractionTests,
         ...historyProjectsTests,
         ...profileSettingsTests,
       ],
+    },
+    {
+      pattern: /^server\/(utils\/memory\/extract.*|plugins\/memory-extraction-sweep|api\/v1\/memory\/extract-now\.post)\.ts$/,
+      tests: memoryExtractionTests,
+    },
+    {
+      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|instructions)\.ts$/,
+      tests: [...memoryExtractionTests, ...memoryModelTests],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/(memory-extraction-db|public-id-mock)\.ts$/,
+      tests: memoryExtractionTests,
     },
     {
       pattern: /^server\/utils\/memory\/catalog-usability\.ts$/,

@@ -158,6 +158,7 @@ const props = defineProps<{
   selectedModelId: string | null
   detailModelId: string | null
   listboxId: string
+  filterModel?: (model: GatewayModel) => boolean
 }>()
 
 const emit = defineEmits<{
@@ -196,10 +197,15 @@ const errorDetails = computed(() => {
  * the parent reads as "this provider is gone" and answers by dropping the
  * filter the user set before they started typing. `capabilityFilters` AND
  * together the same way Free and Vision do, through
- * `matchesGatewayCapabilityFilters()`.
+ * `matchesGatewayCapabilityFilters()`. A caller's `filterModel` runs first,
+ * so a model it hides never reaches the groups, the counts or the search.
  */
 const groupableModels = computed<GatewayModel[]>(() => {
   return models.value.filter((model) => {
+    if (props.filterModel && !props.filterModel(model)) {
+      return false
+    }
+
     if (props.isFavoritesOnly && !props.favoriteModelIds.includes(model.id)) {
       return false
     }

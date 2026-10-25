@@ -1203,7 +1203,8 @@ describe('memory entries service', () => {
       expect(new Date(exported.exportedAt).toISOString())
         .toBe(exported.exportedAt)
       expect(exported.settings).toEqual({
-        memoryEnabled: false,
+        memoryEnabled: true,
+        memoryExtractionEnabled: false,
         chatSearchEnabled: true,
         memoryIncludeSensitive: false,
         aboutMe: null,
@@ -1271,7 +1272,7 @@ describe('memory entries service', () => {
 
       expect(exported.entries).toHaveLength(1)
       expect(exported.projects).toEqual([])
-      expect(exported.settings.memoryEnabled).toBe(false)
+      expect(exported.settings.memoryEnabled).toBe(true)
       expect(serialized).not.toContain('Secret blob')
       expect(serialized).not.toContain('Stranger about me')
       expect(serialized).not.toContain('secret')

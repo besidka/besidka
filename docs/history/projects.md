@@ -334,6 +334,41 @@ how a refresh picks its model and what it may store.
   `null` means the default). Nothing reads it yet; the memory UI and the
   account-memory injection are later workstreams.
 
+### Memory entries supersede the blob (W6, 2026-10-25)
+
+Workstream W6 of `docs/memory-architecture.md` moves project memory into
+`memory_entries`. The legacy `projects.memory` blob is superseded once a
+project has entries, but never blanket: extraction is off by default, so a
+project that has no entries keeps today's behaviour and its memory does not
+freeze.
+
+- `projectUsesMemoryEntries(project, userId, db?)` in
+  `server/utils/projects/memory-entries.ts` is the single gate. It is true when
+  `projects.memory_migrated_at` is set, or when the user owns at least one
+  `memory_entries` row scoped to that project. The index builder (W4) calls this
+  same function; nothing else decides it.
+- `buildProjectSystemPrompt()` takes an optional `memoryEntriesActive`. When
+  true it suppresses the "Project memory:" blob section; project instructions
+  still render, and a project whose only content was the blob yields `null`.
+  The chat route passes the result of `projectUsesMemoryEntries`.
+- `refreshProjectMemory()` checks the gate after taking the refresh lease. When
+  entries are in use it neither synthesises nor overwrites `projects.memory`: it
+  returns the current state unchanged and still releases the lease.
+- `markProjectsMemoryStale()` skips projects with `memory_migrated_at` set and
+  projects that already have memory entries, so the project page stops
+  flipping them to `stale`. A gated refresh also settles a leftover `stale`
+  status to `ready` (non-empty blob) or `idle`.
+- The `memory` column is never nulled or rewritten by the gate (rollback path).
+  `toggleProjectMemory(false)` still clears it.
+- Edge case: an explicit `memory_write` into a project whose blob was never
+  migrated makes `projectUsesMemoryEntries` true, so the blob disappears from
+  the prompt while it stays stored. The blob is folded in by the next
+  extraction pass, which sets `memory_migrated_at`.
+- `projectMemoryMessageText` and `truncateProjectMemoryText` are exported from
+  `memory.ts` for the extraction pipeline. They carry the project prefix because
+  Nitro auto-imports every `server/utils` export and `truncateText` already
+  exists in `server/utils/memory/tools/excerpt.ts`.
+
 UI surfaces:
 
 - project detail page memory card

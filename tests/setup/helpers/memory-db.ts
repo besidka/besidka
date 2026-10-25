@@ -95,6 +95,7 @@ export function createMemoryTestDb(): MemoryTestDb {
       memory_enabled integer,
       chat_search_enabled integer,
       memory_include_sensitive integer,
+      memory_extraction_enabled integer,
       about_me text,
       profile_memory_model text,
       profile_memory_gateway text,
@@ -119,6 +120,7 @@ export function createMemoryTestDb(): MemoryTestDb {
       memory_model text,
       memory_error text,
       use_account_memory integer,
+      memory_migrated_at integer,
       pinned_at integer,
       archived_at integer,
       activity_at integer NOT NULL

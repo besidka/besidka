@@ -205,10 +205,23 @@ describe('memorySettingsPatchShape', () => {
     expect(settingsSchema.safeParse({}).success).toBe(true)
     expect(settingsSchema.safeParse({
       memoryEnabled: true,
+      memoryExtractionEnabled: true,
       chatSearchEnabled: false,
       memoryIncludeSensitive: false,
       aboutMe: null,
     }).success).toBe(true)
+  })
+
+  it('accepts only a boolean memoryExtractionEnabled', () => {
+    expect(settingsSchema.safeParse({
+      memoryExtractionEnabled: false,
+    }).success).toBe(true)
+    expect(settingsSchema.safeParse({
+      memoryExtractionEnabled: 'yes',
+    }).success).toBe(false)
+    expect(settingsSchema.safeParse({
+      memoryExtractionEnabled: null,
+    }).success).toBe(false)
   })
 
   it('caps aboutMe at 4000 characters', () => {
