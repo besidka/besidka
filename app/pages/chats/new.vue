@@ -223,7 +223,7 @@ const projectInstructionsText = computed(() => {
 })
 
 const projectMemoryText = computed(() => {
-  if (projectMemoryStatus.value !== 'ready') {
+  if (projectMemoryStatus.value === 'disabled') {
     return null
   }
 

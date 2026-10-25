@@ -36,6 +36,7 @@ import {
 } from 'node:fs'
 import { join, relative } from 'node:path'
 import process from 'node:process'
+import { linearRequest } from './linear-request.mjs'
 
 const ROOT = process.cwd()
 const DOCS_DIR = join(ROOT, 'docs')
@@ -371,34 +372,8 @@ async function rebuildIndex(syncedSha) {
   }
 }
 
-async function request(query, variables, attempt = 1) {
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': apiKey,
-    },
-    body: JSON.stringify({ query, variables }),
-  })
-  const body = await response.json().catch(() => ({}))
-  const isRateLimited = response.status === 429
-    || body.errors?.some((error) => {
-      return error.extensions?.code === 'RATELIMITED'
-    })
-
-  if (isRateLimited && attempt < 4) {
-    await new Promise(resolve => setTimeout(resolve, attempt * 15_000))
-
-    return request(query, variables, attempt + 1)
-  }
-
-  if (!response.ok || body.errors?.length) {
-    const message = body.errors?.map(error => error.message).join('; ')
-
-    throw new Error(message || `HTTP ${response.status}`)
-  }
-
-  return body.data
+function request(query, variables) {
+  return linearRequest({ apiUrl: API_URL, apiKey, query, variables })
 }
 
 await main()

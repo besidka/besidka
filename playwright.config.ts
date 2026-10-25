@@ -52,19 +52,12 @@ export default defineConfig({
   // (a re-run hits now-warm deps); it only masks non-determinism, not real
   // regressions, which fail both attempts. CI keeps 2 retries.
   retries: process.env.CI ? 2 : 1,
-  // Run e2e serially (one worker). The Nuxt dev server (Vite) pre-bundles deps
-  // on demand and, on discovering a new one, BROADCASTS a one-time HMR
-  // full-reload to every connected page. With parallel workers that broadcast
-  // reloads another worker's page mid-interaction ("Execution context was
-  // destroyed" / lost scroll or input state), flaking timing-sensitive specs.
-  // A single worker removes that cross-worker amplifier and warms deps
-  // progressively so fragile specs run after their deps are optimized. It does
-  // not stop an in-page reload landing mid-interaction (see signIn's toPass in
-  // helpers/auth.ts), which the lone local retry above covers. Dev-only: a
-  // production build never pre-bundles or reloads. CI now serves the built
-  // app via `wrangler dev` (see webServer.command below), which removes the
-  // root cause, but workers stays at 1 pending a live-CI flake-validation
-  // round before raising it.
+  // CI splits E2E across 3 parallel jobs with `--shard`; each job has its own
+  // `wrangler dev`, local D1 and `auth.setup` user. Inside a job workers stays
+  // 1: most specs share that single user, so parallel workers would see each
+  // other's chats and history. Locally, the Vite dev server also broadcasts an
+  // HMR full-reload to every page when it pre-bundles a new dependency, which
+  // parallel workers would turn into mid-interaction reloads.
   workers: 1,
   // Reporter to use.
   // See https://playwright.dev/docs/test-reporters

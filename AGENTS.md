@@ -112,6 +112,8 @@ Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remo
      - Uses a backup-and-replay strategy for affected child tables.
 4. Even for "safe-looking" additive migrations: **verify the SQL contains only `ALTER TABLE ADD COLUMN`, `CREATE INDEX`, `CREATE TABLE` (new tables only), `DROP INDEX`.** Anything else needs scrutiny.
 
+CI enforces this on the pull request: the `static` job fails a PR whose schema changed without a committed migration, and CI never generates migrations before applying them, so only reviewed, committed SQL ever reaches a remote database.
+
 ### Required when applying to production
 
 - Always take a Time Travel bookmark **before** applying, save it somewhere retrievable:
@@ -335,6 +337,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `ERR_CONNECTION_REFUSED`): the signature, why the exit reason was
   invisible, the stdout piping and `wrangler-logs` artifact diagnostics, and
   what to do on the next occurrence
+- `docs/ci-speed-audit.md` - Where CI time went, measured across 300 runs
+  (serial E2E with `workers: 1`, one serial job, a dead Playwright cache on
+  `main` from an unexpanded `~`, `main` re-testing what the PR already
+  tested), the target job graph with 3 E2E shards on free GitHub-hosted
+  runners, and the staged plan (stages 0-1 implemented, 2-3 open)
 - `docs/cloudflare-previews.md` - PR and `main` previews on Cloudflare
   Workers Previews (one Worker, `env.production.previews`) instead of the
   separate `besidka-preview` Worker: `wrangler preview --env production`
@@ -347,7 +354,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/stacked-prs.md` - When to group PRs and how: the umbrella pattern
   (children `--base` the parent branch, no CI on children, parent builds
   everything) versus native `gh stack` layers (only the top layer builds,
-  affected tests diff against the stack base) versus a plain PR; exact
+  CI tests the whole stack) versus a plain PR; exact
   commands, the per-workflow CI table, merge order and squash semantics, the
   no-build gate in `preview-deploy.yml`, and warnings (the "Add to stack"
   banner, retarget-on-merge firing only `edited`, previews only for the
@@ -359,6 +366,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (breaking the DaisyUI cascade) or 404; detection, the upstream issue
   (nuxt/nuxt#36136), rejected alternatives, the more-chunk-renames trade-off,
   revert criteria, and the build-comparison verification recipe
+- `docs/memory-architecture.md` - Memory proposal (2026-10-24): claude.ai's
+  observed design (small MD entries + one-line descriptions as an index), the
+  audit of today's project-memory blob and its bugs, the target layers
+  (memory entries, cached index, on-demand memory/search tools over the
+  existing FTS5, cron-sweep extraction), the code-enforced compliance gate
+  (never-store list, GDPR Art. 9 opt-in), token budgets incl. the Cyrillic
+  multiplier, owner-overridable defaults, and the parallel workstreams
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,
@@ -1040,7 +1054,7 @@ try {
 
 **Stop hooks**: These still run after each response as a safety net, but should not be relied upon as the primary validation mechanism.
 
-**Affected test mappings**: When writing new test files, you MUST update `scripts/test-affected-check.mjs` to register them. This script maps source file patterns to test files for CI — unregistered tests won't run on pull requests when their source files change. Add new test files to existing test groups or create a new group as appropriate.
+**Affected test mappings**: CI runs the full suite on every pull request, so an unregistered test still runs there. The mapping in `scripts/test-affected-check.mjs` now drives the pre-push hook (`.husky/pre-push`) and `pnpm run test:affected`, so when writing new test files you MUST still update it to register them — unregistered tests won't run locally when their source files change. Add new test files to existing test groups or create a new group as appropriate.
 
 ## Commit Messages
 

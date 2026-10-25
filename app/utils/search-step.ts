@@ -13,7 +13,13 @@ export const SEARCH_STEP_FALLBACK_ERROR = 'The search failed.'
 const SEARCH_STEP_TOOL_NAMES = new Set<string>([
   'web_search_brave',
   'web_search_exa',
+  'search_chats',
+  'read_chat',
 ])
+const CHAT_SEARCH_TOOL_NAME = 'search_chats'
+const CHAT_READ_TOOL_NAME = 'read_chat'
+const INTERNAL_CHAT_PATH_PATTERN = /^\/chats\/[0-9A-Za-z]+$/
+const UNTITLED_CHAT_TITLE = 'Untitled chat'
 const DEEPSEEK_SEARCH_TOOL_NAME = 'web_search'
 const DEEPSEEK_SEARCH_PROVIDER = 'deepseek'
 const SEARCH_STEP_FRESHNESS_LABELS = new Map<SearchStepFreshness, string>([
@@ -121,6 +127,75 @@ function readResults(output: unknown): SearchStepResult[] {
   return readable
 }
 
+export function isInternalChatPath(value: unknown): value is string {
+  return typeof value === 'string' && INTERNAL_CHAT_PATH_PATTERN.test(value)
+}
+
+function readChatResult(
+  record: Record<string, unknown> | null,
+  publishedDate?: string,
+): SearchStepResult | null {
+  const url = record?.url
+
+  if (!record || !isInternalChatPath(url)) {
+    return null
+  }
+
+  const title = typeof record.title === 'string' ? record.title.trim() : ''
+
+  return {
+    title: title || UNTITLED_CHAT_TITLE,
+    url,
+    publishedDate,
+    internalPath: url,
+  }
+}
+
+function readChatSearchResults(output: unknown): SearchStepResult[] {
+  const results = asRecord(output)?.results
+
+  if (!Array.isArray(results)) {
+    return []
+  }
+
+  const readable: SearchStepResult[] = []
+
+  for (const entry of results) {
+    const record = asRecord(entry)
+    const result = readChatResult(
+      record,
+      typeof record?.date === 'string' ? record.date : undefined,
+    )
+
+    if (result) {
+      readable.push(result)
+    }
+  }
+
+  return readable
+}
+
+function readChatReadResults(output: unknown): SearchStepResult[] {
+  const result = readChatResult(asRecord(asRecord(output)?.chat))
+
+  return result ? [result] : []
+}
+
+function readStepResults(
+  toolName: string,
+  output: unknown,
+): SearchStepResult[] {
+  if (toolName === CHAT_SEARCH_TOOL_NAME) {
+    return readChatSearchResults(output)
+  }
+
+  if (toolName === CHAT_READ_TOOL_NAME) {
+    return readChatReadResults(output)
+  }
+
+  return readResults(output)
+}
+
 function resolveState(part: SearchToolLikePart): SearchStepState {
   const state = part.state ?? ''
 
@@ -196,7 +271,7 @@ export function getSearchStepData(
     state,
     query: typeof input?.query === 'string' ? input.query.trim() : '',
     freshness: readFreshness(input?.freshness),
-    results: hasOutput ? readResults(toolPart.output) : [],
+    results: hasOutput ? readStepResults(toolName, toolPart.output) : [],
     hasOutput,
     errorReason: state === 'failed'
       ? getSearchStepErrorReason(toolPart.errorText)
@@ -247,6 +322,14 @@ export function formatSearchResultDate(publishedDate: string): string {
     : LOCAL_RESULT_DATE_FORMATTER
 
   return formatter.format(date)
+}
+
+export function formatChatResultCount(count: number): string {
+  if (count === 0) {
+    return 'No chats'
+  }
+
+  return count === 1 ? '1 chat' : `${count} chats`
 }
 
 export function formatSearchResultCount(count: number): string {

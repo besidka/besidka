@@ -125,11 +125,15 @@ import {
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
 import {
-  resolveToolLoopOptions,
+  resolveToolLoop,
   TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
-  TOOL_LOOP_MAX_STEPS,
   toolRequiresFollowUpTurn,
 } from '~~/server/utils/ai/tool-loop'
+import { CHAT_SEARCH_INSTRUCTION } from '~~/server/utils/ai/chat-search-tools'
+import { getChatSearchTools } from '~~/server/utils/memory/tools'
+import { createChatSearchBudget } from '~~/server/utils/memory/tools/chat-search-budget'
+import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
+import { isChatSearchToolEnabled } from '~~/server/utils/memory/tools/enabled'
 import type {
   CollectedSearchResult,
   SearchAnswerContinuationResult,
@@ -1127,7 +1131,39 @@ export default defineEventHandler(async (event) => {
     && telemetryProviderId === 'deepseek'
     && !!parsedTools.tools?.web_search
 
-  const toolLoopOptions = resolveToolLoopOptions(parsedTools.tools)
+  const supportsChatSearchToolCalling = gatewayId
+    ? gatewayToolCall === true
+    : model?.toolCall === true
+  const chatSearchToolsRegistered = isChatSearchToolEnabled()
+    && !parsedTools.toolChoice
+    && !requestedTools.includes('image_generation')
+    && supportsChatSearchToolCalling
+
+  const chatSearchBudget = chatSearchToolsRegistered
+    ? createChatSearchBudget()
+    : undefined
+
+  if (chatSearchBudget) {
+    const { tools: chatSearchTools } = getChatSearchTools({
+      db,
+      userId,
+      currentChatId: chat.id,
+      budget: chatSearchBudget,
+      logger: aiLogger,
+    })
+
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...chatSearchTools },
+    }
+  }
+
+  const toolLoop = resolveToolLoop(parsedTools.tools, {
+    chatSearchSteps: chatSearchToolsRegistered
+      ? CHAT_SEARCH_MAX_CALLS_PER_TURN
+      : 0,
+  })
+  const toolLoopOptions = toolLoop?.options
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
@@ -1330,6 +1366,7 @@ export default defineEventHandler(async (event) => {
               gatewayId,
               shouldNudgeNativeWebSearch(requestedTools, parsedTools),
               hasDeepSeekWebSearch,
+              chatSearchToolsRegistered,
             ),
             reasoning: reasoningEffort,
             messages: modelMessages,
@@ -1543,6 +1580,7 @@ export default defineEventHandler(async (event) => {
               gatewayId,
               false,
               false,
+              false,
             ),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
@@ -1579,11 +1617,11 @@ export default defineEventHandler(async (event) => {
           }
         }
 
-        const searchAnswerGuarantee = toolLoopOptions
+        const searchAnswerGuarantee = toolLoop
           ? withSearchAnswerGuarantee({
             stream: correctedUiMessageStream,
             followUpToolNames,
-            forcedStepIndex: TOOL_LOOP_MAX_STEPS - 1,
+            forcedStepIndex: toolLoop.maxSteps - 1,
             startContinuation: startSearchAnswerContinuation,
             buildFinishMessageMetadata: (continuation) => {
               const steps = [...finishedSteps, ...continuation.steps]
@@ -1732,6 +1770,17 @@ export default defineEventHandler(async (event) => {
             },
           },
         })
+
+        if (chatSearchBudget) {
+          aiLogger.set({
+            attributes: {
+              chatSearch: {
+                registered: true,
+                usedCalls: chatSearchBudget.usedCalls,
+              },
+            },
+          })
+        }
 
         const aiWideEvent = aiLogger.emit({
           message: 'AI stream completed',
@@ -2625,6 +2674,10 @@ function generationInProgressKvKey(
  * registered, so the two paths get distinct wording. The Brave/Exa clause
  * below is gateway-agnostic: those tools are registered by this route after
  * the provider/gateway fork, so a gateway-routed model really does have them.
+ *
+ * The chat-search line is constant text placed right after the project
+ * system prompt, ahead of every per-turn-varying clause (the current-date
+ * ones), so it stays inside the stable prefix the provider caches.
  */
 function buildChatInstructions(
   projectSystemPrompt: string | null,
@@ -2632,9 +2685,14 @@ function buildChatInstructions(
   gatewayId: GatewayId | undefined,
   shouldNudgeNativeSearch: boolean,
   hasDeepSeekWebSearch: boolean,
+  hasChatSearchTools: boolean,
   now: Date = new Date(),
 ): string | undefined {
   const instructions = [projectSystemPrompt]
+
+  if (hasChatSearchTools) {
+    instructions.push(CHAT_SEARCH_INSTRUCTION)
+  }
 
   if (requestedTools.includes('image_generation')) {
     instructions.push(gatewayId

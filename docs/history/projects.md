@@ -118,14 +118,15 @@ Move semantics:
 
 ## Project Memory
 
-Project memory is project-scoped, read-only in v1, and also request-time
-context.
+Project memory is project-scoped, read-only in v1 (the user can only toggle it
+on or off and trigger a refresh), and also request-time context.
 
-- Stored on `projects.memory`
+- Stored on `projects.memory`, capped at 4k chars
 - Refreshed from chats currently assigned to the project
-- Injected together with project instructions only when `memoryStatus = ready`
-- Generated with automatic BYOK provider fallback using models flagged
-  `forProjectMemory`
+- Generated on the user's own BYOK key with the cheapest available provider
+  (see "Model selection")
+- No schema change: the behaviour below lives in `server/utils/projects/`
+  (`memory.ts`, `memory-limits.ts`, `memory-lease.ts`, `instructions.ts`)
 
 Refresh triggers:
 
@@ -135,10 +136,153 @@ Refresh triggers:
 - chat deletion
 - branch creation in a project
 
+Every trigger only marks the project `stale` (`memoryDirtyAt`) unless the
+status is `disabled`; the client then calls the refresh endpoint.
+
+### Injection
+
+`buildProjectSystemPrompt()` injects the last-known-good `projects.memory`
+whenever it is non-empty and `memoryStatus` is not `disabled`.
+
+- `memoryStatus` only drives the UI. `stale`, `refreshing`, `failed` and
+  `unavailable` still inject the previous memory, so a user message (which
+  flips the status to `stale`) never makes memory vanish from the next prompt
+- Disabling memory clears `projects.memory`, so `disabled` never injects
+- Project instructions stay primary; memory is secondary background context
+  and loses any conflict with the instructions
+
+### Refresh lease
+
+A refresh is guarded per project so concurrent refreshes do not double-spend
+the user's key.
+
+- KV key `project-memory-refreshing:<projectId>`
+- 120 s lease renewed by a 30 s heartbeat, reusing the generation-guard
+  helpers (`putGenerationGuard`, `startGenerationGuardHeartbeat`); see
+  `docs/chats/stuck-generation-guard.md`
+- A live lease makes a second refresh return the current state without
+  doing any work
+- A `refreshing` row with no live lease (the Worker died) is recovered by the
+  next refresh: only the lease decides, not the status
+- On read, a stored `refreshing` status without a live lease is reported as
+  `stale` (`resolveProjectMemoryDisplayStatus`, applied by
+  `getProjectMemoryState` and `GET /api/v1/projects/:id`), so the project page
+  stops polling a dead refresh. Read-only, the row is not rewritten; an
+  unreadable lease counts as held
+- The lease is released in `finally`; release failures are logged, not thrown
+- KV read errors fail open: the refresh proceeds without a lease check
+
+Known gaps:
+
+- KV get-then-put is not atomic, so two refreshes that start within the same
+  few milliseconds can both acquire the lease. Rare, and the cost is one
+  duplicate refresh
+- A crashed refresh shows `Refreshing` for up to the lease expiry (about 2-3
+  minutes), then reads as `stale`
+- The lease has no owner token and get/put is not atomic: the first finisher
+  deletes the key even if a second refresh took it meanwhile. Accepted, and
+  shared with the generation guard
+
+### Bounded refresh
+
+One refresh is a single synchronous request, so its input and output are
+capped by `PROJECT_MEMORY_LIMITS` (`memory-limits.ts`):
+
+| Limit | Value |
+|---|---|
+| Chats considered (newest activity first) | 20 |
+| Chats summarised per refresh | 6 |
+| Messages per transcript | 60 |
+| Characters per transcript | 12k |
+| Characters per user message | 3k |
+| Characters per assistant message | 1k |
+| Characters per chat summary | 1.5k |
+| Characters of project memory | 4k |
+
+Rules:
+
+- Chats are read by `activityAt` descending and cut at 20. Chats beyond the
+  20 most recently active are not summarised and do not contribute to memory
+- Staleness is judged from the newest persisted message of each chat
+  (`projectMemorySummaryUpdatedAt >= newest message createdAt`), not from
+  `activityAt`
+- Fresh chats reuse their cached `projectMemorySummary`; stale chats are
+  summarised newest first, at most 6 per refresh, one sequential LLM call each
+- Leftover stale chats keep their cached (older) summary, which still feeds
+  the merge, and the project ends `stale` with `memoryDirtyAt` set so the next
+  refresh continues. The project is `ready` only when nothing is pending
+- A `NONE` summary counts as fresh: it is stored as `null` with an updated
+  timestamp, so the chat is not re-summarised until a new message arrives
+- A transcript keeps the newest messages that fit the 12k budget (message
+  separators and the marker count toward it) and is prefixed with
+  `[earlier messages omitted]` only when older messages were dropped; exactly
+  60 messages is not an omission
+- Summaries over 1.5k chars and a merged memory over 4k chars are truncated
+  with an ellipsis; the memory is cut at a line break when one falls in the
+  last 20% of the budget
+- On failure the previous `projects.memory` is left untouched and the status
+  becomes `failed`
+- Every refresh-path write (`refreshing`, success, `failed`, `unavailable`)
+  carries `memoryStatus <> 'disabled'`, and the success write re-reads the
+  project first and is skipped when it was disabled mid-pass, so a refresh never
+  overrides Disable. Toggling memory stays unconditional
+- A message that arrives during the pass keeps the project `stale` with its
+  `memoryDirtyAt`, even when no chat is pending. It is detected by comparing the
+  re-read `memoryDirtyAt` with the snapshot read at the start of the pass: a
+  non-null value that is strictly greater, or any value when the snapshot was
+  null. Timestamps have second granularity, so a second message in the same
+  second as the existing marker is missed (accepted); in exchange the usual
+  flow, where a message marks the project stale and the client refreshes in the
+  same second, ends `ready` instead of costing a second pass
+- When the 20-chat window yields no summaries, existing memory and
+  `memoryUpdatedAt` are kept: older chats beyond the window may hold durable
+  memory, so an empty window never wipes it
+- A chat's summary timestamp is captured before its messages are read, so a
+  message inserted during the read leaves that chat stale for the next refresh
+
+### Trust boundary
+
+- User text is the primary source; assistant text is secondary context only
+  because it can echo web, tool or file content
+- Only `text` parts are ever fed to the summariser. Tool, file, source,
+  reasoning and data parts are never included
+- Transcripts and chat summaries are data, not instructions: the transcript is
+  wrapped in `<transcript>` tags and each summary in `<summary index="n">`
+  tags, both prompts call the tagged content untrusted data, and the
+  summariser must not record instructions or claims that appear only in
+  assistant text or in quoted or pasted material
+
+### Model selection
+
+Each direct provider flags exactly one model with `forProjectMemory`.
+`resolveProjectMemoryModel()` walks `PROJECT_MEMORY_PROVIDER_ORDER` (a cost
+ranking) and picks the first provider the user has a saved key for.
+
+| Provider | Model | $/1M input | $/1M output |
+|---|---|---|---|
+| `openai` | `gpt-6-luna` | 0.10 | 0.50 |
+| `anthropic` | `claude-haiku-5-5` | 0.10 | 0.50 |
+| `qwen` | `qwen3.8-flash` | 0.15 | 0.47 |
+| `deepseek` | `deepseek-flash` | 0.15 | 0.60 |
+| `google` | `gemini-3.1-flash-lite` | 0.25 | 1.50 |
+| `moonshotai` | `kimi-k2.6` | 0.95 | 4 |
+| `xai` | `grok-4.20-0309-non-reasoning` | 1.25 | 2.50 |
+
+- Users with none of these keys get `unavailable`; gateway-only keys do not
+  qualify because memory only runs on direct providers
+- `qwen3.7-flash` was skipped: its price is only a "from" lower bound and the
+  catalog snapshot carries no cost for it
+- The order puts `openai` before `google`, the reverse of the earlier catalog
+  order, because `gemini-3.1-flash-lite` costs more than `gpt-6-luna`
+- Reasoning is off for every provider except OpenAI, which gets `low`
+
 UI surfaces:
 
 - project detail page memory card
-- top-of-chat project context box when memory is ready
+- top-of-chat project context box, shown whenever the project has non-empty
+  memory text, whatever the status
+  (`app/components/Chat/ProjectInstructions.vue` on `chats/new` and
+  `chats/[slug]`)
 
 ## Project Actions
 
@@ -168,8 +312,9 @@ UI surfaces:
 
 - `PATCH /api/v1/projects/[id]/instructions`
 
-### Memory refresh
+### Memory
 
+- `PATCH /api/v1/projects/[id]/memory` (enable or disable)
 - `POST /api/v1/projects/[id]/memory/refresh`
 - `POST /api/v1/chats/[slug]/project-context/refresh`
 
@@ -200,6 +345,7 @@ Rename, pin, and archive update project metadata but do not change
 - `POST /api/v1/projects/[id]/archive`
 - `DELETE /api/v1/projects/[id]`
 - `GET /api/v1/projects/[id]/chats`
+- `PATCH /api/v1/projects/[id]/memory`
 - `POST /api/v1/projects/[id]/memory/refresh`
 - `PATCH /api/v1/chats/[slug]/project`
 - `POST /api/v1/chats/history/project/bulk`
@@ -243,6 +389,7 @@ reset back to the `0015` schema baseline before applying the final `0016`.
 - `tests/unit/components/Chat/ProjectInstructions.spec.ts`
 - `tests/unit/utils/project-instructions.spec.ts`
 - `tests/unit/utils/project-memory.spec.ts`
+- `tests/unit/utils/project-memory-lease.spec.ts`
 
 Covered cases (composable):
 
@@ -253,6 +400,20 @@ Covered cases (composable):
 - debounced search with sort and archive filters
 - cursor-based load more
 - cursor reset when filters change
+
+Covered cases (project memory utils):
+
+- last-known-good injection for every non-`disabled` status, on the server and
+  in the chat pages
+- provider options (reasoning off) reaching both `generateText` calls
+- lease acquire, live-lease early return, heartbeat release, fail-open on KV
+  read errors, recovery of a `refreshing` row without a lease
+- bounded refresh: chat and per-refresh caps, newest-message staleness,
+  leftover stale chats ending `stale`, `NONE` summaries counting as fresh
+- display status of a `refreshing` row, writes guarded against `disabled`,
+  messages arriving mid-pass, the 20-chat window never wiping memory
+- transcript limits, `[earlier messages omitted]`, text-only parts
+- provider order and per-provider memory model selection
 
 ### Integration coverage
 
@@ -272,6 +433,7 @@ pnpm vitest run tests/integration/api/projects.spec.ts
 pnpm vitest run tests/integration/api/projects-memory.spec.ts
 pnpm vitest run tests/integration/api/chats-project-instructions.spec.ts
 pnpm vitest run tests/unit/utils/project-memory.spec.ts
+pnpm vitest run tests/unit/utils/project-memory-lease.spec.ts
 pnpm vitest run tests/unit/utils/project-instructions.spec.ts
 pnpm vitest run tests/unit/composables/projects.spec.ts
 ```

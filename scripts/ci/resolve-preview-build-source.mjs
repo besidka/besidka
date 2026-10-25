@@ -55,7 +55,6 @@ export const IGNORED_PATH_PATTERNS = [
   'scripts/**',
   '.gitignore',
   'commitlint.config.ts',
-  '.*rc',
   '*.md',
   'skills-lock.json',
 ]

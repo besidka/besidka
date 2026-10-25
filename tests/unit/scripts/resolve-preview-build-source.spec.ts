@@ -51,7 +51,6 @@ describe('isIgnoredPath', () => {
     expect(isIgnoredPath('.gitignore')).toBe(true)
     expect(isIgnoredPath('skills-lock.json')).toBe(true)
     expect(isIgnoredPath('commitlint.config.ts')).toBe(true)
-    expect(isIgnoredPath('.npmrc')).toBe(true)
   })
 
   it('does not ignore nested markdown such as landing page content', () => {
@@ -69,6 +68,11 @@ describe('isIgnoredPath', () => {
     expect(isIgnoredPath('app/.eslintrc')).toBe(false)
     expect(isIgnoredPath('docs')).toBe(false)
     expect(isIgnoredPath('wrangler.jsonc')).toBe(false)
+  })
+
+  it('does not ignore install and Nuxt config dotfiles', () => {
+    expect(isIgnoredPath('.npmrc')).toBe(false)
+    expect(isIgnoredPath('.nuxtrc')).toBe(false)
   })
 })
 

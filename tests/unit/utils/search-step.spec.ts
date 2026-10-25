@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import {
   SEARCH_STEP_FALLBACK_ERROR,
+  formatChatResultCount,
   formatSearchResultCount,
   formatSearchResultDate,
   getSearchFreshnessLabel,
   getSearchFreshnessTooltip,
   getSearchStepData,
   getSearchStepErrorReason,
+  isInternalChatPath,
 } from '../../../app/utils/search-step'
 
 function part(value: Record<string, unknown>): UIMessage['parts'][number] {
@@ -324,5 +326,201 @@ describe('search step formatting', () => {
     expect(construct).not.toHaveBeenCalled()
 
     construct.mockRestore()
+  })
+})
+
+describe('isInternalChatPath', () => {
+  it('accepts only a bare /chats/<slug> path', () => {
+    expect(isInternalChatPath('/chats/01KABCDEF')).toBe(true)
+    expect(isInternalChatPath('/chats/')).toBe(false)
+    expect(isInternalChatPath('/chats/a/b')).toBe(false)
+    expect(isInternalChatPath('/chats/a?x=1')).toBe(false)
+    expect(isInternalChatPath('/chats/a#hash')).toBe(false)
+    expect(isInternalChatPath('/chats/a-b')).toBe(false)
+    expect(isInternalChatPath('//evil.com')).toBe(false)
+    expect(isInternalChatPath('//evil.com/chats/a')).toBe(false)
+    expect(isInternalChatPath('javascript:alert(1)')).toBe(false)
+    expect(isInternalChatPath('https://evil.com/chats/a')).toBe(false)
+    expect(isInternalChatPath('/chats/a\n')).toBe(false)
+    expect(isInternalChatPath(undefined)).toBe(false)
+    expect(isInternalChatPath(42)).toBe(false)
+  })
+})
+
+describe('getSearchStepData for chat tools', () => {
+  it('maps search_chats results to internal chat links without snippets',
+    () => {
+      const data = getSearchStepData(part({
+        type: 'tool-search_chats',
+        state: 'output-available',
+        input: { query: 'invoice', limit: 5 },
+        output: {
+          notice: 'Results come from your own chats.',
+          results: [
+            {
+              chatId: 'abc1',
+              title: 'Invoice help',
+              url: '/chats/abc1',
+              messageId: 'm1',
+              role: 'user',
+              date: '2026-10-01T10:00:00.000Z',
+              snippet: 'secret snippet',
+            },
+            {
+              chatId: 'abc2',
+              title: '  ',
+              url: '/chats/abc2',
+              messageId: 'm2',
+              role: 'assistant',
+              date: '2026-10-02T10:00:00.000Z',
+              snippet: 's',
+            },
+          ],
+        },
+      }))
+
+      expect(data).toEqual({
+        toolName: 'search_chats',
+        state: 'done',
+        query: 'invoice',
+        freshness: undefined,
+        hasOutput: true,
+        errorReason: '',
+        results: [
+          {
+            title: 'Invoice help',
+            url: '/chats/abc1',
+            publishedDate: '2026-10-01T10:00:00.000Z',
+            internalPath: '/chats/abc1',
+          },
+          {
+            title: 'Untitled chat',
+            url: '/chats/abc2',
+            publishedDate: '2026-10-02T10:00:00.000Z',
+            internalPath: '/chats/abc2',
+          },
+        ],
+      })
+      expect(JSON.stringify(data)).not.toContain('secret snippet')
+    })
+
+  it('drops results whose url is not a bare internal chat path', () => {
+    const data = getSearchStepData(part({
+      type: 'tool-search_chats',
+      state: 'output-available',
+      input: { query: 'x' },
+      output: {
+        results: [
+          { title: 'a', url: '//evil.com', date: '2026-10-01' },
+          { title: 'b', url: 'javascript:alert(1)', date: '2026-10-01' },
+          { title: 'c', url: 'https://evil.com/chats/x', date: '2026-10-01' },
+          { title: 'd', url: '/chats/x/../../admin', date: '2026-10-01' },
+          { title: 'e', url: '/chats/ok', date: '2026-10-01' },
+          { title: 'f' },
+          'junk',
+        ],
+      },
+    }))
+
+    expect(data?.results).toEqual([
+      {
+        title: 'e',
+        url: '/chats/ok',
+        publishedDate: '2026-10-01',
+        internalPath: '/chats/ok',
+      },
+    ])
+  })
+
+  it('maps the read_chat chat to a single internal row', () => {
+    const data = getSearchStepData(part({
+      type: 'tool-read_chat',
+      state: 'output-available',
+      input: { chatId: 'abc1' },
+      output: {
+        notice: 'n',
+        chat: { chatId: 'abc1', title: 'Invoice help', url: '/chats/abc1' },
+        messages: [{ id: 'm1', text: 'hello' }],
+        truncated: false,
+      },
+    }))
+
+    expect(data).toMatchObject({
+      toolName: 'read_chat',
+      state: 'done',
+      query: '',
+      hasOutput: true,
+      results: [
+        {
+          title: 'Invoice help',
+          url: '/chats/abc1',
+          internalPath: '/chats/abc1',
+        },
+      ],
+    })
+    expect(data?.results[0]?.publishedDate).toBeUndefined()
+  })
+
+  it('returns an empty result list for malformed outputs', () => {
+    const searchData = getSearchStepData(part({
+      type: 'tool-search_chats',
+      state: 'output-available',
+      input: { query: 'x' },
+      output: 'oops',
+    }))
+    const readData = getSearchStepData(part({
+      type: 'tool-read_chat',
+      state: 'output-available',
+      input: { chatId: 'abc1' },
+      output: { chat: { title: 'No url' } },
+    }))
+
+    expect(searchData).toMatchObject({ hasOutput: true, results: [] })
+    expect(readData).toMatchObject({ hasOutput: true, results: [] })
+  })
+
+  it('reads pending and failed chat steps like web search', () => {
+    const pending = getSearchStepData(part({
+      type: 'tool-search_chats',
+      state: 'input-streaming',
+      input: { query: 'inv' },
+    }))
+    const failed = getSearchStepData(part({
+      type: 'tool-read_chat',
+      state: 'output-error',
+      input: { chatId: 'abc1' },
+      errorText: 'The chat search budget for this reply is used up.',
+    }))
+
+    expect(pending).toMatchObject({
+      state: 'pending',
+      query: 'inv',
+      results: [],
+      hasOutput: false,
+    })
+    expect(failed).toMatchObject({
+      state: 'failed',
+      hasOutput: false,
+      errorReason: 'The chat search budget for this reply is used up.',
+    })
+  })
+
+  it('never sets internalPath on web search results', () => {
+    const data = getSearchStepData(part({
+      type: 'tool-web_search_brave',
+      state: 'output-available',
+      input: { query: 'x' },
+      output: { results: [{ title: 'A', url: '/chats/abc1' }] },
+    }))
+
+    expect(data?.results[0]?.internalPath).toBeUndefined()
+  })
+})
+
+describe('formatChatResultCount', () => {
+  it('words the chat count', () => {
+    expect(formatChatResultCount(0)).toBe('No chats')
+    expect(formatChatResultCount(1)).toBe('1 chat')
+    expect(formatChatResultCount(3)).toBe('3 chats')
   })
 })

@@ -113,6 +113,10 @@ vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: vi.fn(async () => undefined),
 }))
 
+vi.mock('~~/server/utils/memory/tools/enabled', () => ({
+  isChatSearchToolEnabled: () => false,
+}))
+
 interface ChatCompletionRequest {
   max_tokens?: number
   tools?: unknown[]

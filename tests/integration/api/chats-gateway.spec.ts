@@ -163,11 +163,16 @@ vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: vi.fn(async () => undefined),
 }))
 
+vi.mock('~~/server/utils/memory/tools/enabled', () => ({
+  isChatSearchToolEnabled: () => false,
+}))
+
 // The real gateway builders resolve a catalog entry over the network. Tests
 // that care about `maxOutputTokens` or `pricing` supply them explicitly
 // through a stubbed `useGateway`, so this entry deliberately carries neither
-// — only the `toolCall: true` the Brave/Exa send-path gate reads, so a
-// builder-level test exercises the allowed path rather than the rejection.
+// — only the `toolCall: true` that every gateway builder reads (the Brave/Exa
+// send-path gate and the cross-chat tools), so a builder-level test exercises
+// the allowed path rather than the rejection.
 vi.mock('../../../server/utils/gateways/catalog', () => ({
   findGatewayCatalogModel: vi.fn(async () => ({
     id: 'catalog-model',

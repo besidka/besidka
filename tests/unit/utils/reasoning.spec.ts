@@ -578,6 +578,46 @@ describe('getToolStepTitle', () => {
     expect(getToolStepTitle('web_search_exa', false, true))
       .toBe('Exa search failed')
   })
+
+  it('titles search_chats as a chat search, never a web search', () => {
+    expect(getToolStepTitle('search_chats', true, false))
+      .toBe('Searching your chats')
+    expect(getToolStepTitle('search_chats', false, false))
+      .toBe('Searched your chats')
+    expect(getToolStepTitle('search_chats', false, true))
+      .toBe('Chat search failed')
+  })
+
+  it('titles read_chat by pending, done, and failed state', () => {
+    expect(getToolStepTitle('read_chat', true, false))
+      .toBe('Reading a chat')
+    expect(getToolStepTitle('read_chat', false, false))
+      .toBe('Read a chat')
+    expect(getToolStepTitle('read_chat', false, true))
+      .toBe('Reading the chat failed')
+  })
+
+  it('keeps the web search fallback for other search-named tools', () => {
+    expect(getToolStepTitle('web_search', true, false))
+      .toBe('Searching the web')
+    expect(getToolStepTitle('web_search', false, false))
+      .toBe('Searched the web')
+    expect(getToolStepTitle('some_search_tool', false, false))
+      .toBe('Searched the web')
+    expect(getToolStepTitle('some_search_tool', false, true))
+      .toBe('Search failed')
+  })
+
+  it('does not hide the chat tools from the thinking steps', () => {
+    expect(isThinkingToolPart(
+      { type: 'tool-search_chats', state: 'output-available' } as
+        UIMessage['parts'][number],
+    )).toBe(true)
+    expect(isThinkingToolPart(
+      { type: 'tool-read_chat', state: 'output-available' } as
+        UIMessage['parts'][number],
+    )).toBe(true)
+  })
 })
 
 describe('isFailedToolPart', () => {

@@ -1,0 +1,22 @@
+name: Playwright
+description: Restore or install Playwright Chromium (headless shell) from a cache keyed by the Playwright version
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve Playwright version
+      id: playwright-version
+      shell: bash
+      run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright Chromium
+      id: playwright-cache
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium-headless-shell
+
+    - name: Install Playwright Chromium
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: timeout 180 pnpm exec playwright install chromium --only-shell
