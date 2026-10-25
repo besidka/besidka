@@ -12,8 +12,13 @@ import {
 } from '~~/server/utils/chats/errors'
 import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { sumLanguageModelUsages } from '~~/server/utils/ai/message-usage'
 
 export const SEARCH_ANSWER_CONTEXT_MAX_RESULTS = 24
+export const SEARCH_ANSWER_CONTINUATION_MAX_ATTEMPTS = 2
+
+const NON_RETRYABLE_CONTINUATION_FINISH_REASONS: ReadonlySet<FinishReason>
+  = new Set(['length', 'content-filter'])
 export const SEARCH_ANSWER_CONTEXT_MAX_CHARS = 32_000
 export const SEARCH_ANSWER_RESULT_SNIPPET_MAX_CHARS = 1500
 export const SEARCH_ANSWER_AUXILIARY_TEXT_MAX_CHARS = 600
@@ -158,6 +163,7 @@ export interface SearchAnswerOutcome {
   forcedStepToolCall: boolean
   forcedStepRejectedToolCall: boolean
   continuationRan: boolean
+  continuationAttempts: number
   continuationProducedText: boolean
   continuationError: string | undefined
   continuationTruncated: boolean
@@ -616,6 +622,7 @@ export function withSearchAnswerGuarantee(input: {
     forcedStepToolCall: false,
     forcedStepRejectedToolCall: false,
     continuationRan: false,
+    continuationAttempts: 0,
     continuationProducedText: false,
     continuationError: undefined,
     continuationTruncated: false,
@@ -843,6 +850,18 @@ export function withSearchAnswerGuarantee(input: {
     }
   }
 
+  function mergeContinuationResult(result: SearchAnswerContinuationResult) {
+    const previous = outcome.continuation
+
+    outcome.continuation = previous
+      ? {
+        usage: sumLanguageModelUsages([previous.usage, result.usage]),
+        steps: [...previous.steps, ...result.steps],
+        finishReason: result.finishReason ?? previous.finishReason,
+      }
+      : result
+  }
+
   async function foldTruncatedContinuation(
     run: SearchAnswerContinuationRun,
   ) {
@@ -852,35 +871,48 @@ export function withSearchAnswerGuarantee(input: {
       const usage = await run.settleUsage?.()
 
       if (usage) {
-        outcome.continuation = {
+        mergeContinuationResult({
           usage,
           steps: [{ usage }],
           finishReason: undefined,
-        }
+        })
       }
     } catch (exception) {
       outcome.continuationError ??= exceptionMessage(exception)
     }
   }
 
-  async function settleContinuation(run: SearchAnswerContinuationRun) {
+  async function settleContinuation(
+    run: SearchAnswerContinuationRun,
+  ): Promise<FinishReason | undefined> {
     try {
-      outcome.continuation = await run.settle()
+      const result = await run.settle()
+
+      mergeContinuationResult(result)
+
+      return result.finishReason
     } catch (exception) {
       outcome.continuationError ??= exceptionMessage(exception)
       await foldTruncatedContinuation(run)
+
+      return undefined
     }
   }
 
-  async function pumpContinuation(
+  async function pumpContinuationAttempt(
     controller: TransformStreamDefaultController<UIMessageChunk>,
-  ) {
-    outcome.continuationRan = true
+  ): Promise<{
+    producedText: boolean
+    finishReason: FinishReason | undefined
+  }> {
+    outcome.continuationAttempts += 1
 
     const openPartClosers = new Map<string, UIMessageChunk>()
     let run: SearchAnswerContinuationRun | undefined
     let reader: ReadableStreamDefaultReader<UIMessageChunk> | undefined
     let isDrained = false
+    let producedText = false
+    let finishReason: FinishReason | undefined
 
     try {
       run = input.startContinuation([...searchResultsByCallId.values()])
@@ -909,6 +941,7 @@ export function withSearchAnswerGuarantee(input: {
         }
 
         if (isVisibleTextDelta(value)) {
+          producedText = true
           outcome.continuationProducedText = true
         }
 
@@ -927,7 +960,40 @@ export function withSearchAnswerGuarantee(input: {
     }
 
     if (run && isDrained) {
-      await settleContinuation(run)
+      finishReason = await settleContinuation(run)
+    }
+
+    return { producedText, finishReason }
+  }
+
+  /**
+   * A continuation that settles without any answer text (the provider
+   * returned only reasoning, or its stream ended early) is retried once. One
+   * that failed to settle, whether cut short by the timeout or by a provider
+   * error, is not: those cannot be told apart here, and retrying a timeout
+   * would run into the same cap and double the wait. Neither is one the
+   * model ended on purpose (`length`, `content-filter`), which a retry would
+   * repeat at twice the cost.
+   */
+  async function pumpContinuation(
+    controller: TransformStreamDefaultController<UIMessageChunk>,
+  ) {
+    outcome.continuationRan = true
+
+    while (outcome.continuationAttempts
+      < SEARCH_ANSWER_CONTINUATION_MAX_ATTEMPTS) {
+      const { producedText, finishReason } = await pumpContinuationAttempt(
+        controller,
+      )
+
+      if (
+        producedText
+        || outcome.continuationTruncated
+        || finishReason === undefined
+        || NON_RETRYABLE_CONTINUATION_FINISH_REASONS.has(finishReason)
+      ) {
+        return
+      }
     }
   }
 

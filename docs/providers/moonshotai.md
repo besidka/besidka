@@ -292,6 +292,13 @@ from Moonshot's own current doc pages (cited inline in the source and in
    regardless of which declaration was cached), but it would still need the
    cache key scoped per-account.
 
+7. **`kimi-k3` intermittently ends a search turn with no text** (seen on a
+   PR preview, 2026-10-25, after `web_search_brave` and `search_chats`). The
+   cost-capture, retry and timeout changes made for it, and the Axiom fields
+   that tell a timeout from an empty-`content` answer, are in
+   [`general.md`](./general.md#multi-step-tool-loop) ("Empty continuations
+   and the Kimi K3 report"). The Moonshot-side trigger is unconfirmed.
+
 This pass is its own item, separate from the cross-provider
 streamed-completion gate described in
 [`general.md`](./general.md#known-gaps-requiring-live-verification).

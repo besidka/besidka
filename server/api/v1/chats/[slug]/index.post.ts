@@ -1232,6 +1232,7 @@ export default defineEventHandler(async (event) => {
                 forcedStepRejectedToolCall:
                   outcome.forcedStepRejectedToolCall,
                 continuationRan: outcome.continuationRan,
+                continuationAttempts: outcome.continuationAttempts,
                 continuationProducedText: outcome.continuationProducedText,
                 continuationError: outcome.continuationError,
                 continuationTruncated: outcome.continuationTruncated,
@@ -1346,7 +1347,11 @@ export default defineEventHandler(async (event) => {
             maxOutputTokens: gatewayMaxOutputTokens,
             onEnd({ usage, providerMetadata, steps }) {
               mainLoopSteps = [...steps]
-              recordAiStreamUsage({ usage, steps, providerMetadata })
+              recordAiStreamUsage({
+                usage: resolveLoopUsage(usage, steps),
+                steps,
+                providerMetadata,
+              })
               recordSdkWarnings('aiWarnings', steps)
             },
             ...parsedTools,
@@ -1800,6 +1805,23 @@ function countCarriedFileParts(modelContextMessages: UIMessage[]): number {
  */
 function isProviderResolvedTool(tool: ModelTool): boolean {
   return !isExternalWebSearchTool(tool)
+}
+
+/**
+ * The SDK's own total is empty when the loop ended on an error or a dropped
+ * stream, although earlier steps were already billed, so recorded steps win
+ * whenever they carry any usage.
+ */
+function resolveLoopUsage(
+  totalUsage: LanguageModelUsage,
+  steps: readonly SearchAnswerContinuationStep[],
+): LanguageModelUsage {
+  const stepsUsage = sumLanguageModelUsages(steps.map(step => step.usage))
+  const hasStepsUsage = stepsUsage.inputTokens !== undefined
+    || stepsUsage.outputTokens !== undefined
+    || stepsUsage.totalTokens !== undefined
+
+  return hasStepsUsage ? stepsUsage : totalUsage
 }
 
 /**
@@ -2291,9 +2313,10 @@ async function persistAssistantMessageFromStream(input: {
       const usageSteps: SearchAnswerContinuationStep[] = continuation
         ? [...steps, ...continuation.steps]
         : steps
-      const resolvedUsage = continuation
-        ? sumLanguageModelUsages(usageSteps.map(step => step.usage))
-        : await input.result.usage
+      const resolvedUsage = resolveLoopUsage(
+        await input.result.usage,
+        usageSteps,
+      )
 
       if (input.gatewayId === 'vercel') {
         vercelGenerationId = readVercelGenerationId(

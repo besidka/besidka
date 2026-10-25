@@ -9,6 +9,7 @@ import {
   SEARCH_ANSWER_AUXILIARY_TEXT_MAX_CHARS,
   SEARCH_ANSWER_CONTEXT_MAX_CHARS,
   SEARCH_ANSWER_CONTEXT_MAX_RESULTS,
+  SEARCH_ANSWER_CONTINUATION_MAX_ATTEMPTS,
   SEARCH_ANSWER_OPAQUE_OUTPUT_MAX_CHARS,
   SEARCH_ANSWER_RESULT_SNIPPET_MAX_CHARS,
   SEARCH_ANSWER_RESULTS_TAG,
@@ -896,7 +897,7 @@ describe('withSearchAnswerGuarantee', () => {
         })
         const chunks = await readAll(guarantee.stream)
 
-        expect(startContinuation).toHaveBeenCalledTimes(1)
+        expect(startContinuation).toHaveBeenCalledTimes(2)
         expect(chunks.at(-1)).toEqual({
           type: 'error',
           errorText: PROVIDER_ERROR_TEXT,
@@ -1546,5 +1547,136 @@ describe('withSearchAnswerGuarantee', () => {
     await readAll(guarantee.stream)
 
     expect(guarantee.getOutcome().continuationError).toBe('timeout')
+  })
+
+  describe('continuation attempts', () => {
+    function createReasoningOnlyChunks(): UIMessageChunk[] {
+      return [
+        { type: 'reasoning-start', id: 'thinking' },
+        { type: 'reasoning-delta', id: 'thinking', delta: 'Thinking.' },
+        { type: 'reasoning-end', id: 'thinking' },
+      ]
+    }
+
+    function createAttemptedGuarantee(attempts: Array<{
+      chunks: UIMessageChunk[]
+      inputTokens?: number
+      finishReason?: 'stop' | 'length' | 'content-filter'
+    }>) {
+      let attemptIndex = 0
+      const startContinuation = vi.fn(() => {
+        const attempt = attempts[Math.min(attemptIndex, attempts.length - 1)]!
+        const usage = createUsage(attempt.inputTokens ?? 10, 20)
+
+        attemptIndex += 1
+
+        return {
+          stream: createStream(attempt.chunks),
+          settle: async () => ({
+            usage,
+            steps: [{ usage }],
+            finishReason: attempt.finishReason ?? 'stop' as const,
+          }),
+        }
+      })
+      const guarantee = withSearchAnswerGuarantee({
+        stream: createStream([
+          ...createSearchStepChunks('call-1'),
+          { type: 'finish', finishReason: 'stop' },
+        ]),
+        followUpToolNames: new Set([SEARCH_TOOL_NAME]),
+        forcedStepIndex: FORCED_STEP_INDEX,
+        startContinuation,
+        buildFinishMessageMetadata: () => ({ usage: 'combined' }),
+      })
+
+      return { guarantee, startContinuation }
+    }
+
+    it('retries once when the first attempt ends with only reasoning, '
+      + 'keeping the second attempt\'s answer', async () => {
+      const { guarantee, startContinuation } = createAttemptedGuarantee([
+        { chunks: createReasoningOnlyChunks() },
+        { chunks: createTextChunks('Second attempt answer') },
+      ])
+      const chunks = await readAll(guarantee.stream)
+      const outcome = guarantee.getOutcome()
+
+      expect(startContinuation).toHaveBeenCalledTimes(2)
+      expect(chunks).toContainEqual({
+        type: 'text-delta',
+        id: 'answer',
+        delta: 'Second attempt answer',
+      })
+      expect(chunks.at(-1)?.type).toBe('finish')
+      expect(outcome).toEqual(expect.objectContaining({
+        continuationAttempts: 2,
+        continuationProducedText: true,
+      }))
+      expect(outcome.continuation?.steps).toHaveLength(2)
+      expect(outcome.continuation?.usage.inputTokens).toBe(20)
+    })
+
+    it('stops after the configured number of attempts and releases the '
+      + 'held finish', async () => {
+      const { guarantee, startContinuation } = createAttemptedGuarantee([
+        { chunks: createReasoningOnlyChunks() },
+      ])
+      const chunks = await readAll(guarantee.stream)
+
+      expect(startContinuation)
+        .toHaveBeenCalledTimes(SEARCH_ANSWER_CONTINUATION_MAX_ATTEMPTS)
+      expect(guarantee.getOutcome()).toEqual(expect.objectContaining({
+        continuationAttempts: SEARCH_ANSWER_CONTINUATION_MAX_ATTEMPTS,
+        continuationProducedText: false,
+      }))
+      expect(chunks.at(-1)?.type).toBe('finish')
+    })
+
+    it('does not retry an attempt cut short by a timeout abort', async () => {
+      const { guarantee, startContinuation } = createAttemptedGuarantee([
+        {
+          chunks: [
+            ...createReasoningOnlyChunks(),
+            { type: 'abort', reason: 'timeout' },
+          ],
+        },
+        { chunks: createTextChunks('Never requested') },
+      ])
+
+      await readAll(guarantee.stream)
+
+      expect(startContinuation).toHaveBeenCalledTimes(1)
+      expect(guarantee.getOutcome()).toEqual(expect.objectContaining({
+        continuationAttempts: 1,
+        continuationTruncated: true,
+        continuationError: 'timeout',
+      }))
+    })
+
+    it.each(['length', 'content-filter'] as const)(
+      'does not retry an attempt the model ended with %s',
+      async (finishReason) => {
+        const { guarantee, startContinuation } = createAttemptedGuarantee([
+          { chunks: createReasoningOnlyChunks(), finishReason },
+          { chunks: createTextChunks('Never requested') },
+        ])
+
+        await readAll(guarantee.stream)
+
+        expect(startContinuation).toHaveBeenCalledTimes(1)
+      },
+    )
+
+    it('does not retry an attempt that answered', async () => {
+      const { guarantee, startContinuation } = createAttemptedGuarantee([
+        { chunks: createTextChunks('First attempt answer') },
+        { chunks: createTextChunks('Never requested') },
+      ])
+
+      await readAll(guarantee.stream)
+
+      expect(startContinuation).toHaveBeenCalledTimes(1)
+    })
   })
 })
