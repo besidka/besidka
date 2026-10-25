@@ -106,6 +106,7 @@ vi.mock('~~/server/utils/projects/memory', () => ({
 
 vi.mock('~~/server/utils/memory/tools/enabled', () => ({
   isChatSearchToolEnabled: () => mocks.isChatSearchToolEnabled,
+  isMemoryToolsEnabled: () => false,
 }))
 
 vi.mock('~~/server/utils/memory/tools', async () => {
@@ -274,6 +275,7 @@ function createDb() {
   return {
     db: {
       query: {
+        userSettings: { findFirst: vi.fn(async () => undefined) },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',

@@ -3,6 +3,7 @@ import type { FormattedTools } from '~~/server/types/tools.d'
 import { stepCountIs } from 'ai'
 import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
 import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
+import { isMemoryToolName } from '~~/server/utils/ai/memory-tools'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -68,6 +69,10 @@ export function toolRequiresFollowUpTurn(tool: unknown): boolean {
   }
 
   return (tool as Record<string, unknown>).requiresFollowUpTurn === true
+}
+
+function isBudgetedLookupToolName(toolName: string): boolean {
+  return isChatSearchToolName(toolName) || isMemoryToolName(toolName)
 }
 
 function buildToolLoopFinalStepInstructions(
@@ -153,10 +158,11 @@ function createToolLoopPrepareStep(
  * The step cap is the tool steps plus one guaranteed final step that forces
  * an answer — see `createToolLoopPrepareStep()` above for how.
  * `TOOL_LOOP_MAX_TOOL_STEPS` search rounds are granted when at least one
- * registered follow-up tool is not a chat-search tool (web search), and
- * `chatSearchSteps` more when a chat-search tool is registered, so looking up
- * past chats never eats the web-search rounds. When the chat-search tools are
- * the only follow-up tools and `chatSearchSteps` is not positive, the cap
+ * registered follow-up tool is neither a chat-search nor a memory tool (web
+ * search), and `chatSearchSteps` more when a chat-search or memory tool is
+ * registered, so looking up past chats or memory never eats the web-search
+ * rounds. When those lookup tools are the only follow-up tools and
+ * `chatSearchSteps` is not positive, the cap
  * falls back to `TOOL_LOOP_MAX_TOOL_STEPS` so the loop never degenerates to a
  * single step. Each step is a full provider round-trip, and the KV
  * generation-in-progress guard this route sets is a short heartbeat-renewed
@@ -184,9 +190,9 @@ export function resolveToolLoop(
   }
 
   const hasOtherFollowUpTool = followUpToolNames.some((toolName) => {
-    return !isChatSearchToolName(toolName)
+    return !isBudgetedLookupToolName(toolName)
   })
-  const hasChatSearchTool = followUpToolNames.some(isChatSearchToolName)
+  const hasChatSearchTool = followUpToolNames.some(isBudgetedLookupToolName)
   const chatSearchSteps = Math.max(0, budget?.chatSearchSteps ?? 0)
   const toolSteps = (hasOtherFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
     + (hasChatSearchTool ? chatSearchSteps : 0)

@@ -11,6 +11,7 @@ import {
   UNAVAILABLE_TOOL_ERROR_KIND,
 } from '~~/server/utils/chats/errors'
 import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
+import { isMemoryToolName } from '~~/server/utils/ai/memory-tools'
 import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
 import {
   CHAT_HISTORY_NOTICE,
@@ -18,6 +19,13 @@ import {
   SEARCH_CHATS_TOOL_NAME,
   SEARCH_CHATS_UNTITLED_CHAT,
 } from '~~/server/utils/memory/tools/constants'
+import {
+  MEMORY_FORGET_TOOL_NAME,
+  MEMORY_LIST_TOOL_NAME,
+  MEMORY_READ_TOOL_NAME,
+  MEMORY_TOOL_NOTICE,
+  MEMORY_WRITE_TOOL_NAME,
+} from '~~/server/utils/memory/tools/memory-constants'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export const SEARCH_ANSWER_CONTEXT_MAX_RESULTS = 24
@@ -54,6 +62,19 @@ const SEARCH_ANSWER_INSTRUCTIONS_WITH_CHAT_RESULTS
   = composeSearchAnswerInstructions({
     results: 'tool results',
     untrustedContent: 'content (web pages and quoted chat history)',
+  })
+
+const SEARCH_ANSWER_INSTRUCTIONS_WITH_MEMORY_RESULTS
+  = composeSearchAnswerInstructions({
+    results: 'tool results',
+    untrustedContent: 'content (web pages and saved memory)',
+  })
+
+const SEARCH_ANSWER_INSTRUCTIONS_WITH_CHAT_AND_MEMORY_RESULTS
+  = composeSearchAnswerInstructions({
+    results: 'tool results',
+    untrustedContent: 'content (web pages, quoted chat history and saved '
+      + 'memory)',
   })
 
 const SEARCH_ANSWER_LINE_INDENT = '   '
@@ -440,6 +461,84 @@ function readChatToolRendering(
   return undefined
 }
 
+interface MemoryToolRendering {
+  heading: string
+  entries: string[]
+  emptyNotice: string
+}
+
+const MEMORY_TOOL_HEADINGS: Record<string, string> = {
+  [MEMORY_LIST_TOOL_NAME]: 'Memory list',
+  [MEMORY_READ_TOOL_NAME]: 'Memory read',
+  [MEMORY_WRITE_TOOL_NAME]: 'Memory save',
+  [MEMORY_FORGET_TOOL_NAME]: 'Memory remove',
+}
+
+function renderMemoryEntryLine(
+  entry: Record<string, unknown>,
+  prefix: string,
+  includeBody: boolean,
+): string {
+  const handle = readStringField(entry, 'handle')
+    ?? readStringField(entry, 'id')
+    ?? 'unknown'
+  const title = readStringField(entry, 'title') ?? 'Untitled'
+  const lines = [`${prefix}${handle} — ${title}`]
+  const body = readStringField(entry, 'body')
+
+  if (includeBody && body) {
+    lines.push(...indentLines(
+      truncate(body, SEARCH_ANSWER_RESULT_SNIPPET_MAX_CHARS),
+    ))
+  }
+
+  return lines.join('\n')
+}
+
+function readMemoryToolRendering(
+  searchResult: CollectedSearchResult,
+  position: number,
+): MemoryToolRendering {
+  const heading = `${MEMORY_TOOL_HEADINGS[searchResult.toolName]
+    ?? 'Memory'} ${position}`
+  const output = isRecord(searchResult.output) ? searchResult.output : {}
+
+  if (searchResult.toolName === MEMORY_LIST_TOOL_NAME) {
+    const entries = Array.isArray(output.entries)
+      ? output.entries.filter(isRecord)
+      : []
+
+    return {
+      heading,
+      entries: entries.map((entry, entryIndex) => {
+        return renderMemoryEntryLine(entry, `${entryIndex + 1}. `, true)
+      }),
+      emptyNotice: 'No memory entries.',
+    }
+  }
+
+  const entry = searchResult.toolName === MEMORY_FORGET_TOOL_NAME
+    ? output.removed
+    : output.entry
+  const prefix = searchResult.toolName === MEMORY_FORGET_TOOL_NAME
+    ? 'Removed: '
+    : searchResult.toolName === MEMORY_WRITE_TOOL_NAME
+      ? `${output.action === 'updated' ? 'Updated' : 'Saved'}: `
+      : ''
+
+  return {
+    heading,
+    entries: isRecord(entry)
+      ? [renderMemoryEntryLine(
+        entry,
+        prefix,
+        searchResult.toolName === MEMORY_READ_TOOL_NAME,
+      )]
+      : [],
+    emptyNotice: 'No memory entry.',
+  }
+}
+
 /**
  * True when any collected follow-up result comes from the chat-history
  * tools (`search_chats` / `read_chat`) rather than from a web search tool.
@@ -453,6 +552,36 @@ export function hasChatSearchResults(
 }
 
 /**
+ * True when any collected follow-up result comes from the memory tools.
+ */
+export function hasMemoryResults(
+  searchResults: readonly CollectedSearchResult[],
+): boolean {
+  return searchResults.some((searchResult) => {
+    return isMemoryToolName(searchResult.toolName)
+  })
+}
+
+function selectSearchAnswerInstructions(
+  searchResults: readonly CollectedSearchResult[],
+): string {
+  const hasChat = hasChatSearchResults(searchResults)
+  const hasMemory = hasMemoryResults(searchResults)
+
+  if (hasChat && hasMemory) {
+    return SEARCH_ANSWER_INSTRUCTIONS_WITH_CHAT_AND_MEMORY_RESULTS
+  }
+
+  if (hasMemory) {
+    return SEARCH_ANSWER_INSTRUCTIONS_WITH_MEMORY_RESULTS
+  }
+
+  return hasChat
+    ? SEARCH_ANSWER_INSTRUCTIONS_WITH_CHAT_RESULTS
+    : SEARCH_ANSWER_INSTRUCTIONS
+}
+
+/**
  * Flattens the follow-up tool results of one turn into plain text, so the
  * tool-less continuation can read them without any tool-call history (which
  * Anthropic and Gemini reject when no tools are declared). Brave/Exa-shaped
@@ -462,7 +591,10 @@ export function hasChatSearchResults(
  * `Chat search N` / `Chat read N` sections, led by the chat-history notice:
  * `search_chats` hits as a numbered list and every `read_chat` message in
  * full, bounded by the shared character budget rather than the opaque-output
- * cap. Total size is bounded by result count and characters so a long search
+ * cap. Memory tool results render in their own `Memory list N` /
+ * `Memory read N` / `Memory save N` / `Memory remove N` sections, led by the
+ * memory notice, as `handle — title` lines with bodies only for list and
+ * read. Total size is bounded by result count and characters so a long search
  * turn cannot blow up the continuation's input cost. Every `<` and `>` in
  * the flattened text is replaced with `‹`/`›`, so no closing tag can be
  * forged from titles, URLs, snippets, chat excerpts or error text however it
@@ -482,6 +614,48 @@ export function buildSearchResultsContext(
     }
 
     const position = searchIndex + 1
+
+    if (isMemoryToolName(searchResult.toolName)) {
+      const memoryRendering = readMemoryToolRendering(searchResult, position)
+      const memoryLines = [memoryRendering.heading]
+
+      if (searchResult.errorText !== undefined) {
+        const isChange = searchResult.toolName === MEMORY_WRITE_TOOL_NAME
+          || searchResult.toolName === MEMORY_FORGET_TOOL_NAME
+
+        memoryLines.push(`The memory ${isChange ? 'change' : 'lookup'} `
+          + `failed: ${truncate(
+            searchResult.errorText,
+            SEARCH_ANSWER_AUXILIARY_TEXT_MAX_CHARS,
+          )}`)
+      } else {
+        memoryLines.push(MEMORY_TOOL_NOTICE)
+        renderedChars += MEMORY_TOOL_NOTICE.length
+
+        if (memoryRendering.entries.length === 0) {
+          memoryLines.push(memoryRendering.emptyNotice)
+        }
+
+        for (const memoryEntry of memoryRendering.entries) {
+          if (
+            renderedChars + memoryEntry.length
+            > SEARCH_ANSWER_CONTEXT_MAX_CHARS
+          ) {
+            isTruncated = true
+
+            break
+          }
+
+          memoryLines.push(memoryEntry)
+          renderedChars += memoryEntry.length
+        }
+      }
+
+      sections.push(memoryLines.join('\n'))
+
+      continue
+    }
+
     const isChatResult = isChatSearchToolName(searchResult.toolName)
     const chatRendering = isChatResult && searchResult.errorText === undefined
       ? readChatToolRendering(searchResult, position)
@@ -589,6 +763,7 @@ export function buildSearchResultsContext(
 
   const results = neutralizeAngleBrackets(sections.join('\n\n'))
   const intro = hasChatSearchResults(searchResults)
+    || hasMemoryResults(searchResults)
     ? 'Tool results gathered for this conversation:'
     : 'Web search results gathered for this conversation:'
 
@@ -646,9 +821,7 @@ export function buildSearchAnswerContinuationMessages(
 ): ModelMessage[] {
   const contextText = [
     buildSearchResultsContext(searchResults),
-    hasChatSearchResults(searchResults)
-      ? SEARCH_ANSWER_INSTRUCTIONS_WITH_CHAT_RESULTS
-      : SEARCH_ANSWER_INSTRUCTIONS,
+    selectSearchAnswerInstructions(searchResults),
     buildCurrentDateInstruction(now),
   ].join('\n\n')
   const toollessMessages = withoutToolHistory(messages)

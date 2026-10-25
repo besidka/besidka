@@ -428,4 +428,66 @@ describe('tool loop trigger', () => {
       expect(forcedStepNumbers).toEqual([TOOL_LOOP_MAX_STEPS - 1])
     })
   })
+
+  describe('memory tools in the shared lookup budget', () => {
+    const LOOKUP_STEPS = 3
+    const LOOKUP_ONLY_CAP = LOOKUP_STEPS + 1
+    const WEB_AND_LOOKUP_CAP = TOOL_LOOP_MAX_TOOL_STEPS + LOOKUP_STEPS + 1
+
+    function createMemoryTools() {
+      return {
+        memory_list: createFixtureFollowUpTool(),
+        memory_read: createFixtureFollowUpTool(),
+        memory_write: createFixtureFollowUpTool(),
+        memory_forget: createFixtureFollowUpTool(),
+      }
+    }
+
+    it('grants only the lookup steps when memory tools are the only '
+      + 'follow-up tools', () => {
+      expect(getToolLoopMaxSteps(createMemoryTools(), {
+        chatSearchSteps: LOOKUP_STEPS,
+      })).toBe(LOOKUP_ONLY_CAP)
+    })
+
+    it('never counts a memory tool as another follow-up tool, so web '
+      + 'search keeps its own rounds on top', () => {
+      expect(getToolLoopMaxSteps({
+        web_search_brave: createFixtureFollowUpTool(),
+        ...createMemoryTools(),
+      }, { chatSearchSteps: LOOKUP_STEPS })).toBe(WEB_AND_LOOKUP_CAP)
+      expect(getToolLoopMaxSteps({
+        ...createMemoryTools(),
+      }, { chatSearchSteps: LOOKUP_STEPS })).not.toBe(WEB_AND_LOOKUP_CAP)
+    })
+
+    it('does not add steps twice when chat-search and memory tools are '
+      + 'registered together', () => {
+      expect(getToolLoopMaxSteps({
+        search_chats: createFixtureFollowUpTool(),
+        read_chat: createFixtureFollowUpTool(),
+        ...createMemoryTools(),
+      }, { chatSearchSteps: LOOKUP_STEPS })).toBe(LOOKUP_ONLY_CAP)
+    })
+
+    it('falls back to the default tool steps without a lookup budget, '
+      + 'never a single step', () => {
+      expect(getToolLoopMaxSteps(createMemoryTools())).toBe(TOOL_LOOP_MAX_STEPS)
+      expect(getToolLoopMaxSteps(createMemoryTools(), {
+        chatSearchSteps: 0,
+      })).toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('does not trigger the loop for unmarked memory tools', () => {
+      expect(getToolLoopMaxSteps({
+        memory_read: tool({
+          description: 'unmarked',
+          inputSchema: z.object({}),
+          async execute() {
+            return {}
+          },
+        }),
+      }, { chatSearchSteps: LOOKUP_STEPS })).toBeUndefined()
+    })
+  })
 })

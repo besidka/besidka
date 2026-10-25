@@ -8,7 +8,7 @@ import {
   memoryCategories,
 } from '#shared/utils/memory-policy'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
-import * as schema from '~~/server/db/schema'
+import { toMemoryEntryWire } from '~~/server/utils/memory/entries'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -315,32 +315,6 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     entryCount,
     trimSteps,
     overBudget: tokens > budgetTokens,
-  }
-}
-
-type MemoryEntryRow = typeof schema.memoryEntries.$inferSelect
-
-function toIsoString(value: Date | null): string | null {
-  return value ? value.toISOString() : null
-}
-
-function toMemoryEntryWire(row: MemoryEntryRow): MemoryEntry {
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    category: row.category,
-    slug: row.slug,
-    title: row.title,
-    description: row.description,
-    body: row.body,
-    sensitivity: row.sensitivity,
-    sensitiveCategory: row.sensitiveCategory,
-    origin: row.origin,
-    sourceChatIds: row.sourceChatIds,
-    sourceMessageId: row.sourceMessageId,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-    lastUsedAt: toIsoString(row.lastUsedAt),
   }
 }
 

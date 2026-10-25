@@ -210,6 +210,7 @@ function createDb() {
   return {
     db: {
       query: {
+        userSettings: { findFirst: vi.fn(async () => undefined) },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',

@@ -118,6 +118,34 @@ export function getAffectedTests(changedFiles) {
   const memoryPurgeTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
+  const memoryEntriesTests = [
+    'tests/unit/utils/memory/entries.spec.ts',
+    'tests/unit/utils/memory/entry-slug.spec.ts',
+    'tests/integration/api/memory-entries.spec.ts',
+  ]
+  const memoryIndexTests = [
+    'tests/unit/utils/memory-tokens.spec.ts',
+    'tests/unit/utils/memory/index-builder.spec.ts',
+    'tests/unit/utils/memory/runtime-settings.spec.ts',
+    'tests/unit/utils/memory/about-me.spec.ts',
+    'tests/unit/utils/memory/chat-context.spec.ts',
+  ]
+  const memoryChatDeletionTests = [
+    'tests/unit/utils/memory/chat-deletion.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+  const memoryToolTests = [
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/enabled.spec.ts',
+    'tests/unit/utils/ai/memory-tools.spec.ts',
+    'tests/integration/api/chats-memory.spec.ts',
+    ...memoryIndexTests,
+  ]
+  const memoryStepTests = [
+    'tests/unit/utils/memory-step.spec.ts',
+    'tests/unit/components/Chat/Reasoning/MemoryStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+  ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
@@ -672,6 +700,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const chatSearchToolTests = [
+    ...memoryToolTests,
     'tests/unit/utils/memory/tools/search-chats.spec.ts',
     'tests/unit/utils/memory/tools/read-chat.spec.ts',
     'tests/unit/utils/memory/tools/chat-search-budget.spec.ts',
@@ -1279,8 +1308,36 @@ export function getAffectedTests(changedFiles) {
       tests: [...messageSearchTests, ...chatSearchToolTests],
     },
     {
-      pattern: /^(server\/utils\/memory\/tools\/.*\.ts|server\/utils\/ai\/chat-search-tools\.ts)$/,
+      pattern: /^(server\/utils\/memory\/tools\/.*\.ts|server\/utils\/ai\/(chat-search-tools|memory-tools)\.ts)$/,
       tests: chatSearchToolTests,
+    },
+    {
+      pattern: /^(server\/utils\/memory\/(entries|entry-slug)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
+      tests: [
+        ...memoryEntriesTests,
+        ...memoryToolTests,
+        ...memoryChatDeletionTests,
+      ],
+    },
+    {
+      pattern: /^(shared\/utils\/memory-tokens|server\/utils\/memory\/(index-builder|runtime-settings|about-me|chat-context))\.ts$/,
+      tests: memoryToolTests,
+    },
+    {
+      pattern: /^(server\/utils\/memory\/chat-deletion\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts)$/,
+      tests: memoryChatDeletionTests,
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/memory-db\.ts$/,
+      tests: [
+        ...memoryEntriesTests,
+        ...memoryToolTests,
+        ...memoryChatDeletionTests,
+      ],
+    },
+    {
+      pattern: /^app\/(utils\/memory-step|types\/memory-step\.d)\.ts$|^app\/components\/Chat\/Reasoning\/MemoryStep\.vue$/,
+      tests: memoryStepTests,
     },
     {
       pattern: /^tests\/setup\/helpers\/search-index-db\.ts$/,
@@ -1635,6 +1692,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...historyProjectsTests,
         ...filesModuleTests,
+        ...memoryChatDeletionTests,
         'tests/integration/api/chats-message-delete.spec.ts',
       ],
     },
@@ -1846,6 +1904,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...profileSettingsTests,
         ...searchStepTests,
+        ...memoryStepTests,
         'tests/unit/components/Chat/Reasoning.spec.ts',
         'tests/unit/components/Chat/UrlSources.spec.ts',
       ],
@@ -1883,6 +1942,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/utils\/reasoning\.ts$/,
       tests: [
         ...searchStepTests,
+        ...memoryStepTests,
         'tests/unit/utils/reasoning.spec.ts',
         'tests/unit/components/Chat/Reasoning.spec.ts',
       ],

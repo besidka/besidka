@@ -156,6 +156,7 @@ function createDb() {
 
   return {
     query: {
+      userSettings: { findFirst: vi.fn(async () => undefined) },
       chats: { findFirst: createChatsFindFirst() },
       keys: {
         findFirst: vi.fn(async () => ({ apiKey: 'encrypted-key' })),
