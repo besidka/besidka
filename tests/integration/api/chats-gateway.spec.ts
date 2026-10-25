@@ -163,6 +163,10 @@ vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: vi.fn(async () => undefined),
 }))
 
+vi.mock('~~/server/utils/memory/tools/enabled', () => ({
+  isChatSearchToolEnabled: () => false,
+}))
+
 // The real gateway builders resolve a catalog entry over the network. Tests
 // that care about `maxOutputTokens` or `pricing` supply them explicitly
 // through a stubbed `useGateway`, so this entry deliberately carries neither

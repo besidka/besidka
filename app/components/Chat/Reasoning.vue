@@ -177,6 +177,7 @@
                     :key="`reasoning-${message.id}-${step.id}-${status}`"
                     :cache-key="`reasoning-${message.id}-${step.id}-${status}`"
                     :value="stripModelCitationMarkers(step.body)"
+                    :components="imageComponents"
                     :parser-options="{ highlight: false }"
                     class="chat-markdown text-xs !text-text/80"
                   />
@@ -209,6 +210,8 @@ const props = defineProps<{
   reasoningSegmentStartedAt: number
   isTurnThinkingHeld: boolean
 }>()
+
+const { imageComponents } = useChatFormat()
 
 interface ReasoningStep {
   id: string

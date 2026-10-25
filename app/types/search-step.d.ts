@@ -9,10 +9,16 @@ export interface SearchStepResult {
   title: string
   url: string
   publishedDate?: string
+  internalPath?: string
 }
 
 export interface SearchStepData {
-  toolName: 'web_search_brave' | 'web_search_exa' | 'web_search'
+  toolName:
+    | 'web_search_brave'
+    | 'web_search_exa'
+    | 'web_search'
+    | 'search_chats'
+    | 'read_chat'
   state: SearchStepState
   query: string
   freshness?: SearchStepFreshness

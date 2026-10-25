@@ -184,6 +184,17 @@ project entry on first read; the column is left in place and writes stop
   only.
 - Results render as visible tool chips with links to the source chats
   (transparency + citations).
+- **As built (W2, 2026-10-25)** — see "Model-facing tools" in
+  `docs/history/content-search.md`. Deviations from the text above: the
+  fallback is AND → OR only (no "drop rarest-missing tokens" step); the tools
+  are skipped on sends with a forced `toolChoice` (image generation, Google
+  native `web_search`); the gate `isChatSearchToolEnabled()` returns `true`
+  until the settings workstream wires `chatSearchEnabled`; the route passes
+  no `projectId` until project isolation exists; and every send on a
+  tool-calling model is now a tool-loop send. Giving the model the whole
+  history also required blocking external markdown images at render time
+  (`app/components/prose/Img.vue`), otherwise a poisoned prompt could leak
+  any chat through an auto-loaded image URL.
 - `memory_write` / `memory_forget`: only when the **user's current message**
   asks for it; renders a "Saved to memory · Undo" chip.
 
