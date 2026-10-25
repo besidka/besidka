@@ -1,0 +1,264 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
+import * as schema from '~~/server/db/schema'
+import {
+  createMemoryExtractionTestDb,
+  seedChat,
+  seedUser,
+} from '../../setup/helpers/memory-extraction-db'
+import type {
+  MemoryExtractionTestDb,
+} from '../../setup/helpers/memory-extraction-db'
+
+const mocks = vi.hoisted(() => ({
+  extractChatMemory: vi.fn(),
+  loggerSet: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/custom-db-types', async () => {
+  const { publicIdMockFactory } = await import(
+    '../../setup/helpers/public-id-mock'
+  )
+
+  return await publicIdMockFactory()
+})
+
+vi.mock('~~/server/utils/logging/request-logger', () => ({
+  useRequestLogger: () => ({ set: mocks.loggerSet }),
+}))
+
+vi.mock('~~/server/utils/memory/extract', () => ({
+  extractChatMemory: mocks.extractChatMemory,
+}))
+
+const SECRET_TEXT = 'secret entry text'
+
+function createKvStub() {
+  const store = new Map<string, string>()
+
+  return {
+    store,
+    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    put: vi.fn(async (key: string, value: string) => {
+      store.set(key, value)
+    }),
+  }
+}
+
+function createExtractionResult() {
+  return {
+    status: 'extracted',
+    applied: { created: 2, updated: 1, deleted: 0 },
+    dropped: { ungrounded: 1 },
+    blocked: {},
+    model: {
+      source: 'chat',
+      providerId: 'openai',
+      gatewayId: null,
+      modelId: 'gpt-test',
+      skipped: [],
+    },
+    messages: 4,
+    userChars: 800,
+    proposed: 4,
+    usage: { inputTokens: 100, outputTokens: 20 },
+  }
+}
+
+async function loadHandler() {
+  const module = await import('../../../server/api/v1/memory/extract-now.post')
+
+  return module.default
+}
+
+describe('POST /api/v1/memory/extract-now', () => {
+  let testDb: MemoryExtractionTestDb
+  let userId: number
+  let kv: ReturnType<typeof createKvStub>
+
+  beforeEach(async () => {
+    vi.resetModules()
+    testDb = createMemoryExtractionTestDb()
+    userId = await seedUser(testDb.db, { memoryEnabled: true })
+    kv = createKvStub()
+    mocks.extractChatMemory.mockResolvedValue(createExtractionResult())
+
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('assertNotCrossSiteRequest', vi.fn())
+    vi.stubGlobal(
+      'readValidatedBody',
+      async (event: { body: unknown }, parser: (body: unknown) => unknown) => {
+        return parser(event.body)
+      },
+    )
+    vi.stubGlobal('useUnauthorizedError', () => {
+      throw Object.assign(new Error('Unauthorized'), { status: 401 })
+    })
+    vi.stubGlobal('useDb', () => testDb.db)
+    vi.stubGlobal('useKV', () => kv)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: { id: String(userId) },
+    }))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    testDb.close()
+  })
+
+  async function call(chatSlug: unknown) {
+    const handler = await loadHandler()
+
+    return await handler({ body: { chatSlug } } as never)
+  }
+
+  it('rejects unauthenticated requests', async () => {
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
+
+    await expect(call('slug')).rejects.toMatchObject({ status: 401 })
+  })
+
+  it('rejects an invalid body', async () => {
+    await expect(call('')).rejects.toMatchObject({ status: 400 })
+    await expect(call(42)).rejects.toMatchObject({ status: 400 })
+    expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+  })
+
+  it('answers 404 for unknown and foreign chats alike', async () => {
+    const otherUserId = await seedUser(testDb.db, {})
+    const foreignChat = await seedChat(testDb.db, otherUserId)
+
+    await expect(call(foreignChat.slug)).rejects.toMatchObject({ status: 404 })
+    await expect(call('does-not-exist')).rejects.toMatchObject({ status: 404 })
+    expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+    expect(kv.put).not.toHaveBeenCalled()
+  })
+
+  it('answers 409 with a fix when extraction is off', async () => {
+    const chat = await seedChat(testDb.db, userId)
+
+    await testDb.db.update(schema.userSettings)
+      .set({ memoryExtractionEnabled: false })
+      .where(eq(schema.userSettings.userId, userId))
+
+    await expect(call(chat.slug)).rejects.toMatchObject({
+      status: 409,
+      fix: expect.any(String),
+    })
+    expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+  })
+
+  it('answers 409 when memory is off', async () => {
+    const chat = await seedChat(testDb.db, userId)
+
+    await testDb.db.update(schema.userSettings)
+      .set({ memoryEnabled: false })
+      .where(eq(schema.userSettings.userId, userId))
+
+    await expect(call(chat.slug)).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('answers 409 when the user has no settings row', async () => {
+    const userWithoutSettings = await seedUser(testDb.db, null)
+    const chat = await seedChat(testDb.db, userWithoutSettings)
+
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: { id: String(userWithoutSettings) },
+    }))
+
+    await expect(call(chat.slug)).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('answers 429 while the cooldown is active', async () => {
+    const chat = await seedChat(testDb.db, userId)
+
+    kv.store.set(`memory-extract-now:${userId}`, '1')
+
+    await expect(call(chat.slug)).rejects.toMatchObject({ status: 429 })
+    expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+  })
+
+  it('runs one pass ignoring idle and starts the cooldown', async () => {
+    const chat = await seedChat(testDb.db, userId)
+    const response = await call(chat.slug)
+
+    expect(mocks.extractChatMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chat: { id: chat.id },
+        userId,
+        ignoreIdle: true,
+      }),
+    )
+    expect(response).toEqual({
+      status: 'extracted',
+      reason: undefined,
+      created: 2,
+      updated: 1,
+      deleted: 0,
+      dropped: { ungrounded: 1 },
+      model: { source: 'chat', modelId: 'gpt-test' },
+    })
+    expect(kv.put).toHaveBeenCalledWith(
+      `memory-extract-now:${userId}`,
+      '1',
+      { expirationTtl: 60 },
+    )
+    await expect(call(chat.slug)).rejects.toMatchObject({ status: 429 })
+  })
+
+  it('starts the cooldown for a failed pass but not for skipped or leased',
+    async () => {
+      const chat = await seedChat(testDb.db, userId)
+
+      mocks.extractChatMemory.mockResolvedValue({
+        ...createExtractionResult(),
+        status: 'leased',
+      })
+      await call(chat.slug)
+      mocks.extractChatMemory.mockResolvedValue({
+        ...createExtractionResult(),
+        status: 'skipped',
+        reason: 'too-short',
+      })
+      await call(chat.slug)
+
+      expect(kv.put).not.toHaveBeenCalled()
+
+      mocks.extractChatMemory.mockResolvedValue({
+        ...createExtractionResult(),
+        status: 'failed',
+        reason: 'no-model',
+      })
+      await call(chat.slug)
+
+      expect(kv.put).toHaveBeenCalledOnce()
+    })
+
+  it('reports a null model when none resolved', async () => {
+    const chat = await seedChat(testDb.db, userId)
+
+    mocks.extractChatMemory.mockResolvedValue({
+      ...createExtractionResult(),
+      status: 'failed',
+      reason: 'no-model',
+      model: { source: null, providerId: null, gatewayId: null, modelId: null },
+    })
+
+    expect(await call(chat.slug)).toMatchObject({
+      status: 'failed',
+      reason: 'no-model',
+      model: null,
+    })
+  })
+
+  it('logs counts only', async () => {
+    const chat = await seedChat(testDb.db, userId, { title: SECRET_TEXT })
+
+    await call(chat.slug)
+
+    const logged = JSON.stringify(mocks.loggerSet.mock.calls)
+
+    expect(logged).toContain('chatsProcessed')
+    expect(logged).not.toContain(SECRET_TEXT)
+  })
+})
