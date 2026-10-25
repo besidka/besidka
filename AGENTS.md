@@ -244,12 +244,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (and its silent-empty failure mode), why no postal address is published
   (UŚUDE Art. 2 pkt 6 `działalność zarobkową`), and why adding ANY donation
   channel breaks that conclusion
-- `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory:
-  why explicit consent is the only basis, the opt-in kept behind
-  `NUXT_PUBLIC_MEMORY_SENSITIVE_OPT_IN_ENABLED` until counsel signs off, the
-  2026-10-25 engineering decisions, and the open owner/counsel questions
+- `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory
+  (opt-in removed from v1, owner 2026-10-25, option (c)): why explicit consent
+  is the only basis, why it was not shipped, option (b) with its launch
+  conditions as the path to revisit, the 2026-10-25 engineering decisions, and
+  the open owner/counsel questions (the "no lawful basis" chat-storage
+  statement first)
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
-  only, not legal text: Privacy Policy/ToU clause outlines for memory, the
+  only, not legal text (the opt-in-specific clauses are deferred, opt-in
+  removed from v1): Privacy Policy/ToU clause outlines for memory, the
   anchors the Memory UI links to, a DPIA skeleton (UODO M.P. 2019 poz. 666 +
   EDPB criteria) and an Art. 30 record skeleton
 - `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
@@ -379,7 +382,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   audit of today's project-memory blob and its bugs, the target layers
   (memory entries, cached index, on-demand memory/search tools over the
   existing FTS5, cron-sweep extraction), the code-enforced compliance gate
-  (never-store list, GDPR Art. 9 opt-in), token budgets incl. the Cyrillic
+  (never-store list, deterministic sensitive-topic rejection on every write
+  path; no GDPR Art. 9 opt-in in v1, see its decision log), project memory
+  swept automatically per project, token budgets incl. the Cyrillic
   multiplier, owner-overridable defaults, and the parallel workstreams
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every

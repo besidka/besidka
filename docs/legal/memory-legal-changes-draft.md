@@ -1,5 +1,31 @@
 # DRAFT FOR COUNSEL — not legal text
 
+> **Scope note, 2026-10-25: the sensitive-memory opt-in is out of v1** (owner
+> decision, option (c) in `docs/legal-memory-sensitive-data.md` section 6).
+> Special-category text is rejected on every memory write path and never
+> stored, so the **opt-in-specific clauses below are deferred** until that path
+> is revisited: the consent dialog text, consent receipts (and the
+> `CONSENT_DB` extension they need), the withdrawal purge, the provider
+> allowlist and its "withheld" notice, and the sensitive-memory columns and
+> measures of the DPIA and Art. 30 skeletons. Read every "sensitive toggle",
+> "consent dialog" and "toggle-off purge" mention below as deferred.
+>
+> **Still needed for v1:**
+>
+> - The Privacy Policy and Terms of Use changes for the memory feature itself:
+>   what is stored, profiling (Art. 4(4)) by extraction, the export that now
+>   exists, recipients (the AI provider the user chose), retention, and
+>   transfers outside the EU. The Memory tab already tells users that sensitive
+>   topics are never saved and links to the Privacy Policy, so the published
+>   text must say the same.
+> - A DPIA and an Art. 30 record, scoped to memory without the sensitive
+>   opt-in.
+> - **The chat-storage Art. 9 issue stands, independent of memory.** The
+>   Privacy Policy says Besidka has no lawful basis for special-category data
+>   and the Terms of Use ban submitting it, which affects chats in production
+>   today. It is the most urgent open item in
+>   `docs/legal-memory-sensitive-data.md`.
+
 Outlines only. Nothing here is published, and none of it is finished legal
 prose. Source and reasoning: `docs/legal-memory-sensitive-data.md`. Labels:
 **[L]** needs counsel, **[I]** inference by the researcher. The published
