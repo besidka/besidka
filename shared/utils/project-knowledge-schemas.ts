@@ -5,6 +5,11 @@ import {
   knowledgeExtractors,
   knowledgeModes,
 } from '#shared/utils/project-knowledge-policy'
+import {
+  KNOWLEDGE_RELATIVE_PATH_PRE_NORMALIZE_MAX_CHARS,
+  getKnowledgeRelativePathIssue,
+  normalizeKnowledgeRelativePath,
+} from '#shared/utils/project-knowledge-path'
 
 const CONTROL_OR_SEPARATOR_PATTERN = /[\p{Cc}\u2028\u2029]/u
 const FOLDER_ID_PATTERN = /^[A-Za-z0-9_-]+$/
@@ -26,10 +31,6 @@ function hasNoControlCharacters(value: string): boolean {
 
 function hasNoNulCharacter(value: string): boolean {
   return !value.includes('\u0000')
-}
-
-function hasParentSegment(relativePath: string): boolean {
-  return relativePath.split(/[\\/]/).includes('..')
 }
 
 const titleField = z
@@ -78,16 +79,18 @@ const noteBodyField = z
 
 const relativePathField = z
   .string()
-  .min(1)
-  .max(KNOWLEDGE_LIMITS.maxRelativePathChars)
-  .refine(hasNoControlCharacters, {
-    message: 'Path must be a single line without control characters',
-  })
-  .refine(value => !value.startsWith('/'), {
-    message: 'Path must not start with a slash',
-  })
-  .refine(value => !hasParentSegment(value), {
-    message: 'Path must not contain a ".." segment',
+  .max(KNOWLEDGE_RELATIVE_PATH_PRE_NORMALIZE_MAX_CHARS)
+  .transform((value, context) => {
+    const normalizedPath = normalizeKnowledgeRelativePath(value)
+    const issue = getKnowledgeRelativePathIssue(normalizedPath)
+
+    if (issue) {
+      context.addIssue({ code: 'custom', message: issue })
+
+      return z.NEVER
+    }
+
+    return normalizedPath
   })
 
 const folderIdField = z
