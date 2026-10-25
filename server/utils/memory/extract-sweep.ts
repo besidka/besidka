@@ -14,7 +14,10 @@ import * as schema from '~~/server/db/schema'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
-import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
+import {
+  MEMORY_EXTRACTION_LIMITS,
+  MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
+} from '~~/server/utils/memory/extract-limits'
 import type { ResolvedMemoryModel } from '~~/server/utils/memory/resolve-model'
 
 type DbClient = ReturnType<typeof useDb>
@@ -62,6 +65,9 @@ async function selectDueChats(
   const idleCutoff = new Date(now.getTime() - limits.idleMs)
   const backoffCutoff = new Date(now.getTime() - limits.attemptBackoffMs)
   const poolSize = batchSize * limits.poolMultiplier
+  const attemptedAt = schema.chats.memoryExtractionAttemptedAt
+  const failures = schema.chats.memoryExtractionFailures
+  const hasActivitySinceAttempt = gt(schema.chats.activityAt, attemptedAt)
 
   const attemptedAtOrZero = sql`coalesce(${schema.chats.memoryExtractionAttemptedAt}, 0)`
   const ranked = db
@@ -89,15 +95,16 @@ async function selectDueChats(
         lt(schema.chats.memoryExtractedAt, schema.chats.activityAt),
       ),
       or(
-        isNull(schema.chats.memoryExtractionAttemptedAt),
-        lt(schema.chats.memoryExtractionAttemptedAt, backoffCutoff),
-      ),
-      or(
-        isNull(schema.chats.memoryExtractionFailures),
-        lt(schema.chats.memoryExtractionFailures, limits.maxFailures),
-        gt(
-          schema.chats.activityAt,
-          schema.chats.memoryExtractionAttemptedAt,
+        isNull(attemptedAt),
+        and(isNull(failures), lt(attemptedAt, backoffCutoff)),
+        and(
+          eq(failures, MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES),
+          hasActivitySinceAttempt,
+        ),
+        and(
+          gt(failures, MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES),
+          lt(attemptedAt, backoffCutoff),
+          or(lt(failures, limits.maxFailures), hasActivitySinceAttempt),
         ),
       ),
     ))
@@ -165,8 +172,10 @@ function addCounts(
 }
 
 /**
- * Picks due chats (idle, dirty, outside the attempt backoff, under the
- * failure cap, at most `perUserCapPerTick` per user) and extracts them one
+ * Picks due chats (idle, dirty, never attempted, or crashed and outside
+ * the attempt backoff, or waiting for more user text with new activity, or
+ * failed outside the backoff and under the failure cap unless new activity
+ * lifted it; at most `perUserCapPerTick` per user) and extracts them one
  * after the other until the batch or the runtime budget is spent. A chat that
  * throws never stops the loop. Reports counts only.
  */

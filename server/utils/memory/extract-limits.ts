@@ -18,3 +18,5 @@ export const MEMORY_EXTRACTION_LIMITS = {
   maxLegacyBlobChars: 4000,
   extractNowCooldownSeconds: 60,
 } as const
+
+export const MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES = 0
