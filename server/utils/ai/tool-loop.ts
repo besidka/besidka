@@ -8,7 +8,7 @@ export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
 export const TOOL_LOOP_TOTAL_TIMEOUT_MS = 540_000
 export const TOOL_LOOP_TOOL_TIMEOUT_MS = 60_000
-export const TOOL_LOOP_CONTINUATION_TIMEOUT_MS = 90_000
+export const TOOL_LOOP_CONTINUATION_TIMEOUT_MS = 180_000
 
 const TOOL_LOOP_FINAL_STEP_INSTRUCTIONS = [
   'Your search budget is used up. Answer the user\'s question now using',
