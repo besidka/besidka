@@ -316,6 +316,7 @@ describe('useGateway dispatch', () => {
     }))
 
     const { useGateway } = await importGatewaysIndex()
+    const logger = { set: vi.fn() }
 
     await useGateway(
       'openrouter',
@@ -323,6 +324,7 @@ describe('useGateway dispatch', () => {
       'anthropic/claude-opus-5',
       [],
       'low',
+      logger,
     )
 
     expect(openRouterGatewayMock).toHaveBeenCalledWith(
@@ -330,6 +332,7 @@ describe('useGateway dispatch', () => {
       'anthropic/claude-opus-5',
       [],
       'low',
+      logger,
     )
   })
 })

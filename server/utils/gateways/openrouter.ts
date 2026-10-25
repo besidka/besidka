@@ -2,7 +2,6 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { createError } from 'evlog'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import { isExternalWebSearchTool } from '#shared/utils/message-metadata'
 import { toReasoningEffort } from '~~/server/utils/providers/reasoning'
 import {
   findGatewayCatalogModel,
@@ -18,6 +17,7 @@ export async function useOpenRouterGateway(
   model: string,
   requestedTools: ModelTool[],
   requestedReasoning: ReasoningLevel,
+  logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -63,19 +63,19 @@ export async function useOpenRouterGateway(
     ? undefined
     : toReasoningEffort(requestedReasoning)
   /**
-   * Resolved only for a Brave/Exa send, the one case whose validation needs
-   * it. Unlike the Vercel and Cloudflare builders — which already look the
-   * catalog up for `maxOutputTokens`/`pricing` and get `toolCall` for free —
-   * OpenRouter's builder deliberately caps nothing and prices nothing, so an
-   * unconditional lookup here would add a cache read (and, on a cold cache, a
-   * catalog fetch) to every OpenRouter send that never needed one.
+   * Resolved on every send, like the Vercel and Cloudflare builders, because
+   * `toolCall` gates more than Brave/Exa: it decides whether the cross-chat
+   * `search_chats`/`read_chat` tools are registered. OpenRouter's builder
+   * still caps nothing and prices nothing, so the catalog entry is read only
+   * for `toolCall`. The lookup is a KV cache hit in the common case and never
+   * throws, so a catalog outage leaves `toolCall` undefined instead of
+   * blocking the send.
    */
-  const catalogModel = requestedTools.some(isExternalWebSearchTool)
-    ? await findGatewayCatalogModel(
-      () => getCachedGatewayCatalog('openrouter'),
-      model,
-    )
-    : undefined
+  const catalogModel = await findGatewayCatalogModel(
+    () => getCachedGatewayCatalog('openrouter', { logger }),
+    model,
+    logger,
+  )
 
   /**
    * `usage.include` turns on OpenRouter's extended usage-accounting response

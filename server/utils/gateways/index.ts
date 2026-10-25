@@ -113,6 +113,7 @@ export async function useGateway(
         modelId,
         requestedTools,
         requestedReasoning,
+        logger,
       )
     case 'cloudflare':
       return await useCloudflareGateway(userId, modelId, logger)

@@ -50,6 +50,10 @@ describe('useOpenRouterGateway', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+    vi.doMock('../../../../server/utils/gateways/catalog', () => ({
+      findGatewayCatalogModel: vi.fn(async () => undefined),
+      getCachedGatewayCatalog: vi.fn(async () => []),
+    }))
   })
 
   it('throws a 401-style error when no key is stored', async () => {
@@ -343,7 +347,7 @@ describe('useOpenRouterGateway', () => {
     })
   })
 
-  describe('toolCall resolution for the Brave/Exa gate', () => {
+  describe('toolCall resolution', () => {
     async function importWithCatalog(model: unknown) {
       const findGatewayCatalogModel = vi.fn(async () => model)
 
@@ -410,8 +414,44 @@ describe('useOpenRouterGateway', () => {
       expect(result.toolCall).toBeUndefined()
     })
 
-    it('skips the catalog lookup entirely when no external search tool was '
-      + 'requested, keeping the ordinary send path free of it', async () => {
+    it('resolves toolCall on a plain send with no tools, so the cross-chat '
+      + 'tools can be registered', async () => {
+      stubKeyLookup()
+
+      const {
+        useOpenRouterGateway,
+        findGatewayCatalogModel,
+      } = await importWithCatalog({ id: 'x', toolCall: true })
+      const result = await useOpenRouterGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        [],
+        'off',
+      )
+
+      expect(findGatewayCatalogModel).toHaveBeenCalledTimes(1)
+      expect(result.toolCall).toBe(true)
+    })
+
+    it('reports a false toolCall on a plain send for a model without tool '
+      + 'support', async () => {
+      stubKeyLookup()
+
+      const { useOpenRouterGateway } = await importWithCatalog({
+        id: 'x',
+        toolCall: false,
+      })
+      const result = await useOpenRouterGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        [],
+        'off',
+      )
+
+      expect(result.toolCall).toBe(false)
+    })
+
+    it('resolves toolCall on a native web search send too', async () => {
       stubKeyLookup()
 
       const {
@@ -425,8 +465,32 @@ describe('useOpenRouterGateway', () => {
         'off',
       )
 
-      expect(findGatewayCatalogModel).not.toHaveBeenCalled()
-      expect(result.toolCall).toBeUndefined()
+      expect(findGatewayCatalogModel).toHaveBeenCalledTimes(1)
+      expect(result.toolCall).toBe(true)
+    })
+
+    it('forwards the logger to the catalog lookup', async () => {
+      stubKeyLookup()
+
+      const logger = { set: vi.fn() }
+      const {
+        useOpenRouterGateway,
+        findGatewayCatalogModel,
+      } = await importWithCatalog({ id: 'x', toolCall: true })
+
+      await useOpenRouterGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        [],
+        'off',
+        logger,
+      )
+
+      expect(findGatewayCatalogModel).toHaveBeenCalledWith(
+        expect.any(Function),
+        'anthropic/claude-opus-5',
+        logger,
+      )
     })
   })
 
