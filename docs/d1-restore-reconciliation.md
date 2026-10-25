@@ -93,9 +93,14 @@ window user's still-valid cookie therefore opens the **new** user's account.
 
 The other tables (`chats`, `messages`, `files`, ...) use plain
 `INTEGER PRIMARY KEY`. They reuse `max(rowid) + 1` after any restore. Their
-external keys are all short-lived: the KV generation guard has a 120 s
-lease, and the storage and file-policy caches live 60 s. Share slugs and R2
-keys are ULIDs or UUIDs, so they never collide.
+runtime external keys are short-lived: the KV generation guard has a 120 s
+lease, and the storage and file-policy caches live 60 s. Chat slugs, share
+slugs and R2 keys are ULIDs or UUIDs, so they never collide.
+
+Numeric ids recorded in Axiom during the window are different: they are
+long-lived, and after the restore they can name a different user's row.
+This is why the bulk routes log chat **slugs**, and why every step 4 replay
+statement is guarded to rows that existed at B.
 
 ### Why not the obvious levers
 
@@ -157,16 +162,17 @@ in the window comes back together with its share.
 Ledger:
 
 - Single revoke: `chatSlug` and `userId`.
-- Bulk revoke: `attributes.chatShareRevoke.chatIds` (owned chats only, added
-  with this document).
+- Bulk revoke: `attributes.chatShareRevoke.chatSlugs` (owned chats only,
+  added with this document).
 - Chat delete: `DELETE /api/v1/chats/<slug>` with `chatSlug`.
-- Bulk chat delete: `attributes.chatBulkDelete.chatIds`.
+- Bulk chat delete: `attributes.chatBulkDelete.chatSlugs`.
 - Settings changes: `chatSlug` only. The flag values are not logged, so the
   safe reconciliation is to set the restrictive values and tell the owner.
 
-Bulk routes log **public** chat ids (Hashids of the integer row id). Decode
-them with the production `encryptionHashids` salt and minimum length 16, the
-same as `decodePublicId` in `server/utils/custom-db-types.ts`.
+The bulk routes take public chat ids in their request body but log slugs on
+purpose. `chats.id` is a plain `INTEGER PRIMARY KEY`, so a chat created in
+the window can have its row id reused after the restore, and replaying a
+logged id would hit someone else's chat. A slug never collides.
 
 ### The visibility-flag migrations (closed)
 
@@ -312,8 +318,11 @@ UPDATE sqlite_sequence SET seq = <pre-restore seq> WHERE name = '<table>' AND se
 
 Nobody has confirmed that D1 accepts writes to `sqlite_sequence`. Try it on
 `besidka-preview` first. If D1 refuses, skip the step: step 2 already closes
-the session takeover. What remains is id reuse in Axiom attribution and in
-caches that expire within 120 s.
+the session takeover. What remains is id reuse in Axiom attribution, in
+caches that expire within 120 s, and in the step 4 replay. Step 4 has its
+own guard for that. Even when this step succeeds, ids handed out between
+step 1 and step 3 have already been reused, so the step 4 guard is required
+either way.
 
 ### 4. Replay the window's revocations and deletions from Axiom
 
@@ -325,7 +334,7 @@ Query `besidka-prod` for the window. Wide events set `message` to
 | where _time between (datetime(<B>) .. datetime(<R>))
 | where status < 400
 | where message matches regex @"^(POST /api/v1/chats/[^/]+/share/revoke|POST /api/v1/chats/[^/]+/share$|POST /api/v1/chats/shared/revoke|DELETE /api/v1/chats/[^/]+$|POST /api/v1/chats/history/delete/bulk|DELETE /api/v1/profiles/keys/[^/]+$|DELETE /api/v1/files/[^/]+$|POST /api/v1/files/delete/bulk|DELETE /api/v1/projects/[^/]+$|POST /api/v1/push/unsubscribe)"
-| project _time, message, userId, chatSlug, fileId, projectId, shareRevokeChatIds = attributes['chatShareRevoke']['chatIds'], bulkDeleteChatIds = attributes['chatBulkDelete']['chatIds']
+| project _time, message, userId, chatSlug, fileId, projectId, shareRevokeChatSlugs = attributes['chatShareRevoke']['chatSlugs'], bulkDeleteChatSlugs = attributes['chatBulkDelete']['chatSlugs']
 | order by _time asc
 ```
 
@@ -340,27 +349,50 @@ Query `besidka-prod` for the window. Wide events set `message` to
 identify middleware). It is set on every authenticated request except
 `/api/auth/**`, `/api/v1/stats*` and `/api/v1/consents*`. The middleware
 writes it as a string, while routes that set it themselves write a number, so
-compare it with `tostring(userId)`. Then apply, in this order:
+compare it with `tostring(userId)`.
+
+**Replay guard: only touch rows that existed at B.** A numeric id from the
+window can belong to someone else after the restore. `users` ids come back
+through the restored `sqlite_sequence`, and `chats` and `projects` ids
+through `max(rowid) + 1` reuse. Example: a user signs up in the window, gets
+id N, and deletes their account. After the restore, a new sign-up gets id N.
+An unguarded `DELETE FROM users WHERE id = N` then wipes the new user's
+account. Every statement below therefore carries the guard, where `<B_s>` is
+B in Unix seconds (`created_at` columns store seconds):
+
+- `user_id IN (SELECT id FROM users WHERE created_at <= <B_s>)` for
+  user-scoped rows,
+- `created_at <= <B_s>` on the row itself when the ledger names it by
+  numeric id.
+
+Chats are matched by `slug`, a ULID, which never collides: a slug from a chat
+created in the window matches nothing after the restore. Apply, in this
+order:
 
 1. **Deleted accounts**: for each `userId`,
-   `DELETE FROM image_generation_locks WHERE user_id = <id>;` then
-   `DELETE FROM users WHERE id = <id>;`. The cascade removes the restored
-   children. This is the cascade `CLAUDE.md` warns about, and here it is
-   intended. R2 and KV were already purged before B, and `message_search`
-   orphans are collected by the hourly sweep.
-2. **Share revokes and deleted chats**:
+   `DELETE FROM image_generation_locks WHERE user_id = <id> AND user_id IN (SELECT id FROM users WHERE created_at <= <B_s>);`
+   then `DELETE FROM users WHERE id = <id> AND created_at <= <B_s>;`. The
+   cascade removes the restored children. This is the cascade `CLAUDE.md`
+   warns about, and here it is intended. R2 and KV were already purged
+   before B, and `message_search` orphans are collected by the hourly sweep.
+2. **Share revokes and deleted chats**, by `chatSlug` (single routes) and
+   `chatSlugs` (bulk routes):
    `DELETE FROM chat_shares WHERE chat_id IN (SELECT id FROM chats WHERE slug IN (...));`
    then `UPDATE chats SET shared = 0 WHERE slug IN (...);`. For deleted chats,
-   `DELETE FROM chats WHERE slug IN (...);`. Map the bulk routes' public ids
-   to row ids first (see "Shares").
+   `DELETE FROM chats WHERE slug IN (...);`.
 3. **Share settings changes** (`POST /api/v1/chats/<slug>/share`): set the
    restrictive flags for those `chatSlug`s and tell the owners. The same
    route also creates shares, but a share created after B no longer exists
    after the restore, so those rows match nothing.
-4. **Key deletions**: `DELETE FROM keys WHERE user_id = <id> AND provider = '<provider from path>';`.
-5. **Push unsubscribes**: `DELETE FROM push_subscriptions WHERE user_id = <id>;`.
+4. **Key deletions**:
+   `DELETE FROM keys WHERE user_id = <id> AND provider = '<provider from path>' AND user_id IN (SELECT id FROM users WHERE created_at <= <B_s>);`.
+5. **Push unsubscribes**:
+   `DELETE FROM push_subscriptions WHERE user_id = <id> AND user_id IN (SELECT id FROM users WHERE created_at <= <B_s>);`.
    The user re-subscribes from the device that should get pushes.
-6. **Project deletions**: `DELETE FROM projects WHERE id = <decoded id> AND user_id = <id>;`.
+6. **Project deletions**: the path carries a public (Hashids) project id.
+   Decode it with the production `encryptionHashids` salt and minimum length
+   16, as `decodePublicId` in `server/utils/custom-db-types.ts` does, then run
+   `DELETE FROM projects WHERE id = <decoded id> AND user_id = <id> AND created_at <= <B_s> AND user_id IN (SELECT id FROM users WHERE created_at <= <B_s>);`.
 
 Back up anything you delete with a `SELECT` first. Each `DELETE` here
 removes data that users already asked to delete.

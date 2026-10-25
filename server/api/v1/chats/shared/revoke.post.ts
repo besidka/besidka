@@ -42,6 +42,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
+      slug: true,
     },
   })
 
@@ -54,7 +55,7 @@ export default defineEventHandler(async (event) => {
   logger.set({
     attributes: {
       chatShareRevoke: {
-        chatIds: ownedChatIds,
+        chatSlugs: ownedChats.map(chat => chat.slug),
       },
     },
   })
