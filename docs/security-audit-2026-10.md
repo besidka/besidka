@@ -21,10 +21,12 @@ in the local `.dev.vars*` files.
    `docs/cloudflare-previews.md`).
 2. **Set `STUDIO_GITHUB_MODERATORS`** (who may publish through Studio) next to
    the existing `STUDIO_GITHUB_*` secrets. See `docs/landing-studio.md`.
-3. **Check whether `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` also exist in
-   the GitHub Dependabot secrets tab.** Dependabot PRs run workflows with that
-   secret store; if the deploy credentials are there, a malicious dependency
-   update reaches them.
+3. **Answered: Dependabot-actor runs receive `CLOUDFLARE_API_TOKEN` /
+   `CLOUDFLARE_ACCOUNT_ID`** (organization Actions secrets; Preview Deploy run
+   39229739041 for Dependabot PR #454 migrated and deployed with them).
+   besidka/besidka#498 moved `preview-deploy.yml` tooling to the default
+   branch, so PR-selected dependencies never run next to the token. Checking
+   the org Dependabot secrets tab is now optional.
 4. **Add WAF / rate-limit rules** in Cloudflare for: `/api/_evlog/ingest`,
    `/__nuxt_content/*/query`, `/api/v1/chats/*`, `/api/v1/files/*`. The code
    fixes below cap payload size and shape, not request volume.
@@ -89,9 +91,10 @@ Tests added or extended for each row are registered in
   SQL from the client query. Mitigation is a WAF rule (owner action 4), not code.
 - **Icon KV key cardinality.** `serverBundle.remote` caching still creates a KV
   key per distinct icon name requested server-side.
-- **`preview-deploy.yml` tooling comes from the default branch.** Restructuring
-  `workflow_run` so PR-controlled tooling never executes with secrets is a larger
-  change; the same-repository guard and artifact-path fix reduce, not remove, it.
+- **`preview-deploy.yml` tooling comes from the default branch.** Fixed later in
+  besidka/besidka#498: default-branch checkout and install, artifact integrity
+  and migration-match checks, SHA-pinned third-party actions. See
+  `.github/workflows/README.md` "Security Model".
 - **D1 Time Travel restore** reviving revoked sessions and shares (deferred unit).
 
 ## Lesson: `NODE_ENV` is not set inside the Worker
