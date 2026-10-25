@@ -6,6 +6,10 @@ was deliberately left, and what the owner must do.
 
 ## OWNER ACTIONS REQUIRED
 
+Items 1 and 2 were done on 2026-10-25: both secrets are set on the production
+Worker, the Preview base config and the live `preview` Preview, and recorded
+in the local `.dev.vars*` files.
+
 1. **Set `NUXT_STUDIO_AUTH_SESSION_SECRET` (random, 32+ characters) on the
    production Worker and on the preview base config BEFORE deploying this
    change.** Without it `server/middleware/00.studio-guard.ts` returns 404 for
