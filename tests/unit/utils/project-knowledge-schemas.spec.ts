@@ -494,6 +494,13 @@ describe('knowledgeItemCreateSchema', () => {
       'docs/../secret.pdf',
       'docs\\..\\secret.pdf',
       '/etc/passwd',
+      '.',
+      '..',
+      './a.pdf',
+      'a/./b.pdf',
+      'a//b.pdf',
+      'a/b.pdf/',
+      'a\\b.pdf',
     ])('rejects %s', (relativePath) => {
       expect(knowledgeItemCreateSchema.safeParse({
         ...validPdfItem,
@@ -525,6 +532,47 @@ describe('knowledgeItemCreateSchema', () => {
         ...validPdfItem,
         relativePath: null,
       }).success).toBe(true)
+    })
+
+    it('accepts Ukrainian and Cyrillic filenames', () => {
+      const relativePaths = [
+        'документи/звіт.pdf',
+        'Привіт/файл.md',
+        'проєкт/їжак і щука.txt',
+      ]
+
+      for (const relativePath of relativePaths) {
+        const result = knowledgeItemCreateSchema.safeParse({
+          ...validPdfItem,
+          relativePath,
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.data?.relativePath).toBe(relativePath)
+      }
+    })
+
+    it.each([
+      ['Latin', 'docs/cafe\u0301.pdf', 'docs/caf\u00E9.pdf'],
+      ['Cyrillic short i', '\u0438\u0306.md', '\u0439.md'],
+      ['Ukrainian yi', 'docs/\u0456\u0308жак.md', 'docs/\u0457жак.md'],
+    ])('normalises %s NFD input to NFC', (_label, input, expected) => {
+      const result = knowledgeItemCreateSchema.safeParse({
+        ...validPdfItem,
+        relativePath: input,
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.data?.relativePath).toBe(expected)
+    })
+
+    it('reports the failing rule as the issue message', () => {
+      const result = knowledgeItemCreateSchema.safeParse({
+        ...validPdfItem,
+        relativePath: 'a//b.pdf',
+      })
+
+      expect(result.error?.issues[0]?.message).toContain('empty segments')
     })
 
     it('accepts dots inside a segment name', () => {
