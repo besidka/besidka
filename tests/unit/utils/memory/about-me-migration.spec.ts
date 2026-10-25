@@ -36,6 +36,7 @@ const OTHER_USER_ID = 2
 const ABOUT_ME = 'I am a backend developer. I write TypeScript.'
 const CARD_NUMBER = '4111 1111 1111 1111'
 const HEALTH_TEXT = 'I have type 2 diabetes and take metformin daily.'
+const CYRILLIC_BYTES = 2
 
 describe('migrateAboutMeToProfileEntry', () => {
   let testDb: MemoryTestDb
@@ -439,7 +440,7 @@ describe('migrateAboutMeToProfileEntry', () => {
   })
 
   describe('size boundary is in bytes', () => {
-    it('migrates text of exactly 1024 ASCII bytes', async () => {
+    it('migrates ASCII text of exactly the byte limit', async () => {
       const aboutMe = 'a'.repeat(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
 
       testDb.insertUserSettings({ userId: USER_ID, aboutMe })
@@ -448,9 +449,11 @@ describe('migrateAboutMeToProfileEntry', () => {
       expect(readProfileEntries()[0]?.body).toBe(aboutMe)
     })
 
-    it('migrates 512 Cyrillic characters, which are exactly 1024 bytes',
+    it('migrates multi-byte text that lands exactly on the byte limit',
       async () => {
-        const aboutMe = 'я'.repeat(512)
+        const aboutMe = 'я'.repeat(
+          MEMORY_LIMITS.maxAlwaysInjectedBodyBytes / CYRILLIC_BYTES,
+        )
 
         testDb.insertUserSettings({ userId: USER_ID, aboutMe })
 
@@ -458,17 +461,21 @@ describe('migrateAboutMeToProfileEntry', () => {
         expect(readProfileEntries()[0]?.body).toBe(aboutMe)
       })
 
-    it('skips 513 Cyrillic characters although they are under 1024 chars',
-      async () => {
-        const aboutMe = 'я'.repeat(513)
+    it('skips multi-byte text over the byte limit even when its character '
+      + 'count is under the limit', async () => {
+      const aboutMe = 'я'.repeat(
+        MEMORY_LIMITS.maxAlwaysInjectedBodyBytes / CYRILLIC_BYTES + 1,
+      )
 
-        testDb.insertUserSettings({ userId: USER_ID, aboutMe })
+      testDb.insertUserSettings({ userId: USER_ID, aboutMe })
 
-        expect(await migrate())
-          .toEqual({ status: 'skipped', reason: 'too-long' })
-        expect(readAboutMe()).toBe(aboutMe)
-        expect(testDb.countEntries(USER_ID)).toBe(0)
-      })
+      expect(aboutMe.length)
+        .toBeLessThan(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
+      expect(await migrate())
+        .toEqual({ status: 'skipped', reason: 'too-long' })
+      expect(readAboutMe()).toBe(aboutMe)
+      expect(testDb.countEntries(USER_ID)).toBe(0)
+    })
 
     it('measures the trimmed text, not the stored padding', async () => {
       const aboutMe = 'a'.repeat(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
