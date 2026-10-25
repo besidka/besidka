@@ -7,7 +7,6 @@ import {
   READ_CHAT_TOOL_NAME,
   SEARCH_CHATS_TOOL_NAME,
 } from '~~/server/utils/memory/tools/constants'
-import { isChatSearchToolEnabled } from '~~/server/utils/memory/tools/enabled'
 import { getChatSearchTools } from '~~/server/utils/memory/tools/index'
 import { normalizeSearchText } from '~~/server/utils/search/text'
 import { buildStemmedSearchText } from '~~/server/utils/search/tokens'
@@ -239,11 +238,5 @@ describe('getChatSearchTools', () => {
     await tools.read_chat!.execute({ chatId: 'slug-1' }, toolOptions)
 
     expect(logger.set).toHaveBeenCalled()
-  })
-})
-
-describe('isChatSearchToolEnabled', () => {
-  it('is enabled until a setting is wired to it', () => {
-    expect(isChatSearchToolEnabled()).toBe(true)
   })
 })

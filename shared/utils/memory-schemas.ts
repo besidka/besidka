@@ -26,6 +26,9 @@ const titleField = z
   .trim()
   .min(1)
   .max(MEMORY_LIMITS.maxTitleChars)
+  .refine(value => SINGLE_LINE_PATTERN.test(value), {
+    message: 'Title must be a single line',
+  })
 
 const descriptionField = z
   .string()

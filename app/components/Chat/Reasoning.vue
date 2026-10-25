@@ -130,6 +130,12 @@
                 :pending="step.pending"
                 :searched-at="searchedAt"
               />
+              <ChatReasoningMemoryStep
+                v-else-if="step.memory"
+                :data="step.memory"
+                :title="step.title"
+                :pending="step.pending"
+              />
               <details
                 v-else
                 :open="expandedStepId === step.id"
@@ -194,6 +200,7 @@
 <script setup lang="ts">
 import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { MemoryStepData } from '~/types/memory-step.d'
 import type { SearchStepData } from '~/types/search-step.d'
 import { formatTokenCount } from '#shared/utils/message-format'
 
@@ -221,6 +228,7 @@ interface ReasoningStep {
   pending: boolean
   failed: boolean
   search: SearchStepData | null
+  memory: MemoryStepData | null
 }
 
 const reasoningIcon = computed<string>(() => {
@@ -286,6 +294,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
           pending: false,
           failed: false,
           search: null,
+          memory: null,
         })
       }
 
@@ -310,6 +319,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       pending: isPending,
       failed: isFailed,
       search: getSearchStepData(part),
+      memory: getMemoryStepData(part),
     })
   }
 

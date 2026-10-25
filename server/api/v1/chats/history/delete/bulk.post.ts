@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
 import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -40,6 +41,7 @@ export default defineEventHandler(async (event) => {
       id: { in: body.data.chatIds },
     },
     columns: {
+      id: true,
       slug: true,
       projectId: true,
     },
@@ -51,6 +53,13 @@ export default defineEventHandler(async (event) => {
         chatSlugs: chats.map(chat => chat.slug),
       },
     },
+  })
+
+  await detachChatsFromMemory({
+    db,
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
   })
 
   await removeChatsFromSearchIndex({

@@ -1,7 +1,7 @@
 # Memory architecture (profile, project, cross-chat, knowledge)
 
 Status: **proposal**, 2026-10-24, partly implemented: section 1 lists what
-exists today, and the "As built" notes in 3.3, 3.10 and section 5 record W1-W3.
+exists today, and the "As built" notes in 3.3, 3.10, 3.11, 3.12 and section 5 record W1-W6.
 Decisions marked **(owner)** are
 recommendations logged per the "minimize questions" preference; the owner can
 overturn any of them before the phase that depends on it starts.
@@ -189,8 +189,8 @@ project entry on first read; the column is left in place and writes stop
   `docs/history/content-search.md`. Deviations from the text above: the
   fallback is AND → OR only (no "drop rarest-missing tokens" step); the tools
   are skipped on sends with a forced `toolChoice` (image generation, Google
-  native `web_search`); the gate `isChatSearchToolEnabled()` returns `true`
-  until the settings workstream wires `chatSearchEnabled`; the route passes
+  native `web_search`); the gate `isChatSearchToolEnabled()` returned `true`
+  until W4 wired `chatSearchEnabled` (see 3.12); the route passes
   no `projectId` until project isolation exists; and every send on a
   tool-calling model is now a tool-loop send. Giving the model the whole
   history also required blocking external markdown images at render time
@@ -299,7 +299,7 @@ position and whether a DPIA is needed before GA.
 
 ### 3.7 Data rights and deletion
 
-- **Export** (Art. 15/20): `GET /api/v1/profiles/memory/export` → JSON of
+- **Export** (Art. 15/20): `GET /api/v1/memory/export` (path changed in W4, see 3.12) → JSON of
   entries + settings; plain-text import (paste from another assistant →
   extraction op path → compliance gate).
 - **Chat deletion**: for `origin = extraction`, entries whose
@@ -427,10 +427,10 @@ except OpenAI (`low`), and gateway picks run with reasoning `off`.
 
 ### 3.10 As built (W3, 2026-10-25)
 
-Branch `feat/w3-memory-contract-8bbac3`. W3 ships the contract only: nothing
-outside the settings API reads `memoryEnabled`, `chatSearchEnabled`,
-`memoryIncludeSensitive`, `aboutMe` or `useAccountMemory` yet, and no code
-creates `memory_entries` rows. The one behavioural change is project memory
+Branch `feat/w3-memory-contract-8bbac3`. W3 shipped the contract only: nothing
+outside the settings API read `memoryEnabled`, `chatSearchEnabled`,
+`memoryIncludeSensitive`, `aboutMe` or `useAccountMemory`, and no code
+created `memory_entries` rows (W4 changed that, see 3.12). The one behavioural change is project memory
 (resolver and redaction, below).
 
 **Settings semantics decided in W3**
@@ -608,8 +608,8 @@ of each chat summary and of the blob.
 - `neverStoreKindIds` in `memory-policy.ts` is a hand-written tuple, kept
   equal to the ids of `neverStoreKinds` (same ids, same order) by a unit
   test in `tests/unit/utils/memory-policy.spec.ts`.
-- Nothing consumes the new settings yet: W4 (injection, tools), W5 (UI) and
-  W6 (extraction) own that.
+- W4 now consumes the settings (injection, tools, see 3.12); W5 (UI) and W6
+  (extraction) still own theirs.
 
 **Hand-over for W4/W5/W6**
 
@@ -630,6 +630,317 @@ of each chat summary and of the blob.
   with; it only needs a saved key. A chosen or chat-derived model may be
   expensive (3.9); only the fallback optimises for cost.
 
+### 3.12 As built (W4, 2026-10-25)
+
+Branch `feat/w4-memory-backend-aaf9e2`, umbrella child of `feat/memory-p2`. W4
+is the backend: the entries API, the index and its injection, the four memory
+tools with their chip, the wired flags and the chat-deletion cascade. No schema
+change and no migration; everything sits on the W3 table.
+
+**Entries service** (`server/utils/memory/entries.ts`, `entry-slug.ts`)
+
+- One service for the routes and the tools: `createMemoryEntry`,
+  `updateMemoryEntry` (returns `{ entry, previous }`), `deleteMemoryEntry`
+  (returns the deleted snapshot), `getMemoryEntry`, `listMemoryEntries`,
+  `findMemoryEntryBySlug`, `resetMemoryEntries`, `buildMemoryExport`,
+  `toMemoryEntryWire`. Every query has `userId` in its `WHERE`; project scope
+  additionally requires `projects.user_id = userId` (`assertOwnedProject`).
+  Malformed hashids (the library throws on foreign characters) decode to
+  "not found", never a 500.
+- **Writes are compliance-gated on the persisted strings.** The service
+  parses with `memoryEntryInputSchema` (zod trims), then runs
+  `evaluateMemoryEntry` on the trimmed title, description and body, with
+  `includeSensitive` read from `user_settings`. `never-store` is a 422 whose
+  `why` lists kind labels only; `sensitive-disabled` is a 409. A user-authored
+  write with the opt-in on is allowed (typing it is consent, #508). The
+  client-supplied `origin` is ignored: the route forces `user`, the tools
+  force `tool`.
+- **Create is one atomic statement**: `INSERT ... SELECT ... WHERE <cap guard>
+  AND <Art. 9 opt-in guard> AND <project ownership guard> RETURNING id`, run
+  through `db.all(sql)`. The cap (`maxAccountEntries` 30 / `maxProjectEntries`
+  15, counted per scope with `project_id IS ?`) and the opt-in guard are
+  therefore exact under concurrency, and an opt-out purge that lands between
+  the check and the write cannot be beaten. Zero rows is diagnosed (404 /
+  409 sensitive / 409 limit). A unique-index violation (walked through the
+  `.cause` chain, D1 wraps it) is a 409, never a 500.
+- **Update** reads the stored row, builds the merged row, re-validates it with
+  `memoryEntryInputSchema` (so the 1 KB `profile`/`preferences` rule and the
+  `sensitiveCategory` rule apply to merged values), re-runs the gate, then does
+  a typed `UPDATE ... WHERE id AND user_id AND <opt-in guard> RETURNING`.
+  Patching `sensitivity` to `none` clears a stale `sensitiveCategory`. It is
+  read-merge-write with no version check: concurrent patches are last write
+  wins.
+- **Singleton categories.** `profile` and `preferences` are one per scope:
+  their slug is always the category name, so the partial unique index enforces
+  it and matches the "2 x 1 KB always injected" budget. A second create is a
+  409 "edit it instead". Moving an entry into a singleton category sets the
+  slug to the category name (409 on collision); moving out keeps the old slug
+  (for example `topics/profile`).
+- **Slugs** come from the title (`slugifyMemoryTitle`: lowercase, Ukrainian
+  and Russian Cyrillic transliterated, diacritics stripped, `ł ø đ ß æ œ`
+  mapped), suffixed `-2`, `-3`, ... on collision. The slug is stable: editing
+  the title does not change it.
+
+**Entries API** (`server/api/v1/memory/`, session required, 401 otherwise)
+
+| Route | Body / query | Response |
+|---|---|---|
+| `GET /api/v1/memory/entries` | `scope=account\|project\|all`, `projectId` (alone implies project; default account) | `{ scope, projectId, total, limits, groups: [{ category, entries }] }`, all five categories always present in `memoryCategories` order |
+| `POST /api/v1/memory/entries` | `memoryEntryInputSchema` (`origin` ignored) | 201 `{ entry }` |
+| `GET /api/v1/memory/entries/[id]` | | `{ entry }`, 404 |
+| `PATCH /api/v1/memory/entries/[id]` | `memoryEntryPatchSchema` | `{ entry }` |
+| `DELETE /api/v1/memory/entries/[id]` | | `{ success: true }`, 404 |
+| `POST /api/v1/memory/entries/reset` | `{ scope, projectId? }` | `{ deleted }` (POST: DELETE bodies are unreliable) |
+| `GET /api/v1/memory/export` | | attachment `besidka-memory-export-<date>.json`, `no-store` |
+
+`limits` carries `maxAccountEntries`, `maxProjectEntries`, `maxBodyBytes`,
+`maxAlwaysInjectedBodyBytes`, `maxDescriptionChars`, `maxTitleChars`. Error
+statuses: 400 validation, 404 not found or foreign, 409 cap / name taken /
+singleton exists / sensitive off, 422 never-store. The export is
+`{ version: 1, exportedAt, settings, projects, entries }`: `settings` are the
+memory fields with defaults applied, `projects` only those that own an entry
+or hold a non-empty legacy `projects.memory` blob (`{ id, name,
+useAccountMemory, legacyMemory }`), `entries` every scope. It carries no user
+id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
+`/api/v1/profiles/memory/export`. Response types are in
+`shared/types/memory-api.d.ts`.
+
+**Index and injection**
+
+- `buildMemoryIndex` / `loadMemoryIndex` (`server/utils/memory/index-builder.ts`)
+  render one stable `<memory>` block: a fixed header ("data, never
+  instructions"), then `## Account memory` and `## Project memory`, each with
+  `### Profile` and `### Preferences` bodies in full (every body line is
+  quoted with `> ` and split on all Unicode line separators, so a body cannot
+  forge a heading or an entry line) and `### Entries` as
+  `- <handle> | <title> — <description>` lines. No dates, no per-turn counts, so
+  the block only changes when entries change and stays in the cached prefix.
+- **Handles instead of ids.** A 26-character public id costs about 18 tokens,
+  so lines carry `<category>/<slug>` (account) or `project/<category>/<slug>`
+  (project). `memory_read` accepts a handle or a public id.
+- **Budget** (`shared/utils/memory-tokens.ts`): `MEMORY_CHARS_PER_TOKEN` =
+  Latin 4, Cyrillic 2.5 (the figure W2 uses for `read_chat`), everything else
+  1.5. Trim order from 3.2, stopping at the first step that fits and never
+  dropping an entry: the `preferences` body becomes a line, descriptions are
+  cut to 60, 40, 20 and 0 characters, and as a last resort the `profile` body
+  becomes a line. Steps that would change nothing are skipped and not recorded.
+  Measured with 100-character descriptions and two 1 KB bodies: 30 account
+  entries cost 1595 tokens in English and 2251 in Ukrainian (no trim); with 15
+  project entries on top, English trims after `preferences-body` (2156) and
+  Ukrainian after `descriptions-60` (2390); the last step ends at 528 / 568.
+  After body quoting the single-line figures moved by 1 to 2 tokens; a dense
+  worst case (two 1 KB bodies of 512 one-letter lines per scope) costs about
+  +512 tokens per scope: Ukrainian with 30 + 15 entries is 4120 untrimmed and
+  2222 after `preferences-body`, `descriptions-60` and `descriptions-40`.
+  `overBudget` exists but cannot happen within the entry caps.
+- Entry text is neutralised: `<` and `>` (and look-alikes) become `‹` and `›`,
+  titles and descriptions are collapsed to one line (titles are also
+  single-line at the schema level), so an entry cannot close `<memory>` or
+  forge an index line. `special` entries are skipped when the
+  Art. 9 opt-in is off (defence in depth; the opt-out purge normally removed
+  them).
+- `buildChatInstructions` pushes the memory block **first**, then the `aboutMe`
+  block (a one-line header and the text verbatim), then the project prompt,
+  the chat-search line and the date clauses. Both call sites (the main
+  `streamText` and the search-answer continuation) get the same
+  `memoryInstructions`, computed once per send in
+  `server/utils/memory/chat-context.ts`. A project chat loads project entries
+  plus account entries unless `projects.useAccountMemory === false`. Nothing
+  in `docs/providers/anthropic.md`'s invalidator list is affected: the block
+  is stable text and changes only with entries or `aboutMe`.
+- **Decision: `aboutMe` is injected whenever it is set, independent of
+  `memoryEnabled`.** It is user-authored custom instructions, not extracted
+  memory (3.2: "separate from memory"); only the index and the tools follow
+  `memoryEnabled`. The owner can overturn this.
+
+**Flags** (`server/utils/memory/tools/enabled.ts`, `chat-context.ts`)
+
+- `loadMemorySettingsFailClosed`: the route reads `user_settings` once per
+  send. If the read throws, memory, chat search and `aboutMe` are all treated
+  as off for that send and `attributes.memorySettings.error` is logged: a
+  failed read must never re-enable something the user turned off.
+- `chatSearchEnabled` gates `search_chats`/`read_chat`
+  (`isChatSearchToolEnabled(settings)`); `memoryEnabled` gates the index and
+  the memory tools (`isMemoryToolsEnabled(settings)`). Nulls fall back to
+  `MEMORY_SETTING_DEFAULTS`. Both families need the same tool-calling support
+  and no forced `toolChoice`. The chat-search tools get a `projectId` only
+  when the chat's project has `useAccountMemory === false` (project isolation,
+  3.3).
+- One `ChatSearchBudget` (3 calls per message) is shared by all six tools, and
+  the loop grants the same extra `chatSearchSteps` when either family is
+  registered. `isMemoryToolName` is separate from `CHAT_SEARCH_TOOL_NAMES`; the
+  loop counts a memory tool like a chat-search tool and never as a web-search
+  round.
+
+**Memory tools** (`server/utils/memory/tools/memory-tools.ts`)
+
+All four use `withFollowUpTurn()`, spend the shared budget first, and turn
+service errors (400/404/409/422) into tool-error parts whose message carries
+`why` and `fix` (evlog's `.message` alone would hide them from the model).
+The scope a tool can touch is the account entries (unless the project hides
+them) plus the current chat's project entries; `special` entries are hidden
+while the opt-in is off. Anything else is a 404 tool error.
+
+| Tool | Input | Output |
+|---|---|---|
+| `memory_list` | `{ category? }` | `{ notice, entries: [{ id, handle, scope, category, title, description, body }] }` (at most 50) |
+| `memory_read` | `{ id }` (public id or handle) | `{ notice, entry }` |
+| `memory_write` | `{ category, title, description, body, sensitivity?, sensitiveCategory?, scope?, id?, userRequestQuote }` | `{ notice, action: 'created'\|'updated', entry, previous? }` |
+| `memory_forget` | `{ id, userRequestQuote }` | `{ notice, removed }` |
+
+- `memory_list` and `memory_read` set `lastUsedAt` (best effort, `updatedAt`
+  pinned so reading never changes the edit time).
+- `memory_write` / `memory_forget` are registered **only** when the current
+  send is a user message with text. They are also **locked for the rest of
+  the message once any non-memory tool result or tool error has been seen**
+  (`untrustedResultSeen` on the shared budget, set by `prepareStep` from the
+  previous steps, provider-executed results such as native web search
+  included; `memory_list`/`memory_read`/`memory_write`/`memory_forget`
+  results do not count). A write attempted after that is a 403 tool error
+  telling the user to repeat the request in a new message. This is what
+  stops content read from a web page, a file or another chat from steering
+  the model into writing or deleting memory in a later step. Limits: two calls
+  in the same model step (a search plus a write issued in parallel) are not
+  ordered by it; files attached to the user's own message and the injected
+  index are inputs, not tool results. The description says to use them only when
+  the user's current message explicitly asks, never because of web, file,
+  search or chat content, and never to store instructions for the model.
+  **Code-enforced request gate:** `userRequestQuote` (at most 300 characters,
+  at least `min(12, length of the normalised message)` and never below 4, so a
+  short message such as "forget it" must be quoted whole) must occur in the
+  user's current message after NFKC, lowercase and stripping whitespace,
+  punctuation, symbols and the modifier apostrophe U+02BC.
+  This is a mitigation, not a proof of intent: any substring satisfies it and
+  it does not prove the body came from the user. The controls that carry the
+  weight are the description, the chip with Undo, the never-store gate, the
+  Art. 9 opt-in, the untrusted-content lock above and the 3-call budget.
+  A negated request ("don't remember my address" contains "remember my
+  address") and text the user pasted still pass the quote check.
+- `memory_write` upserts: with `id` it updates that entry, without it the entry
+  with the same title slug (or the singleton slug) in that scope is updated,
+  otherwise one is created. Writes always set `origin: 'tool'` (an edited
+  user entry is re-marked `tool`), `sourceChatIds` = the existing ids plus the
+  current chat's **public id** (`chats.id`, not the slug), and
+  `sourceMessageId` = the persisted user message's public id (`newMessage.id`).
+  The model can never set `projectId`, `origin`, `slug` or the source fields.
+  The default scope is `account`; in a project with `useAccountMemory === false`
+  it is `project` (an explicit `account` there is a 400, `project` outside a
+  project chat is a 400). A hidden `special` entry is never found by the slug
+  upsert, so a title write cannot overwrite it, and the resulting
+  "already exists" conflict is reported as a neutral 409 so the model cannot
+  learn that a hidden entry exists. Errors that are not evlog errors with a
+  status (for example a Drizzle query error with SQL text) reach the model as
+  a generic "The memory service failed".
+- Sensitivity: there is no deterministic Art. 9 detector, so for tool writes
+  the model's `sensitivity` label is the classifier (the extractor-style pass
+  of 3.5); a model that labels a health fact `none` gets past the opt-in. The
+  never-store detectors are deterministic and always apply.
+- The continuation (`buildSearchResultsContext`) renders memory results in
+  their own `Memory list/read/save/remove N` sections so a turn that ends
+  without text still answers from them.
+
+**Persisted tool parts are redacted.** The live stream to the client is
+untouched, but before the assistant message is saved
+(`persistAssistantMessageFromStream`, the only writer of assistant tool parts)
+`redactMemoryToolPartsForPersistence` removes `output.entries[].body`,
+`output.entry.body`, the whole `output.previous`, `input.body` and
+`rawInput.body` from memory tool parts. Memory bodies therefore do not
+outlive `memory_forget`, an entry delete, a reset or the Art. 9 opt-out purge
+inside `messages.parts`. Consequence: after a reload the chip can only Undo a
+created entry (an update's `previous` is gone).
+
+**Chip** (`app/components/Chat/Reasoning/MemoryStep.vue`,
+`app/utils/memory-step.ts`): a reasoning step like the search chips.
+`memory_write` shows "Saved to memory" with an **Undo** button: `created`
+sends `DELETE /api/v1/memory/entries/<id>`, `updated` sends
+`PATCH /api/v1/memory/entries/<id>` with `previous` (so it goes through the
+same schema, merged-row check and compliance as any edit); a 404 counts as
+already undone (the id is URL-encoded; the button has an accessible name
+with the entry title and a polite "Undone" live region). Undo does not expire:
+a stale chip can delete or overwrite a later edit of that entry. **`memory_forget` has no Undo** (re-creating needs the full
+snapshot and a way to restore `origin` and provenance): it reads "Removed from
+memory". `memory_list`/`memory_read` show a count and an expandable title list,
+never bodies. Local type `MemoryStepScope = 'account' | 'project'` (the shared
+`MemoryScope` is `profile | project`, a different notion).
+
+**Chat deletion** (`server/utils/memory/chat-deletion.ts`): both delete routes
+call `detachChatsFromMemory` first (before the search-index removal and
+before `db.delete(chats)`, so a failed cascade has no side effects), with the
+owned chat ids (public ids). An `extraction` entry whose remaining `sourceChatIds` would
+be empty is deleted; every other entry citing a deleted chat drops the id and
+keeps its `updatedAt`; `user | tool | import` entries are never deleted and an
+untouched empty-provenance entry is never affected. It reads the user's
+provenance-carrying entries and decides in JavaScript (a `json_each ... IN`
+clause would blow the D1 100-parameter limit for 90 bulk ids), then writes in
+`db.batch` chunks of 50. A failed cascade aborts the delete so extraction
+memory from a deleted chat is never left behind silently. Project deletion
+already removes project-scope entries through the cascade FK.
+
+**Legacy blob and entries (merge with W6).** The chat route used to inject
+`projects.memory` on every send. W6's migration copies that text into a
+`topics/overview` project entry and leaves the column, so once a project uses
+entries (`projectUsesMemoryEntries`: `memoryMigratedAt` set or any entry scoped
+to the project) the route passes no blob to `buildProjectSystemPrompt`
+(`resolveLegacyProjectMemory`, `server/utils/projects/legacy-memory.ts`).
+Project instructions and name stay. A failing lookup keeps the old behaviour
+(blob injected) and logs `attributes.projectMemory.dedupeError`. It does not
+depend on `memoryEnabled`: with memory off and entries present, no project
+memory is injected (paused). The export also carries `memoryExtractionEnabled`.
+
+**Other behaviour fixed in the review pass**
+
+- `PATCH /api/v1/memory/entries/[id]` is the user's own edit (and the chip's
+  Undo), so it re-marks the entry `origin: 'user'`: a hand-edited extraction
+  entry is no longer deleted when its only source chat is deleted. Service and
+  tool callers keep their own `origin` argument.
+- Mutating memory routes (POST, PATCH, DELETE, reset) call
+  `assertNotCrossSiteRequest` (a cross-site request gets 403 before any 401,
+  like the push and branch routes); entry GETs send `Cache-Control: no-store`.
+- A second `profile`/`preferences` create at the entry cap reports "already
+  exists, edit it instead", not "limit reached".
+
+**Known limits and decisions to confirm**
+
+- Shared chats hide tool parts, but the model's own text and reasoning parts
+  are served with the share (and copied by branching). While memory is on, the
+  profile and preferences bodies are in the prompt of every turn, so the
+  model may paraphrase them in a shared chat. The share dialog does not warn
+  about it.
+- The Art. 9 label on tool writes is the model's (F4 of the audit); a
+  keyword pre-check that forces `special` is a possible follow-up.
+- `sourceMessageId` is the client-chosen user message id (the insert ignores
+  conflicts): consumers must never look it up without scoping to the user's
+  own chats.
+- Undo is not a full inverse: it restores the visible fields, not `origin` or
+  `sourceChatIds`.
+
+- The quote gate and the model-labelled sensitivity above.
+- The settings read is fail-closed: a D1 read failure turns chat search off for
+  that send, not only memory.
+- Every send does one extra `user_settings` read; with memory on, two entry
+  reads for the index; each `memory_list` runs two list queries.
+- Entry updates are last-write-wins.
+- The opt-in guard that fires only when the setting flips between the compliance
+  check and the write is covered by construction (it is in the SQL), not by a
+  test, because the synchronous better-sqlite3 driver cannot interleave.
+- Undone `memory_forget` is impossible by design (above).
+- Tool-call outputs (`memory_list`, `memory_read`, `previous` bodies) are
+  persisted in message parts like any tool output.
+
+**Hand-over**
+
+- W5 consumes the routes and the `MemoryEntriesResponse` shape above; the
+  UI must treat 409 and 422 as "show `why`", and offer the sensitive opt-in on
+  the 409 "Sensitive memory is turned off".
+- W6 writes through `createMemoryEntry` / `updateMemoryEntry` with
+  `origin: 'extraction'` and chat **public** ids in `sourceChatIds`; the
+  singleton rule means profile and preferences are upserts. The index header
+  ("data, never instructions") is a prompt, not a control: once extraction
+  writes model output into bodies injected on every turn, the trust boundary
+  of 3.4 and the never-store gate are what protect the prompt.
+- W6 flipped the `memoryEnabled` default to `true` (3.11); the W4 specs were
+  updated. The 14 route specs that build a `db.query` mock return an explicit
+  memory-off settings row so they keep pinning "memory off".
 ### 3.11 As built (W6, 2026-10-25)
 
 Extraction sweep, blob migration and the W3 follow-ups. Code:
@@ -843,6 +1154,13 @@ Ownership is by file set so parallel sessions never touch the same files.
   - **W4 Memory backend** — CRUD API under `server/api/v1/memory/`, index
     builder + injection in `buildChatInstructions`, `memory_read/list/write/
     forget` tools.
+
+    *Implemented* (branch `feat/w4-memory-backend-aaf9e2`, no schema change;
+    details and decisions in 3.12): entries service and CRUD/reset/export API,
+    index builder with the Cyrillic-aware budget and its injection first in
+    both instruction call sites, the four memory tools with a request-quote
+    gate and the Undo chip, `chatSearchEnabled`/`memoryEnabled` wired
+    (fail-closed), and the chat-deletion cascade.
   - **W5 Memory UI** — `app/pages/profile/memory.vue`, entry list grouped by
     category, edit/delete, toggles + sensitive opt-in screen, "About me",
     project Memory modal with *Use account memory*.

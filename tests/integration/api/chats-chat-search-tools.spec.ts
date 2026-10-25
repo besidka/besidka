@@ -106,6 +106,7 @@ vi.mock('~~/server/utils/projects/memory', () => ({
 
 vi.mock('~~/server/utils/memory/tools/enabled', () => ({
   isChatSearchToolEnabled: () => mocks.isChatSearchToolEnabled,
+  isMemoryToolsEnabled: () => false,
 }))
 
 vi.mock('~~/server/utils/memory/tools', async () => {
@@ -274,6 +275,14 @@ function createDb() {
   return {
     db: {
       query: {
+        userSettings: {
+          findFirst: vi.fn(async () => ({
+            memoryEnabled: false,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          })),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
@@ -529,7 +538,7 @@ describe('chat search tools send-path wiring', () => {
     expect(mocks.chatSearchToolsInputs[0]).toEqual(expect.objectContaining({
       userId: 1,
       currentChatId: 'chat-1',
-      budget: { maxCalls: 3, usedCalls: 0 },
+      budget: { maxCalls: 3, usedCalls: 0, untrustedResultSeen: false },
     }))
     expect(mocks.chatSearchToolsInputs[0]?.projectId).toBeUndefined()
     expect(getChatSearchAttributes()).toEqual({

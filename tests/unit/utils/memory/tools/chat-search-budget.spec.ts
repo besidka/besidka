@@ -9,12 +9,26 @@ import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/con
 describe('createChatSearchBudget', () => {
   it('defaults to three calls per turn with none used', () => {
     expect(CHAT_SEARCH_MAX_CALLS_PER_TURN).toBe(3)
-    expect(createChatSearchBudget()).toEqual({ maxCalls: 3, usedCalls: 0 })
+    expect(createChatSearchBudget()).toEqual({
+      maxCalls: 3,
+      usedCalls: 0,
+      untrustedResultSeen: false,
+    })
   })
 
   it('accepts a custom maximum', () => {
     expect(createChatSearchBudget(5).maxCalls).toBe(5)
   })
+
+  it('starts with no untrusted result seen and keeps the flag per budget',
+    () => {
+      const first = createChatSearchBudget()
+      const second = createChatSearchBudget()
+
+      first.untrustedResultSeen = true
+
+      expect(second.untrustedResultSeen).toBe(false)
+    })
 
   it('returns an independent budget on every call', () => {
     const first = createChatSearchBudget()
@@ -57,6 +71,9 @@ describe('consumeChatSearchCall', () => {
       status: 429,
       message: CHAT_SEARCH_LIMIT_MESSAGE,
     })
+    expect(CHAT_SEARCH_LIMIT_MESSAGE).toContain(
+      'Lookup limit for this message reached (chat history and memory tools)',
+    )
     expect(budget.usedCalls).toBe(3)
   })
 

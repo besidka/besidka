@@ -308,7 +308,7 @@ Code lives in `server/utils/memory/tools/`:
 | File | Role |
 |---|---|
 | `constants.ts` | Every cap, the tool names, the `<chat_excerpt>` tags and the untrusted-data notice |
-| `enabled.ts` | `isChatSearchToolEnabled()`, the single gate (returns `true` today) |
+| `enabled.ts` | `isChatSearchToolEnabled(settings)` and `isMemoryToolsEnabled(settings)`, the gates (read `chatSearchEnabled` / `memoryEnabled` since W4) |
 | `chat-search-budget.ts` | Per-request call budget, shared by both tools |
 | `search-chats.ts` | The FTS query, AND to OR fallback, best hit per chat |
 | `read-chat.ts` | Ownership-checked, bounded read window |
@@ -388,7 +388,7 @@ the Brave/Exa block, never added to the client `chatToolSchema` enum (so they
 do not inherit "web search and image generation cannot combine"). A send gets
 them only when **all** hold:
 
-- `isChatSearchToolEnabled()`;
+- `isChatSearchToolEnabled(settings)` (the user's `chatSearchEnabled`, default on; since W4 the settings row is read per send and fails closed);
 - no forced `toolChoice` on `parsedTools`: image generation and Google
   native `web_search` force one, and a forced choice plus the follow-up
   marker would re-select the same tool forever (see the `withFollowUpTurn`
@@ -431,6 +431,19 @@ that carries the daily date, so it stays in the stable cached prefix
 when the tools were registered and is omitted from the tool-less
 continuation. Adding the tools to a model that had none changes its tool set
 once, which invalidates the Anthropic cache one time.
+
+### Memory tools next to the chat tools (W4)
+
+The four memory tools (`memory_list`, `memory_read`, `memory_write`,
+`memory_forget`, `tools/memory-tools.ts`) are registered by the same block of
+`chats/[slug]/index.post.ts`, behind `isMemoryToolsEnabled(settings)` (the
+user's `memoryEnabled`) and the same tool-calling and forced-`toolChoice`
+conditions. They spend the **same** `ChatSearchBudget`: three calls per
+message across all six tools, and `resolveToolLoop` counts a memory tool like a
+chat tool (`isMemoryToolName`, deliberately outside `CHAT_SEARCH_TOOL_NAMES`
+so the continuation does not render them as chat history). Contracts, the
+code-enforced `userRequestQuote` gate for the two write tools, the shared-scope
+rules, the chip and its Undo are in `docs/memory-architecture.md` section 3.12.
 
 ### Logging
 
@@ -488,8 +501,9 @@ tool parts as well.
   bounded by the 3-call budgets and uses the user's own search key.
 - **Data crossing providers.** The tools send up to about 8k characters of an
   old chat to whichever provider or gateway the *current* chat uses. They are
-  on for everyone until `isChatSearchToolEnabled()` is wired to a user
-  setting; that wiring is the opt-in `docs/memory-architecture.md` describes.
+  on by default; since W4 the user's `chatSearchEnabled` setting turns
+  them off (`docs/memory-architecture.md` 3.12), and a failed settings read
+  turns them off for that send.
 - **Persisted copies.** Tool outputs, including excerpts of other chats, are
   stored in the current chat's `messages.parts`. Deleting chat A does not
   erase excerpts of it that were stored while chatting in chat B. This is a

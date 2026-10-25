@@ -53,6 +53,24 @@ describe('memoryEntryInputSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('rejects a multi-line title', () => {
+    const result = memoryEntryInputSchema.safeParse({
+      ...validEntry,
+      title: 'first line\nsecond line',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts a single-line title', () => {
+    const result = memoryEntryInputSchema.safeParse({
+      ...validEntry,
+      title: 'Single line title',
+    })
+
+    expect(result.success).toBe(true)
+  })
+
   it('accepts a 100-character description and rejects 101', () => {
     expect(memoryEntryInputSchema.safeParse({
       ...validEntry,

@@ -133,7 +133,17 @@ import { CHAT_SEARCH_INSTRUCTION } from '~~/server/utils/ai/chat-search-tools'
 import { getChatSearchTools } from '~~/server/utils/memory/tools'
 import { createChatSearchBudget } from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
-import { isChatSearchToolEnabled } from '~~/server/utils/memory/tools/enabled'
+import {
+  isChatSearchToolEnabled,
+  isMemoryToolsEnabled,
+} from '~~/server/utils/memory/tools/enabled'
+import { getMemoryTools } from '~~/server/utils/memory/tools/memory-tools'
+import { redactMemoryToolPartsForPersistence } from '~~/server/utils/memory/persist-redaction'
+import {
+  buildMemoryInstructions,
+  loadMemorySettingsFailClosed,
+  readUserMessageText,
+} from '~~/server/utils/memory/chat-context'
 import type {
   CollectedSearchResult,
   SearchAnswerContinuationResult,
@@ -154,6 +164,7 @@ import {
   withSearchAnswerGuarantee,
 } from '~~/server/utils/ai/search-answer-continuation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
+import { resolveLegacyProjectMemory } from '~~/server/utils/projects/legacy-memory'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 import { getBraveWebSearchTools } from '~~/server/utils/search/brave'
@@ -238,6 +249,8 @@ export default defineEventHandler(async (event) => {
           instructions: true,
           memory: true,
           memoryStatus: true,
+          memoryMigratedAt: true,
+          useAccountMemory: true,
         },
       },
       messages: {
@@ -557,7 +570,12 @@ export default defineEventHandler(async (event) => {
     ? {
       name: chat.project.name,
       instructions: chat.project.instructions,
-      memory: chat.project.memory,
+      memory: await resolveLegacyProjectMemory(
+        chat.project,
+        userId,
+        db,
+        logger,
+      ),
       memoryStatus: chat.project.memoryStatus,
     }
     : null)
@@ -1134,20 +1152,31 @@ export default defineEventHandler(async (event) => {
   const supportsChatSearchToolCalling = gatewayId
     ? gatewayToolCall === true
     : model?.toolCall === true
-  const chatSearchToolsRegistered = isChatSearchToolEnabled()
-    && !parsedTools.toolChoice
+  const memorySettings = await loadMemorySettingsFailClosed(
+    db,
+    userId,
+    aiLogger,
+  )
+  const toolCallingAllowed = !parsedTools.toolChoice
     && !requestedTools.includes('image_generation')
     && supportsChatSearchToolCalling
+  const chatSearchToolsRegistered = isChatSearchToolEnabled(memorySettings)
+    && toolCallingAllowed
+  const memoryToolsRegistered = isMemoryToolsEnabled(memorySettings)
+    && toolCallingAllowed
 
-  const chatSearchBudget = chatSearchToolsRegistered
+  const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
     : undefined
 
-  if (chatSearchBudget) {
+  if (chatSearchBudget && chatSearchToolsRegistered) {
     const { tools: chatSearchTools } = getChatSearchTools({
       db,
       userId,
       currentChatId: chat.id,
+      ...(chat.projectId && chat.project?.useAccountMemory === false
+        ? { projectId: chat.projectId }
+        : {}),
       budget: chatSearchBudget,
       logger: aiLogger,
     })
@@ -1158,10 +1187,43 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const userMessageText = readUserMessageText(newMessage.parts)
+
+  if (chatSearchBudget && memoryToolsRegistered) {
+    const { tools: memoryTools } = getMemoryTools({
+      db,
+      userId,
+      chatId: chat.id,
+      projectId: chat.projectId,
+      useAccountMemory: chat.project?.useAccountMemory ?? null,
+      sourceMessageId: newMessage.id,
+      userMessageText,
+      includeSensitive: memorySettings.memoryIncludeSensitive,
+      budget: chatSearchBudget,
+      logger: aiLogger,
+    })
+
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...memoryTools },
+    }
+  }
+
+  const memoryInstructions = await buildMemoryInstructions({
+    db,
+    userId,
+    projectId: chat.projectId,
+    useAccountMemory: chat.project?.useAccountMemory ?? null,
+    settings: memorySettings,
+    hasMemoryTools: memoryToolsRegistered,
+    logger: aiLogger,
+  })
+
   const toolLoop = resolveToolLoop(parsedTools.tools, {
-    chatSearchSteps: chatSearchToolsRegistered
+    chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
       : 0,
+    guard: chatSearchBudget,
   })
   const toolLoopOptions = toolLoop?.options
   const followUpToolNames = new Set(
@@ -1366,6 +1428,7 @@ export default defineEventHandler(async (event) => {
               shouldNudgeNativeWebSearch(requestedTools, parsedTools),
               hasDeepSeekWebSearch,
               chatSearchToolsRegistered,
+              memoryInstructions,
             ),
             reasoning: reasoningEffort,
             messages: modelMessages,
@@ -1576,6 +1639,7 @@ export default defineEventHandler(async (event) => {
               false,
               false,
               false,
+              memoryInstructions,
             ),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
@@ -1766,11 +1830,23 @@ export default defineEventHandler(async (event) => {
           },
         })
 
-        if (chatSearchBudget) {
+        if (chatSearchBudget && chatSearchToolsRegistered) {
           aiLogger.set({
             attributes: {
               chatSearch: {
                 registered: true,
+                usedCalls: chatSearchBudget.usedCalls,
+              },
+            },
+          })
+        }
+
+        if (chatSearchBudget && memoryToolsRegistered) {
+          aiLogger.set({
+            attributes: {
+              memoryTools: {
+                registered: true,
+                writesEnabled: userMessageText !== null,
                 usedCalls: chatSearchBudget.usedCalls,
               },
             },
@@ -2306,9 +2382,11 @@ async function persistAssistantMessageFromStream(input: {
         text: getPersistedEmptyAnswerFailureText(),
       }]
       : normalizedParts
-    const finalParts = stripUndeliveredInlineDataParts(
-      partsBeforeSizeGuard,
-      input.logger,
+    const finalParts = redactMemoryToolPartsForPersistence(
+      stripUndeliveredInlineDataParts(
+        partsBeforeSizeGuard,
+        input.logger,
+      ),
     )
 
     if (!hasMeaningfulAssistantParts(finalParts)) {
@@ -2652,9 +2730,10 @@ function generationInProgressKvKey(
  * below is gateway-agnostic: those tools are registered by this route after
  * the provider/gateway fork, so a gateway-routed model really does have them.
  *
- * The chat-search line is constant text placed right after the project
- * system prompt, ahead of every per-turn-varying clause (the current-date
- * ones), so it stays inside the stable prefix the provider caches.
+ * The memory block comes first and the chat-search line is constant text
+ * placed right after the project system prompt, both ahead of every
+ * per-turn-varying clause (the current-date ones), so they stay inside the
+ * stable prefix the provider caches.
  */
 function buildChatInstructions(
   projectSystemPrompt: string | null,
@@ -2663,9 +2742,10 @@ function buildChatInstructions(
   shouldNudgeNativeSearch: boolean,
   hasDeepSeekWebSearch: boolean,
   hasChatSearchTools: boolean,
+  memoryInstructions: string | null,
   now: Date = new Date(),
 ): string | undefined {
-  const instructions = [projectSystemPrompt]
+  const instructions = [memoryInstructions, projectSystemPrompt]
 
   if (hasChatSearchTools) {
     instructions.push(CHAT_SEARCH_INSTRUCTION)

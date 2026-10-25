@@ -115,6 +115,7 @@ vi.mock('~~/server/utils/projects/memory', () => ({
 
 vi.mock('~~/server/utils/memory/tools/enabled', () => ({
   isChatSearchToolEnabled: () => false,
+  isMemoryToolsEnabled: () => false,
 }))
 
 interface ChatCompletionRequest {
@@ -356,6 +357,14 @@ function createDb() {
   return {
     db: {
       query: {
+        userSettings: {
+          findFirst: vi.fn(async () => ({
+            memoryEnabled: false,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          })),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
