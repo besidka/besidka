@@ -13,6 +13,8 @@ import {
   sql,
 } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { sweepBackfillJobs } from '~~/server/utils/memory/backfill'
+import type { SweepBackfillJobsResult } from '~~/server/utils/memory/backfill'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
@@ -51,6 +53,7 @@ export interface SweepMemoryExtractionResult {
   opsApplied: { created: number, updated: number, deleted: number }
   opsDropped: Record<string, number>
   models: SweepMemoryExtractionModelCount[]
+  backfill: SweepBackfillJobsResult
 }
 
 interface SelectedChat {
@@ -206,7 +209,9 @@ function addCounts(
  * the attempt backoff, or waits for more user text and has new activity, or
  * failed outside the backoff and under the failure cap unless new activity
  * lifted it. At most `perUserCapPerTick` chats per user. A chat that throws
- * never stops the loop. Reports counts only.
+ * never stops the loop. Afterwards it services running backfill jobs inside
+ * whatever runtime budget is left (see `sweepBackfillJobs`). Reports counts
+ * only.
  */
 export async function sweepMemoryExtraction(
   input: SweepMemoryExtractionInput,
@@ -228,6 +233,7 @@ export async function sweepMemoryExtraction(
     opsApplied: { created: 0, updated: 0, deleted: 0 },
     opsDropped: {},
     models: [],
+    backfill: { jobs: 0, chats: 0, completed: 0, failed: 0 },
   }
   const blocked: ComplianceBlockedCounts = {}
   const modelCounts = new Map<string, SweepMemoryExtractionModelCount>()
@@ -312,6 +318,21 @@ export async function sweepMemoryExtraction(
     }
   }
 
+  try {
+    result.backfill = await sweepBackfillJobs({
+      maxRuntimeMs: input.maxRuntimeMs - (Date.now() - startedAt),
+      db,
+      logger,
+    })
+  } catch (exception) {
+    logger?.set({
+      memoryExtractionSweep: { phase: 'backfill' },
+      attributes: {
+        memoryExtractionSweep: memoryExtractionErrorSummary(exception),
+      },
+    })
+  }
+
   result.models = [...modelCounts.values()]
   result.runtimeMs = Date.now() - startedAt
 
@@ -333,6 +354,10 @@ export async function sweepMemoryExtraction(
         },
       },
     })
+
+    if (result.backfill.jobs > 0) {
+      logger.set({ attributes: { memoryBackfillSweep: result.backfill } })
+    }
   }
 
   return result

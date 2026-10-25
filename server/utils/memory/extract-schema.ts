@@ -4,7 +4,12 @@ import {
   neverStoreKindIds,
 } from '#shared/utils/memory-policy'
 
-export const memoryExtractionOpKinds = ['create', 'update', 'delete'] as const
+export const memoryExtractionOpKinds = [
+  'create',
+  'update',
+  'append',
+  'delete',
+] as const
 
 export const memoryExtractionOpSchema = z.object({
   op: z.enum(memoryExtractionOpKinds),

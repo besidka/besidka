@@ -35,8 +35,8 @@ export const alwaysInjectedMemoryCategories = [
 export const MEMORY_LIMITS = {
   maxAccountEntries: 30,
   maxProjectEntries: 15,
-  maxBodyBytes: 2048,
-  maxAlwaysInjectedBodyBytes: 1024,
+  maxBodyBytes: 4096,
+  maxAlwaysInjectedBodyBytes: 1536,
   maxDescriptionChars: 100,
   maxTitleChars: 80,
   maxSlugChars: 64,

@@ -31,6 +31,7 @@ function flattenQueryChunks(chunk: unknown): unknown[] {
 function createDb(storageKeys: string[], sessionTokens: string[] = []) {
   const deleteReturning = vi.fn()
     .mockResolvedValueOnce([{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }])
+    .mockResolvedValueOnce([{ id: 'j1' }])
     .mockResolvedValueOnce([{ userId: 1 }])
     .mockResolvedValueOnce([{ id: 10 }, { id: 11 }])
 
@@ -102,9 +103,10 @@ describe('purgeUserData', () => {
     expect(storage.delete).toHaveBeenCalledWith(storageKeys)
     expect(mocks.invalidateFileCache).toHaveBeenCalledTimes(3)
     expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(1, logger)
-    expect(db.delete).toHaveBeenCalledTimes(3)
+    expect(db.delete).toHaveBeenCalledTimes(4)
     expect(result).toEqual({
       memoryEntriesDeleted: 3,
+      memoryBackfillJobsDeleted: 1,
       filesFound: 3,
       storageKeysDeleted: 3,
       storageBatches: 1,
@@ -155,6 +157,48 @@ describe('purgeUserData', () => {
 
     expect(referencesUserIdColumn).toBe(true)
     expect(bindsUserId).toBe(true)
+  })
+
+  it('deletes the backfill jobs scoped to the user id', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const whereConditions: unknown[] = []
+    const deletedTables: unknown[] = []
+
+    db.delete.mockImplementation((table: unknown) => {
+      deletedTables.push(table)
+
+      return {
+        where: vi.fn((condition: unknown) => {
+          whereConditions.push(condition)
+
+          return {
+            returning: vi.fn(async () => [{ id: 'j1' }, { id: 'j2' }]),
+          }
+        }),
+      }
+    })
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({
+      userId: 42,
+      logger: { set: vi.fn() },
+    })
+    const backfillIndex = deletedTables.indexOf(schema.memoryBackfillJobs)
+    const chunks = flattenQueryChunks(whereConditions[backfillIndex])
+
+    expect(backfillIndex).toBe(1)
+    expect(chunks.some((chunk) => {
+      return chunk === schema.memoryBackfillJobs.userId
+    })).toBe(true)
+    expect(chunks.some((chunk) => {
+      return !!chunk
+        && typeof chunk === 'object'
+        && 'value' in chunk
+        && chunk.value === 42
+    })).toBe(true)
+    expect(result.memoryBackfillJobsDeleted).toBe(2)
   })
 
   it('deletes the memory entries before the R2 work that may abort', async () => {
@@ -283,6 +327,7 @@ describe('purgeUserData', () => {
     expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(7, logger)
     expect(result).toEqual({
       memoryEntriesDeleted: 3,
+      memoryBackfillJobsDeleted: 1,
       filesFound: 0,
       storageKeysDeleted: 0,
       storageBatches: 0,
@@ -306,7 +351,7 @@ describe('purgeUserData', () => {
     await expect(purgeUserData({ userId: 1, logger })).rejects.toThrow(
       'r2 unavailable',
     )
-    expect(db.delete).toHaveBeenCalledTimes(1)
+    expect(db.delete).toHaveBeenCalledTimes(2)
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
       accountPurge: expect.objectContaining({
         phase: 'r2-delete',

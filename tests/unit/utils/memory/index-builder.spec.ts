@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { MemoryEntry } from '#shared/types/memory.d'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
+import { memoryByteLength } from '#shared/utils/memory-schemas'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import {
@@ -68,7 +69,9 @@ function buildFullAccount(
     ? 'The user works on a long-running backend project every week and '
     : 'Користувач щотижня працює над довготривалим бекенд проєктом і також '
   const description = sentence.repeat(5).slice(0, 100)
-  const body = sentence.repeat(40).slice(0, 1024)
+  const body = sentence
+    .repeat(40)
+    .slice(0, MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
   const titlePrefix = language === 'en' ? 'Topic number' : 'Тема номер'
   const categories = ['areas', 'topics', 'people'] as const
 
@@ -114,6 +117,67 @@ function buildFullAccount(
       ? buildScope('PROJECT', MEMORY_LIMITS.maxProjectEntries - 2)
       : [],
   }
+}
+
+function fitLinesWithinBytes(line: string, byteLimit: number): string {
+  const lines: string[] = []
+
+  while (memoryByteLength([...lines, line].join('\n')) <= byteLimit) {
+    lines.push(line)
+  }
+
+  return lines.join('\n')
+}
+
+function buildRichAccount(
+  language: 'en' | 'uk',
+  counts: { profile: number, preferences: number },
+): MemoryEntry[] {
+  const bulletLine = language === 'en'
+    ? '- Works at Acme Corp as a backend engineer since March 2021'
+    : '- Працює в компанії Акме бекенд-інженером з березня 2021 року'
+  const sentence = language === 'en'
+    ? 'The user works on a long-running backend project every week and '
+    : 'Користувач щотижня працює над довготривалим бекенд проєктом і також '
+  const description = sentence.repeat(5).slice(0, 100)
+  const titlePrefix = language === 'en' ? 'Topic number' : 'Тема номер'
+  const body = fitLinesWithinBytes(
+    bulletLine,
+    MEMORY_LIMITS.maxAlwaysInjectedBodyBytes,
+  )
+  const otherCategories = ['areas', 'topics', 'people'] as const
+  const otherCount = MEMORY_LIMITS.maxAccountEntries
+    - counts.profile
+    - counts.preferences
+
+  function buildCategoryEntries(
+    category: 'profile' | 'preferences',
+    count: number,
+  ): MemoryEntry[] {
+    return Array.from({ length: count }, (_, index) => {
+      return makeEntry({
+        category,
+        slug: `${category}-${index}`,
+        title: `${titlePrefix} ${category} ${index}`,
+        description,
+        body,
+      })
+    })
+  }
+
+  return [
+    ...buildCategoryEntries('profile', counts.profile),
+    ...buildCategoryEntries('preferences', counts.preferences),
+    ...Array.from({ length: otherCount }, (_, index) => {
+      return makeEntry({
+        category: otherCategories[index % otherCategories.length],
+        slug: `entry-${String(index).padStart(2, '0')}`,
+        title: `${titlePrefix} ${index}`,
+        description,
+        body: 'x',
+      })
+    }),
+  ]
 }
 
 function walkTrim(
@@ -825,6 +889,59 @@ describe('buildMemoryIndex', () => {
       expect(result.text).not.toBeNull()
       expect(result.trimSteps).toEqual([...TRIM_ORDER])
     })
+  })
+})
+
+describe('buildMemoryIndex with 1536-byte always-injected bodies', () => {
+  beforeEach(() => {
+    nextEntryId = 1
+  })
+
+  it('keeps 4 profile and 4 preferences bodies at the cap plus 22 other '
+    + 'entries within the 2500-token budget without touching profile '
+    + 'bodies', () => {
+    for (const language of ['en', 'uk'] as const) {
+      const accountEntries = buildRichAccount(language, {
+        profile: 4,
+        preferences: 4,
+      })
+      const untrimmed = build({
+        accountEntries,
+        budgetTokens: Number.MAX_SAFE_INTEGER,
+      })
+      const result = build({ accountEntries })
+
+      expect(accountEntries).toHaveLength(MEMORY_LIMITS.maxAccountEntries)
+      expect(
+        memoryByteLength(accountEntries[0]!.body),
+      ).toBeLessThanOrEqual(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
+      expect(untrimmed.tokens).toBeGreaterThan(
+        MEMORY_LIMITS.indexTokenBudget,
+      )
+      expect(result.trimSteps).toEqual(['preferences-body', 'descriptions-60'])
+      expect(result.overBudget).toBe(false)
+      expect(result.tokens).toBeLessThanOrEqual(
+        MEMORY_LIMITS.indexTokenBudget,
+      )
+      expect(result.entryCount).toBe(MEMORY_LIMITS.maxAccountEntries)
+      expect(result.text).toContain('### Profile')
+      expect(result.text).not.toContain('### Preferences')
+    }
+  })
+
+  it('collapses profile bodies as the last resort when eight full-size '
+    + 'ones compete for the budget', () => {
+    for (const language of ['en', 'uk'] as const) {
+      const result = build({
+        accountEntries: buildRichAccount(language, {
+          profile: 8,
+          preferences: 0,
+        }),
+      })
+
+      expect(result.trimSteps.at(-1)).toBe('profile-body')
+      expect(result.overBudget).toBe(false)
+    }
   })
 })
 

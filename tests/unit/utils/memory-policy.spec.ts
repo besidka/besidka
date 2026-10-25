@@ -65,6 +65,11 @@ describe('MEMORY_LIMITS', () => {
       .toBeLessThanOrEqual(MEMORY_LIMITS.maxBodyBytes)
   })
 
+  it('caps bodies at 4096 bytes and always-injected bodies at 1536', () => {
+    expect(MEMORY_LIMITS.maxBodyBytes).toBe(4096)
+    expect(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes).toBe(1536)
+  })
+
   it('caps account memory at 30 and project memory at 15 entries', () => {
     expect(MEMORY_LIMITS.maxAccountEntries).toBe(30)
     expect(MEMORY_LIMITS.maxProjectEntries).toBe(15)

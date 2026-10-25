@@ -7,6 +7,7 @@ import {
   memorySettingsPatchShape,
   refineMemorySettingsPatch,
 } from '../../../shared/utils/memory-schemas'
+import { MEMORY_LIMITS } from '../../../shared/utils/memory-policy'
 
 const validEntry = {
   category: 'topics' as const,
@@ -83,41 +84,61 @@ describe('memoryEntryInputSchema', () => {
   })
 
   it('counts the body in bytes so Cyrillic text hits the cap early', () => {
-    const fitsByCharacters = 'я'.repeat(1500)
+    const fitsByCharacters = 'я'.repeat(3000)
 
-    expect(fitsByCharacters.length).toBeLessThan(2048)
-    expect(memoryByteLength(fitsByCharacters)).toBeGreaterThan(2048)
+    expect(fitsByCharacters.length).toBeLessThan(MEMORY_LIMITS.maxBodyBytes)
+    expect(memoryByteLength(fitsByCharacters))
+      .toBeGreaterThan(MEMORY_LIMITS.maxBodyBytes)
     expect(memoryEntryInputSchema.safeParse({
       ...validEntry,
       body: fitsByCharacters,
     }).success).toBe(false)
     expect(memoryEntryInputSchema.safeParse({
       ...validEntry,
-      body: 'я'.repeat(1024),
+      body: 'я'.repeat(MEMORY_LIMITS.maxBodyBytes / 2),
     }).success).toBe(true)
     expect(memoryEntryInputSchema.safeParse({
       ...validEntry,
-      body: 'a'.repeat(2048),
-    }).success).toBe(true)
-    expect(memoryEntryInputSchema.safeParse({
-      ...validEntry,
-      body: 'a'.repeat(2049),
+      body: 'я'.repeat(MEMORY_LIMITS.maxBodyBytes / 2 + 1),
     }).success).toBe(false)
   })
 
-  it('caps profile and preferences bodies at 1024 bytes', () => {
-    const oversizedForAlwaysInjected = 'a'.repeat(1025)
+  it('accepts a 4096-byte body and refuses 4097 bytes for areas, topics '
+    + 'and people', () => {
+    expect(MEMORY_LIMITS.maxBodyBytes).toBe(4096)
+
+    for (const category of ['areas', 'topics', 'people'] as const) {
+      expect(memoryEntryInputSchema.safeParse({
+        ...validEntry,
+        category,
+        body: 'a'.repeat(4096),
+      }).success).toBe(true)
+      expect(memoryEntryInputSchema.safeParse({
+        ...validEntry,
+        category,
+        body: 'a'.repeat(4097),
+      }).success).toBe(false)
+    }
+  })
+
+  it('caps profile and preferences bodies at 1536 bytes', () => {
+    expect(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes).toBe(1536)
+
+    const oversizedForAlwaysInjected = 'a'.repeat(1537)
 
     for (const category of ['profile', 'preferences'] as const) {
-      expect(memoryEntryInputSchema.safeParse({
+      const rejected = memoryEntryInputSchema.safeParse({
         ...validEntry,
         category,
         body: oversizedForAlwaysInjected,
-      }).success).toBe(false)
+      })
+
+      expect(rejected.success).toBe(false)
+      expect(rejected.error?.issues[0]?.message).toContain('1536 bytes')
       expect(memoryEntryInputSchema.safeParse({
         ...validEntry,
         category,
-        body: 'a'.repeat(1024),
+        body: 'a'.repeat(1536),
       }).success).toBe(true)
     }
 
@@ -177,11 +198,11 @@ describe('memoryEntryPatchSchema', () => {
     () => {
       expect(memoryEntryPatchSchema.safeParse({
         category: 'profile',
-        body: 'a'.repeat(1025),
+        body: 'a'.repeat(1537),
       }).success).toBe(false)
       expect(memoryEntryPatchSchema.safeParse({
         category: 'areas',
-        body: 'a'.repeat(1025),
+        body: 'a'.repeat(1537),
       }).success).toBe(true)
     })
 

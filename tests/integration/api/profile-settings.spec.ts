@@ -159,9 +159,19 @@ function createDbMock() {
   const chatStampSet = vi.fn(() => ({
     where: chatStampWhere,
   }))
+  const backfillCancelWhere = vi.fn().mockImplementation(() => {
+    return createStatement('backfill-cancel', () => [])
+  })
+  const backfillCancelSet = vi.fn(() => ({
+    where: backfillCancelWhere,
+  }))
   const update = vi.fn((table: unknown) => {
     if (getTableName(table as never) === 'chats') {
       return { set: chatStampSet }
+    }
+
+    if (getTableName(table as never) === 'memory_backfill_jobs') {
+      return { set: backfillCancelSet }
     }
 
     return { set: updateSet }
@@ -216,6 +226,8 @@ function createDbMock() {
       updateWhere,
       chatStampSet,
       chatStampWhere,
+      backfillCancelSet,
+      backfillCancelWhere,
       batch,
     },
   }
@@ -1234,6 +1246,75 @@ describe('profile settings API', () => {
           memoryExtractionEnabled: true,
         }))).rejects.toThrow('d1')
         expect(dbMock.getSettings()?.memoryExtractionEnabled).toBe(false)
+      })
+    })
+
+    describe('running backfill job', () => {
+      async function cancelWhere(dbMock: ReturnType<typeof setup>) {
+        const [whereClause] = dbMock.spies.backfillCancelWhere.mock
+          .calls[0]! as [Parameters<SQLiteDialect['sqlToQuery']>[0]]
+
+        return new SQLiteDialect().sqlToQuery(whereClause)
+      }
+
+      it('cancels the running job when automatic updates are turned off',
+        async () => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          dbMock.seed({ memoryExtractionEnabled: true })
+          await patchHandler(patchEvent({ memoryExtractionEnabled: false }))
+
+          const cancelValues = dbMock.spies.backfillCancelSet.mock
+            .calls[0]![0] as { status: string, finishedAt: Date }
+          const { sql, params } = await cancelWhere(dbMock)
+
+          expect(cancelValues.status).toBe('cancelled')
+          expect(cancelValues.finishedAt).toBeInstanceOf(Date)
+          expect(sql).toContain('"memory_backfill_jobs"."user_id"')
+          expect(sql).toContain('"memory_backfill_jobs"."status"')
+          expect(params).toEqual([1, 'running'])
+          expect(dbMock.getSettings()?.memoryExtractionEnabled).toBe(false)
+        })
+
+      it('cancels the running job when memory is turned off', async () => {
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ memoryEnabled: true, memoryExtractionEnabled: true })
+        await patchHandler(patchEvent({ memoryEnabled: false }))
+
+        expect(dbMock.spies.backfillCancelSet).toHaveBeenCalledTimes(1)
+        expect(mocks.callOrder).toEqual(['update', 'backfill-cancel'])
+      })
+
+      it('leaves the job alone when the flags are turned on or untouched',
+        async () => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          dbMock.seed({ memoryEnabled: false, memoryExtractionEnabled: false })
+          await patchHandler(patchEvent({
+            memoryEnabled: true,
+            memoryExtractionEnabled: true,
+          }))
+          await patchHandler(patchEvent({ reasoningExpanded: true }))
+
+          expect(dbMock.spies.backfillCancelSet).not.toHaveBeenCalled()
+        })
+
+      it('does not cancel when the settings write fails', async () => {
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ memoryEnabled: false, memoryExtractionEnabled: false })
+        mocks.batchError = new Error('d1')
+
+        await expect(patchHandler(patchEvent({
+          memoryEnabled: true,
+          memoryExtractionEnabled: true,
+        }))).rejects.toThrow('d1')
+        expect(dbMock.spies.backfillCancelSet).not.toHaveBeenCalled()
       })
     })
 

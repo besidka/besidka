@@ -1,14 +1,19 @@
 import type {
   ComplianceBlockedCounts,
   MemoryCategory,
+  MemoryOrigin,
   MemorySensitiveCategory,
 } from '#shared/types/memory.d'
-import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import {
+  MEMORY_LIMITS,
+  alwaysInjectedMemoryCategories,
+} from '#shared/utils/memory-policy'
+import {
+  memoryByteLength,
   memoryEntryInputSchema,
   memoryEntryPatchSchema,
 } from '#shared/utils/memory-schemas'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
   evaluateMemoryEntry,
@@ -16,7 +21,16 @@ import {
 } from '~~/server/utils/memory/compliance'
 import type { ComplianceLogger } from '~~/server/utils/memory/compliance'
 import type { MemoryExtractionOp } from '~~/server/utils/memory/extract-schema'
-import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
+import {
+  MEMORY_EXTRACTION_EDITABLE_ORIGINS,
+} from '~~/server/utils/memory/extract-limits'
+import {
+  isMemoryExtractionEvidenceGrounded,
+  prepareMemoryExtractionGroundingText,
+} from '~~/server/utils/memory/extract-grounding'
+import type {
+  MemoryExtractionGroundingText,
+} from '~~/server/utils/memory/extract-grounding'
 import {
   memoryExtractionNormalizeText,
 } from '~~/server/utils/memory/extract-input'
@@ -25,6 +39,14 @@ import type {
 } from '~~/server/utils/memory/extract-input'
 
 type DbClient = ReturnType<typeof useDb>
+
+type MergeCounter = 'updated' | 'appended'
+
+const STALE_ROW = 'stale-row'
+
+type MergeFieldsBuilder = (
+  base: MemoryExtractionIndexEntry,
+) => MemoryExtractionPatchFields | DropOutcome
 
 const COMPLIANCE_ORIGIN = 'memory-extraction'
 const FALLBACK_SLUG_PREFIX = 'entry'
@@ -35,7 +57,10 @@ const HASH_RADIX = 36
 const SLUG_SEPARATOR_PATTERN = /[^a-z0-9]+/gu
 const SLUG_EDGE_PATTERN = /^-+|-+$/gu
 const COMBINING_MARKS_PATTERN = /\p{M}/gu
-const WORD_SEPARATOR_PATTERN = /\s+/u
+const BODY_LINE_SEPARATOR_PATTERN = /\r?\n/u
+const BODY_BULLET_PREFIX_PATTERN = /^[-*•]\s+/u
+const BODY_LINE_TRAILING_PUNCTUATION_PATTERN = /[.;,]+$/u
+const BODY_LINE_JOINER = '\n'
 const LINK_TRAILING_PUNCTUATION_PATTERN = /[.,;:!?)\]}>]+$/u
 const LINK_PATTERNS = [
   /https?:\/\/[^\s<>"'`)\]]+/giu,
@@ -92,6 +117,7 @@ export interface MemoryExtractionApplyInput {
   entries: MemoryExtractionIndexEntry[]
   groundingTexts: string[]
   createGroundingTexts?: string[]
+  origin?: Extract<MemoryOrigin, 'extraction' | 'import'>
   logger?: ComplianceLogger
 }
 
@@ -99,6 +125,7 @@ export interface MemoryExtractionApplyResult {
   proposed: number
   created: number
   updated: number
+  appended: number
   deleted: number
   dropped: Record<string, number>
   blocked: ComplianceBlockedCounts
@@ -196,8 +223,50 @@ function memoryExtractionMergeSourceChatIds(
   return merged.slice(-MEMORY_LIMITS.maxSourceChatIds)
 }
 
-function isEditableEntry(entry: MemoryExtractionIndexEntry): boolean {
-  return entry.origin === 'extraction' && entry.sensitivity !== 'special'
+function memoryExtractionBodyLines(body: string): string[] {
+  return body
+    .split(BODY_LINE_SEPARATOR_PATTERN)
+    .map(line => line.trimEnd())
+    .filter(line => line.trim() !== '')
+}
+
+function memoryExtractionBodyLineKey(line: string): string {
+  return memoryExtractionNormalizeText(line)
+    .replace(BODY_BULLET_PREFIX_PATTERN, '')
+    .replace(BODY_LINE_TRAILING_PUNCTUATION_PATTERN, '')
+    .trim()
+}
+
+function memoryExtractionBodyByteCap(category: MemoryCategory): number {
+  const isAlwaysInjected = (alwaysInjectedMemoryCategories as readonly string[])
+    .includes(category)
+
+  return isAlwaysInjected
+    ? MEMORY_LIMITS.maxAlwaysInjectedBodyBytes
+    : MEMORY_LIMITS.maxBodyBytes
+}
+
+function memoryExtractionAppendLines(
+  existingBody: string,
+  newBody: string,
+): string[] {
+  const knownKeys = new Set(
+    memoryExtractionBodyLines(existingBody).map(memoryExtractionBodyLineKey),
+  )
+  const addedLines: string[] = []
+
+  for (const line of memoryExtractionBodyLines(newBody)) {
+    const key = memoryExtractionBodyLineKey(line)
+
+    if (!key || knownKeys.has(key)) {
+      continue
+    }
+
+    knownKeys.add(key)
+    addedLines.push(line)
+  }
+
+  return addedLines
 }
 
 function memoryExtractionLinks(text: string): string[] {
@@ -219,11 +288,19 @@ class MemoryExtractionApplier {
   private readonly entriesByKey = new Map<string, MemoryExtractionIndexEntry>()
   private readonly groundingTexts: string[]
   private readonly createGroundingTexts: string[]
+  private readonly groundingSources: MemoryExtractionGroundingText[]
+  private readonly createGroundingSources: MemoryExtractionGroundingText[]
   private readonly result: MemoryExtractionApplyResult
+  private readonly createdOrigin: Extract<MemoryOrigin, 'extraction' | 'import'>
+  private readonly mutableOrigins: MemoryOrigin[]
   private readonly detectedCategories = new Set<MemorySensitiveCategory>()
 
   constructor(input: MemoryExtractionApplyInput) {
     this.input = input
+    this.createdOrigin = input.origin ?? 'extraction'
+    this.mutableOrigins = this.createdOrigin === 'import'
+      ? ['import']
+      : [...MEMORY_EXTRACTION_EDITABLE_ORIGINS]
     for (const entry of input.entries) {
       this.entriesByKey.set(
         memoryExtractionEntryKey(entry.category, entry.slug),
@@ -231,17 +308,24 @@ class MemoryExtractionApplier {
       )
     }
 
-    this.groundingTexts = input.groundingTexts.map(
-      memoryExtractionNormalizeText,
+    this.groundingSources = input.groundingTexts.map(
+      prepareMemoryExtractionGroundingText,
     )
-    this.createGroundingTexts = [
-      ...this.groundingTexts,
-      ...(input.createGroundingTexts ?? []).map(memoryExtractionNormalizeText),
+    this.createGroundingSources = [
+      ...this.groundingSources,
+      ...(input.createGroundingTexts ?? []).map(
+        prepareMemoryExtractionGroundingText,
+      ),
     ]
+    this.groundingTexts = this.groundingSources.map(source => source.collapsed)
+    this.createGroundingTexts = this.createGroundingSources.map((source) => {
+      return source.collapsed
+    })
     this.result = {
       proposed: input.ops.length,
       created: 0,
       updated: 0,
+      appended: 0,
       deleted: 0,
       dropped: {},
       blocked: {},
@@ -286,22 +370,53 @@ class MemoryExtractionApplier {
     this.result.dropped[reason] = (this.result.dropped[reason] ?? 0) + 1
   }
 
-  private isGrounded(evidence: string, groundingTexts: string[]): boolean {
-    const needle = memoryExtractionNormalizeText(evidence)
+  private isEditableEntry(entry: MemoryExtractionIndexEntry): boolean {
+    return this.mutableOrigins.includes(entry.origin)
+      && entry.sensitivity !== 'special'
+  }
 
-    const wordCount = needle
-      .split(WORD_SEPARATOR_PATTERN)
+  private groundingSavedText(op: MemoryExtractionOp): string {
+    const opText = [op.title, op.description, op.body]
       .filter(Boolean)
-      .length
+      .join('\n')
+    const target = op.slug
+      ? this.entriesByKey.get(memoryExtractionEntryKey(op.category, op.slug))
+      : undefined
 
-    if (
-      needle.length < MEMORY_EXTRACTION_LIMITS.evidenceMinChars
-      || wordCount < MEMORY_EXTRACTION_LIMITS.evidenceMinWords
-    ) {
-      return false
+    if (op.op === 'delete') {
+      return target
+        ? [target.title, target.description, target.body].join('\n')
+        : ''
     }
 
-    return groundingTexts.some(text => text.includes(needle))
+    if (!target || (op.op !== 'append' && op.op !== 'update')) {
+      return opText
+    }
+
+    const newBody = op.body ?? ''
+
+    if (op.op === 'append') {
+      return memoryExtractionAppendLines(target.body, newBody).join('\n')
+        || opText
+    }
+
+    const changedFields = [
+      op.title !== null && op.title !== target.title ? op.title : null,
+      op.description !== null && op.description !== target.description
+        ? op.description
+        : null,
+    ]
+    const changedBodyLines = op.body === null
+      ? []
+      : [
+        ...memoryExtractionAppendLines(target.body, newBody),
+        ...memoryExtractionAppendLines(newBody, target.body),
+      ]
+
+    return [...changedFields, ...changedBodyLines]
+      .filter(Boolean)
+      .join('\n')
+      || [target.title, target.description, target.body].join('\n')
   }
 
   private hasUngroundedLinks(
@@ -321,22 +436,34 @@ class MemoryExtractionApplier {
   }
 
   private async applyOp(op: MemoryExtractionOp) {
-    const evidenceTexts = op.op === 'create'
-      ? this.createGroundingTexts
-      : this.groundingTexts
+    if (op.op !== 'create' && 'dropped' in this.findOpTarget(op)) {
+      this.drop('unknown-target')
 
-    if (!this.isGrounded(op.evidence, evidenceTexts)) {
+      return
+    }
+
+    if (op.op === 'append' && !op.body?.trim()) {
+      this.drop('invalid')
+
+      return
+    }
+
+    const evidenceSources = op.op === 'create'
+      ? this.createGroundingSources
+      : this.groundingSources
+
+    if (!isMemoryExtractionEvidenceGrounded(
+      op.evidence,
+      evidenceSources,
+      this.groundingSavedText(op),
+    )) {
       this.drop('ungrounded')
 
       return
     }
 
     try {
-      const outcome = op.op === 'create'
-        ? await this.applyCreate(op)
-        : op.op === 'update'
-          ? await this.applyUpdate(op)
-          : await this.applyDelete(op)
+      const outcome = await this.dispatchOp(op)
 
       if (outcome) {
         this.drop(outcome.dropped)
@@ -347,6 +474,19 @@ class MemoryExtractionApplier {
       }
 
       this.drop('conflict')
+    }
+  }
+
+  private async dispatchOp(op: MemoryExtractionOp) {
+    switch (op.op) {
+      case 'create':
+        return await this.applyCreate(op)
+      case 'update':
+        return await this.applyUpdate(op)
+      case 'append':
+        return await this.applyAppend(op)
+      case 'delete':
+        return await this.applyDelete(op)
     }
   }
 
@@ -401,15 +541,23 @@ class MemoryExtractionApplier {
     )
 
     if (existing) {
-      if (!isEditableEntry(existing)) {
+      if (!this.isEditableEntry(existing)) {
         return { dropped: 'duplicate' }
       }
 
-      return await this.mergeIntoExisting(existing, op, {
-        title: parsed.data.title,
-        description: parsed.data.description,
-        body: parsed.data.body,
-      })
+      return await this.mergeIntoExisting(existing, op, (base) => {
+        const appendedBody = this.appendBody(base, parsed.data.body)
+
+        if ('dropped' in appendedBody) {
+          return appendedBody
+        }
+
+        return {
+          title: parsed.data.title,
+          description: parsed.data.description,
+          body: appendedBody.body,
+        }
+      }, 'updated', true)
     }
 
     const values: PersistedEntryValues = {
@@ -447,22 +595,26 @@ class MemoryExtractionApplier {
         projectId: this.input.projectId ?? undefined,
         ...values,
         slug,
-        origin: 'extraction',
+        origin: this.createdOrigin,
         sourceChatIds,
       })
-      .returning({ id: schema.memoryEntries.id })
-    const writtenId = rows[0]?.id
+      .returning({
+        id: schema.memoryEntries.id,
+        updatedAt: schema.memoryEntries.updatedAt,
+      })
+    const written = rows[0]
 
-    if (!writtenId) {
+    if (!written) {
       return { dropped: 'unknown-target' }
     }
 
     this.entriesByKey.set(memoryExtractionEntryKey(values.category, slug), {
-      id: writtenId,
+      id: written.id,
       ...values,
       slug,
-      origin: 'extraction',
+      origin: this.createdOrigin,
       sourceChatIds,
+      updatedAt: written.updatedAt,
       bodyHidden: false,
     })
     this.result.created += 1
@@ -479,6 +631,10 @@ class MemoryExtractionApplier {
       return target
     }
 
+    if (target.bodyHidden) {
+      return { dropped: 'hidden-body' }
+    }
+
     const patchFields: MemoryExtractionPatchFields = {}
 
     if (op.title !== null) {
@@ -493,36 +649,213 @@ class MemoryExtractionApplier {
       patchFields.body = op.body.trim()
     }
 
-    return await this.mergeIntoExisting(target, op, patchFields)
+    return await this.mergeIntoExisting(
+      target,
+      op,
+      () => patchFields,
+      'updated',
+      false,
+    )
   }
 
-  private findEditableTarget(
+  private appendBody(
+    base: MemoryExtractionIndexEntry,
+    newBody: string,
+  ): { body: string } | DropOutcome {
+    const addedLines = memoryExtractionAppendLines(base.body, newBody)
+
+    if (!addedLines.length) {
+      return { body: base.body }
+    }
+
+    const byteCap = memoryExtractionBodyByteCap(base.category)
+    let body = base.body.trimEnd()
+    let fittedLines = 0
+
+    for (const line of addedLines) {
+      const candidate = body ? `${body}${BODY_LINE_JOINER}${line}` : line
+
+      if (memoryByteLength(candidate) > byteCap) {
+        break
+      }
+
+      body = candidate
+      fittedLines += 1
+    }
+
+    if (!fittedLines) {
+      return { dropped: 'cap-reached' }
+    }
+
+    return { body }
+  }
+
+  private async applyAppend(
+    op: MemoryExtractionOp,
+  ): Promise<DropOutcome | null> {
+    const target = this.findEditableTarget(op)
+
+    if ('dropped' in target) {
+      return target
+    }
+
+    const newBody = op.body?.trim() ?? ''
+
+    if (!newBody) {
+      return { dropped: 'invalid' }
+    }
+
+    return await this.mergeIntoExisting(target, op, (base) => {
+      const appendedBody = this.appendBody(base, newBody)
+
+      if ('dropped' in appendedBody) {
+        return appendedBody
+      }
+
+      return { body: appendedBody.body }
+    }, 'appended', true)
+  }
+
+  private findOpTarget(
     op: MemoryExtractionOp,
   ): MemoryExtractionIndexEntry | DropOutcome {
     const target = op.slug
       ? this.entriesByKey.get(memoryExtractionEntryKey(op.category, op.slug))
       : undefined
 
-    if (!target) {
-      return { dropped: 'unknown-target' }
+    return target ?? { dropped: 'unknown-target' }
+  }
+
+  private findEditableTarget(
+    op: MemoryExtractionOp,
+  ): MemoryExtractionIndexEntry | DropOutcome {
+    const target = this.findOpTarget(op)
+
+    if ('dropped' in target) {
+      return target
     }
 
-    if (!isEditableEntry(target)) {
+    if (!this.isEditableEntry(target)) {
       return { dropped: 'locked' }
     }
 
     return target
   }
 
+  private forgetEntry(entry: MemoryExtractionIndexEntry) {
+    this.entriesByKey.delete(
+      memoryExtractionEntryKey(entry.category, entry.slug),
+    )
+  }
+
+  private async readFreshEntry(
+    entry: MemoryExtractionIndexEntry,
+  ): Promise<MemoryExtractionIndexEntry | null> {
+    const rows = await this.input.db
+      .select()
+      .from(schema.memoryEntries)
+      .where(and(
+        eq(schema.memoryEntries.id, entry.id),
+        memoryExtractionScope(this.input.userId, this.input.projectId),
+      ))
+      .limit(1)
+    const row = rows[0]
+
+    if (!row) {
+      return null
+    }
+
+    return {
+      id: row.id,
+      category: row.category,
+      slug: row.slug,
+      title: row.title,
+      description: row.description,
+      body: row.body,
+      sensitivity: row.sensitivity,
+      sensitiveCategory: row.sensitiveCategory,
+      origin: row.origin,
+      sourceChatIds: row.sourceChatIds,
+      updatedAt: row.updatedAt,
+      bodyHidden: false,
+    }
+  }
+
+  private unchangedRowGuard(base: MemoryExtractionIndexEntry) {
+    return and(
+      eq(schema.memoryEntries.id, base.id),
+      memoryExtractionScope(this.input.userId, this.input.projectId),
+      inArray(schema.memoryEntries.origin, this.mutableOrigins),
+      eq(schema.memoryEntries.sensitivity, 'none'),
+      eq(schema.memoryEntries.updatedAt, base.updatedAt),
+      eq(schema.memoryEntries.body, base.body),
+    )
+  }
+
+  /**
+   * Writes a merge as a compare-and-set on the version of the row that was
+   * read: it only lands while the row still has the same origin, sensitivity,
+   * `updated_at` and body, so a user edit made during the model call is never
+   * overwritten. A write that finds the row changed is retried once from a
+   * fresh read when `rereadsBase` is set (append and same-topic create, whose
+   * new lines are recomputed against the fresh body); an update is a full
+   * rewrite of what the model saw and is dropped as `conflict` instead.
+   */
   private async mergeIntoExisting(
     target: MemoryExtractionIndexEntry,
     op: MemoryExtractionOp,
-    patchFields: MemoryExtractionPatchFields,
+    buildFields: MergeFieldsBuilder,
+    counter: MergeCounter,
+    rereadsBase: boolean,
   ): Promise<DropOutcome | null> {
-    if (target.bodyHidden) {
-      return { dropped: 'hidden-body' }
+    const attempts = rereadsBase ? 2 : 1
+    let base = target
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      if (rereadsBase) {
+        const fresh = await this.readFreshEntry(target)
+
+        if (!fresh) {
+          this.forgetEntry(target)
+
+          return { dropped: 'unknown-target' }
+        }
+
+        base = fresh
+      }
+
+      if (!this.isEditableEntry(base)) {
+        return { dropped: 'locked' }
+      }
+
+      const fields = buildFields(base)
+
+      if ('dropped' in fields) {
+        return fields
+      }
+
+      const outcome = await this.writeMerge(base, op, fields, counter)
+
+      if (outcome !== STALE_ROW) {
+        return outcome
+      }
     }
 
+    if (!(await this.readFreshEntry(target))) {
+      this.forgetEntry(target)
+
+      return { dropped: 'unknown-target' }
+    }
+
+    return { dropped: 'conflict' }
+  }
+
+  private async writeMerge(
+    base: MemoryExtractionIndexEntry,
+    op: MemoryExtractionOp,
+    patchFields: MemoryExtractionPatchFields,
+    counter: MergeCounter,
+  ): Promise<DropOutcome | null | typeof STALE_ROW> {
     const patch = memoryEntryPatchSchema.safeParse(patchFields)
 
     if (!patch.success) {
@@ -530,10 +863,10 @@ class MemoryExtractionApplier {
     }
 
     const merged = memoryEntryInputSchema.safeParse({
-      category: target.category,
-      title: patch.data.title ?? target.title,
-      description: patch.data.description ?? target.description,
-      body: patch.data.body ?? target.body,
+      category: base.category,
+      title: patch.data.title ?? base.title,
+      description: patch.data.description ?? base.description,
+      body: patch.data.body ?? base.body,
       sensitivity: 'none',
       sensitiveCategory: null,
     })
@@ -543,7 +876,7 @@ class MemoryExtractionApplier {
     }
 
     const values: PersistedEntryValues = {
-      category: target.category,
+      category: base.category,
       title: merged.data.title,
       description: merged.data.description,
       body: merged.data.body,
@@ -552,14 +885,14 @@ class MemoryExtractionApplier {
     }
 
     if (
-      values.title === target.title
-      && values.description === target.description
-      && values.body === target.body
+      values.title === base.title
+      && values.description === base.description
+      && values.body === base.body
     ) {
-      return await this.addSourceChat(target)
+      return await this.addSourceChat(base)
     }
 
-    const knownText = [target.title, target.description, target.body].join('\n')
+    const knownText = [base.title, base.description, base.body].join('\n')
 
     if (this.hasUngroundedLinks(values, this.groundingTexts, knownText)) {
       return { dropped: 'ungrounded' }
@@ -572,7 +905,7 @@ class MemoryExtractionApplier {
     }
 
     const sourceChatIds = memoryExtractionMergeSourceChatIds(
-      target.sourceChatIds,
+      base.sourceChatIds,
       this.input.chatId,
     )
     const rows = await this.input.db
@@ -583,63 +916,49 @@ class MemoryExtractionApplier {
         body: values.body,
         sourceChatIds,
       })
-      .where(and(
-        eq(schema.memoryEntries.id, target.id),
-        memoryExtractionScope(this.input.userId, this.input.projectId),
-      ))
-      .returning({ id: schema.memoryEntries.id })
+      .where(this.unchangedRowGuard(base))
+      .returning({ updatedAt: schema.memoryEntries.updatedAt })
 
     if (!rows.length) {
-      this.entriesByKey.delete(
-        memoryExtractionEntryKey(target.category, target.slug),
-      )
-
-      return { dropped: 'unknown-target' }
+      return STALE_ROW
     }
 
     this.entriesByKey.set(
-      memoryExtractionEntryKey(target.category, target.slug),
-      { ...target, ...values, sourceChatIds },
+      memoryExtractionEntryKey(base.category, base.slug),
+      { ...base, ...values, sourceChatIds, updatedAt: rows[0]!.updatedAt },
     )
-    this.result.updated += 1
+    this.result[counter] += 1
 
     return null
   }
 
   private async addSourceChat(
-    target: MemoryExtractionIndexEntry,
-  ): Promise<DropOutcome | null> {
+    base: MemoryExtractionIndexEntry,
+  ): Promise<DropOutcome | null | typeof STALE_ROW> {
     if (
       this.input.chatId === null
-      || target.sourceChatIds.includes(this.input.chatId)
+      || base.sourceChatIds.includes(this.input.chatId)
     ) {
       return { dropped: 'unchanged' }
     }
 
     const sourceChatIds = memoryExtractionMergeSourceChatIds(
-      target.sourceChatIds,
+      base.sourceChatIds,
       this.input.chatId,
     )
     const rows = await this.input.db
       .update(schema.memoryEntries)
       .set({ sourceChatIds })
-      .where(and(
-        eq(schema.memoryEntries.id, target.id),
-        memoryExtractionScope(this.input.userId, this.input.projectId),
-      ))
-      .returning({ id: schema.memoryEntries.id })
+      .where(this.unchangedRowGuard(base))
+      .returning({ updatedAt: schema.memoryEntries.updatedAt })
 
     if (!rows.length) {
-      this.entriesByKey.delete(
-        memoryExtractionEntryKey(target.category, target.slug),
-      )
-
-      return { dropped: 'unknown-target' }
+      return STALE_ROW
     }
 
     this.entriesByKey.set(
-      memoryExtractionEntryKey(target.category, target.slug),
-      { ...target, sourceChatIds },
+      memoryExtractionEntryKey(base.category, base.slug),
+      { ...base, sourceChatIds, updatedAt: rows[0]!.updatedAt },
     )
     this.result.updated += 1
 
@@ -657,21 +976,20 @@ class MemoryExtractionApplier {
 
     const rows = await this.input.db
       .delete(schema.memoryEntries)
-      .where(and(
-        eq(schema.memoryEntries.id, target.id),
-        memoryExtractionScope(this.input.userId, this.input.projectId),
-        eq(schema.memoryEntries.origin, 'extraction'),
-      ))
+      .where(this.unchangedRowGuard(target))
       .returning({ id: schema.memoryEntries.id })
 
-    this.entriesByKey.delete(
-      memoryExtractionEntryKey(target.category, target.slug),
-    )
-
     if (!rows.length) {
-      return { dropped: 'unknown-target' }
+      if (!(await this.readFreshEntry(target))) {
+        this.forgetEntry(target)
+
+        return { dropped: 'unknown-target' }
+      }
+
+      return { dropped: 'conflict' }
     }
 
+    this.forgetEntry(target)
     this.result.deleted += 1
 
     return null
@@ -680,12 +998,23 @@ class MemoryExtractionApplier {
 
 /**
  * Applies the extractor's ops sequentially. Each op is independent: it must
- * quote the user's own words (the code-level defence against text echoed by
- * the assistant), pass schema validation on the exact persisted row, pass the
- * compliance gate (text the server classifier flags as special-category data
- * is dropped as `sensitive-topic`), and only ever touch an
- * `extraction`-origin, non-special row of this user and scope. Extraction
- * never writes a special-category entry: every row it persists has
+ * quote the user's own words and share a content word with the text it would
+ * save (for an update or append only the changed lines count), pass schema
+ * validation on the exact persisted row, pass the compliance gate (text the
+ * server classifier flags as special-category data is dropped as
+ * `sensitive-topic`), and only ever touch a non-special row of this user and
+ * scope whose origin the pass may change: `extraction` and `import` for a chat
+ * pass, `import` only for an import pass (rows learned from chats are locked
+ * to pasted text). A created row gets the input `origin`; an updated row keeps
+ * its own. `append` adds the body lines that are not stored yet, in order, as
+ * many whole lines as fit the category's byte cap (`cap-reached` only when none
+ * fits); `update` is a full rewrite and needs a visible body; a `create` that
+ * collides with a mutable entry is merged as an append of its new lines. Every
+ * write is a compare-and-set on the version read (origin, sensitivity,
+ * `updated_at` and body): an append and a colliding create re-read the row and
+ * retry once, an update or delete that finds the row changed is dropped as
+ * `conflict`, so a user edit made during the model call is never overwritten.
+ * Extraction never writes a special-category entry: every row it persists has
  * `sensitivity: 'none'`. Detected category ids (never the text) are logged
  * once per run. Returns counts only.
  */
