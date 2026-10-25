@@ -3,7 +3,10 @@
     <div class="grid gap-5">
       <label class="flex items-start justify-between gap-4 cursor-pointer">
         <span class="grid gap-1">
-          <span class="font-bold">Allow sensitive topics in memory</span>
+          <span
+            id="memory-sensitive-title"
+            class="font-bold"
+          >Allow sensitive topics in memory</span>
           <span
             id="memory-sensitive-description"
             class="text-sm text-base-content/70"
@@ -15,6 +18,7 @@
         <input
           type="checkbox"
           class="toggle mt-1 shrink-0"
+          aria-labelledby="memory-sensitive-title"
           aria-describedby="memory-sensitive-description"
           data-testid="memory-sensitive-toggle"
           :checked="settings.memoryIncludeSensitive"

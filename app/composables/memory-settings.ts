@@ -1,6 +1,7 @@
 import { parseError } from 'evlog'
 import type { Ref } from 'vue'
 import type {
+  MemorySaveOutcome,
   MemorySaveResult,
   MemoryUiSettings,
   MemorySettingsSave,
@@ -52,16 +53,22 @@ export function useMemorySettingsSaver(
     }
   })
 
-  const save: MemorySettingsSave = async (patch) => {
-    const previous = pickMemorySettings(values.value)
-    const rollback: Partial<MemoryUiSettings> = {}
+  let persisted: Partial<MemoryUiSettings> | null = null
+  let versionCounter = 0
+  let requestQueue: Promise<unknown> = Promise.resolve()
+  const latestVersions: Partial<Record<keyof MemoryUiSettings, number>> = {}
 
-    for (const key of Object.keys(patch) as Array<keyof MemoryUiSettings>) {
-      Object.assign(rollback, { [key]: previous[key] })
-    }
+  function isLatestForKey(
+    key: keyof MemoryUiSettings,
+    version: number,
+  ): boolean {
+    return (latestVersions[key] ?? 0) <= version
+  }
 
-    settings.value = { ...values.value, ...patch }
-
+  async function sendPatch(
+    patch: Partial<MemoryUiSettings>,
+    version: number,
+  ): Promise<MemorySaveOutcome> {
     try {
       const response: MemorySaveResult = await $fetch(
         '/api/v1/profiles/settings',
@@ -70,18 +77,56 @@ export function useMemorySettingsSaver(
           body: patch,
         },
       )
+      const confirmed = pickMemorySettings(response ?? {})
+      const visible: Partial<MemoryUiSettings> = {}
 
-      settings.value = {
-        ...values.value,
-        ...pickMemorySettings(response ?? {}),
+      persisted = { ...persisted, ...confirmed }
+
+      for (const key of Object.keys(confirmed) as Array<
+        keyof MemoryUiSettings
+      >) {
+        if (isLatestForKey(key, version)) {
+          Object.assign(visible, { [key]: confirmed[key] })
+        }
       }
+
+      settings.value = { ...values.value, ...visible }
 
       return { ok: true, result: response ?? {} }
     } catch (exception) {
+      const rollback: Partial<MemoryUiSettings> = {}
+
+      for (const key of Object.keys(patch) as Array<keyof MemoryUiSettings>) {
+        if (isLatestForKey(key, version)) {
+          Object.assign(rollback, { [key]: persisted?.[key] })
+        }
+      }
+
       settings.value = { ...values.value, ...rollback }
 
       return { ok: false, parsed: parseError(exception) }
     }
+  }
+
+  const save: MemorySettingsSave = (patch) => {
+    persisted ??= pickMemorySettings(values.value)
+    versionCounter += 1
+
+    const version = versionCounter
+
+    for (const key of Object.keys(patch) as Array<keyof MemoryUiSettings>) {
+      latestVersions[key] = version
+    }
+
+    settings.value = { ...values.value, ...patch }
+
+    const outcome = requestQueue.then(() => {
+      return sendPatch(patch, version)
+    })
+
+    requestQueue = outcome
+
+    return outcome
   }
 
   return {

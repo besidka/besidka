@@ -4,7 +4,10 @@
       <div class="grid gap-4">
         <label class="flex items-start justify-between gap-4 cursor-pointer">
           <span class="grid gap-1">
-            <span class="font-bold">Use memory</span>
+            <span
+              id="memory-enabled-title"
+              class="font-bold"
+            >Use memory</span>
             <span
               id="memory-enabled-description"
               class="text-sm text-base-content/70"
@@ -16,6 +19,7 @@
           <input
             type="checkbox"
             class="toggle mt-1 shrink-0"
+            aria-labelledby="memory-enabled-title"
             aria-describedby="memory-enabled-description"
             data-testid="memory-enabled-toggle"
             :checked="settings.memoryEnabled"
@@ -28,7 +32,10 @@
           :class="settings.memoryEnabled ? 'cursor-pointer' : 'opacity-60'"
         >
           <span class="grid gap-1">
-            <span class="font-bold">Generate memory from chats</span>
+            <span
+              id="memory-generation-title"
+              class="font-bold"
+            >Generate memory from chats</span>
             <span
               id="memory-generation-description"
               class="text-sm text-base-content/70"
@@ -48,6 +55,7 @@
           <input
             type="checkbox"
             class="toggle mt-1 shrink-0"
+            aria-labelledby="memory-generation-title"
             :aria-describedby="generationDescribedBy"
             data-testid="memory-generation-toggle"
             :checked="settings.memoryExtractionEnabled"
@@ -58,7 +66,10 @@
       </div>
       <label class="flex items-start justify-between gap-4 cursor-pointer">
         <span class="grid gap-1">
-          <span class="font-bold">Search and reference chats</span>
+          <span
+            id="memory-chat-search-title"
+            class="font-bold"
+          >Search and reference chats</span>
           <span
             id="memory-chat-search-description"
             class="text-sm text-base-content/70"
@@ -69,6 +80,7 @@
         <input
           type="checkbox"
           class="toggle mt-1 shrink-0"
+          aria-labelledby="memory-chat-search-title"
           aria-describedby="memory-chat-search-description"
           data-testid="memory-chat-search-toggle"
           :checked="settings.chatSearchEnabled"

@@ -4,18 +4,31 @@
     :description="description"
   >
     <div class="grid gap-6">
-      <LazyProfileMemoryModelPicker
-        label="Profile memory model"
-        :model-value="profileChoice"
-        :recommended-model-ids="recommendedModelIds"
-        @update:model-value="onProfileChange"
-      />
-      <LazyProfileMemoryModelPicker
-        label="Project memory model"
-        :model-value="projectChoice"
-        :recommended-model-ids="recommendedModelIds"
-        @update:model-value="onProjectChange"
-      />
+      <ClientOnly>
+        <LazyProfileMemoryModelPicker
+          label="Profile memory model"
+          :model-value="profileChoice"
+          :recommended-model-ids="recommendedModelIds"
+          @update:model-value="onProfileChange"
+        />
+        <LazyProfileMemoryModelPicker
+          label="Project memory model"
+          :model-value="projectChoice"
+          :recommended-model-ids="recommendedModelIds"
+          @update:model-value="onProjectChange"
+        />
+        <template #fallback>
+          <div
+            v-for="pickerIndex in 2"
+            :key="pickerIndex"
+            class="grid gap-3"
+            data-testid="memory-model-picker-skeleton"
+          >
+            <div class="skeleton skeleton--default h-5 w-40" />
+            <div class="skeleton skeleton--default h-32 w-full" />
+          </div>
+        </template>
+      </ClientOnly>
     </div>
   </ProfileSecuritySectionCard>
 </template>

@@ -195,6 +195,60 @@ describe('Profile/Memory/ModelPicker', () => {
     expect(onUpdate).toHaveBeenCalledWith(null)
   })
 
+  it('ignores the native cancel event so the panel owns Escape', async () => {
+    const { wrapper } = await mountPicker()
+
+    await wrapper.get('[data-testid="memory-model-specific"]')
+      .trigger('change')
+    await flushAsync()
+
+    const dialog = wrapper.get<HTMLDialogElement>(
+      '[data-testid="memory-model-modal"]',
+    )
+    const cancelEvent = new Event('cancel', { cancelable: true })
+
+    dialog.element.dispatchEvent(cancelEvent)
+    await flushAsync()
+
+    expect(cancelEvent.defaultPrevented).toBe(true)
+    expect(HTMLDialogElement.prototype.close).not.toHaveBeenCalled()
+    expect(dialog.element.hasAttribute('open')).toBe(true)
+
+    mocks.emitClose?.({ restoreFocus: true })
+    await flushAsync()
+
+    expect(HTMLDialogElement.prototype.close).toHaveBeenCalledOnce()
+    expect(dialog.element.hasAttribute('open')).toBe(false)
+    expect(mocks.panelProps.at(-1)?.isOpen).toBe(false)
+  })
+
+  it('labels the dialog by its heading and the trigger by model name',
+    async () => {
+      const { wrapper } = await mountPicker({
+        model: 'vendor/model',
+        gateway: 'openrouter',
+      })
+      const dialog = wrapper.get('[data-testid="memory-model-modal"]')
+      const labelledBy = dialog.attributes('aria-labelledby')
+
+      expect(labelledBy).toBeTruthy()
+      expect(wrapper.get(`[id="${labelledBy}"]`).text())
+        .toBe('Profile memory model')
+      expect(wrapper.get('[data-testid="memory-model-trigger"]')
+        .attributes('aria-label'))
+        .toBe('Profile memory model: vendor/model')
+    })
+
+  it('closes from the close button and backdrop forms', async () => {
+    const { wrapper } = await mountPicker()
+    const forms = wrapper.findAll('dialog form[method="dialog"]')
+
+    expect(forms).toHaveLength(2)
+    expect(wrapper.find('[data-testid="memory-model-modal-close"]').exists())
+      .toBe(true)
+    expect(wrapper.find('dialog .modal-backdrop').exists()).toBe(true)
+  })
+
   it('passes filters that hide image-output models to the panel', async () => {
     const { wrapper } = await mountPicker()
 

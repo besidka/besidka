@@ -35,6 +35,7 @@
             v-if="modelValue"
             type="button"
             class="btn btn-ghost btn-sm gap-2"
+            :aria-label="`${label}: ${triggerName}`"
             data-testid="memory-model-trigger"
             @click="openModal"
           >
@@ -58,11 +59,18 @@
         ref="modal"
         data-testid="memory-model-modal"
         class="js-memory-model-modal modal modal-bottom sm:modal-middle"
+        :aria-labelledby="headingId"
+        @cancel.prevent
         @close="onModalClosed"
       >
         <div class="modal-box max-w-2xl max-h-[80vh] flex flex-col">
           <div class="mb-4 flex shrink-0 items-center justify-between gap-2">
-            <h3 class="text-xl font-bold">{{ label }}</h3>
+            <h3
+              :id="headingId"
+              class="text-xl font-bold"
+            >
+              {{ label }}
+            </h3>
             <form method="dialog">
               <button
                 class="btn btn-sm btn-circle btn-ghost"
@@ -114,6 +122,7 @@ defineProps<{
 
 const modelValue = defineModel<ModelChoice | null>({ required: true })
 
+const headingId = useId()
 const groupName = `memory-model-${useId()}`
 const modal = useTemplateRef<HTMLDialogElement>('modal')
 const panel = useTemplateRef<{ prepareOpen: () => void | Promise<void> }>(
