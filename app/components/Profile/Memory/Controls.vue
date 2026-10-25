@@ -44,6 +44,15 @@
               your own API key, with the model you choose below.
             </span>
             <span
+              v-if="settings.memoryEnabled"
+              id="memory-generation-project-note"
+              class="text-sm text-base-content/60"
+              data-testid="memory-generation-project-note"
+            >
+              This setting covers your account memory. Project memory updates
+              automatically unless you turn it off in the project.
+            </span>
+            <span
               v-if="!settings.memoryEnabled"
               id="memory-generation-hint"
               class="text-sm text-base-content/70"
@@ -104,11 +113,15 @@ const props = defineProps<{
 const isSaving = shallowRef<boolean>(false)
 
 const generationDescribedBy = computed<string>(() => {
+  const ids = ['memory-generation-description']
+
   if (props.settings.memoryEnabled) {
-    return 'memory-generation-description'
+    ids.push('memory-generation-project-note')
+  } else {
+    ids.push('memory-generation-hint')
   }
 
-  return 'memory-generation-description memory-generation-hint'
+  return ids.join(' ')
 })
 
 async function saveToggle(
