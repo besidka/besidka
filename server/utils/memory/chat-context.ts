@@ -1,6 +1,5 @@
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { MemoryRuntimeSettings } from '~~/server/utils/memory/runtime-settings'
-import { isSensitiveMemoryProviderAllowed } from '#shared/utils/memory-policy'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildAboutMeInstruction } from '~~/server/utils/memory/about-me'
 import { loadMemoryIndex } from '~~/server/utils/memory/index-builder'
@@ -11,7 +10,6 @@ type DbClient = ReturnType<typeof useDb>
 const FAIL_CLOSED_SETTINGS: MemoryRuntimeSettings = {
   memoryEnabled: false,
   chatSearchEnabled: false,
-  memoryIncludeSensitive: false,
   aboutMe: null,
 }
 
@@ -66,15 +64,9 @@ export async function buildMemoryInstructions(input: {
   useAccountMemory: boolean | null
   settings: MemoryRuntimeSettings
   hasMemoryTools: boolean
-  providerId: string | null
-  gatewayId: string | null | undefined
   logger: Pick<LoggerLike, 'set'>
 }): Promise<string | null> {
   const sections: string[] = []
-  const sensitiveProviderAllowed = isSensitiveMemoryProviderAllowed({
-    providerId: input.providerId,
-    gatewayId: input.gatewayId,
-  })
 
   if (input.settings.memoryEnabled) {
     try {
@@ -83,8 +75,6 @@ export async function buildMemoryInstructions(input: {
         userId: input.userId,
         projectId: input.projectId,
         useAccountMemory: input.useAccountMemory,
-        includeSensitive: input.settings.memoryIncludeSensitive,
-        sensitiveProviderAllowed,
         hasMemoryTools: input.hasMemoryTools,
       })
 
@@ -95,7 +85,6 @@ export async function buildMemoryInstructions(input: {
             memoryIndex: {
               tokens: index.tokens,
               entryCount: index.entryCount,
-              withheldSensitive: index.withheldSensitiveCount,
               trimSteps: index.trimSteps,
               overBudget: index.overBudget,
             },

@@ -328,8 +328,9 @@ describe('memory extraction input', () => {
       expect(instructions).toContain(
         'Do not put special-category data into entries at all',
       )
-      expect(instructions).toContain('unless the user explicitly asked')
-      expect(instructions).toContain('server additionally checks')
+      expect(instructions).not.toContain('unless the user explicitly asked')
+      expect(instructions).toContain('server also checks every entry')
+      expect(instructions).toContain('rejects it')
       expect(instructions).not.toContain('sensitivity')
       expect(instructions).not.toContain('sensitiveCategory')
       expect(instructions).toContain('"neverStore"')

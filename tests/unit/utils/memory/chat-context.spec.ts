@@ -6,26 +6,6 @@ import {
 } from '~~/server/utils/memory/chat-context'
 import { createMemoryTestDb } from '../../../setup/helpers/memory-db'
 
-const policyMock = vi.hoisted(() => ({ allowlist: [] as string[] }))
-
-vi.mock('#shared/utils/memory-policy', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('#shared/utils/memory-policy')
-  >()
-
-  return {
-    ...actual,
-    isSensitiveMemoryProviderAllowed: (
-      input: Parameters<typeof actual.isSensitiveMemoryProviderAllowed>[0],
-    ) => {
-      return actual.isSensitiveMemoryProviderAllowed(
-        input,
-        policyMock.allowlist,
-      )
-    },
-  }
-})
-
 const USER_ID = 1
 const ABOUT_ME = 'I am a backend developer.'
 
@@ -36,7 +16,6 @@ describe('chat memory context', () => {
   beforeEach(() => {
     testDb = createMemoryTestDb()
     loggerSet = vi.fn()
-    policyMock.allowlist = []
   })
 
   afterEach(() => {
@@ -72,7 +51,6 @@ describe('chat memory context', () => {
       expect(settings).toEqual({
         memoryEnabled: true,
         chatSearchEnabled: true,
-        memoryIncludeSensitive: false,
         aboutMe: ABOUT_ME,
       })
       expect(loggerSet).not.toHaveBeenCalled()
@@ -88,7 +66,6 @@ describe('chat memory context', () => {
       expect(settings).toEqual({
         memoryEnabled: true,
         chatSearchEnabled: true,
-        memoryIncludeSensitive: false,
         aboutMe: null,
       })
     })
@@ -104,7 +81,6 @@ describe('chat memory context', () => {
         expect(settings).toEqual({
           memoryEnabled: false,
           chatSearchEnabled: false,
-          memoryIncludeSensitive: false,
           aboutMe: null,
         })
         expect(loggerSet).toHaveBeenCalledWith({
@@ -137,9 +113,6 @@ describe('chat memory context', () => {
       memoryEnabled: boolean
       aboutMe?: string | null
       db?: typeof testDb.db
-      includeSensitive?: boolean
-      providerId?: string | null
-      gatewayId?: string | null
     }) {
       return buildMemoryInstructions({
         db: input.db ?? testDb.db,
@@ -149,14 +122,9 @@ describe('chat memory context', () => {
         settings: {
           memoryEnabled: input.memoryEnabled,
           chatSearchEnabled: true,
-          memoryIncludeSensitive: input.includeSensitive ?? false,
           aboutMe: input.aboutMe ?? null,
         },
         hasMemoryTools: true,
-        providerId: input.providerId === undefined
-          ? 'openai'
-          : input.providerId,
-        gatewayId: input.gatewayId,
         logger: { set: loggerSet },
       })
     }
@@ -183,7 +151,6 @@ describe('chat memory context', () => {
             memoryIndex: {
               tokens: expect.any(Number),
               entryCount: 1,
-              withheldSensitive: 0,
               trimSteps: [],
               overBudget: false,
             },
@@ -220,99 +187,34 @@ describe('chat memory context', () => {
         })
       })
 
-    describe('sensitive provider gate', () => {
-      const WITHHELD_FRAGMENT = 'Some sensitive memories are withheld'
-
-      beforeEach(() => {
-        testDb.insertEntry({ userId: USER_ID, slug: 'cooking' })
-        testDb.insertEntry({
-          userId: USER_ID,
-          slug: 'allergy',
-          title: 'Allergy title',
-          description: 'Allergy description',
-          body: 'Allergy body',
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
+    it('never injects a legacy special entry', async () => {
+      testDb.insertEntry({ userId: USER_ID, slug: 'cooking' })
+      testDb.insertEntry({
+        userId: USER_ID,
+        slug: 'allergy',
+        title: 'Allergy title',
+        description: 'Allergy description',
+        body: 'Allergy body',
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
       })
 
-      it('withholds special entries from a direct provider that is not '
-        + 'allowlisted and logs the count only', async () => {
-        const instructions = await instructionsFor({
-          memoryEnabled: true,
-          includeSensitive: true,
-          providerId: 'openai',
-        })
+      const instructions = await instructionsFor({ memoryEnabled: true })
 
-        expect(instructions).toContain(WITHHELD_FRAGMENT)
-        expect(instructions).not.toContain('Allergy')
-        expect(instructions).not.toContain('allergy')
-        expect(loggerSet).toHaveBeenCalledWith({
-          attributes: {
-            memoryIndex: {
-              tokens: expect.any(Number),
-              entryCount: 1,
-              withheldSensitive: 1,
-              trimSteps: [],
-              overBudget: false,
-            },
+      expect(instructions).toContain('cooking')
+      expect(instructions).not.toContain('Allergy')
+      expect(instructions).not.toContain('allergy')
+      expect(instructions).not.toContain('withheld')
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          memoryIndex: {
+            tokens: expect.any(Number),
+            entryCount: 1,
+            trimSteps: [],
+            overBudget: false,
           },
-        })
+        },
       })
-
-      it('includes special entries for an allowlisted direct provider',
-        async () => {
-          policyMock.allowlist = ['openai']
-
-          const instructions = await instructionsFor({
-            memoryEnabled: true,
-            includeSensitive: true,
-            providerId: 'openai',
-          })
-
-          expect(instructions).toContain('Allergy title')
-          expect(instructions).not.toContain(WITHHELD_FRAGMENT)
-          expect(loggerSet).toHaveBeenCalledWith({
-            attributes: {
-              memoryIndex: expect.objectContaining({
-                entryCount: 2,
-                withheldSensitive: 0,
-              }),
-            },
-          })
-        })
-
-      it('withholds special entries on a gateway send even when the '
-        + 'provider id is allowlisted', async () => {
-        policyMock.allowlist = ['openai', 'vercel-gateway']
-
-        const instructions = await instructionsFor({
-          memoryEnabled: true,
-          includeSensitive: true,
-          providerId: null,
-          gatewayId: 'openrouter',
-        })
-
-        expect(instructions).toContain(WITHHELD_FRAGMENT)
-        expect(instructions).not.toContain('Allergy')
-      })
-
-      it('adds no line and logs zero withheld without the opt-in',
-        async () => {
-          const instructions = await instructionsFor({
-            memoryEnabled: true,
-            includeSensitive: false,
-            providerId: 'openai',
-          })
-
-          expect(instructions).not.toContain(WITHHELD_FRAGMENT)
-          expect(instructions).not.toContain('Allergy')
-          expect(loggerSet).toHaveBeenCalledWith({
-            attributes: {
-              memoryIndex: expect.objectContaining({ withheldSensitive: 0 }),
-            },
-          })
-        })
     })
 
     it('never reads another user\'s entries into the index', async () => {

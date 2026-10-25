@@ -47,7 +47,6 @@ describe('memory tools', () => {
     projectId?: number | null
     useAccountMemory?: boolean | null
     userMessageText?: string | null
-    includeSensitive?: boolean
     budget?: ReturnType<typeof createChatSearchBudget>
     db?: typeof testDb.db
   } = {}) {
@@ -66,7 +65,6 @@ describe('memory tools', () => {
       userMessageText: overrides.userMessageText === undefined
         ? DEFAULT_MESSAGE
         : overrides.userMessageText,
-      includeSensitive: overrides.includeSensitive ?? false,
       budget,
       logger: { set: loggerSet },
     })
@@ -155,9 +153,12 @@ describe('memory tools', () => {
       expect(description).toContain('ONLY when the user\'s current message')
       expect(description).toContain('web page')
       expect(description).toContain('instructions for yourself')
-      expect(description).toContain('The server classifies sensitive text')
-      expect(description).toContain('must not try to label it')
-      expect(description).toContain('Notes about other people')
+      expect(description).toContain('Sensitive topics (health, religion')
+      expect(description).toContain('are never stored')
+      expect(description).toContain('the server refuses such entries')
+      expect(description).toContain('do not try to word around it')
+      expect(description).not.toContain('Notes about other people')
+      expect(description).not.toContain('mark it special')
       expect(description).not.toContain('sensitivity')
       expect(description).not.toContain('sensitiveCategory')
       expect(description.toLowerCase()).toContain('at most 3 calls')
@@ -307,7 +308,7 @@ describe('memory tools', () => {
       ])
     })
 
-    it('hides special entries unless the sensitive opt-in is on',
+    it('always hides special entries, whatever the sensitive setting',
       async () => {
         testDb.insertEntry({
           id: 1,
@@ -318,14 +319,22 @@ describe('memory tools', () => {
         })
         testDb.insertEntry({ id: 2, userId: OWNER, slug: 'cooking' })
 
-        const hidden = await build().tools.memory_list!.execute({}, toolOptions)
-        const shown = await build({ includeSensitive: true })
-          .tools.memory_list!.execute({}, toolOptions)
+        for (const setting of [true, false, null]) {
+          testDb.sqlite.prepare('delete from user_settings').run()
+          testDb.insertUserSettings({
+            userId: OWNER,
+            memoryIncludeSensitive: setting,
+          })
 
-        expect(hidden.entries.map((entry: any) => entry.handle)).toEqual([
-          'topics/cooking',
-        ])
-        expect(shown.entries).toHaveLength(2)
+          const listed = await build().tools.memory_list!.execute(
+            {},
+            toolOptions,
+          )
+
+          expect(listed.entries.map((entry: any) => entry.handle)).toEqual([
+            'topics/cooking',
+          ])
+        }
       })
 
     it('caps the list and returns an empty list for an empty memory',
@@ -510,28 +519,27 @@ describe('memory tools', () => {
         ).rejects.toMatchObject({ status: 404 })
       })
 
-    it('hides a special entry unless the opt-in is on', async () => {
-      testDb.insertEntry({
-        id: 5,
-        userId: OWNER,
-        slug: 'diagnosis',
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      })
+    it('always hides a special entry, whatever the sensitive setting',
+      async () => {
+        testDb.insertEntry({
+          id: 5,
+          userId: OWNER,
+          slug: 'diagnosis',
+          sensitivity: 'special',
+          sensitiveCategory: 'health',
+        })
 
-      await expect(
-        build().tools.memory_read!.execute(
-          { id: encodePublicId(5) },
-          toolOptions,
-        ),
-      ).rejects.toMatchObject({ status: 404 })
-      await expect(
-        build({ includeSensitive: true }).tools.memory_read!.execute(
-          { id: 'topics/diagnosis' },
-          toolOptions,
-        ),
-      ).resolves.toMatchObject({ entry: { id: encodePublicId(5) } })
-    })
+        testDb.insertUserSettings({
+          userId: OWNER,
+          memoryIncludeSensitive: true,
+        })
+
+        for (const id of [encodePublicId(5), 'topics/diagnosis']) {
+          await expect(
+            build().tools.memory_read!.execute({ id }, toolOptions),
+          ).rejects.toMatchObject({ status: 404 })
+        }
+      })
   })
 
   describe('user request quote gate', () => {
@@ -1006,79 +1014,69 @@ describe('memory tools', () => {
       }))).not.toHaveProperty('sensitiveCategory')
     })
 
-    it('refuses health text while the opt-in is off and '
-      + 'stores nothing', async () => {
-      const failure = await build().tools.memory_write!.execute(
-        writeInput({
-          title: 'Health',
-          description: 'Diet constraints',
-          body: 'I have type 2 diabetes.',
-        }),
-        toolOptions,
-      ).catch((exception: Error) => exception)
-
-      expect(failure).toMatchObject({
-        status: 422,
-        message: expect.stringContaining('Sensitive memory is turned off'),
-      })
-      expect((failure as Error).message).toContain('health')
-      expect((failure as Error).message).not.toContain('diabetes')
-      expect(testDb.countEntries()).toBe(0)
-    })
-
-    it('stores health text as special with a server-set '
-      + 'category when the opt-in is on', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
-
-      const output = await build({ includeSensitive: true })
-        .tools.memory_write!.execute(
-        writeInput({
-          title: 'Health',
-          description: 'Diet constraints',
-          body: 'I have type 2 diabetes.',
-        }),
-        toolOptions,
-      )
-
-      expect(output.action).toBe('created')
-      expect(readRowBySlug('health')).toMatchObject({
-        sensitivity: 'special',
-        sensitive_category: 'health',
-      })
-    })
-
-    it('refuses an update that adds health words while the opt-in is off',
-      async () => {
-        testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
-
-        await expect(
-          build().tools.memory_write!.execute(
-            writeInput({
-              id: 'topics/cooking',
-              body: 'I have type 2 diabetes.',
-            }),
-            toolOptions,
-          ),
-        ).rejects.toMatchObject({ status: 422 })
-        expect(readRow(1)).toMatchObject({
-          sensitivity: 'none',
-          body: 'Body of cooking',
-        })
-      })
-
-    it('refuses health text in a people note with the opt-in on and off',
-      async () => {
-        for (const includeSensitive of [false, true]) {
+    describe.each([
+      { label: 'true', setting: true },
+      { label: 'false', setting: false },
+      { label: 'null', setting: null },
+      { label: 'no settings row', setting: undefined },
+    ])('with memoryIncludeSensitive $label', ({ setting }) => {
+      beforeEach(() => {
+        if (setting !== undefined) {
           testDb.insertUserSettings({
             userId: OWNER,
-            memoryIncludeSensitive: includeSensitive,
+            memoryIncludeSensitive: setting,
           })
+        }
+      })
 
-          const failure = await build({ includeSensitive })
-            .tools.memory_write!.execute(
+      it('refuses health text and stores nothing', async () => {
+        const failure = await build().tools.memory_write!.execute(
+          writeInput({
+            title: 'Health',
+            description: 'Diet constraints',
+            body: 'I have type 2 diabetes.',
+          }),
+          toolOptions,
+        ).catch((exception: Error) => exception)
+
+        expect(failure).toMatchObject({
+          status: 422,
+          message: expect.stringContaining(
+            'Sensitive topics (health, religion, politics…) are not saved '
+            + 'to memory.',
+          ),
+        })
+        expect((failure as Error).message).toContain('(health)')
+        expect((failure as Error).message).toContain(
+          'Remove the sensitive details and save again.',
+        )
+        expect((failure as Error).message).not.toContain('diabetes')
+        expect(testDb.countEntries()).toBe(0)
+      })
+
+      it('refuses an update that adds health words and keeps the entry',
+        async () => {
+          testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
+
+          await expect(
+            build().tools.memory_write!.execute(
+              writeInput({
+                id: 'topics/cooking',
+                body: 'I have type 2 diabetes.',
+              }),
+              toolOptions,
+            ),
+          ).rejects.toMatchObject({ status: 422 })
+          expect(readRow(1)).toMatchObject({
+            sensitivity: 'none',
+            sensitive_category: null,
+            body: 'Body of cooking',
+          })
+        })
+
+      it('refuses health text in a people note under the same rule',
+        async () => {
+          const failure = await build().tools.memory_write!.execute(
             writeInput({
               category: 'people',
               title: 'Anna',
@@ -1090,33 +1088,57 @@ describe('memory tools', () => {
 
           expect(failure).toMatchObject({
             status: 422,
-            message: expect.stringContaining(
-              'Sensitive data about another person cannot be stored',
-            ),
+            message: expect.stringContaining('Sensitive topics'),
           })
           expect((failure as Error).message).toContain('(health)')
           expect((failure as Error).message).not.toContain('diabetes')
           expect(testDb.countEntries()).toBe(0)
-          testDb.sqlite.prepare('delete from user_settings').run()
-        }
-      })
+        })
 
-    it('stores clean text in a people note', async () => {
-      const output = await build().tools.memory_write!.execute(
-        writeInput({
-          category: 'people',
-          title: 'Anna',
-          description: 'Sister',
-          body: 'Anna: sister, lives in Lviv.',
-        }),
-        toolOptions,
-      )
+      it.each([
+        ['topics', 'Diet constraints', 'Prefers vegetarian food.'],
+        ['topics', 'Church Street address', 'Delivery goes to Church Street.'],
+        ['people', 'Anna', 'Anna: sister, lives in Lviv.'],
+      ])('stores clean %s text "%s" as none with no category',
+        async (category, title, body) => {
+          const output = await build().tools.memory_write!.execute(
+            writeInput({ category, title, description: 'Clean note', body }),
+            toolOptions,
+          )
 
-      expect(output.action).toBe('created')
-      expect(readRowBySlug('anna')).toMatchObject({
-        category: 'people',
-        sensitivity: 'none',
-      })
+          expect(output.action).toBe('created')
+          expect(readRow(1)).toMatchObject({
+            category,
+            sensitivity: 'none',
+            sensitive_category: null,
+          })
+        })
+
+      it('does not overwrite a hidden legacy special entry with clean text',
+        async () => {
+          testDb.insertEntry({
+            id: 1,
+            userId: OWNER,
+            slug: 'cooking',
+            title: 'Cooking',
+            body: 'Hidden legacy note.',
+            sensitivity: 'special',
+            sensitiveCategory: 'health',
+          })
+
+          const output = await build().tools.memory_write!.execute(
+            writeInput(),
+            toolOptions,
+          )
+
+          expect(output.action).toBe('created')
+          expect(output.entry.handle).toBe('topics/cooking-2')
+          expect(readRow(1)).toMatchObject({
+            sensitivity: 'special',
+            sensitive_category: 'health',
+            body: 'Hidden legacy note.',
+          })
+        })
     })
 
     it('puts the why and the fix of a service error into the message the '
@@ -1228,8 +1250,7 @@ describe('memory tools', () => {
       expect((failure as Error).message).not.toMatch(/already exists|profile/)
     })
 
-    it('keeps the already-exists message when the sensitive opt-in is on '
-      + 'and nothing is hidden', async () => {
+    it('updates a visible singleton instead of answering 409', async () => {
       testDb.insertEntry({
         id: 1,
         userId: OWNER,
@@ -1238,8 +1259,7 @@ describe('memory tools', () => {
         body: 'Visible note.',
       })
 
-      const output = await build({ includeSensitive: true })
-        .tools.memory_write!.execute(
+      const output = await build().tools.memory_write!.execute(
         writeInput({ category: 'profile' }),
         toolOptions,
       )
@@ -1365,6 +1385,10 @@ describe('memory tools', () => {
     })
 
     it('answers 404 for a hidden special entry and keeps it', async () => {
+      testDb.insertUserSettings({
+        userId: OWNER,
+        memoryIncludeSensitive: true,
+      })
       testDb.insertEntry({
         id: 4,
         userId: OWNER,

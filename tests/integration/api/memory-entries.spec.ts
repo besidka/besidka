@@ -36,6 +36,14 @@ vi.mock('evlog', () => ({
 const CARD_NUMBER = '4111 1111 1111 1111'
 const OWNER = 1
 const STRANGER = 2
+const SENSITIVE_TOPIC_MESSAGE
+  = 'Sensitive topics (health, religion, politics…) are not saved to memory.'
+const SETTING_VALUES = [
+  { label: 'true', setting: true },
+  { label: 'false', setting: false },
+  { label: 'null', setting: null },
+  { label: 'no settings row', setting: undefined },
+] as const
 
 type Handler = (event: any) => Promise<any>
 
@@ -87,6 +95,17 @@ describe('memory entries API', () => {
 
   function queryEvent(query: Record<string, string> = {}) {
     return { query, headers: {}, res: { headers: new Headers() } }
+  }
+
+  function applySetting(setting: boolean | null | undefined) {
+    if (setting === undefined) {
+      return
+    }
+
+    testDb.insertUserSettings({
+      userId: OWNER,
+      memoryIncludeSensitive: setting,
+    })
   }
 
   function seed(slug: string, userId: number = OWNER, projectId?: number) {
@@ -384,19 +403,7 @@ describe('memory entries API', () => {
       expect(testDb.countEntries()).toBe(0)
     })
 
-    it('returns 422 for sensitive entries while the opt-in is off', async () => {
-      const handler = await handlers.create()
-
-      await expect(handler(bodyEvent({
-        ...validBody,
-        sensitivity: 'special',
-      }))).rejects.toMatchObject({
-        status: 422,
-        message: 'Sensitive memory is turned off',
-      })
-    })
-
-    describe('server-side sensitivity classification', () => {
+    describe('the sensitive-topic rule', () => {
       const reportedBody = {
         category: 'topics',
         title: 'Health',
@@ -404,56 +411,143 @@ describe('memory entries API', () => {
         body: 'I have type 2 diabetes.',
       }
 
-      it('returns 422 for health text labelled none while the opt-in is off',
-        async () => {
-          const handler = await handlers.create()
-          const exception = await handler(bodyEvent({
-            ...reportedBody,
-            sensitivity: 'none',
-          })).catch((caught: unknown) => {
-            return caught as { status: number, message: string, why: string }
+      describe.each(SETTING_VALUES)(
+        'with memoryIncludeSensitive $label',
+        ({ setting }) => {
+          beforeEach(() => {
+            applySetting(setting)
           })
 
-          expect(exception).toMatchObject({
-            status: 422,
-            message: 'Sensitive memory is turned off',
+          it('returns 422 for the reported health text and stores nothing',
+            async () => {
+              const handler = await handlers.create()
+              const exception = await handler(bodyEvent(reportedBody))
+                .catch((caught: unknown) => {
+                  return caught as {
+                    status: number
+                    message: string
+                    why: string
+                    fix: string
+                  }
+                })
+
+              expect(exception).toMatchObject({
+                status: 422,
+                message: SENSITIVE_TOPIC_MESSAGE,
+                why: 'This entry looks like sensitive data (health).',
+                fix: 'Remove the sensitive details and save again.',
+              })
+              expect(exception.why).not.toContain('diabetes')
+              expect(testDb.countEntries(OWNER)).toBe(0)
+            })
+
+          it('returns 422 for the bug-report body, with a none label too',
+            async () => {
+              const handler = await handlers.create()
+
+              for (const sensitivity of [undefined, 'none']) {
+                await expect(handler(bodyEvent({
+                  category: 'topics',
+                  title: 'Diabetes',
+                  description: 'Medical',
+                  body: 'I have type 2 diabetes.',
+                  sensitivity,
+                }))).rejects.toMatchObject({
+                  status: 422,
+                  message: SENSITIVE_TOPIC_MESSAGE,
+                })
+              }
+
+              expect(testDb.countEntries(OWNER)).toBe(0)
+            })
+
+          it('returns 422 for a client-supplied special and stores nothing',
+            async () => {
+              const handler = await handlers.create()
+
+              await expect(handler(bodyEvent({
+                ...validBody,
+                sensitivity: 'special',
+                sensitiveCategory: 'health',
+              }))).rejects.toMatchObject({
+                status: 422,
+                message: SENSITIVE_TOPIC_MESSAGE,
+              })
+              await expect(handler(bodyEvent({
+                ...validBody,
+                sensitivity: 'special',
+              }))).rejects.toMatchObject({ status: 422 })
+              expect(testDb.countEntries(OWNER)).toBe(0)
+            })
+
+          it('returns 422 for a people entry with health text',
+            async () => {
+              const handler = await handlers.create()
+              const exception = await handler(bodyEvent({
+                category: 'people',
+                title: 'Anna',
+                description: 'Sister',
+                body: 'Anna has type 2 diabetes.',
+              })).catch((caught: unknown) => {
+                return caught as {
+                  status: number
+                  message: string
+                  why: string
+                }
+              })
+
+              expect(exception).toMatchObject({
+                status: 422,
+                message: SENSITIVE_TOPIC_MESSAGE,
+              })
+              expect(exception.why).toContain('(health)')
+              expect(testDb.countEntries(OWNER)).toBe(0)
+            })
+
+          it('lets never-store beat the sensitive topic', async () => {
+            const handler = await handlers.create()
+
+            await expect(handler(bodyEvent({
+              ...reportedBody,
+              body: `I have type 2 diabetes, card ${CARD_NUMBER}`,
+            }))).rejects.toMatchObject({
+              status: 422,
+              message: 'This memory contains data that cannot be stored',
+            })
           })
-          expect(exception.why).toContain('health')
-          expect(exception.why).not.toContain('diabetes')
-          expect(testDb.countEntries(OWNER)).toBe(0)
-        })
 
-      it('returns 422 for the same request without a sensitivity field',
-        async () => {
-          const handler = await handlers.create()
+          it.each([
+            ['topics', 'Diet constraints', 'Prefers vegetarian food.'],
+            ['topics', 'Church Street address', 'Delivery to Church Street.'],
+            ['people', 'Anna: sister', 'Anna: sister, lives in Lviv.'],
+          ])('returns 201 for clean %s text "%s", stored as none',
+            async (category, title, body) => {
+              const handler = await handlers.create()
+              const response = await handler(bodyEvent({
+                category,
+                title,
+                description: 'Clean note',
+                body,
+              }))
 
-          await expect(handler(bodyEvent(reportedBody)))
-            .rejects.toMatchObject({ status: 422 })
-          expect(testDb.countEntries(OWNER)).toBe(0)
-        })
-
-      it('returns 201 with special health when the opt-in is on', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
-
-        const handler = await handlers.create()
-        const response = await handler(bodyEvent({
-          ...reportedBody,
-          sensitivity: 'none',
-        }))
-
-        expect(mocks.setResponseStatus).toHaveBeenCalledWith(
-          expect.anything(),
-          201,
-        )
-        expect(response.entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-        expect(testDb.countEntries(OWNER)).toBe(1)
-      })
+              expect(mocks.setResponseStatus).toHaveBeenCalledWith(
+                expect.anything(),
+                201,
+              )
+              expect(response.entry).toMatchObject({
+                sensitivity: 'none',
+                sensitiveCategory: null,
+              })
+              expect(testDb.sqlite
+                .prepare('select sensitivity, sensitive_category '
+                  + 'from memory_entries')
+                .get()).toEqual({
+                sensitivity: 'none',
+                sensitive_category: null,
+              })
+            })
+        },
+      )
 
       it('logs the detected category ids and never the text', async () => {
         const handler = await handlers.create()
@@ -465,72 +559,6 @@ describe('memory entries API', () => {
         expect(logged).toContain('"sensitive"')
         expect(logged).toContain('health')
         expect(logged).not.toContain('diabetes')
-      })
-    })
-
-    describe('third-party special-category data', () => {
-      const peopleBody = {
-        category: 'people',
-        title: 'Anna',
-        description: 'Sister',
-        body: 'Anna has type 2 diabetes.',
-      }
-
-      it('returns 422 for a people entry with health text, opt-in on '
-        + 'or off', async () => {
-        for (const memoryIncludeSensitive of [false, true]) {
-          testDb.sqlite.prepare('delete from user_settings').run()
-          testDb.insertUserSettings({
-            userId: OWNER,
-            memoryIncludeSensitive,
-          })
-
-          const handler = await handlers.create()
-          const exception = await handler(bodyEvent(peopleBody))
-            .catch((caught: unknown) => {
-              return caught as { status: number, message: string, why: string }
-            })
-
-          expect(exception).toMatchObject({
-            status: 422,
-            message: 'Sensitive data about another person cannot be stored',
-          })
-          expect(exception.why).toContain('(health)')
-          expect(exception.why).not.toContain('diabetes')
-          expect(testDb.countEntries(OWNER)).toBe(0)
-        }
-      })
-
-      it('stores the same text in a topics entry as special when opted in',
-        async () => {
-          testDb.insertUserSettings({
-            userId: OWNER,
-            memoryIncludeSensitive: true,
-          })
-
-          const handler = await handlers.create()
-          const response = await handler(bodyEvent({
-            ...peopleBody,
-            category: 'topics',
-          }))
-
-          expect(response.entry).toMatchObject({
-            sensitivity: 'special',
-            sensitiveCategory: 'health',
-          })
-        })
-
-      it('stores a people entry with clean text', async () => {
-        const handler = await handlers.create()
-        const response = await handler(bodyEvent({
-          ...peopleBody,
-          body: 'Anna: sister, lives in Lviv.',
-        }))
-
-        expect(response.entry).toMatchObject({
-          category: 'people',
-          sensitivity: 'none',
-        })
       })
     })
 
@@ -701,97 +729,139 @@ describe('memory entries API', () => {
       }))).rejects.toMatchObject({ status: 422 })
     })
 
-    it('returns 422 for sensitive patches while the opt-in is off', async () => {
-      const handler = await handlers.patch()
+    describe('the sensitive-topic rule', () => {
+      describe.each(SETTING_VALUES)(
+        'with memoryIncludeSensitive $label',
+        ({ setting }) => {
+          beforeEach(() => {
+            applySetting(setting)
+            testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
+          })
 
-      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
+          function readStored() {
+            return testDb.sqlite
+              .prepare('select title, body, category, sensitivity, '
+                + 'sensitive_category from memory_entries where id = 5')
+              .get()
+          }
 
-      await expect(handler(paramsEvent(encodePublicId(5), {
-        sensitivity: 'special',
-      }))).rejects.toMatchObject({ status: 422 })
+          const untouched = {
+            title: 'mine',
+            body: 'Body of mine',
+            category: 'topics',
+            sensitivity: 'none',
+            sensitive_category: null,
+          }
+
+          it('returns 422 for the reported health text and keeps the row',
+            async () => {
+              const handler = await handlers.patch()
+              const exception = await handler(paramsEvent(encodePublicId(5), {
+                body: 'I have type 2 diabetes.',
+              })).catch((caught: unknown) => {
+                return caught as {
+                  status: number
+                  message: string
+                  why: string
+                }
+              })
+
+              expect(exception).toMatchObject({
+                status: 422,
+                message: SENSITIVE_TOPIC_MESSAGE,
+                why: 'This entry looks like sensitive data (health).',
+              })
+              expect(exception.why).not.toContain('diabetes')
+              expect(readStored()).toEqual(untouched)
+            })
+
+          it('returns 422 for a patch that declares special', async () => {
+            const handler = await handlers.patch()
+
+            await expect(handler(paramsEvent(encodePublicId(5), {
+              sensitivity: 'special',
+            }))).rejects.toMatchObject({
+              status: 422,
+              message: SENSITIVE_TOPIC_MESSAGE,
+            })
+            await expect(handler(paramsEvent(encodePublicId(5), {
+              body: 'I have type 2 diabetes.',
+              sensitivity: 'none',
+            }))).rejects.toMatchObject({ status: 422 })
+            expect(readStored()).toEqual(untouched)
+          })
+
+          it('returns 422 for health text in a people entry', async () => {
+            testDb.insertEntry({
+              id: 6,
+              userId: OWNER,
+              category: 'people',
+              slug: 'anna',
+            })
+
+            const handler = await handlers.patch()
+
+            await expect(handler(paramsEvent(encodePublicId(6), {
+              body: 'Anna has type 2 diabetes.',
+            }))).rejects.toMatchObject({
+              status: 422,
+              message: SENSITIVE_TOPIC_MESSAGE,
+            })
+          })
+
+          it('returns 422 when the merged stored text is flagged', async () => {
+            testDb.insertEntry({
+              id: 7,
+              userId: OWNER,
+              slug: 'flagged',
+              body: 'I have type 2 diabetes.',
+            })
+
+            const handler = await handlers.patch()
+
+            await expect(handler(paramsEvent(encodePublicId(7), {
+              category: 'people',
+            }))).rejects.toMatchObject({ status: 422 })
+          })
+
+          it('updates clean text and keeps none with no category',
+            async () => {
+              const handler = await handlers.patch()
+              const response = await handler(paramsEvent(encodePublicId(5), {
+                body: 'Prefers vegetarian food.',
+              }))
+
+              expect(response.entry).toMatchObject({
+                body: 'Prefers vegetarian food.',
+                sensitivity: 'none',
+                sensitiveCategory: null,
+              })
+            })
+
+          it('leaves a legacy special row special on a clean-text patch',
+            async () => {
+              testDb.insertEntry({
+                id: 8,
+                userId: OWNER,
+                slug: 'legacy',
+                sensitivity: 'special',
+                sensitiveCategory: 'health',
+              })
+
+              const handler = await handlers.patch()
+              const response = await handler(paramsEvent(encodePublicId(8), {
+                body: 'Clean text.',
+              }))
+
+              expect(response.entry).toMatchObject({
+                body: 'Clean text.',
+                sensitivity: 'special',
+                sensitiveCategory: 'health',
+              })
+            })
+        },
+      )
     })
-
-    it('returns 422 for a patch that adds health words while the opt-in '
-      + 'is off', async () => {
-      const handler = await handlers.patch()
-
-      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
-
-      await expect(handler(paramsEvent(encodePublicId(5), {
-        body: 'I have type 2 diabetes.',
-        sensitivity: 'none',
-      }))).rejects.toMatchObject({ status: 422 })
-    })
-
-    it('makes the entry special when the patch adds health words and the '
-      + 'opt-in is on', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
-
-      const handler = await handlers.patch()
-
-      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
-
-      const response = await handler(paramsEvent(encodePublicId(5), {
-        body: 'I have type 2 diabetes.',
-        sensitivity: 'none',
-      }))
-
-      expect(response.entry).toMatchObject({
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      })
-    })
-  })
-
-  describe('PATCH third-party special-category data', () => {
-    it('returns 422 for a patch that adds health text to a people entry',
-      async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
-
-        const handler = await handlers.patch()
-
-        testDb.insertEntry({
-          id: 5,
-          userId: OWNER,
-          category: 'people',
-          slug: 'anna',
-        })
-
-        await expect(handler(paramsEvent(encodePublicId(5), {
-          body: 'Anna has type 2 diabetes.',
-        }))).rejects.toMatchObject({
-          status: 422,
-          message: 'Sensitive data about another person cannot be stored',
-        })
-      })
-
-    it('returns 422 when the category moves a special entry into people',
-      async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
-
-        const handler = await handlers.patch()
-
-        testDb.insertEntry({
-          id: 5,
-          userId: OWNER,
-          slug: 'mine',
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-
-        await expect(handler(paramsEvent(encodePublicId(5), {
-          category: 'people',
-        }))).rejects.toMatchObject({ status: 422 })
-      })
 
     it('moves a clean-text entry into people', async () => {
       const handler = await handlers.patch()

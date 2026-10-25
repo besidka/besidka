@@ -3,9 +3,7 @@ import {
   MEMORY_ENTRY_SLUG_PATTERN,
   MEMORY_LIMITS,
   MEMORY_SETTING_DEFAULTS,
-  SENSITIVE_MEMORY_PROVIDER_ALLOWLIST,
   alwaysInjectedMemoryCategories,
-  isSensitiveMemoryProviderAllowed,
   memoryCategories,
   memorySensitiveCategories,
   neverStoreKindIds,
@@ -103,66 +101,5 @@ describe('MEMORY_ENTRY_SLUG_PATTERN', () => {
     expect(MEMORY_ENTRY_SLUG_PATTERN.test('two words')).toBe(false)
     expect(MEMORY_ENTRY_SLUG_PATTERN.test('-leading')).toBe(false)
     expect(MEMORY_ENTRY_SLUG_PATTERN.test('double--hyphen')).toBe(false)
-  })
-})
-
-describe('isSensitiveMemoryProviderAllowed', () => {
-  const directProviderIds = [
-    'openai',
-    'anthropic',
-    'google',
-    'xai',
-    'deepseek',
-    'moonshotai',
-    'qwen',
-  ]
-
-  it('ships an empty allowlist', () => {
-    expect(SENSITIVE_MEMORY_PROVIDER_ALLOWLIST).toEqual([])
-  })
-
-  it('denies every direct provider with the shipped empty allowlist', () => {
-    for (const providerId of directProviderIds) {
-      expect(isSensitiveMemoryProviderAllowed({
-        providerId,
-        gatewayId: undefined,
-      })).toBe(false)
-    }
-  })
-
-  it('denies a missing provider id', () => {
-    expect(isSensitiveMemoryProviderAllowed(
-      { providerId: null, gatewayId: undefined },
-      ['openai'],
-    )).toBe(false)
-  })
-
-  it('allows a listed direct provider', () => {
-    expect(isSensitiveMemoryProviderAllowed(
-      { providerId: 'openai', gatewayId: undefined },
-      ['openai'],
-    )).toBe(true)
-    expect(isSensitiveMemoryProviderAllowed(
-      { providerId: 'openai', gatewayId: null },
-      ['openai'],
-    )).toBe(true)
-  })
-
-  it('denies a direct provider that is not listed', () => {
-    expect(isSensitiveMemoryProviderAllowed(
-      { providerId: 'xai', gatewayId: undefined },
-      ['openai'],
-    )).toBe(false)
-  })
-
-  it('denies a listed provider behind a gateway', () => {
-    expect(isSensitiveMemoryProviderAllowed(
-      { providerId: 'openai', gatewayId: 'openrouter' },
-      ['openai'],
-    )).toBe(false)
-    expect(isSensitiveMemoryProviderAllowed(
-      { providerId: null, gatewayId: 'vercel' },
-      ['openai', 'vercel-gateway'],
-    )).toBe(false)
   })
 })

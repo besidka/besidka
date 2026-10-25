@@ -778,9 +778,7 @@ describe('recordSensitiveDetection', () => {
     }
 
     recordSensitiveDetection(['health', 'drugs'], logger, 'memory-api')
-    recordSensitiveDetection(['drugs', 'genetic'], logger, 'memory-tool', {
-      thirdParty: true,
-    })
+    recordSensitiveDetection(['drugs', 'genetic'], logger, 'memory-tool')
     recordSensitiveDetection(['health'], logger, 'memory-tool')
 
     expect(context).toEqual({
@@ -789,27 +787,6 @@ describe('recordSensitiveDetection', () => {
           sensitive: {
             origin: 'memory-tool',
             categories: ['health', 'drugs', 'genetic'],
-            thirdParty: true,
-          },
-        },
-      },
-    })
-  })
-
-  it('marks a third-party detection without adding any text', () => {
-    const logger = { set: vi.fn() }
-
-    recordSensitiveDetection(['health'], logger, 'memory-api', {
-      thirdParty: true,
-    })
-
-    expect(logger.set).toHaveBeenCalledWith({
-      attributes: {
-        memoryCompliance: {
-          sensitive: {
-            origin: 'memory-api',
-            categories: ['health'],
-            thirdParty: true,
           },
         },
       },
@@ -823,16 +800,10 @@ describe('evaluateMemoryEntry', () => {
     description: 'Likes strict typing',
     body: 'Uses TypeScript on every project.',
     sensitivity: 'none' as const,
-    includeSensitive: false,
   }
 
   it('allows a clean entry', () => {
-    expect(evaluateMemoryEntry(cleanEntry)).toEqual({
-      allowed: true,
-      sensitivity: 'none',
-      sensitiveCategory: null,
-      detectedCategories: [],
-    })
+    expect(evaluateMemoryEntry(cleanEntry)).toEqual({ allowed: true })
   })
 
   it('blocks a detector hit in the body', () => {
@@ -915,51 +886,15 @@ describe('evaluateMemoryEntry', () => {
   it('ignores a null extractor label', () => {
     expect(
       evaluateMemoryEntry({ ...cleanEntry, extractorNeverStoreKind: null }),
-    ).toEqual({
-      allowed: true,
-      sensitivity: 'none',
-      sensitiveCategory: null,
-      detectedCategories: [],
-    })
+    ).toEqual({ allowed: true })
   })
 
-  it('reports sensitive-disabled for special entries when off', () => {
+  it('refuses a declared special entry with no detected category', () => {
     expect(
       evaluateMemoryEntry({ ...cleanEntry, sensitivity: 'special' }),
     ).toEqual({
       allowed: false,
-      reason: 'sensitive-disabled',
-      detectedCategories: [],
-    })
-  })
-
-  it('allows special entries when the user opted in', () => {
-    expect(
-      evaluateMemoryEntry({
-        ...cleanEntry,
-        sensitivity: 'special',
-        includeSensitive: true,
-      }),
-    ).toEqual({
-      allowed: true,
-      sensitivity: 'special',
-      sensitiveCategory: null,
-      detectedCategories: [],
-    })
-  })
-
-  it('keeps the declared category of an opted-in special entry', () => {
-    expect(
-      evaluateMemoryEntry({
-        ...cleanEntry,
-        sensitivity: 'special',
-        sensitiveCategory: 'drugs',
-        includeSensitive: true,
-      }),
-    ).toEqual({
-      allowed: true,
-      sensitivity: 'special',
-      sensitiveCategory: 'drugs',
+      reason: 'sensitive-topic',
       detectedCategories: [],
     })
   })
@@ -972,21 +907,20 @@ describe('evaluateMemoryEntry', () => {
       body: 'I have type 2 diabetes.',
     }
 
-    it('refuses flagged text declared none while the opt-in is off', () => {
+    it('refuses flagged text declared none with the detected category', () => {
       expect(evaluateMemoryEntry(flaggedEntry)).toEqual({
         allowed: false,
-        reason: 'sensitive-disabled',
+        reason: 'sensitive-topic',
         detectedCategories: ['health'],
       })
     })
 
-    it('forces flagged text declared none to special when opted in', () => {
+    it('refuses flagged text declared special too', () => {
       expect(
-        evaluateMemoryEntry({ ...flaggedEntry, includeSensitive: true }),
+        evaluateMemoryEntry({ ...flaggedEntry, sensitivity: 'special' }),
       ).toEqual({
-        allowed: true,
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
+        allowed: false,
+        reason: 'sensitive-topic',
         detectedCategories: ['health'],
       })
     })
@@ -997,210 +931,72 @@ describe('evaluateMemoryEntry', () => {
           ...cleanEntry,
           title: 'Type 2 diabetes',
         }),
-      ).toMatchObject({ allowed: false, reason: 'sensitive-disabled' })
+      ).toMatchObject({ allowed: false, reason: 'sensitive-topic' })
       expect(
         evaluateMemoryEntry({
           ...cleanEntry,
           description: 'Has type 2 diabetes',
         }),
-      ).toMatchObject({ allowed: false, reason: 'sensitive-disabled' })
+      ).toMatchObject({ allowed: false, reason: 'sensitive-topic' })
     })
 
-    it('keeps a declared category over the classified one', () => {
-      expect(
-        evaluateMemoryEntry({
-          ...flaggedEntry,
-          sensitivity: 'special',
-          sensitiveCategory: 'religion-or-belief',
-          includeSensitive: true,
-        }),
-      ).toEqual({
-        allowed: true,
-        sensitivity: 'special',
-        sensitiveCategory: 'religion-or-belief',
-        detectedCategories: ['health'],
-      })
-    })
-
-    it('never downgrades a declared special without a match', () => {
+    it('leaves clean text untouched', () => {
       expect(
         evaluateMemoryEntry({
           ...cleanEntry,
-          sensitivity: 'special',
-          sensitiveCategory: 'drugs',
-          includeSensitive: true,
+          title: 'Church Street address',
+          description: 'Diet constraints',
+          body: 'Delivery goes to the office on Church Street.',
         }),
-      ).toEqual({
-        allowed: true,
-        sensitivity: 'special',
-        sensitiveCategory: 'drugs',
-        detectedCategories: [],
-      })
-    })
-
-    it('reports no detected category when only the label triggered it', () => {
+      ).toEqual({ allowed: true })
       expect(
-        evaluateMemoryEntry({ ...cleanEntry, sensitivity: 'special' }),
-      ).toMatchObject({
-        allowed: false,
-        reason: 'sensitive-disabled',
-        detectedCategories: [],
-      })
+        evaluateMemoryEntry({
+          ...cleanEntry,
+          title: 'Anna',
+          description: 'Sister',
+          body: 'Anna: sister, lives in Lviv.',
+        }),
+      ).toEqual({ allowed: true })
     })
 
-    it('leaves clean text declared none untouched in both modes', () => {
-      for (const includeSensitive of [false, true]) {
+    it('refuses the same text about another person under the same rule',
+      () => {
         expect(
           evaluateMemoryEntry({
-            ...cleanEntry,
-            title: 'Church Street address',
-            description: 'Diet constraints',
-            body: 'Delivery goes to the office on Church Street.',
-            includeSensitive,
-          }),
-        ).toEqual({
-          allowed: true,
-          sensitivity: 'none',
-          sensitiveCategory: null,
-          detectedCategories: [],
-        })
-      }
-    })
-
-    describe('third-party special-category data', () => {
-      const peopleHealthEntry = { ...flaggedEntry, category: 'people' as const }
-
-      it('refuses classified text in a people entry with the opt-in on',
-        () => {
-          expect(
-            evaluateMemoryEntry({
-              ...peopleHealthEntry,
-              includeSensitive: true,
-            }),
-          ).toEqual({
-            allowed: false,
-            reason: 'third-party-sensitive',
-            detectedCategories: ['health'],
-          })
-        })
-
-      it('refuses it with the opt-in off as third-party, not disabled',
-        () => {
-          expect(evaluateMemoryEntry(peopleHealthEntry)).toEqual({
-            allowed: false,
-            reason: 'third-party-sensitive',
-            detectedCategories: ['health'],
-          })
-        })
-
-      it('refuses a declared special people entry without a match', () => {
-        expect(
-          evaluateMemoryEntry({
-            ...cleanEntry,
-            category: 'people',
-            sensitivity: 'special',
-            sensitiveCategory: 'religion-or-belief',
-            includeSensitive: true,
+            ...flaggedEntry,
+            title: 'Anna',
+            description: 'Sister',
+            body: 'Anna has type 2 diabetes.',
           }),
         ).toEqual({
           allowed: false,
-          reason: 'third-party-sensitive',
-          detectedCategories: [],
+          reason: 'sensitive-topic',
+          detectedCategories: ['health'],
         })
       })
-
-      it('allows clean text in a people entry in both modes', () => {
-        for (const includeSensitive of [false, true]) {
-          expect(
-            evaluateMemoryEntry({
-              ...cleanEntry,
-              category: 'people',
-              title: 'Anna',
-              description: 'Sister',
-              body: 'Anna: sister, lives in Lviv.',
-              includeSensitive,
-            }),
-          ).toEqual({
-            allowed: true,
-            sensitivity: 'none',
-            sensitiveCategory: null,
-            detectedCategories: [],
-          })
-        }
-      })
-
-      it.each([
-        'profile',
-        'preferences',
-        'areas',
-        'topics',
-      ] as const)('keeps classified text in a %s entry opt-in only',
-        (category) => {
-          expect(
-            evaluateMemoryEntry({
-              ...flaggedEntry,
-              category,
-              includeSensitive: true,
-            }),
-          ).toEqual({
-            allowed: true,
-            sensitivity: 'special',
-            sensitiveCategory: 'health',
-            detectedCategories: ['health'],
-          })
-          expect(evaluateMemoryEntry({ ...flaggedEntry, category }))
-            .toMatchObject({ allowed: false, reason: 'sensitive-disabled' })
-        })
-
-      it('evaluates the category only when one is passed', () => {
-        expect(
-          evaluateMemoryEntry({ ...flaggedEntry, includeSensitive: true }),
-        ).toMatchObject({ allowed: true, sensitivity: 'special' })
-      })
-
-      it('lets never-store beat third-party and third-party beat '
-        + 'sensitive-disabled', () => {
-        expect(
-          evaluateMemoryEntry({
-            ...peopleHealthEntry,
-            body: 'I have type 2 diabetes, card 4111 1111 1111 1111',
-          }),
-        ).toMatchObject({ allowed: false, reason: 'never-store' })
-        expect(
-          evaluateMemoryEntry({
-            ...peopleHealthEntry,
-            extractorNeverStoreKind: 'home-address',
-          }),
-        ).toMatchObject({ allowed: false, reason: 'never-store' })
-        expect(evaluateMemoryEntry(peopleHealthEntry)).toMatchObject({ allowed: false, reason: 'third-party-sensitive' })
-      })
-    })
 
     it('lets never-store beat the classifier', () => {
       expect(
         evaluateMemoryEntry({
           ...flaggedEntry,
           body: 'I have type 2 diabetes, card 4111 1111 1111 1111',
-          includeSensitive: true,
         }),
       ).toMatchObject({ allowed: false, reason: 'never-store' })
     })
   })
 
-  it('lets never-store beat sensitive even when opted in', () => {
+  it('lets never-store beat a declared special entry', () => {
     expect(
       evaluateMemoryEntry({
         ...cleanEntry,
         body: 'Diagnosis noted, card 4111 1111 1111 1111',
         sensitivity: 'special',
-        includeSensitive: true,
       }),
     ).toMatchObject({ allowed: false, reason: 'never-store' })
     expect(
       evaluateMemoryEntry({
         ...cleanEntry,
         sensitivity: 'special',
-        includeSensitive: false,
         extractorNeverStoreKind: 'criminal-history',
       }),
     ).toMatchObject({ allowed: false, reason: 'never-store' })

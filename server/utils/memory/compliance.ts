@@ -1,6 +1,5 @@
 import type {
   ComplianceBlockedCounts,
-  MemoryCategory,
   MemorySensitiveCategory,
   MemorySensitivity,
   NeverStoreKind,
@@ -27,33 +26,20 @@ export interface ComplianceLogger {
 }
 
 export type MemoryWriteVerdict
-  = | {
-    allowed: true
-    sensitivity: MemorySensitivity
-    sensitiveCategory: MemorySensitiveCategory | null
-    detectedCategories: MemorySensitiveCategory[]
-  }
-  | { allowed: false, reason: 'never-store', kinds: NeverStoreKind[] }
-  | {
-    allowed: false
-    reason: 'third-party-sensitive'
-    detectedCategories: MemorySensitiveCategory[]
-  }
-  | {
-    allowed: false
-    reason: 'sensitive-disabled'
-    detectedCategories: MemorySensitiveCategory[]
-  }
+  = | { allowed: true }
+    | { allowed: false, reason: 'never-store', kinds: NeverStoreKind[] }
+    | {
+      allowed: false
+      reason: 'sensitive-topic'
+      detectedCategories: MemorySensitiveCategory[]
+    }
 
 export interface MemoryEntryEvaluationInput {
   title: string
   description: string
   body: string
   sensitivity: MemorySensitivity
-  sensitiveCategory?: MemorySensitiveCategory | null
-  category?: MemoryCategory
   extractorNeverStoreKind?: NeverStoreKind | null
-  includeSensitive: boolean
 }
 
 const MAX_CARD_DIGITS = 19
@@ -908,50 +894,43 @@ export function combineMemoryEntryText(fields: {
   return [fields.title, fields.description, fields.body].join('\n')
 }
 
-function readLoggedSensitive(logger: ComplianceLogger): {
-  categories: MemorySensitiveCategory[]
-  thirdParty: boolean
-} {
+function readLoggedSensitiveCategories(
+  logger: ComplianceLogger,
+): MemorySensitiveCategory[] {
   const context = logger.getContext?.() as {
     attributes?: {
       memoryCompliance?: {
         sensitive?: {
           categories?: MemorySensitiveCategory[]
-          thirdParty?: boolean
         }
       }
     }
   } | undefined
   const logged = context?.attributes?.memoryCompliance?.sensitive
 
-  return {
-    categories: Array.isArray(logged?.categories) ? logged.categories : [],
-    thirdParty: logged?.thirdParty === true,
-  }
+  return Array.isArray(logged?.categories) ? logged.categories : []
 }
 
 /**
  * Logs the detected category ids (never the text) under
  * `memoryCompliance.sensitive`. evlog replaces arrays on a repeated `set`, so
  * when the logger exposes `getContext` the ids already logged in this request
- * are merged in and the list stays deduplicated, and `thirdParty` stays true
- * once set. A logger without `getContext` keeps only the last call's ids, so
- * a caller that records several detections in one run should aggregate them
- * and call this once.
+ * are merged in and the list stays deduplicated. A logger without
+ * `getContext` keeps only the last call's ids, so a caller that records
+ * several detections in one run should aggregate them and call this once.
  */
 export function recordSensitiveDetection(
   categories: MemorySensitiveCategory[],
   logger: ComplianceLogger,
   origin: string,
-  options: { thirdParty?: boolean } = {},
 ): void {
   if (categories.length === 0) {
     return
   }
 
-  const logged = readLoggedSensitive(logger)
-  const mergedCategories = [...new Set([...logged.categories, ...categories])]
-  const thirdParty = options.thirdParty === true || logged.thirdParty
+  const mergedCategories = [
+    ...new Set([...readLoggedSensitiveCategories(logger), ...categories]),
+  ]
 
   logger.set({
     attributes: {
@@ -959,7 +938,6 @@ export function recordSensitiveDetection(
         sensitive: {
           origin,
           categories: mergedCategories,
-          ...(thirdParty ? { thirdParty: true } : {}),
         },
       },
     },
@@ -967,21 +945,16 @@ export function recordSensitiveDetection(
 }
 
 /**
- * Decides whether an entry may be stored and with which sensitivity. The
- * never-store check wins over everything. Special-category text is detected
- * by the server classifier and never trusted to the caller's label: a
- * declared `special` is never downgraded, and a classifier hit upgrades a
- * declared `none` to `special` with the first detected category unless one
- * was declared. An effectively special entry in the `people` category is
- * always refused, even with the opt-in on, because the user cannot consent
- * for another person; that check wins over the opt-in check. The returned
- * sensitivity and category are the effective values that must be persisted.
+ * Decides whether an entry may be stored. The never-store check wins over
+ * everything. Any text the server classifier flags as special-category data is
+ * refused, as is a declared `special` sensitivity, because memory never
+ * stores special rows. An allowed verdict means the entry is persisted with
+ * `sensitivity: 'none'` and no sensitive category.
  */
 export function evaluateMemoryEntry(
   input: MemoryEntryEvaluationInput,
 ): MemoryWriteVerdict {
   const detectedKinds = new Set<NeverStoreKind>()
-
   const combinedText = combineMemoryEntryText(input)
 
   for (const match of detectNeverStore(combinedText)) {
@@ -999,38 +972,12 @@ export function evaluateMemoryEntry(
   }
 
   const detectedCategories = classifySensitiveCategories(combinedText)
-  const isSpecial = input.sensitivity === 'special'
-    || detectedCategories.length > 0
 
-  if (!isSpecial) {
-    return {
-      allowed: true,
-      sensitivity: 'none',
-      sensitiveCategory: null,
-      detectedCategories,
-    }
+  if (input.sensitivity === 'special' || detectedCategories.length > 0) {
+    return { allowed: false, reason: 'sensitive-topic', detectedCategories }
   }
 
-  if (input.category === 'people') {
-    return {
-      allowed: false,
-      reason: 'third-party-sensitive',
-      detectedCategories,
-    }
-  }
-
-  if (!input.includeSensitive) {
-    return { allowed: false, reason: 'sensitive-disabled', detectedCategories }
-  }
-
-  return {
-    allowed: true,
-    sensitivity: 'special',
-    sensitiveCategory: input.sensitiveCategory
-      ?? detectedCategories[0]
-      ?? null,
-    detectedCategories,
-  }
+  return { allowed: true }
 }
 
 export function buildSensitiveMemoryPurge(

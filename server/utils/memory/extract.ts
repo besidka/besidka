@@ -119,7 +119,6 @@ async function memoryExtractionReadSettings(db: DbClient, userId: number) {
     columns: {
       memoryEnabled: true,
       memoryExtractionEnabled: true,
-      memoryIncludeSensitive: true,
     },
   })
 }
@@ -372,7 +371,6 @@ async function extractLeasedChatMemory(
       userId,
       projectId,
       chatId: chat.id,
-      includeSensitive: freshSettings?.memoryIncludeSensitive === true,
       entries,
       groundingTexts: legacyBlob
         ? [...extractionWindow.userTexts, legacyBlob]

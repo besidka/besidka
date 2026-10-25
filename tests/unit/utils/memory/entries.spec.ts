@@ -19,6 +19,15 @@ import { createMemoryTestDb } from '../../../setup/helpers/memory-db'
 const CARD_NUMBER = '4111 1111 1111 1111'
 const OWNER = 1
 const STRANGER = 2
+const SENSITIVE_TOPIC_MESSAGE
+  = 'Sensitive topics (health, religion, politics…) are not saved to memory.'
+const SENSITIVE_TOPIC_FIX = 'Remove the sensitive details and save again.'
+const SETTING_VALUES = [
+  { label: 'true', setting: true },
+  { label: 'false', setting: false },
+  { label: 'null', setting: null },
+  { label: 'no settings row', setting: undefined },
+] as const
 
 describe('memory entries service', () => {
   let testDb: ReturnType<typeof createMemoryTestDb>
@@ -530,189 +539,48 @@ describe('memory entries service', () => {
         })).rejects.toMatchObject({ status: 422 })
       })
 
-      it('rejects sensitive entries while the opt-in is off', async () => {
-        await expect(create({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })).rejects.toMatchObject({
-          status: 422,
-          message: 'Sensitive memory is turned off',
-        })
-        expect(testDb.countEntries()).toBe(0)
-      })
-
-      it('rejects sensitive entries when the opt-in column is 0', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: false,
-        })
-
-        await expect(create({ sensitivity: 'special' }))
-          .rejects.toMatchObject({ status: 422 })
-      })
-
-      it('accepts sensitive entries once the opt-in is on', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
-
-        const entry = await create({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-      })
-
-      it('ignores another user opt-in', async () => {
-        testDb.insertUserSettings({
-          userId: STRANGER,
-          memoryIncludeSensitive: true,
-        })
-
-        await expect(create({ sensitivity: 'special' }))
-          .rejects.toMatchObject({ status: 422 })
-      })
-
-      it('still blocks never-store data when the opt-in is on', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
-
-        await expect(create({
-          sensitivity: 'special',
-          body: CARD_NUMBER,
-        })).rejects.toMatchObject({ status: 422 })
-      })
-
-      describe('third-party special-category data', () => {
-        const peopleHealth = {
-          category: 'people' as const,
-          title: 'Anna',
-          description: 'Sister',
-          body: 'Anna has type 2 diabetes.',
-        }
-
-        it('rejects health text in a people entry with the opt-in on '
-          + 'and off, storing nothing', async () => {
-          for (const memoryIncludeSensitive of [false, true]) {
-            testDb.sqlite.prepare('delete from user_settings').run()
-            testDb.insertUserSettings({
-              userId: OWNER,
-              memoryIncludeSensitive,
-            })
-            loggerSet.mockClear()
-
-            const failure = await create(peopleHealth)
-              .catch((exception: Error) => exception)
-
-            expect(failure).toMatchObject({
-              status: 422,
-              message: 'Sensitive data about another person cannot be stored',
-              why: 'Entries about people cannot hold special-category data '
-                + '(health), and only the person themself can consent to '
-                + 'that.',
-              fix: 'Remove the sensitive details or store them in a topic '
-                + 'about yourself.',
-            })
-            expect(JSON.stringify(failure)).not.toContain('diabetes')
-            expect(testDb.countEntries()).toBe(0)
-            expect(loggerSet).toHaveBeenCalledWith({
-              attributes: {
-                memoryCompliance: {
-                  sensitive: {
-                    origin: 'memory-api',
-                    categories: ['health'],
-                    thirdParty: true,
-                  },
-                },
-              },
-            })
-          }
-        })
-
-        it('rejects a user-declared special people entry with no '
-          + 'classifier match', async () => {
-          testDb.insertUserSettings({
-            userId: OWNER,
-            memoryIncludeSensitive: true,
-          })
-
-          await expect(create({
-            category: 'people',
-            title: 'Anna',
-            description: 'Sister',
-            body: 'Anna: sister, lives in Lviv.',
+      it('refuses a client-supplied special with a 422 and stores nothing',
+        async () => {
+          const failure = await create({
             sensitivity: 'special',
-            sensitiveCategory: 'religion-or-belief',
-          })).rejects.toMatchObject({
+            sensitiveCategory: 'health',
+          }).catch((exception: Error) => exception)
+
+          expect(failure).toMatchObject({
             status: 422,
-            message: 'Sensitive data about another person cannot be stored',
+            message: SENSITIVE_TOPIC_MESSAGE,
+            why: 'This entry is marked sensitive.',
+            fix: SENSITIVE_TOPIC_FIX,
           })
           expect(testDb.countEntries()).toBe(0)
         })
 
-        it('stores the same text in a topics entry as special with the '
-          + 'opt-in on', async () => {
-          testDb.insertUserSettings({
-            userId: OWNER,
-            memoryIncludeSensitive: true,
+      it('refuses a client-supplied special on clean text too', async () => {
+        await expect(create({ sensitivity: 'special' }))
+          .rejects.toMatchObject({
+            status: 422,
+            message: SENSITIVE_TOPIC_MESSAGE,
           })
-
-          const entry = await create({
-            ...peopleHealth,
-            category: 'topics',
-          })
-
-          expect(entry).toMatchObject({
-            sensitivity: 'special',
-            sensitiveCategory: 'health',
-          })
-        })
-
-        it('allows clean text in a people entry in both modes', async () => {
-          const first = await create({
-            category: 'people',
-            title: 'Anna',
-            description: 'Sister',
-            body: 'Anna: sister, lives in Lviv.',
-          })
-
-          testDb.insertUserSettings({
-            userId: OWNER,
-            memoryIncludeSensitive: true,
-          })
-
-          const second = await create({
-            category: 'people',
-            title: 'Petro',
-            description: 'Friend',
-            body: 'Petro: friend, plays chess.',
-          })
-
-          expect(first).toMatchObject({
-            category: 'people',
-            sensitivity: 'none',
-          })
-          expect(second).toMatchObject({
-            category: 'people',
-            sensitivity: 'none',
-          })
-        })
+        expect(testDb.countEntries()).toBe(0)
       })
 
-      it('logs the classified categories once from the verdict', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
+      it('still blocks never-store data ahead of a sensitive topic', async () => {
+        const failure = await create({
+          title: 'Health',
+          sensitivity: 'special',
+          body: `I have type 2 diabetes, card ${CARD_NUMBER}`,
+        }).catch((exception: Error) => exception)
 
-        await create({ body: 'I have type 2 diabetes.' })
+        expect(failure).toMatchObject({
+          status: 422,
+          message: 'This memory contains data that cannot be stored',
+        })
+        expect(testDb.countEntries()).toBe(0)
+      })
+
+      it('logs the classified categories once, ids only', async () => {
+        await expect(create({ body: 'I have type 2 diabetes.' }))
+          .rejects.toMatchObject({ status: 422 })
 
         expect(loggerSet).toHaveBeenCalledTimes(1)
         expect(loggerSet).toHaveBeenCalledWith({
@@ -1049,47 +917,8 @@ describe('memory entries service', () => {
       })).resolves.toMatchObject({ category: 'topics' })
     })
 
-    it('re-validates a stale sensitive category on any patch', async () => {
-      testDb.insertEntry({
-        id: 5,
-        userId: OWNER,
-        slug: 'stale',
-        sensitivity: 'none',
-        sensitiveCategory: 'health',
-      })
-
-      await expect(update(encodePublicId(5), { title: 'Fresh' }))
-        .rejects.toMatchObject({ status: 400 })
-    })
-
-    it('clears the sensitive category when sensitivity becomes none', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
-
-      const created = await create({
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      })
-      const { entry } = await update(created.id, { sensitivity: 'none' })
-
-      expect(entry).toMatchObject({
-        sensitivity: 'none',
-        sensitiveCategory: null,
-      })
-    })
-
     it('rejects an explicit sensitive category with sensitivity none', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
-
-      const created = await create({
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      })
+      const created = await create()
 
       await expect(update(created.id, {
         sensitivity: 'none',
@@ -1128,133 +957,100 @@ describe('memory entries service', () => {
         .rejects.toMatchObject({ status: 422 })
     })
 
-    it('rejects making an entry sensitive while the opt-in is off', async () => {
+    it('refuses a patch that declares special and keeps the row', async () => {
       const created = await create()
 
       await expect(update(created.id, { sensitivity: 'special' }))
         .rejects.toMatchObject({
           status: 422,
-          message: 'Sensitive memory is turned off',
+          message: SENSITIVE_TOPIC_MESSAGE,
+          why: 'This entry is marked sensitive.',
+          fix: SENSITIVE_TOPIC_FIX,
         })
-    })
-
-    it('allows making an entry sensitive once the opt-in is on', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
-
-      const created = await create()
-      const { entry } = await update(created.id, {
+      await expect(update(created.id, {
         sensitivity: 'special',
         sensitiveCategory: 'religion-or-belief',
+      })).rejects.toMatchObject({ status: 422 })
+      expect(readStoredRow(1)).toMatchObject({
+        sensitivity: 'none',
+        sensitive_category: null,
       })
+    })
+
+    it('refuses a patch that adds a sensitive category without special',
+      async () => {
+        const created = await create()
+
+        await expect(update(created.id, { sensitiveCategory: 'health' }))
+          .rejects.toMatchObject({ status: 422 })
+        expect(readStoredRow(1)).toMatchObject({
+          sensitivity: 'none',
+          sensitive_category: null,
+        })
+      })
+
+    it('refuses health text on the merged row and keeps the entry',
+      async () => {
+        const created = await create()
+
+        const failure = await update(created.id, {
+          body: 'I have type 2 diabetes.',
+        }).catch((exception: Error) => exception)
+
+        expect(failure).toMatchObject({
+          status: 422,
+          message: SENSITIVE_TOPIC_MESSAGE,
+          why: 'This entry looks like sensitive data (health).',
+          fix: SENSITIVE_TOPIC_FIX,
+        })
+        expect(JSON.stringify(failure)).not.toContain('diabetes')
+        expect(readStoredRow(1)).toMatchObject({
+          body: 'Cooks pasta twice a week.',
+          sensitivity: 'none',
+          sensitive_category: null,
+        })
+      })
+
+    it('checks the stored text when only a clean field is patched',
+      async () => {
+        testDb.insertEntry({
+          id: 5,
+          userId: OWNER,
+          slug: 'flagged',
+          body: 'I have type 2 diabetes.',
+        })
+
+        await expect(update(encodePublicId(5), { title: 'Renamed' }))
+          .rejects.toMatchObject({ status: 422 })
+        expect(readStoredRow(5)).toMatchObject({ title: 'flagged' })
+      })
+
+    it('refuses moving an entry with flagged text into people', async () => {
+      testDb.insertEntry({
+        id: 5,
+        userId: OWNER,
+        slug: 'flagged',
+        body: 'Has type 2 diabetes.',
+      })
+
+      await expect(update(encodePublicId(5), { category: 'people' }))
+        .rejects.toMatchObject({ status: 422 })
+      expect(readStoredRow(5)).toMatchObject({ category: 'topics' })
+    })
+
+    it('moves a clean-text entry into people', async () => {
+      const created = await create({ body: 'Anna: sister, lives in Lviv.' })
+      const { entry } = await update(created.id, { category: 'people' })
 
       expect(entry).toMatchObject({
-        sensitivity: 'special',
-        sensitiveCategory: 'religion-or-belief',
+        category: 'people',
+        sensitivity: 'none',
+        sensitiveCategory: null,
       })
     })
 
-    describe('third-party special-category data on update', () => {
-      it('rejects adding health text to a people entry with the opt-in on',
-        async () => {
-          testDb.insertUserSettings({
-            userId: OWNER,
-            memoryIncludeSensitive: true,
-          })
-
-          const created = await create({
-            category: 'people',
-            title: 'Anna',
-            description: 'Sister',
-            body: 'Anna: sister, lives in Lviv.',
-          })
-
-          await expect(update(created.id, {
-            body: 'Anna has type 2 diabetes.',
-          })).rejects.toMatchObject({
-            status: 422,
-            message: 'Sensitive data about another person cannot be stored',
-          })
-          expect(readStoredRow(1)).toMatchObject({
-            body: 'Anna: sister, lives in Lviv.',
-            sensitivity: 'none',
-          })
-        })
-
-      it('rejects moving a special topics entry into people', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
-
-        const created = await create({
-          body: 'Has type 2 diabetes.',
-        })
-
-        expect(created.sensitivity).toBe('special')
-
-        await expect(update(created.id, { category: 'people' }))
-          .rejects.toMatchObject({
-            status: 422,
-            message: 'Sensitive data about another person cannot be stored',
-          })
-        expect(readStoredRow(1)).toMatchObject({ category: 'topics' })
-      })
-
-      it('rejects any edit of a people entry that is stored as special',
-        async () => {
-          testDb.insertUserSettings({
-            userId: OWNER,
-            memoryIncludeSensitive: true,
-          })
-          testDb.insertEntry({
-            id: 5,
-            userId: OWNER,
-            category: 'people',
-            slug: 'anna',
-            sensitivity: 'special',
-            sensitiveCategory: 'health',
-          })
-
-          await expect(update(encodePublicId(5), { title: 'Anna K' }))
-            .rejects.toMatchObject({ status: 422 })
-        })
-
-      it('moves a clean-text entry into people', async () => {
-        const created = await create({ body: 'Anna: sister, lives in Lviv.' })
-        const { entry } = await update(created.id, { category: 'people' })
-
-        expect(entry).toMatchObject({
-          category: 'people',
-          sensitivity: 'none',
-        })
-      })
-
-      it('moves special text between non-people categories with the '
-        + 'opt-in on', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
-
-        const created = await create({ body: 'Has type 2 diabetes.' })
-        const { entry } = await update(created.id, { category: 'areas' })
-
-        expect(entry).toMatchObject({
-          category: 'areas',
-          sensitivity: 'special',
-        })
-      })
-    })
-
-    describe('sticky special for tool and extraction writes', () => {
+    describe('legacy special rows', () => {
       function seedSpecial() {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
         testDb.insertEntry({
           id: 5,
           userId: OWNER,
@@ -1276,8 +1072,8 @@ describe('memory entries service', () => {
         })
       }
 
-      it.each(['tool', 'extraction'] as const)(
-        'keeps a stored special entry special on a clean %s update',
+      it.each(['tool', 'extraction', undefined] as const)(
+        'stay special on a clean-text update with origin %s',
         async (origin) => {
           seedSpecial()
 
@@ -1288,38 +1084,15 @@ describe('memory entries service', () => {
             sensitivity: 'special',
             sensitiveCategory: 'genetic',
           })
-        },
-      )
-
-      it.each(['tool', 'extraction'] as const)(
-        'ignores a none label on a %s update of a special entry',
-        async (origin) => {
-          seedSpecial()
-
-          const { entry } = await writeAs(origin, {
+          expect(readStoredRow(5)).toMatchObject({
             body: 'Clean text.',
-            sensitivity: 'none',
-          })
-
-          expect(entry).toMatchObject({
             sensitivity: 'special',
-            sensitiveCategory: 'genetic',
+            sensitive_category: 'genetic',
           })
         },
       )
 
-      it('keeps the stored category when the tool patch has none', async () => {
-        seedSpecial()
-
-        const { entry } = await writeAs('tool', {
-          body: 'Clean text.',
-          sensitiveCategory: null,
-        })
-
-        expect(entry.sensitiveCategory).toBe('genetic')
-      })
-
-      it('still lets the user own PATCH downgrade to none', async () => {
+      it('ignore a none label on a clean-text update', async () => {
         seedSpecial()
 
         const { entry } = await writeAs(undefined, {
@@ -1328,28 +1101,21 @@ describe('memory entries service', () => {
         })
 
         expect(entry).toMatchObject({
-          sensitivity: 'none',
-          sensitiveCategory: null,
+          sensitivity: 'special',
+          sensitiveCategory: 'genetic',
         })
       })
 
-      it('refuses a tool update of a special entry with the opt-in off',
-        async () => {
-          testDb.insertEntry({
-            id: 5,
-            userId: OWNER,
-            slug: 'diagnosis',
-            sensitivity: 'special',
-            sensitiveCategory: 'genetic',
-          })
+      it('are not written by a none-only patch', async () => {
+        seedSpecial()
 
-          await expect(writeAs('tool', { body: 'Clean text.' }))
-            .rejects.toMatchObject({ status: 422 })
-          expect(readStoredRow(5)).toMatchObject({
-            sensitivity: 'special',
-            body: 'Body of diagnosis',
-          })
+        await writeAs(undefined, { sensitivity: 'none' })
+
+        expect(readStoredRow(5)).toMatchObject({
+          sensitivity: 'special',
+          sensitive_category: 'genetic',
         })
+      })
     })
 
     it('makes the slug the category name when moving into profile', async () => {
@@ -1397,358 +1163,204 @@ describe('memory entries service', () => {
     })
   })
 
-  describe('server-side sensitivity classification', () => {
+  describe('the sensitive-topic rule', () => {
     const flaggedTexts = [
       ['EN', 'I have type 2 diabetes.'],
       ['UK', 'У мене діабет другого типу.'],
       ['PL', 'Mam cukrzycę typu drugiego.'],
     ] as const
 
-    function enableSensitive(userId: number = OWNER): void {
-      testDb.insertUserSettings({ userId, memoryIncludeSensitive: true })
+    function applySetting(setting: boolean | null | undefined): void {
+      if (setting === undefined) {
+        return
+      }
+
+      testDb.insertUserSettings({
+        userId: OWNER,
+        memoryIncludeSensitive: setting,
+      })
     }
 
-    function disableSensitiveBehindTheService(
-      method: 'all' | 'update',
-    ): void {
-      const original = testDb.db[method].bind(testDb.db) as (
-        ...args: unknown[]
-      ) => unknown
+    describe.each(SETTING_VALUES)(
+      'with memoryIncludeSensitive $label',
+      ({ setting }) => {
+        beforeEach(() => {
+          applySetting(setting)
+        })
 
-      vi.spyOn(testDb.db, method).mockImplementationOnce(
-        ((...args: unknown[]) => {
-          testDb.sqlite
-            .prepare('update user_settings set memory_include_sensitive = 0')
-            .run()
+        it.each(flaggedTexts)(
+          'refuses %s flagged text on create with the same 422 and stores '
+          + 'nothing',
+          async (_language, body) => {
+            const failure = await create({ body })
+              .catch((exception: Error) => exception)
 
-          return original(...args)
-        }) as never,
-      )
-    }
+            expect(failure).toMatchObject({
+              status: 422,
+              message: SENSITIVE_TOPIC_MESSAGE,
+              why: 'This entry looks like sensitive data (health).',
+              fix: SENSITIVE_TOPIC_FIX,
+            })
+            expect(JSON.stringify(failure)).not.toContain(body)
+            expect(testDb.countEntries()).toBe(0)
+          },
+        )
 
-    describe('createMemoryEntry', () => {
-      it.each(flaggedTexts)(
-        'refuses %s health text labelled none while the opt-in is off',
-        async (_language, body) => {
-          const promise = create({
-            title: 'Health',
-            description: 'Diet constraints',
-            body,
-            sensitivity: 'none',
-          })
-
-          await expect(promise).rejects.toMatchObject({
+        it('refuses a client-supplied special with the same 422', async () => {
+          await expect(create({
+            sensitivity: 'special',
+            sensitiveCategory: 'health',
+          })).rejects.toMatchObject({
             status: 422,
-            message: 'Sensitive memory is turned off',
+            message: SENSITIVE_TOPIC_MESSAGE,
           })
-
-          const exception = await promise.catch((caught: unknown) => {
-            return caught as { why?: string, fix?: string }
-          })
-
-          expect(exception.why).toContain('health')
-          expect(exception.why).not.toContain(body)
-          expect(exception.fix).toContain('Turn on sensitive memory')
           expect(testDb.countEntries()).toBe(0)
-          expect(loggerSet).toHaveBeenCalledWith({
-            attributes: {
-              memoryCompliance: {
-                sensitive: {
-                  origin: 'memory-api',
-                  categories: expect.arrayContaining(['health']),
-                },
-              },
-            },
+        })
+
+        it('refuses health text in a people entry under the same rule',
+          async () => {
+            const failure = await create({
+              category: 'people',
+              title: 'Anna',
+              description: 'Sister',
+              body: 'Anna has type 2 diabetes.',
+            }).catch((exception: Error) => exception)
+
+            expect(failure).toMatchObject({
+              status: 422,
+              message: SENSITIVE_TOPIC_MESSAGE,
+              why: 'This entry looks like sensitive data (health).',
+            })
+            expect(testDb.countEntries()).toBe(0)
           })
-        },
-      )
 
-      it.each(flaggedTexts)(
-        'stores %s health text labelled none as special when opted in',
-        async (_language, body) => {
-          enableSensitive()
+        it('lets never-store beat the sensitive topic', async () => {
+          await expect(create({
+            body: `I have type 2 diabetes, card ${CARD_NUMBER}`,
+          })).rejects.toMatchObject({
+            status: 422,
+            message: 'This memory contains data that cannot be stored',
+          })
+        })
 
+        it.each([
+          ['Diet constraints', 'Prefers vegetarian food.'],
+          ['Church Street address', 'Delivery goes to Church Street.'],
+          ['Anna', 'Anna: sister, lives in Lviv.'],
+        ])('stores clean text "%s" as none with no category',
+          async (title, body) => {
+            const entry = await create({ title, body })
+
+            expect(entry).toMatchObject({
+              sensitivity: 'none',
+              sensitiveCategory: null,
+            })
+            expect(readStoredRow(1)).toMatchObject({
+              sensitivity: 'none',
+              sensitive_category: null,
+            })
+          })
+
+        it('stores clean people text as none with no category', async () => {
           const entry = await create({
-            title: 'Health',
-            description: 'Diet constraints',
-            body,
-            sensitivity: 'none',
+            category: 'people',
+            title: 'Anna',
+            description: 'Sister',
+            body: 'Anna: sister, lives in Lviv.',
           })
 
           expect(entry).toMatchObject({
-            sensitivity: 'special',
-            sensitiveCategory: 'health',
-          })
-          expect(readStoredRow(1)).toMatchObject({
-            sensitivity: 'special',
-            sensitive_category: 'health',
-          })
-          expect(loggerSet).toHaveBeenCalledWith({
-            attributes: {
-              memoryCompliance: {
-                sensitive: {
-                  origin: 'memory-api',
-                  categories: expect.arrayContaining(['health']),
-                },
-              },
-            },
-          })
-        },
-      )
-
-      it('stores flagged text with no declared sensitivity as special', async () => {
-        enableSensitive()
-
-        const entry = await create({ body: 'I have type 2 diabetes.' })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-      })
-
-      it('keeps a client-supplied special and its category', async () => {
-        enableSensitive()
-
-        const entry = await create({
-          body: 'I have type 2 diabetes.',
-          sensitivity: 'special',
-          sensitiveCategory: 'religion-or-belief',
-        })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: 'religion-or-belief',
-        })
-      })
-
-      it('keeps a client-supplied special on clean text without a category', async () => {
-        enableSensitive()
-
-        const entry = await create({ sensitivity: 'special' })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: null,
-        })
-      })
-
-      it.each([
-        ['Diet constraints', 'Prefers a low-carb diet.'],
-        ['Church Street address', 'Delivery goes to Church Street.'],
-      ])(
-        'keeps clean text %s labelled none as none in both modes',
-        async (title, body) => {
-          const offEntry = await create({ title, body, sensitivity: 'none' })
-
-          expect(offEntry).toMatchObject({
+            category: 'people',
             sensitivity: 'none',
             sensitiveCategory: null,
           })
+        })
 
-          enableSensitive()
+        it('refuses flagged text on the merged update and keeps the row',
+          async () => {
+            const created = await create()
 
-          const onEntry = await create({
-            title: `${title} again`,
-            body,
-            sensitivity: 'none',
+            for (const patch of [
+              { body: 'I have type 2 diabetes.' },
+              { title: 'Type 2 diabetes' },
+              { description: 'Has type 2 diabetes' },
+              { sensitivity: 'special' as const },
+            ]) {
+              await expect(update(created.id, patch)).rejects.toMatchObject({
+                status: 422,
+                message: SENSITIVE_TOPIC_MESSAGE,
+              })
+            }
+
+            expect(readStoredRow(1)).toMatchObject({
+              title: 'Cooking',
+              body: 'Cooks pasta twice a week.',
+              sensitivity: 'none',
+              sensitive_category: null,
+            })
           })
 
-          expect(onEntry).toMatchObject({
+        it('updates clean text and keeps none with no category', async () => {
+          const created = await create()
+          const { entry } = await update(created.id, { body: 'Cooks daily.' })
+
+          expect(entry).toMatchObject({
+            body: 'Cooks daily.',
             sensitivity: 'none',
             sensitiveCategory: null,
           })
-          expect(loggerSet).not.toHaveBeenCalled()
+        })
+
+        it('leaves a legacy special row special on a clean-text update',
+          async () => {
+            testDb.insertEntry({
+              id: 9,
+              userId: OWNER,
+              slug: 'legacy',
+              sensitivity: 'special',
+              sensitiveCategory: 'health',
+            })
+
+            const { entry } = await update(encodePublicId(9), {
+              body: 'Clean text.',
+            })
+
+            expect(entry).toMatchObject({
+              sensitivity: 'special',
+              sensitiveCategory: 'health',
+            })
+            expect(readStoredRow(9)).toMatchObject({
+              body: 'Clean text.',
+              sensitivity: 'special',
+              sensitive_category: 'health',
+            })
+          })
+      },
+    )
+
+    it('logs detected category ids only, never the text', async () => {
+      await expect(create({ body: 'I have type 2 diabetes.' }))
+        .rejects.toMatchObject({ status: 422 })
+
+      expect(JSON.stringify(loggerSet.mock.calls)).not.toContain('diabetes')
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          memoryCompliance: {
+            sensitive: { origin: 'memory-api', categories: ['health'] },
+          },
         },
-      )
-
-      it('lets never-store win over a sensitive hit', async () => {
-        enableSensitive()
-
-        await expect(create({
-          body: `I have type 2 diabetes, card ${CARD_NUMBER}`,
-        })).rejects.toMatchObject({
-          status: 422,
-          message: 'This memory contains data that cannot be stored',
-        })
-        expect(testDb.countEntries()).toBe(0)
-      })
-
-      it('refuses a special insert when the opt-in flips off mid-write', async () => {
-        enableSensitive()
-        disableSensitiveBehindTheService('all')
-
-        await expect(create({
-          body: 'I have type 2 diabetes.',
-          sensitivity: 'none',
-        })).rejects.toMatchObject({
-          status: 422,
-          message: 'Sensitive memory is turned off',
-        })
-        expect(testDb.countEntries()).toBe(0)
-      })
-
-      it('refuses a classifier-forced special insert on the same race', async () => {
-        enableSensitive()
-        disableSensitiveBehindTheService('all')
-
-        await expect(create({ body: 'Mam cukrzycę typu drugiego.' }))
-          .rejects.toMatchObject({ status: 422 })
-        expect(testDb.countEntries()).toBe(0)
       })
     })
 
-    describe('updateMemoryEntry', () => {
-      it('refuses a patch that adds health words and keeps the row', async () => {
-        const created = await create()
+    it('never reads the memory_include_sensitive setting on the guarded '
+      + 'insert', async () => {
+      testDb.sqlite.exec('drop table user_settings')
 
-        await expect(update(created.id, { body: 'I have type 2 diabetes.' }))
-          .rejects.toMatchObject({
-            status: 422,
-            message: 'Sensitive memory is turned off',
-          })
+      const entry = await create()
 
-        expect(readStoredRow(1)).toMatchObject({
-          body: 'Cooks pasta twice a week.',
-          sensitivity: 'none',
-          sensitive_category: null,
-        })
-      })
-
-      it.each(flaggedTexts)(
-        'turns a clean entry special on a %s patch when opted in',
-        async (_language, body) => {
-          enableSensitive()
-
-          const created = await create()
-          const { entry } = await update(created.id, { body })
-
-          expect(entry).toMatchObject({
-            sensitivity: 'special',
-            sensitiveCategory: 'health',
-          })
-          expect(readStoredRow(1)).toMatchObject({
-            sensitivity: 'special',
-            sensitive_category: 'health',
-          })
-        },
-      )
-
-      it('refuses a flagged patch labelled none while the opt-in is off', async () => {
-        const created = await create()
-
-        await expect(update(created.id, {
-          body: 'У мене діабет другого типу.',
-          sensitivity: 'none',
-        })).rejects.toMatchObject({ status: 422 })
-        expect(readStoredRow(1)).toMatchObject({ sensitivity: 'none' })
-      })
-
-      it('keeps a stored special entry special when the patch sets none', async () => {
-        enableSensitive()
-        testDb.insertEntry({
-          id: 5,
-          userId: OWNER,
-          slug: 'diabetes',
-          body: 'I have type 2 diabetes.',
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-
-        const { entry } = await update(encodePublicId(5), {
-          sensitivity: 'none',
-        })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-        expect(readStoredRow(5)).toMatchObject({ sensitivity: 'special' })
-      })
-
-      it('lets a none patch downgrade a special entry whose text is clean', async () => {
-        enableSensitive()
-
-        const created = await create({ sensitivity: 'special' })
-        const { entry } = await update(created.id, { sensitivity: 'none' })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'none',
-          sensitiveCategory: null,
-        })
-      })
-
-      it('writes the effective sensitivity even when the patch ignores it', async () => {
-        enableSensitive()
-        testDb.insertEntry({
-          id: 5,
-          userId: OWNER,
-          slug: 'legacy',
-          body: 'I have type 2 diabetes.',
-          sensitivity: 'none',
-        })
-
-        const { entry } = await update(encodePublicId(5), { title: 'Legacy' })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-      })
-
-      it('keeps a client-supplied category on a special patch', async () => {
-        enableSensitive()
-
-        const created = await create()
-        const { entry } = await update(created.id, {
-          body: 'I have type 2 diabetes.',
-          sensitivity: 'special',
-          sensitiveCategory: 'genetic',
-        })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: 'genetic',
-        })
-      })
-
-      it('keeps clean patches on clean entries none in both modes', async () => {
-        const created = await create()
-        const { entry: offEntry } = await update(created.id, {
-          title: 'Diet constraints',
-          body: 'Delivery goes to Church Street.',
-        })
-
-        expect(offEntry).toMatchObject({ sensitivity: 'none' })
-
-        enableSensitive()
-
-        const { entry: onEntry } = await update(created.id, {
-          description: 'Church Street address',
-        })
-
-        expect(onEntry).toMatchObject({
-          sensitivity: 'none',
-          sensitiveCategory: null,
-        })
-      })
-
-      it('refuses the update when the opt-in flips off mid-write', async () => {
-        enableSensitive()
-
-        const created = await create()
-
-        disableSensitiveBehindTheService('update')
-
-        await expect(update(created.id, { body: 'I have type 2 diabetes.' }))
-          .rejects.toMatchObject({
-            status: 422,
-            message: 'Sensitive memory is turned off',
-          })
-        expect(readStoredRow(1)).toMatchObject({
-          body: 'Cooks pasta twice a week.',
-          sensitivity: 'none',
-        })
+      expect(entry).toMatchObject({
+        sensitivity: 'none',
+        sensitiveCategory: null,
       })
     })
   })

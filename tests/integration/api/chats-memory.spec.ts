@@ -33,26 +33,7 @@ const mocks = vi.hoisted(() => ({
   chatSearchToolsInputs: [] as Array<Record<string, any>>,
   memoryToolsInputs: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
-  sensitiveAllowlist: [] as string[],
 }))
-
-vi.mock('#shared/utils/memory-policy', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('#shared/utils/memory-policy')
-  >()
-
-  return {
-    ...actual,
-    isSensitiveMemoryProviderAllowed: (
-      input: Parameters<typeof actual.isSensitiveMemoryProviderAllowed>[0],
-    ) => {
-      return actual.isSensitiveMemoryProviderAllowed(
-        input,
-        mocks.sensitiveAllowlist,
-      )
-    },
-  }
-})
 
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>()
@@ -556,7 +537,6 @@ describe('memory send-path wiring', () => {
     mocks.mergedStreams = []
     mocks.chatSearchToolsInputs = []
     mocks.memoryToolsInputs = []
-    mocks.sensitiveAllowlist = []
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('getRequestURL', () => {
@@ -710,7 +690,6 @@ describe('memory send-path wiring', () => {
       expect(readAttribute('memoryIndex')).toEqual({
         tokens: expect.any(Number),
         entryCount: 1,
-        withheldSensitive: 0,
         trimSteps: [],
         overBudget: false,
       })
@@ -722,13 +701,9 @@ describe('memory send-path wiring', () => {
     })
 
     it('hands the tool factory the persisted user message id, the text, '
-      + 'the chat and the effective sensitive visibility', async () => {
-      mocks.sensitiveAllowlist = [PROVIDER_ID]
-
+      + 'the chat', async () => {
       await runSend({
-        scenario: {
-          settings: { memoryEnabled: true, memoryIncludeSensitive: true },
-        },
+        scenario: { settings: MEMORY_ON },
         steps: [createTextChunks('Plain answer.')],
       })
 
@@ -740,7 +715,6 @@ describe('memory send-path wiring', () => {
         useAccountMemory: null,
         sourceMessageId: USER_MESSAGE_ID,
         userMessageText: USER_MESSAGE_TEXT,
-        includeSensitive: true,
         budget: { maxCalls: 3, usedCalls: 0, untrustedResultSeen: false },
       }))
     })
@@ -770,10 +744,7 @@ describe('memory send-path wiring', () => {
     })
   })
 
-  describe('sensitive memory provider gate', () => {
-    const WITHHELD_LINE = 'Some sensitive memories are withheld because the '
-      + 'current provider is not approved for them; do not guess their '
-      + 'content.'
+  describe('legacy special entries', () => {
     const specialRow = createMemoryRow({
       id: 'entry-special-1',
       slug: 'allergy',
@@ -785,92 +756,39 @@ describe('memory send-path wiring', () => {
     })
     const memoryRows = [createMemoryRow(), specialRow]
 
-    function expectSpecialAbsent(systemPrompt: string) {
+    it.each([
+      ['true', true],
+      ['false', false],
+      ['null', null],
+    ])('never injects a special entry whatever memoryIncludeSensitive is '
+      + '(%s) and hands the tools no includeSensitive', async (
+      _label,
+      memoryIncludeSensitive,
+    ) => {
+      const { doStream } = await runSend({
+        scenario: {
+          settings: { memoryEnabled: true, memoryIncludeSensitive },
+          memoryRows,
+        },
+        steps: [createTextChunks('Plain answer.')],
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(systemPrompt).toContain('topics/pasta | Pasta')
+      expect(systemPrompt).not.toContain('withheld')
       expect(systemPrompt).not.toContain('Peanut allergy')
       expect(systemPrompt).not.toContain('Severe nut allergy')
       expect(systemPrompt).not.toContain('Allergic to peanuts')
       expect(systemPrompt).not.toContain('topics/allergy')
-    }
-
-    it('withholds special entries from a non-allowlisted direct provider '
-      + 'and hands the tools includeSensitive false', async () => {
-      const { doStream } = await runSend({
-        scenario: {
-          settings: { memoryEnabled: true, memoryIncludeSensitive: true },
-          memoryRows,
-        },
-        steps: [createTextChunks('Plain answer.')],
-      })
-      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
-
-      expect(systemPrompt).toContain('topics/pasta | Pasta')
-      expect(systemPrompt).toContain(WITHHELD_LINE)
-      expectSpecialAbsent(systemPrompt)
-      expect(mocks.memoryToolsInputs[0]?.includeSensitive).toBe(false)
-      expect(readAttribute('memoryIndex')).toEqual(expect.objectContaining({
+      expect(mocks.memoryToolsInputs[0]).not.toHaveProperty(
+        'includeSensitive',
+      )
+      expect(readAttribute('memoryIndex')).toEqual({
+        tokens: expect.any(Number),
         entryCount: 1,
-        withheldSensitive: 1,
-      }))
-    })
-
-    it('withholds special entries on a gateway send', async () => {
-      mocks.sensitiveAllowlist = [PROVIDER_ID]
-
-      const { doStream } = await runSend({
-        gateway: { toolCall: true },
-        scenario: {
-          settings: { memoryEnabled: true, memoryIncludeSensitive: true },
-          memoryRows,
-        },
-        steps: [createTextChunks('Gateway answer.')],
+        trimSteps: [],
+        overBudget: false,
       })
-      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
-
-      expect(systemPrompt).toContain('topics/pasta | Pasta')
-      expect(systemPrompt).toContain(WITHHELD_LINE)
-      expectSpecialAbsent(systemPrompt)
-      expect(mocks.memoryToolsInputs[0]?.includeSensitive).toBe(false)
-    })
-
-    it('adds no line and hands the tools false when the opt-in is off',
-      async () => {
-        mocks.sensitiveAllowlist = [PROVIDER_ID]
-
-        const { doStream } = await runSend({
-          scenario: {
-            settings: { memoryEnabled: true, memoryIncludeSensitive: false },
-            memoryRows,
-          },
-          steps: [createTextChunks('Plain answer.')],
-        })
-        const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
-
-        expect(systemPrompt).toContain('topics/pasta | Pasta')
-        expect(systemPrompt).not.toContain(WITHHELD_LINE)
-        expectSpecialAbsent(systemPrompt)
-        expect(mocks.memoryToolsInputs[0]?.includeSensitive).toBe(false)
-      })
-
-    it('includes special entries for an allowlisted direct provider with '
-      + 'the opt-in on and hands the tools true', async () => {
-      mocks.sensitiveAllowlist = [PROVIDER_ID]
-
-      const { doStream } = await runSend({
-        scenario: {
-          settings: { memoryEnabled: true, memoryIncludeSensitive: true },
-          memoryRows,
-        },
-        steps: [createTextChunks('Plain answer.')],
-      })
-      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
-
-      expect(systemPrompt).toContain('topics/allergy | Peanut allergy')
-      expect(systemPrompt).not.toContain(WITHHELD_LINE)
-      expect(mocks.memoryToolsInputs[0]?.includeSensitive).toBe(true)
-      expect(readAttribute('memoryIndex')).toEqual(expect.objectContaining({
-        entryCount: 2,
-        withheldSensitive: 0,
-      }))
     })
   })
 
