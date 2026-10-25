@@ -244,6 +244,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (and its silent-empty failure mode), why no postal address is published
   (UŚUDE Art. 2 pkt 6 `działalność zarobkową`), and why adding ANY donation
   channel breaks that conclusion
+- `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory:
+  why explicit consent is the only basis, the opt-in kept behind
+  `NUXT_PUBLIC_MEMORY_SENSITIVE_OPT_IN_ENABLED` until counsel signs off, the
+  2026-10-25 engineering decisions, and the open owner/counsel questions
+- `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
+  only, not legal text: Privacy Policy/ToU clause outlines for memory, the
+  anchors the Memory UI links to, a DPIA skeleton (UODO M.P. 2019 poz. 666 +
+  EDPB criteria) and an Art. 30 record skeleton
 - `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
   auth routes are noindex-but-crawlable, the "besidka"/"бесідка" brand-entity
   collision the schema and copy are shaped around, deliberate non-actions
