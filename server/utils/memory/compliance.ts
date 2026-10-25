@@ -1,5 +1,6 @@
 import type {
   ComplianceBlockedCounts,
+  MemorySensitiveCategory,
   MemorySensitivity,
   NeverStoreKind,
 } from '#shared/types/memory.d'
@@ -9,6 +10,7 @@ import {
 } from '#shared/utils/memory-policy'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -23,15 +25,24 @@ export interface ComplianceLogger {
 }
 
 export type MemoryWriteVerdict
-  = | { allowed: true }
-    | { allowed: false, reason: 'never-store', kinds: NeverStoreKind[] }
-    | { allowed: false, reason: 'sensitive-disabled' }
+  = | {
+    allowed: true
+    sensitivity: MemorySensitivity
+    sensitiveCategory: MemorySensitiveCategory | null
+  }
+  | { allowed: false, reason: 'never-store', kinds: NeverStoreKind[] }
+  | {
+    allowed: false
+    reason: 'sensitive-disabled'
+    detectedCategories: MemorySensitiveCategory[]
+  }
 
 export interface MemoryEntryEvaluationInput {
   title: string
   description: string
   body: string
   sensitivity: MemorySensitivity
+  sensitiveCategory?: MemorySensitiveCategory | null
   extractorNeverStoreKind?: NeverStoreKind | null
   includeSensitive: boolean
 }
@@ -880,12 +891,45 @@ export function recordBlockedCounts(
   })
 }
 
+export function combineMemoryEntryText(fields: {
+  title: string
+  description: string
+  body: string
+}): string {
+  return [fields.title, fields.description, fields.body].join('\n')
+}
+
+export function recordSensitiveDetection(
+  categories: MemorySensitiveCategory[],
+  logger: ComplianceLogger,
+  origin: string,
+): void {
+  if (categories.length === 0) {
+    return
+  }
+
+  logger.set({
+    attributes: {
+      memoryCompliance: { sensitive: { origin, categories } },
+    },
+  })
+}
+
+/**
+ * Decides whether an entry may be stored and with which sensitivity. The
+ * never-store check wins over everything. Special-category text is detected
+ * by the server classifier and never trusted to the caller's label: a
+ * declared `special` is never downgraded, and a classifier hit upgrades a
+ * declared `none` to `special` with the first detected category unless one
+ * was declared. The returned sensitivity and category are the effective
+ * values that must be persisted.
+ */
 export function evaluateMemoryEntry(
   input: MemoryEntryEvaluationInput,
 ): MemoryWriteVerdict {
   const detectedKinds = new Set<NeverStoreKind>()
 
-  const combinedText = [input.title, input.description, input.body].join('\n')
+  const combinedText = combineMemoryEntryText(input)
 
   for (const match of detectNeverStore(combinedText)) {
     detectedKinds.add(match.kind)
@@ -901,11 +945,25 @@ export function evaluateMemoryEntry(
     return { allowed: false, reason: 'never-store', kinds }
   }
 
-  if (input.sensitivity === 'special' && !input.includeSensitive) {
-    return { allowed: false, reason: 'sensitive-disabled' }
+  const detectedCategories = classifySensitiveCategories(combinedText)
+  const isSpecial = input.sensitivity === 'special'
+    || detectedCategories.length > 0
+
+  if (!isSpecial) {
+    return { allowed: true, sensitivity: 'none', sensitiveCategory: null }
   }
 
-  return { allowed: true }
+  if (!input.includeSensitive) {
+    return { allowed: false, reason: 'sensitive-disabled', detectedCategories }
+  }
+
+  return {
+    allowed: true,
+    sensitivity: 'special',
+    sensitiveCategory: input.sensitiveCategory
+      ?? detectedCategories[0]
+      ?? null,
+  }
 }
 
 export function buildSensitiveMemoryPurge(

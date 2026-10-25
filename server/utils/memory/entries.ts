@@ -33,13 +33,16 @@ import {
   encodePublicId,
 } from '~~/server/utils/custom-db-types'
 import {
+  combineMemoryEntryText,
   evaluateMemoryEntry,
   recordBlockedCounts,
+  recordSensitiveDetection,
 } from '~~/server/utils/memory/compliance'
 import {
   slugifyMemoryTitle,
   suffixMemorySlug,
 } from '~~/server/utils/memory/entry-slug'
+import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -88,7 +91,7 @@ const SLUG_RACE_RETRIES = 5
 const MAX_ERROR_CAUSE_DEPTH = 5
 
 const SENSITIVE_OPT_IN_FIX
-  = 'Turn on sensitive memory in the memory settings, then try again.'
+  = 'Turn on sensitive memory in the memory settings to save this entry.'
 
 export function toMemoryEntryWire(row: MemoryEntryRow): MemoryEntry {
   return {
@@ -181,12 +184,17 @@ function createUniqueConflictError(category: MemoryCategory) {
   })
 }
 
-function createSensitiveDisabledError() {
+function createSensitiveDisabledError(
+  detectedCategories: MemorySensitiveCategory[] = [],
+) {
+  const subject = detectedCategories.length > 0
+    ? `This entry looks like sensitive data (${detectedCategories.join(', ')})`
+    : 'This entry is sensitive'
+
   return createError({
     message: 'Sensitive memory is turned off',
-    status: 409,
-    why: 'This entry is marked sensitive and the sensitive memory opt-in '
-      + 'is off.',
+    status: 422,
+    why: `${subject} and sensitive memory is turned off.`,
     fix: SENSITIVE_OPT_IN_FIX,
   })
 }
@@ -206,17 +214,40 @@ function createLimitError(isProjectScope: boolean) {
   })
 }
 
-function throwBlockedVerdict(
+interface EffectiveSensitivity {
+  sensitivity: MemorySensitivity
+  sensitiveCategory: MemorySensitiveCategory | null
+}
+
+function resolveEffectiveSensitivity(
   verdict: ReturnType<typeof evaluateMemoryEntry>,
+  fields: { title: string, description: string, body: string },
   logger: MemoryWriteLogger,
   complianceOrigin: string,
-): void {
+): EffectiveSensitivity {
   if (verdict.allowed) {
-    return
+    if (verdict.sensitivity === 'special') {
+      recordSensitiveDetection(
+        classifySensitiveCategories(combineMemoryEntryText(fields)),
+        logger,
+        complianceOrigin,
+      )
+    }
+
+    return {
+      sensitivity: verdict.sensitivity,
+      sensitiveCategory: verdict.sensitiveCategory,
+    }
   }
 
   if (verdict.reason === 'sensitive-disabled') {
-    throw createSensitiveDisabledError()
+    recordSensitiveDetection(
+      verdict.detectedCategories,
+      logger,
+      complianceOrigin,
+    )
+
+    throw createSensitiveDisabledError(verdict.detectedCategories)
   }
 
   const blocked: ComplianceBlockedCounts = {}
@@ -644,8 +675,6 @@ export async function createMemoryEntry(
 
   const input = parsed.data
   const projectId = input.projectId ?? null
-  const sensitivity = input.sensitivity ?? 'none'
-  const sensitiveCategory = input.sensitiveCategory ?? null
 
   const decodedProjectId = projectId === null
     ? null
@@ -653,14 +682,16 @@ export async function createMemoryEntry(
 
   const includeSensitive = await readIncludeSensitive(db, userId)
 
-  throwBlockedVerdict(
+  const { sensitivity, sensitiveCategory } = resolveEffectiveSensitivity(
     evaluateMemoryEntry({
       title: input.title,
       description: input.description,
       body: input.body,
-      sensitivity,
+      sensitivity: input.sensitivity ?? 'none',
+      sensitiveCategory: input.sensitiveCategory ?? null,
       includeSensitive,
     }),
+    input,
     logger,
     options.complianceOrigin,
   )
@@ -756,14 +787,16 @@ export async function updateMemoryEntry(
 
   const includeSensitive = await readIncludeSensitive(db, userId)
 
-  throwBlockedVerdict(
+  const effective = resolveEffectiveSensitivity(
     evaluateMemoryEntry({
       title: parsedMerged.data.title,
       description: parsedMerged.data.description,
       body: parsedMerged.data.body,
       sensitivity: parsedMerged.data.sensitivity ?? 'none',
+      sensitiveCategory: parsedMerged.data.sensitiveCategory ?? null,
       includeSensitive,
     }),
+    parsedMerged.data,
     logger,
     options.complianceOrigin,
   )
@@ -779,8 +812,8 @@ export async function updateMemoryEntry(
         title: parsedMerged.data.title,
         description: parsedMerged.data.description,
         body: parsedMerged.data.body,
-        sensitivity: merged.sensitivity,
-        sensitiveCategory: merged.sensitiveCategory,
+        sensitivity: effective.sensitivity,
+        sensitiveCategory: effective.sensitiveCategory,
         updatedAt: new Date(),
         ...(movesIntoSingleton ? { slug: merged.category } : {}),
         ...(options.origin ? { origin: options.origin } : {}),
@@ -794,7 +827,7 @@ export async function updateMemoryEntry(
       .where(and(
         eq(schema.memoryEntries.id, options.id),
         eq(schema.memoryEntries.userId, userId),
-        sensitiveGuard(userId, merged.sensitivity),
+        sensitiveGuard(userId, effective.sensitivity),
       ))
       .returning()
 

@@ -255,9 +255,10 @@ extraction, import):
    `sensitive_cleanup` equivalent).
    **(owner)** User-authored entries (UI edit, explicit "remember this"): the
    user typing it with the toggle on counts as per-entry explicit consent
-   under Art. 9(2)(a); no classifier pass. With the toggle off, UI and tool
-   writes still run the extractor-style classifier and show "this looks like
-   sensitive data — enable sensitive memory to save it". Never-store items
+   under Art. 9(2)(a); the server still classifies (W4, 3.12) to set the
+   entry's `special` label and category, but never refuses. With the toggle
+   off, UI and tool writes run the same classifier and are refused with "this
+   looks like sensitive data — enable sensitive memory to save it". Never-store items
    are blocked on every path regardless.
 3. **Legal-status topics the owner asked to keep out**: residence
    "legalization" (karta pobytu, visas, work permits) is immigration status
@@ -651,7 +652,7 @@ change and no migration; everything sits on the W3 table.
   parses with `memoryEntryInputSchema` (zod trims), then runs
   `evaluateMemoryEntry` on the trimmed title, description and body, with
   `includeSensitive` read from `user_settings`. `never-store` is a 422 whose
-  `why` lists kind labels only; `sensitive-disabled` is a 409. A user-authored
+  `why` lists kind labels only; `sensitive-disabled` is a 422 (see the Art. 9 classifier below). A user-authored
   write with the opt-in on is allowed (typing it is consent, #508). The
   client-supplied `origin` is ignored: the route forces `user`, the tools
   force `tool`.
@@ -696,7 +697,7 @@ change and no migration; everything sits on the W3 table.
 `limits` carries `maxAccountEntries`, `maxProjectEntries`, `maxBodyBytes`,
 `maxAlwaysInjectedBodyBytes`, `maxDescriptionChars`, `maxTitleChars`. Error
 statuses: 400 validation, 404 not found or foreign, 409 cap / name taken /
-singleton exists / sensitive off, 422 never-store. The export is
+singleton exists, 422 never-store or sensitive memory off. The export is
 `{ version: 1, exportedAt, settings, projects, entries }`: `settings` are the
 memory fields with defaults applied, `projects` only those that own an entry
 or hold a non-empty legacy `projects.memory` blob (`{ id, name,
@@ -831,10 +832,9 @@ while the opt-in is off. Anything else is a 404 tool error.
   learn that a hidden entry exists. Errors that are not evlog errors with a
   status (for example a Drizzle query error with SQL text) reach the model as
   a generic "The memory service failed".
-- Sensitivity: there is no deterministic Art. 9 detector, so for tool writes
-  the model's `sensitivity` label is the classifier (the extractor-style pass
-  of 3.5); a model that labels a health fact `none` gets past the opt-in. The
-  never-store detectors are deterministic and always apply.
+- Sensitivity: the model's `sensitivity` label is only a hint. The server
+  classifier (below) runs on every write, so a health fact labelled `none` is
+  refused with the opt-in off and stored as `special` with it on.
 - The continuation (`buildSearchResultsContext`) renders memory results in
   their own `Memory list/read/save/remove N` sections so a turn that ends
   without text still answers from them.
@@ -887,6 +887,47 @@ Project instructions and name stay. A failing lookup keeps the old behaviour
 depend on `memoryEnabled`: with memory off and entries present, no project
 memory is injected (paused). The export also carries `memoryExtractionEnabled`.
 
+**Art. 9 classifier (server-side, deterministic).** The first W4 version
+trusted the caller's `sensitivity`: `POST /api/v1/memory/entries` with
+"I have type 2 diabetes." and `sensitivity: 'none'` was stored with the opt-in
+off. `evaluateMemoryEntry` now also runs `classifySensitiveCategories`
+(`server/utils/memory/sensitivity.ts`) over the title, description and body,
+after the never-store check, and never trusts a declared `none`:
+
+- Effective sensitivity is `special` when the declared value is `special` or
+  the classifier matched (a declared `special` is never downgraded). The
+  effective category is the declared one, else the first classified, else
+  `null`. The allowed verdict carries the effective values and every writer
+  persists them: API create and PATCH (on the merged row), `memory_write`
+  and extraction (merge-create, update). The atomic SQL guards use the
+  effective sensitivity, so the opt-out race stays closed.
+- Opt-in OFF and flagged: 422 "Sensitive memory is turned off", `why` names the
+  detected category ids ("looks like sensitive data (health)"), never the text,
+  `fix` says to turn on sensitive memory in the memory settings. Nothing is
+  stored. This replaces the earlier 409. Opt-in ON: stored as `special` with
+  the server-chosen `sensitiveCategory` (typing it is consent, #508), which is
+  what lets the opt-out purge find it later.
+- Logging: `attributes.memoryCompliance.sensitive = { origin, categories }`
+  (ids only).
+- The vocabulary is one auditable constant, `sensitiveTextRules`, for all ten
+  `memorySensitiveCategories` in English, Ukrainian, Polish and Russian.
+  Matching is NFKC + lowercase, apostrophes folded, Unicode-aware word
+  boundaries (not `\b`) and stems for inflected languages. Precision over
+  recall: bare 'diet', 'church' in street names, 'Gay Street', 'European
+  Union', 'tennis court', 'weed', zodiac 'cancer', 'fingerprint sensor' and
+  'Face ID' are not flagged; 'Christian' only in a faith statement; 'cancer' /
+  'рак' / 'rak' only with a body part or personal phrasing.
+- Accepted limits: bare health words ('therapist', 'medication', 'allergic',
+  'pregnant', 'insulin') also match product-persona text; 'catholic'/'muslim'
+  match bare ('Catholic University'); named politicians, slang, misspellings
+  and homoglyph mixes are not covered; 'convicted of' / 'charged with' land in
+  `legal-dispute`, which overlaps the extractor-only never-store
+  `criminal-history` kind (follow-up: decide whether that kind gets a
+  deterministic detector). No LLM pass was added: it would spend the user's key
+  on every write and add latency; the keyword pass is free and always on.
+- A no-op extraction (only a new source chat) does not re-classify a legacy
+  `none` row, and entries stored before this change are not re-labelled.
+
 **Other behaviour fixed in the review pass**
 
 - `PATCH /api/v1/memory/entries/[id]` is the user's own edit (and the chip's
@@ -906,8 +947,9 @@ memory is injected (paused). The export also carries `memoryExtractionEnabled`.
   profile and preferences bodies are in the prompt of every turn, so the
   model may paraphrase them in a shared chat. The share dialog does not warn
   about it.
-- The Art. 9 label on tool writes is the model's (F4 of the audit); a
-  keyword pre-check that forces `special` is a possible follow-up.
+- The Art. 9 classifier is a keyword list, not a model: it misses names,
+  slang and unusual phrasing, and flags a few benign uses (see below). Entries
+  written before it existed keep the label they were stored with.
 - `sourceMessageId` is the client-chosen user message id (the insert ignores
   conflicts): consumers must never look it up without scoping to the user's
   own chats.
@@ -930,8 +972,9 @@ memory is injected (paused). The export also carries `memoryExtractionEnabled`.
 **Hand-over**
 
 - W5 consumes the routes and the `MemoryEntriesResponse` shape above; the
-  UI must treat 409 and 422 as "show `why`", and offer the sensitive opt-in on
-  the 409 "Sensitive memory is turned off".
+  UI must show `why` for 409 and 422, and offer the sensitive opt-in on the
+  422 "Sensitive memory is turned off" (a never-store 422 has the message
+  "This memory contains data that cannot be stored" instead).
 - W6 writes through `createMemoryEntry` / `updateMemoryEntry` with
   `origin: 'extraction'` and chat **public** ids in `sourceChatIds`; the
   singleton rule means profile and preferences are upserts. The index header

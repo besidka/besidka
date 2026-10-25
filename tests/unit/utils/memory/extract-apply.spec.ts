@@ -583,6 +583,148 @@ describe('applyMemoryExtractionOps', () => {
     })
   })
 
+  describe('server-side sensitivity classification', () => {
+    const HEALTH_TEXT = 'I have type 2 diabetes and take metformin daily.'
+
+    function healthOp(overrides: Partial<MemoryExtractionOp> = {}) {
+      return createOp({
+        title: 'Diabetes',
+        description: 'Diet constraints',
+        body: 'The user has type 2 diabetes.',
+        sensitivity: 'none',
+        evidence: 'I have type 2 diabetes',
+        ...overrides,
+      })
+    }
+
+    async function optIn() {
+      await testDb.db.update(schema.userSettings)
+        .set({ memoryIncludeSensitive: true })
+        .where(eq(schema.userSettings.userId, userId))
+    }
+
+    it('drops flagged text labelled none when the user did not opt in',
+      async () => {
+        const result = await run([healthOp()], {
+          groundingTexts: [HEALTH_TEXT],
+        })
+
+        expect(result.created).toBe(0)
+        expect(result.dropped).toEqual({ 'sensitive-disabled': 1 })
+        expect(await listEntries()).toHaveLength(0)
+      })
+
+    it('stores flagged text labelled none as special when opted in',
+      async () => {
+        await optIn()
+
+        const result = await run([healthOp()], {
+          includeSensitive: true,
+          groundingTexts: [HEALTH_TEXT],
+        })
+
+        expect(result.created).toBe(1)
+        expect((await listEntries())[0]).toMatchObject({
+          sensitivity: 'special',
+          sensitiveCategory: 'health',
+        })
+      })
+
+    it('keeps the extractor category over the classified one', async () => {
+      await optIn()
+
+      await run([
+        healthOp({ sensitiveCategory: 'genetic' }),
+      ], { includeSensitive: true, groundingTexts: [HEALTH_TEXT] })
+
+      expect((await listEntries())[0]).toMatchObject({
+        sensitivity: 'special',
+        sensitiveCategory: 'genetic',
+      })
+    })
+
+    it('makes a none entry special when an update adds flagged text',
+      async () => {
+        await optIn()
+        await seedEntry(testDb.db, userId, { slug: 'rust-hobby' })
+
+        const result = await run([
+          healthOp({
+            op: 'update',
+            slug: 'rust-hobby',
+            title: null,
+            description: null,
+            body: 'The user has type 2 diabetes.',
+          }),
+        ], { includeSensitive: true, groundingTexts: [HEALTH_TEXT] })
+
+        expect(result.updated).toBe(1)
+        expect((await listEntries())[0]).toMatchObject({
+          sensitivity: 'special',
+          sensitiveCategory: 'health',
+        })
+      })
+
+    it('keeps the entry unchanged when a flagged update is not allowed',
+      async () => {
+        await seedEntry(testDb.db, userId, { slug: 'rust-hobby' })
+
+        const result = await run([
+          healthOp({
+            op: 'update',
+            slug: 'rust-hobby',
+            title: null,
+            description: null,
+            body: 'The user has type 2 diabetes.',
+          }),
+        ], { groundingTexts: [HEALTH_TEXT] })
+
+        expect(result.dropped).toEqual({ 'sensitive-disabled': 1 })
+        expect((await listEntries())[0]).toMatchObject({
+          sensitivity: 'none',
+          body: 'Seeded body text',
+        })
+      })
+
+    it('makes a merged create special when it adds flagged text', async () => {
+      await optIn()
+      await seedEntry(testDb.db, userId, {
+        slug: 'diabetes',
+        title: 'Diabetes',
+      })
+
+      const result = await run([healthOp()], {
+        includeSensitive: true,
+        groundingTexts: [HEALTH_TEXT],
+      })
+
+      expect(result.updated).toBe(1)
+      expect((await listEntries())[0]).toMatchObject({
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+      })
+    })
+
+    it('leaves clean text labelled none untouched in both modes', async () => {
+      const offResult = await run([createOp()])
+
+      expect(offResult.created).toBe(1)
+
+      await optIn()
+
+      const onResult = await run([
+        createOp({ title: 'Church Street address', body: 'Lives on Church St.' }),
+      ], {
+        includeSensitive: true,
+        groundingTexts: [USER_TEXT],
+      })
+
+      expect(onResult.created).toBe(1)
+      expect((await listEntries()).map(entry => entry.sensitivity))
+        .not.toContain('special')
+    })
+  })
+
   describe('sensitive category', () => {
     it('treats a category on a none create as special', async () => {
       const result = await run([

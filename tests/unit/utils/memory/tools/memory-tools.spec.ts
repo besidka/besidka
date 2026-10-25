@@ -156,6 +156,7 @@ describe('memory tools', () => {
       expect(description).toContain('web page')
       expect(description).toContain('instructions for yourself')
       expect(description).toContain('sensitivity "special"')
+      expect(description).toContain('The server also classifies')
       expect(description.toLowerCase()).toContain('at most 3 calls')
     })
   })
@@ -976,7 +977,7 @@ describe('memory tools', () => {
       expect(loggerSet).toHaveBeenCalled()
     })
 
-    it('turns a sensitive write with the opt-in off into a 409 tool error',
+    it('turns a sensitive write with the opt-in off into a 422 tool error',
       async () => {
         await expect(
           build().tools.memory_write!.execute(
@@ -987,10 +988,76 @@ describe('memory tools', () => {
             toolOptions,
           ),
         ).rejects.toMatchObject({
-          status: 409,
+          status: 422,
           message: expect.stringContaining('Sensitive memory is turned off'),
         })
         expect(testDb.countEntries()).toBe(0)
+      })
+
+    it('refuses health text labelled none while the opt-in is off and '
+      + 'stores nothing', async () => {
+      const failure = await build().tools.memory_write!.execute(
+        writeInput({
+          title: 'Health',
+          description: 'Diet constraints',
+          body: 'I have type 2 diabetes.',
+          sensitivity: 'none',
+        }),
+        toolOptions,
+      ).catch((exception: Error) => exception)
+
+      expect(failure).toMatchObject({
+        status: 422,
+        message: expect.stringContaining('Sensitive memory is turned off'),
+      })
+      expect((failure as Error).message).toContain('health')
+      expect((failure as Error).message).not.toContain('diabetes')
+      expect(testDb.countEntries()).toBe(0)
+    })
+
+    it('stores health text labelled none as special with a server-set '
+      + 'category when the opt-in is on', async () => {
+      testDb.insertUserSettings({
+        userId: OWNER,
+        memoryIncludeSensitive: true,
+      })
+
+      const output = await build({ includeSensitive: true })
+        .tools.memory_write!.execute(
+        writeInput({
+          title: 'Health',
+          description: 'Diet constraints',
+          body: 'I have type 2 diabetes.',
+          sensitivity: 'none',
+        }),
+        toolOptions,
+      )
+
+      expect(output.action).toBe('created')
+      expect(readRowBySlug('health')).toMatchObject({
+        sensitivity: 'special',
+        sensitive_category: 'health',
+      })
+    })
+
+    it('refuses an update that adds health words while the opt-in is off',
+      async () => {
+        testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
+
+        await expect(
+          build().tools.memory_write!.execute(
+            writeInput({
+              id: 'topics/cooking',
+              body: 'I have type 2 diabetes.',
+              sensitivity: 'none',
+            }),
+            toolOptions,
+          ),
+        ).rejects.toMatchObject({ status: 422 })
+        expect(readRow(1)).toMatchObject({
+          sensitivity: 'none',
+          body: 'Body of cooking',
+        })
       })
 
     it('stores a sensitive entry when the opt-in is on', async () => {

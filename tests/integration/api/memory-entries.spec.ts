@@ -384,13 +384,88 @@ describe('memory entries API', () => {
       expect(testDb.countEntries()).toBe(0)
     })
 
-    it('returns 409 for sensitive entries while the opt-in is off', async () => {
+    it('returns 422 for sensitive entries while the opt-in is off', async () => {
       const handler = await handlers.create()
 
       await expect(handler(bodyEvent({
         ...validBody,
         sensitivity: 'special',
-      }))).rejects.toMatchObject({ status: 409 })
+      }))).rejects.toMatchObject({
+        status: 422,
+        message: 'Sensitive memory is turned off',
+      })
+    })
+
+    describe('server-side sensitivity classification', () => {
+      const reportedBody = {
+        category: 'topics',
+        title: 'Health',
+        description: 'Diet constraints',
+        body: 'I have type 2 diabetes.',
+      }
+
+      it('returns 422 for health text labelled none while the opt-in is off',
+        async () => {
+          const handler = await handlers.create()
+          const exception = await handler(bodyEvent({
+            ...reportedBody,
+            sensitivity: 'none',
+          })).catch((caught: unknown) => {
+            return caught as { status: number, message: string, why: string }
+          })
+
+          expect(exception).toMatchObject({
+            status: 422,
+            message: 'Sensitive memory is turned off',
+          })
+          expect(exception.why).toContain('health')
+          expect(exception.why).not.toContain('diabetes')
+          expect(testDb.countEntries(OWNER)).toBe(0)
+        })
+
+      it('returns 422 for the same request without a sensitivity field',
+        async () => {
+          const handler = await handlers.create()
+
+          await expect(handler(bodyEvent(reportedBody)))
+            .rejects.toMatchObject({ status: 422 })
+          expect(testDb.countEntries(OWNER)).toBe(0)
+        })
+
+      it('returns 201 with special health when the opt-in is on', async () => {
+        testDb.insertUserSettings({
+          userId: OWNER,
+          memoryIncludeSensitive: true,
+        })
+
+        const handler = await handlers.create()
+        const response = await handler(bodyEvent({
+          ...reportedBody,
+          sensitivity: 'none',
+        }))
+
+        expect(mocks.setResponseStatus).toHaveBeenCalledWith(
+          expect.anything(),
+          201,
+        )
+        expect(response.entry).toMatchObject({
+          sensitivity: 'special',
+          sensitiveCategory: 'health',
+        })
+        expect(testDb.countEntries(OWNER)).toBe(1)
+      })
+
+      it('logs the detected category ids and never the text', async () => {
+        const handler = await handlers.create()
+
+        await handler(bodyEvent(reportedBody)).catch(() => undefined)
+
+        const logged = JSON.stringify(mocks.loggerSet.mock.calls)
+
+        expect(logged).toContain('"sensitive"')
+        expect(logged).toContain('health')
+        expect(logged).not.toContain('diabetes')
+      })
     })
 
     it('returns 409 over the cap and for duplicate singletons', async () => {
@@ -560,14 +635,48 @@ describe('memory entries API', () => {
       }))).rejects.toMatchObject({ status: 422 })
     })
 
-    it('returns 409 for sensitive patches while the opt-in is off', async () => {
+    it('returns 422 for sensitive patches while the opt-in is off', async () => {
       const handler = await handlers.patch()
 
       testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
 
       await expect(handler(paramsEvent(encodePublicId(5), {
         sensitivity: 'special',
-      }))).rejects.toMatchObject({ status: 409 })
+      }))).rejects.toMatchObject({ status: 422 })
+    })
+
+    it('returns 422 for a patch that adds health words while the opt-in '
+      + 'is off', async () => {
+      const handler = await handlers.patch()
+
+      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
+
+      await expect(handler(paramsEvent(encodePublicId(5), {
+        body: 'I have type 2 diabetes.',
+        sensitivity: 'none',
+      }))).rejects.toMatchObject({ status: 422 })
+    })
+
+    it('makes the entry special when the patch adds health words and the '
+      + 'opt-in is on', async () => {
+      testDb.insertUserSettings({
+        userId: OWNER,
+        memoryIncludeSensitive: true,
+      })
+
+      const handler = await handlers.patch()
+
+      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
+
+      const response = await handler(paramsEvent(encodePublicId(5), {
+        body: 'I have type 2 diabetes.',
+        sensitivity: 'none',
+      }))
+
+      expect(response.entry).toMatchObject({
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+      })
     })
   })
 

@@ -109,6 +109,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const memoryComplianceTests = [
     'tests/unit/utils/memory/compliance.spec.ts',
+    'tests/unit/utils/memory/sensitivity.spec.ts',
   ]
   const memoryModelTests = [
     'tests/unit/utils/memory/resolve-model.spec.ts',
@@ -1930,11 +1931,13 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/utils\/memory\/compliance\.ts$/,
+      pattern: /^server\/utils\/memory\/(compliance|sensitivity)\.ts$/,
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,
         ...memoryExtractionTests,
+        ...memoryEntriesTests,
+        ...memoryToolTests,
         ...profileSettingsTests,
       ],
     },

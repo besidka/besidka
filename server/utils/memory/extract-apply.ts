@@ -119,6 +119,11 @@ interface DropOutcome {
   dropped: string
 }
 
+interface EffectiveSensitivity {
+  sensitivity: MemorySensitivity
+  sensitiveCategory: MemorySensitiveCategory | null
+}
+
 interface GuardedWriteOutcome {
   id: string | null
   purged: boolean
@@ -341,18 +346,22 @@ class MemoryExtractionApplier {
   private evaluate(
     values: PersistedEntryValues,
     op: MemoryExtractionOp,
-  ): DropOutcome | null {
+  ): DropOutcome | EffectiveSensitivity {
     const verdict = evaluateMemoryEntry({
       title: values.title,
       description: values.description,
       body: values.body,
       sensitivity: values.sensitivity,
+      sensitiveCategory: values.sensitiveCategory,
       extractorNeverStoreKind: op.neverStore,
       includeSensitive: this.input.includeSensitive,
     })
 
     if (verdict.allowed) {
-      return null
+      return {
+        sensitivity: verdict.sensitivity,
+        sensitiveCategory: verdict.sensitiveCategory,
+      }
     }
 
     if (verdict.reason === 'never-store') {
@@ -403,7 +412,7 @@ class MemoryExtractionApplier {
       })
     }
 
-    const values: PersistedEntryValues = {
+    const proposedValues: PersistedEntryValues = {
       category: parsed.data.category,
       title: parsed.data.title,
       description: parsed.data.description,
@@ -412,15 +421,17 @@ class MemoryExtractionApplier {
       sensitiveCategory: parsed.data.sensitiveCategory ?? null,
     }
 
-    if (this.hasUngroundedLinks(values)) {
+    if (this.hasUngroundedLinks(proposedValues)) {
       return { dropped: 'ungrounded' }
     }
 
-    const blockedOutcome = this.evaluate(values, op)
+    const evaluated = this.evaluate(proposedValues, op)
 
-    if (blockedOutcome) {
-      return blockedOutcome
+    if ('dropped' in evaluated) {
+      return evaluated
     }
+
+    const values: PersistedEntryValues = { ...proposedValues, ...evaluated }
 
     const cap = this.input.projectId
       ? MEMORY_LIMITS.maxProjectEntries
@@ -578,7 +589,7 @@ class MemoryExtractionApplier {
       return { dropped: 'invalid' }
     }
 
-    const values: PersistedEntryValues = {
+    const proposedValues: PersistedEntryValues = {
       category: target.category,
       title: merged.data.title,
       description: merged.data.description,
@@ -588,26 +599,28 @@ class MemoryExtractionApplier {
     }
 
     if (
-      values.title === target.title
-      && values.description === target.description
-      && values.body === target.body
-      && values.sensitivity === target.sensitivity
-      && values.sensitiveCategory === target.sensitiveCategory
+      proposedValues.title === target.title
+      && proposedValues.description === target.description
+      && proposedValues.body === target.body
+      && proposedValues.sensitivity === target.sensitivity
+      && proposedValues.sensitiveCategory === target.sensitiveCategory
     ) {
       return await this.addSourceChat(target)
     }
 
     const knownText = [target.title, target.description, target.body].join('\n')
 
-    if (this.hasUngroundedLinks(values, knownText)) {
+    if (this.hasUngroundedLinks(proposedValues, knownText)) {
       return { dropped: 'ungrounded' }
     }
 
-    const blockedOutcome = this.evaluate(values, op)
+    const evaluated = this.evaluate(proposedValues, op)
 
-    if (blockedOutcome) {
-      return blockedOutcome
+    if ('dropped' in evaluated) {
+      return evaluated
     }
+
+    const values: PersistedEntryValues = { ...proposedValues, ...evaluated }
 
     const sourceChatIds = memoryExtractionMergeSourceChatIds(
       target.sourceChatIds,
