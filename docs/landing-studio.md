@@ -88,6 +88,24 @@ Worker:
    pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID --env production
    pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET --env production
    ```
+4. Also set `NUXT_STUDIO_AUTH_SESSION_SECRET` (a random string of at least 32
+   characters) and, to limit who can publish, `STUDIO_GITHUB_MODERATORS`:
+   ```bash
+   pnpm exec wrangler secret put NUXT_STUDIO_AUTH_SESSION_SECRET
+   pnpm exec wrangler secret put STUDIO_GITHUB_MODERATORS
+   # production env:
+   pnpm exec wrangler secret put NUXT_STUDIO_AUTH_SESSION_SECRET --env production
+   pnpm exec wrangler secret put STUDIO_GITHUB_MODERATORS --env production
+   ```
+   `runtimeConfig.studio.auth.sessionSecret` is computed at build time from the
+   `STUDIO_*` auth values. CI builds have none of them, so the baked-in value is
+   the md5 of an empty string (`d41d8cd98f00b204e9800998ecf8427e`), which anyone
+   can use to forge a `studio-session` cookie. `NUXT_STUDIO_AUTH_SESSION_SECRET`
+   overrides it at runtime. `server/middleware/00.studio-guard.ts` fails closed:
+   until a real secret is set, every `/_studio` and `/__nuxt_studio/**` request
+   returns 404 (and logs one evlog error per isolate). In dev the guard is
+   skipped. Set the secret on production and on the preview base config before
+   deploying; see `docs/security-audit-2026-10.md`.
 
 > For the full owner-only provisioning checklist (D1, R2, secrets, account
 > plan), see [`docs/landing-production-todo.md`](./landing-production-todo.md).
@@ -305,6 +323,8 @@ as deployment secrets (names verified against the module source):
 ```
 STUDIO_GITHUB_CLIENT_ID=...
 STUDIO_GITHUB_CLIENT_SECRET=...
+NUXT_STUDIO_AUTH_SESSION_SECRET=...   # random, 32+ chars; Studio 404s without it
+STUDIO_GITHUB_MODERATORS=...
 ```
 
 Create them at GitHub → Settings → Developer settings → OAuth Apps → New OAuth

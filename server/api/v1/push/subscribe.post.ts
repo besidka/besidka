@@ -8,8 +8,12 @@ import {
   setResponseStatus,
 } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
-
-const MAX_PUSH_ENDPOINT_LENGTH = 2048
+import {
+  MAX_PUSH_AUTH_KEY_LENGTH,
+  MAX_PUSH_ENDPOINT_LENGTH,
+  MAX_PUSH_P256DH_KEY_LENGTH,
+  trimPushSubscriptionsToLimit,
+} from '~~/server/utils/push'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -27,8 +31,8 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
     endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
     keys: z.object({
-      p256dh: z.string().nonempty(),
-      auth: z.string().nonempty(),
+      p256dh: z.string().nonempty().max(MAX_PUSH_P256DH_KEY_LENGTH),
+      auth: z.string().nonempty().max(MAX_PUSH_AUTH_KEY_LENGTH),
     }),
     previousEndpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH).optional(),
   }).safeParse)
@@ -71,8 +75,11 @@ export default defineEventHandler(async (event) => {
   const existing = await db.query.pushSubscriptions.findFirst({
     where: { endpoint },
   })
+  let writtenSubscriptionId: number
 
   if (existing) {
+    writtenSubscriptionId = existing.id
+
     // A push subscription is device/browser-scoped, not permanently
     // user-scoped — a second user signing into the same browser is expected
     // to take over it. Logged (not blocked) so a takeover on a shared device
@@ -111,14 +118,18 @@ export default defineEventHandler(async (event) => {
       },
     })
 
-    await db.insert(schema.pushSubscriptions).values({
-      userId,
-      endpoint,
-      p256dhKey: keys.p256dh,
-      authKey: keys.auth,
-      origin,
-      lastSeenAt,
-    })
+    const [insertedSubscription] = await db.insert(schema.pushSubscriptions)
+      .values({
+        userId,
+        endpoint,
+        p256dhKey: keys.p256dh,
+        authKey: keys.auth,
+        origin,
+        lastSeenAt,
+      })
+      .returning({ id: schema.pushSubscriptions.id })
+
+    writtenSubscriptionId = insertedSubscription!.id
   }
 
   if (previousEndpoint && previousEndpoint !== endpoint) {
@@ -137,6 +148,8 @@ export default defineEventHandler(async (event) => {
       },
     })
   }
+
+  await trimPushSubscriptionsToLimit(db, userId, writtenSubscriptionId)
 
   setResponseStatus(event, 204)
 

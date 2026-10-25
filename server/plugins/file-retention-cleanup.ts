@@ -1,6 +1,10 @@
 import { createRequestLogger } from 'evlog'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import { cleanupExpiredFiles } from '~~/server/utils/files/cleanup-expired-files'
+import {
+  cleanupExpiredFiles,
+  type CleanupExpiredFilesResult,
+} from '~~/server/utils/files/cleanup-expired-files'
 
 const ERROR_STACK_MAX_LENGTH = 2000
 
@@ -82,9 +86,10 @@ export async function runFileRetentionCleanupJob(
   })
 
   try {
-    const result = await runCleanup({
+    const result = await runCleanupBatches({
       batchSize,
       maxRuntimeMs,
+      runCleanup,
       logger,
     })
 
@@ -95,6 +100,7 @@ export async function runFileRetentionCleanupJob(
         failedCount: result.failedCount,
         hasMore: result.hasMore,
         runtimeMs: result.runtimeMs,
+        batchCount: result.batchCount,
       },
     })
   } catch (exception) {
@@ -113,6 +119,49 @@ export async function runFileRetentionCleanupJob(
   }
 
   logger.emit({ status })
+}
+
+async function runCleanupBatches(input: {
+  batchSize: number
+  maxRuntimeMs: number
+  runCleanup: typeof cleanupExpiredFiles
+  logger: LoggerLike
+}): Promise<CleanupExpiredFilesResult & { batchCount: number }> {
+  const startedAt = Date.now()
+  const total = {
+    selectedCount: 0,
+    deletedCount: 0,
+    failedCount: 0,
+    hasMore: false,
+    runtimeMs: 0,
+    batchCount: 0,
+  }
+
+  do {
+    const remainingMs = input.maxRuntimeMs - (Date.now() - startedAt)
+    const batch = await input.runCleanup({
+      batchSize: input.batchSize,
+      maxRuntimeMs: remainingMs,
+      logger: input.logger,
+    })
+
+    total.selectedCount += batch.selectedCount
+    total.deletedCount += batch.deletedCount
+    total.failedCount += batch.failedCount
+    total.hasMore = batch.hasMore
+    total.batchCount++
+
+    if (batch.deletedCount === 0) {
+      break
+    }
+  } while (
+    total.hasMore
+    && Date.now() - startedAt < input.maxRuntimeMs
+  )
+
+  total.runtimeMs = Date.now() - startedAt
+
+  return total
 }
 
 function getSafeErrorStack(exception: unknown): string | undefined {

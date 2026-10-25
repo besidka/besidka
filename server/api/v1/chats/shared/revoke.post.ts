@@ -42,6 +42,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
+      slug: true,
     },
   })
 
@@ -50,6 +51,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const ownedChatIds = ownedChats.map(chat => chat.id)
+
+  logger.set({
+    attributes: {
+      chatShareRevoke: {
+        chatSlugs: ownedChats.map(chat => chat.slug),
+      },
+    },
+  })
 
   const deletedShares = await db.delete(schema.chatShares)
     .where(inArray(schema.chatShares.chatId, ownedChatIds))
@@ -61,6 +70,8 @@ export default defineEventHandler(async (event) => {
       eq(schema.chats.userId, userId),
       inArray(schema.chats.id, ownedChatIds),
     ))
+
+  logger.set({ revokedCount: deletedShares.length })
 
   return { count: deletedShares.length }
 })

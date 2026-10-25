@@ -296,6 +296,7 @@ jobs:
       && needs.unit.result == 'success'
       && needs.integration.result == 'success'
       && needs.e2e.result == 'success'))
+    environment: production
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -318,7 +319,7 @@ jobs:
           path: .output/
 
       - name: Apply migrations to production database
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -327,7 +328,7 @@ jobs:
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env production
 
       - name: Apply consent migrations to production database
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -337,7 +338,7 @@ jobs:
 
       - name: Deploy app to Cloudflare Workers via Wrangler
         id: deploy
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -444,6 +445,7 @@ jobs:
     needs: deploy
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment: production
     permissions:
       contents: read
 
@@ -461,7 +463,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Apply migrations to preview database
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -470,7 +472,7 @@ jobs:
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
       - name: Apply consent migrations to preview database
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

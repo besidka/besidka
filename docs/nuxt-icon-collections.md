@@ -68,16 +68,26 @@ from ~9% of sampled time to ~0.4% once the collections list shrank from 220 to
 Add a prefix to `iconCollections` in `nuxt.config.ts` the moment a new Iconify
 collection is used directly (`name="<prefix>:...">`, or a vendor icon-name map
 like `ProviderIcon.vue`'s `providerIconNames`). Skipping this doesn't break
-anything — `serverBundle.remote` still serves any collection not in the list
-through a per-request fallback to `api.iconify.design` — but it silently
-reintroduces the per-icon latency above for whatever uses that collection.
+anything — `serverBundle.remote` still serves collections it can reach from
+the Worker, and the browser falls back to `api.iconify.design` for the rest
+(`fallbackToApi` is client-only, see below) — but it silently reintroduces the
+per-icon latency above for whatever uses that collection.
 
 `thesvg` is deliberately **not** in the list. It backs exactly one icon
 (`ProviderIcon.vue`'s Zhipu vendor mark, `thesvg:zhipu`) and isn't part of
-`@iconify/collections`, so it already resolves through the Iconify API on
-every render regardless of this setting. Adding it to
+`@iconify/collections`, so it already resolves through the browser's Iconify
+API fallback regardless of this setting. Adding it to
 `serverBundle.collections` would bundle its entire ~3.7k-icon set into the
 Worker just to serve that one icon.
+
+## `fallbackToApi` is `'client-only'`
+
+`icon.fallbackToApi` is pinned to `'client-only'`, so the Worker never fetches
+upstream on the `/api/_nuxt_icon` route. An attacker-chosen collection or icon
+name there would otherwise turn the route into an unauthenticated outbound
+fetch and KV key generator. Server-side rendering still resolves icons from the
+bundled collections and `serverBundle.remote`. See
+`docs/security-audit-2026-10.md`.
 
 ## Revert criteria
 

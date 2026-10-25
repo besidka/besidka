@@ -32,15 +32,17 @@ export function extractMessageSearchText(parts: unknown): string {
   const values: string[] = []
 
   for (const part of parts as UIMessage['parts']) {
-    if (part.type !== 'text' || !part.text?.trim()) {
+    if (part?.type !== 'text' || typeof part.text !== 'string') {
       continue
     }
 
-    if (parsePersistedChatFailureNotice(part.text)) {
+    const text = part.text.trim()
+
+    if (!text || parsePersistedChatFailureNotice(part.text)) {
       continue
     }
 
-    values.push(part.text.trim())
+    values.push(text)
   }
 
   const rawBody = values.join('\n').slice(

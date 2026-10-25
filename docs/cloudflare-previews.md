@@ -202,8 +202,11 @@ Rules:
 - Never print secret values, never paste them into issues, PRs or logs, and
   never commit `.dev.vars.preview`.
 - The file should contain the runtime secrets only (encryption keys, Better
-  Auth secret, OAuth client secrets, `STUDIO_GITHUB_*`, VAPID private key,
-  Turnstile secret, maintenance token, email/IndexNow keys as applicable).
+  Auth secret, OAuth client secrets, `STUDIO_GITHUB_*`,
+  `NUXT_STUDIO_AUTH_SESSION_SECRET` (random, 32+ chars; without it
+  `server/middleware/00.studio-guard.ts` returns 404 for `/_studio` and
+  `/__nuxt_studio/**`), VAPID private key, Turnstile secret, maintenance
+  token, email/IndexNow keys as applicable).
   Public values belong in `env.production.previews.vars`.
 - Changing `NUXT_ENCRYPTION_KEY` or `NUXT_BETTER_AUTH_SECRET` makes the
   data they protect undecryptable (see `docs/auth-security.md`); the shared
@@ -213,9 +216,41 @@ Rules:
 
 | Event | Workflow | What happens |
 |-------|----------|--------------|
-| PR build succeeds (same-repo) | `preview-deploy.yml` | Migrate preview D1s, then `wrangler preview --env production --name pr-<n> --message <PR url> --json`; URLs read from the JSON (`.preview.urls[0]`, `.deployment.urls[0]`) with the deterministic `pr-<n>-besidka` URL as fallback; PR comment and commit status |
+| PR build succeeds (same-repo) | `preview-deploy.yml` | Check out the default branch, drop its `.drizzle/`, download the PR artifacts into `.output/` and `.drizzle/`, verify nothing else changed, install with `pnpm` from the default branch, migrate preview D1s, then `wrangler preview --env production --name pr-<n> --message <PR url> --json`; URLs read from the JSON (`.preview.urls[0]`, `.deployment.urls[0]`) with the deterministic `pr-<n>-besidka` URL as fallback; PR comment and commit status |
 | PR closed (merged or not) | `preview-cleanup.yml` | `wrangler preview delete --name pr-<n> --env production --skip-confirmation`; missing Preview counts as success |
 | Push to `main` | `production.yml` → `deploy-preview` | Migrate preview D1s, then `wrangler preview --env production --name preview --message main@<sha>` from the `preview-build` artifact |
+
+`preview-deploy.yml` holds the production-capable `CLOUDFLARE_API_TOKEN`
+(Previews live on the production `besidka` Worker), so it never runs PR code
+or PR-selected tooling. Like `preview-cleanup.yml`, it checks out the default
+branch (`persist-credentials: false`) and installs `pnpm`, `wrangler`,
+`wrangler.jsonc`, `package.json` and the lockfile from there. The only inputs
+that come from the PR are the `preview-build` artifact (extracted into
+`.output/`) and the `preview-drizzle` artifact (extracted into `.drizzle/`
+after `rm -rf .drizzle` removed the default branch's copy, so the applied
+migration set is exactly the PR's). A step before `pnpm install` fails the job
+if `git status --porcelain --ignored --untracked-files=all` shows any change
+outside those two directories, and a second step requires the artifact's
+`.drizzle/` to match the PR commit's tracked `.drizzle/` blob for blob, so
+build-generated, uncommitted migrations (the build runs `db:generate`) and
+anything planted by build-time code never reach the shared preview D1; a PR
+with uncommitted schema changes fails its preview deploy with instructions.
+Migrations and deploy run through the plain
+`pnpm exec wrangler`; no third-party action ever holds the token, and
+third-party actions in secret-bearing workflows are pinned to commit SHAs. No
+actor filter is needed: Dependabot and other bot PRs get previews through the
+same path (Dependabot-actor runs do receive the org secrets, verified on run
+39229739041). See `.github/workflows/README.md` → "Security Model".
+
+A PR that changes `wrangler.jsonc` still deploys with the default branch's
+`wrangler.jsonc`. The `config-drift` step lists the PR's files through the
+paginated pulls files API and warns when the PR touches it; the PR comment's
+`Wrangler config` row and the commit status report the three states (changed,
+unchanged, or unknown when the API call fails, in which case the deploy only
+warns). The workflow invariants are enforced by
+`tests/unit/workflows/preview-deploy.spec.ts`, which runs locally through the
+pre-push hook's affected-test mapping, not in CI, because `.github/**` is
+path-ignored by the build workflows.
 
 `preview-cleanup.yml` triggers on `pull_request_target` so it has secrets. This
 is safe because it checks out only the default branch and never PR code, and it
@@ -381,6 +416,15 @@ Local equivalents: `pnpm run deploy` builds and updates the long-lived
   `besidka-consent-preview`, KV, R2). Concurrent PRs see each other's data and
   a destructive migration on one PR affects every Preview. Same as before the
   migration.
+- **A PR that changes `wrangler.jsonc` previews with the default branch's
+  config until it merges.** Bindings, vars and compatibility settings from the
+  PR are not in its Preview; binding and database ids always come from
+  `main`, which bounds what PR code can reach. The long-lived `main` Preview
+  (`production.yml` → `deploy-preview`) is where config changes are first
+  exercised.
+- **PR artifacts still run on the Preview Worker** with the preview
+  secrets and bindings, and PR migrations hit the shared preview D1. Both stay
+  within preview resources; neither executes on the CI runner.
 - **Passkeys registered on the old host are gone** (see the auth section).
 
 ## Bootstrap PR hazard
