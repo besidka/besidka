@@ -2,7 +2,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { parseError } from 'evlog'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemoryUiSettings } from '../../../../../app/types/memory-settings.d'
+import type { MemorySettingsFields } from '../../../../../shared/types/memory.d'
 import * as messagesComposable from '../../../../../app/composables/messages'
 import Sensitive from '../../../../../app/components/Profile/Memory/Sensitive.vue'
 
@@ -14,7 +14,7 @@ mockNuxtImport('useConfirm', () => mocks.confirm)
 
 enableAutoUnmount(afterEach)
 
-const defaultSettings: MemoryUiSettings = {
+const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
   memoryExtractionEnabled: false,
   chatSearchEnabled: true,
@@ -28,7 +28,7 @@ const defaultSettings: MemoryUiSettings = {
 
 const save = vi.fn()
 
-async function mountSensitive(settings: Partial<MemoryUiSettings> = {}) {
+async function mountSensitive(settings: Partial<MemorySettingsFields> = {}) {
   return await mountSuspended(Sensitive, {
     props: {
       settings: { ...defaultSettings, ...settings },

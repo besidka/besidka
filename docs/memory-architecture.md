@@ -1032,6 +1032,17 @@ looked up by slug AND user, anything else is a 404. Needs the same two
 flags (409 otherwise), ignores the 10-minute idle rule, 60 s per-user KV
 cooldown (429). Responds with counts and the model source/id only.
 
+**`GET /api/v1/memory/entries/[id]/sources`.** Resolves an entry's provenance
+for the UI: `MemoryEntry.sourceChatIds` holds chat public ids, but chat URLs
+are `/chats/<slug>`. Session-authed, `no-store`. The entry is loaded through
+`getMemoryEntry` (404 `Memory entry not found` for a missing or foreign
+entry), then at most `MEMORY_LIMITS.maxSourceChatIds` ids are looked up in one
+`inArray` query filtered by the caller's `userId`, so another user's chat id
+inside `sourceChatIds` is never leaked and the D1 bound-parameter limit is
+safe. Deleted chats are omitted and the order of `sourceChatIds` is kept.
+Responds `{ chats: Array<{ id, slug, title }> }`, `title` being `''` when the
+chat has none. Code: `server/utils/memory/entry-sources.ts`.
+
 **Legacy project blob.** `projects.memory_migrated_at` is the marker. On the
 first extraction pass of a project with a non-empty blob and no marker, the
 blob is added to the prompt as `<legacy-memory>` (quotable as evidence), so the

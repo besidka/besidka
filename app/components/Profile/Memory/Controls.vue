@@ -93,13 +93,11 @@
 </template>
 
 <script setup lang="ts">
-import type {
-  MemorySettingsSave,
-  MemoryUiSettings,
-} from '~/types/memory-settings.d'
+import type { MemorySettingsFields } from '#shared/types/memory.d'
+import type { MemorySettingsSave } from '~/types/memory-settings.d'
 
 const props = defineProps<{
-  settings: MemoryUiSettings
+  settings: MemorySettingsFields
   save: MemorySettingsSave
 }>()
 
@@ -114,7 +112,7 @@ const generationDescribedBy = computed<string>(() => {
 })
 
 async function saveToggle(
-  patch: Partial<MemoryUiSettings>,
+  patch: Partial<MemorySettingsFields>,
   input: HTMLInputElement,
   nextValue: boolean,
 ) {

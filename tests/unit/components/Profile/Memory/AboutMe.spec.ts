@@ -2,13 +2,13 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { parseError } from 'evlog'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemoryUiSettings } from '../../../../../app/types/memory-settings.d'
+import type { MemorySettingsFields } from '../../../../../shared/types/memory.d'
 import * as messagesComposable from '../../../../../app/composables/messages'
 import AboutMe from '../../../../../app/components/Profile/Memory/AboutMe.vue'
 
 enableAutoUnmount(afterEach)
 
-const defaultSettings: MemoryUiSettings = {
+const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
   memoryExtractionEnabled: false,
   chatSearchEnabled: true,
@@ -22,7 +22,7 @@ const defaultSettings: MemoryUiSettings = {
 
 const save = vi.fn()
 
-async function mountAboutMe(settings: Partial<MemoryUiSettings> = {}) {
+async function mountAboutMe(settings: Partial<MemorySettingsFields> = {}) {
   return await mountSuspended(AboutMe, {
     props: {
       settings: { ...defaultSettings, ...settings },

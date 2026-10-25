@@ -6,6 +6,7 @@ describe('Projects/MemoryCard', () => {
   it('renders ready memory without a ready badge and emits refresh', async () => {
     const wrapper = await mountSuspended(MemoryCard, {
       props: {
+        projectId: 'project-1',
         memory: 'Prefers concise implementation notes and TypeScript examples.',
         memoryStatus: 'ready',
         memoryUpdatedAt: '2026-03-13T09:00:00.000Z',
@@ -41,6 +42,7 @@ describe('Projects/MemoryCard', () => {
   it('renders disabled state with enable action', async () => {
     const wrapper = await mountSuspended(MemoryCard, {
       props: {
+        projectId: 'project-1',
         memory: null,
         memoryStatus: 'disabled',
         memoryUpdatedAt: null,
@@ -78,6 +80,7 @@ describe('Projects/MemoryCard', () => {
   it('renders empty state guidance for instruction-only projects', async () => {
     const wrapper = await mountSuspended(MemoryCard, {
       props: {
+        projectId: 'project-1',
         memory: null,
         memoryStatus: 'idle',
         memoryUpdatedAt: null,
@@ -106,5 +109,72 @@ describe('Projects/MemoryCard', () => {
     )
     expect(wrapper.text()).toContain('keeping memory disabled is often better')
     expect(wrapper.text()).not.toContain('Model: google')
+  })
+
+  it('links to the project scope of the memory entries list', async () => {
+    const wrapper = await mountSuspended(MemoryCard, {
+      props: {
+        projectId: 'project-1',
+        memory: null,
+        memoryStatus: 'idle',
+        memoryUpdatedAt: null,
+        memoryProvider: null,
+        memoryModel: null,
+        memoryError: null,
+        isRefreshing: false,
+        isToggling: false,
+      },
+      global: {
+        stubs: {
+          UiBubble: {
+            template: '<div><slot /></div>',
+          },
+          NuxtLink: {
+            props: ['to'],
+            template: '<a :data-to="JSON.stringify(to)"><slot /></a>',
+          },
+          MDCCached: {
+            props: ['value'],
+            template: '<div>{{ value }}</div>',
+          },
+        },
+      },
+    })
+    const link = wrapper.get('[data-testid="manage-project-memory-entries"]')
+
+    expect(link.text()).toBe('Manage memory entries')
+    expect(JSON.parse(link.attributes('data-to')!)).toEqual({
+      path: '/profile/memory',
+      query: { scope: 'project', project: 'project-1' },
+    })
+  })
+
+  it('hides the entries link until the project id is known', async () => {
+    const wrapper = await mountSuspended(MemoryCard, {
+      props: {
+        memory: null,
+        memoryStatus: 'idle',
+        memoryUpdatedAt: null,
+        memoryProvider: null,
+        memoryModel: null,
+        memoryError: null,
+        isRefreshing: false,
+        isToggling: false,
+      },
+      global: {
+        stubs: {
+          UiBubble: {
+            template: '<div><slot /></div>',
+          },
+          MDCCached: {
+            props: ['value'],
+            template: '<div>{{ value }}</div>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="manage-project-memory-entries"]')
+      .exists()).toBe(false)
   })
 })

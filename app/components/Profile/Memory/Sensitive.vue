@@ -51,10 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import type {
-  MemorySensitiveCategory,
-  MemorySettingsFields,
-} from '#shared/types/memory.d'
+import type { MemorySettingsFields } from '#shared/types/memory.d'
 import type { MemorySettingsSave } from '~/types/memory-settings.d'
 
 const props = defineProps<{
@@ -62,24 +59,11 @@ const props = defineProps<{
   save: MemorySettingsSave
 }>()
 
-const sensitiveCategoryLabels: Record<MemorySensitiveCategory, string> = {
-  'health': 'health',
-  'religion-or-belief': 'religion or belief',
-  'political-opinion': 'political opinion',
-  'racial-or-ethnic-origin': 'racial or ethnic origin',
-  'sex-life-or-orientation': 'sex life or orientation',
-  'trade-union': 'trade union membership',
-  'genetic': 'genetic data',
-  'biometric': 'biometric data',
-  'legal-dispute': 'legal disputes',
-  'drugs': 'drugs',
-}
-
 const isSaving = shallowRef<boolean>(false)
 
 const sensitiveCategoriesText = computed<string>(() => {
   return memorySensitiveCategories.map((category) => {
-    return sensitiveCategoryLabels[category]
+    return memorySensitiveCategoryLabels[category]
   }).join(', ')
 })
 

@@ -122,6 +122,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/entries.spec.ts',
     'tests/unit/utils/memory/entry-slug.spec.ts',
     'tests/integration/api/memory-entries.spec.ts',
+    'tests/integration/api/memory-entries-sources.spec.ts',
   ]
   const memoryIndexTests = [
     'tests/unit/utils/memory-tokens.spec.ts',
@@ -473,7 +474,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Memory/AboutMe.spec.ts',
     'tests/unit/components/Profile/Memory/Models.spec.ts',
     'tests/unit/components/Profile/Memory/Entries.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/DetailModal.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Empty.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Group.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Row.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/ScopeSwitch.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Toolbar.spec.ts',
     'tests/unit/composables/memory-settings.spec.ts',
+    'tests/unit/composables/memory-projects.spec.ts',
+    'tests/unit/utils/memory-entry-labels.spec.ts',
     'tests/unit/utils/memory-model-filter.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
   ]
@@ -1348,7 +1357,7 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
-      pattern: /^(server\/utils\/memory\/(entries|entry-slug)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
+      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
       tests: [
         ...memoryEntriesTests,
         ...memoryToolTests,
@@ -1688,7 +1697,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/composables\/memory-settings\.ts|app\/types\/memory-settings\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
+        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/composables\/(memory-settings|memory-projects)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/memory-settings\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
       tests: memoryTabTests,
     },
     {

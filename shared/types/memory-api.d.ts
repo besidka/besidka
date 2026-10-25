@@ -32,6 +32,16 @@ export interface MemoryEntryResponse {
   entry: MemoryEntry
 }
 
+export interface MemoryEntrySourceChat {
+  id: string
+  slug: string
+  title: string
+}
+
+export interface MemoryEntrySourcesResponse {
+  chats: MemoryEntrySourceChat[]
+}
+
 export interface MemoryEntryDeleteResponse {
   success: true
 }

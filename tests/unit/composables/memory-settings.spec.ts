@@ -2,7 +2,7 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemoryUiSettings } from '../../../app/types/memory-settings.d'
+import type { MemorySettingsFields } from '../../../shared/types/memory.d'
 import { useMemorySettingsSaver } from '../../../app/composables/memory-settings'
 
 interface PendingRequest {
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 mockNuxtImport('$fetch', () => mocks.fetch)
 
-const defaultSettings: MemoryUiSettings = {
+const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
   memoryExtractionEnabled: false,
   chatSearchEnabled: true,
@@ -30,8 +30,8 @@ const defaultSettings: MemoryUiSettings = {
   projectMemoryGateway: null,
 }
 
-function createSaver(overrides: Partial<MemoryUiSettings> = {}) {
-  const settings = ref<Partial<MemoryUiSettings> | null>({
+function createSaver(overrides: Partial<MemorySettingsFields> = {}) {
+  const settings = ref<MemorySettingsFields | null>({
     ...defaultSettings,
     ...overrides,
   })
@@ -69,7 +69,7 @@ describe('useMemorySettingsSaver', () => {
   })
 
   it('exposes defaults when settings are not loaded', () => {
-    const settings = ref<Partial<MemoryUiSettings> | null>(null)
+    const settings = ref<MemorySettingsFields | null>(null)
     const { values } = useMemorySettingsSaver(settings)
 
     expect(values.value.memoryEnabled)
