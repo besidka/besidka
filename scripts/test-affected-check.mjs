@@ -154,6 +154,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/extract-sweep.spec.ts',
     'tests/unit/utils/memory/extract.spec.ts',
     'tests/unit/utils/projects/memory-entries.spec.ts',
+    'tests/unit/utils/projects/memory-refresh.spec.ts',
+    'tests/unit/utils/projects/memory-card.spec.ts',
+    'tests/unit/utils/memory/extract-manual.spec.ts',
+    'tests/unit/utils/memory/special-category.spec.ts',
+    'tests/unit/utils/project-memory-markdown.spec.ts',
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
   ]
@@ -1948,12 +1953,16 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/(utils\/memory\/extract.*|plugins\/memory-extraction-sweep|api\/v1\/memory\/extract-now\.post)\.ts$/,
+      pattern: /^server\/(utils\/memory\/(extract.*|special-category)|plugins\/memory-extraction-sweep|api\/v1\/memory\/extract-now\.post)\.ts$/,
       tests: memoryExtractionTests,
     },
     {
-      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|instructions)\.ts$/,
+      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|memory-refresh|memory-card|memory-limits|legacy-memory|instructions)\.ts$/,
       tests: [...memoryExtractionTests, ...memoryModelTests],
+    },
+    {
+      pattern: /^app\/utils\/project-memory-markdown\.ts$/,
+      tests: ['tests/unit/utils/project-memory-markdown.spec.ts'],
     },
     {
       pattern: /^tests\/setup\/helpers\/(memory-extraction-db|public-id-mock)\.ts$/,

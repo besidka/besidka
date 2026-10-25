@@ -118,6 +118,15 @@ Move semantics:
 
 ## Project Memory
 
+> **Superseded (W6b, 2026-10-26).** Project memory is now project-scope
+> `memory_entries` (categorised entries, see `docs/memory-architecture.md`
+> 3.14). The blob pipeline described below (per-chat summaries, synthesis into
+> `projects.memory`, the automatic refresh triggers) is retired and kept here
+> as history only. What still applies: the per-project refresh lease, the
+> `memoryStatus` state machine, `markProjectsMemoryStale` on chat activity,
+> and the blob column, which is never written any more and is only read as a
+> legacy source until it is migrated into entries.
+
 Project memory is project-scoped, read-only in v1 (the user can only toggle it
 on or off and trigger a refresh), and also request-time context.
 

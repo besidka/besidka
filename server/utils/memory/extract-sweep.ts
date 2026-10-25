@@ -4,9 +4,11 @@ import {
   asc,
   eq,
   gt,
+  isNotNull,
   isNull,
   lt,
   lte,
+  ne,
   or,
   sql,
 } from 'drizzle-orm'
@@ -79,20 +81,44 @@ async function selectDueChats(
       userRank: sql<number>`row_number() over (partition by ${schema.chats.userId} order by ${attemptedAtOrZero}, ${schema.chats.activityAt})`.as('user_rank'),
     })
     .from(schema.chats)
-    .innerJoin(
+    .leftJoin(
       schema.userSettings,
       eq(schema.chats.userId, schema.userSettings.userId),
     )
+    .leftJoin(
+      schema.projects,
+      and(
+        eq(schema.chats.projectId, schema.projects.id),
+        eq(schema.chats.userId, schema.projects.userId),
+      ),
+    )
     .where(and(
-      eq(schema.userSettings.memoryExtractionEnabled, true),
       or(
         isNull(schema.userSettings.memoryEnabled),
         eq(schema.userSettings.memoryEnabled, true),
       ),
       lte(schema.chats.activityAt, idleCutoff),
       or(
-        isNull(schema.chats.memoryExtractedAt),
-        lt(schema.chats.memoryExtractedAt, schema.chats.activityAt),
+        and(
+          isNull(schema.chats.projectId),
+          eq(schema.userSettings.memoryExtractionEnabled, true),
+          or(
+            isNull(schema.chats.memoryExtractedAt),
+            lt(schema.chats.memoryExtractedAt, schema.chats.activityAt),
+          ),
+        ),
+        and(
+          isNotNull(schema.chats.projectId),
+          isNotNull(schema.projects.id),
+          ne(schema.projects.memoryStatus, 'disabled'),
+          or(
+            isNull(schema.chats.projectMemorySummaryUpdatedAt),
+            lt(
+              schema.chats.projectMemorySummaryUpdatedAt,
+              schema.chats.activityAt,
+            ),
+          ),
+        ),
       ),
       or(
         isNull(attemptedAt),
@@ -172,12 +198,15 @@ function addCounts(
 }
 
 /**
- * Picks due chats (idle, dirty, never attempted, or crashed and outside
- * the attempt backoff, or waiting for more user text with new activity, or
+ * Picks due chats and extracts them one after the other until the batch or
+ * the runtime budget is spent. Account chats are eligible only while the
+ * extraction opt-in is on; project chats whenever memory is on and their own
+ * project (same owner) is not disabled. A chat is due when it is idle and
+ * dirty on its kind's watermark, and was never attempted, or crashed outside
+ * the attempt backoff, or waits for more user text and has new activity, or
  * failed outside the backoff and under the failure cap unless new activity
- * lifted it; at most `perUserCapPerTick` per user) and extracts them one
- * after the other until the batch or the runtime budget is spent. A chat that
- * throws never stops the loop. Reports counts only.
+ * lifted it. At most `perUserCapPerTick` chats per user. A chat that throws
+ * never stops the loop. Reports counts only.
  */
 export async function sweepMemoryExtraction(
   input: SweepMemoryExtractionInput,

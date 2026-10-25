@@ -701,7 +701,7 @@ describe('memory send-path wiring', () => {
     })
 
     it('hands the tool factory the persisted user message id, the text, '
-      + 'the chat and the sensitive opt-in', async () => {
+      + 'the chat and a constant false sensitive flag', async () => {
       await runSend({
         scenario: {
           settings: { memoryEnabled: true, memoryIncludeSensitive: true },
@@ -717,7 +717,7 @@ describe('memory send-path wiring', () => {
         useAccountMemory: null,
         sourceMessageId: USER_MESSAGE_ID,
         userMessageText: USER_MESSAGE_TEXT,
-        includeSensitive: true,
+        includeSensitive: false,
         budget: { maxCalls: 3, usedCalls: 0, untrustedResultSeen: false },
       }))
     })
@@ -964,6 +964,47 @@ describe('memory send-path wiring', () => {
         projectId: 'project-1',
         useAccountMemory: false,
       }))
+    })
+
+    it('passes the loaded disabled status to the tools and keeps project '
+      + 'entries out of the index', async () => {
+      const { doStream } = await runSend({
+        scenario: {
+          settings: MEMORY_ON,
+          project: {
+            ...isolatedProject,
+            useAccountMemory: true,
+            memoryStatus: 'disabled',
+          },
+          memoryRows: [
+            createMemoryRow({ slug: 'account-fact', title: 'Account fact' }),
+            createMemoryRow({
+              id: 'entry-project-1',
+              projectId: 'project-1',
+              slug: 'project-fact',
+              title: 'Project fact',
+            }),
+          ],
+        },
+        steps: [createTextChunks('Plain answer.')],
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(mocks.memoryToolsInputs[0]?.projectDisabled).toBe(true)
+      expect(systemPrompt).toContain('topics/account-fact')
+      expect(systemPrompt).not.toContain('project-fact')
+    })
+
+    it('passes projectDisabled false for an enabled project', async () => {
+      await runSend({
+        scenario: {
+          settings: MEMORY_ON,
+          project: { ...isolatedProject, useAccountMemory: true },
+        },
+        steps: [createTextChunks('Plain answer.')],
+      })
+
+      expect(mocks.memoryToolsInputs[0]?.projectDisabled).toBe(false)
     })
 
     it.each([

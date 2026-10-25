@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import type {
   MemoryExtractionOp,
@@ -23,6 +22,28 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
   return await publicIdMockFactory()
 })
 
+const detectSpecialCategoriesMock = vi.hoisted(() => vi.fn())
+const evaluateOverrideMock = vi.hoisted(() => vi.fn())
+
+vi.mock('~~/server/utils/memory/special-category', () => {
+  return { detectSpecialCategories: detectSpecialCategoriesMock }
+})
+
+vi.mock('~~/server/utils/memory/compliance', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/memory/compliance')
+  >()
+
+  return {
+    ...actual,
+    evaluateMemoryEntry: (
+      input: Parameters<typeof actual.evaluateMemoryEntry>[0],
+    ) => {
+      return evaluateOverrideMock(input) ?? actual.evaluateMemoryEntry(input)
+    },
+  }
+})
+
 const USER_TEXT = 'Hello, I write Rust on weekends and I prefer short answers.'
 
 function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
@@ -33,8 +54,6 @@ function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
     title: 'Rust hobby',
     description: 'Writes Rust on weekends',
     body: 'The user writes Rust on weekends.',
-    sensitivity: null,
-    sensitiveCategory: null,
     neverStore: null,
     evidence: 'I write Rust on weekends',
     ...overrides,
@@ -57,6 +76,8 @@ describe('applyMemoryExtractionOps', () => {
     testDb = createMemoryExtractionTestDb()
     userId = await seedUser(testDb.db, { memoryIncludeSensitive: false })
     chatId = (await seedChat(testDb.db, userId)).id
+    detectSpecialCategoriesMock.mockReset().mockReturnValue([])
+    evaluateOverrideMock.mockReset().mockReturnValue(undefined)
   })
 
   afterEach(() => {
@@ -67,7 +88,6 @@ describe('applyMemoryExtractionOps', () => {
     ops: MemoryExtractionOp[],
     options: {
       projectId?: string | null
-      includeSensitive?: boolean
       groundingTexts?: string[]
       maxOps?: number
       forUserId?: number
@@ -90,7 +110,6 @@ describe('applyMemoryExtractionOps', () => {
       userId: scopedUserId,
       projectId,
       chatId,
-      includeSensitive: options.includeSensitive ?? false,
       entries,
       groundingTexts: options.groundingTexts ?? [USER_TEXT],
     })
@@ -176,86 +195,174 @@ describe('applyMemoryExtractionOps', () => {
     expect(await listEntries()).toHaveLength(0)
   })
 
-  it('drops special-category ops when the user did not opt in', async () => {
-    const result = await run([
-      createOp({
-        title: 'Health',
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      }),
-    ])
+  describe('special-category backstop', () => {
+    it('drops a create the seam flags and logs counts only', async () => {
+      detectSpecialCategoriesMock.mockReturnValue(['health'])
 
-    expect(result.dropped).toEqual({ 'sensitive-disabled': 1 })
-    expect(await listEntries()).toHaveLength(0)
-  })
+      const result = await run([createOp({ title: 'Condition' })])
 
-  it('stores special-category ops when opted in', async () => {
-    await testDb.db.update(schema.userSettings)
-      .set({ memoryIncludeSensitive: true })
-      .where(eq(schema.userSettings.userId, userId))
+      expect(result.created).toBe(0)
+      expect(result.dropped).toEqual({ 'special-category': 1 })
+      expect(await listEntries()).toHaveLength(0)
 
-    const result = await run([
-      createOp({
-        title: 'Health',
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      }),
-    ], { includeSensitive: true })
+      const serialized = JSON.stringify(result)
 
-    expect(result.created).toBe(1)
-
-    const [entry] = await listEntries()
-
-    expect(entry).toMatchObject({
-      sensitivity: 'special',
-      sensitiveCategory: 'health',
-    })
-  })
-
-  it('removes a special row again when the opt-out raced the pass', async () => {
-    const result = await run([
-      createOp({
-        title: 'Health',
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      }),
-    ], { includeSensitive: true })
-
-    expect(result.created).toBe(0)
-    expect(result.dropped).toEqual({ 'sensitive-disabled': 1 })
-    expect(await listEntries()).toHaveLength(0)
-  })
-
-  it('never lowers a special entry to none on update', async () => {
-    await testDb.db.update(schema.userSettings)
-      .set({ memoryIncludeSensitive: true })
-      .where(eq(schema.userSettings.userId, userId))
-    await seedEntry(testDb.db, userId, {
-      slug: 'health',
-      title: 'Health',
-      sensitivity: 'special',
-      sensitiveCategory: 'health',
+      expect(serialized).not.toContain('health')
+      expect(serialized).not.toContain('Condition')
+      expect(serialized).not.toContain('Rust')
     })
 
-    const result = await run([
-      createOp({
-        op: 'update',
-        slug: 'health',
-        title: null,
-        description: 'Updated description',
-        body: null,
+    it('checks the exact combined title, description and body', async () => {
+      await run([createOp()])
+
+      expect(detectSpecialCategoriesMock).toHaveBeenCalledWith(
+        'Rust hobby\nWrites Rust on weekends\nThe user writes Rust on weekends.',
+      )
+    })
+
+    it('drops an update the seam flags and keeps the row unchanged',
+      async () => {
+        await seedEntry(testDb.db, userId, {
+          slug: 'rust-hobby',
+          title: 'Rust hobby',
+          description: 'Old description',
+        })
+        detectSpecialCategoriesMock.mockImplementation((text: string) => {
+          return text.includes('New description') ? ['health'] : []
+        })
+
+        const result = await run([
+          createOp({
+            op: 'update',
+            slug: 'rust-hobby',
+            title: null,
+            description: 'New description',
+            body: null,
+          }),
+        ])
+
+        expect(result.updated).toBe(0)
+        expect(result.dropped).toEqual({ 'special-category': 1 })
+        expect((await listEntries())[0]?.description).toBe('Old description')
+      })
+
+    it('checks the merged row when a create merges into an existing entry',
+      async () => {
+        await seedEntry(testDb.db, userId, {
+          slug: 'rust-hobby',
+          title: 'Rust hobby',
+          description: 'Old description',
+          body: 'Existing body.',
+        })
+
+        await run([createOp({ description: 'Merged description' })])
+
+        expect(detectSpecialCategoriesMock).toHaveBeenCalledWith(
+          'Rust hobby\nMerged description\nThe user writes Rust on weekends.',
+        )
+      })
+
+    it('evaluates every op as a non-sensitive row without the opt-in',
+      async () => {
+        await run([createOp()])
+
+        expect(evaluateOverrideMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sensitivity: 'none',
+            includeSensitive: false,
+          }),
+        )
+      })
+
+    it('counts a sensitive-disabled verdict as special-category', async () => {
+      evaluateOverrideMock.mockReturnValueOnce({
+        allowed: false,
+        reason: 'sensitive-disabled',
+      })
+
+      const result = await run([createOp()])
+
+      expect(result.created).toBe(0)
+      expect(result.dropped).toEqual({ 'special-category': 1 })
+      expect(await listEntries()).toHaveLength(0)
+    })
+
+    it('still counts never-store data by kind ahead of the seam', async () => {
+      detectSpecialCategoriesMock.mockReturnValue(['health'])
+
+      const result = await run([
+        createOp({ body: 'Card 4111 1111 1111 1111 is used.' }),
+      ])
+
+      expect(result.dropped).toEqual({ 'never-store': 1 })
+      expect(result.blocked).toMatchObject({ 'payment-card': 1 })
+    })
+
+    it('persists every extracted row as non-sensitive', async () => {
+      const result = await run([
+        createOp(),
+        createOp({ title: 'Editor', evidence: 'I prefer short answers' }),
+      ])
+
+      expect(result.created).toBe(2)
+
+      for (const entry of await listEntries()) {
+        expect(entry).toMatchObject({
+          sensitivity: 'none',
+          sensitiveCategory: null,
+        })
+      }
+    })
+
+    it('keeps rows non-sensitive when updating', async () => {
+      await seedEntry(testDb.db, userId, { slug: 'rust-hobby' })
+
+      const result = await run([
+        createOp({
+          op: 'update',
+          slug: 'rust-hobby',
+          title: null,
+          description: 'Updated description',
+          body: null,
+        }),
+      ])
+
+      expect(result.updated).toBe(1)
+      expect((await listEntries())[0]).toMatchObject({
         sensitivity: 'none',
-      }),
-    ], { includeSensitive: true })
+        sensitiveCategory: null,
+        description: 'Updated description',
+      })
+    })
 
-    expect(result.updated).toBe(1)
+    it('never edits, deletes or duplicates a special row', async () => {
+      await seedEntry(testDb.db, userId, {
+        slug: 'health',
+        title: 'Health',
+        description: 'Original description',
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+      })
 
-    const [entry] = await listEntries()
+      const result = await run([
+        createOp({
+          op: 'update',
+          slug: 'health',
+          title: null,
+          description: 'Rewritten',
+          body: null,
+        }),
+        createOp({ op: 'delete', slug: 'health' }),
+        createOp({ title: 'Health', description: 'Rewritten' }),
+      ])
 
-    expect(entry).toMatchObject({
-      sensitivity: 'special',
-      sensitiveCategory: 'health',
-      description: 'Updated description',
+      expect(result.dropped).toEqual({ locked: 2, duplicate: 1 })
+      expect(await listEntries()).toHaveLength(1)
+      expect((await listEntries())[0]).toMatchObject({
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+        description: 'Original description',
+      })
     })
   })
 
@@ -583,77 +690,6 @@ describe('applyMemoryExtractionOps', () => {
     })
   })
 
-  describe('sensitive category', () => {
-    it('treats a category on a none create as special', async () => {
-      const result = await run([
-        createOp({
-          title: 'Health',
-          sensitivity: 'none',
-          sensitiveCategory: 'health',
-        }),
-        createOp({ title: 'Mood', sensitivity: null, sensitiveCategory: 'drugs' }),
-      ])
-
-      expect(result.dropped).toEqual({ 'sensitive-disabled': 2 })
-      expect(await listEntries()).toHaveLength(0)
-    })
-
-    it('stores it as special once opted in', async () => {
-      await testDb.db.update(schema.userSettings)
-        .set({ memoryIncludeSensitive: true })
-        .where(eq(schema.userSettings.userId, userId))
-
-      const result = await run([
-        createOp({ sensitivity: 'none', sensitiveCategory: 'health' }),
-      ], { includeSensitive: true })
-
-      expect(result.created).toBe(1)
-      expect((await listEntries())[0]).toMatchObject({
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      })
-    })
-
-    it('makes a category-only update on a none entry special', async () => {
-      await seedEntry(testDb.db, userId, { slug: 'rust-hobby' })
-
-      const dropped = await run([
-        createOp({
-          op: 'update',
-          slug: 'rust-hobby',
-          title: null,
-          description: null,
-          body: null,
-          sensitiveCategory: 'health',
-        }),
-      ])
-
-      expect(dropped.dropped).toEqual({ 'sensitive-disabled': 1 })
-      expect((await listEntries())[0]?.sensitivity).toBe('none')
-
-      await testDb.db.update(schema.userSettings)
-        .set({ memoryIncludeSensitive: true })
-        .where(eq(schema.userSettings.userId, userId))
-
-      const applied = await run([
-        createOp({
-          op: 'update',
-          slug: 'rust-hobby',
-          title: null,
-          description: null,
-          body: null,
-          sensitiveCategory: 'health',
-        }),
-      ], { includeSensitive: true })
-
-      expect(applied.updated).toBe(1)
-      expect((await listEntries())[0]).toMatchObject({
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      })
-    })
-  })
-
   it('counts a delete only when a row was removed', async () => {
     const { applyMemoryExtractionOps, loadMemoryExtractionIndex }
       = await loadModules()
@@ -671,7 +707,6 @@ describe('applyMemoryExtractionOps', () => {
       userId,
       projectId: null,
       chatId,
-      includeSensitive: false,
       entries,
       groundingTexts: [USER_TEXT],
     })

@@ -65,6 +65,7 @@ interface MemoryToolContext {
   userId: number
   chatId: string
   projectId: string | null
+  projectDisabled: boolean
   accountVisible: boolean
   sourceMessageId: string | null
   includeSensitive: boolean
@@ -88,6 +89,9 @@ const CALL_LIMIT_SENTENCE = `At most ${CHAT_SEARCH_MAX_CALLS_PER_TURN} calls `
 const UNTRUSTED_CONTENT_MESSAGE = 'Memory writes are unavailable for the rest '
   + 'of this message because content from other sources (search results, '
   + 'files or other chats) was read.'
+
+const PROJECT_MEMORY_OFF_MESSAGE = 'Project memory is turned off for this '
+  + 'project.'
 
 const UNSAVED_ENTRY_MESSAGE = 'The memory entry could not be saved'
 
@@ -270,6 +274,13 @@ function createNotFoundToolError() {
   })
 }
 
+function createProjectMemoryOffError() {
+  return createScopeError(
+    PROJECT_MEMORY_OFF_MESSAGE,
+    'Only account memory can be read or changed in this chat.',
+  )
+}
+
 function isEntryVisible(
   entry: MemoryEntry,
   context: MemoryToolContext,
@@ -282,7 +293,7 @@ function isEntryVisible(
     return context.accountVisible
   }
 
-  return entry.projectId === context.projectId
+  return !context.projectDisabled && entry.projectId === context.projectId
 }
 
 async function listVisibleEntries(
@@ -296,7 +307,7 @@ async function listVisibleEntries(
       scope: { kind: 'account' },
     })
     : []
-  const projectEntries = context.projectId === null
+  const projectEntries = context.projectId === null || context.projectDisabled
     ? []
     : await listMemoryEntries({
       db: context.db,
@@ -358,6 +369,10 @@ async function findEntryByReference(
     return null
   }
 
+  if (handle.projectScoped && context.projectDisabled) {
+    throw createProjectMemoryOffError()
+  }
+
   return await findMemoryEntryBySlug({
     db: context.db,
     userId: context.userId,
@@ -416,6 +431,10 @@ function resolveWriteScope(
       'Project memory is only available in a project chat.',
       'Use scope "account" instead.',
     )
+  }
+
+  if (scope === 'project' && context.projectDisabled) {
+    throw createProjectMemoryOffError()
   }
 
   if (scope === 'account' && !context.accountVisible) {
@@ -616,7 +635,10 @@ const forgetInputSchema = z.object({
  * `withFollowUpTurn()` because the model confirms the result in prose. The
  * scope they can touch is the account memory (hidden inside a project that
  * keeps its memory separate) plus the current chat's project memory; the
- * model can never set a project id or an origin. Every `execute` spends one
+ * model can never set a project id or an origin. When `projectDisabled` is
+ * set (the project turned its memory off), project-scope entries are
+ * invisible and project-scope writes are refused while account memory keeps
+ * working. Every `execute` spends one
  * call from the request budget shared with the chat-search tools before any
  * database access. `memory_write` and `memory_forget` exist only when the
  * current send is a user message with text, and each also needs a
@@ -629,6 +651,7 @@ export function getMemoryTools(input: {
   userId: number
   chatId: string
   projectId: string | null
+  projectDisabled?: boolean
   useAccountMemory: boolean | null
   sourceMessageId: string | null
   userMessageText: string | null
@@ -641,6 +664,7 @@ export function getMemoryTools(input: {
     userId: input.userId,
     chatId: input.chatId,
     projectId: input.projectId,
+    projectDisabled: input.projectDisabled ?? false,
     accountVisible: input.projectId === null
       || (input.useAccountMemory ?? MEMORY_SETTING_DEFAULTS.useAccountMemory),
     sourceMessageId: input.sourceMessageId,

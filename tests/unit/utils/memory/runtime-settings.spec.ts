@@ -45,17 +45,23 @@ describe('loadMemoryRuntimeSettings', () => {
       userId: 1,
       memoryEnabled: true,
       chatSearchEnabled: false,
-      memoryIncludeSensitive: true,
       aboutMe: 'Backend developer',
     })
 
     expect(await load()).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: false,
-      memoryIncludeSensitive: true,
+      memoryIncludeSensitive: false,
       aboutMe: 'Backend developer',
     })
   })
+
+  it('keeps memoryIncludeSensitive false for a legacy stored true',
+    async () => {
+      testDb.insertUserSettings({ userId: 1, memoryIncludeSensitive: true })
+
+      expect((await load()).memoryIncludeSensitive).toBe(false)
+    })
 
   it('keeps explicit false over a true default', async () => {
     testDb.insertUserSettings({ userId: 1, chatSearchEnabled: false })

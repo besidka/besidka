@@ -1,17 +1,18 @@
 import type {
   ComplianceBlockedCounts,
   MemoryCategory,
-  MemorySensitiveCategory,
-  MemorySensitivity,
 } from '#shared/types/memory.d'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import {
   memoryEntryInputSchema,
   memoryEntryPatchSchema,
 } from '#shared/utils/memory-schemas'
-import { and, eq, isNull, notExists } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { evaluateMemoryEntry } from '~~/server/utils/memory/compliance'
+import {
+  detectSpecialCategories,
+} from '~~/server/utils/memory/special-category'
 import type { MemoryExtractionOp } from '~~/server/utils/memory/extract-schema'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import {
@@ -25,6 +26,7 @@ type DbClient = ReturnType<typeof useDb>
 
 const FALLBACK_SLUG_PREFIX = 'entry'
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint'
+const SPECIAL_CATEGORY_DROP_REASON = 'special-category'
 const HASH_MULTIPLIER = 31
 const HASH_RADIX = 36
 const SLUG_SEPARATOR_PATTERN = /[^a-z0-9]+/gu
@@ -83,10 +85,10 @@ export interface MemoryExtractionApplyInput {
   db: DbClient
   userId: number
   projectId: string | null
-  chatId: string
-  includeSensitive: boolean
+  chatId: string | null
   entries: MemoryExtractionIndexEntry[]
   groundingTexts: string[]
+  createGroundingTexts?: string[]
 }
 
 export interface MemoryExtractionApplyResult {
@@ -102,8 +104,6 @@ interface MemoryExtractionPatchFields {
   title?: string
   description?: string
   body?: string
-  sensitivity?: MemorySensitivity
-  sensitiveCategory?: MemorySensitiveCategory
 }
 
 interface PersistedEntryValues {
@@ -111,17 +111,12 @@ interface PersistedEntryValues {
   title: string
   description: string
   body: string
-  sensitivity: MemorySensitivity
-  sensitiveCategory: MemorySensitiveCategory | null
+  sensitivity: 'none'
+  sensitiveCategory: null
 }
 
 interface DropOutcome {
   dropped: string
-}
-
-interface GuardedWriteOutcome {
-  id: string | null
-  purged: boolean
 }
 
 function memoryExtractionHash(value: string): string {
@@ -186,37 +181,19 @@ function memoryExtractionScope(userId: number, projectId: string | null) {
 
 function memoryExtractionMergeSourceChatIds(
   existing: string[],
-  chatId: string,
+  chatId: string | null,
 ): string[] {
+  if (chatId === null) {
+    return existing
+  }
+
   const merged = [...new Set([...existing, chatId])]
 
   return merged.slice(-MEMORY_LIMITS.maxSourceChatIds)
 }
 
-function memoryExtractionSpecialGuard(
-  db: DbClient,
-  input: MemoryExtractionApplyInput,
-  category: MemoryCategory,
-  slug: string,
-) {
-  const optedIn = db
-    .select({ id: schema.userSettings.id })
-    .from(schema.userSettings)
-    .where(and(
-      eq(schema.userSettings.userId, input.userId),
-      eq(schema.userSettings.memoryIncludeSensitive, true),
-    ))
-
-  return db
-    .delete(schema.memoryEntries)
-    .where(and(
-      memoryExtractionScope(input.userId, input.projectId),
-      eq(schema.memoryEntries.category, category),
-      eq(schema.memoryEntries.slug, slug),
-      eq(schema.memoryEntries.sensitivity, 'special'),
-      notExists(optedIn),
-    ))
-    .returning({ id: schema.memoryEntries.id })
+function isEditableEntry(entry: MemoryExtractionIndexEntry): boolean {
+  return entry.origin === 'extraction' && entry.sensitivity !== 'special'
 }
 
 function memoryExtractionLinks(text: string): string[] {
@@ -237,6 +214,7 @@ class MemoryExtractionApplier {
   private readonly input: MemoryExtractionApplyInput
   private readonly entriesByKey = new Map<string, MemoryExtractionIndexEntry>()
   private readonly groundingTexts: string[]
+  private readonly createGroundingTexts: string[]
   private readonly result: MemoryExtractionApplyResult
 
   constructor(input: MemoryExtractionApplyInput) {
@@ -251,6 +229,10 @@ class MemoryExtractionApplier {
     this.groundingTexts = input.groundingTexts.map(
       memoryExtractionNormalizeText,
     )
+    this.createGroundingTexts = [
+      ...this.groundingTexts,
+      ...(input.createGroundingTexts ?? []).map(memoryExtractionNormalizeText),
+    ]
     this.result = {
       proposed: input.ops.length,
       created: 0,
@@ -279,7 +261,7 @@ class MemoryExtractionApplier {
     this.result.dropped[reason] = (this.result.dropped[reason] ?? 0) + 1
   }
 
-  private isGrounded(evidence: string): boolean {
+  private isGrounded(evidence: string, groundingTexts: string[]): boolean {
     const needle = memoryExtractionNormalizeText(evidence)
 
     const wordCount = needle
@@ -294,11 +276,12 @@ class MemoryExtractionApplier {
       return false
     }
 
-    return this.groundingTexts.some(text => text.includes(needle))
+    return groundingTexts.some(text => text.includes(needle))
   }
 
   private hasUngroundedLinks(
     values: PersistedEntryValues,
+    groundingTexts: string[],
     knownText = '',
   ): boolean {
     const links = memoryExtractionLinks(
@@ -308,12 +291,16 @@ class MemoryExtractionApplier {
 
     return links.some((link) => {
       return !knownLinks.has(link)
-        && !this.groundingTexts.some(text => text.includes(link))
+        && !groundingTexts.some(text => text.includes(link))
     })
   }
 
   private async applyOp(op: MemoryExtractionOp) {
-    if (!this.isGrounded(op.evidence)) {
+    const evidenceTexts = op.op === 'create'
+      ? this.createGroundingTexts
+      : this.groundingTexts
+
+    if (!this.isGrounded(op.evidence, evidenceTexts)) {
       this.drop('ungrounded')
 
       return
@@ -346,16 +333,12 @@ class MemoryExtractionApplier {
       title: values.title,
       description: values.description,
       body: values.body,
-      sensitivity: values.sensitivity,
+      sensitivity: 'none',
       extractorNeverStoreKind: op.neverStore,
-      includeSensitive: this.input.includeSensitive,
+      includeSensitive: false,
     })
 
-    if (verdict.allowed) {
-      return null
-    }
-
-    if (verdict.reason === 'never-store') {
+    if (!verdict.allowed && verdict.reason === 'never-store') {
       for (const kind of verdict.kinds) {
         this.result.blocked[kind] = (this.result.blocked[kind] ?? 0) + 1
       }
@@ -363,21 +346,30 @@ class MemoryExtractionApplier {
       return { dropped: 'never-store' }
     }
 
-    return { dropped: 'sensitive-disabled' }
+    if (!verdict.allowed) {
+      return { dropped: SPECIAL_CATEGORY_DROP_REASON }
+    }
+
+    const combinedText = [values.title, values.description, values.body]
+      .join('\n')
+
+    if (detectSpecialCategories(combinedText).length > 0) {
+      return { dropped: SPECIAL_CATEGORY_DROP_REASON }
+    }
+
+    return null
   }
 
   private async applyCreate(
     op: MemoryExtractionOp,
   ): Promise<DropOutcome | null> {
-    const isSpecial = op.sensitivity === 'special'
-      || op.sensitiveCategory !== null
     const parsed = memoryEntryInputSchema.safeParse({
       category: op.category,
       title: op.title ?? '',
       description: op.description ?? '',
       body: op.body?.trim() ?? '',
-      sensitivity: isSpecial ? 'special' : (op.sensitivity ?? 'none'),
-      sensitiveCategory: op.sensitiveCategory,
+      sensitivity: 'none',
+      sensitiveCategory: null,
     })
 
     if (!parsed.success) {
@@ -390,7 +382,7 @@ class MemoryExtractionApplier {
     )
 
     if (existing) {
-      if (existing.origin !== 'extraction') {
+      if (!isEditableEntry(existing)) {
         return { dropped: 'duplicate' }
       }
 
@@ -398,8 +390,6 @@ class MemoryExtractionApplier {
         title: parsed.data.title,
         description: parsed.data.description,
         body: parsed.data.body,
-        sensitivity: parsed.data.sensitivity,
-        sensitiveCategory: parsed.data.sensitiveCategory ?? undefined,
       })
     }
 
@@ -408,11 +398,11 @@ class MemoryExtractionApplier {
       title: parsed.data.title,
       description: parsed.data.description,
       body: parsed.data.body,
-      sensitivity: parsed.data.sensitivity ?? 'none',
-      sensitiveCategory: parsed.data.sensitiveCategory ?? null,
+      sensitivity: 'none',
+      sensitiveCategory: null,
     }
 
-    if (this.hasUngroundedLinks(values)) {
+    if (this.hasUngroundedLinks(values, this.createGroundingTexts)) {
       return { dropped: 'ungrounded' }
     }
 
@@ -430,8 +420,8 @@ class MemoryExtractionApplier {
       return { dropped: 'cap-reached' }
     }
 
-    const sourceChatIds = [this.input.chatId]
-    const insert = this.input.db
+    const sourceChatIds = this.input.chatId ? [this.input.chatId] : []
+    const rows = await this.input.db
       .insert(schema.memoryEntries)
       .values({
         userId: this.input.userId,
@@ -442,19 +432,14 @@ class MemoryExtractionApplier {
         sourceChatIds,
       })
       .returning({ id: schema.memoryEntries.id })
-    const written = await this.writeGuarded(
-      insert,
-      values.sensitivity,
-      values.category,
-      slug,
-    )
+    const writtenId = rows[0]?.id
 
-    if (written.purged || !written.id) {
-      return { dropped: 'sensitive-disabled' }
+    if (!writtenId) {
+      return { dropped: 'unknown-target' }
     }
 
     this.entriesByKey.set(memoryExtractionEntryKey(values.category, slug), {
-      id: written.id,
+      id: writtenId,
       ...values,
       slug,
       origin: 'extraction',
@@ -464,31 +449,6 @@ class MemoryExtractionApplier {
     this.result.created += 1
 
     return null
-  }
-
-  private async writeGuarded(
-    statement: PromiseLike<Array<{ id: string }>>,
-    sensitivity: MemorySensitivity,
-    category: MemoryCategory,
-    slug: string,
-  ): Promise<GuardedWriteOutcome> {
-    if (sensitivity !== 'special') {
-      const rows = await statement
-
-      return { id: rows[0]?.id ?? null, purged: false }
-    }
-
-    const guard = memoryExtractionSpecialGuard(
-      this.input.db,
-      this.input,
-      category,
-      slug,
-    )
-    const [written, purged] = await this.input.db.batch(
-      [statement, guard] as unknown as Parameters<DbClient['batch']>[0],
-    ) as unknown as [Array<{ id: string }>, Array<{ id: string }>]
-
-    return { id: written[0]?.id ?? null, purged: purged.length > 0 }
   }
 
   private async applyUpdate(
@@ -514,15 +474,6 @@ class MemoryExtractionApplier {
       patchFields.body = op.body.trim()
     }
 
-    if (op.sensitivity !== null) {
-      patchFields.sensitivity = op.sensitivity
-    }
-
-    if (op.sensitiveCategory !== null) {
-      patchFields.sensitiveCategory = op.sensitiveCategory
-      patchFields.sensitivity = 'special'
-    }
-
     return await this.mergeIntoExisting(target, op, patchFields)
   }
 
@@ -537,7 +488,7 @@ class MemoryExtractionApplier {
       return { dropped: 'unknown-target' }
     }
 
-    if (target.origin !== 'extraction') {
+    if (!isEditableEntry(target)) {
       return { dropped: 'locked' }
     }
 
@@ -559,19 +510,13 @@ class MemoryExtractionApplier {
       return { dropped: 'invalid' }
     }
 
-    const sensitivity: MemorySensitivity = target.sensitivity === 'special'
-      ? 'special'
-      : (patch.data.sensitivity ?? target.sensitivity)
-    const sensitiveCategory = sensitivity === 'special'
-      ? (patch.data.sensitiveCategory ?? target.sensitiveCategory)
-      : null
     const merged = memoryEntryInputSchema.safeParse({
       category: target.category,
       title: patch.data.title ?? target.title,
       description: patch.data.description ?? target.description,
       body: patch.data.body ?? target.body,
-      sensitivity,
-      sensitiveCategory,
+      sensitivity: 'none',
+      sensitiveCategory: null,
     })
 
     if (!merged.success) {
@@ -583,23 +528,21 @@ class MemoryExtractionApplier {
       title: merged.data.title,
       description: merged.data.description,
       body: merged.data.body,
-      sensitivity,
-      sensitiveCategory: merged.data.sensitiveCategory ?? null,
+      sensitivity: 'none',
+      sensitiveCategory: null,
     }
 
     if (
       values.title === target.title
       && values.description === target.description
       && values.body === target.body
-      && values.sensitivity === target.sensitivity
-      && values.sensitiveCategory === target.sensitiveCategory
     ) {
       return await this.addSourceChat(target)
     }
 
     const knownText = [target.title, target.description, target.body].join('\n')
 
-    if (this.hasUngroundedLinks(values, knownText)) {
+    if (this.hasUngroundedLinks(values, this.groundingTexts, knownText)) {
       return { dropped: 'ungrounded' }
     }
 
@@ -613,14 +556,12 @@ class MemoryExtractionApplier {
       target.sourceChatIds,
       this.input.chatId,
     )
-    const update = this.input.db
+    const rows = await this.input.db
       .update(schema.memoryEntries)
       .set({
         title: values.title,
         description: values.description,
         body: values.body,
-        sensitivity: values.sensitivity,
-        sensitiveCategory: values.sensitiveCategory,
         sourceChatIds,
       })
       .where(and(
@@ -628,21 +569,13 @@ class MemoryExtractionApplier {
         memoryExtractionScope(this.input.userId, this.input.projectId),
       ))
       .returning({ id: schema.memoryEntries.id })
-    const written = await this.writeGuarded(
-      update,
-      values.sensitivity,
-      target.category,
-      target.slug,
-    )
 
-    if (written.purged || !written.id) {
+    if (!rows.length) {
       this.entriesByKey.delete(
         memoryExtractionEntryKey(target.category, target.slug),
       )
 
-      return {
-        dropped: written.purged ? 'sensitive-disabled' : 'unknown-target',
-      }
+      return { dropped: 'unknown-target' }
     }
 
     this.entriesByKey.set(
@@ -657,7 +590,10 @@ class MemoryExtractionApplier {
   private async addSourceChat(
     target: MemoryExtractionIndexEntry,
   ): Promise<DropOutcome | null> {
-    if (target.sourceChatIds.includes(this.input.chatId)) {
+    if (
+      this.input.chatId === null
+      || target.sourceChatIds.includes(this.input.chatId)
+    ) {
       return { dropped: 'unchanged' }
     }
 
@@ -727,10 +663,10 @@ class MemoryExtractionApplier {
  * Applies the extractor's ops sequentially. Each op is independent: it must
  * quote the user's own words (the code-level defence against text echoed by
  * the assistant), pass schema validation on the exact persisted row, pass the
- * compliance gate, and only ever touch an `extraction`-origin row of this
- * user and scope. A special-category write is batched with a delete that
- * removes the row again when the user is not opted in, so an opt-out purge
- * racing the pass cannot leave one behind. Returns counts only.
+ * compliance gate and the special-category backstop, and only ever touch an
+ * `extraction`-origin, non-special row of this user and scope. Extraction
+ * never writes a special-category entry, whatever the user's opt-in says:
+ * every row it persists has `sensitivity: 'none'`. Returns counts only.
  */
 export async function applyMemoryExtractionOps(
   input: MemoryExtractionApplyInput,

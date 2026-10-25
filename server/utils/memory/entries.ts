@@ -87,9 +87,6 @@ const SLUG_RACE_RETRIES = 5
 
 const MAX_ERROR_CAUSE_DEPTH = 5
 
-const SENSITIVE_OPT_IN_FIX
-  = 'Turn on sensitive memory in the memory settings, then try again.'
-
 export function toMemoryEntryWire(row: MemoryEntryRow): MemoryEntry {
   return {
     id: row.id,
@@ -185,9 +182,8 @@ function createSensitiveDisabledError() {
   return createError({
     message: 'Sensitive memory is turned off',
     status: 409,
-    why: 'This entry is marked sensitive and the sensitive memory opt-in '
-      + 'is off.',
-    fix: SENSITIVE_OPT_IN_FIX,
+    why: 'Special-category data is never stored in memory.',
+    fix: 'Remove the sensitive details from the entry and try again.',
   })
 }
 
@@ -279,24 +275,8 @@ function projectCondition(projectId: string | null) {
     : eq(schema.memoryEntries.projectId, projectId)
 }
 
-function sensitiveGuard(userId: number, sensitivity: MemorySensitivity) {
-  return sql`(${sensitivity} = 'none' or exists (select 1 from user_settings where user_id = ${userId} and memory_include_sensitive = 1))`
-}
-
-async function readIncludeSensitive(
-  db: DbClient,
-  userId: number,
-): Promise<boolean> {
-  const [settings] = await db
-    .select({
-      memoryIncludeSensitive: schema.userSettings.memoryIncludeSensitive,
-    })
-    .from(schema.userSettings)
-    .where(eq(schema.userSettings.userId, userId))
-    .limit(1)
-
-  return settings?.memoryIncludeSensitive
-    ?? MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive
+function sensitiveGuard(sensitivity: MemorySensitivity) {
+  return sql`(${sensitivity} = 'none')`
 }
 
 async function resolveOwnedProjectId(
@@ -484,7 +464,7 @@ async function runGuardedInsert(
       where user_id = ${values.userId}
         and project_id is ${values.decodedProjectId}
     ) < ${cap}
-    and ${sensitiveGuard(values.userId, values.sensitivity)}
+    and ${sensitiveGuard(values.sensitivity)}
     and ${ownershipGuard}
     returning id
   `)
@@ -503,10 +483,7 @@ async function throwInsertRejection(
     await assertOwnedProject(db, values.userId, projectId)
   }
 
-  if (
-    values.sensitivity === 'special'
-    && !(await readIncludeSensitive(db, values.userId))
-  ) {
+  if (values.sensitivity === 'special') {
     throw createSensitiveDisabledError()
   }
 
@@ -651,15 +628,13 @@ export async function createMemoryEntry(
     ? null
     : await resolveOwnedProjectId(db, userId, projectId)
 
-  const includeSensitive = await readIncludeSensitive(db, userId)
-
   throwBlockedVerdict(
     evaluateMemoryEntry({
       title: input.title,
       description: input.description,
       body: input.body,
       sensitivity,
-      includeSensitive,
+      includeSensitive: MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
     }),
     logger,
     options.complianceOrigin,
@@ -754,15 +729,13 @@ export async function updateMemoryEntry(
     return throwInvalidEntry(parsedMerged.error.message)
   }
 
-  const includeSensitive = await readIncludeSensitive(db, userId)
-
   throwBlockedVerdict(
     evaluateMemoryEntry({
       title: parsedMerged.data.title,
       description: parsedMerged.data.description,
       body: parsedMerged.data.body,
       sensitivity: parsedMerged.data.sensitivity ?? 'none',
-      includeSensitive,
+      includeSensitive: MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
     }),
     logger,
     options.complianceOrigin,
@@ -794,7 +767,7 @@ export async function updateMemoryEntry(
       .where(and(
         eq(schema.memoryEntries.id, options.id),
         eq(schema.memoryEntries.userId, userId),
-        sensitiveGuard(userId, merged.sensitivity),
+        sensitiveGuard(merged.sensitivity),
       ))
       .returning()
 
@@ -914,8 +887,7 @@ export async function buildMemoryExport(options: {
         ?? MEMORY_SETTING_DEFAULTS.memoryEnabled,
       chatSearchEnabled: settings?.chatSearchEnabled
         ?? MEMORY_SETTING_DEFAULTS.chatSearchEnabled,
-      memoryIncludeSensitive: settings?.memoryIncludeSensitive
-        ?? MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
+      memoryIncludeSensitive: MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
       memoryExtractionEnabled: settings?.memoryExtractionEnabled
         ?? MEMORY_SETTING_DEFAULTS.memoryExtractionEnabled,
       aboutMe: settings?.aboutMe?.trim() || MEMORY_SETTING_DEFAULTS.aboutMe,

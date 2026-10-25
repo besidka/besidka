@@ -2,7 +2,7 @@ import type {
   ComplianceBlockedCounts,
   MemoryScope,
 } from '#shared/types/memory.d'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, notInArray, sql } from 'drizzle-orm'
 import { generateObject } from 'ai'
 import * as schema from '~~/server/db/schema'
 import { redactNeverStore } from '~~/server/utils/memory/compliance'
@@ -28,7 +28,10 @@ import {
   noopProjectMemoryLogger,
 } from '~~/server/utils/projects/memory-lease'
 import type { ProjectMemoryLogger } from '~~/server/utils/projects/memory-lease'
-import { truncateProjectMemoryText } from '~~/server/utils/projects/memory'
+import {
+  getMemoryProviderId,
+  truncateProjectMemoryText,
+} from '~~/server/utils/projects/memory'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -39,6 +42,8 @@ export type MemoryExtractionStatus
     | 'skipped'
     | 'failed'
     | 'leased'
+
+export type MemoryExtractionTrigger = 'sweep' | 'manual'
 
 export interface MemoryExtractionModelInfo {
   source: string | null
@@ -54,6 +59,9 @@ export interface ExtractChatMemoryInput {
   db?: DbClient
   logger?: ProjectMemoryLogger
   resolveCache?: Map<string, ResolvedMemoryModel>
+  selection?: ResolvedMemoryModel
+  trigger?: MemoryExtractionTrigger
+  expectedProjectId?: string
   ignoreIdle?: boolean
   now?: Date
 }
@@ -119,16 +127,24 @@ async function memoryExtractionReadSettings(db: DbClient, userId: number) {
     columns: {
       memoryEnabled: true,
       memoryExtractionEnabled: true,
-      memoryIncludeSensitive: true,
     },
   })
 }
 
 function memoryExtractionIsAllowed(
   settings: Awaited<ReturnType<typeof memoryExtractionReadSettings>>,
+  trigger: MemoryExtractionTrigger,
+  isProjectChat: boolean,
 ): boolean {
-  return settings?.memoryEnabled !== false
-    && settings?.memoryExtractionEnabled === true
+  if (settings?.memoryEnabled === false) {
+    return false
+  }
+
+  if (isProjectChat || trigger === 'manual') {
+    return true
+  }
+
+  return settings?.memoryExtractionEnabled === true
 }
 
 function memoryExtractionOwnChat(chatId: string, userId: number) {
@@ -151,27 +167,66 @@ async function memoryExtractionStampChat(
 
 async function memoryExtractionAdvance(
   db: DbClient,
-  chatId: string,
+  chat: { id: string, projectId: string | null },
   userId: number,
   extractedAt: Date,
+  isManual: boolean,
 ) {
-  await memoryExtractionStampChat(db, chatId, userId, {
-    memoryExtractedAt: extractedAt,
-    memoryExtractionAttemptedAt: null,
-    memoryExtractionFailures: null,
-  })
+  const watermark = chat.projectId
+    ? { projectMemorySummaryUpdatedAt: extractedAt }
+    : { memoryExtractedAt: extractedAt }
+
+  await memoryExtractionStampChat(db, chat.id, userId, isManual
+    ? watermark
+    : {
+      ...watermark,
+      memoryExtractionAttemptedAt: null,
+      memoryExtractionFailures: null,
+    })
+}
+
+async function memoryExtractionBumpProjectMetadata(
+  db: DbClient,
+  projectId: string,
+  userId: number,
+  selection: ResolvedMemoryModel,
+  now: Date,
+) {
+  await db.update(schema.projects)
+    .set({
+      memoryUpdatedAt: now,
+      memoryProvider: getMemoryProviderId(selection),
+      memoryModel: selection.modelId,
+      memoryError: null,
+      memoryStatus: sql`case when ${schema.projects.memoryDirtyAt} is not null then 'stale' else 'ready' end`,
+    })
+    .where(and(
+      eq(schema.projects.id, projectId),
+      eq(schema.projects.userId, userId),
+      notInArray(schema.projects.memoryStatus, ['disabled', 'refreshing']),
+    ))
 }
 
 /**
  * Runs one extraction pass for one chat under a KV lease. Everything that
  * decides whether the pass may run (settings, chat owner, project owner,
  * dirty/idle) is re-read inside the lease. Never throws for a pass failure:
- * the failure counter on the chat is bumped and `failed` is returned. The
- * `no-user-text` and `project-unavailable` skip paths advance
- * `memoryExtractedAt` so the chat is not selected again until new activity.
- * `too-short` never advances it: the user text stays in the next window and
- * accumulates until it is long enough, and the chat is only selected again
- * once new activity arrives.
+ * the failure counter on the chat is bumped and `failed` is returned. A
+ * project chat needs only memory turned on and an available project of the
+ * same owner, never the extraction opt-in, which governs account chats only.
+ * The window floor and the advanced stamp are the project watermark
+ * (`projectMemorySummaryUpdatedAt`) for a project chat, shared by the sweep
+ * and the manual refresh, and `memoryExtractedAt` otherwise. The
+ * `no-user-text` and `project-unavailable` skip paths advance the watermark so
+ * the chat is not selected again until new activity. `too-short` never
+ * advances it: the user text stays in the next window and accumulates until
+ * it is long enough, and the chat is only selected again once new activity
+ * arrives. The `manual` trigger ignores the idle/dirty rule, never touches
+ * the sweep's attempt and failure columns, and requires `expectedProjectId`:
+ * a chat that is no longer in that project (moved out or to another one) is
+ * skipped as `project-changed` without advancing any watermark, so a manual
+ * pass never runs in profile scope. The chat's project is re-read after the
+ * model call for the same reason.
  */
 export async function extractChatMemory(
   input: ExtractChatMemoryInput,
@@ -198,12 +253,14 @@ async function extractLeasedChatMemory(
 ): Promise<ExtractChatMemoryResult> {
   const db = input.db ?? useDb()
   const { userId } = input
+  const trigger = input.trigger ?? 'sweep'
+  const isManual = trigger === 'manual'
   const now = input.now ?? new Date()
   const passStartedAt = new Date(now.getTime() - PASS_START_SAFETY_MS)
 
   const settings = await memoryExtractionReadSettings(db, userId)
 
-  if (!memoryExtractionIsAllowed(settings)) {
+  if (settings?.memoryEnabled === false) {
     return memoryExtractionEmptyResult('skipped', 'disabled')
   }
 
@@ -218,6 +275,7 @@ async function extractLeasedChatMemory(
       memoryExtractedAt: true,
       memoryExtractionAttemptedAt: true,
       memoryExtractionFailures: true,
+      projectMemorySummaryUpdatedAt: true,
     },
   })
 
@@ -225,11 +283,27 @@ async function extractLeasedChatMemory(
     return memoryExtractionEmptyResult('skipped', 'chat-unavailable')
   }
 
-  if (!input.ignoreIdle) {
+  const isProjectChat = !!chat.projectId
+
+  if (
+    (isManual || input.expectedProjectId !== undefined)
+    && (!isProjectChat || chat.projectId !== input.expectedProjectId)
+  ) {
+    return memoryExtractionEmptyResult('skipped', 'project-changed')
+  }
+
+  if (!memoryExtractionIsAllowed(settings, trigger, isProjectChat)) {
+    return memoryExtractionEmptyResult('skipped', 'disabled')
+  }
+
+  const watermark = chat.projectId
+    ? chat.projectMemorySummaryUpdatedAt
+    : chat.memoryExtractedAt
+
+  if (!input.ignoreIdle && !isManual) {
     const isIdle = chat.activityAt.getTime()
       <= now.getTime() - MEMORY_EXTRACTION_LIMITS.idleMs
-    const isDirty = !chat.memoryExtractedAt
-      || chat.memoryExtractedAt < chat.activityAt
+    const isDirty = !watermark || watermark < chat.activityAt
 
     if (!isIdle || !isDirty) {
       return memoryExtractionEmptyResult('skipped', 'not-due')
@@ -249,25 +323,27 @@ async function extractLeasedChatMemory(
     : null
 
   if (chat.projectId && (!project || project.memoryStatus === 'disabled')) {
-    await memoryExtractionAdvance(db, chat.id, userId, passStartedAt)
+    await memoryExtractionAdvance(db, chat, userId, passStartedAt, isManual)
 
     return memoryExtractionEmptyResult('skipped', 'project-unavailable')
   }
 
-  await memoryExtractionStampChat(db, chat.id, userId, {
-    memoryExtractionAttemptedAt: now,
-    ...(chat.memoryExtractionFailures
-      === MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES
-      ? { memoryExtractionFailures: null }
-      : {}),
-  })
+  if (!isManual) {
+    await memoryExtractionStampChat(db, chat.id, userId, {
+      memoryExtractionAttemptedAt: now,
+      ...(chat.memoryExtractionFailures
+        === MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES
+        ? { memoryExtractionFailures: null }
+        : {}),
+    })
+  }
 
   const result = memoryExtractionEmptyResult('extracted')
 
   try {
     const extractionWindow = await loadMemoryExtractionWindow(
       chat.id,
-      chat.memoryExtractedAt,
+      watermark,
       db,
       {
         createdAt: chat.createdAt,
@@ -279,15 +355,18 @@ async function extractLeasedChatMemory(
     result.userChars = extractionWindow.userChars
 
     if (extractionWindow.userChars === 0) {
-      await memoryExtractionAdvance(db, chat.id, userId, passStartedAt)
+      await memoryExtractionAdvance(db, chat, userId, passStartedAt, isManual)
 
       return { ...result, status: 'skipped', reason: 'no-user-text' }
     }
 
     if (extractionWindow.userChars < MEMORY_EXTRACTION_LIMITS.minUserChars) {
-      await memoryExtractionStampChat(db, chat.id, userId, {
-        memoryExtractionFailures: MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
-      })
+      if (!isManual) {
+        await memoryExtractionStampChat(db, chat.id, userId, {
+          memoryExtractionFailures:
+            MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
+        })
+      }
 
       return { ...result, status: 'skipped', reason: 'too-short' }
     }
@@ -296,17 +375,17 @@ async function extractLeasedChatMemory(
     const projectId = project?.id ?? null
     const entries = await loadMemoryExtractionIndex(userId, projectId, db)
     const legacyBlobSource = project
+      && !isManual
       && !project.memoryMigratedAt
       && project.memory?.trim()
       ? project.memory
       : null
     const legacyBlob = legacyBlobSource
       ? truncateProjectMemoryText(
-        legacyBlobSource.trim(),
+        redactNeverStore(legacyBlobSource.trim()).text,
         MEMORY_EXTRACTION_LIMITS.maxLegacyBlobChars,
       )
       : null
-    const includeSensitive = settings?.memoryIncludeSensitive === true
     const maxOps = legacyBlob
       ? MEMORY_EXTRACTION_LIMITS.maxOpsWithLegacyBlob
       : MEMORY_EXTRACTION_LIMITS.maxOpsPerPass
@@ -317,43 +396,21 @@ async function extractLeasedChatMemory(
       projectId,
       chatId: chat.id,
       resolveCache: input.resolveCache,
+      selection: input.selection,
       result,
     })
 
-    const instance = await selection.instantiate()
-    const generation = await generateObject({
-      model: instance.model,
-      reasoning: instance.reasoning,
-      providerOptions: {
-        ...instance.providerOptions,
-        openai: {
-          ...instance.providerOptions.openai,
-          strictJsonSchema: false,
-        },
-      },
-      schema: memoryExtractionOutputSchema,
-      schemaName: 'MemoryExtraction',
-      maxOutputTokens: MEMORY_EXTRACTION_LIMITS.maxOutputTokens,
-      abortSignal: AbortSignal.timeout(
-        MEMORY_EXTRACTION_LIMITS.generationTimeoutMs,
-      ),
-      instructions: buildMemoryExtractionInstructions({
+    const generation = await memoryExtractionGenerate({
+      selection,
+      scope,
+      maxOps,
+      hasLegacyBlob: !!legacyBlob,
+      content: buildMemoryExtractionPromptContent({
         scope,
-        maxOps,
-        includeSensitive,
-        hasLegacyBlob: !!legacyBlob,
+        entries,
+        legacyBlob,
+        transcript: extractionWindow.transcript,
       }),
-      messages: [
-        {
-          role: 'user',
-          content: buildMemoryExtractionPromptContent({
-            scope,
-            entries,
-            legacyBlob,
-            transcript: extractionWindow.transcript,
-          }),
-        },
-      ],
     })
 
     result.usage = {
@@ -363,8 +420,17 @@ async function extractLeasedChatMemory(
 
     const freshSettings = await memoryExtractionReadSettings(db, userId)
 
-    if (!memoryExtractionIsAllowed(freshSettings)) {
+    if (!memoryExtractionIsAllowed(freshSettings, trigger, isProjectChat)) {
       return { ...result, status: 'skipped', reason: 'disabled' }
+    }
+
+    const currentChat = await db.query.chats.findFirst({
+      where: { id: chat.id, userId },
+      columns: { projectId: true },
+    })
+
+    if ((currentChat?.projectId ?? null) !== (chat.projectId ?? null)) {
+      return { ...result, status: 'skipped', reason: 'project-changed' }
     }
 
     const applied = await applyMemoryExtractionOps({
@@ -374,11 +440,9 @@ async function extractLeasedChatMemory(
       userId,
       projectId,
       chatId: chat.id,
-      includeSensitive: freshSettings?.memoryIncludeSensitive === true,
       entries,
-      groundingTexts: legacyBlob
-        ? [...extractionWindow.userTexts, legacyBlob]
-        : extractionWindow.userTexts,
+      groundingTexts: extractionWindow.userTexts,
+      createGroundingTexts: legacyBlob ? [legacyBlob] : [],
     })
 
     result.proposed = applied.proposed
@@ -397,20 +461,39 @@ async function extractLeasedChatMemory(
         userId,
         legacyBlobSource,
         now,
-        result,
+        result.blocked,
         applied.created + applied.updated > 0,
       )
     }
 
-    await memoryExtractionAdvance(
-      db,
-      chat.id,
-      userId,
-      extractionWindow.newestCreatedAt ?? passStartedAt,
-    )
+    const advancedTo = extractionWindow.newestCreatedAt ?? passStartedAt
+
+    await memoryExtractionAdvance(db, chat, userId, advancedTo, isManual)
+
+    if (
+      !isManual
+      && project
+      && applied.created + applied.updated + applied.deleted > 0
+    ) {
+      await memoryExtractionBumpProjectMetadata(
+        db,
+        project.id,
+        userId,
+        selection,
+        now,
+      )
+    }
 
     return result
   } catch (exception) {
+    if (isManual) {
+      return {
+        ...result,
+        status: 'failed',
+        reason: memoryExtractionErrorLabel(exception),
+      }
+    }
+
     const previousFailures = chat.memoryExtractionFailures ?? 0
     const hasNewActivity = !chat.memoryExtractionAttemptedAt
       || chat.activityAt > chat.memoryExtractionAttemptedAt
@@ -427,6 +510,45 @@ async function extractLeasedChatMemory(
   }
 }
 
+async function memoryExtractionGenerate(input: {
+  selection: ResolvedMemoryModel
+  scope: MemoryScope
+  maxOps: number
+  hasLegacyBlob: boolean
+  content: string
+}) {
+  const instance = await input.selection.instantiate()
+
+  return await generateObject({
+    model: instance.model,
+    reasoning: instance.reasoning,
+    providerOptions: {
+      ...instance.providerOptions,
+      openai: {
+        ...instance.providerOptions.openai,
+        strictJsonSchema: false,
+      },
+    },
+    schema: memoryExtractionOutputSchema,
+    schemaName: 'MemoryExtraction',
+    maxOutputTokens: MEMORY_EXTRACTION_LIMITS.maxOutputTokens,
+    abortSignal: AbortSignal.timeout(
+      MEMORY_EXTRACTION_LIMITS.generationTimeoutMs,
+    ),
+    instructions: buildMemoryExtractionInstructions({
+      scope: input.scope,
+      maxOps: input.maxOps,
+      hasLegacyBlob: input.hasLegacyBlob,
+    }),
+    messages: [
+      {
+        role: 'user',
+        content: input.content,
+      },
+    ],
+  })
+}
+
 async function resolveExtractionModel(input: {
   db: DbClient
   userId: number
@@ -434,8 +556,21 @@ async function resolveExtractionModel(input: {
   projectId: string | null
   chatId: string
   resolveCache?: Map<string, ResolvedMemoryModel>
+  selection?: ResolvedMemoryModel
   result: ExtractChatMemoryResult
 }): Promise<ResolvedMemoryModel> {
+  if (input.selection) {
+    input.result.model = {
+      source: input.selection.source,
+      providerId: input.selection.providerId,
+      gatewayId: input.selection.gatewayId,
+      modelId: input.selection.modelId,
+      skipped: [],
+    }
+
+    return input.selection
+  }
+
   const cacheKey = `${input.userId}:${input.scope}:${input.projectId ?? ''}`
   const cached = input.resolveCache?.get(cacheKey)
   const resolutionLog: { value: ModelResolutionLog | null } = { value: null }
@@ -484,30 +619,208 @@ async function resolveExtractionModel(input: {
   return selection
 }
 
+export interface ExtractProjectLegacyBlobInput {
+  projectId: string
+  userId: number
+  selection: ResolvedMemoryModel
+  db?: DbClient
+  logger?: ProjectMemoryLogger
+  now?: Date
+}
+
+export interface ExtractProjectLegacyBlobResult {
+  status: 'migrated' | 'kept' | 'skipped' | 'failed'
+  reason?: string
+  applied: { created: number, updated: number, deleted: number }
+  dropped: Record<string, number>
+  blocked: ComplianceBlockedCounts
+  proposed: number
+  usage: { inputTokens: number, outputTokens: number }
+  modelCalled: boolean
+}
+
+function memoryExtractionEmptyBlobResult(
+  status: ExtractProjectLegacyBlobResult['status'],
+  reason?: string,
+): ExtractProjectLegacyBlobResult {
+  return {
+    status,
+    reason,
+    applied: { created: 0, updated: 0, deleted: 0 },
+    dropped: {},
+    blocked: {},
+    proposed: 0,
+    usage: { inputTokens: 0, outputTokens: 0 },
+    modelCalled: false,
+  }
+}
+
+/**
+ * Converts a project's legacy `projects.memory` blob into entries without a
+ * chat: the redacted blob is the only prompt material and the only grounding
+ * text, so evidence must quote it, only `create` ops are accepted (anything
+ * else is dropped as `invalid`), and no chat id lands in `sourceChatIds`. The
+ * caller holds the project lease. The blob is marked migrated (and redacted in
+ * place) only when at least one create or update was applied, or when the
+ * blob is blank after redaction; otherwise it stays injected and unmarked so
+ * a later refresh can retry. The blob column is never nulled. Never throws
+ * for a pass failure: `failed` carries the error class label.
+ */
+export async function extractProjectLegacyBlob(
+  input: ExtractProjectLegacyBlobInput,
+): Promise<ExtractProjectLegacyBlobResult> {
+  const db = input.db ?? useDb()
+  const { userId, projectId } = input
+  const now = input.now ?? new Date()
+  const result = memoryExtractionEmptyBlobResult('kept')
+
+  try {
+    const settings = await memoryExtractionReadSettings(db, userId)
+
+    if (!memoryExtractionIsAllowed(settings, 'manual', true)) {
+      return memoryExtractionEmptyBlobResult('skipped', 'disabled')
+    }
+
+    const project = await db.query.projects.findFirst({
+      where: { id: projectId, userId },
+      columns: { memory: true, memoryMigratedAt: true },
+    })
+    const blobSource = project?.memory?.trim()
+
+    if (!project || project.memoryMigratedAt || !blobSource) {
+      return memoryExtractionEmptyBlobResult('skipped', 'no-legacy-memory')
+    }
+
+    const redacted = redactNeverStore(blobSource)
+    const isBlank = redacted.text
+      .replaceAll(REDACTION_PLACEHOLDER, '')
+      .trim() === ''
+
+    if (isBlank) {
+      await memoryExtractionMigrateLegacyBlob(
+        db,
+        projectId,
+        userId,
+        blobSource,
+        now,
+        result.blocked,
+        false,
+      )
+
+      return { ...result, status: 'migrated' }
+    }
+
+    const legacyBlob = truncateProjectMemoryText(
+      redacted.text.trim(),
+      MEMORY_EXTRACTION_LIMITS.maxLegacyBlobChars,
+    )
+    const entries = await loadMemoryExtractionIndex(userId, projectId, db)
+    const maxOps = MEMORY_EXTRACTION_LIMITS.maxOpsWithLegacyBlob
+
+    result.modelCalled = true
+
+    const generation = await memoryExtractionGenerate({
+      selection: input.selection,
+      scope: 'project',
+      maxOps,
+      hasLegacyBlob: true,
+      content: buildMemoryExtractionPromptContent({
+        scope: 'project',
+        entries,
+        legacyBlob,
+        transcript: '(no chat messages)',
+      }),
+    })
+
+    result.usage = {
+      inputTokens: generation.usage?.inputTokens ?? 0,
+      outputTokens: generation.usage?.outputTokens ?? 0,
+    }
+
+    const freshSettings = await memoryExtractionReadSettings(db, userId)
+
+    if (!memoryExtractionIsAllowed(freshSettings, 'manual', true)) {
+      return { ...result, status: 'skipped', reason: 'disabled' }
+    }
+
+    const createOps = generation.object.ops.filter((op) => {
+      return op.op === 'create'
+    })
+    const invalidOpsCount = generation.object.ops.length - createOps.length
+    const applied = await applyMemoryExtractionOps({
+      ops: createOps,
+      maxOps,
+      db,
+      userId,
+      projectId,
+      chatId: null,
+      entries,
+      groundingTexts: [],
+      createGroundingTexts: [legacyBlob],
+    })
+
+    result.proposed = applied.proposed + invalidOpsCount
+    result.applied = {
+      created: applied.created,
+      updated: applied.updated,
+      deleted: applied.deleted,
+    }
+    result.dropped = { ...applied.dropped }
+
+    if (invalidOpsCount > 0) {
+      result.dropped.invalid = (result.dropped.invalid ?? 0) + invalidOpsCount
+    }
+    result.blocked = applied.blocked
+
+    const isMigrated = await memoryExtractionMigrateLegacyBlob(
+      db,
+      projectId,
+      userId,
+      blobSource,
+      now,
+      result.blocked,
+      applied.created + applied.updated > 0,
+    )
+
+    return { ...result, status: isMigrated ? 'migrated' : 'kept' }
+  } catch (exception) {
+    return {
+      ...memoryExtractionEmptyBlobResult(
+        'failed',
+        memoryExtractionErrorLabel(exception),
+      ),
+      modelCalled: result.modelCalled,
+    }
+  }
+}
+
 async function memoryExtractionMigrateLegacyBlob(
   db: DbClient,
   projectId: string,
   userId: number,
   blob: string,
   now: Date,
-  result: ExtractChatMemoryResult,
+  blockedTotals: ComplianceBlockedCounts,
   hasAppliedChanges: boolean,
-) {
+): Promise<boolean> {
   const { text, blocked } = redactNeverStore(blob)
   const isBlank = text.replaceAll(REDACTION_PLACEHOLDER, '').trim() === ''
+  const isMigrated = hasAppliedChanges || isBlank
 
   for (const [kind, count] of Object.entries(blocked)) {
     const blockedKind = kind as keyof ComplianceBlockedCounts
 
-    result.blocked[blockedKind] = (result.blocked[blockedKind] ?? 0) + count
+    blockedTotals[blockedKind] = (blockedTotals[blockedKind] ?? 0) + count
   }
 
   await db.update(schema.projects)
-    .set(hasAppliedChanges || isBlank
+    .set(isMigrated
       ? { memoryMigratedAt: now, memory: text }
       : { memory: text })
     .where(and(
       eq(schema.projects.id, projectId),
       eq(schema.projects.userId, userId),
     ))
+
+  return isMigrated
 }

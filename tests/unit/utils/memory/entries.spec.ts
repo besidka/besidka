@@ -530,7 +530,7 @@ describe('memory entries service', () => {
         })).rejects.toMatchObject({ status: 422 })
       })
 
-      it('rejects sensitive entries while the opt-in is off', async () => {
+      it('rejects sensitive entries without a settings row', async () => {
         await expect(create({
           sensitivity: 'special',
           sensitiveCategory: 'health',
@@ -541,7 +541,7 @@ describe('memory entries service', () => {
         expect(testDb.countEntries()).toBe(0)
       })
 
-      it('rejects sensitive entries when the opt-in column is 0', async () => {
+      it('rejects sensitive entries when the legacy column is 0', async () => {
         testDb.insertUserSettings({
           userId: OWNER,
           memoryIncludeSensitive: false,
@@ -551,24 +551,24 @@ describe('memory entries service', () => {
           .rejects.toMatchObject({ status: 409 })
       })
 
-      it('accepts sensitive entries once the opt-in is on', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
+      it('still rejects sensitive entries when the legacy column is 1',
+        async () => {
+          testDb.insertUserSettings({
+            userId: OWNER,
+            memoryIncludeSensitive: true,
+          })
+
+          await expect(create({
+            sensitivity: 'special',
+            sensitiveCategory: 'health',
+          })).rejects.toMatchObject({
+            status: 409,
+            message: 'Sensitive memory is turned off',
+          })
+          expect(testDb.countEntries()).toBe(0)
         })
 
-        const entry = await create({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-
-        expect(entry).toMatchObject({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        })
-      })
-
-      it('ignores another user opt-in', async () => {
+      it('ignores another user legacy column', async () => {
         testDb.insertUserSettings({
           userId: STRANGER,
           memoryIncludeSensitive: true,
@@ -578,17 +578,18 @@ describe('memory entries service', () => {
           .rejects.toMatchObject({ status: 409 })
       })
 
-      it('still blocks never-store data when the opt-in is on', async () => {
-        testDb.insertUserSettings({
-          userId: OWNER,
-          memoryIncludeSensitive: true,
-        })
+      it('blocks never-store data first when the legacy column is 1',
+        async () => {
+          testDb.insertUserSettings({
+            userId: OWNER,
+            memoryIncludeSensitive: true,
+          })
 
-        await expect(create({
-          sensitivity: 'special',
-          body: CARD_NUMBER,
-        })).rejects.toMatchObject({ status: 422 })
-      })
+          await expect(create({
+            sensitivity: 'special',
+            body: CARD_NUMBER,
+          })).rejects.toMatchObject({ status: 422 })
+        })
     })
 
     it('lets exactly one of two concurrent creates take the last slot', async () => {
@@ -929,16 +930,17 @@ describe('memory entries service', () => {
     })
 
     it('clears the sensitive category when sensitivity becomes none', async () => {
-      testDb.insertUserSettings({
+      testDb.insertEntry({
+        id: 5,
         userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
-
-      const created = await create({
+        slug: 'legacy-special',
         sensitivity: 'special',
         sensitiveCategory: 'health',
       })
-      const { entry } = await update(created.id, { sensitivity: 'none' })
+
+      const { entry } = await update(encodePublicId(5), {
+        sensitivity: 'none',
+      })
 
       expect(entry).toMatchObject({
         sensitivity: 'none',
@@ -947,17 +949,15 @@ describe('memory entries service', () => {
     })
 
     it('rejects an explicit sensitive category with sensitivity none', async () => {
-      testDb.insertUserSettings({
+      testDb.insertEntry({
+        id: 5,
         userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
-
-      const created = await create({
+        slug: 'legacy-special',
         sensitivity: 'special',
         sensitiveCategory: 'health',
       })
 
-      await expect(update(created.id, {
+      await expect(update(encodePublicId(5), {
         sensitivity: 'none',
         sensitiveCategory: 'drugs',
       })).rejects.toMatchObject({ status: 400 })
@@ -994,7 +994,7 @@ describe('memory entries service', () => {
         .rejects.toMatchObject({ status: 422 })
     })
 
-    it('rejects making an entry sensitive while the opt-in is off', async () => {
+    it('rejects making an entry sensitive without a settings row', async () => {
       const created = await create()
 
       await expect(update(created.id, { sensitivity: 'special' }))
@@ -1004,23 +1004,24 @@ describe('memory entries service', () => {
         })
     })
 
-    it('allows making an entry sensitive once the opt-in is on', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
+    it('still rejects making an entry sensitive when the legacy column is 1',
+      async () => {
+        testDb.insertUserSettings({
+          userId: OWNER,
+          memoryIncludeSensitive: true,
+        })
 
-      const created = await create()
-      const { entry } = await update(created.id, {
-        sensitivity: 'special',
-        sensitiveCategory: 'religion-or-belief',
-      })
+        const created = await create()
 
-      expect(entry).toMatchObject({
-        sensitivity: 'special',
-        sensitiveCategory: 'religion-or-belief',
+        await expect(update(created.id, {
+          sensitivity: 'special',
+          sensitiveCategory: 'religion-or-belief',
+        })).rejects.toMatchObject({
+          status: 409,
+          message: 'Sensitive memory is turned off',
+        })
+        expect(readStoredRow(1)).toMatchObject({ sensitivity: 'none' })
       })
-    })
 
     it('makes the slug the category name when moving into profile', async () => {
       const created = await create({ title: 'About me' })
@@ -1231,27 +1232,28 @@ describe('memory entries service', () => {
         .toEqual(['Account entry', 'Project entry'])
     })
 
-    it('reflects stored settings', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryEnabled: true,
-        chatSearchEnabled: false,
-        memoryIncludeSensitive: true,
-        aboutMe: '  I am a tester  ',
-      })
+    it('reflects stored settings and exports a constant false sensitive flag',
+      async () => {
+        testDb.insertUserSettings({
+          userId: OWNER,
+          memoryEnabled: true,
+          chatSearchEnabled: false,
+          memoryIncludeSensitive: true,
+          aboutMe: '  I am a tester  ',
+        })
 
-      const exported = await buildMemoryExport({
-        db: testDb.db,
-        userId: OWNER,
-      })
+        const exported = await buildMemoryExport({
+          db: testDb.db,
+          userId: OWNER,
+        })
 
-      expect(exported.settings).toMatchObject({
-        memoryEnabled: true,
-        chatSearchEnabled: false,
-        memoryIncludeSensitive: true,
-        aboutMe: 'I am a tester',
+        expect(exported.settings).toMatchObject({
+          memoryEnabled: true,
+          chatSearchEnabled: false,
+          memoryIncludeSensitive: false,
+          aboutMe: 'I am a tester',
+        })
       })
-    })
 
     it('never includes another user data', async () => {
       testDb.insertProject({ id: 8, userId: STRANGER, memory: 'Secret blob' })

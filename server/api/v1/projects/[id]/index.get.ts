@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { resolveLegacyProjectMemory } from '~~/server/utils/projects/legacy-memory'
 import { resolveProjectMemoryDisplayStatus } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
@@ -43,6 +44,7 @@ export default defineEventHandler(async (event) => {
       memoryProvider: true,
       memoryModel: true,
       memoryError: true,
+      memoryMigratedAt: true,
       pinnedAt: true,
       archivedAt: true,
       activityAt: true,
@@ -57,8 +59,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const { memoryMigratedAt, ...projectFields } = project
+
   return {
-    ...project,
+    ...projectFields,
+    memory: await resolveLegacyProjectMemory(
+      { id: project.id, memory: project.memory, memoryMigratedAt },
+      userId,
+      db,
+      logger,
+    ),
     memoryStatus: await resolveProjectMemoryDisplayStatus(
       project.memoryStatus,
       project.id,

@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import { refreshProjectMemory } from '~~/server/utils/projects/memory'
+import { buildProjectMemoryCard } from '~~/server/utils/projects/memory-card'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -7,7 +7,7 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
   const params = z.object({
-    slug: z.ulid(),
+    id: z.string().nonempty(),
   }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
@@ -24,39 +24,17 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
-  const db = useDb()
   const userId = parseInt(session.user.id)
-  const chat = await db.query.chats.findFirst({
-    where: {
-      slug: params.data.slug,
-      userId,
-    },
-    columns: {
-      projectId: true,
-    },
-  })
-
-  if (!chat) {
-    throw createError({
-      message: 'Chat not found',
-      status: 404,
-    })
-  }
 
   logger.set({
     userId,
-    slug: params.data.slug,
-    projectId: chat.projectId,
+    projectId: params.data.id,
   })
 
-  if (!chat.projectId) {
-    return {
-      memoryStatus: 'idle',
-      memory: null,
-      memoryProvider: null,
-      memoryModel: null,
-    }
-  }
-
-  return await refreshProjectMemory(chat.projectId, userId, db, logger)
+  return await buildProjectMemoryCard(
+    params.data.id,
+    userId,
+    useDb(),
+    logger,
+  )
 })

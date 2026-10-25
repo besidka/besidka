@@ -45,6 +45,7 @@ describe('memory tools', () => {
   function build(overrides: {
     userId?: number
     projectId?: number | null
+    projectDisabled?: boolean
     useAccountMemory?: boolean | null
     userMessageText?: string | null
     includeSensitive?: boolean
@@ -61,6 +62,7 @@ describe('memory tools', () => {
         : overrides.projectId === null
           ? null
           : encodePublicId(overrides.projectId),
+      projectDisabled: overrides.projectDisabled,
       useAccountMemory: overrides.useAccountMemory ?? null,
       sourceMessageId: MESSAGE_ID,
       userMessageText: overrides.userMessageText === undefined
@@ -976,7 +978,7 @@ describe('memory tools', () => {
       expect(loggerSet).toHaveBeenCalled()
     })
 
-    it('turns a sensitive write with the opt-in off into a 409 tool error',
+    it('turns a sensitive write into a 409 tool error',
       async () => {
         await expect(
           build().tools.memory_write!.execute(
@@ -993,27 +995,31 @@ describe('memory tools', () => {
         expect(testDb.countEntries()).toBe(0)
       })
 
-    it('stores a sensitive entry when the opt-in is on', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryIncludeSensitive: true,
-      })
+    it.each([false, true])(
+      'still refuses a sensitive write when a legacy opt-in is stored '
+      + '(includeSensitive %s)',
+      async (includeSensitive) => {
+        testDb.insertUserSettings({
+          userId: OWNER,
+          memoryIncludeSensitive: true,
+        })
 
-      const output = await build({ includeSensitive: true })
-        .tools.memory_write!.execute(
-        writeInput({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
-        }),
-        toolOptions,
-      )
-
-      expect(output.action).toBe('created')
-      expect(readRowBySlug('cooking')).toMatchObject({
-        sensitivity: 'special',
-        sensitive_category: 'health',
-      })
-    })
+        await expect(
+          build({ includeSensitive }).tools.memory_write!.execute(
+            writeInput({
+              sensitivity: 'special',
+              sensitiveCategory: 'health',
+            }),
+            toolOptions,
+          ),
+        ).rejects.toMatchObject({
+          status: 409,
+          message: expect.stringContaining('Sensitive memory is turned off'),
+        })
+        expect(testDb.countEntries()).toBe(0)
+        expect(readRowBySlug('cooking')).toBeUndefined()
+      },
+    )
 
     it('puts the why and the fix of a service error into the message the '
       + 'model sees', async () => {
@@ -1300,6 +1306,195 @@ describe('memory tools', () => {
         ).rejects.toMatchObject({ status: 404 })
         expect(readRow(1)).toBeDefined()
       })
+  })
+
+  describe('project memory turned off', () => {
+    const FORGET_MESSAGE = 'Forget the launch plan and the cooking note.'
+
+    beforeEach(() => {
+      testDb.insertEntry({ id: 1, userId: OWNER, slug: 'account-one' })
+      testDb.insertEntry({
+        id: 2,
+        userId: OWNER,
+        projectId: PROJECT_ID,
+        slug: 'launch-plan',
+        title: 'Launch plan',
+      })
+    })
+
+    it('refuses an explicit project-scope write and writes nothing',
+      async () => {
+        const { tools } = build({
+          projectId: PROJECT_ID,
+          projectDisabled: true,
+        })
+
+        await expect(
+          tools.memory_write!.execute(
+            writeInput({ scope: 'project', title: 'Roadmap' }),
+            toolOptions,
+          ),
+        ).rejects.toMatchObject({
+          status: 400,
+          message: expect.stringContaining('Project memory is turned off'),
+        })
+        expect(testDb.countEntries()).toBe(2)
+      })
+
+    it('refuses the default project scope of a separate-memory project',
+      async () => {
+        const { tools } = build({
+          projectId: PROJECT_ID,
+          projectDisabled: true,
+          useAccountMemory: false,
+        })
+
+        await expect(
+          tools.memory_write!.execute(writeInput(), toolOptions),
+        ).rejects.toMatchObject({
+          status: 400,
+          message: expect.stringContaining('Project memory is turned off'),
+        })
+        expect(testDb.countEntries()).toBe(2)
+      })
+
+    it('keeps writing account memory', async () => {
+      const { tools } = build({
+        projectId: PROJECT_ID,
+        projectDisabled: true,
+        useAccountMemory: true,
+      })
+      const output = await tools.memory_write!.execute(
+        writeInput({ scope: 'account', title: 'Roadmap' }),
+        toolOptions,
+      )
+
+      expect(output.entry.scope).toBe('account')
+      expect(readRowBySlug('roadmap')?.project_id).toBeNull()
+    })
+
+    it('refuses to update a project entry by id and keeps it unchanged',
+      async () => {
+        const { tools } = build({
+          projectId: PROJECT_ID,
+          projectDisabled: true,
+        })
+
+        await expect(
+          tools.memory_write!.execute(
+            writeInput({ id: encodePublicId(2), title: 'Launch plan' }),
+            toolOptions,
+          ),
+        ).rejects.toMatchObject({ status: 404 })
+        expect(readRow(2)?.body).not.toBe('Cooks pasta twice a week.')
+      })
+
+    it('lists account entries only', async () => {
+      const { tools } = build({
+        projectId: PROJECT_ID,
+        projectDisabled: true,
+      })
+      const output = await tools.memory_list!.execute({}, toolOptions)
+
+      expect(output.entries.map((entry: any) => entry.handle)).toEqual([
+        'topics/account-one',
+      ])
+    })
+
+    it('refuses to read a project entry by handle and by id', async () => {
+      const { tools } = build({
+        projectId: PROJECT_ID,
+        projectDisabled: true,
+      })
+
+      await expect(
+        tools.memory_read!.execute(
+          { id: 'project/topics/launch-plan' },
+          toolOptions,
+        ),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringContaining('Project memory is turned off'),
+      })
+      await expect(
+        tools.memory_read!.execute({ id: encodePublicId(2) }, toolOptions),
+      ).rejects.toMatchObject({ status: 404 })
+    })
+
+    it('still reads an account entry', async () => {
+      const { tools } = build({
+        projectId: PROJECT_ID,
+        projectDisabled: true,
+      })
+      const output = await tools.memory_read!.execute(
+        { id: 'topics/account-one' },
+        toolOptions,
+      )
+
+      expect(output.entry.scope).toBe('account')
+    })
+
+    it('refuses to forget a project entry and keeps it', async () => {
+      const { tools } = build({
+        projectId: PROJECT_ID,
+        projectDisabled: true,
+        userMessageText: FORGET_MESSAGE,
+      })
+
+      await expect(
+        tools.memory_forget!.execute(
+          {
+            id: 'project/topics/launch-plan',
+            userRequestQuote: 'Forget the launch plan',
+          },
+          toolOptions,
+        ),
+      ).rejects.toMatchObject({ status: 400 })
+      await expect(
+        tools.memory_forget!.execute(
+          {
+            id: encodePublicId(2),
+            userRequestQuote: 'Forget the launch plan',
+          },
+          toolOptions,
+        ),
+      ).rejects.toMatchObject({ status: 404 })
+      expect(readRow(2)).toBeDefined()
+    })
+
+    it('still forgets an account entry', async () => {
+      const { tools } = build({
+        projectId: PROJECT_ID,
+        projectDisabled: true,
+        userMessageText: 'Please forget the account note.',
+      })
+      const output = await tools.memory_forget!.execute(
+        {
+          id: encodePublicId(1),
+          userRequestQuote: 'forget the account note',
+        },
+        toolOptions,
+      )
+
+      expect(output.removed.scope).toBe('account')
+      expect(readRow(1)).toBeUndefined()
+    })
+
+    it('leaves project scope working when projectDisabled is false or '
+      + 'omitted', async () => {
+      for (const projectDisabled of [false, undefined]) {
+        const { tools } = build({ projectId: PROJECT_ID, projectDisabled })
+        const output = await tools.memory_write!.execute(
+          writeInput({
+            scope: 'project',
+            title: `Roadmap ${String(projectDisabled)}`,
+          }),
+          toolOptions,
+        )
+
+        expect(output.entry.scope).toBe('project')
+      }
+    })
   })
 
   describe('untrusted content guard', () => {

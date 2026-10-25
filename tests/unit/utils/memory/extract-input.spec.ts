@@ -3,6 +3,7 @@ import {
   createMemoryExtractionTestDb,
   minutesBefore,
   seedChat,
+  seedEntry,
   seedMessage,
   seedUser,
   textPart,
@@ -306,7 +307,6 @@ describe('memory extraction input', () => {
     const instructions = buildMemoryExtractionInstructions({
       scope: 'project',
       maxOps: 15,
-      includeSensitive: false,
       hasLegacyBlob: true,
     })
 
@@ -315,5 +315,121 @@ describe('memory extraction input', () => {
     expect(instructions).toContain('verbatim')
     expect(instructions).toContain('at most 15 ops')
     expect(instructions).toContain('<legacy-memory>')
+  })
+
+  it('tells the extractor to record the plain fact and drop the reason',
+    async () => {
+      const { buildMemoryExtractionInstructions } = await loadInput()
+      const instructions = buildMemoryExtractionInstructions({
+        scope: 'profile',
+        maxOps: 10,
+        hasLegacyBlob: false,
+      })
+
+      expect(instructions).toContain(
+        '"vegetarian", not "vegetarian for religious reasons"',
+      )
+      expect(instructions).toContain('Never infer such attributes')
+      expect(instructions).toContain('omit the fact')
+
+      for (const topic of [
+        'health',
+        'religion or beliefs',
+        'political opinions',
+        'racial or ethnic origin',
+        'sex life or sexual orientation',
+        'trade-union membership',
+        'genetic or biometric data',
+        'ongoing legal disputes',
+        'drug use',
+      ]) {
+        expect(instructions).toContain(topic)
+      }
+    })
+
+  it('does not ask the extractor to label sensitive attributes', async () => {
+    const { buildMemoryExtractionInstructions } = await loadInput()
+    const instructions = buildMemoryExtractionInstructions({
+      scope: 'profile',
+      maxOps: 10,
+      hasLegacyBlob: false,
+    })
+
+    expect(instructions).not.toContain('sensitivity')
+    expect(instructions).not.toContain('sensitiveCategory')
+    expect(instructions).not.toContain('"special"')
+    expect(instructions).not.toContain('did not allow')
+  })
+
+  it('keeps special entries out of the prompt index', async () => {
+    const { renderMemoryExtractionIndex, buildMemoryExtractionPromptContent }
+      = await loadInput()
+    const base = {
+      id: 'e1',
+      category: 'topics' as const,
+      slug: 'one',
+      title: 'One',
+      description: 'First',
+      body: 'Body one',
+      sensitivity: 'none' as const,
+      sensitiveCategory: null,
+      origin: 'extraction' as const,
+      sourceChatIds: [],
+      bodyHidden: false,
+    }
+    const special = {
+      ...base,
+      id: 'e2',
+      slug: 'secret-special',
+      title: 'Secret special title',
+      description: 'Secret special description',
+      body: 'Secret special body',
+      sensitivity: 'special' as const,
+      sensitiveCategory: 'health' as const,
+      origin: 'user' as const,
+    }
+    const rendered = renderMemoryExtractionIndex('profile', [base, special])
+
+    expect(rendered).toContain('topics/one')
+    expect(rendered).not.toContain('secret-special')
+    expect(rendered).not.toContain('Secret special')
+    expect(rendered).not.toContain('sensitivity')
+    expect(renderMemoryExtractionIndex('profile', [special]))
+      .toContain('(empty)')
+    expect(buildMemoryExtractionPromptContent({
+      scope: 'profile',
+      entries: [base, special],
+      legacyBlob: null,
+      transcript: 'User: hi',
+    })).not.toContain('Secret special')
+  })
+
+  it('does not spend the body budget on special entries', async () => {
+    const { loadMemoryExtractionIndex } = await loadInput()
+    const { MEMORY_EXTRACTION_LIMITS } = await import(
+      '~~/server/utils/memory/extract-limits'
+    )
+    const userId = await seedUser(testDb.db)
+
+    await seedEntry(testDb.db, userId, {
+      slug: 'special-one',
+      title: 'Special one',
+      body: 'x'.repeat(MEMORY_EXTRACTION_LIMITS.indexBodyBudgetChars),
+      sensitivity: 'special',
+      sensitiveCategory: 'health',
+      origin: 'user',
+    })
+    await seedEntry(testDb.db, userId, {
+      slug: 'plain-one',
+      title: 'Plain one',
+      body: 'Plain body',
+    })
+
+    const entries = await loadMemoryExtractionIndex(userId, null, testDb.db)
+    const plain = entries.find(entry => entry.slug === 'plain-one')
+    const special = entries.find(entry => entry.slug === 'special-one')
+
+    expect(plain?.bodyHidden).toBe(false)
+    expect(special?.bodyHidden).toBe(true)
   })
 })

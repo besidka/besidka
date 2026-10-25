@@ -9,6 +9,13 @@ if (!googleProjectMemoryModel) {
   throw new Error('Project memory model must be configured in providers')
 }
 
+const mocks = vi.hoisted(() => ({
+  refreshProjectMemoryFromChats: vi.fn(),
+  toggleProjectMemory: vi.fn(),
+  buildProjectMemoryCard: vi.fn(),
+  assertNotCrossSiteRequest: vi.fn(),
+}))
+
 vi.mock('evlog', () => ({
   useLogger: () => ({
     set: vi.fn(),
@@ -32,25 +39,32 @@ vi.mock('evlog', () => ({
   },
 }))
 
-vi.mock('~~/server/utils/projects/memory', () => ({
-  refreshProjectMemory: vi.fn(async (projectId: string) => ({
-    memoryStatus: 'ready',
-    memory: `Memory for ${projectId}`,
-    memoryProvider: 'google',
-    memoryModel: googleProjectMemoryModel.id,
-  })),
-  toggleProjectMemory: vi.fn(
-    async (_projectId: string, _userId: number, enabled: boolean) => ({
-      memoryStatus: enabled ? 'ready' : 'disabled',
-      memory: enabled ? 'Rebuilt memory' : null,
-      memoryUpdatedAt: enabled ? '2026-03-13T09:00:00.000Z' : null,
-      memoryDirtyAt: null,
-      memoryProvider: enabled ? 'google' : null,
-      memoryModel: enabled ? googleProjectMemoryModel.id : null,
-      memoryError: null,
-    }),
-  ),
+vi.mock('~~/server/utils/projects/memory-refresh', () => ({
+  refreshProjectMemoryFromChats: mocks.refreshProjectMemoryFromChats,
+  toggleProjectMemory: mocks.toggleProjectMemory,
 }))
+
+vi.mock('~~/server/utils/projects/memory-card', () => ({
+  buildProjectMemoryCard: mocks.buildProjectMemoryCard,
+}))
+
+function createCard(overrides: Record<string, unknown> = {}) {
+  return {
+    projectId: 'project-1',
+    memoryStatus: 'ready',
+    memoryUpdatedAt: '2026-03-13T09:00:00.000Z',
+    memoryDirtyAt: null,
+    memoryProvider: 'google',
+    memoryModel: googleProjectMemoryModel!.id,
+    memoryError: null,
+    usesEntries: true,
+    legacyMemory: null,
+    total: 1,
+    limits: {},
+    groups: [],
+    ...overrides,
+  }
+}
 
 async function getRefreshProjectMemoryHandler() {
   const module = await import(
@@ -62,15 +76,15 @@ async function getRefreshProjectMemoryHandler() {
 
 async function getToggleProjectMemoryHandler() {
   const module = await import(
-    '../../../server/api/v1/projects/[id]/memory.patch'
+    '../../../server/api/v1/projects/[id]/memory/index.patch'
   )
 
   return module.default
 }
 
-async function getRefreshChatProjectContextHandler() {
+async function getProjectMemoryCardHandler() {
   const module = await import(
-    '../../../server/api/v1/chats/[slug]/project-context/refresh.post'
+    '../../../server/api/v1/projects/[id]/memory/index.get'
   )
 
   return module.default
@@ -80,7 +94,20 @@ describe('project memory API', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+    mocks.refreshProjectMemoryFromChats.mockResolvedValue(createCard())
+    mocks.buildProjectMemoryCard.mockResolvedValue(createCard())
+    mocks.toggleProjectMemory.mockImplementation(
+      async (_projectId: string, _userId: number, enabled: boolean) => {
+        return createCard({
+          memoryStatus: enabled ? 'ready' : 'disabled',
+          memoryUpdatedAt: enabled ? '2026-03-13T09:00:00.000Z' : null,
+          memoryProvider: enabled ? 'google' : null,
+          memoryModel: enabled ? googleProjectMemoryModel!.id : null,
+        })
+      },
+    )
 
+    vi.stubGlobal('assertNotCrossSiteRequest', mocks.assertNotCrossSiteRequest)
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
       statusCode?: number
@@ -117,76 +144,58 @@ describe('project memory API', () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
     }))
+    vi.stubGlobal('useDb', () => ({ marker: 'db' }))
   })
 
-  it('refreshes project memory for a project', async () => {
+  it('refreshes project memory for a project and returns the card', async () => {
     const handler = await getRefreshProjectMemoryHandler()
 
     const response = await handler({
       params: { id: 'project-1' },
     } as never)
 
-    expect(response).toEqual({
+    expect(mocks.refreshProjectMemoryFromChats).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      userId: 1,
+      logger: expect.objectContaining({ set: expect.any(Function) }),
+    })
+    expect(response).toMatchObject({
+      projectId: 'project-1',
       memoryStatus: 'ready',
-      memory: 'Memory for project-1',
       memoryProvider: 'google',
-      memoryModel: googleProjectMemoryModel.id,
+      memoryModel: googleProjectMemoryModel!.id,
+      usesEntries: true,
     })
   })
 
-  it('skips chat project-context refresh when chat has no project', async () => {
-    const handler = await getRefreshChatProjectContextHandler()
-    const db = {
-      query: {
-        chats: {
-          findFirst: vi.fn(async () => ({
-            projectId: null,
-          })),
-        },
-      },
-    }
-
-    vi.stubGlobal('useDb', () => db)
+  it('returns the project memory card for the signed-in owner', async () => {
+    const handler = await getProjectMemoryCardHandler()
 
     const response = await handler({
-      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      params: { id: 'project-1' },
     } as never)
 
-    expect(response).toEqual({
-      memoryStatus: 'idle',
-      memory: null,
-      memoryProvider: null,
-      memoryModel: null,
-    })
+    expect(mocks.buildProjectMemoryCard).toHaveBeenCalledWith(
+      'project-1',
+      1,
+      { marker: 'db' },
+      expect.objectContaining({ set: expect.any(Function) }),
+    )
+    expect(response).toEqual(createCard())
   })
 
-  it('refreshes project-context memory using the current chat project', async () => {
-    const handler = await getRefreshChatProjectContextHandler()
-    const db = {
-      query: {
-        chats: {
-          findFirst: vi.fn(async () => ({
-            projectId: 'project-2',
-          })),
-        },
-      },
-    }
+  it('rejects the project memory card without a session', async () => {
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
 
-    vi.stubGlobal('useDb', () => db)
+    const handler = await getProjectMemoryCardHandler()
 
-    const response = await handler({
-      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
-    } as never)
-
-    expect(response).toEqual({
-      memoryStatus: 'ready',
-      memory: 'Memory for project-2',
-      memoryProvider: 'google',
-      memoryModel: googleProjectMemoryModel.id,
-    })
+    await expect(handler({
+      params: { id: 'project-1' },
+    } as never)).rejects.toMatchObject({ statusCode: 401 })
+    expect(mocks.buildProjectMemoryCard).not.toHaveBeenCalled()
   })
 
-  it('toggles project memory enabled state', async () => {
+  it('toggles project memory enabled state and returns the card', async () => {
     const handler = await getToggleProjectMemoryHandler()
 
     const disabledResponse = await handler({
@@ -198,23 +207,49 @@ describe('project memory API', () => {
       body: { enabled: true },
     } as never)
 
-    expect(disabledResponse).toEqual({
+    expect(disabledResponse).toMatchObject({
       memoryStatus: 'disabled',
-      memory: null,
       memoryUpdatedAt: null,
-      memoryDirtyAt: null,
       memoryProvider: null,
       memoryModel: null,
-      memoryError: null,
     })
-    expect(enabledResponse).toEqual({
+    expect(enabledResponse).toMatchObject({
       memoryStatus: 'ready',
-      memory: 'Rebuilt memory',
       memoryUpdatedAt: '2026-03-13T09:00:00.000Z',
-      memoryDirtyAt: null,
       memoryProvider: 'google',
-      memoryModel: googleProjectMemoryModel.id,
-      memoryError: null,
+      memoryModel: googleProjectMemoryModel!.id,
     })
+  })
+
+  it('rejects a cross-site refresh and toggle before doing any work', async () => {
+    mocks.assertNotCrossSiteRequest.mockImplementation(() => {
+      throw (globalThis as any).createError({ status: 403, message: 'Forbidden' })
+    })
+
+    const refreshHandler = await getRefreshProjectMemoryHandler()
+    const toggleHandler = await getToggleProjectMemoryHandler()
+
+    await expect(refreshHandler({
+      params: { id: 'project-1' },
+    } as never)).rejects.toMatchObject({ status: 403 })
+    await expect(toggleHandler({
+      params: { id: 'project-1' },
+      body: { enabled: true },
+    } as never)).rejects.toMatchObject({ status: 403 })
+    expect(mocks.refreshProjectMemoryFromChats).not.toHaveBeenCalled()
+    expect(mocks.toggleProjectMemory).not.toHaveBeenCalled()
+  })
+
+  it('guards the refresh and toggle routes against cross-site calls', async () => {
+    const refreshHandler = await getRefreshProjectMemoryHandler()
+    const toggleHandler = await getToggleProjectMemoryHandler()
+
+    await refreshHandler({ params: { id: 'project-1' } } as never)
+    await toggleHandler({
+      params: { id: 'project-1' },
+      body: { enabled: true },
+    } as never)
+
+    expect(mocks.assertNotCrossSiteRequest).toHaveBeenCalledTimes(2)
   })
 })

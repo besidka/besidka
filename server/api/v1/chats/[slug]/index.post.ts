@@ -1188,6 +1188,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const userMessageText = readUserMessageText(newMessage.parts)
+  const projectMemoryDisabled = chat.projectId === null
+    ? false
+    : chat.project
+      ? chat.project.memoryStatus === 'disabled'
+      : null
 
   if (chatSearchBudget && memoryToolsRegistered) {
     const { tools: memoryTools } = getMemoryTools({
@@ -1195,6 +1200,7 @@ export default defineEventHandler(async (event) => {
       userId,
       chatId: chat.id,
       projectId: chat.projectId,
+      projectDisabled: projectMemoryDisabled !== false,
       useAccountMemory: chat.project?.useAccountMemory ?? null,
       sourceMessageId: newMessage.id,
       userMessageText,
@@ -1213,6 +1219,7 @@ export default defineEventHandler(async (event) => {
     db,
     userId,
     projectId: chat.projectId,
+    projectMemoryDisabled,
     useAccountMemory: chat.project?.useAccountMemory ?? null,
     settings: memorySettings,
     hasMemoryTools: memoryToolsRegistered,
