@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(async () => undefined),
   invalidateStorageCache: vi.fn(async () => undefined),
+  findKnowledgeLinkedFileIds: vi.fn(async () => new Set<string>()),
+}))
+
+vi.mock('~~/server/utils/knowledge/linked-files', () => ({
+  findKnowledgeLinkedFileIds: mocks.findKnowledgeLinkedFileIds,
 }))
 
 vi.mock('~~/server/utils/files/convert-files-for-ai', () => ({
@@ -57,6 +62,7 @@ describe('cleanupFilesOrphanedByChatDeletion', () => {
     vi.clearAllMocks()
     mocks.invalidateFileCache.mockResolvedValue(undefined)
     mocks.invalidateStorageCache.mockResolvedValue(undefined)
+    mocks.findKnowledgeLinkedFileIds.mockResolvedValue(new Set<string>())
   })
 
   it('is a no-op when there are no candidate files', async () => {
@@ -230,5 +236,70 @@ describe('cleanupFilesOrphanedByChatDeletion', () => {
         }),
       }),
     }))
+  })
+
+  it('keeps a file a project knowledge item links to', async () => {
+    const storageDelete = vi.fn(async () => undefined)
+    const deleteWhere = vi.fn(async () => undefined)
+    const deleteQuery = vi.fn(() => ({ where: deleteWhere }))
+
+    mocks.findKnowledgeLinkedFileIds.mockResolvedValue(new Set(['file-2']))
+    vi.stubGlobal('useFileStorage', () => ({ delete: storageDelete }))
+    vi.stubGlobal('useDb', () => ({
+      select: vi.fn(() => createJoinWhereChain([])),
+      delete: deleteQuery,
+    }))
+
+    const { cleanupFilesOrphanedByChatDeletion } = await loadModule()
+    const result = await cleanupFilesOrphanedByChatDeletion(
+      [
+        { id: 'file-1', storageKey: 'key-1' },
+        { id: 'file-2', storageKey: 'key-2' },
+      ],
+      7,
+      createLogger(),
+    )
+
+    expect(mocks.findKnowledgeLinkedFileIds).toHaveBeenCalledWith(
+      7,
+      ['file-1', 'file-2'],
+    )
+    expect(storageDelete).toHaveBeenCalledWith(['key-1'])
+    expect(deleteQuery).toHaveBeenCalledOnce()
+    expect(result).toEqual({
+      candidateCount: 2,
+      stillReferencedCount: 1,
+      deletedCount: 1,
+      failedCount: 0,
+    })
+  })
+
+  it('deletes nothing when every candidate is linked by knowledge', async () => {
+    const storageDelete = vi.fn(async () => undefined)
+    const deleteQuery = vi.fn()
+
+    mocks.findKnowledgeLinkedFileIds.mockResolvedValue(new Set(['file-1']))
+    vi.stubGlobal('useFileStorage', () => ({ delete: storageDelete }))
+    vi.stubGlobal('useDb', () => ({
+      select: vi.fn(() => createJoinWhereChain([])),
+      delete: deleteQuery,
+    }))
+
+    const { cleanupFilesOrphanedByChatDeletion } = await loadModule()
+    const result = await cleanupFilesOrphanedByChatDeletion(
+      [{ id: 'file-1', storageKey: 'key-1' }],
+      1,
+      createLogger(),
+    )
+
+    expect(storageDelete).not.toHaveBeenCalled()
+    expect(deleteQuery).not.toHaveBeenCalled()
+    expect(mocks.invalidateStorageCache).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      candidateCount: 1,
+      stillReferencedCount: 1,
+      deletedCount: 0,
+      failedCount: 0,
+    })
   })
 })

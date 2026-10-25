@@ -4,6 +4,10 @@ import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  findKnowledgeProjectIdsForFiles,
+} from '~~/server/utils/knowledge/linked-files'
+import { bumpKnowledgeVersion } from '~~/server/utils/knowledge/version'
 import { defineEventHandler, readBody, setResponseStatus } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -33,6 +37,26 @@ export default defineEventHandler(async (event) => {
   const { ids } = body.data
   const userId = parseInt(session.user.id)
   const db = useDb()
+
+  try {
+    const knowledgeProjectIds = await findKnowledgeProjectIdsForFiles(
+      userId,
+      ids,
+    )
+
+    await bumpKnowledgeVersion(knowledgeProjectIds)
+  } catch (exception) {
+    logger.set({
+      knowledgeVersionBump: {
+        fileCount: ids.length,
+      },
+      attributes: {
+        knowledgeVersionBump: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 
   let deletedCount = 0
   let failedCount = 0

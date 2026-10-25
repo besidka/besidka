@@ -5,6 +5,7 @@ import * as schema from '~~/server/db/schema'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { findKnowledgeLinkedFileIds } from '~~/server/utils/knowledge/linked-files'
 
 const MAX_BATCH_QUERY_PARAMS = 90
 
@@ -137,6 +138,16 @@ export async function cleanupFilesOrphanedByChatDeletion(
     candidateFiles.map(file => file.storageKey),
     userId,
   )
+  const knowledgeLinkedFileIds = await findKnowledgeLinkedFileIds(
+    userId,
+    candidateFiles.map(file => file.id),
+  )
+
+  for (const file of candidateFiles) {
+    if (knowledgeLinkedFileIds.has(file.id)) {
+      stillReferencedStorageKeys.add(file.storageKey)
+    }
+  }
 
   const filesToDelete = candidateFiles.filter((file) => {
     return !stillReferencedStorageKeys.has(file.storageKey)
