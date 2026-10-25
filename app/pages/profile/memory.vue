@@ -20,7 +20,7 @@
       :settings="values"
       :save="save"
     />
-    <ProfileMemoryEntries />
+    <ProfileMemoryEntries :settings="values" />
   </div>
 </template>
 

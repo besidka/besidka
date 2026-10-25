@@ -1,15 +1,13 @@
 import { parseError } from 'evlog'
 import type { Ref } from 'vue'
+import type { MemorySettingsFields } from '#shared/types/memory.d'
 import type {
   MemorySaveOutcome,
   MemorySaveResult,
-  MemoryUiSettings,
   MemorySettingsSave,
 } from '~/types/memory-settings.d'
 
-const MEMORY_EXTRACTION_DEFAULT = false
-
-const memorySettingKeys: Array<keyof MemoryUiSettings> = [
+const memorySettingKeys: Array<keyof MemorySettingsFields> = [
   'memoryEnabled',
   'memoryExtractionEnabled',
   'chatSearchEnabled',
@@ -22,9 +20,9 @@ const memorySettingKeys: Array<keyof MemoryUiSettings> = [
 ]
 
 function pickMemorySettings(
-  source: Partial<MemoryUiSettings>,
-): Partial<MemoryUiSettings> {
-  const picked: Partial<MemoryUiSettings> = {}
+  source: Partial<MemorySettingsFields>,
+): Partial<MemorySettingsFields> {
+  const picked: Partial<MemorySettingsFields> = {}
 
   for (const key of memorySettingKeys) {
     if (key in source) {
@@ -36,12 +34,12 @@ function pickMemorySettings(
 }
 
 export function useMemorySettingsSaver(
-  settings: Ref<Partial<MemoryUiSettings> | null | undefined>,
+  settings: Ref<MemorySettingsFields | null | undefined>,
 ) {
-  const values = computed<MemoryUiSettings>(() => {
+  const values = computed<MemorySettingsFields>(() => {
     return {
       memoryEnabled: MEMORY_SETTING_DEFAULTS.memoryEnabled,
-      memoryExtractionEnabled: MEMORY_EXTRACTION_DEFAULT,
+      memoryExtractionEnabled: MEMORY_SETTING_DEFAULTS.memoryExtractionEnabled,
       chatSearchEnabled: MEMORY_SETTING_DEFAULTS.chatSearchEnabled,
       memoryIncludeSensitive: MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
       aboutMe: MEMORY_SETTING_DEFAULTS.aboutMe,
@@ -53,20 +51,20 @@ export function useMemorySettingsSaver(
     }
   })
 
-  let persisted: Partial<MemoryUiSettings> | null = null
+  let persisted: Partial<MemorySettingsFields> | null = null
   let versionCounter = 0
   let requestQueue: Promise<unknown> = Promise.resolve()
-  const latestVersions: Partial<Record<keyof MemoryUiSettings, number>> = {}
+  const latestVersions: Partial<Record<keyof MemorySettingsFields, number>> = {}
 
   function isLatestForKey(
-    key: keyof MemoryUiSettings,
+    key: keyof MemorySettingsFields,
     version: number,
   ): boolean {
     return (latestVersions[key] ?? 0) <= version
   }
 
   async function sendPatch(
-    patch: Partial<MemoryUiSettings>,
+    patch: Partial<MemorySettingsFields>,
     version: number,
   ): Promise<MemorySaveOutcome> {
     try {
@@ -78,12 +76,12 @@ export function useMemorySettingsSaver(
         },
       )
       const confirmed = pickMemorySettings(response ?? {})
-      const visible: Partial<MemoryUiSettings> = {}
+      const visible: Partial<MemorySettingsFields> = {}
 
       persisted = { ...persisted, ...confirmed }
 
       for (const key of Object.keys(confirmed) as Array<
-        keyof MemoryUiSettings
+        keyof MemorySettingsFields
       >) {
         if (isLatestForKey(key, version)) {
           Object.assign(visible, { [key]: confirmed[key] })
@@ -94,9 +92,11 @@ export function useMemorySettingsSaver(
 
       return { ok: true, result: response ?? {} }
     } catch (exception) {
-      const rollback: Partial<MemoryUiSettings> = {}
+      const rollback: Partial<MemorySettingsFields> = {}
 
-      for (const key of Object.keys(patch) as Array<keyof MemoryUiSettings>) {
+      for (const key of Object.keys(patch) as Array<
+        keyof MemorySettingsFields
+      >) {
         if (isLatestForKey(key, version)) {
           Object.assign(rollback, { [key]: persisted?.[key] })
         }
@@ -114,7 +114,7 @@ export function useMemorySettingsSaver(
 
     const version = versionCounter
 
-    for (const key of Object.keys(patch) as Array<keyof MemoryUiSettings>) {
+    for (const key of Object.keys(patch) as Array<keyof MemorySettingsFields>) {
       latestVersions[key] = version
     }
 
