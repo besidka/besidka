@@ -96,6 +96,7 @@ export function createMemoryTestDb(): MemoryTestDb {
       chat_search_enabled integer,
       memory_include_sensitive integer,
       memory_extraction_enabled integer,
+      memory_extraction_enabled_at integer,
       about_me text,
       profile_memory_model text,
       profile_memory_gateway text,

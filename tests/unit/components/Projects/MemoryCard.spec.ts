@@ -96,7 +96,11 @@ function createCard(
 
 async function mountCard(
   card: ProjectMemoryCardResponse | null,
-  props: { isRefreshing?: boolean, isToggling?: boolean } = {},
+  props: {
+    isRefreshing?: boolean
+    isToggling?: boolean
+    automaticUpdates?: boolean
+  } = {},
 ) {
   const wrapper = await mountSuspended(MemoryCard, {
     props: {
@@ -125,17 +129,39 @@ async function mountCard(
 }
 
 describe('Projects/MemoryCard', () => {
-  it('renders the title, the hint and no badge when ready', async () => {
-    const wrapper = await mountCard(createCard())
+  it('renders the title, the automatic hint and no badge when ready',
+    async () => {
+      const wrapper = await mountCard(createCard(), {
+        automaticUpdates: true,
+      })
+      const hint = wrapper.get('[data-testid="project-memory-hint"]')
 
-    expect(wrapper.text()).toContain('Project memory')
-    expect(wrapper.text()).toContain(
-      'Projects keep their memory up to date automatically; turn it off per '
-      + 'project.',
-    )
-    expect(wrapper.find('[data-testid="project-memory-status"]').exists())
-      .toBe(false)
-  })
+      expect(wrapper.text()).toContain('Project memory')
+      expect(hint.text()).toBe(
+        'Updates automatically after chats in this project; turn it off per '
+        + 'project.',
+      )
+      expect(wrapper.find('[data-testid="project-memory-settings-link"]')
+        .exists()).toBe(false)
+      expect(wrapper.find('[data-testid="project-memory-status"]').exists())
+        .toBe(false)
+    })
+
+  it('treats automatic updates as off by default and links to settings',
+    async () => {
+      const wrapper = await mountCard(createCard())
+      const hint = wrapper.get('[data-testid="project-memory-hint"]')
+      const link = wrapper.get(
+        '[data-testid="project-memory-settings-link"]',
+      )
+
+      expect(hint.text().replace(/\s+/g, ' ')).toBe(
+        'Automatic updates are off. Use Refresh memory, or turn on Generate '
+        + 'memory from chats in Memory settings.',
+      )
+      expect(link.text()).toBe('Memory settings')
+      expect(link.attributes('data-to')).toBe(JSON.stringify('/profile/memory'))
+    })
 
   it('shows the model, the updated age and the error label', async () => {
     const wrapper = await mountCard(createCard({
@@ -145,7 +171,7 @@ describe('Projects/MemoryCard', () => {
     const meta = wrapper.get('[data-testid="project-memory-meta"]')
 
     expect(wrapper.get('[data-testid="project-memory-status"]').text())
-      .toBe('Stale')
+      .toContain('Out of date')
     expect(meta.text()).toContain('Model: google / gemini-3.1-flash-lite')
     expect(meta.text()).toContain('Updated')
     expect(meta.text()).toContain('Hit the per-run cap')
@@ -290,23 +316,75 @@ describe('Projects/MemoryCard', () => {
       .attributes('data-open')).toBe('false')
   })
 
-  it('shows the empty state when nothing is remembered', async () => {
-    const wrapper = await mountCard(createCard({
-      memoryStatus: 'idle',
-      total: 0,
-      groups: [],
-    }))
+  it('explains the out-of-date badge when updates are off', async () => {
+    const wrapper = await mountCard(createCard({ memoryStatus: 'stale' }))
+    const badge = wrapper.get('[data-testid="project-memory-status"]')
 
-    expect(wrapper.get('[data-testid="project-memory-status"]').text())
-      .toBe('Empty')
-    expect(wrapper.get('[data-testid="project-memory-empty"]').text())
-      .toBe(
-        'Nothing remembered for this project yet. Memory builds up from this '
-        + 'project\'s chats.',
-      )
-    expect(wrapper.find('[data-testid="project-memory-count"]').exists())
-      .toBe(false)
+    expect(badge.attributes('title')).toBe(
+      'Not updated automatically. Use Refresh memory to update it.',
+    )
+    expect(wrapper.get('[data-testid="project-memory-status-explanation"]')
+      .text()).toBe(
+      'Not updated automatically. Use Refresh memory to update it.',
+    )
   })
+
+  it('explains the out-of-date badge when updates are on', async () => {
+    const wrapper = await mountCard(
+      createCard({ memoryStatus: 'stale' }),
+      { automaticUpdates: true },
+    )
+    const badge = wrapper.get('[data-testid="project-memory-status"]')
+    const explanation = 'It will update after your next chat in this project, '
+      + 'or use Refresh memory.'
+
+    expect(badge.attributes('title')).toBe(explanation)
+    expect(wrapper.get('[data-testid="project-memory-status-explanation"]')
+      .text()).toBe(explanation)
+  })
+
+  it('adds no explanation to badges other than out of date', async () => {
+    const wrapper = await mountCard(createCard({ memoryStatus: 'failed' }))
+    const badge = wrapper.get('[data-testid="project-memory-status"]')
+
+    expect(badge.text()).toBe('Failed')
+    expect(badge.attributes('title')).toBeUndefined()
+    expect(wrapper.find('[data-testid="project-memory-status-explanation"]')
+      .exists()).toBe(false)
+  })
+
+  it('shows the empty state with refresh guidance when updates are off',
+    async () => {
+      const wrapper = await mountCard(createCard({
+        memoryStatus: 'idle',
+        total: 0,
+        groups: [],
+      }))
+
+      expect(wrapper.get('[data-testid="project-memory-status"]').text())
+        .toBe('Empty')
+      expect(wrapper.get('[data-testid="project-memory-empty"]').text())
+        .toBe(
+          'Nothing remembered for this project yet. Use Refresh memory to '
+          + 'build it from this project\'s chats.',
+        )
+      expect(wrapper.find('[data-testid="project-memory-count"]').exists())
+        .toBe(false)
+    })
+
+  it('shows the empty state with build-up copy when updates are on',
+    async () => {
+      const wrapper = await mountCard(
+        createCard({ memoryStatus: 'idle', total: 0, groups: [] }),
+        { automaticUpdates: true },
+      )
+
+      expect(wrapper.get('[data-testid="project-memory-empty"]').text())
+        .toBe(
+          'Nothing remembered for this project yet. It will build up from '
+          + 'chats in this project.',
+        )
+    })
 
   it('hides the Empty badge when an idle project already has entries',
     async () => {

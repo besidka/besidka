@@ -135,21 +135,24 @@ describe('POST /api/v1/memory/extract-now', () => {
     expect(kv.put).not.toHaveBeenCalled()
   })
 
-  it('answers 409 with a fix when extraction is off', async () => {
+  it('runs an account chat with the extraction toggle off', async () => {
     const chat = await seedChat(testDb.db, userId)
 
     await testDb.db.update(schema.userSettings)
       .set({ memoryExtractionEnabled: false })
       .where(eq(schema.userSettings.userId, userId))
 
-    await expect(call(chat.slug)).rejects.toMatchObject({
-      status: 409,
-      fix: expect.any(String),
-    })
-    expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+    expect(await call(chat.slug)).toMatchObject({ status: 'extracted' })
+    expect(mocks.extractChatMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chat: { id: chat.id },
+        ignoreIdle: true,
+        explicit: true,
+      }),
+    )
   })
 
-  it('runs a project chat with the extraction opt-in off', async () => {
+  it('runs a project chat with the extraction toggle off', async () => {
     const projectId = await seedProject(testDb.db, userId)
     const chat = await seedChat(testDb.db, userId, { projectId })
 
@@ -159,7 +162,11 @@ describe('POST /api/v1/memory/extract-now', () => {
 
     expect(await call(chat.slug)).toMatchObject({ status: 'extracted' })
     expect(mocks.extractChatMemory).toHaveBeenCalledWith(
-      expect.objectContaining({ chat: { id: chat.id }, ignoreIdle: true }),
+      expect.objectContaining({
+        chat: { id: chat.id },
+        ignoreIdle: true,
+        explicit: true,
+      }),
     )
   })
 
@@ -175,17 +182,21 @@ describe('POST /api/v1/memory/extract-now', () => {
     expect(mocks.extractChatMemory).not.toHaveBeenCalled()
   })
 
-  it('answers 409 when memory is off', async () => {
+  it('answers 409 with a fix when memory is off', async () => {
     const chat = await seedChat(testDb.db, userId)
 
     await testDb.db.update(schema.userSettings)
       .set({ memoryEnabled: false })
       .where(eq(schema.userSettings.userId, userId))
 
-    await expect(call(chat.slug)).rejects.toMatchObject({ status: 409 })
+    await expect(call(chat.slug)).rejects.toMatchObject({
+      status: 409,
+      fix: expect.any(String),
+    })
+    expect(mocks.extractChatMemory).not.toHaveBeenCalled()
   })
 
-  it('answers 409 when the user has no settings row', async () => {
+  it('runs when the user has no settings row', async () => {
     const userWithoutSettings = await seedUser(testDb.db, null)
     const chat = await seedChat(testDb.db, userWithoutSettings)
 
@@ -193,7 +204,7 @@ describe('POST /api/v1/memory/extract-now', () => {
       user: { id: String(userWithoutSettings) },
     }))
 
-    await expect(call(chat.slug)).rejects.toMatchObject({ status: 409 })
+    expect(await call(chat.slug)).toMatchObject({ status: 'extracted' })
   })
 
   it('answers 429 while the cooldown is active', async () => {
@@ -214,6 +225,7 @@ describe('POST /api/v1/memory/extract-now', () => {
         chat: { id: chat.id },
         userId,
         ignoreIdle: true,
+        explicit: true,
       }),
     )
     expect(response).toEqual({

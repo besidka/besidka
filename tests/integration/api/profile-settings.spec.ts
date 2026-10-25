@@ -14,6 +14,7 @@ interface SettingsRecord {
   favoriteGatewayModels: Record<string, string[]> | null
   memoryEnabled: boolean | null
   memoryExtractionEnabled: boolean | null
+  memoryExtractionEnabledAt: Date | null
   chatSearchEnabled: boolean | null
   memoryIncludeSensitive: boolean | null
   aboutMe: string | null
@@ -35,6 +36,7 @@ const columnDefaults: Omit<SettingsRecord, 'id'> = {
   favoriteGatewayModels: null,
   memoryEnabled: null,
   memoryExtractionEnabled: null,
+  memoryExtractionEnabledAt: null,
   chatSearchEnabled: null,
   memoryIncludeSensitive: null,
   aboutMe: null,
@@ -1400,6 +1402,113 @@ describe('profile settings API', () => {
           expect(dbMock.spies.chatStampSet).not.toHaveBeenCalled()
           expect(dbMock.getSettings()?.memoryExtractionEnabled).toBe(false)
         })
+
+      describe('memoryExtractionEnabledAt cut-over', () => {
+        const earlierCutOver = new Date('2026-01-01T00:00:00.000Z')
+
+        it('records the cut-over with the chat stamp when turned on',
+          async () => {
+            const patchHandler = await patchSettingsHandler()
+            const dbMock = setup()
+
+            dbMock.seed({ memoryExtractionEnabled: false })
+
+            const response = await patchHandler(patchEvent({
+              memoryExtractionEnabled: true,
+            }))
+            const stampValues = dbMock.spies.chatStampSet.mock.calls[0]![0] as {
+              memoryExtractedAt: Date
+            }
+            const cutOver = dbMock.getSettings()?.memoryExtractionEnabledAt
+
+            expect(response).toEqual({ memoryExtractionEnabled: true })
+            expect(cutOver).toBeInstanceOf(Date)
+            expect(cutOver).toEqual(stampValues.memoryExtractedAt)
+          })
+
+        it('records the cut-over in the insert when no row exists yet',
+          async () => {
+            const patchHandler = await patchSettingsHandler()
+            const dbMock = setup()
+
+            await patchHandler(patchEvent({ memoryExtractionEnabled: true }))
+
+            const [insertedValues] = dbMock.spies.insertValues.mock.calls[0]!
+            const stampValues = dbMock.spies.chatStampSet.mock.calls[0]![0] as {
+              memoryExtractedAt: Date
+            }
+
+            expect(insertedValues.memoryExtractionEnabledAt)
+              .toEqual(stampValues.memoryExtractedAt)
+          })
+
+        it('records the cut-over when memoryEnabled goes false to true with '
+          + 'extraction on', async () => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          dbMock.seed({ memoryEnabled: false, memoryExtractionEnabled: true })
+
+          const response = await patchHandler(patchEvent({
+            memoryEnabled: true,
+          }))
+
+          expect(response).toEqual({ memoryEnabled: true })
+          expect(dbMock.getSettings()?.memoryExtractionEnabledAt)
+            .toBeInstanceOf(Date)
+        })
+
+        it('keeps the cut-over when true is sent again', async () => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          dbMock.seed({
+            memoryExtractionEnabled: true,
+            memoryExtractionEnabledAt: earlierCutOver,
+          })
+          await patchHandler(patchEvent({ memoryExtractionEnabled: true }))
+          await patchHandler(patchEvent({ memoryEnabled: true }))
+
+          expect(dbMock.getSettings()?.memoryExtractionEnabledAt)
+            .toEqual(earlierCutOver)
+          expect(dbMock.spies.updateSet.mock.calls.every(([values]) => {
+            return !('memoryExtractionEnabledAt' in values)
+          })).toBe(true)
+        })
+
+        it('does not clear the cut-over when extraction is switched off',
+          async () => {
+            const patchHandler = await patchSettingsHandler()
+            const dbMock = setup()
+
+            dbMock.seed({
+              memoryEnabled: true,
+              memoryExtractionEnabled: true,
+              memoryExtractionEnabledAt: earlierCutOver,
+            })
+            await patchHandler(patchEvent({ memoryExtractionEnabled: false }))
+            await patchHandler(patchEvent({ memoryEnabled: false }))
+
+            expect(dbMock.getSettings()?.memoryExtractionEnabledAt)
+              .toEqual(earlierCutOver)
+          })
+
+        it('moves the cut-over forward when extraction is switched on again',
+          async () => {
+            const patchHandler = await patchSettingsHandler()
+            const dbMock = setup()
+
+            dbMock.seed({
+              memoryExtractionEnabled: false,
+              memoryExtractionEnabledAt: earlierCutOver,
+            })
+            await patchHandler(patchEvent({ memoryExtractionEnabled: true }))
+
+            const cutOver = dbMock.getSettings()?.memoryExtractionEnabledAt
+
+            expect(cutOver!.getTime()).toBeGreaterThan(earlierCutOver.getTime())
+          })
+      })
 
       it('changes nothing when the backlog batch rejects', async () => {
         const patchHandler = await patchSettingsHandler()
