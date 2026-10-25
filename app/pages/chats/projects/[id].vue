@@ -53,6 +53,11 @@
       @save="saveProjectInstructions"
     />
 
+    <ProjectsKnowledgePanel
+      v-if="projectId"
+      :project-id="projectId"
+    />
+
     <ProjectsMemoryCard
       :project-id="projectId"
       :card="memoryCard ?? null"

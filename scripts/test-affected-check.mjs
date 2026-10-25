@@ -494,6 +494,32 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Security/Passkeys.spec.ts',
   ]
 
+  const projectKnowledgeClientTests = [
+    'tests/unit/workers/knowledge-extract.spec.ts',
+    'tests/unit/utils/knowledge-hash.spec.ts',
+    'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
+    'tests/unit/utils/knowledge-upload-plan.spec.ts',
+    'tests/unit/utils/knowledge-folder.spec.ts',
+    'tests/unit/utils/project-knowledge-ui.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/composables/knowledge-extract.spec.ts',
+    'tests/unit/composables/project-knowledge.spec.ts',
+    'tests/unit/composables/knowledge-upload.spec.ts',
+    'tests/unit/composables/project-knowledge-model.spec.ts',
+    'tests/unit/composables/project-knowledge-folders.spec.ts',
+    'tests/unit/components/Profile/Memory/CacheInfo.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Panel.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Item.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ItemList.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ItemEditSheet.spec.ts',
+    'tests/unit/components/Projects/Knowledge/NoteEditor.spec.ts',
+    'tests/unit/components/Projects/Knowledge/UploadSheet.spec.ts',
+    'tests/unit/components/Projects/Knowledge/LibraryPicker.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ModeSelector.spec.ts',
+    'tests/unit/components/Projects/Knowledge/CapacityMeter.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Menu.spec.ts',
+  ]
+
   const memoryTabTests = [
     'tests/unit/pages/profile/memory.spec.ts',
     'tests/unit/components/Profile/Memory/ModelPicker.spec.ts',
@@ -1730,6 +1756,11 @@ export function getAffectedTests(changedFiles) {
         ...twoFactorTests,
         ...accountEmailPasswordTests,
       ],
+    },
+    {
+      pattern:
+        /^(app\/workers\/knowledge-extract\.ts|app\/components\/Projects\/Knowledge\/.*\.vue|app\/components\/Profile\/Memory\/CacheInfo\.vue|app\/composables\/(knowledge-extract|knowledge-upload|project-knowledge|project-knowledge-model|project-knowledge-folders)\.ts|app\/utils\/(knowledge-hash|knowledge-html-to-markdown|knowledge-upload-plan|knowledge-folder|project-knowledge-ui|reasoning)\.ts|app\/types\/(knowledge-extract|knowledge-ui|project-knowledge)\.d\.ts|tests\/setup\/helpers\/knowledge-(fixtures|ui-fixtures)\.ts)$/,
+      tests: projectKnowledgeClientTests,
     },
     {
       pattern: /^app\/layouts\/profile\.vue$/,

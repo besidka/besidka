@@ -140,8 +140,8 @@ function stubViewport(isDesktop: boolean) {
   })))
 }
 
-async function mountInfo() {
-  const wrapper = await mountSuspended(CacheInfo)
+async function mountInfo(props: Record<string, unknown> = {}) {
+  const wrapper = await mountSuspended(CacheInfo, { props })
 
   await flushPromises()
 
@@ -685,6 +685,136 @@ describe('Profile/Memory/CacheInfo', () => {
 
       expect(wrapper.get('[data-testid="memory-cache-info-toggle"]').text())
         .toBe('Repeated context is much cheaper with prompt caching')
+    })
+  })
+
+  describe('project knowledge mode', () => {
+    it('uses the real knowledge tokens instead of the example budget',
+      async () => {
+        const wrapper = await mountInfo({ knowledgeTokens: 12_500 })
+        const estimate = estimatePromptCacheCost({
+          tokens: 12_500,
+          turns: 20,
+          inputPrice: 3,
+          cacheReadPrice: 0.3,
+          cacheWritePrice: 3.75,
+        })
+
+        expect(text(wrapper, 'memory-cache-info-tokens'))
+          .toBe(formatApproxTokens(12_500))
+        expect(text(wrapper, 'memory-cache-info-uncached'))
+          .toBe(formatCostUsd(estimate.uncached))
+        expect(text(wrapper, 'memory-cache-info-cached'))
+          .toBe(formatCostUsd(estimate.cached))
+        expect(text(wrapper, 'memory-cache-info-per-change'))
+          .toBe(formatCostUsd(estimate.perChange))
+      })
+
+    it.each([undefined, 0, -5])(
+      'keeps the 64k-style example for knowledgeTokens %s',
+      async (knowledgeTokens) => {
+        const wrapper = await mountInfo({ knowledgeTokens })
+
+        expect(text(wrapper, 'memory-cache-info-tokens')).toBe('64k')
+      },
+    )
+
+    it('keeps the model budget for a small window when no tokens are given',
+      async () => {
+        selectProvider(SMALL_WINDOW)
+
+        const wrapper = await mountInfo({ knowledgeTokens: undefined })
+
+        expect(text(wrapper, 'memory-cache-info-tokens'))
+          .toBe(formatApproxTokens(8960))
+      })
+
+    it('does not cap the real tokens at the example budget', async () => {
+      selectProvider(SMALL_WINDOW)
+
+      const wrapper = await mountInfo({ knowledgeTokens: 60_000 })
+
+      expect(text(wrapper, 'memory-cache-info-tokens')).toBe('60k')
+    })
+
+    it('hides the memory index sentence when asked', async () => {
+      mocks.entriesData.value = entriesResponse([memoryEntry()])
+
+      const shown = await mountInfo()
+      const hidden = await mountInfo({ showMemoryIndex: false })
+
+      expect(shown.find('[data-testid="memory-cache-info-memory-index"]')
+        .exists()).toBe(true)
+      expect(hidden.find('[data-testid="memory-cache-info-memory-index"]')
+        .exists()).toBe(false)
+    })
+  })
+
+  describe('collapsed after the first view', () => {
+    const SEEN_KEY = 'knowledge-cache-info-seen'
+
+    beforeEach(() => {
+      window.localStorage.clear()
+    })
+
+    it('is open the first time and records that it was seen', async () => {
+      stubViewport(false)
+
+      const wrapper = await mountInfo({ collapsedAfterFirstView: true })
+
+      expect(wrapper.get('details').attributes('open')).toBeDefined()
+      expect(window.localStorage.getItem(SEEN_KEY)).toBe('1')
+    })
+
+    it('is collapsed on later views, even on desktop', async () => {
+      stubViewport(true)
+      window.localStorage.setItem(SEEN_KEY, '1')
+
+      const wrapper = await mountInfo({ collapsedAfterFirstView: true })
+
+      expect(wrapper.get('details').attributes('open')).toBeUndefined()
+      expect(wrapper.get('[data-testid="memory-cache-info-toggle"]').text())
+        .toBe('Repeated context is much cheaper with prompt caching')
+    })
+
+    it('opens again when the title is clicked', async () => {
+      window.localStorage.setItem(SEEN_KEY, '1')
+
+      const wrapper = await mountInfo({ collapsedAfterFirstView: true })
+
+      await wrapper.get('[data-testid="memory-cache-info-toggle"]')
+        .trigger('click')
+
+      expect(wrapper.get('details').attributes('open')).toBeDefined()
+    })
+
+    it('ignores the seen flag on /profile/memory', async () => {
+      stubViewport(true)
+      window.localStorage.setItem(SEEN_KEY, '1')
+
+      const wrapper = await mountInfo()
+
+      expect(wrapper.get('details').attributes('open')).toBeDefined()
+    })
+
+    it('still renders when storage throws', async () => {
+      const getItem = vi.spyOn(Storage.prototype, 'getItem')
+        .mockImplementation(() => {
+          throw new Error('blocked')
+        })
+      const setItem = vi.spyOn(Storage.prototype, 'setItem')
+        .mockImplementation(() => {
+          throw new Error('blocked')
+        })
+
+      const wrapper = await mountInfo({ collapsedAfterFirstView: true })
+
+      expect(wrapper.get('details').attributes('open')).toBeDefined()
+      expect(wrapper.get('[data-testid="memory-cache-info-example"]')
+        .exists()).toBe(true)
+
+      getItem.mockRestore()
+      setItem.mockRestore()
     })
   })
 })

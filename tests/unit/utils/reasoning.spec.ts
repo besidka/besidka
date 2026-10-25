@@ -616,6 +616,33 @@ describe('getToolStepTitle', () => {
     }
   })
 
+  it('titles the project knowledge tools, never as a web search', () => {
+    const expected = [
+      ['search_project_knowledge', 'Searching project knowledge',
+        'Searched project knowledge', 'Project knowledge search failed'],
+      ['read_project_knowledge', 'Reading project knowledge',
+        'Read project knowledge', 'Reading project knowledge failed'],
+    ] as const
+
+    for (const [toolName, pending, done, failed] of expected) {
+      expect(getToolStepTitle(toolName, true, false)).toBe(pending)
+      expect(getToolStepTitle(toolName, false, false)).toBe(done)
+      expect(getToolStepTitle(toolName, false, true)).toBe(failed)
+    }
+  })
+
+  it('treats the project knowledge tools as thinking steps', () => {
+    for (const toolName of [
+      'search_project_knowledge',
+      'read_project_knowledge',
+    ]) {
+      expect(isThinkingToolPart(
+        { type: `tool-${toolName}`, state: 'output-available' } as
+          UIMessage['parts'][number],
+      )).toBe(true)
+    }
+  })
+
   it('treats the memory tools as thinking steps', () => {
     for (const toolName of [
       'memory_list',

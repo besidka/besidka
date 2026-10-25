@@ -70,6 +70,16 @@ const TOOL_STEP_TITLES = new Map<string, {
     done: 'Removed from memory',
     failed: 'Removing from memory failed',
   }],
+  ['search_project_knowledge', {
+    pending: 'Searching project knowledge',
+    done: 'Searched project knowledge',
+    failed: 'Project knowledge search failed',
+  }],
+  ['read_project_knowledge', {
+    pending: 'Reading project knowledge',
+    done: 'Read project knowledge',
+    failed: 'Reading project knowledge failed',
+  }],
 ])
 
 interface ToolLikeUIPart {
