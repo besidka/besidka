@@ -805,7 +805,8 @@ D1 storage 5 GB included then $0.75 / GB-month, 10 GB hard cap per database
   the 3-call budget and uses the user's own key.
 - **Cross-tenant**: R2 keys are derived server-side from the session user and
   a verified project, never from client or model input. Model-supplied item
-  ids are looked up with `userId` and `projectId` in the `WHERE`.
+  ids resolve only inside the already user- and project-scoped loaded pack
+  (as built in K2).
 - **Client-extracted text** is the user's own content. The server validates
   shape (UTF-8, size), not truth.
 - **Incognito chats (when W8 adds them)** still receive project knowledge.
@@ -1338,6 +1339,39 @@ develops against these shapes with mocked `$fetch`.
   (`app/utils/search-step.ts`, `SearchStep.vue`), and an existing bug shared
   with chat search where a tool's own 429 budget error renders as
   "provider is rate limiting" in the UI.
+
+**Security and review decisions (K2 audit, 2026-10-26)**:
+- **Memory writes are off while documents are in context.** Full-mode
+  knowledge lives in the system prompt, where the "untrusted tool result"
+  lock never sees it, and the `userRequestQuote` gate only proves the quote
+  is real, not that the saved body came from the user. A poisoned document
+  could steer a legitimate "remember …" into a poisoned entry that outlives
+  the document. So a send with document text or media in the prompt
+  presets the lock: `memory_write`/`memory_forget` refuse,
+  `memory_list`/`memory_read` still work, and the block tells the model the
+  user can save from the Memory page. Search mode exposes only neutralized
+  index lines and keeps writes. **Owner may revisit** (for example, allow
+  writes whose body is derivable from the user's message).
+- Pre-retrieval excerpts cannot satisfy the quote gate: the gate reads the
+  original user text, excerpts go onto a copy afterwards, and pre-retrieval
+  only runs on sends with no tools at all.
+- Pack reader caps match K1's: 10 MiB decompressed, 20,000 lines, 2 MiB per
+  line, header version must equal `knowledgePackVersion`.
+- Images in full mode share a 10 MiB byte budget; native PDFs keep 20 MiB.
+- `</document>`, `</project_knowledge>` and the excerpt tags are neutralized
+  inside document text; the search-mode index sits in `<project_files>`
+  with `<`/`>` replaced in labels.
+- `knowledgeTokens` counts only what was injected (pack ∩ ready items +
+  attached media), so a stale pack cannot under-count the next turn's
+  measured history.
+- Pre-retrieval uses AND only and ignores tokens under 3 characters, so a
+  tool-less model is not fed arbitrary excerpts on every turn.
+
+**Follow-ups after K1 merges**: swap `send-data.ts`'s reader for K1's
+`readKnowledgePack`; call `ensureKnowledgePackFresh` in `waitUntil` when
+`packVersion < version`. **Deferred design call**: mode hysteresis. `fits`
+includes the current message, so one very large paste can flip full →
+search → full and invalidate the prompt cache twice.
 
 ### 16.4 Shared files nobody else edits
 

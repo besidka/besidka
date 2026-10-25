@@ -23,10 +23,14 @@ export const KNOWLEDGE_RESULT_NOTICE = 'The text below comes from documents '
 
 const CHARS_PER_OVERLAP_TOKEN = 4
 const STEM_SEPARATOR = /\s+/
+const STRICT_MIN_TOKEN_LENGTH = 3
 
 export interface KnowledgeSearcher {
-  search: (input: { query: string, itemIds?: string[] }) =>
-  KnowledgeSearchResult
+  search: (input: {
+    query: string
+    itemIds?: string[]
+    strict?: boolean
+  }) => KnowledgeSearchResult
   read: (input: { itemId: string, fromChunk?: number, count?: number }) =>
   KnowledgeReadResult | null
 }
@@ -103,12 +107,12 @@ function buildOverlap(previous: KnowledgePackLine | undefined): string {
   return previous.text.slice(-overlapChars)
 }
 
-function stemQuery(query: string): string {
+function stemQuery(query: string, minTokenLength: number): string {
   return buildStemmedSearchText(
     query.slice(0, KNOWLEDGE_LIMITS.searchQueryMaxChars),
   )
     .split(STEM_SEPARATOR)
-    .filter(Boolean)
+    .filter(token => token.length >= minTokenLength)
     .slice(0, MAX_SEARCH_TOKENS)
     .join(' ')
 }
@@ -118,7 +122,9 @@ function stemQuery(query: string): string {
  * The single indexed field is the stemmed breadcrumb, the tail of the
  * previous chunk and the chunk text, so a query can match across a chunk
  * boundary. Returned text always comes from the pack lines, never from the
- * index. Lines of items missing from `items` are ignored.
+ * index. Lines of items missing from `items` are ignored. A `strict` search
+ * is for queries the model did not write (pre-retrieval): it ignores query
+ * tokens shorter than 3 characters and never falls back from AND to OR.
  */
 export function createKnowledgeSearcher(input: {
   lines: KnowledgePackLine[]
@@ -169,8 +175,13 @@ export function createKnowledgeSearcher(input: {
   function search(searchInput: {
     query: string
     itemIds?: string[]
+    strict?: boolean
   }): KnowledgeSearchResult {
-    const stemmedQuery = stemQuery(searchInput.query)
+    const strict = searchInput.strict === true
+    const stemmedQuery = stemQuery(
+      searchInput.query,
+      strict ? STRICT_MIN_TOKEN_LENGTH : 1,
+    )
     const itemIdFilter = searchInput.itemIds?.length
       ? new Set(searchInput.itemIds)
       : null
@@ -190,7 +201,7 @@ export function createKnowledgeSearcher(input: {
     let operator: 'and' | 'or' = 'and'
     let results = index.search(stemmedQuery, { combineWith: 'AND', filter })
 
-    if (results.length === 0) {
+    if (results.length === 0 && !strict) {
       operator = 'or'
       results = index.search(stemmedQuery, { combineWith: 'OR', filter })
     }

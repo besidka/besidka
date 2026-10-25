@@ -27,6 +27,10 @@ const USER_TEXT = 'When is the Aurora launch date?'
 const ONE_MILLION_TOKENS = 1_000_000
 const QWEN_SIZED_WINDOW = 262_144
 const GATEWAY_FALLBACK_BUDGET = 8960
+const RETRIEVAL_TEXT = 'Aurora launch date'
+const IMAGE_SIZE_BYTES = 2048
+const SMALL_WINDOW = 200_000
+const LONG_TEXT_CHARS = 300_000
 
 /**
  * Route-level wiring of project knowledge. Only the D1/R2 loader
@@ -41,6 +45,7 @@ const mocks = vi.hoisted(() => ({
   isChatSearchToolEnabled: false,
   isMemoryToolsEnabled: false,
   memoryWriteSawUntrustedResult: [] as boolean[],
+  uiStreamOptions: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
   loadKnowledgeSendData: vi.fn(),
 }))
@@ -62,6 +67,13 @@ vi.mock('ai', async (importOriginal) => {
       return { writer, ready }
     },
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
+    toUIMessageStream: (
+      options: Parameters<typeof actual.toUIMessageStream>[0],
+    ) => {
+      mocks.uiStreamOptions.push(options as Record<string, any>)
+
+      return actual.toUIMessageStream(options)
+    },
   }
 })
 
@@ -453,6 +465,7 @@ async function runSend(input: {
   messages?: Array<Record<string, unknown>>
   providerTools?: Record<string, unknown>
   gateway?: { toolCall: boolean, contextLength?: number }
+  userText?: string
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
 
@@ -501,7 +514,7 @@ async function runSend(input: {
       messages: [{
         id: 'user-public-1',
         role: 'user',
-        parts: [{ type: 'text', text: USER_TEXT }],
+        parts: [{ type: 'text', text: input.userText ?? USER_TEXT }],
       }],
     },
   } as any)
@@ -583,6 +596,7 @@ describe('project knowledge send-path wiring', () => {
     mocks.isChatSearchToolEnabled = false
     mocks.isMemoryToolsEnabled = false
     mocks.memoryWriteSawUntrustedResult = []
+    mocks.uiStreamOptions = []
     mocks.loadKnowledgeSendData.mockReset()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -775,19 +789,22 @@ describe('project knowledge send-path wiring', () => {
         },
         toolChoice: { type: 'tool', toolName: 'generate_stub' },
       },
+      userText: RETRIEVAL_TEXT,
       steps: [createTextChunks('The fifth of May.')],
     })
     const callOptions = doStream.mock.calls[0]?.[0] as any
     const lastUserText = readTurnText(readUserTurns(callOptions).at(-1))
 
     expect(readToolNames(callOptions)).toEqual(['generate_stub'])
-    expect(lastUserText).toContain(USER_TEXT)
+    expect(lastUserText).toContain(RETRIEVAL_TEXT)
     expect(lastUserText).toContain('<project_knowledge_excerpts>')
     expect(lastUserText).toContain('fifth of May')
     expect(readSystemPrompt(callOptions)).not.toContain(
       '<project_knowledge_excerpts>',
     )
-    expect(userInsert?.parts).toEqual([{ type: 'text', text: USER_TEXT }])
+    expect(userInsert?.parts).toEqual([
+      { type: 'text', text: RETRIEVAL_TEXT },
+    ])
     expect(JSON.stringify(userInsert)).not.toContain('project_knowledge')
   })
 
@@ -796,6 +813,7 @@ describe('project knowledge send-path wiring', () => {
 
     const { doStream, userInsert } = await runSend({
       scenario: { mode: 'search' },
+      userText: RETRIEVAL_TEXT,
       steps: [createTextChunks('The fifth of May.')],
     })
     const callOptions = doStream.mock.calls[0]?.[0] as any
@@ -882,6 +900,7 @@ describe('project knowledge send-path wiring', () => {
             title: 'diagram.png',
             relativePath: 'plans/diagram.png',
             mediaType: 'image/png',
+            sizeBytes: IMAGE_SIZE_BYTES,
             extractStatus: 'no-text',
             latinChars: 0,
             textBytes: 0,
@@ -917,6 +936,7 @@ describe('project knowledge send-path wiring', () => {
             title: 'diagram.png',
             relativePath: 'plans/diagram.png',
             mediaType: 'image/png',
+            sizeBytes: IMAGE_SIZE_BYTES,
             extractStatus: 'no-text',
             latinChars: 0,
             textBytes: 0,
@@ -1070,4 +1090,448 @@ describe('project knowledge send-path wiring', () => {
       }))
       expect(assistantInsert?.usage).not.toHaveProperty('knowledgeTokens')
     })
+
+  describe('memory writes while knowledge documents are in the prompt', () => {
+    function memoryWriteSteps() {
+      return [
+        createToolStep([
+          createToolCallChunk('call-1', 'memory_write', { title: 'Aurora' }),
+        ]),
+        createTextChunks('Handled.'),
+      ]
+    }
+
+    function findMemoryWritePart(assistantInsert: any) {
+      return assistantInsert?.parts.find((part: any) => {
+        return part.toolCallId === 'call-1'
+      })
+    }
+
+    it('refuses memory_write on a full-mode send with documents', async () => {
+      mocks.isMemoryToolsEnabled = true
+
+      const { assistantInsert, doStream } = await runSend({
+        steps: memoryWriteSteps(),
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(systemPrompt).toContain('<project_knowledge>')
+      expect(systemPrompt).toContain('Saving to memory is unavailable')
+      expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
+      expect(findMemoryWritePart(assistantInsert)?.state)
+        .toBe('output-error')
+    })
+
+    it('refuses memory_write on a full-mode send with media only', async () => {
+      mocks.isMemoryToolsEnabled = true
+      stubChatProvider({ inputModalities: ['text', 'image'] })
+
+      const { assistantInsert, doStream } = await runSend({
+        scenario: {
+          items: [{
+            id: 'image-diagram',
+            kind: 'file',
+            title: 'diagram.png',
+            relativePath: 'plans/diagram.png',
+            mediaType: 'image/png',
+            sizeBytes: IMAGE_SIZE_BYTES,
+            extractStatus: 'no-text',
+            latinChars: 0,
+            textBytes: 0,
+            storageKey: 'user-1/diagram.png',
+          }],
+        },
+        steps: memoryWriteSteps(),
+      })
+      const prompt = (doStream.mock.calls[0]?.[0] as any).prompt
+
+      expect(JSON.stringify(prompt)).toContain(KNOWLEDGE_MEDIA_TURN_TEXT)
+      expect(mocks.memoryWriteSawUntrustedResult).toEqual([true])
+      expect(findMemoryWritePart(assistantInsert)?.state)
+        .toBe('output-error')
+    })
+
+    it('still allows memory_write on a search-mode send with only the file '
+      + 'index', async () => {
+      mocks.isMemoryToolsEnabled = true
+
+      const { assistantInsert, doStream } = await runSend({
+        scenario: { mode: 'search' },
+        steps: memoryWriteSteps(),
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(systemPrompt).toContain('<project_files>')
+      expect(systemPrompt).not.toContain('<project_knowledge>')
+      expect(mocks.memoryWriteSawUntrustedResult).toEqual([false])
+      expect(findMemoryWritePart(assistantInsert)?.state)
+        .toBe('output-available')
+    })
+  })
+
+  describe('lazy pack loading', () => {
+    it('never loads the pack in search mode without a tool call or '
+      + 'pre-retrieval', async () => {
+      const { loadPack, assistantInsert } = await runSend({
+        scenario: { mode: 'search' },
+        steps: [createTextChunks('No lookup needed.')],
+      })
+
+      expect(loadPack).not.toHaveBeenCalled()
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'No lookup needed.',
+      }))
+    })
+
+    it('adds no excerpts when the message terms are not all in the '
+      + 'documents', async () => {
+      stubChatProvider({ toolCall: false })
+
+      const { doStream, loadPack } = await runSend({
+        scenario: { mode: 'search' },
+        userText: 'When should the zebra party start?',
+        steps: [createTextChunks('No excerpts.')],
+      })
+      const lastUserText = readTurnText(
+        readUserTurns(doStream.mock.calls[0]?.[0]).at(-1),
+      )
+
+      expect(loadPack).toHaveBeenCalledTimes(1)
+      expect(lastUserText).toBe('When should the zebra party start?')
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        preRetrieval: false,
+      }))
+    })
+  })
+
+  describe('prompt-cache stability', () => {
+    it('sends a byte-identical system prompt and media turn on two '
+      + 'consecutive sends', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-10-26T10:00:00.000Z'))
+      stubChatProvider({ inputModalities: ['text', 'image'] })
+
+      const scenario: Scenario = {
+        items: [
+          {},
+          {
+            id: 'image-diagram',
+            kind: 'file',
+            title: 'diagram.png',
+            relativePath: 'plans/diagram.png',
+            mediaType: 'image/png',
+            sizeBytes: IMAGE_SIZE_BYTES,
+            extractStatus: 'no-text',
+            latinChars: 0,
+            textBytes: 0,
+            storageKey: 'user-1/diagram.png',
+          },
+        ],
+      }
+      const first = await runSend({
+        scenario,
+        steps: [createTextChunks('First answer.')],
+      })
+
+      vi.setSystemTime(new Date('2026-10-26T10:00:30.000Z'))
+
+      const second = await runSend({
+        scenario,
+        steps: [createTextChunks('Second answer.')],
+      })
+      const firstPrompt = (first.doStream.mock.calls[0]?.[0] as any).prompt
+      const secondPrompt = (second.doStream.mock.calls[0]?.[0] as any).prompt
+      const withoutSystem = (prompt: any[]) => {
+        return prompt.filter(message => message.role !== 'system')
+      }
+
+      expect(readSystemPrompt({ prompt: firstPrompt }))
+        .toContain('<project_knowledge>')
+      expect(readSystemPrompt({ prompt: secondPrompt }))
+        .toBe(readSystemPrompt({ prompt: firstPrompt }))
+      expect(JSON.stringify(withoutSystem(secondPrompt).slice(0, 2)))
+        .toBe(JSON.stringify(withoutSystem(firstPrompt).slice(0, 2)))
+      expect(JSON.stringify(withoutSystem(firstPrompt)[0]))
+        .toContain(KNOWLEDGE_MEDIA_TURN_TEXT)
+    })
+  })
+
+  describe('model-facing copies', () => {
+    function readOriginalMessages(): any[] {
+      return (mocks.uiStreamOptions[0]?.originalMessages ?? []) as any[]
+    }
+
+    it('leaves originalMessages untouched when media turns are added',
+      async () => {
+        stubChatProvider({ inputModalities: ['text', 'image'] })
+
+        const { doStream } = await runSend({
+          scenario: {
+            items: [
+              {},
+              {
+                id: 'image-diagram',
+                kind: 'file',
+                title: 'diagram.png',
+                relativePath: 'plans/diagram.png',
+                mediaType: 'image/png',
+                sizeBytes: IMAGE_SIZE_BYTES,
+                extractStatus: 'no-text',
+                latinChars: 0,
+                textBytes: 0,
+                storageKey: 'user-1/diagram.png',
+              },
+            ],
+          },
+          steps: [createTextChunks('The fifth of May.')],
+        })
+        const promptRoles = (doStream.mock.calls[0]?.[0] as any).prompt
+          .filter((message: any) => message.role !== 'system')
+          .map((message: any) => message.role)
+        const originalMessages = readOriginalMessages()
+
+        expect(promptRoles).toEqual(['user', 'assistant', 'user'])
+        expect(originalMessages).toHaveLength(1)
+        expect(originalMessages[0].id).toBe('user-public-1')
+        expect(originalMessages[0].parts).toEqual([
+          { type: 'text', text: USER_TEXT },
+        ])
+      })
+
+    it('leaves originalMessages untouched when excerpts are added',
+      async () => {
+        stubChatProvider({ toolCall: false })
+
+        const { doStream } = await runSend({
+          scenario: { mode: 'search' },
+          userText: RETRIEVAL_TEXT,
+          steps: [createTextChunks('The fifth of May.')],
+        })
+        const lastUserText = readTurnText(
+          readUserTurns(doStream.mock.calls[0]?.[0]).at(-1),
+        )
+        const originalMessages = readOriginalMessages()
+
+        expect(lastUserText).toContain('<project_knowledge_excerpts>')
+        expect(originalMessages).toHaveLength(1)
+        expect(originalMessages[0].parts).toEqual([
+          { type: 'text', text: RETRIEVAL_TEXT },
+        ])
+        expect(JSON.stringify(originalMessages))
+          .not.toContain('project_knowledge')
+      })
+  })
+
+  describe('history estimate', () => {
+    const measuredAssistantUsage = {
+      model: DIRECT_MODEL_ID,
+      provider: 'openai',
+      inputTokens: 900_000,
+      outputTokens: 1000,
+      totalTokens: 901_000,
+      firstStepInputTokens: 900_000,
+      lastStepOutputTokens: 1000,
+      knowledgeTokens: 0,
+    }
+
+    function createStoredMessage(input: {
+      id: number
+      publicId: string
+      role: 'user' | 'assistant'
+      parts: Array<Record<string, unknown>>
+      usage?: Record<string, unknown> | null
+    }) {
+      return {
+        id: input.id,
+        publicId: input.publicId,
+        role: input.role,
+        parts: input.parts,
+        tools: [],
+        reasoning: 'off',
+        usage: input.usage ?? null,
+        createdAt: new Date(`2026-10-25T09:0${input.id}:00.000Z`),
+      }
+    }
+
+    function measuredRows(extraRows: Array<Record<string, unknown>> = []) {
+      return [
+        createStoredMessage({
+          id: 1,
+          publicId: 'user-public-0',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Earlier question' }],
+        }),
+        createStoredMessage({
+          id: 2,
+          publicId: 'assistant-public-0',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Earlier answer' }],
+          usage: measuredAssistantUsage,
+        }),
+        ...extraRows,
+      ]
+    }
+
+    it('fits when the measured history leaves room', async () => {
+      await runSend({
+        messages: measuredRows(),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'full',
+        reason: 'within-budget',
+      }))
+    })
+
+    it('adds the user turns stored after the measured assistant message',
+      async () => {
+        await runSend({
+          messages: measuredRows([
+            createStoredMessage({
+              id: 3,
+              publicId: 'user-failed-1',
+              role: 'user',
+              parts: [{ type: 'text', text: 'a'.repeat(LONG_TEXT_CHARS) }],
+            }),
+          ]),
+          steps: [createTextChunks('The fifth of May.')],
+        })
+
+        expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+          mode: 'search',
+          reason: 'does-not-fit',
+        }))
+      })
+
+    it('excludes the message being sent from the unmeasured tail',
+      async () => {
+        await runSend({
+          messages: measuredRows([
+            createStoredMessage({
+              id: 3,
+              publicId: 'user-public-1',
+              role: 'user',
+              parts: [{ type: 'text', text: 'a'.repeat(LONG_TEXT_CHARS) }],
+            }),
+          ]),
+          steps: [createTextChunks('The fifth of May.')],
+        })
+
+        expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+          mode: 'full',
+          reason: 'within-budget',
+        }))
+      })
+
+    describe('estimated path', () => {
+      function earlierFileRows(parts: Array<Record<string, unknown>>) {
+        return [
+          createStoredMessage({
+            id: 1,
+            publicId: 'user-public-0',
+            role: 'user',
+            parts: [{ type: 'text', text: 'Look at these' }, ...parts],
+          }),
+          createStoredMessage({
+            id: 2,
+            publicId: 'assistant-public-0',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'Seen' }],
+          }),
+        ]
+      }
+
+      function createImageParts(count: number) {
+        return Array.from({ length: count }, (_unused, index) => {
+          return {
+            type: 'file',
+            mediaType: 'image/png',
+            url: `/files/user-1/image-${index}.png`,
+            filename: `image-${index}.png`,
+          }
+        })
+      }
+
+      beforeEach(() => {
+        stubChatProvider({ contextLength: SMALL_WINDOW })
+      })
+
+      it('fits with a short text-only history', async () => {
+        await runSend({
+          messages: earlierFileRows([]),
+          steps: [createTextChunks('The fifth of May.')],
+        })
+
+        expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+          mode: 'full',
+          reason: 'within-budget',
+        }))
+      })
+
+      it('counts 1600 tokens per earlier image part', async () => {
+        await runSend({
+          messages: earlierFileRows(createImageParts(120)),
+          steps: [createTextChunks('The fifth of May.')],
+        })
+
+        expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+          mode: 'search',
+          reason: 'does-not-fit',
+        }))
+      })
+
+      it('counts a few earlier image parts without flipping the mode',
+        async () => {
+          await runSend({
+            messages: earlierFileRows(createImageParts(3)),
+            steps: [createTextChunks('The fifth of May.')],
+          })
+
+          expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+            mode: 'full',
+            reason: 'within-budget',
+          }))
+        })
+
+      it('counts an earlier non-image file by its byte size', async () => {
+        vi.stubGlobal('convertFilesForAI', vi.fn(async (
+          messages: Array<{ parts: Array<Record<string, unknown>> }>,
+        ) => {
+          return {
+            messages: messages.map((message) => {
+              return {
+                ...message,
+                parts: message.parts.map((part) => {
+                  return part.type === 'file'
+                    ? {
+                      ...part,
+                      url: `data:application/pdf;base64,${'A'.repeat(1_000_000)}`,
+                    }
+                    : part
+                }),
+              }
+            }),
+            missingFiles: [],
+          }
+        }))
+
+        await runSend({
+          messages: earlierFileRows([{
+            type: 'file',
+            mediaType: 'application/pdf',
+            url: '/files/user-1/contract.pdf',
+            filename: 'contract.pdf',
+          }]),
+          steps: [createTextChunks('The fifth of May.')],
+        })
+
+        expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+          mode: 'search',
+          reason: 'does-not-fit',
+        }))
+      })
+    })
+  })
 })

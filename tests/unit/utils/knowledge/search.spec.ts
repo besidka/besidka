@@ -71,6 +71,55 @@ describe('createKnowledgeSearcher search', () => {
       .toEqual(['item-a', 'item-b'])
   })
 
+  it('never falls back to OR in a strict search', () => {
+    const searcher = createSearcher([
+      chunk('item-a', 0, 'Alpha release notes.'),
+      chunk('item-b', 0, 'Beta migration guide.'),
+    ])
+
+    const strictResult = searcher.search({
+      query: 'alpha migration',
+      strict: true,
+    })
+    const andResult = searcher.search({
+      query: 'alpha release',
+      strict: true,
+    })
+
+    expect(strictResult).toEqual(expect.objectContaining({
+      hits: [],
+      operator: 'and',
+    }))
+    expect(andResult.hits.map(hit => hit.itemId)).toEqual(['item-a'])
+  })
+
+  it('ignores query tokens shorter than 3 characters in a strict search', () => {
+    const searcher = createSearcher([
+      chunk('item-a', 0, 'Alpha release notes.'),
+    ])
+
+    const strictResult = searcher.search({
+      query: 'is a it alpha',
+      strict: true,
+    })
+    const looseResult = searcher.search({ query: 'is a it alpha' })
+
+    expect(strictResult.hits.map(hit => hit.itemId)).toEqual(['item-a'])
+    expect(strictResult.operator).toBe('and')
+    expect(looseResult.operator).toBe('or')
+  })
+
+  it('returns operator none when a strict query has only short tokens', () => {
+    const searcher = createSearcher([chunk('item-a', 0, 'Is it a go.')])
+
+    expect(searcher.search({ query: 'is it a', strict: true })).toEqual({
+      hits: [],
+      operator: 'none',
+      truncated: false,
+      notice: KNOWLEDGE_RESULT_NOTICE,
+    })
+  })
+
   it('returns no hits and operator none for an empty query', () => {
     const searcher = createSearcher([chunk('item-a', 0, 'Something here.')])
 

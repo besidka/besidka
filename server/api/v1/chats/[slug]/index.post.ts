@@ -154,6 +154,7 @@ import { CHAT_SEARCH_INSTRUCTION } from '~~/server/utils/ai/chat-search-tools'
 import { loadKnowledgeSendData } from '~~/server/utils/knowledge/send-data'
 import {
   estimateHistoryTokens,
+  holdsUntrustedKnowledge,
   resolveProjectKnowledgeContext,
 } from '~~/server/utils/knowledge/context'
 import type {
@@ -1318,10 +1319,19 @@ export default defineEventHandler(async (event) => {
       toolCallingAllowed,
     ].filter(Boolean).length,
     userMessageText,
+    newMessageId: newMessage.id,
     logger: aiLogger,
   })
   const knowledgeContext = knowledge?.context ?? null
   const knowledgeToolsRegistered = knowledgeContext?.registerTools === true
+
+  if (
+    chatSearchBudget
+    && knowledgeContext
+    && holdsUntrustedKnowledge(knowledgeContext)
+  ) {
+    chatSearchBudget.untrustedResultSeen = true
+  }
 
   if (knowledgeContext && knowledgeToolsRegistered) {
     const { tools: knowledgeTools } = getKnowledgeTools({
@@ -2067,6 +2077,14 @@ function countCarriedFileParts(modelContextMessages: UIMessage[]): number {
 }
 
 const FILE_BYTES_PER_ESTIMATED_TOKEN = 4
+const BASE64_BYTES_PER_CHARACTER = 3 / 4
+
+interface StoredKnowledgeMessage {
+  role: string
+  publicId: string | null
+  parts: UIMessage['parts']
+  usage: MessageUsage | null
+}
 
 interface SendKnowledge {
   context: ProjectKnowledgeContext
@@ -2079,6 +2097,21 @@ function estimateTextTokens(
   family: KnowledgeTokenFamily,
 ): number {
   return estimateKnowledgeTextTokens(countKnowledgeChars(text), family)
+}
+
+function readFilePartBytes(
+  url: string,
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  if (url.startsWith('data:')) {
+    const encodedStart = url.indexOf(',') + 1
+
+    return Math.floor((url.length - encodedStart) * BASE64_BYTES_PER_CHARACTER)
+  }
+
+  const storageKey = extractStorageKeyFromFileUrl(url)
+
+  return storageKey ? fileSizesByStorageKey.get(storageKey) ?? 0 : 0
 }
 
 function estimatePartTokens(
@@ -2098,12 +2131,10 @@ function estimatePartTokens(
     return KNOWLEDGE_LIMITS.imageTokens
   }
 
-  const storageKey = extractStorageKeyFromFileUrl(part.url)
-  const fileSize = storageKey
-    ? fileSizesByStorageKey.get(storageKey) ?? 0
-    : 0
-
-  return Math.ceil(fileSize / FILE_BYTES_PER_ESTIMATED_TOKEN)
+  return Math.ceil(
+    readFilePartBytes(part.url, fileSizesByStorageKey)
+    / FILE_BYTES_PER_ESTIMATED_TOKEN,
+  )
 }
 
 function estimateNewMessageTokens(
@@ -2124,6 +2155,32 @@ function readMessageTexts(messages: UIMessage[]): string[] {
   })
 }
 
+function estimateFilePartTokens(
+  messages: ReadonlyArray<{ parts: UIMessage['parts'] }>,
+  family: KnowledgeTokenFamily,
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  return messages.reduce((total, message) => {
+    return total + message.parts.reduce((messageTotal, part) => {
+      return part.type === 'file'
+        ? messageTotal
+        + estimatePartTokens(part, family, fileSizesByStorageKey)
+        : messageTotal
+    }, 0)
+  }, 0)
+}
+
+function estimateEarlierMessagesTokens(
+  messages: UIMessage[],
+  family: KnowledgeTokenFamily,
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  return estimateHistoryTokens({
+    texts: readMessageTexts(messages),
+    family,
+  }) + estimateFilePartTokens(messages, family, fileSizesByStorageKey)
+}
+
 function resolveUsageTokenFamily(usage: MessageUsage): KnowledgeTokenFamily {
   const gateway = gatewayIds.some((candidateGatewayId) => {
     return keyProviderIdForGateway(candidateGatewayId) === usage.provider
@@ -2138,33 +2195,53 @@ function resolveUsageTokenFamily(usage: MessageUsage): KnowledgeTokenFamily {
 
 /**
  * The measured history of design 5.5, read from the newest assistant
- * message only: an older one would under-count the turns after it. Old
- * messages without the per-step fields, and a previous send on another
- * token family, take the estimated path (`null`).
+ * message only: an older one would under-count the turns after it. User
+ * turns stored after that message (unanswered or failed sends, other than
+ * the message being sent now) were not part of the measured input, so their
+ * estimate is added on top. Old messages without the per-step fields, and a
+ * previous send on another token family, take the estimated path (`null`).
  */
-function readMeasuredHistoryTokens(
-  chatMessages: ReadonlyArray<{ role: string, usage: MessageUsage | null }>,
-  family: KnowledgeTokenFamily,
-): number | null {
-  const usage = chatMessages
-    .filter(message => message.role === 'assistant')
-    .at(-1)
-    ?.usage
+function readMeasuredHistoryTokens(input: {
+  chatMessages: ReadonlyArray<StoredKnowledgeMessage>
+  newMessageId: string
+  family: KnowledgeTokenFamily
+  fileSizesByStorageKey: ReadonlyMap<string, number>
+}): number | null {
+  const assistantIndex = input.chatMessages.findLastIndex((message) => {
+    return message.role === 'assistant'
+  })
+  const usage = input.chatMessages[assistantIndex]?.usage
 
   if (
     !usage
     || usage.firstStepInputTokens === undefined
     || usage.lastStepOutputTokens === undefined
-    || resolveUsageTokenFamily(usage) !== family
+    || resolveUsageTokenFamily(usage) !== input.family
   ) {
     return null
   }
 
-  return measuredHistoryTokens({
+  const measuredTokens = measuredHistoryTokens({
     inputTokens: usage.firstStepInputTokens,
     outputTokens: usage.lastStepOutputTokens,
     knowledgeTokens: usage.knowledgeTokens ?? 0,
   })
+
+  if (measuredTokens === null) {
+    return null
+  }
+
+  const unmeasuredMessages = input.chatMessages
+    .slice(assistantIndex + 1)
+    .filter(message => message.publicId !== input.newMessageId)
+
+  return measuredTokens + unmeasuredMessages.reduce((total, message) => {
+    return total + estimateNewMessageTokens(
+      message.parts,
+      input.family,
+      input.fileSizesByStorageKey,
+    )
+  }, 0)
 }
 
 async function prepareKnowledgeMediaTurns(
@@ -2247,12 +2324,13 @@ async function resolveSendKnowledge(input: {
   model: KnowledgeSendModel
   toolsAllowed: boolean
   newMessageParts: UIMessage['parts']
-  chatMessages: ReadonlyArray<{ role: string, usage: MessageUsage | null }>
+  chatMessages: ReadonlyArray<StoredKnowledgeMessage>
   earlierMessages: UIMessage[]
   fileSizesByStorageKey: ReadonlyMap<string, number>
   baseInstructions: string | undefined
   toolGroupCount: number
   userMessageText: string | null
+  newMessageId: string
   logger: LoggerLike
 }): Promise<SendKnowledge | null> {
   const projectId = input.projectId
@@ -2292,16 +2370,19 @@ async function resolveSendKnowledge(input: {
         family,
         input.fileSizesByStorageKey,
       ),
-      measuredHistoryTokens: readMeasuredHistoryTokens(
-        input.chatMessages,
+      measuredHistoryTokens: readMeasuredHistoryTokens({
+        chatMessages: input.chatMessages,
+        newMessageId: input.newMessageId,
         family,
-      ),
+        fileSizesByStorageKey: input.fileSizesByStorageKey,
+      }),
       estimated: {
         systemTokens: estimateTextTokens(input.baseInstructions ?? '', family),
-        historyTokens: estimateHistoryTokens({
-          texts: readMessageTexts(input.earlierMessages),
+        historyTokens: estimateEarlierMessagesTokens(
+          input.earlierMessages,
           family,
-        }),
+          input.fileSizesByStorageKey,
+        ),
         toolTokens: KNOWLEDGE_BUDGET.toolGroupTokens * input.toolGroupCount,
       },
       logger: input.logger,

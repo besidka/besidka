@@ -17,14 +17,19 @@ export const PRE_RETRIEVAL_NOTICE = 'Excerpts from documents the user '
 /**
  * Builds the excerpts block for models that cannot call tools: the user's
  * own text is the query, the best chunks are quoted, and `null` means there
- * is nothing to add. Capped at the pre-retrieval chunk and token limits,
- * which are tighter than the tool limits.
+ * is nothing to add. The search is strict (every token of three or more
+ * characters must match, no OR fallback), so an unrelated message is not
+ * fed arbitrary excerpts. Capped at the pre-retrieval chunk and token
+ * limits, which are tighter than the tool limits.
  */
 export function buildKnowledgeExcerpts(input: {
   searcher: KnowledgeSearcher
   userText: string
 }): string | null {
-  const { hits } = input.searcher.search({ query: input.userText })
+  const { hits } = input.searcher.search({
+    query: input.userText,
+    strict: true,
+  })
   const excerpts: string[] = []
   let usedTokens = 0
 

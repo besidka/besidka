@@ -10,6 +10,9 @@ const PROJECT_ID = 5
 const PACK_VERSION = 3
 const PACK_KEY = knowledgePackKey(USER_ID, PROJECT_ID, PACK_VERSION)
 const SECRET_TEXT = 'SECRET-DOCUMENT-TEXT'
+const MAX_PACK_BYTES = 10 * 1024 * 1024
+const MAX_PACK_LINES = 20_000
+const MAX_PACK_LINE_LENGTH = 2 * 1024 * 1024
 
 async function gzip(text: string): Promise<Uint8Array> {
   const stream = new Blob([text])
@@ -42,10 +45,11 @@ function createFakeBucket() {
 function buildPackText(options: {
   itemId: string
   chunks: string[]
+  version?: number
 }): string {
   const header = {
     type: 'header',
-    version: PACK_VERSION,
+    version: options.version ?? PACK_VERSION,
     builtAt: '2026-10-25T00:00:00.000Z',
     items: [{
       itemId: options.itemId,
@@ -431,6 +435,101 @@ describe('loadKnowledgeSendData', () => {
       expect(await data!.loadPack()).toBeNull()
       expect(loggerSet).toHaveBeenCalledWith({
         attributes: { knowledge: { error: 'pack-unreadable' } },
+      })
+    })
+
+    it('returns null and logs when the compressed object exceeds the cap', async () => {
+      seedProject()
+      bucket.get.mockResolvedValueOnce({
+        size: MAX_PACK_BYTES + 1,
+        body: toBody(await gzip(buildPackText({
+          itemId: 'x',
+          chunks: ['one'],
+        }))),
+      })
+
+      const data = await load()
+
+      expect(await data!.loadPack()).toBeNull()
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: { knowledge: { error: 'pack-too-large' } },
+      })
+    })
+
+    it('aborts a gzip bomb that decompresses past the cap', async () => {
+      seedProject()
+      await seedPack(buildPackText({
+        itemId: 'x',
+        chunks: ['a'.repeat(MAX_PACK_BYTES + 1024)],
+      }))
+
+      const compressedSize = bucket.objects.get(PACK_KEY)!.byteLength
+      const data = await load()
+
+      expect(compressedSize).toBeLessThan(MAX_PACK_BYTES)
+      expect(await data!.loadPack()).toBeNull()
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: { knowledge: { error: 'pack-too-large' } },
+      })
+    })
+
+    it('returns null and logs when the pack has too many lines', async () => {
+      seedProject()
+      await seedPack(buildPackText({
+        itemId: 'x',
+        chunks: Array.from({ length: MAX_PACK_LINES + 1 }, () => 'a'),
+      }))
+
+      const data = await load()
+
+      expect(await data!.loadPack()).toBeNull()
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: { knowledge: { error: 'pack-too-large' } },
+      })
+    })
+
+    it('loads a pack with exactly the maximum number of lines', async () => {
+      seedProject()
+      await seedPack(buildPackText({
+        itemId: 'x',
+        chunks: Array.from({ length: MAX_PACK_LINES - 1 }, () => 'a'),
+      }))
+
+      const data = await load()
+      const pack = await data!.loadPack()
+
+      expect(pack?.lines).toHaveLength(MAX_PACK_LINES - 1)
+      expect(loggerSet).not.toHaveBeenCalled()
+    })
+
+    it('returns null and logs when one line exceeds the line cap', async () => {
+      seedProject()
+      await seedPack(buildPackText({
+        itemId: 'x',
+        chunks: ['a'.repeat(MAX_PACK_LINE_LENGTH + 1)],
+      }))
+
+      const data = await load()
+
+      expect(await data!.loadPack()).toBeNull()
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: { knowledge: { error: 'pack-too-large' } },
+      })
+    })
+
+    it('returns null and logs when the header version is not the pack version', async () => {
+      seedProject()
+      await seedPack(buildPackText({
+        itemId: 'x',
+        chunks: ['one'],
+        version: PACK_VERSION + 1,
+      }))
+
+      const data = await load()
+
+      expect(await data!.loadPack()).toBeNull()
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: { knowledge: { error: 'pack-version-mismatch' } },
       })
     })
 
