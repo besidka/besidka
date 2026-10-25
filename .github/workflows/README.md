@@ -207,8 +207,9 @@ bundle size, total time, deployed URL) to the job summary.
 `dry-run` input (default `false`). With `dry-run: true`, or when dispatched
 from any ref other than `main`, `deploy` is skipped, and `indexnow`,
 `deploy-preview` and the migrations skip with it because they depend on
-`deploy`. Only `static`, `unit`, `integration`, `build`, `e2e` and the
-artifact cleanup run, so no remote database or Worker is touched.
+`deploy`, and `cleanup-preview-build-artifact` skips too, so the artifact
+expires on its own after one day. Only `static`, `unit`, `integration`,
+`build` and `e2e` run, so no remote database or Worker is touched.
 
 **indexnow**: Runs after `deploy`. A no-op unless the
 `INDEXNOW_KEY` secret exists. When it does, and the push changed a public
@@ -231,9 +232,14 @@ installs dependencies through the shared `setup` action, a plain
 loads the root `tsconfig.json`, which `extends` that file, and hard-fails
 without it.
 
-**cleanup-preview-build-artifact**: Runs after `deploy` and `deploy-preview`
-with `if: always()` and deletes the run's `preview-build` artifact, including
-after a failed run or a dry run.
+**cleanup-preview-build-artifact**: Runs only after `deploy` and
+`deploy-preview` both succeed and deletes the run's `preview-build` artifact.
+It has no `if: always()` on purpose: the E2E shards and `deploy` download that
+artifact, so keeping it after a failed, cancelled or dry run lets "Re-run
+failed jobs" re-run a failed E2E shard or deploy job without an "Artifact not
+found" error. A failed run, a cancelled run or a dry run leaves the artifact in
+place until its one-day retention expires it, and a failed-jobs re-run that
+then succeeds also re-runs this skipped cleanup job.
 
 Both `deploy` and `deploy-preview` apply migrations to
 `DB` and `CONSENT_DB` unconditionally on every run — an earlier git-diff-based
