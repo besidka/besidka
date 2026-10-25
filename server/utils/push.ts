@@ -1,5 +1,5 @@
 import { createRequestLogger } from 'evlog'
-import { eq } from 'drizzle-orm'
+import { and, eq, notInArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { shipWideEventToAxiom } from './evlog-drains'
 import { buildPushRequest, isValidVapidPublicKey } from './push-protocol'
@@ -79,16 +79,27 @@ const ALLOWED_PUSH_SERVICE_HOST_SUFFIXES = [
   '.notify.windows.com',
 ]
 
+export const MAX_PUSH_ENDPOINT_LENGTH = 2048
+export const MAX_PUSH_P256DH_KEY_LENGTH = 128
+export const MAX_PUSH_AUTH_KEY_LENGTH = 64
+export const MAX_PUSH_SUBSCRIPTIONS_PER_USER = 20
+
 export function isAllowedPushServiceEndpoint(endpoint: string): boolean {
-  let host: string
+  let url: URL
 
   try {
-    host = new URL(endpoint).host
+    url = new URL(endpoint)
   } catch (exception) {
     void exception
 
     return false
   }
+
+  if (url.protocol !== 'https:') {
+    return false
+  }
+
+  const host = url.host
 
   if (ALLOWED_PUSH_SERVICE_HOSTS.has(host)) {
     return true
@@ -97,6 +108,43 @@ export function isAllowedPushServiceEndpoint(endpoint: string): boolean {
   return ALLOWED_PUSH_SERVICE_HOST_SUFFIXES.some((suffix) => {
     return host.endsWith(suffix)
   })
+}
+
+/**
+ * Keeps the newest MAX_PUSH_SUBSCRIPTIONS_PER_USER rows of one user and
+ * deletes the rest. Runs after a write so the row just written (insert or
+ * endpoint takeover) is always retained, even when `lastSeenAt` (second
+ * resolution) ties with older rows. Never touches other users' rows.
+ */
+export async function trimPushSubscriptionsToLimit(
+  db: ReturnType<typeof useDb>,
+  userId: number,
+  writtenSubscriptionId: number,
+): Promise<void> {
+  const newestSubscriptions = await db.query.pushSubscriptions.findMany({
+    columns: { id: true },
+    where: { userId },
+    orderBy: { lastSeenAt: 'desc', createdAt: 'desc', id: 'desc' },
+    limit: MAX_PUSH_SUBSCRIPTIONS_PER_USER + 1,
+  })
+
+  if (newestSubscriptions.length <= MAX_PUSH_SUBSCRIPTIONS_PER_USER) {
+    return
+  }
+
+  const retainedIds = [
+    writtenSubscriptionId,
+    ...newestSubscriptions
+      .map(subscription => subscription.id)
+      .filter(id => id !== writtenSubscriptionId)
+      .slice(0, MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1),
+  ]
+
+  await db.delete(schema.pushSubscriptions)
+    .where(and(
+      eq(schema.pushSubscriptions.userId, userId),
+      notInArray(schema.pushSubscriptions.id, retainedIds),
+    ))
 }
 
 export function isPushConfigured(vapid: VapidKeys): boolean {

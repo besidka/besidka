@@ -25,7 +25,7 @@
       <div class="px-4 pb-4 pt-1">
         <MDCCached
           :value="item.answer"
-          :cache-key="`faq-${index}`"
+          :cache-key="`${groupName}-${index}`"
           :components="faqComponents"
           :parser-options="{ highlight: false }"
           class="chat-markdown text-sm text-base-content/70 leading-relaxed"

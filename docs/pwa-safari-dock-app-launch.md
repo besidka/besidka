@@ -165,8 +165,8 @@ and `sessionStorage.getItem('nuxt:reload')`.
 1. Build+serve an old `NUXT_BUILD_ID`, load once to record it client-side.
 2. Build+serve a new one without touching the open tab — one reload, then
    steady (no loop).
-3. `curl -sI /signin` still `private, no-store`; `curl -sI /` still the
-   unchanged SWR `cache-control`.
+3. `curl -sI /signin` still `private, no-store`; `curl -sI /` returns
+   `cache-control: no-cache` (see `server/plugins/landing-cache-control.ts`).
 4. `curl -s /_nuxt/builds/latest.json` reflects the new id; requesting
    `/_nuxt/builds/meta/<new>.json` succeeds.
 
@@ -181,9 +181,11 @@ revalidated on normal navigation, same effective network behaviour since
 they carry no validators, but bfcache-eligible). The build-freshness plugin
 (Bug 2 fix, above) still runs unconditionally on every route including
 these, so a stale bfcache restore still gets caught and reloaded. `/` is
-unaffected either way — it already has its own SWR `cache-control` from
-`nuxt.config.ts`'s `routeRules`, so this plugin's early-return on an
-existing header skips it entirely. Under `no-cache`, a revoked share on
+unaffected either way — it is handled by
+`server/plugins/landing-cache-control.ts`, which rewrites the browser
+`cache-control` for `/` to `no-cache` while the Nitro KV route cache keeps
+its 1h TTL (relies on h3 v1 `event.node.res.setHeader`, guarded by a drift
+test), so this plugin's early-return skips it entirely. Under `no-cache`, a revoked share on
 `/shared/**` may still be restored once from that device's bfcache until
 the next reload — identical to pre-#372 behaviour and to bfcache anywhere,
 and accepted deliberately.

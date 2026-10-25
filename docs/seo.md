@@ -517,6 +517,19 @@ explainers above:
   templated page type, each page a distinct query. The condition is that every
   guide carries `checkedAt` and sources, so a guide whose provider UI has
   changed is visibly dated rather than silently wrong.
+- **Per-guide FAQ.** The optional `faq` frontmatter field renders
+  `LandingFaqAccordion` on the guide page only, with a slug-scoped
+  `group-name` (`key-guide-faq-<slug>`). The accordion builds its cache key as
+  `${groupName}-${index}`, so two pages never share a `useAsyncData` key. No
+  `FAQPage` JSON-LD is emitted, because FAQ rich results were retired on
+  2026-05-07 (see above).
+- **Gemini guide title change, 2026-10-24.** The title changed from
+  `How to get a Google AI Studio (Gemini) API key` to `How to get a free
+  Gemini API key in Google AI Studio`, and a description and FAQ were added.
+  Search Console showed about 4.3K impressions for `gemini api key`, almost
+  all as AI Overview citations (Generative AI features report), with 0
+  clicks. Judge the effect over at least four weeks and do not change the
+  title again in the meantime.
 - **Status:** live guides are `content/key-guides/gemini-api-key.md` and
   `openrouter-api-key.md`. The same files feed the "How to get a key" guide on
   each `/profile/keys` card; schema, video and keys-page behavior are in

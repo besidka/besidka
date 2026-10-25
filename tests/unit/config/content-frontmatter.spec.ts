@@ -62,6 +62,24 @@ describe('content frontmatter strings survive YAML parsing', () => {
     )
   })
 
+  describe.each(
+    CONTENT_FILES.filter(path => path.startsWith('content/key-guides/')),
+  )('%s faq', (relativePath) => {
+    it(
+      'keeps every FAQ question and answer a string, because an unquoted '
+      + 'colon-space turns an answer into a mapping and breaks the '
+      + 'accordion',
+      async () => {
+        const data = await readFrontmatter(relativePath)
+
+        asArray(data.faq).forEach((faq, faqIndex) => {
+          expectString(asRecord(faq).question, `faq[${faqIndex}].question`)
+          expectString(asRecord(faq).answer, `faq[${faqIndex}].answer`)
+        })
+      },
+    )
+  })
+
   describe('content/index.md landing sections', () => {
     it(
       'keeps hero text and call-to-action labels as strings instead of '

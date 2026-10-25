@@ -333,6 +333,18 @@ the same gap, plus the TTL bug above) — not a hard guarantee. A truly
 atomic implementation would need Durable Objects or D1, which is out of
 scope for this PR.
 
+## Rate limiting is explicit; password reset revokes sessions
+
+`server/utils/auth.ts` sets `rateLimit.enabled` explicitly to
+`!import.meta.dev && !config.public.e2eTestHooksEnabled`. Better Auth's own
+default is `isProduction`, which reads `NODE_ENV`; that is not reliably set
+inside a Worker, so the limiter could be silently off in production. It stays
+off only in dev and in e2e runs that enable the test hooks.
+
+`emailAndPassword.revokeSessionsOnPasswordReset` is `true`: completing a
+password reset signs out every other session. See
+`docs/security-audit-2026-10.md`.
+
 ## Verification tokens: `getAndDelete` is not atomic on KV
 
 Better Auth 1.7 consumes single-use verification tokens (password reset,
@@ -500,7 +512,10 @@ Steps:
 Recovery: restore the bookmark from step 1 or 3 with
 `npx wrangler d1 time-travel restore <db> [--env production] --bookmark=<bookmark>`.
 Because the migration only adds a column, rolling back the code is enough
-when the data is intact. The old code ignores `provider_account_id`.
+when the data is intact. The old code ignores `provider_account_id`. If you
+do restore, follow `docs/d1-restore-reconciliation.md` right after: a
+restore revives revoked sessions through the D1 fallback, and you must clear
+them in both D1 and KV.
 
 ## Turnstile owner checklist
 

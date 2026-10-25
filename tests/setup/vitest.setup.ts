@@ -159,7 +159,7 @@ Object.defineProperty(globalThis, 'sessionStorage', {
 document.cookie = [
   'cookies_consent=',
   encodeURIComponent(JSON.stringify({
-    v: 1,
+    v: 2,
     granted: ['necessary', 'preferences', 'analytics', 'marketing'],
     id: 'test-setup',
     date: '2026-01-01T00:00:00.000Z',

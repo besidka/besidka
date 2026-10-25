@@ -19,7 +19,7 @@ setup('create authenticated state', async ({ page }) => {
   await page.context().addCookies([{
     name: CONSENT_COOKIE_NAME,
     value: encodeURIComponent(JSON.stringify({
-      v: 1,
+      v: 2,
       granted: ['necessary', 'preferences'],
       id: 'e2e-auth',
       date: '2026-01-01T00:00:00.000Z',

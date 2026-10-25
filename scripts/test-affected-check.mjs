@@ -344,6 +344,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-shares-handoff.spec.ts',
     'tests/integration/api/chats-share-create.spec.ts',
     'tests/integration/api/chats-share-revoke.spec.ts',
+    'tests/integration/api/chats-share-reshare-slug.spec.ts',
     'tests/integration/api/shared-chat-view.spec.ts',
     'tests/unit/composables/chat-share.spec.ts',
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
@@ -366,6 +367,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/auth-last-login-method.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
     'tests/unit/composables/theme-toggle.spec.ts',
+    'tests/unit/plugins/cloudflare-web-analytics.client.spec.ts',
+    'tests/unit/plugins/cookie-consent-gate.client.spec.ts',
     'modules/cookie-consent/test/cleanup.spec.ts',
     'modules/cookie-consent/test/consent-plugin.spec.ts',
     'modules/cookie-consent/test/consent.spec.ts',
@@ -447,6 +450,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/landing/FeatureGrid.spec.ts',
     'tests/unit/components/landing/MessageBubble.spec.ts',
     'tests/unit/components/landing/Carousel.spec.ts',
+    'tests/unit/components/landing/FaqAccordion.spec.ts',
     'tests/unit/components/content/HomeStats.spec.ts',
     'tests/unit/components/content/HomeVideo.spec.ts',
     'tests/unit/components/content/HomeBubble.spec.ts',
@@ -535,6 +539,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-captcha-plugin.spec.ts',
     'tests/unit/utils/auth-hosts.spec.ts',
     'tests/unit/utils/auth-secondary-storage.spec.ts',
+    'tests/unit/server/auth/session-database-fallback.spec.ts',
     'tests/unit/db/accounts-provider-account-id.spec.ts',
   ]
 
@@ -1050,6 +1055,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/resolve-preview-build-source.spec.ts'],
     },
     {
+      pattern: /^(tests\/unit\/workflows\/preview-deploy\.spec\.ts|\.github\/workflows\/(preview-deploy|preview-cleanup|production|claude|claude-code-review|update|linear-docs-sync)\.yml)$/,
+      tests: ['tests/unit/workflows/preview-deploy.spec.ts'],
+    },
+    {
       pattern: /^content\/legal\/cookie-policy\.md$/,
       tests: cookieConsentTests,
     },
@@ -1301,7 +1310,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db|-rate-limit)?\.ts$|server\/db\/consent\/)/,
+        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/(cookie-consent-gate|cloudflare-web-analytics)\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db|-rate-limit)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
     },
     {
@@ -1881,6 +1890,42 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/plugins\/file-retention-cleanup\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/utils\/files\/upload-request\.ts$/,
+      tests: ['tests/integration/api/files-upload.spec.ts'],
+    },
+    {
+      pattern: /^(shared\/utils\/mdc\/.*|nuxt\.config\.ts|content\/.*\.md)$/,
+      tests: ['tests/unit/utils/mdc-vbind-policy.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/evlog-drains\.ts$/,
+      tests: [
+        'tests/unit/utils/evlog-drains.spec.ts',
+        'tests/integration/server/evlog-client-ingest-guard-plugin.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/plugins\/00\.evlog-client-ingest-guard\.ts$/,
+      tests: [
+        'tests/integration/server/evlog-client-ingest-guard-plugin.spec.ts',
+      ],
+    },
+    {
+      pattern: /^shared\/utils\/safe-redirect-path\.ts$/,
+      tests: [
+        'tests/unit/utils/safe-redirect-path.spec.ts',
+        'tests/unit/server/middleware/studio-guard.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/middleware\/00\.studio-guard\.ts$/,
+      tests: ['tests/unit/server/middleware/studio-guard.spec.ts'],
+    },
+    {
+      pattern: /^server\/plugins\/landing-cache-control\.ts$/,
+      tests: ['tests/unit/server/plugins/landing-cache-control.spec.ts'],
     },
   ]
 

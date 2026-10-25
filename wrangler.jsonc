@@ -43,6 +43,7 @@
 		"NUXT_MESSAGE_SEARCH_SWEEP_BATCH_SIZE": 1000,
 		"NUXT_MESSAGE_SEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
 		"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+		"NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN": "",
 		// Grounding with Google Search pricing, per ai.google.dev/gemini-api/docs/google-search
 		// and .../pricing (as of 2026-09-21; free-quota narrative corrected
 		// 2026-09-25, see docs/web-search-cost-accounting.md). Public,
@@ -221,6 +222,7 @@
 				"NUXT_AXIOM_AUDIT_DATASET": "besidka-audit-prod",
 				"NUXT_AXIOM_CONSENT_DATASET": "besidka-consent-prod",
 				"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAEFMAZiwbUuiy0qi",
+				"NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN": "1a2b095744b84d909452aaf42fa8f21e",
 				// Grounding with Google Search pricing, per ai.google.dev/gemini-api/docs/google-search
 				// and .../pricing (as of 2026-09-21; free-quota narrative
 				// corrected 2026-09-25, see docs/web-search-cost-accounting.md).
@@ -355,6 +357,7 @@
 					"NUXT_MESSAGE_SEARCH_SWEEP_BATCH_SIZE": 1000,
 					"NUXT_MESSAGE_SEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
 					"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAEFM-2wD0PMvdy4q",
+					"NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN": "",
 					"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
 					"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
 					"NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",

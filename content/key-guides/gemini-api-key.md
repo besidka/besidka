@@ -1,10 +1,10 @@
 ---
-title: How to get a Google AI Studio (Gemini) API key
-description: Create a free Gemini API key in Google AI Studio and add it to Besidka. No card needed for the free tier.
+title: How to get a free Gemini API key in Google AI Studio
+description: 'Get a free Gemini API key in Google AI Studio, no card needed. Free-tier limits, how Google uses free-tier prompts, and using the key in Besidka.'
 provider: google
 keyUrl: https://aistudio.google.com/api-keys
 keyUrlLabel: Open Google AI Studio keys page
-updatedAt: '2026-10-20'
+updatedAt: '2026-10-24'
 checkedAt: '2026-10-20'
 summary: The free tier needs no card. You can start chatting with Gemini in about a minute.
 video:
@@ -49,6 +49,15 @@ requirements:
       url: https://ai.google.dev/gemini-api/docs/pricing
     - label: Gemini API terms (How Google Uses Your Data)
       url: https://ai.google.dev/gemini-api/terms
+    - label: Gemini API rate limits
+      url: https://ai.google.dev/gemini-api/docs/rate-limits
+faq:
+  - question: 'Why does my Gemini API key not work?'
+    answer: 'Every Gemini API key belongs to a Google Cloud project. The Gemini API rejects unrestricted standard keys, and since 7 May 2026 it also blocks unrestricted keys that have not been used for a long time. Since 28 May 2026, new keys created in Google AI Studio are authorization keys by default. If an older key stops working, create a new one on the Google AI Studio keys page.'
+  - question: 'What are the Gemini API free tier limits?'
+    answer: 'Limits apply to your Google Cloud project, not to each key. Google counts requests per minute, tokens per minute and requests per day, and daily quotas reset at midnight Pacific time. Google AI Studio shows the current limits for your project.'
+  - question: 'Can I use a Gemini API key in a chat app?'
+    answer: 'Yes. In Besidka, go to Profile, API Keys, open the Google AI Studio card, paste the key and click Save. Then start a new chat and pick any Gemini model. Google bills you directly, Besidka adds no markup, and every message shows what it cost.'
 ---
 
 1. Open the [Google AI Studio keys page](https://aistudio.google.com/api-keys) and sign in with your Google account. On a new account, accept the terms first.

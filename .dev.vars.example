@@ -42,6 +42,10 @@ NUXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000BB
 # NUXT_TURNSTILE_ENFORCED is intentionally NOT set here — it defaults to
 # false, which is correct for dev; see docs/auth-security.md.
 
+# Cloudflare Web Analytics beacon token. Empty = the beacon is never loaded.
+# Loaded only after the user allows the analytics cookie category.
+NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN=
+
 # Files retention cleanup
 NUXT_FILES_RETENTION_CLEANUP_ENABLED=false
 NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE=100

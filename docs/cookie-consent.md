@@ -101,7 +101,7 @@ Lifespan must be tied to purpose (WP194 §2.3).
 | Load balancing | Exempt (WP194 §3.5). | Exempt (CNIL ld ¶49). | Exempt. |
 | Security / bot protection | Exempt only for the security of the requested service (WP194 §3.3). | CNIL FAQ Q17: a CAPTCHA is consent-free only if solely for security or authentication. Provider reuse of the data needs consent. | Turnstile on sign-in, sign-up and reset-password is defensible as exempt. A site-wide `__cf_bm` is a grey zone: it serves the provider's bot management. No DPA decision was found on `__cf_bm` or Turnstile. Cloudflare's own "strictly necessary" label is vendor opinion. |
 | UI customisation (theme, language, layout) | Exempt only if set by an explicit user act AND session or short-lived (WP194 §3.6, §5 item 6). Longer lifespans need a prominent notice. | CNIL ld ¶49: exempt when intrinsic and expected, with no lifetime cap. | Besidka keeps these consent-gated under `preferences` (conservative choice). This is the WP29-versus-CNIL split. |
-| First-party audience analytics | WP194 §4.3: not exempt, but low-risk. | CNIL ld ¶¶49-51 exempts strictly limited measurement. | This is an EU split. Besidka's landing counter is cookieless and identifier-free. |
+| First-party audience analytics | WP194 §4.3: not exempt, but low-risk. | CNIL ld ¶¶49-51 exempts strictly limited measurement. | This is an EU split. Besidka's server-side landing counter is cookieless and identifier-free and runs without consent. The client-side Cloudflare Web Analytics beacon is gated behind the optional `analytics` category, the conservative reading. |
 
 ### MUST
 
@@ -347,8 +347,9 @@ never opens it in a way that can create it:
    permission is not granted it also calls `indexedDB.deleteDatabase()` for
    `besidka-push`, which removes the empty database that earlier versions of the
    plugin created for every visitor (deleting a database that does not exist is
-   a no-op and never creates one). The e2e test "a push handoff IndexedDB left
-   by an earlier version is removed" covers it.
+   a no-op and never creates one). The e2e step "a push handoff IndexedDB left
+   by an earlier version is removed" in `tests/e2e/cookies/consent.spec.ts`
+   covers it.
 2. Where `indexedDB.databases()` exists it returns early when no `besidka-push`
    database is listed.
 3. Where it does not (older Firefox), the `open()` request aborts its upgrade
@@ -356,7 +357,7 @@ never opens it in a way that can create it:
    that did not exist.
 
 A visitor who never enabled push has no `besidka-push` database, which the e2e
-test "push handoff IndexedDB is not created for an undecided visitor" asserts in
+step "push handoff IndexedDB is not created for an undecided visitor" asserts in
 Chromium. The handoff itself is unchanged: a user who tapped a notification
 necessarily has permission `granted` and a database written by the worker.
 Permission can in theory be revoked after a tap and before the next launch, in
@@ -414,17 +415,22 @@ function openCookieSettings(event: MouseEvent): void {
 ```
 
 Two tests guard this. `tests/unit/components/LandingFooter.spec.ts` asserts the
-composable is not called while mounting. The e2e tests "SSR HTML of <route>
-carries no consent state" assert that the HTML contains no `cookie-consent:` key
-for each public SSR route (`/`, `/privacy-policy`, `/terms-of-use`,
+composable is not called while mounting. The two e2e tests in the "Cookie
+consent SSR HTML" group, one step per route named "SSR HTML of <route> carries
+no consent state", assert that the HTML contains no `cookie-consent:` key for
+each public SSR route (`/`, `/privacy-policy`, `/terms-of-use`,
 `/cookie-policy`, `/signin`, `/signup`), once without a consent cookie and once
 with a valid `cookies_consent` cookie on the request.
 
 ### Why the consent revision was not bumped
 
-`cookieConsent.revision` is `1`. A cookie whose `v` differs from the revision is
+This section records an earlier change, when `cookieConsent.revision` was `1`.
+The revision has since been bumped to `2` for the analytics category, see
+[Revision 2: the analytics category](#revision-2-the-analytics-category) below.
+
+A cookie whose `v` differs from the revision is
 ignored, so a bump makes every visitor undecided again. It was not bumped
-because nothing a past decision covered has changed:
+because nothing a past decision covered had changed:
 
 - The categories (`necessary`, `preferences`) and their purposes are unchanged.
 - The newly declared keys (`settings_favorite_models`,
@@ -438,6 +444,28 @@ because nothing a past decision covered has changed:
 
 Bump the revision when a category is added or removed, or when a purpose
 changes so that a past "yes" would no longer cover it.
+
+### Revision 2: the analytics category
+
+`cookieConsent.revision` was bumped from `1` to `2` on 2026-10-24, when the
+optional `analytics` category was added to enable Cloudflare Web Analytics
+behind consent (see [Cloudflare Web Analytics](#cloudflare-web-analytics)). This
+is exactly the case the rule above describes: a category was added, and no past
+"yes" or "no" covered it. The bump makes every visitor undecided once, so
+everyone is asked again and sees the new category. Only a revision bump
+re-prompts; adding a category to `cookieConsent.categories` without one leaves
+existing decisions untouched and the new category simply reads as not granted.
+
+Consequences to expect after the deploy: a one-off wave of new consent
+receipts, and a dip in the share of visitors who have preferences granted until
+they choose again. Receipts carry the revision, so the two eras stay
+distinguishable in `consent_receipts`.
+
+Receipt `decision` semantics shift across this boundary. With two optional
+categories, granting only `preferences` (the Remember prompt) is now `partial`,
+not `all` (see `deriveConsentDecision` in `server/utils/consents.ts`: `all`
+needs every optional category granted). Anyone counting `decision=all` across
+the revision boundary must split by revision first.
 
 ---
 
@@ -512,12 +540,16 @@ need reactivity to re-run when consent changes.
 
 ## Subscribing to consent changes
 
-> **Reference pattern.** The landing analytics is **not** consent-gated today
-> (it is cookieless and anonymous — see
+> **Reference pattern.** The `analytics` category now exists and gates
+> Cloudflare Web Analytics (see
+> [Cloudflare Web Analytics](#cloudflare-web-analytics)); that beacon is loaded
+> by a client plugin that subscribes to consent changes, not by the composable
+> below. The server-side landing counter is still **not** consent-gated (it is
+> cookieless and anonymous — see
 > [Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
-> The `analytics`-gated example below is preserved as the recommended pattern
-> for **if/when you introduce a consent-requiring analytics tool** (e.g. GA4).
-> Substitute your own category id where it reads `analytics`.
+> The `useLandingAnalytics` example below is a generic illustration of the
+> queue-and-flush shape for **a consent-requiring tool that needs to queue
+> events** (e.g. GA4). It is not code that exists in the repo.
 
 Use `onConsentChange` for side effects that must run when the user commits or
 revises their choice. Pass `immediate: true` to also fire right away when
@@ -597,11 +629,14 @@ interface CookieConsentChangedPayload {
 ## Server-side gating
 
 > **Reference pattern.** The events ingest endpoint (`/api/v1/events`) is
-> **not** consent-gated today — it records cookieless, anonymous data that
+> **not** consent-gated — it records cookieless, anonymous data that
 > does not require consent (see
 > [Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
-> The check below is the recommended defense-in-depth pattern for **if/when you
-> introduce a consent-requiring analytics tool**.
+> The check below is the recommended defense-in-depth pattern for a
+> consent-requiring tool whose data is posted **to one of our own routes**.
+> It does **not** apply to Cloudflare Web Analytics: that beacon posts to
+> `cloudflareinsights.com`, never to our Worker, so there is no server route to
+> gate (see [Cloudflare Web Analytics](#cloudflare-web-analytics)).
 
 For a consent-requiring analytics or event ingestion endpoint, use
 `getCookieConsent(event)` — auto-imported in Nitro — to guard the route as
@@ -653,51 +688,62 @@ clear is only a fallback.
 
 ## Analytics consent — when it is (and isn't) required
 
-Besidka's landing analytics is **cookieless and anonymous**, so it is **not
-gated behind consent** and **not shown as a banner category**. It uses two
-mechanisms:
+Besidka has two different analytics mechanisms, with different consent
+treatment:
 
 - **Cloudflare Analytics Engine** — server-side `writeDataPoint` via
   `/api/v1/events`, recording event name, path, target, coarse country, and
-  device class. No IP is stored, no user id, no cookie.
-- **Cloudflare Web Analytics** — a cookieless edge beacon.
+  device class. No IP is stored, no user id, no cookie. **Not consent-gated**
+  and not a banner category.
+- **Cloudflare Web Analytics** — a client-side beacon
+  (`static.cloudflareinsights.com/beacon.min.js`) that reports page views and
+  page-load performance to `cloudflareinsights.com`. **Consent-gated** behind
+  the optional `analytics` category, loaded by app code only after the visitor
+  allows it. See [Cloudflare Web Analytics](#cloudflare-web-analytics).
 
-Neither stores or reads anything on the user's device, and neither processes
-personal data. The analytics simply runs.
-
-### Why cookieless + anonymous analytics needs no consent
+### Why the server-side counter needs no consent
 
 - **ePrivacy Directive Art. 5(3)** — the "cookie law" that mandates the consent
   banner — is triggered **only** by *storing or reading information on the
-  user's device* (cookies, localStorage, fingerprinting). Cookieless analytics
-  never touches the device, so Art. 5(3) is not triggered.
+  user's device* (cookies, localStorage, fingerprinting). The Analytics Engine
+  counter is written by the Worker and never touches the device, so Art. 5(3)
+  is not triggered.
 - **GDPR** governs *processing of personal data*. Truly anonymous, aggregate
   data (no IP retained, no identifier, cannot single out a person) falls
   outside GDPR's scope (Recital 26). No personal data → no consent needed.
-- This is exactly why privacy-first analytics (Cloudflare Web Analytics,
-  Plausible, Fathom) advertise "no cookie banner required."
+
+### Why Web Analytics is gated anyway
+
+Cloudflare states that Web Analytics sets no cookie, uses no localStorage and
+does no fingerprinting. The beacon nevertheless runs in the visitor's browser
+and reads its Navigation Timing data, which is access to information on the
+terminal equipment under PKE Art. 399 (the Polish implementation of ePrivacy
+Art. 5(3)), and the visitor's browser sends a request to a third party. The
+conservative reading, and the one the Cookie Policy states, is that this needs
+consent, with GDPR Art. 6(1)(a) as the basis for the processing. "No cookie"
+does not by itself mean "no consent" for a script that measures the device.
 
 ### Decision rule
 
-Analytics consent is required only when the analytics tool either:
+Analytics consent is required when the analytics tool either:
 
 1. **Stores or reads data on the device** — cookies, localStorage,
-   fingerprinting (→ ePrivacy Art. 5(3)), **or**
+   fingerprinting, or reading browser timing data from a script running in the
+   page (→ ePrivacy Art. 5(3) / PKE Art. 399), **or**
 2. **Processes personal data** — IP retained, persistent id, cross-site
    tracking (→ GDPR).
 
-If a tool does neither, it runs without consent.
+If a tool does neither, it runs without consent. Because the line for
+client-side measurement scripts is not settled, treat any new client-side
+script as consent-gated unless you have a reason not to.
 
 | Tool | Device access | Personal data | Consent? |
 |------|---------------|---------------|----------|
-| Cloudflare Web Analytics | None (cookieless) | None (anonymous) | **No** |
+| Cloudflare Web Analytics (client beacon) | Reads Navigation Timing; sets no cookie or storage (per Cloudflare) | Cloudflare receives the request (IP, browser) as a processor | **Yes** — `analytics` category |
 | Cloudflare Analytics Engine (our `/api/v1/events`) | None (cookieless) | None (aggregate, no IP/id) | **No** |
-| Plausible / Fathom (self-hosted, cookieless) | None | None | **No** |
+| Plausible / Fathom (self-hosted, cookieless, server-side) | None | None | **No** |
 | Google Analytics 4 (GA4) | Sets `_ga` / `_gid` cookies | Yes (personal data) | **Required** |
 | Meta Pixel / ad-tech | Cookies + cross-site tracking | Yes | **Required** + "Do Not Sell/Share" |
-
-When a tool lands in the **Required** rows, add the `analytics` category back
-and gate it (see [Re-enabling consent-gated analytics](#re-enabling-consent-gated-analytics)).
 
 ### Campaign attribution uses no device storage
 
@@ -706,8 +752,8 @@ UTM campaign attribution (`utm_source`, `utm_medium`, `utm_campaign`,
 held in in-memory client state (`useState`) and carried to sign-up through
 the URL (the sign-up links and Better Auth's `callbackURL`). Nothing is
 written to a cookie, `localStorage`, `sessionStorage` or IndexedDB, so
-Art. 5(3) and PKE Art. 399 are not triggered and the `analytics` category
-stays disabled.
+Art. 5(3) and PKE Art. 399 are not triggered. Attribution is independent of
+the `analytics` category: it works whether or not the visitor allows it.
 
 The server stores the first-touch campaign with the account
 (`user_attribution`). That is GDPR processing under Art. 6(1)(f), disclosed
@@ -715,40 +761,151 @@ in the privacy policy, and it is not a consent matter.
 
 If a future change adds a UTM cookie or any other device storage for
 campaigns, it must go under the `analytics` category and be read only after
-consent. That means re-enabling the commented-out `analytics` category in
-`nuxt.config.ts`, which re-prompts users whose stored choice predates it, and
-updating the Cookie Policy table. The reasons the cookie was not built are in
+consent, with its entries declared in the manifest and listed in the Cookie
+Policy table. The reasons the cookie was not built are in
 [`docs/analytics-utm.md`](analytics-utm.md#decision-no-analytics-consent-cookie).
 
 ### Remaining obligation either way
 
-Cookieless/anonymous analytics still requires **transparency** under
-**GDPR Art. 13**: disclose it in the privacy policy. That is disclosure, not
+Analytics still requires **transparency** under **GDPR Art. 13**: disclose it
+in the privacy policy. For the consent-gated Web Analytics that is disclosure
+on top of consent; for the Analytics Engine counter it is disclosure instead of
 consent.
 
-### Important nuance — Cloudflare Web Analytics is not app-controllable
+### Cloudflare Web Analytics
 
-Cloudflare Web Analytics is **auto-injected at the edge by Cloudflare** and is
-**not controllable by app-level consent code**. If a future tool must be
-consent-gated, it has to be loaded by app code (manually), **not** via a
-platform auto-injector — an auto-injected beacon cannot be held back behind a
-consent decision.
+The beacon is enabled behind the `analytics` category, which was added together
+with consent revision `2` (see
+[Revision 2: the analytics category](#revision-2-the-analytics-category)).
 
-### Re-enabling consent-gated analytics
+**How it is loaded.** App code loads `beacon.min.js` only after the visitor
+grants `analytics`, never before. The client plugin
+`app/plugins/cloudflare-web-analytics.client.ts` subscribes to consent changes
+and injects the script with the site token (`useScript` with
+`trigger: 'manual'`). A visitor who is undecided or who denied the category
+never triggers a request to `static.cloudflareinsights.com`. Do not add the
+snippet to a template or to `app.head` script tags: that would load it before
+consent.
 
-If you introduce a consent-requiring analytics tool (e.g. GA4), re-enable
-consent gating in three steps:
+**The reload rule.** A running beacon cannot be unloaded, so withdrawing
+`analytics` after the script has already run needs a full page load. The plugin
+waits for the `cookie-consent:receipt-sent` hook (see
+[The receipt-sent hook](#the-receipt-sent-hook)) so the reload never races the
+receipt POST, then:
 
-1. **Add the category.** Add `{ id: 'analytics' }` to
-   `cookieConsent.categories` in `nuxt.config.ts` so it appears in the banner.
-2. **Gate both ends.** Gate the client send (the queue-and-flush
-   `useLandingAnalytics().track()` pattern in
-   [Subscribing to consent changes](#subscribing-to-consent-changes)) **and**
-   add the server `getCookieConsent(event).isAllowed('analytics')` check (see
+- re-checks `isAllowed('analytics')`: if the category was granted again in the
+  meantime, it does nothing;
+- on any route except `/chats/*`, calls `window.location.reload()` immediately;
+- on a `/chats/*` route, does not reload, because a reload would abort an
+  in-flight generation (see
+  [chats/stuck-generation-guard.md](chats/stuck-generation-guard.md)). It
+  registers a one-shot `router.beforeEach` guard instead. The next client
+  navigation is cancelled and replaced by `window.location.assign(to.fullPath)`,
+  a full page load, and the guard removes itself. The guard re-checks consent
+  when it fires, and it is removed as soon as `analytics` is granted again.
+
+A visitor who withdrew before the beacon ever loaded, or whose beacon was
+blocked, is never reloaded.
+
+**The token.** The site token is `NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN`.
+It is set only in `env.production.vars` in `wrangler.jsonc`. Previews
+(`env.production.previews.vars`) and local development leave it empty, and an
+empty token means the plugin loads nothing, so previews and development never
+send measurements to the production site in Cloudflare's dashboard. See
+[cloudflare-previews.md](cloudflare-previews.md#web-analytics-on-previews). The
+token is public by design: `runtimeConfig.public` is serialized into every page
+payload, so it is visible in the page source of every visitor whatever they
+chose. On its own it loads nothing, and the beacon script is never requested
+without consent.
+
+**The `analytics` category has no manifest entries.** Cloudflare states the
+beacon sets no cookie and uses no localStorage, so there is nothing for the
+module's cleanup routine to purge on withdrawal. If a future Cloudflare change
+makes the beacon write to the device, declare those keys as `entries` under
+`analytics` (see [Adding new cookies to the manifest](#adding-new-cookies-to-the-manifest))
+and list them in `content/legal/cookie-policy.md`.
+
+**Why the server-side gate does not apply.** The
+[Server-side gating](#server-side-gating) check protects a route that receives
+the data. The beacon posts to `cloudflareinsights.com`, a Cloudflare host, and
+never to our Worker, so there is no Besidka endpoint to check consent on. The
+whole gate is client-side: the script is not requested until consent. This is
+the opposite of `/api/v1/events`, which has a server route but needs no gate.
+
+**The dashboard must be in manual mode.** Cloudflare can also inject the beacon
+itself at the edge for a proxied site. That injection ignores our consent
+decision, so it must stay off. In the Cloudflare dashboard, Web Analytics, the
+`besidka.com` site must use "Enable with JS Snippet installation", not automatic
+setup (see the runbook below). Before this change the site was in automatic mode
+and Cloudflare injected the beacon into every page without consent, which
+contradicted the Cookie Policy. With edge injection on, the consent gate is
+meaningless whatever the app does.
+
+**Owner runbook, after the code is deployed.**
+
+1. Open the Cloudflare dashboard, Web Analytics, the `besidka.com` site, and
+   choose Manage site.
+2. Choose **Enable with JS Snippet installation**, not "Disable". Do this
+   only **after** the code that loads the beacon behind consent is live, so
+   there is no window with neither the edge injection nor the app script.
+3. Confirm the token the dashboard shows matches the one in `wrangler.jsonc`
+   (`env.production.vars`, `NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN`).
+4. Verify that the edge no longer injects the beacon. Send a real browser User
+   Agent and an HTML `Accept`, so the request looks like a browser's:
+
+   ```bash
+   curl -s -H 'User-Agent: <Chrome UA>' -H 'Accept: text/html' \
+     https://besidka.com/ | grep -c cloudflareinsights
+   ```
+
+   It must print `0`. Any other number means the edge is still injecting and
+   the consent gate is bypassed: go back to step 2.
+5. In a real browser, with the category off, confirm there is no request to
+   `static.cloudflareinsights.com` in the network panel; turn it on and confirm
+   the request appears.
+
+**Retention.** Cloudflare holds the data, not Besidka. Cloudflare's Web
+Analytics FAQ states unsampled data is kept for the past 7 days and then
+aggregated, and the dashboard shows the previous six months; no length is
+stated for the aggregated data. The Privacy Policy points at that statement
+rather than promising its own number. Re-read the FAQ
+(<https://developers.cloudflare.com/web-analytics/faq/>) if the wording in the
+policy is ever tightened.
+
+### The receipt-sent hook
+
+`cookie-consent:receipt-sent` is a runtime Nuxt hook fired by
+`app/plugins/cookie-consent-gate.client.ts` once per consent change, after the
+consent receipt POST to `/api/v1/consents` has settled. It settles on success,
+on failure (errors are swallowed) and on the 5 s request timeout
+(`RECEIPT_TIMEOUT_MS`), so a hung request cannot delay subscribers
+indefinitely. The receipt itself is sent 150 ms after the decision
+(`RECEIPT_DELAY_MS`) so the consent cookie is flushed first.
+
+The payload is `{ granted, denied, changed }`, the same
+`CookieConsentChangedPayload` the module's `onConsentChange` receives. The hook
+is declared in `app/types/runtime-hooks.d.ts`. Use it for work that must not
+overtake the receipt, such as reloading the page after a withdrawal; for plain
+reactions to a decision, subscribe with `onConsentChange` instead.
+
+### Re-enabling consent-gated analytics for another tool
+
+For another consent-requiring analytics tool (e.g. GA4), the `analytics`
+category already exists, so the steps are:
+
+1. **Reuse the category.** Do not add a second analytics category unless the
+   purpose differs. If you add or remove a category, or change what `analytics`
+   covers, bump `cookieConsent.revision`: only a revision bump re-prompts
+   visitors, a config change alone does not.
+2. **Gate the client.** Load the tool only after `analytics` is granted, with
+   the plugin pattern in [Subscribing to consent changes](#subscribing-to-consent-changes).
+   If it posts to one of our own routes, also add the server
+   `getCookieConsent(event).isAllowed('analytics')` check (see
    [Server-side gating](#server-side-gating)) as defense-in-depth.
 3. **Declare the cookies.** Declare any cookies the tool sets as `entries`
    under the `analytics` category so the module's cleanup routine purges them
-   on withdrawal (see [Adding new cookies to the manifest](#adding-new-cookies-to-the-manifest)).
+   on withdrawal (see [Adding new cookies to the manifest](#adding-new-cookies-to-the-manifest)),
+   and update `content/legal/cookie-policy.md` and the Privacy Policy.
 
 Two hardenings are worth applying at the same time:
 
@@ -853,11 +1010,13 @@ export default defineI18nLocale(() => ({
 
 ## Gating `useLandingAnalytics().track()`
 
-> **Reference pattern.** The landing analytics shipped cookieless and
-> anonymous, so it is **not** gated today (see
+> **Reference pattern.** The landing counter shipped cookieless and
+> anonymous, so `track()` is **not** gated (see
 > [Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
-> This is the recommended pattern for **if/when you introduce a
-> consent-requiring analytics tool** and gate the `track` call.
+> The optional `analytics` category gates Cloudflare Web Analytics only, not
+> this counter. This is the recommended pattern for **if/when a
+> consent-requiring tool must receive the `track` events** and you gate the
+> `track` call.
 
 If you introduce a consent-requiring analytics tool, gate the `track` call as
 shown in the subscribing section above. The recommended pattern:
@@ -1008,13 +1167,14 @@ earlier visits. Architecture of the player: `docs/video-player.md`.
 |-------------|----------|---------|
 | `necessary` | Yes | Auth cookies, the consent cookie, the unsent-message backup and push/PWA bookkeeping keys — always active |
 | `preferences` | No | UI state persisted in cookies/localStorage |
+| `analytics` | No | Cloudflare Web Analytics (page views and page-load performance). No cookies or storage, so no manifest entries. Added with consent revision `2` |
 
-There is **no `analytics` category** today: the landing analytics is cookieless
-and anonymous and runs without consent (see
+The `analytics` category gates only the Cloudflare Web Analytics beacon (see
+[Cloudflare Web Analytics](#cloudflare-web-analytics)). The server-side landing
+counter is cookieless and anonymous and runs without consent (see
 [Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
-Add an `analytics` category only when a consent-requiring analytics tool (e.g.
-GA4) is introduced. Likewise there is **no `marketing` category**: it is
-commented out in `nuxt.config.ts` and does not appear in the banner.
+There is still **no `marketing` category**: it is commented out in
+`nuxt.config.ts` and does not appear in the banner.
 
 Check `nuxt.config.ts` → `cookieConsent.categories` for the full list of
 declared entries per category.
@@ -1602,7 +1762,9 @@ third-party vendors; Besidka ships none to Axiom.
    table — converts "probably fine" into demonstrable Art. 5(2)
    accountability. The three-part test (purpose/necessity/balancing)
    passes for this setup given the minimization above.
-4. **When analytics/marketing categories activate**: add a
+4. **When a marketing category or an ad-tech analytics vendor activates**
+   (the `analytics` category with Cloudflare Web Analytics, a processor with no
+   cross-site tracking, does not trigger this): add a
    "Do Not Sell or Share My Personal Information" mechanism
    (California), detect and honor the `Sec-GPC` header server-side
    (12 states mandate GPC as of 2026), propagate opt-outs to any
