@@ -64,18 +64,27 @@
               </p>
             </div>
             <p class="text-xs text-base-content/60">
-              This text is still sent with every chat until you remove it.
+              This text is still sent with every chat until you save or
+              discard it.
             </p>
-            <div class="flex justify-end">
+            <div class="flex flex-wrap justify-end gap-2">
               <UiButton
                 mode="error"
                 outline
                 size="sm"
                 normal-case
-                text="Remove"
+                text="Discard"
                 :disabled="isRemovingAboutMe"
-                data-testid="memory-legacy-about-me-remove"
-                @click="removeLegacyAboutMe"
+                data-testid="memory-legacy-about-me-discard"
+                @click="discardLegacyAboutMe"
+              />
+              <UiButton
+                size="sm"
+                normal-case
+                text="Save as entry"
+                :disabled="isRemovingAboutMe"
+                data-testid="memory-legacy-about-me-save"
+                @click="saveLegacyAboutMe"
               />
             </div>
           </div>
@@ -185,6 +194,7 @@
       :limits="data.limits"
       :project-id="modalProjectId"
       :taken-singleton-categories="takenSingletonCategories"
+      :initial-values="legacyEntryValues"
       @changed="onEntryChanged"
     />
   </div>
@@ -201,6 +211,7 @@ import type {
 } from '#shared/types/memory.d'
 import type { MemoryEntryGroup } from '#shared/types/memory-api.d'
 import type {
+  MemoryEntryInitialValues,
   MemoryEntryModalChange,
   MemoryProjectSection,
 } from '~/types/memory-entries.d'
@@ -221,14 +232,14 @@ const description = 'Everything Besidka keeps about you, grouped by '
 
 const legacyAboutMeReasons: Record<AboutMeNotMigratedReason, string> = {
   'too-long': 'It is too long to become a Profile entry (limit 1 KB). '
-    + 'Shorten it into an entry yourself, then remove this.',
+    + 'Shorten it when saving, or discard it.',
   'profile-exists': 'You already have a Profile entry, so this was not '
-    + 'merged. Copy what you need into it, then remove this.',
+    + 'merged. Save it as its own entry or discard it.',
   'memory-off': 'Turn on Use memory and it will be converted automatically.',
   'entries-full': 'Your account memory is full (30 entries). Delete one and '
     + 'this converts automatically.',
   'rejected': 'It contains details Besidka does not save to memory, so it '
-    + 'was not converted.',
+    + 'was not converted. Saving will be checked again and may be refused.',
 }
 
 const GENERIC_LEGACY_ABOUT_ME_REASON = 'It is still sent with every chat.'
@@ -243,6 +254,8 @@ const selectedEntry = shallowRef<MemoryEntry | null>(null)
 const modalProjectId = shallowRef<string | null>(null)
 const isDetailOpen = shallowRef<boolean>(false)
 const isRemovingAboutMe = shallowRef<boolean>(false)
+const legacyEntryValues = shallowRef<MemoryEntryInitialValues | null>(null)
+const isLegacySavePending = shallowRef<boolean>(false)
 const targetProjectId = computed<string | null>(() => {
   return readProjectQuery(route.query.project)
 })
@@ -381,6 +394,12 @@ const takenSingletonCategories = computed<MemoryCategory[]>(() => {
     .filter(category => isEssentialCategory(category))
 })
 
+const hasAccountProfileEntry = computed<boolean>(() => {
+  return accountEntries.value.some((entry) => {
+    return entry.category === 'profile'
+  })
+})
+
 const hasLegacyAboutMe = computed<boolean>(() => {
   return !!props.settings.aboutMe?.trim()
 })
@@ -418,8 +437,16 @@ async function focusHeadingWhenSettled() {
 }
 
 async function onEntryChanged(change: MemoryEntryModalChange) {
+  const isLegacySave = isLegacySavePending.value
+    && change.reason === 'created'
+
   if (change.reason === 'deleted' || change.categoryChanged) {
     shouldRestoreFocus.value = true
+  }
+
+  if (isLegacySave) {
+    isLegacySavePending.value = false
+    await clearSavedLegacyAboutMe()
   }
 
   await refresh()
@@ -431,28 +458,82 @@ watch(isDetailOpen, async (isOpen) => {
     return
   }
 
+  isLegacySavePending.value = false
+  legacyEntryValues.value = null
+
   await focusHeadingWhenSettled()
 }, { flush: 'post' })
 
 function openEntry(entry: MemoryEntry) {
+  legacyEntryValues.value = null
+  isLegacySavePending.value = false
   selectedEntry.value = entry
   modalProjectId.value = entry.projectId ?? null
   isDetailOpen.value = true
 }
 
 function openCreate(projectId: string | null) {
+  legacyEntryValues.value = null
+  isLegacySavePending.value = false
   selectedEntry.value = null
   modalProjectId.value = projectId
   isDetailOpen.value = true
 }
 
-async function removeLegacyAboutMe() {
+function saveLegacyAboutMe() {
+  const aboutMe = props.settings.aboutMe
+
+  if (!aboutMe?.trim()) {
+    return
+  }
+
+  legacyEntryValues.value = buildLegacyAboutMeEntryValues(
+    aboutMe,
+    hasAccountProfileEntry.value,
+  )
+  isLegacySavePending.value = true
+  selectedEntry.value = null
+  modalProjectId.value = null
+  isDetailOpen.value = true
+}
+
+async function clearAboutMe() {
+  await $fetch('/api/v1/profiles/settings', {
+    method: 'PATCH',
+    body: { aboutMe: null },
+  })
+
+  emit('aboutMeRemoved')
+}
+
+async function clearSavedLegacyAboutMe() {
+  isRemovingAboutMe.value = true
+
+  try {
+    await clearAboutMe()
+
+    useInfoMessage('Saved', 'About me saved as a memory entry.')
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      'Saved, but the earlier text could not be removed.',
+      [parsedException.why, 'Remove it manually.']
+        .filter(Boolean)
+        .join(' '),
+    )
+  } finally {
+    isRemovingAboutMe.value = false
+  }
+}
+
+async function discardLegacyAboutMe() {
   const confirmation = await useConfirm({
-    text: 'Remove earlier about me?',
+    text: 'Discard earlier about me?',
     subtitle: 'It will no longer be sent with your chats. '
       + 'This cannot be undone.',
     alert: true,
-    actions: ['Remove'],
+    actions: ['Discard'],
     labelDecline: 'Cancel',
   })
 
@@ -463,18 +544,14 @@ async function removeLegacyAboutMe() {
   isRemovingAboutMe.value = true
 
   try {
-    await $fetch('/api/v1/profiles/settings', {
-      method: 'PATCH',
-      body: { aboutMe: null },
-    })
+    await clearAboutMe()
 
-    useInfoMessage('Removed', 'Earlier about me removed.')
-    emit('aboutMeRemoved')
+    useInfoMessage('Discarded', 'Earlier about me discarded.')
   } catch (exception) {
     const parsedException = parseError(exception)
 
     useErrorMessage(
-      parsedException.message || 'Failed to remove earlier about me.',
+      parsedException.message || 'Failed to discard earlier about me.',
       parsedException.why,
     )
   } finally {

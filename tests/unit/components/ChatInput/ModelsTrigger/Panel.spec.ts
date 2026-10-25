@@ -287,23 +287,184 @@ describe('ChatInput/ModelsTrigger/Panel', () => {
       wrapper.unmount()
     })
 
-    it('hides the toggle and the dropdown in a gateway view', async () => {
-      const wrapper = await mountPanel({
+    describe('in a gateway view', () => {
+      const gatewayProps = {
         ...recommendedProps,
-        selectedModelId: 'anthropic/claude-opus-5',
-        selectedGatewayId: 'vercel',
+        selectedModelId: 'anthropic/claude-haiku-5.5',
+        selectedGatewayId: 'openrouter' as GatewayId,
+      }
+      const gatewayCatalog = [
+        { id: 'anthropic/claude-haiku-5.5', name: 'Claude Haiku 5.5' },
+        { id: 'anthropic/claude-sonnet-5.5', name: 'Claude Sonnet 5.5' },
+        { id: 'google/gemini-3.1-flash-lite', name: 'Gemini Flash Lite' },
+        { id: 'openai/gpt-6-luna-mini', name: 'GPT-6 Luna Mini' },
+      ]
+
+      beforeEach(() => {
+        keyedProviderIds.value = ['google', 'openrouter']
+        mocks.getProviders.mockReturnValue({
+          providers: [
+            {
+              id: 'anthropic',
+              name: 'Anthropic',
+              models: [{
+                ...baseModel,
+                id: 'claude-haiku-5-5',
+                name: 'Claude Haiku 5.5',
+              }],
+            },
+            {
+              id: 'google',
+              name: 'Google AI Studio',
+              models: [{
+                ...baseModel,
+                id: 'gemini-3.1-flash-lite',
+                name: 'Gemini Flash Lite',
+              }],
+            },
+            {
+              id: 'openai',
+              name: 'OpenAI',
+              models: [{
+                ...baseModel,
+                id: 'gpt-6-luna',
+                name: 'GPT-6 Luna',
+              }],
+            },
+          ],
+        })
+        mocks.useGatewayCatalog.mockReturnValue({
+          models: shallowRef(gatewayCatalog),
+          pending: shallowRef(false),
+          error: shallowRef(null),
+          refresh: mocks.refreshGatewayCatalog,
+        })
       })
 
-      expect(wrapper.find('[data-testid="models-picker-gateway-banner"]')
-        .exists()).toBe(true)
-      expect(wrapper.find('[data-testid="memory-picker-filter-all"]').exists())
-        .toBe(false)
-      expect(wrapper.find('[data-testid="models-picker-filter-trigger"]').exists())
-        .toBe(false)
-      expect(wrapper.find('button[aria-label="Choose Claude Opus 5"]')
-        .exists()).toBe(true)
+      function mountGatewayPanel(
+        props: Parameters<typeof mountPanel>[0] = {},
+      ) {
+        return mountPanel({
+          ...gatewayProps,
+          recommendedModelIds: ['claude-haiku-5-5', 'gemini-3.1-flash-lite'],
+          ...props,
+        })
+      }
 
-      wrapper.unmount()
+      it('shows the toggle in place of the dropdown', async () => {
+        const wrapper = await mountGatewayPanel()
+
+        expect(wrapper.find('[data-testid="models-picker-gateway-banner"]')
+          .exists()).toBe(true)
+        expect(wrapper.get('[data-testid="memory-picker-filter-all"]')
+          .attributes('aria-pressed')).toBe('true')
+        expect(wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+          .attributes('aria-pressed')).toBe('false')
+        expect(wrapper.find('[data-testid="models-picker-filter-trigger"]')
+          .exists()).toBe(false)
+        expect(wrapper.findAll('button[aria-label^="Choose "]'))
+          .toHaveLength(4)
+
+        wrapper.unmount()
+      })
+
+      it('badges only the gateway models mapped to a recommended model', async () => {
+        const wrapper = await mountGatewayPanel()
+        const badged = wrapper
+          .findAll('[data-testid="gateway-model-recommended"]')
+
+        expect(badged).toHaveLength(2)
+        expect(
+          wrapper.get('#gateway-model-option-anthropic\\/claude-haiku-5\\.5')
+            .find('[data-testid="gateway-model-recommended"]')
+            .exists(),
+        ).toBe(true)
+        expect(
+          wrapper.get('#gateway-model-option-openai\\/gpt-6-luna-mini')
+            .find('[data-testid="gateway-model-recommended"]')
+            .exists(),
+        ).toBe(false)
+
+        wrapper.unmount()
+      })
+
+      it('narrows the gateway list to recommended models and All restores', async () => {
+        const wrapper = await mountGatewayPanel()
+
+        await wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+          .trigger('click')
+
+        expect(wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+          .attributes('aria-pressed')).toBe('true')
+        expect(wrapper.findAll('button[aria-label^="Choose "]')
+          .map((button) => {
+            return button.attributes('aria-label')
+          }).sort()).toEqual([
+          'Choose Claude Haiku 5.5',
+          'Choose Gemini Flash Lite',
+        ])
+
+        await wrapper.get('[data-testid="memory-picker-filter-all"]')
+          .trigger('click')
+
+        expect(wrapper.findAll('button[aria-label^="Choose "]'))
+          .toHaveLength(4)
+
+        wrapper.unmount()
+      })
+
+      it('shrinks the provider groups with the Recommended filter', async () => {
+        const wrapper = await mountGatewayPanel()
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-openai"]',
+        ).exists()).toBe(true)
+
+        await wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+          .trigger('click')
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-anthropic"]',
+        ).exists()).toBe(true)
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-google"]',
+        ).exists()).toBe(true)
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-openai"]',
+        ).exists()).toBe(false)
+
+        wrapper.unmount()
+      })
+
+      it('badges nothing and keeps the dropdown without the memory props', async () => {
+        const wrapper = await mountPanel({
+          selectedModelId: 'anthropic/claude-haiku-5.5',
+          selectedGatewayId: 'openrouter',
+        })
+
+        expect(wrapper.find('[data-testid="gateway-model-recommended"]')
+          .exists()).toBe(false)
+        expect(wrapper.find('[data-testid="memory-picker-filter-all"]')
+          .exists()).toBe(false)
+        expect(wrapper.find('[data-testid="models-picker-filter-trigger"]')
+          .exists()).toBe(true)
+
+        wrapper.unmount()
+      })
+
+      it('resets the Recommended filter when switching away and back', async () => {
+        const wrapper = await mountGatewayPanel()
+
+        await wrapper.get('[data-testid="memory-picker-filter-recommended"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-exit"]')
+          .trigger('click')
+
+        expect(wrapper.get('[data-testid="memory-picker-filter-all"]')
+          .attributes('aria-pressed')).toBe('true')
+
+        wrapper.unmount()
+      })
     })
   })
 

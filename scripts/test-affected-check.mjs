@@ -501,6 +501,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Memory/Controls.spec.ts',
     'tests/unit/components/Profile/Memory/NeverKept.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/Essentials.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/BackfillSheet.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/ImportSheet.spec.ts',
+    'tests/unit/components/Profile/Memory/CacheInfo.spec.ts',
+    'tests/unit/composables/memory-backfill.spec.ts',
+    'tests/unit/utils/memory-backfill.spec.ts',
+    'tests/unit/utils/memory-legacy-about-me.spec.ts',
+    'tests/unit/utils/memory-about-me.spec.ts',
+    'tests/unit/utils/prompt-cache-estimate.spec.ts',
+    'tests/unit/utils/memory-index-estimate.spec.ts',
+    'tests/unit/utils/memory-recommended-models.spec.ts',
     'tests/unit/components/Profile/Memory/Models.spec.ts',
     'tests/unit/components/Profile/Memory/Entries.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/DetailModal.spec.ts',
@@ -1728,7 +1738,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/(memory-settings|memory-entries)\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
+        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects|memory-backfill)\.ts|app\/utils\/(memory-backfill|memory-legacy-about-me|memory-model-filter)\.ts|shared\/utils\/(prompt-cache-estimate|memory-index-estimate|memory-recommended-models|memory-about-me|memory-import-limits)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/(memory-settings|memory-entries)\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
       tests: memoryTabTests,
     },
     {

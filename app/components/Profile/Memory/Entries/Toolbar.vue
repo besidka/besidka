@@ -49,25 +49,132 @@
             />
           </template>
         </UiButton>
-        <a
-          href="/api/v1/memory/export"
-          download
-          class="btn btn-ghost btn-ghost-legacy btn-sm"
-          data-testid="memory-export"
+        <div class="hidden sm:contents">
+          <button
+            type="button"
+            class="btn btn-sm normal-case btn-ghost btn-ghost-legacy"
+            :class="{ 'opacity-60': isBackfillGated }"
+            :title="backfillTitle"
+            :aria-describedby="isBackfillGated ? backfillHintId : undefined"
+            data-testid="memory-backfill"
+            @click="openBackfill"
+          >
+            <span
+              v-if="isBackfillRunning"
+              class="loading loading-spinner loading-xs"
+            />
+            <Icon
+              v-else
+              name="lucide:history"
+              size="16"
+            />
+            {{ backfillLabel }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm normal-case btn-ghost btn-ghost-legacy"
+            data-testid="memory-import"
+            @click="openImport"
+          >
+            <Icon name="lucide:file-input" size="16" />
+            Import memory
+          </button>
+          <a
+            href="/api/v1/memory/export"
+            download
+            class="btn btn-ghost btn-ghost-legacy btn-sm"
+            data-testid="memory-export"
+          >
+            <Icon name="lucide:download" size="16" />
+            Export JSON
+          </a>
+          <UiButton
+            mode="error"
+            ghost
+            size="sm"
+            normal-case
+            text="Reset memory…"
+            :disabled="isResetDisabled"
+            data-testid="memory-reset"
+            @click="resetMemory"
+          />
+        </div>
+        <details
+          ref="moreMenu"
+          class="dropdown dropdown-start w-full sm:hidden"
+          data-testid="memory-more"
+          @toggle="onMoreToggle"
+          @keydown.esc="closeMoreMenu(true)"
         >
-          <Icon name="lucide:download" size="16" />
-          Export JSON
-        </a>
-        <UiButton
-          mode="error"
-          ghost
-          size="sm"
-          normal-case
-          text="Reset memory…"
-          :disabled="isResetDisabled"
-          data-testid="memory-reset"
-          @click="resetMemory"
-        />
+          <summary
+            class="btn btn-ghost btn-ghost-legacy btn-sm normal-case"
+            :aria-expanded="isMoreOpen"
+            data-testid="memory-more-trigger"
+          >
+            <Icon name="lucide:ellipsis" size="16" />
+            More
+          </summary>
+          <ul
+            class="dropdown-content menu menu-sm z-50 mt-2 w-64 max-w-full rounded-box bg-base-100 p-1 shadow-lg"
+            aria-label="More memory actions"
+          >
+            <li>
+              <button
+                type="button"
+                :class="{ 'opacity-60': isBackfillGated }"
+                :aria-describedby="
+                  isBackfillGated ? backfillHintId : undefined
+                "
+                data-testid="memory-backfill-menu"
+                @click="chooseMenuAction(openBackfill)"
+              >
+                <span
+                  v-if="isBackfillRunning"
+                  class="loading loading-spinner loading-xs"
+                />
+                <Icon
+                  v-else
+                  name="lucide:history"
+                  size="16"
+                />
+                {{ backfillLabel }}
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                data-testid="memory-import-menu"
+                @click="chooseMenuAction(openImport)"
+              >
+                <Icon name="lucide:file-input" size="16" />
+                Import memory
+              </button>
+            </li>
+            <li>
+              <a
+                href="/api/v1/memory/export"
+                download
+                data-testid="memory-export-menu"
+                @click="closeMoreMenu(true)"
+              >
+                <Icon name="lucide:download" size="16" />
+                Export JSON
+              </a>
+            </li>
+            <li :class="{ 'menu-disabled': isResetDisabled }">
+              <button
+                type="button"
+                class="text-error"
+                :disabled="isResetDisabled"
+                data-testid="memory-reset-menu"
+                @click="chooseMenuAction(resetMemory)"
+              >
+                <Icon name="lucide:trash-2" size="16" />
+                Reset memory…
+              </button>
+            </li>
+          </ul>
+        </details>
       </div>
     </div>
     <p
@@ -77,6 +184,21 @@
     >
       {{ updateNowNote }}
     </p>
+    <span
+      v-if="isBackfillGated"
+      :id="backfillHintId"
+      class="sr-only"
+    >
+      {{ backfillGateHint }}
+    </span>
+    <LazyProfileMemoryEntriesBackfillSheet
+      v-model:open="isBackfillOpen"
+      @changed="emit('changed')"
+    />
+    <LazyProfileMemoryEntriesImportSheet
+      v-model:open="isImportOpen"
+      @changed="emit('changed')"
+    />
   </div>
 </template>
 
@@ -97,8 +219,21 @@ const emit = defineEmits<{
 
 const HISTORY_LOOKUP_LIMIT = 100
 
+const BACKFILL_REFRESH_INTERVAL_MS = 20_000
+
+const backfillHintId = useId()
+const moreMenu = useTemplateRef<HTMLDetailsElement>('moreMenu')
+const {
+  job: backfillJob,
+  isRunning: isBackfillRunning,
+  load: loadBackfill,
+} = useMemoryBackfill()
+
 const isUpdating = shallowRef<boolean>(false)
 const isResetting = shallowRef<boolean>(false)
+const isBackfillOpen = shallowRef<boolean>(false)
+const isImportOpen = shallowRef<boolean>(false)
+const isMoreOpen = shallowRef<boolean>(false)
 
 const canUpdateNow = computed<boolean>(() => {
   return props.settings.memoryEnabled
@@ -107,6 +242,35 @@ const canUpdateNow = computed<boolean>(() => {
 
 const isResetDisabled = computed<boolean>(() => {
   return !props.total || isResetting.value
+})
+
+const isBackfillGated = computed<boolean>(() => {
+  return !props.settings.memoryEnabled
+    || !props.settings.memoryExtractionEnabled
+})
+
+const backfillGateHint = computed<string>(() => {
+  return props.settings.memoryEnabled
+    ? memoryBackfillUnavailableCopy['extraction-disabled']
+    : memoryBackfillUnavailableCopy['memory-disabled']
+})
+
+const backfillLabel = computed<string>(() => {
+  const job = backfillJob.value
+
+  if (!isBackfillRunning.value || !job) {
+    return 'Build memory from past chats'
+  }
+
+  return `Building… ${job.processedChats}/${job.totalChats}`
+})
+
+const backfillTitle = computed<string | undefined>(() => {
+  return isBackfillGated.value ? backfillGateHint.value : undefined
+})
+
+const isBackfillRefreshing = computed<boolean>(() => {
+  return isBackfillRunning.value && !isBackfillOpen.value
 })
 
 const updateNowNote = 'Reads your latest account chat and runs on your own '
@@ -120,6 +284,65 @@ const extractionNotices: Record<string, string> = {
   'project-unavailable': 'This project is no longer available.',
   'chat-unavailable': 'Your latest chat is no longer available.',
 }
+
+function openBackfill() {
+  isBackfillOpen.value = true
+}
+
+function openImport() {
+  isImportOpen.value = true
+}
+
+function onMoreToggle() {
+  isMoreOpen.value = !!moreMenu.value?.open
+}
+
+function closeMoreMenu(shouldRestoreFocus: boolean = false) {
+  if (!moreMenu.value?.open) {
+    return
+  }
+
+  moreMenu.value.open = false
+  isMoreOpen.value = false
+
+  if (shouldRestoreFocus) {
+    moreMenu.value.querySelector('summary')?.focus()
+  }
+}
+
+function chooseMenuAction(action: () => void | Promise<void>) {
+  closeMoreMenu(true)
+  action()
+}
+
+onClickOutside(moreMenu, () => {
+  closeMoreMenu()
+})
+
+onMounted(() => {
+  loadBackfill()
+})
+
+watch(isBackfillRefreshing, (isRefreshing, _previous, onCleanup) => {
+  if (!isRefreshing) {
+    return
+  }
+
+  const timer = setInterval(loadBackfill, BACKFILL_REFRESH_INTERVAL_MS)
+
+  onCleanup(() => clearInterval(timer))
+}, { immediate: true })
+
+watch(() => backfillJob.value?.status, (status, previousStatus) => {
+  if (
+    previousStatus === 'running'
+    && status
+    && status !== 'running'
+    && !isBackfillOpen.value
+  ) {
+    emit('changed')
+  }
+})
 
 function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural

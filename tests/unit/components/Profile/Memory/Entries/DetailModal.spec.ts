@@ -65,7 +65,15 @@ function createRejection() {
   })
 }
 
+interface InitialValues {
+  title: string
+  description: string
+  body: string
+  category: MemoryCategory
+}
+
 interface ModalOverrides {
+  initialValues?: InitialValues | null
   projectId?: string | null
   takenSingletonCategories?: MemoryCategory[]
   backLabel?: string
@@ -549,6 +557,195 @@ describe('Profile/Memory/Entries/DetailModal', () => {
         await startEditing(wrapper)
 
         expect(categoryOption(wrapper, 'profile').element.disabled).toBe(false)
+      })
+  })
+
+  describe('prefilled create mode', () => {
+    const initialValues: InitialValues = {
+      title: 'About me',
+      description: 'Backend developer',
+      body: 'Builds APIs',
+      category: 'topics',
+    }
+
+    function value(wrapper: Wrapper, testId: string): string {
+      return byTestId<HTMLInputElement | HTMLTextAreaElement>(
+        wrapper,
+        testId,
+      ).element.value
+    }
+
+    it('fills every field from the initial values', async () => {
+      const wrapper = await mountModal(null, { initialValues })
+
+      expect(byTestId(wrapper, 'memory-entry-title').text())
+        .toBe('Add memory')
+      expect(value(wrapper, 'memory-entry-title-input')).toBe('About me')
+      expect(value(wrapper, 'memory-entry-description-input'))
+        .toBe('Backend developer')
+      expect(value(wrapper, 'memory-entry-body-input')).toBe('Builds APIs')
+      expect(value(wrapper, 'memory-entry-category-select')).toBe('topics')
+      expect(isDisabled(wrapper, 'memory-entry-save')).toBe(false)
+    })
+
+    it('keeps the prefilled Profile category when it is free', async () => {
+      const wrapper = await mountModal(null, {
+        initialValues: { ...initialValues, category: 'profile' },
+      })
+
+      expect(value(wrapper, 'memory-entry-category-select')).toBe('profile')
+    })
+
+    it('posts the prefilled values and leaves the toast to the caller',
+      async () => {
+        mocks.fetch.mockResolvedValue({ entry: createEntry() })
+
+        const wrapper = await mountModal(null, { initialValues })
+
+        await byTestId(wrapper, 'memory-entry-save').trigger('click')
+        await flushPromises()
+
+        expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(
+          '/api/v1/memory/entries',
+          {
+            method: 'POST',
+            body: {
+              category: 'topics',
+              title: 'About me',
+              description: 'Backend developer',
+              body: 'Builds APIs',
+            },
+          },
+        )
+        expect(mocks.info).not.toHaveBeenCalled()
+        expect(wrapper.emitted('changed')).toEqual([[{
+          reason: 'created',
+          categoryChanged: false,
+        }]])
+        expect(wrapper.emitted('update:open')).toEqual([[false]])
+      })
+
+    it('lets the user edit before saving', async () => {
+      mocks.fetch.mockResolvedValue({ entry: createEntry() })
+
+      const wrapper = await mountModal(null, { initialValues })
+
+      await byTestId(wrapper, 'memory-entry-body-input').setValue('Shorter')
+      await byTestId(wrapper, 'memory-entry-category-select')
+        .setValue('areas')
+      await byTestId(wrapper, 'memory-entry-save').trigger('click')
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/memory/entries', {
+        method: 'POST',
+        body: {
+          category: 'areas',
+          title: 'About me',
+          description: 'Backend developer',
+          body: 'Shorter',
+        },
+      })
+    })
+
+    it('shows the byte counter over the limit and blocks Save', async () => {
+      const wrapper = await mountModal(null, {
+        initialValues: { ...initialValues, body: 'a'.repeat(41) },
+      })
+
+      expect(byTestId(wrapper, 'memory-entry-body-counter').text())
+        .toBe('41 / 40 bytes')
+      expect(byTestId(wrapper, 'memory-entry-body-counter').classes())
+        .toContain('text-error')
+      expect(isDisabled(wrapper, 'memory-entry-save')).toBe(true)
+    })
+
+    it('keeps a refusal inline with the prefill intact and no toast',
+      async () => {
+        mocks.fetch.mockRejectedValue(createRejection())
+
+        const wrapper = await mountModal(null, { initialValues })
+
+        await byTestId(wrapper, 'memory-entry-save').trigger('click')
+        await flushPromises()
+
+        const alert = byTestId(wrapper, 'memory-entry-error')
+
+        expect(alert.text()).toContain('Memory rejected')
+        expect(alert.text()).toContain('It looks like a payment card number.')
+        expect(mocks.info).not.toHaveBeenCalled()
+        expect(wrapper.emitted('changed')).toBeUndefined()
+        expect(wrapper.emitted('update:open')).toBeUndefined()
+        expect(value(wrapper, 'memory-entry-body-input')).toBe('Builds APIs')
+      })
+
+    it('applies the initial values again on every open', async () => {
+      const wrapper = await mountModal(null, { initialValues })
+
+      await byTestId(wrapper, 'memory-entry-title-input').setValue('Changed')
+      await wrapper.setProps({ open: false })
+      await flushPromises()
+      await wrapper.setProps({ open: true })
+      await flushPromises()
+
+      expect(value(wrapper, 'memory-entry-title-input')).toBe('About me')
+    })
+
+    it('falls back to an empty form when the initial values are dropped',
+      async () => {
+        const wrapper = await mountModal(null, { initialValues })
+
+        await wrapper.setProps({ open: false, initialValues: null })
+        await flushPromises()
+        await wrapper.setProps({ open: true })
+        await flushPromises()
+
+        expect(value(wrapper, 'memory-entry-title-input')).toBe('')
+        expect(value(wrapper, 'memory-entry-body-input')).toBe('')
+        expect(value(wrapper, 'memory-entry-category-select'))
+          .toBe('profile')
+      })
+
+    it('ignores the initial values when an entry is set', async () => {
+      const wrapper = await mountModal(createEntry(), { initialValues })
+
+      expect(byTestId(wrapper, 'memory-entry-title').text())
+        .toBe('Espresso setup')
+      expect(wrapper.find('[data-testid="memory-entry-form"]').exists())
+        .toBe(false)
+
+      await startEditing(wrapper)
+
+      expect(value(wrapper, 'memory-entry-title-input'))
+        .toBe('Espresso setup')
+      expect(value(wrapper, 'memory-entry-description-input'))
+        .toBe('Prefers a double shot')
+      expect(value(wrapper, 'memory-entry-body-input'))
+        .toBe('Line one\nLine two <b>bold</b>')
+      expect(value(wrapper, 'memory-entry-category-select')).toBe('topics')
+    })
+
+    it('still toasts when saving an existing entry with initial values set',
+      async () => {
+        mocks.fetch.mockImplementation(async (url: string) => {
+          if (url.endsWith('/sources')) {
+            return { chats: [] }
+          }
+
+          return { entry: createEntry({ title: 'New title' }) }
+        })
+
+        const wrapper = await mountModal(createEntry(), { initialValues })
+
+        await startEditing(wrapper)
+        await byTestId(wrapper, 'memory-entry-title-input')
+          .setValue('New title')
+        await byTestId(wrapper, 'memory-entry-save').trigger('click')
+        await flushPromises()
+
+        expect(mocks.info).toHaveBeenCalledWith(
+          'Saved',
+          'Memory entry updated.',
+        )
       })
   })
 

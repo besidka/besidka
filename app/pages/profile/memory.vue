@@ -13,6 +13,7 @@
       :settings="values"
       :save="saveSettings"
     />
+    <ProfileMemoryCacheInfo />
     <ProfileMemoryEntries
       :settings="values"
       :about-me-not-migrated-reason="aboutMeNotMigratedReason"

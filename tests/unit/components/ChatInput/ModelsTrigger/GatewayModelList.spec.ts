@@ -19,11 +19,16 @@ const model: GatewayModel = {
 function mountList(
   gatewayId: GatewayId,
   filterModel?: (model: GatewayModel) => boolean,
+  extraProps: Partial<{
+    recommendedDirectModels: Array<{ providerId: string, modelId: string }>
+    recommendedOnly: boolean
+  }> = {},
 ) {
   return mountSuspended(GatewayModelList, {
     props: {
       gatewayId,
       filterModel,
+      ...extraProps,
       gatewayLabel: gatewayId === 'cloudflare'
         ? 'Cloudflare AI Gateway'
         : 'Vercel AI Gateway',
@@ -103,5 +108,118 @@ describe('ChatInput/ModelsTrigger/GatewayModelList', () => {
     expect(groups.map((group) => {
       return group.prefix
     })).toEqual(['anthropic'])
+  })
+
+  describe('recommended models', () => {
+    const catalog: GatewayModel[] = [
+      { id: 'anthropic/claude-haiku-5.5', name: 'Claude Haiku 5.5' },
+      { id: 'anthropic/claude-sonnet-5.5', name: 'Claude Sonnet 5.5' },
+      { id: 'openai/gpt-6-luna', name: 'GPT-6 Luna' },
+      { id: 'openai/gpt-6-luna-mini', name: 'GPT-6 Luna Mini' },
+      { id: 'moonshotai/kimi-k2.6:free', name: 'Kimi K2.6 (free)' },
+    ]
+    const recommendedDirectModels = [
+      { providerId: 'anthropic', modelId: 'claude-haiku-5-5' },
+      { providerId: 'openai', modelId: 'gpt-6-luna' },
+      { providerId: 'moonshotai', modelId: 'kimi-k2.6' },
+    ]
+
+    function getItems(wrapper: Awaited<ReturnType<typeof mountList>>) {
+      return wrapper.findAllComponents({
+        name: 'ChatInputModelsTriggerGatewayModelItem',
+      })
+    }
+
+    beforeEach(() => {
+      mocks.useGatewayCatalog.mockReturnValue({
+        models: shallowRef<GatewayModel[]>(catalog),
+        pending: shallowRef(false),
+        error: shallowRef(null),
+        refresh: vi.fn(),
+      })
+    })
+
+    it('flags only the models mapped to a recommended direct model', async () => {
+      const wrapper = await mountList('openrouter', undefined, {
+        recommendedDirectModels,
+      })
+      const recommendedIds = getItems(wrapper)
+        .filter((item) => {
+          return item.props('isRecommended')
+        })
+        .map((item) => {
+          return item.props('model').id
+        })
+
+      expect(getItems(wrapper)).toHaveLength(5)
+      expect(recommendedIds.sort()).toEqual([
+        'anthropic/claude-haiku-5.5',
+        'moonshotai/kimi-k2.6:free',
+        'openai/gpt-6-luna',
+      ])
+    })
+
+    it('flags nothing and lists everything by default', async () => {
+      const wrapper = await mountList('openrouter')
+
+      expect(getItems(wrapper)).toHaveLength(5)
+      expect(getItems(wrapper).some((item) => {
+        return item.props('isRecommended')
+      })).toBe(false)
+    })
+
+    it('narrows the list to the recommended models and their groups', async () => {
+      const wrapper = await mountList('openrouter', undefined, {
+        recommendedDirectModels,
+        recommendedOnly: true,
+      })
+      const groups = wrapper.emitted('providerGroupsChange')?.at(-1)?.[0] as
+        Array<{ prefix: string, count: number }>
+
+      expect(getItems(wrapper).map((item) => {
+        return item.props('model').id
+      }).sort()).toEqual([
+        'anthropic/claude-haiku-5.5',
+        'moonshotai/kimi-k2.6:free',
+        'openai/gpt-6-luna',
+      ])
+      expect(groups.map((group) => {
+        return [group.prefix, group.count]
+      }).sort()).toEqual([
+        ['anthropic', 1],
+        ['moonshotai', 1],
+        ['openai', 1],
+      ])
+    })
+
+    it('keeps the caller filter ahead of the recommended filter', async () => {
+      const wrapper = await mountList(
+        'openrouter',
+        (entry) => {
+          return !entry.id.startsWith('openai/')
+        },
+        { recommendedDirectModels, recommendedOnly: true },
+      )
+
+      expect(getItems(wrapper).map((item) => {
+        return item.props('model').id
+      }).sort()).toEqual([
+        'anthropic/claude-haiku-5.5',
+        'moonshotai/kimi-k2.6:free',
+      ])
+    })
+
+    it('offers to clear filters when recommended leaves no model', async () => {
+      const wrapper = await mountList('openrouter', undefined, {
+        recommendedDirectModels: [],
+        recommendedOnly: true,
+      })
+
+      expect(getItems(wrapper)).toHaveLength(0)
+      expect(wrapper.get('[data-testid="gateway-models-empty"]').text())
+        .toContain('No models match the selected filters.')
+      expect(wrapper.find('[data-testid="gateway-models-clear-filters"]')
+        .exists()).toBe(true)
+    })
   })
 })

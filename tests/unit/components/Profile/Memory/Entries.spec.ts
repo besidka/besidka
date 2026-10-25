@@ -28,6 +28,11 @@ mockNuxtImport('useErrorMessage', () => mocks.error)
 enableAutoUnmount(afterEach)
 
 const ENTRIES_URL = '/api/v1/memory/entries'
+const BACKFILL_URL = '/api/v1/memory/backfill'
+
+function fetchCalls() {
+  return mocks.fetch.mock.calls.filter(([url]) => url !== BACKFILL_URL)
+}
 
 const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
@@ -42,7 +47,14 @@ const defaultSettings: MemorySettingsFields = {
 }
 
 const DetailModalStub = defineComponent({
-  props: ['open', 'entry', 'limits', 'projectId', 'takenSingletonCategories'],
+  props: [
+    'open',
+    'entry',
+    'limits',
+    'projectId',
+    'takenSingletonCategories',
+    'initialValues',
+  ],
   emits: ['update:open', 'changed'],
   setup(props, { emit }) {
     return () => h('div', {
@@ -50,6 +62,10 @@ const DetailModalStub = defineComponent({
       'data-open': String(props.open),
       'data-entry-id': props.entry?.id ?? '',
       'data-project-id': props.projectId ?? '',
+      'data-initial-title': props.initialValues?.title ?? '',
+      'data-initial-description': props.initialValues?.description ?? '',
+      'data-initial-body': props.initialValues?.body ?? '',
+      'data-initial-category': props.initialValues?.category ?? '',
     }, [
       h('button', {
         'data-testid': 'detail-modal-changed',
@@ -1109,7 +1125,7 @@ describe('Profile/Memory/Entries', () => {
           .trigger('click')
         await flushPromises()
 
-        expect(mocks.fetch).not.toHaveBeenCalled()
+        expect(fetchCalls()).toEqual([])
         expect(refresh).not.toHaveBeenCalled()
       })
 
@@ -1268,7 +1284,10 @@ describe('Profile/Memory/Entries', () => {
         expect(text.find('b').exists()).toBe(false)
         expect(text.find('strong').exists()).toBe(false)
         expect(legacy.text())
-          .toContain('This text is still sent with every chat until you remove it.')
+          .toContain(
+            'This text is still sent with every chat until you save or '
+            + 'discard it.',
+          )
 
         const section = wrapper.get('[data-testid="memory-entries-section"]')
         const html = section.html()
@@ -1281,12 +1300,12 @@ describe('Profile/Memory/Entries', () => {
       [
         'too-long',
         'It is too long to become a Profile entry (limit 1 KB). Shorten it '
-        + 'into an entry yourself, then remove this.',
+        + 'when saving, or discard it.',
       ],
       [
         'profile-exists',
-        'You already have a Profile entry, so this was not merged. Copy what '
-        + 'you need into it, then remove this.',
+        'You already have a Profile entry, so this was not merged. Save it '
+        + 'as its own entry or discard it.',
       ],
       [
         'memory-off',
@@ -1295,7 +1314,7 @@ describe('Profile/Memory/Entries', () => {
       [
         'rejected',
         'It contains details Besidka does not save to memory, so it was not '
-        + 'converted.',
+        + 'converted. Saving will be checked again and may be refused.',
       ],
       [
         'entries-full',
@@ -1310,22 +1329,22 @@ describe('Profile/Memory/Entries', () => {
         .text()).toBe(expected)
     })
 
-    it('removes the text after confirmation', async () => {
-      mocks.confirm.mockResolvedValue({ label: 'Remove', index: 0 })
+    it('discards the text after confirmation', async () => {
+      mocks.confirm.mockResolvedValue({ label: 'Discard', index: 0 })
       mocks.fetch.mockResolvedValue({})
 
       const wrapper = await mountLegacy('too-long')
 
-      await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
+      await wrapper.get('[data-testid="memory-legacy-about-me-discard"]')
         .trigger('click')
       await flushPromises()
 
       expect(mocks.confirm).toHaveBeenCalledWith({
-        text: 'Remove earlier about me?',
+        text: 'Discard earlier about me?',
         subtitle: 'It will no longer be sent with your chats. '
           + 'This cannot be undone.',
         alert: true,
-        actions: ['Remove'],
+        actions: ['Discard'],
         labelDecline: 'Cancel',
       })
       expect(mocks.fetch).toHaveBeenCalledWith(
@@ -1333,8 +1352,8 @@ describe('Profile/Memory/Entries', () => {
         { method: 'PATCH', body: { aboutMe: null } },
       )
       expect(mocks.info).toHaveBeenCalledWith(
-        'Removed',
-        'Earlier about me removed.',
+        'Discarded',
+        'Earlier about me discarded.',
       )
       expect(wrapper.emitted('aboutMeRemoved')).toHaveLength(1)
       expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
@@ -1348,22 +1367,34 @@ describe('Profile/Memory/Entries', () => {
         .toBe(false)
     })
 
-    it('keeps the text when the confirmation is declined', async () => {
-      mocks.confirm.mockResolvedValue(null)
-
+    it('labels the actions Save as entry and Discard', async () => {
       const wrapper = await mountLegacy('too-long')
 
-      await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
-        .trigger('click')
-      await flushPromises()
-
-      expect(mocks.fetch).not.toHaveBeenCalled()
-      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
-        .toBe(true)
+      expect(wrapper.get('[data-testid="memory-legacy-about-me-save"]')
+        .text()).toBe('Save as entry')
+      expect(wrapper.get('[data-testid="memory-legacy-about-me-discard"]')
+        .text()).toBe('Discard')
+      expect(wrapper.find('[data-testid="memory-legacy-about-me-remove"]')
+        .exists()).toBe(false)
     })
 
-    it('keeps the text and shows a toast when removing fails', async () => {
-      mocks.confirm.mockResolvedValue({ label: 'Remove', index: 0 })
+    it('keeps the text when the discard confirmation is declined',
+      async () => {
+        mocks.confirm.mockResolvedValue(null)
+
+        const wrapper = await mountLegacy('too-long')
+
+        await wrapper.get('[data-testid="memory-legacy-about-me-discard"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(fetchCalls()).toEqual([])
+        expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+          .toBe(true)
+      })
+
+    it('keeps the text and shows a toast when discarding fails', async () => {
+      mocks.confirm.mockResolvedValue({ label: 'Discard', index: 0 })
       mocks.fetch.mockRejectedValue(Object.assign(new Error('Request failed'), {
         data: {
           statusCode: 500,
@@ -1374,7 +1405,7 @@ describe('Profile/Memory/Entries', () => {
 
       const wrapper = await mountLegacy('too-long')
 
-      await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
+      await wrapper.get('[data-testid="memory-legacy-about-me-discard"]')
         .trigger('click')
       await flushPromises()
 
@@ -1386,6 +1417,201 @@ describe('Profile/Memory/Entries', () => {
       expect(wrapper.emitted('aboutMeRemoved')).toBeUndefined()
       expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
         .toBe(true)
+    })
+
+    describe('save as entry', () => {
+      const LONG_LEGACY_TEXT = `${'word '.repeat(40)}end\nsecond line`
+
+      function stub(wrapper: Awaited<ReturnType<typeof mountLegacy>>) {
+        return wrapper.get('[data-testid="detail-modal-stub"]')
+      }
+
+      async function clickSave(
+        wrapper: Awaited<ReturnType<typeof mountLegacy>>,
+      ) {
+        await wrapper.get('[data-testid="memory-legacy-about-me-save"]')
+          .trigger('click')
+        await flushPromises()
+      }
+
+      it('opens the entry sheet prefilled as a Profile entry', async () => {
+        const wrapper = await mountLegacy('too-long')
+
+        await clickSave(wrapper)
+
+        expect(stub(wrapper).attributes('data-open')).toBe('true')
+        expect(stub(wrapper).attributes('data-entry-id')).toBe('')
+        expect(stub(wrapper).attributes('data-project-id')).toBe('')
+        expect(stub(wrapper).attributes('data-initial-title'))
+          .toBe('About me')
+        expect(stub(wrapper).attributes('data-initial-description'))
+          .toBe('I am a **backend** developer')
+        expect(stub(wrapper).attributes('data-initial-body'))
+          .toBe(LEGACY_TEXT)
+        expect(stub(wrapper).attributes('data-initial-category'))
+          .toBe('profile')
+      })
+
+      it('trims a long first line to the description limit', async () => {
+        const wrapper = await mountLegacy('too-long', LONG_LEGACY_TEXT)
+
+        await clickSave(wrapper)
+
+        const description = stub(wrapper)
+          .attributes('data-initial-description')!
+
+        expect(description.length).toBeLessThanOrEqual(100)
+        expect(description.endsWith('…')).toBe(true)
+      })
+
+      it('falls back to Topics when a Profile entry already exists',
+        async () => {
+          entriesData.value = createResponse([
+            {
+              category: 'profile',
+              entries: [createEntry('p1', 'profile')],
+            },
+          ])
+
+          const wrapper = await mountEntries(
+            { aboutMe: LEGACY_TEXT },
+            '/',
+            'profile-exists',
+          )
+
+          await clickSave(wrapper)
+
+          expect(stub(wrapper).attributes('data-initial-category'))
+            .toBe('topics')
+        })
+
+      it('ignores a Profile entry that belongs to a project', async () => {
+        entriesData.value = createResponse([
+          {
+            category: 'profile',
+            entries: [createEntry('p1', 'profile', { projectId: 'project-1' })],
+          },
+        ])
+
+        const wrapper = await mountEntries({ aboutMe: LEGACY_TEXT }, '/', null)
+
+        await clickSave(wrapper)
+
+        expect(stub(wrapper).attributes('data-initial-category'))
+          .toBe('profile')
+      })
+
+      it('clears the text, toasts and refetches only after the entry is created',
+        async () => {
+          mocks.fetch.mockResolvedValue({})
+
+          const wrapper = await mountLegacy('too-long')
+
+          await clickSave(wrapper)
+
+          expect(fetchCalls()).toEqual([])
+
+          refresh.mockClear()
+
+          await wrapper.get('[data-testid="detail-modal-created"]')
+            .trigger('click')
+          await flushPromises()
+
+          expect(fetchCalls()).toEqual([[
+            '/api/v1/profiles/settings',
+            { method: 'PATCH', body: { aboutMe: null } },
+          ]])
+          expect(mocks.info).toHaveBeenCalledWith(
+            'Saved',
+            'About me saved as a memory entry.',
+          )
+          expect(wrapper.emitted('aboutMeRemoved')).toHaveLength(1)
+          expect(refresh).toHaveBeenCalled()
+          expect(mocks.error).not.toHaveBeenCalled()
+        })
+
+      it('keeps the block and toasts an error when the clear fails',
+        async () => {
+          mocks.fetch.mockRejectedValue(Object.assign(
+            new Error('Request failed'),
+            {
+              data: {
+                statusCode: 500,
+                message: 'Could not save',
+                data: { why: 'Database unavailable' },
+              },
+            },
+          ))
+
+          const wrapper = await mountLegacy('too-long')
+
+          await clickSave(wrapper)
+          refresh.mockClear()
+          await wrapper.get('[data-testid="detail-modal-created"]')
+            .trigger('click')
+          await flushPromises()
+
+          expect(mocks.error).toHaveBeenCalledWith(
+            'Saved, but the earlier text could not be removed.',
+            'Database unavailable Remove it manually.',
+          )
+          expect(mocks.info).not.toHaveBeenCalled()
+          expect(wrapper.emitted('aboutMeRemoved')).toBeUndefined()
+          expect(refresh).toHaveBeenCalled()
+          expect(wrapper.find('[data-testid="memory-legacy-about-me"]')
+            .exists()).toBe(true)
+        })
+
+      it('does not clear the text when the sheet closes without saving',
+        async () => {
+          const wrapper = await mountLegacy('too-long')
+
+          await clickSave(wrapper)
+          await wrapper.getComponent(DetailModalStub).vm
+            .$emit('update:open', false)
+          await flushPromises()
+
+          expect(fetchCalls()).toEqual([])
+          expect(stub(wrapper).attributes('data-initial-title')).toBe('')
+
+          await wrapper.get('[data-testid="detail-modal-created"]')
+            .trigger('click')
+          await flushPromises()
+
+          expect(fetchCalls()).toEqual([])
+        })
+
+      it('does not clear the text for a normal create after a cancelled save',
+        async () => {
+          const wrapper = await mountLegacy('too-long')
+
+          await clickSave(wrapper)
+          await wrapper.getComponent(DetailModalStub).vm
+            .$emit('update:open', false)
+          await flushPromises()
+          await wrapper.get('[data-testid="memory-add"]').trigger('click')
+          await flushPromises()
+
+          expect(stub(wrapper).attributes('data-initial-body')).toBe('')
+
+          await wrapper.get('[data-testid="detail-modal-created"]')
+            .trigger('click')
+          await flushPromises()
+
+          expect(fetchCalls()).toEqual([])
+        })
+
+      it('does not clear the text when an unrelated entry is saved',
+        async () => {
+          const wrapper = await mountLegacy('too-long')
+
+          await clickSave(wrapper)
+          await wrapper.get('[data-testid="detail-modal-changed"]')
+            .trigger('click')
+          await flushPromises()
+
+          expect(fetchCalls()).toEqual([])
+        })
     })
   })
 
