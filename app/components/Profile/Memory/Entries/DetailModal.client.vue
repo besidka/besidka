@@ -330,13 +330,15 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
-import { formatActivityAge } from '#shared/utils/date-groups'
 import type {
   MemoryCategory,
   MemoryEntry,
   MemoryEntryPatch,
 } from '#shared/types/memory.d'
-import type { MemoryEntryLimits } from '#shared/types/memory-api.d'
+import type {
+  MemoryEntryChange,
+  MemoryEntryLimits,
+} from '#shared/types/memory-api.d'
 
 interface SourceChat {
   id: string
@@ -352,7 +354,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  changed: []
+  changed: [change: MemoryEntryChange]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -487,8 +489,7 @@ const updatedLabel = computed<string>(() => {
     return ''
   }
 
-  const age = formatActivityAge(new Date(currentEntry.value.updatedAt))
-    .replace(/^Last activity /, '')
+  const age = formatMemoryUpdatedAge(new Date(currentEntry.value.updatedAt))
 
   return `Updated ${age}`
 })
@@ -605,7 +606,10 @@ async function saveChanges() {
     }
 
     useInfoMessage('Saved', 'Memory entry updated.')
-    emit('changed')
+    emit('changed', {
+      reason: 'saved',
+      categoryChanged: response.entry.category !== entry.category,
+    })
   } catch (exception) {
     if (currentEntry.value?.id === entry.id) {
       saveError.value = parseError(exception)
@@ -643,7 +647,7 @@ async function deleteEntry() {
 
     useInfoMessage('Deleted', 'Memory entry removed.')
     open.value = false
-    emit('changed')
+    emit('changed', { reason: 'deleted', categoryChanged: false })
   } catch (exception) {
     const parsedException = parseError(exception)
 

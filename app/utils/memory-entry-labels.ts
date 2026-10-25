@@ -3,6 +3,7 @@ import type {
   MemoryOrigin,
   MemorySensitiveCategory,
 } from '#shared/types/memory.d'
+import { formatActivityAge } from '#shared/utils/date-groups'
 import { memoryCategories } from '#shared/utils/memory-policy'
 
 export const memoryCategoryOrder: readonly MemoryCategory[] = memoryCategories
@@ -40,4 +41,8 @@ export const memorySensitiveCategoryLabels: Record<
 
 export function getMemoryEntryOriginLabel(origin: MemoryOrigin): string {
   return memoryOriginLabels[origin]
+}
+
+export function formatMemoryUpdatedAge(date: Date): string {
+  return formatActivityAge(date).replace(/^Last activity /, '')
 }

@@ -41,11 +41,22 @@ describe('Profile/Memory/Entries/Group', () => {
   it('names the section by its heading', async () => {
     const wrapper = await mountGroup()
     const section = wrapper.get('[data-testid="memory-entry-group"]')
-    const heading = wrapper.get('h3')
+    const label = wrapper.get('h3 > span:first-child')
 
     expect(section.element.tagName).toBe('SECTION')
-    expect(section.attributes('aria-labelledby')).toBe(heading.attributes('id'))
-    expect(heading.text()).toContain('Preferences')
+    expect(label.attributes('id')).toBeTruthy()
+    expect(section.attributes('aria-labelledby')).toBe(label.attributes('id'))
+    expect(label.text()).toBe('Preferences')
+  })
+
+  it('keeps the count badge out of the accessible name', async () => {
+    const wrapper = await mountGroup()
+    const labelId = wrapper.get('section').attributes('aria-labelledby')!
+    const labelElement = wrapper.get(`[id="${labelId}"]`)
+    const badge = wrapper.get('[data-testid="memory-entry-group-count"]')
+
+    expect(labelElement.element.contains(badge.element)).toBe(false)
+    expect(labelElement.text()).not.toContain('2')
   })
 
   it('shows the entry count', async () => {

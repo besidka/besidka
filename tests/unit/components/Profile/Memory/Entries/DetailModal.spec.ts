@@ -331,7 +331,9 @@ describe('Profile/Memory/Entries/DetailModal', () => {
           'Saved',
           'Memory entry updated.',
         )
-        expect(wrapper.emitted('changed')).toHaveLength(1)
+        expect(wrapper.emitted('changed')).toEqual([[
+          { reason: 'saved', categoryChanged: false },
+        ]])
         expect(wrapper.find('[data-testid="memory-entry-form"]').exists())
           .toBe(false)
         expect(byTestId(wrapper, 'memory-entry-title').text())
@@ -354,6 +356,24 @@ describe('Profile/Memory/Entries/DetailModal', () => {
         '/api/v1/memory/entries/entry-1',
         { method: 'PATCH', body: { body: 'New body', category: 'people' } },
       )
+    })
+
+    it('reports a category change when the saved entry moves', async () => {
+      mocks.fetch.mockResolvedValue({
+        entry: createEntry({ category: 'people' }),
+      })
+
+      const wrapper = await mountModal()
+
+      await startEditing(wrapper)
+      await byTestId(wrapper, 'memory-entry-category-select')
+        .setValue('people')
+      await byTestId(wrapper, 'memory-entry-save').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('changed')).toEqual([[
+        { reason: 'saved', categoryChanged: true },
+      ]])
     })
 
     it('strips newlines from the description', async () => {
@@ -519,6 +539,17 @@ describe('Profile/Memory/Entries/DetailModal', () => {
     })
   })
 
+  it('shows the age without the activity prefix', async () => {
+    const wrapper = await mountModal(createEntry({
+      updatedAt: new Date(Date.now() - (3 * 24 * 60 * 60 * 1000)).toISOString(),
+    }))
+
+    expect(byTestId(wrapper, 'memory-entry-meta').text())
+      .toContain('Updated 3 days ago')
+    expect(byTestId(wrapper, 'memory-entry-meta').text())
+      .not.toContain('Last activity')
+  })
+
   describe('delete', () => {
     it('deletes after confirmation, closes and emits changed', async () => {
       mocks.confirm.mockResolvedValue({ label: 'Delete', index: 0 })
@@ -545,7 +576,9 @@ describe('Profile/Memory/Entries/DetailModal', () => {
         'Memory entry removed.',
       )
       expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
-      expect(wrapper.emitted('changed')).toHaveLength(1)
+      expect(wrapper.emitted('changed')).toEqual([[
+        { reason: 'deleted', categoryChanged: false },
+      ]])
     })
 
     it('does nothing when the confirmation is declined', async () => {

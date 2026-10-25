@@ -4,11 +4,8 @@
     :data-category="category"
     data-testid="memory-entry-group"
   >
-    <h3
-      :id="headingId"
-      class="mb-2 flex items-center gap-2 text-sm font-bold"
-    >
-      {{ memoryCategoryLabels[category] }}
+    <h3 class="mb-2 flex items-center gap-2 text-sm font-bold">
+      <span :id="headingId">{{ memoryCategoryLabels[category] }}</span>
       <span
         class="badge badge-ghost badge-sm"
         data-testid="memory-entry-group-count"

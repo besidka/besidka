@@ -70,10 +70,10 @@ describe('Profile/Memory/Entries/ScopeSwitch', () => {
       .toBe('project-1')
   })
 
-  it('shows an unlisted project as a generic project', async () => {
+  it('labels an unlisted project id as unknown', async () => {
     const wrapper = await mountSwitch('archived-project')
 
-    expect(optionLabels(wrapper)).toContain('Project')
+    expect(optionLabels(wrapper)).toContain('Unknown project')
     expect(wrapper.get<HTMLSelectElement>('select').element.value)
       .toBe('archived-project')
   })

@@ -34,7 +34,6 @@
 
 <script setup lang="ts">
 import type { MemoryEntry } from '#shared/types/memory.d'
-import { formatActivityAge } from '#shared/utils/date-groups'
 
 const props = defineProps<{
   entry: MemoryEntry
@@ -49,8 +48,7 @@ const isSensitive = computed<boolean>(() => {
 })
 
 const metaLabel = computed<string>(() => {
-  const age = formatActivityAge(new Date(props.entry.updatedAt))
-    .replace(/^Last activity /, '')
+  const age = formatMemoryUpdatedAge(new Date(props.entry.updatedAt))
   const origin = getMemoryEntryOriginLabel(props.entry.origin)
 
   return `Updated ${age} · ${origin}`

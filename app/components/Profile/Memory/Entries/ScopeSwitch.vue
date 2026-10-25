@@ -43,7 +43,7 @@ const projectOptions = computed(() => {
     return projects.value
   }
 
-  return [...projects.value, { id: props.projectId, name: 'Project' }]
+  return [...projects.value, { id: props.projectId, name: 'Unknown project' }]
 })
 
 function onChange(event: Event) {

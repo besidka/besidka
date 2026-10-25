@@ -5,6 +5,14 @@
       :description="description"
     >
       <div class="grid gap-4">
+        <h3
+          ref="entriesHeading"
+          tabindex="-1"
+          class="js-memory-entries-heading sr-only focus:outline-none"
+          data-testid="memory-entries-heading"
+        >
+          Memory entries
+        </h3>
         <div
           v-if="!settings.memoryEnabled"
           role="status"
@@ -56,15 +64,26 @@
             <p v-if="parsedError.why" class="text-sm">{{ parsedError.why }}</p>
             <p v-if="parsedError.fix" class="text-sm">{{ parsedError.fix }}</p>
           </div>
-          <UiButton
-            mode="error"
-            outline
-            size="sm"
-            normal-case
-            text="Try again"
-            data-testid="memory-entries-retry"
-            @click="refresh()"
-          />
+          <div class="flex flex-wrap items-center gap-2">
+            <UiButton
+              mode="error"
+              outline
+              size="sm"
+              normal-case
+              text="Try again"
+              data-testid="memory-entries-retry"
+              @click="refresh()"
+            />
+            <UiButton
+              v-if="projectId"
+              ghost
+              size="sm"
+              normal-case
+              text="Back to account memory"
+              data-testid="memory-entries-back-to-account"
+              @click="changeScope(null)"
+            />
+          </div>
         </div>
         <ProfileMemoryEntriesEmpty
           v-else-if="orderedGroups.length === 0"
@@ -91,7 +110,7 @@
       v-model:open="isDetailOpen"
       :entry="selectedEntry"
       :limits="data.limits"
-      @changed="refresh()"
+      @changed="onEntryChanged"
     />
   </div>
 </template>
@@ -99,7 +118,10 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import type { MemoryEntry, MemorySettingsFields } from '#shared/types/memory.d'
-import type { MemoryEntryGroup } from '#shared/types/memory-api.d'
+import type {
+  MemoryEntryChange,
+  MemoryEntryGroup,
+} from '#shared/types/memory-api.d'
 
 defineProps<{
   settings: MemorySettingsFields
@@ -111,6 +133,8 @@ const description = 'Everything Besidka keeps about you, grouped by '
 const route = useRoute()
 const router = useRouter()
 
+const entriesHeading = useTemplateRef<HTMLElement>('entriesHeading')
+const shouldRestoreFocus = shallowRef<boolean>(false)
 const selectedEntry = shallowRef<MemoryEntry | null>(null)
 const isDetailOpen = shallowRef<boolean>(false)
 
@@ -185,6 +209,34 @@ async function changeScope(nextProjectId: string | null) {
 
   await router.replace({ query })
 }
+
+async function focusHeadingWhenSettled() {
+  if (!shouldRestoreFocus.value || isDetailOpen.value || pending.value) {
+    return
+  }
+
+  await nextTick()
+
+  shouldRestoreFocus.value = false
+  entriesHeading.value?.focus()
+}
+
+async function onEntryChanged(change: MemoryEntryChange) {
+  if (change.reason === 'deleted' || change.categoryChanged) {
+    shouldRestoreFocus.value = true
+  }
+
+  await refresh()
+  await focusHeadingWhenSettled()
+}
+
+watch(isDetailOpen, async (isOpen) => {
+  if (isOpen) {
+    return
+  }
+
+  await focusHeadingWhenSettled()
+}, { flush: 'post' })
 
 function openEntry(entry: MemoryEntry) {
   selectedEntry.value = entry

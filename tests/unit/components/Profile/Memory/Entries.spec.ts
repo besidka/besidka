@@ -48,7 +48,24 @@ const DetailModalStub = defineComponent({
     }, [
       h('button', {
         'data-testid': 'detail-modal-changed',
-        'onClick': () => emit('changed'),
+        'onClick': () => emit('changed', {
+          reason: 'saved',
+          categoryChanged: false,
+        }),
+      }),
+      h('button', {
+        'data-testid': 'detail-modal-category-changed',
+        'onClick': () => emit('changed', {
+          reason: 'saved',
+          categoryChanged: true,
+        }),
+      }),
+      h('button', {
+        'data-testid': 'detail-modal-deleted',
+        'onClick': () => emit('changed', {
+          reason: 'deleted',
+          categoryChanged: false,
+        }),
       }),
     ])
   },
@@ -111,6 +128,7 @@ async function mountEntries(
 ) {
   const wrapper = await mountSuspended(Entries, {
     route,
+    attachTo: document.body,
     props: { settings: { ...defaultSettings, ...settings } },
     global: {
       stubs: {
@@ -197,8 +215,11 @@ describe('Profile/Memory/Entries', () => {
 
       expect(groups.map(group => group.attributes('data-category')))
         .toEqual(['profile', 'preferences', 'topics'])
-      expect(groups.map(group => group.get('h3').text()))
-        .toEqual(['Profile 2', 'Preferences 1', 'Topics 1'])
+      expect(groups.map(group => group.get('h3 > span').text()))
+        .toEqual(['Profile', 'Preferences', 'Topics'])
+      expect(groups.map((group) => {
+        return group.get('[data-testid="memory-entry-group-count"]').text()
+      })).toEqual(['2', '1', '1'])
     })
 
     it('shows title, description, updated and origin on each row', async () => {
@@ -318,6 +339,38 @@ describe('Profile/Memory/Entries', () => {
 
       expect(wrapper.find('[data-testid="memory-disabled-note"]').exists())
         .toBe(false)
+    })
+
+    it('offers a way back to account memory in project scope', async () => {
+      entriesData.value = null
+      entriesError.value = Object.assign(new Error('Request failed'), {
+        data: { statusCode: 404, message: 'Project not found' },
+      })
+
+      const router = useRouter()
+      const replace = vi.spyOn(router, 'replace')
+      const wrapper = await mountEntries({}, '/?scope=project&project=gone&x=1')
+
+      replace.mockClear()
+      await wrapper.get('[data-testid="memory-entries-back-to-account"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(replace).toHaveBeenCalledWith({ query: { x: '1' } })
+      expect(wrapper.find('[data-testid="memory-entries-retry"]').exists())
+        .toBe(true)
+    })
+
+    it('does not offer account memory in the account scope', async () => {
+      entriesData.value = null
+      entriesError.value = Object.assign(new Error('Request failed'), {
+        data: { statusCode: 500, message: 'Could not load memory' },
+      })
+
+      const wrapper = await mountEntries()
+
+      expect(wrapper.find('[data-testid="memory-entries-back-to-account"]')
+        .exists()).toBe(false)
     })
 
     it('shows the parsed error and retries', async () => {
@@ -482,6 +535,53 @@ describe('Profile/Memory/Entries', () => {
 
       expect(refresh).toHaveBeenCalledOnce()
     })
+
+    it('leaves focus alone after a plain save', async () => {
+      const { wrapper } = await mountWithEntry()
+
+      await wrapper.get('[data-testid="memory-entry-row"]').trigger('click')
+      await wrapper.get('[data-testid="detail-modal-changed"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(document.activeElement)
+        .not.toBe(wrapper.get('[data-testid="memory-entries-heading"]').element)
+    })
+
+    it('moves focus to the entries heading after a delete', async () => {
+      const { wrapper } = await mountWithEntry()
+
+      await wrapper.get('[data-testid="memory-entry-row"]').trigger('click')
+      await wrapper.getComponent(DetailModalStub).vm.$emit('update:open', false)
+      await wrapper.get('[data-testid="detail-modal-deleted"]')
+        .trigger('click')
+      await flushPromises()
+
+      const heading = wrapper.get('[data-testid="memory-entries-heading"]')
+
+      expect(heading.attributes('tabindex')).toBe('-1')
+      expect(heading.classes()).toContain('js-memory-entries-heading')
+      expect(document.activeElement).toBe(heading.element)
+    })
+
+    it('waits for the modal to close before focusing after a category move',
+      async () => {
+        const { wrapper } = await mountWithEntry()
+        const heading = wrapper.get('[data-testid="memory-entries-heading"]')
+
+        await wrapper.get('[data-testid="memory-entry-row"]').trigger('click')
+        await wrapper.get('[data-testid="detail-modal-category-changed"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(document.activeElement).not.toBe(heading.element)
+
+        await wrapper.getComponent(DetailModalStub).vm
+          .$emit('update:open', false)
+        await flushPromises()
+
+        expect(document.activeElement).toBe(heading.element)
+      })
   })
 
   it('refreshes the list after the toolbar changes memory', async () => {

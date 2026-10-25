@@ -64,7 +64,7 @@
       class="text-xs text-base-content/60"
       data-testid="memory-update-now-note"
     >
-      Reads your latest chat and runs on your own API key.
+      {{ updateNowNote }}
     </p>
   </div>
 </template>
@@ -85,6 +85,8 @@ const emit = defineEmits<{
   changed: []
 }>()
 
+const HISTORY_LOOKUP_LIMIT = 100
+
 const { getProjectName } = useMemoryProjects()
 
 const isUpdating = shallowRef<boolean>(false)
@@ -99,29 +101,59 @@ const isResetDisabled = computed<boolean>(() => {
   return !props.total || isResetting.value
 })
 
+const updateNowNote = computed<string>(() => {
+  const chatScope = props.projectId
+    ? 'latest chat in this project'
+    : 'latest account chat'
+
+  return `Reads your ${chatScope} and runs on your own API key.`
+})
+
 const extractionNotices: Record<string, string> = {
   'leased': 'Besidka is already updating memory from this chat.',
-  'no-user-text': 'Your latest chat has no messages to read yet.',
+  'no-user-text': 'No new messages to read since the last update.',
   'too-short': 'Your latest chat is too short to learn from yet.',
   'disabled': 'Memory generation is turned off.',
+  'project-unavailable': 'This project is no longer available.',
+  'chat-unavailable': 'Your latest chat is no longer available.',
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural
 }
 
-async function findLatestChatSlug(): Promise<string | null> {
-  const history = await $fetch('/api/v1/chats/history', {
-    query: { limit: 1 },
+function pickLatestChatSlug(
+  chats: { slug: string, activityAt: Date | string | number }[],
+): string | null {
+  const [latestChat] = [...chats].sort((first, second) => {
+    return new Date(second.activityAt).getTime()
+      - new Date(first.activityAt).getTime()
   })
-  const [latestChat] = [...history.pinned, ...history.chats].sort(
-    (first, second) => {
-      return new Date(second.activityAt).getTime()
-        - new Date(first.activityAt).getTime()
-    },
-  )
 
   return latestChat?.slug ?? null
+}
+
+async function findLatestChatSlug(): Promise<string | null> {
+  if (props.projectId) {
+    const projectChats = await $fetch(
+      `/api/v1/projects/${props.projectId}/chats`,
+      { query: { limit: 1 } },
+    )
+
+    return pickLatestChatSlug([
+      ...projectChats.pinned,
+      ...projectChats.chats,
+    ])
+  }
+
+  const history = await $fetch('/api/v1/chats/history', {
+    query: { limit: HISTORY_LOOKUP_LIMIT },
+  })
+  const accountChats = [...history.pinned, ...history.chats].filter((chat) => {
+    return !chat.projectId
+  })
+
+  return pickLatestChatSlug(accountChats)
 }
 
 async function updateMemoryNow() {
@@ -131,7 +163,12 @@ async function updateMemoryNow() {
     const chatSlug = await findLatestChatSlug()
 
     if (!chatSlug) {
-      useInfoMessage('No chats to read yet', 'Start a chat, then try again.')
+      useInfoMessage(
+        'No chats to read yet',
+        props.projectId
+          ? 'Start a chat in this project, then try again.'
+          : 'Start a chat outside any project, then try again.',
+      )
 
       return
     }
@@ -176,8 +213,7 @@ function announceExtraction(result: {
       'Memory not updated',
       extractionNotices[result.status]
       ?? extractionNotices[result.reason ?? '']
-      ?? result.reason
-      ?? 'There was nothing to update right now.',
+      ?? 'Nothing was updated.',
     )
 
     return

@@ -64,6 +64,7 @@ function createRejection(
 
 function mockApi(options: {
   history?: Record<string, unknown>
+  projectChats?: Record<string, unknown>
   extract?: Record<string, unknown> | Error
   reset?: Record<string, unknown> | Error
 } = {}) {
@@ -72,6 +73,16 @@ function mockApi(options: {
       '/api/v1/chats/history': options.history ?? {
         pinned: [],
         chats: [{ slug: 'latest-chat', activityAt: '2026-02-01T00:00:00Z' }],
+        nextCursor: null,
+      },
+      '/api/v1/projects/project-1/chats': options.projectChats ?? {
+        project: { id: 'project-1' },
+        pinned: [],
+        chats: [{
+          slug: 'project-chat',
+          projectId: 'project-1',
+          activityAt: '2026-02-01T00:00:00Z',
+        }],
         nextCursor: null,
       },
       '/api/v1/memory/extract-now': options.extract ?? {
@@ -174,11 +185,19 @@ describe('Profile/Memory/Entries/Toolbar', () => {
     },
   )
 
-  it('explains where update now reads from', async () => {
+  it('explains where update now reads from in the account scope', async () => {
     const wrapper = await mountToolbar()
 
     expect(wrapper.get('[data-testid="memory-update-now-note"]').text())
-      .toBe('Reads your latest chat and runs on your own API key.')
+      .toBe('Reads your latest account chat and runs on your own API key.')
+  })
+
+  it('explains where update now reads from in a project', async () => {
+    const wrapper = await mountToolbar({ projectId: 'project-1' })
+
+    expect(wrapper.get('[data-testid="memory-update-now-note"]').text()).toBe(
+      'Reads your latest chat in this project and runs on your own API key.',
+    )
   })
 
   describe('update memory now', () => {
@@ -191,7 +210,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
 
       expect(mocks.fetch.mock.calls[0]).toEqual([
         '/api/v1/chats/history',
-        { query: { limit: 1 } },
+        { query: { limit: 100 } },
       ])
       expect(mocks.fetch.mock.calls[1]).toEqual([
         '/api/v1/memory/extract-now',
@@ -223,6 +242,123 @@ describe('Profile/Memory/Entries/Toolbar', () => {
         .toEqual({ chatSlug: 'pinned-chat' })
     })
 
+    it('skips project chats in the account scope', async () => {
+      mockApi({
+        history: {
+          pinned: [{
+            slug: 'pinned-project-chat',
+            projectId: 'project-1',
+            activityAt: '2026-04-01T00:00:00Z',
+          }],
+          chats: [
+            {
+              slug: 'newer-project-chat',
+              projectId: 'project-1',
+              activityAt: '2026-03-01T00:00:00Z',
+            },
+            {
+              slug: 'account-chat',
+              projectId: null,
+              activityAt: '2026-02-01T00:00:00Z',
+            },
+          ],
+          nextCursor: null,
+        },
+      })
+
+      const wrapper = await mountToolbar()
+
+      await wrapper.get('[data-testid="memory-update-now"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(callsTo('/api/v1/memory/extract-now')[0]![1].body)
+        .toEqual({ chatSlug: 'account-chat' })
+    })
+
+    it('says so when only project chats exist in the account scope',
+      async () => {
+        mockApi({
+          history: {
+            pinned: [],
+            chats: [{
+              slug: 'project-chat',
+              projectId: 'project-1',
+              activityAt: '2026-02-01T00:00:00Z',
+            }],
+            nextCursor: null,
+          },
+        })
+
+        const wrapper = await mountToolbar()
+
+        await wrapper.get('[data-testid="memory-update-now"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(callsTo('/api/v1/memory/extract-now')).toHaveLength(0)
+        expect(mocks.info).toHaveBeenCalledWith(
+          'No chats to read yet',
+          'Start a chat outside any project, then try again.',
+        )
+      })
+
+    it('reads the latest chat of the viewed project', async () => {
+      mockApi({
+        projectChats: {
+          project: { id: 'project-1' },
+          pinned: [{
+            slug: 'old-pinned',
+            activityAt: '2026-01-01T00:00:00Z',
+          }],
+          chats: [{
+            slug: 'recent-project-chat',
+            activityAt: '2026-02-01T00:00:00Z',
+          }],
+          nextCursor: null,
+        },
+      })
+
+      const wrapper = await mountToolbar({ projectId: 'project-1' })
+
+      await wrapper.get('[data-testid="memory-update-now"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(callsTo('/api/v1/chats/history')).toHaveLength(0)
+      expect(callsTo('/api/v1/projects/project-1/chats')).toEqual([[
+        '/api/v1/projects/project-1/chats',
+        { query: { limit: 1 } },
+      ]])
+      expect(callsTo('/api/v1/memory/extract-now')[0]![1].body)
+        .toEqual({ chatSlug: 'recent-project-chat' })
+      expect(wrapper.emitted('changed')).toHaveLength(1)
+    })
+
+    it('says so when the project has no chats', async () => {
+      mockApi({
+        projectChats: {
+          project: { id: 'project-1' },
+          pinned: [],
+          chats: [],
+          nextCursor: null,
+        },
+      })
+
+      const wrapper = await mountToolbar({ projectId: 'project-1' })
+
+      await wrapper.get('[data-testid="memory-update-now"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(callsTo('/api/v1/memory/extract-now')).toHaveLength(0)
+      expect(mocks.info).toHaveBeenCalledWith(
+        'No chats to read yet',
+        'Start a chat in this project, then try again.',
+      )
+      expect(wrapper.emitted('changed')).toBeUndefined()
+    })
+
     it('says so when there are no chats to read', async () => {
       mockApi({ history: { pinned: [], chats: [], nextCursor: null } })
 
@@ -235,7 +371,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       expect(callsTo('/api/v1/memory/extract-now')).toHaveLength(0)
       expect(mocks.info).toHaveBeenCalledWith(
         'No chats to read yet',
-        'Start a chat, then try again.',
+        'Start a chat outside any project, then try again.',
       )
       expect(wrapper.emitted('changed')).toBeUndefined()
     })
@@ -266,9 +402,12 @@ describe('Profile/Memory/Entries/Toolbar', () => {
 
     it.each([
       ['skipped', 'too-short', 'Your latest chat is too short to learn from yet.'],
-      ['skipped', 'no-user-text', 'Your latest chat has no messages to read yet.'],
+      ['skipped', 'no-user-text', 'No new messages to read since the last update.'],
+      ['skipped', 'project-unavailable', 'This project is no longer available.'],
+      ['skipped', 'chat-unavailable', 'Your latest chat is no longer available.'],
       ['leased', undefined, 'Besidka is already updating memory from this chat.'],
-      ['skipped', 'something-new', 'something-new'],
+      ['skipped', 'something-new', 'Nothing was updated.'],
+      ['skipped', undefined, 'Nothing was updated.'],
     ])(
       'explains a %s result with reason %s',
       async (status, reason, message) => {
