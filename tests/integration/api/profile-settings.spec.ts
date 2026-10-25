@@ -1390,8 +1390,10 @@ describe('profile settings API', () => {
 
           expect(exception).toMatchObject({
             statusCode: 422,
-            message: 'About me contains sensitive data',
-            why: 'Detected: health, religion-or-belief.',
+            message: 'Sensitive topics (health, religion, politics…) are '
+              + 'not saved to memory.',
+            why: 'Your "About me" text looks like sensitive data '
+              + '(health, religion-or-belief).',
             fix: 'Remove the sensitive details from "About me" and save '
               + 'again.',
           })

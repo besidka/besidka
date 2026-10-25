@@ -21,6 +21,7 @@ import {
   MEMORY_SETTING_DEFAULTS,
   alwaysInjectedMemoryCategories,
   memoryCategories,
+  SENSITIVE_TOPIC_REFUSAL_MESSAGE,
   neverStoreKinds,
 } from '#shared/utils/memory-policy'
 import {
@@ -187,7 +188,7 @@ function createSensitiveTopicError(
     : 'This entry is marked sensitive.'
 
   return createError({
-    message: 'Sensitive topics (health, religion, politics…) are not saved to memory.',
+    message: SENSITIVE_TOPIC_REFUSAL_MESSAGE,
     status: 422,
     why,
     fix: 'Remove the sensitive details and save again.',

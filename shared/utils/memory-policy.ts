@@ -146,4 +146,7 @@ export const MEMORY_SETTING_DEFAULTS = {
 
 export const REDACTION_PLACEHOLDER = '[redacted]'
 
+export const SENSITIVE_TOPIC_REFUSAL_MESSAGE
+  = 'Sensitive topics (health, religion, politics…) are not saved to memory.'
+
 export const MEMORY_ENTRY_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
