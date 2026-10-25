@@ -17,6 +17,7 @@ type ExportAction
     | 'download-png'
     | 'download-drawio'
 
+const MERGED_FLOW_TIMEOUT = 90_000
 const DIAGRAM_COUNT = 4
 const SEQUENCE_INDEX = 1
 const PIE_INDEX = 2
@@ -51,6 +52,8 @@ async function openCase(page: Page, url: string): Promise<void> {
 test.describe('Mermaid diagrams', () => {
   test('renders persisted ```mermaid blocks as svgs and shows the inline '
     + 'copy menu without clipping it', async ({ page }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await openCase(page, '/chats/test?scenario=mermaid&messages=2')
 
     await test.step('renders a persisted ```mermaid block as an svg',
@@ -69,6 +72,26 @@ test.describe('Mermaid diagrams', () => {
           .toContainText('Market research')
         await expect(page.locator('[data-testid="mermaid-error"]'))
           .toHaveCount(0)
+      })
+
+    await test.step('toggles between the diagram and its source',
+      async () => {
+        const diagrams = page.locator('[data-testid="mermaid-diagram"]')
+        const firstToggle = page
+          .locator('[data-testid="mermaid-toggle"]')
+          .first()
+
+        await firstToggle.click()
+
+        await expect(diagrams).toHaveCount(DIAGRAM_COUNT - 1)
+        await expect(
+          page.locator('[data-testid="chat-messages-container"]'),
+        ).toContainText('flowchart LR')
+
+        await firstToggle.click()
+
+        await expect(diagrams).toHaveCount(DIAGRAM_COUNT)
+        await expect(diagrams.locator('svg')).toHaveCount(DIAGRAM_COUNT)
       })
 
     await test.step('shows the inline copy menu without clipping it',
@@ -244,6 +267,8 @@ test.describe('Mermaid diagram viewer', () => {
     page,
     browserName,
   }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await waitForAllDiagrams(page)
 
     await test.step('opens fullscreen from the toolbar button and closes on '
@@ -315,6 +340,8 @@ test.describe('Mermaid diagram viewer', () => {
 
   test('zooms with the buttons and the mouse wheel and shows a tooltip on '
     + 'a hovered zoom button', async ({ page }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await waitForAllDiagrams(page)
     await openViewerFromButton(page, 0)
 
@@ -535,6 +562,8 @@ async function downloadFrom(
 test.describe('Mermaid diagram export', () => {
   test('downloads a self-contained svg, a non-blank png and a .drawio file '
     + 'inline and from the viewer header', async ({ page }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await waitForAllDiagrams(page)
 
     await test.step('downloads a self-contained svg', async () => {
@@ -724,6 +753,8 @@ test.describe('Mermaid diagram export', () => {
 
     test('copies the svg, the raw source, the markdown fence and draw.io '
       + 'clipboard xml', async ({ page }) => {
+      test.setTimeout(MERGED_FLOW_TIMEOUT)
+
       await waitForAllDiagrams(page)
 
       const cynefinBlock = getDiagramBlock(page, CYNEFIN_INDEX)
@@ -803,6 +834,8 @@ test.describe('Mermaid diagram export', () => {
 test.describe('Mermaid diagram editing', () => {
   test('edits the source live, exports the edited diagram, and keeps the '
     + 'last diagram with an error note on invalid syntax', async ({ page }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await waitForAllDiagrams(page)
 
     const block = getDiagramBlock(page, 0)

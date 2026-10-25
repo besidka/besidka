@@ -189,6 +189,8 @@ async function dismissPopupWithEscape(page: Page) {
 test.describe('Cookie consent SSR HTML', () => {
   test('public routes carry no consent state or banner markup for a '
     + 'visitor without a consent cookie', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
     await test.step('SSR HTML does not contain the banner markup', async () => {
       const response = await page.request.get('/signin')
       const html = await response.text()
@@ -211,6 +213,8 @@ test.describe('Cookie consent SSR HTML', () => {
 
   test('public routes carry no consent state for a visitor with a consent '
     + 'cookie', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
     for (const route of PUBLIC_SSR_ROUTES) {
       await test.step(`SSR HTML of ${route} carries no consent state for a `
         + 'visitor with a consent cookie', async () => {
@@ -355,6 +359,8 @@ test.describe('Cookie consent banner', () => {
 
   test('Customize opens an accessible modal that keeps Tab focus inside, '
     + 'and its Accept all grants every category', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
     const popup = page.getByTestId('cookies-popup')
     const modal = page.getByTestId('cookies-modal')
 
@@ -414,10 +420,15 @@ test.describe('Cookie consent banner', () => {
 
   test('Accept all on the first layer grants preferences in one click, then '
     + 'the receipt details and withdraw are offered', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
     const popup = page.getByTestId('cookies-popup')
 
     await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-    await expect(popup.getByTestId('cookies-withdraw')).toHaveCount(0)
+
+    await test.step('withdraw is not offered before a decision', async () => {
+      await expect(popup.getByTestId('cookies-withdraw')).toHaveCount(0)
+    })
 
     await popup.getByTestId('cookies-allow-all').click()
     await expect(popup).toBeHidden()
@@ -485,21 +496,22 @@ test.describe('Cookie consent banner', () => {
     await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
     await seedModelKey(page)
 
-    const receiptResponse = page.waitForResponse((response) => {
-      return response.url().endsWith('/api/v1/consents')
-        && response.request().method() === 'POST'
-    })
-
-    await popup.getByTestId('cookies-reject-all').click()
-    await expect(popup).toBeHidden()
-
     await test.step('the consent receipt of a real decision is accepted by '
       + 'the server', async () => {
+      const receiptResponse = page.waitForResponse((response) => {
+        return response.url().endsWith('/api/v1/consents')
+          && response.request().method() === 'POST'
+      })
+
+      await popup.getByTestId('cookies-reject-all').click()
+
       expect((await receiptResponse).status()).toBe(204)
     })
 
     await test.step('Reject all records a necessary-only decision and removes '
       + 'preference storage entries', async () => {
+      await expect(popup).toBeHidden()
+
       const consent = await getConsentCookie(page)
 
       expect(consent.granted).toEqual(['necessary'])
@@ -529,6 +541,8 @@ test.describe('Cookie consent banner', () => {
 
   test('the trigger restores focus after Esc and toggles the popup closed '
     + 'on a second click', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
     const popup = page.getByTestId('cookies-popup')
     const trigger = page.getByTestId('cookies-trigger')
 
@@ -697,6 +711,7 @@ test.describe('Cookie consent banner', () => {
       await toggleTheme(page)
 
       await expect(prompt).toBeVisible()
+      expect(await readColorModeKey(page)).toBeNull()
     })
 
     await test.step('Remember grants preferences', async () => {
