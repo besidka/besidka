@@ -265,6 +265,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/project-activity.spec.ts',
     'tests/unit/utils/project-instructions.spec.ts',
     'tests/unit/utils/project-memory.spec.ts',
+    'tests/unit/utils/project-memory-lease.spec.ts',
     'tests/unit/components/Projects/InstructionsCard.spec.ts',
     'tests/unit/components/Projects/MemoryCard.spec.ts',
     'tests/unit/components/Chat/ProjectInstructions.spec.ts',

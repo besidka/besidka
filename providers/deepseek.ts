@@ -14,6 +14,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
+      forProjectMemory: true,
     },
     {
       id: 'deepseek-v4-pro',
