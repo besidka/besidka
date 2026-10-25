@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
+import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import type {
   MemoryExtractionOp,
 } from '~~/server/utils/memory/extract-schema'
@@ -21,6 +23,8 @@ import type {
 
 const mocks = vi.hoisted(() => ({
   generateObject: vi.fn(),
+  getModel: vi.fn(),
+  getCachedGatewayCatalog: vi.fn(),
   resolveMemoryModel: vi.fn(),
   acquireMemoryLease: vi.fn(),
   release: vi.fn(),
@@ -30,6 +34,25 @@ vi.mock('ai', () => ({
   generateObject: mocks.generateObject,
   generateText: vi.fn(),
 }))
+
+vi.mock('#shared/utils/model', async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import('#shared/utils/model')
+  >()
+
+  return { ...original, getModel: mocks.getModel }
+})
+
+vi.mock('~~/server/utils/gateways/catalog', async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import('~~/server/utils/gateways/catalog')
+  >()
+
+  return {
+    ...original,
+    getCachedGatewayCatalog: mocks.getCachedGatewayCatalog,
+  }
+})
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { publicIdMockFactory } = await import(
@@ -114,6 +137,12 @@ describe('extractChatMemory', () => {
     userId = await seedUser(testDb.db, {
       memoryEnabled: true,
     })
+    mocks.getModel.mockReturnValue({
+      modelName: 'Select Model',
+      model: null,
+      provider: null,
+    })
+    mocks.getCachedGatewayCatalog.mockResolvedValue([])
     mocks.release.mockResolvedValue(undefined)
     mocks.acquireMemoryLease.mockResolvedValue({ release: mocks.release })
     mocks.resolveMemoryModel.mockImplementation(async () => createSelection())
@@ -209,7 +238,9 @@ describe('extractChatMemory', () => {
     const options = mocks.generateObject.mock.calls[0]![0]
 
     expect(options.schemaName).toBe('MemoryExtraction')
-    expect(options.maxOutputTokens).toBe(4000)
+    expect(options.maxOutputTokens)
+      .toBe(MEMORY_EXTRACTION_LIMITS.maxOutputTokens)
+    expect(options.maxOutputTokens).toBe(12000)
     expect(options.abortSignal).toBeInstanceOf(AbortSignal)
     expect(options.providerOptions.openai).toEqual({
       reasoningEffort: 'low',
@@ -218,6 +249,187 @@ describe('extractChatMemory', () => {
     expect(options.instructions).toContain('at most 10 ops')
     expect(promptContent()).toContain('<transcript>')
     expect(promptContent()).toContain(USER_SENTENCE)
+  })
+
+  describe('output token clamp', () => {
+    function mockModelLimit(maxOutputTokens: number) {
+      mocks.getModel.mockReturnValue({
+        modelName: 'GPT Test',
+        model: { maxOutputTokens },
+        provider: { id: 'openai' },
+      })
+    }
+
+    async function maxOutputTokensForRun() {
+      const chat = await seedChatWithMessages()
+
+      await run(chat)
+
+      return mocks.generateObject.mock.calls[0]![0].maxOutputTokens
+    }
+
+    it('clamps to the model output limit when it is lower', async () => {
+      mockModelLimit(5000)
+
+      expect(await maxOutputTokensForRun()).toBe(5000)
+    })
+
+    it('keeps the extraction maximum for a larger model limit', async () => {
+      mockModelLimit(200_000)
+
+      expect(await maxOutputTokensForRun()).toBe(12000)
+    })
+
+    it('ignores an unknown model limit of zero', async () => {
+      mockModelLimit(0)
+
+      expect(await maxOutputTokensForRun()).toBe(12000)
+    })
+
+    it('reads the limit of a Vercel or OpenRouter gateway model from the '
+      + 'cached catalog', async () => {
+      mocks.resolveMemoryModel.mockImplementation(async () => {
+        return {
+          ...createSelection(),
+          providerId: null,
+          gatewayId: 'vercel',
+          modelId: 'vendor/model',
+        }
+      })
+      mocks.getCachedGatewayCatalog.mockResolvedValue([
+        { id: 'vendor/model', name: 'Model', maxOutputTokens: 3000 },
+      ])
+
+      expect(await maxOutputTokensForRun()).toBe(3000)
+      expect(mocks.getCachedGatewayCatalog).toHaveBeenCalledWith('vercel')
+    })
+
+    it('does not look up a Cloudflare gateway catalog', async () => {
+      mocks.resolveMemoryModel.mockImplementation(async () => {
+        return {
+          ...createSelection(),
+          providerId: null,
+          gatewayId: 'cloudflare',
+          modelId: 'openai/gpt-x',
+        }
+      })
+
+      expect(await maxOutputTokensForRun()).toBe(12000)
+      expect(mocks.getCachedGatewayCatalog).not.toHaveBeenCalled()
+    })
+
+    it('falls back to the maximum when the gateway catalog is unavailable',
+      async () => {
+        mocks.resolveMemoryModel.mockImplementation(async () => {
+          return {
+            ...createSelection(),
+            providerId: null,
+            gatewayId: 'openrouter',
+            modelId: 'vendor/model',
+          }
+        })
+        mocks.getCachedGatewayCatalog.mockRejectedValue(new Error('offline'))
+
+        expect(await maxOutputTokensForRun()).toBe(12000)
+      })
+  })
+
+  describe('richer ops', () => {
+    it('grounds a short user fact end to end and applies it', async () => {
+      const chat = await seedChat(testDb.db, userId, {
+        activityAt: minutesBefore(60),
+      })
+
+      await seedMessage(testDb.db, chat.id, 'user', [textPart(
+        `I'm vegetarian. ${'I like cooking simple dinners at home. '.repeat(9)}`,
+      )], minutesBefore(70))
+      mockOps([
+        createOp({
+          title: 'Diet',
+          description: 'Vegetarian diet',
+          body: '- Vegetarian',
+          evidence: 'I\'m vegetarian',
+        }),
+      ])
+
+      const result = await run(chat)
+
+      expect(result.applied.created).toBe(1)
+      expect(result.dropped).toEqual({})
+    })
+
+    it('reports an applied append under the updated count and folds it '
+      + 'into the chat result', async () => {
+      const chat = await seedChatWithMessages()
+
+      await seedEntry(testDb.db, userId, {
+        slug: 'rust-hobby',
+        title: 'Rust hobby',
+        body: '- Writes Rust',
+      })
+      mockOps([
+        createOp({
+          op: 'append',
+          slug: 'rust-hobby',
+          title: null,
+          description: null,
+          body: '- Writes Rust on weekends',
+        }),
+      ])
+
+      const result = await run(chat)
+
+      expect(result.applied).toEqual({ created: 0, updated: 1, deleted: 0 })
+      expect((await listEntries())[0]?.body)
+        .toBe('- Writes Rust\n- Writes Rust on weekends')
+    })
+
+    it('tells the model the limits, the format and to prefer append',
+      async () => {
+        const chat = await seedChatWithMessages()
+
+        await run(chat)
+
+        const instructions = mocks.generateObject.mock.calls[0]![0]
+          .instructions as string
+
+        expect(instructions).toContain(`${MEMORY_LIMITS.maxTitleChars} characters`)
+        expect(instructions).toContain(
+          `${MEMORY_LIMITS.maxDescriptionChars} characters`,
+        )
+        expect(instructions).toContain(`${MEMORY_LIMITS.maxBodyBytes} bytes`)
+        expect(instructions).toContain(
+          `${MEMORY_LIMITS.maxAlwaysInjectedBodyBytes} bytes`,
+        )
+        expect(instructions).toContain('Markdown bullet list')
+        expect(instructions).toContain('Prefer "append"')
+      })
+
+    it('shows existing bodies, most recently updated first', async () => {
+      const chat = await seedChatWithMessages()
+
+      await seedEntry(testDb.db, userId, {
+        slug: 'older',
+        title: 'Older',
+        body: 'OLDER-BODY',
+        updatedAt: new Date('2026-09-01T10:00:00Z'),
+      })
+      await seedEntry(testDb.db, userId, {
+        slug: 'newer',
+        title: 'Newer',
+        body: 'NEWER-BODY',
+        updatedAt: new Date('2026-10-01T10:00:00Z'),
+      })
+
+      await run(chat)
+
+      const content = promptContent()
+
+      expect(content.indexOf('NEWER-BODY'))
+        .toBeGreaterThan(-1)
+      expect(content.indexOf('NEWER-BODY'))
+        .toBeLessThan(content.indexOf('OLDER-BODY'))
+    })
   })
 
   it('returns leased without calling the model when the lease is held', async () => {
@@ -649,7 +861,7 @@ describe('extractChatMemory', () => {
             op: 'update',
             slug: 'editor',
             title: null,
-            description: 'Has type 2 diabetes',
+            description: 'Writes Rust and has type 2 diabetes',
             body: null,
           }),
         ])
@@ -1044,7 +1256,7 @@ describe('extractChatMemory', () => {
           slug: 'rust-hobby',
           title: null,
           description: null,
-          body: 'Overwritten',
+          body: 'Overwritten Rust body',
         }),
       ])
 
@@ -1207,6 +1419,314 @@ describe('extractChatMemory', () => {
       expect(result.dropped).toEqual({ ungrounded: 1 })
       expect(await listEntries()).toHaveLength(0)
       expect(promptContent()).not.toContain('4111')
+    })
+  })
+
+  describe('backfill trigger', () => {
+    const FILLER = 'I prefer concise answers. '.repeat(14)
+
+    function userText(label: string) {
+      return `${label} sentence of the user. ${FILLER}`
+    }
+
+    async function seedBackfillChat(
+      messages: { label: string, minutesAgo: number }[],
+      chatValues: Partial<typeof schema.chats.$inferInsert> = {},
+    ) {
+      const chat = await seedChat(testDb.db, userId, {
+        activityAt: minutesBefore(60),
+        ...chatValues,
+      })
+
+      for (const message of messages) {
+        await seedMessage(testDb.db, chat.id, 'user',
+          [textPart(userText(message.label))],
+          minutesBefore(message.minutesAgo))
+      }
+
+      return chat
+    }
+
+    function runBackfill(
+      chat: { id: string },
+      overrides: Record<string, unknown> = {},
+    ) {
+      return run(chat, {
+        trigger: 'backfill',
+        ignoreIdle: true,
+        selection: createSelection('setting'),
+        ...overrides,
+      })
+    }
+
+    it('reads the whole chat when the stamp is null and advances it to '
+      + 'the newest consumed message', async () => {
+      const chat = await seedBackfillChat([
+        { label: 'FIRST-MESSAGE', minutesAgo: 90 },
+        { label: 'SECOND-MESSAGE', minutesAgo: 80 },
+        { label: 'THIRD-MESSAGE', minutesAgo: 70 },
+      ])
+
+      mockOps([createOp({ evidence: 'FIRST-MESSAGE sentence of the user.' })])
+
+      const result = await runBackfill(chat)
+
+      expect(result).toMatchObject({
+        status: 'extracted',
+        applied: { created: 1, updated: 0, deleted: 0 },
+      })
+      expect(promptContent()).toContain('FIRST-MESSAGE')
+      expect(promptContent()).toContain('THIRD-MESSAGE')
+
+      const stamped = await readChat(chat.id)
+
+      expect(stamped?.memoryExtractedAt).toEqual(minutesBefore(70))
+      expect(stamped?.memoryExtractionAttemptedAt).toBeNull()
+      expect(stamped?.memoryExtractionFailures).toBeNull()
+    })
+
+    it('stops at the stamp: messages the forward sweep owns are not read '
+      + 'and the stamp stays', async () => {
+      const chat = await seedBackfillChat([
+        { label: 'OLDER-HISTORY', minutesAgo: 100 },
+        { label: 'AT-THE-STAMP', minutesAgo: 80 },
+        { label: 'NEWER-THAN-STAMP', minutesAgo: 70 },
+      ], { memoryExtractedAt: minutesBefore(80) })
+
+      const result = await runBackfill(chat)
+
+      expect(result.status).toBe('extracted')
+      expect(promptContent()).toContain('OLDER-HISTORY')
+      expect(promptContent()).toContain('AT-THE-STAMP')
+      expect(promptContent()).not.toContain('NEWER-THAN-STAMP')
+      expect((await readChat(chat.id))?.memoryExtractedAt)
+        .toEqual(minutesBefore(80))
+    })
+
+    it('never moves an existing stamp, not even forward', async () => {
+      const chat = await seedBackfillChat(
+        [{ label: 'HISTORY', minutesAgo: 100 }],
+        { memoryExtractedAt: minutesBefore(20) },
+      )
+
+      await runBackfill(chat)
+
+      expect((await readChat(chat.id))?.memoryExtractedAt)
+        .toEqual(minutesBefore(20))
+    })
+
+    it('does not stamp attempts or failures when the pass fails', async () => {
+      const chat = await seedBackfillChat([
+        { label: 'HISTORY', minutesAgo: 100 },
+      ])
+
+      mocks.generateObject.mockRejectedValue(new Error('provider down'))
+
+      const result = await runBackfill(chat)
+      const stamped = await readChat(chat.id)
+
+      expect(result.status).toBe('failed')
+      expect(stamped?.memoryExtractedAt).toBeNull()
+      expect(stamped?.memoryExtractionAttemptedAt).toBeNull()
+      expect(stamped?.memoryExtractionFailures).toBeNull()
+    })
+
+    it('needs memory and the extraction opt-in', async () => {
+      const chat = await seedBackfillChat([
+        { label: 'HISTORY', minutesAgo: 100 },
+      ])
+
+      await testDb.db.update(schema.userSettings)
+        .set({ memoryExtractionEnabled: false })
+        .where(eq(schema.userSettings.userId, userId))
+
+      expect(await runBackfill(chat)).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
+
+      await testDb.db.update(schema.userSettings)
+        .set({ memoryExtractionEnabled: true, memoryEnabled: false })
+        .where(eq(schema.userSettings.userId, userId))
+
+      expect(await runBackfill(chat)).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
+    })
+
+    it('skips project chats without touching any watermark', async () => {
+      const projectId = await seedProject(testDb.db, userId)
+      const chat = await seedBackfillChat(
+        [{ label: 'HISTORY', minutesAgo: 100 }],
+        { projectId },
+      )
+      const result = await runBackfill(chat)
+      const stamped = await readChat(chat.id)
+
+      expect(result).toMatchObject({
+        status: 'skipped',
+        reason: 'project-chat',
+      })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(stamped?.memoryExtractedAt).toBeNull()
+      expect(stamped?.projectMemorySummaryUpdatedAt).toBeNull()
+    })
+
+    it('applies nothing and keeps the stamp when extraction was switched '
+      + 'off during the model call', async () => {
+      const chat = await seedBackfillChat([
+        { label: 'HISTORY', minutesAgo: 100 },
+      ])
+
+      mocks.generateObject.mockImplementation(async () => {
+        await testDb.db.update(schema.userSettings)
+          .set({ memoryExtractionEnabled: false })
+          .where(eq(schema.userSettings.userId, userId))
+
+        return {
+          object: { ops: [createOp({
+            evidence: 'HISTORY sentence of the user.',
+          })] },
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }
+      })
+
+      expect(await runBackfill(chat)).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
+      expect(await listEntries()).toHaveLength(0)
+      expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
+    })
+
+    it('ignores the idle rule even without ignoreIdle', async () => {
+      const chat = await seedBackfillChat(
+        [{ label: 'HISTORY', minutesAgo: 100 }],
+        { activityAt: minutesBefore(1) },
+      )
+
+      expect((await runBackfill(chat, { ignoreIdle: undefined })).status)
+        .toBe('extracted')
+    })
+
+    it('skips a too-short window without touching the stamp', async () => {
+      const chat = await seedChat(testDb.db, userId)
+
+      await seedMessage(testDb.db, chat.id, 'user',
+        [textPart('Just a short note.')], minutesBefore(100))
+
+      const result = await runBackfill(chat)
+      const stamped = await readChat(chat.id)
+
+      expect(result).toMatchObject({ status: 'skipped', reason: 'too-short' })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(stamped?.memoryExtractedAt).toBeNull()
+      expect(stamped?.memoryExtractionFailures).toBeNull()
+    })
+
+    it('advances a null stamp when the window has no user text', async () => {
+      const chat = await seedChat(testDb.db, userId)
+
+      await seedMessage(testDb.db, chat.id, 'assistant',
+        [textPart('Hello there.')], minutesBefore(100))
+
+      const result = await runBackfill(chat)
+
+      expect(result).toMatchObject({ status: 'skipped', reason: 'no-user-text' })
+      expect((await readChat(chat.id))?.memoryExtractedAt)
+        .toEqual(minutesBefore(100))
+    })
+
+    it('uses the selection it is given and never resolves a model',
+      async () => {
+        const chat = await seedBackfillChat([
+          { label: 'HISTORY', minutesAgo: 100 },
+        ])
+        const selection = createSelection('setting')
+        const result = await runBackfill(chat, { selection })
+
+        expect(mocks.resolveMemoryModel).not.toHaveBeenCalled()
+        expect(selection.instantiate).toHaveBeenCalledOnce()
+        expect(result.model).toMatchObject({
+          source: 'setting',
+          modelId: 'gpt-test',
+        })
+      })
+
+    it('uses the longer background generation timeout for the sweep and '
+      + 'the backfill, the request timeout for run-now and manual passes',
+    async () => {
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+      const projectId = await seedProject(testDb.db, userId)
+
+      await runBackfill(await seedChatWithMessages())
+      await run(await seedChatWithMessages())
+      await run(await seedChatWithMessages(), { ignoreIdle: true })
+      await run(await seedChatWithMessages({ projectId }), {
+        trigger: 'manual',
+      })
+
+      expect(timeoutSpy.mock.calls.map(call => call[0])).toEqual([
+        MEMORY_EXTRACTION_LIMITS.generationTimeoutBackgroundMs,
+        MEMORY_EXTRACTION_LIMITS.generationTimeoutBackgroundMs,
+        MEMORY_EXTRACTION_LIMITS.generationTimeoutMs,
+        MEMORY_EXTRACTION_LIMITS.generationTimeoutMs,
+      ])
+      timeoutSpy.mockRestore()
+    })
+  })
+
+  describe('generation timeout override', () => {
+    it('uses the caller timeout for every trigger instead of the '
+      + 'heuristic', async () => {
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+      const projectId = await seedProject(testDb.db, userId)
+
+      await run(await seedChatWithMessages(), { generationTimeoutMs: 1234 })
+      await run(await seedChatWithMessages(), {
+        trigger: 'backfill',
+        ignoreIdle: true,
+        generationTimeoutMs: 2345,
+      })
+      await run(await seedChatWithMessages({ projectId }), {
+        trigger: 'manual',
+        generationTimeoutMs: 3456,
+      })
+
+      expect(timeoutSpy.mock.calls.map(call => call[0]))
+        .toEqual([1234, 2345, 3456])
+      timeoutSpy.mockRestore()
+    })
+  })
+
+  describe('never-store data in past chats', () => {
+    const CARD = '4111 1111 1111 1111'
+
+    it('redacts it from the transcript and the grounding texts and counts '
+      + 'it', async () => {
+      const chat = await seedChat(testDb.db, userId, {
+        activityAt: minutesBefore(60),
+      })
+
+      await seedMessage(testDb.db, chat.id, 'user', [textPart(
+        `I paid with card ${CARD} today. ${LONG_USER_TEXT}`,
+      )], minutesBefore(70))
+      await seedMessage(testDb.db, chat.id, 'assistant',
+        [textPart(`Your card ${CARD} is noted.`)], minutesBefore(69))
+      mockOps([createOp({
+        body: `The user writes Rust, card ${CARD}`,
+        evidence: 'I write Rust on weekends',
+      })])
+
+      const result = await run(chat)
+
+      expect(promptContent()).not.toContain('4111')
+      expect(result.blocked).toMatchObject({ 'payment-card': 3 })
+      expect(result.dropped).toEqual({ 'never-store': 1 })
+      expect(await listEntries()).toHaveLength(0)
     })
   })
 

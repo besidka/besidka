@@ -1,6 +1,7 @@
 import { createError } from 'evlog'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import type { MemoryResetResponse } from '#shared/types/memory-api.d'
+import { cancelBackfill } from '~~/server/utils/memory/backfill'
 import { resetMemoryEntries } from '~~/server/utils/memory/entries'
 import type { MemoryScopeFilter } from '~~/server/utils/memory/entries'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -44,8 +45,14 @@ export default defineEventHandler(async (event) => {
     attributes: { memoryEntries: { action: 'reset', scope } },
   })
 
+  const db = useDb()
+
+  if (scope !== 'project') {
+    await cancelBackfill({ userId, db })
+  }
+
   const deleted = await resetMemoryEntries({
-    db: useDb(),
+    db,
     userId,
     scope: scopeFilter,
   })

@@ -160,6 +160,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/projects/memory-card.spec.ts',
     'tests/unit/utils/memory/extract-manual.spec.ts',
     'tests/unit/utils/project-memory-refresh.spec.ts',
+    'tests/unit/utils/memory/extract-grounding.spec.ts',
+    'tests/unit/utils/memory/extract-text.spec.ts',
+    'tests/unit/utils/memory/backfill.spec.ts',
+    'tests/unit/utils/memory/backfill-estimate.spec.ts',
+    'tests/unit/utils/memory/backfill-sweep.spec.ts',
+    'tests/unit/utils/memory-import-prompt.spec.ts',
+    'tests/integration/api/memory-backfill.spec.ts',
+    'tests/integration/api/memory-import.spec.ts',
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
   ]
@@ -1965,7 +1973,19 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/(utils\/memory\/extract.*|plugins\/memory-extraction-sweep|api\/v1\/memory\/extract-now\.post)\.ts$/,
+      pattern: /^shared\/utils\/memory-import-prompt\.ts$/,
+      tests: ['tests/unit/utils/memory-import-prompt.spec.ts'],
+    },
+    {
+      pattern: /^(server\/db\/schemas\/memory-backfill-jobs|shared\/types\/memory-backfill\.d)\.ts$/,
+      tests: [
+        ...memoryExtractionTests,
+        ...memoryPurgeTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/(utils\/memory\/(extract.*|backfill.*)|plugins\/memory-extraction-sweep|api\/v1\/memory\/(extract-now\.post|import\.post|backfill\/.*))\.ts$/,
       tests: memoryExtractionTests,
     },
     {
@@ -1977,7 +1997,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/utils/project-memory-refresh.spec.ts'],
     },
     {
-      pattern: /^tests\/setup\/helpers\/(memory-extraction-db|public-id-mock)\.ts$/,
+      pattern: /^tests\/setup\/helpers\/(memory-extraction-db|memory-backfill-db|public-id-mock)\.ts$/,
       tests: memoryExtractionTests,
     },
     {

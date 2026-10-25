@@ -130,7 +130,7 @@ New table `memory_entries`:
 | `category` | `profile` \| `preferences` \| `areas` \| `topics` \| `people` |
 | `slug`, `title` | unique per (user, project, category, slug) |
 | `description` | **mandatory, single line, ≤ 100 chars** — the index line |
-| `body` | Markdown, **≤ 2 KB** hard cap |
+| `body` | Markdown, **≤ 4 KB** hard cap (**≤ 1.5 KB** for the always-injected `profile` and `preferences`); raised from 2 KB / 1 KB in W6c (3.16) |
 | `sensitivity` | `none` \| `special`. Every row written since the opt-in removal is `none`; `special` survives only on legacy rows (3.12) |
 | `sensitiveCategory` | the Art. 9 category of a legacy `special` row, otherwise null |
 | `origin` | `user` \| `tool` \| `extraction` \| `import` |
@@ -139,10 +139,10 @@ New table `memory_entries`:
 | `createdAt`, `updatedAt`, `lastUsedAt` | `lastUsedAt` drives expiry |
 
 Caps: ≤ 30 account entries, ≤ 15 per project (soft: the extractor must merge
-before creating); `profile` and `preferences` bodies ≤ 1 KB each since they
-are always injected. "Everything you know about me" = `memory_list()` → at
-most ~30 × 2 KB ≈ 15k English tokens worst case, typical 4–8k, paid only when
-asked.
+before creating); `profile` and `preferences` bodies ≤ 1.5 KB each since
+they are always injected. "Everything you know about me" = `memory_list()` →
+at most ~30 × 4 KB ≈ 30k English tokens worst case, typical 4–10k, paid only
+when asked.
 
 **Cyrillic multiplier**: Ukrainian tokenizes at roughly 2–3 chars/token versus
 ~4 for English, so the same bytes cost ~1.5–2× the tokens. The owner's primary
@@ -167,7 +167,8 @@ project entry on first read; the column is left in place and writes stop
   when entries change, not every turn.
 - Inject **last-known-good** memory regardless of extraction status (fixes
   G1). Status only drives UI.
-- Budget: index ≤ **2.5k tokens** (2 × 1 KB bodies + 30 × 100-char lines ≈
+- Budget: index ≤ **2.5k tokens** (2 × 1.5 KB bodies + 30 × 100-char lines, the
+  1 KB figure below predates W6c; measured numbers in 3.16; originally ≈
   1.5k English / 2.5k Ukrainian). Over budget → drop the `preferences` body
   first, then truncate descriptions; never silently drop entries from the
   index (the model must know they exist to call `memory_read`).
@@ -322,8 +323,8 @@ the reason the opt-in is out of v1 (section 7).
 
 - **Export** (Art. 15/20): `GET /api/v1/memory/export` (path changed in W4, see 3.12) → JSON of
   entries + settings; plain-text import (paste from another assistant →
-  extraction op path → compliance gate; not built yet, and it must run the
-  same never-store and sensitive-topic gate as every other write).
+  extraction op path → compliance gate; built in W6c, `POST /api/v1/memory/import`,
+  see 3.16).
 - **Chat deletion**: for `origin = extraction`, entries whose
   `sourceChatIds` contain only that chat are deleted; others drop the id. For
   `user | tool | import` entries the id is dropped and the entry kept — the
@@ -652,6 +653,9 @@ in it, it is never injected once entries are in use, and an unconverted blob
   expensive (3.9); only the fallback optimises for cost.
 
 ### 3.12 As built (W4, 2026-10-25)
+
+> Body caps quoted in this section (2 KB, and 1 KB for profile and preferences)
+> are the W4 values; W6c raised them to 4 KB and 1.5 KB, see 3.16.
 
 Branch `feat/w4-memory-backend-aaf9e2`, umbrella child of `feat/memory-p2`. W4
 is the backend: the entries API, the index and its injection, the four memory
@@ -1341,6 +1345,165 @@ other path may store such data.
 - The classifier is merged and wired in, so there is no ship gate on it. Its
   recall limits (names, slang, unusual phrasing; see 3.12) apply to extraction
   as well; the prompt instruction remains the first line of defence.
+
+### 3.16 Rich memory, backfill and import (W6c, 2026-10-26)
+
+Owner request: entries were too thin (one or two bullets per topic) while
+Claude.ai keeps topics of 1.9-3.5 KB with ~15 detailed bullets. Server side
+only; the UI (W5) builds on the contracts below.
+
+**Caps.** `maxBodyBytes` 2048 -> **4096** (areas, topics, people),
+`maxAlwaysInjectedBodyBytes` 1024 -> **1536** (profile, preferences). Index
+budget unchanged (2500 tokens). Measured with `estimateMemoryTokens`, 30
+account entries with 100-char descriptions and bodies at the cap built from
+realistic bullet lines: 4 profile + 4 preferences + 22 others costs 3996
+(Latin) / 3775 (Cyrillic) tokens untrimmed and settles at 2330 / 2301 after
+`preferences-body` and `descriptions-60`, never touching the profile bodies.
+With profile-only bodies the profile body is first trimmed at 6 (Latin) / 7
+(Cyrillic) full-size profile entries; each extra full-size profile body costs
+~355 tokens. **Owner call, not implemented**: a per-category count cap of at
+most 4 profile and 4 preferences entries guarantees the profile body is never
+collapsed. The cap is in bytes, so Cyrillic (2 B/char) fits fewer characters
+but costs the same or fewer tokens.
+
+**Extraction prompt aims for rich, merged topics.** The prompt states the hard
+limits the models kept violating (title <= 80 chars, description one line
+<= 100, body bytes per category), asks for a markdown bullet list of concrete
+durable facts with names, dates, numbers and versions in the user's language,
+topic granularity like Claude (Career, Dev tools, Hobbies, Projects/areas, one
+People entry per person), and shows the existing bodies (index body budget
+12000 -> 48000 chars, ordered by `updatedAt` desc, the rest `bodyHidden`).
+New op **`append`**: only the new bullet lines; the server drops lines already
+present (normalised compare) and appends the rest within the category cap
+(`cap-reached` otherwise); it works on editable entries even when the body is
+hidden, so merging no longer depends on the body budget. `update` is a full
+rewrite for corrections only; `create` for a topic without an entry. Per pass:
+10 ops (15 with a legacy blob), `maxOutputTokens` 4000 -> 12000 clamped to the
+resolved model's output limit where the catalog knows it (Cloudflare gateway
+models are never clamped), background passes get a 150 s model timeout
+(request-bound refresh and import keep 90 s because of the edge limit).
+The trust boundary, the never-store gate and the sensitive-topic classifier are
+untouched: richness never relaxes them.
+
+**Editable family.** Chat extraction passes may update, append to and delete
+rows with `origin` `extraction` or `import`; `user` and `tool` rows stay
+locked. The import pass is narrower (it ingests text the user did not write):
+it may create freely but append to or update only rows with `origin` `import`
+and never deletes, so a pasted document cannot rewrite what chats produced or
+the always-injected profile and preferences. Every extraction write is
+compare-and-set on the row it read (editable origin, `sensitivity = 'none'`,
+same `updated_at` and body; `append` re-reads and recomputes against the fresh
+body), so a user edit made during the model call is never overwritten and two
+concurrent passes keep each other's lines (`conflict` otherwise).
+Decision for the owner: a user-authored entry for a topic locks that topic
+against extraction, whose same-topic `create` collides as `duplicate`.
+
+**Grounding (fix of the "I'm vegetarian" drop).** The preview dropped "I'm
+vegetarian" as `ungrounded` because the evidence floor was 20 chars and 3
+words, and typographic apostrophes (`I’m`) did not match. The normaliser now
+maps typographic quotes, dashes and ellipses to ASCII. Rule: the quote must be
+a verbatim substring of the user's text (or, for the legacy blob, of the blob,
+for `create` only) and, in both branches, shares a content token (>= 4 letters
+or digits; exact match or a common prefix of >= 5 chars so inflected forms
+match) with the text being stored (for `update` only the changed delta, for
+`append` the new lines), and either (a) is >= 20 chars and >= 3 words, or (b)
+is >= 8 chars and sentence-aligned in the user text. A quote like "thanks a
+lot for your help" next to an unrelated injected body fails; URLs, emails and
+domains in the stored text must still occur verbatim in the user text.
+Evidence is a provenance filter, not proof: the token check is measured
+against text the same model wrote. Evidence is
+never persisted and the classifier checks only title, description and body, so
+the plain fact ("Vegetarian") is stored and the sensitive reason is not.
+Known limits: generic 4-letter words can still be the shared token; employer
+or place names that look medical can still trip W4's classifier
+rules (not changed here).
+
+**Backfill: "Build memory from past chats"** (account chats only).
+Forward-only extraction is unchanged; this is an explicit, cancelable job.
+State lives in the new table `memory_backfill_jobs` (migration
+`20261025200010_memory_backfill_jobs`: `CREATE TABLE` plus two indexes, no
+SQL default, cascade FK on `users`; a partial unique index on `user_id WHERE
+status = 'running'` allows one running job per user atomically; added to the
+cascade list in AGENTS.md and to `purgeUserData`). The queue is a keyset
+cursor over the user's non-project chats (`activity_at desc, id desc`, created
+before the job started); counters are updated with atomic increments, so the
+cron sweep and the drive endpoint can both advance a job. The model is resolved
+once at job start (`resolveMemoryModel`, scope `profile`) and the same
+selection is used for every chat, so the estimate does not lie. Passes run with
+`trigger: 'backfill'`: gate `memoryEnabled !== false` and
+`memoryExtractionEnabled === true` (a job is cancelled when either is switched
+off, or when the user resets memory), project chats skipped, the chat's history
+up to its current `memory_extracted_at` (the opt-in stamp, so the pre-opt-in
+history; messages after the stamp belong to the forward sweep; history the
+forward sweep already extracted may be read again, merging keeps that
+harmless but it is paid work), limited like any pass to the newest 120
+messages / 36000 chars of a chat, `memory_extracted_at` advanced only when it
+was NULL, no attempted/failures stamping. The cron path uses a 150 s model
+timeout, the request-bound drive endpoint at most 90 s (or the remaining step
+budget). A D1 step claim (`lease_until`, one atomic `UPDATE ... RETURNING`)
+serialises the cron tick and the drive endpoint. Memory read by the model is
+redacted of never-store data first (all chat passes, not only import). The sweep services up to 5 running jobs per
+tick, 3 chats each, from the budget left after the normal batch (a permanently
+full normal batch can starve cron-driven backfill; the drive endpoint always
+progresses).
+
+API (all session-scoped; POSTs have the cross-site guard):
+
+- `GET /api/v1/memory/backfill` -> `{ job, estimate, reason }`. No running job:
+  `estimate` is a dry-run for the resolved model (null with `reason`
+  `memory-disabled | extraction-disabled | no-model | estimate-failed` when unavailable; the dry-run estimate is cached per user for 10 minutes) and
+  `job` is the latest finished job or null; a running job: its progress.
+- `POST /api/v1/memory/backfill` -> `{ job }`: START only (409 when a gate
+  fails, no model, or one is already running; 10 s start cooldown). It never
+  drives, so a retry or a second tab can never begin a second full-history
+  run.
+- `POST /api/v1/memory/backfill/step` -> `{ job }`: drives ONE bounded step of
+  the running job inline (2 chats, 60 s step budget, model timeout min(90 s,
+  remaining), 10 s per-user cooldown -> 429); 409 `No running backfill` when
+  none runs (it never starts one). This is how previews (no crons) progress
+  when the UI calls it repeatedly.
+- `POST /api/v1/memory/backfill/cancel` -> `{ job }`, idempotent.
+- Progress (`shared/types/memory-backfill.d.ts`): `{ id, status
+  (running|completed|cancelled|failed), startedAt, finishedAt, totalChats,
+  processedChats, createdEntries, updatedEntries, skippedChats, failedChats,
+  dropped, model: { source, providerId, gatewayId, modelId } | null, estimate }`.
+- Estimate: `{ chats, userChars, transcriptChars, inputTokens, outputTokens,
+  overheadTokensPerChat, pricePerMillion: { input, output } | null, costUsd |
+  null, approximate: true, model }`. Characters come from one SQL aggregate over
+  `messages.parts` with `json_each` (supported on D1; text parts only, capped per
+  message and per chat), tokens from `estimateMemoryTokens` on a sampled script
+  mix plus a per-chat overhead (instructions and the index, which dominates for
+  many short chats), prices from the model's price metadata (direct models: the
+  upper-bound parse of the "from" price underestimates tiered models; gateway
+  models: the cached catalog). Unknown price gives null cost. Everything is
+  approximate. A job fails when >= 5 chats failed and failures exceed half of the
+  processed chats, 5 chats fail in a row, the stored model's key is gone, or the
+  actual token spend (accumulated on the job row as `inputTokens`/`outputTokens`)
+  exceeds 1.5x the consented estimate. Only the last 5 finished jobs per user are
+  kept.
+- Cost lever, not built: batching several short chats into one backfill pass
+  would cut the per-chat overhead.
+
+**Import from another assistant** (`POST /api/v1/memory/import`). Body
+`{ text }` (<= 60000 chars). It is the legacy-blob pass generalised
+(`extractMemoryFromText`): pasted text is user-provenance and grounds create,
+append and update; never-store text is redacted before anything is sent;
+chunks of 24k chars, at most 3 per request, one shared deadline (90 s), the
+rest reported as `truncated` with `consumedChars` so the client can resubmit
+`text.slice(consumedChars)` (the cooldown is written before the first model call
+to stop parallel POSTs and released again when the result is `truncated`, so
+the continuation is not blocked); up to 20 ops per chunk; no `delete` ops; the same compliance gates, caps
+and merge behaviour; created rows get `origin: 'import'`, updated rows keep
+theirs; `user` and `tool` rows stay locked. Requires `memoryEnabled !== false`
+only (explicit action), 60 s per-user cooldown after a model call (429), 409
+when no model resolves or an import is running, 400 when nothing storable is
+left, per-user lease. Response:
+`{ created, updated, appended, dropped, blocked, chunks, truncated,
+consumedChars, model: { source, modelId } | null }`; the text is never stored,
+echoed or logged. `MEMORY_IMPORT_PROMPT` (`shared/utils/memory-import-prompt.ts`)
+is the prompt the UI shows for the user to run in the other assistant (list
+everything it remembers as topics with bullet details, concrete facts, the
+user's language, skip sensitive topics, plain text).
 
 ## 4. Cost and performance
 

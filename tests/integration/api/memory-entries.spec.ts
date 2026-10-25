@@ -7,6 +7,11 @@ import { createMemoryTestDb } from '../../setup/helpers/memory-db'
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   setResponseStatus: vi.fn(),
+  cancelBackfill: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/memory/backfill', () => ({
+  cancelBackfill: mocks.cancelBackfill,
 }))
 
 vi.mock('evlog', () => ({
@@ -920,6 +925,42 @@ describe('memory entries API', () => {
       expect(testDb.countEntries(OWNER)).toBe(1)
       expect(testDb.countEntries(STRANGER)).toBe(2)
     })
+
+    it.each(['account', 'all'] as const)(
+      'cancels the caller\'s running backfill when resetting %s',
+      async (scope) => {
+        const handler = await handlers.reset()
+
+        await handler(bodyEvent({ scope }))
+
+        expect(mocks.cancelBackfill).toHaveBeenCalledTimes(1)
+        expect(mocks.cancelBackfill).toHaveBeenCalledWith(
+          expect.objectContaining({ userId: OWNER }),
+        )
+      },
+    )
+
+    it('does not touch the backfill when resetting one project', async () => {
+      const handler = await handlers.reset()
+
+      await handler(bodyEvent({
+        scope: 'project',
+        projectId: encodePublicId(7),
+      }))
+
+      expect(mocks.cancelBackfill).not.toHaveBeenCalled()
+    })
+
+    it('does not cancel the backfill for an invalid or cross-site reset',
+      async () => {
+        const handler = await handlers.reset()
+
+        await expect(handler(bodyEvent({ scope: 'nope' }))).rejects.toThrow()
+        await expect(handler(bodyEvent({ scope: 'all' }, 'cross-site')))
+          .rejects.toThrow()
+
+        expect(mocks.cancelBackfill).not.toHaveBeenCalled()
+      })
 
     it('resets one project', async () => {
       const handler = await handlers.reset()

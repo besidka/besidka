@@ -52,6 +52,10 @@ export const relations = defineRelations(schema, r => ({
       from: r.users.id,
       to: r.memoryEntries.userId,
     }),
+    memoryBackfillJobs: r.many.memoryBackfillJobs({
+      from: r.users.id,
+      to: r.memoryBackfillJobs.userId,
+    }),
   },
   accounts: {
     user: r.one.users({
@@ -183,6 +187,13 @@ export const relations = defineRelations(schema, r => ({
       from: r.memoryEntries.projectId,
       to: r.projects.id,
       optional: true,
+    }),
+  },
+  memoryBackfillJobs: {
+    user: r.one.users({
+      from: r.memoryBackfillJobs.userId,
+      to: r.users.id,
+      optional: false,
     }),
   },
   userSettings: {

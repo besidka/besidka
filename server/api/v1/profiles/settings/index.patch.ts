@@ -294,6 +294,8 @@ export default defineEventHandler(async (event) => {
         ?? existingSettings?.memoryExtractionEnabled) === true
   const isEnablingExtraction = !isExtractionEffectiveBefore
     && isExtractionEffectiveAfter
+  const isDisablingBackfillSource = fieldUpdates.memoryEnabled === false
+    || fieldUpdates.memoryExtractionEnabled === false
   const statements: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
     settingsStatement,
   ]
@@ -318,6 +320,15 @@ export default defineEventHandler(async (event) => {
     await settingsStatement
   } else {
     await db.batch(statements)
+  }
+
+  if (isDisablingBackfillSource) {
+    await db.update(schema.memoryBackfillJobs)
+      .set({ status: 'cancelled', finishedAt: new Date() })
+      .where(and(
+        eq(schema.memoryBackfillJobs.userId, userId),
+        eq(schema.memoryBackfillJobs.status, 'running'),
+      ))
   }
 
   return fieldUpdates

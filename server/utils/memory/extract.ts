@@ -2,15 +2,20 @@ import type {
   ComplianceBlockedCounts,
   MemoryScope,
 } from '#shared/types/memory.d'
-import { and, eq, notInArray, sql } from 'drizzle-orm'
+import { and, eq, isNull, notInArray, sql } from 'drizzle-orm'
 import { generateObject } from 'ai'
+import { getModel } from '#shared/utils/model'
 import * as schema from '~~/server/db/schema'
-import { redactNeverStore } from '~~/server/utils/memory/compliance'
+import {
+  detectNeverStore,
+  redactNeverStore,
+} from '~~/server/utils/memory/compliance'
 import { REDACTION_PLACEHOLDER } from '#shared/utils/memory-policy'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { applyMemoryExtractionOps } from '~~/server/utils/memory/extract-apply'
 import {
   buildMemoryExtractionInstructions,
+  memoryExtractionChunkRanges,
   buildMemoryExtractionPromptContent,
   loadMemoryExtractionIndex,
   loadMemoryExtractionWindow,
@@ -18,8 +23,13 @@ import {
 import {
   MEMORY_EXTRACTION_LIMITS,
   MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
+  clampMemoryExtractionOutputTokens,
 } from '~~/server/utils/memory/extract-limits'
 import { memoryExtractionOutputSchema } from '~~/server/utils/memory/extract-schema'
+import {
+  findGatewayCatalogModel,
+  getCachedGatewayCatalog,
+} from '~~/server/utils/gateways/catalog'
 import { resolveMemoryModel } from '~~/server/utils/memory/resolve-model'
 import type { ResolvedMemoryModel } from '~~/server/utils/memory/resolve-model'
 import {
@@ -43,7 +53,7 @@ export type MemoryExtractionStatus
     | 'failed'
     | 'leased'
 
-export type MemoryExtractionTrigger = 'sweep' | 'manual'
+export type MemoryExtractionTrigger = 'sweep' | 'manual' | 'backfill'
 
 export interface MemoryExtractionModelInfo {
   source: string | null
@@ -63,6 +73,7 @@ export interface ExtractChatMemoryInput {
   trigger?: MemoryExtractionTrigger
   expectedProjectId?: string
   ignoreIdle?: boolean
+  generationTimeoutMs?: number
   now?: Date
 }
 
@@ -167,16 +178,33 @@ async function memoryExtractionStampChat(
 
 async function memoryExtractionAdvance(
   db: DbClient,
-  chat: { id: string, projectId: string | null },
+  chat: {
+    id: string
+    projectId: string | null
+    memoryExtractedAt: Date | null
+  },
   userId: number,
   extractedAt: Date,
-  isManual: boolean,
+  trigger: MemoryExtractionTrigger,
 ) {
+  if (trigger === 'backfill') {
+    if (chat.memoryExtractedAt === null) {
+      await db.update(schema.chats)
+        .set({ memoryExtractedAt: extractedAt })
+        .where(and(
+          memoryExtractionOwnChat(chat.id, userId),
+          isNull(schema.chats.memoryExtractedAt),
+        ))
+    }
+
+    return
+  }
+
   const watermark = chat.projectId
     ? { projectMemorySummaryUpdatedAt: extractedAt }
     : { memoryExtractedAt: extractedAt }
 
-  await memoryExtractionStampChat(db, chat.id, userId, isManual
+  await memoryExtractionStampChat(db, chat.id, userId, trigger === 'manual'
     ? watermark
     : {
       ...watermark,
@@ -226,7 +254,15 @@ async function memoryExtractionBumpProjectMetadata(
  * a chat that is no longer in that project (moved out or to another one) is
  * skipped as `project-changed` without advancing any watermark, so a manual
  * pass never runs in profile scope. The chat's project is re-read after the
- * model call for the same reason.
+ * model call for the same reason. The `backfill` trigger works through the
+ * history of an account chat for a user who turned extraction on: it needs
+ * memory and the extraction opt-in (both re-checked after the model call),
+ * skips project chats, ignores the idle rule, reads the whole chat up to the
+ * chat's current `memoryExtractedAt` (newer messages are left to the sweep),
+ * advances `memoryExtractedAt` only when it was null, and never touches the
+ * attempt and failure columns. A window that is too short is skipped without
+ * touching the stamp. The caller resolves the model once and passes it as
+ * `selection`.
  */
 export async function extractChatMemory(
   input: ExtractChatMemoryInput,
@@ -255,6 +291,8 @@ async function extractLeasedChatMemory(
   const { userId } = input
   const trigger = input.trigger ?? 'sweep'
   const isManual = trigger === 'manual'
+  const isBackfill = trigger === 'backfill'
+  const isBackground = isBackfill || (trigger === 'sweep' && !input.ignoreIdle)
   const now = input.now ?? new Date()
   const passStartedAt = new Date(now.getTime() - PASS_START_SAFETY_MS)
 
@@ -285,6 +323,10 @@ async function extractLeasedChatMemory(
 
   const isProjectChat = !!chat.projectId
 
+  if (isBackfill && isProjectChat) {
+    return memoryExtractionEmptyResult('skipped', 'project-chat')
+  }
+
   if (
     (isManual || input.expectedProjectId !== undefined)
     && (!isProjectChat || chat.projectId !== input.expectedProjectId)
@@ -300,7 +342,7 @@ async function extractLeasedChatMemory(
     ? chat.projectMemorySummaryUpdatedAt
     : chat.memoryExtractedAt
 
-  if (!input.ignoreIdle && !isManual) {
+  if (!input.ignoreIdle && !isManual && !isBackfill) {
     const isIdle = chat.activityAt.getTime()
       <= now.getTime() - MEMORY_EXTRACTION_LIMITS.idleMs
     const isDirty = !watermark || watermark < chat.activityAt
@@ -323,12 +365,12 @@ async function extractLeasedChatMemory(
     : null
 
   if (chat.projectId && (!project || project.memoryStatus === 'disabled')) {
-    await memoryExtractionAdvance(db, chat, userId, passStartedAt, isManual)
+    await memoryExtractionAdvance(db, chat, userId, passStartedAt, trigger)
 
     return memoryExtractionEmptyResult('skipped', 'project-unavailable')
   }
 
-  if (!isManual) {
+  if (!isManual && !isBackfill) {
     await memoryExtractionStampChat(db, chat.id, userId, {
       memoryExtractionAttemptedAt: now,
       ...(chat.memoryExtractionFailures
@@ -343,25 +385,35 @@ async function extractLeasedChatMemory(
   try {
     const extractionWindow = await loadMemoryExtractionWindow(
       chat.id,
-      watermark,
+      isBackfill ? null : watermark,
       db,
       {
         createdAt: chat.createdAt,
         isShareBranch: !!chat.branchedFromShareSlug,
       },
+      isBackfill ? chat.memoryExtractedAt : undefined,
     )
 
     result.messages = extractionWindow.consumedCount
     result.userChars = extractionWindow.userChars
+    memoryExtractionAddCounts(result.blocked, extractionWindow.blocked)
 
     if (extractionWindow.userChars === 0) {
-      await memoryExtractionAdvance(db, chat, userId, passStartedAt, isManual)
+      await memoryExtractionAdvance(
+        db,
+        chat,
+        userId,
+        isBackfill
+          ? extractionWindow.newestCreatedAt ?? passStartedAt
+          : passStartedAt,
+        trigger,
+      )
 
       return { ...result, status: 'skipped', reason: 'no-user-text' }
     }
 
     if (extractionWindow.userChars < MEMORY_EXTRACTION_LIMITS.minUserChars) {
-      if (!isManual) {
+      if (!isManual && !isBackfill) {
         await memoryExtractionStampChat(db, chat.id, userId, {
           memoryExtractionFailures:
             MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
@@ -405,6 +457,8 @@ async function extractLeasedChatMemory(
       scope,
       maxOps,
       hasLegacyBlob: !!legacyBlob,
+      isBackground,
+      timeoutMs: input.generationTimeoutMs,
       content: buildMemoryExtractionPromptContent({
         scope,
         entries,
@@ -449,11 +503,11 @@ async function extractLeasedChatMemory(
     result.proposed = applied.proposed
     result.applied = {
       created: applied.created,
-      updated: applied.updated,
+      updated: applied.updated + applied.appended,
       deleted: applied.deleted,
     }
     result.dropped = applied.dropped
-    result.blocked = applied.blocked
+    memoryExtractionAddCounts(result.blocked, applied.blocked)
 
     if (project && legacyBlobSource) {
       await memoryExtractionMigrateLegacyBlob(
@@ -469,7 +523,7 @@ async function extractLeasedChatMemory(
 
     const advancedTo = extractionWindow.newestCreatedAt ?? passStartedAt
 
-    await memoryExtractionAdvance(db, chat, userId, advancedTo, isManual)
+    await memoryExtractionAdvance(db, chat, userId, advancedTo, trigger)
 
     if (
       !isManual
@@ -487,7 +541,7 @@ async function extractLeasedChatMemory(
 
     return result
   } catch (exception) {
-    if (isManual) {
+    if (isManual || isBackfill) {
       return {
         ...result,
         status: 'failed',
@@ -511,14 +565,45 @@ async function extractLeasedChatMemory(
   }
 }
 
+async function memoryExtractionModelOutputLimit(
+  selection: ResolvedMemoryModel,
+): Promise<number | null> {
+  if (!selection.gatewayId) {
+    return getModel(selection.modelId).model?.maxOutputTokens ?? null
+  }
+
+  if (selection.gatewayId === 'cloudflare') {
+    return null
+  }
+
+  const catalogModel = await findGatewayCatalogModel(
+    () => getCachedGatewayCatalog(selection.gatewayId as 'vercel' | 'openrouter'),
+    selection.modelId,
+  )
+
+  return catalogModel?.maxOutputTokens ?? null
+}
+
+function memoryExtractionTimeoutMs(isBackground: boolean | undefined) {
+  return isBackground
+    ? MEMORY_EXTRACTION_LIMITS.generationTimeoutBackgroundMs
+    : MEMORY_EXTRACTION_LIMITS.generationTimeoutMs
+}
+
 async function memoryExtractionGenerate(input: {
   selection: ResolvedMemoryModel
   scope: MemoryScope
   maxOps: number
   hasLegacyBlob: boolean
   content: string
+  isBackground?: boolean
+  source?: 'chat' | 'import'
+  timeoutMs?: number
 }) {
   const instance = await input.selection.instantiate()
+  const maxOutputTokens = clampMemoryExtractionOutputTokens(
+    await memoryExtractionModelOutputLimit(input.selection),
+  )
 
   return await generateObject({
     model: instance.model,
@@ -532,14 +617,15 @@ async function memoryExtractionGenerate(input: {
     },
     schema: memoryExtractionOutputSchema,
     schemaName: 'MemoryExtraction',
-    maxOutputTokens: MEMORY_EXTRACTION_LIMITS.maxOutputTokens,
+    maxOutputTokens,
     abortSignal: AbortSignal.timeout(
-      MEMORY_EXTRACTION_LIMITS.generationTimeoutMs,
+      input.timeoutMs ?? memoryExtractionTimeoutMs(input.isBackground),
     ),
     instructions: buildMemoryExtractionInstructions({
       scope: input.scope,
       maxOps: input.maxOps,
       hasLegacyBlob: input.hasLegacyBlob,
+      source: input.source,
     }),
     messages: [
       {
@@ -555,10 +641,10 @@ async function resolveExtractionModel(input: {
   userId: number
   scope: MemoryScope
   projectId: string | null
-  chatId: string
+  chatId: string | null
   resolveCache?: Map<string, ResolvedMemoryModel>
   selection?: ResolvedMemoryModel
-  result: ExtractChatMemoryResult
+  result: { model: MemoryExtractionModelInfo | null }
 }): Promise<ResolvedMemoryModel> {
   if (input.selection) {
     input.result.model = {
@@ -825,4 +911,287 @@ async function memoryExtractionMigrateLegacyBlob(
     ))
 
   return isMigrated
+}
+
+export interface ExtractMemoryFromTextInput {
+  userId: number
+  text: string
+  scope: 'profile'
+  origin: 'import'
+  selection?: ResolvedMemoryModel
+  db?: DbClient
+  logger?: ProjectMemoryLogger
+  isBackground?: boolean
+}
+
+export interface ExtractMemoryFromTextResult {
+  status: 'imported' | 'skipped' | 'failed' | 'leased'
+  reason?: string
+  applied: { created: number, updated: number, appended: number }
+  dropped: Record<string, number>
+  blocked: ComplianceBlockedCounts
+  model: MemoryExtractionModelInfo | null
+  chunks: number
+  truncated: boolean
+  consumedChars: number
+  proposed: number
+  usage: { inputTokens: number, outputTokens: number }
+  modelCalled: boolean
+}
+
+export function memoryImportLeaseKey(userId: number) {
+  return `memory-import-lease:${userId}`
+}
+
+function memoryExtractionEmptyTextResult(
+  status: ExtractMemoryFromTextResult['status'],
+  reason?: string,
+): ExtractMemoryFromTextResult {
+  return {
+    status,
+    reason,
+    applied: { created: 0, updated: 0, appended: 0 },
+    dropped: {},
+    blocked: {},
+    model: null,
+    chunks: 0,
+    truncated: false,
+    consumedChars: 0,
+    proposed: 0,
+    usage: { inputTokens: 0, outputTokens: 0 },
+    modelCalled: false,
+  }
+}
+
+function memoryExtractionAddCounts(
+  target: Record<string, number | undefined>,
+  source: Record<string, number | undefined>,
+) {
+  for (const [key, count] of Object.entries(source)) {
+    target[key] = (target[key] ?? 0) + (count ?? 0)
+  }
+}
+
+function memoryExtractionRedactRange(
+  text: string,
+  range: { start: number, end: number },
+  matches: { start: number, end: number }[],
+): string {
+  let redacted = ''
+  let cursor = range.start
+
+  for (const match of matches) {
+    if (match.start < range.start || match.end > range.end) {
+      continue
+    }
+
+    redacted += text.slice(cursor, match.start) + REDACTION_PLACEHOLDER
+    cursor = match.end
+  }
+
+  return (redacted + text.slice(cursor, range.end)).trim()
+}
+
+function memoryExtractionIsBlankAfterRedaction(text: string): boolean {
+  return text.replaceAll(REDACTION_PLACEHOLDER, '').trim() === ''
+}
+
+/**
+ * Turns pasted text (the user's own export of what another assistant knows
+ * about them) into profile entries without a chat. The text is user
+ * provenance, so it grounds create, append and update alike. It is redacted of
+ * never-store data before anything is sent to the model, and the redacted text
+ * is also the only grounding text, so evidence must quote it. It is split into
+ * chunks of `importChunkChars`, at most `importMaxChunksPerRequest` of them,
+ * processed sequentially under one shared deadline (the rest is reported as
+ * `truncated`); every chunk reloads the index so it sees what the previous one
+ * wrote. Only `create`, `append` and `update` ops are accepted (anything else
+ * is dropped as `invalid`), they pass the same compliance gate and caps as a
+ * chat pass, and rows created here get the `import` origin while updated rows
+ * keep theirs. Memory must be on (re-checked after each model call); the
+ * extraction opt-in is not needed because the user triggers the import. One
+ * import per user runs at a time under a KV lease. Never throws for a pass
+ * failure and never stores or logs the text: `failed` carries a class label.
+ */
+export async function extractMemoryFromText(
+  input: ExtractMemoryFromTextInput,
+): Promise<ExtractMemoryFromTextResult> {
+  const logger = input.logger ?? noopProjectMemoryLogger
+  const lease = await acquireMemoryLease(
+    memoryImportLeaseKey(input.userId),
+    logger,
+  )
+
+  if (!lease) {
+    return memoryExtractionEmptyTextResult('leased')
+  }
+
+  try {
+    return await extractLeasedMemoryFromText(input)
+  } finally {
+    await lease.release()
+  }
+}
+
+async function extractLeasedMemoryFromText(
+  input: ExtractMemoryFromTextInput,
+): Promise<ExtractMemoryFromTextResult> {
+  const db = input.db ?? useDb()
+  const { userId } = input
+  const result = memoryExtractionEmptyTextResult('imported')
+  const settings = await memoryExtractionReadSettings(db, userId)
+
+  if (settings?.memoryEnabled === false) {
+    return memoryExtractionEmptyTextResult('skipped', 'disabled')
+  }
+
+  const neverStoreMatches = detectNeverStore(input.text)
+
+  for (const match of neverStoreMatches) {
+    result.blocked[match.kind] = (result.blocked[match.kind] ?? 0) + 1
+  }
+
+  const allRanges = memoryExtractionChunkRanges(
+    input.text,
+    MEMORY_EXTRACTION_LIMITS.importChunkChars,
+    neverStoreMatches,
+  )
+  const allChunks = allRanges.map((range) => {
+    return {
+      range,
+      text: memoryExtractionRedactRange(input.text, range, neverStoreMatches),
+    }
+  })
+
+  const hasContent = (chunk: { text: string }) => {
+    return !memoryExtractionIsBlankAfterRedaction(chunk.text)
+  }
+
+  if (!allChunks.some(hasContent)) {
+    return { ...result, status: 'skipped', reason: 'no-text' }
+  }
+
+  const chunks = allChunks.slice(
+    0,
+    MEMORY_EXTRACTION_LIMITS.importMaxChunksPerRequest,
+  )
+  const deadline = Date.now() + memoryExtractionTimeoutMs(input.isBackground)
+  let selection: ResolvedMemoryModel | null = null
+  let stopReason: string | null = null
+
+  result.truncated = allChunks.slice(chunks.length).some(hasContent)
+
+  try {
+    for (const { range, text: chunk } of chunks) {
+      const remainingMs = deadline - Date.now()
+
+      const hasBudget = remainingMs
+        >= MEMORY_EXTRACTION_LIMITS.importMinChunkBudgetMs
+
+      if (result.chunks > 0 && !hasBudget) {
+        result.truncated = true
+
+        break
+      }
+
+      if (memoryExtractionIsBlankAfterRedaction(chunk)) {
+        result.consumedChars = range.end
+
+        continue
+      }
+
+      const entries = await loadMemoryExtractionIndex(userId, null, db)
+
+      selection ??= await resolveExtractionModel({
+        db,
+        userId,
+        scope: 'profile',
+        projectId: null,
+        chatId: null,
+        selection: input.selection,
+        result,
+      })
+      result.modelCalled = true
+
+      const generation = await memoryExtractionGenerate({
+        selection,
+        scope: 'profile',
+        maxOps: MEMORY_EXTRACTION_LIMITS.maxOpsPerImportChunk,
+        hasLegacyBlob: false,
+        source: 'import',
+        timeoutMs: remainingMs,
+        content: buildMemoryExtractionPromptContent({
+          scope: 'profile',
+          entries,
+          legacyBlob: null,
+          importedText: chunk,
+          editableOrigins: [input.origin],
+        }),
+      })
+
+      result.usage.inputTokens += generation.usage?.inputTokens ?? 0
+      result.usage.outputTokens += generation.usage?.outputTokens ?? 0
+
+      const freshSettings = await memoryExtractionReadSettings(db, userId)
+
+      if (freshSettings?.memoryEnabled === false) {
+        stopReason = 'disabled'
+
+        break
+      }
+
+      const acceptedOps = generation.object.ops.filter((op) => {
+        return op.op !== 'delete'
+      })
+      const rejectedOpsCount = generation.object.ops.length - acceptedOps.length
+      const applied = await applyMemoryExtractionOps({
+        ops: acceptedOps,
+        maxOps: MEMORY_EXTRACTION_LIMITS.maxOpsPerImportChunk,
+        db,
+        userId,
+        projectId: null,
+        chatId: null,
+        entries,
+        groundingTexts: [chunk],
+        origin: input.origin,
+        logger: input.logger,
+      })
+
+      result.chunks += 1
+      result.consumedChars = range.end
+      result.proposed += applied.proposed + rejectedOpsCount
+      result.applied.created += applied.created
+      result.applied.updated += applied.updated
+      result.applied.appended += applied.appended
+      memoryExtractionAddCounts(result.dropped, applied.dropped)
+      memoryExtractionAddCounts(result.blocked, applied.blocked)
+
+      if (rejectedOpsCount > 0) {
+        result.dropped.invalid = (result.dropped.invalid ?? 0)
+          + rejectedOpsCount
+      }
+    }
+  } catch (exception) {
+    stopReason = memoryExtractionErrorLabel(exception)
+  }
+
+  if (!stopReason) {
+    if (!result.truncated) {
+      result.consumedChars = input.text.length
+    }
+
+    return result
+  }
+
+  const hasApplied = result.applied.created
+    + result.applied.updated
+    + result.applied.appended > 0
+  const stoppedStatus = stopReason === 'disabled' ? 'skipped' : 'failed'
+
+  return {
+    ...result,
+    status: hasApplied ? 'imported' : stoppedStatus,
+    reason: stopReason,
+    truncated: true,
+  }
 }

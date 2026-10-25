@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toolRequiresFollowUpTurn } from '~~/server/utils/ai/tool-loop'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import {
   consumeChatSearchCall,
@@ -1149,13 +1150,17 @@ describe('memory tools', () => {
         build().tools.memory_write!.execute(
           writeInput({
             category: 'profile',
-            body: 'x'.repeat(1100),
+            body: 'x'.repeat(
+              MEMORY_LIMITS.maxAlwaysInjectedBodyBytes + 100,
+            ),
           }),
           toolOptions,
         ),
       ).rejects.toMatchObject({
         status: 400,
-        message: expect.stringContaining('1024 bytes'),
+        message: expect.stringContaining(
+          `${MEMORY_LIMITS.maxAlwaysInjectedBodyBytes} bytes`,
+        ),
       })
     })
 
