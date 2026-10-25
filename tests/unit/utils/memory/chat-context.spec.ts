@@ -189,6 +189,68 @@ describe('chat memory context', () => {
         })
       })
 
+    describe('after the about-me migration', () => {
+      const PROFILE_BODY = 'I am a backend developer.'
+      const ABOUT_ME_HEADER = 'wrote the following about themselves'
+
+      async function instructionsFromStoredSettings() {
+        const settings = await loadMemorySettingsFailClosed(
+          testDb.db,
+          USER_ID,
+          { set: loggerSet },
+        )
+
+        return await buildMemoryInstructions({
+          db: testDb.db,
+          userId: USER_ID,
+          projectId: null,
+          projectMemoryDisabled: false,
+          useAccountMemory: null,
+          settings,
+          hasMemoryTools: true,
+          logger: { set: loggerSet },
+        })
+      }
+
+      it('has no about-me section and the index carries the profile body',
+        async () => {
+          testDb.insertUserSettings({ userId: USER_ID, aboutMe: null })
+          testDb.insertEntry({
+            userId: USER_ID,
+            category: 'profile',
+            slug: 'profile',
+            title: 'About me',
+            description: 'Backend developer',
+            body: PROFILE_BODY,
+          })
+
+          const instructions = await instructionsFromStoredSettings()
+
+          expect(instructions).toContain('<memory>')
+          expect(instructions).toContain(PROFILE_BODY)
+          expect(instructions).not.toContain(ABOUT_ME_HEADER)
+        })
+
+      it('still injects the about-me section for an un-migrated user',
+        async () => {
+          testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+          testDb.insertEntry({
+            userId: USER_ID,
+            category: 'profile',
+            slug: 'profile',
+            title: 'Me',
+            description: 'Existing profile',
+            body: 'Existing body',
+          })
+
+          const instructions = await instructionsFromStoredSettings()
+
+          expect(instructions).toContain('Existing body')
+          expect(instructions).toContain(ABOUT_ME_HEADER)
+          expect(instructions).toContain(ABOUT_ME)
+        })
+    })
+
     it('never injects a legacy special entry', async () => {
       testDb.insertEntry({ userId: USER_ID, slug: 'cooking' })
       testDb.insertEntry({

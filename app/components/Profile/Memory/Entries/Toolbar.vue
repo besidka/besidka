@@ -18,6 +18,14 @@
       </div>
       <div class="flex flex-wrap items-center gap-2 sm:justify-end">
         <UiButton
+          size="sm"
+          normal-case
+          icon-name="lucide:plus"
+          text="Add memory"
+          data-testid="memory-add"
+          @click="emit('add')"
+        />
+        <UiButton
           v-if="canUpdateNow"
           size="sm"
           normal-case
@@ -83,6 +91,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   scopeChange: [projectId: string | null]
   changed: []
+  add: []
 }>()
 
 const HISTORY_LOOKUP_LIMIT = 100

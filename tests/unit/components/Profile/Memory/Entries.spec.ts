@@ -3,6 +3,7 @@ import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, shallowRef, toValue } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
+  AboutMeNotMigratedReason,
   MemoryCategory,
   MemoryEntry,
   MemorySettingsFields,
@@ -14,11 +15,15 @@ const mocks = vi.hoisted(() => ({
   useLazyFetch: vi.fn(),
   fetch: vi.fn(),
   confirm: vi.fn(),
+  info: vi.fn(),
+  error: vi.fn(),
 }))
 
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useConfirm', () => mocks.confirm)
+mockNuxtImport('useInfoMessage', () => mocks.info)
+mockNuxtImport('useErrorMessage', () => mocks.error)
 
 enableAutoUnmount(afterEach)
 
@@ -38,13 +43,14 @@ const defaultSettings: MemorySettingsFields = {
 }
 
 const DetailModalStub = defineComponent({
-  props: ['open', 'entry', 'limits'],
+  props: ['open', 'entry', 'limits', 'projectId', 'takenSingletonCategories'],
   emits: ['update:open', 'changed'],
   setup(props, { emit }) {
     return () => h('div', {
       'data-testid': 'detail-modal-stub',
       'data-open': String(props.open),
       'data-entry-id': props.entry?.id ?? '',
+      'data-project-id': props.projectId ?? '',
     }, [
       h('button', {
         'data-testid': 'detail-modal-changed',
@@ -58,6 +64,13 @@ const DetailModalStub = defineComponent({
         'onClick': () => emit('changed', {
           reason: 'saved',
           categoryChanged: true,
+        }),
+      }),
+      h('button', {
+        'data-testid': 'detail-modal-created',
+        'onClick': () => emit('changed', {
+          reason: 'created',
+          categoryChanged: false,
         }),
       }),
       h('button', {
@@ -125,11 +138,15 @@ function createResponse(
 async function mountEntries(
   settings: Partial<MemorySettingsFields> = {},
   route = '/',
+  aboutMeNotMigratedReason: AboutMeNotMigratedReason | null = null,
 ) {
   const wrapper = await mountSuspended(Entries, {
     route,
     attachTo: document.body,
-    props: { settings: { ...defaultSettings, ...settings } },
+    props: {
+      settings: { ...defaultSettings, ...settings },
+      aboutMeNotMigratedReason,
+    },
     global: {
       stubs: {
         LazyProfileMemoryEntriesDetailModal: DetailModalStub,
@@ -162,6 +179,8 @@ describe('Profile/Memory/Entries', () => {
     refresh.mockReset()
     mocks.fetch.mockReset()
     mocks.confirm.mockReset()
+    mocks.info.mockReset()
+    mocks.error.mockReset()
     mocks.useLazyFetch.mockReset()
     mocks.useLazyFetch.mockImplementation((url: string) => {
       if (url === ENTRIES_URL) {
@@ -194,35 +213,98 @@ describe('Profile/Memory/Entries', () => {
     expect(section.text()).toContain('What Besidka remembers')
     expect(section.text()).toContain(
       'Everything Besidka keeps about you, grouped by category. '
-      + 'Edit or delete anything.',
+      + 'Add, edit or delete anything.',
     )
   })
 
   describe('list', () => {
-    it('groups entries in category order and skips empty groups', async () => {
+    it('puts profile and preferences under You, then the other groups',
+      async () => {
+        entriesData.value = createResponse([
+          { category: 'topics', entries: [createEntry('t1', 'topics')] },
+          { category: 'people', entries: [] },
+          { category: 'areas', entries: [createEntry('a1', 'areas')] },
+          {
+            category: 'preferences',
+            entries: [createEntry('f1', 'preferences')],
+          },
+          {
+            category: 'profile',
+            entries: [createEntry('p1', 'profile')],
+          },
+        ])
+
+        const wrapper = await mountEntries()
+        const list = wrapper.get('[data-testid="memory-entries-list"]')
+        const essentials = list.get('[data-testid="memory-entry-essentials"]')
+        const groups = wrapper.findAll('[data-testid="memory-entry-group"]')
+
+        expect(essentials.get('h3 > span').text()).toBe('You')
+        expect(essentials.findAll('[data-testid="memory-entry-label"]')
+          .map(label => label.text())).toEqual(['Profile', 'Preferences'])
+        expect(groups.map(group => group.attributes('data-category')))
+          .toEqual(['areas', 'topics'])
+        expect(groups.map(group => group.get('h3 > span').text()))
+          .toEqual(['Areas', 'Topics'])
+
+        const orderedTitles = list.findAll('[data-testid="memory-entry-row"]')
+          .map(row => row.text())
+
+        expect(orderedTitles).toEqual([
+          expect.stringContaining('Title p1'),
+          expect.stringContaining('Title f1'),
+          expect.stringContaining('Title a1'),
+          expect.stringContaining('Title t1'),
+        ])
+      })
+
+    it('shows a call to action in an empty You group', async () => {
       entriesData.value = createResponse([
         { category: 'topics', entries: [createEntry('t1', 'topics')] },
-        { category: 'people', entries: [] },
-        {
-          category: 'profile',
-          entries: [createEntry('p1', 'profile'), createEntry('p2', 'profile')],
-        },
-        { category: 'preferences', entries: [createEntry('f1', 'preferences')] },
       ])
 
       const wrapper = await mountEntries()
-      const groups = wrapper.findAll('[data-testid="memory-entry-group"]')
+      const cta = wrapper.get('[data-testid="memory-entry-essentials-empty"]')
 
-      expect(groups.map(group => group.attributes('data-category')))
-        .toEqual(['profile', 'preferences', 'topics'])
-      expect(groups.map(group => group.get('h3 > span').text()))
-        .toEqual(['Profile', 'Preferences', 'Topics'])
-      expect(groups.map((group) => {
-        return group.get('[data-testid="memory-entry-group-count"]').text()
-      })).toEqual(['2', '1', '1'])
+      expect(wrapper.get('[data-testid="memory-entry-essentials-heading"]')
+        .text()).toBe('You')
+      expect(cta.text()).toContain('Tell Besidka about yourself')
+
+      await wrapper.get('[data-testid="memory-essentials-add"]')
+        .trigger('click')
+
+      const modal = wrapper.getComponent(DetailModalStub)
+
+      expect(modal.attributes('data-open')).toBe('true')
+      expect(modal.attributes('data-entry-id')).toBe('')
     })
 
-    it('shows title, description, updated and origin on each row', async () => {
+    it('labels the group Essentials in project scope without a call to action',
+      async () => {
+        entriesData.value = createResponse([
+          { category: 'topics', entries: [createEntry('t1', 'topics')] },
+        ], { scope: 'project', projectId: 'project-1' })
+
+        const wrapper = await mountEntries({}, PROJECT_ROUTE)
+
+        expect(wrapper.find('[data-testid="memory-entry-essentials"]').exists())
+          .toBe(false)
+
+        entriesData.value = createResponse([
+          {
+            category: 'profile',
+            entries: [createEntry('p1', 'profile', { projectId: 'project-1' })],
+          },
+        ], { scope: 'project', projectId: 'project-1' })
+
+        const withProfile = await mountEntries({}, PROJECT_ROUTE)
+
+        expect(withProfile.get(
+          '[data-testid="memory-entry-essentials-heading"]',
+        ).text()).toBe('Essentials')
+      })
+
+    it('shows title, description and updated on each row', async () => {
       entriesData.value = createResponse([
         {
           category: 'preferences',
@@ -240,7 +322,8 @@ describe('Profile/Memory/Entries', () => {
       expect(row.text()).toContain('Prefers short answers')
       expect(row.text()).toContain('Keeps replies brief.')
       expect(row.get('[data-testid="memory-entry-meta"]').text())
-        .toBe('Updated just now · Extracted from chats')
+        .toBe('Updated just now')
+      expect(row.text()).not.toContain('Extracted from chats')
     })
 
     it('renders no sensitive badge for any entry', async () => {
@@ -525,6 +608,58 @@ describe('Profile/Memory/Entries', () => {
         .attributes('data-open')).toBe('false')
     })
 
+    it('opens the modal in create mode from the toolbar Add button',
+      async () => {
+        const { wrapper } = await mountWithEntry()
+
+        await wrapper.get('[data-testid="memory-add"]').trigger('click')
+
+        const modal = wrapper.getComponent(DetailModalStub)
+
+        expect(modal.attributes('data-open')).toBe('true')
+        expect(modal.attributes('data-entry-id')).toBe('')
+        expect(modal.props('takenSingletonCategories')).toEqual(['profile'])
+        expect(modal.props('projectId')).toBeNull()
+      })
+
+    it('create mode drops a previously selected entry', async () => {
+      const { wrapper } = await mountWithEntry()
+
+      await wrapper.get('[data-testid="memory-entry-row"]').trigger('click')
+      await wrapper.getComponent(DetailModalStub).vm.$emit('update:open', false)
+      await wrapper.get('[data-testid="memory-add"]').trigger('click')
+
+      expect(wrapper.getComponent(DetailModalStub).props('entry')).toBeNull()
+    })
+
+    it('passes the project id to the modal in project scope', async () => {
+      entriesData.value = createResponse([], {
+        scope: 'project',
+        projectId: 'project-1',
+      })
+
+      const wrapper = await mountEntries({}, PROJECT_ROUTE)
+
+      expect(wrapper.getComponent(DetailModalStub).props('projectId'))
+        .toBe('project-1')
+    })
+
+    it('refreshes the list after an entry was created without moving focus',
+      async () => {
+        const { wrapper } = await mountWithEntry()
+
+        await wrapper.get('[data-testid="memory-add"]').trigger('click')
+        await wrapper.get('[data-testid="detail-modal-created"]')
+          .trigger('click')
+        await wrapper.getComponent(DetailModalStub).vm.$emit('update:open', false)
+        await flushPromises()
+
+        expect(refresh).toHaveBeenCalledOnce()
+        expect(document.activeElement).not.toBe(
+          wrapper.get('[data-testid="memory-entries-heading"]').element,
+        )
+      })
+
     it('refreshes the list when the modal reports a change', async () => {
       const { wrapper } = await mountWithEntry()
 
@@ -581,6 +716,173 @@ describe('Profile/Memory/Entries', () => {
 
         expect(document.activeElement).toBe(heading.element)
       })
+  })
+
+  describe('earlier about me', () => {
+    const LEGACY_TEXT = 'I am a **backend** developer\n<b>second</b> line'
+
+    async function mountLegacy(
+      reason: AboutMeNotMigratedReason | null,
+      aboutMe: string | null = LEGACY_TEXT,
+    ) {
+      entriesData.value = createResponse([
+        { category: 'topics', entries: [createEntry('t1', 'topics')] },
+      ])
+
+      return await mountEntries({ aboutMe }, '/', reason)
+    }
+
+    it('is hidden without leftover text', async () => {
+      const wrapper = await mountLegacy(null, null)
+
+      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+        .toBe(false)
+    })
+
+    it('is hidden for blank leftover text', async () => {
+      const wrapper = await mountLegacy('too-long', '  \n ')
+
+      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+        .toBe(false)
+    })
+
+    it('is hidden in project scope', async () => {
+      const wrapper = await mountEntries(
+        { aboutMe: LEGACY_TEXT },
+        PROJECT_ROUTE,
+        'too-long',
+      )
+
+      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+        .toBe(false)
+    })
+
+    it('is a collapsed block above the groups with plain text only',
+      async () => {
+        const wrapper = await mountLegacy('too-long')
+        const legacy = wrapper.get('[data-testid="memory-legacy-about-me"]')
+        const text = legacy.get('[data-testid="memory-legacy-about-me-text"]')
+
+        expect(legacy.element.tagName).toBe('DETAILS')
+        expect(legacy.attributes('open')).toBeUndefined()
+        expect(legacy.classes()).toContain('rounded-box')
+        expect(legacy.get('summary').text())
+          .toBe('Earlier about me (not converted)')
+        expect(text.text()).toBe(LEGACY_TEXT)
+        expect(text.classes()).toEqual(expect.arrayContaining([
+          'whitespace-pre-wrap',
+          'break-words',
+        ]))
+        expect(text.find('b').exists()).toBe(false)
+        expect(text.find('strong').exists()).toBe(false)
+        expect(legacy.text())
+          .toContain('This text is still sent with every chat until you remove it.')
+
+        const section = wrapper.get('[data-testid="memory-entries-section"]')
+        const html = section.html()
+
+        expect(html.indexOf('memory-legacy-about-me"'))
+          .toBeLessThan(html.indexOf('memory-entries-list'))
+      })
+
+    it.each([
+      [
+        'too-long',
+        'It is too long to become a Profile entry (limit 1 KB). Shorten it '
+        + 'into an entry yourself, then remove this.',
+      ],
+      [
+        'profile-exists',
+        'You already have a Profile entry, so this was not merged. Copy what '
+        + 'you need into it, then remove this.',
+      ],
+      [
+        'memory-off',
+        'Turn on Use memory and it will be converted automatically.',
+      ],
+      [
+        'rejected',
+        'It contains details Besidka does not save to memory, so it was not '
+        + 'converted.',
+      ],
+      [null, 'It is still sent with every chat.'],
+    ] as const)('explains the %s reason', async (reason, expected) => {
+      const wrapper = await mountLegacy(reason)
+
+      expect(wrapper.get('[data-testid="memory-legacy-about-me-reason"]')
+        .text()).toBe(expected)
+    })
+
+    it('removes the text after confirmation', async () => {
+      mocks.confirm.mockResolvedValue({ label: 'Remove', index: 0 })
+      mocks.fetch.mockResolvedValue({})
+
+      const wrapper = await mountLegacy('too-long')
+
+      await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(mocks.confirm).toHaveBeenCalledWith({
+        text: 'Remove earlier about me?',
+        subtitle: 'It will no longer be sent with your chats. '
+          + 'This cannot be undone.',
+        alert: true,
+        actions: ['Remove'],
+        labelDecline: 'Cancel',
+      })
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/profiles/settings',
+        { method: 'PATCH', body: { aboutMe: null } },
+      )
+      expect(mocks.info).toHaveBeenCalledWith(
+        'Removed',
+        'Earlier about me removed.',
+      )
+      expect(wrapper.emitted('aboutMeRemoved')).toHaveLength(1)
+      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+        .toBe(false)
+    })
+
+    it('keeps the text when the confirmation is declined', async () => {
+      mocks.confirm.mockResolvedValue(null)
+
+      const wrapper = await mountLegacy('too-long')
+
+      await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(mocks.fetch).not.toHaveBeenCalled()
+      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+        .toBe(true)
+    })
+
+    it('keeps the text and shows a toast when removing fails', async () => {
+      mocks.confirm.mockResolvedValue({ label: 'Remove', index: 0 })
+      mocks.fetch.mockRejectedValue(Object.assign(new Error('Request failed'), {
+        data: {
+          statusCode: 500,
+          message: 'Could not save',
+          data: { why: 'Database unavailable' },
+        },
+      }))
+
+      const wrapper = await mountLegacy('too-long')
+
+      await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(mocks.error).toHaveBeenCalledWith(
+        'Could not save',
+        'Database unavailable',
+      )
+      expect(mocks.info).not.toHaveBeenCalled()
+      expect(wrapper.emitted('aboutMeRemoved')).toBeUndefined()
+      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+        .toBe(true)
+    })
   })
 
   it('refreshes the list after the toolbar changes memory', async () => {

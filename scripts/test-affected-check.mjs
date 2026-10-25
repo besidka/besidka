@@ -124,6 +124,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/entry-slug.spec.ts',
     'tests/integration/api/memory-entries.spec.ts',
     'tests/integration/api/memory-entries-sources.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
+    'tests/integration/api/profile-settings.spec.ts',
   ]
   const memoryIndexTests = [
     'tests/unit/utils/memory-tokens.spec.ts',
@@ -476,7 +478,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Memory/ModelPicker.spec.ts',
     'tests/unit/components/Profile/Memory/Controls.spec.ts',
     'tests/unit/components/Profile/Memory/NeverKept.spec.ts',
-    'tests/unit/components/Profile/Memory/AboutMe.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Essentials.spec.ts',
     'tests/unit/components/Profile/Memory/Models.spec.ts',
     'tests/unit/components/Profile/Memory/Entries.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/DetailModal.spec.ts',
@@ -1363,7 +1365,7 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
-      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
+      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources|about-me-migration)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
       tests: [
         ...memoryEntriesTests,
         ...memoryToolTests,
@@ -1703,7 +1705,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/memory-settings\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
+        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/(memory-settings|memory-entries)\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
       tests: memoryTabTests,
     },
     {

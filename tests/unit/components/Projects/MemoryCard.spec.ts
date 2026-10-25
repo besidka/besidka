@@ -16,7 +16,7 @@ vi.mock('#app', async (importOriginal) => {
 enableAutoUnmount(afterEach)
 
 const DetailModalStub = defineComponent({
-  props: ['open', 'entry', 'limits'],
+  props: ['open', 'entry', 'limits', 'projectId', 'takenSingletonCategories'],
   emits: ['update:open', 'changed'],
   setup(props, { emit }) {
     return () => h('button', {
@@ -167,9 +167,14 @@ describe('Projects/MemoryCard', () => {
     async () => {
       const wrapper = await mountCard(createCard())
       const groups = wrapper.findAll('[data-testid="memory-entry-group"]')
+      const essentials = wrapper.get('[data-testid="memory-entry-essentials"]')
 
+      expect(essentials.get('h3 > span').text()).toBe('Essentials')
+      expect(essentials.findAll('[data-testid="memory-entry-label"]')
+        .map(label => label.text()))
+        .toEqual(['Preferences', 'Preferences'])
       expect(groups.map(group => group.attributes('data-category')))
-        .toEqual(['preferences', 'topics'])
+        .toEqual(['topics'])
       expect(wrapper.findAll('[data-testid="memory-entry-row"]')).toHaveLength(3)
       expect(wrapper.get('[data-testid="project-memory-count"]').text())
         .toBe('3 of 15 entries')
@@ -193,6 +198,85 @@ describe('Projects/MemoryCard', () => {
     await modal.trigger('click')
 
     expect(wrapper.emitted('changed')).toEqual([[]])
+  })
+
+  it('passes the project id and the taken singleton categories to the modal',
+    async () => {
+      const wrapper = await mountCard(createCard())
+      const modal = wrapper.getComponent(DetailModalStub)
+
+      expect(modal.props('projectId')).toBe('project-1')
+      expect(modal.props('takenSingletonCategories'))
+        .toEqual(['preferences'])
+    })
+
+  it('passes no taken singleton categories without essential entries',
+    async () => {
+      const wrapper = await mountCard(createCard({
+        total: 1,
+        groups: [{
+          category: 'topics',
+          entries: [createEntry('entry-topic', 'topics', 'Migration plan')],
+        }],
+      }))
+
+      expect(wrapper.getComponent(DetailModalStub)
+        .props('takenSingletonCategories')).toEqual([])
+      expect(wrapper.find('[data-testid="memory-entry-essentials"]').exists())
+        .toBe(false)
+    })
+
+  it('opens the modal in create mode from Add memory', async () => {
+    const wrapper = await mountCard(createCard())
+
+    await wrapper.findAll('[data-testid="memory-entry-row"]')[0]!
+      .trigger('click')
+    await wrapper.getComponent(DetailModalStub).vm.$emit('update:open', false)
+
+    const addButton = wrapper.get('[data-testid="project-memory-add"]')
+
+    expect(addButton.text()).toBe('Add memory')
+
+    await addButton.trigger('click')
+
+    const modal = wrapper.getComponent(DetailModalStub)
+
+    expect(modal.attributes('data-open')).toBe('true')
+    expect(modal.attributes('data-entry-id')).toBe('')
+  })
+
+  it('offers Add memory when nothing is remembered yet', async () => {
+    const wrapper = await mountCard(createCard({
+      memoryStatus: 'idle',
+      total: 0,
+      groups: [],
+    }))
+
+    expect(wrapper.find('[data-testid="project-memory-add"]').exists())
+      .toBe(true)
+  })
+
+  it('hides Add memory while disabled or loading', async () => {
+    const disabled = await mountCard(createCard({ memoryStatus: 'disabled' }))
+    const loading = await mountCard(null)
+
+    expect(disabled.find('[data-testid="project-memory-add"]').exists())
+      .toBe(false)
+    expect(loading.find('[data-testid="project-memory-add"]').exists())
+      .toBe(false)
+  })
+
+  it('stacks Add memory between Refresh and Disable on mobile', async () => {
+    const wrapper = await mountCard(createCard())
+
+    expect(wrapper.get('[data-testid="refresh-project-memory"]').classes())
+      .toContain('max-sm:order-1')
+    expect(wrapper.get('[data-testid="project-memory-add"]').classes())
+      .toEqual(expect.arrayContaining(['max-sm:btn-block', 'max-sm:order-2']))
+    expect(wrapper.get('[data-testid="toggle-project-memory"]').classes())
+      .toContain('max-sm:order-3')
+    expect(wrapper.get('[data-testid="manage-project-memory-entries"]')
+      .classes()).toContain('max-sm:order-4')
   })
 
   it('closes the modal when it updates its open model', async () => {

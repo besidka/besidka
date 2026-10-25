@@ -10,12 +10,12 @@
       class="text-sm"
       data-testid="memory-entries-empty-project"
     >
-      Memory saved in this project's chats shows up here.
+      Memory saved in this project's chats shows up here. You can also add
+      it yourself.
     </p>
     <template v-else>
       <p class="text-sm">
-        Ask Besidka in any chat to remember something — for example,
-        “Remember that I prefer short answers.”
+        Ask Besidka in any chat to remember something, or add it yourself.
       </p>
       <p
         v-if="!settings.memoryExtractionEnabled"

@@ -51,7 +51,7 @@ Gaps and bugs found:
 | G3 | **Fixed in W1.** A Worker dying mid-refresh leaves `refreshing` forever; refresh returns early on that status and nothing sweeps it. Now a live KV lease decides, and a `refreshing` row without one is reported as `stale` on read. Final writes never override `disabled`, a message arriving mid-pass keeps the project `stale` (detected by comparing `memoryDirtyAt` with its start-of-pass snapshot; a second message in the same second as the existing marker is missed, an accepted limitation), and the 20-chat window never wipes existing memory when it yields nothing. The lease get/put is not atomic and the first finisher deletes the key (no owner token), an accepted limitation shared with the generation guard. | `memory.ts`, `memory-lease.ts` |
 | G4 | **Fixed in W1.** Anthropic/xAI/DeepSeek/Moonshot/Qwen-only users get `unavailable`. | `resolveProjectMemoryModel` |
 | G5 | Memory is not editable, not categorised, no provenance, on by default and silently spends the user's key. | `MemoryCard.vue`, schema default `idle` |
-| G6 | No account-level memory, no "about me", no custom instructions. | `user_settings` |
+| G6 | No account-level memory, no "about me", no custom instructions. **Fixed:** account memory in W4; the free-text "About me" is now the account `profile` entry (section 7, "About me becomes a profile entry"). | `user_settings` |
 | G7 | No cross-chat path at all outside a project's blob; FTS index is never exposed to the model. | — |
 | G8 | No project files; files have no `projectId`. | `server/db/schemas/files.ts` |
 | G9 | No GDPR export endpoint. | — |
@@ -171,7 +171,12 @@ project entry on first read; the column is left in place and writes stop
   1.5k English / 2.5k Ukrainian). Over budget → drop the `preferences` body
   first, then truncate descriptions; never silently drop entries from the
   index (the model must know they exist to call `memory_read`).
-- `aboutMe` (custom instructions) is injected verbatim, separate from memory.
+- The free-text "About me" is now the account `profile` entry, so it travels
+  inside the memory index (its body is always injected, 1 KB cap). Only text
+  that could not be converted (`about_me` still set: too long, a profile entry
+  already exists, memory off, or rejected by the compliance gate) is still
+  injected verbatim as a separate `aboutMe` block, independent of memory (see
+  "About me becomes a profile entry", section 7).
 - Models without tool support: index only, no tools. Gateway models follow
   `GatewayModel.toolCall`.
 
@@ -270,7 +275,8 @@ extraction, import):
    English, Ukrainian and Polish, with Russian patterns in the same rule
    table). It runs inside `evaluateMemoryEntry`, so every write path gets the
    same verdict: UI/API create and edit, the `memory_write` tool, extraction
-   (the op is dropped as `sensitive-topic`) and `aboutMe` (settings PATCH).
+   (the op is dropped as `sensitive-topic`) and the one-time About-me migration
+   (the text stays in `about_me`, outcome `rejected`).
    An import path does not exist yet and must call the same gate when built.
    A hit is a 422 on the interactive paths ("Sensitive topics (health,
    religion, politics…) are not saved to memory."), with the detected category
@@ -471,7 +477,11 @@ created `memory_entries` rows (W4 changed that, see 3.12). The one behavioural c
   strips unknown keys), GET returns a constant `false`, and the column stays
   in `user_settings` because dropping it would rebuild the table (D1 rules in
   AGENTS.md).
-- `aboutMe`: at most 4000 characters, trimmed; an empty string stores `null`.
+- `aboutMe`: **legacy, null-only since the About-me migration.** The settings
+  PATCH accepts only `null` (the user removing leftover text); any string is a
+  400 from the body schema. GET moves the text into the `profile` entry (see
+  "About me becomes a profile entry", section 7). The column stays (no
+  rebuild).
 - `projects.useAccountMemory`: default `true`; `null` means the default.
 - All defaults live in app code (`MEMORY_SETTING_DEFAULTS`); the columns are
   nullable with no SQL `DEFAULT`, per the D1 rebuild rule.
@@ -482,23 +492,17 @@ created `memory_entries` rows (W4 changed that, see 3.12). The one behavioural c
   replaces both columns (a missing gateway means a direct provider); sending
   `<scope>MemoryGateway` without `<scope>MemoryModel` is a 400; a `null`
   model clears both.
-- Validation order: body schema (400) → `aboutMe` never-store gate (400) →
-  `aboutMe` sensitive-topic gate (422) → gateway-without-model (400) → empty
-  patch (400) → per-scope model check (`assertMemoryModelChoice`) → write. The
-  whole request is rejected on any failure and nothing is written.
-- `aboutMe` goes through `detectNeverStore` after trimming. A hit is a 400
-  (`About me contains data that cannot be stored`) whose `why` lists only the
-  kind ids and labels, never the content; the count is logged through
-  `recordBlockedCounts` with origin `settings-about-me`. The text itself is
-  never logged.
-- After the never-store gate, `aboutMe` goes through the sensitive-topic
-  classifier. A hit is a 422 with the same `message` as the entries refusal
-  (`SENSITIVE_TOPIC_REFUSAL_MESSAGE`, "Sensitive topics (health, religion,
-  politics…) are not saved to memory."), an About-me-specific `why` ("Your
-  "About me" text looks like sensitive data (health)." with category ids only)
-  and a `fix` telling the user to remove the details from "About me". The
-  categories are logged under `attributes.memoryCompliance.sensitive` with
-  origin `settings-about-me`, never the text.
+- Validation order: body schema (400, which also rejects any non-null
+  `aboutMe`) → gateway-without-model (400) → empty patch (400) → per-scope
+  model check (`assertMemoryModelChoice`) → write. The whole request is
+  rejected on any failure and nothing is written. The former `aboutMe`
+  never-store (400) and sensitive-topic (422) gates, and their
+  `settings-about-me` origin, are gone: the same checks now run once inside
+  `createMemoryEntry` during the migration.
+- GET runs `migrateAboutMeToProfileEntry` before reading the row (swallowed
+  and logged as `attributes.memoryMigration.aboutMeError` on failure, so the
+  GET never fails because of it) and returns `aboutMe` plus
+  `aboutMeNotMigratedReason` (see the outcome table in section 7).
 - A direct model is checked against the curated catalog with
   `isUsableMemoryCatalogModel` (400 when unknown or unusable). A gateway model
   is checked against the live gateway catalog: not in catalog or no text
@@ -587,7 +591,7 @@ Logging contract: `recordBlockedCounts(blocked, logger, origin)` writes
 `attributes.memoryCompliance = { origin, blocked, blockedTotal }` and stays
 silent when nothing was blocked. Only counts per kind are logged, never the
 matched text. Origins used by the current code: `memory-api`, `memory-tool`,
-`memory-extraction`, `extraction` (sweep totals) and `settings-about-me`. The
+`memory-extraction`, `extraction` (sweep totals) and `about-me-migration`. The
 W3 origins `project-memory-summary` and `project-memory` belonged to the retired
 blob pipeline.
 
@@ -767,10 +771,13 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
   plus account entries unless `projects.useAccountMemory === false`. Nothing
   in `docs/providers/anthropic.md`'s invalidator list is affected: the block
   is stable text and changes only with entries or `aboutMe`.
-- **Decision: `aboutMe` is injected whenever it is set, independent of
-  `memoryEnabled`.** It is user-authored custom instructions, not extracted
-  memory (3.2: "separate from memory"); only the index and the tools follow
-  `memoryEnabled`. The owner can overturn this.
+- **Decision: a leftover `aboutMe` is injected whenever it is set,
+  independent of `memoryEnabled`.** It is user-authored custom instructions,
+  not extracted memory; only the index and the tools follow `memoryEnabled`.
+  Since the About-me migration (section 7) most users have `about_me = NULL`
+  and the text travels as the `profile` entry; this block only serves the
+  un-migrated cases (too long, profile entry exists, memory off, rejected).
+  The owner can overturn this.
 
 **Flags** (`server/utils/memory/tools/enabled.ts`, `chat-context.ts`)
 
@@ -933,9 +940,8 @@ deterministic only: no LLM ever labels or infers sensitive attributes, and the
   caps. The entries API still lists them, so the user can delete them.
 - **Logging.** `attributes.memoryCompliance.sensitive = { origin, categories }`
   (ids only), merged across the writes of one request when the logger exposes
-  its context; extraction logs once per pass; `settings-about-me` also logs
-  `categoryCount`. Origins: `memory-api`, `memory-tool`, `memory-extraction`,
-  `settings-about-me`.
+  its context; extraction logs once per pass; Origins: `memory-api`,
+  `memory-tool`, `memory-extraction`, `about-me-migration`.
 - **Vocabulary.** One auditable table covers all ten
   `memorySensitiveCategories` in English, Ukrainian and Polish (the table also
   carries Russian patterns), each pattern with examples that a spec requires
@@ -1168,7 +1174,7 @@ part of v1: PATCH strips `memoryIncludeSensitive`, GET returns a constant
 not dropped because that would rebuild `user_settings`, see the D1 rules in
 AGENTS.md). Model
 validation failures throw (503 catalog outage, 429 rate limit, 400 unknown
-model) and nothing is saved. A flagged `aboutMe` is rejected with 422.
+model) and nothing is saved. `aboutMe` accepts only `null`.
 
 **Known limits.**
 
@@ -1337,7 +1343,7 @@ other path may store such data.
   update or delete is dropped as `locked` and a create with the same slug as
   `duplicate`. They still count toward the scope cap.
 - The other paths use the same gate: UI/API writes and `memory_write` get a 422
-  (3.12), `aboutMe` gets a 422 from the settings PATCH (3.10).
+  (3.12); the About-me migration (section 7) runs the same gate and keeps rejected text in `about_me`.
 - The classifier is merged and wired in, so there is no ship gate on it. Its
   recall limits (names, slang, unusual phrasing; see 3.12) apply to extraction
   as well; the prompt instruction remains the first line of defence.
@@ -1465,7 +1471,7 @@ deferred behind a flag.
 - A deterministic English, Ukrainian and Polish classifier (the rule table also
   has Russian patterns) rejects special-category text on every write path: the
   entries API (create and edit), the `memory_write` tool, extraction (the op is
-  dropped as `sensitive-topic`) and `aboutMe`. Interactive paths answer 422 with
+  dropped as `sensitive-topic`) and the About-me migration. Interactive paths answer 422 with
   one shared message, `SENSITIVE_TOPIC_REFUSAL_MESSAGE`. An import path does not
   exist yet and must use the same gate. Details: 3.5, 3.12, 3.15.
 - The classifier categories are health, religion or belief, political opinion,
@@ -1521,6 +1527,99 @@ Path to revisit is option (b) in `docs/legal-memory-sensitive-data.md` section
 6: consent dialog, receipts, re-consent, an allowlist-gated injection and the
 withdrawal purge, rebuilt from the removed design (the git history before
 #515 and #516 has it).
+
+### About me becomes a profile entry (owner, 2026-10-25)
+
+**Decision.** The free-text "About me" (`user_settings.about_me`) is no longer
+a separate feature. It becomes the account `profile` memory entry: edited on
+the Memory page like any entry, counted in the index, covered by the
+compliance gate. The settings PATCH keeps `aboutMe` only as a null-only field
+(the user removing leftover text); the column stays, no migration, no table
+rebuild (D1 rules in AGENTS.md).
+
+**Migration flow** (`server/utils/memory/about-me-migration.ts`,
+`migrateAboutMeToProfileEntry({ db, userId, logger })`). It runs from the
+settings GET, which the settings sync plugin calls on every app load, so every
+user is covered without a cron or a one-off script; when `about_me` is already
+`NULL` it costs one already-selected column. Steps, in order; every skip leaves
+`about_me` untouched:
+
+1. Read the trimmed `about_me` and the resolved `memoryEnabled` (null counts as
+   on). Empty → `empty`; memory off → `memory-off`.
+2. Size: the `profile` body cap is `maxAlwaysInjectedBodyBytes` (1024 **bytes**,
+   `memoryByteLength`) against `about_me`'s 4000 characters. Over the cap →
+   `too-long`. Text is never truncated. 512 Cyrillic characters is exactly
+   1024 bytes.
+3. `profile` is a singleton per account scope: an existing entry → `profile-exists`
+   (never overwritten). The 409 "already exists" that `createMemoryEntry` throws
+   when a concurrent call wins the race is mapped to the same outcome.
+4. `createMemoryEntry` with `origin: 'user'`, compliance origin
+   `about-me-migration`, category `profile`, title `About me`, body = the
+   trimmed text, description = the first non-empty line with whitespace
+   collapsed, cut at the last word boundary to fit `maxDescriptionChars` (100)
+   with an ellipsis when cut (`Things I wrote about myself` if there is no
+   text). A compliance refusal (never-store 422 or sensitive-topic 422) →
+   `rejected`, no throw.
+5. On success, `UPDATE user_settings SET about_me = NULL`. The cleared column
+   is the migration marker, so there is no flag and no migration table.
+
+**Atomicity.** `createMemoryEntry` is a guarded `insert ... select` plus a
+read-back, so it cannot join a `db.batch` with the clear. The order is insert
+first, clear second: a crash between them leaves the text in both places
+(injected twice) rather than in neither. The next call heals it: when the
+existing profile entry has the title `About me` and exactly this body, the
+clear is completed and the call counts as `migrated`. Any other existing
+profile entry is untouched. Concurrent calls therefore end with one entry and
+a cleared column.
+
+**Caches.** The memory index is built from D1 on each send (no KV cache), so
+nothing needs invalidating; the next chat after the migration sees the entry.
+
+**Outcomes**
+
+| Outcome | `about_me` after | Profile entry | GET `aboutMeNotMigratedReason` | Chat injection |
+| --- | --- | --- | --- | --- |
+| `migrated` | `NULL` | created | `null` | in the memory index |
+| `empty` | unchanged (null/blank) | none | `null` | nothing |
+| `memory-off` | unchanged | none | `memory-off` | `aboutMe` block (entries are not injected while memory is off) |
+| `too-long` | unchanged | none | `too-long` | `aboutMe` block |
+| `profile-exists` | unchanged | existing one untouched | `profile-exists` | index (existing entry) plus the `aboutMe` block |
+| `rejected` | unchanged | none | `rejected` | `aboutMe` block |
+
+`aboutMeNotMigratedReason` is derived from the migration outcome of the same
+GET and is `null` whenever the column is empty after the migration (so a call
+that lost a race to a concurrent migration reports `null`). The UI uses it to
+show the leftover text as "Earlier about me (not converted)" with the matching
+explanation until the user shortens or removes it (`PATCH aboutMe: null`).
+A migration that throws (D1 error, or a 409 that is not a singleton conflict
+such as the 30-entry account cap) is logged as
+`attributes.memoryMigration.aboutMeError` and reported as `null`, so a user at
+the cap sees the text with no reason.
+
+**Logging.** Only the outcome label, never the text:
+`attributes.memoryMigration.aboutMe = 'migrated' | <reason>`. The frequent
+`empty` outcome is not logged. The compliance gate logs counts and category ids
+under `memoryCompliance` with origin `about-me-migration`, as everywhere else.
+
+**Owner decisions (overridable)**
+
+1. **No truncation.** Text over 1024 bytes stays in `about_me`, is shown as
+   "Earlier about me (not converted)" and is still injected, until the user
+   shortens or removes it. Truncating would silently drop what the user wrote.
+   Alternative: raise the `profile` cap or split the text into several entries.
+2. **An existing profile entry is never overwritten.** Merging two texts is a
+   judgement the server should not make; the user decides on the Memory page.
+3. **Memory-off users are not migrated.** Entries are not injected while memory
+   is off but `aboutMe` is, so migrating would silently remove the text from
+   every chat. The migration runs when they switch memory on (the next GET).
+
+**Open question (owner).** Text rejected by the classifier (`rejected`) is
+still injected today for un-migrated users: the old PATCH gates blocked it at
+write time, but text saved before them, or text the classifier now flags, keeps
+flowing into every chat via `buildAboutMeInstruction`. Should rejected text stop
+being injected? It would be a cheap deterministic classifier call in
+`chat-context.ts` (a behaviour change that silently disables the user's own
+instructions). Not done.
 
 ### Project memory updates automatically (owner, 2026-10-25)
 

@@ -9,19 +9,21 @@
       :save="save"
     />
     <ProfileMemoryNeverKept />
-    <ProfileMemoryAboutMe
-      :settings="values"
-      :save="save"
-    />
     <ProfileMemoryModels
       :settings="values"
       :save="save"
     />
-    <ProfileMemoryEntries :settings="values" />
+    <ProfileMemoryEntries
+      :settings="values"
+      :about-me-not-migrated-reason="aboutMeNotMigratedReason"
+      @about-me-removed="clearAboutMe"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import type { AboutMeNotMigratedReason } from '#shared/types/memory.d'
+
 definePageMeta({
   layout: 'profile',
   auth: {
@@ -39,4 +41,22 @@ const { data: settings } = await useFetch('/api/v1/profiles/settings', {
 })
 
 const { values, save } = useMemorySettingsSaver(settings)
+
+const aboutMeNotMigratedReason = computed<AboutMeNotMigratedReason | null>(
+  () => {
+    const response = settings.value as {
+      aboutMeNotMigratedReason?: AboutMeNotMigratedReason | null
+    } | null
+
+    return response?.aboutMeNotMigratedReason ?? null
+  },
+)
+
+function clearAboutMe() {
+  if (!settings.value) {
+    return
+  }
+
+  settings.value = { ...settings.value, aboutMe: null }
+}
 </script>

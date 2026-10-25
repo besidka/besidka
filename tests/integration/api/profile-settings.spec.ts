@@ -50,6 +50,7 @@ const memoryDefaults = {
   chatSearchEnabled: true,
   memoryIncludeSensitive: false,
   aboutMe: null,
+  aboutMeNotMigratedReason: null,
   profileMemoryModel: null,
   profileMemoryGateway: null,
   projectMemoryModel: null,
@@ -92,7 +93,7 @@ const mocks = vi.hoisted(() => ({
   getCachedCloudflareGatewayCatalog: vi.fn(),
   getCloudflareGatewayCredentials: vi.fn(),
   enforceGatewayModelsRateLimit: vi.fn(),
-  classifySensitiveCategories: vi.fn(),
+  migrateAboutMe: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/logging/request-logger', () => ({
@@ -112,8 +113,8 @@ vi.mock('~~/server/utils/gateways/catalog-rate-limit', () => ({
   enforceGatewayModelsRateLimit: mocks.enforceGatewayModelsRateLimit,
 }))
 
-vi.mock('~~/server/utils/memory/sensitivity', () => ({
-  classifySensitiveCategories: mocks.classifySensitiveCategories,
+vi.mock('~~/server/utils/memory/about-me-migration', () => ({
+  migrateAboutMeToProfileEntry: mocks.migrateAboutMe,
 }))
 
 function createDbMock() {
@@ -244,7 +245,10 @@ describe('profile settings API', () => {
 
     mocks.callOrder.length = 0
     mocks.batchError = null
-    mocks.classifySensitiveCategories.mockReturnValue([])
+    mocks.migrateAboutMe.mockResolvedValue({
+      status: 'skipped',
+      reason: 'empty',
+    })
     mocks.enforceGatewayModelsRateLimit.mockResolvedValue(undefined)
     mocks.getCachedGatewayCatalog.mockResolvedValue([])
     mocks.getCachedCloudflareGatewayCatalog.mockResolvedValue([])
@@ -684,7 +688,7 @@ describe('profile settings API', () => {
       })
     })
 
-    it('persists booleans and aboutMe exactly as sent', async () => {
+    it('persists booleans exactly as sent', async () => {
       const getHandler = await getSettingsHandler()
       const patchHandler = await patchSettingsHandler()
 
@@ -693,51 +697,181 @@ describe('profile settings API', () => {
       const response = await patchHandler(patchEvent({
         memoryEnabled: true,
         chatSearchEnabled: false,
-        aboutMe: 'Backend engineer',
       }))
 
       expect(response).toEqual({
         memoryEnabled: true,
         chatSearchEnabled: false,
-        aboutMe: 'Backend engineer',
       })
       expect(await getHandler({} as any)).toMatchObject({
         memoryEnabled: true,
         chatSearchEnabled: false,
-        aboutMe: 'Backend engineer',
       })
     })
 
-    it('trims aboutMe and turns an empty value into null', async () => {
-      const patchHandler = await patchSettingsHandler()
+    describe('aboutMe is null-only', () => {
+      it.each([
+        ['text', 'Backend engineer'],
+        ['padded text', '  padded  '],
+        ['an empty string', ''],
+        ['whitespace', '   \n '],
+        ['text over 4000 characters', 'a'.repeat(4001)],
+      ])('rejects %s with a 400 and writes nothing', async (_label, value) => {
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = setup()
 
-      setup()
+        await expect(patchHandler(patchEvent({
+          aboutMe: value,
+        }))).rejects.toMatchObject({ statusCode: 400 })
+        expect(dbMock.spies.insert).not.toHaveBeenCalled()
+        expect(dbMock.spies.update).not.toHaveBeenCalled()
+        expect(dbMock.spies.batch).not.toHaveBeenCalled()
+      })
 
-      expect(await patchHandler(patchEvent({
-        aboutMe: '  padded  ',
-      }))).toEqual({ aboutMe: 'padded' })
-      expect(await patchHandler(patchEvent({
-        aboutMe: '',
-      }))).toEqual({ aboutMe: null })
-      expect(await patchHandler(patchEvent({
-        aboutMe: '   \n ',
-      }))).toEqual({ aboutMe: null })
-      expect(await patchHandler(patchEvent({
-        aboutMe: null,
-      }))).toEqual({ aboutMe: null })
+      it('rejects a text aboutMe sent next to valid fields as a whole',
+        async () => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          await expect(patchHandler(patchEvent({
+            memoryEnabled: false,
+            aboutMe: 'Backend engineer',
+          }))).rejects.toMatchObject({ statusCode: 400 })
+          expect(dbMock.spies.insert).not.toHaveBeenCalled()
+          expect(dbMock.spies.batch).not.toHaveBeenCalled()
+        })
+
+      it('accepts null and clears the stored text', async () => {
+        const getHandler = await getSettingsHandler()
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ aboutMe: 'Leftover text' })
+
+        expect(await patchHandler(patchEvent({
+          aboutMe: null,
+        }))).toEqual({ aboutMe: null })
+        expect(dbMock.getSettings()?.aboutMe).toBeNull()
+        expect(await getHandler({} as any)).toMatchObject({
+          aboutMe: null,
+          aboutMeNotMigratedReason: null,
+        })
+      })
+
+      it('never runs the migration or a compliance check on a patch',
+        async () => {
+          const patchHandler = await patchSettingsHandler()
+
+          setup()
+          await patchHandler(patchEvent({ aboutMe: null }))
+
+          expect(mocks.migrateAboutMe).not.toHaveBeenCalled()
+          expect(mocks.loggerSet).not.toHaveBeenCalled()
+        })
     })
 
-    it('rejects aboutMe over 4000 characters', async () => {
-      const patchHandler = await patchSettingsHandler()
-      const dbMock = setup()
+    describe('about me migration on GET', () => {
+      it('runs the migration for the session user before reading settings',
+        async () => {
+          const getHandler = await getSettingsHandler()
+          const dbMock = setup()
 
-      await expect(patchHandler(patchEvent({
-        aboutMe: 'a'.repeat(4001),
-      }))).rejects.toMatchObject({ statusCode: 400 })
-      expect(await patchHandler(patchEvent({
-        aboutMe: 'a'.repeat(4000),
-      }))).toMatchObject({ aboutMe: 'a'.repeat(4000) })
-      expect(dbMock.spies.insert).toHaveBeenCalledTimes(1)
+          dbMock.seed({ aboutMe: null })
+          let settingsReadsDuringMigration = -1
+
+          mocks.migrateAboutMe.mockImplementation(async () => {
+            settingsReadsDuringMigration = dbMock.spies.findFirst.mock.calls
+              .length
+
+            return { status: 'migrated' }
+          })
+
+          expect(await getHandler({} as any)).toMatchObject({
+            aboutMe: null,
+            aboutMeNotMigratedReason: null,
+          })
+          expect(settingsReadsDuringMigration).toBe(0)
+          expect(mocks.migrateAboutMe).toHaveBeenCalledTimes(1)
+          expect(mocks.migrateAboutMe).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: 1, db: dbMock.db }),
+          )
+        })
+
+      it.each([
+        'too-long',
+        'profile-exists',
+        'memory-off',
+        'rejected',
+      ])('returns the text and the %s reason when it stays', async (reason) => {
+        const getHandler = await getSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ aboutMe: 'Leftover text' })
+        mocks.migrateAboutMe.mockResolvedValue({ status: 'skipped', reason })
+
+        expect(await getHandler({} as any)).toMatchObject({
+          aboutMe: 'Leftover text',
+          aboutMeNotMigratedReason: reason,
+        })
+      })
+
+      it('returns no reason once the column is empty', async () => {
+        const getHandler = await getSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ aboutMe: null })
+        mocks.migrateAboutMe.mockResolvedValue({
+          status: 'skipped',
+          reason: 'profile-exists',
+        })
+
+        expect(await getHandler({} as any)).toMatchObject({
+          aboutMe: null,
+          aboutMeNotMigratedReason: null,
+        })
+      })
+
+      it('returns no reason when there is nothing to migrate', async () => {
+        const getHandler = await getSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ aboutMe: 'Leftover text' })
+
+        expect(await getHandler({} as any)).toMatchObject({
+          aboutMe: 'Leftover text',
+          aboutMeNotMigratedReason: null,
+        })
+      })
+
+      it('still answers when the migration throws and logs it', async () => {
+        const getHandler = await getSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ aboutMe: 'Leftover text', memoryEnabled: true })
+        mocks.migrateAboutMe.mockRejectedValue(new Error('migration failed'))
+
+        expect(await getHandler({} as any)).toMatchObject({
+          memoryEnabled: true,
+          aboutMe: 'Leftover text',
+          aboutMeNotMigratedReason: null,
+        })
+        expect(mocks.loggerSet).toHaveBeenCalledWith({
+          attributes: {
+            memoryMigration: { aboutMeError: 'migration failed' },
+          },
+        })
+      })
+
+      it('does not migrate for an unauthorized request', async () => {
+        const getHandler = await getSettingsHandler()
+
+        vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
+
+        await expect(getHandler({} as any)).rejects.toMatchObject({
+          statusCode: 401,
+        })
+        expect(mocks.migrateAboutMe).not.toHaveBeenCalled()
+      })
     })
 
     it('accepts a direct catalog model without a key or catalog call',
@@ -1266,7 +1400,6 @@ describe('profile settings API', () => {
 
         await expect(patchHandler(patchEvent({
           memoryIncludeSensitive: false,
-          aboutMe: 'Backend engineer',
           profileMemoryModel: 'openai/gpt-5',
           profileMemoryGateway: 'vercel',
         }))).rejects.toMatchObject({
@@ -1369,169 +1502,6 @@ describe('profile settings API', () => {
       })
     })
 
-    describe('aboutMe special categories', () => {
-      const flaggedText = 'My private diagnosis is stage two'
-
-      it('rejects a flagged aboutMe with 422, the categories, not the text',
-        async () => {
-          const patchHandler = await patchSettingsHandler()
-          const dbMock = setup()
-
-          mocks.classifySensitiveCategories.mockReturnValue([
-            'health',
-            'religion-or-belief',
-          ])
-
-          const exception = await patchHandler(patchEvent({
-            aboutMe: flaggedText,
-          })).catch((caught: unknown) => {
-            return caught
-          })
-
-          expect(exception).toMatchObject({
-            statusCode: 422,
-            message: 'Sensitive topics (health, religion, politics…) are '
-              + 'not saved to memory.',
-            why: 'Your "About me" text looks like sensitive data '
-              + '(health, religion-or-belief).',
-            fix: 'Remove the sensitive details from "About me" and save '
-              + 'again.',
-          })
-          expect(JSON.stringify(exception)).not.toContain(flaggedText)
-          expect(JSON.stringify(mocks.loggerSet.mock.calls))
-            .not.toContain(flaggedText)
-          expect(mocks.loggerSet).toHaveBeenCalledWith({
-            attributes: {
-              memoryCompliance: {
-                sensitive: {
-                  origin: 'settings-about-me',
-                  categories: ['health', 'religion-or-belief'],
-                  categoryCount: 2,
-                },
-              },
-            },
-          })
-          expect(dbMock.spies.insert).not.toHaveBeenCalled()
-          expect(dbMock.spies.batch).not.toHaveBeenCalled()
-        })
-
-      it('rejects a flagged aboutMe even when the stored column is true',
-        async () => {
-          const patchHandler = await patchSettingsHandler()
-          const dbMock = setup()
-
-          dbMock.seed({ memoryIncludeSensitive: true })
-          mocks.classifySensitiveCategories.mockReturnValue(['health'])
-
-          await expect(patchHandler(patchEvent({
-            aboutMe: flaggedText,
-          }))).rejects.toMatchObject({ statusCode: 422 })
-          expect(dbMock.spies.update).not.toHaveBeenCalled()
-          expect(dbMock.getSettings()?.aboutMe).toBeNull()
-        })
-
-      it.each([true, false])(
-        'rejects a flagged aboutMe sent with a legacy flag of %s',
-        async (legacyValue) => {
-          const patchHandler = await patchSettingsHandler()
-          const dbMock = setup()
-
-          mocks.classifySensitiveCategories.mockReturnValue(['drugs'])
-
-          await expect(patchHandler(patchEvent({
-            memoryIncludeSensitive: legacyValue,
-            aboutMe: flaggedText,
-          }))).rejects.toMatchObject({ statusCode: 422 })
-          expect(dbMock.spies.insert).not.toHaveBeenCalled()
-          expect(dbMock.spies.batch).not.toHaveBeenCalled()
-        },
-      )
-
-      it('accepts an aboutMe that is not flagged and logs no detection',
-        async () => {
-          const patchHandler = await patchSettingsHandler()
-
-          setup()
-
-          expect(await patchHandler(patchEvent({
-            aboutMe: 'Backend engineer',
-          }))).toEqual({ aboutMe: 'Backend engineer' })
-          expect(mocks.classifySensitiveCategories)
-            .toHaveBeenCalledWith('Backend engineer')
-          expect(mocks.loggerSet).not.toHaveBeenCalled()
-        })
-
-      it('does not classify a cleared aboutMe', async () => {
-        const patchHandler = await patchSettingsHandler()
-
-        setup()
-        await patchHandler(patchEvent({ aboutMe: '  ' }))
-
-        expect(mocks.classifySensitiveCategories).not.toHaveBeenCalled()
-      })
-    })
-
-    describe('aboutMe never-store gate', () => {
-      const apiKey = `sk-${'a1B2c3D4'.repeat(4)}`
-
-      it('rejects an aboutMe holding a credential without echoing it',
-        async () => {
-          const patchHandler = await patchSettingsHandler()
-          const dbMock = setup()
-          const exception = await patchHandler(patchEvent({
-            aboutMe: `Backend dev, my key is ${apiKey}`,
-          })).catch((caught: unknown) => {
-            return caught
-          })
-
-          expect(exception).toMatchObject({
-            statusCode: 400,
-            message: 'About me contains data that cannot be stored',
-            why: expect.stringContaining('api-key'),
-            fix: expect.stringContaining('Remove'),
-          })
-          expect(JSON.stringify(exception)).not.toContain(apiKey)
-          expect(JSON.stringify(mocks.loggerSet.mock.calls))
-            .not.toContain(apiKey)
-          expect(mocks.loggerSet).toHaveBeenCalledWith({
-            attributes: {
-              memoryCompliance: {
-                origin: 'settings-about-me',
-                blocked: { 'api-key': 1 },
-                blockedTotal: 1,
-              },
-            },
-          })
-          expect(dbMock.spies.insert).not.toHaveBeenCalled()
-          expect(dbMock.spies.batch).not.toHaveBeenCalled()
-        })
-
-      it('blocks the whole request', async () => {
-        const patchHandler = await patchSettingsHandler()
-        const dbMock = setup()
-
-        await expect(patchHandler(patchEvent({
-          memoryEnabled: false,
-          aboutMe: `token: ${apiKey}`,
-        }))).rejects.toMatchObject({ statusCode: 400 })
-        expect(dbMock.spies.insert).not.toHaveBeenCalled()
-        expect(dbMock.spies.batch).not.toHaveBeenCalled()
-      })
-
-      it('accepts a clean aboutMe and a cleared one', async () => {
-        const patchHandler = await patchSettingsHandler()
-
-        setup()
-
-        expect(await patchHandler(patchEvent({
-          aboutMe: 'Backend engineer who likes terse answers',
-        }))).toEqual({ aboutMe: 'Backend engineer who likes terse answers' })
-        expect(await patchHandler(patchEvent({
-          aboutMe: null,
-        }))).toEqual({ aboutMe: null })
-      })
-    })
-
     describe('catalog rate limit', () => {
       it('is consumed once per gateway model choice before validation',
         async () => {
@@ -1575,7 +1545,7 @@ describe('profile settings API', () => {
         ['a direct model', { profileMemoryModel: 'claude-sonnet-5-5' }],
         ['a cleared model', { projectMemoryModel: null }],
         ['booleans only', { memoryEnabled: true, chatSearchEnabled: false }],
-        ['aboutMe only', { aboutMe: 'Hello' }],
+        ['aboutMe cleared', { aboutMe: null }],
       ])('is not consumed for %s', async (_label, body) => {
         const patchHandler = await patchSettingsHandler()
 

@@ -144,6 +144,26 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       .toBe(false)
   })
 
+  it('emits add when Add memory is clicked', async () => {
+    const wrapper = await mountToolbar()
+    const addButton = wrapper.get('[data-testid="memory-add"]')
+
+    expect(addButton.text()).toContain('Add memory')
+
+    await addButton.trigger('click')
+
+    expect(wrapper.emitted('add')).toHaveLength(1)
+  })
+
+  it('offers Add memory in a project and with generation off', async () => {
+    const wrapper = await mountToolbar({
+      projectId: 'project-1',
+      settings: { ...defaultSettings, memoryExtractionEnabled: false },
+    })
+
+    expect(wrapper.find('[data-testid="memory-add"]').exists()).toBe(true)
+  })
+
   it('links the export to the download route', async () => {
     const wrapper = await mountToolbar()
     const link = wrapper.get('[data-testid="memory-export"]')

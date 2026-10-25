@@ -11,7 +11,6 @@ const memorySettingKeys: Array<keyof MemorySettingsFields> = [
   'memoryEnabled',
   'memoryExtractionEnabled',
   'chatSearchEnabled',
-  'aboutMe',
   'profileMemoryModel',
   'profileMemoryGateway',
   'projectMemoryModel',

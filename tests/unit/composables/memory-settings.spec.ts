@@ -142,39 +142,51 @@ describe('useMemorySettingsSaver', () => {
   it('merges the server response and ignores non-memory fields', async () => {
     const { values, save } = createSaver()
 
-    const outcome = save({ aboutMe: '  I like short answers  ' })
+    const outcome = save({ profileMemoryModel: '  vendor/model-a  ' })
 
     await flushPromises()
     requestAt(0).resolve({
-      aboutMe: 'I like short answers',
+      profileMemoryModel: 'vendor/model-a',
       reasoningExpanded: true,
     })
 
     const result = await outcome
 
-    expect(values.value.aboutMe).toBe('I like short answers')
+    expect(values.value.profileMemoryModel).toBe('vendor/model-a')
     expect(values.value).not.toHaveProperty('reasoningExpanded')
     expect(result).toEqual({
       ok: true,
       result: {
-        aboutMe: 'I like short answers',
+        profileMemoryModel: 'vendor/model-a',
         reasoningExpanded: true,
       },
     })
+  })
+
+  it('does not track aboutMe as a saver key', async () => {
+    const { values, save } = createSaver({ aboutMe: 'Leftover text' })
+
+    const outcome = save({ chatSearchEnabled: false })
+
+    await flushPromises()
+    requestAt(0).resolve({ chatSearchEnabled: false, aboutMe: null })
+    await outcome
+
+    expect(values.value.aboutMe).toBe('Leftover text')
   })
 
   it('sends exactly the given patch and never adds memoryIncludeSensitive',
     async () => {
       const { save } = createSaver()
 
-      const outcome = save({ aboutMe: 'Short and direct' })
+      const outcome = save({ profileMemoryModel: 'vendor/model-b' })
 
       await flushPromises()
 
-      expect(requestAt(0).body).toEqual({ aboutMe: 'Short and direct' })
+      expect(requestAt(0).body).toEqual({ profileMemoryModel: 'vendor/model-b' })
       expect(requestAt(0).body).not.toHaveProperty('memoryIncludeSensitive')
 
-      requestAt(0).resolve({ aboutMe: 'Short and direct' })
+      requestAt(0).resolve({ profileMemoryModel: 'vendor/model-b' })
       await outcome
 
       const next = save({ memoryEnabled: false })
@@ -236,64 +248,64 @@ describe('useMemorySettingsSaver', () => {
 
   it('ends on the persisted value when both saves of a key fail',
     async () => {
-      const { values, save } = createSaver({ aboutMe: 'Persisted' })
+      const { values, save } = createSaver({ profileMemoryModel: 'vendor/persisted' })
 
-      const first = save({ aboutMe: 'First draft' })
-      const second = save({ aboutMe: 'Second draft' })
+      const first = save({ profileMemoryModel: 'vendor/first' })
+      const second = save({ profileMemoryModel: 'vendor/second' })
 
-      expect(values.value.aboutMe).toBe('Second draft')
+      expect(values.value.profileMemoryModel).toBe('vendor/second')
 
       await flushPromises()
       requestAt(0).reject({ statusCode: 500, message: 'Could not save' })
       await first
       await flushPromises()
 
-      expect(values.value.aboutMe).toBe('Second draft')
+      expect(values.value.profileMemoryModel).toBe('vendor/second')
 
       requestAt(1).reject({ statusCode: 500, message: 'Could not save' })
       await second
 
-      expect(values.value.aboutMe).toBe('Persisted')
+      expect(values.value.profileMemoryModel).toBe('vendor/persisted')
     })
 
   it('rolls back to the last confirmed value when a later save fails',
     async () => {
-      const { values, save } = createSaver({ aboutMe: 'Persisted' })
+      const { values, save } = createSaver({ profileMemoryModel: 'vendor/persisted' })
 
-      const first = save({ aboutMe: 'Confirmed' })
-      const second = save({ aboutMe: 'Rejected' })
+      const first = save({ profileMemoryModel: 'vendor/confirmed' })
+      const second = save({ profileMemoryModel: 'vendor/rejected' })
 
       await flushPromises()
-      requestAt(0).resolve({ aboutMe: 'Confirmed' })
+      requestAt(0).resolve({ profileMemoryModel: 'vendor/confirmed' })
       await first
       await flushPromises()
 
-      expect(values.value.aboutMe).toBe('Rejected')
+      expect(values.value.profileMemoryModel).toBe('vendor/rejected')
 
       requestAt(1).reject({ statusCode: 400, message: 'Not allowed' })
       await second
 
-      expect(values.value.aboutMe).toBe('Confirmed')
+      expect(values.value.profileMemoryModel).toBe('vendor/confirmed')
     })
 
   it('does not let a stale response overwrite a newer optimistic value',
     async () => {
       const { values, save } = createSaver()
 
-      const first = save({ aboutMe: 'older' })
-      const second = save({ aboutMe: 'newer' })
+      const first = save({ profileMemoryModel: 'vendor/older' })
+      const second = save({ profileMemoryModel: 'vendor/newer' })
 
       await flushPromises()
-      requestAt(0).resolve({ aboutMe: 'older' })
+      requestAt(0).resolve({ profileMemoryModel: 'vendor/older' })
       await first
 
-      expect(values.value.aboutMe).toBe('newer')
+      expect(values.value.profileMemoryModel).toBe('vendor/newer')
 
       await flushPromises()
-      requestAt(1).resolve({ aboutMe: 'newer' })
+      requestAt(1).resolve({ profileMemoryModel: 'vendor/newer' })
       await second
 
-      expect(values.value.aboutMe).toBe('newer')
+      expect(values.value.profileMemoryModel).toBe('vendor/newer')
     })
 
   it('keeps different keys independent', async () => {

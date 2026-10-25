@@ -76,6 +76,12 @@ export interface MemoryModelChoice {
   gateway: GatewayId | null
 }
 
+export type AboutMeNotMigratedReason
+  = | 'too-long'
+    | 'profile-exists'
+    | 'memory-off'
+    | 'rejected'
+
 export interface MemorySettingsFields {
   memoryEnabled: boolean
   memoryExtractionEnabled: boolean
