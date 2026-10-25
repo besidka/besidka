@@ -121,10 +121,9 @@ jobs:
         if: steps.pr-state.outputs.is-open == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
-          PR_SHA: ${{ steps.pr.outputs.sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
-          if ! CHANGED_FILES=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/compare/${BASE_BRANCH}...${PR_SHA}" --jq '.files[].filename'); then
+          if ! CHANGED_FILES=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename'); then
             echo "::warning::Could not list the files changed by this PR, so the wrangler.jsonc check did not run."
             echo "changed=unknown" >> "$GITHUB_OUTPUT"
             exit 0
@@ -361,7 +360,7 @@ jobs:
             | **Latest commit** | [`${{ steps.pr.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}/commits/${{ steps.pr.outputs.sha }}) |
             | **Preview URL (deployment)** | ${{ steps.urls.outputs.deployment-url }} |
             | **Preview URL (PR)** | ${{ steps.urls.outputs.preview-url }} |
-            | **Wrangler config** | ${{ steps.config-drift.outputs.changed == 'true' && 'default branch (this PR''s wrangler.jsonc changes are not deployed)' || 'default branch' }} |
+            | **Wrangler config** | ${{ steps.config-drift.outputs.changed == 'true' && 'default branch (this PR''s wrangler.jsonc changes are not deployed)' || steps.config-drift.outputs.changed == 'unknown' && 'not checked (default branch used; could not list PR files)' || 'default branch' }} |
 
             ---
             _**Note**:
@@ -374,7 +373,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_SHA: ${{ steps.pr.outputs.sha }}
           PREVIEW_URL: ${{ steps.urls.outputs.preview-url }}
-          STATUS_DESCRIPTION: ${{ steps.config-drift.outputs.changed == 'true' && 'Deployed (default-branch wrangler.jsonc)' || 'Deployed to preview' }}
+          STATUS_DESCRIPTION: ${{ steps.config-drift.outputs.changed == 'true' && 'Deployed (default-branch wrangler.jsonc)' || steps.config-drift.outputs.changed == 'unknown' && 'Deployed (wrangler.jsonc check skipped)' || 'Deployed to preview' }}
         run: |
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${PR_SHA}" \
             -f state=success \

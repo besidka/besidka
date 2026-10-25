@@ -240,9 +240,14 @@ same path (Dependabot-actor runs do receive the org secrets, verified on run
 39229739041). See `.github/workflows/README.md` → "Security Model".
 
 A PR that changes `wrangler.jsonc` still deploys with the default branch's
-`wrangler.jsonc`. The deploy warns when the PR touches it (`config-drift`
-step), the PR comment gets a `Wrangler config` row and the commit status reads
-"Deployed (default-branch wrangler.jsonc)".
+`wrangler.jsonc`. The `config-drift` step lists the PR's files through the
+paginated pulls files API and warns when the PR touches it; the PR comment's
+`Wrangler config` row and the commit status report the three states (changed,
+unchanged, or unknown when the API call fails, in which case the deploy only
+warns). The workflow invariants are enforced by
+`tests/unit/workflows/preview-deploy.spec.ts`, which runs locally through the
+pre-push hook's affected-test mapping, not in CI, because `.github/**` is
+path-ignored by the build workflows.
 
 `preview-cleanup.yml` triggers on `pull_request_target` so it has secrets. This
 is safe because it checks out only the default branch and never PR code, and it

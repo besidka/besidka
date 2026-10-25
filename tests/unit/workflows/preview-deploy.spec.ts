@@ -10,15 +10,21 @@ interface WorkflowStep {
   with?: Record<string, unknown>
 }
 
+interface WorkflowJob {
+  environment?: string
+  permissions?: Record<string, string>
+  steps: Array<WorkflowStep>
+}
+
 interface Workflow {
-  jobs: Record<string, {
-    permissions?: Record<string, string>
-    steps: Array<WorkflowStep>
-  }>
+  jobs: Record<string, WorkflowJob>
 }
 
 const DEFAULT_BRANCH_REF = '${{ github.event.repository.default_branch }}'
 const FULL_COMMIT_SHA = /@[0-9a-f]{40}$/
+const INTEGRITY_STEP_NAME = 'Verify artifacts stayed inside .output and .drizzle'
+const MIGRATIONS_STEP_NAME = 'Verify migrations match the PR commit'
+const INSTALL_STEP_NAME = 'Install dependencies'
 
 const SECRET_BEARING_WORKFLOWS = [
   'preview-deploy.yml',
@@ -27,6 +33,7 @@ const SECRET_BEARING_WORKFLOWS = [
   'claude.yml',
   'claude-code-review.yml',
   'update.yml',
+  'linear-docs-sync.yml',
 ]
 
 function readWorkflow(fileName: string): Workflow {
@@ -39,32 +46,29 @@ function getAllSteps(workflow: Workflow): Array<WorkflowStep> {
   return Object.values(workflow.jobs).flatMap(job => job.steps)
 }
 
-function findStepIndex(
-  steps: Array<WorkflowStep>,
-  predicate: (step: WorkflowStep) => boolean,
-): number {
-  return steps.findIndex(predicate)
-}
+function referencesSecrets(step: WorkflowStep): boolean {
+  const withValues = Object.values(step.with ?? {})
+  const envValues = Object.values(step.env ?? {})
+  const searchableValues = [...withValues, ...envValues, step.run ?? '']
 
-function findStepIndexByName(
-  steps: Array<WorkflowStep>,
-  name: string,
-): number {
-  return findStepIndex(steps, step => step.name === name)
-}
-
-function findDownloadStep(
-  steps: Array<WorkflowStep>,
-  artifactName: string,
-): WorkflowStep | undefined {
-  return steps.find((step) => {
-    return step.uses?.startsWith('actions/download-artifact')
-      && step.with?.name === artifactName
+  return searchableValues.some((value) => {
+    return String(value).includes('secrets.')
   })
 }
 
 const deployJob = readWorkflow('preview-deploy.yml').jobs.deploy
 const deploySteps = deployJob.steps
+
+function indexOfStep(name: string): number {
+  return deploySteps.findIndex(step => step.name === name)
+}
+
+function indexOfDownload(artifactName: string): number {
+  return deploySteps.findIndex((step) => {
+    return step.uses?.startsWith('actions/download-artifact') === true
+      && step.with?.name === artifactName
+  })
+}
 
 describe('preview-deploy workflow', () => {
   it('checks out only the default branch without persisting credentials', () => {
@@ -89,13 +93,13 @@ describe('preview-deploy workflow', () => {
   })
 
   it('downloads the build artifact into .output/', () => {
-    const step = findDownloadStep(deploySteps, 'preview-build')
+    const step = deploySteps[indexOfDownload('preview-build')]
 
     expect(step?.with?.path).toBe('.output/')
   })
 
   it('downloads the drizzle artifact into .drizzle/', () => {
-    const step = findDownloadStep(deploySteps, 'preview-drizzle')
+    const step = deploySteps[indexOfDownload('preview-drizzle')]
 
     expect(step?.with?.path).toBe('.drizzle/')
   })
@@ -113,13 +117,10 @@ describe('preview-deploy workflow', () => {
   })
 
   it('removes default-branch migrations before the drizzle download', () => {
-    const removeIndex = findStepIndex(deploySteps, (step) => {
+    const removeIndex = deploySteps.findIndex((step) => {
       return step.run?.trim() === 'rm -rf .drizzle'
     })
-    const downloadIndex = findStepIndex(deploySteps, (step) => {
-      return step.uses?.startsWith('actions/download-artifact') === true
-        && step.with?.name === 'preview-drizzle'
-    })
+    const downloadIndex = indexOfDownload('preview-drizzle')
 
     expect(removeIndex).toBeGreaterThanOrEqual(0)
     expect(downloadIndex).toBeGreaterThanOrEqual(0)
@@ -127,30 +128,22 @@ describe('preview-deploy workflow', () => {
   })
 
   it('verifies artifact confinement after both downloads and before install', () => {
-    const verifyIndex = findStepIndexByName(
-      deploySteps,
-      'Verify artifacts stayed inside .output and .drizzle',
-    )
-    const buildDownloadIndex = findStepIndex(deploySteps, (step) => {
-      return step.with?.name === 'preview-build'
-    })
-    const drizzleDownloadIndex = findStepIndex(deploySteps, (step) => {
-      return step.with?.name === 'preview-drizzle'
-    })
-    const installIndex = findStepIndexByName(
-      deploySteps,
-      'Install dependencies',
-    )
+    const verifyIndex = indexOfStep(INTEGRITY_STEP_NAME)
+    const buildDownloadIndex = indexOfDownload('preview-build')
+    const drizzleDownloadIndex = indexOfDownload('preview-drizzle')
+    const installIndex = indexOfStep(INSTALL_STEP_NAME)
 
+    expect(verifyIndex).toBeGreaterThanOrEqual(0)
+    expect(buildDownloadIndex).toBeGreaterThanOrEqual(0)
+    expect(drizzleDownloadIndex).toBeGreaterThanOrEqual(0)
+    expect(installIndex).toBeGreaterThanOrEqual(0)
     expect(verifyIndex).toBeGreaterThan(buildDownloadIndex)
     expect(verifyIndex).toBeGreaterThan(drizzleDownloadIndex)
     expect(verifyIndex).toBeLessThan(installIndex)
   })
 
   it('fails the integrity check on files outside the artifact folders', () => {
-    const verifyStep = deploySteps.find((step) => {
-      return step.name === 'Verify artifacts stayed inside .output and .drizzle'
-    })
+    const verifyStep = deploySteps[indexOfStep(INTEGRITY_STEP_NAME)]
 
     expect(verifyStep?.run).toContain('--ignored')
     expect(verifyStep?.run).toContain('--untracked-files=all')
@@ -160,26 +153,32 @@ describe('preview-deploy workflow', () => {
   })
 
   it('verifies migrations against the PR commit before install', () => {
-    const verifyStepName = 'Verify migrations match the PR commit'
-    const verifyIndex = findStepIndexByName(deploySteps, verifyStepName)
-    const drizzleDownloadIndex = findStepIndex(deploySteps, (step) => {
-      return step.with?.name === 'preview-drizzle'
-    })
-    const integrityIndex = findStepIndexByName(
-      deploySteps,
-      'Verify artifacts stayed inside .output and .drizzle',
-    )
-    const installIndex = findStepIndexByName(
-      deploySteps,
-      'Install dependencies',
-    )
+    const verifyIndex = indexOfStep(MIGRATIONS_STEP_NAME)
+    const drizzleDownloadIndex = indexOfDownload('preview-drizzle')
+    const integrityIndex = indexOfStep(INTEGRITY_STEP_NAME)
+    const installIndex = indexOfStep(INSTALL_STEP_NAME)
     const verifyStep = deploySteps[verifyIndex]
 
+    expect(verifyIndex).toBeGreaterThanOrEqual(0)
+    expect(drizzleDownloadIndex).toBeGreaterThanOrEqual(0)
+    expect(integrityIndex).toBeGreaterThanOrEqual(0)
+    expect(installIndex).toBeGreaterThanOrEqual(0)
     expect(verifyIndex).toBeGreaterThan(drizzleDownloadIndex)
     expect(verifyIndex).toBeGreaterThan(integrityIndex)
     expect(verifyIndex).toBeLessThan(installIndex)
     expect(verifyStep?.run).toContain('git hash-object')
     expect(verifyStep?.run).toContain('git/trees')
+  })
+
+  it('lists PR files through the pull request files endpoint', () => {
+    const driftStep = deploySteps.find((step) => {
+      return step.name === 'Check whether the PR changes wrangler.jsonc'
+    })
+
+    expect(driftStep).toBeDefined()
+    expect(driftStep?.run).toContain('pulls/')
+    expect(driftStep?.run).toContain('/files')
+    expect(driftStep?.run).not.toContain('/compare/')
   })
 
   it('does not use the cloudflare wrangler action', () => {
@@ -189,16 +188,9 @@ describe('preview-deploy workflow', () => {
   })
 
   it('exposes secrets only after dependencies are installed', () => {
-    const installIndex = findStepIndexByName(
-      deploySteps,
-      'Install dependencies',
-    )
+    const installIndex = indexOfStep(INSTALL_STEP_NAME)
     const secretStepIndexes = deploySteps.flatMap((step, index) => {
-      const referencesSecrets = Object.values(step.env ?? {}).some((value) => {
-        return String(value).includes('secrets.')
-      })
-
-      return referencesSecrets ? [index] : []
+      return referencesSecrets(step) ? [index] : []
     })
 
     expect(installIndex).toBeGreaterThanOrEqual(0)
@@ -212,6 +204,18 @@ describe('preview-deploy workflow', () => {
   it('does not request an OIDC token', () => {
     expect(deployJob.permissions).not.toHaveProperty('id-token')
   })
+})
+
+describe('production workflow', () => {
+  it.each(['build-production', 'deploy-preview'])(
+    'runs the %s job in the production environment',
+    (jobName) => {
+      const job = readWorkflow('production.yml').jobs[jobName]
+
+      expect(job).toBeDefined()
+      expect(job?.environment).toBe('production')
+    },
+  )
 })
 
 describe('workflows that reference secrets', () => {

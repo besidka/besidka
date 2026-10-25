@@ -118,9 +118,10 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
    to `failure`. Then extract
    PR number and SHA from `workflow_run` event context (not from artifacts). When `pull_requests` is empty (GitHub clears it once the PR is closed or merged), look up the open PR whose own head is that SHA in the head repository (so stacked PRs whose history merely contains the commit are never matched); if none is open, emit a notice, set the pending `Preview Deploy` status to `success` with a "Skipped" description, and end the run successfully without deploying
 2. Check whether the PR changes `wrangler.jsonc` (`config-drift` step, via
-   the compare API). If it does, emit a warning that the preview deploys with
-   the default branch's `wrangler.jsonc`. If the API call fails the step only
-   warns and records `unknown`; it never fails the job
+   the paginated pulls files API, which lists every changed file). It records
+   `true` (with a warning that the preview deploys with the default branch's
+   `wrangler.jsonc`), `false`, or `unknown` when the API call fails; a failed
+   check only warns and never fails the job
 3. Check out the default branch (`persist-credentials: false`), then
    `rm -rf .drizzle` so main's tracked migrations cannot mix with the PR's
 4. Download the `preview-build` artifact into `.output/` and the
@@ -147,10 +148,11 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
    stable PR URL are read from the JSON output (falling back to the
    deterministic `pr-{number}-besidka` URL)
 10. Comment preview URLs and metrics on PR, including a `Wrangler config` row
-   that says `default branch`, or `default branch (this PR's wrangler.jsonc
-   changes are not deployed)` when the drift check found a change. The commit
-   status reads `Deployed to preview`, or `Deployed (default-branch
-   wrangler.jsonc)` in the same case
+   that says `default branch` (`false`), `default branch (this PR's
+   wrangler.jsonc changes are not deployed)` (`true`), or `not checked (default
+   branch used; could not list PR files)` (`unknown`). The commit status reads
+   `Deployed to preview`, `Deployed (default-branch wrangler.jsonc)` or
+   `Deployed (wrangler.jsonc check skipped)` respectively
 
 ### `preview-cleanup.yml` - PR Preview Cleanup
 
@@ -350,11 +352,14 @@ and anything planted by build-time code never reach the shared preview D1.
 
 **SHA-pinned third-party actions in secret-bearing workflows**: in workflows
 that reference `secrets.*` (`preview-deploy.yml`, `preview-cleanup.yml`,
-`production.yml`, `claude.yml`, `claude-code-review.yml`, `update.yml`), every
-non-`actions/` action is pinned to a full commit SHA. `.github/dependabot.yml`
+`production.yml`, `claude.yml`, `claude-code-review.yml`, `update.yml`,
+`linear-docs-sync.yml`), every non-`actions/` action is pinned to a full commit
+SHA. `.github/dependabot.yml`
 has the `github-actions` ecosystem, which updates SHA pins. A unit test
 (`tests/unit/workflows/preview-deploy.spec.ts`) enforces the rule and the
-`preview-deploy.yml` invariants above.
+`preview-deploy.yml` invariants above. It runs locally through the pre-push
+hook's affected-test mapping, not in CI, because `.github/**` is path-ignored
+by the build workflows.
 
 **`production` environment**: the `build-production` and `deploy-preview` jobs
 in `production.yml` declare `environment: production`, so the owner can
@@ -529,11 +534,15 @@ Build-time workflows (`preview-build.yml`) require no secrets. Only the `build-p
 ### The `production` environment
 
 `build-production` and `deploy-preview` in `production.yml` run with
-`environment: production`. The environment currently has no secrets of its own;
-`CLOUDFLARE_*` stay organization Actions secrets, and Dependabot-actor runs
-receive them
-(verified on run 39229739041), so the default-branch tooling in
-`preview-deploy.yml` is what protects them.
+`environment: production`. The environment does not exist yet: the first
+`production.yml` run on `main` auto-creates it unprotected, and it gives no
+protection until the owner sets Deployment branches to `main` (checklist
+below). It has no secrets of its own; `CLOUDFLARE_*` stay organization Actions
+secrets, and Dependabot-actor runs receive them (verified on run
+39229739041), so the default-branch tooling in `preview-deploy.yml` is what
+protects them. Every push to `main` now also shows GitHub Deployment records
+for `production`, including one for the `deploy-preview` job; this is
+cosmetic.
 
 Owner checklist (repository settings, not automatable from the repo):
 
@@ -555,6 +564,9 @@ it merges. On that run check that:
 - the "Checkout default branch" log shows `main`
 - "Verify artifacts stayed inside .output and .drizzle" passes
 - the preview comment lands with the `Wrangler config` row
+- the migrations and `wrangler preview` steps succeed under
+  `pnpm install --frozen-lockfile --ignore-scripts`, a configuration that has
+  not run a deploy before
 - the next Dependabot PR still gets a preview
 
 No repository variables are required. The Wrangler CLI version is pinned as a `devDependency` in `pnpm-lock.yaml` and installed via `pnpm install --frozen-lockfile`; deploy steps use that pinned binary directly, so no `wranglerVersion` input or `WRANGLER_VERSION` variable is needed.
