@@ -296,10 +296,14 @@ only thing it does with the PR is read its number.
 **Same-repository guard**: `preview-deploy.yml` runs only when `workflow_run.head_repository.full_name` equals the repository. `preview-build.yml`, `claude-code-review.yml` and `preview-cleanup.yml` apply the same check to `pull_request.head.repo.full_name`. There is no fork deploy path: the former `/deploy-preview` comment workflow ran Cloudflare secrets against fork code and was removed.
 
 **Migration source consistency**: `preview-build.yml` uploads `.drizzle` as an
-artifact (both `migrations/` and `migrations-consent/`), and
-`preview-deploy.yml` applies migrations for both `DB` and `CONSENT_DB` from
-that exact artifact before deploy. This keeps both preview DB schemas aligned
-with the deployed PR build.
+artifact (both `migrations/` and `migrations-consent/`; the artifact root is
+the contents of `.drizzle/`), and `preview-deploy.yml` downloads it into
+`.drizzle/` (not the repository root, so artifact files cannot overwrite
+checked-out files such as `wrangler.jsonc`). The `wrangler.jsonc`
+`migrations_dir` paths (`.drizzle/migrations`, `.drizzle/migrations-consent`)
+then resolve to the downloaded files, so `DB` and `CONSENT_DB` migrations are
+applied from that exact artifact before deploy. This keeps both preview DB
+schemas aligned with the deployed PR build.
 
 **Artifact trust boundary**: only artifacts built from same-repository branches are ever deployed.
 

@@ -71,6 +71,8 @@ function createAuth() {
   const dataKey = 'auth'
   const deleteAccountTokenTtl = 60 * 60
   const isCiEnvironment: boolean = process.env.CI === 'true'
+  const isRateLimitEnabled: boolean = !import.meta.dev
+    && !(isCiEnvironment && config.public.e2eTestHooksEnabled)
 
   const allowedHosts = getAllowedHosts(
     config.public.baseUrl,
@@ -140,6 +142,7 @@ function createAuth() {
       },
     },
     rateLimit: {
+      enabled: isRateLimitEnabled,
       window: authRateLimitDefaults.window,
       max: authRateLimitDefaults.max,
       customRules: authRateLimitRules,
@@ -163,6 +166,7 @@ function createAuth() {
       enabled: true,
       autoSignIn: import.meta.dev || isCiEnvironment,
       requireEmailVerification: !import.meta.dev && !isCiEnvironment,
+      revokeSessionsOnPasswordReset: true,
       async sendResetPassword({ user, url }) {
         await sendTemplateEmail({
           to: user.email,

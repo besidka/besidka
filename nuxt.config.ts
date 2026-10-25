@@ -3,8 +3,14 @@ import { randomUUID } from 'node:crypto'
 import { defineNuxtModule } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers/index.ts'
+import rehypeStripDirectiveProps from './shared/utils/mdc/rehype-strip-directive-props.ts'
 
 const enableFonts = process.env.CI !== 'true'
+
+const stripDirectivePropsPlugin = {
+  src: '~~/shared/utils/mdc/rehype-strip-directive-props',
+  instance: rehypeStripDirectiveProps,
+}
 
 // nuxt-email-renderer only inlines `vue-i18n` into the Nitro bundle when it
 // detects the literal string '@nuxtjs/i18n' in `nuxt.options.modules` (see
@@ -235,17 +241,20 @@ export default defineNuxtConfig({
   $production: {
     routeRules: {
       // The landing page is runtime SSR on the cloudflare_module preset: each
-      // request queries CONTENT_DB via Nuxt Content. SWR caches the rendered
-      // response in the KV-backed Nitro cache for 1 hour, then revalidates in
-      // the background — so CONTENT_DB is queried at most once per hour per
-      // edge datacenter rather than on every hit.
+      // request queries CONTENT_DB via Nuxt Content. Nitro caches the rendered
+      // response in the KV-backed Nitro cache with a 1 hour KV TTL — so
+      // CONTENT_DB is queried at most once per hour per edge datacenter per
+      // distinct query string rather than on every hit. `swr` is off because
+      // Nitro writes swr entries to KV with no TTL, and the default cache key
+      // includes the query string, so attacker-chosen `?x=<random>` URLs would
+      // accumulate immortal KV entries.
       //
       // `cache.name` is pinned to the per-build `buildId` so each deploy uses a
       // fresh cache key: a previous build's cached HTML (which inlines that
       // build's now-deleted app-manifest id) can never be served after a
       // redeploy. This scopes the build-busting to '/' only — the stats and
       // github-stars caches keep their own keys and still survive deploys.
-      '/': { cache: { swr: true, maxAge: 3600, name: buildId } },
+      '/': { cache: { swr: false, maxAge: 3600, name: buildId } },
     },
   },
   runtimeConfig: {
@@ -438,6 +447,7 @@ export default defineNuxtConfig({
     : {}),
   icon: {
     collections: iconCollections,
+    fallbackToApi: 'client-only',
     serverBundle: {
       remote: 'jsdelivr',
       collections: iconCollections,
@@ -738,6 +748,9 @@ export default defineNuxtConfig({
   mdc: {
     remarkPlugins: {
       'remark-breaks': {},
+    },
+    rehypePlugins: {
+      'rehype-strip-directive-props': stripDirectivePropsPlugin,
     },
     highlight: {
       shikiEngine: 'javascript',

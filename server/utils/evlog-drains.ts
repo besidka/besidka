@@ -8,7 +8,121 @@ interface CachedDrains {
   consent: DrainFn | null
 }
 
+const CLIENT_EVENT_SOURCE = 'client'
+
+const CLIENT_ENVELOPE_KEYS = new Set([
+  'timestamp',
+  'level',
+  'service',
+  'environment',
+  'version',
+  'commitHash',
+  'region',
+  'source',
+  'requestId',
+  'message',
+])
+
+const CLIENT_ACTION_KEY = 'action'
+
+const CLIENT_ACTION_MAX_LENGTH = 128
+
+const CLIENT_BUCKET_KEY = 'client'
+
+const CLIENT_FORBIDDEN_KEYS = new Set(['audit', 'consent'])
+
 let cached: CachedDrains | undefined
+
+function isClientSourcedEvent(event: WideEvent): boolean {
+  return event.source === CLIENT_EVENT_SOURCE
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isScalar(value: unknown): boolean {
+  return value === null || ['string', 'number', 'boolean'].includes(typeof value)
+}
+
+function isEnvelopeValue(key: string, value: unknown): boolean {
+  if (CLIENT_ENVELOPE_KEYS.has(key)) {
+    return isScalar(value)
+  }
+
+  return key === CLIENT_ACTION_KEY
+    && typeof value === 'string'
+    && value.length <= CLIENT_ACTION_MAX_LENGTH
+}
+
+/**
+ * Confine an event ingested from the unauthenticated evlog client route.
+ * Compliance markers (`audit`, `consent`) are dropped, a client-sent
+ * `attributes` object and a short scalar `action` stay addressable as-is, and
+ * every other non-envelope key moves under `attributes.client`. `attributes`
+ * is the Axiom map field, so client-chosen key names inside it never become
+ * dataset schema fields. Drains read `audit` and `consent` at the top level
+ * only, so nothing nested under `attributes` can act as a compliance marker.
+ */
+export function confineClientIngestEvent(event: WideEvent): void {
+  if (!isClientSourcedEvent(event)) {
+    return
+  }
+
+  const record = event as Record<string, unknown>
+  const clientAttributes: [string, unknown][] = []
+  const confinedEntries: [string, unknown][] = []
+
+  for (const [key, value] of Object.entries(record)) {
+    if (isEnvelopeValue(key, value)) {
+      continue
+    }
+
+    Reflect.deleteProperty(record, key)
+
+    if (CLIENT_FORBIDDEN_KEYS.has(key)) {
+      continue
+    }
+
+    if (key === 'attributes' && isPlainRecord(value)) {
+      clientAttributes.push(...Object.entries(value))
+
+      continue
+    }
+
+    confinedEntries.push([key, value])
+  }
+
+  if (clientAttributes.length === 0 && confinedEntries.length === 0) {
+    return
+  }
+
+  const attributes = Object.fromEntries(clientAttributes)
+
+  if (confinedEntries.length > 0) {
+    const existingBucket = attributes[CLIENT_BUCKET_KEY]
+
+    attributes[CLIENT_BUCKET_KEY] = {
+      ...(isPlainRecord(existingBucket) ? existingBucket : {}),
+      ...Object.fromEntries(confinedEntries),
+    }
+  }
+
+  record.attributes = attributes
+}
+
+/**
+ * Wrap a drain so it never receives events ingested from the client route.
+ */
+function skipClientSourced(drain: DrainFn): DrainFn {
+  return (ctx: DrainContext) => {
+    if (isClientSourcedEvent(ctx.event)) {
+      return
+    }
+
+    return drain(ctx)
+  }
+}
 
 /**
  * Wrap a drain so it only receives wide events that carry a non-empty
@@ -16,7 +130,7 @@ let cached: CachedDrains | undefined
  * dataset without affecting the main or audit drain pipelines.
  */
 function consentOnly(drain: DrainFn): DrainFn {
-  return (ctx: DrainContext) => {
+  return skipClientSourced((ctx: DrainContext) => {
     const consent = (ctx.event as WideEvent & { consent?: unknown }).consent
 
     if (!consent || typeof consent !== 'object') {
@@ -24,7 +138,7 @@ function consentOnly(drain: DrainFn): DrainFn {
     }
 
     return drain(ctx)
-  }
+  })
 }
 
 /**
@@ -60,10 +174,10 @@ export function getAxiomDrains(): CachedDrains {
   }
 
   if (config.axiomAuditToken && config.axiomAuditDataset) {
-    result.audit = auditOnly(createAxiomDrain({
+    result.audit = skipClientSourced(auditOnly(createAxiomDrain({
       apiKey: config.axiomAuditToken,
       dataset: config.axiomAuditDataset,
-    }))
+    })))
   }
 
   if (config.axiomConsentToken && config.axiomConsentDataset) {
