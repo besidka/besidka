@@ -325,7 +325,7 @@ Query `besidka-prod` for the window. Wide events set `message` to
 | where _time between (datetime(<B>) .. datetime(<R>))
 | where status < 400
 | where message matches regex @"^(POST /api/v1/chats/[^/]+/share/revoke|POST /api/v1/chats/shared/revoke|DELETE /api/v1/chats/[^/]+$|POST /api/v1/chats/history/delete/bulk|DELETE /api/v1/profiles/keys/[^/]+$|DELETE /api/v1/files/[^/]+$|POST /api/v1/files/delete/bulk|DELETE /api/v1/projects/[^/]+$|POST /api/v1/push/unsubscribe)"
-| project _time, message, userId, chatSlug, fileId, projectId, ['attributes.chatShareRevoke.chatIds'], ['attributes.chatBulkDelete.chatIds']
+| project _time, message, userId, chatSlug, fileId, projectId, shareRevokeChatIds = attributes['chatShareRevoke']['chatIds'], bulkDeleteChatIds = attributes['chatBulkDelete']['chatIds']
 | order by _time asc
 ```
 
