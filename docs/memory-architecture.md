@@ -832,9 +832,9 @@ while the opt-in is off. Anything else is a 404 tool error.
   learn that a hidden entry exists. Errors that are not evlog errors with a
   status (for example a Drizzle query error with SQL text) reach the model as
   a generic "The memory service failed".
-- Sensitivity: the model's `sensitivity` label is only a hint. The server
-  classifier (below) runs on every write, so a health fact labelled `none` is
-  refused with the opt-in off and stored as `special` with it on.
+- Sensitivity: the tool has no sensitivity fields. The server classifier
+  (below) runs on every write, so a health fact is refused with the opt-in off
+  and stored as `special` with it on.
 - The continuation (`buildSearchResultsContext`) renders memory results in
   their own `Memory list/read/save/remove N` sections so a turn that ends
   without text still answers from them.
@@ -891,42 +891,80 @@ memory is injected (paused). The export also carries `memoryExtractionEnabled`.
 trusted the caller's `sensitivity`: `POST /api/v1/memory/entries` with
 "I have type 2 diabetes." and `sensitivity: 'none'` was stored with the opt-in
 off. `evaluateMemoryEntry` now also runs `classifySensitiveCategories`
-(`server/utils/memory/sensitivity.ts`) over the title, description and body,
-after the never-store check, and never trusts a declared `none`:
+(`server/utils/memory/sensitivity.ts`, rules in `sensitivity-rules.ts`) over
+the title, description and body, after the never-store check. Classification is
+deterministic only: no LLM ever labels or infers sensitive attributes (the
+`memory_write` tool and the extractor no longer have `sensitivity` or
+`sensitiveCategory` fields; the server assigns them).
 
-- Effective sensitivity is `special` when the declared value is `special` or
-  the classifier matched (a declared `special` is never downgraded). The
-  effective category is the declared one, else the first classified, else
-  `null`. The allowed verdict carries the effective values and every writer
-  persists them: API create and PATCH (on the merged row), `memory_write`
-  and extraction (merge-create, update). The atomic SQL guards use the
-  effective sensitivity, so the opt-out race stays closed.
+- Effective sensitivity is `special` when the declared value is `special`
+  (only the user's own API call can declare it) or the classifier matched.
+  The effective category is the declared one, else the first classified, else
+  `null`. The allowed verdict carries the effective values and
+  `detectedCategories`, and every writer persists them: API create and PATCH
+  (on the merged row), `memory_write` and extraction. The atomic SQL guards use
+  the effective sensitivity, so the opt-out race stays closed.
+- A stored `special` row is sticky for tool and extraction updates: only the
+  user's own PATCH can downgrade it.
 - Opt-in OFF and flagged: 422 "Sensitive memory is turned off", `why` names the
   detected category ids ("looks like sensitive data (health)"), never the text,
   `fix` says to turn on sensitive memory in the memory settings. Nothing is
   stored. This replaces the earlier 409. Opt-in ON: stored as `special` with
   the server-chosen `sensitiveCategory` (typing it is consent, #508), which is
   what lets the opt-out purge find it later.
-- Logging: `attributes.memoryCompliance.sensitive = { origin, categories }`
-  (ids only).
-- The vocabulary is one auditable constant, `sensitiveTextRules`, for all ten
-  `memorySensitiveCategories` in English, Ukrainian, Polish and Russian.
-  Matching is NFKC + lowercase, apostrophes folded, Unicode-aware word
-  boundaries (not `\b`) and stems for inflected languages. Precision over
-  recall: bare 'diet', 'church' in street names, 'Gay Street', 'European
-  Union', 'tennis court', 'weed', zodiac 'cancer', 'fingerprint sensor' and
-  'Face ID' are not flagged; 'Christian' only in a faith statement; 'cancer' /
-  'рак' / 'rak' only with a body part or personal phrasing.
-- Accepted limits: bare health words ('therapist', 'medication', 'allergic',
-  'pregnant', 'insulin') also match product-persona text; 'catholic'/'muslim'
-  match bare ('Catholic University'); named politicians, slang, misspellings
-  and homoglyph mixes are not covered; 'convicted of' / 'charged with' land in
-  `legal-dispute`, which overlaps the extractor-only never-store
-  `criminal-history` kind (follow-up: decide whether that kind gets a
-  deterministic detector). No LLM pass was added: it would spend the user's key
-  on every write and add latency; the keyword pass is free and always on.
-- A no-op extraction (only a new source chat) does not re-classify a legacy
-  `none` row, and entries stored before this change are not re-labelled.
+- **Third-party data.** An entry in the `people` category whose effective
+  sensitivity is `special` is always refused (422 "Sensitive data about
+  another person cannot be stored"), even with the opt-in ON: the user cannot
+  consent for someone else. Precedence: never-store, then third-party, then
+  opt-in. Special data about a third party written into another category
+  (for example "my wife has cancer" in a topic) is not detectable.
+- **Transfer filter.** `SENSITIVE_MEMORY_PROVIDER_ALLOWLIST`
+  (`shared/utils/memory-policy.ts`) is deliberately EMPTY: the owner fills it
+  after checking EU adequacy / EU-US Data Privacy Framework certification on
+  dataprivacyframework.gov. `isSensitiveMemoryProviderAllowed` is false for
+  any gateway send (no provider pinning exists yet) and for any provider not
+  listed. When it is false, `special` entries are left out of the injected
+  index, and `memory_list`, `memory_read` and id-based `memory_write` hide them
+  (the route passes `includeSensitive && allowed` as the tools' visibility;
+  the compliance gate still reads the real opt-in). The index then carries one
+  fixed line saying that some sensitive memories are withheld for the current
+  provider, without a count or any content. With every visible entry withheld
+  there is no index and no line. W6's `sensitiveOptInEnabled` runtime flag is
+  independent of this.
+- Logging: `attributes.memoryCompliance.sensitive = { origin, categories,
+  thirdParty }` (ids only), merged across the writes of one request when the
+  logger exposes its context; extraction logs once per run.
+- The vocabulary is one auditable table covering all ten
+  `memorySensitiveCategories` in English, Ukrainian, Polish and Russian, each
+  pattern with examples that a spec requires it to match (this is what catches
+  typos), plus a homoglyph guard. Matching is NFKC + lowercase, apostrophes
+  folded, Unicode-aware word boundaries (not `\b`) and stems for inflected
+  languages. Precision over recall: anything that is also an ordinary word
+  needs a personal frame or an unambiguous noun ("I vote for tabs" and
+  "diagnosed with a flaky test" are not flagged; voting needs a political
+  noun; bare 'diet', 'church' in street names, 'Gay Street', 'European Union',
+  'tennis court', 'weed', zodiac 'cancer', 'fingerprint sensor', 'Face ID',
+  bare 'рак' / 'rak' / 'cancer' are not flagged).
+- Accepted limits. Flagged although neutral: 'My pastor said hi', 'Ислам
+  Махачев' (first name), 'Hindus in India statistics', 'political party
+  registration rules', product-persona text with bare health words
+  ('therapist', 'medication', 'allergic', 'pregnant', 'insulin'),
+  'catholic'/'muslim' used bare. Not flagged although personal: 'I voted for
+  Trump', 'I vote Labour', 'Głosowałem na PiS', 'I take drugs', "I'm a
+  recovering addict", 'He died of cancer', 'I got divorced', 'Я розлучився', an
+  unlisted condition after 'my diagnosis is', named politicians, slang,
+  misspellings and mixed-script homoglyphs. 'convicted of' / 'charged with' (with
+  a crime word) land in `legal-dispute`, which overlaps the extractor-only
+  never-store `criminal-history` kind (follow-up: decide whether that kind gets a
+  deterministic detector). The extractor still carries a `neverStore` label for
+  the topical never-store kinds (criminal history, immigration status, home
+  address, live location): a model flag the server cannot verify and the only
+  detector for those kinds.
+- No LLM pass: it would spend the user's key on every write, add latency, and
+  ask a model to infer sensitive attributes. A no-op extraction (only a new
+  source chat) does not re-classify a legacy `none` row, and entries stored
+  before this change are not re-labelled; a title-only PATCH on such a row
+  with the opt-in off is refused.
 
 **Other behaviour fixed in the review pass**
 
@@ -1125,9 +1163,9 @@ validate first, throw, save nothing.
 - `generateObject` is deprecated in AI SDK 7 but still works (the research
   clarifier uses it too); move both to `generateText` with an `output`
   setting together.
-- The extractor is the only classifier for topical never-store classes and
-  for Art. 9 labels; a model that mislabels a special fact as `none` is not
-  caught by code. User-pasted text that contains instructions is still
+- The extractor is the only detector for the topical never-store classes (its
+  `neverStore` flag); Art. 9 data is classified by the server (3.12), not by
+  the extractor. User-pasted text that contains instructions is still
   user-role text (prompt-level defence only).
 - The extraction sweep is not run on Previews (no crons); use `extract-now`.
 

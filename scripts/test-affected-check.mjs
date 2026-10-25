@@ -1931,7 +1931,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/utils\/memory\/(compliance|sensitivity)\.ts$/,
+      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules)\.ts$/,
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,

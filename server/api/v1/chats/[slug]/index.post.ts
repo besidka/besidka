@@ -34,6 +34,7 @@ import {
   isPersistedOversizedResponseFailureText,
 } from '#shared/utils/chat-failure-text'
 import { gatewayIds } from '#shared/utils/gateways'
+import { isSensitiveMemoryProviderAllowed } from '#shared/utils/memory-policy'
 import {
   isGatewayReasoningSupported,
   isGatewayToolAllowed,
@@ -1188,6 +1189,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const userMessageText = readUserMessageText(newMessage.parts)
+  const memoryProviderId = gatewayId ? null : telemetryProviderId
+  const sensitiveMemoryVisible = memorySettings.memoryIncludeSensitive
+    && isSensitiveMemoryProviderAllowed({
+      providerId: memoryProviderId,
+      gatewayId,
+    })
 
   if (chatSearchBudget && memoryToolsRegistered) {
     const { tools: memoryTools } = getMemoryTools({
@@ -1198,7 +1205,7 @@ export default defineEventHandler(async (event) => {
       useAccountMemory: chat.project?.useAccountMemory ?? null,
       sourceMessageId: newMessage.id,
       userMessageText,
-      includeSensitive: memorySettings.memoryIncludeSensitive,
+      includeSensitive: sensitiveMemoryVisible,
       budget: chatSearchBudget,
       logger: aiLogger,
     })
@@ -1216,6 +1223,8 @@ export default defineEventHandler(async (event) => {
     useAccountMemory: chat.project?.useAccountMemory ?? null,
     settings: memorySettings,
     hasMemoryTools: memoryToolsRegistered,
+    providerId: memoryProviderId,
+    gatewayId,
     logger: aiLogger,
   })
 

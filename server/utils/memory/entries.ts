@@ -33,7 +33,6 @@ import {
   encodePublicId,
 } from '~~/server/utils/custom-db-types'
 import {
-  combineMemoryEntryText,
   evaluateMemoryEntry,
   recordBlockedCounts,
   recordSensitiveDetection,
@@ -42,7 +41,6 @@ import {
   slugifyMemoryTitle,
   suffixMemorySlug,
 } from '~~/server/utils/memory/entry-slug'
-import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -184,6 +182,23 @@ function createUniqueConflictError(category: MemoryCategory) {
   })
 }
 
+function createThirdPartySensitiveError(
+  detectedCategories: MemorySensitiveCategory[],
+) {
+  const detected = detectedCategories.length > 0
+    ? ` (${detectedCategories.join(', ')})`
+    : ''
+
+  return createError({
+    message: 'Sensitive data about another person cannot be stored',
+    status: 422,
+    why: `Entries about people cannot hold special-category data${detected}, `
+      + 'and only the person themself can consent to that.',
+    fix: 'Remove the sensitive details or store them in a topic about '
+      + 'yourself.',
+  })
+}
+
 function createSensitiveDisabledError(
   detectedCategories: MemorySensitiveCategory[] = [],
 ) {
@@ -221,14 +236,13 @@ interface EffectiveSensitivity {
 
 function resolveEffectiveSensitivity(
   verdict: ReturnType<typeof evaluateMemoryEntry>,
-  fields: { title: string, description: string, body: string },
   logger: MemoryWriteLogger,
   complianceOrigin: string,
 ): EffectiveSensitivity {
   if (verdict.allowed) {
     if (verdict.sensitivity === 'special') {
       recordSensitiveDetection(
-        classifySensitiveCategories(combineMemoryEntryText(fields)),
+        verdict.detectedCategories,
         logger,
         complianceOrigin,
       )
@@ -238,6 +252,17 @@ function resolveEffectiveSensitivity(
       sensitivity: verdict.sensitivity,
       sensitiveCategory: verdict.sensitiveCategory,
     }
+  }
+
+  if (verdict.reason === 'third-party-sensitive') {
+    recordSensitiveDetection(
+      verdict.detectedCategories,
+      logger,
+      complianceOrigin,
+      { thirdParty: true },
+    )
+
+    throw createThirdPartySensitiveError(verdict.detectedCategories)
   }
 
   if (verdict.reason === 'sensitive-disabled') {
@@ -689,9 +714,9 @@ export async function createMemoryEntry(
       body: input.body,
       sensitivity: input.sensitivity ?? 'none',
       sensitiveCategory: input.sensitiveCategory ?? null,
+      category: input.category,
       includeSensitive,
     }),
-    input,
     logger,
     options.complianceOrigin,
   )
@@ -740,7 +765,19 @@ interface MergedMemoryFields {
 function mergeMemoryPatch(
   stored: MemoryEntryRow,
   patch: MemoryEntryPatch,
+  keepStoredSpecial: boolean,
 ): MergedMemoryFields {
+  if (keepStoredSpecial && stored.sensitivity === 'special') {
+    return {
+      category: patch.category ?? stored.category,
+      title: patch.title ?? stored.title,
+      description: patch.description ?? stored.description,
+      body: patch.body ?? stored.body,
+      sensitivity: 'special',
+      sensitiveCategory: patch.sensitiveCategory ?? stored.sensitiveCategory,
+    }
+  }
+
   let sensitiveCategory = stored.sensitiveCategory
 
   if (patch.sensitiveCategory !== undefined) {
@@ -778,7 +815,11 @@ export async function updateMemoryEntry(
     throw createNotFoundError('Memory entry not found')
   }
 
-  const merged = mergeMemoryPatch(stored, parsedPatch.data)
+  const merged = mergeMemoryPatch(
+    stored,
+    parsedPatch.data,
+    options.origin === 'tool' || options.origin === 'extraction',
+  )
   const parsedMerged = memoryEntryInputSchema.safeParse(merged)
 
   if (!parsedMerged.success) {
@@ -794,9 +835,9 @@ export async function updateMemoryEntry(
       body: parsedMerged.data.body,
       sensitivity: parsedMerged.data.sensitivity ?? 'none',
       sensitiveCategory: parsedMerged.data.sensitiveCategory ?? null,
+      category: parsedMerged.data.category,
       includeSensitive,
     }),
-    parsedMerged.data,
     logger,
     options.complianceOrigin,
   )

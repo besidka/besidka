@@ -1,5 +1,6 @@
 import type {
   ComplianceBlockedCounts,
+  MemoryCategory,
   MemorySensitiveCategory,
   MemorySensitivity,
   NeverStoreKind,
@@ -22,6 +23,7 @@ export interface NeverStoreMatch {
 
 export interface ComplianceLogger {
   set: (fields: Record<string, unknown>) => void
+  getContext?: () => Record<string, unknown>
 }
 
 export type MemoryWriteVerdict
@@ -29,8 +31,14 @@ export type MemoryWriteVerdict
     allowed: true
     sensitivity: MemorySensitivity
     sensitiveCategory: MemorySensitiveCategory | null
+    detectedCategories: MemorySensitiveCategory[]
   }
   | { allowed: false, reason: 'never-store', kinds: NeverStoreKind[] }
+  | {
+    allowed: false
+    reason: 'third-party-sensitive'
+    detectedCategories: MemorySensitiveCategory[]
+  }
   | {
     allowed: false
     reason: 'sensitive-disabled'
@@ -43,6 +51,7 @@ export interface MemoryEntryEvaluationInput {
   body: string
   sensitivity: MemorySensitivity
   sensitiveCategory?: MemorySensitiveCategory | null
+  category?: MemoryCategory
   extractorNeverStoreKind?: NeverStoreKind | null
   includeSensitive: boolean
 }
@@ -899,18 +908,60 @@ export function combineMemoryEntryText(fields: {
   return [fields.title, fields.description, fields.body].join('\n')
 }
 
+function readLoggedSensitive(logger: ComplianceLogger): {
+  categories: MemorySensitiveCategory[]
+  thirdParty: boolean
+} {
+  const context = logger.getContext?.() as {
+    attributes?: {
+      memoryCompliance?: {
+        sensitive?: {
+          categories?: MemorySensitiveCategory[]
+          thirdParty?: boolean
+        }
+      }
+    }
+  } | undefined
+  const logged = context?.attributes?.memoryCompliance?.sensitive
+
+  return {
+    categories: Array.isArray(logged?.categories) ? logged.categories : [],
+    thirdParty: logged?.thirdParty === true,
+  }
+}
+
+/**
+ * Logs the detected category ids (never the text) under
+ * `memoryCompliance.sensitive`. evlog replaces arrays on a repeated `set`, so
+ * when the logger exposes `getContext` the ids already logged in this request
+ * are merged in and the list stays deduplicated, and `thirdParty` stays true
+ * once set. A logger without `getContext` keeps only the last call's ids, so
+ * a caller that records several detections in one run should aggregate them
+ * and call this once.
+ */
 export function recordSensitiveDetection(
   categories: MemorySensitiveCategory[],
   logger: ComplianceLogger,
   origin: string,
+  options: { thirdParty?: boolean } = {},
 ): void {
   if (categories.length === 0) {
     return
   }
 
+  const logged = readLoggedSensitive(logger)
+  const mergedCategories = [...new Set([...logged.categories, ...categories])]
+  const thirdParty = options.thirdParty === true || logged.thirdParty
+
   logger.set({
     attributes: {
-      memoryCompliance: { sensitive: { origin, categories } },
+      memoryCompliance: {
+        sensitive: {
+          origin,
+          categories: mergedCategories,
+          ...(thirdParty ? { thirdParty: true } : {}),
+        },
+      },
     },
   })
 }
@@ -921,8 +972,10 @@ export function recordSensitiveDetection(
  * by the server classifier and never trusted to the caller's label: a
  * declared `special` is never downgraded, and a classifier hit upgrades a
  * declared `none` to `special` with the first detected category unless one
- * was declared. The returned sensitivity and category are the effective
- * values that must be persisted.
+ * was declared. An effectively special entry in the `people` category is
+ * always refused, even with the opt-in on, because the user cannot consent
+ * for another person; that check wins over the opt-in check. The returned
+ * sensitivity and category are the effective values that must be persisted.
  */
 export function evaluateMemoryEntry(
   input: MemoryEntryEvaluationInput,
@@ -950,7 +1003,20 @@ export function evaluateMemoryEntry(
     || detectedCategories.length > 0
 
   if (!isSpecial) {
-    return { allowed: true, sensitivity: 'none', sensitiveCategory: null }
+    return {
+      allowed: true,
+      sensitivity: 'none',
+      sensitiveCategory: null,
+      detectedCategories,
+    }
+  }
+
+  if (input.category === 'people') {
+    return {
+      allowed: false,
+      reason: 'third-party-sensitive',
+      detectedCategories,
+    }
   }
 
   if (!input.includeSensitive) {
@@ -963,6 +1029,7 @@ export function evaluateMemoryEntry(
     sensitiveCategory: input.sensitiveCategory
       ?? detectedCategories[0]
       ?? null,
+    detectedCategories,
   }
 }
 

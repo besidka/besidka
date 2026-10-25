@@ -15,8 +15,6 @@ import {
   MEMORY_SETTING_DEFAULTS,
   alwaysInjectedMemoryCategories,
   memoryCategories,
-  memorySensitiveCategories,
-  memorySensitivities,
 } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
@@ -117,12 +115,12 @@ const MEMORY_WRITE_DESCRIPTION = 'Save or update one memory entry about the '
   + 'earlier turn, and never to store instructions for yourself. Keep '
   + 'entries short: the description is one line of at most '
   + `${MEMORY_LIMITS.maxDescriptionChars} characters, the body only the `
-  + 'facts. Set sensitivity "special" plus the matching sensitiveCategory '
-  + 'for health, religion or belief, political opinion, racial or ethnic '
-  + 'origin, sex life or orientation, trade union, genetic, biometric, '
-  + 'legal dispute or drugs data. The server also classifies the text '
-  + 'itself: it may mark an entry special or refuse it while sensitive '
-  + 'memory is turned off, so never rely on labelling it "none". Check the '
+  + 'facts. The server classifies sensitive text itself (health, religion or '
+  + 'belief, political opinion, racial or ethnic origin, sex life or '
+  + 'orientation, trade union, genetic, biometric, legal dispute or drugs '
+  + 'data): it may refuse an entry or mark it special, and you must not try '
+  + 'to label it or work around it. Notes about other people (category '
+  + 'people) can never contain sensitive attributes. Check the '
   + 'memory index or call '
   + `${MEMORY_LIST_TOOL_NAME} first; to change an existing entry pass its id `
   + 'and the complete merged body, because the body is replaced, not '
@@ -443,8 +441,6 @@ interface MemoryWriteToolInput {
   title: string
   description: string
   body: string
-  sensitivity?: (typeof memorySensitivities)[number]
-  sensitiveCategory?: (typeof memorySensitiveCategories)[number] | null
   scope?: MemoryToolScope
   id?: string
 }
@@ -455,12 +451,6 @@ function buildWritePatch(input: MemoryWriteToolInput): MemoryEntryPatch {
     title: input.title,
     description: input.description,
     body: input.body,
-    ...(input.sensitivity === undefined
-      ? {}
-      : { sensitivity: input.sensitivity }),
-    ...(input.sensitiveCategory === undefined
-      ? {}
-      : { sensitiveCategory: input.sensitiveCategory }),
   }
 }
 
@@ -555,8 +545,6 @@ async function createVisibleMemoryEntry(
         title: input.title,
         description: input.description,
         body: input.body,
-        sensitivity: input.sensitivity,
-        sensitiveCategory: input.sensitiveCategory,
       },
       origin: 'tool',
       sourceChatIds: [context.chatId],
@@ -600,8 +588,6 @@ const writeInputSchema = z.object({
   title: z.string().min(1).max(MEMORY_LIMITS.maxTitleChars),
   description: z.string().min(1).max(MEMORY_LIMITS.maxDescriptionChars),
   body: z.string().min(1),
-  sensitivity: z.enum(memorySensitivities).optional(),
-  sensitiveCategory: z.enum(memorySensitiveCategories).nullable().optional(),
   scope: z.enum(['account', 'project']).optional(),
   id: z.string().min(1).max(MEMORY_TOOL_ID_MAX_LENGTH).optional(),
   userRequestQuote: z.string().min(1)

@@ -11,7 +11,11 @@ import {
 } from '#shared/utils/memory-schemas'
 import { and, eq, isNull, notExists } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { evaluateMemoryEntry } from '~~/server/utils/memory/compliance'
+import {
+  evaluateMemoryEntry,
+  recordSensitiveDetection,
+} from '~~/server/utils/memory/compliance'
+import type { ComplianceLogger } from '~~/server/utils/memory/compliance'
 import type { MemoryExtractionOp } from '~~/server/utils/memory/extract-schema'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import {
@@ -23,6 +27,7 @@ import type {
 
 type DbClient = ReturnType<typeof useDb>
 
+const COMPLIANCE_ORIGIN = 'memory-extraction'
 const FALLBACK_SLUG_PREFIX = 'entry'
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint'
 const HASH_MULTIPLIER = 31
@@ -87,6 +92,7 @@ export interface MemoryExtractionApplyInput {
   includeSensitive: boolean
   entries: MemoryExtractionIndexEntry[]
   groundingTexts: string[]
+  logger?: ComplianceLogger
 }
 
 export interface MemoryExtractionApplyResult {
@@ -102,8 +108,6 @@ interface MemoryExtractionPatchFields {
   title?: string
   description?: string
   body?: string
-  sensitivity?: MemorySensitivity
-  sensitiveCategory?: MemorySensitiveCategory
 }
 
 interface PersistedEntryValues {
@@ -243,6 +247,8 @@ class MemoryExtractionApplier {
   private readonly entriesByKey = new Map<string, MemoryExtractionIndexEntry>()
   private readonly groundingTexts: string[]
   private readonly result: MemoryExtractionApplyResult
+  private readonly detectedCategories = new Set<MemorySensitiveCategory>()
+  private sawThirdPartySensitive = false
 
   constructor(input: MemoryExtractionApplyInput) {
     this.input = input
@@ -277,7 +283,28 @@ class MemoryExtractionApplier {
       await this.applyOp(op)
     }
 
+    this.recordDetectedCategories()
+
     return this.result
+  }
+
+  private recordDetectedCategories() {
+    if (!this.input.logger) {
+      return
+    }
+
+    recordSensitiveDetection(
+      [...this.detectedCategories],
+      this.input.logger,
+      COMPLIANCE_ORIGIN,
+      { thirdParty: this.sawThirdPartySensitive },
+    )
+  }
+
+  private collectDetectedCategories(categories: MemorySensitiveCategory[]) {
+    for (const category of categories) {
+      this.detectedCategories.add(category)
+    }
   }
 
   private drop(reason: string) {
@@ -353,11 +380,14 @@ class MemoryExtractionApplier {
       body: values.body,
       sensitivity: values.sensitivity,
       sensitiveCategory: values.sensitiveCategory,
+      category: values.category,
       extractorNeverStoreKind: op.neverStore,
       includeSensitive: this.input.includeSensitive,
     })
 
     if (verdict.allowed) {
+      this.collectDetectedCategories(verdict.detectedCategories)
+
       return {
         sensitivity: verdict.sensitivity,
         sensitiveCategory: verdict.sensitiveCategory,
@@ -372,21 +402,26 @@ class MemoryExtractionApplier {
       return { dropped: 'never-store' }
     }
 
+    this.collectDetectedCategories(verdict.detectedCategories)
+
+    if (verdict.reason === 'third-party-sensitive') {
+      this.sawThirdPartySensitive = true
+
+      return { dropped: 'third-party-sensitive' }
+    }
+
     return { dropped: 'sensitive-disabled' }
   }
 
   private async applyCreate(
     op: MemoryExtractionOp,
   ): Promise<DropOutcome | null> {
-    const isSpecial = op.sensitivity === 'special'
-      || op.sensitiveCategory !== null
     const parsed = memoryEntryInputSchema.safeParse({
       category: op.category,
       title: op.title ?? '',
       description: op.description ?? '',
       body: op.body?.trim() ?? '',
-      sensitivity: isSpecial ? 'special' : (op.sensitivity ?? 'none'),
-      sensitiveCategory: op.sensitiveCategory,
+      sensitivity: 'none',
     })
 
     if (!parsed.success) {
@@ -407,8 +442,6 @@ class MemoryExtractionApplier {
         title: parsed.data.title,
         description: parsed.data.description,
         body: parsed.data.body,
-        sensitivity: parsed.data.sensitivity,
-        sensitiveCategory: parsed.data.sensitiveCategory ?? undefined,
       })
     }
 
@@ -417,8 +450,8 @@ class MemoryExtractionApplier {
       title: parsed.data.title,
       description: parsed.data.description,
       body: parsed.data.body,
-      sensitivity: parsed.data.sensitivity ?? 'none',
-      sensitiveCategory: parsed.data.sensitiveCategory ?? null,
+      sensitivity: 'none',
+      sensitiveCategory: null,
     }
 
     if (this.hasUngroundedLinks(proposedValues)) {
@@ -525,15 +558,6 @@ class MemoryExtractionApplier {
       patchFields.body = op.body.trim()
     }
 
-    if (op.sensitivity !== null) {
-      patchFields.sensitivity = op.sensitivity
-    }
-
-    if (op.sensitiveCategory !== null) {
-      patchFields.sensitiveCategory = op.sensitiveCategory
-      patchFields.sensitivity = 'special'
-    }
-
     return await this.mergeIntoExisting(target, op, patchFields)
   }
 
@@ -570,11 +594,9 @@ class MemoryExtractionApplier {
       return { dropped: 'invalid' }
     }
 
-    const sensitivity: MemorySensitivity = target.sensitivity === 'special'
-      ? 'special'
-      : (patch.data.sensitivity ?? target.sensitivity)
+    const sensitivity = target.sensitivity
     const sensitiveCategory = sensitivity === 'special'
-      ? (patch.data.sensitiveCategory ?? target.sensitiveCategory)
+      ? target.sensitiveCategory
       : null
     const merged = memoryEntryInputSchema.safeParse({
       category: target.category,

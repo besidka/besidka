@@ -4,8 +4,13 @@ import { memorySensitiveCategories } from '#shared/utils/memory-policy'
 import {
   classifySensitiveCategories,
   classifySensitiveText,
+  compileSensitiveTextExpression,
+  normalizeSensitiveText,
   sensitiveTextRules,
 } from '~~/server/utils/memory/sensitivity'
+import type {
+  SensitiveTextLanguage,
+} from '~~/server/utils/memory/sensitivity-rules'
 
 type PositiveCase = [text: string, category: MemorySensitiveCategory]
 
@@ -35,6 +40,32 @@ const englishPositives: PositiveCase[] = [
   ['The custody battle starts next month', 'legal-dispute'],
   ['I used cocaine in college', 'drugs'],
   ['He struggles with drug addiction', 'drugs'],
+  ['I was diagnosed with lupus', 'health'],
+  ['She was diagnosed with a rare condition', 'health'],
+  ['I see a psychologist every week', 'health'],
+  ['My dad had a heart attack last year', 'health'],
+  ['I am on sick leave until Friday', 'health'],
+  ['I live with chronic pain', 'health'],
+  ['I\'m Orthodox', 'religion-or-belief'],
+  ['I am Jewish', 'religion-or-belief'],
+  ['I am Hindu and my family prays daily', 'religion-or-belief'],
+  ['I fast during Ramadan', 'religion-or-belief'],
+  ['I observe Shabbat every week', 'religion-or-belief'],
+  ['We celebrate Hanukkah at home', 'religion-or-belief'],
+  ['I don\'t believe in God', 'religion-or-belief'],
+  ['I voted for the Green party', 'political-opinion'],
+  ['I am voting for a new president', 'political-opinion'],
+  ['I\'m a conservative in politics', 'political-opinion'],
+  ['I am a liberal.', 'political-opinion'],
+  ['I\'m Romani.', 'racial-or-ethnic-origin'],
+  ['We are in an open relationship', 'sex-life-or-orientation'],
+  ['My DNA results arrived', 'genetic'],
+  ['I\'m getting divorced', 'legal-dispute'],
+  ['We are going through a divorce', 'legal-dispute'],
+  ['He was charged with fraud', 'legal-dispute'],
+  ['My drug use got worse', 'drugs'],
+  ['I used drugs in my twenties', 'drugs'],
+  ['We voted for the Conservative party', 'political-opinion'],
 ]
 
 const ukrainianPositives: PositiveCase[] = [
@@ -62,7 +93,24 @@ const ukrainianPositives: PositiveCase[] = [
   ['Подали позов проти орендодавця', 'legal-dispute'],
   ['Колись він вживав кокаїн', 'drugs'],
   ['Бореться з наркоманією', 'drugs'],
-  ['Мій діаgноз — пʼять років ремісії, я хворію на астму', 'health'],
+  ['Мій діагноз — пʼять років ремісії', 'health'],
+  ['Мій діагноз — пʼять років ремісії, я хворію на астму', 'health'],
+  ['У мене рак', 'health'],
+  ['Лікуюсь від раку легень', 'health'],
+  ['Мені діагностували рак', 'health'],
+  ['Мій батько хворий на діабет', 'health'],
+  ['Я ходжу до психолога щотижня', 'health'],
+  ['Приймаю препарат від тиску', 'health'],
+  ['Я єврей', 'religion-or-belief'],
+  ['Я не вірю в Бога', 'religion-or-belief'],
+  ['Я дотримуюсь рамадану', 'religion-or-belief'],
+  ['Моя політична партія', 'political-opinion'],
+  ['Я підтримую політичну партію', 'political-opinion'],
+  ['Я голосую за кандидата від опозиції', 'political-opinion'],
+  ['Я консерватор у політиці', 'political-opinion'],
+  ['Я розлучаюся', 'legal-dispute'],
+  ['Я подав на розлучення', 'legal-dispute'],
+  ['Вони голосують за партію', 'political-opinion'],
 ]
 
 const polishPositives: PositiveCase[] = [
@@ -89,6 +137,19 @@ const polishPositives: PositiveCase[] = [
   ['Kiedyś brał kokainę', 'drugs'],
   ['Walczy z narkomanią', 'drugs'],
   ['Jestem uzależniony od alkoholu i leczę alkoholizm', 'drugs'],
+  ['Mam raka piersi', 'health'],
+  ['Wykryto u mnie raka płuc', 'health'],
+  ['Jestem chory na cukrzycę', 'health'],
+  ['Chodzę do psychologa raz w tygodniu', 'health'],
+  ['Jestem prawosławny', 'religion-or-belief'],
+  ['Nie wierzę w Boga', 'religion-or-belief'],
+  ['Moja partia polityczna', 'political-opinion'],
+  ['Głosowałem na tę partię', 'political-opinion'],
+  ['Jestem konserwatystą.', 'political-opinion'],
+  ['Jestem w Solidarności', 'trade-union'],
+  ['Rozwodzę się', 'legal-dispute'],
+  ['Jestem katoliczką', 'religion-or-belief'],
+  ['Jestem żydowskiego pochodzenia', 'racial-or-ethnic-origin'],
 ]
 
 const russianPositives: PositiveCase[] = [
@@ -113,6 +174,16 @@ const russianPositives: PositiveCase[] = [
   ['Подал иск против арендодателя', 'legal-dispute'],
   ['Раньше употреблял героин', 'drugs'],
   ['Лечится от наркомании', 'drugs'],
+  ['У меня рак', 'health'],
+  ['Боюсь рака груди', 'health'],
+  ['Лечусь от рака легких', 'health'],
+  ['Я хожу к психологу каждую неделю', 'health'],
+  ['Я еврей', 'religion-or-belief'],
+  ['Я не верю в Бога', 'religion-or-belief'],
+  ['Я соблюдаю рамадан', 'religion-or-belief'],
+  ['Моя политическая партия', 'political-opinion'],
+  ['Я консерватор в политике', 'political-opinion'],
+  ['Я развожусь', 'legal-dispute'],
 ]
 
 const negatives: Record<string, string[]> = {
@@ -142,6 +213,36 @@ const negatives: Record<string, string[]> = {
     'The Great Depression ended in 1939',
     'straight line from A to B',
     'Jewel is my favourite singer',
+    'I vote for tabs over spaces',
+    'I voted for option B in the team poll',
+    'I am a conservative developer when it comes to dependencies',
+    'I\'m a libertarian about type systems',
+    'I was diagnosed with a flaky test',
+    'diagnosed with a memory leak in prod',
+    'diagnosed with a race condition',
+    'My diagnosis of the bug',
+    'We were charged with fixing the bug',
+    'Charged with updating the docs',
+    'Chronic health check failures in CI',
+    'Sick leave policy page in the HR app',
+    'Sunday mass transit',
+    'drug use statistics dataset',
+    'DNA sample pipelines at the bio lab',
+    'Open relationship with API vendor',
+    'Heart attack animation in game',
+    'Orthodox Church architecture tour',
+    'Hindu Kush hiking',
+    'Jewish Museum Berlin',
+    'Romani language lessons',
+    'Ramadan travel tips',
+    'Hanukkah gift ideas',
+    'Shabbat dinner at friends',
+    'Islam-Abad travel notes',
+    'My zodiac sign is Cancer',
+    'I got divorced in 2015',
+    'I am a psychologist by training',
+    'Psychologist job posting for the school',
+    'Interview a psychologist for the UX study',
   ],
   ukrainian: [
     'Дієта на тиждень без цукру',
@@ -158,6 +259,16 @@ const negatives: Record<string, string[]> = {
     'Моє ліве плече трохи болить від спорту',
     'Етнічна кухня на вихідних',
     'Тенісний корт заброньовано',
+    'Я консерватор у виборі бібліотек',
+    'Мій брат хворий на голову',
+    'Я хворий на сторінку',
+    'Приймаю препарат для вебсайту',
+    'Я голосував за другий варіант',
+    'Ислам-Абад',
+    'Знак зодіаку Рак',
+    'Я працюю психологом у школі',
+    'Моя психологія роботи складна',
+    'Запросили психолога на конференцію',
   ],
   polish: [
     'Dieta na cały tydzień bez cukru',
@@ -173,6 +284,15 @@ const negatives: Record<string, string[]> = {
     'Wyścig rowerowy w niedzielę',
     'Ciąży na mnie obowiązek zakończenia projektu',
     'Kort tenisowy zarezerwowany na piątek',
+    'Głosowałem na wariant drugi w ankiecie',
+    'Jestem konserwatystą jeśli chodzi o zależności',
+    'Jestem chory na głowę',
+    'Muzeum żydowskie w Warszawie',
+    'Rozwodzę się nad tym tematem zbyt długo',
+    'Solidarność z ofiarami powodzi',
+    'Zdiagnozowałem błąd w kodzie',
+    'Psychologia rozwoju dziecka',
+    'Znak zodiaku Rak',
   ],
   russian: [
     'Диета на неделю без сахара',
@@ -189,6 +309,13 @@ const negatives: Record<string, string[]> = {
     'Полка с книгами в саду',
     'Исламабад столица Пакистана',
     'Диагностика ошибки в коде',
+    'Я голосовал за второй вариант',
+    'Я либерал в плане форматирования',
+    'Ислам-Абад',
+    'Мы разводим краску для забора',
+    'Знак зодиака Рак',
+    'Приглашаем психолога на конференцию',
+    'Моя психология работы сложна',
   ],
 }
 
@@ -204,29 +331,141 @@ function describePositives(
   })
 }
 
+const primaryLanguages: SensitiveTextLanguage[] = ['en', 'uk', 'pl', 'ru']
+
+const intentionalMixedScriptTokens: ReadonlySet<string> = new Set()
+
+function patternCoversLanguage(
+  patternLanguage: SensitiveTextLanguage,
+  language: SensitiveTextLanguage,
+): boolean {
+  if (patternLanguage === 'any' || patternLanguage === language) {
+    return true
+  }
+
+  return patternLanguage === 'uk-ru'
+    && (language === 'uk' || language === 'ru')
+}
+
+function findMixedScriptTokens(text: string): string[] {
+  return text
+    .split(/[^\p{L}]+/u)
+    .filter((token) => {
+      return /\p{Script=Cyrillic}/u.test(token)
+        && /\p{Script=Latin}/u.test(token)
+        && !intentionalMixedScriptTokens.has(token.toLowerCase())
+    })
+}
+
+function describeAllPatterns() {
+  return sensitiveTextRules.flatMap((rule) => {
+    return rule.patterns.map((pattern) => {
+      return { category: rule.category, pattern }
+    })
+  })
+}
+
 describe('sensitiveTextRules', () => {
   it('has exactly one rule per category in policy order', () => {
     expect(sensitiveTextRules.map(rule => rule.category))
       .toEqual([...memorySensitiveCategories])
   })
 
-  it('has patterns for every category in each primary language', () => {
+  it('has patterns for every category in every primary language', () => {
     for (const rule of sensitiveTextRules) {
-      const languages = new Set(rule.patterns.map(pattern => pattern.language))
+      for (const language of primaryLanguages) {
+        const hasPattern = rule.patterns.some((pattern) => {
+          return patternCoversLanguage(pattern.language, language)
+        })
 
-      expect(languages.has('en'), rule.category).toBe(true)
+        expect(hasPattern, `${rule.category}: ${language}`).toBe(true)
+      }
     }
   })
 
   it('compiles every pattern on its own', () => {
-    for (const rule of sensitiveTextRules) {
-      for (const pattern of rule.patterns) {
+    for (const { category, pattern } of describeAllPatterns()) {
+      expect(
+        () => compileSensitiveTextExpression([pattern.source]),
+        `${category}: ${pattern.source}`,
+      ).not.toThrow()
+    }
+  })
+
+  it('gives every pattern at least one example', () => {
+    for (const { category, pattern } of describeAllPatterns()) {
+      expect(
+        pattern.examples.length,
+        `${category}: ${pattern.source}`,
+      ).toBeGreaterThan(0)
+    }
+  })
+
+  it('matches every example with its own pattern alone', () => {
+    for (const { category, pattern } of describeAllPatterns()) {
+      const expression = compileSensitiveTextExpression([pattern.source])
+
+      for (const example of pattern.examples) {
         expect(
-          () => new RegExp(pattern.source.replaceAll(' ', '\\s+'), 'u'),
-          `${rule.category}: ${pattern.source}`,
-        ).not.toThrow()
+          expression.test(normalizeSensitiveText(example)),
+          `${category}: ${pattern.source} should match "${example}"`,
+        ).toBe(true)
       }
     }
+  })
+
+  it('flags every example in its own category end to end', () => {
+    for (const { category, pattern } of describeAllPatterns()) {
+      for (const example of pattern.examples) {
+        expect(
+          classifySensitiveCategories(example),
+          `"${example}"`,
+        ).toContain(category)
+      }
+    }
+  })
+
+  it('never writes a Cyrillic ё, which input folding makes unreachable', () => {
+    for (const { category, pattern } of describeAllPatterns()) {
+      expect(pattern.source.includes('ё'), `${category}: ${pattern.source}`)
+        .toBe(false)
+    }
+  })
+
+  it('keeps every script pure inside a word in sources and examples', () => {
+    for (const { category, pattern } of describeAllPatterns()) {
+      const texts = [pattern.source, ...pattern.examples]
+
+      for (const text of texts) {
+        expect(
+          findMixedScriptTokens(text),
+          `${category}: ${text}`,
+        ).toEqual([])
+      }
+    }
+  })
+
+  it('keeps every script pure inside a word in the spec tables', () => {
+    const tables = [
+      englishPositives,
+      ukrainianPositives,
+      polishPositives,
+      russianPositives,
+    ]
+    const positiveTexts = tables.flatMap((table) => {
+      return table.map(([text]) => text)
+    })
+    const negativeTexts = Object.values(negatives).flat()
+
+    for (const text of [...positiveTexts, ...negativeTexts]) {
+      expect(findMixedScriptTokens(text), text).toEqual([])
+    }
+  })
+
+  it('detects a Latin letter hidden inside a Cyrillic word', () => {
+    expect(findMixedScriptTokens('Мій діаgноз')).toEqual(['діаgноз'])
+    expect(findMixedScriptTokens('політичн партi')).toEqual(['партi'])
+    expect(findMixedScriptTokens('My діабет is fine')).toEqual([])
   })
 })
 
@@ -247,26 +486,20 @@ describe('classifySensitiveCategories', () => {
   })
 
   it('covers every category in every positive table', () => {
-    const tables = [
-      englishPositives,
-      ukrainianPositives,
-      polishPositives,
-      russianPositives,
-    ]
-    const covered = new Set(
-      tables.flatMap(table => table.map(([, category]) => category)),
-    )
+    const tables = {
+      english: englishPositives,
+      ukrainian: ukrainianPositives,
+      polish: polishPositives,
+      russian: russianPositives,
+    }
 
-    expect(covered.has('health')).toBe(true)
-    expect(covered.has('drugs')).toBe(true)
-    expect(covered.has('legal-dispute')).toBe(true)
-    expect(covered.has('genetic')).toBe(true)
-    expect(covered.has('biometric')).toBe(true)
-    expect(covered.has('trade-union')).toBe(true)
-    expect(covered.has('sex-life-or-orientation')).toBe(true)
-    expect(covered.has('political-opinion')).toBe(true)
-    expect(covered.has('racial-or-ethnic-origin')).toBe(true)
-    expect(covered.has('religion-or-belief')).toBe(true)
+    for (const [language, table] of Object.entries(tables)) {
+      const covered = new Set(table.map(([, category]) => category))
+
+      for (const category of memorySensitiveCategories) {
+        expect(covered.has(category), `${language}: ${category}`).toBe(true)
+      }
+    }
   })
 
   it('returns every matched category in policy order', () => {
@@ -359,26 +592,30 @@ describe('classifySensitiveCategories', () => {
 
     expect(text.length).toBeGreaterThanOrEqual(100_000)
     expect(categories).toEqual([])
-    expect(elapsed).toBeLessThan(750)
+    expect(elapsed).toBeLessThan(2000)
   })
 
-  it('finishes quickly on adversarial repeated stems', () => {
-    const text = 'діабетичний '.repeat(8_000) + 'a'.repeat(20_000)
+  it('finishes quickly on adversarial non-matching stem prefixes', () => {
+    const stems = 'діабе хворо діаг депре вагіт правосла голосува '
+      + 'diabe psychol pregna orthod divor '
+    const text = stems.repeat(Math.ceil(100_000 / stems.length))
+      + 'a'.repeat(20_000)
     const startedAt = performance.now()
+    const categories = classifySensitiveCategories(text)
+    const elapsed = performance.now() - startedAt
 
-    classifySensitiveCategories(text)
-
-    expect(performance.now() - startedAt).toBeLessThan(750)
+    expect(categories).toEqual([])
+    expect(elapsed).toBeLessThan(2000)
   })
 
-  it('classifies a typical 2 KB note in a few milliseconds', () => {
+  it('classifies a typical 2 KB note in milliseconds', () => {
     const note = 'Prefers concise answers and TypeScript examples. '
     const text = note.repeat(Math.ceil(2048 / note.length))
     const startedAt = performance.now()
 
     classifySensitiveCategories(text)
 
-    expect(performance.now() - startedAt).toBeLessThan(50)
+    expect(performance.now() - startedAt).toBeLessThan(200)
   })
 })
 

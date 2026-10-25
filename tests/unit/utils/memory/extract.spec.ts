@@ -86,8 +86,6 @@ function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
     title: 'Rust hobby',
     description: 'Writes Rust on weekends',
     body: 'The user writes Rust on weekends.',
-    sensitivity: null,
-    sensitiveCategory: null,
     neverStore: null,
     evidence: 'I write Rust on weekends',
     ...overrides,
@@ -493,10 +491,7 @@ describe('extractChatMemory', () => {
         return {
           object: {
             ops: [
-              createOp({
-                sensitivity: 'special',
-                sensitiveCategory: 'health',
-              }),
+              createOp({ body: 'The user has type 2 diabetes.' }),
             ],
           },
           usage: {},

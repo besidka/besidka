@@ -147,3 +147,34 @@ export const MEMORY_SETTING_DEFAULTS = {
 export const REDACTION_PLACEHOLDER = '[redacted]'
 
 export const MEMORY_ENTRY_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/**
+ * Direct provider ids (`openai`, `anthropic`, `google`, `xai`, `deepseek`,
+ * `moonshotai`, `qwen`) the owner has vetted to receive special-category
+ * (GDPR Art. 9) memory entries. Deliberately empty: the owner adds a
+ * provider only after checking EU adequacy or EU-US Data Privacy Framework
+ * certification on dataprivacyframework.gov. A gateway send is never
+ * allowlisted because there is no provider pinning yet, so gateway sends
+ * always withhold sensitive memory.
+ */
+export const SENSITIVE_MEMORY_PROVIDER_ALLOWLIST: readonly string[] = []
+
+/**
+ * Whether special-category memory may be sent to the provider of the current
+ * send. False for any gateway send and for a missing or non-allowlisted
+ * direct provider id.
+ */
+export function isSensitiveMemoryProviderAllowed(
+  input: { providerId: string | null, gatewayId: string | null | undefined },
+  allowlist: readonly string[] = SENSITIVE_MEMORY_PROVIDER_ALLOWLIST,
+): boolean {
+  if (input.gatewayId) {
+    return false
+  }
+
+  if (input.providerId === null) {
+    return false
+  }
+
+  return allowlist.includes(input.providerId)
+}

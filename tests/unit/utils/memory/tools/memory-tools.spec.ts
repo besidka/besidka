@@ -155,8 +155,11 @@ describe('memory tools', () => {
       expect(description).toContain('ONLY when the user\'s current message')
       expect(description).toContain('web page')
       expect(description).toContain('instructions for yourself')
-      expect(description).toContain('sensitivity "special"')
-      expect(description).toContain('The server also classifies')
+      expect(description).toContain('The server classifies sensitive text')
+      expect(description).toContain('must not try to label it')
+      expect(description).toContain('Notes about other people')
+      expect(description).not.toContain('sensitivity')
+      expect(description).not.toContain('sensitiveCategory')
       expect(description.toLowerCase()).toContain('at most 3 calls')
     })
   })
@@ -977,31 +980,39 @@ describe('memory tools', () => {
       expect(loggerSet).toHaveBeenCalled()
     })
 
-    it('turns a sensitive write with the opt-in off into a 422 tool error',
-      async () => {
-        await expect(
-          build().tools.memory_write!.execute(
-            writeInput({
-              sensitivity: 'special',
-              sensitiveCategory: 'health',
-            }),
-            toolOptions,
-          ),
-        ).rejects.toMatchObject({
-          status: 422,
-          message: expect.stringContaining('Sensitive memory is turned off'),
-        })
-        expect(testDb.countEntries()).toBe(0)
-      })
+    it('does not let the model label sensitive attributes', () => {
+      const { tools } = build()
+      const inputSchema = (tools.memory_write as any).inputSchema as {
+        shape: Record<string, unknown>
+        parse: (value: unknown) => Record<string, unknown>
+      }
 
-    it('refuses health text labelled none while the opt-in is off and '
+      expect(Object.keys(inputSchema.shape).sort()).toEqual([
+        'body',
+        'category',
+        'description',
+        'id',
+        'scope',
+        'title',
+        'userRequestQuote',
+      ])
+      expect(inputSchema.parse(writeInput({
+        sensitivity: 'none',
+        sensitiveCategory: null,
+      }))).not.toHaveProperty('sensitivity')
+      expect(inputSchema.parse(writeInput({
+        sensitivity: 'none',
+        sensitiveCategory: null,
+      }))).not.toHaveProperty('sensitiveCategory')
+    })
+
+    it('refuses health text while the opt-in is off and '
       + 'stores nothing', async () => {
       const failure = await build().tools.memory_write!.execute(
         writeInput({
           title: 'Health',
           description: 'Diet constraints',
           body: 'I have type 2 diabetes.',
-          sensitivity: 'none',
         }),
         toolOptions,
       ).catch((exception: Error) => exception)
@@ -1015,7 +1026,7 @@ describe('memory tools', () => {
       expect(testDb.countEntries()).toBe(0)
     })
 
-    it('stores health text labelled none as special with a server-set '
+    it('stores health text as special with a server-set '
       + 'category when the opt-in is on', async () => {
       testDb.insertUserSettings({
         userId: OWNER,
@@ -1028,7 +1039,6 @@ describe('memory tools', () => {
           title: 'Health',
           description: 'Diet constraints',
           body: 'I have type 2 diabetes.',
-          sensitivity: 'none',
         }),
         toolOptions,
       )
@@ -1049,7 +1059,6 @@ describe('memory tools', () => {
             writeInput({
               id: 'topics/cooking',
               body: 'I have type 2 diabetes.',
-              sensitivity: 'none',
             }),
             toolOptions,
           ),
@@ -1060,25 +1069,53 @@ describe('memory tools', () => {
         })
       })
 
-    it('stores a sensitive entry when the opt-in is on', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryIncludeSensitive: true,
+    it('refuses health text in a people note with the opt-in on and off',
+      async () => {
+        for (const includeSensitive of [false, true]) {
+          testDb.insertUserSettings({
+            userId: OWNER,
+            memoryIncludeSensitive: includeSensitive,
+          })
+
+          const failure = await build({ includeSensitive })
+            .tools.memory_write!.execute(
+            writeInput({
+              category: 'people',
+              title: 'Anna',
+              description: 'Sister',
+              body: 'Anna has type 2 diabetes.',
+            }),
+            toolOptions,
+          ).catch((exception: Error) => exception)
+
+          expect(failure).toMatchObject({
+            status: 422,
+            message: expect.stringContaining(
+              'Sensitive data about another person cannot be stored',
+            ),
+          })
+          expect((failure as Error).message).toContain('(health)')
+          expect((failure as Error).message).not.toContain('diabetes')
+          expect(testDb.countEntries()).toBe(0)
+          testDb.sqlite.prepare('delete from user_settings').run()
+        }
       })
 
-      const output = await build({ includeSensitive: true })
-        .tools.memory_write!.execute(
+    it('stores clean text in a people note', async () => {
+      const output = await build().tools.memory_write!.execute(
         writeInput({
-          sensitivity: 'special',
-          sensitiveCategory: 'health',
+          category: 'people',
+          title: 'Anna',
+          description: 'Sister',
+          body: 'Anna: sister, lives in Lviv.',
         }),
         toolOptions,
       )
 
       expect(output.action).toBe('created')
-      expect(readRowBySlug('cooking')).toMatchObject({
-        sensitivity: 'special',
-        sensitive_category: 'health',
+      expect(readRowBySlug('anna')).toMatchObject({
+        category: 'people',
+        sensitivity: 'none',
       })
     })
 
@@ -1113,7 +1150,6 @@ describe('memory tools', () => {
         const output = await build().tools.memory_write!.execute(
           writeInput({
             title: 'Diagnosis',
-            sensitivity: 'none',
             userRequestQuote: DEFAULT_QUOTE,
           }),
           toolOptions,
@@ -1142,7 +1178,7 @@ describe('memory tools', () => {
 
         await expect(
           build().tools.memory_write!.execute(
-            writeInput({ category: 'profile', sensitivity: 'none' }),
+            writeInput({ category: 'profile' }),
             toolOptions,
           ),
         ).rejects.toMatchObject({ status: 409 })
@@ -1181,7 +1217,7 @@ describe('memory tools', () => {
       })
 
       const failure = await build().tools.memory_write!.execute(
-        writeInput({ category: 'profile', sensitivity: 'none' }),
+        writeInput({ category: 'profile' }),
         toolOptions,
       ).catch((exception: Error) => exception)
 

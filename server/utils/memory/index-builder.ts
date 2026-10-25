@@ -24,6 +24,7 @@ export interface MemoryIndexInput {
   accountEntries: MemoryEntry[]
   projectEntries: MemoryEntry[]
   includeSensitive: boolean
+  sensitiveProviderAllowed: boolean
   hasMemoryTools: boolean
   budgetTokens?: number
 }
@@ -33,6 +34,7 @@ export interface MemoryIndexResult {
   tokens: number
   budgetTokens: number
   entryCount: number
+  withheldSensitiveCount: number
   trimSteps: MemoryIndexTrimStep[]
   overBudget: boolean
 }
@@ -67,6 +69,9 @@ const HEADER_INTRO = 'Facts the user saved about themselves, provided as '
 const HEADER_TOOLS = 'Each entry line is "- handle | title — description". '
   + 'Call memory_read with a handle to get the full text of an entry, and '
   + 'memory_list to list every entry with its body.'
+
+const HEADER_WITHHELD = 'Some sensitive memories are withheld because the '
+  + 'current provider is not approved for them; do not guess their content.'
 
 const SECTION_HEADINGS: Record<MemoryIndexScope, string> = {
   account: '## Account memory',
@@ -165,8 +170,8 @@ function compareEntries(first: MemoryEntry, second: MemoryEntry): number {
   return first.id < second.id ? -1 : 1
 }
 
-function isVisible(entry: MemoryEntry, includeSensitive: boolean): boolean {
-  return includeSensitive || entry.sensitivity !== 'special'
+function isSpecial(entry: MemoryEntry): boolean {
+  return entry.sensitivity === 'special'
 }
 
 function isInjectedWithBody(entry: MemoryEntry, state: RenderState): boolean {
@@ -240,13 +245,21 @@ function renderIndex(
   accountEntries: MemoryEntry[],
   projectEntries: MemoryEntry[],
   hasMemoryTools: boolean,
+  hasWithheldSensitive: boolean,
   state: RenderState,
 ): string {
-  const header = hasMemoryTools
-    ? `${HEADER_INTRO}\n${HEADER_TOOLS}`
-    : HEADER_INTRO
+  const headerLines = [HEADER_INTRO]
+
+  if (hasMemoryTools) {
+    headerLines.push(HEADER_TOOLS)
+  }
+
+  if (hasWithheldSensitive) {
+    headerLines.push(HEADER_WITHHELD)
+  }
+
   const blocks = [
-    header,
+    headerLines.join('\n'),
     renderSection('account', accountEntries, state),
     renderSection('project', projectEntries, state),
   ].filter((block): block is string => block !== null)
@@ -272,11 +285,20 @@ function renderIndex(
  */
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const budgetTokens = input.budgetTokens ?? MEMORY_LIMITS.indexTokenBudget
+  const showSensitive = input.includeSensitive
+    && input.sensitiveProviderAllowed
+  const isVisible = (entry: MemoryEntry) => showSensitive || !isSpecial(entry)
+  const withheldSensitiveCount = input.includeSensitive && !showSensitive
+    ? [...input.accountEntries, ...input.projectEntries]
+      .filter(isSpecial)
+      .length
+    : 0
+  const hasWithheldSensitive = withheldSensitiveCount > 0
   const accountEntries = input.accountEntries
-    .filter(entry => isVisible(entry, input.includeSensitive))
+    .filter(isVisible)
     .sort(compareEntries)
   const projectEntries = input.projectEntries
-    .filter(entry => isVisible(entry, input.includeSensitive))
+    .filter(isVisible)
     .sort(compareEntries)
   const entryCount = accountEntries.length + projectEntries.length
 
@@ -286,6 +308,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
       tokens: 0,
       budgetTokens,
       entryCount: 0,
+      withheldSensitiveCount,
       trimSteps: [],
       overBudget: false,
     }
@@ -296,6 +319,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     accountEntries,
     projectEntries,
     input.hasMemoryTools,
+    hasWithheldSensitive,
     state,
   )
   let tokens = estimateMemoryTokens(text)
@@ -311,6 +335,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
       accountEntries,
       projectEntries,
       input.hasMemoryTools,
+      hasWithheldSensitive,
       nextState,
     )
 
@@ -329,6 +354,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     tokens,
     budgetTokens,
     entryCount,
+    withheldSensitiveCount,
     trimSteps,
     overBudget: tokens > budgetTokens,
   }
@@ -340,6 +366,7 @@ export async function loadMemoryIndex(input: {
   projectId: string | null
   useAccountMemory: boolean | null
   includeSensitive: boolean
+  sensitiveProviderAllowed: boolean
   hasMemoryTools: boolean
   budgetTokens?: number
 }): Promise<MemoryIndexResult> {
@@ -360,6 +387,7 @@ export async function loadMemoryIndex(input: {
     accountEntries: accountRows.map(toMemoryEntryWire),
     projectEntries: projectRows.map(toMemoryEntryWire),
     includeSensitive: input.includeSensitive,
+    sensitiveProviderAllowed: input.sensitiveProviderAllowed,
     hasMemoryTools: input.hasMemoryTools,
     budgetTokens: input.budgetTokens,
   })

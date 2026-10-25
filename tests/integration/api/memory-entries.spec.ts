@@ -468,6 +468,72 @@ describe('memory entries API', () => {
       })
     })
 
+    describe('third-party special-category data', () => {
+      const peopleBody = {
+        category: 'people',
+        title: 'Anna',
+        description: 'Sister',
+        body: 'Anna has type 2 diabetes.',
+      }
+
+      it('returns 422 for a people entry with health text, opt-in on '
+        + 'or off', async () => {
+        for (const memoryIncludeSensitive of [false, true]) {
+          testDb.sqlite.prepare('delete from user_settings').run()
+          testDb.insertUserSettings({
+            userId: OWNER,
+            memoryIncludeSensitive,
+          })
+
+          const handler = await handlers.create()
+          const exception = await handler(bodyEvent(peopleBody))
+            .catch((caught: unknown) => {
+              return caught as { status: number, message: string, why: string }
+            })
+
+          expect(exception).toMatchObject({
+            status: 422,
+            message: 'Sensitive data about another person cannot be stored',
+          })
+          expect(exception.why).toContain('(health)')
+          expect(exception.why).not.toContain('diabetes')
+          expect(testDb.countEntries(OWNER)).toBe(0)
+        }
+      })
+
+      it('stores the same text in a topics entry as special when opted in',
+        async () => {
+          testDb.insertUserSettings({
+            userId: OWNER,
+            memoryIncludeSensitive: true,
+          })
+
+          const handler = await handlers.create()
+          const response = await handler(bodyEvent({
+            ...peopleBody,
+            category: 'topics',
+          }))
+
+          expect(response.entry).toMatchObject({
+            sensitivity: 'special',
+            sensitiveCategory: 'health',
+          })
+        })
+
+      it('stores a people entry with clean text', async () => {
+        const handler = await handlers.create()
+        const response = await handler(bodyEvent({
+          ...peopleBody,
+          body: 'Anna: sister, lives in Lviv.',
+        }))
+
+        expect(response.entry).toMatchObject({
+          category: 'people',
+          sensitivity: 'none',
+        })
+      })
+    })
+
     it('returns 409 over the cap and for duplicate singletons', async () => {
       const handler = await handlers.create()
 
@@ -677,6 +743,66 @@ describe('memory entries API', () => {
         sensitivity: 'special',
         sensitiveCategory: 'health',
       })
+    })
+  })
+
+  describe('PATCH third-party special-category data', () => {
+    it('returns 422 for a patch that adds health text to a people entry',
+      async () => {
+        testDb.insertUserSettings({
+          userId: OWNER,
+          memoryIncludeSensitive: true,
+        })
+
+        const handler = await handlers.patch()
+
+        testDb.insertEntry({
+          id: 5,
+          userId: OWNER,
+          category: 'people',
+          slug: 'anna',
+        })
+
+        await expect(handler(paramsEvent(encodePublicId(5), {
+          body: 'Anna has type 2 diabetes.',
+        }))).rejects.toMatchObject({
+          status: 422,
+          message: 'Sensitive data about another person cannot be stored',
+        })
+      })
+
+    it('returns 422 when the category moves a special entry into people',
+      async () => {
+        testDb.insertUserSettings({
+          userId: OWNER,
+          memoryIncludeSensitive: true,
+        })
+
+        const handler = await handlers.patch()
+
+        testDb.insertEntry({
+          id: 5,
+          userId: OWNER,
+          slug: 'mine',
+          sensitivity: 'special',
+          sensitiveCategory: 'health',
+        })
+
+        await expect(handler(paramsEvent(encodePublicId(5), {
+          category: 'people',
+        }))).rejects.toMatchObject({ status: 422 })
+      })
+
+    it('moves a clean-text entry into people', async () => {
+      const handler = await handlers.patch()
+
+      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
+
+      const response = await handler(paramsEvent(encodePublicId(5), {
+        category: 'people',
+      }))
+
+      expect(response.entry).toMatchObject({ category: 'people' })
     })
   })
 

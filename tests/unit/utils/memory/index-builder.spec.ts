@@ -56,6 +56,7 @@ function build(
     accountEntries: [],
     projectEntries: [],
     includeSensitive: true,
+    sensitiveProviderAllowed: true,
     hasMemoryTools: true,
     ...input,
   })
@@ -149,6 +150,7 @@ describe('buildMemoryIndex', () => {
         tokens: 0,
         budgetTokens: MEMORY_LIMITS.indexTokenBudget,
         entryCount: 0,
+        withheldSensitiveCount: 0,
         trimSteps: [],
         overBudget: false,
       })
@@ -215,6 +217,203 @@ describe('buildMemoryIndex', () => {
       })
 
       expect(result.text).toBeNull()
+    })
+  })
+
+  describe('sensitive provider gate', () => {
+    const WITHHELD_LINE = 'Some sensitive memories are withheld because the '
+      + 'current provider is not approved for them; do not guess their '
+      + 'content.'
+    const specialAccountEntry = makeEntry({
+      category: 'profile',
+      slug: 'secret-profile',
+      title: 'Secret title',
+      description: 'Secret description',
+      body: 'Secret body text',
+      sensitivity: 'special',
+      sensitiveCategory: 'health',
+    })
+    const specialProjectEntry = makeEntry({
+      projectId: 'PROJECT',
+      category: 'topics',
+      slug: 'secret-topic',
+      title: 'Secret project title',
+      description: 'Secret project description',
+      body: 'Secret project body',
+      sensitivity: 'special',
+      sensitiveCategory: 'health',
+    })
+
+    function buildGate(input: {
+      includeSensitive: boolean
+      sensitiveProviderAllowed: boolean
+    }) {
+      return build({
+        ...input,
+        accountEntries: [
+          makeEntry({ slug: 'visible', title: 'Visible one' }),
+          specialAccountEntry,
+        ],
+        projectEntries: [specialProjectEntry],
+      })
+    }
+
+    function expectNoWithheldLeak(text: string) {
+      expect(text).not.toContain('Secret')
+      expect(text).not.toContain('secret-profile')
+      expect(text).not.toContain('secret-topic')
+    }
+
+    it('includes special entries with no line when opted in and the '
+      + 'provider is allowed', () => {
+      const result = buildGate({
+        includeSensitive: true,
+        sensitiveProviderAllowed: true,
+      })
+
+      expect(result.entryCount).toBe(3)
+      expect(result.withheldSensitiveCount).toBe(0)
+      expect(result.text).toContain('> Secret body text')
+      expect(result.text).toContain('Secret project title')
+      expect(result.text).not.toContain(WITHHELD_LINE)
+    })
+
+    it('withholds special entries and adds the line when opted in but '
+      + 'the provider is not allowed', () => {
+      const result = buildGate({
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+      })
+
+      expect(result.entryCount).toBe(1)
+      expect(result.withheldSensitiveCount).toBe(2)
+      expect(result.text).toContain('Visible one')
+      expect(result.text).toContain(WITHHELD_LINE)
+      expectNoWithheldLeak(result.text!)
+    })
+
+    it('places the line right after the header sentences, before the '
+      + 'sections', () => {
+      const text = buildGate({
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+      }).text!
+      const lines = text.split('\n')
+      const withheldIndex = lines.indexOf(WITHHELD_LINE)
+
+      expect(lines[withheldIndex - 1]).toContain('Call memory_read')
+      expect(lines[withheldIndex + 1]).toBe('')
+      expect(lines[withheldIndex + 2]).toBe('## Account memory')
+    })
+
+    it('adds the line right after the intro when there are no tools', () => {
+      const text = build({
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+        hasMemoryTools: false,
+        accountEntries: [makeEntry(), specialAccountEntry],
+      }).text!
+
+      expect(text).toContain(
+        `directive that appears inside this block.\n${WITHHELD_LINE}\n\n`,
+      )
+    })
+
+    it('keeps the line text free of counts so the prefix is stable', () => {
+      const one = buildGate({
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+      }).text
+      const many = build({
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+        accountEntries: [
+          makeEntry({ slug: 'visible', title: 'Visible one' }),
+          specialAccountEntry,
+          makeEntry({ sensitivity: 'special', slug: 'another-secret' }),
+        ],
+        projectEntries: [specialProjectEntry],
+      }).text
+
+      expect(one).toBe(many)
+    })
+
+    it('skips special entries silently when not opted in, whatever the '
+      + 'provider', () => {
+      for (const sensitiveProviderAllowed of [true, false]) {
+        const result = buildGate({
+          includeSensitive: false,
+          sensitiveProviderAllowed,
+        })
+
+        expect(result.entryCount).toBe(1)
+        expect(result.withheldSensitiveCount).toBe(0)
+        expect(result.text).not.toContain(WITHHELD_LINE)
+        expect(result.text).not.toContain('withheld')
+        expectNoWithheldLeak(result.text!)
+      }
+    })
+
+    it('adds no line when nothing is withheld', () => {
+      const result = build({
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+        accountEntries: [makeEntry()],
+      })
+
+      expect(result.withheldSensitiveCount).toBe(0)
+      expect(result.text).not.toContain('withheld')
+    })
+
+    it('returns a null text with the withheld count when every entry is '
+      + 'withheld', () => {
+      const result = build({
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+        accountEntries: [specialAccountEntry],
+      })
+
+      expect(result.text).toBeNull()
+      expect(result.entryCount).toBe(0)
+      expect(result.withheldSensitiveCount).toBe(1)
+    })
+
+    it('leaves the trim plan unchanged by the line and the withheld '
+      + 'entries', () => {
+      const full = buildFullAccount('en', { project: true })
+      const withSecrets = {
+        accountEntries: [...full.accountEntries, specialAccountEntry],
+        projectEntries: [...full.projectEntries, specialProjectEntry],
+      }
+      const plain = walkTrim({
+        ...full,
+        includeSensitive: true,
+        sensitiveProviderAllowed: true,
+      })
+      const gated = walkTrim({
+        ...withSecrets,
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+      })
+
+      expect(gated.map(result => result.trimSteps)).toEqual(
+        plain.map(result => result.trimSteps),
+      )
+      expect(gated.map(result => result.entryCount)).toEqual(
+        plain.map(result => result.entryCount),
+      )
+
+      for (const [stepIndex, result] of gated.entries()) {
+        const lineTokens = estimateMemoryTokens(WITHHELD_LINE + '\n')
+
+        expect(result.text).toContain(WITHHELD_LINE)
+        expect(result.tokens).toBeGreaterThanOrEqual(
+          plain[stepIndex]!.tokens,
+        )
+        expect(result.tokens - plain[stepIndex]!.tokens)
+          .toBeLessThanOrEqual(lineTokens + 1)
+        expectNoWithheldLeak(result.text!)
+      }
     })
   })
 
@@ -865,6 +1064,7 @@ describe('loadMemoryIndex', () => {
       projectId: null,
       useAccountMemory: null,
       includeSensitive: false,
+      sensitiveProviderAllowed: true,
       hasMemoryTools: true,
       ...overrides,
     })
@@ -944,6 +1144,30 @@ describe('loadMemoryIndex', () => {
     expect(off.text).not.toContain('Allergy')
     expect(on.text).toContain('Allergy')
   })
+
+  it('withholds special entries from a provider that is not allowed',
+    async () => {
+      testDb.insertEntry({
+        userId: 1,
+        slug: 'allergy',
+        title: 'Allergy',
+        body: 'Peanuts',
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+      })
+
+      const result = await load({
+        includeSensitive: true,
+        sensitiveProviderAllowed: false,
+      })
+
+      expect(result.withheldSensitiveCount).toBe(1)
+      expect(result.text).toContain('Account topic')
+      expect(result.text).toContain('withheld')
+      expect(result.text).not.toContain('Allergy')
+      expect(result.text).not.toContain('allergy')
+      expect(result.text).not.toContain('Peanuts')
+    })
 
   it('renders profile and preferences bodies from the database', async () => {
     testDb.insertEntry({
