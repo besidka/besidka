@@ -22,7 +22,8 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │  │   └─ Upload artifacts (build output + .drizzle + metrics)     │
 │  │                                                               │
 │  └─ preview-deploy.yml (workflow_run, privileged)                │
-│      ├─ Download artifacts from build                            │
+│      ├─ Checkout default branch (tooling, wrangler.jsonc)        │
+│      ├─ Download artifacts into .output/ and .drizzle/ only      │
 │      ├─ Apply DB migrations from PR .drizzle artifact            │
 │      │   ├─ DB          (.drizzle/migrations)                    │
 │      │   └─ CONSENT_DB  (.drizzle/migrations-consent)            │
@@ -107,7 +108,7 @@ the copy on the default branch. See `docs/cloudflare-previews.md` →
 
 ### `preview-deploy.yml` - PR Deploy
 
-Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's context with access to secrets.
+Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's context with access to secrets, and never runs PR code or PR-selected tooling: it checks out the default branch, exactly like `preview-cleanup.yml`.
 
 1. Check the build run's `preview-build` artifact. If the run uploaded none
    (a skipped non-top stack layer), set the `Preview Deploy` status to
@@ -116,15 +117,35 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
    error asking for a Preview Build re-run and set the `Preview Deploy` status
    to `failure`. Then extract
    PR number and SHA from `workflow_run` event context (not from artifacts). When `pull_requests` is empty (GitHub clears it once the PR is closed or merged), look up the open PR whose own head is that SHA in the head repository (so stacked PRs whose history merely contains the commit are never matched); if none is open, emit a notice, set the pending `Preview Deploy` status to `success` with a "Skipped" description, and end the run successfully without deploying
-2. Download build and `.drizzle` artifacts from the same build run
-3. Apply preview D1 migrations from the downloaded `.drizzle` artifact
+2. Check whether the PR changes `wrangler.jsonc` (`config-drift` step, via
+   the compare API). If it does, emit a warning that the preview deploys with
+   the default branch's `wrangler.jsonc`. If the API call fails the step only
+   warns and records `unknown`; it never fails the job
+3. Check out the default branch (`persist-credentials: false`), then
+   `rm -rf .drizzle` so main's tracked migrations cannot mix with the PR's
+4. Download the `preview-build` artifact into `.output/` and the
+   `preview-drizzle` artifact into `.drizzle/` from the same build run
+5. Integrity check: before anything is installed, fail the job if
+   `git status --porcelain --ignored --untracked-files=all` reports any
+   change outside `.output/` and `.drizzle/` (an artifact trying to overwrite
+   tooling, `package.json` or the lockfile)
+6. Install `pnpm`, Node and dependencies from the default branch's
+   `package.json` and lockfile
+7. Apply preview D1 migrations from the PR's `.drizzle` artifact with plain
+   `pnpm exec wrangler d1 migrations apply ... --remote` (no
+   `cloudflare/wrangler-action`, so no third-party action holds the token)
    - `DB` from `.drizzle/migrations`
    - `CONSENT_DB` from `.drizzle/migrations-consent`
-4. Create or update the Cloudflare Preview named `pr-{number}` with
-   `wrangler preview --env production --name pr-{number} --json`; the
-   per-deployment URL and the stable PR URL are read from the JSON output
-   (falling back to the deterministic `pr-{number}-besidka` URL)
-5. Comment preview URLs and metrics on PR
+8. Create or update the Cloudflare Preview named `pr-{number}` with
+   `pnpm exec wrangler preview --env production --name pr-{number} --json`,
+   using the default branch's `wrangler.jsonc`; the per-deployment URL and the
+   stable PR URL are read from the JSON output (falling back to the
+   deterministic `pr-{number}-besidka` URL)
+9. Comment preview URLs and metrics on PR, including a `Wrangler config` row
+   that says `default branch`, or `default branch (this PR's wrangler.jsonc
+   changes are not deployed)` when the drift check found a change. The commit
+   status reads `Deployed to preview`, or `Deployed (default-branch
+   wrangler.jsonc)` in the same case
 
 ### `preview-cleanup.yml` - PR Preview Cleanup
 
@@ -289,19 +310,69 @@ Build and deploy are still split in two phases:
 is safe because it only checks out the default branch, never PR code, and the
 only thing it does with the PR is read its number.
 
+`preview-deploy.yml` follows the same rule. It never runs PR code or
+PR-selected tooling with the token: `pnpm`, `wrangler`, `wrangler.jsonc`,
+`package.json` and the lockfile all come from the default branch checkout. The
+only PR-controlled inputs are the two build artifacts, `preview-build`
+(extracted into `.output/`) and `preview-drizzle` (extracted into
+`.drizzle/`). They are deployed to the preview Worker and applied to the
+shared preview D1, never executed on the runner. Bot PRs must keep working
+(Dependabot included), and this layout keeps them working with no actor
+filter: Dependabot-actor runs do receive the Cloudflare secrets, so the
+protection is the default-branch tooling, not who opened the PR.
+
 ### Key Security Properties
 
 **PR metadata from event context, not artifacts**: The PR number and SHA are extracted from `github.event.workflow_run` properties. This prevents command injection via tampered artifact files (e.g., a malicious `pr_number.txt` containing shell commands).
 
 **Same-repository guard**: `preview-deploy.yml` runs only when `workflow_run.head_repository.full_name` equals the repository. `preview-build.yml`, `claude-code-review.yml` and `preview-cleanup.yml` apply the same check to `pull_request.head.repo.full_name`. There is no fork deploy path: the former `/deploy-preview` comment workflow ran Cloudflare secrets against fork code and was removed.
 
+**Default-branch tooling**: `preview-deploy.yml` checks out the default
+branch with `persist-credentials: false` and installs dependencies from its
+lockfile, so a compromised dependency in a PR (for example a Dependabot bump)
+never runs next to `CLOUDFLARE_API_TOKEN`. Migrations and deploy use the plain
+`pnpm exec wrangler` from that install; no third-party action ever holds the
+token. The job requests no `id-token: write` because nothing uses OIDC.
+
+**Artifact confinement and integrity check**: the build artifact is extracted
+only into `.output/` and the drizzle artifact only into `.drizzle/` (never the
+workspace root). Before `pnpm install`, a step fails the job if
+`git status --porcelain --ignored --untracked-files=all` shows any file
+outside those two directories differing from the default-branch checkout.
+
+**SHA-pinned third-party actions in secret-bearing workflows**: in workflows
+that reference `secrets.*` (`preview-deploy.yml`, `preview-cleanup.yml`,
+`production.yml`, `claude.yml`, `claude-code-review.yml`, `update.yml`), every
+non-`actions/` action is pinned to a full commit SHA. `.github/dependabot.yml`
+has the `github-actions` ecosystem, which updates SHA pins. A unit test
+(`tests/unit/workflows/preview-deploy.spec.ts`) enforces the rule and the
+`preview-deploy.yml` invariants above.
+
+**`production` environment**: the `build-production` and `deploy-preview` jobs
+in `production.yml` declare `environment: production`, so the owner can
+restrict which branches may run them (see "Secrets & Environments").
+
 **Migration source consistency**: `preview-build.yml` uploads `.drizzle` as an
-artifact (both `migrations/` and `migrations-consent/`), and
-`preview-deploy.yml` applies migrations for both `DB` and `CONSENT_DB` from
-that exact artifact before deploy. This keeps both preview DB schemas aligned
+artifact (both `migrations/` and `migrations-consent/`). `preview-deploy.yml`
+removes the default branch's tracked `.drizzle/` and extracts the artifact into
+`.drizzle/`, so the applied migration set is exactly the PR's artifact and not
+an overlay on main's files. It then applies migrations for both `DB` and
+`CONSENT_DB` from it before deploy, keeping both preview DB schemas aligned
 with the deployed PR build.
 
 **Artifact trust boundary**: only artifacts built from same-repository branches are ever deployed.
+
+### Accepted Residual Risk
+
+- PR artifacts still run on the preview Worker with the preview
+  secrets/bindings, and PR migrations hit the shared preview D1. Both are
+  bounded to preview resources because bindings and database ids come from
+  the default branch's `wrangler.jsonc`.
+- Trade-off: a PR that changes `wrangler.jsonc` previews with main's config
+  until it merges. The deploy warns, the PR comment shows a `Wrangler config`
+  row and the commit status says so. The `main` long-lived preview
+  (`production.yml` → `deploy-preview`) is where config changes are first
+  exercised.
 
 ### Decision Log
 
@@ -439,7 +510,38 @@ main (long-lived):
 | `LINEAR_API_KEY` | linear-docs-sync | Docs sync (Linear personal API key, write access to team BES) |
 | `github.token` | All workflows | Build + Deploy |
 
-Build-time workflows (`preview-build.yml`) require no secrets. Deploy-time workflows do not declare a GitHub `environment:`; they use Actions secrets (`CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` are inherited from the `besidka` organization, not set on the repository) and `github.token`. CI never handles runtime secret values for Previews; those are set out-of-band (see [`/docs/cloudflare-previews.md`](/docs/cloudflare-previews.md)).
+Build-time workflows (`preview-build.yml`) require no secrets. Only the `build-production` and `deploy-preview` jobs of `production.yml` declare a GitHub `environment:` (`production`); the other deploy-time workflows (`preview-deploy.yml`, `preview-cleanup.yml`) do not. They use Actions secrets (`CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` are inherited from the `besidka` organization, not set on the repository) and `github.token`. CI never handles runtime secret values for Previews; those are set out-of-band (see [`/docs/cloudflare-previews.md`](/docs/cloudflare-previews.md)).
+
+### The `production` environment
+
+`build-production` and `deploy-preview` in `production.yml` run with
+`environment: production`. The environment currently has no secrets of its own;
+`CLOUDFLARE_*` stay organization Actions secrets, and Dependabot-actor runs
+receive them
+(verified on run 39229739041), so the default-branch tooling in
+`preview-deploy.yml` is what protects them.
+
+Owner checklist (repository settings, not automatable from the repo):
+
+1. Settings > Environments > production: set Deployment branches to `main`
+   only. This blocks `workflow_dispatch` of `production.yml` from any other
+   branch. Do not add required reviewers: they would gate every merge.
+2. Moving `CLOUDFLARE_*` into environment-scoped secrets is NOT done yet,
+   because `preview-deploy.yml` and `preview-cleanup.yml` also need the token.
+   That would be a separate change (a separate preview-scoped token, or an
+   environment for those two workflows).
+
+### Verifying on the next PR
+
+`preview-deploy.yml` is a `workflow_run` workflow, so it always runs the
+default branch's copy: the PR that introduces this layout still deploys with
+the old flow, and the change first takes effect on the first PR preview after
+it merges. On that run check that:
+
+- the "Checkout default branch" log shows `main`
+- "Verify artifacts stayed inside .output and .drizzle" passes
+- the preview comment lands with the `Wrangler config` row
+- the next Dependabot PR still gets a preview
 
 No repository variables are required. The Wrangler CLI version is pinned as a `devDependency` in `pnpm-lock.yaml` and installed via `pnpm install --frozen-lockfile`; deploy steps use that pinned binary directly, so no `wranglerVersion` input or `WRANGLER_VERSION` variable is needed.
 

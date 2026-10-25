@@ -34,6 +34,7 @@ jobs:
     name: Build and Deploy to Production
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    environment: production
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
       bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
@@ -57,7 +58,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
         with:
           run_install: false
 
@@ -241,7 +242,7 @@ jobs:
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Apply migrations to production database
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -251,7 +252,7 @@ jobs:
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env production
 
       - name: Apply consent migrations to production database
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -262,7 +263,7 @@ jobs:
 
       - name: Deploy app to Cloudflare Workers via Wrangler
         id: deploy
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -374,6 +375,7 @@ jobs:
     needs: build-production
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment: production
     permissions:
       contents: read
 
@@ -388,7 +390,7 @@ jobs:
           path: .output/
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
         with:
           run_install: false
 
@@ -402,7 +404,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply migrations to preview database
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -412,7 +414,7 @@ jobs:
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
       - name: Apply consent migrations to preview database
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
