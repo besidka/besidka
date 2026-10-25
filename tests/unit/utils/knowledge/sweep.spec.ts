@@ -660,4 +660,219 @@ describe('sweepProjectKnowledge', () => {
       expect(fake.deleteKeys).not.toHaveBeenCalled()
     })
   })
+
+  describe('listing cursor kept in KV', () => {
+    const CURSOR_KEY = 'knowledge-sweep-cursor'
+
+    function createFakeKv() {
+      const values = new Map<string, string>()
+
+      return {
+        values,
+        get: vi.fn(async (key: string) => {
+          return values.get(key) ?? null
+        }),
+        put: vi.fn(async (key: string, value: string) => {
+          values.set(key, value)
+        }),
+        delete: vi.fn(async (key: string) => {
+          values.delete(key)
+        }),
+      }
+    }
+
+    function orphanKeys(count: number): Record<string, Date> {
+      const keys: Record<string, Date> = {}
+
+      for (let itemId = 1; itemId <= count; itemId++) {
+        keys[knowledgeItemTextKey(OWNER, 99, itemId)] = OLD
+      }
+
+      return keys
+    }
+
+    function slowList(fake: ReturnType<typeof createFakeBucket>) {
+      fake.list.mockImplementation(async (options) => {
+        vi.advanceTimersByTime(600)
+
+        const matching = fake.keys().filter((key) => {
+          return !options.cursor || key > options.cursor
+        })
+        const page = matching.slice(0, options.limit)
+        const truncated = matching.length > page.length
+
+        return {
+          objects: page.map((key) => {
+            return { key, uploaded: OLD }
+          }),
+          truncated,
+          cursor: truncated ? page[page.length - 1] : undefined,
+        }
+      })
+    }
+
+    let kv: ReturnType<typeof createFakeKv>
+
+    beforeEach(() => {
+      kv = createFakeKv()
+      vi.stubGlobal('useKV', () => kv)
+    })
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('keeps the cursor for 6 hours when a run stops at its runtime limit', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(NOW)
+
+      const fake = createFakeBucket(orphanKeys(20))
+
+      slowList(fake)
+
+      const result = await sweep(fake, { batchSize: 5, maxRuntimeMs: 1000 })
+
+      expect(result.hasMore).toBe(true)
+      expect(kv.put).toHaveBeenCalledTimes(1)
+      expect(kv.put).toHaveBeenCalledWith(
+        CURSOR_KEY,
+        expect.any(String),
+        { expirationTtl: 6 * 60 * 60 },
+      )
+      expect(kv.values.get(CURSOR_KEY)).toMatch(
+        /^knowledge\/u1\/p99\/items\/\d+\.md$/,
+      )
+    })
+
+    it('resumes from the stored cursor and clears it when the listing finishes', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(NOW)
+
+      const fake = createFakeBucket(orphanKeys(20))
+
+      slowList(fake)
+      await sweep(fake, { batchSize: 5, maxRuntimeMs: 1000 })
+
+      const storedCursor = kv.values.get(CURSOR_KEY)
+
+      fake.list.mockClear()
+
+      const result = await sweep(fake, { batchSize: 5, maxRuntimeMs: 1000 })
+
+      expect(storedCursor).toBeDefined()
+      expect(fake.list.mock.calls[0]![0].cursor).toBe(storedCursor)
+      expect(result.pagesScanned).toBeGreaterThanOrEqual(1)
+    })
+
+    it('eventually covers a bucket larger than one run budget', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(NOW)
+
+      const fake = createFakeBucket(orphanKeys(30))
+      let runs = 0
+
+      slowList(fake)
+
+      while (fake.keys().length > 0 && runs < 10) {
+        await sweep(fake, { batchSize: 5, maxRuntimeMs: 1000 })
+        runs++
+      }
+
+      expect(fake.keys()).toEqual([])
+      expect(runs).toBeGreaterThan(1)
+
+      await sweep(fake, { batchSize: 5, maxRuntimeMs: 1000 })
+
+      expect(kv.values.has(CURSOR_KEY)).toBe(false)
+    })
+
+    it('clears the cursor when a listing finishes within the budget', async () => {
+      kv.values.set(CURSOR_KEY, 'stale')
+
+      const fake = createFakeBucket()
+
+      await sweep(fake)
+
+      expect(kv.put).not.toHaveBeenCalled()
+      expect(kv.delete).toHaveBeenCalledWith(CURSOR_KEY)
+      expect(kv.values.has(CURSOR_KEY)).toBe(false)
+    })
+
+    it('starts from the beginning when no cursor is stored', async () => {
+      const fake = createFakeBucket()
+
+      await sweep(fake)
+
+      expect(fake.list.mock.calls[0]![0].cursor).toBeUndefined()
+    })
+
+    it('starts from the beginning and logs when KV cannot be read', async () => {
+      kv.get.mockRejectedValueOnce(new Error('KV down'))
+
+      const fake = createFakeBucket()
+      const logger = { set: vi.fn() }
+      const result = await sweep(fake, { logger })
+
+      expect(fake.list.mock.calls[0]![0].cursor).toBeUndefined()
+      expect(result.hasMore).toBe(false)
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          knowledgeSweepCursor: { operation: 'read', error: 'KV down' },
+        },
+      })
+    })
+
+    it('still finishes the run when the cursor cannot be written', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(NOW)
+      kv.put.mockRejectedValue(new Error('KV down'))
+
+      const fake = createFakeBucket(orphanKeys(20))
+      const logger = { set: vi.fn() }
+
+      slowList(fake)
+
+      const result = await sweep(fake, {
+        batchSize: 5,
+        maxRuntimeMs: 1000,
+        logger,
+      })
+
+      expect(result.hasMore).toBe(true)
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          knowledgeSweepCursor: { operation: 'write', error: 'KV down' },
+        },
+      })
+    })
+
+    it('resets the cursor after a failed delete so the next run starts over', async () => {
+      const fake = createFakeBucket(orphanKeys(4))
+
+      fake.deleteKeys.mockRejectedValueOnce(new Error('R2 unavailable'))
+
+      const result = await sweep(fake)
+
+      expect(result.hasMore).toBe(true)
+      expect(kv.put).not.toHaveBeenCalled()
+      expect(kv.delete).toHaveBeenCalledWith(CURSOR_KEY)
+    })
+
+    it('does not keep a cursor when R2 truncates without one', async () => {
+      const fake = createFakeBucket()
+
+      kv.values.set(CURSOR_KEY, 'stale')
+      fake.list.mockResolvedValueOnce({
+        objects: [],
+        truncated: true,
+        cursor: undefined,
+      })
+
+      const result = await sweep(fake)
+
+      expect(result.hasMore).toBe(true)
+      expect(kv.put).not.toHaveBeenCalled()
+      expect(kv.values.has(CURSOR_KEY)).toBe(false)
+    })
+  })
 })

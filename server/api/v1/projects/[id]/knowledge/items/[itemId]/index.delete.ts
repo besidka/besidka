@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
 
   assertNotCrossSiteRequest(event)
 
-  const access = await resolveKnowledgeItem(event)
+  const access = await resolveKnowledgeItem(event, { isMutation: true })
   const { userId, projectId, projectPublicId, itemId, item } = access
 
   logger.set({

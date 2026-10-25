@@ -1,8 +1,12 @@
 import { createError } from 'evlog'
-import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { defineEventHandler } from 'nuxt/server'
 import {
   knowledgeItemPatchSchema,
 } from '#shared/utils/project-knowledge-schemas'
+import {
+  KNOWLEDGE_BODY_LIMITS,
+  readCappedJsonBody,
+} from '~~/server/utils/knowledge/body'
 import { resolveKnowledgeItem } from '~~/server/utils/knowledge/access'
 import {
   updateKnowledgeItemMetadata,
@@ -14,10 +18,11 @@ export default defineEventHandler(async (event) => {
 
   assertNotCrossSiteRequest(event)
 
-  const access = await resolveKnowledgeItem(event)
-  const body = await readValidatedBody(
+  const access = await resolveKnowledgeItem(event, { isMutation: true })
+  const body = await readCappedJsonBody(
     event,
-    knowledgeItemPatchSchema.safeParse,
+    knowledgeItemPatchSchema,
+    KNOWLEDGE_BODY_LIMITS.small,
   )
 
   if (body.error) {

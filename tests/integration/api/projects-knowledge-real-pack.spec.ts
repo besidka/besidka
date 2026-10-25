@@ -25,6 +25,7 @@ vi.mock('evlog', () => ({
     return exception
   },
   useLogger: () => ({ set: vi.fn() }),
+  createRequestLogger: () => ({ set: vi.fn(), emit: vi.fn() }),
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
 

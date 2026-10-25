@@ -27,6 +27,11 @@ describe('decodeKnowledgeEntityId', () => {
     expect(decodeKnowledgeEntityId({})).toBeNull()
   })
 
+  it('returns null for an id longer than 32 characters', () => {
+    expect(decodeKnowledgeEntityId('a'.repeat(33))).toBeNull()
+    expect(decodeKnowledgeEntityId('a'.repeat(1000))).toBeNull()
+  })
+
   it('returns null for the encoding of zero', () => {
     expect(decodeKnowledgeEntityId(encodePublicId(0))).toBeNull()
   })

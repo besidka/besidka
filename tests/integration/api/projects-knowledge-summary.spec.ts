@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   invalidateStorageCache: vi.fn(),
   commitKnowledgeChange: vi.fn(),
   ensureKnowledgePackFresh: vi.fn(),
+  createRequestLogger: vi.fn(),
+  backgroundLogger: { set: vi.fn(), emit: vi.fn() },
 }))
 
 vi.mock('evlog', () => ({
@@ -27,6 +29,9 @@ vi.mock('evlog', () => ({
     return exception
   },
   useLogger: () => ({ set: vi.fn() }),
+  createRequestLogger: (...args: unknown[]) => {
+    return mocks.createRequestLogger(...args)
+  },
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
 
@@ -61,6 +66,7 @@ describe('project knowledge summary API', () => {
     harness = createKnowledgeApiHarness()
     harness.install()
     mocks.ensureKnowledgePackFresh.mockResolvedValue(undefined)
+    mocks.createRequestLogger.mockReturnValue(mocks.backgroundLogger)
   })
 
   afterEach(() => {
@@ -167,7 +173,80 @@ describe('project knowledge summary API', () => {
     expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledWith({
       userId: OWNER,
       projectId: PROJECT,
+      logger: mocks.backgroundLogger,
     })
+  })
+
+  it('gives the background rebuild its own logger and emits it when done', async () => {
+    harness.testDb.insertProject({
+      id: PROJECT,
+      userId: OWNER,
+      knowledgeVersion: 3,
+      knowledgePackVersion: 1,
+    })
+
+    const scheduled: Array<Promise<unknown>> = []
+
+    await getSummary((promise) => {
+      scheduled.push(promise)
+    })
+
+    expect(mocks.createRequestLogger).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'GET', waitUntil: expect.any(Function) }),
+    )
+    expect(mocks.backgroundLogger.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: OWNER,
+        projectId: projectPublicId,
+      }),
+    )
+
+    await Promise.all(scheduled)
+
+    expect(mocks.backgroundLogger.emit).toHaveBeenCalledOnce()
+  })
+
+  it('emits the background logger even when the rebuild rejects', async () => {
+    harness.testDb.insertProject({
+      id: PROJECT,
+      userId: OWNER,
+      knowledgeVersion: 3,
+      knowledgePackVersion: 1,
+    })
+    mocks.ensureKnowledgePackFresh.mockRejectedValue(new Error('boom'))
+
+    const scheduled: Array<Promise<unknown>> = []
+
+    await getSummary((promise) => {
+      scheduled.push(promise)
+    })
+    await Promise.allSettled(scheduled)
+
+    expect(mocks.backgroundLogger.emit).toHaveBeenCalledOnce()
+  })
+
+  it('is never cached', async () => {
+    harness.testDb.insertProject({ id: PROJECT, userId: OWNER })
+
+    const handler = await loadKnowledgeHandler('summary')
+    const event = knowledgeEvent({ projectId: projectPublicId })
+
+    await handler(event)
+
+    expect(event.res.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('creates no background logger when the pack is fresh', async () => {
+    harness.testDb.insertProject({
+      id: PROJECT,
+      userId: OWNER,
+      knowledgeVersion: 2,
+      knowledgePackVersion: 2,
+    })
+
+    await getSummary(vi.fn())
+
+    expect(mocks.createRequestLogger).not.toHaveBeenCalled()
   })
 
   it('schedules a refresh when no pack exists yet', async () => {

@@ -1,12 +1,12 @@
 import { createError } from 'evlog'
-import {
-  defineEventHandler,
-  readValidatedBody,
-  setResponseStatus,
-} from 'nuxt/server'
+import { defineEventHandler, setResponseStatus } from 'nuxt/server'
 import {
   knowledgeItemsBatchCreateSchema,
 } from '#shared/utils/project-knowledge-schemas'
+import {
+  KNOWLEDGE_BODY_LIMITS,
+  readCappedJsonBody,
+} from '~~/server/utils/knowledge/body'
 import { resolveKnowledgeProject } from '~~/server/utils/knowledge/access'
 import { ingestKnowledgeItems } from '~~/server/utils/knowledge/ingest'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -16,10 +16,11 @@ export default defineEventHandler(async (event) => {
 
   assertNotCrossSiteRequest(event)
 
-  const access = await resolveKnowledgeProject(event)
-  const body = await readValidatedBody(
+  const access = await resolveKnowledgeProject(event, { isMutation: true })
+  const body = await readCappedJsonBody(
     event,
-    knowledgeItemsBatchCreateSchema.safeParse,
+    knowledgeItemsBatchCreateSchema,
+    KNOWLEDGE_BODY_LIMITS.itemsBatch,
   )
 
   if (body.error) {

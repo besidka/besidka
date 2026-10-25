@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   acquireKnowledgePackLease,
+  clearKnowledgePackBackoff,
+  isKnowledgePackBackedOff,
+  knowledgePackBackoffKey,
   knowledgePackBuildLeaseKey,
+  recordKnowledgePackFailure,
 } from '~~/server/utils/knowledge/pack-lease'
 
 const HEARTBEAT_INTERVAL_MS = 30_000
@@ -9,6 +13,7 @@ const LEASE_TTL_SECONDS = 120
 
 function createKv() {
   const entries = new Map<string, number>()
+  const values = new Map<string, string>()
 
   return {
     entries,
@@ -19,17 +24,19 @@ function createKv() {
         return null
       }
 
-      return '1'
+      return values.get(key) ?? '1'
     }),
     put: vi.fn(async (
       key: string,
-      _value: string,
+      value: string,
       options: { expirationTtl: number },
     ) => {
       entries.set(key, Date.now() + options.expirationTtl * 1000)
+      values.set(key, value)
     }),
     delete: vi.fn(async (key: string) => {
       entries.delete(key)
+      values.delete(key)
     }),
   }
 }
@@ -137,6 +144,94 @@ describe('knowledge pack lease', () => {
       attributes: {
         projectMemoryLease: { operation: 'release', heartbeats: 0 },
       },
+    })
+  })
+
+  describe('failed-build backoff', () => {
+    it('builds the key from the internal project id', () => {
+      expect(knowledgePackBackoffKey(42)).toBe('knowledge-pack-backoff:42')
+    })
+
+    it('is open until three failures are recorded for the version', async () => {
+      expect(await isKnowledgePackBackedOff(42, 7)).toBe(false)
+
+      await recordKnowledgePackFailure(42, 7)
+      await recordKnowledgePackFailure(42, 7)
+
+      expect(await isKnowledgePackBackedOff(42, 7)).toBe(false)
+
+      await recordKnowledgePackFailure(42, 7)
+
+      expect(await isKnowledgePackBackedOff(42, 7)).toBe(true)
+    })
+
+    it('stores count and version with a 600 second ttl', async () => {
+      await recordKnowledgePackFailure(42, 7)
+
+      expect(kv.put).toHaveBeenCalledWith(
+        'knowledge-pack-backoff:42',
+        JSON.stringify({ count: 1, version: 7 }),
+        { expirationTtl: 600 },
+      )
+    })
+
+    it('does not apply to another version and restarts the count', async () => {
+      await recordKnowledgePackFailure(42, 7)
+      await recordKnowledgePackFailure(42, 7)
+      await recordKnowledgePackFailure(42, 7)
+      await recordKnowledgePackFailure(42, 8)
+
+      expect(await isKnowledgePackBackedOff(42, 7)).toBe(false)
+      expect(await isKnowledgePackBackedOff(42, 8)).toBe(false)
+      expect(kv.put).toHaveBeenLastCalledWith(
+        'knowledge-pack-backoff:42',
+        JSON.stringify({ count: 1, version: 8 }),
+        { expirationTtl: 600 },
+      )
+    })
+
+    it('keeps projects apart', async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await recordKnowledgePackFailure(42, 7)
+      }
+
+      expect(await isKnowledgePackBackedOff(43, 7)).toBe(false)
+    })
+
+    it('expires after ten minutes', async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await recordKnowledgePackFailure(42, 7)
+      }
+
+      await vi.advanceTimersByTimeAsync(601_000)
+
+      expect(await isKnowledgePackBackedOff(42, 7)).toBe(false)
+    })
+
+    it('is cleared by clearKnowledgePackBackoff', async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await recordKnowledgePackFailure(42, 7)
+      }
+
+      await clearKnowledgePackBackoff(42)
+
+      expect(kv.delete).toHaveBeenCalledWith('knowledge-pack-backoff:42')
+      expect(await isKnowledgePackBackedOff(42, 7)).toBe(false)
+    })
+
+    it('fails open and never throws when KV errors', async () => {
+      const logger = { set: vi.fn() }
+
+      kv.get.mockRejectedValue(new Error('KV down'))
+      kv.put.mockRejectedValue(new Error('KV down'))
+      kv.delete.mockRejectedValue(new Error('KV down'))
+
+      expect(await isKnowledgePackBackedOff(42, 7, logger)).toBe(false)
+      await expect(recordKnowledgePackFailure(42, 7, logger))
+        .resolves.toBeUndefined()
+      await expect(clearKnowledgePackBackoff(42, logger))
+        .resolves.toBeUndefined()
+      expect(logger.set).toHaveBeenCalledTimes(3)
     })
   })
 })

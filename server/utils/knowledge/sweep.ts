@@ -15,6 +15,8 @@ const MAX_R2_DELETE_KEYS = 1000
 const MAX_IDS_PER_QUERY = 90
 const NEWEST_PACK_VERSIONS_KEPT = 2
 const DEFAULT_GRACE_MS = 60 * 60 * 1000
+const SWEEP_CURSOR_KEY = 'knowledge-sweep-cursor'
+const SWEEP_CURSOR_TTL_SECONDS = 6 * 60 * 60
 
 export interface KnowledgeSweepObject {
   key: string
@@ -294,6 +296,53 @@ async function findStalePackKeys(input: {
   return { keys: staleKeys, youngSkippedCount }
 }
 
+async function readSweepCursor(
+  logger: KnowledgeSweepLogger | undefined,
+): Promise<string | undefined> {
+  try {
+    const stored = await useKV().get(SWEEP_CURSOR_KEY)
+
+    return stored || undefined
+  } catch (exception) {
+    logSweepCursorError(logger, 'read', exception)
+
+    return undefined
+  }
+}
+
+async function saveSweepCursor(
+  cursor: string | undefined,
+  logger: KnowledgeSweepLogger | undefined,
+): Promise<void> {
+  try {
+    const kv = useKV()
+
+    if (cursor) {
+      await kv.put(SWEEP_CURSOR_KEY, cursor, {
+        expirationTtl: SWEEP_CURSOR_TTL_SECONDS,
+      })
+
+      return
+    }
+
+    await kv.delete(SWEEP_CURSOR_KEY)
+  } catch (exception) {
+    logSweepCursorError(logger, 'write', exception)
+  }
+}
+
+function logSweepCursorError(
+  logger: KnowledgeSweepLogger | undefined,
+  operation: string,
+  exception: unknown,
+): void {
+  logger?.set({
+    attributes: {
+      knowledgeSweepCursor: { operation, error: exceptionMessage(exception) },
+    },
+  })
+}
+
 /**
  * Hourly garbage collection of `knowledge/` R2 objects. The `files` and
  * `projects` FK cascades remove item rows with no knowledge code running,
@@ -306,8 +355,11 @@ async function findStalePackKeys(input: {
  * are touched (anything else is counted and left alone), objects uploaded
  * within the grace window are never touched (a writer may not have inserted
  * its row yet), R2 calls are sequential, and deletes go through one batch
- * `delete(keys)` call per page. Listing restarts from the beginning every
- * run, so the runtime bound only defers the tail to later runs.
+ * `delete(keys)` call per page. When a run ends on its runtime bound the
+ * listing cursor is kept in KV (`knowledge-sweep-cursor`, 6 h) and the next
+ * run resumes there, so a bucket larger than one run's budget is eventually
+ * covered; a finished listing, a delete failure or any KV error means the
+ * next run starts from the beginning.
  */
 export async function sweepProjectKnowledge(
   input: KnowledgeSweepInput,
@@ -368,8 +420,14 @@ export async function sweepProjectKnowledge(
     return true
   }
 
-  let cursor: string | undefined
+  let cursor = await readSweepCursor(logger)
   let stopped = false
+  let isPageIncomplete = false
+  let isListingFinished = false
+
+  if (cursor) {
+    logger?.set({ knowledgeSweepResumed: true })
+  }
 
   do {
     if (isOutOfTime()) {
@@ -471,6 +529,7 @@ export async function sweepProjectKnowledge(
 
       if (isOutOfTime()) {
         result.hasMore = true
+        isPageIncomplete = true
         break
       }
 
@@ -498,21 +557,29 @@ export async function sweepProjectKnowledge(
       result.stalePackObjectsDeleted += stalePacks.keys.length
     }
 
-    if (stopped) {
+    if (stopped || isPageIncomplete) {
       break
     }
 
     if (page.truncated && !page.cursor) {
       result.hasMore = true
+      cursor = undefined
       break
     }
 
     cursor = page.truncated ? page.cursor : undefined
+    isListingFinished = cursor === undefined
   } while (cursor)
 
   if (stopped) {
     result.hasMore = true
   }
+
+  const cursorToKeep = !stopped && !isListingFinished && result.hasMore
+    ? cursor
+    : undefined
+
+  await saveSweepCursor(cursorToKeep, logger)
 
   result.runtimeMs = Date.now() - startedAt
 

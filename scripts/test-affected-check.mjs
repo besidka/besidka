@@ -149,6 +149,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/projects-knowledge-commit.spec.ts',
     'tests/integration/api/projects-knowledge-summary.spec.ts',
     'tests/integration/api/projects-knowledge-real-pack.spec.ts',
+    'tests/integration/api/projects-knowledge-limits.spec.ts',
+    'tests/unit/utils/knowledge/body.spec.ts',
+    'tests/unit/utils/knowledge/rate-limit.spec.ts',
   ]
   const knowledgeRetentionTests = [
     'tests/unit/utils/knowledge/linked-files.spec.ts',
@@ -2007,12 +2010,16 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(server\/utils\/knowledge\/(access|ingest)\.ts|server\/api\/v1\/projects\/\[id\]\/knowledge\/.*\.ts)$/,
+      pattern: /^(server\/utils\/knowledge\/(access|ingest|body|rate-limit)\.ts|server\/api\/v1\/projects\/\[id\]\/knowledge\/.*\.ts)$/,
       tests: knowledgeIngestTests,
     },
     {
       pattern: /^(server\/utils\/knowledge\/(linked-files|sweep)\.ts|server\/plugins\/project-knowledge-sweep\.ts|server\/utils\/files\/(cleanup-expired-files|chat-deletion-cleanup)\.ts|server\/api\/v1\/files\/(\[id\]\/index\.delete|delete\/bulk\.post)\.ts|server\/api\/v1\/projects\/\[id\]\/index\.delete\.ts)$/,
       tests: knowledgeRetentionTests,
+    },
+    {
+      pattern: /^server\/utils\/evlog-attributes\.ts$/,
+      tests: ['tests/unit/utils/evlog-attributes.spec.ts'],
     },
     {
       pattern: /^tests\/setup\/helpers\/knowledge-(db|api)\.ts$/,

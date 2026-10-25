@@ -8,11 +8,18 @@ import {
 } from '~~/server/utils/custom-db-types'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import type { KnowledgeItemRow } from '~~/server/utils/knowledge/items'
+import { enforceKnowledgeWriteRateLimit } from '~~/server/utils/knowledge/rate-limit'
+
+const MAX_PUBLIC_ID_CHARS = 32
 
 export interface KnowledgeProjectAccess {
   userId: number
   projectId: number
   projectPublicId: string
+}
+
+export interface KnowledgeAccessOptions {
+  isMutation?: boolean
 }
 
 export interface KnowledgeItemAccess extends KnowledgeProjectAccess {
@@ -28,7 +35,11 @@ export interface KnowledgeItemAccess extends KnowledgeProjectAccess {
  * and could throw mid-statement.
  */
 export function decodeKnowledgeEntityId(publicId: unknown): number | null {
-  if (typeof publicId !== 'string' || publicId.length === 0) {
+  if (
+    typeof publicId !== 'string'
+    || publicId.length === 0
+    || publicId.length > MAX_PUBLIC_ID_CHARS
+  ) {
     return null
   }
 
@@ -73,11 +84,14 @@ function readRouteParam(event: RequestEvent, name: string): string {
  * Resolves the session user and the project from the route, in that order.
  * An unauthenticated request is a 401, and a missing, malformed or foreign
  * project is a 404 before any caller touches the database or R2. The
+ * mutating routes pass `isMutation`, which applies the per-user write rate
+ * limit right after the session check and before the project lookup. The
  * returned `projectId` is the internal integer id used for R2 keys and raw
  * SQL; `projectPublicId` is the id for typed queries and the wire.
  */
 export async function resolveKnowledgeProject(
   event: RequestEvent,
+  options: KnowledgeAccessOptions = {},
 ): Promise<KnowledgeProjectAccess> {
   const session = await useUserSession()
 
@@ -86,6 +100,10 @@ export async function resolveKnowledgeProject(
   }
 
   const userId = parseInt(session.user.id)
+
+  if (options.isMutation) {
+    await enforceKnowledgeWriteRateLimit(userId, event)
+  }
   const projectPublicId = readRouteParam(event, 'id')
   const projectId = decodeKnowledgeEntityId(projectPublicId)
 
@@ -116,8 +134,9 @@ export async function resolveKnowledgeProject(
  */
 export async function resolveKnowledgeItem(
   event: RequestEvent,
+  options: KnowledgeAccessOptions = {},
 ): Promise<KnowledgeItemAccess> {
-  const access = await resolveKnowledgeProject(event)
+  const access = await resolveKnowledgeProject(event, options)
   const itemPublicId = readRouteParam(event, 'itemId')
   const itemId = decodeKnowledgeEntityId(itemPublicId)
 

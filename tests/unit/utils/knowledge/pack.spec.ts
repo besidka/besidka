@@ -138,29 +138,50 @@ function createFakeBucket() {
   }
 }
 
-function createKv(options: { neverHeld?: boolean } = {}) {
+function createKv(options: {
+  neverHeld?: boolean
+  failKeys?: (key: string) => boolean
+} = {}) {
   const entries = new Map<string, number>()
+  const values = new Map<string, string>()
 
   return {
     entries,
+    values,
     get: vi.fn(async (key: string) => {
+      if (options.failKeys?.(key)) {
+        throw new Error('KV unavailable')
+      }
+
       if (options.neverHeld) {
         return null
       }
 
       const expiresAt = entries.get(key)
 
-      return expiresAt !== undefined && expiresAt > Date.now() ? '1' : null
+      return expiresAt !== undefined && expiresAt > Date.now()
+        ? values.get(key) ?? null
+        : null
     }),
     put: vi.fn(async (
       key: string,
-      _value: string,
+      value: string,
       putOptions: { expirationTtl: number },
     ) => {
+      if (options.failKeys?.(key)) {
+        throw new Error('KV unavailable')
+      }
+
       entries.set(key, Date.now() + putOptions.expirationTtl * 1000)
+      values.set(key, value)
     }),
     delete: vi.fn(async (key: string) => {
+      if (options.failKeys?.(key)) {
+        throw new Error('KV unavailable')
+      }
+
       entries.delete(key)
+      values.delete(key)
     }),
   }
 }
@@ -240,6 +261,7 @@ describe('knowledge pack', () => {
     createdAt?: number
     updatedAt?: number
     extractStatus?: string
+    textBytes?: number
   }): number {
     const projectId = input.projectId ?? PROJECT
     const userId = input.userId ?? OWNER
@@ -252,6 +274,7 @@ describe('knowledge pack', () => {
       createdAt: input.createdAt,
       updatedAt: input.updatedAt,
       extractStatus: input.extractStatus,
+      textBytes: input.textBytes,
     })
 
     if (input.text !== null) {
@@ -284,10 +307,34 @@ describe('knowledge pack', () => {
 
   function loggedOperations(): string[] {
     return logger.set.mock.calls.flatMap(([data]) => {
-      const operation = data?.attributes?.knowledgePack?.operation
+      const sections = data?.attributes?.knowledgePack ?? {}
 
-      return operation ? [operation as string] : []
+      return Object.values(sections).flatMap((section) => {
+        const operation = (section as { operation?: string }).operation
+
+        return operation ? [operation] : []
+      })
     })
+  }
+
+  function loggedSection(name: string): Record<string, unknown> | undefined {
+    const calls = logger.set.mock.calls.filter(([data]) => {
+      return data?.attributes?.knowledgePack?.[name] !== undefined
+    })
+
+    return calls.at(-1)?.[0].attributes.knowledgePack[name]
+  }
+
+  function leaseKeys(): string[] {
+    return [...kv.entries.keys()].filter((key) => {
+      return key.startsWith('knowledge-pack-build:')
+    })
+  }
+
+  function backoffRecord(): { count: number, version: number } | null {
+    const stored = kv.values.get(`knowledge-pack-backoff:${PROJECT}`)
+
+    return stored ? JSON.parse(stored) : null
   }
 
   async function writePack(version: number, content: string | Uint8Array) {
@@ -515,7 +562,7 @@ describe('knowledge pack', () => {
 
       await expect(build()).rejects.toThrow('R2 down')
       expect(projectRow().knowledge_pack_version).toBeNull()
-      expect(kv.entries.size).toBe(0)
+      expect(leaseKeys()).toEqual([])
     })
 
     describe('incremental rebuild', () => {
@@ -690,7 +737,7 @@ describe('knowledge pack', () => {
           '1',
           { expirationTtl: 120 },
         )
-        expect(kv.entries.size).toBe(0)
+        expect(leaseKeys()).toEqual([])
         expect(kv.delete).toHaveBeenCalledWith(`knowledge-pack-build:${PROJECT}`)
       })
 
@@ -700,7 +747,7 @@ describe('knowledge pack', () => {
         bucket.hooks.failPut = () => true
 
         await expect(build()).rejects.toThrow('R2 put failed')
-        expect(kv.entries.size).toBe(0)
+        expect(leaseKeys()).toEqual([])
         expect(projectRow().knowledge_pack_version).toBeNull()
       })
 
@@ -799,6 +846,24 @@ describe('knowledge pack', () => {
           'knowledge/u1/p10/pack/v2.index.json.gz',
           'knowledge/u1/p10/pack/v2.jsonl.gz',
         ])
+      })
+
+      it('protects the pack version a send may be reading and the newest below current', async () => {
+        for (const version of [1, 3, 4]) {
+          await writePack(version, ndjson([packHeader(version, [])]))
+        }
+
+        seedItem({ text: 'x' })
+        setProject(8, 3)
+
+        await build()
+
+        expect([...bucket.objects.keys()]
+          .filter((key) => {
+            return key.includes('/pack/')
+          })
+          .sort()).toEqual([packKey(3), packKey(4), packKey(8)])
+        expect(bucket.deleteCalls).toEqual([[packKey(1)]])
       })
 
       it('keeps everything while at most two versions exist', async () => {
@@ -904,19 +969,286 @@ describe('knowledge pack', () => {
         expect(bucket.getMaxInFlight()).toBe(1)
         expect(itemReads()).toHaveLength(40)
       })
+    })
 
-      it('refuses to write a pack that readKnowledgePack would reject', async () => {
-        const hugeText = 'word '.repeat(KNOWLEDGE_LIMITS.maxItemTextBytes / 5)
+    describe('refusals', () => {
+      function randomText(length: number, seed: number): string {
+        const alphabet
+          = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/'
+        let state = seed
+        let text = ''
 
-        for (let index = 0; index < 6; index++) {
-          seedItem({ text: hugeText, createdAt: 1_000 + index })
+        for (let index = 0; index < length; index++) {
+          state = (state * 1_664_525 + 1_013_904_223) % 4_294_967_296
+          text += alphabet[state >>> 26]
+        }
+
+        return text
+      }
+
+      it('refuses before any R2 read when the ready text bytes are over the cap', async () => {
+        for (let index = 0; index < 3; index++) {
+          seedItem({
+            text: 'x',
+            createdAt: 1_000 + index,
+            textBytes: KNOWLEDGE_LIMITS.maxProjectTextBytes / 2,
+          })
         }
 
         setProject(1, null)
 
-        await expect(build()).rejects.toMatchObject({ status: 422 })
-        expect(bucket.objects.has(packKey(1))).toBe(false)
+        expect(await build()).toEqual({ packVersion: 0, built: false })
+        expect(bucket.operations).toEqual([])
         expect(projectRow().knowledge_pack_version).toBeNull()
+        expect(loggedSection('build')).toMatchObject({
+          operation: 'refused',
+          reason: 'over-limits',
+          items: 3,
+          textBytes: 3 * (KNOWLEDGE_LIMITS.maxProjectTextBytes / 2),
+        })
+      })
+
+      it('refuses before any R2 read when there are too many ready items', async () => {
+        for (
+          let index = 0;
+          index <= KNOWLEDGE_LIMITS.maxItemsPerProject;
+          index++
+        ) {
+          testDb.insertItem({
+            userId: OWNER,
+            projectId: PROJECT,
+            title: `Item ${index}`,
+          })
+        }
+
+        setProject(1, null)
+
+        expect(await build()).toEqual({ packVersion: 0, built: false })
+        expect(bucket.operations).toEqual([])
+        expect(loggedSection('build')).toMatchObject({
+          operation: 'refused',
+          items: KNOWLEDGE_LIMITS.maxItemsPerProject + 1,
+        })
+      })
+
+      it('does not count items that are not ready toward the caps', async () => {
+        for (let index = 0; index < 600; index++) {
+          testDb.insertItem({
+            userId: OWNER,
+            projectId: PROJECT,
+            extractStatus: 'no-text',
+            textBytes: 0,
+          })
+        }
+
+        seedItem({ text: 'fine', textBytes: 4 })
+        setProject(1, null)
+
+        expect(await build()).toEqual({ packVersion: 1, built: true })
+      })
+
+      it('lets ensure absorb a refused build without throwing', async () => {
+        seedItem({
+          text: 'x',
+          textBytes: KNOWLEDGE_LIMITS.maxProjectTextBytes + 1,
+        })
+        setProject(1, null)
+
+        await expect(ensureKnowledgePackFresh({
+          userId: OWNER,
+          projectId: PROJECT,
+          logger,
+        })).resolves.toBeUndefined()
+        expect(projectRow().knowledge_pack_version).toBeNull()
+      })
+
+      it('does not put a pack whose serialized size is over the cap', async () => {
+        seedItem({
+          text: '\u0001'.repeat(KNOWLEDGE_LIMITS.maxItemTextBytes - 10),
+          textBytes: 0,
+        })
+        setProject(1, null)
+
+        expect(await build()).toEqual({ packVersion: 0, built: false })
+        expect(bucket.objects.has(packKey(1))).toBe(false)
+        expect(bucket.put).not.toHaveBeenCalled()
+        expect(projectRow().knowledge_pack_version).toBeNull()
+        expect(loggedSection('build')).toMatchObject({
+          operation: 'refused',
+          reason: 'pack-too-large',
+        })
+        expect(
+          (loggedSection('build') as { serializedBytes: number })
+            .serializedBytes,
+        ).toBeGreaterThan(4 * KNOWLEDGE_LIMITS.maxProjectTextBytes)
+      })
+
+      it('does not put a pack whose gzip size is over the cap', async () => {
+        for (let index = 0; index < 4; index++) {
+          seedItem({
+            text: randomText(KNOWLEDGE_LIMITS.maxItemTextBytes, index + 1),
+            createdAt: 1_000 + index,
+            textBytes: 0,
+          })
+        }
+
+        setProject(1, null)
+
+        expect(await build()).toEqual({ packVersion: 0, built: false })
+        expect(bucket.put).not.toHaveBeenCalled()
+        expect(loggedSection('build')).toMatchObject({
+          operation: 'refused',
+          reason: 'pack-too-large',
+        })
+        expect(
+          (loggedSection('build') as { compressedBytes: number })
+            .compressedBytes,
+        ).toBeGreaterThan(2 * KNOWLEDGE_LIMITS.maxProjectTextBytes)
+      })
+
+      it('keeps the previous pack readable after a refused build', async () => {
+        seedItem({ text: 'small', textBytes: 5 })
+        setProject(1, null)
+        await build()
+
+        seedItem({
+          text: 'x',
+          textBytes: KNOWLEDGE_LIMITS.maxProjectTextBytes,
+        })
+        setProject(2, 1)
+
+        expect(await build()).toEqual({ packVersion: 1, built: false })
+        expect(projectRow().knowledge_pack_version).toBe(1)
+        expect((await readPack(1))!.lines).toHaveLength(1)
+      })
+    })
+
+    describe('healing rows whose text never landed', () => {
+      const HOUR_SECONDS = 3_600
+
+      function rowOf(itemId: number) {
+        return testDb.sqlite
+          .prepare(
+            'select extract_status, extract_error, text_bytes'
+            + ' from project_knowledge_items where id = ?',
+          )
+          .get(itemId) as {
+          extract_status: string
+          extract_error: string | null
+          text_bytes: number
+        }
+      }
+
+      function oldSeconds(): number {
+        return Math.floor(Date.now() / 1000) - 2 * HOUR_SECONDS
+      }
+
+      it('marks an old ready row with a missing text object as failed', async () => {
+        const orphan = seedItem({
+          text: null,
+          textBytes: 120,
+          createdAt: oldSeconds(),
+          updatedAt: oldSeconds(),
+        })
+        const kept = seedItem({ text: 'ok', textBytes: 2 })
+
+        setProject(1, null)
+        await build()
+
+        expect(rowOf(orphan)).toEqual({
+          extract_status: 'failed',
+          extract_error: 'text-missing',
+          text_bytes: 0,
+        })
+        expect(rowOf(kept).extract_status).toBe('ready')
+        expect(loggedSection('heal')).toMatchObject({
+          operation: 'text-missing',
+          healedItems: 1,
+        })
+        expect(projectRow().knowledge_version).toBe(1)
+      })
+
+      it('leaves a young row alone', async () => {
+        const young = seedItem({ text: null, textBytes: 120 })
+
+        setProject(1, null)
+        await build()
+
+        expect(rowOf(young).extract_status).toBe('ready')
+        expect(rowOf(young).text_bytes).toBe(120)
+        expect(loggedSection('heal')).toBeUndefined()
+      })
+
+      it('leaves an old row with no declared text bytes alone', async () => {
+        const empty = seedItem({
+          text: null,
+          textBytes: 0,
+          createdAt: oldSeconds(),
+          updatedAt: oldSeconds(),
+        })
+
+        setProject(1, null)
+        await build()
+
+        expect(rowOf(empty).extract_status).toBe('ready')
+      })
+
+      it('does not touch rows of other projects', async () => {
+        const sibling = seedItem({
+          text: null,
+          projectId: OTHER_PROJECT,
+          textBytes: 50,
+          createdAt: oldSeconds(),
+          updatedAt: oldSeconds(),
+        })
+
+        seedItem({ text: 'ok', textBytes: 2 })
+        setProject(1, null)
+        await build()
+
+        expect(rowOf(sibling).extract_status).toBe('ready')
+      })
+
+      it('heals more rows than one statement can bind', async () => {
+        const ids: number[] = []
+
+        for (let index = 0; index < 120; index++) {
+          ids.push(seedItem({
+            text: null,
+            textBytes: 10,
+            createdAt: oldSeconds(),
+            updatedAt: oldSeconds(),
+          }))
+        }
+
+        setProject(1, null)
+        await build()
+
+        expect(ids.every((id) => {
+          return rowOf(id).extract_status === 'failed'
+        })).toBe(true)
+      })
+
+      it('does not fail the build when healing fails', async () => {
+        seedItem({
+          text: null,
+          textBytes: 10,
+          createdAt: oldSeconds(),
+          updatedAt: oldSeconds(),
+        })
+        seedItem({ text: 'ok', textBytes: 2 })
+        setProject(1, null)
+        testDb.sqlite.exec(
+          'create trigger block_heal before update on'
+          + ' project_knowledge_items begin select raise(abort, \'boom\');'
+          + ' end',
+        )
+
+        expect(await build()).toEqual({ packVersion: 1, built: true })
+        expect(loggedSection('heal')).toMatchObject({
+          operation: 'text-missing',
+        })
+        expect(loggedSection('heal')).toHaveProperty('error')
       })
     })
   })
@@ -1345,7 +1677,7 @@ describe('knowledge pack', () => {
         knowledge_pack_version: 3,
       })
       expect(loggedOperations()).toContain('commit-build')
-      expect(kv.entries.size).toBe(0)
+      expect(leaseKeys()).toEqual([])
     })
 
     it('returns a null pack version when the first build fails', async () => {
@@ -1481,7 +1813,7 @@ describe('knowledge pack', () => {
       await expect(ensure()).resolves.toBeUndefined()
       expect(loggedOperations()).toContain('ensure')
       expect(projectRow().knowledge_pack_version).toBe(1)
-      expect(kv.entries.size).toBe(0)
+      expect(leaseKeys()).toEqual([])
     })
 
     it('never throws when the database is unavailable', async () => {
@@ -1512,6 +1844,228 @@ describe('knowledge pack', () => {
         projectId: PROJECT,
       })).resolves.toBeUndefined()
       expect(projectRow().knowledge_pack_version).toBe(1)
+    })
+  })
+
+  describe('failed-build backoff', () => {
+    const BACKOFF_KEY = `knowledge-pack-backoff:${PROJECT}`
+
+    function ensure() {
+      return ensureKnowledgePackFresh({
+        userId: OWNER,
+        projectId: PROJECT,
+        logger,
+      })
+    }
+
+    function commit() {
+      return commitKnowledgeChange({
+        userId: OWNER,
+        projectId: PROJECT,
+        logger,
+      })
+    }
+
+    function seedBackoff(count: number, version: number) {
+      kv.values.set(BACKOFF_KEY, JSON.stringify({ count, version }))
+      kv.entries.set(BACKOFF_KEY, Date.now() + 600_000)
+    }
+
+    beforeEach(() => {
+      seedItem({ text: 'x', textBytes: 1 })
+      setProject(2, 1)
+    })
+
+    it('counts failures for the version with a 600 second ttl', async () => {
+      bucket.hooks.failPut = () => true
+
+      await ensure()
+      await ensure()
+
+      expect(backoffRecord()).toEqual({ count: 2, version: 2 })
+      expect(kv.put).toHaveBeenLastCalledWith(
+        BACKOFF_KEY,
+        JSON.stringify({ count: 2, version: 2 }),
+        { expirationTtl: 600 },
+      )
+    })
+
+    it('keeps building until the third consecutive failure', async () => {
+      bucket.hooks.failPut = () => true
+
+      await ensure()
+      await ensure()
+      bucket.put.mockClear()
+      await ensure()
+
+      expect(bucket.put).toHaveBeenCalledTimes(1)
+      expect(backoffRecord()).toEqual({ count: 3, version: 2 })
+    })
+
+    it('stops scheduling rebuilds after three failures for the same version', async () => {
+      bucket.hooks.failPut = () => true
+
+      await ensure()
+      await ensure()
+      await ensure()
+      bucket.operations.length = 0
+      bucket.put.mockClear()
+      logger.set.mockClear()
+
+      await ensure()
+
+      expect(bucket.operations).toEqual([])
+      expect(bucket.put).not.toHaveBeenCalled()
+      expect(loggedSection('backoff')).toEqual({
+        operation: 'skipped',
+        version: 2,
+      })
+      expect(backoffRecord()).toEqual({ count: 3, version: 2 })
+    })
+
+    it('counts refused builds as failures', async () => {
+      testDb.sqlite
+        .prepare('update project_knowledge_items set text_bytes = ?')
+        .run(KNOWLEDGE_LIMITS.maxProjectTextBytes + 1)
+
+      await ensure()
+      await ensure()
+      await ensure()
+      bucket.operations.length = 0
+      await ensure()
+
+      expect(backoffRecord()).toEqual({ count: 3, version: 2 })
+      expect(bucket.operations).toEqual([])
+      expect(loggedSection('backoff')).toMatchObject({ operation: 'skipped' })
+    })
+
+    it('resumes after the ten minute ttl', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+
+      try {
+        bucket.hooks.failPut = () => true
+
+        await ensure()
+        await ensure()
+        await ensure()
+        vi.setSystemTime(Date.now() + 601_000)
+        bucket.hooks.failPut = undefined
+        await ensure()
+
+        expect(projectRow().knowledge_pack_version).toBe(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('resets for a new knowledge version', async () => {
+      seedBackoff(3, 2)
+      setProject(3, 1)
+
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(3)
+      expect(backoffRecord()).toBeNull()
+    })
+
+    it('restarts the count at one for a new version that fails', async () => {
+      seedBackoff(3, 2)
+      setProject(3, 1)
+      bucket.hooks.failPut = () => true
+
+      await ensure()
+
+      expect(backoffRecord()).toEqual({ count: 1, version: 3 })
+    })
+
+    it('clears the counter after a successful build', async () => {
+      bucket.hooks.failPut = () => true
+
+      await ensure()
+      await ensure()
+      bucket.hooks.failPut = undefined
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(2)
+      expect(backoffRecord()).toBeNull()
+      expect(kv.delete).toHaveBeenCalledWith(BACKOFF_KEY)
+    })
+
+    it('does not count a fresh or leased build', async () => {
+      const held = await acquireKnowledgePackLease(PROJECT)
+
+      try {
+        await ensure()
+        await ensure()
+        await ensure()
+      } finally {
+        await held!.release()
+      }
+
+      expect(backoffRecord()).toBeNull()
+    })
+
+    it('ignores a record that is not valid JSON or has the wrong shape', async () => {
+      kv.values.set(BACKOFF_KEY, 'not json')
+      kv.entries.set(BACKOFF_KEY, Date.now() + 600_000)
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(2)
+
+      setProject(3, 2)
+      kv.values.set(BACKOFF_KEY, JSON.stringify({ count: 'many', version: 3 }))
+      kv.entries.set(BACKOFF_KEY, Date.now() + 600_000)
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(3)
+    })
+
+    it('fails open when KV errors on the backoff key', async () => {
+      kv = createKv({
+        failKeys: (key) => {
+          return key.startsWith('knowledge-pack-backoff:')
+        },
+      })
+      vi.stubGlobal('useKV', () => kv)
+
+      await expect(ensure()).resolves.toBeUndefined()
+      expect(projectRow().knowledge_pack_version).toBe(2)
+
+      setProject(3, 2)
+      bucket.hooks.failPut = () => true
+
+      await expect(ensure()).resolves.toBeUndefined()
+      await expect(ensure()).resolves.toBeUndefined()
+      await expect(ensure()).resolves.toBeUndefined()
+      await expect(ensure()).resolves.toBeUndefined()
+      expect(bucket.put.mock.calls.length).toBeGreaterThanOrEqual(4)
+      expect(loggedSection('backoff')).toMatchObject({
+        error: 'KV unavailable',
+      })
+    })
+
+    it('lets commit build while the lazy path is backed off and records its failures', async () => {
+      seedBackoff(3, 3)
+
+      expect(await commit()).toEqual({ version: 3, packVersion: 3 })
+      expect(projectRow().knowledge_pack_version).toBe(3)
+    })
+
+    it('records commit failures into the same counter', async () => {
+      bucket.hooks.failPut = () => true
+
+      expect(await commit()).toEqual({ version: 3, packVersion: 1 })
+      expect(backoffRecord()).toEqual({ count: 1, version: 3 })
+
+      await ensure()
+      await ensure()
+
+      expect(backoffRecord()).toEqual({ count: 3, version: 3 })
+
+      bucket.put.mockClear()
+      await ensure()
+
+      expect(bucket.put).not.toHaveBeenCalled()
     })
   })
 })

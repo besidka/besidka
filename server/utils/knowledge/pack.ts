@@ -19,7 +19,12 @@ import {
   getKnowledgeProjectState,
 } from '~~/server/utils/knowledge/items'
 import type { KnowledgeProjectState } from '~~/server/utils/knowledge/items'
-import { acquireKnowledgePackLease } from '~~/server/utils/knowledge/pack-lease'
+import {
+  acquireKnowledgePackLease,
+  clearKnowledgePackBackoff,
+  isKnowledgePackBackedOff,
+  recordKnowledgePackFailure,
+} from '~~/server/utils/knowledge/pack-lease'
 import {
   knowledgePackKey,
   knowledgeProjectPrefix,
@@ -42,6 +47,7 @@ const MAX_IDS_PER_STATEMENT = 90
 const R2_LIST_PAGE_SIZE = 1000
 const R2_DELETE_BATCH_SIZE = 1000
 const PACKS_TO_KEEP = 2
+const HEAL_MIN_ROW_AGE_MS = 60 * 60 * 1000
 const PACK_KEY_PATTERN = /\/pack\/v(\d+)\.(?:jsonl|index\.json)\.gz$/
 
 interface KnowledgePack {
@@ -54,11 +60,25 @@ interface PackCursor {
   ordinal: number
 }
 
+type BuildOutcome = 'built' | 'fresh' | 'leased' | 'refused'
+
+interface BuildResult {
+  packVersion: number
+  built: boolean
+  outcome: BuildOutcome
+}
+
+/**
+ * Writes under `attributes.knowledgePack.<section>`, one section per
+ * operation, so evlog's deep merge never overwrites one operation's fields
+ * with another's within a request.
+ */
 function packLog(
   logger: LoggerLike,
+  section: string,
   fields: Record<string, unknown>,
 ): void {
-  logger.set({ attributes: { knowledgePack: fields } })
+  logger.set({ attributes: { knowledgePack: { [section]: fields } } })
 }
 
 function nextCursorWithChunks(
@@ -351,7 +371,10 @@ async function readPreviousPack(
   })
 
   if (!previous) {
-    packLog(logger, { operation: 'previous-unreadable', previousVersion })
+    packLog(logger, 'previous', {
+      operation: 'previous-unreadable',
+      previousVersion,
+    })
   }
 
   return previous
@@ -366,6 +389,7 @@ async function selectPackItems(userId: number, projectId: number) {
       relativePath: schema.projectKnowledgeItems.relativePath,
       updatedAt: schema.projectKnowledgeItems.updatedAt,
       extractStatus: schema.projectKnowledgeItems.extractStatus,
+      textBytes: schema.projectKnowledgeItems.textBytes,
     })
     .from(schema.projectKnowledgeItems)
     .where(and(
@@ -382,22 +406,32 @@ async function deleteStalePacks(input: {
   keysByVersion: Map<number, string[]>
   builtVersion: number
   currentPackVersion: number
+  preBuildPackVersion: number | null
   logger: LoggerLike
 }): Promise<void> {
   const versions = new Set(input.keysByVersion.keys())
 
   versions.add(input.builtVersion)
 
-  const newestVersions = new Set(
-    [...versions]
-      .sort((first, second) => {
-        return second - first
-      })
-      .slice(0, PACKS_TO_KEEP),
-  )
+  const newestFirst = [...versions].sort((first, second) => {
+    return second - first
+  })
+  const protectedVersions = new Set(newestFirst.slice(0, PACKS_TO_KEEP))
+  const newestBelowCurrent = newestFirst.find((version) => {
+    return version < input.currentPackVersion
+  })
+
+  if (newestBelowCurrent !== undefined) {
+    protectedVersions.add(newestBelowCurrent)
+  }
+
+  if (input.preBuildPackVersion !== null) {
+    protectedVersions.add(input.preBuildPackVersion)
+  }
+
   const staleKeys = [...input.keysByVersion.entries()]
     .filter(([version]) => {
-      return !newestVersions.has(version)
+      return !protectedVersions.has(version)
         && version < input.currentPackVersion
     })
     .flatMap(([, keys]) => {
@@ -414,21 +448,128 @@ async function deleteStalePacks(input: {
     await storage.delete(staleKeys.slice(start, start + R2_DELETE_BATCH_SIZE))
   }
 
-  packLog(input.logger, {
+  packLog(input.logger, 'retention', {
     operation: 'retention',
     deletedKeys: staleKeys.length,
   })
 }
 
+async function selectReadyTotals(
+  userId: number,
+  projectId: number,
+): Promise<{ count: number, textBytes: number }> {
+  const rows = await useDb()
+    .select({
+      count: sql<number>`count(*)`,
+      textBytes: sql<number>`coalesce(
+        sum(${schema.projectKnowledgeItems.textBytes}), 0
+      )`,
+    })
+    .from(schema.projectKnowledgeItems)
+    .where(and(
+      eq(schema.projectKnowledgeItems.userId, userId),
+      eq(schema.projectKnowledgeItems.projectId, projectId),
+      eq(schema.projectKnowledgeItems.extractStatus, 'ready'),
+    ))
+
+  return {
+    count: Number(rows[0]?.count ?? 0),
+    textBytes: Number(rows[0]?.textBytes ?? 0),
+  }
+}
+
+async function healMissingTextRows(input: {
+  userId: number
+  projectId: number
+  itemIds: number[]
+  logger: LoggerLike
+}): Promise<void> {
+  if (input.itemIds.length === 0) {
+    return
+  }
+
+  try {
+    const db = useDb()
+
+    for (const group of groupIds(input.itemIds)) {
+      await db
+        .update(schema.projectKnowledgeItems)
+        .set({
+          extractStatus: 'failed',
+          extractError: 'text-missing',
+          textBytes: 0,
+        })
+        .where(and(
+          sql`${schema.projectKnowledgeItems.id} in (${idListSql(group)})`,
+          eq(schema.projectKnowledgeItems.userId, input.userId),
+          eq(schema.projectKnowledgeItems.projectId, input.projectId),
+          eq(schema.projectKnowledgeItems.extractStatus, 'ready'),
+        ))
+    }
+
+    packLog(input.logger, 'heal', {
+      operation: 'text-missing',
+      healedItems: input.itemIds.length,
+    })
+  } catch (exception) {
+    packLog(input.logger, 'heal', {
+      operation: 'text-missing',
+      error: exceptionMessage(exception),
+    })
+  }
+}
+
+function refuseWrite(
+  logger: LoggerLike,
+  state: KnowledgeProjectState,
+  counts: Record<string, number>,
+): BuildResult {
+  packLog(logger, 'build', {
+    operation: 'refused',
+    reason: 'pack-too-large',
+    ...counts,
+  })
+
+  return {
+    packVersion: state.packVersion ?? 0,
+    built: false,
+    outcome: 'refused',
+  }
+}
+
 async function buildLeasedPack(
   input: { userId: number, projectId: number },
   logger: LoggerLike,
-): Promise<{ packVersion: number, built: boolean }> {
+): Promise<BuildResult> {
   const { userId, projectId } = input
   const state = await requireProjectState(input)
 
   if (!needsBuild(state)) {
-    return { packVersion: state.packVersion ?? 0, built: false }
+    return {
+      packVersion: state.packVersion ?? 0,
+      built: false,
+      outcome: 'fresh',
+    }
+  }
+
+  const readyTotals = await selectReadyTotals(userId, projectId)
+
+  if (
+    readyTotals.count > KNOWLEDGE_LIMITS.maxItemsPerProject
+    || readyTotals.textBytes > KNOWLEDGE_LIMITS.maxProjectTextBytes
+  ) {
+    packLog(logger, 'build', {
+      operation: 'refused',
+      reason: 'over-limits',
+      items: readyTotals.count,
+      textBytes: readyTotals.textBytes,
+    })
+
+    return {
+      packVersion: state.packVersion ?? 0,
+      built: false,
+      outcome: 'refused',
+    }
   }
 
   const targetVersion = state.version
@@ -439,7 +580,10 @@ async function buildLeasedPack(
     keysByVersion = await listPackVersions(userId, projectId)
   } catch (exception) {
     isListingKnown = false
-    packLog(logger, { operation: 'list', error: exceptionMessage(exception) })
+    packLog(logger, 'list', {
+      operation: 'list',
+      error: exceptionMessage(exception),
+    })
   }
 
   const listedPreviousVersion = [...keysByVersion.keys()]
@@ -478,6 +622,8 @@ async function buildLeasedPack(
   let reusedItems = 0
   let chunkedItems = 0
   let missingTextItems = 0
+  const healCutoffMs = Date.now() - HEAL_MIN_ROW_AGE_MS
+  const healItemIds: number[] = []
 
   for (const row of rows) {
     if (row.extractStatus !== 'ready') {
@@ -509,6 +655,10 @@ async function buildLeasedPack(
     if (text === null) {
       missingTextItems++
 
+      if (row.textBytes > 0 && row.updatedAt.getTime() <= healCutoffMs) {
+        healItemIds.push(row.internalId)
+      }
+
       continue
     }
 
@@ -528,6 +678,8 @@ async function buildLeasedPack(
     chunkedItems++
   }
 
+  await healMissingTextRows({ userId, projectId, itemIds: healItemIds, logger })
+
   const header: KnowledgePackHeader = {
     type: 'header',
     version: targetVersion,
@@ -540,16 +692,28 @@ async function buildLeasedPack(
     })
     .join('\n')
     .concat('\n')
+  const serializedBytes = knowledgeTextByteLength(ndjson)
 
   if (
-    packLines.length > MAX_PACK_LINES
-    || knowledgeTextByteLength(ndjson) > MAX_DECOMPRESSED_PACK_BYTES
+    headerItems.length > KNOWLEDGE_LIMITS.maxItemsPerProject
+    || packLines.length > MAX_PACK_LINES
+    || serializedBytes > MAX_DECOMPRESSED_PACK_BYTES
   ) {
-    throw createError({
-      message: 'Project knowledge is too large to index',
-      status: 422,
-      why: `The pack would have ${packLines.length} chunks and exceed the cap`,
-      fix: 'Remove some knowledge items',
+    return refuseWrite(logger, state, {
+      items: headerItems.length,
+      chunks: packLines.length,
+      serializedBytes,
+    })
+  }
+
+  const compressed = await gzipText(ndjson)
+
+  if (compressed.byteLength > MAX_COMPRESSED_PACK_BYTES) {
+    return refuseWrite(logger, state, {
+      items: headerItems.length,
+      chunks: packLines.length,
+      serializedBytes,
+      compressedBytes: compressed.byteLength,
     })
   }
 
@@ -557,7 +721,7 @@ async function buildLeasedPack(
 
   await storage.put(
     knowledgePackKey(userId, projectId, targetVersion),
-    await gzipText(ndjson),
+    compressed,
     { httpMetadata: { contentType: 'application/gzip' } },
   )
 
@@ -574,7 +738,7 @@ async function buildLeasedPack(
   const latestState = await getKnowledgeProjectState(input)
   const currentPackVersion = latestState?.packVersion ?? targetVersion
 
-  packLog(logger, {
+  packLog(logger, 'build', {
     operation: 'built',
     version: targetVersion,
     previousVersion,
@@ -590,10 +754,11 @@ async function buildLeasedPack(
       keysByVersion,
       builtVersion: targetVersion,
       currentPackVersion,
+      preBuildPackVersion: state.packVersion,
       logger,
     })
   } catch (exception) {
-    packLog(logger, {
+    packLog(logger, 'retention', {
       operation: 'retention',
       error: exceptionMessage(exception),
     })
@@ -602,7 +767,69 @@ async function buildLeasedPack(
   return {
     packVersion: Math.max(currentPackVersion, targetVersion),
     built: true,
+    outcome: 'built',
   }
+}
+
+async function runBuild(
+  input: { userId: number, projectId: number },
+  logger: LoggerLike,
+): Promise<BuildResult> {
+  const state = await requireProjectState(input)
+
+  if (!needsBuild(state)) {
+    return {
+      packVersion: state.packVersion ?? 0,
+      built: false,
+      outcome: 'fresh',
+    }
+  }
+
+  const lease = await acquireKnowledgePackLease(input.projectId, logger)
+
+  if (!lease) {
+    packLog(logger, 'build', { operation: 'leased' })
+
+    return {
+      packVersion: state.packVersion ?? 0,
+      built: false,
+      outcome: 'leased',
+    }
+  }
+
+  try {
+    return await buildLeasedPack(input, logger)
+  } finally {
+    await lease.release()
+  }
+}
+
+/**
+ * Runs a build and feeds the failed-build counter: a refused or thrown build
+ * counts as a failure for the target version, a finished one clears the
+ * counter. A thrown failure is recorded and rethrown.
+ */
+async function runTrackedBuild(
+  input: { userId: number, projectId: number, version: number },
+  logger: LoggerLike,
+): Promise<BuildResult> {
+  let result: BuildResult
+
+  try {
+    result = await runBuild(input, logger)
+  } catch (exception) {
+    await recordKnowledgePackFailure(input.projectId, input.version, logger)
+
+    throw exception
+  }
+
+  if (result.outcome === 'refused') {
+    await recordKnowledgePackFailure(input.projectId, input.version, logger)
+  } else if (result.outcome === 'built') {
+    await clearKnowledgePackBackoff(input.projectId, logger)
+  }
+
+  return result
 }
 
 /**
@@ -618,9 +845,13 @@ async function buildLeasedPack(
  * build. The new object is written under a versioned key, then
  * `knowledge_pack_version` advances only while it is null or lower, and
  * every existing pack except the two newest is deleted in batches.
- * `built: false` means there was nothing to do or another build holds the
- * lease; `packVersion` is then the current pack version, or 0 when the
- * project has never had a pack.
+ * `built: false` means there was nothing to do, another build holds the
+ * lease, or the build was refused (the project is over its item or text
+ * limits, or the pack would exceed the size caps the reader enforces; nothing
+ * is written and the pointer does not move); `packVersion` is then the
+ * current pack version, or 0 when the project has never had a pack. A `ready`
+ * row with text bytes whose text object is missing and which has not been
+ * touched for an hour is marked `failed` with `text-missing`.
  */
 export async function buildKnowledgePack(input: {
   userId: number
@@ -628,25 +859,9 @@ export async function buildKnowledgePack(input: {
   logger?: LoggerLike
 }): Promise<{ packVersion: number, built: boolean }> {
   const logger = resolveServerLogger(input.logger)
-  const state = await requireProjectState(input)
+  const { packVersion, built } = await runBuild(input, logger)
 
-  if (!needsBuild(state)) {
-    return { packVersion: state.packVersion ?? 0, built: false }
-  }
-
-  const lease = await acquireKnowledgePackLease(input.projectId, logger)
-
-  if (!lease) {
-    packLog(logger, { operation: 'leased' })
-
-    return { packVersion: state.packVersion ?? 0, built: false }
-  }
-
-  try {
-    return await buildLeasedPack(input, logger)
-  } finally {
-    await lease.release()
-  }
+  return { packVersion, built }
 }
 
 function groupIds(ids: number[]): number[][] {
@@ -742,11 +957,11 @@ export async function commitKnowledgeChange(input: {
     })
 
     if (removedCount > 0) {
-      packLog(logger, { operation: 'removed', removedCount })
+      packLog(logger, 'removal', { operation: 'removed', removedCount })
     }
   } catch (exception) {
     removalFailure = exception
-    packLog(logger, {
+    packLog(logger, 'removal', {
       operation: 'remove',
       error: exceptionMessage(exception),
     })
@@ -761,7 +976,10 @@ export async function commitKnowledgeChange(input: {
   const bumpedState = await requireProjectState({ userId, projectId })
 
   try {
-    const result = await buildKnowledgePack({ userId, projectId, logger })
+    const result = await runTrackedBuild(
+      { userId, projectId, version: bumpedState.version },
+      logger,
+    )
 
     return {
       version: bumpedState.version,
@@ -770,7 +988,7 @@ export async function commitKnowledgeChange(input: {
         : bumpedState.packVersion,
     }
   } catch (exception) {
-    packLog(logger, {
+    packLog(logger, 'commit', {
       operation: 'commit-build',
       error: exceptionMessage(exception),
     })
@@ -787,7 +1005,9 @@ export async function commitKnowledgeChange(input: {
  * `knowledge_version`. Never throws: it is the lazy recovery path run from
  * `waitUntil`, so a failure is logged and left for the next call. A no-op
  * when the pack is fresh, and effectively a no-op while another build holds
- * the lease.
+ * the lease. After three consecutive failed or refused builds for the same
+ * `knowledge_version` it stops scheduling rebuilds for ten minutes (a KV
+ * counter; a new version resets it and a finished build clears it).
  */
 export async function ensureKnowledgePackFresh(input: {
   userId: number
@@ -803,14 +1023,32 @@ export async function ensureKnowledgePackFresh(input: {
       return
     }
 
-    await buildKnowledgePack({
-      userId: input.userId,
-      projectId: input.projectId,
+    const isBackedOff = await isKnowledgePackBackedOff(
+      input.projectId,
+      state.version,
       logger,
-    })
+    )
+
+    if (isBackedOff) {
+      packLog(logger, 'backoff', {
+        operation: 'skipped',
+        version: state.version,
+      })
+
+      return
+    }
+
+    await runTrackedBuild(
+      {
+        userId: input.userId,
+        projectId: input.projectId,
+        version: state.version,
+      },
+      logger,
+    )
   } catch (exception) {
     try {
-      packLog(logger, {
+      packLog(logger, 'ensure', {
         operation: 'ensure',
         error: exceptionMessage(exception),
       })

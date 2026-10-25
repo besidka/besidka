@@ -34,6 +34,7 @@ export interface KnowledgeEventInput {
   projectId?: string
   itemId?: string
   body?: unknown
+  rawBody?: string | ReadableStream<Uint8Array>
   headers?: Record<string, string>
   waitUntil?: (promise: Promise<unknown>) => void
 }
@@ -65,9 +66,23 @@ export async function loadKnowledgeHandler(
   return module.default
 }
 
+function buildRequest(input: KnowledgeEventInput): Request {
+  const init: RequestInit & { duplex?: 'half' } = { method: 'POST' }
+
+  if (input.rawBody !== undefined) {
+    init.body = input.rawBody
+    init.duplex = 'half'
+  } else if (input.body !== undefined) {
+    init.body = JSON.stringify(input.body)
+  }
+
+  return new Request('http://localhost/knowledge', init)
+}
+
 export function knowledgeEvent(input: KnowledgeEventInput = {}) {
   return {
     body: input.body,
+    req: buildRequest(input),
     headers: input.headers ?? {},
     res: { headers: new Headers() },
     context: {
@@ -79,8 +94,31 @@ export function knowledgeEvent(input: KnowledgeEventInput = {}) {
   }
 }
 
+export interface FakeKnowledgeKv {
+  values: Map<string, string>
+  get: (key: string) => Promise<string | null>
+  put: (key: string, value: string) => Promise<void>
+  delete: (key: string) => Promise<void>
+}
+
+export function createFakeKnowledgeKv(): FakeKnowledgeKv {
+  const values = new Map<string, string>()
+
+  return {
+    values,
+    get: async key => values.get(key) ?? null,
+    put: async (key, value) => {
+      values.set(key, value)
+    },
+    delete: async (key) => {
+      values.delete(key)
+    },
+  }
+}
+
 export interface KnowledgeApiHarness {
   testDb: KnowledgeTestDb
+  kv: FakeKnowledgeKv
   bucket: FakeKnowledgeBucket
   responses: KnowledgeApiResponses
   session: { userId: number | null }
@@ -192,32 +230,64 @@ export function createFakeKnowledgeBucket(): FakeKnowledgeBucket {
 export function createKnowledgeApiHarness(): KnowledgeApiHarness {
   const testDb = createKnowledgeTestDb()
   const bucket = createFakeKnowledgeBucket()
+  const kv = createFakeKnowledgeKv()
   const session: { userId: number | null } = { userId: 1 }
   const responses: KnowledgeApiResponses = { status: null }
   const beforeBatchHooks: Array<() => void> = []
 
-  Object.assign(testDb.db, {
-    batch: async (statements: PromiseLike<unknown>[]) => {
-      for (const hook of beforeBatchHooks) {
-        hook()
-      }
+  let batchQueue: Promise<void> = Promise.resolve()
+  const eagerAll = testDb.db.all.bind(testDb.db) as (
+    query: unknown,
+    mode?: unknown,
+  ) => unknown
 
-      testDb.sqlite.exec('BEGIN')
+  Object.assign(testDb.db, {
+    all: (query: unknown, mode?: unknown) => {
+      return {
+        then: (
+          resolve: (value: unknown) => unknown,
+          reject: (reason: unknown) => unknown,
+        ) => {
+          return Promise.resolve()
+            .then(() => eagerAll(query, mode))
+            .then(resolve, reject)
+        },
+      }
+    },
+    batch: async (statements: PromiseLike<unknown>[]) => {
+      const previous = batchQueue
+      let release: () => void = () => {}
+
+      batchQueue = new Promise<void>((resolve) => {
+        release = resolve
+      })
+
+      await previous
 
       try {
-        const results: unknown[] = []
-
-        for (const statement of statements) {
-          results.push(await statement)
+        for (const hook of beforeBatchHooks) {
+          hook()
         }
 
-        testDb.sqlite.exec('COMMIT')
+        testDb.sqlite.exec('BEGIN')
 
-        return results
-      } catch (exception) {
-        testDb.sqlite.exec('ROLLBACK')
+        try {
+          const results: unknown[] = []
 
-        throw exception
+          for (const statement of statements) {
+            results.push(await statement)
+          }
+
+          testDb.sqlite.exec('COMMIT')
+
+          return results
+        } catch (exception) {
+          testDb.sqlite.exec('ROLLBACK')
+
+          throw exception
+        }
+      } finally {
+        release()
       }
     },
   })
@@ -246,16 +316,12 @@ export function createKnowledgeApiHarness(): KnowledgeApiHarness {
     })
     vi.stubGlobal('useDb', () => testDb.db)
     vi.stubGlobal('useFileStorage', () => bucket)
-    vi.stubGlobal(
-      'readValidatedBody',
-      async (event: { body: unknown }, parser: (body: unknown) => unknown) => {
-        return parser(event.body)
-      },
-    )
+    vi.stubGlobal('useKV', () => kv)
   }
 
   return {
     testDb,
+    kv,
     bucket,
     responses,
     session,
