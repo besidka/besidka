@@ -55,7 +55,6 @@ function build(
   return buildMemoryIndex({
     accountEntries: [],
     projectEntries: [],
-    includeSensitive: true,
     hasMemoryTools: true,
     ...input,
   })
@@ -154,14 +153,27 @@ describe('buildMemoryIndex', () => {
       })
     })
 
-    it('skips special entries when sensitive memory is off', () => {
+    it('never injects a legacy special entry', () => {
       const result = build({
-        includeSensitive: false,
         accountEntries: [
           makeEntry({ slug: 'visible', title: 'Visible one' }),
           makeEntry({
-            slug: 'hidden',
-            title: 'Hidden one',
+            category: 'profile',
+            slug: 'secret-profile',
+            title: 'Secret title',
+            description: 'Secret description',
+            body: 'Secret body text',
+            sensitivity: 'special',
+            sensitiveCategory: 'health',
+          }),
+        ],
+        projectEntries: [
+          makeEntry({
+            projectId: 'PROJECT',
+            slug: 'secret-topic',
+            title: 'Secret project title',
+            description: 'Secret project description',
+            body: 'Secret project body',
             sensitivity: 'special',
             sensitiveCategory: 'health',
           }),
@@ -170,12 +182,14 @@ describe('buildMemoryIndex', () => {
 
       expect(result.entryCount).toBe(1)
       expect(result.text).toContain('Visible one')
-      expect(result.text).not.toContain('Hidden one')
+      expect(result.text).not.toContain('Secret')
+      expect(result.text).not.toContain('secret-profile')
+      expect(result.text).not.toContain('secret-topic')
+      expect(result.text).not.toContain('withheld')
     })
 
-    it('returns a null text when every entry is filtered out', () => {
+    it('returns a null text when every entry is a legacy special entry', () => {
       const result = build({
-        includeSensitive: false,
         accountEntries: [
           makeEntry({ sensitivity: 'special', sensitiveCategory: 'health' }),
         ],
@@ -185,36 +199,30 @@ describe('buildMemoryIndex', () => {
       expect(result.entryCount).toBe(0)
     })
 
-    it('keeps special entries when sensitive memory is on', () => {
-      const result = build({
-        includeSensitive: true,
+    it('leaves the trim plan unchanged by legacy special entries', () => {
+      const full = buildFullAccount('en', { project: true })
+      const withSecrets = {
         accountEntries: [
-          makeEntry({
-            title: 'Allergy',
-            sensitivity: 'special',
-            sensitiveCategory: 'health',
-          }),
-        ],
-      })
-
-      expect(result.text).toContain('Allergy')
-    })
-
-    it('skips a special profile entry when sensitive memory is off', () => {
-      const result = build({
-        includeSensitive: false,
-        accountEntries: [
+          ...full.accountEntries,
           makeEntry({
             category: 'profile',
-            slug: 'profile',
-            body: 'Secret profile body',
+            slug: 'secret-profile',
+            body: 'Secret body text',
             sensitivity: 'special',
             sensitiveCategory: 'health',
           }),
         ],
-      })
+        projectEntries: full.projectEntries,
+      }
+      const plain = walkTrim(full)
+      const withLegacy = walkTrim(withSecrets)
 
-      expect(result.text).toBeNull()
+      expect(withLegacy.map(result => result.trimSteps)).toEqual(
+        plain.map(result => result.trimSteps),
+      )
+      expect(withLegacy.map(result => result.text)).toEqual(
+        plain.map(result => result.text),
+      )
     })
   })
 
@@ -864,7 +872,6 @@ describe('loadMemoryIndex', () => {
       userId: 1,
       projectId: null,
       useAccountMemory: null,
-      includeSensitive: false,
       hasMemoryTools: true,
       ...overrides,
     })
@@ -929,20 +936,23 @@ describe('loadMemoryIndex', () => {
     expect(result.entryCount).toBe(0)
   })
 
-  it('filters special entries unless sensitive memory is on', async () => {
+  it('never returns a legacy special entry', async () => {
     testDb.insertEntry({
       userId: 1,
       slug: 'allergy',
       title: 'Allergy',
+      body: 'Peanuts',
       sensitivity: 'special',
       sensitiveCategory: 'health',
     })
 
-    const off = await load({ includeSensitive: false })
-    const on = await load({ includeSensitive: true })
+    const result = await load()
 
-    expect(off.text).not.toContain('Allergy')
-    expect(on.text).toContain('Allergy')
+    expect(result.entryCount).toBe(1)
+    expect(result.text).toContain('Account topic')
+    expect(result.text).not.toContain('Allergy')
+    expect(result.text).not.toContain('allergy')
+    expect(result.text).not.toContain('Peanuts')
   })
 
   it('renders profile and preferences bodies from the database', async () => {

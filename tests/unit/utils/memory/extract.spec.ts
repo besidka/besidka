@@ -88,8 +88,6 @@ function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
     title: 'Rust hobby',
     description: 'Writes Rust on weekends',
     body: 'The user writes Rust on weekends.',
-    sensitivity: null,
-    sensitiveCategory: null,
     neverStore: null,
     evidence: 'I write Rust on weekends',
     ...overrides,
@@ -115,7 +113,6 @@ describe('extractChatMemory', () => {
     testDb = createMemoryExtractionTestDb()
     userId = await seedUser(testDb.db, {
       memoryEnabled: true,
-      memoryIncludeSensitive: false,
     })
     mocks.release.mockResolvedValue(undefined)
     mocks.acquireMemoryLease.mockResolvedValue({ release: mocks.release })
@@ -566,34 +563,19 @@ describe('extractChatMemory', () => {
     expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
   })
 
-  it('uses the sensitive opt-in as it is when the ops are applied',
-    async () => {
+  it.each([true, false, null])(
+    'drops flagged ops as a sensitive topic with memoryIncludeSensitive %s',
+    async (memoryIncludeSensitive) => {
       const chat = await seedChatWithMessages()
 
       await testDb.db.update(schema.userSettings)
-        .set({ memoryIncludeSensitive: true })
+        .set({ memoryIncludeSensitive })
         .where(eq(schema.userSettings.userId, userId))
-      mocks.generateObject.mockImplementation(async () => {
-        await testDb.db.update(schema.userSettings)
-          .set({ memoryIncludeSensitive: false })
-          .where(eq(schema.userSettings.userId, userId))
-
-        return {
-          object: {
-            ops: [
-              createOp({
-                sensitivity: 'special',
-                sensitiveCategory: 'health',
-              }),
-            ],
-          },
-          usage: {},
-        }
-      })
+      mockOps([createOp({ body: 'The user has type 2 diabetes.' })])
 
       const result = await run(chat)
 
-      expect(result.dropped).toEqual({ 'sensitive-disabled': 1 })
+      expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
       expect(await listEntries()).toHaveLength(0)
     })
 

@@ -119,7 +119,6 @@ async function memoryExtractionReadSettings(db: DbClient, userId: number) {
     columns: {
       memoryEnabled: true,
       memoryExtractionEnabled: true,
-      memoryIncludeSensitive: true,
     },
   })
 }
@@ -306,7 +305,6 @@ async function extractLeasedChatMemory(
         MEMORY_EXTRACTION_LIMITS.maxLegacyBlobChars,
       )
       : null
-    const includeSensitive = settings?.memoryIncludeSensitive === true
     const maxOps = legacyBlob
       ? MEMORY_EXTRACTION_LIMITS.maxOpsWithLegacyBlob
       : MEMORY_EXTRACTION_LIMITS.maxOpsPerPass
@@ -340,7 +338,6 @@ async function extractLeasedChatMemory(
       instructions: buildMemoryExtractionInstructions({
         scope,
         maxOps,
-        includeSensitive,
         hasLegacyBlob: !!legacyBlob,
       }),
       messages: [
@@ -374,11 +371,11 @@ async function extractLeasedChatMemory(
       userId,
       projectId,
       chatId: chat.id,
-      includeSensitive: freshSettings?.memoryIncludeSensitive === true,
       entries,
       groundingTexts: legacyBlob
         ? [...extractionWindow.userTexts, legacyBlob]
         : extractionWindow.userTexts,
+      logger: input.logger,
     })
 
     result.proposed = applied.proposed

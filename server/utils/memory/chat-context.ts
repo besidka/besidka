@@ -10,7 +10,6 @@ type DbClient = ReturnType<typeof useDb>
 const FAIL_CLOSED_SETTINGS: MemoryRuntimeSettings = {
   memoryEnabled: false,
   chatSearchEnabled: false,
-  memoryIncludeSensitive: false,
   aboutMe: null,
 }
 
@@ -76,7 +75,6 @@ export async function buildMemoryInstructions(input: {
         userId: input.userId,
         projectId: input.projectId,
         useAccountMemory: input.useAccountMemory,
-        includeSensitive: input.settings.memoryIncludeSensitive,
         hasMemoryTools: input.hasMemoryTools,
       })
 

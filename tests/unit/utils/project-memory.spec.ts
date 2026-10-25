@@ -1131,7 +1131,8 @@ describe('project memory utils', () => {
       ['no settings row', null],
       ['an unset flag', { memoryIncludeSensitive: null }],
       ['a false flag', { memoryIncludeSensitive: false }],
-    ])('appends the omission sentence to both instructions for %s', async (
+      ['a true flag', { memoryIncludeSensitive: true }],
+    ])('always appends the omission sentence to both instructions with %s', async (
       _label,
       settings,
     ) => {
@@ -1150,29 +1151,11 @@ describe('project memory utils', () => {
           .toBe(true)
       }
 
-      expect(db.query.userSettings.findFirst).toHaveBeenCalledWith({
-        where: { userId: 1 },
-        columns: { memoryIncludeSensitive: true },
-      })
-    })
-
-    it('leaves the sentence out when the user opted in', async () => {
-      stubGoogle()
-      mockSummaryAndSynthesis()
-      createHarness({
-        settings: { memoryIncludeSensitive: true },
-        chats: singleChat,
-      })
-
-      const { refreshProjectMemory } = await loadMemoryModule()
-
-      await refreshProjectMemory('project-1', 1)
-
-      expect(mocks.generateText).toHaveBeenCalledTimes(2)
-
-      for (const [options] of mocks.generateText.mock.calls) {
-        expect(options.instructions).not.toContain('Omit information about')
-      }
+      expect(db.query.userSettings.findFirst).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          columns: { memoryIncludeSensitive: true },
+        }),
+      )
     })
   })
 

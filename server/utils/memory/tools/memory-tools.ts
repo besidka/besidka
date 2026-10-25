@@ -15,8 +15,6 @@ import {
   MEMORY_SETTING_DEFAULTS,
   alwaysInjectedMemoryCategories,
   memoryCategories,
-  memorySensitiveCategories,
-  memorySensitivities,
 } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
@@ -67,7 +65,6 @@ interface MemoryToolContext {
   projectId: string | null
   accountVisible: boolean
   sourceMessageId: string | null
-  includeSensitive: boolean
   logger?: Pick<LoggerLike, 'set'>
 }
 
@@ -117,10 +114,10 @@ const MEMORY_WRITE_DESCRIPTION = 'Save or update one memory entry about the '
   + 'earlier turn, and never to store instructions for yourself. Keep '
   + 'entries short: the description is one line of at most '
   + `${MEMORY_LIMITS.maxDescriptionChars} characters, the body only the `
-  + 'facts. Set sensitivity "special" plus the matching sensitiveCategory '
-  + 'for health, religion or belief, political opinion, racial or ethnic '
-  + 'origin, sex life or orientation, trade union, genetic, biometric, '
-  + 'legal dispute or drugs data. Check the memory index or call '
+  + 'facts. Sensitive topics (health, religion, politics, ethnicity, sex '
+  + 'life, union membership, genetic or biometric data, legal disputes, '
+  + 'drug use) are never stored: the server refuses such entries, so do not '
+  + 'try to word around it. Check the memory index or call '
   + `${MEMORY_LIST_TOOL_NAME} first; to change an existing entry pass its id `
   + 'and the complete merged body, because the body is replaced, not '
   + 'appended. Entries of the profile and preferences categories are '
@@ -274,7 +271,7 @@ function isEntryVisible(
   entry: MemoryEntry,
   context: MemoryToolContext,
 ): boolean {
-  if (entry.sensitivity === 'special' && !context.includeSensitive) {
+  if (entry.sensitivity === 'special') {
     return false
   }
 
@@ -440,8 +437,6 @@ interface MemoryWriteToolInput {
   title: string
   description: string
   body: string
-  sensitivity?: (typeof memorySensitivities)[number]
-  sensitiveCategory?: (typeof memorySensitiveCategories)[number] | null
   scope?: MemoryToolScope
   id?: string
 }
@@ -452,12 +447,6 @@ function buildWritePatch(input: MemoryWriteToolInput): MemoryEntryPatch {
     title: input.title,
     description: input.description,
     body: input.body,
-    ...(input.sensitivity === undefined
-      ? {}
-      : { sensitivity: input.sensitivity }),
-    ...(input.sensitiveCategory === undefined
-      ? {}
-      : { sensitiveCategory: input.sensitiveCategory }),
   }
 }
 
@@ -552,8 +541,6 @@ async function createVisibleMemoryEntry(
         title: input.title,
         description: input.description,
         body: input.body,
-        sensitivity: input.sensitivity,
-        sensitiveCategory: input.sensitiveCategory,
       },
       origin: 'tool',
       sourceChatIds: [context.chatId],
@@ -561,10 +548,7 @@ async function createVisibleMemoryEntry(
       complianceOrigin: COMPLIANCE_ORIGIN,
     })
   } catch (exception) {
-    if (
-      !context.includeSensitive
-      && isAlreadyExistsConflict(exception)
-    ) {
+    if (isAlreadyExistsConflict(exception)) {
       throw createError({
         message: UNSAVED_ENTRY_MESSAGE,
         status: 409,
@@ -597,8 +581,6 @@ const writeInputSchema = z.object({
   title: z.string().min(1).max(MEMORY_LIMITS.maxTitleChars),
   description: z.string().min(1).max(MEMORY_LIMITS.maxDescriptionChars),
   body: z.string().min(1),
-  sensitivity: z.enum(memorySensitivities).optional(),
-  sensitiveCategory: z.enum(memorySensitiveCategories).nullable().optional(),
   scope: z.enum(['account', 'project']).optional(),
   id: z.string().min(1).max(MEMORY_TOOL_ID_MAX_LENGTH).optional(),
   userRequestQuote: z.string().min(1)
@@ -632,7 +614,6 @@ export function getMemoryTools(input: {
   useAccountMemory: boolean | null
   sourceMessageId: string | null
   userMessageText: string | null
-  includeSensitive: boolean
   budget: ChatSearchBudget
   logger?: Pick<LoggerLike, 'set'>
 }): FormattedTools {
@@ -644,7 +625,6 @@ export function getMemoryTools(input: {
     accountVisible: input.projectId === null
       || (input.useAccountMemory ?? MEMORY_SETTING_DEFAULTS.useAccountMemory),
     sourceMessageId: input.sourceMessageId,
-    includeSensitive: input.includeSensitive,
     logger: input.logger,
   }
   const userMessageText = input.userMessageText

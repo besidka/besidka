@@ -23,7 +23,6 @@ export type MemoryIndexTrimStep
 export interface MemoryIndexInput {
   accountEntries: MemoryEntry[]
   projectEntries: MemoryEntry[]
-  includeSensitive: boolean
   hasMemoryTools: boolean
   budgetTokens?: number
 }
@@ -165,8 +164,8 @@ function compareEntries(first: MemoryEntry, second: MemoryEntry): number {
   return first.id < second.id ? -1 : 1
 }
 
-function isVisible(entry: MemoryEntry, includeSensitive: boolean): boolean {
-  return includeSensitive || entry.sensitivity !== 'special'
+function isInjectable(entry: MemoryEntry): boolean {
+  return entry.sensitivity !== 'special'
 }
 
 function isInjectedWithBody(entry: MemoryEntry, state: RenderState): boolean {
@@ -242,11 +241,14 @@ function renderIndex(
   hasMemoryTools: boolean,
   state: RenderState,
 ): string {
-  const header = hasMemoryTools
-    ? `${HEADER_INTRO}\n${HEADER_TOOLS}`
-    : HEADER_INTRO
+  const headerLines = [HEADER_INTRO]
+
+  if (hasMemoryTools) {
+    headerLines.push(HEADER_TOOLS)
+  }
+
   const blocks = [
-    header,
+    headerLines.join('\n'),
     renderSection('account', accountEntries, state),
     renderSection('project', projectEntries, state),
   ].filter((block): block is string => block !== null)
@@ -259,7 +261,8 @@ function renderIndex(
  * prompt: the always-injected `profile` and `preferences` bodies in full,
  * every other entry as one `- handle | title — description` line. Every
  * body line is prefixed with `> ` so a multi-line body cannot forge a
- * heading or an entry line of the index.
+ * heading or an entry line of the index. Legacy `special` entries are
+ * always skipped, silently.
  *
  * Over budget, the trim plan runs step by step and stops at the first step
  * that fits: `preferences` bodies become lines, descriptions shrink to 60,
@@ -273,10 +276,10 @@ function renderIndex(
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const budgetTokens = input.budgetTokens ?? MEMORY_LIMITS.indexTokenBudget
   const accountEntries = input.accountEntries
-    .filter(entry => isVisible(entry, input.includeSensitive))
+    .filter(isInjectable)
     .sort(compareEntries)
   const projectEntries = input.projectEntries
-    .filter(entry => isVisible(entry, input.includeSensitive))
+    .filter(isInjectable)
     .sort(compareEntries)
   const entryCount = accountEntries.length + projectEntries.length
 
@@ -339,7 +342,6 @@ export async function loadMemoryIndex(input: {
   userId: number
   projectId: string | null
   useAccountMemory: boolean | null
-  includeSensitive: boolean
   hasMemoryTools: boolean
   budgetTokens?: number
 }): Promise<MemoryIndexResult> {
@@ -359,7 +361,6 @@ export async function loadMemoryIndex(input: {
   return buildMemoryIndex({
     accountEntries: accountRows.map(toMemoryEntryWire),
     projectEntries: projectRows.map(toMemoryEntryWire),
-    includeSensitive: input.includeSensitive,
     hasMemoryTools: input.hasMemoryTools,
     budgetTokens: input.budgetTokens,
   })

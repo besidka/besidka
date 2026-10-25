@@ -306,7 +306,6 @@ describe('memory extraction input', () => {
     const instructions = buildMemoryExtractionInstructions({
       scope: 'project',
       maxOps: 15,
-      includeSensitive: false,
       hasLegacyBlob: true,
     })
 
@@ -315,5 +314,47 @@ describe('memory extraction input', () => {
     expect(instructions).toContain('verbatim')
     expect(instructions).toContain('at most 15 ops')
     expect(instructions).toContain('<legacy-memory>')
+  })
+
+  it('asks the model to leave special-category data out, not to label it',
+    async () => {
+      const { buildMemoryExtractionInstructions } = await loadInput()
+      const instructions = buildMemoryExtractionInstructions({
+        scope: 'profile',
+        maxOps: 10,
+        hasLegacyBlob: false,
+      })
+
+      expect(instructions).toContain(
+        'Do not put special-category data into entries at all',
+      )
+      expect(instructions).not.toContain('unless the user explicitly asked')
+      expect(instructions).toContain('server also checks every entry')
+      expect(instructions).toContain('rejects it')
+      expect(instructions).not.toContain('sensitivity')
+      expect(instructions).not.toContain('sensitiveCategory')
+      expect(instructions).toContain('"neverStore"')
+    })
+
+  it('does not show the stored sensitivity to the extractor', async () => {
+    const { renderMemoryExtractionIndex } = await loadInput()
+    const rendered = renderMemoryExtractionIndex('profile', [
+      {
+        id: 'e1',
+        category: 'topics',
+        slug: 'one',
+        title: 'One',
+        description: 'desc',
+        body: 'body',
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+        origin: 'extraction',
+        sourceChatIds: [],
+        bodyHidden: false,
+      },
+    ])
+
+    expect(rendered).not.toContain('sensitivity')
+    expect(rendered).toContain('<entry ref="topics/one" access="editable">')
   })
 })

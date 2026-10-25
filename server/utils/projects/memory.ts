@@ -216,7 +216,6 @@ async function refreshLeasedProjectMemory(
 
   try {
     const { model, reasoning, providerOptions } = await selection.instantiate()
-    const includeSensitive = await readIncludeSensitive(userId, db)
     const chats = await db.query.chats.findMany({
       where: { userId, projectId: project.id },
       columns: {
@@ -275,7 +274,6 @@ async function refreshLeasedProjectMemory(
         model,
         reasoning,
         providerOptions,
-        includeSensitive,
         db,
         logger,
       )
@@ -307,7 +305,6 @@ async function refreshLeasedProjectMemory(
         model,
         reasoning,
         providerOptions,
-        includeSensitive,
         logger,
       )
       : null
@@ -340,23 +337,7 @@ async function refreshLeasedProjectMemory(
   return await getProjectMemoryState(project.id, userId, db, logger)
 }
 
-async function readIncludeSensitive(userId: number, db: DbClient) {
-  const settings = await db.query.userSettings.findFirst({
-    where: { userId },
-    columns: { memoryIncludeSensitive: true },
-  })
-
-  return settings?.memoryIncludeSensitive === true
-}
-
-function withSpecialCategoriesOmission(
-  instructions: string[],
-  includeSensitive: boolean,
-) {
-  if (includeSensitive) {
-    return instructions.join(' ')
-  }
-
+function withSpecialCategoriesOmission(instructions: string[]) {
   return [...instructions, SPECIAL_CATEGORIES_OMISSION_INSTRUCTION].join(' ')
 }
 
@@ -466,7 +447,6 @@ async function refreshChatProjectMemorySummary(
   model: LanguageModel,
   reasoning: MemoryModelInstance['reasoning'],
   providerOptions: MemoryModelInstance['providerOptions'],
-  includeSensitive: boolean,
   db: DbClient,
   logger: ProjectMemoryLogger,
 ) {
@@ -517,7 +497,7 @@ async function refreshChatProjectMemorySummary(
       'If nothing durable exists, respond with NONE.',
       'Exclude temporary task status, one-off troubleshooting, short-lived details, and raw link dumps.',
       `Return plain text only, at most ${PROJECT_MEMORY_LIMITS.maxSummaryChars} characters.`,
-    ], includeSensitive),
+    ]),
     messages: [
       {
         role: 'user',
@@ -549,7 +529,6 @@ async function synthesizeProjectMemory(
   model: LanguageModel,
   reasoning: MemoryModelInstance['reasoning'],
   providerOptions: MemoryModelInstance['providerOptions'],
-  includeSensitive: boolean,
   logger: ProjectMemoryLogger,
 ) {
   const { text } = await generateText({
@@ -568,7 +547,7 @@ async function synthesizeProjectMemory(
       'Never record payment card numbers, bank account or IBAN numbers, government or tax ID numbers, passport numbers, passwords, API keys, tokens or other credentials; omit them even when the user shared them.',
       'If there is no durable memory, respond with NONE.',
       `Return plain text only, at most ${PROJECT_MEMORY_LIMITS.maxMemoryChars} characters.`,
-    ], includeSensitive),
+    ]),
     messages: [
       {
         role: 'user',

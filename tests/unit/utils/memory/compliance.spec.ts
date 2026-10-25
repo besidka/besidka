@@ -7,6 +7,7 @@ import {
   evaluateMemoryEntry,
   purgeSensitiveMemoryEntries,
   recordBlockedCounts,
+  recordSensitiveDetection,
   redactNeverStore,
 } from '~~/server/utils/memory/compliance'
 
@@ -744,13 +745,61 @@ describe('recordBlockedCounts', () => {
   })
 })
 
+describe('recordSensitiveDetection', () => {
+  it('records category ids and the origin only', () => {
+    const logger = { set: vi.fn() }
+
+    recordSensitiveDetection(['health', 'drugs'], logger, 'memory-api')
+
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        memoryCompliance: {
+          sensitive: { origin: 'memory-api', categories: ['health', 'drugs'] },
+        },
+      },
+    })
+  })
+
+  it('records nothing when the classifier found nothing', () => {
+    const logger = { set: vi.fn() }
+
+    recordSensitiveDetection([], logger, 'memory-api')
+
+    expect(logger.set).not.toHaveBeenCalled()
+  })
+
+  it('merges with the categories already logged in the request', () => {
+    const context: Record<string, unknown> = {}
+    const logger = {
+      set: vi.fn((fields: Record<string, unknown>) => {
+        Object.assign(context, fields)
+      }),
+      getContext: () => context,
+    }
+
+    recordSensitiveDetection(['health', 'drugs'], logger, 'memory-api')
+    recordSensitiveDetection(['drugs', 'genetic'], logger, 'memory-tool')
+    recordSensitiveDetection(['health'], logger, 'memory-tool')
+
+    expect(context).toEqual({
+      attributes: {
+        memoryCompliance: {
+          sensitive: {
+            origin: 'memory-tool',
+            categories: ['health', 'drugs', 'genetic'],
+          },
+        },
+      },
+    })
+  })
+})
+
 describe('evaluateMemoryEntry', () => {
   const cleanEntry = {
     title: 'Prefers TypeScript',
     description: 'Likes strict typing',
     body: 'Uses TypeScript on every project.',
     sensitivity: 'none' as const,
-    includeSensitive: false,
   }
 
   it('allows a clean entry', () => {
@@ -840,36 +889,114 @@ describe('evaluateMemoryEntry', () => {
     ).toEqual({ allowed: true })
   })
 
-  it('reports sensitive-disabled for special entries when off', () => {
+  it('refuses a declared special entry with no detected category', () => {
     expect(
       evaluateMemoryEntry({ ...cleanEntry, sensitivity: 'special' }),
-    ).toEqual({ allowed: false, reason: 'sensitive-disabled' })
+    ).toEqual({
+      allowed: false,
+      reason: 'sensitive-topic',
+      detectedCategories: [],
+    })
   })
 
-  it('allows special entries when the user opted in', () => {
-    expect(
-      evaluateMemoryEntry({
-        ...cleanEntry,
-        sensitivity: 'special',
-        includeSensitive: true,
-      }),
-    ).toEqual({ allowed: true })
+  describe('server-side classification', () => {
+    const flaggedEntry = {
+      ...cleanEntry,
+      title: 'Health',
+      description: 'Diet constraints',
+      body: 'I have type 2 diabetes.',
+    }
+
+    it('refuses flagged text declared none with the detected category', () => {
+      expect(evaluateMemoryEntry(flaggedEntry)).toEqual({
+        allowed: false,
+        reason: 'sensitive-topic',
+        detectedCategories: ['health'],
+      })
+    })
+
+    it('refuses flagged text declared special too', () => {
+      expect(
+        evaluateMemoryEntry({ ...flaggedEntry, sensitivity: 'special' }),
+      ).toEqual({
+        allowed: false,
+        reason: 'sensitive-topic',
+        detectedCategories: ['health'],
+      })
+    })
+
+    it('classifies the title and the description too', () => {
+      expect(
+        evaluateMemoryEntry({
+          ...cleanEntry,
+          title: 'Type 2 diabetes',
+        }),
+      ).toMatchObject({ allowed: false, reason: 'sensitive-topic' })
+      expect(
+        evaluateMemoryEntry({
+          ...cleanEntry,
+          description: 'Has type 2 diabetes',
+        }),
+      ).toMatchObject({ allowed: false, reason: 'sensitive-topic' })
+    })
+
+    it('leaves clean text untouched', () => {
+      expect(
+        evaluateMemoryEntry({
+          ...cleanEntry,
+          title: 'Church Street address',
+          description: 'Diet constraints',
+          body: 'Delivery goes to the office on Church Street.',
+        }),
+      ).toEqual({ allowed: true })
+      expect(
+        evaluateMemoryEntry({
+          ...cleanEntry,
+          title: 'Anna',
+          description: 'Sister',
+          body: 'Anna: sister, lives in Lviv.',
+        }),
+      ).toEqual({ allowed: true })
+    })
+
+    it('refuses the same text about another person under the same rule',
+      () => {
+        expect(
+          evaluateMemoryEntry({
+            ...flaggedEntry,
+            title: 'Anna',
+            description: 'Sister',
+            body: 'Anna has type 2 diabetes.',
+          }),
+        ).toEqual({
+          allowed: false,
+          reason: 'sensitive-topic',
+          detectedCategories: ['health'],
+        })
+      })
+
+    it('lets never-store beat the classifier', () => {
+      expect(
+        evaluateMemoryEntry({
+          ...flaggedEntry,
+          body: 'I have type 2 diabetes, card 4111 1111 1111 1111',
+        }),
+      ).toMatchObject({ allowed: false, reason: 'never-store' })
+    })
   })
 
-  it('lets never-store beat sensitive even when opted in', () => {
+  it('lets never-store beat a declared special entry', () => {
     expect(
       evaluateMemoryEntry({
         ...cleanEntry,
         body: 'Diagnosis noted, card 4111 1111 1111 1111',
         sensitivity: 'special',
-        includeSensitive: true,
       }),
     ).toMatchObject({ allowed: false, reason: 'never-store' })
     expect(
       evaluateMemoryEntry({
         ...cleanEntry,
         sensitivity: 'special',
-        includeSensitive: false,
         extractorNeverStoreKind: 'criminal-history',
       }),
     ).toMatchObject({ allowed: false, reason: 'never-store' })

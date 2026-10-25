@@ -35,6 +35,7 @@ import {
 import {
   evaluateMemoryEntry,
   recordBlockedCounts,
+  recordSensitiveDetection,
 } from '~~/server/utils/memory/compliance'
 import {
   slugifyMemoryTitle,
@@ -86,9 +87,6 @@ const SINGLETON_CATEGORIES: readonly string[] = alwaysInjectedMemoryCategories
 const SLUG_RACE_RETRIES = 5
 
 const MAX_ERROR_CAUSE_DEPTH = 5
-
-const SENSITIVE_OPT_IN_FIX
-  = 'Turn on sensitive memory in the memory settings, then try again.'
 
 export function toMemoryEntryWire(row: MemoryEntryRow): MemoryEntry {
   return {
@@ -181,13 +179,18 @@ function createUniqueConflictError(category: MemoryCategory) {
   })
 }
 
-function createSensitiveDisabledError() {
+function createSensitiveTopicError(
+  detectedCategories: MemorySensitiveCategory[],
+) {
+  const why = detectedCategories.length > 0
+    ? `This entry looks like sensitive data (${detectedCategories.join(', ')}).`
+    : 'This entry is marked sensitive.'
+
   return createError({
-    message: 'Sensitive memory is turned off',
-    status: 409,
-    why: 'This entry is marked sensitive and the sensitive memory opt-in '
-      + 'is off.',
-    fix: SENSITIVE_OPT_IN_FIX,
+    message: 'Sensitive topics (health, religion, politics…) are not saved to memory.',
+    status: 422,
+    why,
+    fix: 'Remove the sensitive details and save again.',
   })
 }
 
@@ -206,7 +209,7 @@ function createLimitError(isProjectScope: boolean) {
   })
 }
 
-function throwBlockedVerdict(
+function assertEntryAllowed(
   verdict: ReturnType<typeof evaluateMemoryEntry>,
   logger: MemoryWriteLogger,
   complianceOrigin: string,
@@ -215,8 +218,14 @@ function throwBlockedVerdict(
     return
   }
 
-  if (verdict.reason === 'sensitive-disabled') {
-    throw createSensitiveDisabledError()
+  if (verdict.reason === 'sensitive-topic') {
+    recordSensitiveDetection(
+      verdict.detectedCategories,
+      logger,
+      complianceOrigin,
+    )
+
+    throw createSensitiveTopicError(verdict.detectedCategories)
   }
 
   const blocked: ComplianceBlockedCounts = {}
@@ -233,6 +242,20 @@ function throwBlockedVerdict(
     why: `Detected: ${describeNeverStoreKinds(verdict.kinds)}.`,
     fix: 'Remove the flagged data from the memory and save again.',
   })
+}
+
+function readDeclaredSensitivity(declared: {
+  sensitivity?: MemorySensitivity
+  sensitiveCategory?: MemorySensitiveCategory | null
+}): MemorySensitivity {
+  if (
+    declared.sensitivity === 'special'
+    || (declared.sensitiveCategory ?? null) !== null
+  ) {
+    return 'special'
+  }
+
+  return 'none'
 }
 
 function describeNeverStoreKinds(kinds: NeverStoreKind[]): string {
@@ -277,26 +300,6 @@ function projectCondition(projectId: string | null) {
   return projectId === null
     ? isNull(schema.memoryEntries.projectId)
     : eq(schema.memoryEntries.projectId, projectId)
-}
-
-function sensitiveGuard(userId: number, sensitivity: MemorySensitivity) {
-  return sql`(${sensitivity} = 'none' or exists (select 1 from user_settings where user_id = ${userId} and memory_include_sensitive = 1))`
-}
-
-async function readIncludeSensitive(
-  db: DbClient,
-  userId: number,
-): Promise<boolean> {
-  const [settings] = await db
-    .select({
-      memoryIncludeSensitive: schema.userSettings.memoryIncludeSensitive,
-    })
-    .from(schema.userSettings)
-    .where(eq(schema.userSettings.userId, userId))
-    .limit(1)
-
-  return settings?.memoryIncludeSensitive
-    ?? MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive
 }
 
 async function resolveOwnedProjectId(
@@ -448,8 +451,6 @@ interface GuardedInsertValues {
   title: string
   description: string
   body: string
-  sensitivity: MemorySensitivity
-  sensitiveCategory: MemorySensitiveCategory | null
   origin: MemoryOrigin
   sourceChatIds: string[]
   sourceMessageId: string | null
@@ -477,14 +478,13 @@ async function runGuardedInsert(
       ${timestamp}, ${timestamp}, ${values.userId},
       ${values.decodedProjectId}, ${values.category}, ${values.slug},
       ${values.title}, ${values.description}, ${values.body},
-      ${values.sensitivity}, ${values.sensitiveCategory}, ${values.origin},
+      'none', null, ${values.origin},
       ${JSON.stringify(values.sourceChatIds)}, ${values.sourceMessageId}
     where (
       select count(*) from memory_entries
       where user_id = ${values.userId}
         and project_id is ${values.decodedProjectId}
     ) < ${cap}
-    and ${sensitiveGuard(values.userId, values.sensitivity)}
     and ${ownershipGuard}
     returning id
   `)
@@ -501,13 +501,6 @@ async function throwInsertRejection(
 ): Promise<never> {
   if (projectId !== null) {
     await assertOwnedProject(db, values.userId, projectId)
-  }
-
-  if (
-    values.sensitivity === 'special'
-    && !(await readIncludeSensitive(db, values.userId))
-  ) {
-    throw createSensitiveDisabledError()
   }
 
   if (isSingletonCategory(values.category)) {
@@ -644,22 +637,17 @@ export async function createMemoryEntry(
 
   const input = parsed.data
   const projectId = input.projectId ?? null
-  const sensitivity = input.sensitivity ?? 'none'
-  const sensitiveCategory = input.sensitiveCategory ?? null
 
   const decodedProjectId = projectId === null
     ? null
     : await resolveOwnedProjectId(db, userId, projectId)
 
-  const includeSensitive = await readIncludeSensitive(db, userId)
-
-  throwBlockedVerdict(
+  assertEntryAllowed(
     evaluateMemoryEntry({
       title: input.title,
       description: input.description,
       body: input.body,
-      sensitivity,
-      includeSensitive,
+      sensitivity: readDeclaredSensitivity(input),
     }),
     logger,
     options.complianceOrigin,
@@ -678,8 +666,6 @@ export async function createMemoryEntry(
       title: input.title,
       description: input.description,
       body: input.body,
-      sensitivity,
-      sensitiveCategory,
       origin: options.origin,
       sourceChatIds: normalizeSourceChatIds(options.sourceChatIds),
       sourceMessageId: options.sourceMessageId ?? null,
@@ -702,29 +688,17 @@ interface MergedMemoryFields {
   title: string
   description: string
   body: string
-  sensitivity: MemorySensitivity
-  sensitiveCategory: MemorySensitiveCategory | null
 }
 
 function mergeMemoryPatch(
   stored: MemoryEntryRow,
   patch: MemoryEntryPatch,
 ): MergedMemoryFields {
-  let sensitiveCategory = stored.sensitiveCategory
-
-  if (patch.sensitiveCategory !== undefined) {
-    sensitiveCategory = patch.sensitiveCategory
-  } else if (patch.sensitivity === 'none') {
-    sensitiveCategory = null
-  }
-
   return {
     category: patch.category ?? stored.category,
     title: patch.title ?? stored.title,
     description: patch.description ?? stored.description,
     body: patch.body ?? stored.body,
-    sensitivity: patch.sensitivity ?? stored.sensitivity,
-    sensitiveCategory,
   }
 }
 
@@ -754,15 +728,12 @@ export async function updateMemoryEntry(
     return throwInvalidEntry(parsedMerged.error.message)
   }
 
-  const includeSensitive = await readIncludeSensitive(db, userId)
-
-  throwBlockedVerdict(
+  assertEntryAllowed(
     evaluateMemoryEntry({
       title: parsedMerged.data.title,
       description: parsedMerged.data.description,
       body: parsedMerged.data.body,
-      sensitivity: parsedMerged.data.sensitivity ?? 'none',
-      includeSensitive,
+      sensitivity: readDeclaredSensitivity(parsedPatch.data),
     }),
     logger,
     options.complianceOrigin,
@@ -779,8 +750,6 @@ export async function updateMemoryEntry(
         title: parsedMerged.data.title,
         description: parsedMerged.data.description,
         body: parsedMerged.data.body,
-        sensitivity: merged.sensitivity,
-        sensitiveCategory: merged.sensitiveCategory,
         updatedAt: new Date(),
         ...(movesIntoSingleton ? { slug: merged.category } : {}),
         ...(options.origin ? { origin: options.origin } : {}),
@@ -794,7 +763,6 @@ export async function updateMemoryEntry(
       .where(and(
         eq(schema.memoryEntries.id, options.id),
         eq(schema.memoryEntries.userId, userId),
-        sensitiveGuard(userId, merged.sensitivity),
       ))
       .returning()
 
@@ -826,7 +794,12 @@ async function throwUpdateRejection(
     throw createNotFoundError('Memory entry not found')
   }
 
-  throw createSensitiveDisabledError()
+  throw createError({
+    message: 'The memory entry could not be saved',
+    status: 409,
+    why: 'The memory changed while it was being saved.',
+    fix: 'Try again.',
+  })
 }
 
 export async function deleteMemoryEntry(options: {

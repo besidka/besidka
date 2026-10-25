@@ -2,16 +2,19 @@ import type {
   ComplianceBlockedCounts,
   MemoryCategory,
   MemorySensitiveCategory,
-  MemorySensitivity,
 } from '#shared/types/memory.d'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import {
   memoryEntryInputSchema,
   memoryEntryPatchSchema,
 } from '#shared/utils/memory-schemas'
-import { and, eq, isNull, notExists } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { evaluateMemoryEntry } from '~~/server/utils/memory/compliance'
+import {
+  evaluateMemoryEntry,
+  recordSensitiveDetection,
+} from '~~/server/utils/memory/compliance'
+import type { ComplianceLogger } from '~~/server/utils/memory/compliance'
 import type { MemoryExtractionOp } from '~~/server/utils/memory/extract-schema'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import {
@@ -23,6 +26,7 @@ import type {
 
 type DbClient = ReturnType<typeof useDb>
 
+const COMPLIANCE_ORIGIN = 'memory-extraction'
 const FALLBACK_SLUG_PREFIX = 'entry'
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint'
 const HASH_MULTIPLIER = 31
@@ -84,9 +88,9 @@ export interface MemoryExtractionApplyInput {
   userId: number
   projectId: string | null
   chatId: string
-  includeSensitive: boolean
   entries: MemoryExtractionIndexEntry[]
   groundingTexts: string[]
+  logger?: ComplianceLogger
 }
 
 export interface MemoryExtractionApplyResult {
@@ -102,8 +106,6 @@ interface MemoryExtractionPatchFields {
   title?: string
   description?: string
   body?: string
-  sensitivity?: MemorySensitivity
-  sensitiveCategory?: MemorySensitiveCategory
 }
 
 interface PersistedEntryValues {
@@ -111,17 +113,10 @@ interface PersistedEntryValues {
   title: string
   description: string
   body: string
-  sensitivity: MemorySensitivity
-  sensitiveCategory: MemorySensitiveCategory | null
 }
 
 interface DropOutcome {
   dropped: string
-}
-
-interface GuardedWriteOutcome {
-  id: string | null
-  purged: boolean
 }
 
 function memoryExtractionHash(value: string): string {
@@ -193,32 +188,6 @@ function memoryExtractionMergeSourceChatIds(
   return merged.slice(-MEMORY_LIMITS.maxSourceChatIds)
 }
 
-function memoryExtractionSpecialGuard(
-  db: DbClient,
-  input: MemoryExtractionApplyInput,
-  category: MemoryCategory,
-  slug: string,
-) {
-  const optedIn = db
-    .select({ id: schema.userSettings.id })
-    .from(schema.userSettings)
-    .where(and(
-      eq(schema.userSettings.userId, input.userId),
-      eq(schema.userSettings.memoryIncludeSensitive, true),
-    ))
-
-  return db
-    .delete(schema.memoryEntries)
-    .where(and(
-      memoryExtractionScope(input.userId, input.projectId),
-      eq(schema.memoryEntries.category, category),
-      eq(schema.memoryEntries.slug, slug),
-      eq(schema.memoryEntries.sensitivity, 'special'),
-      notExists(optedIn),
-    ))
-    .returning({ id: schema.memoryEntries.id })
-}
-
 function memoryExtractionLinks(text: string): string[] {
   const links = new Set<string>()
 
@@ -238,6 +207,7 @@ class MemoryExtractionApplier {
   private readonly entriesByKey = new Map<string, MemoryExtractionIndexEntry>()
   private readonly groundingTexts: string[]
   private readonly result: MemoryExtractionApplyResult
+  private readonly detectedCategories = new Set<MemorySensitiveCategory>()
 
   constructor(input: MemoryExtractionApplyInput) {
     this.input = input
@@ -272,7 +242,27 @@ class MemoryExtractionApplier {
       await this.applyOp(op)
     }
 
+    this.recordDetectedCategories()
+
     return this.result
+  }
+
+  private recordDetectedCategories() {
+    if (!this.input.logger) {
+      return
+    }
+
+    recordSensitiveDetection(
+      [...this.detectedCategories],
+      this.input.logger,
+      COMPLIANCE_ORIGIN,
+    )
+  }
+
+  private collectDetectedCategories(categories: MemorySensitiveCategory[]) {
+    for (const category of categories) {
+      this.detectedCategories.add(category)
+    }
   }
 
   private drop(reason: string) {
@@ -346,9 +336,8 @@ class MemoryExtractionApplier {
       title: values.title,
       description: values.description,
       body: values.body,
-      sensitivity: values.sensitivity,
+      sensitivity: 'none',
       extractorNeverStoreKind: op.neverStore,
-      includeSensitive: this.input.includeSensitive,
     })
 
     if (verdict.allowed) {
@@ -363,21 +352,20 @@ class MemoryExtractionApplier {
       return { dropped: 'never-store' }
     }
 
-    return { dropped: 'sensitive-disabled' }
+    this.collectDetectedCategories(verdict.detectedCategories)
+
+    return { dropped: 'sensitive-topic' }
   }
 
   private async applyCreate(
     op: MemoryExtractionOp,
   ): Promise<DropOutcome | null> {
-    const isSpecial = op.sensitivity === 'special'
-      || op.sensitiveCategory !== null
     const parsed = memoryEntryInputSchema.safeParse({
       category: op.category,
       title: op.title ?? '',
       description: op.description ?? '',
       body: op.body?.trim() ?? '',
-      sensitivity: isSpecial ? 'special' : (op.sensitivity ?? 'none'),
-      sensitiveCategory: op.sensitiveCategory,
+      sensitivity: 'none',
     })
 
     if (!parsed.success) {
@@ -398,28 +386,24 @@ class MemoryExtractionApplier {
         title: parsed.data.title,
         description: parsed.data.description,
         body: parsed.data.body,
-        sensitivity: parsed.data.sensitivity,
-        sensitiveCategory: parsed.data.sensitiveCategory ?? undefined,
       })
     }
 
-    const values: PersistedEntryValues = {
+    const proposedValues: PersistedEntryValues = {
       category: parsed.data.category,
       title: parsed.data.title,
       description: parsed.data.description,
       body: parsed.data.body,
-      sensitivity: parsed.data.sensitivity ?? 'none',
-      sensitiveCategory: parsed.data.sensitiveCategory ?? null,
     }
 
-    if (this.hasUngroundedLinks(values)) {
+    if (this.hasUngroundedLinks(proposedValues)) {
       return { dropped: 'ungrounded' }
     }
 
-    const blockedOutcome = this.evaluate(values, op)
+    const dropOutcome = this.evaluate(proposedValues, op)
 
-    if (blockedOutcome) {
-      return blockedOutcome
+    if (dropOutcome) {
+      return dropOutcome
     }
 
     const cap = this.input.projectId
@@ -436,26 +420,27 @@ class MemoryExtractionApplier {
       .values({
         userId: this.input.userId,
         projectId: this.input.projectId ?? undefined,
-        ...values,
+        ...proposedValues,
+        sensitivity: 'none',
+        sensitiveCategory: null,
         slug,
         origin: 'extraction',
         sourceChatIds,
       })
       .returning({ id: schema.memoryEntries.id })
-    const written = await this.writeGuarded(
-      insert,
-      values.sensitivity,
-      values.category,
-      slug,
-    )
+    const [written] = await insert
 
-    if (written.purged || !written.id) {
-      return { dropped: 'sensitive-disabled' }
+    if (!written) {
+      return { dropped: 'unknown-target' }
     }
 
-    this.entriesByKey.set(memoryExtractionEntryKey(values.category, slug), {
+    const createdKey = memoryExtractionEntryKey(proposedValues.category, slug)
+
+    this.entriesByKey.set(createdKey, {
       id: written.id,
-      ...values,
+      ...proposedValues,
+      sensitivity: 'none',
+      sensitiveCategory: null,
       slug,
       origin: 'extraction',
       sourceChatIds,
@@ -464,31 +449,6 @@ class MemoryExtractionApplier {
     this.result.created += 1
 
     return null
-  }
-
-  private async writeGuarded(
-    statement: PromiseLike<Array<{ id: string }>>,
-    sensitivity: MemorySensitivity,
-    category: MemoryCategory,
-    slug: string,
-  ): Promise<GuardedWriteOutcome> {
-    if (sensitivity !== 'special') {
-      const rows = await statement
-
-      return { id: rows[0]?.id ?? null, purged: false }
-    }
-
-    const guard = memoryExtractionSpecialGuard(
-      this.input.db,
-      this.input,
-      category,
-      slug,
-    )
-    const [written, purged] = await this.input.db.batch(
-      [statement, guard] as unknown as Parameters<DbClient['batch']>[0],
-    ) as unknown as [Array<{ id: string }>, Array<{ id: string }>]
-
-    return { id: written[0]?.id ?? null, purged: purged.length > 0 }
   }
 
   private async applyUpdate(
@@ -512,15 +472,6 @@ class MemoryExtractionApplier {
 
     if (op.body !== null) {
       patchFields.body = op.body.trim()
-    }
-
-    if (op.sensitivity !== null) {
-      patchFields.sensitivity = op.sensitivity
-    }
-
-    if (op.sensitiveCategory !== null) {
-      patchFields.sensitiveCategory = op.sensitiveCategory
-      patchFields.sensitivity = 'special'
     }
 
     return await this.mergeIntoExisting(target, op, patchFields)
@@ -559,54 +510,42 @@ class MemoryExtractionApplier {
       return { dropped: 'invalid' }
     }
 
-    const sensitivity: MemorySensitivity = target.sensitivity === 'special'
-      ? 'special'
-      : (patch.data.sensitivity ?? target.sensitivity)
-    const sensitiveCategory = sensitivity === 'special'
-      ? (patch.data.sensitiveCategory ?? target.sensitiveCategory)
-      : null
     const merged = memoryEntryInputSchema.safeParse({
       category: target.category,
       title: patch.data.title ?? target.title,
       description: patch.data.description ?? target.description,
       body: patch.data.body ?? target.body,
-      sensitivity,
-      sensitiveCategory,
     })
 
     if (!merged.success) {
       return { dropped: 'invalid' }
     }
 
-    const values: PersistedEntryValues = {
+    const proposedValues: PersistedEntryValues = {
       category: target.category,
       title: merged.data.title,
       description: merged.data.description,
       body: merged.data.body,
-      sensitivity,
-      sensitiveCategory: merged.data.sensitiveCategory ?? null,
     }
 
     if (
-      values.title === target.title
-      && values.description === target.description
-      && values.body === target.body
-      && values.sensitivity === target.sensitivity
-      && values.sensitiveCategory === target.sensitiveCategory
+      proposedValues.title === target.title
+      && proposedValues.description === target.description
+      && proposedValues.body === target.body
     ) {
       return await this.addSourceChat(target)
     }
 
     const knownText = [target.title, target.description, target.body].join('\n')
 
-    if (this.hasUngroundedLinks(values, knownText)) {
+    if (this.hasUngroundedLinks(proposedValues, knownText)) {
       return { dropped: 'ungrounded' }
     }
 
-    const blockedOutcome = this.evaluate(values, op)
+    const dropOutcome = this.evaluate(proposedValues, op)
 
-    if (blockedOutcome) {
-      return blockedOutcome
+    if (dropOutcome) {
+      return dropOutcome
     }
 
     const sourceChatIds = memoryExtractionMergeSourceChatIds(
@@ -616,11 +555,9 @@ class MemoryExtractionApplier {
     const update = this.input.db
       .update(schema.memoryEntries)
       .set({
-        title: values.title,
-        description: values.description,
-        body: values.body,
-        sensitivity: values.sensitivity,
-        sensitiveCategory: values.sensitiveCategory,
+        title: proposedValues.title,
+        description: proposedValues.description,
+        body: proposedValues.body,
         sourceChatIds,
       })
       .where(and(
@@ -628,26 +565,19 @@ class MemoryExtractionApplier {
         memoryExtractionScope(this.input.userId, this.input.projectId),
       ))
       .returning({ id: schema.memoryEntries.id })
-    const written = await this.writeGuarded(
-      update,
-      values.sensitivity,
-      target.category,
-      target.slug,
-    )
+    const [written] = await update
 
-    if (written.purged || !written.id) {
+    if (!written) {
       this.entriesByKey.delete(
         memoryExtractionEntryKey(target.category, target.slug),
       )
 
-      return {
-        dropped: written.purged ? 'sensitive-disabled' : 'unknown-target',
-      }
+      return { dropped: 'unknown-target' }
     }
 
     this.entriesByKey.set(
       memoryExtractionEntryKey(target.category, target.slug),
-      { ...target, ...values, sourceChatIds },
+      { ...target, ...proposedValues, sourceChatIds },
     )
     this.result.updated += 1
 
@@ -727,10 +657,9 @@ class MemoryExtractionApplier {
  * Applies the extractor's ops sequentially. Each op is independent: it must
  * quote the user's own words (the code-level defence against text echoed by
  * the assistant), pass schema validation on the exact persisted row, pass the
- * compliance gate, and only ever touch an `extraction`-origin row of this
- * user and scope. A special-category write is batched with a delete that
- * removes the row again when the user is not opted in, so an opt-out purge
- * racing the pass cannot leave one behind. Returns counts only.
+ * compliance gate (text flagged as special-category data is dropped as
+ * `sensitive-topic`), and only ever touch an `extraction`-origin row of this
+ * user and scope. Returns counts only.
  */
 export async function applyMemoryExtractionOps(
   input: MemoryExtractionApplyInput,
