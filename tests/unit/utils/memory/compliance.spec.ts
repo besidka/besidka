@@ -509,7 +509,10 @@ describe('credential detector', () => {
     ['token = a1b2c3d4e5'],
     ['токен: abc123xyz789'],
     ['ключ: abc-123-xyz'],
-    ['key: sk_value_1234'],
+    ['api key: sk_test_abcdefghij1234'],
+    ['token: abc123def456'],
+    ['API_KEY=Zx9!kLm2pQ'],
+    ['secret = "s3cr3t-value"'],
   ])('detects %s', (text) => {
     expect(kindsOf(text)).toEqual(['credential'])
   })
@@ -576,6 +579,10 @@ describe('credential detector', () => {
     ['secret: confidential'],
     ['api key: configured'],
     ['key: primary'],
+    ['primary key: user_id'],
+    ['foreign key: org_id'],
+    ['cache key: user:123'],
+    ['secret_name: my_secret_value'],
     ['monkey: abc123def456'],
     ['secret = "stored in vault"'],
     ['ключ = "значення для команди"'],

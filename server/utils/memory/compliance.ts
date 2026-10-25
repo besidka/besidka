@@ -191,7 +191,6 @@ const WEAK_CREDENTIAL_LABELS = [
   '(?:api[ _-]?key|apikey|secret|token)s?',
   'токен',
   'ключ',
-  '(?<![\\p{L}\\d])keys?',
 ].join('|')
 const CREDENTIAL_VALUE = [
   '(?:"([^"\\n]+)"',
@@ -224,7 +223,7 @@ const URL_USERINFO_PATTERN
 const PRIVATE_KEY_PATTERN
   = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/gu
 const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?)\]}>]+$/u
-const DIGIT_OR_SYMBOL_PATTERN = /\p{N}|[^\p{L}\p{N}\s]/u
+const DIGIT_OR_SYMBOL_PATTERN = /\p{N}|[^\p{L}\p{N}\s_]/u
 const DIGIT_PATTERN = /\d/u
 const ASCII_LETTER_PATTERN = /[A-Za-z]/u
 

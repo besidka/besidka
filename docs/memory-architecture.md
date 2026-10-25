@@ -532,7 +532,7 @@ Detectors (overlapping spans merge into one, the longer kind wins):
 | `passport` | keyword (passport, паспорт, paszport, pasport) within 30 non-digit characters before an optional 1-2 letter series and 6-9 digits; only the identifier is redacted |
 | `api-key` | known shapes: `sk-`, `AIza`, `AQ.`, GitHub (`ghp_` etc. and `github_pat_`), Slack `xox*`, AWS `AKIA`/`ASIA`, Stripe-style `sk_`/`pk_`/`rk_` + `live_`/`test_`, `xai-`, `gsk_`, `hf_`, `npm_`, `glpat-`, SendGrid `SG.`, `Bearer <20+ chars>` |
 | `jwt` | three dot-separated parts, the first two starting `eyJ` |
-| `credential` | a label (password, passwd, pwd, passphrase, secret, api key, token, пароль, токен, ключ, hasło, ...) followed by `:` or `=` and a value of 6+ characters; or label + `is`/`є`/`jest`/`это` + a 6+ character value that contains a non-letter; or URL userinfo (`scheme://user:pass@`). The label stays, only the value is redacted |
+| `credential` | a label (password, passwd, pwd, passphrase, secret, api key, token, пароль, токен, ключ, hasło, ...) followed by `:` or `=` and a value of 6+ characters; or label + `is`/`є`/`jest`/`это` + a 6+ character value that contains a digit or symbol (`_` counts as a letter, so `user_id` is not enough); or URL userinfo (`scheme://user:pass@`). The label stays, only the value is redacted |
 | `private-key` | `-----BEGIN ... PRIVATE KEY-----` through the END marker, or to the end of the text when unterminated |
 
 The topical classes (`criminal-history`, `immigration-status`,
@@ -554,8 +554,11 @@ Known limits (deliberate, covered or implied by the spec):
 - A bare 11-digit phone number that passes the PESEL checksum and date is
   redacted as `national-id`.
 - A letters-only password in the "X is <word>" form is missed (the sentence
-  form requires a non-letter in the value); the `label: value` form has no
+  form requires a digit or symbol in the value); the `label: value` form has no
   such requirement.
+- A bare `key` is not a credential label (`primary key: user_id`, `cache key:
+  user:123` stay intact); `api key`, `apikey`, `secret`, `token`, `токен` and
+  `ключ` are.
 - `Token: expired` and similar 6+ character values after a credential label
   are over-redacted.
 - A hyphenated word of 20+ characters after `sk-` matches the key shape.
