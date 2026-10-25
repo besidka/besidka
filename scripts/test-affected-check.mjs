@@ -1123,11 +1123,19 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/indexnow-submit.spec.ts'],
     },
     {
+      pattern: /^scripts\/(linear-request|linear-docs-sync)\.mjs$/,
+      tests: ['tests/unit/scripts/linear-request.spec.ts'],
+    },
+    {
       pattern: /^(scripts\/ci\/resolve-preview-build-source\.mjs|\.github\/workflows\/preview-build\.yml)$/,
       tests: ['tests/unit/scripts/resolve-preview-build-source.spec.ts'],
     },
     {
-      pattern: /^(tests\/unit\/workflows\/preview-deploy\.spec\.ts|\.github\/workflows\/(preview-deploy|preview-cleanup|production|claude|claude-code-review|update|linear-docs-sync)\.yml)$/,
+      pattern: /^(scripts\/ci\/resolve-(production-test|preview-build)-source\.mjs|\.github\/workflows\/(production|preview-build)\.yml)$/,
+      tests: ['tests/unit/scripts/resolve-production-test-source.spec.ts'],
+    },
+    {
+      pattern: /^(tests\/unit\/workflows\/preview-deploy\.spec\.ts|\.github\/workflows\/(preview-deploy|preview-cleanup|production|claude|claude-code-review|update|linear-docs-sync)\.yml|\.github\/actions\/[^/]+\/action\.yml)$/,
       tests: ['tests/unit/workflows/preview-deploy.spec.ts'],
     },
     {
@@ -2046,7 +2054,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(tests\/setup\/(vitest\.setup|mocks\/nuxt-server)\.ts|server\/utils\/(logging\/request-logger|http\/(apply-response-headers|get-decoded-router-params))\.ts)$/,
+        /^(tests\/setup\/(vitest\.(setup\.(common|dom|node)|projects)|mocks\/nuxt-server)\.ts|server\/utils\/(logging\/request-logger|http\/(apply-response-headers|get-decoded-router-params))\.ts)$/,
       tests: 'all',
     },
     {

@@ -771,7 +771,7 @@ curl -sI https://besidka.com/_nuxt/       # expect 404
 ## IndexNow
 
 A post-deploy job, `indexnow` in `.github/workflows/production.yml`, runs
-`scripts/indexnow-submit.mjs` after `build-production`:
+`scripts/indexnow-submit.mjs` after the `deploy` job:
 
 1. **Gate.** No `INDEXNOW_KEY` secret → the job logs a skip and passes. Forks
    and unconfigured deploys are unaffected.

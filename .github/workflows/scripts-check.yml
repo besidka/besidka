@@ -1,0 +1,38 @@
+name: Scripts Check
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'scripts/**'
+      - 'tests/unit/scripts/**'
+      - 'tests/unit/providers/**'
+      - '.github/workflows/scripts-check.yml'
+
+concurrency:
+  group: scripts-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  scripts:
+    name: Lint & test scripts
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup project
+        uses: ./.github/actions/setup
+
+      - name: Lint scripts
+        run: pnpm exec eslint scripts
+
+      - name: Run script and provider unit tests
+        run: pnpm exec vitest run tests/unit/scripts tests/unit/providers

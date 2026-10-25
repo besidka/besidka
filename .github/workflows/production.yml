@@ -20,109 +20,144 @@ on:
       - 'scripts/**'
       - '.gitignore'
       - 'commitlint.config.ts'
-      - '.*rc'
       - '*.md'
       - 'skills-lock.json'
   workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Build and test without deploying anything
+        type: boolean
+        default: false
 
 concurrency:
-  group: production
+  group: ${{ github.ref == 'refs/heads/main' && !inputs.dry-run && 'production' || format('production-dry-run-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:
-  build-production:
-    name: Build and Deploy to Production
+  gate:
+    name: Gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    environment: production
-    outputs:
-      deployment-url: ${{ steps.deploy.outputs.deployment-url }}
-      bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
-      duration: ${{ steps.calculate-duration.outputs.duration }}
-      test-unit-time: ${{ steps.test-unit.outputs.duration }}
-      test-integration-time: ${{ steps.test-integration.outputs.duration }}
-      test-e2e-time: ${{ steps.test-e2e.outputs.duration }}
-      build-time: ${{ steps.build-app.outputs.duration }}
-      deploy-time: ${{ steps.deploy-app.outputs.duration }}
-
+    timeout-minutes: 10
     permissions:
-      id-token: write
+      actions: read
       contents: read
-
+      pull-requests: read
+    outputs:
+      skip-tests: ${{ steps.source.outputs.skip-tests }}
+      source-run-id: ${{ steps.source.outputs.source-run-id }}
+      source-sha: ${{ steps.source.outputs.source-sha }}
+      pr-number: ${{ steps.source.outputs.pr-number }}
     steps:
-      - name: Record start time
-        id: start-time
-        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
-
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Setup PNPM
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
         with:
-          run_install: false
+          fetch-depth: 0
 
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Resolve test source
+        id: source
+        run: node scripts/ci/resolve-production-test-source.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+
+  static:
+    name: Lint & typecheck
+    needs: gate
+    if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup project
+        uses: ./.github/actions/setup
 
       - name: Run ESLint
         run: pnpm run lint
 
       - name: Run TypeScript type checks
+        run: pnpm run typecheck
+
+      - name: Check that migrations are committed
         run: |
-          pnpm run dev:prepare
-          pnpm run typecheck
+          if ! pnpm run db:generate || ! pnpm run db:consents:generate; then
+            echo "::error::drizzle-kit could not generate migrations. It exits non-zero when it needs an interactive answer, for example whether a column was renamed or newly created, and CI cannot answer. Run pnpm run db:generate (and db:consents:generate) locally, answer the prompts, and commit the migration."
+            exit 1
+          fi
+
+          if [ -n "$(git status --porcelain -- .drizzle)" ]; then
+            echo "::error::The Drizzle schema changed without a committed migration. Run pnpm run db:generate (and db:consents:generate) locally, review the SQL for DROP TABLE (see AGENTS.md → D1 Migration Safety), and commit it."
+            git status --porcelain -- .drizzle
+            exit 1
+          fi
+
+  unit:
+    name: Unit tests
+    needs: gate
+    if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup project
+        uses: ./.github/actions/setup
 
       - name: Run all unit tests
-        id: test-unit
-        run: |
-          START=$(date +%s)
-          pnpm run test:unit
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
-          echo "✅ All unit tests completed in ${DURATION}s"
+        run: pnpm run test:unit
+
+      - name: Run cookie-consent module tests
+        run: pnpm run test:cookie-consent
+
+  integration:
+    name: Integration tests
+    needs: gate
+    if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup project
+        uses: ./.github/actions/setup
 
       - name: Run all integration tests
-        id: test-integration
-        run: |
-          START=$(date +%s)
-          pnpm run test:integration
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
-          echo "✅ All integration tests completed in ${DURATION}s"
+        run: pnpm run test:integration
 
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+  build:
+    name: Build
+    needs: gate
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
+      build-duration: ${{ steps.build-app.outputs.duration }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
-        
-      - name: Generate DB migrations for E2E
-        run: pnpm run db:generate
-
-      - name: Apply DB migrations for E2E
-        run: yes | pnpm exec wrangler d1 migrations apply DB --local
-
-      - name: Generate consent DB migrations for E2E
-        run: pnpm run db:consents:generate
-
-      - name: Apply consent DB migrations for E2E
-        run: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --local
+      - name: Setup project
+        uses: ./.github/actions/setup
 
       - name: Build application
         id: build-app
@@ -135,7 +170,7 @@ jobs:
           pnpm run build 2>&1 | tee build-output.log
           END=$(date +%s)
           DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
           echo "✅ Build completed in ${DURATION}s"
 
       - name: Extract bundle size
@@ -143,90 +178,16 @@ jobs:
         run: |
           SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
           echo "Bundle Size: $SIZE_INFO"
-          echo "bundle-size=$SIZE_INFO" >> $GITHUB_OUTPUT
+          echo "bundle-size=$SIZE_INFO" >> "$GITHUB_OUTPUT"
 
       - name: Verify build output exists
         run: |
-          echo "Checking if .output/server/index.mjs exists..."
           if [ ! -f ".output/server/index.mjs" ]; then
             echo "❌ ERROR: .output/server/index.mjs not found!"
-            echo "Build may have failed silently."
-            echo ""
-            echo "Current directory contents:"
-            ls -la
-            echo ""
-            echo "Checking for common build output locations:"
-            ls -la dist/ 2>/dev/null || echo "No dist/ directory"
-            ls -la build/ 2>/dev/null || echo "No build/ directory"
             exit 1
           fi
-
-          echo "✅ .output/server/index.mjs exists"
-          echo ""
-          echo "Contents of .output/:"
+          echo "✅ Build successful"
           ls -lah .output/
-          echo ""
-          echo "Disk usage:"
-          du -sh .output/
-
-      - name: Write .dev.vars for CI e2e
-        run: |
-          cat > .dev.vars <<'EOF'
-          CI=true
-          NUXT_PUBLIC_BASE_URL=http://localhost:3000
-          NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED=true
-          NUXT_ENCRYPTION_HASHIDS=secret
-          NUXT_ENCRYPTION_KEY=secret
-          NUXT_BETTER_AUTH_SECRET=secret
-          NUXT_EMAIL_NOOP_ENABLED=true
-          NUXT_FILES_RETENTION_CLEANUP_ENABLED=true
-          NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE=100
-          NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS=20000
-          NUXT_FILES_MAINTENANCE_TOKEN=token
-          EOF
-
-      - name: Run all E2E tests
-        id: test-e2e
-        timeout-minutes: 15
-        run: |
-          START=$(date +%s)
-          pnpm run test:e2e
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
-          echo "✅ All E2E tests completed in ${DURATION}s"
-        env:
-          CI: true
-          NUXT_PUBLIC_BASE_URL: http://localhost:3000
-          NUXT_ENCRYPTION_HASHIDS: secret
-          NUXT_ENCRYPTION_KEY: secret
-          NUXT_BETTER_AUTH_SECRET: secret
-          NUXT_EMAIL_NOOP_ENABLED: true
-          NUXT_FILES_RETENTION_CLEANUP_ENABLED: true
-          NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE: 100
-          NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS: 20000
-          NUXT_FILES_MAINTENANCE_TOKEN: token
-          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v7
-        if: '!cancelled()'
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
-
-      - name: Upload wrangler logs
-        uses: actions/upload-artifact@v7
-        if: "failure()"
-        with:
-          name: wrangler-logs
-          path: |
-            /home/runner/.config/.wrangler/logs/
-            .wrangler/logs/
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 30
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
@@ -237,9 +198,125 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Record deploy start time
-        id: deploy-start
-        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+  e2e:
+    name: E2E tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs:
+      - gate
+      - build
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.gate.outputs.skip-tests != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      CI: true
+      NUXT_PUBLIC_BASE_URL: http://localhost:3000
+      NUXT_ENCRYPTION_HASHIDS: secret
+      NUXT_ENCRYPTION_KEY: secret
+      NUXT_BETTER_AUTH_SECRET: secret
+      NUXT_EMAIL_NOOP_ENABLED: true
+      NUXT_FILES_RETENTION_CLEANUP_ENABLED: true
+      NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE: 100
+      NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS: 20000
+      NUXT_FILES_MAINTENANCE_TOKEN: token
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup project
+        uses: ./.github/actions/setup
+
+      - name: Prepare E2E
+        uses: ./.github/actions/prepare-e2e
+
+      - name: Run all E2E tests
+        timeout-minutes: 10
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload wrangler logs
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: wrangler-logs-${{ matrix.shard }}
+          path: |
+            /home/runner/.config/.wrangler/logs/
+            .wrangler/logs/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 30
+
+  playwright-cache:
+    name: Warm Playwright cache
+    needs: gate
+    if: needs.gate.outputs.skip-tests == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup project
+        uses: ./.github/actions/setup
+
+      - name: Prepare Playwright
+        uses: ./.github/actions/playwright
+
+  deploy:
+    name: Deploy to Production
+    needs:
+      - gate
+      - static
+      - unit
+      - integration
+      - build
+      - e2e
+    if: >-
+      !cancelled()
+      && github.ref == 'refs/heads/main'
+      && inputs.dry-run != true
+      && needs.build.result == 'success'
+      && (needs.gate.outputs.skip-tests == 'true'
+      || (needs.static.result == 'success'
+      && needs.unit.result == 'success'
+      && needs.integration.result == 'success'
+      && needs.e2e.result == 'success'))
+    environment: production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.deployment-url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup project
+        uses: ./.github/actions/setup
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: preview-build
+          path: .output/
 
       - name: Apply migrations to production database
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
@@ -247,7 +324,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          preCommands: pnpm run db:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env production
 
@@ -257,7 +333,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          preCommands: pnpm run db:consents:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote --env production
 
@@ -270,62 +345,57 @@ jobs:
           packageManager: pnpm
           command: deploy --env production
 
-      - name: Calculate deploy time
-        id: deploy-app
-        run: |
-          START=${{ steps.deploy-start.outputs.start-time }}
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
-          echo "✅ Deploy completed in ${DURATION}s"
-
       - name: Print deployed URL
         env:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
-        run: echo $DEPLOYMENT_URL
+        run: echo "$DEPLOYMENT_URL"
 
-      - name: Calculate total duration and print summary
-        id: calculate-duration
+      - name: Read job durations
+        id: durations
+        continue-on-error: true
+        uses: ./.github/actions/job-durations
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Write run summary
+        env:
+          SKIP_TESTS: ${{ needs.gate.outputs.skip-tests }}
+          SOURCE_PR_NUMBER: ${{ needs.gate.outputs.pr-number }}
+          SOURCE_RUN_ID: ${{ needs.gate.outputs.source-run-id }}
+          STATIC_DURATION: ${{ steps.durations.outputs.static }}
+          UNIT_DURATION: ${{ steps.durations.outputs.unit }}
+          INTEGRATION_DURATION: ${{ steps.durations.outputs.integration }}
+          E2E_DURATION: ${{ steps.durations.outputs.e2e }}
+          BUILD_DURATION: ${{ needs.build.outputs.build-duration }}
+          BUNDLE_SIZE: ${{ needs.build.outputs.bundle-size }}
+          TOTAL_DURATION: ${{ steps.durations.outputs.total }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
-          START_TIME=${{ steps.start-time.outputs.start-time }}
-          END_TIME=$(date +%s)
-          TOTAL_DURATION=$((END_TIME - START_TIME))
-          MINUTES=$((TOTAL_DURATION / 60))
-          SECONDS=$((TOTAL_DURATION % 60))
-          if [ $MINUTES -gt 0 ]; then
-            DURATION_FORMAT="${MINUTES}m ${SECONDS}s"
+          if [ "$SKIP_TESTS" = "true" ]; then
+            TESTS_RESULT="reused from PR #$SOURCE_PR_NUMBER (run $SOURCE_RUN_ID)"
           else
-            DURATION_FORMAT="${SECONDS}s"
+            TESTS_RESULT="ran on main"
           fi
-          echo "duration=$DURATION_FORMAT" >> $GITHUB_OUTPUT
 
-          # Print beautiful summary
-          echo ""
-          echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║                    BUILD SUMMARY                           ║"
-          echo "╠════════════════════════════════════════════════════════════╣"
-          echo "║                                                            ║"
-          echo "║  📊 Test Results:                                          ║"
-          echo "║     • Unit tests:        ${{ steps.test-unit.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
-          echo "║     • Integration tests: ${{ steps.test-integration.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
-          echo "║     • E2E tests:         ${{ steps.test-e2e.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
-          echo "║                                                            ║"
-          echo "║  🏗️  Build Process:                                        ║"
-          echo "║     • Nuxt build:        ${{ steps.build-app.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
-          echo "║     • Bundle size:       ${{ steps.bundle-size.outputs.bundle-size }}" | awk '{printf "%-60s║\n", $0}'
-          echo "║                                                            ║"
-          echo "║  🚀 Deployment:                                            ║"
-          echo "║     • Deploy time:       ${{ steps.deploy-app.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
-          echo "║     • URL:               ${{ steps.deploy.outputs.deployment-url }}" | awk '{printf "%-60s║\n", $0}' | head -c 66
-          echo "║                                                            ║"
-          echo "║  ⏱️  Total Time:          ${DURATION_FORMAT}" | awk '{printf "%-60s║\n", $0}'
-          echo "║                                                            ║"
-          echo "╚════════════════════════════════════════════════════════════╝"
-          echo ""
+          {
+            echo "## Production deploy"
+            echo ""
+            echo "| Stage | Result |"
+            echo "|-------|--------|"
+            echo "| Tests | $TESTS_RESULT |"
+            echo "| Lint & typecheck | $STATIC_DURATION |"
+            echo "| Unit tests | $UNIT_DURATION |"
+            echo "| Integration tests | $INTEGRATION_DURATION |"
+            echo "| E2E tests (slowest of 3 shards) | $E2E_DURATION |"
+            echo "| Nuxt build | $BUILD_DURATION |"
+            echo "| Bundle size | $BUNDLE_SIZE |"
+            echo "| Total time | $TOTAL_DURATION |"
+            echo "| URL | $DEPLOYMENT_URL |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   indexnow:
     name: Notify IndexNow
-    needs: build-production
+    needs: deploy
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -372,7 +442,7 @@ jobs:
 
   deploy-preview:
     name: Deploy long-lived preview
-    needs: build-production
+    needs: deploy
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: production
@@ -389,19 +459,8 @@ jobs:
           name: preview-build
           path: .output/
 
-      - name: Setup PNPM
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
-        with:
-          run_install: false
-
-      - name: Install Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Setup project
+        uses: ./.github/actions/setup
 
       - name: Apply migrations to preview database
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0
@@ -409,7 +468,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          preCommands: pnpm run db:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
@@ -419,7 +477,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          preCommands: pnpm run db:consents:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote
 
@@ -437,9 +494,8 @@ jobs:
   cleanup-preview-build-artifact:
     name: Cleanup preview build artifact
     needs:
-      - build-production
+      - deploy
       - deploy-preview
-    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
