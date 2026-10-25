@@ -11,6 +11,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
+      forProjectMemory: true,
     },
     {
       id: 'grok-4.20-0309-reasoning',

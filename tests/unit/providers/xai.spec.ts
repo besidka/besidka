@@ -53,10 +53,12 @@ describe('curated xai provider', () => {
     }
   })
 
-  it('has no model marked for project memory', () => {
-    for (const model of xai.models) {
-      expect(model.forProjectMemory).toBeFalsy()
-    }
+  it('marks exactly one model for project memory', () => {
+    const projectMemoryIds = xai.models
+      .filter(model => model.forProjectMemory)
+      .map(model => model.id)
+
+    expect(projectMemoryIds).toEqual(['grok-4.20-0309-non-reasoning'])
   })
 
   it('keeps image models at the tail, each controlled by the cheapest '

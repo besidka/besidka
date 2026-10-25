@@ -51,6 +51,13 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 | `priceTier` | derived at merge time |
 | `tools`, `reasoning`, `reasoningAlwaysOn`, `research`, `imageGeneration`, `forProjectMemory`, `default` | curated |
 
+Every direct provider flags exactly one `forProjectMemory` model, the
+cheapest suitable curated one: `gemini-3.1-flash-lite` (Google),
+`gpt-6-luna` (OpenAI), `claude-haiku-5-5` (Anthropic),
+`grok-4.20-0309-non-reasoning` (xAI), `deepseek-flash` (DeepSeek),
+`kimi-k2.6` (Moonshot AI) and `qwen3.8-flash` (Qwen). Each provider spec
+asserts its single flagged id.
+
 Research agents are recognised by their curated `research` block, so the
 policy never hardcodes model ids.
 
