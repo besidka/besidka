@@ -131,6 +131,33 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/purge.spec.ts',
     'tests/unit/utils/knowledge/quota.spec.ts',
   ]
+  const knowledgeCoreTests = [
+    'tests/unit/utils/knowledge/items.spec.ts',
+    'tests/unit/utils/knowledge/version.spec.ts',
+    'tests/unit/utils/knowledge/text-store.spec.ts',
+    'tests/unit/utils/knowledge/chunk.spec.ts',
+    'tests/unit/utils/knowledge/pack.spec.ts',
+    'tests/unit/utils/knowledge/pack-lease.spec.ts',
+  ]
+  const knowledgeIngestTests = [
+    'tests/unit/utils/knowledge/access.spec.ts',
+    'tests/unit/utils/knowledge/ingest.spec.ts',
+    'tests/integration/api/projects-knowledge-ownership.spec.ts',
+    'tests/integration/api/projects-knowledge-items.spec.ts',
+    'tests/integration/api/projects-knowledge-notes.spec.ts',
+    'tests/integration/api/projects-knowledge-commit.spec.ts',
+    'tests/integration/api/projects-knowledge-summary.spec.ts',
+    'tests/integration/api/projects-knowledge-real-pack.spec.ts',
+  ]
+  const knowledgeRetentionTests = [
+    'tests/unit/utils/knowledge/linked-files.spec.ts',
+    'tests/unit/utils/knowledge/sweep.spec.ts',
+    'tests/integration/server/knowledge-retention.spec.ts',
+    'tests/integration/server/project-knowledge-sweep-plugin.spec.ts',
+    'tests/integration/server/chat-deletion-cleanup.spec.ts',
+    'tests/integration/api/files-delete.spec.ts',
+    'tests/integration/api/projects.spec.ts',
+  ]
   const memoryEntriesTests = [
     'tests/unit/utils/memory/entries.spec.ts',
     'tests/unit/utils/memory/entry-slug.spec.ts',
@@ -1964,7 +1991,35 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/files\/file-governance\.ts$/,
-      tests: ['tests/unit/utils/knowledge/quota.spec.ts'],
+      tests: [
+        'tests/unit/utils/knowledge/quota.spec.ts',
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/(items|version|text-store|chunk|pack|pack-lease)\.ts$/,
+      tests: [
+        ...knowledgeCoreTests,
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
+    },
+    {
+      pattern: /^(server\/utils\/knowledge\/(access|ingest)\.ts|server\/api\/v1\/projects\/\[id\]\/knowledge\/.*\.ts)$/,
+      tests: knowledgeIngestTests,
+    },
+    {
+      pattern: /^(server\/utils\/knowledge\/(linked-files|sweep)\.ts|server\/plugins\/project-knowledge-sweep\.ts|server\/utils\/files\/(cleanup-expired-files|chat-deletion-cleanup)\.ts|server\/api\/v1\/files\/(\[id\]\/index\.delete|delete\/bulk\.post)\.ts|server\/api\/v1\/projects\/\[id\]\/index\.delete\.ts)$/,
+      tests: knowledgeRetentionTests,
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/knowledge-(db|api)\.ts$/,
+      tests: [
+        ...knowledgeCoreTests,
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
     },
     {
       pattern: /^server\/utils\/knowledge\/(purge|storage-keys)\.ts$/,
