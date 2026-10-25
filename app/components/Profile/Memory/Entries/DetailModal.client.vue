@@ -360,7 +360,10 @@ import type {
   MemoryEntryPatch,
 } from '#shared/types/memory.d'
 import type { MemoryEntryLimits } from '#shared/types/memory-api.d'
-import type { MemoryEntryModalChange } from '~/types/memory-entries.d'
+import type {
+  MemoryEntryInitialValues,
+  MemoryEntryModalChange,
+} from '~/types/memory-entries.d'
 
 interface SourceChat {
   id: string
@@ -376,8 +379,10 @@ const props = withDefaults(defineProps<{
   projectId?: string | null
   takenSingletonCategories?: MemoryCategory[]
   backLabel?: string
+  initialValues?: MemoryEntryInitialValues | null
 }>(), {
   projectId: null,
+  initialValues: null,
   takenSingletonCategories: () => [],
   backLabel: 'Memory',
 })
@@ -616,12 +621,15 @@ function isCategoryUnavailable(category: MemoryCategory): boolean {
 }
 
 function startCreating() {
-  draftTitle.value = ''
-  draftDescription.value = ''
-  draftBody.value = ''
-  draftCategory.value = props.takenSingletonCategories.includes('profile')
-    ? 'topics'
-    : 'profile'
+  const initialValues = props.initialValues
+
+  draftTitle.value = initialValues?.title ?? ''
+  draftDescription.value = initialValues?.description ?? ''
+  draftBody.value = initialValues?.body ?? ''
+  draftCategory.value = initialValues?.category
+    ?? (props.takenSingletonCategories.includes('profile')
+      ? 'topics'
+      : 'profile')
   saveError.value = null
 }
 
@@ -715,7 +723,10 @@ async function createEntry() {
       },
     })
 
-    useInfoMessage('Saved', 'Memory entry added.')
+    if (!props.initialValues) {
+      useInfoMessage('Saved', 'Memory entry added.')
+    }
+
     open.value = false
     emit('changed', { reason: 'created', categoryChanged: false })
   } catch (exception) {

@@ -4,6 +4,7 @@ import {
   MEMORY_LIMITS,
   MEMORY_SETTING_DEFAULTS,
 } from '#shared/utils/memory-policy'
+import { buildAboutMeDescription } from '#shared/utils/memory-about-me'
 import { memoryByteLength } from '#shared/utils/memory-schemas'
 import * as schema from '~~/server/db/schema'
 import { createMemoryEntry } from '~~/server/utils/memory/entries'
@@ -35,12 +36,7 @@ export interface AboutMeMigrationInput {
 }
 
 const ABOUT_ME_ENTRY_TITLE = 'About me'
-const FALLBACK_DESCRIPTION = 'Things I wrote about myself'
-const ELLIPSIS = '…'
 const COMPLIANCE_ORIGIN = 'about-me-migration'
-const LINE_BREAK = /\r\n|[\n\r\v\f\u0085\u2028\u2029]/
-const WHITESPACE_RUN = /\s+/g
-const HIGH_SURROGATE = /[\uD800-\uDBFF]$/
 const COMPLIANCE_REFUSAL_STATUS = 422
 const CONFLICT_STATUS = 409
 
@@ -48,43 +44,6 @@ function skipped(
   reason: 'empty' | AboutMeNotMigratedReason,
 ): AboutMeMigrationOutcome {
   return { status: 'skipped', reason }
-}
-
-/**
- * The description is the first non-empty line of the text with whitespace
- * collapsed. A longer line is cut at the last word boundary that leaves room
- * for the ellipsis inside `maxDescriptionChars`.
- */
-export function buildAboutMeDescription(aboutMe: string): string {
-  const firstLine = aboutMe
-    .split(LINE_BREAK)
-    .map((line) => {
-      return line.replace(WHITESPACE_RUN, ' ').trim()
-    })
-    .find((line) => {
-      return line !== ''
-    })
-
-  if (!firstLine) {
-    return FALLBACK_DESCRIPTION
-  }
-
-  const limit = MEMORY_LIMITS.maxDescriptionChars
-
-  if (firstLine.length <= limit) {
-    return firstLine
-  }
-
-  const room = limit - ELLIPSIS.length
-  const clipped = firstLine.slice(0, room)
-  const endsOnWordBoundary = /\s/.test(firstLine.charAt(room))
-  const lastSpaceIndex = clipped.lastIndexOf(' ')
-  const wordSafe = endsOnWordBoundary || lastSpaceIndex <= 0
-    ? clipped
-    : clipped.slice(0, lastSpaceIndex)
-  const cut = wordSafe.replace(HIGH_SURROGATE, '').trimEnd()
-
-  return `${cut}${ELLIPSIS}`
 }
 
 async function findAccountProfileEntry(

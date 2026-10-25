@@ -1,3 +1,5 @@
+import { MEMORY_IMPORT_MAX_CHARS } from '#shared/utils/memory-import-limits'
+
 export const MEMORY_EXTRACTION_LIMITS = {
   idleMs: 10 * 60 * 1000,
   minUserChars: 300,
@@ -26,7 +28,7 @@ export const MEMORY_EXTRACTION_LIMITS = {
   projectRefreshMaxRuntimeMs: 60_000,
   importChunkChars: 24000,
   importMaxChunksPerRequest: 3,
-  importMaxChars: 60000,
+  importMaxChars: MEMORY_IMPORT_MAX_CHARS,
   importCooldownSeconds: 60,
   importMinChunkBudgetMs: 10_000,
   backfillChatsPerStep: 2,

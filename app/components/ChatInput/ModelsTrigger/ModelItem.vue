@@ -18,7 +18,10 @@
         :type="isDisabled ? undefined : 'button'"
         :aria-label="isDisabled ? undefined : selectLabel"
         class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left"
-        :class="isDisabled ? 'opacity-50' : 'cursor-pointer'"
+        :class="[
+          isDisabled ? 'opacity-50' : 'cursor-pointer',
+          { 'max-xs:gap-x-1': isRecommended }
+        ]"
         @click="onSelect"
       >
         <span
@@ -84,7 +87,7 @@
             'max-xs:ml-5': !isKeyMissing && !model.priceTier
           }"
         >
-          Recommended — cheap
+          Recommended
         </span>
         <span
           v-if="hasCapabilities"

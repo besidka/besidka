@@ -1,6 +1,6 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
-import { h } from 'vue'
+import { defineComponent, h } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MemorySettingsFields } from '../../../../../../shared/types/memory.d'
 import Toolbar from '../../../../../../app/components/Profile/Memory/Entries/Toolbar.vue'
@@ -31,6 +31,36 @@ const defaultSettings: MemorySettingsFields = {
   projectMemoryGateway: null,
 }
 
+function createSheetStub(name: string, testId: string) {
+  return defineComponent({
+    name,
+    props: ['open'],
+    emits: ['update:open', 'changed'],
+    setup(props) {
+      return () => h('div', {
+        'data-testid': testId,
+        'data-open': String(props.open),
+      })
+    },
+  })
+}
+
+const BackfillSheetStub = createSheetStub(
+  'BackfillSheetStub',
+  'stub-backfill-sheet',
+)
+const ImportSheetStub = createSheetStub(
+  'ImportSheetStub',
+  'stub-import-sheet',
+)
+
+const sheetStubs = {
+  LazyProfileMemoryEntriesBackfillSheet: BackfillSheetStub,
+  ProfileMemoryEntriesBackfillSheet: BackfillSheetStub,
+  LazyProfileMemoryEntriesImportSheet: ImportSheetStub,
+  ProfileMemoryEntriesImportSheet: ImportSheetStub,
+}
+
 interface ToolbarProps {
   settings: MemorySettingsFields
   total: number | null
@@ -49,7 +79,14 @@ async function mountToolbar(
       ...overrides,
     },
     slots,
+    global: { stubs: sheetStubs },
   })
+}
+
+type Wrapper = Awaited<ReturnType<typeof mountToolbar>>
+
+function sheetOpen(wrapper: Wrapper, testId: string): string | undefined {
+  return wrapper.get(`[data-testid="${testId}"]`).attributes('data-open')
 }
 
 function createRejection(
@@ -62,13 +99,19 @@ function createRejection(
   })
 }
 
+const BACKFILL_URL = '/api/v1/memory/backfill'
+
 function mockApi(options: {
+  backfill?: Record<string, unknown> | Error
   history?: Record<string, unknown>
   extract?: Record<string, unknown> | Error
   reset?: Record<string, unknown> | Error
 } = {}) {
   mocks.fetch.mockImplementation(async (url: string) => {
     const response = {
+      [BACKFILL_URL]: options.backfill
+        ?? useState('memory-backfill-overview').value
+        ?? { job: null, estimate: null, reason: null },
       '/api/v1/chats/history': options.history ?? {
         pinned: [],
         chats: [{ slug: 'latest-chat', activityAt: '2026-02-01T00:00:00Z' }],
@@ -104,6 +147,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
     mocks.confirm.mockResolvedValue({ label: 'Delete entries', index: 0 })
     mocks.info.mockReset()
     mocks.error.mockReset()
+    clearNuxtState('memory-backfill-overview')
     mockApi()
   })
 
@@ -233,11 +277,15 @@ describe('Profile/Memory/Entries/Toolbar', () => {
         .trigger('click')
       await flushPromises()
 
-      expect(mocks.fetch.mock.calls[0]).toEqual([
+      const calls = mocks.fetch.mock.calls.filter(([url]) => {
+        return url !== BACKFILL_URL
+      })
+
+      expect(calls[0]).toEqual([
         '/api/v1/chats/history',
         { query: { limit: 100 } },
       ])
-      expect(mocks.fetch.mock.calls[1]).toEqual([
+      expect(calls[1]).toEqual([
         '/api/v1/memory/extract-now',
         { method: 'POST', body: { chatSlug: 'latest-chat' } },
       ])
@@ -597,5 +645,446 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       expect(wrapper.find('[data-testid="memory-export"]').exists())
         .toBe(true)
     })
+  })
+  describe('action row', () => {
+    it('keeps the primary actions first and the rest in a wrapping row',
+      async () => {
+        const wrapper = await mountToolbar()
+        const addButton = wrapper.get('[data-testid="memory-add"]')
+        const actionRow = addButton.element.parentElement!.parentElement!
+        const secondary = wrapper.get('[data-testid="memory-backfill"]')
+          .element.parentElement!
+
+        expect(actionRow.className).toContain('flex-wrap')
+        expect(actionRow.className).toContain('gap-2')
+        expect(secondary.className).toBe('hidden sm:contents')
+        expect([...secondary.children].map((child) => {
+          return child.getAttribute('data-testid')
+            ?? child.querySelector('[data-testid]')?.getAttribute('data-testid')
+        })).toEqual([
+          'memory-backfill',
+          'memory-import',
+          'memory-export',
+          'memory-reset',
+        ])
+      })
+
+    it('opens the build memory sheet from the row button', async () => {
+      const wrapper = await mountToolbar()
+
+      expect(sheetOpen(wrapper, 'stub-backfill-sheet')).toBe('false')
+
+      await wrapper.get('[data-testid="memory-backfill"]').trigger('click')
+
+      expect(sheetOpen(wrapper, 'stub-backfill-sheet')).toBe('true')
+      expect(sheetOpen(wrapper, 'stub-import-sheet')).toBe('false')
+    })
+
+    it('opens the import sheet from the row button', async () => {
+      const wrapper = await mountToolbar()
+
+      await wrapper.get('[data-testid="memory-import"]').trigger('click')
+
+      expect(sheetOpen(wrapper, 'stub-import-sheet')).toBe('true')
+      expect(sheetOpen(wrapper, 'stub-backfill-sheet')).toBe('false')
+    })
+
+    it.each([
+      ['stub-backfill-sheet'],
+      ['stub-import-sheet'],
+    ])('re-emits changed from %s', async (testId) => {
+      const wrapper = await mountToolbar()
+
+      wrapper.getComponent(
+        testId === 'stub-backfill-sheet' ? BackfillSheetStub : ImportSheetStub,
+      ).vm.$emit('changed')
+
+      expect(wrapper.emitted('changed')).toHaveLength(1)
+    })
+
+    it('labels the build button with the idle copy by default', async () => {
+      const wrapper = await mountToolbar()
+      const button = wrapper.get('[data-testid="memory-backfill"]')
+
+      expect(button.text()).toBe('Build memory from past chats')
+      expect(button.attributes('title')).toBeUndefined()
+      expect(button.classes()).not.toContain('opacity-60')
+      expect(button.find('.loading').exists()).toBe(false)
+    })
+
+    it('stays clickable but looks secondary when generation is off',
+      async () => {
+        const wrapper = await mountToolbar({
+          settings: { ...defaultSettings, memoryExtractionEnabled: false },
+        })
+        const button = wrapper.get('[data-testid="memory-backfill"]')
+
+        expect(button.element.tagName).toBe('BUTTON')
+        expect(button.attributes('disabled')).toBeUndefined()
+        expect(button.classes()).toContain('opacity-60')
+        expect(button.attributes('title'))
+          .toBe('Turn on Generate memory from chats first.')
+
+        await button.trigger('click')
+
+        expect(sheetOpen(wrapper, 'stub-backfill-sheet')).toBe('true')
+      })
+
+    it('explains that memory itself is off', async () => {
+      const wrapper = await mountToolbar({
+        settings: { ...defaultSettings, memoryEnabled: false },
+      })
+
+      expect(wrapper.get('[data-testid="memory-backfill"]')
+        .attributes('title')).toBe('Turn on Use memory first.')
+    })
+
+    it('shows the live progress while a job is running', async () => {
+      useState('memory-backfill-overview').value = {
+        job: {
+          id: 'job-1',
+          status: 'running',
+          processedChats: 12,
+          totalChats: 48,
+        },
+        estimate: null,
+        reason: null,
+      }
+
+      const wrapper = await mountToolbar()
+      const button = wrapper.get('[data-testid="memory-backfill"]')
+
+      expect(button.text()).toBe('Building… 12/48')
+      expect(button.find('.loading').exists()).toBe(true)
+      expect(wrapper.get('[data-testid="memory-backfill-menu"]').text())
+        .toBe('Building… 12/48')
+    })
+
+    it('loads the backfill overview once on mount, before any sheet opens',
+      async () => {
+        await mountToolbar()
+        await flushPromises()
+
+        expect(callsTo(BACKFILL_URL)).toHaveLength(1)
+      })
+
+    it('shows a running job found by the mount load after a reload',
+      async () => {
+        mockApi({
+          backfill: {
+            job: {
+              id: 'job-1',
+              status: 'running',
+              processedChats: 12,
+              totalChats: 48,
+            },
+            estimate: null,
+            reason: null,
+          },
+        })
+
+        const wrapper = await mountToolbar()
+
+        await flushPromises()
+
+        expect(wrapper.get('[data-testid="memory-backfill"]').text())
+          .toBe('Building… 12/48')
+        expect(wrapper.get('[data-testid="memory-backfill-menu"]').text())
+          .toBe('Building… 12/48')
+      })
+
+    it('refreshes the progress in the background while a job runs',
+      async () => {
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+
+        try {
+          mockApi({
+            backfill: {
+              job: { id: 'job-1', status: 'running' },
+              estimate: null,
+              reason: null,
+            },
+          })
+
+          await mountToolbar()
+          await flushPromises()
+          await vi.advanceTimersByTimeAsync(20_000)
+
+          expect(callsTo(BACKFILL_URL).length).toBeGreaterThanOrEqual(2)
+        } finally {
+          vi.useRealTimers()
+        }
+      })
+
+    it('stays silent when the mount load fails', async () => {
+      mockApi({ backfill: createRejection(500, 'Boom', 'Database down') })
+
+      const wrapper = await mountToolbar()
+
+      await flushPromises()
+
+      expect(mocks.error).not.toHaveBeenCalled()
+      expect(mocks.info).not.toHaveBeenCalled()
+      expect(wrapper.get('[data-testid="memory-backfill"]').text())
+        .toBe('Build memory from past chats')
+    })
+
+    it('refreshes the list when a job finishes with the sheet closed',
+      async () => {
+        const overview = useState<Record<string, unknown> | null>(
+          'memory-backfill-overview',
+        )
+
+        overview.value = {
+          job: { id: 'job-1', status: 'running' },
+          estimate: null,
+          reason: null,
+        }
+
+        const wrapper = await mountToolbar()
+
+        overview.value = {
+          job: { id: 'job-1', status: 'completed' },
+          estimate: null,
+          reason: null,
+        }
+        await flushPromises()
+
+        expect(wrapper.emitted('changed')).toHaveLength(1)
+      })
+
+    it('leaves the refresh to the sheet while it is open', async () => {
+      const overview = useState<Record<string, unknown> | null>(
+        'memory-backfill-overview',
+      )
+
+      overview.value = {
+        job: { id: 'job-1', status: 'running' },
+        estimate: null,
+        reason: null,
+      }
+
+      const wrapper = await mountToolbar()
+
+      await wrapper.get('[data-testid="memory-backfill"]').trigger('click')
+
+      overview.value = {
+        job: { id: 'job-1', status: 'completed' },
+        estimate: null,
+        reason: null,
+      }
+      await flushPromises()
+
+      expect(wrapper.emitted('changed')).toBeUndefined()
+    })
+  })
+
+  describe('more menu on small screens', () => {
+    function menuOf(wrapper: Wrapper) {
+      return wrapper.get('[data-testid="memory-more"]')
+    }
+
+    async function toggleMenu(wrapper: Wrapper, isOpen: boolean) {
+      const details = menuOf(wrapper).element as HTMLDetailsElement
+
+      details.open = isOpen
+      details.dispatchEvent(new Event('toggle'))
+      await flushPromises()
+    }
+
+    it('renders a small-screen only dropdown next to the row', async () => {
+      const wrapper = await mountToolbar()
+      const menu = menuOf(wrapper)
+      const trigger = wrapper.get('[data-testid="memory-more-trigger"]')
+
+      expect(menu.element.tagName).toBe('DETAILS')
+      expect(menu.classes()).toEqual(expect.arrayContaining([
+        'dropdown',
+        'sm:hidden',
+      ]))
+      expect(trigger.text()).toBe('More')
+      expect(trigger.attributes('aria-haspopup')).toBeUndefined()
+      expect(trigger.attributes('role')).toBeUndefined()
+      expect(trigger.attributes('aria-expanded')).toBe('false')
+      expect(menu.get('ul').classes()).toContain('rounded-box')
+    })
+
+    it('is a plain disclosure of buttons without menu roles', async () => {
+      const wrapper = await mountToolbar()
+      const menu = menuOf(wrapper)
+
+      expect(menu.find('[role]').exists()).toBe(false)
+      expect(menu.find('[aria-haspopup]').exists()).toBe(false)
+      expect(menu.find('[data-testid="memory-backfill-menu"]').element
+        .tagName).toBe('BUTTON')
+      expect(menu.find('[data-testid="memory-import-menu"]').element
+        .tagName).toBe('BUTTON')
+      expect(menu.find('[data-testid="memory-reset-menu"]').element
+        .tagName).toBe('BUTTON')
+      expect(menu.find('[data-testid="memory-export-menu"]').element
+        .tagName).toBe('A')
+    })
+
+    it('duplicates the secondary actions with unique test ids', async () => {
+      const wrapper = await mountToolbar()
+
+      for (const testId of [
+        'memory-backfill-menu',
+        'memory-import-menu',
+        'memory-export-menu',
+        'memory-reset-menu',
+      ]) {
+        const items = wrapper.findAll(`[data-testid="${testId}"]`)
+
+        expect(items).toHaveLength(1)
+      }
+
+      expect(wrapper.get('[data-testid="memory-export-menu"]')
+        .attributes('href')).toBe('/api/v1/memory/export')
+    })
+
+    it('keeps the primary actions out of the menu', async () => {
+      const wrapper = await mountToolbar()
+      const menu = menuOf(wrapper)
+
+      expect(menu.find('[data-testid="memory-add"]').exists()).toBe(false)
+      expect(menu.find('[data-testid="memory-update-now"]').exists())
+        .toBe(false)
+    })
+
+    it('reflects the open state in aria-expanded', async () => {
+      const wrapper = await mountToolbar()
+
+      await toggleMenu(wrapper, true)
+
+      expect(wrapper.get('[data-testid="memory-more-trigger"]')
+        .attributes('aria-expanded')).toBe('true')
+
+      await toggleMenu(wrapper, false)
+
+      expect(wrapper.get('[data-testid="memory-more-trigger"]')
+        .attributes('aria-expanded')).toBe('false')
+    })
+
+    it('closes on Escape and returns focus to the trigger', async () => {
+      const wrapper = await mountToolbar()
+      const details = menuOf(wrapper).element as HTMLDetailsElement
+
+      const trigger = wrapper.get('[data-testid="memory-more-trigger"]')
+      const focusSpy = vi.spyOn(trigger.element as HTMLElement, 'focus')
+
+      await toggleMenu(wrapper, true)
+      await menuOf(wrapper).trigger('keydown', { key: 'Escape' })
+      await flushPromises()
+
+      expect(details.open).toBe(false)
+      expect(trigger.attributes('aria-expanded')).toBe('false')
+      expect(focusSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns focus to the trigger after choosing an item', async () => {
+      const wrapper = await mountToolbar()
+      const trigger = wrapper.get('[data-testid="memory-more-trigger"]')
+      const focusSpy = vi.spyOn(trigger.element as HTMLElement, 'focus')
+
+      for (const testId of [
+        'memory-backfill-menu',
+        'memory-import-menu',
+        'memory-export-menu',
+      ]) {
+        focusSpy.mockClear()
+
+        await toggleMenu(wrapper, true)
+        await wrapper.get(`[data-testid="${testId}"]`).trigger('click')
+
+        expect(focusSpy).toHaveBeenCalledTimes(1)
+      }
+    })
+
+    it('does not move focus when the menu closes from an outside click',
+      async () => {
+        const wrapper = await mountToolbar()
+        const trigger = wrapper.get('[data-testid="memory-more-trigger"]')
+        const focusSpy = vi.spyOn(trigger.element as HTMLElement, 'focus')
+
+        await toggleMenu(wrapper, true)
+        await toggleMenu(wrapper, false)
+
+        expect(focusSpy).not.toHaveBeenCalled()
+      })
+
+    it('opens the build sheet and closes the menu', async () => {
+      const wrapper = await mountToolbar()
+      const details = menuOf(wrapper).element as HTMLDetailsElement
+
+      await toggleMenu(wrapper, true)
+      await wrapper.get('[data-testid="memory-backfill-menu"]')
+        .trigger('click')
+
+      expect(details.open).toBe(false)
+      expect(sheetOpen(wrapper, 'stub-backfill-sheet')).toBe('true')
+    })
+
+    it('opens the import sheet and closes the menu', async () => {
+      const wrapper = await mountToolbar()
+      const details = menuOf(wrapper).element as HTMLDetailsElement
+
+      await toggleMenu(wrapper, true)
+      await wrapper.get('[data-testid="memory-import-menu"]')
+        .trigger('click')
+
+      expect(details.open).toBe(false)
+      expect(sheetOpen(wrapper, 'stub-import-sheet')).toBe('true')
+    })
+
+    it('closes the menu when export is chosen', async () => {
+      const wrapper = await mountToolbar()
+      const details = menuOf(wrapper).element as HTMLDetailsElement
+
+      await toggleMenu(wrapper, true)
+      await wrapper.get('[data-testid="memory-export-menu"]')
+        .trigger('click')
+
+      expect(details.open).toBe(false)
+    })
+
+    it('resets memory from the menu with the same confirmation',
+      async () => {
+        const wrapper = await mountToolbar()
+        const details = menuOf(wrapper).element as HTMLDetailsElement
+
+        await toggleMenu(wrapper, true)
+        await wrapper.get('[data-testid="memory-reset-menu"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(details.open).toBe(false)
+        expect(mocks.confirm).toHaveBeenCalledTimes(1)
+        expect(callsTo('/api/v1/memory/entries/reset')).toHaveLength(1)
+        expect(wrapper.emitted('changed')).toHaveLength(1)
+      })
+
+    it('disables the menu reset when there are no entries', async () => {
+      const wrapper = await mountToolbar({ total: 0 })
+      const item = wrapper.get('[data-testid="memory-reset-menu"]')
+
+      expect(item.attributes('disabled')).toBeDefined()
+
+      await item.trigger('click')
+      await flushPromises()
+
+      expect(mocks.confirm).not.toHaveBeenCalled()
+    })
+
+    it('hides the row group and the menu with matching breakpoints',
+      async () => {
+        const wrapper = await mountToolbar()
+        const group = wrapper.get('[data-testid="memory-backfill"]')
+          .element.parentElement!
+
+        expect(group.classList.contains('hidden')).toBe(true)
+        expect(group.classList.contains('sm:contents')).toBe(true)
+        expect(menuOf(wrapper).classes()).toContain('sm:hidden')
+      })
   })
 })

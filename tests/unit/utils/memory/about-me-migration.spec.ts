@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createError } from 'evlog'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
-import {
-  buildAboutMeDescription,
-  migrateAboutMeToProfileEntry,
-} from '~~/server/utils/memory/about-me-migration'
+import { migrateAboutMeToProfileEntry } from '~~/server/utils/memory/about-me-migration'
 import { createMemoryTestDb } from '../../../setup/helpers/memory-db'
 import type { MemoryTestDb } from '../../../setup/helpers/memory-db'
 
@@ -565,51 +562,5 @@ describe('migrateAboutMeToProfileEntry', () => {
         expect(testDb.countEntries(USER_ID)).toBe(1)
         expect(readAboutMe()).toBeNull()
       })
-  })
-})
-
-describe('buildAboutMeDescription', () => {
-  const limit = MEMORY_LIMITS.maxDescriptionChars
-
-  it('uses the first non-empty line', () => {
-    expect(buildAboutMeDescription('\n  \nBackend dev.\nSecond line.'))
-      .toBe('Backend dev.')
-  })
-
-  it('collapses inner whitespace to a single line', () => {
-    expect(buildAboutMeDescription('Backend \t  dev')).toBe('Backend dev')
-  })
-
-  it('keeps a line of exactly the limit untouched', () => {
-    const line = 'a'.repeat(limit)
-
-    expect(buildAboutMeDescription(line)).toBe(line)
-  })
-
-  it('cuts a longer line at the last word boundary with an ellipsis', () => {
-    const description = buildAboutMeDescription(
-      `${'word '.repeat(30)}tail`,
-    )
-
-    expect(description.length).toBeLessThanOrEqual(limit)
-    expect(description.endsWith('word…')).toBe(true)
-    expect(description).not.toContain('\n')
-  })
-
-  it('hard-cuts a long line without spaces', () => {
-    const description = buildAboutMeDescription('я'.repeat(300))
-
-    expect(description).toBe(`${'я'.repeat(limit - 1)}…`)
-  })
-
-  it('does not leave half of a surrogate pair', () => {
-    const description = buildAboutMeDescription('😀'.repeat(100))
-
-    expect(description.length).toBeLessThanOrEqual(limit)
-    expect(description).not.toMatch(/[\uD800-\uDBFF]…$/)
-  })
-
-  it('falls back when there is no text', () => {
-    expect(buildAboutMeDescription('  \n ')).toBe('Things I wrote about myself')
   })
 })
