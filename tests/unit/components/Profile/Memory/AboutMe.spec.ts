@@ -71,6 +71,26 @@ describe('Profile/Memory/AboutMe', () => {
       .toBe(`17 / ${MEMORY_LIMITS.maxAboutMeChars}`)
   })
 
+  it('caps the textarea at 50dvh and wires it for auto-resize', async () => {
+    const wrapper = await mountAboutMe()
+    const classes = input(wrapper).classes()
+
+    expect(classes).toContain('max-h-[50dvh]')
+    expect(classes).toContain('min-h-36')
+    expect(classes).toContain('resize-none')
+    expect(classes).toContain('overflow-y-auto')
+    expect(classes).toContain('rounded-box')
+    expect(classes).not.toContain('max-h-[min(300px,33dvh)]')
+  })
+
+  it('applies an inline height from autosize once the draft has content',
+    async () => {
+      const wrapper = await mountAboutMe({ aboutMe: 'Backend developer' })
+      await flushPromises()
+
+      expect(input(wrapper).attributes('style') ?? '').toContain('height')
+    })
+
   it('updates the counter as the user types', async () => {
     const wrapper = await mountAboutMe()
 

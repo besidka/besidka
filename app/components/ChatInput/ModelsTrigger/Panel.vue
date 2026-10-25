@@ -56,12 +56,41 @@
         @keydown="onSearchKeydown"
       />
       <ChatInputModelsTriggerFilterDropdown
+        v-if="!recommendedFilter"
         v-model="activeCategory"
         v-model:vision-only="isVisionOnly"
         v-model:capabilities="activeCapabilityFilters"
         :options="filterCategoryOptions"
         :capability-options="filterCapabilityOptions"
       />
+      <div
+        v-else-if="!activeGateway"
+        role="group"
+        aria-label="Model list"
+        data-testid="models-picker-recommended-filter"
+        class="join shrink-0"
+      >
+        <button
+          type="button"
+          data-testid="memory-picker-filter-all"
+          class="btn btn-xs join-item"
+          :class="{ 'btn-active btn-neutral': !isRecommendedOnly }"
+          :aria-pressed="!isRecommendedOnly"
+          @click="setRecommendedOnly(false)"
+        >
+          All
+        </button>
+        <button
+          type="button"
+          data-testid="memory-picker-filter-recommended"
+          class="btn btn-xs join-item"
+          :class="{ 'btn-active btn-neutral': isRecommendedOnly }"
+          :aria-pressed="isRecommendedOnly"
+          @click="setRecommendedOnly(true)"
+        >
+          Recommended
+        </button>
+      </div>
     </div>
     <div class="flex flex-1 min-h-0">
       <ChatInputModelsTriggerProviderRail
@@ -334,10 +363,12 @@ const props = withDefaults(defineProps<{
   filterModel?: (model: Model) => boolean
   filterGatewayModel?: (model: GatewayModel) => boolean
   recommendedModelIds?: string[]
+  recommendedFilter?: boolean
 }>(), {
   filterModel: undefined,
   filterGatewayModel: undefined,
   recommendedModelIds: () => [],
+  recommendedFilter: false,
 })
 
 const emit = defineEmits<{
@@ -366,6 +397,7 @@ const activeProviderId = shallowRef<string | null>(null)
 const isFavoritesOnly = shallowRef<boolean>(false)
 const activeCategory = shallowRef<ModelCategory | null>(null)
 const isVisionOnly = shallowRef<boolean>(false)
+const isRecommendedOnly = shallowRef<boolean>(false)
 const activeCapabilityFilters = shallowRef<GatewayCapabilityFilter[]>([])
 const detailModelId = shallowRef<string | null>(null)
 const highlightedModelId = shallowRef<string | null>(null)
@@ -579,6 +611,7 @@ const isRailFilterApplied = computed<boolean>(() => {
 const hasActiveFilters = computed<boolean>(() => {
   return activeCategory.value !== null
     || isVisionOnly.value
+    || isRecommendedOnly.value
     || activeCapabilityFilters.value.length > 0
     || isRailFilterApplied.value
     || !!activeGatewayProviderPrefix.value
@@ -657,6 +690,13 @@ function matchesActiveFilters({ model, providerId }: PickerModel): boolean {
   }
 
   if (isVisionOnly.value && !hasVisionCapability(model)) {
+    return false
+  }
+
+  if (
+    isRecommendedOnly.value
+    && !props.recommendedModelIds.includes(model.id)
+  ) {
     return false
   }
 
@@ -763,10 +803,15 @@ function resetTransientState() {
   searchQuery.value = ''
   activeCategory.value = null
   isVisionOnly.value = false
+  isRecommendedOnly.value = false
   activeCapabilityFilters.value = []
   isLegacyExpanded.value = false
   highlightedModelId.value = null
   closeDetail()
+}
+
+function setRecommendedOnly(value: boolean) {
+  isRecommendedOnly.value = value
 }
 
 function toggleLegacy() {
@@ -831,6 +876,7 @@ function switchMode(mode: PickerMode) {
   searchQuery.value = ''
   activeCategory.value = null
   isVisionOnly.value = false
+  isRecommendedOnly.value = false
   activeCapabilityFilters.value = []
   activeProviderId.value = null
   isFavoritesOnly.value = false
@@ -890,6 +936,7 @@ function toggleFavoritesOnly() {
 function clearFilters() {
   activeCategory.value = null
   isVisionOnly.value = false
+  isRecommendedOnly.value = false
   activeCapabilityFilters.value = []
   activeProviderId.value = null
   activeGatewayProviderPrefix.value = null
@@ -1130,6 +1177,7 @@ watch([
   searchTerm,
   activeCategory,
   isVisionOnly,
+  isRecommendedOnly,
   activeCapabilityFilters,
   activeProviderId,
   isFavoritesOnly,

@@ -1,7 +1,10 @@
 <template>
   <ProfileSecuritySectionCard heading="Sensitive topics">
     <div class="grid gap-5">
-      <label class="flex items-start justify-between gap-4 cursor-pointer">
+      <label
+        v-if="isOptInEnabled"
+        class="flex items-start justify-between gap-4 cursor-pointer"
+      >
         <span class="grid gap-1">
           <span
             id="memory-sensitive-title"
@@ -26,6 +29,19 @@
           @change="onSensitiveChange"
         >
       </label>
+      <p
+        v-else
+        class="text-sm text-base-content/70"
+        data-testid="memory-sensitive-hidden-note"
+      >
+        Sensitive topics (health, religion, politics and similar) are never
+        saved to memory.
+        <NuxtLink
+          to="/privacy-policy"
+          class="link"
+          data-testid="memory-sensitive-privacy-link"
+        >See the Privacy Policy.</NuxtLink>
+      </p>
       <div>
         <h3 class="text-sm font-bold">Never stored, even if you ask</h3>
         <ul
@@ -60,6 +76,12 @@ const props = defineProps<{
 }>()
 
 const isSaving = shallowRef<boolean>(false)
+
+const { public: publicConfig } = useRuntimeConfig()
+const memoryConfig = (publicConfig as {
+  memory?: { sensitiveOptInEnabled?: boolean }
+}).memory
+const isOptInEnabled = memoryConfig?.sensitiveOptInEnabled === true
 
 const sensitiveCategoriesText = computed<string>(() => {
   return memorySensitiveCategories.map((category) => {

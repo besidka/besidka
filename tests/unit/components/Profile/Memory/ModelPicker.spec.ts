@@ -14,14 +14,15 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const PanelStub = defineComponent({
-  props: [
-    'isOpen',
-    'selectedModelId',
-    'selectedGatewayId',
-    'filterModel',
-    'filterGatewayModel',
-    'recommendedModelIds',
-  ],
+  props: {
+    isOpen: Boolean,
+    selectedModelId: { type: String, default: null },
+    selectedGatewayId: { type: String, default: null },
+    filterModel: { type: Function, default: undefined },
+    filterGatewayModel: { type: Function, default: undefined },
+    recommendedModelIds: { type: Array, default: () => [] },
+    recommendedFilter: Boolean,
+  },
   emits: ['select', 'close'],
   setup(props, { emit, expose }) {
     mocks.panelProps.push(props as Record<string, unknown>)
@@ -121,6 +122,15 @@ describe('Profile/Memory/ModelPicker', () => {
     expect(mocks.prepareOpen).toHaveBeenCalledOnce()
     expect(mocks.panelProps.at(-1)?.isOpen).toBe(true)
     expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  it('centres the radio of the specific model row', async () => {
+    const { wrapper } = await mountPicker()
+    const radio = wrapper.get('[data-testid="memory-model-specific"]')
+
+    expect(radio.element.closest('label')?.classList.contains('items-center'))
+      .toBe(true)
+    expect(radio.classes()).not.toContain('mt-1')
   })
 
   it('stores the model chosen in the panel', async () => {
@@ -260,6 +270,7 @@ describe('Profile/Memory/ModelPicker', () => {
       filterModel: (model: Model) => boolean
       filterGatewayModel: (model: GatewayModel) => boolean
       recommendedModelIds: string[]
+      recommendedFilter: boolean
     }
     const imageModel = createModel({
       modalities: { input: ['text'], output: ['image'] },
@@ -275,6 +286,7 @@ describe('Profile/Memory/ModelPicker', () => {
     expect(props.filterModel(imageModel)).toBe(false)
     expect(props.filterGatewayModel(gatewayImageModel)).toBe(false)
     expect(props.recommendedModelIds).toEqual(['recommended-model'])
+    expect(props.recommendedFilter).toBe(true)
   })
 })
 

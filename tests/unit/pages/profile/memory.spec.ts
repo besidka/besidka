@@ -20,6 +20,16 @@ mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useFetch', () => mocks.useFetch)
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('useRuntimeConfig', (original) => {
+  return () => {
+    const config = original()
+
+    return {
+      ...config,
+      public: { ...config.public, memory: { sensitiveOptInEnabled: true } },
+    }
+  }
+})
 
 enableAutoUnmount(afterEach)
 

@@ -9,7 +9,7 @@
         v-model="draft"
         class="
           textarea textarea-bordered rounded-box min-h-36 w-full
-          resize-none max-h-[min(300px,33dvh)] overflow-y-auto
+          resize-none max-h-[50dvh] overflow-y-auto
         "
         :class="{ 'textarea-error': isOverLimit || !!saveError }"
         aria-label="About me"
