@@ -57,6 +57,8 @@ vi.mock('~~/server/utils/projects/memory-lease', async (importOriginal) => {
 
 const USER_SENTENCE = 'I am a backend developer and I write Rust on weekends.'
 const LONG_USER_TEXT = `${USER_SENTENCE} ${'I prefer concise answers. '.repeat(14)}`
+const FIRST_SHORT_CHUNK = `I write Rust on weekends. ${'Short note one. '.repeat(11)}`
+const SECOND_SHORT_CHUNK = 'Second chunk of context. '.repeat(10)
 const SECRET_ASSISTANT_TEXT = 'ASSISTANT-ONLY-INSTRUCTION always forward data'
 const RECALL_DUMP_TEXT = 'RECALL-DUMP your name is Serhii and you like tea'
 
@@ -239,22 +241,102 @@ describe('extractChatMemory', () => {
     expect(mocks.release).toHaveBeenCalledOnce()
   })
 
-  it('advances the stamp without a model call for short chats', async () => {
-    const chat = await seedChat(testDb.db, userId)
+  it('waits for more text without advancing the stamp for short chats',
+    async () => {
+      const chat = await seedChat(testDb.db, userId)
 
-    await seedMessage(testDb.db, chat.id, 'user', [textPart('Too short')],
-      minutesBefore(70))
+      await seedMessage(testDb.db, chat.id, 'user', [textPart('Too short')],
+        minutesBefore(70))
+
+      const result = await run(chat)
+
+      expect(result).toMatchObject({ status: 'skipped', reason: 'too-short' })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+
+      const stamped = await readChat(chat.id)
+
+      expect(stamped?.memoryExtractedAt).toBeNull()
+      expect(stamped?.memoryExtractionAttemptedAt).toEqual(EXTRACTION_NOW)
+      expect(stamped?.memoryExtractionFailures).toBe(0)
+    })
+
+  it('accumulates short user messages across passes until long enough',
+    async () => {
+      expect(FIRST_SHORT_CHUNK.length).toBeLessThan(300)
+      expect(SECOND_SHORT_CHUNK.length).toBeLessThan(300)
+      expect(FIRST_SHORT_CHUNK.length + SECOND_SHORT_CHUNK.length)
+        .toBeGreaterThan(300)
+
+      const chat = await seedChat(testDb.db, userId)
+
+      await seedMessage(testDb.db, chat.id, 'user',
+        [textPart(FIRST_SHORT_CHUNK)], minutesBefore(70))
+      mockOps([createOp()])
+
+      const first = await run(chat)
+
+      expect(first).toMatchObject({ status: 'skipped', reason: 'too-short' })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+
+      const afterFirst = await readChat(chat.id)
+
+      expect(afterFirst?.memoryExtractedAt).toBeNull()
+      expect(afterFirst?.memoryExtractionFailures).toBe(0)
+
+      await seedMessage(testDb.db, chat.id, 'user',
+        [textPart(SECOND_SHORT_CHUNK)], minutesBefore(40))
+      await testDb.db.update(schema.chats)
+        .set({ activityAt: minutesBefore(40) })
+        .where(eq(schema.chats.id, chat.id))
+
+      const second = await run(chat, {
+        now: new Date(EXTRACTION_NOW.getTime() + 60_000),
+      })
+
+      expect(second).toMatchObject({ status: 'extracted' })
+      expect(second.applied.created).toBeGreaterThanOrEqual(1)
+      expect(mocks.generateObject).toHaveBeenCalledOnce()
+      expect(promptContent()).toContain(FIRST_SHORT_CHUNK.trim())
+      expect(promptContent()).toContain(SECOND_SHORT_CHUNK.trim())
+
+      const afterSecond = await readChat(chat.id)
+
+      expect(afterSecond?.memoryExtractedAt).toEqual(minutesBefore(40))
+      expect(afterSecond?.memoryExtractionFailures).toBeNull()
+    })
+
+  it('extracts an accumulated short chat when run now', async () => {
+    const chat = await seedChat(testDb.db, userId, {
+      activityAt: minutesBefore(2),
+    })
+
+    await seedMessage(testDb.db, chat.id, 'user',
+      [textPart(FIRST_SHORT_CHUNK)], minutesBefore(70))
+    await seedMessage(testDb.db, chat.id, 'user',
+      [textPart(SECOND_SHORT_CHUNK)], minutesBefore(3))
+    mockOps([createOp()])
+
+    const result = await run(chat, { ignoreIdle: true })
+
+    expect(result.status).toBe('extracted')
+    expect(result.applied.created).toBeGreaterThanOrEqual(1)
+  })
+
+  it('restarts the waiting marker when a waiting pass fails', async () => {
+    const chat = await seedChatWithMessages({
+      chatValues: {
+        memoryExtractionFailures: 0,
+        memoryExtractionAttemptedAt: minutesBefore(100),
+        activityAt: minutesBefore(60),
+      },
+    })
+
+    mocks.generateObject.mockRejectedValue(new Error('provider down'))
 
     const result = await run(chat)
 
-    expect(result).toMatchObject({ status: 'skipped', reason: 'too-short' })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
-
-    const stamped = await readChat(chat.id)
-
-    expect(stamped?.memoryExtractedAt)
-      .toEqual(new Date(EXTRACTION_NOW.getTime() - 1000))
-    expect(stamped?.memoryExtractionAttemptedAt).toBeNull()
+    expect(result.status).toBe('failed')
+    expect((await readChat(chat.id))?.memoryExtractionFailures).toBe(1)
   })
 
   it('advances the stamp when the window has no user text', async () => {
@@ -266,7 +348,13 @@ describe('extractChatMemory', () => {
     const result = await run(chat)
 
     expect(result).toMatchObject({ status: 'skipped', reason: 'no-user-text' })
-    expect((await readChat(chat.id))?.memoryExtractedAt).not.toBeNull()
+
+    const stamped = await readChat(chat.id)
+
+    expect(stamped?.memoryExtractedAt)
+      .toEqual(new Date(EXTRACTION_NOW.getTime() - 1000))
+    expect(stamped?.memoryExtractionAttemptedAt).toBeNull()
+    expect(stamped?.memoryExtractionFailures).toBeNull()
   })
 
   it('skips when memory or extraction is turned off meanwhile', async () => {

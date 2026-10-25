@@ -2,13 +2,14 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, shallowRef } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemoryUiSettings } from '../../../../app/types/memory-settings.d'
+import type { MemorySettingsFields } from '../../../../shared/types/memory.d'
 import * as messagesComposable from '../../../../app/composables/messages'
 import MemoryPage from '../../../../app/pages/profile/memory.vue'
 
 const mocks = vi.hoisted(() => ({
   confirm: vi.fn(async () => ({ label: 'Confirm', index: 0 })),
   useFetch: vi.fn(),
+  useLazyFetch: vi.fn(),
   fetch: vi.fn(),
   patchRequests: [] as Array<Record<string, unknown>>,
   patchError: null as null | Record<string, unknown>,
@@ -17,11 +18,22 @@ const mocks = vi.hoisted(() => ({
 
 mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useFetch', () => mocks.useFetch)
+mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('useRuntimeConfig', (original) => {
+  return () => {
+    const config = original()
+
+    return {
+      ...config,
+      public: { ...config.public, memory: { sensitiveOptInEnabled: true } },
+    }
+  }
+})
 
 enableAutoUnmount(afterEach)
 
-const defaultSettings: MemoryUiSettings = {
+const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
   memoryExtractionEnabled: false,
   chatSearchEnabled: true,
@@ -33,7 +45,7 @@ const defaultSettings: MemoryUiSettings = {
   projectMemoryGateway: null,
 }
 
-let serverSettings: MemoryUiSettings = { ...defaultSettings }
+let serverSettings: MemorySettingsFields = { ...defaultSettings }
 
 const PanelStub = defineComponent({
   setup(_props, { expose }) {
@@ -43,7 +55,7 @@ const PanelStub = defineComponent({
   },
 })
 
-async function mountPage(settings: Partial<MemoryUiSettings> = {}) {
+async function mountPage(settings: Partial<MemorySettingsFields> = {}) {
   serverSettings = { ...defaultSettings, ...settings }
 
   const wrapper = await mountSuspended(MemoryPage, {
@@ -86,6 +98,34 @@ describe('profile memory page', () => {
       return {
         data: shallowRef({ ...serverSettings }),
         refresh: vi.fn(),
+      }
+    })
+    mocks.useLazyFetch.mockReset()
+    mocks.useLazyFetch.mockImplementation((url: string) => {
+      if (url === '/api/v1/memory/entries') {
+        return {
+          data: shallowRef({
+            scope: 'account',
+            projectId: null,
+            total: 0,
+            limits: {
+              maxAccountEntries: 30,
+              maxProjectEntries: 15,
+              maxBodyBytes: 2048,
+              maxAlwaysInjectedBodyBytes: 1024,
+              maxDescriptionChars: 100,
+              maxTitleChars: 80,
+            },
+            groups: [],
+          }),
+          pending: shallowRef(false),
+          error: shallowRef(null),
+          refresh: vi.fn(),
+        }
+      }
+
+      return {
+        data: shallowRef({ pinned: [], projects: [], nextCursor: null }),
       }
     })
     mocks.fetch.mockReset()
@@ -144,6 +184,40 @@ describe('profile memory page', () => {
       .toBe('0 / 4000')
     expect(wrapper.find('[data-testid="memory-entries-section"]').exists())
       .toBe(true)
+    expect(wrapper.find('[data-testid="memory-disabled-note"]').exists())
+      .toBe(false)
+  })
+
+  it('passes the settings to the entries list', async () => {
+    const wrapper = await mountPage({
+      memoryEnabled: false,
+      memoryExtractionEnabled: true,
+    })
+
+    expect(wrapper.get('[data-testid="memory-disabled-note"]').text())
+      .toBe('Memory is off. Entries are kept but not used in chats.')
+    expect(wrapper.find('[data-testid="memory-update-now"]').exists())
+      .toBe(false)
+  })
+
+  it('offers update now when memory and generation are on', async () => {
+    const wrapper = await mountPage({
+      memoryEnabled: true,
+      memoryExtractionEnabled: true,
+    })
+
+    expect(wrapper.find('[data-testid="memory-update-now"]').exists())
+      .toBe(true)
+  })
+
+  it('shows the entries empty state with the generation hint', async () => {
+    const wrapper = await mountPage({ memoryExtractionEnabled: false })
+
+    expect(wrapper.get('[data-testid="memory-entries-empty"]').text())
+      .toContain('Nothing remembered yet')
+    expect(wrapper.find(
+      '[data-testid="memory-entries-empty-generation-hint"]',
+    ).exists()).toBe(true)
   })
 
   it('renders saved settings', async () => {

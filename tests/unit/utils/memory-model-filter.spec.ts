@@ -85,6 +85,14 @@ describe('isMemoryModelSelectable', () => {
     }))).toBe(false)
   })
 
+  it('accepts vision capable chat models', () => {
+    const model = createModel({
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    })
+
+    expect(isMemoryModelSelectable(model)).toBe(true)
+  })
+
   it('accepts models retiring in the future', () => {
     expect(isMemoryModelSelectable(createModel({
       retiredAt: '2027-05-07',
@@ -120,5 +128,60 @@ describe('isMemoryGatewayModelSelectable', () => {
     })
 
     expect(isMemoryGatewayModelSelectable(model)).toBe(false)
+  })
+
+  it('rejects a model that cannot take text input', () => {
+    const model = createGatewayModel({
+      modalities: { input: ['audio'], output: ['text'] },
+    })
+
+    expect(isMemoryGatewayModelSelectable(model)).toBe(false)
+  })
+
+  it('accepts a vision gateway model', () => {
+    const model = createGatewayModel({
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    })
+
+    expect(isMemoryGatewayModelSelectable(model)).toBe(true)
+  })
+
+  it('rejects a gateway model declaring an empty output list', () => {
+    const model = createGatewayModel({
+      modalities: { input: ['text'], output: [] },
+    })
+
+    expect(isMemoryGatewayModelSelectable(model)).toBe(false)
+  })
+
+  it.each([
+    ['@cf/baai/bge-large-en-v1.5-embedding', 'BGE embedding'],
+    ['@cf/openai/whisper', 'Whisper'],
+    ['vendor/rerank-v3', 'Rerank'],
+    ['vendor/tts-1', 'TTS'],
+    ['vendor/model', 'Text to speech'],
+    ['vendor/omni-moderation', 'Moderation'],
+    ['@cf/stabilityai/stable-diffusion-xl', 'Stable Diffusion'],
+  ])('rejects %s without modality data by name', (id, name) => {
+    expect(isMemoryGatewayModelSelectable(createGatewayModel({ id, name })))
+      .toBe(false)
+  })
+
+  it('trusts declared modalities over the id pattern', () => {
+    const model = createGatewayModel({
+      id: 'vendor/speech-chat',
+      modalities: { input: ['text'], output: ['text'] },
+    })
+
+    expect(isMemoryGatewayModelSelectable(model)).toBe(true)
+  })
+
+  it('keeps ordinary chat names that merely resemble the patterns', () => {
+    const model = createGatewayModel({
+      id: 'vendor/embedded-assistant-chat',
+      name: 'Assistant',
+    })
+
+    expect(isMemoryGatewayModelSelectable(model)).toBe(true)
   })
 })

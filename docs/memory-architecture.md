@@ -1050,8 +1050,15 @@ old, `memory_extracted_at` null or older than `activity_at`, attempt backoff
 30 min, failure cap 3 (reset by newer activity), ordered by
 `COALESCE(attempted_at, 0), activity_at`. The pool is `batch * 4`; at most 5
 chats per user per tick; chats run sequentially until the runtime budget is
-used. Chats under 300 chars of user text, or without new user text, skip the
-LLM call but advance `memory_extracted_at` so they are not reselected.
+used. A chat without any user text in its window skips the LLM call and
+advances `memory_extracted_at`. A chat with 1-299 chars of user text also
+skips the call but does NOT advance it: the text accumulates across passes,
+and the chat is marked "waiting" (`memory_extraction_failures = 0` with
+`memory_extraction_attempted_at` set). The sweep reselects a waiting chat only
+when `activity_at > attempted_at`, so an unchanged short chat is never picked
+up again. `failures` NULL with an attempt stamp means a crashed pass
+(retried after the backoff), `failures >= 1` a failed pass (backoff, cap 3
+lifted by newer activity).
 `memory_extraction_attempted_at` is stamped before the call and cleared on
 success; a failure increments `memory_extraction_failures`.
 
@@ -1113,6 +1120,17 @@ looked up by slug AND user, anything else is a 404. Needs the same two
 flags (409 otherwise), ignores the 10-minute idle rule, 60 s per-user KV
 cooldown (429). Responds with counts and the model source/id only.
 
+**`GET /api/v1/memory/entries/[id]/sources`.** Resolves an entry's provenance
+for the UI: `MemoryEntry.sourceChatIds` holds chat public ids, but chat URLs
+are `/chats/<slug>`. Session-authed, `no-store`. The entry is loaded through
+`getMemoryEntry` (404 `Memory entry not found` for a missing or foreign
+entry), then at most `MEMORY_LIMITS.maxSourceChatIds` ids are looked up in one
+`inArray` query filtered by the caller's `userId`, so another user's chat id
+inside `sourceChatIds` is never leaked and the D1 bound-parameter limit is
+safe. Deleted chats are omitted and the order of `sourceChatIds` is kept.
+Responds `{ chats: Array<{ id, slug, title }> }`, `title` being `''` when the
+chat has none. Code: `server/utils/memory/entry-sources.ts`.
+
 **Legacy project blob.** `projects.memory_migrated_at` is the marker. On the
 first extraction pass of a project with a non-empty blob and no marker, the
 blob is added to the prompt as `<legacy-memory>` (quotable as evidence), so the
@@ -1145,7 +1163,9 @@ validate first, throw, save nothing.
 - Timestamps are second-resolution; a message created in the same second as the
   newest consumed one could be missed (practically excluded by the 10-minute
   idle rule, possible with `extract-now`).
-- Two short windows are not merged: each skips and advances.
+- Short windows accumulate: nothing is consumed until the user text in the
+  window reaches 300 chars (fixed after a live preview found chunked chats
+  never extracting).
 - A window is bounded to the newest 120 messages / 36k characters; older
   unseen messages in the same pass are not revisited.
 - Branching a chat copies messages: share-branched chats ignore messages

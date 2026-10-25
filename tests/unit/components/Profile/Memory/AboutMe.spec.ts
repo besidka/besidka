@@ -2,13 +2,13 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { parseError } from 'evlog'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemoryUiSettings } from '../../../../../app/types/memory-settings.d'
+import type { MemorySettingsFields } from '../../../../../shared/types/memory.d'
 import * as messagesComposable from '../../../../../app/composables/messages'
 import AboutMe from '../../../../../app/components/Profile/Memory/AboutMe.vue'
 
 enableAutoUnmount(afterEach)
 
-const defaultSettings: MemoryUiSettings = {
+const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
   memoryExtractionEnabled: false,
   chatSearchEnabled: true,
@@ -22,7 +22,7 @@ const defaultSettings: MemoryUiSettings = {
 
 const save = vi.fn()
 
-async function mountAboutMe(settings: Partial<MemoryUiSettings> = {}) {
+async function mountAboutMe(settings: Partial<MemorySettingsFields> = {}) {
   return await mountSuspended(AboutMe, {
     props: {
       settings: { ...defaultSettings, ...settings },
@@ -70,6 +70,26 @@ describe('Profile/Memory/AboutMe', () => {
     expect(wrapper.get('[data-testid="memory-about-me-counter"]').text())
       .toBe(`17 / ${MEMORY_LIMITS.maxAboutMeChars}`)
   })
+
+  it('caps the textarea at 50dvh and wires it for auto-resize', async () => {
+    const wrapper = await mountAboutMe()
+    const classes = input(wrapper).classes()
+
+    expect(classes).toContain('max-h-[50dvh]')
+    expect(classes).toContain('min-h-36')
+    expect(classes).toContain('resize-none')
+    expect(classes).toContain('overflow-y-auto')
+    expect(classes).toContain('rounded-box')
+    expect(classes).not.toContain('max-h-[min(300px,33dvh)]')
+  })
+
+  it('applies an inline height from autosize once the draft has content',
+    async () => {
+      const wrapper = await mountAboutMe({ aboutMe: 'Backend developer' })
+      await flushPromises()
+
+      expect(input(wrapper).attributes('style') ?? '').toContain('height')
+    })
 
   it('updates the counter as the user types', async () => {
     const wrapper = await mountAboutMe()
