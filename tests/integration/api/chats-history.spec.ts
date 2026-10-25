@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   refreshProjectActivityAt: vi.fn(async () => undefined),
   markProjectsMemoryStale: vi.fn(async () => undefined),
+  detachChatsFromMemory: vi.fn(async (_input: unknown) => ({
+    deleted: 0,
+    detached: 0,
+  })),
   refreshProjectMemory: vi.fn(async () => ({
     memoryStatus: 'ready',
     memory: 'Rebuilt memory',
@@ -47,6 +51,10 @@ vi.mock('evlog', () => ({
 
 vi.mock('~~/server/utils/projects/activity', () => ({
   refreshProjectActivityAt: mocks.refreshProjectActivityAt,
+}))
+
+vi.mock('~~/server/utils/memory/chat-deletion', () => ({
+  detachChatsFromMemory: mocks.detachChatsFromMemory,
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -410,9 +418,9 @@ describe('chat history API', () => {
             projectId: 'project-source',
           })),
           findMany: vi.fn(async () => ([
-            { projectId: 'project-source' },
-            { projectId: null },
-            { projectId: 'project-other' },
+            { id: 'chat-1', projectId: 'project-source' },
+            { id: 'chat-2', projectId: null },
+            { id: 'chat-3', projectId: 'project-other' },
           ])),
         },
       },
@@ -464,6 +472,137 @@ describe('chat history API', () => {
       1,
       db,
     )
+  })
+
+  describe('memory cascade on chat deletion', () => {
+    function createDeleteDb(callOrder: string[], ownedChats: unknown[]) {
+      return {
+        query: {
+          chats: {
+            findFirst: vi.fn(async () => ({
+              id: 'chat-1',
+              projectId: 'project-source',
+            })),
+            findMany: vi.fn(async () => ownedChats),
+          },
+        },
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            innerJoin: vi.fn(() => ({
+              where: vi.fn(async () => []),
+            })),
+          })),
+        })),
+        delete: vi.fn(() => ({
+          where: vi.fn(async () => {
+            callOrder.push('delete-chats')
+          }),
+        })),
+      }
+    }
+
+    it('detaches the chat from memory before deleting a single chat', async () => {
+      const handler = await getDeleteHandler()
+      const callOrder: string[] = []
+      const db = createDeleteDb(callOrder, [])
+
+      mocks.detachChatsFromMemory.mockImplementationOnce(async () => {
+        callOrder.push('detach-memory')
+
+        return { deleted: 1, detached: 0 }
+      })
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      } as any)
+
+      expect(response).toEqual({ success: true })
+      expect(callOrder).toEqual(['detach-memory', 'delete-chats'])
+      expect(mocks.detachChatsFromMemory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          db,
+          userId: 1,
+          chatIds: ['chat-1'],
+        }),
+      )
+    })
+
+    it('aborts a single chat delete when the memory cascade fails', async () => {
+      const handler = await getDeleteHandler()
+      const callOrder: string[] = []
+      const db = createDeleteDb(callOrder, [])
+
+      mocks.detachChatsFromMemory.mockRejectedValueOnce(
+        new Error('cascade failed'),
+      )
+      vi.stubGlobal('useDb', () => db)
+
+      await expect(handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      } as any)).rejects.toThrow('cascade failed')
+
+      expect(callOrder).toEqual([])
+      expect(db.delete).not.toHaveBeenCalled()
+      expect(mocks.refreshProjectActivityAt).not.toHaveBeenCalled()
+      expect(mocks.markProjectsMemoryStale).not.toHaveBeenCalled()
+    })
+
+    it('detaches only owned chat ids before a bulk delete', async () => {
+      const handler = await getBulkDeleteHandler()
+      const callOrder: string[] = []
+      const db = createDeleteDb(callOrder, [
+        { id: 'chat-1', slug: 'slug-1', projectId: null },
+        { id: 'chat-3', slug: 'slug-3', projectId: null },
+      ])
+
+      mocks.detachChatsFromMemory.mockImplementationOnce(async () => {
+        callOrder.push('detach-memory')
+
+        return { deleted: 0, detached: 2 }
+      })
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        body: { chatIds: ['chat-1', 'chat-2', 'chat-3'] },
+      } as any)
+
+      expect(response).toEqual({ success: true })
+      expect(callOrder).toEqual(['detach-memory', 'delete-chats'])
+      expect(mocks.detachChatsFromMemory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          db,
+          userId: 1,
+          chatIds: ['chat-1', 'chat-3'],
+        }),
+      )
+      expect(db.query.chats.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          columns: expect.objectContaining({ id: true }),
+        }),
+      )
+    })
+
+    it('aborts a bulk delete when the memory cascade fails', async () => {
+      const handler = await getBulkDeleteHandler()
+      const callOrder: string[] = []
+      const db = createDeleteDb(callOrder, [
+        { id: 'chat-1', slug: 'slug-1', projectId: null },
+      ])
+
+      mocks.detachChatsFromMemory.mockRejectedValueOnce(
+        new Error('cascade failed'),
+      )
+      vi.stubGlobal('useDb', () => db)
+
+      await expect(handler({
+        body: { chatIds: ['chat-1'] },
+      } as any)).rejects.toThrow('cascade failed')
+
+      expect(db.delete).not.toHaveBeenCalled()
+      expect(mocks.refreshProjectActivityAt).not.toHaveBeenCalled()
+      expect(mocks.markProjectsMemoryStale).not.toHaveBeenCalled()
+    })
   })
 
   it('pins chats, updates activity timestamps, and refreshes project activity', async () => {
