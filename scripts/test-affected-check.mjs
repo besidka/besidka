@@ -118,6 +118,16 @@ export function getAffectedTests(changedFiles) {
   const memoryPurgeTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
+  const memoryExtractionTests = [
+    'tests/unit/utils/memory/extract-apply.spec.ts',
+    'tests/unit/utils/memory/extract-input.spec.ts',
+    'tests/unit/utils/memory/extract-runtime.spec.ts',
+    'tests/unit/utils/memory/extract-sweep.spec.ts',
+    'tests/unit/utils/memory/extract.spec.ts',
+    'tests/unit/utils/projects/memory-entries.spec.ts',
+    'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
+    'tests/integration/api/memory-extract-now.spec.ts',
+  ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
@@ -1754,6 +1764,7 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         ...chatShareTests,
         ...memoryModelTests,
+        ...memoryExtractionTests,
       ],
     },
     {
@@ -1767,6 +1778,7 @@ export function getAffectedTests(changedFiles) {
         ...memoryComplianceTests,
         ...memoryModelTests,
         ...memoryPurgeTests,
+        ...memoryExtractionTests,
       ],
     },
     {
@@ -1785,11 +1797,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/db\/schemas\/user-settings\.ts$/,
-      tests: [...profileSettingsTests, ...memoryModelTests],
+      tests: [
+        ...profileSettingsTests,
+        ...memoryModelTests,
+        ...memoryExtractionTests,
+      ],
     },
     {
       pattern: /^server\/db\/schemas\/memory-entries\.ts$/,
       tests: [
+        ...memoryExtractionTests,
         ...memoryComplianceTests,
         ...memoryPurgeTests,
         ...profileSettingsTests,
@@ -1798,6 +1815,7 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/db\/relations\.ts$/,
       tests: [
+        ...memoryExtractionTests,
         ...memoryComplianceTests,
         ...memoryModelTests,
         ...memoryPurgeTests,
@@ -1810,6 +1828,7 @@ export function getAffectedTests(changedFiles) {
         ...memoryContractTests,
         ...memoryComplianceTests,
         ...memoryModelTests,
+        ...memoryExtractionTests,
         ...profileSettingsTests,
       ],
     },
@@ -1818,6 +1837,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,
+        ...memoryExtractionTests,
         ...profileSettingsTests,
       ],
     },
@@ -1825,9 +1845,22 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/memory\/resolve-model\.ts$/,
       tests: [
         ...memoryModelTests,
+        ...memoryExtractionTests,
         ...historyProjectsTests,
         ...profileSettingsTests,
       ],
+    },
+    {
+      pattern: /^server\/(utils\/memory\/extract.*|plugins\/memory-extraction-sweep|api\/v1\/memory\/extract-now\.post)\.ts$/,
+      tests: memoryExtractionTests,
+    },
+    {
+      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|instructions)\.ts$/,
+      tests: [...memoryExtractionTests, ...memoryModelTests],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/(memory-extraction-db|public-id-mock)\.ts$/,
+      tests: memoryExtractionTests,
     },
     {
       pattern: /^server\/utils\/memory\/catalog-usability\.ts$/,
