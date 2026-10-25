@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { parse } from 'yaml'
 import { describe, expect, it } from 'vitest'
 
@@ -18,6 +18,12 @@ interface WorkflowJob {
 
 interface Workflow {
   jobs: Record<string, WorkflowJob>
+}
+
+interface CompositeAction {
+  runs: {
+    steps: Array<WorkflowStep>
+  }
 }
 
 const DEFAULT_BRANCH_REF = '${{ github.event.repository.default_branch }}'
@@ -43,7 +49,28 @@ function readWorkflow(fileName: string): Workflow {
 }
 
 function getAllSteps(workflow: Workflow): Array<WorkflowStep> {
-  return Object.values(workflow.jobs).flatMap(job => job.steps)
+  return Object.values(workflow.jobs).flatMap(job => job.steps ?? [])
+}
+
+function readCompositeActionSteps(): Array<WorkflowStep> {
+  const actionNames = readdirSync('.github/actions', { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+
+  return actionNames.flatMap((actionName) => {
+    const content = readFileSync(
+      `.github/actions/${actionName}/action.yml`,
+      'utf8',
+    )
+
+    return (parse(content) as CompositeAction).runs.steps
+  })
+}
+
+function isThirdPartyAction(uses: string | undefined): uses is string {
+  return typeof uses === 'string'
+    && !uses.startsWith('actions/')
+    && !uses.startsWith('./')
 }
 
 function referencesSecrets(step: WorkflowStep): boolean {
@@ -207,7 +234,7 @@ describe('preview-deploy workflow', () => {
 })
 
 describe('production workflow', () => {
-  it.each(['build-production', 'deploy-preview'])(
+  it.each(['deploy', 'deploy-preview'])(
     'runs the %s job in the production environment',
     (jobName) => {
       const job = readWorkflow('production.yml').jobs[jobName]
@@ -225,13 +252,23 @@ describe('workflows that reference secrets', () => {
       const steps = getAllSteps(readWorkflow(fileName))
       const thirdPartyUses = steps
         .map(step => step.uses)
-        .filter((uses): uses is string => {
-          return typeof uses === 'string' && !uses.startsWith('actions/')
-        })
+        .filter(isThirdPartyAction)
 
       for (const uses of thirdPartyUses) {
         expect(uses).toMatch(FULL_COMMIT_SHA)
       }
     },
   )
+
+  it('pins every non-actions step in the local composite actions', () => {
+    const thirdPartyUses = readCompositeActionSteps()
+      .map(step => step.uses)
+      .filter(isThirdPartyAction)
+
+    expect(thirdPartyUses.length).toBeGreaterThan(0)
+
+    for (const uses of thirdPartyUses) {
+      expect(uses).toMatch(FULL_COMMIT_SHA)
+    }
+  })
 })

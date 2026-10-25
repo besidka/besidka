@@ -1055,7 +1055,11 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/resolve-preview-build-source.spec.ts'],
     },
     {
-      pattern: /^(tests\/unit\/workflows\/preview-deploy\.spec\.ts|\.github\/workflows\/(preview-deploy|preview-cleanup|production|claude|claude-code-review|update|linear-docs-sync)\.yml)$/,
+      pattern: /^(scripts\/ci\/resolve-(production-test|preview-build)-source\.mjs|\.github\/workflows\/(production|preview-build)\.yml)$/,
+      tests: ['tests/unit/scripts/resolve-production-test-source.spec.ts'],
+    },
+    {
+      pattern: /^(tests\/unit\/workflows\/preview-deploy\.spec\.ts|\.github\/workflows\/(preview-deploy|preview-cleanup|production|claude|claude-code-review|update|linear-docs-sync)\.yml|\.github\/actions\/[^/]+\/action\.yml)$/,
       tests: ['tests/unit/workflows/preview-deploy.spec.ts'],
     },
     {
