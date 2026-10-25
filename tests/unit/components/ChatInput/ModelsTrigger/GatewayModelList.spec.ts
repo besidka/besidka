@@ -16,10 +16,14 @@ const model: GatewayModel = {
   name: 'GPT-5',
 }
 
-function mountList(gatewayId: GatewayId) {
+function mountList(
+  gatewayId: GatewayId,
+  filterModel?: (model: GatewayModel) => boolean,
+) {
   return mountSuspended(GatewayModelList, {
     props: {
       gatewayId,
+      filterModel,
       gatewayLabel: gatewayId === 'cloudflare'
         ? 'Cloudflare AI Gateway'
         : 'Vercel AI Gateway',
@@ -70,5 +74,34 @@ describe('ChatInput/ModelsTrigger/GatewayModelList', () => {
     expect(wrapper.find(
       '[data-testid="gateway-cloudflare-catalog-note"]',
     ).exists()).toBe(false)
+  })
+
+  it('hides models the caller filter rejects from every group', async () => {
+    mocks.useGatewayCatalog.mockReturnValue({
+      models: shallowRef<GatewayModel[]>([
+        model,
+        { id: 'anthropic/claude-opus-5', name: 'Claude Opus 5' },
+      ]),
+      pending: shallowRef(false),
+      error: shallowRef(null),
+      refresh: vi.fn(),
+    })
+
+    const wrapper = await mountList('vercel', (entry) => {
+      return entry.id !== 'openai/gpt-5'
+    })
+    const items = wrapper.findAllComponents({
+      name: 'ChatInputModelsTriggerGatewayModelItem',
+    })
+    const groups = wrapper.emitted('providerGroupsChange')?.at(-1)?.[0] as
+      Array<{ prefix: string }>
+
+    expect(items).toHaveLength(1)
+    expect(items[0]?.props('model')).toMatchObject({
+      id: 'anthropic/claude-opus-5',
+    })
+    expect(groups.map((group) => {
+      return group.prefix
+    })).toEqual(['anthropic'])
   })
 })
