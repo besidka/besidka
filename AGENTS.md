@@ -366,6 +366,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (breaking the DaisyUI cascade) or 404; detection, the upstream issue
   (nuxt/nuxt#36136), rejected alternatives, the more-chunk-renames trade-off,
   revert criteria, and the build-comparison verification recipe
+- `docs/memory-architecture.md` - Memory proposal (2026-10-24): claude.ai's
+  observed design (small MD entries + one-line descriptions as an index), the
+  audit of today's project-memory blob and its bugs, the target layers
+  (memory entries, cached index, on-demand memory/search tools over the
+  existing FTS5, cron-sweep extraction), the code-enforced compliance gate
+  (never-store list, GDPR Art. 9 opt-in), token budgets incl. the Cyrillic
+  multiplier, owner-overridable defaults, and the parallel workstreams
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,
@@ -378,10 +385,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (source-only, standard profile, 21 leads + 2 rejected): the table of fixes
   (Better Auth rate limit and reset revocation, MDC directive-prop stripping,
   evlog client-ingest confinement, upload and chat input caps, push limits,
-  Studio guard middleware, preview artifact path), the owner actions required
-  before deploy (`NUXT_STUDIO_AUTH_SESSION_SECRET`, WAF rules), open policy
-  questions, the deliberately unfixed leads, and the `NODE_ENV`-unset-in-Worker
-  lesson
+  Studio guard middleware, preview artifact path), how each owner action was
+  resolved (Studio secrets, org Dependabot secrets kept behind #498, the
+  single Free-plan rate-limit slot now used for API paths instead of the
+  leaked-credential rule, `preview_urls` left on), open policy questions, the
+  deliberately unfixed leads, and the `NODE_ENV`-unset-in-Worker lesson
 
 ### Tech Stack
 

@@ -1,14 +1,24 @@
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { relations } from '~~/server/db/relations'
 
 export interface SearchIndexTestDb {
   sqlite: InstanceType<typeof Database>
   db: ReturnType<typeof import('~~/server/utils/db').useDb>
-  insertChat: (input: { id: number, userId: number }) => void
+  insertChat: (input: {
+    id: number
+    userId: number
+    slug?: string
+    title?: string
+    projectId?: number
+  }) => void
   insertMessage: (input: {
     id: number
     chatId: number
     parts?: unknown
+    publicId?: string
+    role?: string
+    createdAt?: number
   }) => void
   close: () => void
 }
@@ -24,13 +34,19 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
   sqlite.exec(`
     CREATE TABLE chats (
       id integer PRIMARY KEY,
-      user_id integer NOT NULL
+      user_id integer NOT NULL,
+      slug text,
+      title text,
+      project_id integer
     );
 
     CREATE TABLE messages (
       id integer PRIMARY KEY,
       chat_id integer NOT NULL,
-      parts text NOT NULL DEFAULT '[]'
+      parts text NOT NULL DEFAULT '[]',
+      public_id text,
+      role text,
+      created_at integer
     );
 
     CREATE INDEX idx_messages_chat_id ON messages (chat_id);
@@ -43,24 +59,48 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
     );
   `)
 
-  const db = drizzle({ client: sqlite }) as unknown as ReturnType<
+  const db = drizzle({ client: sqlite, relations }) as unknown as ReturnType<
     typeof import('~~/server/utils/db').useDb
   >
 
-  function insertChat(input: { id: number, userId: number }): void {
+  function insertChat(input: {
+    id: number
+    userId: number
+    slug?: string
+    title?: string
+    projectId?: number
+  }): void {
     sqlite.prepare(
-      'insert into chats (id, user_id) values (?, ?)',
-    ).run(input.id, input.userId)
+      'insert into chats (id, user_id, slug, title, project_id)'
+      + ' values (?, ?, ?, ?, ?)',
+    ).run(
+      input.id,
+      input.userId,
+      input.slug ?? null,
+      input.title ?? null,
+      input.projectId ?? null,
+    )
   }
 
   function insertMessage(input: {
     id: number
     chatId: number
     parts?: unknown
+    publicId?: string
+    role?: string
+    createdAt?: number
   }): void {
     sqlite.prepare(
-      'insert into messages (id, chat_id, parts) values (?, ?, ?)',
-    ).run(input.id, input.chatId, JSON.stringify(input.parts ?? []))
+      'insert into messages (id, chat_id, parts, public_id, role, created_at)'
+      + ' values (?, ?, ?, ?, ?, ?)',
+    ).run(
+      input.id,
+      input.chatId,
+      JSON.stringify(input.parts ?? []),
+      input.publicId ?? null,
+      input.role ?? null,
+      input.createdAt ?? null,
+    )
   }
 
   function close(): void {

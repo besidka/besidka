@@ -2860,3 +2860,88 @@ describe('buildModelContextMessages omitted files', () => {
     expect(messages).toEqual(snapshot)
   })
 })
+
+describe('model context sanitizer and chat history tools', () => {
+  function createAssistantToolMessage(): UIMessage {
+    return {
+      id: 'assistant-tools',
+      role: 'assistant',
+      parts: [
+        { type: 'step-start' },
+        {
+          type: 'tool-search_chats',
+          toolCallId: 'call-search',
+          state: 'output-available',
+          input: { query: 'borscht' },
+          output: {
+            notice: 'quoted chat history',
+            results: [{
+              chatId: 'slug-1',
+              snippet: '<chat_excerpt>secret past chat</chat_excerpt>',
+            }],
+          },
+        },
+        {
+          type: 'tool-read_chat',
+          toolCallId: 'call-read',
+          state: 'output-available',
+          input: { chatId: 'slug-1' },
+          output: {
+            notice: 'quoted chat history',
+            messages: [{ text: '<chat_excerpt>more history</chat_excerpt>' }],
+          },
+        },
+        { type: 'text', text: 'You decided on borscht.' },
+      ],
+    } as UIMessage
+  }
+
+  function createConversation(): UIMessage[] {
+    return [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'What did we decide about soup?' }],
+      } as UIMessage,
+      createAssistantToolMessage(),
+      {
+        id: 'user-2',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Thanks, and dessert?' }],
+      } as UIMessage,
+    ]
+  }
+
+  it('drops tool-search_chats and tool-read_chat parts from future context', () => {
+    const sanitizedMessages = sanitizeMessagesForModelContext(
+      createConversation(),
+    )
+    const assistantMessage = sanitizedMessages.find((message) => {
+      return message.id === 'assistant-tools'
+    })
+
+    expect(assistantMessage?.parts).toEqual([
+      { type: 'text', text: 'You decided on borscht.' },
+    ])
+    expect(JSON.stringify(sanitizedMessages)).not.toContain('secret past chat')
+    expect(JSON.stringify(sanitizedMessages)).not.toContain('more history')
+  })
+
+  it('drops an assistant message that only carries chat history tool parts', () => {
+    const messages = createConversation()
+
+    messages[1] = {
+      ...createAssistantToolMessage(),
+      parts: createAssistantToolMessage().parts.filter((part) => {
+        return part.type !== 'text'
+      }),
+    } as UIMessage
+
+    const { messages: contextMessages } = buildModelContextMessages(messages)
+
+    expect(contextMessages.map(message => message.id)).toEqual([
+      'user-1',
+      'user-2',
+    ])
+  })
+})

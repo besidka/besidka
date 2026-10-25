@@ -78,6 +78,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
+      forProjectMemory: true,
     },
     {
       id: 'qwen3.8-omni-flash',

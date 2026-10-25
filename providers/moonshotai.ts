@@ -13,6 +13,7 @@ export default {
       price: {
         tokens: 1_000_000,
       },
+      forProjectMemory: true,
     },
     {
       id: 'kimi-k3',

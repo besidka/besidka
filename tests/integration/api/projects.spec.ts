@@ -341,6 +341,64 @@ describe('projects API', () => {
     expect(updateWhere).toHaveBeenCalled()
   })
 
+  it.each([
+    ['without a live lease', null, 'stale'],
+    ['with a live lease', '1', 'refreshing'],
+  ])('reports a refreshing project %s as %s', async (
+    _label,
+    leaseValue,
+    expectedStatus,
+  ) => {
+    const getHandler = await getProjectHandler()
+    const project = createProject({
+      id: 'project-1',
+      memoryStatus: 'refreshing',
+    })
+    const kv = { get: vi.fn(async () => leaseValue) }
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn().mockResolvedValue(project),
+        },
+      },
+    }
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useKV', () => kv)
+
+    const response = await getHandler({
+      params: { id: 'project-1' },
+    } as any)
+
+    expect(kv.get).toHaveBeenCalledWith(
+      'project-memory-refreshing:project-1',
+    )
+    expect(response).toEqual({ ...project, memoryStatus: expectedStatus })
+  })
+
+  it('does not read the lease for a project that is not refreshing', async () => {
+    const getHandler = await getProjectHandler()
+    const project = createProject({ id: 'project-1', memoryStatus: 'ready' })
+    const kv = { get: vi.fn(async () => null) }
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn().mockResolvedValue(project),
+        },
+      },
+    }
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useKV', () => kv)
+
+    const response = await getHandler({
+      params: { id: 'project-1' },
+    } as any)
+
+    expect(kv.get).not.toHaveBeenCalled()
+    expect(response).toEqual(project)
+  })
+
   it('refreshes project memory through the refresh endpoint', async () => {
     const refreshProjectMemory = vi.fn(async () => ({
       id: 'project-1',
@@ -362,7 +420,12 @@ describe('projects API', () => {
       params: { id: 'project-1' },
     } as any)
 
-    expect(refreshProjectMemory).toHaveBeenCalledWith('project-1', 1)
+    expect(refreshProjectMemory).toHaveBeenCalledWith(
+      'project-1',
+      1,
+      undefined,
+      expect.objectContaining({ set: expect.any(Function) }),
+    )
     expect(response).toMatchObject({
       memoryStatus: 'ready',
       memoryProvider: 'google',

@@ -54,10 +54,12 @@ describe('curated moonshotai provider', () => {
     }
   })
 
-  it('has no model marked for project memory', () => {
-    for (const model of moonshotai.models) {
-      expect(model.forProjectMemory).toBeFalsy()
-    }
+  it('marks exactly one model for project memory', () => {
+    const projectMemoryIds = moonshotai.models
+      .filter(model => model.forProjectMemory)
+      .map(model => model.id)
+
+    expect(projectMemoryIds).toEqual(['kimi-k2.6'])
   })
 
   it('exposes the web_search tool for every curated model', () => {

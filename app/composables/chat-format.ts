@@ -3,10 +3,16 @@ import type { UIMessage } from 'ai'
 import ProseStreamPre from '~/components/prose/PreStream.vue'
 import Table from '~/components/prose/Table.vue'
 import A from '~/components/prose/A.vue'
+import Img from '~/components/prose/Img.vue'
+
+const imageComponents = {
+  img: Img as unknown as DefineComponent,
+}
 
 const components = {
   pre: ProseStreamPre as unknown as DefineComponent,
   table: Table as unknown as DefineComponent,
+  ...imageComponents,
 }
 
 const messageComponents = {
@@ -29,6 +35,7 @@ function getUnwrap(role: UIMessage['role']) {
 export function useChatFormat() {
   return {
     components,
+    imageComponents,
     messageComponents,
     getUnwrap,
   }

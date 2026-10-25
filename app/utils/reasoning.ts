@@ -40,6 +40,16 @@ const TOOL_STEP_TITLES = new Map<string, {
     done: 'Searched with Exa',
     failed: 'Exa search failed',
   }],
+  ['search_chats', {
+    pending: 'Searching your chats',
+    done: 'Searched your chats',
+    failed: 'Chat search failed',
+  }],
+  ['read_chat', {
+    pending: 'Reading a chat',
+    done: 'Read a chat',
+    failed: 'Reading the chat failed',
+  }],
 ])
 
 interface ToolLikeUIPart {

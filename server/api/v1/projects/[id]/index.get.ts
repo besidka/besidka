@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { resolveProjectMemoryDisplayStatus } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -56,5 +57,12 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return project
+  return {
+    ...project,
+    memoryStatus: await resolveProjectMemoryDisplayStatus(
+      project.memoryStatus,
+      project.id,
+      logger,
+    ),
+  }
 })

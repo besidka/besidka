@@ -5,7 +5,6 @@ import { TEST_MERMAID_MESSAGE } from '../../../server/utils/chats/test/mermaid-f
 import { waitForHydration } from '../helpers/auth'
 
 test.describe.configure({
-  mode: 'serial',
   timeout: 45_000,
 })
 
@@ -18,11 +17,17 @@ type ExportAction
     | 'download-png'
     | 'download-drawio'
 
+const MERGED_FLOW_TIMEOUT = 90_000
 const DIAGRAM_COUNT = 4
+const SEQUENCE_INDEX = 1
+const PIE_INDEX = 2
 const CYNEFIN_INDEX = 3
 const MERMAID_BLOCK_PATTERN = /```mermaid\n([\s\S]*?)\n```/g
-const CYNEFIN_SOURCE = [...TEST_MERMAID_MESSAGE.matchAll(MERMAID_BLOCK_PATTERN)]
-  .map(match => match[1]!.trim())[CYNEFIN_INDEX]!
+const DIAGRAM_SOURCES = [
+  ...TEST_MERMAID_MESSAGE.matchAll(MERMAID_BLOCK_PATTERN),
+].map(match => match[1]!.trim())
+const PIE_SOURCE = DIAGRAM_SOURCES[PIE_INDEX]!
+const CYNEFIN_SOURCE = DIAGRAM_SOURCES[CYNEFIN_INDEX]!
 
 function getDiagramBlock(page: Page, index: number): Locator {
   return page
@@ -45,38 +50,112 @@ async function openCase(page: Page, url: string): Promise<void> {
 }
 
 test.describe('Mermaid diagrams', () => {
-  test('renders a persisted ```mermaid block as an svg', async ({ page }) => {
+  test('renders persisted ```mermaid blocks as svgs and shows the inline '
+    + 'copy menu without clipping it', async ({ page }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await openCase(page, '/chats/test?scenario=mermaid&messages=2')
 
-    const diagrams = page.locator('[data-testid="mermaid-diagram"]')
+    await test.step('renders a persisted ```mermaid block as an svg',
+      async () => {
+        const diagrams = page.locator('[data-testid="mermaid-diagram"]')
 
-    await expect(diagrams.first().locator('svg')).toBeVisible({
-      timeout: 15_000,
-    })
-    await expect(diagrams).toHaveCount(DIAGRAM_COUNT)
-    await expect(diagrams.locator('svg')).toHaveCount(DIAGRAM_COUNT)
-    await expect(diagrams.first()).toContainText('KV hit?')
-    await expect(diagrams.nth(1)).toContainText('Stream tokens')
-    await expect(diagrams.nth(2)).toContainText('Tokens by provider')
-    await expect(diagrams.nth(CYNEFIN_INDEX)).toContainText('Market research')
-    await expect(page.locator('[data-testid="mermaid-error"]')).toHaveCount(0)
-  })
+        await expect(diagrams.first().locator('svg')).toBeVisible({
+          timeout: 15_000,
+        })
+        await expect(diagrams).toHaveCount(DIAGRAM_COUNT)
+        await expect(diagrams.locator('svg')).toHaveCount(DIAGRAM_COUNT)
+        await expect(diagrams.first()).toContainText('KV hit?')
+        await expect(diagrams.nth(1)).toContainText('Stream tokens')
+        await expect(diagrams.nth(2)).toContainText('Tokens by provider')
+        await expect(diagrams.nth(CYNEFIN_INDEX))
+          .toContainText('Market research')
+        await expect(page.locator('[data-testid="mermaid-error"]'))
+          .toHaveCount(0)
+      })
 
-  test('toggles between the diagram and its source', async ({ page }) => {
-    await openCase(page, '/chats/test?scenario=mermaid&messages=2')
+    await test.step('toggles between the diagram and its source',
+      async () => {
+        const diagrams = page.locator('[data-testid="mermaid-diagram"]')
+        const firstToggle = page
+          .locator('[data-testid="mermaid-toggle"]')
+          .first()
 
-    const diagrams = page.locator('[data-testid="mermaid-diagram"]')
+        await firstToggle.click()
 
-    await expect(diagrams.locator('svg')).toHaveCount(DIAGRAM_COUNT, {
-      timeout: 15_000,
-    })
+        await expect(diagrams).toHaveCount(DIAGRAM_COUNT - 1)
+        await expect(
+          page.locator('[data-testid="chat-messages-container"]'),
+        ).toContainText('flowchart LR')
 
-    await page.locator('[data-testid="mermaid-toggle"]').first().click()
+        await firstToggle.click()
 
-    await expect(diagrams).toHaveCount(DIAGRAM_COUNT - 1)
-    await expect(
-      page.locator('[data-testid="chat-messages-container"]'),
-    ).toContainText('flowchart LR')
+        await expect(diagrams).toHaveCount(DIAGRAM_COUNT)
+        await expect(diagrams.locator('svg')).toHaveCount(DIAGRAM_COUNT)
+      })
+
+    await test.step('shows the inline copy menu without clipping it',
+      async () => {
+        const block = getDiagramBlock(page, 0)
+        const trigger = block.locator('[data-testid="mermaid-copy"]')
+
+        await trigger.evaluate((element) => {
+          element.scrollIntoView({ block: 'start' })
+        })
+        await trigger.click()
+
+        const lastItem = block.locator(
+          '[data-testid="mermaid-export-copy-drawio"]',
+        )
+
+        await expect(lastItem).toBeVisible()
+
+        const box = await lastItem.boundingBox()
+        const viewport = page.viewportSize()
+
+        expect(box).not.toBeNull()
+        expect(viewport).not.toBeNull()
+        expect(box!.x).toBeGreaterThanOrEqual(0)
+        expect(box!.y).toBeGreaterThanOrEqual(0)
+        expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width)
+        expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height)
+
+        const isHittable = await lastItem.evaluate((element) => {
+          const rect = element.getBoundingClientRect()
+          const hit = document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          )
+
+          return !!hit && (hit === element || element.contains(hit))
+        })
+
+        expect(isHittable).toBe(true)
+
+        await expectOpenMenuInsideBlock(block)
+
+        const overflow = await page.evaluate(() => {
+          const diagramBlock = document
+            .querySelector('[data-testid="mermaid-diagram"]')!
+            .closest('.mockup-browser')!
+          const codeArea = diagramBlock
+            .querySelector(':scope > .overflow-x-auto')!
+          const blockStyle = getComputedStyle(diagramBlock)
+
+          return {
+            blockOverflowX: blockStyle.overflowX,
+            blockOverflowY: blockStyle.overflowY,
+            codeAreaOverflowX: getComputedStyle(codeArea).overflowX,
+            pageScrollsHorizontally: document.documentElement.scrollWidth
+              > document.documentElement.clientWidth,
+          }
+        })
+
+        expect(overflow.blockOverflowX).toBe('clip')
+        expect(overflow.blockOverflowY).toBe('visible')
+        expect(overflow.codeAreaOverflowX).toBe('auto')
+        expect(overflow.pageScrollsHorizontally).toBe(false)
+      })
   })
 
   test('renders the diagram once the streamed fence closes', async ({
@@ -183,9 +262,17 @@ async function waitForSettledScale(page: Page): Promise<number> {
 }
 
 test.describe('Mermaid diagram viewer', () => {
-  test('opens fullscreen from the toolbar button and closes on Escape',
-    async ({ page, browserName }) => {
-      await waitForAllDiagrams(page)
+  test('opens fullscreen from the toolbar button, the keyboard and the '
+    + 'inline diagram, and closes on Escape or the close button', async ({
+    page,
+    browserName,
+  }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
+    await waitForAllDiagrams(page)
+
+    await test.step('opens fullscreen from the toolbar button and closes on '
+      + 'Escape', async () => {
       await openViewerFromButton(page, 0)
 
       await expect(getViewer(page).locator('h2')).toHaveText('Diagram')
@@ -203,162 +290,162 @@ test.describe('Mermaid diagram viewer', () => {
       ).toBeFocused()
     })
 
-  test('opens fullscreen when the inline diagram is clicked', async ({
-    page,
-  }) => {
-    await waitForAllDiagrams(page)
+    await test.step('closes from the close button', async () => {
+      await openViewerFromButton(page, 0)
 
-    await getDiagramBlock(page, 1)
-      .locator('[data-testid="mermaid-diagram"]')
-      .click()
+      await getViewer(page)
+        .locator('[data-testid="mermaid-viewer-close"]')
+        .click()
 
-    await expect(getViewer(page)).toBeVisible()
-    await expect(
-      getViewer(page).locator('[data-testid="mermaid-viewer-target"] svg'),
-    ).toBeVisible({ timeout: 15_000 })
-    await expect(getViewer(page)).toContainText('Stream tokens')
-  })
+      await expect(getViewer(page)).toHaveCount(0)
+    })
 
-  test('opens fullscreen from the keyboard on the inline diagram', async ({
-    page,
-    browserName,
-  }) => {
-    await waitForAllDiagrams(page)
+    await test.step('opens fullscreen from the keyboard on the inline '
+      + 'diagram', async () => {
+      const openButton = getDiagramBlock(page, 0)
+        .locator('[data-testid="mermaid-diagram-open"]')
 
-    const openButton = getDiagramBlock(page, 0)
-      .locator('[data-testid="mermaid-diagram-open"]')
+      await openButton.focus()
+      await page.keyboard.press('Enter')
 
-    await openButton.focus()
-    await page.keyboard.press('Enter')
+      await expect(getViewer(page)).toBeVisible()
+      await expect(
+        getViewer(page).locator('[data-testid="mermaid-viewer-target"] svg'),
+      ).toBeVisible({ timeout: 15_000 })
 
-    await expect(getViewer(page)).toBeVisible()
-    await expect(
-      getViewer(page).locator('[data-testid="mermaid-viewer-target"] svg'),
-    ).toBeVisible({ timeout: 15_000 })
+      await page.keyboard.press('Escape')
 
-    await page.keyboard.press('Escape')
+      await expect(getViewer(page)).toHaveCount(0)
 
-    await expect(getViewer(page)).toHaveCount(0)
+      if (browserName === 'webkit') {
+        return
+      }
 
-    if (browserName === 'webkit') {
-      return
-    }
+      await expect(openButton).toBeFocused()
+    })
 
-    await expect(openButton).toBeFocused()
-  })
+    await test.step('opens fullscreen when the inline diagram is clicked',
+      async () => {
+        await getDiagramBlock(page, 1)
+          .locator('[data-testid="mermaid-diagram"]')
+          .click()
 
-  test('closes from the close button', async ({ page }) => {
-    await waitForAllDiagrams(page)
-    await openViewerFromButton(page, 0)
-
-    await getViewer(page).locator('[data-testid="mermaid-viewer-close"]').click()
-
-    await expect(getViewer(page)).toHaveCount(0)
-  })
-
-  test('zooms in, zooms out and fits to screen', async ({ page }) => {
-    await waitForAllDiagrams(page)
-    await openViewerFromButton(page, 0)
-
-    const fittedScale = await waitForSettledScale(page)
-
-    await getViewer(page).locator('[data-testid="mermaid-zoom-in"]').click()
-
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeGreaterThan(fittedScale * 1.1)
-
-    await getViewer(page).locator('[data-testid="mermaid-zoom-out"]').click()
-
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeCloseTo(fittedScale, 2)
-
-    await getViewer(page).locator('[data-testid="mermaid-zoom-out"]').click()
-
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeLessThan(fittedScale * 0.9)
-
-    await getViewer(page).locator('[data-testid="mermaid-zoom-reset"]').click()
-
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeCloseTo(fittedScale, 2)
-
-    await getViewer(page).locator('[data-testid="mermaid-zoom-in"]').click()
-
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeGreaterThan(fittedScale * 1.1)
-
-    await getViewer(page).locator('[data-testid="mermaid-zoom-reset"]').click()
-
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeCloseTo(fittedScale, 2)
-  })
-
-  test('shows a tooltip when hovering a zoom button', async ({ page }) => {
-    await waitForAllDiagrams(page)
-    await openViewerFromButton(page, 0)
-    await waitForSettledScale(page)
-
-    const zoomIn = getViewer(page).locator('[data-testid="mermaid-zoom-in"]')
-
-    await expect(zoomIn).toHaveAttribute('data-tip', 'Zoom in')
-    await expect(
-      getViewer(page).locator('[data-testid="mermaid-zoom-out"]'),
-    ).toHaveAttribute('data-tip', 'Zoom out')
-    await expect(
-      getViewer(page).locator('[data-testid="mermaid-zoom-reset"]'),
-    ).toHaveAttribute('data-tip', 'Fit to screen')
-
-    await zoomIn.hover()
-
-    await expect
-      .poll(() => zoomIn.evaluate((element) => {
-        const pseudo = getComputedStyle(element, '::before')
-
-        return {
-          content: pseudo.content,
-          opacity: pseudo.opacity,
-        }
-      }))
-      .toMatchObject({
-        content: expect.stringContaining('Zoom in'),
-        opacity: '1',
+        await expect(getViewer(page)).toBeVisible()
+        await expect(
+          getViewer(page).locator('[data-testid="mermaid-viewer-target"] svg'),
+        ).toBeVisible({ timeout: 15_000 })
+        await expect(getViewer(page)).toContainText('Stream tokens')
       })
   })
 
-  test('zooms around the cursor with the mouse wheel', async ({ page }) => {
+  test('zooms with the buttons and the mouse wheel and shows a tooltip on '
+    + 'a hovered zoom button', async ({ page }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await waitForAllDiagrams(page)
     await openViewerFromButton(page, 0)
 
-    const fittedScale = await waitForSettledScale(page)
-    const viewportBox = await getViewer(page)
-      .locator('[data-testid="mermaid-viewer-viewport"]')
-      .boundingBox()
+    await test.step('zooms in, zooms out and fits to screen', async () => {
+      const fittedScale = await waitForSettledScale(page)
 
-    expect(viewportBox).not.toBeNull()
+      await getViewer(page).locator('[data-testid="mermaid-zoom-in"]').click()
 
-    await page.mouse.move(
-      viewportBox!.x + viewportBox!.width / 2,
-      viewportBox!.y + viewportBox!.height / 2,
-    )
-    await page.mouse.wheel(0, -300)
+      await expect
+        .poll(() => readViewerScale(page))
+        .toBeGreaterThan(fittedScale * 1.1)
 
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeGreaterThan(fittedScale * 1.05)
+      await getViewer(page).locator('[data-testid="mermaid-zoom-out"]').click()
 
-    const zoomedScale = await readViewerScale(page)
+      await expect
+        .poll(() => readViewerScale(page))
+        .toBeCloseTo(fittedScale, 2)
 
-    await page.mouse.wheel(0, 600)
+      await getViewer(page).locator('[data-testid="mermaid-zoom-out"]').click()
 
-    await expect
-      .poll(() => readViewerScale(page))
-      .toBeLessThan(zoomedScale)
+      await expect
+        .poll(() => readViewerScale(page))
+        .toBeLessThan(fittedScale * 0.9)
+
+      await getViewer(page)
+        .locator('[data-testid="mermaid-zoom-reset"]')
+        .click()
+
+      await expect
+        .poll(() => readViewerScale(page))
+        .toBeCloseTo(fittedScale, 2)
+
+      await getViewer(page).locator('[data-testid="mermaid-zoom-in"]').click()
+
+      await expect
+        .poll(() => readViewerScale(page))
+        .toBeGreaterThan(fittedScale * 1.1)
+
+      await getViewer(page)
+        .locator('[data-testid="mermaid-zoom-reset"]')
+        .click()
+
+      await expect
+        .poll(() => readViewerScale(page))
+        .toBeCloseTo(fittedScale, 2)
+    })
+
+    await test.step('shows a tooltip when hovering a zoom button', async () => {
+      await waitForSettledScale(page)
+
+      const zoomIn = getViewer(page).locator('[data-testid="mermaid-zoom-in"]')
+
+      await expect(zoomIn).toHaveAttribute('data-tip', 'Zoom in')
+      await expect(
+        getViewer(page).locator('[data-testid="mermaid-zoom-out"]'),
+      ).toHaveAttribute('data-tip', 'Zoom out')
+      await expect(
+        getViewer(page).locator('[data-testid="mermaid-zoom-reset"]'),
+      ).toHaveAttribute('data-tip', 'Fit to screen')
+
+      await zoomIn.hover()
+
+      await expect
+        .poll(() => zoomIn.evaluate((element) => {
+          const pseudo = getComputedStyle(element, '::before')
+
+          return {
+            content: pseudo.content,
+            opacity: pseudo.opacity,
+          }
+        }))
+        .toMatchObject({
+          content: expect.stringContaining('Zoom in'),
+          opacity: '1',
+        })
+    })
+
+    await test.step('zooms around the cursor with the mouse wheel',
+      async () => {
+        const fittedScale = await waitForSettledScale(page)
+        const viewportBox = await getViewer(page)
+          .locator('[data-testid="mermaid-viewer-viewport"]')
+          .boundingBox()
+
+        expect(viewportBox).not.toBeNull()
+
+        await page.mouse.move(
+          viewportBox!.x + viewportBox!.width / 2,
+          viewportBox!.y + viewportBox!.height / 2,
+        )
+        await page.mouse.wheel(0, -300)
+
+        await expect
+          .poll(() => readViewerScale(page))
+          .toBeGreaterThan(fittedScale * 1.05)
+
+        const zoomedScale = await readViewerScale(page)
+
+        await page.mouse.wheel(0, 600)
+
+        await expect
+          .poll(() => readViewerScale(page))
+          .toBeLessThan(zoomedScale)
+      })
   })
 
   test('zooms with a two finger pinch', async ({ page, browserName }) => {
@@ -473,274 +560,184 @@ async function downloadFrom(
 }
 
 test.describe('Mermaid diagram export', () => {
-  test('shows the download and copy menus with all seven actions', async ({
-    page,
-  }) => {
+  test('downloads a self-contained svg, a non-blank png and a .drawio file '
+    + 'inline and from the viewer header', async ({ page }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await waitForAllDiagrams(page)
 
-    const block = getDiagramBlock(page, CYNEFIN_INDEX)
-
-    await expect(block.locator('[data-testid="mermaid-export"]')).toHaveCount(0)
-    await expect(block.locator('.menu-title')).toHaveCount(0)
-
-    await block.locator('[data-testid="mermaid-download"]').click()
-
-    for (const action of [
-      'download-svg',
-      'download-png',
-      'download-drawio',
-    ]) {
-      await expect(
-        block.locator(`[data-testid="mermaid-export-${action}"]`),
-      ).toBeVisible()
-    }
-
-    await block.locator('[data-testid="mermaid-copy"]').click()
-
-    for (const action of [
-      'copy-source',
-      'copy-markdown',
-      'copy-svg',
-      'copy-drawio',
-    ]) {
-      await expect(
-        block.locator(`[data-testid="mermaid-export-${action}"]`),
-      ).toBeVisible()
-    }
-
-    await expect(
-      block.locator('[data-testid="mermaid-export-download-svg"]'),
-    ).toBeHidden()
-  })
-
-  test('shows the inline copy menu without clipping it', async ({
-    page,
-  }) => {
-    await waitForAllDiagrams(page)
-
-    const block = getDiagramBlock(page, 0)
-    const trigger = block.locator('[data-testid="mermaid-copy"]')
-
-    await trigger.evaluate((element) => {
-      element.scrollIntoView({ block: 'start' })
-    })
-    await trigger.click()
-
-    const lastItem = block.locator(
-      '[data-testid="mermaid-export-copy-drawio"]',
-    )
-
-    await expect(lastItem).toBeVisible()
-
-    const box = await lastItem.boundingBox()
-    const viewport = page.viewportSize()
-
-    expect(box).not.toBeNull()
-    expect(viewport).not.toBeNull()
-    expect(box!.x).toBeGreaterThanOrEqual(0)
-    expect(box!.y).toBeGreaterThanOrEqual(0)
-    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width)
-    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height)
-
-    const isHittable = await lastItem.evaluate((element) => {
-      const rect = element.getBoundingClientRect()
-      const hit = document.elementFromPoint(
-        rect.x + rect.width / 2,
-        rect.y + rect.height / 2,
+    await test.step('downloads a self-contained svg', async () => {
+      const download = await downloadFrom(
+        page,
+        getDiagramBlock(page, CYNEFIN_INDEX),
+        'download-svg',
       )
 
-      return !!hit && (hit === element || element.contains(hit))
+      expect(download.suggestedFilename()).toBe('diagram.svg')
+
+      const markup = (await readDownload(download)).toString('utf-8')
+      const hasFontFaces = await hasEmbeddableFontFaces(page)
+      const result = await page.evaluate((svgMarkup) => {
+        const document = new DOMParser()
+          .parseFromString(svgMarkup, 'image/svg+xml')
+        const root = document.documentElement
+        const firstChild = root.firstElementChild
+
+        return {
+          hasParserError: !!document.querySelector('parsererror'),
+          rootName: root.localName,
+          width: root.getAttribute('width'),
+          height: root.getAttribute('height'),
+          firstChildName: firstChild?.localName ?? null,
+          backgroundFill: firstChild?.getAttribute('fill') ?? null,
+          backgroundWidth: firstChild?.getAttribute('width') ?? null,
+          hasFontFace: Array.from(root.querySelectorAll('style'))
+            .some((style) => {
+              return (style.textContent ?? '').includes('@font-face')
+            }),
+          hasEmbeddedFontData: Array.from(root.querySelectorAll('style'))
+            .some((style) => {
+              const css = style.textContent ?? ''
+
+              return css.includes('@font-face') && css.includes('url(data:')
+            }),
+        }
+      }, markup)
+
+      expect(result.hasParserError).toBe(false)
+      expect(result.rootName).toBe('svg')
+      expect(Number(result.width)).toBeGreaterThan(0)
+      expect(Number(result.height)).toBeGreaterThan(0)
+      expect(result.firstChildName).toBe('rect')
+      expect(result.backgroundFill).toMatch(/^#[0-9a-f]{6}$/i)
+      expect(Number(result.backgroundWidth)).toBe(Number(result.width))
+      expect(result.hasFontFace).toBe(hasFontFaces)
+      expect(result.hasEmbeddedFontData).toBe(hasFontFaces)
+      expect(markup).not.toContain('var(')
+      expect(markup).toContain('Market research')
     })
 
-    expect(isHittable).toBe(true)
+    await test.step('downloads a valid, non-blank png', async () => {
+      const download = await downloadFrom(
+        page,
+        getDiagramBlock(page, CYNEFIN_INDEX),
+        'download-png',
+      )
 
-    await expectOpenMenuInsideBlock(block)
+      expect(download.suggestedFilename()).toBe('diagram.png')
 
-    const overflow = await page.evaluate(() => {
-      const diagramBlock = document
-        .querySelector('[data-testid="mermaid-diagram"]')!
-        .closest('.mockup-browser')!
-      const codeArea = diagramBlock.querySelector(':scope > .overflow-x-auto')!
-      const blockStyle = getComputedStyle(diagramBlock)
+      const png = await readDownload(download)
 
-      return {
-        blockOverflowX: blockStyle.overflowX,
-        blockOverflowY: blockStyle.overflowY,
-        codeAreaOverflowX: getComputedStyle(codeArea).overflowX,
-        pageScrollsHorizontally: document.documentElement.scrollWidth
-          > document.documentElement.clientWidth,
-      }
-    })
+      expect([...png.subarray(0, 8)]).toEqual([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ])
+      expect(png.readUInt32BE(16)).toBeGreaterThan(0)
+      expect(png.readUInt32BE(20)).toBeGreaterThan(0)
 
-    expect(overflow.blockOverflowX).toBe('clip')
-    expect(overflow.blockOverflowY).toBe('visible')
-    expect(overflow.codeAreaOverflowX).toBe('auto')
-    expect(overflow.pageScrollsHorizontally).toBe(false)
-  })
+      const pixels = await page.evaluate(async (base64) => {
+        const image = new Image()
 
-  test('downloads a self-contained svg', async ({ page }) => {
-    await waitForAllDiagrams(page)
+        image.src = `data:image/png;base64,${base64}`
+        await image.decode()
 
-    const download = await downloadFrom(
-      page,
-      getDiagramBlock(page, CYNEFIN_INDEX),
-      'download-svg',
-    )
+        const canvas = document.createElement('canvas')
 
-    expect(download.suggestedFilename()).toBe('diagram.svg')
+        canvas.width = image.naturalWidth
+        canvas.height = image.naturalHeight
 
-    const markup = (await readDownload(download)).toString('utf-8')
-    const hasFontFaces = await hasEmbeddableFontFaces(page)
-    const result = await page.evaluate((svgMarkup) => {
-      const document = new DOMParser()
-        .parseFromString(svgMarkup, 'image/svg+xml')
-      const root = document.documentElement
-      const firstChild = root.firstElementChild
+        const context = canvas.getContext('2d')!
 
-      return {
-        hasParserError: !!document.querySelector('parsererror'),
-        rootName: root.localName,
-        width: root.getAttribute('width'),
-        height: root.getAttribute('height'),
-        firstChildName: firstChild?.localName ?? null,
-        backgroundFill: firstChild?.getAttribute('fill') ?? null,
-        backgroundWidth: firstChild?.getAttribute('width') ?? null,
-        hasFontFace: Array.from(root.querySelectorAll('style')).some((style) => {
-          return (style.textContent ?? '').includes('@font-face')
-        }),
-        hasEmbeddedFontData: Array.from(root.querySelectorAll('style'))
-          .some((style) => {
-            const css = style.textContent ?? ''
+        context.drawImage(image, 0, 0)
 
-            return css.includes('@font-face') && css.includes('url(data:')
-          }),
-      }
-    }, markup)
-
-    expect(result.hasParserError).toBe(false)
-    expect(result.rootName).toBe('svg')
-    expect(Number(result.width)).toBeGreaterThan(0)
-    expect(Number(result.height)).toBeGreaterThan(0)
-    expect(result.firstChildName).toBe('rect')
-    expect(result.backgroundFill).toMatch(/^#[0-9a-f]{6}$/i)
-    expect(Number(result.backgroundWidth)).toBe(Number(result.width))
-    expect(result.hasFontFace).toBe(hasFontFaces)
-    expect(result.hasEmbeddedFontData).toBe(hasFontFaces)
-    expect(markup).not.toContain('var(')
-    expect(markup).toContain('Market research')
-  })
-
-  test('downloads a valid, non-blank png', async ({ page }) => {
-    await waitForAllDiagrams(page)
-
-    const download = await downloadFrom(
-      page,
-      getDiagramBlock(page, CYNEFIN_INDEX),
-      'download-png',
-    )
-
-    expect(download.suggestedFilename()).toBe('diagram.png')
-
-    const png = await readDownload(download)
-
-    expect([...png.subarray(0, 8)]).toEqual([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    ])
-    expect(png.readUInt32BE(16)).toBeGreaterThan(0)
-    expect(png.readUInt32BE(20)).toBeGreaterThan(0)
-
-    const pixels = await page.evaluate(async (base64) => {
-      const image = new Image()
-
-      image.src = `data:image/png;base64,${base64}`
-      await image.decode()
-
-      const canvas = document.createElement('canvas')
-
-      canvas.width = image.naturalWidth
-      canvas.height = image.naturalHeight
-
-      const context = canvas.getContext('2d')!
-
-      context.drawImage(image, 0, 0)
-
-      const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
-      const colors = new Set<number>()
-
-      for (let offset = 0; offset < data.length; offset += 4) {
-        colors.add(
-          (data[offset]! << 24)
-          | (data[offset + 1]! << 16)
-          | (data[offset + 2]! << 8)
-          | data[offset + 3]!,
+        const { data } = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
         )
-      }
+        const colors = new Set<number>()
 
-      return {
-        distinctColors: colors.size,
-        topLeftAlpha: data[3],
-        bottomRightAlpha: data[data.length - 1],
-      }
-    }, png.toString('base64'))
+        for (let offset = 0; offset < data.length; offset += 4) {
+          colors.add(
+            (data[offset]! << 24)
+            | (data[offset + 1]! << 16)
+            | (data[offset + 2]! << 8)
+            | data[offset + 3]!,
+          )
+        }
 
-    expect(pixels.distinctColors).toBeGreaterThan(2)
-    expect(pixels.topLeftAlpha).toBe(255)
-    expect(pixels.bottomRightAlpha).toBe(255)
-  })
+        return {
+          distinctColors: colors.size,
+          topLeftAlpha: data[3],
+          bottomRightAlpha: data[data.length - 1],
+        }
+      }, png.toString('base64'))
 
-  test('downloads a .drawio file carrying the mermaid source', async ({
-    page,
-  }) => {
-    await waitForAllDiagrams(page)
+      expect(pixels.distinctColors).toBeGreaterThan(2)
+      expect(pixels.topLeftAlpha).toBe(255)
+      expect(pixels.bottomRightAlpha).toBe(255)
+    })
 
-    const download = await downloadFrom(
-      page,
-      getDiagramBlock(page, CYNEFIN_INDEX),
-      'download-drawio',
-    )
+    await test.step('downloads a .drawio file carrying the mermaid source',
+      async () => {
+        const download = await downloadFrom(
+          page,
+          getDiagramBlock(page, CYNEFIN_INDEX),
+          'download-drawio',
+        )
 
-    expect(download.suggestedFilename()).toBe('diagram.drawio')
+        expect(download.suggestedFilename()).toBe('diagram.drawio')
 
-    const xml = (await readDownload(download)).toString('utf-8')
+        const xml = (await readDownload(download)).toString('utf-8')
 
-    expect(xml).toContain('<mxfile')
-    expect(xml).toContain('mermaidData')
+        expect(xml).toContain('<mxfile')
+        expect(xml).toContain('mermaidData')
 
-    const embedded = await page.evaluate((fileXml) => {
-      const document = new DOMParser().parseFromString(fileXml, 'text/xml')
-      const element = Array.from(document.querySelectorAll('*')).find((node) => {
-        return node.hasAttribute('mermaidData')
+        const embedded = await page.evaluate((fileXml) => {
+          const document = new DOMParser().parseFromString(fileXml, 'text/xml')
+          const element = Array.from(document.querySelectorAll('*'))
+            .find((node) => {
+              return node.hasAttribute('mermaidData')
+            })
+
+          return element
+            ? JSON.parse(element.getAttribute('mermaidData')!)
+            : null
+        }, xml)
+
+        expect(embedded.data).toBe(CYNEFIN_SOURCE)
+
+        const imageStyle = await page.evaluate((fileXml) => {
+          const document = new DOMParser().parseFromString(fileXml, 'text/xml')
+          const cell = Array.from(document.getElementsByTagName('mxCell'))
+            .find((node) => {
+              return (node.getAttribute('style') ?? '').includes('shape=image')
+            })
+
+          return cell?.getAttribute('style') ?? ''
+        }, xml)
+        const encodedSvg = /image=data:image\/svg\+xml,([^;]+);/
+          .exec(imageStyle)?.[1]
+
+        expect(imageStyle).toContain('shape=image')
+        expect(encodedSvg).toBeTruthy()
+        expect(Buffer.from(encodedSvg!, 'base64').toString('utf-8'))
+          .toContain('<svg')
       })
 
-      return element ? JSON.parse(element.getAttribute('mermaidData')!) : null
-    }, xml)
+    await test.step('exports from the viewer header menu', async () => {
+      await openViewerFromButton(page, CYNEFIN_INDEX)
 
-    expect(embedded.data).toBe(CYNEFIN_SOURCE)
+      const download = await downloadFrom(
+        page,
+        getViewer(page),
+        'download-svg',
+      )
 
-    const imageStyle = await page.evaluate((fileXml) => {
-      const document = new DOMParser().parseFromString(fileXml, 'text/xml')
-      const cell = Array.from(document.getElementsByTagName('mxCell'))
-        .find(node => (node.getAttribute('style') ?? '').includes('shape=image'))
-
-      return cell?.getAttribute('style') ?? ''
-    }, xml)
-    const encodedSvg = /image=data:image\/svg\+xml,([^;]+);/.exec(imageStyle)?.[1]
-
-    expect(imageStyle).toContain('shape=image')
-    expect(encodedSvg).toBeTruthy()
-    expect(Buffer.from(encodedSvg!, 'base64').toString('utf-8'))
-      .toContain('<svg')
-  })
-
-  test('exports from the viewer header menu', async ({ page }) => {
-    await waitForAllDiagrams(page)
-    await openViewerFromButton(page, CYNEFIN_INDEX)
-
-    const download = await downloadFrom(page, getViewer(page), 'download-svg')
-
-    expect(download.suggestedFilename()).toBe('diagram.svg')
-    expect((await readDownload(download)).toString('utf-8'))
-      .toContain('Market research')
+      expect(download.suggestedFilename()).toBe('diagram.svg')
+      expect((await readDownload(download)).toString('utf-8'))
+        .toContain('Market research')
+    })
   })
 
   test.describe('clipboard', () => {
@@ -754,135 +751,149 @@ test.describe('Mermaid diagram export', () => {
       return page.evaluate(() => navigator.clipboard.readText())
     }
 
-    test('copies the svg', async ({ page }) => {
+    test('copies the svg, the raw source, the markdown fence and draw.io '
+      + 'clipboard xml', async ({ page }) => {
+      test.setTimeout(MERGED_FLOW_TIMEOUT)
+
       await waitForAllDiagrams(page)
-      await chooseExport(getDiagramBlock(page, CYNEFIN_INDEX), 'copy-svg')
 
-      await expect.poll(() => readClipboardText(page)).toContain('<svg')
+      const cynefinBlock = getDiagramBlock(page, CYNEFIN_INDEX)
 
-      const markup = await readClipboardText(page)
-      const hasFontFaces = await hasEmbeddableFontFaces(page)
+      await test.step('copies the svg', async () => {
+        await chooseExport(cynefinBlock, 'copy-svg')
 
-      expect(markup).not.toContain('var(')
+        await expect.poll(() => readClipboardText(page)).toContain('<svg')
 
-      if (hasFontFaces) {
-        expect(markup).toContain('@font-face')
-        expect(markup).toContain('url(data:')
-      } else {
-        expect(markup).not.toContain('@font-face')
-      }
+        const markup = await readClipboardText(page)
+        const hasFontFaces = await hasEmbeddableFontFaces(page)
 
-      expect(markup).toContain('Market research')
-      await expect(
-        getDiagramBlock(page, CYNEFIN_INDEX)
-          .locator('[data-testid="mermaid-copy"]'),
-      ).toContainText('Copied!')
-    })
+        expect(markup).not.toContain('var(')
 
-    test('copies the markdown fence', async ({ page }) => {
-      await waitForAllDiagrams(page)
-      await chooseExport(getDiagramBlock(page, CYNEFIN_INDEX), 'copy-markdown')
+        if (hasFontFaces) {
+          expect(markup).toContain('@font-face')
+          expect(markup).toContain('url(data:')
+        } else {
+          expect(markup).not.toContain('@font-face')
+        }
 
-      await expect
-        .poll(() => readClipboardText(page))
-        .toBe(`\`\`\`mermaid\n${CYNEFIN_SOURCE}\n\`\`\`\n`)
-      await expect(
-        getDiagramBlock(page, CYNEFIN_INDEX)
-          .locator('[data-testid="mermaid-copy"]'),
-      ).toContainText('Copied!')
-    })
+        expect(markup).toContain('Market research')
+        await expect(
+          cynefinBlock.locator('[data-testid="mermaid-copy"]'),
+        ).toContainText('Copied!')
+      })
 
-    test('copies the raw diagram source', async ({ page }) => {
-      await waitForAllDiagrams(page)
-      await chooseExport(getDiagramBlock(page, CYNEFIN_INDEX), 'copy-source')
+      await test.step('copies the raw diagram source', async () => {
+        await chooseExport(cynefinBlock, 'copy-source')
 
-      await expect
-        .poll(() => readClipboardText(page))
-        .toBe(CYNEFIN_SOURCE)
-    })
+        await expect
+          .poll(() => readClipboardText(page))
+          .toBe(CYNEFIN_SOURCE)
+      })
 
-    test('copies draw.io clipboard xml', async ({ page }) => {
-      await waitForAllDiagrams(page)
-      await chooseExport(getDiagramBlock(page, CYNEFIN_INDEX), 'copy-drawio')
+      await test.step('copies the markdown fence', async () => {
+        const pieBlock = getDiagramBlock(page, PIE_INDEX)
 
-      await expect
-        .poll(() => readClipboardText(page))
-        .toContain('<mxGraphModel')
+        await expect(
+          pieBlock.locator('[data-testid="mermaid-copy"]'),
+        ).not.toContainText('Copied!')
 
-      const xml = await readClipboardText(page)
+        await chooseExport(pieBlock, 'copy-markdown')
 
-      expect(xml).toContain('mermaidData')
-      await expect(
-        getDiagramBlock(page, CYNEFIN_INDEX)
-          .locator('[data-testid="mermaid-copy"]'),
-      ).toContainText('Copied!')
+        await expect
+          .poll(() => readClipboardText(page))
+          .toBe(`\`\`\`mermaid\n${PIE_SOURCE}\n\`\`\`\n`)
+        await expect(
+          pieBlock.locator('[data-testid="mermaid-copy"]'),
+        ).toContainText('Copied!')
+      })
+
+      await test.step('copies draw.io clipboard xml', async () => {
+        const sequenceBlock = getDiagramBlock(page, SEQUENCE_INDEX)
+
+        await expect(
+          sequenceBlock.locator('[data-testid="mermaid-copy"]'),
+        ).not.toContainText('Copied!')
+
+        await chooseExport(sequenceBlock, 'copy-drawio')
+
+        await expect
+          .poll(() => readClipboardText(page))
+          .toContain('<mxGraphModel')
+
+        const xml = await readClipboardText(page)
+
+        expect(xml).toContain('mermaidData')
+        await expect(
+          sequenceBlock.locator('[data-testid="mermaid-copy"]'),
+        ).toContainText('Copied!')
+      })
     })
   })
 })
 
 test.describe('Mermaid diagram editing', () => {
-  test('edits the source live and exports the edited diagram', async ({
-    page,
-  }) => {
+  test('edits the source live, exports the edited diagram, and keeps the '
+    + 'last diagram with an error note on invalid syntax', async ({ page }) => {
+    test.setTimeout(MERGED_FLOW_TIMEOUT)
+
     await waitForAllDiagrams(page)
 
     const block = getDiagramBlock(page, 0)
     const diagram = block.locator('[data-testid="mermaid-diagram"]')
-
-    await block.locator('[data-testid="mermaid-edit"]').click()
-
     const editor = block.locator('[data-testid="mermaid-editor"]')
 
-    await expect(editor).toBeVisible()
-    await expect(
-      block.locator('[data-testid="mermaid-edit-reset"]'),
-    ).toHaveCount(0)
+    await test.step('edits the source live and exports the edited diagram',
+      async () => {
+        await block.locator('[data-testid="mermaid-edit"]').click()
 
-    const originalSource = await editor.inputValue()
+        await expect(editor).toBeVisible()
+        await expect(
+          block.locator('[data-testid="mermaid-edit-reset"]'),
+        ).toHaveCount(0)
 
-    await editor.fill(
-      originalSource.replace('Worker --> K', 'Worker[Edge Worker] --> K'),
-    )
+        const originalSource = await editor.inputValue()
 
-    await expect(diagram.locator('svg')).toContainText('Edge Worker')
-    await expect(
-      block.locator('[data-testid="mermaid-edit-reset"]'),
-    ).toBeVisible()
+        await editor.fill(
+          originalSource.replace('Worker --> K', 'Worker[Edge Worker] --> K'),
+        )
 
-    const download = await downloadFrom(page, block, 'download-svg')
+        await expect(diagram.locator('svg')).toContainText('Edge Worker')
+        await expect(
+          block.locator('[data-testid="mermaid-edit-reset"]'),
+        ).toBeVisible()
 
-    expect((await readDownload(download)).toString('utf-8'))
-      .toContain('Edge Worker')
+        const download = await downloadFrom(page, block, 'download-svg')
 
-    await block.locator('[data-testid="mermaid-edit-done"]').click()
+        expect((await readDownload(download)).toString('utf-8'))
+          .toContain('Edge Worker')
 
-    await expect(editor).toHaveCount(0)
-    await expect(
-      block.locator('[data-testid="mermaid-edited-badge"]'),
-    ).toBeVisible()
-    await expect(diagram.locator('svg')).toContainText('Edge Worker')
+        await block.locator('[data-testid="mermaid-edit-done"]').click()
 
-    await block.locator('[data-testid="mermaid-edit"]').click()
-    await block.locator('[data-testid="mermaid-edit-reset"]').click()
+        await expect(editor).toHaveCount(0)
+        await expect(
+          block.locator('[data-testid="mermaid-edited-badge"]'),
+        ).toBeVisible()
+        await expect(diagram.locator('svg')).toContainText('Edge Worker')
 
-    await expect(diagram.locator('svg')).not.toContainText('Edge Worker')
-    await expect(diagram.locator('svg')).toContainText('Worker')
-    await expect(editor).toHaveValue(originalSource)
-    await expect(
-      block.locator('[data-testid="mermaid-edited-badge"]'),
-    ).toHaveCount(0)
-  })
+        await block.locator('[data-testid="mermaid-edit"]').click()
+        await block.locator('[data-testid="mermaid-edit-reset"]').click()
 
-  test('keeps the last diagram and shows an error note on invalid syntax',
-    async ({ page }) => {
-      await waitForAllDiagrams(page)
+        await expect(diagram.locator('svg')).not.toContainText('Edge Worker')
+        await expect(diagram.locator('svg')).toContainText('Worker')
+        await expect(editor).toHaveValue(originalSource)
+        await expect(
+          block.locator('[data-testid="mermaid-edited-badge"]'),
+        ).toHaveCount(0)
 
-      const block = getDiagramBlock(page, 0)
-      const diagram = block.locator('[data-testid="mermaid-diagram"]')
+        await block.locator('[data-testid="mermaid-edit-done"]').click()
 
+        await expect(editor).toHaveCount(0)
+      })
+
+    await test.step('keeps the last diagram and shows an error note on '
+      + 'invalid syntax', async () => {
       await block.locator('[data-testid="mermaid-edit"]').click()
-      await block.locator('[data-testid="mermaid-editor"]')
-        .fill('flowchart LR\n  A[Start --> B\n  B --> C')
+      await editor.fill('flowchart LR\n  A[Start --> B\n  B --> C')
 
       const errorNote = block.locator('[data-testid="mermaid-error"]')
 
@@ -890,25 +901,35 @@ test.describe('Mermaid diagram editing', () => {
       await expect(errorNote).toContainText('Couldn\'t render diagram')
       await expect(diagram).toHaveClass(/opacity-60/)
       await expect(diagram.locator('svg')).toContainText('KV hit?')
-      await expect(block.locator('[data-testid="mermaid-editor"]'))
-        .toBeVisible()
+      await expect(editor).toBeVisible()
       await expect(block.locator('[data-testid="mermaid-toggle"]'))
         .toHaveCount(0)
     })
+  })
 })
 
 test.describe('Mermaid diagram toolbar on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 
-  test('keeps every toolbar control and menu inside the block in edit mode',
-    async ({ page }) => {
-      await waitForAllDiagrams(page)
+  test('gives the editor a regular box radius and keeps every toolbar '
+    + 'control and menu inside the block in edit mode', async ({ page }) => {
+    await waitForAllDiagrams(page)
 
-      const block = getDiagramBlock(page, 0)
+    const block = getDiagramBlock(page, 0)
+    const editor = block.locator('[data-testid="mermaid-editor"]')
 
-      await block.locator('[data-testid="mermaid-edit"]').click()
+    await block.locator('[data-testid="mermaid-edit"]').click()
 
-      const editor = block.locator('[data-testid="mermaid-editor"]')
+    await test.step('gives the editor a regular box radius', async () => {
+      const radius = await editor.evaluate((element) => {
+        return parseFloat(getComputedStyle(element).borderTopLeftRadius)
+      })
+
+      expect(radius).toBeLessThanOrEqual(12)
+    })
+
+    await test.step('keeps every toolbar control and menu inside the block '
+      + 'in edit mode', async () => {
       const originalSource = await editor.inputValue()
 
       await editor.fill(
@@ -935,17 +956,18 @@ test.describe('Mermaid diagram toolbar on a phone', () => {
       const bounds = await block.evaluate((element, selector) => {
         const blockRect = element.getBoundingClientRect()
 
-        return Array.from(element.querySelectorAll(selector)).map((control) => {
-          const rect = control.getBoundingClientRect()
+        return Array.from(element.querySelectorAll(selector))
+          .map((control) => {
+            const rect = control.getBoundingClientRect()
 
-          return {
-            testId: control.getAttribute('data-testid'),
-            top: rect.top,
-            bottom: rect.bottom,
-            isInside: rect.left >= blockRect.left
-              && rect.right <= blockRect.right,
-          }
-        })
+            return {
+              testId: control.getAttribute('data-testid'),
+              top: rect.top,
+              bottom: rect.bottom,
+              isInside: rect.left >= blockRect.left
+                && rect.right <= blockRect.right,
+            }
+          })
       }, controlSelector)
 
       for (const control of bounds) {
@@ -968,19 +990,5 @@ test.describe('Mermaid diagram toolbar on a phone', () => {
       await expect(block.locator('[data-testid="mermaid-export-copy-svg"]'))
         .toBeVisible()
     })
-
-  test('gives the editor a regular box radius', async ({ page }) => {
-    await waitForAllDiagrams(page)
-
-    const block = getDiagramBlock(page, 0)
-
-    await block.locator('[data-testid="mermaid-edit"]').click()
-
-    const radius = await block.locator('[data-testid="mermaid-editor"]')
-      .evaluate((element) => {
-        return parseFloat(getComputedStyle(element).borderTopLeftRadius)
-      })
-
-    expect(radius).toBeLessThanOrEqual(12)
   })
 })

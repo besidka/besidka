@@ -58,5 +58,5 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  return await refreshProjectMemory(chat.projectId, userId, db)
+  return await refreshProjectMemory(chat.projectId, userId, db, logger)
 })
