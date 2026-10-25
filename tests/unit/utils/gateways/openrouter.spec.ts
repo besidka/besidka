@@ -46,12 +46,19 @@ function readInstanceSettings(instance: unknown) {
   })
 }
 
+type CatalogLookup = (...args: unknown[]) => Promise<unknown>
+
+let findGatewayCatalogModel = vi.fn<CatalogLookup>(async () => undefined)
+
 describe('useOpenRouterGateway', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+    findGatewayCatalogModel = vi.fn<CatalogLookup>(async () => undefined)
     vi.doMock('../../../../server/utils/gateways/catalog', () => ({
-      findGatewayCatalogModel: vi.fn(async () => undefined),
+      findGatewayCatalogModel: (...args: unknown[]) => {
+        return findGatewayCatalogModel(...args)
+      },
       getCachedGatewayCatalog: vi.fn(async () => []),
     }))
   })
@@ -349,12 +356,7 @@ describe('useOpenRouterGateway', () => {
 
   describe('toolCall resolution', () => {
     async function importWithCatalog(model: unknown) {
-      const findGatewayCatalogModel = vi.fn(async () => model)
-
-      vi.doMock('../../../../server/utils/gateways/catalog', () => ({
-        findGatewayCatalogModel,
-        getCachedGatewayCatalog: vi.fn(async () => []),
-      }))
+      findGatewayCatalogModel = vi.fn<CatalogLookup>(async () => model)
 
       return {
         useOpenRouterGateway: await importUseOpenRouterGateway(),
