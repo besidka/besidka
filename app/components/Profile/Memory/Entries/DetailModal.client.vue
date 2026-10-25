@@ -7,37 +7,51 @@
       :aria-labelledby="headingId"
       @close="onModalClosed"
     >
-      <div class="modal-box max-w-2xl max-h-[80vh] flex flex-col">
-        <div class="mb-4 flex shrink-0 items-start justify-between gap-2">
-          <h3
-            :id="headingId"
-            class="min-w-0 break-words text-xl font-bold"
-            data-testid="memory-entry-title"
-          >
-            {{ heading }}
-          </h3>
-          <form method="dialog">
-            <button
-              class="btn btn-sm btn-circle btn-ghost"
-              aria-label="Close"
-              data-testid="memory-entry-modal-close"
+      <div class="modal-box max-w-2xl max-h-[85dvh] flex flex-col">
+        <div class="mb-4 grid shrink-0 gap-2">
+          <UiButton
+            mode="neutral"
+            ghost
+            size="sm"
+            icon-name="lucide:arrow-left"
+            :text="backLabel"
+            normal-case
+            class="-ml-2 justify-self-start"
+            data-testid="memory-entry-back"
+            @click="open = false"
+          />
+          <div class="flex items-start justify-between gap-3">
+            <h3
+              :id="headingId"
+              class="min-w-0 break-words text-xl font-bold"
+              data-testid="memory-entry-title"
             >
-              <Icon name="lucide:x" size="16" />
-            </button>
-          </form>
+              {{ heading }}
+            </h3>
+            <UiButton
+              v-if="isViewVisible"
+              mode="error"
+              outline
+              size="sm"
+              icon-name="lucide:trash-2"
+              text="Delete"
+              icon-only-phone
+              class="shrink-0"
+              :disabled="isDeleting"
+              data-testid="memory-entry-delete"
+              @click="deleteEntry"
+            />
+          </div>
         </div>
-        <div
-          v-if="currentEntry"
-          class="flex-1 min-h-0 overflow-y-auto"
-        >
+        <div class="flex-1 min-h-0 overflow-y-auto">
           <div
-            v-if="isEditing"
+            v-if="isFormVisible"
             class="grid gap-4"
             data-testid="memory-entry-form"
           >
             <div class="grid gap-1">
               <label
-                class="text-sm font-bold"
+                class="text-sm font-semibold"
                 :for="titleInputId"
               >
                 Title
@@ -47,8 +61,8 @@
                 v-model="draftTitle"
                 type="text"
                 class="input w-full rounded-lg"
-                :class="{ 'input-error': isTitleInvalid }"
-                :aria-invalid="isTitleInvalid"
+                :class="{ 'input-error': isTitleErrorShown }"
+                :aria-invalid="isTitleErrorShown"
                 :disabled="isSaving"
                 data-testid="memory-entry-title-input"
                 @input="saveError = null"
@@ -63,18 +77,18 @@
             </div>
             <div class="grid gap-1">
               <label
-                class="text-sm font-bold"
+                class="text-sm font-semibold"
                 :for="descriptionInputId"
               >
-                Description
+                Summary
               </label>
               <input
                 :id="descriptionInputId"
                 v-model="draftDescription"
                 type="text"
                 class="input w-full rounded-lg"
-                :class="{ 'input-error': isDescriptionInvalid }"
-                :aria-invalid="isDescriptionInvalid"
+                :class="{ 'input-error': isDescriptionErrorShown }"
+                :aria-invalid="isDescriptionErrorShown"
                 :disabled="isSaving"
                 data-testid="memory-entry-description-input"
                 @input="saveError = null"
@@ -92,21 +106,23 @@
             </div>
             <div class="grid gap-1">
               <label
-                class="text-sm font-bold"
+                class="text-sm font-semibold"
                 :for="bodyInputId"
               >
                 Details
               </label>
               <textarea
                 :id="bodyInputId"
+                ref="textarea"
                 v-model="draftBody"
                 class="
-                  textarea textarea-bordered rounded-box min-h-40 w-full
-                  resize-y max-h-[50dvh] overflow-y-auto
+                  textarea textarea-bordered rounded-box min-h-36 w-full
+                  resize-none max-h-[50dvh] overflow-y-auto
                 "
-                :class="{ 'textarea-error': isBodyInvalid }"
-                :aria-invalid="isBodyInvalid"
+                :class="{ 'textarea-error': isBodyErrorShown }"
+                :aria-invalid="isBodyErrorShown"
                 :disabled="isSaving"
+                :placeholder="bodyPlaceholder"
                 data-testid="memory-entry-body-input"
                 @input="saveError = null"
               />
@@ -120,7 +136,7 @@
             </div>
             <div class="grid gap-1">
               <label
-                class="text-sm font-bold"
+                class="text-sm font-semibold"
                 :for="categoryInputId"
               >
                 Category
@@ -137,10 +153,20 @@
                   v-for="category in memoryCategoryOrder"
                   :key="category"
                   :value="category"
+                  :disabled="isCategoryUnavailable(category)"
                 >
                   {{ memoryCategoryLabels[category] }}
                 </option>
               </select>
+              <p
+                v-for="category in blockedSingletonCategories"
+                :key="category"
+                class="text-xs text-base-content/70"
+                data-testid="memory-entry-category-hint"
+              >
+                Edit your existing {{ memoryCategoryLabels[category] }}
+                entry instead.
+              </p>
             </div>
             <div
               v-if="saveError"
@@ -165,10 +191,44 @@
             </div>
           </div>
           <div
-            v-else
-            class="grid gap-4"
+            v-else-if="currentEntry"
+            class="grid gap-5"
             data-testid="memory-entry-view"
           >
+            <section class="grid gap-1">
+              <h4 class="text-sm font-semibold">Last updated</h4>
+              <p
+                class="text-sm"
+                data-testid="memory-entry-meta"
+              >
+                {{ updatedDateLabel }}
+                <span class="text-base-content/70">· {{ updatedAgeLabel }}</span>
+              </p>
+            </section>
+            <section class="grid gap-1">
+              <h4 class="text-sm font-semibold">Summary</h4>
+              <p
+                class="break-words"
+                data-testid="memory-entry-description"
+              >
+                {{ currentEntry.description }}
+              </p>
+            </section>
+            <section class="grid gap-1">
+              <h4 class="text-sm font-semibold">Details</h4>
+              <div
+                class="max-h-[min(360px,40dvh)] overflow-y-auto break-words"
+                data-testid="memory-entry-body"
+              >
+                <MDCCached
+                  :value="currentEntry.body"
+                  :cache-key="bodyCacheKey"
+                  :components="messageComponents"
+                  :parser-options="{ highlight: false }"
+                  class="chat-markdown text-sm"
+                />
+              </div>
+            </section>
             <div class="flex flex-wrap items-center gap-2">
               <span
                 class="badge badge-soft"
@@ -183,29 +243,11 @@
                 {{ getMemoryEntryOriginLabel(currentEntry.origin) }}
               </span>
             </div>
-            <p
-              class="font-bold break-words"
-              data-testid="memory-entry-description"
-            >
-              {{ currentEntry.description }}
-            </p>
-            <p
-              class="whitespace-pre-wrap break-words"
-              data-testid="memory-entry-body"
-            >
-              {{ currentEntry.body }}
-            </p>
-            <p
-              class="text-sm text-base-content/70"
-              data-testid="memory-entry-meta"
-            >
-              {{ updatedLabel }} · Created {{ createdLabel }}
-            </p>
             <section
               class="grid gap-2"
               data-testid="memory-entry-sources"
             >
-              <h4 class="text-sm font-bold">Sources</h4>
+              <h4 class="text-sm font-semibold">Sources</h4>
               <p
                 v-if="!hasSourceIds"
                 class="text-sm text-base-content/70"
@@ -270,11 +312,8 @@
             </section>
           </div>
         </div>
-        <div
-          v-if="currentEntry"
-          class="mt-4 flex shrink-0 justify-end gap-2"
-        >
-          <template v-if="isEditing">
+        <div class="mt-4 flex shrink-0 justify-end gap-2">
+          <template v-if="isFormVisible">
             <UiButton
               mode="neutral"
               ghost
@@ -286,32 +325,21 @@
             />
             <UiButton
               size="sm"
-              :text="isSaving ? 'Saving...' : 'Save changes'"
+              :text="saveButtonText"
               :disabled="isSaveDisabled"
               data-testid="memory-entry-save"
-              @click="saveChanges"
+              @click="saveEntry"
             />
           </template>
-          <template v-else>
-            <UiButton
-              mode="error"
-              outline
-              size="sm"
-              icon-name="lucide:trash-2"
-              text="Delete"
-              :disabled="isDeleting"
-              data-testid="memory-entry-delete"
-              @click="deleteEntry"
-            />
-            <UiButton
-              size="sm"
-              icon-name="lucide:pencil"
-              text="Edit"
-              :disabled="isDeleting"
-              data-testid="memory-entry-edit"
-              @click="startEditing"
-            />
-          </template>
+          <UiButton
+            v-else
+            size="sm"
+            icon-name="lucide:pencil"
+            text="Edit"
+            :disabled="isDeleting"
+            data-testid="memory-entry-edit"
+            @click="startEditing"
+          />
         </div>
       </div>
       <form
@@ -331,10 +359,8 @@ import type {
   MemoryEntry,
   MemoryEntryPatch,
 } from '#shared/types/memory.d'
-import type {
-  MemoryEntryChange,
-  MemoryEntryLimits,
-} from '#shared/types/memory-api.d'
+import type { MemoryEntryLimits } from '#shared/types/memory-api.d'
+import type { MemoryEntryModalChange } from '~/types/memory-entries.d'
 
 interface SourceChat {
   id: string
@@ -344,13 +370,20 @@ interface SourceChat {
 
 type ParsedError = ReturnType<typeof parseError>
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   entry: MemoryEntry | null
   limits: MemoryEntryLimits
-}>()
+  projectId?: string | null
+  takenSingletonCategories?: MemoryCategory[]
+  backLabel?: string
+}>(), {
+  projectId: null,
+  takenSingletonCategories: () => [],
+  backLabel: 'Memory',
+})
 
 const emit = defineEmits<{
-  changed: [change: MemoryEntryChange]
+  changed: [change: MemoryEntryModalChange]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -361,6 +394,8 @@ const descriptionInputId = useId()
 const bodyInputId = useId()
 const categoryInputId = useId()
 const modal = useTemplateRef<HTMLDialogElement>('modal')
+const { messageComponents } = useChatFormat()
+const bodyPlaceholder = '- One fact per line\n- Markdown lists render as bullets'
 
 const currentEntry = shallowRef<MemoryEntry | null>(props.entry)
 const isEditing = shallowRef<boolean>(false)
@@ -370,6 +405,7 @@ const saveError = shallowRef<ParsedError | null>(null)
 const draftTitle = shallowRef<string>('')
 const draftDescription = shallowRef<string>('')
 const draftBody = shallowRef<string>('')
+const { textarea } = useTextareaAutosize({ input: draftBody })
 const draftCategory = shallowRef<MemoryCategory>('topics')
 const sourceChats = shallowRef<SourceChat[]>([])
 const isLoadingSources = shallowRef<boolean>(false)
@@ -427,6 +463,21 @@ const isBodyInvalid = computed<boolean>(() => {
   return isBodyOverLimit.value || !draftBody.value.trim()
 })
 
+const isTitleErrorShown = computed<boolean>(() => {
+  return isTitleOverLimit.value
+    || (!isCreating.value && !normalizedTitle.value)
+})
+
+const isDescriptionErrorShown = computed<boolean>(() => {
+  return isDescriptionOverLimit.value
+    || (!isCreating.value && !normalizedDescription.value)
+})
+
+const isBodyErrorShown = computed<boolean>(() => {
+  return isBodyOverLimit.value
+    || (!isCreating.value && !draftBody.value.trim())
+})
+
 const changedFields = computed<MemoryEntryPatch>(() => {
   const entry = currentEntry.value
   const changes: MemoryEntryPatch = {}
@@ -454,15 +505,52 @@ const changedFields = computed<MemoryEntryPatch>(() => {
   return changes
 })
 
+const isCreating = computed<boolean>(() => {
+  return !currentEntry.value
+})
+
+const isFormVisible = computed<boolean>(() => {
+  return isCreating.value || isEditing.value
+})
+
+const isViewVisible = computed<boolean>(() => {
+  return !!currentEntry.value && !isEditing.value
+})
+
 const isSaveDisabled = computed<boolean>(() => {
+  const hasNoChanges = !isCreating.value
+    && Object.keys(changedFields.value).length === 0
+
   return isSaving.value
     || isTitleInvalid.value
     || isDescriptionInvalid.value
     || isBodyInvalid.value
-    || Object.keys(changedFields.value).length === 0
+    || hasNoChanges
+})
+
+const saveButtonText = computed<string>(() => {
+  if (isSaving.value) {
+    return 'Saving...'
+  }
+
+  return isCreating.value ? 'Save' : 'Save changes'
+})
+
+const blockedSingletonCategories = computed<MemoryCategory[]>(() => {
+  if (!isCreating.value) {
+    return []
+  }
+
+  return memoryCategoryOrder.filter((category) => {
+    return isCategoryUnavailable(category)
+  })
 })
 
 const heading = computed<string>(() => {
+  if (isCreating.value) {
+    return 'Add memory'
+  }
+
   if (isEditing.value) {
     return 'Edit memory'
   }
@@ -470,23 +558,35 @@ const heading = computed<string>(() => {
   return currentEntry.value?.title ?? 'Memory'
 })
 
-const updatedLabel = computed<string>(() => {
+const updatedDateLabel = computed<string>(() => {
   if (!currentEntry.value) {
     return ''
   }
 
-  const age = formatMemoryUpdatedAge(new Date(currentEntry.value.updatedAt))
-
-  return `Updated ${age}`
+  return new Date(currentEntry.value.updatedAt).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 })
 
-const createdLabel = computed<string>(() => {
+const updatedAgeLabel = computed<string>(() => {
   if (!currentEntry.value) {
     return ''
   }
 
-  return new Date(currentEntry.value.createdAt)
-    .toLocaleDateString(undefined, { dateStyle: 'medium' })
+  return formatMemoryUpdatedAge(new Date(currentEntry.value.updatedAt))
+})
+
+const bodyCacheKey = computed<string>(() => {
+  const entry = currentEntry.value
+
+  return [
+    'memory-entry',
+    entry?.id,
+    entry?.updatedAt,
+    entry?.body.length ?? 0,
+  ].join(':')
 })
 
 const hasSourceIds = computed<boolean>(() => {
@@ -506,6 +606,24 @@ const missingSourceLabel = computed<string>(() => {
     ? '1 source chat no longer exists.'
     : `${count} source chats no longer exist.`
 })
+
+function isCategoryUnavailable(category: MemoryCategory): boolean {
+  if (category === currentEntry.value?.category) {
+    return false
+  }
+
+  return props.takenSingletonCategories.includes(category)
+}
+
+function startCreating() {
+  draftTitle.value = ''
+  draftDescription.value = ''
+  draftBody.value = ''
+  draftCategory.value = props.takenSingletonCategories.includes('profile')
+    ? 'topics'
+    : 'profile'
+  saveError.value = null
+}
 
 function resetState() {
   isEditing.value = false
@@ -533,8 +651,15 @@ function startEditing() {
 }
 
 function cancelEditing() {
-  isEditing.value = false
   saveError.value = null
+
+  if (isCreating.value) {
+    open.value = false
+
+    return
+  }
+
+  isEditing.value = false
 }
 
 async function loadSources(entry: MemoryEntry) {
@@ -568,6 +693,46 @@ async function loadSources(entry: MemoryEntry) {
       isLoadingSources.value = false
     }
   }
+}
+
+async function createEntry() {
+  if (isSaveDisabled.value) {
+    return
+  }
+
+  isSaving.value = true
+  saveError.value = null
+
+  try {
+    await $fetch('/api/v1/memory/entries', {
+      method: 'POST',
+      body: {
+        ...(props.projectId ? { projectId: props.projectId } : {}),
+        category: draftCategory.value,
+        title: normalizedTitle.value,
+        description: normalizedDescription.value,
+        body: draftBody.value,
+      },
+    })
+
+    useInfoMessage('Saved', 'Memory entry added.')
+    open.value = false
+    emit('changed', { reason: 'created', categoryChanged: false })
+  } catch (exception) {
+    saveError.value = parseError(exception)
+  } finally {
+    isSaving.value = false
+  }
+}
+
+async function saveEntry() {
+  if (isCreating.value) {
+    await createEntry()
+
+    return
+  }
+
+  await saveChanges()
 }
 
 async function saveChanges() {
@@ -664,6 +829,10 @@ watch(open, (isOpen) => {
   }
 
   if (isOpen) {
+    if (isCreating.value) {
+      startCreating()
+    }
+
     modal.value.showModal()
 
     return

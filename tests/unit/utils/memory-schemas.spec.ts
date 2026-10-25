@@ -260,13 +260,14 @@ describe('memorySettingsPatchShape', () => {
     }).success).toBe(false)
   })
 
-  it('caps aboutMe at 4000 characters', () => {
-    expect(settingsSchema.safeParse({
-      aboutMe: 'a'.repeat(4000),
-    }).success).toBe(true)
-    expect(settingsSchema.safeParse({
-      aboutMe: 'a'.repeat(4001),
-    }).success).toBe(false)
+  it('accepts only null for aboutMe', () => {
+    expect(settingsSchema.safeParse({ aboutMe: null }).success).toBe(true)
+    expect(settingsSchema.safeParse({}).success).toBe(true)
+    expect(settingsSchema.safeParse({ aboutMe: 'Backend dev' }).success)
+      .toBe(false)
+    expect(settingsSchema.safeParse({ aboutMe: '' }).success).toBe(false)
+    expect(settingsSchema.safeParse({ aboutMe: 'a'.repeat(4001) }).success)
+      .toBe(false)
   })
 
   it('rejects an unknown gateway id', () => {

@@ -8,12 +8,25 @@ import {
   getMemoryEntryOriginLabel,
   memoryCategoryLabels,
   memoryCategoryOrder,
+  memoryListCategoryOrder,
   memoryOriginLabels,
 } from '~/utils/memory-entry-labels'
 
 describe('memory entry labels', () => {
   it('keeps the category order identical to the policy list', () => {
     expect([...memoryCategoryOrder]).toEqual([...memoryCategories])
+  })
+
+  it('lists topics before areas and covers every category once', () => {
+    expect([...memoryListCategoryOrder]).toEqual([
+      'profile',
+      'preferences',
+      'topics',
+      'areas',
+      'people',
+    ])
+    expect([...memoryListCategoryOrder].sort())
+      .toEqual([...memoryCategories].sort())
   })
 
   it('labels every category', () => {

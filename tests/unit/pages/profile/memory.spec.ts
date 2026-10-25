@@ -2,7 +2,10 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, shallowRef } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemorySettingsFields } from '../../../../shared/types/memory.d'
+import type {
+  AboutMeNotMigratedReason,
+  MemorySettingsFields,
+} from '../../../../shared/types/memory.d'
 import * as messagesComposable from '../../../../app/composables/messages'
 import MemoryPage from '../../../../app/pages/profile/memory.vue'
 
@@ -10,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(async () => ({ label: 'Confirm', index: 0 })),
   useFetch: vi.fn(),
   useLazyFetch: vi.fn(),
+  refreshNuxtData: vi.fn(),
+  settingsRefresh: vi.fn(),
   fetch: vi.fn(),
   patchRequests: [] as Array<Record<string, unknown>>,
   patchError: null as null | Record<string, unknown>,
@@ -19,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useFetch', () => mocks.useFetch)
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
+mockNuxtImport('refreshNuxtData', () => mocks.refreshNuxtData)
 mockNuxtImport('$fetch', () => mocks.fetch)
 
 enableAutoUnmount(afterEach)
@@ -36,6 +42,7 @@ const defaultSettings: MemorySettingsFields = {
 }
 
 let serverSettings: MemorySettingsFields = { ...defaultSettings }
+let serverReason: AboutMeNotMigratedReason | null = null
 
 const PanelStub = defineComponent({
   setup(_props, { expose }) {
@@ -45,8 +52,12 @@ const PanelStub = defineComponent({
   },
 })
 
-async function mountPage(settings: Partial<MemorySettingsFields> = {}) {
+async function mountPage(
+  settings: Partial<MemorySettingsFields> = {},
+  reason: AboutMeNotMigratedReason | null = null,
+) {
   serverSettings = { ...defaultSettings, ...settings }
+  serverReason = reason
 
   const wrapper = await mountSuspended(MemoryPage, {
     global: { stubs: { ChatInputModelsTriggerPanel: PanelStub } },
@@ -83,19 +94,31 @@ describe('profile memory page', () => {
     mocks.patchError = null
     mocks.patchResponse = {}
 
+    mocks.refreshNuxtData.mockReset()
+    mocks.settingsRefresh.mockReset()
     mocks.useFetch.mockReset()
     mocks.useFetch.mockImplementation(async () => {
-      return {
-        data: shallowRef({ ...serverSettings }),
-        refresh: vi.fn(),
-      }
+      const data = shallowRef<Record<string, unknown>>({
+        ...serverSettings,
+        aboutMeNotMigratedReason: serverReason,
+      })
+
+      mocks.settingsRefresh.mockImplementation(async () => {
+        data.value = {
+          ...data.value,
+          aboutMe: null,
+          aboutMeNotMigratedReason: null,
+        }
+      })
+
+      return { data, refresh: mocks.settingsRefresh }
     })
     mocks.useLazyFetch.mockReset()
     mocks.useLazyFetch.mockImplementation((url: string) => {
       if (url === '/api/v1/memory/entries') {
         return {
           data: shallowRef({
-            scope: 'account',
+            scope: 'all',
             projectId: null,
             total: 0,
             limits: {
@@ -116,6 +139,7 @@ describe('profile memory page', () => {
 
       return {
         data: shallowRef({ pinned: [], projects: [], nextCursor: null }),
+        pending: shallowRef(false),
       }
     })
     mocks.fetch.mockReset()
@@ -168,8 +192,10 @@ describe('profile memory page', () => {
 
     expect(neverStoredItems.map(item => item.text()))
       .toEqual(neverStoreKinds.map(kind => kind.label))
-    expect(wrapper.get('[data-testid="memory-about-me-counter"]').text())
-      .toBe('0 / 4000')
+    expect(wrapper.find('[data-testid="memory-about-me-input"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+      .toBe(false)
     expect(wrapper.find('[data-testid="memory-entries-section"]').exists())
       .toBe(true)
     expect(wrapper.find('[data-testid="memory-disabled-note"]').exists())
@@ -213,7 +239,6 @@ describe('profile memory page', () => {
       memoryEnabled: false,
       memoryExtractionEnabled: true,
       chatSearchEnabled: false,
-      aboutMe: 'Backend developer',
       profileMemoryModel: 'vendor/model',
       profileMemoryGateway: 'openrouter',
     })
@@ -224,9 +249,6 @@ describe('profile memory page', () => {
       .toBe(true)
     expect(checkbox(wrapper, 'memory-chat-search-toggle').element.checked)
       .toBe(false)
-    expect(wrapper.get<HTMLTextAreaElement>(
-      '[data-testid="memory-about-me-input"]',
-    ).element.value).toBe('Backend developer')
     expect(wrapper.get('[data-testid="memory-model-trigger"]').text())
       .toContain('vendor/model')
   })
@@ -293,6 +315,65 @@ describe('profile memory page', () => {
       .toBe(false)
   })
 
+  it('re-reads settings and entries after memory is turned on, converting '
+    + 'the leftover about me', async () => {
+    const wrapper = await mountPage(
+      { memoryEnabled: false, aboutMe: 'Backend developer' },
+      'memory-off',
+    )
+
+    expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+      .toBe(true)
+
+    await checkbox(wrapper, 'memory-enabled-toggle').setValue(true)
+    await settle()
+
+    expect(mocks.patchRequests).toEqual([{ memoryEnabled: true }])
+    expect(mocks.settingsRefresh).toHaveBeenCalledOnce()
+    expect(mocks.refreshNuxtData).toHaveBeenCalledOnce()
+    expect(mocks.refreshNuxtData).toHaveBeenCalledWith('memory-entries:all')
+    expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+      .toBe(false)
+  })
+
+  it('does not re-read anything when memory is turned off', async () => {
+    const wrapper = await mountPage()
+
+    await checkbox(wrapper, 'memory-enabled-toggle').setValue(false)
+    await settle()
+
+    expect(mocks.settingsRefresh).not.toHaveBeenCalled()
+    expect(mocks.refreshNuxtData).not.toHaveBeenCalled()
+  })
+
+  it('does not re-read anything when another toggle changes', async () => {
+    const wrapper = await mountPage({ memoryEnabled: false })
+
+    await checkbox(wrapper, 'memory-chat-search-toggle').setValue(false)
+    await settle()
+
+    expect(mocks.settingsRefresh).not.toHaveBeenCalled()
+    expect(mocks.refreshNuxtData).not.toHaveBeenCalled()
+  })
+
+  it('does not re-read anything when turning memory on fails', async () => {
+    const wrapper = await mountPage({ memoryEnabled: false })
+
+    mocks.patchError = {
+      statusCode: 500,
+      message: 'Could not save',
+      data: { why: 'Database unavailable' },
+    }
+
+    await checkbox(wrapper, 'memory-enabled-toggle').setValue(true)
+    await settle()
+
+    expect(checkbox(wrapper, 'memory-enabled-toggle').element.checked)
+      .toBe(false)
+    expect(mocks.settingsRefresh).not.toHaveBeenCalled()
+    expect(mocks.refreshNuxtData).not.toHaveBeenCalled()
+  })
+
   it('sends chatSearchEnabled when the chat search toggle changes',
     async () => {
       const wrapper = await mountPage()
@@ -341,111 +422,74 @@ describe('profile memory page', () => {
     ).toBeGreaterThan(0)
   })
 
-  it('saves trimmed about me text', async () => {
+  it('has no About me card or textarea', async () => {
+    const wrapper = await mountPage({ aboutMe: 'Backend developer' })
+
+    expect(wrapper.find('[data-testid="memory-about-me-input"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="memory-about-me-save"]').exists())
+      .toBe(false)
+    expect(wrapper.text()).not.toContain('Sent with every chat so the assistant')
+  })
+
+  it('shows leftover about me with the server reason', async () => {
+    const wrapper = await mountPage({ aboutMe: 'x'.repeat(1500) }, 'too-long')
+
+    expect(wrapper.get('[data-testid="memory-legacy-about-me"]').exists())
+      .toBe(true)
+    expect(wrapper.get('[data-testid="memory-legacy-about-me-reason"]').text())
+      .toContain('It is too long to become a Profile entry')
+    expect(wrapper.get('[data-testid="memory-legacy-about-me-text"]').text())
+      .toHaveLength(1500)
+  })
+
+  it('removes leftover about me and hides the block', async () => {
     const useInfoMessage = vi.spyOn(messagesComposable, 'useInfoMessage')
-    const wrapper = await mountPage()
-    const input = wrapper.get('[data-testid="memory-about-me-input"]')
+    const wrapper = await mountPage({ aboutMe: 'Leftover' }, 'profile-exists')
 
-    await input.setValue('  I prefer short answers.  ')
-
-    expect(wrapper.get('[data-testid="memory-about-me-counter"]').text())
-      .toBe('27 / 4000')
-
-    await wrapper.get('[data-testid="memory-about-me-save"]')
+    await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
       .trigger('click')
     await settle()
 
-    expect(mocks.patchRequests).toEqual([{ aboutMe: 'I prefer short answers.' }])
-    expect(useInfoMessage).toHaveBeenCalledWith('Saved', 'About me updated.')
-    expect(wrapper.find('[data-testid="memory-about-me-error"]').exists())
+    expect(mocks.patchRequests).toEqual([{ aboutMe: null }])
+    expect(useInfoMessage).toHaveBeenCalledWith(
+      'Removed',
+      'Earlier about me removed.',
+    )
+    expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
       .toBe(false)
   })
 
-  it('disables saving when about me is unchanged', async () => {
-    const wrapper = await mountPage({ aboutMe: 'Same text' })
-    const save = wrapper.get('[data-testid="memory-about-me-save"]')
-
-    expect(save.classes()).toContain('btn-disabled')
-
-    await wrapper.get('[data-testid="memory-about-me-input"]')
-      .setValue('Other text')
-
-    expect(wrapper.get('[data-testid="memory-about-me-save"]').classes())
-      .not.toContain('btn-disabled')
-  })
-
-  it('disables saving when about me is over the limit', async () => {
-    const wrapper = await mountPage()
-
-    await wrapper.get('[data-testid="memory-about-me-input"]')
-      .setValue('a'.repeat(MEMORY_LIMITS.maxAboutMeChars + 1))
-
-    expect(wrapper.get('[data-testid="memory-about-me-save"]').classes())
-      .toContain('btn-disabled')
-    expect(wrapper.get('[data-testid="memory-about-me-counter"]').classes())
-      .toContain('text-error')
-  })
-
-  it('shows a rejected about me inline without a toast', async () => {
+  it('keeps the leftover block and toasts when removing fails', async () => {
     const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
-    const wrapper = await mountPage()
+    const wrapper = await mountPage({ aboutMe: 'Leftover' }, 'rejected')
 
     mocks.patchError = {
-      statusCode: 400,
-      message: 'About me contains sensitive data',
-      data: {
-        why: 'It looks like a payment card number.',
-        fix: 'Remove the number and try again.',
-      },
+      statusCode: 500,
+      message: 'Could not save',
+      data: { why: 'Database unavailable' },
     }
 
-    await wrapper.get('[data-testid="memory-about-me-input"]')
-      .setValue('My card is 4111 1111 1111 1111')
-    await wrapper.get('[data-testid="memory-about-me-save"]')
+    await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
       .trigger('click')
     await settle()
 
-    const alert = wrapper.get('[data-testid="memory-about-me-error"]')
-
-    expect(alert.attributes('role')).toBe('alert')
-    expect(alert.text()).toContain('About me contains sensitive data')
-    expect(alert.text()).toContain('It looks like a payment card number.')
-    expect(alert.text()).toContain('Remove the number and try again.')
-    expect(useErrorMessage).not.toHaveBeenCalled()
-
-    await wrapper.get('[data-testid="memory-about-me-input"]')
-      .setValue('Edited')
-
-    expect(wrapper.find('[data-testid="memory-about-me-error"]').exists())
-      .toBe(false)
+    expect(useErrorMessage).toHaveBeenCalledWith(
+      'Could not save',
+      'Database unavailable',
+    )
+    expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
+      .toBe(true)
   })
 
-  it('renders a 422 about me rejection as message, why and fix', async () => {
-    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
-    const wrapper = await mountPage()
+  it('leaves leftover about me alone when other settings change', async () => {
+    const wrapper = await mountPage({ aboutMe: 'Leftover' }, 'memory-off')
 
-    mocks.patchError = {
-      statusCode: 422,
-      message: 'This looks like sensitive information',
-      data: {
-        why: 'Health details are not stored in memory.',
-        fix: 'Remove that detail and save again.',
-      },
-    }
-
-    await wrapper.get('[data-testid="memory-about-me-input"]')
-      .setValue('I manage a chronic condition')
-    await wrapper.get('[data-testid="memory-about-me-save"]')
-      .trigger('click')
+    await checkbox(wrapper, 'memory-chat-search-toggle').setValue(false)
     await settle()
 
-    const alert = wrapper.get('[data-testid="memory-about-me-error"]')
-
-    expect(alert.get('p.font-bold').text())
-      .toBe('This looks like sensitive information')
-    expect(alert.text()).toContain('Health details are not stored in memory.')
-    expect(alert.text()).toContain('Remove that detail and save again.')
-    expect(alert.text()).not.toContain('422')
-    expect(useErrorMessage).not.toHaveBeenCalled()
+    expect(mocks.patchRequests).toEqual([{ chatSearchEnabled: false }])
+    expect(wrapper.get('[data-testid="memory-legacy-about-me"]').exists())
+      .toBe(true)
   })
 })

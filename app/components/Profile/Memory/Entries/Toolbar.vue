@@ -4,10 +4,6 @@
       class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
     >
       <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-        <ProfileMemoryEntriesScopeSwitch
-          :project-id="projectId"
-          @change="emit('scopeChange', $event)"
-        />
         <p
           v-if="total !== null && limit !== null"
           class="shrink-0 text-sm text-base-content/70"
@@ -17,6 +13,21 @@
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+        <UiButton
+          size="sm"
+          normal-case
+          icon-name="lucide:plus"
+          text="Add memory"
+          data-testid="memory-add"
+          @click="emit('add')"
+        />
+        <div
+          v-if="$slots['extra-actions']"
+          class="flex flex-wrap items-center gap-2 js-memory-extra-actions"
+          data-testid="memory-extra-actions"
+        >
+          <slot name="extra-actions" />
+        </div>
         <UiButton
           v-if="canUpdateNow"
           size="sm"
@@ -75,19 +86,16 @@ import type { MemorySettingsFields } from '#shared/types/memory.d'
 
 const props = defineProps<{
   settings: MemorySettingsFields
-  projectId: string | null
   total: number | null
   limit: number | null
 }>()
 
 const emit = defineEmits<{
-  scopeChange: [projectId: string | null]
   changed: []
+  add: []
 }>()
 
 const HISTORY_LOOKUP_LIMIT = 100
-
-const { getProjectName } = useMemoryProjects()
 
 const isUpdating = shallowRef<boolean>(false)
 const isResetting = shallowRef<boolean>(false)
@@ -101,13 +109,8 @@ const isResetDisabled = computed<boolean>(() => {
   return !props.total || isResetting.value
 })
 
-const updateNowNote = computed<string>(() => {
-  const chatScope = props.projectId
-    ? 'latest chat in this project'
-    : 'latest account chat'
-
-  return `Reads your ${chatScope} and runs on your own API key.`
-})
+const updateNowNote = 'Reads your latest account chat and runs on your own '
+  + 'API key.'
 
 const extractionNotices: Record<string, string> = {
   'leased': 'Besidka is already updating memory from this chat.',
@@ -134,18 +137,6 @@ function pickLatestChatSlug(
 }
 
 async function findLatestChatSlug(): Promise<string | null> {
-  if (props.projectId) {
-    const projectChats = await $fetch(
-      `/api/v1/projects/${props.projectId}/chats`,
-      { query: { limit: 1 } },
-    )
-
-    return pickLatestChatSlug([
-      ...projectChats.pinned,
-      ...projectChats.chats,
-    ])
-  }
-
   const history = await $fetch('/api/v1/chats/history', {
     query: { limit: HISTORY_LOOKUP_LIMIT },
   })
@@ -165,9 +156,7 @@ async function updateMemoryNow() {
     if (!chatSlug) {
       useInfoMessage(
         'No chats to read yet',
-        props.projectId
-          ? 'Start a chat in this project, then try again.'
-          : 'Start a chat outside any project, then try again.',
+        'Start a chat outside any project, then try again.',
       )
 
       return
@@ -232,20 +221,11 @@ function announceExtraction(result: {
   )
 }
 
-function describeResetScope(): string {
-  if (!props.projectId) {
-    return 'account'
-  }
-
-  const projectName = getProjectName(props.projectId)
-
-  return projectName ? `"${projectName}" project` : 'project'
-}
-
 async function resetMemory() {
   const confirmation = await useConfirm({
-    text: 'Reset memory?',
-    subtitle: `This deletes every ${describeResetScope()} memory entry. `
+    text: 'Reset your account memory?',
+    subtitle: 'This deletes every account memory entry (Profile, '
+      + 'Preferences, Topics, Areas, People). Project memory is kept. '
       + 'This cannot be undone.',
     alert: true,
     actions: ['Delete entries'],
@@ -261,9 +241,7 @@ async function resetMemory() {
   try {
     const { deleted } = await $fetch('/api/v1/memory/entries/reset', {
       method: 'POST',
-      body: props.projectId
-        ? { scope: 'project', projectId: props.projectId }
-        : { scope: 'account' },
+      body: { scope: 'account' },
     })
 
     useInfoMessage(

@@ -79,6 +79,19 @@ describe('Profile/Memory/Entries/Group', () => {
       ])
   })
 
+  it('renders compact rows without a category label', async () => {
+    const wrapper = await mountGroup()
+    const rows = wrapper.findAll('[data-testid="memory-entry-row"]')
+
+    expect(rows.every(row => row.classes().includes('rounded-box'))).toBe(true)
+    expect(wrapper.find('[data-testid="memory-entry-label"]').exists())
+      .toBe(false)
+    expect(wrapper.findAll('[data-testid="memory-entry-meta"]')
+      .map(meta => meta.text()))
+      .toEqual(['Updated just now', 'Updated just now'])
+    expect(wrapper.get('ul').classes()).toContain('gap-2')
+  })
+
   it('forwards the selected entry', async () => {
     const wrapper = await mountGroup()
 

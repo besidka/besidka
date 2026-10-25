@@ -52,15 +52,37 @@ describe('Profile/Memory/Entries/Row', () => {
     expect(wrapper.text()).toContain(
       'Keeps replies brief and skips the preamble.',
     )
-    expect(wrapper.find('.truncate').text()).toBe('Prefers short answers')
-    expect(wrapper.find('.line-clamp-1').exists()).toBe(true)
+    expect(wrapper.get('.truncate').text()).toBe('Prefers short answers')
+    expect(wrapper.get('.truncate').classes()).toContain('font-medium')
+    expect(wrapper.get('[data-testid="memory-entry-description"]').classes())
+      .toEqual(expect.arrayContaining([
+        'line-clamp-2',
+        'sm:line-clamp-1',
+        'text-base-content/70',
+      ]))
   })
 
-  it('shows when it was updated and where it came from', async () => {
+  it('is a compact row card with the box radius', async () => {
     const wrapper = await mountRow()
+    const row = wrapper.get('[data-testid="memory-entry-row"]')
 
-    expect(wrapper.get('[data-testid="memory-entry-meta"]').text())
-      .toBe('Updated just now · Saved in chat')
+    expect(row.classes()).toEqual(expect.arrayContaining([
+      'bubble',
+      'rounded-box',
+      'p-3',
+    ]))
+    expect(row.classes()).not.toContain('p-4')
+    expect(row.classes().some(name => name.includes('rounded-full')))
+      .toBe(false)
+  })
+
+  it('shows only when it was updated, without the origin', async () => {
+    const wrapper = await mountRow()
+    const meta = wrapper.get('[data-testid="memory-entry-meta"]')
+
+    expect(meta.text()).toBe('Updated just now')
+    expect(meta.classes()).toContain('whitespace-nowrap')
+    expect(wrapper.text()).not.toContain('Saved in chat')
   })
 
   it('words the age without the chat activity prefix', async () => {
@@ -70,19 +92,38 @@ describe('Profile/Memory/Entries/Row', () => {
     })
 
     expect(wrapper.get('[data-testid="memory-entry-meta"]').text())
-      .toBe('Updated 3 days ago · Extracted from chats')
+      .toBe('Updated 3 days ago')
   })
 
   it.each([
-    ['user', 'You'],
-    ['tool', 'Saved in chat'],
-    ['extraction', 'Extracted from chats'],
-    ['import', 'Imported'],
-  ] as const)('labels the %s origin', async (origin, label) => {
+    'user',
+    'tool',
+    'extraction',
+    'import',
+  ] as const)('keeps the %s origin out of the row', async (origin) => {
     const wrapper = await mountRow({ origin })
 
+    expect(wrapper.text()).not.toContain('Extracted from chats')
+    expect(wrapper.text()).not.toContain('Imported')
     expect(wrapper.get('[data-testid="memory-entry-meta"]').text())
-      .toContain(label)
+      .toBe('Updated just now')
+  })
+
+  it('renders no label badge by default', async () => {
+    const wrapper = await mountRow()
+
+    expect(wrapper.find('[data-testid="memory-entry-label"]').exists())
+      .toBe(false)
+  })
+
+  it('renders the category label before the title when given', async () => {
+    const wrapper = await mountSuspended(Row, {
+      props: { entry: createEntry(), label: 'Preferences' },
+    })
+
+    expect(wrapper.get('[data-testid="memory-entry-label"]').text())
+      .toBe('Preferences')
+    expect(wrapper.get('.truncate').text()).toBe('Prefers short answers')
   })
 
   it('never renders a sensitive badge, even for special entries',

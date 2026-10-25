@@ -56,8 +56,13 @@
               class="sr-only"
             > entries</span>
           </p>
+          <ProfileMemoryEntriesEssentials
+            heading="Essentials"
+            :entries="essentialEntries"
+            @select="openEntry"
+          />
           <ProfileMemoryEntriesGroup
-            v-for="group in orderedGroups"
+            v-for="group in otherGroups"
             :key="group.category"
             :category="group.category"
             :entries="group.entries"
@@ -136,9 +141,18 @@
           </span>
         </button>
         <button
+          v-if="card && !isDisabled"
+          type="button"
+          data-testid="project-memory-add"
+          class="btn btn-ghost btn-ghost-legacy btn-sm max-sm:btn-block max-sm:order-2"
+          @click="openCreate"
+        >
+          Add memory
+        </button>
+        <button
           type="button"
           data-testid="toggle-project-memory"
-          class="btn btn-sm max-sm:btn-block max-sm:order-2"
+          class="btn btn-sm max-sm:btn-block max-sm:order-3"
           :class="isDisabled ? 'btn-primary' : 'btn-ghost'"
           :disabled="isRefreshing || isToggling"
           @click="emit('toggle')"
@@ -156,7 +170,7 @@
             path: '/profile/memory',
             query: { scope: 'project', project: projectId },
           }"
-          class="btn btn-ghost btn-ghost-legacy btn-sm max-sm:btn-block max-sm:order-3"
+          class="btn btn-ghost btn-ghost-legacy btn-sm max-sm:btn-block max-sm:order-4"
           data-testid="manage-project-memory-entries"
         >
           Open in Memory
@@ -169,13 +183,16 @@
       v-model:open="isDetailOpen"
       :entry="selectedEntry"
       :limits="card.limits"
+      :project-id="projectId"
+      :taken-singleton-categories="takenSingletonCategories"
       @changed="emit('changed')"
     />
   </UiBubble>
 </template>
 
 <script setup lang="ts">
-import type { MemoryEntry } from '#shared/types/memory.d'
+import { alwaysInjectedMemoryCategories } from '#shared/utils/memory-policy'
+import type { MemoryCategory, MemoryEntry } from '#shared/types/memory.d'
 import type { MemoryEntryGroup } from '#shared/types/memory-api.d'
 import type { ProjectMemoryCardResponse } from '#shared/types/project-memory.d'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
@@ -242,6 +259,27 @@ const orderedGroups = computed<MemoryEntryGroup[]>(() => {
       return group.category === category && group.entries.length > 0
     })
   })
+})
+
+function isEssentialCategory(category: MemoryCategory): boolean {
+  return (alwaysInjectedMemoryCategories as readonly string[])
+    .includes(category)
+}
+
+const essentialEntries = computed<MemoryEntry[]>(() => {
+  return orderedGroups.value
+    .filter(group => isEssentialCategory(group.category))
+    .flatMap(group => group.entries)
+})
+
+const otherGroups = computed<MemoryEntryGroup[]>(() => {
+  return orderedGroups.value.filter((group) => {
+    return !isEssentialCategory(group.category)
+  })
+})
+
+const takenSingletonCategories = computed<MemoryCategory[]>(() => {
+  return [...new Set(essentialEntries.value.map(entry => entry.category))]
 })
 
 const legacyCacheKey = computed<string>(() => {
@@ -312,6 +350,11 @@ const metaLines = computed<string[]>(() => {
 
 function openEntry(entry: MemoryEntry) {
   selectedEntry.value = entry
+  isDetailOpen.value = true
+}
+
+function openCreate() {
+  selectedEntry.value = null
   isDetailOpen.value = true
 }
 </script>

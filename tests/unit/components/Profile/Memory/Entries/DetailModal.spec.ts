@@ -1,7 +1,10 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemoryEntry } from '../../../../../../shared/types/memory.d'
+import type {
+  MemoryCategory,
+  MemoryEntry,
+} from '../../../../../../shared/types/memory.d'
 import type { MemoryEntryLimits } from '../../../../../../shared/types/memory-api.d'
 import DetailModal from '../../../../../../app/components/Profile/Memory/Entries/DetailModal.client.vue'
 
@@ -62,16 +65,34 @@ function createRejection() {
   })
 }
 
-async function mountModal(entry: MemoryEntry | null = createEntry()) {
+interface ModalOverrides {
+  projectId?: string | null
+  takenSingletonCategories?: MemoryCategory[]
+  backLabel?: string
+  limits?: MemoryEntryLimits
+}
+
+const MarkdownStub = {
+  name: 'MDCCached',
+  props: ['value', 'unwrap', 'components', 'cacheKey', 'parserOptions'],
+  template: '<div class="markdown-stub">{{ value }}</div>',
+}
+
+async function mountModal(
+  entry: MemoryEntry | null = createEntry(),
+  overrides: ModalOverrides = {},
+) {
   const wrapper = await mountSuspended(DetailModal, {
     props: {
       entry,
       limits,
       open: false,
+      ...overrides,
     },
     global: {
       stubs: {
         Teleport: true,
+        MDCCached: MarkdownStub,
       },
     },
   })
@@ -84,8 +105,11 @@ async function mountModal(entry: MemoryEntry | null = createEntry()) {
 
 type Wrapper = Awaited<ReturnType<typeof mountModal>>
 
-function byTestId(wrapper: Wrapper, testId: string) {
-  return wrapper.get(`[data-testid="${testId}"]`)
+function byTestId<T extends Element = Element>(
+  wrapper: Wrapper,
+  testId: string,
+) {
+  return wrapper.get<T>(`[data-testid="${testId}"]`)
 }
 
 function isDisabled(wrapper: Wrapper, testId: string): boolean {
@@ -120,26 +144,121 @@ describe('Profile/Memory/Entries/DetailModal', () => {
   })
 
   describe('view mode', () => {
-    it('opens the dialog and renders the entry as plain text', async () => {
+    it('opens the dialog and lays out the entry in labelled sections',
+      async () => {
+        const wrapper = await mountModal()
+        const view = byTestId(wrapper, 'memory-entry-view')
+        const labels = view.findAll('h4').map(heading => heading.text())
+
+        expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+        expect(byTestId(wrapper, 'memory-entry-title').element.tagName)
+          .toBe('H3')
+        expect(byTestId(wrapper, 'memory-entry-title').text())
+          .toBe('Espresso setup')
+        expect(wrapper.get('dialog').attributes('aria-labelledby'))
+          .toBe(byTestId(wrapper, 'memory-entry-title').attributes('id'))
+        expect(labels).toEqual([
+          'Last updated',
+          'Summary',
+          'Details',
+          'Sources',
+        ])
+        expect(view.findAll('h4').every((heading) => {
+          return heading.classes().includes('font-semibold')
+            && !heading.classes().includes('uppercase')
+        })).toBe(true)
+        expect(byTestId(wrapper, 'memory-entry-description').text())
+          .toBe('Prefers a double shot')
+        expect(byTestId(wrapper, 'memory-entry-category').text())
+          .toBe('Topics')
+        expect(byTestId(wrapper, 'memory-entry-origin').text())
+          .toBe('Extracted from chats')
+      })
+
+    it('shows the local update date with a muted age', async () => {
+      const updatedAt = '2026-10-25T12:00:00.000Z'
+      const wrapper = await mountModal(createEntry({ updatedAt }))
+      const expectedDate = new Date(updatedAt).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+      const meta = byTestId(wrapper, 'memory-entry-meta')
+
+      expect(meta.text()).toContain(expectedDate)
+      expect(meta.get('span').text()).toMatch(/^· .+/)
+      expect(meta.get('span').classes()).toContain('text-base-content/70')
+    })
+
+    it('renders the details as markdown without unwrapping or raw HTML',
+      async () => {
+        const { messageComponents } = useChatFormat()
+        const body = '- one\n- two <b>bold</b>'
+        const wrapper = await mountModal(createEntry({ body }))
+        const markdown = wrapper.getComponent({ name: 'MDCCached' })
+
+        expect(markdown.props('value')).toBe(body)
+        expect(markdown.props('unwrap')).toBeUndefined()
+        expect(markdown.props('components')).toBe(messageComponents)
+        expect(markdown.props('components')).toHaveProperty('a')
+        expect(markdown.props('cacheKey')).toBe(
+          `memory-entry:entry-1:${wrapper.props('entry')!.updatedAt}:${body.length}`,
+        )
+        expect(markdown.classes()).toEqual(
+          expect.arrayContaining(['chat-markdown', 'text-sm']),
+        )
+        expect(byTestId(wrapper, 'memory-entry-body').find('b').exists())
+          .toBe(false)
+        expect(wrapper.html()).not.toContain('v-html')
+      })
+
+    it('changes the markdown cache key when the entry changes', async () => {
       const wrapper = await mountModal()
+      const firstKey = wrapper.getComponent({ name: 'MDCCached' })
+        .props('cacheKey')
 
-      expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
-      expect(byTestId(wrapper, 'memory-entry-title').text())
-        .toBe('Espresso setup')
-      expect(byTestId(wrapper, 'memory-entry-description').text())
-        .toBe('Prefers a double shot')
-      expect(byTestId(wrapper, 'memory-entry-category').text())
-        .toBe('Topics')
-      expect(byTestId(wrapper, 'memory-entry-origin').text())
-        .toBe('Extracted from chats')
-      expect(byTestId(wrapper, 'memory-entry-meta').text())
-        .toContain('Updated just now')
+      await wrapper.setProps({
+        entry: createEntry({
+          body: 'A longer body',
+          updatedAt: '2026-10-26T00:00:00.000Z',
+        }),
+      })
 
-      const body = byTestId(wrapper, 'memory-entry-body')
+      expect(wrapper.getComponent({ name: 'MDCCached' }).props('cacheKey'))
+        .not.toBe(firstKey)
+    })
 
-      expect(body.text()).toBe('Line one\nLine two <b>bold</b>')
-      expect(body.find('b').exists()).toBe(false)
-      expect(body.classes()).toContain('whitespace-pre-wrap')
+    it('closes from the back button labelled Memory by default', async () => {
+      const wrapper = await mountModal()
+      const back = byTestId(wrapper, 'memory-entry-back')
+
+      expect(back.text()).toBe('Memory')
+
+      await back.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('update:open')).toEqual([[false]])
+      expect(HTMLDialogElement.prototype.close).toHaveBeenCalled()
+    })
+
+    it('accepts a custom back label', async () => {
+      const wrapper = await mountModal(createEntry(), {
+        backLabel: 'Projects',
+      })
+
+      expect(byTestId(wrapper, 'memory-entry-back').text()).toBe('Projects')
+    })
+
+    it('places Delete in the header and keeps no close X', async () => {
+      const wrapper = await mountModal()
+      const title = byTestId(wrapper, 'memory-entry-title')
+      const header = title.element.parentElement!.parentElement!
+      const deleteButton = byTestId(wrapper, 'memory-entry-delete')
+
+      expect(header.contains(deleteButton.element)).toBe(true)
+      expect(deleteButton.attributes('aria-label')).toBe('Delete')
+      expect(wrapper.find('[data-testid="memory-entry-modal-close"]').exists())
+        .toBe(false)
     })
 
     it('never renders a sensitive badge, even for special entries',
@@ -155,21 +274,282 @@ describe('Profile/Memory/Entries/DetailModal', () => {
           .not.toContain('Sensitive')
       })
 
-    it('offers Edit and Delete in the footer', async () => {
+    it('offers Edit in the footer', async () => {
       const wrapper = await mountModal()
+      const footer = wrapper.get('.modal-box > div:last-child')
 
+      expect(footer.find('[data-testid="memory-entry-edit"]').exists())
+        .toBe(true)
+      expect(footer.find('[data-testid="memory-entry-delete"]').exists())
+        .toBe(false)
       expect(byTestId(wrapper, 'memory-entry-edit').text()).toContain('Edit')
-      expect(byTestId(wrapper, 'memory-entry-delete').text())
-        .toContain('Delete')
     })
 
-    it('renders nothing but the shell without an entry', async () => {
+    it('renders no view without an entry', async () => {
       const wrapper = await mountModal(null)
 
       expect(wrapper.find('[data-testid="memory-entry-view"]').exists())
         .toBe(false)
       expect(mocks.fetch).not.toHaveBeenCalled()
     })
+  })
+
+  describe('create mode', () => {
+    function categoryOption(wrapper: Wrapper, category: MemoryCategory) {
+      return wrapper.get<HTMLOptionElement>(
+        `[data-testid="memory-entry-category-select"] option[value="${category}"]`,
+      )
+    }
+
+    async function fillValid(wrapper: Wrapper) {
+      await byTestId(wrapper, 'memory-entry-title-input').setValue('About me')
+      await byTestId(wrapper, 'memory-entry-description-input')
+        .setValue('Backend developer')
+      await byTestId(wrapper, 'memory-entry-body-input')
+        .setValue('Builds APIs')
+    }
+
+    it('shows an empty form headed Add memory without view actions',
+      async () => {
+        const wrapper = await mountModal(null)
+
+        expect(byTestId(wrapper, 'memory-entry-title').text())
+          .toBe('Add memory')
+        expect(byTestId(wrapper, 'memory-entry-form').exists()).toBe(true)
+        expect(byTestId<HTMLInputElement>(
+          wrapper,
+          'memory-entry-title-input',
+        ).element.value).toBe('')
+        expect(wrapper.find('[data-testid="memory-entry-edit"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="memory-entry-delete"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="memory-entry-view"]').exists())
+          .toBe(false)
+        expect(byTestId(wrapper, 'memory-entry-save').text()).toContain('Save')
+        expect(isDisabled(wrapper, 'memory-entry-save')).toBe(true)
+      })
+
+    it('defaults the category to Profile when no profile entry exists',
+      async () => {
+        const wrapper = await mountModal(null)
+
+        expect(byTestId<HTMLSelectElement>(
+          wrapper,
+          'memory-entry-category-select',
+        ).element.value).toBe('profile')
+        expect(wrapper.find('[data-testid="memory-entry-category-hint"]')
+          .exists()).toBe(false)
+      })
+
+    it('defaults to Topics and blocks a taken profile entry', async () => {
+      const wrapper = await mountModal(null, {
+        takenSingletonCategories: ['profile'],
+      })
+
+      expect(byTestId<HTMLSelectElement>(
+        wrapper,
+        'memory-entry-category-select',
+      ).element.value).toBe('topics')
+      expect(categoryOption(wrapper, 'profile').element.disabled).toBe(true)
+      expect(categoryOption(wrapper, 'preferences').element.disabled)
+        .toBe(false)
+      expect(byTestId(wrapper, 'memory-entry-category-hint').text())
+        .toBe('Edit your existing Profile entry instead.')
+    })
+
+    it('blocks every taken singleton category with a hint each', async () => {
+      const wrapper = await mountModal(null, {
+        takenSingletonCategories: ['profile', 'preferences'],
+      })
+
+      expect(categoryOption(wrapper, 'profile').element.disabled).toBe(true)
+      expect(categoryOption(wrapper, 'preferences').element.disabled)
+        .toBe(true)
+      expect(categoryOption(wrapper, 'areas').element.disabled).toBe(false)
+      expect(wrapper.findAll('[data-testid="memory-entry-category-hint"]')
+        .map(hint => hint.text())).toEqual([
+        'Edit your existing Profile entry instead.',
+        'Edit your existing Preferences entry instead.',
+      ])
+    })
+
+    it('posts the account payload and reports a created entry', async () => {
+      mocks.fetch.mockResolvedValue({ entry: createEntry() })
+
+      const wrapper = await mountModal(null)
+
+      await fillValid(wrapper)
+      await byTestId(wrapper, 'memory-entry-save').trigger('click')
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledOnce()
+      expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/memory/entries', {
+        method: 'POST',
+        body: {
+          category: 'profile',
+          title: 'About me',
+          description: 'Backend developer',
+          body: 'Builds APIs',
+        },
+      })
+      expect(mocks.info).toHaveBeenCalledWith('Saved', 'Memory entry added.')
+      expect(wrapper.emitted('changed')).toEqual([[{
+        reason: 'created',
+        categoryChanged: false,
+      }]])
+      expect(wrapper.emitted('update:open')).toEqual([[false]])
+      expect(HTMLDialogElement.prototype.close).toHaveBeenCalled()
+    })
+
+    it('adds the project id and the chosen category in a project',
+      async () => {
+        mocks.fetch.mockResolvedValue({ entry: createEntry() })
+
+        const wrapper = await mountModal(null, { projectId: 'project-1' })
+
+        await fillValid(wrapper)
+        await byTestId(wrapper, 'memory-entry-category-select')
+          .setValue('areas')
+        await byTestId(wrapper, 'memory-entry-description-input')
+          .setValue('  First line ')
+        await byTestId(wrapper, 'memory-entry-save').trigger('click')
+        await flushPromises()
+
+        expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/memory/entries', {
+          method: 'POST',
+          body: {
+            projectId: 'project-1',
+            category: 'areas',
+            title: 'About me',
+            description: 'First line',
+            body: 'Builds APIs',
+          },
+        })
+      })
+
+    it('shows a rejection inline without a toast and stays open', async () => {
+      mocks.fetch.mockRejectedValue(createRejection())
+
+      const wrapper = await mountModal(null)
+
+      await fillValid(wrapper)
+      await byTestId(wrapper, 'memory-entry-save').trigger('click')
+      await flushPromises()
+
+      const alert = byTestId(wrapper, 'memory-entry-error')
+
+      expect(alert.attributes('role')).toBe('alert')
+      expect(alert.get('p.font-bold').text()).toBe('Memory rejected')
+      expect(alert.text()).toContain('It looks like a payment card number.')
+      expect(alert.text()).toContain('Remove the number and try again.')
+      expect(mocks.error).not.toHaveBeenCalled()
+      expect(mocks.info).not.toHaveBeenCalled()
+      expect(wrapper.emitted('changed')).toBeUndefined()
+      expect(wrapper.emitted('update:open')).toBeUndefined()
+
+      await byTestId(wrapper, 'memory-entry-title-input').setValue('Other')
+
+      expect(wrapper.find('[data-testid="memory-entry-error"]').exists())
+        .toBe(false)
+    })
+
+    it('counts bytes against the always-injected limit for Profile',
+      async () => {
+        const wrapper = await mountModal(null)
+
+        await byTestId(wrapper, 'memory-entry-body-input')
+          .setValue('x'.repeat(21))
+
+        expect(byTestId(wrapper, 'memory-entry-body-counter').text())
+          .toContain('21 / 20')
+        expect(byTestId(wrapper, 'memory-entry-body-counter').classes())
+          .toContain('text-error')
+
+        await byTestId(wrapper, 'memory-entry-category-select')
+          .setValue('topics')
+
+        expect(byTestId(wrapper, 'memory-entry-body-counter').text())
+          .toContain('21 / 40')
+      })
+
+    it('keeps Save disabled while any field is empty or over a limit',
+      async () => {
+        const wrapper = await mountModal(null)
+
+        await fillValid(wrapper)
+
+        expect(isDisabled(wrapper, 'memory-entry-save')).toBe(false)
+
+        await byTestId(wrapper, 'memory-entry-title-input')
+          .setValue('t'.repeat(21))
+
+        expect(isDisabled(wrapper, 'memory-entry-save')).toBe(true)
+        expect(byTestId(wrapper, 'memory-entry-title-counter').text())
+          .toBe('21 / 20')
+
+        await byTestId(wrapper, 'memory-entry-title-input').setValue('Short')
+        await byTestId(wrapper, 'memory-entry-description-input')
+          .setValue('d'.repeat(31))
+
+        expect(isDisabled(wrapper, 'memory-entry-save')).toBe(true)
+        expect(byTestId(wrapper, 'memory-entry-description-counter').text())
+          .toBe('31 / 30')
+      })
+
+    it('closes without saving on Cancel', async () => {
+      const wrapper = await mountModal(null)
+
+      await fillValid(wrapper)
+      await byTestId(wrapper, 'memory-entry-cancel').trigger('click')
+      await flushPromises()
+
+      expect(mocks.fetch).not.toHaveBeenCalled()
+      expect(wrapper.emitted('update:open')).toEqual([[false]])
+    })
+
+    it('starts from a clean form every time it opens', async () => {
+      const wrapper = await mountModal(null)
+
+      await fillValid(wrapper)
+      await wrapper.setProps({ open: false })
+      await flushPromises()
+      await wrapper.setProps({ open: true })
+      await flushPromises()
+
+      expect(byTestId<HTMLInputElement>(
+        wrapper,
+        'memory-entry-title-input',
+      ).element.value).toBe('')
+      expect(byTestId<HTMLTextAreaElement>(
+        wrapper,
+        'memory-entry-body-input',
+      ).element.value).toBe('')
+    })
+
+    it('disables taken singleton categories when editing another entry',
+      async () => {
+        const wrapper = await mountModal(createEntry(), {
+          takenSingletonCategories: ['profile'],
+        })
+
+        await startEditing(wrapper)
+
+        expect(categoryOption(wrapper, 'profile').element.disabled).toBe(true)
+        expect(wrapper.find('[data-testid="memory-entry-category-hint"]')
+          .exists()).toBe(false)
+      })
+
+    it('keeps the entry\'s own singleton category selectable when editing',
+      async () => {
+        const wrapper = await mountModal(createEntry({ category: 'profile' }), {
+          takenSingletonCategories: ['profile'],
+        })
+
+        await startEditing(wrapper)
+
+        expect(categoryOption(wrapper, 'profile').element.disabled).toBe(false)
+      })
   })
 
   describe('sources', () => {
@@ -291,6 +671,80 @@ describe('Profile/Memory/Entries/DetailModal', () => {
   })
 
   describe('edit mode', () => {
+    it('shows Title, Summary, Details and Category fields', async () => {
+      const wrapper = await mountModal()
+
+      await startEditing(wrapper)
+
+      const form = byTestId(wrapper, 'memory-entry-form')
+
+      expect(form.findAll('label').map(label => label.text())).toEqual([
+        'Title',
+        'Summary',
+        'Details',
+        'Category',
+      ])
+      expect(wrapper.find('[data-testid="memory-entry-view"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="memory-entry-delete"]').exists())
+        .toBe(false)
+    })
+
+    it('renders a markdown textarea that is not pill shaped', async () => {
+      const wrapper = await mountModal()
+
+      await startEditing(wrapper)
+
+      const textarea = byTestId<HTMLTextAreaElement>(
+        wrapper,
+        'memory-entry-body-input',
+      )
+
+      expect(textarea.classes()).toEqual(expect.arrayContaining([
+        'textarea',
+        'textarea-bordered',
+        'rounded-box',
+        'w-full',
+        'resize-none',
+        'overflow-y-auto',
+        'min-h-36',
+        'max-h-[50dvh]',
+      ]))
+      expect(textarea.attributes('placeholder')).toContain('- One fact')
+      expect(textarea.element.value).toBe('Line one\nLine two <b>bold</b>')
+      expect(textarea.element.style.height).not.toBe('')
+    })
+
+    it('reads both byte caps from the limits prop', async () => {
+      const wrapper = await mountModal(createEntry(), {
+        limits: {
+          ...limits,
+          maxBodyBytes: 4096,
+          maxAlwaysInjectedBodyBytes: 1024,
+        },
+      })
+
+      await startEditing(wrapper)
+
+      expect(byTestId(wrapper, 'memory-entry-body-counter').text())
+        .toContain('/ 4096')
+
+      await byTestId(wrapper, 'memory-entry-category-select')
+        .setValue('profile')
+
+      expect(byTestId(wrapper, 'memory-entry-body-counter').text())
+        .toContain('/ 1024')
+
+      await byTestId(wrapper, 'memory-entry-category-select')
+        .setValue('topics')
+      await byTestId(wrapper, 'memory-entry-body-input')
+        .setValue('x'.repeat(4096))
+
+      expect(byTestId(wrapper, 'memory-entry-body-counter').classes())
+        .not.toContain('text-error')
+      expect(isDisabled(wrapper, 'memory-entry-save')).toBe(false)
+    })
+
     it('keeps Save disabled until a field changes', async () => {
       const wrapper = await mountModal()
 
@@ -578,7 +1032,7 @@ describe('Profile/Memory/Entries/DetailModal', () => {
     }))
 
     expect(byTestId(wrapper, 'memory-entry-meta').text())
-      .toContain('Updated 3 days ago')
+      .toContain('· 3 days ago')
     expect(byTestId(wrapper, 'memory-entry-meta').text())
       .not.toContain('Last activity')
   })

@@ -102,10 +102,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
   ]
   const memoryContractTests = [
     'tests/unit/utils/memory-policy.spec.ts',
     'tests/unit/utils/memory-schemas.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
   ]
   const memoryComplianceTests = [
     'tests/unit/utils/memory/compliance.spec.ts',
@@ -124,6 +126,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/entry-slug.spec.ts',
     'tests/integration/api/memory-entries.spec.ts',
     'tests/integration/api/memory-entries-sources.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
+    'tests/integration/api/profile-settings.spec.ts',
   ]
   const memoryIndexTests = [
     'tests/unit/utils/memory-tokens.spec.ts',
@@ -131,6 +135,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/runtime-settings.spec.ts',
     'tests/unit/utils/memory/about-me.spec.ts',
     'tests/unit/utils/memory/chat-context.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
     'tests/unit/utils/memory/persist-redaction.spec.ts',
   ]
   const memoryChatDeletionTests = [
@@ -484,14 +489,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Memory/ModelPicker.spec.ts',
     'tests/unit/components/Profile/Memory/Controls.spec.ts',
     'tests/unit/components/Profile/Memory/NeverKept.spec.ts',
-    'tests/unit/components/Profile/Memory/AboutMe.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Essentials.spec.ts',
     'tests/unit/components/Profile/Memory/Models.spec.ts',
     'tests/unit/components/Profile/Memory/Entries.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/DetailModal.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/Empty.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/Group.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/Row.spec.ts',
-    'tests/unit/components/Profile/Memory/Entries/ScopeSwitch.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Project.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Projects.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/Toolbar.spec.ts',
     'tests/unit/composables/memory-settings.spec.ts',
     'tests/unit/composables/memory-projects.spec.ts',
@@ -1371,7 +1377,7 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
-      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
+      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources|about-me-migration)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
       tests: [
         ...memoryEntriesTests,
         ...memoryToolTests,
@@ -1711,7 +1717,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/memory-settings\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
+        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/(memory-settings|memory-entries)\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
       tests: memoryTabTests,
     },
     {

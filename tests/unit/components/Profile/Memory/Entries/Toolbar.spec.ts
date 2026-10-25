@@ -1,20 +1,18 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
-import { shallowRef } from 'vue'
+import { h } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MemorySettingsFields } from '../../../../../../shared/types/memory.d'
 import Toolbar from '../../../../../../app/components/Profile/Memory/Entries/Toolbar.vue'
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
-  useLazyFetch: vi.fn(),
   confirm: vi.fn(),
   info: vi.fn(),
   error: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
-mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useInfoMessage', () => mocks.info)
 mockNuxtImport('useErrorMessage', () => mocks.error)
@@ -35,20 +33,22 @@ const defaultSettings: MemorySettingsFields = {
 
 interface ToolbarProps {
   settings: MemorySettingsFields
-  projectId: string | null
   total: number | null
   limit: number | null
 }
 
-async function mountToolbar(overrides: Partial<ToolbarProps> = {}) {
+async function mountToolbar(
+  overrides: Partial<ToolbarProps> = {},
+  slots: Record<string, () => unknown> = {},
+) {
   return await mountSuspended(Toolbar, {
     props: {
       settings: defaultSettings,
-      projectId: null,
       total: 4,
       limit: 30,
       ...overrides,
     },
+    slots,
   })
 }
 
@@ -64,7 +64,6 @@ function createRejection(
 
 function mockApi(options: {
   history?: Record<string, unknown>
-  projectChats?: Record<string, unknown>
   extract?: Record<string, unknown> | Error
   reset?: Record<string, unknown> | Error
 } = {}) {
@@ -73,16 +72,6 @@ function mockApi(options: {
       '/api/v1/chats/history': options.history ?? {
         pinned: [],
         chats: [{ slug: 'latest-chat', activityAt: '2026-02-01T00:00:00Z' }],
-        nextCursor: null,
-      },
-      '/api/v1/projects/project-1/chats': options.projectChats ?? {
-        project: { id: 'project-1' },
-        pinned: [],
-        chats: [{
-          slug: 'project-chat',
-          projectId: 'project-1',
-          activityAt: '2026-02-01T00:00:00Z',
-        }],
         nextCursor: null,
       },
       '/api/v1/memory/extract-now': options.extract ?? {
@@ -115,14 +104,6 @@ describe('Profile/Memory/Entries/Toolbar', () => {
     mocks.confirm.mockResolvedValue({ label: 'Delete entries', index: 0 })
     mocks.info.mockReset()
     mocks.error.mockReset()
-    mocks.useLazyFetch.mockReset()
-    mocks.useLazyFetch.mockReturnValue({
-      data: shallowRef({
-        pinned: [],
-        projects: [{ id: 'project-1', name: 'Home lab' }],
-        nextCursor: null,
-      }),
-    })
     mockApi()
   })
 
@@ -144,6 +125,60 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       .toBe(false)
   })
 
+  it('emits add when Add memory is clicked', async () => {
+    const wrapper = await mountToolbar()
+    const addButton = wrapper.get('[data-testid="memory-add"]')
+
+    expect(addButton.text()).toContain('Add memory')
+
+    await addButton.trigger('click')
+
+    expect(wrapper.emitted('add')).toHaveLength(1)
+  })
+
+  it('offers Add memory with generation off', async () => {
+    const wrapper = await mountToolbar({
+      settings: { ...defaultSettings, memoryExtractionEnabled: false },
+    })
+
+    expect(wrapper.find('[data-testid="memory-add"]').exists()).toBe(true)
+  })
+
+  describe('extra actions slot', () => {
+    it('renders nothing when the slot is empty', async () => {
+      const wrapper = await mountToolbar()
+
+      expect(wrapper.find('.js-memory-extra-actions').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="memory-extra-actions"]').exists())
+        .toBe(false)
+    })
+
+    it('wraps the provided buttons right after Add memory', async () => {
+      const wrapper = await mountToolbar({}, {
+        'extra-actions': () => h('button', {
+          'type': 'button',
+          'data-testid': 'future-action',
+        }, 'Build memory from past chats'),
+      })
+      const extra = wrapper.get('.js-memory-extra-actions')
+      const actions = [...extra.element.parentElement!.children]
+
+      expect(extra.attributes('data-testid')).toBe('memory-extra-actions')
+      expect(extra.classes()).toEqual(expect.arrayContaining([
+        'flex',
+        'flex-wrap',
+        'items-center',
+        'gap-2',
+      ]))
+      expect(extra.get('[data-testid="future-action"]').text())
+        .toBe('Build memory from past chats')
+      const extraIndex = actions.indexOf(extra.element)
+
+      expect(actions[extraIndex - 1]!
+        .querySelector('[data-testid="memory-add"]')).not.toBeNull()
+    })
+  })
+
   it('links the export to the download route', async () => {
     const wrapper = await mountToolbar()
     const link = wrapper.get('[data-testid="memory-export"]')
@@ -153,13 +188,11 @@ describe('Profile/Memory/Entries/Toolbar', () => {
     expect(link.attributes('download')).toBeDefined()
   })
 
-  it('emits the chosen project from the scope switch', async () => {
+  it('has no scope switch', async () => {
     const wrapper = await mountToolbar()
 
-    await wrapper.get('[data-testid="memory-scope-select"]')
-      .setValue('project-1')
-
-    expect(wrapper.emitted('scopeChange')).toEqual([['project-1']])
+    expect(wrapper.find('[data-testid="memory-scope-select"]').exists())
+      .toBe(false)
   })
 
   it.each([
@@ -190,14 +223,6 @@ describe('Profile/Memory/Entries/Toolbar', () => {
 
     expect(wrapper.get('[data-testid="memory-update-now-note"]').text())
       .toBe('Reads your latest account chat and runs on your own API key.')
-  })
-
-  it('explains where update now reads from in a project', async () => {
-    const wrapper = await mountToolbar({ projectId: 'project-1' })
-
-    expect(wrapper.get('[data-testid="memory-update-now-note"]').text()).toBe(
-      'Reads your latest chat in this project and runs on your own API key.',
-    )
   })
 
   describe('update memory now', () => {
@@ -302,62 +327,6 @@ describe('Profile/Memory/Entries/Toolbar', () => {
           'Start a chat outside any project, then try again.',
         )
       })
-
-    it('reads the latest chat of the viewed project', async () => {
-      mockApi({
-        projectChats: {
-          project: { id: 'project-1' },
-          pinned: [{
-            slug: 'old-pinned',
-            activityAt: '2026-01-01T00:00:00Z',
-          }],
-          chats: [{
-            slug: 'recent-project-chat',
-            activityAt: '2026-02-01T00:00:00Z',
-          }],
-          nextCursor: null,
-        },
-      })
-
-      const wrapper = await mountToolbar({ projectId: 'project-1' })
-
-      await wrapper.get('[data-testid="memory-update-now"]')
-        .trigger('click')
-      await flushPromises()
-
-      expect(callsTo('/api/v1/chats/history')).toHaveLength(0)
-      expect(callsTo('/api/v1/projects/project-1/chats')).toEqual([[
-        '/api/v1/projects/project-1/chats',
-        { query: { limit: 1 } },
-      ]])
-      expect(callsTo('/api/v1/memory/extract-now')[0]![1].body)
-        .toEqual({ chatSlug: 'recent-project-chat' })
-      expect(wrapper.emitted('changed')).toHaveLength(1)
-    })
-
-    it('says so when the project has no chats', async () => {
-      mockApi({
-        projectChats: {
-          project: { id: 'project-1' },
-          pinned: [],
-          chats: [],
-          nextCursor: null,
-        },
-      })
-
-      const wrapper = await mountToolbar({ projectId: 'project-1' })
-
-      await wrapper.get('[data-testid="memory-update-now"]')
-        .trigger('click')
-      await flushPromises()
-
-      expect(callsTo('/api/v1/memory/extract-now')).toHaveLength(0)
-      expect(mocks.info).toHaveBeenCalledWith(
-        'No chats to read yet',
-        'Start a chat in this project, then try again.',
-      )
-      expect(wrapper.emitted('changed')).toBeUndefined()
-    })
 
     it('says so when there are no chats to read', async () => {
       mockApi({ history: { pinned: [], chats: [], nextCursor: null } })
@@ -528,43 +497,21 @@ describe('Profile/Memory/Entries/Toolbar', () => {
   })
 
   describe('reset memory', () => {
-    it('names the account scope in the confirmation', async () => {
+    it('names the account memory and keeps project memory in the confirmation', async () => {
       const wrapper = await mountToolbar()
 
       await wrapper.get('[data-testid="memory-reset"]').trigger('click')
       await flushPromises()
 
       expect(mocks.confirm).toHaveBeenCalledWith({
-        text: 'Reset memory?',
-        subtitle: 'This deletes every account memory entry. '
+        text: 'Reset your account memory?',
+        subtitle: 'This deletes every account memory entry (Profile, '
+          + 'Preferences, Topics, Areas, People). Project memory is kept. '
           + 'This cannot be undone.',
         alert: true,
         actions: ['Delete entries'],
         labelDecline: 'Cancel',
       })
-    })
-
-    it('names the project in the confirmation', async () => {
-      const wrapper = await mountToolbar({ projectId: 'project-1' })
-
-      await wrapper.get('[data-testid="memory-reset"]').trigger('click')
-      await flushPromises()
-
-      expect(mocks.confirm.mock.calls[0]![0].subtitle).toBe(
-        'This deletes every "Home lab" project memory entry. '
-        + 'This cannot be undone.',
-      )
-    })
-
-    it('falls back to a generic project name when it is unknown', async () => {
-      const wrapper = await mountToolbar({ projectId: 'missing-project' })
-
-      await wrapper.get('[data-testid="memory-reset"]').trigger('click')
-      await flushPromises()
-
-      expect(mocks.confirm.mock.calls[0]![0].subtitle).toContain(
-        'every project memory entry',
-      )
     })
 
     it('does nothing when the confirmation is cancelled', async () => {
@@ -595,22 +542,6 @@ describe('Profile/Memory/Entries/Toolbar', () => {
         'Deleted 3 entries.',
       )
       expect(wrapper.emitted('changed')).toHaveLength(1)
-    })
-
-    it('resets the project scope with its id', async () => {
-      mockApi({ reset: { deleted: 1 } })
-
-      const wrapper = await mountToolbar({ projectId: 'project-1' })
-
-      await wrapper.get('[data-testid="memory-reset"]').trigger('click')
-      await flushPromises()
-
-      expect(callsTo('/api/v1/memory/entries/reset')[0]![1].body)
-        .toEqual({ scope: 'project', projectId: 'project-1' })
-      expect(mocks.info).toHaveBeenCalledWith(
-        'Memory reset',
-        'Deleted 1 entry.',
-      )
     })
 
     it('says when there was nothing to delete', async () => {
