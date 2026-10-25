@@ -129,9 +129,11 @@ still the real direct base (the branch below).
 
 How the non-top skip works:
 
-- `check-pr-state` in `preview-build.yml` carries the guard
-  `stack == null || stack.position == stack.size`. Every other job `needs` it
-  and uses the implicit `success()`, so a false guard skips the whole run.
+- `gate` in `preview-build.yml` carries the guard
+  `stack == null || stack.position == stack.size`. Every other job `needs`
+  `gate` directly or through `build`, so a skipped `gate` skips them all. The
+  final `summary` job uses an explicit `!cancelled() && ...` condition that
+  also requires the upstream jobs to have succeeded.
 - A run whose jobs are all skipped still completes, and `preview-deploy.yml`
   fires on `workflow_run` completed with `conclusion == 'success'`, then would
   fail downloading the `preview-build` artifact. The first step of the deploy

@@ -317,6 +317,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `ERR_CONNECTION_REFUSED`): the signature, why the exit reason was
   invisible, the stdout piping and `wrangler-logs` artifact diagnostics, and
   what to do on the next occurrence
+- `docs/ci-speed-audit.md` - Where CI time went, measured across 300 runs
+  (serial E2E with `workers: 1`, one serial job, a dead Playwright cache on
+  `main` from an unexpanded `~`, `main` re-testing what the PR already
+  tested), the target job graph with 3 E2E shards on free GitHub-hosted
+  runners, and the staged plan (stages 0-1 implemented, 2-3 open)
 - `docs/cloudflare-previews.md` - PR and `main` previews on Cloudflare
   Workers Previews (one Worker, `env.production.previews`) instead of the
   separate `besidka-preview` Worker: `wrangler preview --env production`

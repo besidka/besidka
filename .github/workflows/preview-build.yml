@@ -29,14 +29,23 @@ concurrency:
   group: preview-build-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  AFFECTED_BASE_REF: ${{ github.event.pull_request.stack.base.ref || github.base_ref }}
+
 jobs:
-  check-pr-state:
-    name: Check PR state
+  gate:
+    name: Gate
     if: github.event.pull_request.head.repo.full_name == github.repository && (github.event.pull_request.stack == null || github.event.pull_request.stack.position == github.event.pull_request.stack.size)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     permissions:
+      actions: read
       contents: read
+      pull-requests: read
+    outputs:
+      should-skip: ${{ steps.source.outputs.should-skip }}
+      source-run-id: ${{ steps.source.outputs.source-run-id }}
+      source-sha: ${{ steps.source.outputs.source-sha }}
     steps:
       - name: Check if PR is still open
         run: |
@@ -49,20 +58,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
 
-  check-latest-commit:
-    name: Check latest commit paths
-    needs: check-pr-state
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: read
-    outputs:
-      should-skip: ${{ steps.source.outputs.should-skip }}
-      source-run-id: ${{ steps.source.outputs.source-run-id }}
-      source-sha: ${{ steps.source.outputs.source-sha }}
-    steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
         with:
@@ -88,10 +83,8 @@ jobs:
 
   reuse-build:
     name: Reuse previous build
-    needs:
-      - check-pr-state
-      - check-latest-commit
-    if: needs.check-latest-commit.outputs.should-skip == 'true'
+    needs: gate
+    if: needs.gate.outputs.should-skip == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -102,7 +95,7 @@ jobs:
       - name: Download previous build artifact
         uses: actions/download-artifact@v8
         with:
-          run-id: ${{ needs.check-latest-commit.outputs.source-run-id }}
+          run-id: ${{ needs.gate.outputs.source-run-id }}
           name: preview-build
           path: reused/preview-build/
           github-token: ${{ github.token }}
@@ -110,7 +103,7 @@ jobs:
       - name: Download previous drizzle artifact
         uses: actions/download-artifact@v8
         with:
-          run-id: ${{ needs.check-latest-commit.outputs.source-run-id }}
+          run-id: ${{ needs.gate.outputs.source-run-id }}
           name: preview-drizzle
           path: reused/preview-drizzle/
           github-token: ${{ github.token }}
@@ -137,7 +130,7 @@ jobs:
         id: commits
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          SOURCE_SHA: ${{ needs.check-latest-commit.outputs.source-sha }}
+          SOURCE_SHA: ${{ needs.gate.outputs.source-sha }}
         run: |
           echo "sha-short=$(echo "$HEAD_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
           echo "source-sha-short=$(echo "$SOURCE_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
@@ -154,7 +147,7 @@ jobs:
 
             | Property | Value |
             |----------|-------|
-            | **Reused build** | [`${{ steps.commits.outputs.source-sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/commits/${{ needs.check-latest-commit.outputs.source-sha }}) from [run ${{ needs.check-latest-commit.outputs.source-run-id }}](https://github.com/${{ github.repository }}/actions/runs/${{ needs.check-latest-commit.outputs.source-run-id }}) |
+            | **Reused build** | [`${{ steps.commits.outputs.source-sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/commits/${{ needs.gate.outputs.source-sha }}) from [run ${{ needs.gate.outputs.source-run-id }}](https://github.com/${{ github.repository }}/actions/runs/${{ needs.gate.outputs.source-run-id }}) |
             | **Latest commit** | [`${{ steps.commits.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/commits/${{ github.event.pull_request.head.sha }}) |
 
       - name: Set pending deploy status on PR
@@ -166,72 +159,92 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-  build:
-    name: Build PR
-    needs:
-      - check-pr-state
-      - check-latest-commit
-    if: needs.check-latest-commit.outputs.should-skip != 'true'
+  static:
+    name: Lint & typecheck
+    needs: gate
+    if: needs.gate.outputs.should-skip != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
       contents: read
-      statuses: write
-      pull-requests: write
-    env:
-      AFFECTED_BASE_REF: ${{ github.event.pull_request.stack.base.ref || github.base_ref }}
     steps:
-      - name: Record start time
-        id: start-time
-        run: echo "start-time=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - name: Checkout PR code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Setup project
+        uses: ./.github/actions/setup
+
+      - name: Run ESLint
+        run: pnpm run lint
+
+      - name: Run TypeScript type checks
+        run: pnpm run typecheck
+
+  unit:
+    name: Unit tests
+    needs: gate
+    if: needs.gate.outputs.should-skip != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
       - name: Checkout PR code
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v6
-        with:
-          run_install: false
-
-      - name: Install Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run ESLint
-        run: pnpm run lint
-
-      - name: Run TypeScript type checks
-        run: |
-          pnpm run dev:prepare
-          pnpm run typecheck
+      - name: Setup project
+        uses: ./.github/actions/setup
 
       - name: Run affected unit tests
-        id: test-unit
-        run: |
-          START=$(date +%s)
-          node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=unit
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
-          echo "✅ Affected unit tests completed in ${DURATION}s"
+        run: node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=unit
+
+  integration:
+    name: Integration tests
+    needs: gate
+    if: needs.gate.outputs.should-skip != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup project
+        uses: ./.github/actions/setup
 
       - name: Run affected integration tests
-        id: test-integration
-        run: |
-          START=$(date +%s)
-          node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=integration
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
-          echo "✅ Affected integration tests completed in ${DURATION}s"
+        run: node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=integration
+
+  build:
+    name: Build
+    needs: gate
+    if: needs.gate.outputs.should-skip != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      has-e2e: ${{ steps.check-e2e.outputs.has-tests }}
+      bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
+      build-duration: ${{ steps.build-app.outputs.duration }}
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup project
+        uses: ./.github/actions/setup
 
       - name: Check affected E2E tests
         id: check-e2e
@@ -239,38 +252,6 @@ jobs:
           node scripts/test-affected-check.mjs
           --base="origin/$AFFECTED_BASE_REF"
           --type=e2e
-
-      - name: Set Playwright browsers path
-        if: steps.check-e2e.outputs.has-tests == 'true'
-        run: echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        if: steps.check-e2e.outputs.has-tests == 'true'
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install Playwright browsers
-        if: steps.check-e2e.outputs.has-tests == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Generate DB migrations for E2E
-        if: steps.check-e2e.outputs.has-tests == 'true'
-        run: pnpm run db:generate
-
-      - name: Apply DB migrations for E2E
-        if: steps.check-e2e.outputs.has-tests == 'true'
-        run: yes | pnpm exec wrangler d1 migrations apply DB --local
-
-      - name: Generate consent DB migrations for E2E
-        if: steps.check-e2e.outputs.has-tests == 'true'
-        run: pnpm run db:consents:generate
-
-      - name: Apply consent DB migrations for E2E
-        if: steps.check-e2e.outputs.has-tests == 'true'
-        run: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --local
 
       - name: Build application
         id: build-app
@@ -302,65 +283,11 @@ jobs:
           echo "✅ Build successful"
           ls -lah .output/
 
-      - name: Write .dev.vars for CI e2e
-        if: steps.check-e2e.outputs.has-tests == 'true'
-        run: |
-          cat > .dev.vars <<'EOF'
-          CI=true
-          NUXT_PUBLIC_BASE_URL=http://localhost:3000
-          NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED=true
-          NUXT_ENCRYPTION_HASHIDS=secret
-          NUXT_ENCRYPTION_KEY=secret
-          NUXT_BETTER_AUTH_SECRET=secret
-          NUXT_EMAIL_NOOP_ENABLED=true
-          NUXT_FILES_RETENTION_CLEANUP_ENABLED=true
-          NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE=100
-          NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS=20000
-          NUXT_FILES_MAINTENANCE_TOKEN=token
-          EOF
+      - name: Generate DB migrations
+        run: pnpm run db:generate
 
-      - name: Run affected E2E tests
-        id: test-e2e
-        if: steps.check-e2e.outputs.has-tests == 'true'
-        timeout-minutes: 12
-        run: |
-          START=$(date +%s)
-          node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=e2e
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> "$GITHUB_OUTPUT"
-          echo "✅ Affected E2E tests completed in ${DURATION}s"
-        env:
-          CI: true
-          NUXT_PUBLIC_BASE_URL: http://localhost:3000
-          NUXT_ENCRYPTION_HASHIDS: secret
-          NUXT_ENCRYPTION_KEY: secret
-          NUXT_BETTER_AUTH_SECRET: secret
-          NUXT_EMAIL_NOOP_ENABLED: true
-          NUXT_FILES_RETENTION_CLEANUP_ENABLED: true
-          NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE: 100
-          NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS: 20000
-          NUXT_FILES_MAINTENANCE_TOKEN: token
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v7
-        if: "!cancelled() && steps.check-e2e.outputs.has-tests == 'true'"
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
-
-      - name: Upload wrangler logs
-        uses: actions/upload-artifact@v7
-        if: "failure() && steps.check-e2e.outputs.has-tests == 'true'"
-        with:
-          name: wrangler-logs
-          path: |
-            /home/runner/.config/.wrangler/logs/
-            .wrangler/logs/
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 30
+      - name: Generate consent DB migrations
+        run: pnpm run db:consents:generate
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
@@ -380,32 +307,115 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  e2e:
+    name: E2E tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs:
+      - gate
+      - build
+    if: needs.build.outputs.has-e2e == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      CI: true
+      NUXT_PUBLIC_BASE_URL: http://localhost:3000
+      NUXT_ENCRYPTION_HASHIDS: secret
+      NUXT_ENCRYPTION_KEY: secret
+      NUXT_BETTER_AUTH_SECRET: secret
+      NUXT_EMAIL_NOOP_ENABLED: true
+      NUXT_FILES_RETENTION_CLEANUP_ENABLED: true
+      NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE: 100
+      NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS: 20000
+      NUXT_FILES_MAINTENANCE_TOKEN: token
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup project
+        uses: ./.github/actions/setup
+
+      - name: Prepare E2E
+        uses: ./.github/actions/prepare-e2e
+
+      - name: Run affected E2E tests
+        timeout-minutes: 10
+        run: node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: "!cancelled()"
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload wrangler logs
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: wrangler-logs-${{ matrix.shard }}
+          path: |
+            /home/runner/.config/.wrangler/logs/
+            .wrangler/logs/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 30
+
+  summary:
+    name: Summary
+    needs:
+      - gate
+      - static
+      - unit
+      - integration
+      - build
+      - e2e
+    if: >-
+      !cancelled()
+      && needs.gate.outputs.should-skip != 'true'
+      && needs.static.result == 'success'
+      && needs.unit.result == 'success'
+      && needs.integration.result == 'success'
+      && needs.build.result == 'success'
+      && (needs.e2e.result == 'success' || needs.e2e.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      statuses: write
+      pull-requests: write
+    steps:
+      - name: Checkout job durations action
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: .github/actions
+
+      - name: Read job durations
+        id: durations
+        continue-on-error: true
+        uses: ./.github/actions/job-durations
+        with:
+          github-token: ${{ github.token }}
+
       - name: Get PR commit info
-        if: success()
         id: pr
         run: |
           SHA="${{ github.event.pull_request.head.sha }}"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "sha-short=$(echo "$SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
-      - name: Calculate total duration
-        if: success()
-        id: duration
-        run: |
-          START_TIME=${{ steps.start-time.outputs.start-time }}
-          END_TIME=$(date +%s)
-          TOTAL=$((END_TIME - START_TIME))
-          MINUTES=$((TOTAL / 60))
-          SECONDS=$((TOTAL % 60))
-          if [ $MINUTES -gt 0 ]; then
-            DURATION="${MINUTES}m ${SECONDS}s"
-          else
-            DURATION="${SECONDS}s"
-          fi
-          echo "total=$DURATION" >> "$GITHUB_OUTPUT"
-
       - name: Comment build results on PR
-        if: success()
         uses: mshick/add-pr-comment@v3
         with:
           issue: ${{ github.event.pull_request.number }}
@@ -416,13 +426,13 @@ jobs:
             | Property | Value |
             |----------|-------|
             | **Author** | [@${{ github.event.pull_request.user.login }}](https://github.com/${{ github.event.pull_request.user.login }}) |
-            | **Tests** | Unit: ${{ steps.test-unit.outputs.duration }} \| Integration: ${{ steps.test-integration.outputs.duration }} \| E2E: ${{ steps.test-e2e.outputs.duration || 'skipped' }} |
-            | **Build** | Nuxt: ${{ steps.build-app.outputs.duration }} \| Bundle: ${{ steps.bundle-size.outputs.bundle-size }} |
-            | **Total time** | ${{ steps.duration.outputs.total }} |
+            | **Checks** | Lint & typecheck: ${{ steps.durations.outputs.static }} |
+            | **Tests** | Unit: ${{ steps.durations.outputs.unit }} \| Integration: ${{ steps.durations.outputs.integration }} \| E2E: ${{ needs.e2e.result == 'skipped' && 'skipped' || format('{0} (slowest of 3 shards)', steps.durations.outputs.e2e) }} |
+            | **Build** | Nuxt: ${{ needs.build.outputs.build-duration }} \| Bundle: ${{ needs.build.outputs.bundle-size }} |
+            | **Total time** | ${{ steps.durations.outputs.total }} |
             | **Latest commit** | [`${{ steps.pr.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/commits/${{ steps.pr.outputs.sha }}) |
 
       - name: Set pending deploy status on PR
-        if: success()
         run: |
           gh api "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
             -f state=pending \

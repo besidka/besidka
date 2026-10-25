@@ -16,10 +16,10 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │                                                                  │
 │  Pull Request (same-repo)                                        │
 │  ├─ preview-build.yml (pull_request, unprivileged)               │
-│  │   ├─ Lint + typecheck                                         │
-│  │   ├─ Affected tests (unit, integration, e2e)                  │
-│  │   ├─ Build application                                        │
-│  │   └─ Upload artifacts (build output + .drizzle + metrics)     │
+│  │   ├─ gate (PR open? build or reuse?)                          │
+│  │   ├─ static | unit | integration | build (parallel)           │
+│  │   ├─ e2e x3 shards (after build)                              │
+│  │   └─ summary (PR comment + pending deploy status)             │
 │  │                                                               │
 │  └─ preview-deploy.yml (workflow_run, privileged)                │
 │      ├─ Download artifacts from build                            │
@@ -35,15 +35,15 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │                                                                  │
 │  Push to Main (Production)                                       │
 │  └─ production.yml                                               │
-│      ├─ build-production job                                     │
-│      │   ├─ All tests (unit, integration, e2e)                   │
-│      │   ├─ Build application                                    │
-│      │   └─ Deploy to production                                 │
+│      ├─ static | unit | integration | build (parallel)           │
+│      ├─ e2e x3 shards (after build)                              │
+│      ├─ deploy job (main only, after all of the above)           │
+│      │   Migrates the DBs and deploys the tested build           │
 │      │                                                           │
-│      ├─ indexnow job (after build-production)                    │
+│      ├─ indexnow job (after deploy)                              │
 │      │   No-op without INDEXNOW_KEY; else submits changed pages  │
 │      │                                                           │
-│      └─ deploy-preview job (after build-production)             │
+│      └─ deploy-preview job (after deploy)                        │
 │          ├─ Apply DB + CONSENT_DB migrations to the preview DBs  │
 │          └─ wrangler preview --env production --name preview     │
 │              (long-lived Preview, rebuilt from main)             │
@@ -68,37 +68,67 @@ workflow, and since `preview-deploy.yml` only runs off this workflow's
 `workflow_run` completion, it gets no build or deploy; the parent PR that
 targets `main` builds everything. A native GitHub stacked PR is evaluated as if
 it targeted the base of the stack, so every layer triggers the workflow, but the
-`check-pr-state` guard (`stack == null || stack.position == stack.size`) skips
+`gate` job's guard (`stack == null || stack.position == stack.size`) skips
 every job unless the PR is the top layer. `preview-deploy.yml` detects such a
 run by the missing `preview-build` artifact and exits without deploying. The
 affected-tests base is `stack.base.ref || base_ref`, so the top layer tests
 every layer below it. See `docs/stacked-prs.md`. Runs in the PR author's
 context without access to secrets.
 
-1. Check PR is still open
-2. `check-latest-commit` runs `scripts/ci/resolve-preview-build-source.mjs`
-   to decide between building and reusing an earlier build (see below)
-3. Install dependencies
-4. Lint + typecheck
-5. Run affected tests only (based on changed files vs the base branch, or
-   the stack's base branch for a stacked PR)
-6. Build application
-7. Upload build output, `.drizzle`, and metrics as artifacts
+The jobs form a parallel graph instead of one long serial job:
 
-**Skipping builds.** A run skips the `build` job only when everything changed
-since the last commit that was actually built successfully for this PR is
-ignorable. The resolver lists successful `preview-build.yml` runs for the PR,
-takes the newest one whose `preview-build` and `preview-drizzle` artifacts
-are still downloadable and whose commit is an ancestor of the PR head, and
-diffs that commit against the head. Non-ignorable files in that range, no
-qualifying run, expired artifacts, rewritten history or any API/git error all
-resolve to a normal build. The ignored list lives in the script and must stay
-identical to `on.pull_request.paths-ignore` (a unit test enforces it).
+```
+gate ─┬─ static ───────────────────────────────┐
+      ├─ unit ─────────────────────────────────┤
+      ├─ integration ──────────────────────────┼─ summary
+      └─ build ─── e2e (shard 1/3, 2/3, 3/3) ──┘
+```
 
-When it skips, `reuse-build` ("Reuse previous build") downloads both
-artifacts from the source run and re-uploads them under the same names with
-the same retention, comments which build was reused, and sets the pending
-`Preview Deploy` status. `preview-deploy.yml` is unchanged and finds the
+1. `gate` checks the PR is still open, then runs
+   `scripts/ci/resolve-preview-build-source.mjs` to decide between building
+   and reusing an earlier build (see below). It replaces the former
+   `check-pr-state` and `check-latest-commit` jobs, so a PR pays for one
+   short job before the real work starts
+2. `static` ("Lint & typecheck") runs ESLint and the Nuxt type check
+3. `unit` and `integration` run the affected tests only, based on changed
+   files vs the base branch (or the stack's base branch for a stacked PR),
+   via `scripts/test-affected.mjs`
+4. `build` builds the application, generates the `DB` and `CONSENT_DB`
+   migrations, uploads the `preview-build` and `preview-drizzle` artifacts,
+   and reports through `has-e2e` whether any E2E spec is affected
+5. `e2e` runs only when `has-e2e` is `true`, after `build`, as three parallel
+   shards (`playwright test --shard=i/3`). Each shard downloads the
+   `preview-build` artifact and has its own `wrangler dev`, local D1 and
+   `auth.setup` user, so shards never share state. `workers` stays at 1 inside
+   a shard because most specs share the single `auth.setup` user. Every shard
+   uploads `playwright-report-<i>` (always) and `wrangler-logs-<i>` (on
+   failure). `fail-fast` is off so one failing shard does not hide the others
+6. `summary` runs only when `gate` did not skip and every other job succeeded
+   (`e2e` may be skipped). It reads the per-job timings from the GitHub API
+   (the `job-durations` action), comments the build results on the PR (the
+   E2E time is the slowest shard) and sets the pending `Preview Deploy`
+   status
+
+All jobs check out the PR head SHA (`github.event.pull_request.head.sha`),
+never GitHub's ephemeral merge ref; see `docs/ci-pull-request-checkout-ref.md`.
+The affected-tests base is set once as the workflow-level `AFFECTED_BASE_REF`
+environment variable.
+
+**Skipping builds.** A run skips the `static`, `unit`, `integration`, `build`
+and `e2e` jobs only when everything changed since the last commit that was
+actually built successfully for this PR is ignorable. The resolver lists
+successful `preview-build.yml` runs for the PR, takes the newest one whose
+`preview-build` and `preview-drizzle` artifacts are still downloadable and
+whose commit is an ancestor of the PR head, and diffs that commit against the
+head. Non-ignorable files in that range, no qualifying run, expired artifacts,
+rewritten history or any API/git error all resolve to a normal build. The
+ignored list lives in the script and must stay identical to
+`on.pull_request.paths-ignore` (a unit test enforces it).
+
+When it skips, `reuse-build` ("Reuse previous build", which `needs: gate`)
+downloads both artifacts from the source run and re-uploads them under the same
+names with the same retention, comments which build was reused, and sets the
+pending `Preview Deploy` status. `preview-deploy.yml` is unchanged and finds the
 artifacts on the skipping run, so it re-deploys the last built code. This
 also redeploys a preview whose earlier deploy was cancelled. All of this logic
 lives in `preview-build.yml` because `workflow_run` workflows always execute
@@ -140,22 +170,53 @@ success. Concurrency is per PR.
 
 ### `production.yml` - Production Deploy
 
-Triggers on push to `main`. Three jobs:
+Triggers on push to `main`, and manually via `workflow_dispatch`. The jobs
+form a parallel graph:
 
-**build-production**: Full test suite, build, deploy to production. Applies
-remote migrations to both production databases (`DB`, then `CONSENT_DB`)
-before deploy, unconditionally on every run (see below).
-The job has `timeout-minutes: 30`: unit (~7m), integration (~1.5m), build
-(~2m) and E2E (~8m, with its own 15-minute step timeout) together exceeded
-the former 20-minute limit. `deploy-preview` runs no tests and stays at 20.
+```
+static ─────────────────────┐
+unit ───────────────────────┤
+integration ────────────────┼─ deploy ─┬─ indexnow
+build ─── e2e (3 shards) ───┘          └─ deploy-preview ─┐
+                                                          └─ cleanup
+```
 
-**indexnow**: Runs after `build-production`. A no-op unless the
+**static**, **unit**, **integration**: Lint + typecheck, the full unit suite
+plus the cookie-consent module tests (`pnpm run test:cookie-consent`, which the
+single serial job never ran), and the full integration suite. They run in
+parallel and need nothing from each other.
+
+**build**: Builds the application, extracts the bundle size and uploads the
+`preview-build` artifact (retention one day).
+
+**e2e**: After `build`, three parallel shards of the full Playwright suite
+(`playwright test --shard=i/3`), each with its own `wrangler dev`, local D1
+and `auth.setup` user. Each shard downloads the `preview-build` artifact, so
+E2E tests the exact bundle that `deploy` ships. Shards upload
+`playwright-report-<i>` and, on failure, `wrangler-logs-<i>`.
+
+**deploy** ("Deploy to Production"): Needs `static`, `unit`, `integration`,
+`build` and every `e2e` shard, and runs only for `github.ref ==
+refs/heads/main` with `dry-run` not set. It downloads the tested
+`preview-build` artifact (no rebuild), applies remote migrations to both
+production databases (`DB`, then `CONSENT_DB`) and deploys the Worker. It then
+reads the job timings and writes a markdown run summary (stage durations,
+bundle size, total time, deployed URL) to the job summary.
+
+**Dry run and non-main dispatch.** `workflow_dispatch` takes a boolean
+`dry-run` input (default `false`). With `dry-run: true`, or when dispatched
+from any ref other than `main`, `deploy` is skipped, and `indexnow`,
+`deploy-preview` and the migrations skip with it because they depend on
+`deploy`. Only `static`, `unit`, `integration`, `build`, `e2e` and the
+artifact cleanup run, so no remote database or Worker is touched.
+
+**indexnow**: Runs after `deploy`. A no-op unless the
 `INDEXNOW_KEY` secret exists. When it does, and the push changed a public
 page (`content/`, public `app/pages/`, landing components), it reads the live
 sitemap, checks `https://besidka.com/indexnow-key.txt` serves the same key,
 and submits the sitemap URLs to IndexNow. See `docs/seo.md` → "IndexNow".
 
-**deploy-preview**: Runs after `build-production`. Downloads the
+**deploy-preview**: Runs after `deploy`. Downloads the
 `preview-build` artifact (the build already validated by the full test suite
 for this exact `main` HEAD), applies remote migrations to both preview
 databases (`DB`, then `CONSENT_DB`) and updates the long-lived Preview named
@@ -164,12 +225,17 @@ no version lookup or PR-alias promotion any more: the previous
 `resolve-preview-context`, `update-preview` and `deploy-preview-fallback`
 jobs (and the stacked-merge edge case they handled) are gone because every
 push to `main` redeploys the same Preview from its own build. The job
-installs dependencies with a plain `pnpm install --frozen-lockfile` (not
-`--ignore-scripts`) so `postinstall`'s `nuxt prepare` runs and
-`.nuxt/tsconfig.json` exists — `drizzle-kit generate` loads the root
-`tsconfig.json`, which `extends` that file, and hard-fails without it.
+installs dependencies through the shared `setup` action, a plain
+`pnpm install --frozen-lockfile` (not `--ignore-scripts`), so `postinstall`'s
+`nuxt prepare` runs and `.nuxt/tsconfig.json` exists — `drizzle-kit generate`
+loads the root `tsconfig.json`, which `extends` that file, and hard-fails
+without it.
 
-Both `build-production` and `deploy-preview` apply migrations to
+**cleanup-preview-build-artifact**: Runs after `deploy` and `deploy-preview`
+with `if: always()` and deletes the run's `preview-build` artifact, including
+after a failed run or a dry run.
+
+Both `deploy` and `deploy-preview` apply migrations to
 `DB` and `CONSENT_DB` unconditionally on every run — an earlier git-diff-based
 `drizzle-changed` gate was removed because a diff of only the current push's
 before/after SHAs could permanently miss a migration if an unrelated prior
@@ -177,6 +243,40 @@ run failed before reaching the migration step. `wrangler d1 migrations apply`
 is idempotent — it only runs migrations not yet recorded in each database's
 `d1_migrations` table, so applying both every time (even when neither
 changed) is a harmless no-op.
+
+### Shared composite actions
+
+Three local composite actions in `.github/actions/` hold the steps both
+workflows share. Callers must run `actions/checkout` first because a local
+action is read from the checked-out workspace.
+
+- **`setup`** installs pnpm, Node.js 24 (with the `pnpm` store cache) and runs
+  `pnpm install --frozen-lockfile`. The optional `install-args` input is
+  appended to the install command. It runs `postinstall`, so `nuxt prepare`
+  has already generated `.nuxt`; typecheck needs no separate `dev:prepare`.
+- **`prepare-e2e`** downloads the `preview-build` artifact into `.output/`,
+  restores Playwright Chromium, generates and applies the `DB` and
+  `CONSENT_DB` migrations to the local D1, and writes the `.dev.vars` file
+  that `wrangler dev` reads. It assumes checkout and `setup` already ran.
+- **`job-durations`** reads this run's jobs from the GitHub API
+  (`actions/runs/{id}/attempts/{attempt}/jobs`) and outputs `static`, `unit`,
+  `integration`, `build`, `e2e` and `total`. Each value is `Xm Ys`, or
+  `skipped` when no job with that name succeeded. `e2e` is the slowest
+  successful shard (jobs whose name starts with `E2E tests`). The calling job
+  needs `actions: read`.
+
+**Playwright cache.** `prepare-e2e` caches `~/.cache/ms-playwright` under the
+key `{os}-{arch}-playwright-{Playwright version}-chromium-headless-shell`. The
+version comes from `playwright --version`, so the cache follows the installed
+Playwright instead of the whole lockfile. Only the headless shell is
+installed (`playwright install chromium --only-shell`) because headless runs
+use it, and without `--with-deps`: the `ubuntu-24.04` image already has the
+Chromium libraries, and `--with-deps` once spent 7 minutes downloading fonts
+from a slow apt mirror. The install is wrapped in `timeout 180` (composite
+steps cannot set `timeout-minutes`). Do not set `PLAYWRIGHT_BROWSERS_PATH` in
+YAML `env`: the runner never expands `~` there, so the browsers landed in
+`<repo>/~/.cache/ms-playwright` and the cache step never saved anything. The
+Linux default is already `~/.cache/ms-playwright`.
 
 ### `claude-code-review.yml` - Claude Code Review
 
@@ -351,14 +451,18 @@ Previews also auto-expire at the 500-per-Worker limit.
 
 ### `production.yml`
 ```yaml
-group: production
+group: ${{ github.ref == 'refs/heads/main' && !inputs.dry-run && 'production' || format('production-dry-run-{0}', github.ref) }}
 cancel-in-progress: false
 ```
-One production deployment at a time. A new merge queues behind the running
-deploy instead of cancelling it, because a cancellation between
-`migrations apply` and the Worker deploy can leave production with a new schema
-and old code. GitHub keeps at most one pending run; a newer pending run
-replaces the older one, so the newest commit still deploys last.
+Pushes to `main` and non-dry-run dispatches from `main` share the `production`
+group. A dry run, or a dispatch from any other ref, gets its own
+`production-dry-run-{ref}` group so it can never queue behind, or replace a
+pending, deploy from `main`. One production deployment at a time. A new merge
+queues behind the running deploy instead of cancelling it, because a
+cancellation between `migrations apply` and the Worker deploy can leave
+production with a new schema and old code. GitHub keeps at most one pending
+run; a newer pending run replaces the older one, so the newest commit still
+deploys last.
 
 ### `preview-cleanup.yml`
 ```yaml
@@ -482,8 +586,8 @@ migrated with a separate step so a failure is attributable to one database:
 | Workflow / job | Trigger | DB step | CONSENT_DB step | Source |
 |----------------|---------|---------|-----------------|--------|
 | `preview-deploy.yml` → `deploy` | Same-repo PR build success | `wrangler d1 migrations apply DB --remote` | `wrangler d1 migrations apply CONSENT_DB --remote` | Downloaded `preview-drizzle` artifact (committed migrations) |
-| `production.yml` → `build-production` | Merge / push to `main` | `… apply DB --remote --env production` | `… apply CONSENT_DB --remote --env production` | Regenerated in-step via `preCommands` |
-| `production.yml` → `deploy-preview` | Merge / push to `main` (after `build-production`) | `… apply DB --remote` | `… apply CONSENT_DB --remote` | Regenerated in-step via `preCommands` |
+| `production.yml` → `deploy` | Merge / push to `main` | `… apply DB --remote --env production` | `… apply CONSENT_DB --remote --env production` | Regenerated in-step via `preCommands` |
+| `production.yml` → `deploy-preview` | Merge / push to `main` (after `deploy`) | `… apply DB --remote` | `… apply CONSENT_DB --remote` | Regenerated in-step via `preCommands` |
 
 **Regeneration source.** Preview-deploy applies the exact migration files from
 the uploaded `.drizzle` artifact (no regeneration). The production jobs
@@ -491,7 +595,7 @@ regenerate before applying via `preCommands`: `pnpm run db:generate` for `DB`
 and `pnpm run db:consents:generate` for `CONSENT_DB`.
 
 **Gating.** Both DB and CONSENT_DB apply steps in `production.yml` run
-unconditionally on every push, in both `build-production` and
+unconditionally on every push, in both `deploy` and
 `deploy-preview` — there is no `.drizzle/`-change gate. An earlier
 git-diff-based gate (comparing only the current push's before/after SHAs)
 was removed because it could permanently miss a migration if an unrelated

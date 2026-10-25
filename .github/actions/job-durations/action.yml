@@ -1,0 +1,84 @@
+name: Job durations
+description: Read this run's job timings from the GitHub API
+
+inputs:
+  github-token:
+    description: Token with actions read access for the current repository
+    required: true
+
+outputs:
+  static:
+    description: Duration of the Lint & typecheck job
+    value: ${{ steps.durations.outputs.static }}
+  unit:
+    description: Duration of the Unit tests job
+    value: ${{ steps.durations.outputs.unit }}
+  integration:
+    description: Duration of the Integration tests job
+    value: ${{ steps.durations.outputs.integration }}
+  build:
+    description: Duration of the Build job
+    value: ${{ steps.durations.outputs.build }}
+  e2e:
+    description: Duration of the slowest successful E2E shard
+    value: ${{ steps.durations.outputs.e2e }}
+  total:
+    description: Time elapsed since the run started
+    value: ${{ steps.durations.outputs.total }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read job durations
+      id: durations
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        JOBS_JSON=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100")
+
+        format_duration() {
+          local total_seconds="$1"
+
+          if [ "$total_seconds" -ge 60 ]; then
+            echo "$((total_seconds / 60))m $((total_seconds % 60))s"
+          else
+            echo "${total_seconds}s"
+          fi
+        }
+
+        job_duration() {
+          local match_mode="$1"
+          local job_name="$2"
+          local longest_seconds
+
+          longest_seconds=$(
+            jq -r --arg mode "$match_mode" --arg name "$job_name" '
+              [
+                .jobs[]
+                | select(.conclusion == "success")
+                | select(if $mode == "prefix" then (.name | startswith($name)) else (.name == $name) end)
+                | ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601))
+              ]
+              | if length == 0 then "" else max end
+            ' <<< "$JOBS_JSON"
+          )
+
+          if [ -z "$longest_seconds" ]; then
+            echo "skipped"
+          else
+            format_duration "$longest_seconds"
+          fi
+        }
+
+        RUN_STARTED_AT=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)
+        TOTAL_SECONDS=$(jq -n --arg started_at "$RUN_STARTED_AT" 'now - ($started_at | fromdateiso8601) | floor')
+
+        {
+          echo "static=$(job_duration exact 'Lint & typecheck')"
+          echo "unit=$(job_duration exact 'Unit tests')"
+          echo "integration=$(job_duration exact 'Integration tests')"
+          echo "build=$(job_duration exact 'Build')"
+          echo "e2e=$(job_duration prefix 'E2E tests')"
+          echo "total=$(format_duration "$TOTAL_SECONDS")"
+        } >> "$GITHUB_OUTPUT"

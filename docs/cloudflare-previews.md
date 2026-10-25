@@ -263,7 +263,7 @@ PR never received artifacts or a preview for A's code. The skipping run also
 had no artifacts for `preview-deploy.yml` to download.
 
 Current behavior, implemented in `scripts/ci/resolve-preview-build-source.mjs`
-(job `check-latest-commit`, output `should-skip`, `source-run-id`,
+(job `gate`, output `should-skip`, `source-run-id`,
 `source-sha`):
 
 1. List successful `preview-build.yml` runs on the PR head branch, keep the

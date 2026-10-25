@@ -1442,9 +1442,9 @@ main `DB`, mirroring the existing migration pipeline:
 - **PR (same-repo) build success** → `preview-deploy.yml` applies
   `CONSENT_DB --remote` from the uploaded `.drizzle` artifact (which includes
   `.drizzle/migrations-consent/`).
-- **Merge / push to `main`** → `production.yml` (`build-production`) applies
-  `CONSENT_DB --remote --env production`, gated on any change under
-  `.drizzle/`, regenerating first via `pnpm run db:consents:generate`.
+- **Merge / push to `main`** → `production.yml` (`deploy`) applies
+  `CONSENT_DB --remote --env production` on every run (the apply is
+  idempotent), regenerating first via `pnpm run db:consents:generate`.
 - **Push to `main`** → `production.yml` (`deploy-preview`) applies
   `CONSENT_DB --remote` to the preview database, then deploys the long-lived
   Workers Preview (`wrangler preview --name preview`). See
