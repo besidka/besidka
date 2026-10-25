@@ -371,10 +371,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   (source-only, standard profile, 21 leads + 2 rejected): the table of fixes
   (Better Auth rate limit and reset revocation, MDC directive-prop stripping,
   evlog client-ingest confinement, upload and chat input caps, push limits,
-  Studio guard middleware, preview artifact path), the owner actions required
-  before deploy (`NUXT_STUDIO_AUTH_SESSION_SECRET`, WAF rules), open policy
-  questions, the deliberately unfixed leads, and the `NODE_ENV`-unset-in-Worker
-  lesson
+  Studio guard middleware, preview artifact path), how each owner action was
+  resolved (Studio secrets, org Dependabot secrets kept behind #498, the
+  single Free-plan rate-limit slot now used for API paths instead of the
+  leaked-credential rule, `preview_urls` left on), open policy questions, the
+  deliberately unfixed leads, and the `NODE_ENV`-unset-in-Worker lesson
 
 ### Tech Stack
 
