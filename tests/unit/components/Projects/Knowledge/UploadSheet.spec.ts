@@ -2,6 +2,7 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
+  KnowledgeSyncResult,
   KnowledgeSyncSummary,
   KnowledgeUploadEntry,
   KnowledgeUploadPhase,
@@ -40,6 +41,7 @@ interface SheetOptions {
   phase?: KnowledgeUploadPhase
   plan?: KnowledgePlanSummary | null
   syncSummary?: KnowledgeSyncSummary | null
+  syncResult?: KnowledgeSyncResult | null
   wasCancelled?: boolean
   entries?: KnowledgeUploadEntry[]
   progress?: {
@@ -58,6 +60,7 @@ async function mountSheet(options: SheetOptions = {}) {
       phase: options.phase ?? 'preview',
       plan: options.plan === undefined ? plan : options.plan,
       syncSummary: options.syncSummary ?? null,
+      syncResult: options.syncResult ?? null,
       wasCancelled: options.wasCancelled ?? false,
       entries: options.entries ?? [],
       progress: options.progress ?? {
@@ -202,7 +205,7 @@ describe('Projects/Knowledge/UploadSheet', () => {
       })
 
       expect(byTestId(wrapper, 'knowledge-upload-sync').text())
-        .toBe('2 new, 1 changed, 3 removed, 9 unchanged.')
+        .toBe('2 new, 1 to check, 3 missing, 9 unchanged.')
       expect(missing(wrapper, 'knowledge-upload-preview-summary')).toBe(true)
       expect(byTestId(wrapper, 'knowledge-upload-start').text())
         .toBe('Sync folder')
@@ -372,7 +375,37 @@ describe('Projects/Knowledge/UploadSheet', () => {
       })
 
       expect(byTestId(wrapper, 'knowledge-upload-sync-result').text())
-        .toBe('1 new, 0 changed, 0 removed, 5 unchanged.')
+        .toBe('1 new, 0 to check, 0 missing, 5 unchanged.')
+    })
+
+    it('summarises the real sync result with its notices', async () => {
+      const wrapper = await mountSheet({
+        phase: 'done',
+        syncSummary: {
+          added: 1,
+          replaced: 4,
+          removed: 2,
+          unchanged: 0,
+          plan,
+        },
+        syncResult: {
+          uploaded: 1,
+          skippedAsDuplicate: 3,
+          kept: 2,
+          removed: 0,
+          unchanged: 1,
+          unchangedUnknown: 3,
+          couldNotRemove: 0,
+          notices: ['2 files kept under their old name — they look like '
+            + 'renamed copies.'],
+        },
+        entries: [entry('a', 'ready')],
+      })
+
+      expect(byTestId(wrapper, 'knowledge-upload-sync-result').text())
+        .toBe('Folder synced: 1 new, 4 unchanged, 0 removed.')
+      expect(byTestId(wrapper, 'knowledge-upload-sync-notices').text())
+        .toContain('2 files kept under their old name')
     })
 
     it('shows a run-stopping error as an alert', async () => {

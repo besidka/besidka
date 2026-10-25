@@ -89,7 +89,7 @@
                   : 'text-base-content/70'"
                 data-testid="knowledge-note-title-counter"
               >
-                {{ normalizedTitle.length }}
+                {{ titleLength }}
                 / {{ KNOWLEDGE_LIMITS.maxTitleChars }}
               </p>
             </div>
@@ -318,11 +318,15 @@ const isEditing = computed<boolean>(() => {
 })
 
 const normalizedTitle = computed<string>(() => {
-  return draftTitle.value.replace(/[\r\n]+/g, ' ').trim()
+  return normalizeKnowledgeTitle(draftTitle.value)
+})
+
+const titleLength = computed<number>(() => {
+  return draftTitle.value.replace(/[\r\n]+/g, ' ').trim().length
 })
 
 const isTitleOverLimit = computed<boolean>(() => {
-  return normalizedTitle.value.length > KNOWLEDGE_LIMITS.maxTitleChars
+  return titleLength.value > KNOWLEDGE_LIMITS.maxTitleChars
 })
 
 const isBodyOverLimit = computed<boolean>(() => {

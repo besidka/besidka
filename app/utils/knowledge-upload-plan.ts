@@ -4,6 +4,7 @@ import {
   isIgnoredKnowledgePath,
 } from '#shared/utils/project-knowledge-policy'
 import { sha256Hex } from '~/utils/knowledge-hash'
+import { normalizeKnowledgeRelativePath } from '~/utils/knowledge-paths'
 
 export type KnowledgeSkipReason
   = | 'ignored-path'
@@ -13,6 +14,7 @@ export type KnowledgeSkipReason
     | 'too-large'
     | 'duplicate'
     | 'folder-limit'
+    | 'invalid-path'
 
 export type KnowledgeFileCategory = 'text' | 'document' | 'image'
 
@@ -64,6 +66,7 @@ export const knowledgeSkipReasonLabels: Record<KnowledgeSkipReason, string> = {
   'too-large': 'too large',
   'duplicate': 'already added',
   'folder-limit': 'over the folder limit (500 files or 20 MB)',
+  'invalid-path': 'invalid file names or paths',
 }
 
 const BINARY_SNIFF_BYTES = 8 * 1024
@@ -226,6 +229,18 @@ async function hasNulByteInHead(file: File): Promise<boolean> {
   return new Uint8Array(head).includes(0)
 }
 
+function normalizeEntryPath(
+  entry: KnowledgePlanEntry,
+): KnowledgePlanEntry | null {
+  if (entry.relativePath === null) {
+    return entry
+  }
+
+  const relativePath = normalizeKnowledgeRelativePath(entry.relativePath)
+
+  return relativePath === null ? null : { file: entry.file, relativePath }
+}
+
 export async function planKnowledgeUpload(
   { entries, gitignoreText, existingHashes }: {
     entries: KnowledgePlanEntry[]
@@ -240,7 +255,14 @@ export async function planKnowledgeUpload(
   const skipped: KnowledgeSkippedEntry[] = []
   let totalBytes = 0
 
-  for (const entry of entries) {
+  for (const rawEntry of entries) {
+    const entry = normalizeEntryPath(rawEntry)
+
+    if (!entry) {
+      skipped.push(toSkippedEntry(rawEntry, 'invalid-path'))
+      continue
+    }
+
     const { file, relativePath } = entry
     const classification = classifyEntry(entry, gitignoreRules)
 

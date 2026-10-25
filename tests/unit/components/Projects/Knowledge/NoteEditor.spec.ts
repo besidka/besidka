@@ -279,6 +279,19 @@ describe('Projects/Knowledge/NoteEditor', () => {
       expect(isSaveDisabled(wrapper)).toBe(false)
     })
 
+    it('sends a normalised title and never an extractor for new notes', async () => {
+      const wrapper = await mountEditor()
+
+      await fill(wrapper, 'Cafe\u0301\t  plan', 'Body')
+      await byTestId(wrapper, 'knowledge-note-save').trigger('click')
+      await flushPromises()
+
+      const payload = mocks.createNote.mock.calls[0]?.[0]
+
+      expect(payload).toEqual({ title: 'Caf\u00E9 plan', body: 'Body' })
+      expect(payload).not.toHaveProperty('extractor')
+    })
+
     it('creates the note, toasts and closes', async () => {
       const wrapper = await mountEditor()
 

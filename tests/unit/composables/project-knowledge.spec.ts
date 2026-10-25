@@ -761,6 +761,30 @@ describe('useProjectKnowledge', () => {
       expect(summaryData.value?.version).toBe(4)
     })
 
+    it('commit keeps items the server reports as skipped', async () => {
+      summaryData.value = createSummary({
+        items: [
+          createItem({ id: 'item-1', folderId: 'folder1' }),
+          createItem({ id: 'item-2', folderId: 'folder1' }),
+        ],
+      })
+      mocks.fetchMock.mockResolvedValueOnce({
+        version: 5,
+        packVersion: 5,
+        removed: ['item-1'],
+        skipped: ['item-2'],
+      })
+
+      const knowledge = useProjectKnowledge('project-shape-11')
+      const outcome = await knowledge.commit({
+        folderId: 'folder1',
+        remove: ['item-1', 'item-2'],
+      })
+
+      expect(outcome.ok && outcome.result.skipped).toEqual(['item-2'])
+      expect(summaryData.value?.items.map(item => item.id)).toEqual(['item-2'])
+    })
+
     it('commit sends an empty body by default', async () => {
       mocks.fetchMock.mockResolvedValueOnce({ version: 4, packVersion: 4 })
 

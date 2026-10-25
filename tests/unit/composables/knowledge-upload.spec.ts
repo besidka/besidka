@@ -73,6 +73,7 @@ let itemsResponder: (
   body: Record<string, any>,
   callIndex: number,
 ) => Promise<ItemsResponse> | ItemsResponse
+let commitExtras: Record<string, unknown> = {}
 let itemsCallCount = 0
 let createdItemCount = 0
 let versionCounter = 0
@@ -281,6 +282,7 @@ describe('useKnowledgeUpload', () => {
     recordedCalls.length = 0
     extractionOverrides.clear()
     hashesByName.clear()
+    commitExtras = {}
     itemsCallCount = 0
     createdItemCount = 0
     versionCounter = 0
@@ -316,7 +318,11 @@ describe('useKnowledgeUpload', () => {
       if (url.endsWith('/commit')) {
         versionCounter += 1
 
-        return { version: versionCounter, packVersion: versionCounter }
+        return {
+          version: versionCounter,
+          packVersion: versionCounter,
+          ...commitExtras,
+        }
       }
 
       throw new Error(`Unhandled request ${url}`)
@@ -662,20 +668,53 @@ describe('useKnowledgeUpload', () => {
       })
 
       await prepareAndStart(upload, [
-        createSource(longName, '/leading/slash.md'),
+        createSource(`${longName}`, '/leading/slash.md'),
         createSource('b.md', 'a/../b.md'),
       ])
 
       const [first, second] = itemCalls()[0]?.body?.items ?? []
 
       expect(first.title).toHaveLength(KNOWLEDGE_LIMITS.maxTitleChars)
-      expect(first.relativePath).toBe('leading/slash.md')
+      expect(first.relativePath).toBeNull()
       expect(first.pageCount).toBeNull()
       expect(first.contentHash).toBe(hashFor(`plan:${longName}`))
       expect(first.extractError).toHaveLength(64)
       expect(second.relativePath).toBeNull()
       expect(knowledgeItemsBatchCreateSchema.safeParse(itemCalls()[0]?.body)
         .success).toBe(true)
+    })
+
+    it('normalises titles and sends only valid paths and folder ids', async () => {
+      const { upload } = createUpload()
+
+      await prepareAndStart(
+        upload,
+        [
+          createSource('cafe\u0301\t  notes.md', 'docs/cafe\u0301.md'),
+          createSource('plain.md', null),
+        ],
+        { folderId: 'not a valid id!' },
+      )
+
+      const [first, second] = itemCalls()[0]?.body?.items ?? []
+
+      expect(first.title).toBe('caf\u00E9 notes.md')
+      expect(first.folderId).toBeNull()
+      expect(second.folderId).toBeNull()
+      expect(second.relativePath).toBeNull()
+      expect(knowledgeItemsBatchCreateSchema.safeParse(itemCalls()[0]?.body)
+        .success).toBe(true)
+    })
+
+    it('never sends a folder id or path for plain uploads', async () => {
+      const { upload } = createUpload()
+
+      await prepareAndStart(upload, [createSource('plain.md', null)])
+
+      const [item] = itemCalls()[0]?.body?.items ?? []
+
+      expect(item.folderId).toBeNull()
+      expect(item.relativePath).toBeNull()
     })
 
     it('fails a file whose extraction fails and keeps going', async () => {
@@ -1401,6 +1440,315 @@ describe('useKnowledgeUpload', () => {
         'old-b',
         'old-c',
       ])
+    })
+
+    describe('with unknown stored hashes', () => {
+      const unknownExisting = [
+        { id: 'old-a', relativePath: 'a.md', contentHash: '', folderId: 'folder1' },
+        { id: 'old-b', relativePath: 'b.md', contentHash: '', folderId: 'folder1' },
+        { id: 'old-c', relativePath: 'c.md', contentHash: '', folderId: 'folder1' },
+      ]
+
+      function simulateServer(storedHashes: string[]) {
+        const knownHashes = new Set<string>(storedHashes)
+
+        itemsResponder = (body) => {
+          versionCounter += 1
+
+          const items: KnowledgeItem[] = []
+          const skipped: Array<{ index: number, reason: 'duplicate' }> = []
+
+          body.items.forEach((payload: Record<string, any>, index: number) => {
+            if (knownHashes.has(payload.contentHash)) {
+              skipped.push({ index, reason: 'duplicate' })
+
+              return
+            }
+
+            knownHashes.add(payload.contentHash)
+            items.push(createKnowledgeItem(payload))
+          })
+
+          return {
+            items,
+            skipped,
+            version: versionCounter,
+            packVersion: body.commit ? versionCounter : null,
+          }
+        }
+      }
+
+      function sameContentAs(name: string, otherName: string) {
+        extractionOverrides.set(name, { contentHash: hashFor(otherName) })
+      }
+
+      async function runSync(
+        incoming: ReturnType<typeof createSource>[],
+        existingItems = unknownExisting,
+        folderId = 'folder1',
+      ) {
+        const { upload } = createUpload()
+
+        planSources(incoming)
+        await upload.syncFolder({ folderId, incoming, existing: existingItems })
+        await upload.start()
+
+        return upload
+      }
+
+      it('keeps an unchanged file instead of removing its old item', async () => {
+        simulateServer([hashFor('a.md')])
+
+        const upload = await runSync(
+          [createSource('a.md', 'a.md')],
+          [unknownExisting[0]!],
+        )
+
+        expect(upload.entries.value.map(entry => entry.status)).toEqual([
+          'skipped-duplicate',
+        ])
+        expect(commitCalls()).toHaveLength(0)
+        expect(upload.syncResult.value).toMatchObject({
+          uploaded: 0,
+          skippedAsDuplicate: 1,
+          kept: 0,
+          removed: 0,
+          unchangedUnknown: 1,
+          notices: [],
+        })
+        expect(upload.phase.value).toBe('done')
+      })
+
+      it('replaces a changed file and removes only its old item', async () => {
+        simulateServer([hashFor('a.md')])
+        extractionOverrides.set('a.md', { contentHash: hashFor('a.md:v2') })
+
+        const upload = await runSync(
+          [createSource('a.md', 'a.md')],
+          [unknownExisting[0]!],
+        )
+
+        expect(commitCalls()).toHaveLength(1)
+        expect(commitCalls()[0]?.body).toEqual({
+          folderId: 'folder1',
+          remove: ['old-a'],
+        })
+        expect(upload.syncResult.value).toMatchObject({
+          uploaded: 1,
+          skippedAsDuplicate: 0,
+          removed: 1,
+          unchangedUnknown: 0,
+        })
+      })
+
+      it('keeps the old path of a renamed identical file and says so', async () => {
+        simulateServer([hashFor('a.md')])
+        sameContentAs('a2.md', 'a.md')
+
+        const upload = await runSync(
+          [createSource('a2.md', 'a2.md')],
+          [unknownExisting[0]!],
+        )
+
+        expect(upload.entries.value.map(entry => entry.status)).toEqual([
+          'skipped-duplicate',
+        ])
+        expect(commitCalls()).toHaveLength(0)
+        expect(upload.syncResult.value).toMatchObject({
+          uploaded: 0,
+          skippedAsDuplicate: 1,
+          kept: 1,
+          removed: 0,
+          notices: [
+            '1 file kept under its old name — it looks like a renamed copy.',
+          ],
+        })
+      })
+
+      it('removes a deleted file when nothing was skipped as a rename', async () => {
+        simulateServer([
+          hashFor('a.md'),
+          hashFor('b.md'),
+        ])
+
+        const upload = await runSync(
+          [createSource('a.md', 'a.md')],
+          [unknownExisting[0]!, unknownExisting[1]!],
+        )
+
+        expect(commitCalls()).toHaveLength(1)
+        expect(commitCalls()[0]?.body).toEqual({
+          folderId: 'folder1',
+          remove: ['old-b'],
+        })
+        expect(upload.syncResult.value).toMatchObject({
+          uploaded: 0,
+          removed: 1,
+          unchangedUnknown: 1,
+          kept: 0,
+        })
+      })
+
+      it('handles unchanged, changed, new, renamed and deleted together', async () => {
+        simulateServer([
+          hashFor('a.md'),
+          hashFor('b.md'),
+          hashFor('c.md'),
+          hashFor('e.md'),
+        ])
+        extractionOverrides.set('b.md', { contentHash: hashFor('b.md:v2') })
+        sameContentAs('e2.md', 'e.md')
+
+        const upload = await runSync(
+          [
+            createSource('a.md', 'a.md'),
+            createSource('b.md', 'b.md'),
+            createSource('d.md', 'd.md'),
+            createSource('e2.md', 'e2.md'),
+          ],
+          [
+            ...unknownExisting,
+            {
+              id: 'old-e',
+              relativePath: 'e.md',
+              contentHash: '',
+              folderId: 'folder1',
+            },
+          ],
+        )
+
+        expect(commitCalls()).toHaveLength(1)
+        expect(commitCalls()[0]?.body).toEqual({
+          folderId: 'folder1',
+          remove: ['old-b'],
+        })
+        expect(upload.syncResult.value).toMatchObject({
+          uploaded: 2,
+          skippedAsDuplicate: 2,
+          unchangedUnknown: 1,
+          kept: 2,
+          removed: 1,
+        })
+        expect(upload.syncResult.value?.notices).toEqual([
+          '2 files kept under their old name — they look like renamed copies.',
+        ])
+      })
+
+      it('sends one bare commit when files were only added', async () => {
+        simulateServer([])
+
+        const upload = await runSync([createSource('d.md', 'd.md')], [])
+
+        expect(commitCalls()).toHaveLength(1)
+        expect(commitCalls()[0]?.body).toEqual({})
+        expect(itemCalls()[0]?.body?.commit).toBeUndefined()
+        expect(knowledgeCommitSchema.safeParse(commitCalls()[0]?.body).success)
+          .toBe(true)
+        expect(upload.syncResult.value).toMatchObject({
+          uploaded: 1,
+          removed: 0,
+        })
+      })
+
+      it('creates items with the folder id that the commit later uses', async () => {
+        simulateServer([hashFor('a.md')])
+        extractionOverrides.set('a.md', { contentHash: hashFor('a.md:v2') })
+
+        await runSync([createSource('a.md', 'a.md')], [unknownExisting[0]!])
+
+        const createdFolderIds = itemCalls().flatMap((call) => {
+          return call.body?.items.map((item: any) => item.folderId)
+        })
+
+        expect(createdFolderIds).toEqual(['folder1'])
+        expect(commitCalls()[0]?.body?.folderId).toBe('folder1')
+      })
+
+      it('never removes items that belong to another folder', async () => {
+        simulateServer([hashFor('a.md')])
+
+        const upload = await runSync(
+          [createSource('a.md', 'a.md')],
+          [
+            unknownExisting[0]!,
+            {
+              id: 'foreign',
+              relativePath: 'z.md',
+              contentHash: '',
+              folderId: 'other-folder',
+            },
+            {
+              id: 'loose',
+              relativePath: 'y.md',
+              contentHash: '',
+              folderId: null,
+            },
+          ],
+        )
+
+        expect(commitCalls()).toHaveLength(0)
+        expect(upload.syncResult.value).toMatchObject({
+          kept: 2,
+          removed: 0,
+          notices: ['2 items belong to a different folder and was kept.'],
+        })
+      })
+
+      it('reports ids the server could not remove as a notice', async () => {
+        simulateServer([hashFor('a.md'), hashFor('c.md')])
+        commitExtras = { removed: ['old-c'], skipped: ['old-b'] }
+        extractionOverrides.set('b.md', { contentHash: hashFor('b.md:v2') })
+
+        const upload = await runSync(
+          [createSource('b.md', 'b.md')],
+          [unknownExisting[1]!, unknownExisting[2]!],
+        )
+
+        expect([...(commitCalls()[0]?.body?.remove ?? [])].sort()).toEqual([
+          'old-b',
+          'old-c',
+        ])
+        expect(upload.syncResult.value).toMatchObject({
+          removed: 1,
+          couldNotRemove: 1,
+          notices: ['1 item could not be removed.'],
+        })
+        expect(upload.phase.value).toBe('done')
+      })
+
+      it('stops without removals when a batch fails', async () => {
+        itemsResponder = () => {
+          throw createFetchError(500, 'Boom')
+        }
+
+        const upload = await runSync(
+          [createSource('b.md', 'b.md'), createSource('d.md', 'd.md')],
+          [unknownExisting[1]!, unknownExisting[2]!],
+        )
+
+        expect(upload.phase.value).toBe('error')
+        expect(commitCalls()).toHaveLength(0)
+        expect(upload.syncResult.value).toMatchObject({
+          uploaded: 0,
+          removed: 0,
+        })
+      })
+
+      it('rejects a folder id the server would refuse', async () => {
+        const { upload } = createUpload()
+        const incoming = [createSource('a.md', 'a.md')]
+
+        planSources(incoming)
+        await upload.syncFolder({
+          folderId: 'bad id!',
+          incoming,
+          existing: [],
+        })
+
+        expect(upload.phase.value).toBe('error')
+        expect(upload.error.value?.status).toBe(400)
+        expect(mocks.fetchMock).not.toHaveBeenCalled()
+      })
     })
   })
 })

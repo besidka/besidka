@@ -135,12 +135,29 @@
               The upload was cancelled. Files that finished are kept.
             </p>
             <p
-              v-if="syncSummary"
+              v-if="syncResult || syncSummary"
               class="text-sm"
               data-testid="knowledge-upload-sync-result"
             >
-              {{ describeSync(syncSummary) }}
+              {{
+                syncResult
+                  ? describeSyncResult(syncResult)
+                  : describeSync(syncSummary)
+              }}
             </p>
+            <ul
+              v-if="syncResult && syncResult.notices.length > 0"
+              class="grid gap-1 text-sm text-base-content/70"
+              aria-label="Sync notices"
+              data-testid="knowledge-upload-sync-notices"
+            >
+              <li
+                v-for="notice in syncResult.notices"
+                :key="notice"
+              >
+                {{ notice }}
+              </li>
+            </ul>
             <ul
               class="grid gap-1 text-sm"
               aria-label="Upload summary"
@@ -282,6 +299,7 @@
 <script setup lang="ts">
 import type { KnowledgePlanSummary } from '~/utils/knowledge-upload-plan'
 import type {
+  KnowledgeSyncResult,
   KnowledgeSyncSummary,
   KnowledgeUploadEntry,
   KnowledgeUploadFailure,
@@ -295,6 +313,7 @@ const props = defineProps<{
   phase: KnowledgeUploadPhase
   plan: KnowledgePlanSummary | null
   syncSummary: KnowledgeSyncSummary | null
+  syncResult?: KnowledgeSyncResult | null
   wasCancelled: boolean
   entries: KnowledgeUploadEntry[]
   progress: KnowledgeUploadProgress
@@ -400,9 +419,20 @@ const hiddenEntryCount = computed<number>(() => {
   return Math.max(0, props.entries.length - MAX_LISTED_ENTRIES)
 })
 
-function describeSync(syncSummary: KnowledgeSyncSummary): string {
-  return `${syncSummary.added} new, ${syncSummary.replaced} changed, `
-    + `${syncSummary.removed} removed, ${syncSummary.unchanged} unchanged.`
+function describeSync(syncSummary: KnowledgeSyncSummary | null): string {
+  if (!syncSummary) {
+    return ''
+  }
+
+  return `${syncSummary.added} new, ${syncSummary.replaced} to check, `
+    + `${syncSummary.removed} missing, ${syncSummary.unchanged} unchanged.`
+}
+
+function describeSyncResult(syncResult: KnowledgeSyncResult): string {
+  const unchanged = syncResult.unchanged + syncResult.unchangedUnknown
+
+  return `Folder synced: ${syncResult.uploaded} new, ${unchanged} unchanged, `
+    + `${syncResult.removed} removed.`
 }
 
 function describeEntry(entry: KnowledgeUploadEntry): string {

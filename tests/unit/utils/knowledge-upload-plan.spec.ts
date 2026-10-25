@@ -142,6 +142,40 @@ describe('planKnowledgeUpload classification', () => {
     ])
   })
 
+  it('skips invalid relative paths with their own reason', async () => {
+    const result = await plan([
+      entry(textFile('a.md', 'one'), 'dir\\a.md'),
+      entry(textFile('b.md', 'two'), '/abs/b.md'),
+      entry(textFile('c.md', 'three'), 'dir//c.md'),
+      entry(textFile('d.md', 'four'), '../d.md'),
+      entry(textFile('e.md', 'five'), 'dir/e\u0007.md'),
+      entry(textFile('f.md', 'six'), 'ok/f.md'),
+    ])
+
+    expect(result.accepted.map(item => item.relativePath)).toEqual(['ok/f.md'])
+    expect(result.skipped.map(item => item.reason)).toEqual([
+      'invalid-path',
+      'invalid-path',
+      'invalid-path',
+      'invalid-path',
+      'invalid-path',
+    ])
+  })
+
+  it('stores the NFC form of an accepted path', async () => {
+    const result = await plan([
+      entry(textFile('e.md', 'one'), 'cafe\u0301/e\u0301.md'),
+    ])
+
+    expect(result.accepted[0]?.relativePath).toBe('caf\u00E9/\u00E9.md')
+  })
+
+  it('keeps null relative paths for plain uploads', async () => {
+    const result = await plan([entry(textFile('plain.md', 'one'), null)])
+
+    expect(result.accepted[0]?.relativePath).toBeNull()
+  })
+
   it('applies the root .gitignore subset to relative paths', async () => {
     const result = await plan(
       [
@@ -342,6 +376,7 @@ describe('summarizeKnowledgePlan', () => {
       'folder-limit',
       'gitignore',
       'ignored-path',
+      'invalid-path',
       'too-large',
       'unsupported',
     ])

@@ -172,6 +172,7 @@ function createState() {
     phase: shallowRef<KnowledgeUploadPhase>('idle'),
     plan: shallowRef<unknown>(null),
     syncSummary: shallowRef<unknown>(null),
+    syncResult: shallowRef<unknown>(null),
     entries: shallowRef<KnowledgeUploadEntry[]>([]),
     progress: shallowRef({
       done: 0,
@@ -645,6 +646,7 @@ describe('Projects/Knowledge/Panel', () => {
           id: 'folder-item',
           relativePath: 'src/a.ts',
           contentHash: '',
+          folderId: 'folder-1',
         }],
         gitignoreText: '',
       })

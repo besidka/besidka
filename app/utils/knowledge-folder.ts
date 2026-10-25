@@ -1,5 +1,6 @@
 import { knowledgeIgnoredDirectories } from '#shared/utils/project-knowledge-policy'
 import type { KnowledgePlanEntry } from '~/utils/knowledge-upload-plan'
+import { normalizeKnowledgeRelativePath } from '~/utils/knowledge-paths'
 import {
   isIgnoredByGitignore,
   parseSimpleGitignore,
@@ -30,7 +31,11 @@ export interface KnowledgeFolderDiff<
   Incoming extends KnowledgeFolderIncomingItem,
 > {
   add: Incoming[]
-  replace: Array<{ itemId: string, incoming: Incoming }>
+  replace: Array<{
+    itemId: string
+    incoming: Incoming
+    hasKnownHash: boolean
+  }>
   remove: string[]
   unchanged: number
 }
@@ -50,6 +55,10 @@ const HANDLE_STORE_NAME = 'directory-handles'
 const MAX_WALKED_FILES = 5000
 const GITIGNORE_FILE_NAME = '.gitignore'
 
+function toEntryPath(path: string): string {
+  return normalizeKnowledgeRelativePath(path) ?? path
+}
+
 export function entriesFromFileList(
   files: FileList | File[],
 ): KnowledgeFolderEntries {
@@ -66,12 +75,12 @@ export function entriesFromFileList(
     }
 
     if (segments.length === 1) {
-      return { file, relativePath: segments[0] ?? null }
+      return { file, relativePath: toEntryPath(segments[0] ?? '') }
     }
 
     rootName ??= segments[0] ?? null
 
-    return { file, relativePath: segments.slice(1).join('/') }
+    return { file, relativePath: toEntryPath(segments.slice(1).join('/')) }
   })
 
   return { rootName, entries }
@@ -138,7 +147,7 @@ export async function readDirectoryHandleEntries(
 
       const file = await (child as FileSystemFileHandle).getFile()
 
-      entries.push({ file, relativePath: childPath })
+      entries.push({ file, relativePath: toEntryPath(childPath) })
     }
   }
 
@@ -257,6 +266,10 @@ export async function removeKnowledgeDirectoryHandle(
   return outcome.ok
 }
 
+function isKnownHash(contentHash: string): boolean {
+  return contentHash.length > 0
+}
+
 export function diffFolderSync<Incoming extends KnowledgeFolderIncomingItem>(
   { existing, incoming }: {
     existing: KnowledgeFolderSyncItem[]
@@ -286,10 +299,22 @@ export function diffFolderSync<Incoming extends KnowledgeFolderIncomingItem>(
 
     if (!match) {
       diff.add.push(item)
-    } else if (match.contentHash === item.contentHash) {
-      diff.unchanged += 1
+    } else if (isKnownHash(match.contentHash)) {
+      if (match.contentHash === item.contentHash) {
+        diff.unchanged += 1
+      } else {
+        diff.replace.push({
+          itemId: match.id,
+          incoming: item,
+          hasKnownHash: true,
+        })
+      }
     } else {
-      diff.replace.push({ itemId: match.id, incoming: item })
+      diff.replace.push({
+        itemId: match.id,
+        incoming: item,
+        hasKnownHash: false,
+      })
     }
   }
 

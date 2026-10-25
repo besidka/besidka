@@ -7,6 +7,7 @@ import type {
 import type {
   KnowledgeAddItemsOptions,
   KnowledgeCommitInput,
+  KnowledgeCommitResult,
   KnowledgeItemInput,
   KnowledgeItemPatchInput,
   KnowledgeItemsAddResult,
@@ -423,16 +424,19 @@ export function useProjectKnowledge(
 
   function commit(
     body: KnowledgeCommitInput = {},
-  ): Promise<ProjectKnowledgeOutcome<KnowledgeVersionResult>> {
-    return runMutation<KnowledgeVersionResult>(
+  ): Promise<ProjectKnowledgeOutcome<KnowledgeCommitResult>> {
+    return runMutation<KnowledgeCommitResult>(
       (id) => {
-        return $fetch<KnowledgeVersionResult>(`${baseUrl(id)}/commit`, {
+        return $fetch<KnowledgeCommitResult>(`${baseUrl(id)}/commit`, {
           method: 'POST',
           body,
         })
       },
       (id, result) => {
-        const removedIds = new Set<string>(body.remove ?? [])
+        const skippedIds = new Set<string>(result.skipped ?? [])
+        const removedIds = new Set<string>(
+          (body.remove ?? []).filter(itemId => !skippedIds.has(itemId)),
+        )
 
         patchSummary(id, (summary) => {
           return withItems(

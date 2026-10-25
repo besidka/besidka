@@ -273,6 +273,7 @@
       :phase="upload.phase.value"
       :plan="upload.plan.value"
       :sync-summary="upload.syncSummary.value"
+      :sync-result="upload.syncResult.value"
       :was-cancelled="upload.wasCancelled.value"
       :entries="upload.entries.value"
       :progress="upload.progress.value"
@@ -623,7 +624,12 @@ async function syncFolder(folderId: string) {
         return []
       }
 
-      return [{ id: item.id, relativePath: item.relativePath, contentHash: '' }]
+      return [{
+        id: item.id,
+        relativePath: item.relativePath,
+        contentHash: '',
+        folderId: item.folderId,
+      }]
     })
 
     isUploadSheetOpen.value = true

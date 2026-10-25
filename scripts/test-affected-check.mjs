@@ -500,6 +500,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
     'tests/unit/utils/knowledge-upload-plan.spec.ts',
     'tests/unit/utils/knowledge-folder.spec.ts',
+    'tests/unit/utils/knowledge-paths.spec.ts',
     'tests/unit/utils/project-knowledge-ui.spec.ts',
     'tests/unit/utils/reasoning.spec.ts',
     'tests/unit/composables/knowledge-extract.spec.ts',
@@ -1759,7 +1760,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/workers\/knowledge-extract\.ts|app\/components\/Projects\/Knowledge\/.*\.vue|app\/components\/Profile\/Memory\/CacheInfo\.vue|app\/composables\/(knowledge-extract|knowledge-upload|project-knowledge|project-knowledge-model|project-knowledge-folders)\.ts|app\/utils\/(knowledge-hash|knowledge-html-to-markdown|knowledge-upload-plan|knowledge-folder|project-knowledge-ui|reasoning)\.ts|app\/types\/(knowledge-extract|knowledge-ui|project-knowledge)\.d\.ts|tests\/setup\/helpers\/knowledge-(fixtures|ui-fixtures)\.ts)$/,
+        /^(app\/workers\/knowledge-extract\.ts|app\/components\/Projects\/Knowledge\/.*\.vue|app\/components\/Profile\/Memory\/CacheInfo\.vue|app\/composables\/(knowledge-extract|knowledge-upload|project-knowledge|project-knowledge-model|project-knowledge-folders)\.ts|app\/utils\/(knowledge-hash|knowledge-html-to-markdown|knowledge-upload-plan|knowledge-folder|knowledge-paths|project-knowledge-ui|reasoning)\.ts|app\/types\/(knowledge-extract|knowledge-ui|project-knowledge)\.d\.ts|tests\/setup\/helpers\/knowledge-(fixtures|ui-fixtures)\.ts)$/,
       tests: projectKnowledgeClientTests,
     },
     {

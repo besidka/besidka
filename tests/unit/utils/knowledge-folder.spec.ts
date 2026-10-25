@@ -156,6 +156,22 @@ describe('entriesFromFileList', () => {
     ])
   })
 
+  it('normalises paths to NFC', () => {
+    const { entries } = entriesFromFileList([
+      fileWithPath('é.md', 'root/cafe\u0301/e\u0301.md'),
+    ])
+
+    expect(entries[0]?.relativePath).toBe('caf\u00E9/\u00E9.md')
+  })
+
+  it('keeps an invalid path so planning can reject it', () => {
+    const { entries } = entriesFromFileList([
+      fileWithPath('a.md', 'root/dir/a\\b.md'),
+    ])
+
+    expect(entries[0]?.relativePath).toBe('dir/a\\b.md')
+  })
+
   it('returns null paths for plain file picks', () => {
     const { rootName, entries } = entriesFromFileList([
       new File(['x'], 'plain.txt'),
@@ -195,11 +211,42 @@ describe('diffFolderSync', () => {
         {
           itemId: 'i2',
           incoming: { relativePath: 'b.md', contentHash: 'h-b2' },
+          hasKnownHash: true,
         },
       ],
       remove: ['i3'],
       unchanged: 1,
     })
+  })
+
+  it('treats an unknown (empty) hash as maybe changed, never unchanged', () => {
+    const incoming = [
+      { relativePath: 'a.md', contentHash: 'h-a' },
+      { relativePath: 'b.md', contentHash: '' },
+    ]
+    const diff = diffFolderSync({
+      existing: [
+        { id: 'i1', relativePath: 'a.md', contentHash: '' },
+        { id: 'i2', relativePath: 'b.md', contentHash: '' },
+      ],
+      incoming,
+    })
+
+    expect(diff.unchanged).toBe(0)
+    expect(diff.remove).toEqual([])
+    expect(diff.replace).toEqual([
+      { itemId: 'i1', incoming: incoming[0], hasKnownHash: false },
+      { itemId: 'i2', incoming: incoming[1], hasKnownHash: false },
+    ])
+  })
+
+  it('counts an item with a known equal hash as unchanged', () => {
+    const diff = diffFolderSync({
+      existing: [{ id: 'i1', relativePath: 'a.md', contentHash: 'h-a' }],
+      incoming: [{ relativePath: 'a.md', contentHash: 'h-a' }],
+    })
+
+    expect(diff).toEqual({ add: [], replace: [], remove: [], unchanged: 1 })
   })
 
   it('keeps extra fields on incoming items', () => {
@@ -271,6 +318,18 @@ describe('readDirectoryHandleEntries', () => {
       'src/lib/util.ts',
     ])
     expect(result.entries[1]?.file.name).toBe('README.md')
+  })
+
+  it('normalises walked paths to NFC', async () => {
+    const result = await readDirectoryHandleEntries(
+      fakeDirectory('repo', [
+        fakeDirectory('cafe\u0301', [fakeFile('e\u0301.md')]),
+      ]) as unknown as FileSystemDirectoryHandle,
+    )
+
+    expect(result.entries.map(entry => entry.relativePath)).toEqual([
+      'caf\u00E9/\u00E9.md',
+    ])
   })
 
   it('returns empty gitignore text when the file is missing', async () => {

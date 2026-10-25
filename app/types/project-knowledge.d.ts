@@ -41,6 +41,11 @@ export interface KnowledgeVersionResult {
   packVersion: number | null
 }
 
+export interface KnowledgeCommitResult extends KnowledgeVersionResult {
+  removed?: string[] | number
+  skipped?: string[]
+}
+
 export interface KnowledgeItemsAddResult extends KnowledgeVersionResult {
   items: KnowledgeItem[]
   skipped: Array<{ index: number, reason: 'duplicate' }>
@@ -106,10 +111,17 @@ export interface KnowledgePrepareOptions {
   gitignoreText?: string
 }
 
+export interface KnowledgeFolderExistingItem {
+  id: string
+  relativePath: string
+  contentHash: string
+  folderId?: string | null
+}
+
 export interface KnowledgeFolderSyncInput {
   folderId: string
   incoming: KnowledgeUploadSource[]
-  existing: Array<{ id: string, relativePath: string, contentHash: string }>
+  existing: KnowledgeFolderExistingItem[]
   gitignoreText?: string
 }
 
@@ -119,4 +131,15 @@ export interface KnowledgeSyncSummary {
   removed: number
   unchanged: number
   plan: KnowledgePlanSummary
+}
+
+export interface KnowledgeSyncResult {
+  uploaded: number
+  skippedAsDuplicate: number
+  kept: number
+  removed: number
+  unchanged: number
+  unchangedUnknown: number
+  couldNotRemove: number
+  notices: string[]
 }

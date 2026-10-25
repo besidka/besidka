@@ -1,9 +1,11 @@
 import { parseError } from 'evlog'
 import type { KnowledgeExtractionResult } from '~/types/knowledge-extract.d'
 import type {
+  KnowledgeCommitInput,
   KnowledgeFolderSyncInput,
   KnowledgeItemInput,
   KnowledgePrepareOptions,
+  KnowledgeSyncResult,
   KnowledgeSyncSummary,
   KnowledgeUploadEntry,
   KnowledgeUploadEntryStatus,
@@ -18,6 +20,10 @@ import type {
   KnowledgePlanSummary,
   KnowledgeUploadPlan,
 } from '~/utils/knowledge-upload-plan'
+import {
+  normalizeKnowledgeRelativePath,
+  normalizeKnowledgeTitle,
+} from '~/utils/knowledge-paths'
 import { uploadWithProgress } from '~/utils/upload-with-progress'
 
 interface UploadRecord {
@@ -37,10 +43,32 @@ interface PendingBatch {
   bytes: number
 }
 
+interface SyncRemoval {
+  itemId: string
+  replacedByKey: string | null
+  hasKnownHash: boolean
+}
+
+interface SyncState {
+  removals: SyncRemoval[]
+  addKeys: Set<string>
+  unchanged: number
+  foreignFolderItems: number
+  removed: number
+  couldNotRemove: number
+}
+
+interface RemovalPlan {
+  removableIds: string[]
+  keptRenamed: number
+  keptReplaced: number
+  unchangedUnknown: number
+}
+
 interface RunContext {
   folderId: string | null
   commitWithLastBatch: boolean
-  removals: Map<string, string | null>
+  sync: SyncState | null
 }
 
 interface RunState {
@@ -67,14 +95,11 @@ const STORAGE_MESSAGE_PATTERN = /storage|quota/i
 
 const CONTENT_HASH_PATTERN = /^[a-f0-9]{64}$/
 
-const CONTROL_CHARACTERS_PATTERN = /[\p{Cc}\u2028\u2029]/u
+const FOLDER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
-const CONTROL_CHARACTERS_GLOBAL_PATTERN = /[\p{Cc}\u2028\u2029]/gu
-
-const SETTLED_STATUSES: readonly KnowledgeUploadEntryStatus[] = [
+const CREATED_STATUSES: readonly KnowledgeUploadEntryStatus[] = [
   'ready',
   'no-text',
-  'skipped-duplicate',
 ]
 
 const STATUS_FALLBACK_MESSAGES: Record<number, string> = {
@@ -99,13 +124,7 @@ function createFolderId(): string {
 }
 
 function toTitle(name: string): string {
-  const title = name
-    .replace(CONTROL_CHARACTERS_GLOBAL_PATTERN, ' ')
-    .trim()
-    .slice(0, KNOWLEDGE_LIMITS.maxTitleChars)
-    .trim()
-
-  return title || 'Untitled'
+  return normalizeKnowledgeTitle(name) || 'Untitled'
 }
 
 function toRelativePath(relativePath: string | null): string | null {
@@ -113,20 +132,19 @@ function toRelativePath(relativePath: string | null): string | null {
     return null
   }
 
-  const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
-  const hasParentSegment = normalized.split('/').includes('..')
-  const hasControlCharacters = CONTROL_CHARACTERS_PATTERN.test(normalized)
+  return normalizeKnowledgeRelativePath(relativePath)
+}
 
-  if (
-    normalized.length === 0
-    || normalized.length > KNOWLEDGE_LIMITS.maxRelativePathChars
-    || hasParentSegment
-    || hasControlCharacters
-  ) {
+function toFolderId(folderId: string | null): string | null {
+  if (folderId === null || !FOLDER_ID_PATTERN.test(folderId)) {
     return null
   }
 
-  return normalized
+  return folderId
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural
 }
 
 function toContentHash(
@@ -201,7 +219,7 @@ function buildPayload(
   const payload: KnowledgeItemInput = {
     title: toTitle(record.accepted.name),
     relativePath: toRelativePath(record.accepted.relativePath),
-    folderId: context.folderId,
+    folderId: toFolderId(context.folderId),
     contentHash: toContentHash(
       extracted.contentHash,
       record.accepted.contentHash,
@@ -247,6 +265,7 @@ export function useKnowledgeUpload(
   const phase = shallowRef<KnowledgeUploadPhase>('idle')
   const plan = shallowRef<KnowledgePlanSummary | null>(null)
   const syncSummary = shallowRef<KnowledgeSyncSummary | null>(null)
+  const syncResult = shallowRef<KnowledgeSyncResult | null>(null)
   const entries = shallowRef<KnowledgeUploadEntry[]>([])
   const progress = shallowRef<KnowledgeUploadProgress>(createEmptyProgress())
   const error = shallowRef<KnowledgeUploadFailure | null>(null)
@@ -256,7 +275,7 @@ export function useKnowledgeUpload(
   let context: RunContext = {
     folderId: null,
     commitWithLastBatch: true,
-    removals: new Map(),
+    sync: null,
   }
   let hasUncommittedBatches = false
   let activeRun: RunState | null = null
@@ -296,11 +315,12 @@ export function useKnowledgeUpload(
     context = {
       folderId: null,
       commitWithLastBatch: true,
-      removals: new Map(),
+      sync: null,
     }
     entries.value = []
     plan.value = null
     syncSummary.value = null
+    syncResult.value = null
     progress.value = createEmptyProgress()
     error.value = null
     wasCancelled.value = false
@@ -429,18 +449,35 @@ export function useKnowledgeUpload(
 
         registerAccepted(knowledgePlan.accepted, collectFileIds(sources))
         context = {
-          folderId: options.folderId
-            ?? (hasRelativePaths ? createFolderId() : null),
+          folderId: toFolderId(
+            options.folderId ?? (hasRelativePaths ? createFolderId() : null),
+          ),
           commitWithLastBatch: true,
-          removals: new Map(),
+          sync: null,
         }
         plan.value = summarizeKnowledgePlan(knowledgePlan)
       },
     )
   }
 
-  function syncFolder(input: KnowledgeFolderSyncInput): Promise<void> {
-    return beginPlanning(
+  async function syncFolder(input: KnowledgeFolderSyncInput): Promise<void> {
+    if (isBusy.value) {
+      return
+    }
+
+    if (toFolderId(input.folderId) !== input.folderId) {
+      clearSession()
+      error.value = {
+        message: 'This folder can not be synced.',
+        why: 'The folder id is not valid.',
+        status: 400,
+      }
+      phase.value = 'error'
+
+      return
+    }
+
+    await beginPlanning(
       input.incoming,
       input.gitignoreText ?? '',
       (knowledgePlan) => {
@@ -449,8 +486,14 @@ export function useKnowledgeUpload(
             ? []
             : [{ ...entry, relativePath: entry.relativePath }]
         })
+        const foreignFolderItems = input.existing.filter((item) => {
+          return item.folderId !== undefined
+            && item.folderId !== input.folderId
+        })
         const diff = diffFolderSync({
-          existing: input.existing,
+          existing: input.existing.filter((item) => {
+            return !foreignFolderItems.includes(item)
+          }),
           incoming: incomingWithPaths,
         })
         const queued = [
@@ -461,23 +504,31 @@ export function useKnowledgeUpload(
           queued,
           collectFileIds(input.incoming),
         )
-        const removals = new Map<string, string | null>()
-
-        for (const itemId of diff.remove) {
-          removals.set(itemId, null)
-        }
+        const removals: SyncRemoval[] = diff.remove.map((itemId) => {
+          return { itemId, replacedByKey: null, hasKnownHash: false }
+        })
 
         for (const replacement of diff.replace) {
-          removals.set(
-            replacement.itemId,
-            keyByAccepted.get(replacement.incoming) ?? null,
-          )
+          removals.push({
+            itemId: replacement.itemId,
+            replacedByKey: keyByAccepted.get(replacement.incoming) ?? null,
+            hasKnownHash: replacement.hasKnownHash,
+          })
         }
 
         context = {
           folderId: input.folderId,
           commitWithLastBatch: false,
-          removals,
+          sync: {
+            removals,
+            addKeys: new Set<string>(
+              diff.add.flatMap(entry => keyByAccepted.get(entry) ?? []),
+            ),
+            unchanged: diff.unchanged,
+            foreignFolderItems: foreignFolderItems.length,
+            removed: 0,
+            couldNotRemove: 0,
+          },
         }
         plan.value = summarizeKnowledgePlan(knowledgePlan)
         syncSummary.value = {
@@ -669,60 +720,162 @@ export function useKnowledgeUpload(
 
       return { ...entry, status, error: null }
     })
-    hasUncommittedBatches = !commit
+
+    if (commit) {
+      hasUncommittedBatches = false
+    } else if (outcome.result.items.length > 0) {
+      hasUncommittedBatches = true
+    }
 
     return null
   }
 
-  function collectRemovableIds(isRunComplete: boolean): string[] {
-    const removableIds: string[] = []
+  function getEntryStatus(key: string): KnowledgeUploadEntryStatus | null {
+    return entries.value.find(entry => entry.key === key)?.status ?? null
+  }
 
-    for (const [itemId, requiredKey] of context.removals) {
-      if (requiredKey === null) {
-        if (isRunComplete) {
-          removableIds.push(itemId)
+  function planRemovals(sync: SyncState, isRunComplete: boolean): RemovalPlan {
+    const hasSkippedAdd = Array.from(sync.addKeys).some((key) => {
+      return getEntryStatus(key) === 'skipped-duplicate'
+    })
+    const removalPlan: RemovalPlan = {
+      removableIds: [],
+      keptRenamed: 0,
+      keptReplaced: 0,
+      unchangedUnknown: 0,
+    }
+
+    for (const removal of sync.removals) {
+      if (removal.replacedByKey === null) {
+        if (!isRunComplete) {
+          continue
         }
+
+        if (hasSkippedAdd) {
+          removalPlan.keptRenamed += 1
+
+          continue
+        }
+
+        removalPlan.removableIds.push(removal.itemId)
 
         continue
       }
 
-      const requiredEntry = entries.value.find((entry) => {
-        return entry.key === requiredKey
-      })
+      const status = getEntryStatus(removal.replacedByKey)
 
-      if (requiredEntry && SETTLED_STATUSES.includes(requiredEntry.status)) {
-        removableIds.push(itemId)
+      if (status && CREATED_STATUSES.includes(status)) {
+        removalPlan.removableIds.push(removal.itemId)
+      } else if (status === 'skipped-duplicate' && removal.hasKnownHash) {
+        removalPlan.keptReplaced += 1
+      } else if (status === 'skipped-duplicate') {
+        removalPlan.unchangedUnknown += 1
       }
     }
 
-    return removableIds
+    return removalPlan
+  }
+
+  function describeSyncNotices(
+    sync: SyncState,
+    removalPlan: RemovalPlan,
+  ): string[] {
+    const notices: string[] = []
+
+    if (removalPlan.keptRenamed === 1) {
+      notices.push(
+        '1 file kept under its old name — it looks like a renamed copy.',
+      )
+    } else if (removalPlan.keptRenamed > 1) {
+      notices.push(
+        `${removalPlan.keptRenamed} files kept under their old name — `
+        + 'they look like renamed copies.',
+      )
+    }
+
+    if (sync.foreignFolderItems > 0) {
+      const count = sync.foreignFolderItems
+
+      notices.push(
+        `${count} ${pluralize(count, 'item belongs', 'items belong')} to a `
+        + 'different folder and was kept.',
+      )
+    }
+
+    if (sync.couldNotRemove > 0) {
+      const count = sync.couldNotRemove
+
+      notices.push(
+        `${count} ${pluralize(count, 'item', 'items')} could not be removed.`,
+      )
+    }
+
+    return notices
+  }
+
+  function publishSyncResult(
+    sync: SyncState,
+    removalPlan: RemovalPlan,
+  ): void {
+    const countStatus = (statuses: readonly KnowledgeUploadEntryStatus[]) => {
+      return entries.value.filter((entry) => {
+        return statuses.includes(entry.status)
+      }).length
+    }
+
+    syncResult.value = {
+      uploaded: countStatus(CREATED_STATUSES),
+      skippedAsDuplicate: countStatus(['skipped-duplicate']),
+      kept: removalPlan.keptRenamed
+        + removalPlan.keptReplaced
+        + sync.foreignFolderItems,
+      removed: sync.removed,
+      unchanged: sync.unchanged,
+      unchangedUnknown: removalPlan.unchangedUnknown,
+      couldNotRemove: sync.couldNotRemove,
+      notices: describeSyncNotices(sync, removalPlan),
+    }
   }
 
   async function finalizeFolderSync(
     isRunComplete: boolean,
   ): Promise<KnowledgeUploadFailure | null> {
-    const removableIds = collectRemovableIds(isRunComplete)
+    const sync = context.sync
 
-    if (!hasUncommittedBatches && removableIds.length === 0) {
+    if (!sync) {
       return null
     }
 
-    const outcome = await knowledge.commit({
-      folderId: context.folderId,
-      remove: removableIds,
-    })
+    const removalPlan = planRemovals(sync, isRunComplete)
+    const { removableIds } = removalPlan
+    let failure: KnowledgeUploadFailure | null = null
 
-    if (!outcome.ok) {
-      return toFailure(outcome.parsed)
+    if (hasUncommittedBatches || removableIds.length > 0) {
+      const body: KnowledgeCommitInput = removableIds.length > 0
+        ? { folderId: context.folderId, remove: removableIds }
+        : {}
+      const outcome = await knowledge.commit(body)
+
+      if (outcome.ok) {
+        const skippedIds = new Set<string>(outcome.result.skipped ?? [])
+        const skippedCount = removableIds.filter((itemId) => {
+          return skippedIds.has(itemId)
+        }).length
+
+        sync.removed += removableIds.length - skippedCount
+        sync.couldNotRemove += skippedCount
+        sync.removals = sync.removals.filter((removal) => {
+          return !removableIds.includes(removal.itemId)
+        })
+        hasUncommittedBatches = false
+      } else {
+        failure = toFailure(outcome.parsed)
+      }
     }
 
-    for (const itemId of removableIds) {
-      context.removals.delete(itemId)
-    }
+    publishSyncResult(sync, removalPlan)
 
-    hasUncommittedBatches = false
-
-    return null
+    return failure
   }
 
   async function finalizeRun(
@@ -928,6 +1081,7 @@ export function useKnowledgeUpload(
     phase,
     plan,
     syncSummary,
+    syncResult,
     entries,
     progress,
     error,
