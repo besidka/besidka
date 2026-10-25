@@ -7,7 +7,10 @@ import {
   getCachedGatewayCatalog,
 } from '~~/server/utils/gateways/catalog'
 import { getCloudflareGatewayCredentials } from '~~/server/utils/gateways/cloudflare'
-import { isUsableMemoryCatalogModel } from '~~/server/utils/memory/catalog-usability'
+import {
+  isTextGatewayModel,
+  isUsableMemoryCatalogModel,
+} from '~~/server/utils/memory/catalog-usability'
 
 interface MemoryModelChoiceLogger {
   set: (fields: Record<string, unknown>) => void
@@ -93,16 +96,6 @@ async function loadGatewayCatalog(
   return await guardCatalogOutage(gateway, logger, () => {
     return getCachedGatewayCatalog(gateway, { logger })
   })
-}
-
-function isTextGatewayModel(catalogModel: GatewayModel): boolean {
-  const outputModalities = catalogModel.modalities?.output
-
-  if (outputModalities) {
-    return outputModalities.includes('text')
-  }
-
-  return catalogModel.supportsImageGeneration !== true
 }
 
 function assertGatewayModel(

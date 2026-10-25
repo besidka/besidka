@@ -30,6 +30,7 @@ export const userSettings = snakeCase.table(
     favoriteGatewayModels: text({ mode: 'json' })
       .$type<Partial<Record<GatewayId, string[]>>>(),
     memoryEnabled: integer({ mode: 'boolean' }),
+    memoryExtractionEnabled: integer({ mode: 'boolean' }),
     chatSearchEnabled: integer({ mode: 'boolean' }),
     memoryIncludeSensitive: integer({ mode: 'boolean' }),
     aboutMe: text(),

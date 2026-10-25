@@ -4,8 +4,24 @@ import { providers } from '../../../../providers'
 
 const mocks = vi.hoisted(() => ({
   useGateway: vi.fn(),
+  getCachedGatewayCatalog: vi.fn(),
+  getCachedCloudflareGatewayCatalog: vi.fn(),
+  getCloudflareGatewayCredentials: vi.fn(),
   unusableModelIds: new Set<string>(),
 }))
+
+vi.mock('~~/server/utils/gateways/catalog', () => {
+  return {
+    getCachedGatewayCatalog: mocks.getCachedGatewayCatalog,
+    getCachedCloudflareGatewayCatalog: mocks.getCachedCloudflareGatewayCatalog,
+  }
+})
+
+vi.mock('~~/server/utils/gateways/cloudflare', () => {
+  return {
+    getCloudflareGatewayCredentials: mocks.getCloudflareGatewayCredentials,
+  }
+})
 
 vi.mock('~~/server/utils/gateways/index', async (importOriginal) => {
   const original
@@ -36,6 +52,24 @@ vi.mock('~~/server/utils/memory/catalog-usability', async (importOriginal) => {
 
 const GATEWAY_MODEL_ID = 'anthropic/claude-haiku-5-5'
 const SECRET_MESSAGE_TEXT = 'my secret diary entry'
+const CLOUDFLARE_CREDENTIALS = {
+  accountId: 'account-1',
+  gatewayId: 'gateway-1',
+  apiKey: 'token-1',
+}
+
+function gatewayCatalogModel(
+  id: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    name: id,
+    toolCall: true,
+    modalities: { input: ['text'], output: ['text'] },
+    ...overrides,
+  }
+}
 
 interface UsageFixture {
   model: string
@@ -160,6 +194,18 @@ async function loadResolver() {
 describe('resolveMemoryModel', () => {
   beforeEach(() => {
     mocks.unusableModelIds.clear()
+    mocks.getCachedGatewayCatalog.mockReset()
+    mocks.getCachedCloudflareGatewayCatalog.mockReset()
+    mocks.getCloudflareGatewayCredentials.mockReset()
+    mocks.getCachedGatewayCatalog.mockResolvedValue([
+      gatewayCatalogModel(GATEWAY_MODEL_ID),
+    ])
+    mocks.getCachedCloudflareGatewayCatalog.mockResolvedValue([
+      gatewayCatalogModel(GATEWAY_MODEL_ID),
+    ])
+    mocks.getCloudflareGatewayCredentials.mockResolvedValue(
+      CLOUDFLARE_CREDENTIALS,
+    )
     mocks.useGateway.mockResolvedValue({
       instance: { id: 'gateway-model' },
       reasoning: undefined,
@@ -417,7 +463,7 @@ describe('resolveMemoryModel', () => {
         attributes: {
           memoryModel: expect.objectContaining({
             skipped: expect.arrayContaining(['setting:error']),
-            errors: [{ step: 'setting', error: 'd1' }],
+            errors: [{ step: 'setting', error: 'Error' }],
           }),
         },
       })
@@ -502,6 +548,215 @@ describe('resolveMemoryModel', () => {
         gatewayId,
         modelId: GATEWAY_MODEL_ID,
         modelName: GATEWAY_MODEL_ID,
+      })
+    })
+
+    describe('gateway catalog check', () => {
+      function createGatewayChatDb(keyProviderId: string) {
+        return createDb({
+          keys: [keyProviderId, 'openai'],
+          chats: {
+            chat1: {
+              userId: 1,
+              messages: [
+                {
+                  usage: { model: GATEWAY_MODEL_ID, provider: keyProviderId },
+                },
+              ],
+            },
+          },
+        })
+      }
+
+      async function resolveGatewayChat(
+        keyProviderId: string,
+        logger = { set: vi.fn() },
+      ) {
+        const { resolveMemoryModel } = await loadResolver()
+        const resolved = await resolveMemoryModel({
+          userId: 1,
+          scope: 'profile',
+          sourceChatId: 'chat1',
+          db: createGatewayChatDb(keyProviderId) as never,
+          logger,
+        })
+
+        return { resolved, logger }
+      }
+
+      function expectSkipped(
+        logger: { set: ReturnType<typeof vi.fn> },
+        reason: string,
+      ) {
+        expect(logger.set).toHaveBeenCalledWith({
+          attributes: {
+            memoryModel: expect.objectContaining({
+              skipped: expect.arrayContaining([reason]),
+            }),
+          },
+        })
+      }
+
+      it.each([
+        ['vercel', 'vercel-gateway'],
+        ['openrouter', 'openrouter'],
+      ])('accepts a %s model present in the catalog', async (
+        gatewayId,
+        keyProviderId,
+      ) => {
+        const { resolved } = await resolveGatewayChat(keyProviderId)
+
+        expect(resolved).toMatchObject({ source: 'chat', gatewayId })
+        expect(mocks.getCachedGatewayCatalog)
+          .toHaveBeenCalledWith(gatewayId, expect.anything())
+        expect(mocks.getCachedCloudflareGatewayCatalog).not.toHaveBeenCalled()
+      })
+
+      it('checks the cloudflare catalog with the user credentials', async () => {
+        const { resolved } = await resolveGatewayChat('cloudflare-gateway')
+
+        expect(resolved).toMatchObject({
+          source: 'chat',
+          gatewayId: 'cloudflare',
+        })
+        expect(mocks.getCloudflareGatewayCredentials).toHaveBeenCalledWith('1')
+        expect(mocks.getCachedCloudflareGatewayCatalog).toHaveBeenCalledWith(
+          CLOUDFLARE_CREDENTIALS,
+          expect.anything(),
+        )
+        expect(mocks.getCachedGatewayCatalog).not.toHaveBeenCalled()
+      })
+
+      it('falls to the fallback when the model is not in the catalog', async () => {
+        mocks.getCachedGatewayCatalog.mockResolvedValue([
+          gatewayCatalogModel('some/other-model'),
+        ])
+
+        const { resolved, logger } = await resolveGatewayChat('openrouter')
+
+        expect(resolved).toMatchObject({
+          source: 'fallback',
+          providerId: 'openai',
+        })
+        expectSkipped(logger, 'chat:not-in-catalog')
+      })
+
+      it('falls to the fallback when the model is not a text model', async () => {
+        mocks.getCachedGatewayCatalog.mockResolvedValue([
+          gatewayCatalogModel(GATEWAY_MODEL_ID, {
+            modalities: { input: ['text'], output: ['image'] },
+          }),
+        ])
+
+        const { resolved, logger } = await resolveGatewayChat('openrouter')
+
+        expect(resolved?.source).toBe('fallback')
+        expectSkipped(logger, 'chat:unusable-model')
+      })
+
+      it('treats an image-generation model without modalities as unusable', async () => {
+        mocks.getCachedGatewayCatalog.mockResolvedValue([
+          gatewayCatalogModel(GATEWAY_MODEL_ID, {
+            modalities: undefined,
+            supportsImageGeneration: true,
+          }),
+        ])
+
+        const { resolved, logger } = await resolveGatewayChat('openrouter')
+
+        expect(resolved?.source).toBe('fallback')
+        expectSkipped(logger, 'chat:unusable-model')
+      })
+
+      it('falls to the fallback and records the error on a catalog outage', async () => {
+        mocks.getCachedGatewayCatalog.mockRejectedValue(new Error('catalog down'))
+
+        const { resolved, logger } = await resolveGatewayChat('openrouter')
+
+        expect(resolved?.source).toBe('fallback')
+        expect(logger.set).toHaveBeenCalledWith({
+          attributes: {
+            memoryModel: expect.objectContaining({
+              skipped: expect.arrayContaining(['chat:catalog-unavailable']),
+              errors: [{ step: 'chat', error: 'Error' }],
+            }),
+          },
+        })
+      })
+
+      it('falls to the fallback on a cloudflare catalog outage', async () => {
+        mocks.getCachedCloudflareGatewayCatalog
+          .mockRejectedValue(new Error('cf down'))
+
+        const { resolved, logger } = await resolveGatewayChat(
+          'cloudflare-gateway',
+        )
+
+        expect(resolved?.source).toBe('fallback')
+        expectSkipped(logger, 'chat:catalog-unavailable')
+      })
+
+      it('falls to the fallback when cloudflare credentials are absent', async () => {
+        mocks.getCloudflareGatewayCredentials.mockResolvedValue(undefined)
+
+        const { resolved, logger } = await resolveGatewayChat(
+          'cloudflare-gateway',
+        )
+
+        expect(resolved?.source).toBe('fallback')
+        expectSkipped(logger, 'chat:no-key')
+        expect(mocks.getCachedCloudflareGatewayCatalog).not.toHaveBeenCalled()
+      })
+
+      it('does not read the catalog when the gateway key is missing', async () => {
+        const db = createDb({
+          keys: ['openai'],
+          chats: {
+            chat1: {
+              userId: 1,
+              messages: [
+                { usage: { model: GATEWAY_MODEL_ID, provider: 'openrouter' } },
+              ],
+            },
+          },
+        })
+        const logger = { set: vi.fn() }
+        const { resolveMemoryModel } = await loadResolver()
+        const resolved = await resolveMemoryModel({
+          userId: 1,
+          scope: 'profile',
+          sourceChatId: 'chat1',
+          db: db as never,
+          logger,
+        })
+
+        expect(resolved?.source).toBe('fallback')
+        expectSkipped(logger, 'chat:no-key')
+        expect(mocks.getCachedGatewayCatalog).not.toHaveBeenCalled()
+      })
+
+      it('returns null when nothing else resolves after a catalog miss', async () => {
+        mocks.getCachedGatewayCatalog.mockResolvedValue([])
+
+        const db = createDb({
+          keys: ['openrouter'],
+          chats: {
+            chat1: {
+              userId: 1,
+              messages: [
+                { usage: { model: GATEWAY_MODEL_ID, provider: 'openrouter' } },
+              ],
+            },
+          },
+        })
+        const { resolveMemoryModel } = await loadResolver()
+
+        expect(await resolveMemoryModel({
+          userId: 1,
+          scope: 'profile',
+          sourceChatId: 'chat1',
+          db: db as never,
+        })).toBeNull()
       })
     })
 
@@ -715,7 +970,7 @@ describe('resolveMemoryModel', () => {
         attributes: {
           memoryModel: expect.objectContaining({
             skipped: expect.arrayContaining(['chat:error']),
-            errors: [{ step: 'chat', error: 'd1 chat' }],
+            errors: [{ step: 'chat', error: 'Error' }],
           }),
         },
       })

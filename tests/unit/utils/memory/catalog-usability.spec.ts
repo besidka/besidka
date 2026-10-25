@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Model } from '#shared/types/providers.d'
 import { providers } from '../../../../providers'
-import { isUsableMemoryCatalogModel } from '../../../../server/utils/memory/catalog-usability'
+import {
+  isTextGatewayModel,
+  isUsableMemoryCatalogModel,
+} from '../../../../server/utils/memory/catalog-usability'
 
 const deepResearchModelId = 'deep-research-preview-04-2026'
 
@@ -66,5 +69,46 @@ describe('isUsableMemoryCatalogModel', () => {
       ...textModel,
       status: 'deprecated',
     })).toBe(true)
+  })
+})
+
+describe('isTextGatewayModel', () => {
+  const baseModel = { id: 'vendor/model', name: 'Model', toolCall: true }
+
+  it('accepts a model whose declared output includes text', () => {
+    expect(isTextGatewayModel({
+      ...baseModel,
+      modalities: { input: ['text'], output: ['text', 'image'] },
+    })).toBe(true)
+  })
+
+  it('rejects a model whose declared output has no text', () => {
+    expect(isTextGatewayModel({
+      ...baseModel,
+      modalities: { input: ['text'], output: ['image'] },
+    })).toBe(false)
+  })
+
+  it('trusts declared modalities over the image-generation flag', () => {
+    expect(isTextGatewayModel({
+      ...baseModel,
+      modalities: { input: ['text'], output: ['text'] },
+      supportsImageGeneration: true,
+    })).toBe(true)
+  })
+
+  it('accepts a model with no modalities and no image-generation flag', () => {
+    expect(isTextGatewayModel(baseModel)).toBe(true)
+    expect(isTextGatewayModel({
+      ...baseModel,
+      supportsImageGeneration: false,
+    })).toBe(true)
+  })
+
+  it('rejects a model with no modalities flagged as image-generation', () => {
+    expect(isTextGatewayModel({
+      ...baseModel,
+      supportsImageGeneration: true,
+    })).toBe(false)
   })
 })

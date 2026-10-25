@@ -1,6 +1,6 @@
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { LanguageModel } from 'ai'
-import type { GatewayId } from '#shared/types/gateways.d'
+import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import type {
   MemoryModelSource,
@@ -12,12 +12,19 @@ import { getModel } from '#shared/utils/model'
 import { providerMeta } from '#shared/utils/provider-meta'
 import { createError } from 'evlog'
 import { providers } from '~~/providers'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   keyProviderIdForGateway,
   useGateway,
 } from '~~/server/utils/gateways/index'
-import { isUsableMemoryCatalogModel } from '~~/server/utils/memory/catalog-usability'
+import {
+  getCachedCloudflareGatewayCatalog,
+  getCachedGatewayCatalog,
+} from '~~/server/utils/gateways/catalog'
+import { getCloudflareGatewayCredentials } from '~~/server/utils/gateways/cloudflare'
+import {
+  isTextGatewayModel,
+  isUsableMemoryCatalogModel,
+} from '~~/server/utils/memory/catalog-usability'
 
 export const MEMORY_MODEL_PROVIDER_ORDER = [
   'openai',
@@ -100,6 +107,24 @@ interface MemoryModelResolutionContext {
   errors: MemoryModelResolutionError[]
 }
 
+function resolutionErrorLabel(exception: unknown): string {
+  if (!(exception instanceof Error)) {
+    return 'unknown'
+  }
+
+  const { status, statusCode } = exception as {
+    status?: unknown
+    statusCode?: unknown
+  }
+  const httpStatus = [status, statusCode].find((value) => {
+    return typeof value === 'number'
+  })
+
+  return httpStatus === undefined
+    ? exception.name
+    : `${exception.name}:${httpStatus}`
+}
+
 async function readAvailableKeys(
   userId: number,
   db: DbClient,
@@ -174,6 +199,82 @@ function resolveGatewayCandidate(
     modelId,
     modelName: modelId,
   }
+}
+
+async function loadChatGatewayCatalog(
+  gatewayId: GatewayId,
+  context: MemoryModelResolutionContext,
+): Promise<GatewayModel[] | null> {
+  const options = { logger: context.input.logger }
+
+  if (gatewayId !== 'cloudflare') {
+    return await getCachedGatewayCatalog(gatewayId, options)
+  }
+
+  const credentials = await getCloudflareGatewayCredentials(
+    String(context.input.userId),
+  )
+
+  if (!credentials) {
+    return null
+  }
+
+  return await getCachedCloudflareGatewayCatalog(credentials, options)
+}
+
+async function resolveChatGatewayCandidate(
+  gatewayId: GatewayId,
+  modelId: string,
+  context: MemoryModelResolutionContext,
+): Promise<MemoryModelCandidate | null> {
+  const candidate = resolveGatewayCandidate(
+    gatewayId,
+    modelId,
+    'chat',
+    context,
+  )
+
+  if (!candidate) {
+    return null
+  }
+
+  let catalog: GatewayModel[] | null
+
+  try {
+    catalog = await loadChatGatewayCatalog(gatewayId, context)
+  } catch (exception) {
+    context.skipped.push('chat:catalog-unavailable')
+    context.errors.push({
+      step: 'chat',
+      error: resolutionErrorLabel(exception),
+    })
+
+    return null
+  }
+
+  if (!catalog) {
+    context.skipped.push('chat:no-key')
+
+    return null
+  }
+
+  const catalogModel = catalog.find((candidateModel) => {
+    return candidateModel.id === modelId
+  })
+
+  if (!catalogModel) {
+    context.skipped.push('chat:not-in-catalog')
+
+    return null
+  }
+
+  if (!isTextGatewayModel(catalogModel)) {
+    context.skipped.push('chat:unusable-model')
+
+    return null
+  }
+
+  return candidate
 }
 
 async function resolveFromSetting(
@@ -292,7 +393,7 @@ async function resolveFromChat(
   const gatewayId = buildGatewayIdByKeyProviderId().get(usage.provider)
 
   if (gatewayId) {
-    return resolveGatewayCandidate(gatewayId, usage.model, 'chat', context)
+    return await resolveChatGatewayCandidate(gatewayId, usage.model, context)
   }
 
   return resolveDirectCandidate(usage.model, usage.provider, 'chat', context)
@@ -341,7 +442,7 @@ async function runResolutionStep(
     context.skipped.push(`${stepName}:error`)
     context.errors.push({
       step: stepName,
-      error: exceptionMessage(exception),
+      error: resolutionErrorLabel(exception),
     })
 
     return null

@@ -21,6 +21,7 @@ export default defineEventHandler(async () => {
       favoriteModels: true,
       favoriteGatewayModels: true,
       memoryEnabled: true,
+      memoryExtractionEnabled: true,
       chatSearchEnabled: true,
       memoryIncludeSensitive: true,
       aboutMe: true,
@@ -41,6 +42,8 @@ export default defineEventHandler(async () => {
     favoriteGatewayModels: settings?.favoriteGatewayModels ?? {},
     memoryEnabled: settings?.memoryEnabled
       ?? MEMORY_SETTING_DEFAULTS.memoryEnabled,
+    memoryExtractionEnabled: settings?.memoryExtractionEnabled
+      ?? MEMORY_SETTING_DEFAULTS.memoryExtractionEnabled,
     chatSearchEnabled: settings?.chatSearchEnabled
       ?? MEMORY_SETTING_DEFAULTS.chatSearchEnabled,
     memoryIncludeSensitive: settings?.memoryIncludeSensitive

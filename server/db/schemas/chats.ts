@@ -27,6 +27,9 @@ export const chats = snakeCase.table(
     projectId: publicId().references(() => projects.id, { onDelete: 'set null' }),
     projectMemorySummary: text(),
     projectMemorySummaryUpdatedAt: integer({ mode: 'timestamp' }),
+    memoryExtractedAt: integer({ mode: 'timestamp' }),
+    memoryExtractionAttemptedAt: integer({ mode: 'timestamp' }),
+    memoryExtractionFailures: integer({ mode: 'number' }),
     activityAt: integer({ mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),

@@ -78,6 +78,7 @@ export interface MemoryModelChoice {
 
 export interface MemorySettingsFields {
   memoryEnabled: boolean
+  memoryExtractionEnabled: boolean
   chatSearchEnabled: boolean
   memoryIncludeSensitive: boolean
   aboutMe: string | null
