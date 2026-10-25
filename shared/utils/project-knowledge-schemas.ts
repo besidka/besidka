@@ -1,0 +1,216 @@
+import { z } from 'zod'
+import {
+  KNOWLEDGE_LIMITS,
+  knowledgeExtractStatuses,
+  knowledgeExtractors,
+  knowledgeModes,
+} from '#shared/utils/project-knowledge-policy'
+
+const SINGLE_LINE_PATTERN = /^[^\r\n]*$/
+const FOLDER_ID_PATTERN = /^[A-Za-z0-9_-]+$/
+const CONTENT_HASH_PATTERN = /^[a-f0-9]{64}$/
+const MAX_FOLDER_ID_CHARS = 64
+const MAX_EXTRACT_ERROR_CHARS = 64
+const MAX_MEDIA_TYPE_CHARS = 100
+const MAX_SEARCH_ITEM_IDS = 20
+const MAX_BATCH_ITEMS = 25
+
+export function knowledgeTextByteLength(text: string): number {
+  return new TextEncoder().encode(text).length
+}
+
+function hasParentSegment(relativePath: string): boolean {
+  return relativePath.split(/[\\/]/).includes('..')
+}
+
+const titleField = z
+  .string()
+  .trim()
+  .min(1)
+  .max(KNOWLEDGE_LIMITS.maxTitleChars)
+  .refine(value => SINGLE_LINE_PATTERN.test(value), {
+    message: 'Title must be a single line',
+  })
+
+const descriptionField = z
+  .string()
+  .trim()
+  .max(KNOWLEDGE_LIMITS.maxDescriptionChars)
+  .refine(value => SINGLE_LINE_PATTERN.test(value), {
+    message: 'Description must be a single line',
+  })
+  .nullable()
+
+const extractedTextField = z
+  .string()
+  .refine(
+    value => knowledgeTextByteLength(value)
+      <= KNOWLEDGE_LIMITS.maxItemTextBytes,
+    {
+      message: `Text must be at most ${KNOWLEDGE_LIMITS.maxItemTextBytes} bytes`,
+    },
+  )
+  .refine(value => !value.includes('\u0000'), {
+    message: 'Text must not contain NUL characters',
+  })
+
+const relativePathField = z
+  .string()
+  .max(KNOWLEDGE_LIMITS.maxRelativePathChars)
+  .refine(value => !value.startsWith('/'), {
+    message: 'Path must not start with a slash',
+  })
+  .refine(value => !hasParentSegment(value), {
+    message: 'Path must not contain a ".." segment',
+  })
+
+const folderIdField = z
+  .string()
+  .max(MAX_FOLDER_ID_CHARS)
+  .regex(FOLDER_ID_PATTERN)
+
+function requireAtLeastOneKey(value: object): boolean {
+  return Object.values(value).some(entry => entry !== undefined)
+}
+
+const atLeastOneKeyMessage = {
+  message: 'At least one field is required',
+}
+
+export const knowledgeModeSchema = z.enum(knowledgeModes)
+
+export const knowledgeModePatchSchema = z.object({
+  mode: knowledgeModeSchema.nullable(),
+})
+
+export const knowledgeCharCountsSchema = z.object({
+  latinChars: z.number().int().nonnegative(),
+  cyrillicChars: z.number().int().nonnegative(),
+  otherChars: z.number().int().nonnegative(),
+})
+
+export const knowledgeNoteCreateSchema = z.object({
+  title: titleField,
+  body: z.string().min(1).max(KNOWLEDGE_LIMITS.maxNoteChars),
+  description: descriptionField.optional(),
+})
+
+export const knowledgeNoteUpdateSchema = knowledgeNoteCreateSchema
+  .partial()
+  .refine(requireAtLeastOneKey, atLeastOneKeyMessage)
+
+export const knowledgeItemPatchSchema = z
+  .object({
+    description: descriptionField.optional(),
+    sendAsNativePdf: z.boolean().optional(),
+    pinned: z.boolean().optional(),
+  })
+  .refine(requireAtLeastOneKey, atLeastOneKeyMessage)
+
+export const knowledgeExtractedTextSchema = z.object({
+  text: extractedTextField,
+})
+
+export const knowledgeItemCreateSchema = z
+  .object({
+    fileId: z.string().min(1).nullable().optional(),
+    title: titleField.optional(),
+    mediaType: z.string().min(1).max(MAX_MEDIA_TYPE_CHARS).optional(),
+    relativePath: relativePathField.nullable().optional(),
+    folderId: folderIdField.nullable().optional(),
+    contentHash: z.string().regex(CONTENT_HASH_PATTERN).nullable().optional(),
+    extractor: z.enum(knowledgeExtractors)
+      .refine(value => value !== 'note', {
+        message: 'Extractor must not be "note" for files',
+      }),
+    extractStatus: z.enum(knowledgeExtractStatuses),
+    extractError: z.string().max(MAX_EXTRACT_ERROR_CHARS).nullable().optional(),
+    pageCount: z.number().int().nonnegative().nullable().optional(),
+    text: extractedTextField,
+  })
+  .superRefine((value, context) => {
+    if (value.extractStatus === 'ready' && value.text.length === 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['text'],
+        message: 'Text is required when the extraction is ready',
+      })
+    }
+
+    if (value.fileId) {
+      return
+    }
+
+    if (!value.title) {
+      context.addIssue({
+        code: 'custom',
+        path: ['title'],
+        message: 'Title is required when there is no original file',
+      })
+    }
+
+    if (!value.mediaType) {
+      context.addIssue({
+        code: 'custom',
+        path: ['mediaType'],
+        message: 'Media type is required when there is no original file',
+      })
+    }
+  })
+
+export const knowledgeItemsBatchCreateSchema = z
+  .object({
+    items: z.array(knowledgeItemCreateSchema).min(1).max(MAX_BATCH_ITEMS),
+    commit: z.boolean().optional(),
+  })
+  .refine(
+    (value) => {
+      const totalBytes = value.items.reduce((sum, item) => {
+        return sum + knowledgeTextByteLength(item.text)
+      }, 0)
+
+      return totalBytes <= KNOWLEDGE_LIMITS.maxProjectTextBytes
+    },
+    {
+      message: 'Batch text must be at most '
+        + `${KNOWLEDGE_LIMITS.maxProjectTextBytes} bytes`,
+      path: ['items'],
+    },
+  )
+
+export const knowledgeCommitSchema = z.object({
+  folderId: folderIdField.nullable().optional(),
+  remove: z.array(z.string().min(1))
+    .max(KNOWLEDGE_LIMITS.maxFolderFiles)
+    .optional(),
+})
+
+export const knowledgePackHeaderSchema = z.object({
+  type: z.literal('header'),
+  version: z.number().int().nonnegative(),
+  builtAt: z.string(),
+  items: z.array(z.object({
+    itemId: z.string(),
+    updatedAt: z.string(),
+    chunks: z.number().int().nonnegative(),
+  })),
+})
+
+export const knowledgePackLineSchema = z.object({
+  type: z.literal('chunk'),
+  itemId: z.string(),
+  ordinal: z.number().int().nonnegative(),
+  breadcrumb: z.string(),
+  text: z.string(),
+})
+
+export const knowledgeSearchToolInputSchema = z.object({
+  query: z.string().trim().min(1).max(KNOWLEDGE_LIMITS.searchQueryMaxChars),
+  itemIds: z.array(z.string()).max(MAX_SEARCH_ITEM_IDS).optional(),
+})
+
+export const knowledgeReadToolInputSchema = z.object({
+  itemId: z.string(),
+  fromChunk: z.number().int().nonnegative().optional(),
+  count: z.number().int().min(1).max(KNOWLEDGE_LIMITS.readMaxChunks).optional(),
+})

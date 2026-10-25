@@ -61,9 +61,17 @@ function createDb(storageKeys: string[], sessionTokens: string[] = []) {
   }
 }
 
-function createStorage() {
+function createStorage(knowledgeKeys: string[] = []) {
   return {
-    delete: vi.fn(async () => undefined),
+    delete: vi.fn(async (_keys: string[]) => undefined),
+    list: vi.fn(async (_options: { prefix: string }) => {
+      return {
+        objects: knowledgeKeys.map((key) => {
+          return { key }
+        }),
+        truncated: false,
+      }
+    }),
   }
 }
 
@@ -101,6 +109,7 @@ describe('purgeUserData', () => {
 
     expect(storage.delete).toHaveBeenCalledTimes(1)
     expect(storage.delete).toHaveBeenCalledWith(storageKeys)
+    expect(storage.list).toHaveBeenCalledTimes(1)
     expect(mocks.invalidateFileCache).toHaveBeenCalledTimes(3)
     expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(1, logger)
     expect(db.delete).toHaveBeenCalledTimes(4)
@@ -110,6 +119,7 @@ describe('purgeUserData', () => {
       filesFound: 3,
       storageKeysDeleted: 3,
       storageBatches: 1,
+      knowledgeObjectsDeleted: 0,
       fileCacheKeysInvalidated: 3,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
@@ -230,6 +240,69 @@ describe('purgeUserData', () => {
     expect(result.memoryEntriesDeleted).toBe(1)
   })
 
+  it('purges the knowledge prefix and reports the deleted objects', async () => {
+    const knowledgeKeys = [
+      'knowledge/u42/p1/items/1.md',
+      'knowledge/u42/p1/pack/v1.jsonl.gz',
+    ]
+    const db = createDb(['users/42/a.png'])
+    const storage = createStorage(knowledgeKeys)
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({
+      userId: 42,
+      logger: { set: vi.fn() },
+    })
+
+    expect(storage.list).toHaveBeenCalledWith(
+      expect.objectContaining({ prefix: 'knowledge/u42/' }),
+    )
+    expect(storage.delete).toHaveBeenCalledTimes(2)
+    expect(storage.delete).toHaveBeenLastCalledWith(knowledgeKeys)
+    expect(result.knowledgeObjectsDeleted).toBe(2)
+  })
+
+  it('purges knowledge objects even when the user has no files', async () => {
+    const db = createDb([])
+    const storage = createStorage(['knowledge/u7/p2/items/9.md'])
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({
+      userId: 7,
+      logger: { set: vi.fn() },
+    })
+
+    expect(result.filesFound).toBe(0)
+    expect(result.knowledgeObjectsDeleted).toBe(1)
+  })
+
+  it('rethrows a knowledge purge failure so the deletion aborts', async () => {
+    const db = createDb([])
+    const storage = createStorage(['knowledge/u1/p1/items/1.md'])
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    storage.delete.mockRejectedValueOnce(new Error('r2 unavailable'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 1, logger })).rejects.toThrow(
+      'r2 unavailable',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: expect.objectContaining({
+        phase: 'knowledge-r2-delete',
+        userId: 1,
+      }),
+    }))
+  })
+
   it('deletes every KV session record and the active-sessions list', async () => {
     const db = createDb([], ['token-a', 'token-b'])
     const storage = createStorage()
@@ -331,6 +404,7 @@ describe('purgeUserData', () => {
       filesFound: 0,
       storageKeysDeleted: 0,
       storageBatches: 0,
+      knowledgeObjectsDeleted: 0,
       fileCacheKeysInvalidated: 0,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,

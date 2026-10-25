@@ -121,6 +121,17 @@ export function getAffectedTests(changedFiles) {
   const memoryPurgeTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
+  const projectKnowledgeContractTests = [
+    'tests/unit/utils/project-knowledge-policy.spec.ts',
+    'tests/unit/utils/project-knowledge-budget.spec.ts',
+    'tests/unit/utils/project-knowledge-schemas.spec.ts',
+    'tests/unit/utils/prompt-cache-cost.spec.ts',
+  ]
+  const projectKnowledgeServerTests = [
+    'tests/unit/utils/knowledge/storage-keys.spec.ts',
+    'tests/unit/utils/knowledge/purge.spec.ts',
+    'tests/unit/utils/knowledge/quota.spec.ts',
+  ]
   const memoryEntriesTests = [
     'tests/unit/utils/memory/entries.spec.ts',
     'tests/unit/utils/memory/entry-slug.spec.ts',
@@ -1904,6 +1915,7 @@ export function getAffectedTests(changedFiles) {
         ...memoryComplianceTests,
         ...memoryModelTests,
         ...memoryPurgeTests,
+        ...projectKnowledgeServerTests,
         ...memoryExtractionTests,
       ],
     },
@@ -1928,6 +1940,26 @@ export function getAffectedTests(changedFiles) {
         ...memoryModelTests,
         ...memoryExtractionTests,
       ],
+    },
+    {
+      pattern: /^shared\/(types\/project-knowledge\.d|utils\/(project-knowledge-(policy|budget|schemas)|prompt-cache-cost))\.ts$/,
+      tests: projectKnowledgeContractTests,
+    },
+    {
+      pattern: /^shared\/utils\/gateway-model-id\.ts$/,
+      tests: ['tests/unit/utils/project-knowledge-budget.spec.ts'],
+    },
+    {
+      pattern: /^(server\/utils\/knowledge\/(storage-keys|purge|quota)|server\/db\/schemas\/project-knowledge)\.ts$/,
+      tests: projectKnowledgeServerTests,
+    },
+    {
+      pattern: /^server\/utils\/files\/file-governance\.ts$/,
+      tests: ['tests/unit/utils/knowledge/quota.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/(purge|storage-keys)\.ts$/,
+      tests: memoryPurgeTests,
     },
     {
       pattern: /^server\/db\/schemas\/memory-entries\.ts$/,

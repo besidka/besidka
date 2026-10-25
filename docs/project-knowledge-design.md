@@ -27,11 +27,11 @@ owner's review of revision 1. Section 0 lists what changed and why.
   користувача** (20 MB на free). На 10k користувачів це ≈40 GB у R2,
   ≈$0.45/міс. Стеля D1 у 10 GB недосяжна, бо D1 не росте від вмісту.
 - **Пошук.** Інструменти `search_project_knowledge` і
-  `read_project_knowledge` (власний бюджет 3 виклики). BM25 (MiniSearch з
-  українським стемером) будується з пакета з R2 на кожен запит у межах
-  одного запиту. Це ~75 ms CPU на 0.5 MB тексту, ~600 ms на 4 MB (ліміт
-  проєкту). Моделі без tools отримують автоматичний пошук. Готовий індекс у
-  R2 лишаємо на потім, якщо CPU стане помітним.
+  `read_project_knowledge` (власний бюджет 3 виклики). BM25 (MiniSearch,
+  одне поле `stem` з українським стемером) будується з пакета з R2 у межах
+  одного запиту. Ліміт тексту проєкту **2 MB** (K0 знизив з 4 MB: на
+  workerd 4 MB з двома полями потребують 80+ MB пам'яті). Холодна побудова
+  ~0.5 s CPU на 2 MB. Моделі без tools отримують автоматичний пошук.
 - **PDF/DOCX без витрат оператора.** Текст витягується **в браузері
   користувача** (Web Worker, лінива завантажка): `unpdf` (PDF), `mammoth` +
   `turndown` (DOCX), `read-excel-file` (XLSX). Workers AI `toMarkdown`
@@ -46,11 +46,42 @@ owner's review of revision 1. Section 0 lists what changed and why.
 - **Пошук на боці провайдера** (OpenAI vector stores, Gemini File Search,
   xAI Collections) — лише як опція P3. Є тільки у трьох провайдерів,
   ламається при зміні моделі, а OpenAI бере $0.10/GB/день з користувача.
-- **Рішення власника потрібні**: див. розділ 14 (64k vs 32k, ліміт 4 MB
-  тексту на проєкт, бюджет інструментів, зображення, видалення проєкту,
-  ретеншн, серверний fallback для PDF).
+- **Рішення власника ухвалено** (розділ 14): 64k / 7%, власний бюджет
+  інструментів, зображення лише в індексі, файли лишаються в бібліотеці,
+  файли проєкту без 30-денного ретеншну. Результати K0 (розділ 17): ліміт
+  2 MB, індекс з одного поля `stem`, виміряні коефіцієнти символів на
+  токен для кожної родини (Claude ще очікує перевірки).
 
 ## 0. Decision log
+
+### Owner approval and K0 (2026-10-25)
+
+The owner approved revision 2 with the recommended answer to every open
+question in section 14: `ABS_CAP` 64k and `PCT` 7%; knowledge tools get
+their own 3-call budget (loop cap 10); images are index-only in search mode;
+project delete keeps uploaded originals in the library; project-linked files
+are exempt from the free-tier 30-day expiry; the server-side `unpdf`
+fallback comes later and capped; Moonshot `file-extract` comes later as an
+opt-in; the 4 MB per-project text cap stays provisional until the workerd
+spike. K0 lowered it to 2 MB (section 17.1). Default mode is Auto.
+
+K0 refinements made while writing the contract (sections 6.4, 7.2, 9.1,
+16):
+
+- **No staging pack.** Uploads write rows and text objects without bumping
+  `knowledgeVersion`. A commit bumps it once and builds the next pack
+  incrementally from the previous pack's header. The pack's first line is a
+  header listing its items.
+- **`projects.knowledgePackVersion`** (third additive column) records the
+  newest pack in R2, so the send path knows which pack to read.
+- **Originals only for PDFs and images.** Text, MD, code, DOCX and XLSX
+  items store only the extracted Markdown (`fileId` null). The chat upload
+  allow-list does not change.
+- **New dependencies land in K0** (`minisearch` for K2; `unpdf`, `mammoth`,
+  `turndown`, `@joplin/turndown-plugin-gfm`, `read-excel-file` for K3), so
+  no two workstreams edit `package.json` and the lockfile.
+- **The quota sum, R2 key builders and the account purge hook moved from
+  K1 to K0.**
 
 ### Revision 2 (2026-10-25, after the owner's review)
 
@@ -291,15 +322,31 @@ the alternative if the owner prefers cost safety.
 
 - Store **character counts per script class** per item (`latinChars`,
   `cyrillicChars`, `otherChars`), so the send path estimates per provider
-  family without reading text:
+  family without reading text.
 
-| Family | Latin chars/token | Cyrillic | Other | Source |
+Measured in K0 on open tokenizers (section 17.2), as the minimum of prose
+and code × 0.9, rounded down to 0.1. These are the values in
+`KNOWLEDGE_CHARS_PER_TOKEN`:
+
+| Family | Latin | Cyrillic | Other | Basis |
 |---|---|---|---|---|
-| Default (OpenAI, Google, xAI, DeepSeek, Moonshot, Qwen) | 4 | 2.5 | 1.5 | Existing `shared/utils/memory-tokens.ts`; Gemini docs [S18] |
-| Anthropic (Claude 4.7+) | 3.2 | 1.1 | 1.0 | REPORTED: Opus 5 English 3.25, Russian 1.03 [S19]; Anthropic says 4.7+ uses ~30% more tokens [S20] |
+| openai | 4.0 | 2.3 | 1.5 | o200k_base, measured |
+| google | 3.5 | 2.5 | 1.5 | Gemma 3 tokenizer (proxy; Gemini's is not public) |
+| xai | 3.5 | 2.0 | 1.5 | Grok-1 tokenizer (weak proxy) |
+| deepseek | 3.9 | 1.8 | 1.5 | DeepSeek-V3, measured |
+| moonshotai | 4.0 | 1.8 | 1.5 | Kimi-K2, measured |
+| qwen | 3.9 | 1.5 | 1.5 | Qwen3, measured (worst Cyrillic) |
+| anthropic | 3.2 | 1.1 | 1.0 | REPORTED [S19, S20]; **pending** a free `count_tokens` run with a key |
+| default (unknown upstream) | 3.5 | 1.5 | 1.5 | the most conservative measured value per class |
 
-- K0 verifies the Anthropic Cyrillic figure with one `count_tokens` run on
-  Ukrainian text (owner's key, free).
+- **Finding:** the old shared figure (Latin 4, Cyrillic 2.5, still used by
+  `shared/utils/memory-tokens.ts`) **under-counts Ukrainian** by 6–17% on
+  Qwen, DeepSeek and Kimi. It is roughly right only for o200k and Gemma.
+  This sharpens follow-up 13.1.
+- **Pending (needs the owner):** one `count_tokens` call per sample on any
+  Anthropic key. The endpoint is free, but no key was used in K0. Until
+  then, Claude uses the reported 3.2 / 1.1, which is more conservative than
+  every measured tokenizer.
 - `MARGIN = 1.15`. Images and native PDF pages add flat estimates (section
   7).
 - **Calibration (K4)**: an EMA of `usage.inputTokens ÷ estimate` per (user,
@@ -390,8 +437,10 @@ The rev 1 D1 FTS5 table is replaced (section 9.6 has the numbers).
   (**one R2 GET per send**).
 - **Search, v1 = build-on-read**: GET the pack, gunzip, build a
   [MiniSearch] index [S32] in memory, and search. Configuration:
-  - two fields, `body` (surface form) and `stem` (the vendored Ukrainian
-    stemmer as `processTerm` for Cyrillic tokens), with `stem` boosted 0.4
+  - **one field, `stem`** (revised in K0, section 17.1): Cyrillic tokens
+    run through the vendored Ukrainian stemmer, Latin tokens are lowercased.
+    The two-field design (`body` surface form + `stem`, boost 0.4) needed
+    2.3× the memory for a small ranking gain
     like `message_search`'s bm25 weights;
   - the breadcrumb plus the tail of the previous chunk (64-token overlap)
     indexed with each chunk, so overlap exists only in the index, never in
@@ -401,50 +450,59 @@ The rev 1 D1 FTS5 table is replaced (section 9.6 has the numbers).
     matter for LLM-written keyword queries.
 - **Cost of build-on-read**: measured in Node on 1.65 MB of English
   markdown: build 239 ms, search 0.16 ms [M, S32]. Extrapolated, that is ~75
-  ms CPU for a 0.5 MB project and ~600 ms at the 4 MB cap (9.4). The index
+  ms CPU for a 0.5 MB project. **The K0 workerd spike (17.1) measured more
+  on Cyrillic**: ~0.5 s for a 2 MB stem-only build. The index
   lives in a **request-scoped** cache across the 3 tool calls of one send. An
   isolate-global LRU keyed `projectId:version` is a bonus, not a guarantee.
   Workers Paid includes 30M CPU-ms per month, ≈ 50k cold searches at the cap
   and far more for typical projects. Overage is $0.02 per 1M CPU-ms, so 1M
-  cold 4 MB searches would cost about $12. The CPU is the operator's, but
-  per-user it is bounded by the 4 MB cap and the 3-call budget.
+  cold 2 MB searches would cost about $10. The CPU is the operator's, but
+  per-user it is bounded by the 2 MB cap and the 3-call budget.
 - **Upgrade path (when CPU shows in metrics)**: write a prebuilt serialized
   index next to the pack (`pack/v<n>.index.json.gz`). Measured: 0.93× text as
   JSON, **0.24× gzipped**, 48 ms parse+load for 1.65 MB [M]. It trades
   ~0.25× extra R2 bytes and index/pack version coupling for ~5× less CPU per
   cold search.
-- **K0 spike (blocking for K2)**: run MiniSearch on **workerd**
-  (`wrangler dev`) with a 4 MB Cyrillic-heavy corpus and the stemmer.
-  Measure JS heap (128 MB covers heap and WASM), build CPU and index size.
-  Every number above is Node and English. Cyrillic inflection grows the
-  vocabulary. If the heap is too high at 4 MB, lower the cap or shard the
-  index per item (merge top-k across shards).
+- **K0 spike: done (17.1).** Cyrillic made the index far larger than the
+  English numbers above suggested, and the prebuilt index did not save
+  memory. The result is a stem-only index and a 2 MB cap.
 
-### 6.4 Pack maintenance
+### 6.4 Pack maintenance (revised in K0)
 
-- `projects.knowledgeVersion` is bumped by every change. The pack is
-  **rebuilt lazily** when its version lags, on the next send or search, or
-  eagerly when a batch upload finishes.
-- **Incremental**: the new pack = the old pack minus removed or changed
-  items plus the new items' text. Item text is read from
-  `items/<itemId>.md` **sequentially** (6-connection rule).
-- **Batching**: a 500-file folder upload goes up in batches. Each batch
-  request appends its items to a **staging pack**
-  (`pack/staging-<syncId>.jsonl.gz`) under the lease, so no single request
-  re-reads 500 objects and sends keep using `v<n>`. The final request
-  promotes staging to `v<n+1>` and bumps the version once, so the cache is
-  invalidated once (5.3). An abandoned staging object is removed by the GC
-  sweeper after 24 h.
-- **Reconciliation**: the builder always drops pack lines whose `itemId`
-  has no row, because a library file deleted in the file manager removes its
-  item by FK cascade with no knowledge code running. The file-delete
-  handlers (single and bulk) bump `knowledgeVersion` for the affected
-  projects, so the deleted text leaves the pack on the next send.
+- Three version numbers: `projects.knowledgeVersion` (the desired content,
+  bumped by every committed change), `projects.knowledgePackVersion` (the
+  newest pack written to R2), and the version in the pack's header line.
+- **The pack has a header line** listing every item it contains with that
+  item's `updatedAt` and chunk count (`KnowledgePackHeader`). That is all the
+  builder needs to rebuild incrementally: the new pack is the old pack minus
+  items whose row is gone or whose `updatedAt` changed, plus the text of
+  new or changed items read from `items/<itemId>.md` **sequentially**
+  (6-connection rule).
+- **No staging pack (changed in K0).** Item uploads write the item row and
+  its `items/<itemId>.md` object but do **not** bump `knowledgeVersion`.
+  Sends keep using the current pack, which simply does not contain the new
+  items yet. A `commit` request (the last batch of a folder upload, or any
+  single add, edit or remove) bumps `knowledgeVersion` once and builds the
+  next pack. The cache is invalidated once per commit (5.3).
+- **When the build runs**: in the commit request, under the lease, after the
+  response is prepared. If the request dies (client disconnect kills the
+  invocation), the next send or panel load sees `knowledgePackVersion <
+  knowledgeVersion` and rebuilds lazily. The send itself uses the older pack
+  and does not wait.
+- **Reconciliation**: the builder always drops pack items whose row is gone,
+  because a library file deleted in the file manager removes its item by FK
+  cascade with no knowledge code running. The file-delete handlers (single
+  and bulk) bump `knowledgeVersion` for the affected projects, so the
+  deleted text leaves the pack on the next build.
 - **Concurrency**: the existing 120 s KV lease + 30 s heartbeat pattern
-  (`docs/chats/stuck-generation-guard.md`), plus an R2 conditional put
-  (`onlyIf` etag) as the last guard against a lost update.
-- **UI**: "Preparing project knowledge…" on the panel while the pack lags.
-  A send in that window uses the previous pack version.
+  (`docs/chats/stuck-generation-guard.md`). The pack key is versioned, so two
+  builders can never overwrite each other's object. `knowledgePackVersion`
+  is only advanced with `WHERE knowledge_pack_version IS NULL OR
+  knowledge_pack_version < :built`.
+- **Retention**: the current and the previous pack are kept (an in-flight
+  send may still read the previous one). The GC sweeper deletes older ones.
+- **UI**: "Preparing project knowledge…" while `knowledgePackVersion <
+  knowledgeVersion`.
 
 ### 6.5 Provider-hosted retrieval (P3, opt-in)
 
@@ -511,9 +569,14 @@ opens, so the main app bundle does not grow:
 - **Linking an existing library file** means the client downloads the
   original from `/files/<key>` and extracts it locally, so a 30 MB PDF is a
   30 MB download. The panel shows progress.
-- **What the client uploads**: the original (existing upload path → R2 +
-  `files` row, quota) **and** the extracted Markdown, in one request. The
-  server re-validates the text: strict UTF-8, ≤ 2 MB per item, length caps.
+- **What the client uploads (refined in K0)**: an original is kept only
+  where a model can use it. **PDFs and images** go through the existing
+  upload path first (R2 + `files` row, quota; both types are already on the
+  chat allow-list), and the item references that `fileId`. **Text, MD, code,
+  DOCX and XLSX** keep no original: the extracted Markdown is the item
+  (`fileId` null), so the quota counts it once and the upload allow-list
+  does not change. The server re-validates the text: strict UTF-8, no NUL,
+  ≤ 2 MB per item, length caps.
 - **Scanned PDFs** (near-empty text per page) are flagged "No text found".
   The user chooses: native PDF on PDF-capable models (7.4), or a one-off
   "Transcribe with <model>" on their own key. That stores the transcription
@@ -610,7 +673,7 @@ migration safety rules in `AGENTS.md`.
 | `userId` | FK `users` cascade |
 | `projectId` | FK `projects` cascade |
 | `kind` | `file` \| `note` (TS enum, no CHECK) |
-| `fileId` | FK `files` cascade for files (the original in R2), null for notes |
+| `fileId` | FK `files` cascade; set only for PDFs and images (the original in R2), null for notes and text-only files |
 | `title`, `description` | description: optional single line ≤ 100 chars, the index line |
 | `relativePath`, `folderId` | folder uploads only |
 | `mediaType`, `sizeBytes`, `pageCount` | |
@@ -622,8 +685,9 @@ migration safety rules in `AGENTS.md`.
 | `sendAsNativePdf`, `pinned` | nullable booleans, null = false |
 
 About 400 bytes per row. **`projects`** gains `knowledgeMode` (text, null =
-auto) and `knowledgeVersion` (integer, null = 0). **Nothing else changes in
-D1**: no chunk table, no FTS5 virtual table, and no `storages` change.
+auto), `knowledgeVersion` (integer, null = 0) and `knowledgePackVersion`
+(integer, null = no pack yet; added in K0, see 6.4). **Nothing else changes
+in D1**: no chunk table, no FTS5 virtual table, and no `storages` change.
 
 ### 9.2 R2 (`DATA_BUCKET`), keys derived server-side
 
@@ -653,10 +717,12 @@ written, keeping one previous version for in-flight sends.
 
 ### 9.4 Capacity limits
 
-Per project: ≤ **500 items**, ≤ **4 MB of extracted text** (the searchable
+Per project: ≤ **500 items**, ≤ **2 MB of extracted text** (the searchable
 cap from 6.3, pending the K0 spike), ≤ 30 MB per file. Per user: the storage
 quota (20 MB default). The token-based 2M cap of revision 1 is gone.
-Growth path beyond 4 MB: per-item index shards.
+Growth path beyond 2 MB: stem-only already fits 4 MB in ≤ 45 MB of heap
+(17.1), so a raise to 4 MB needs only a memory check on a deployed preview.
+Beyond that, per-item index shards with a merged top-k.
 
 ### 9.5 Deletion cascade
 
@@ -692,7 +758,7 @@ D1 storage 5 GB included then $0.75 / GB-month, 10 GB hard cap per database
 | (a′) same, `contentless_delete=1`, `detail=none` | ≈0.32×: 0.64 MB / 6.4 MB | 2 MB | 0.64 GB | 6.4 GB ($1/mo); worst-case users hit the wall at ~1.5k | D1 query | Rejected (below) |
 | (c) provider-hosted only | 0 | originals only | $0 | $0 | provider | Not default (6.5) |
 | (d) BM25 over raw text read from R2 per query | metadata | 2 MB | 2 GB, $0 | 20 GB, $0.15/mo | tokenize all text per query, ~70 ms/MB | Subsumed by (e) |
-| **(e) R2 text + R2 pack + BM25 build-on-read (recommended)** | **metadata ≈ 20 KB (50 items)** | ≈ 2.8 MB (text + gz pack) | 2.8 GB, **$0** | 28 GB, **≈ $0.27/mo** | ~75 ms per 0.5 MB, ≤ ~600 ms at 4 MB, cold | **Recommended** |
+| **(e) R2 text + R2 pack + BM25 build-on-read (recommended)** | **metadata ≈ 20 KB (50 items)** | ≈ 2.8 MB (text + gz pack) | 2.8 GB, **$0** | 28 GB, **≈ $0.27/mo** | ~0.25 s per 1 MB, ~0.5 s at the 2 MB cap, cold (17.1) | **Recommended** |
 
 - **External-content FTS5** (`content='tbl', content_rowid='id'`) is not a
   separate row. It indexes source rows that must live in D1, so its footprint
@@ -922,29 +988,352 @@ polish.
    1, already in production. Worth measuring the current D1 size and
    projecting it.
 
-## 14. Open questions for the owner
+## 14. Owner decisions (resolved 2026-10-25)
 
-1. **`ABS_CAP`**: 64k (quality, recommended) or 32k (half the cost).
-   `PCT` 7%.
-2. **Per-project searchable text cap**: 4 MB (pending the workerd spike),
-   with per-item sharding later.
-3. **Loop budget**: knowledge tools get their own 3 calls (cap 10 steps) or
-   share the lookup budget (cap 7).
-4. **Images in search mode**: index only (recommended) or attached on vision
-   models within a small cap.
-5. **Project delete**: unlink uploaded originals and keep them in the
-   library (recommended), or delete originals uploaded into the project and
-   referenced nowhere else.
-6. **Retention**: are project-linked files and their extracted text exempt
-   from the free-tier 30-day expiry?
-7. **In-Worker extraction fallback (P2)**: allow a capped server-side
-   `unpdf` path (operator CPU, seconds per document), or client-only
-   forever.
-8. **Moonshot `file-extract`**: offer it to Kimi key holders as an
-   optional extractor (it sends documents to Moonshot), or not.
-9. **Default mode** for new projects: Auto (recommended).
+| # | Question | Decision |
+|---|---|---|
+| 1 | `ABS_CAP` / `PCT` | **64k / 7%** |
+| 2 | Per-project searchable text cap | **4 MB, provisional** until the workerd spike. **K0 result: lowered to 2 MB** with a stem-only index (section 17.1) |
+| 3 | Loop budget | **Own 3 knowledge calls** (loop cap 10) |
+| 4 | Images in search mode | **Index only** |
+| 5 | Project delete | **Unlink originals, keep them in the library** |
+| 6 | Retention | **Project-linked files exempt** from the free-tier 30-day expiry |
+| 7 | In-Worker extraction fallback | **Later (K4), capped** |
+| 8 | Moonshot `file-extract` | **Later (K4), opt-in** |
+| 9 | Default mode | **Auto** |
 
-## 15. Sources
+## 15. K0 as built
+
+Branch `w7-k0-contract` (base `feat/memory-p3`). Everything below is
+implemented and tested; nothing reads it at runtime yet.
+
+| File | Exports |
+|---|---|
+| `shared/utils/project-knowledge-policy.ts` | enums `knowledgeModes`, `knowledgeDecisionModes`, `knowledgeDecisionReasons`, `knowledgeItemKinds`, `knowledgeExtractStatuses`, `knowledgeExtractors`, `knowledgeTokenFamilies`; `KNOWLEDGE_BUDGET`, `KNOWLEDGE_LIMITS`, `KNOWLEDGE_CHARS_PER_TOKEN`; allow-list and ignore lists; `getKnowledgeFileCategory`, `isIgnoredKnowledgePath` |
+| `shared/types/project-knowledge.d.ts` | `KnowledgeItem` (wire), `ProjectKnowledgeSummary`, `KnowledgePackHeader`, `KnowledgePackLine`, `KnowledgeDecisionInput`, `KnowledgeDecision`, `PromptCacheCostInput`/`Estimate`, `KnowledgeSearchHit`/`Result`, `KnowledgeReadResult`, char/media count types |
+| `shared/utils/project-knowledge-budget.ts` | `countKnowledgeChars`, `addKnowledgeCharCounts`, `resolveKnowledgeTokenFamily`, `estimateKnowledgeTextTokens`, `estimateKnowledgeTokens`, `computeKnowledgeBudget`, `computeReservedOutputTokens`, `measuredHistoryTokens`, `decideKnowledgeMode` |
+| `shared/utils/prompt-cache-cost.ts` | `estimatePromptCacheCost` |
+| `shared/utils/project-knowledge-schemas.ts` | `knowledgeModePatchSchema`, `knowledgeNoteCreateSchema`, `knowledgeNoteUpdateSchema`, `knowledgeItemPatchSchema`, `knowledgeItemCreateSchema`, `knowledgeItemsBatchCreateSchema`, `knowledgeCommitSchema`, `knowledgePackHeaderSchema`, `knowledgePackLineSchema`, `knowledgeSearchToolInputSchema`, `knowledgeReadToolInputSchema`, `knowledgeTextByteLength` |
+| `server/db/schemas/project-knowledge.ts`, `projects.ts`, `relations.ts` | `projectKnowledgeItems`; `projects.knowledgeMode`, `knowledgeVersion`, `knowledgePackVersion`; relations on users, projects, files |
+| `server/utils/knowledge/storage-keys.ts` | `knowledgeUserPrefix`, `knowledgeProjectPrefix`, `knowledgeItemTextKey`, `knowledgePackKey`, `knowledgePackIndexKey` (internal integer ids only; anything else throws) |
+| `server/utils/knowledge/purge.ts` | `deleteKnowledgePrefix`, `purgeProjectKnowledge(userId)` (wired into `purgeUserData`, `knowledgeObjectsDeleted` in its result, rethrows like file R2 deletes), `purgeProjectKnowledgeForProject` |
+| `server/utils/knowledge/quota.ts`, `file-governance.ts` | `getUserKnowledgeTextBytes`; `getUserStorageUsageBytes` now returns `sum(files.size) + sum(project_knowledge_items.text_bytes)` in one query |
+
+Notable choices: rounding uses the same 1e-9 epsilon as
+`memory-tokens.ts` (so `ceil(20000 × 1.15)` is 23000, not 23001); in auto
+mode `over-budget` is checked before `does-not-fit`; descriptions may be
+empty strings; `getKnowledgeFileCategory` lowercases the last extension and
+matches `Dockerfile`/`Makefile` exactly.
+
+**Migration** `.drizzle/migrations/20261025214938_project_knowledge`: one
+`CREATE TABLE project_knowledge_items` (three `ON DELETE CASCADE` FKs to
+`users`, `projects`, `files`), three `ALTER TABLE projects ADD`
+(`knowledge_mode` text, `knowledge_version` integer,
+`knowledge_pack_version` integer, all nullable, no default), two partial
+unique indexes and two plain indexes. No `DROP TABLE`, no table rebuild.
+Verified by replaying every migration into a fresh SQLite database.
+
+## 16. Contracts for K1, K2 and K3
+
+Three sessions implement these in parallel. Ownership is exclusive: a file
+appears under exactly one workstream. Every handler follows AGENTS.md (evlog
+`createError` with `why`/`fix`, `useLogger(event)`, no `console.*`, the
+directory route layout). Public ids are hashids on the wire; R2 keys and SQL
+use internal integer ids, derived server-side only. Each workstream lists
+its new specs for the umbrella to register in
+`scripts/test-affected-check.mjs`.
+
+### 16.1 K1: server ingestion, storage and pack
+
+**API** (all under `server/api/v1/projects/[id]/knowledge/`, project
+ownership checked first, a foreign or missing project is a 404):
+
+| Route | Body (zod from K0) | Response |
+|---|---|---|
+| `index.get.ts` GET | — | `ProjectKnowledgeSummary` |
+| `mode.patch.ts` PATCH | `knowledgeModePatchSchema` | `{ mode: KnowledgeMode \| null }` (no version bump: mode does not change content) |
+| `items/index.post.ts` POST | `knowledgeItemsBatchCreateSchema` | `{ items: KnowledgeItem[], skipped: Array<{ index: number, reason: 'duplicate' }>, version: number, packVersion: number \| null }` |
+| `items/[itemId]/index.patch.ts` PATCH | `knowledgeItemPatchSchema` | `KnowledgeItem` (no version bump; the index line is read live from D1) |
+| `items/[itemId]/index.delete.ts` DELETE | — | `{ version, packVersion }` (commits) |
+| `items/[itemId]/text.get.ts` GET | — | `{ text: string }` (extracted text or note body) |
+| `notes/index.post.ts` POST | `knowledgeNoteCreateSchema` | `KnowledgeItem` (commits) |
+| `notes/[itemId].patch.ts` PATCH | `knowledgeNoteUpdateSchema` | `KnowledgeItem` (commits when title or body changes) |
+| `commit.post.ts` POST | `knowledgeCommitSchema` | `{ version, packVersion }` |
+
+`items/index.post.ts` rules, in order:
+- item count ≤ `maxItemsPerProject`, project text ≤ `maxProjectTextBytes`
+  (422 with `why`);
+- quota: `getUserStorageUsageBytes(userId) + new text bytes ≤ policy.storage`
+  (413, same wording as file uploads);
+- a `fileId` must be the user's, of type `application/pdf` or `image/*`, and
+  not already linked to this project (409);
+- a duplicate `contentHash` in the project is skipped and reported, not an
+  error;
+- `countKnowledgeChars(text)` is recomputed server-side (client counts are
+  never trusted);
+- text objects are written **sequentially** (`items/<itemId>.md`), then
+  the rows in one `db.batch()`. A linked file gets `expiresAt = null`;
+- `invalidateStorageCache(userId)` after any change to text bytes;
+- `commit: true` runs the commit flow after the inserts.
+
+**Utilities** (`server/utils/knowledge/`):
+
+```ts
+// items.ts
+export function toKnowledgeItemWire(row): KnowledgeItem
+export async function listKnowledgeItems(input: { userId: number, projectId: number }): Promise<KnowledgeItem[]>
+export async function getKnowledgeProjectState(input: { userId: number, projectId: number }): Promise<{ mode: KnowledgeMode | null, version: number, packVersion: number | null } | null>
+
+// text-store.ts (sequential R2 calls only)
+export async function putKnowledgeItemText(input: { userId: number, projectId: number, itemId: number, text: string }): Promise<void>
+export async function getKnowledgeItemText(input: { userId: number, projectId: number, itemId: number }): Promise<string | null>
+export async function deleteKnowledgeItemText(input: { userId: number, projectId: number, itemId: number }): Promise<void>
+
+// chunk.ts (pure)
+export function chunkKnowledgeText(input: { itemId: string, title: string, relativePath: string | null, text: string }): KnowledgePackLine[]
+  // non-overlapping; ≤ KNOWLEDGE_LIMITS.chunkTargetTokens by the default family;
+  // split on Markdown headings, then blank lines, then sentences; never inside a
+  // fenced block when avoidable; breadcrumb `relativePath ?? title › H1 › H2`
+
+// pack.ts
+export async function readKnowledgePack(input: { userId: number, projectId: number, version: number }): Promise<{ header: KnowledgePackHeader, lines: KnowledgePackLine[] } | null>
+export async function buildKnowledgePack(input: { userId: number, projectId: number, logger?: LoggerLike }): Promise<{ packVersion: number, built: boolean }>
+export async function commitKnowledgeChange(input: { userId: number, projectId: number, removeItemIds?: number[], logger?: LoggerLike }): Promise<{ version: number, packVersion: number | null }>
+export async function ensureKnowledgePackFresh(input: { userId: number, projectId: number, logger?: LoggerLike }): Promise<void>   // never throws; no-op when fresh or a build is leased
+
+// version.ts
+export async function bumpKnowledgeVersion(projectIds: number[]): Promise<void>
+  // UPDATE projects SET knowledge_version = coalesce(knowledge_version, 0) + 1 WHERE id IN (…)
+```
+
+**Pack format** (`knowledgePackKey(userId, projectId, version)`): gzip
+(`CompressionStream('gzip')`) of UTF-8 NDJSON. Line 1 is a
+`KnowledgePackHeader` (`{ type: 'header', version, builtAt, items: [{
+itemId, updatedAt, chunks }] }`). Every other line is a `KnowledgePackLine`
+(`{ type: 'chunk', itemId, ordinal, breadcrumb, text }`), grouped by item in
+item `createdAt` order, ordinals from 0. Each line is validated with the K0
+zod schemas on read. Chunk text never overlaps. The search overlap is K2's
+concern, built at index time.
+
+**Build** (`buildKnowledgePack`, under the lease from
+`docs/chats/stuck-generation-guard.md`): read the previous pack (if any),
+keep its lines for items whose row exists with the same `updatedAt`, read
+and chunk the text of new or changed items sequentially, write
+`v<knowledgeVersion>`, then advance `knowledgePackVersion` only `WHERE
+knowledge_pack_version IS NULL OR knowledge_pack_version < :built`. Delete
+pack versions older than the previous one.
+
+**Other K1 files**:
+- `server/plugins/project-knowledge-sweep.ts`: hourly R2 GC of objects
+  under `knowledge/` whose item or project row is gone, and stale pack
+  versions. Sequential, batched deletes.
+- `server/api/v1/projects/[id]/index.delete.ts`: unlink originals (restore
+  expiry per tier), let the rows cascade, then
+  `purgeProjectKnowledgeForProject` (best effort; the sweeper catches
+  failures).
+- `server/api/v1/files/[id]/index.delete.ts` and
+  `server/api/v1/files/delete/bulk.post.ts`: before deleting, collect the
+  affected project ids and `bumpKnowledgeVersion` them.
+- `server/utils/files/cleanup-expired-files.ts` and
+  `server/utils/files/chat-deletion-cleanup.ts`: a file referenced by
+  `project_knowledge_items` is referenced, so it never expires or orphans.
+
+### 16.2 K2: send path
+
+Consumes from K1: `readKnowledgePack`, `ensureKnowledgePackFresh`,
+`listKnowledgeItems`, `getKnowledgeProjectState`, `getKnowledgeItemText`.
+Until K1 lands, K2's specs mock these by their K0-fixed signatures.
+
+```ts
+// server/utils/knowledge/context.ts
+export interface KnowledgeSendModel {
+  providerId: string; modelId: string; gateway: boolean
+  contextWindow: number | null | undefined; maxOutputTokens: number | null | undefined
+  inputModalities: string[]
+}
+export interface ProjectKnowledgeContext {
+  decision: KnowledgeDecision
+  knowledgeTokens: number
+  systemBlock: string | null          // full: <project_knowledge>…; search: the file index; none: null
+  registerTools: boolean              // search mode and tools allowed for this send
+  preRetrieval: boolean               // search mode and tools not registered
+  mediaParts: Array<{ type: 'file', mediaType: string, url: string, filename: string }>   // full mode only, gated by modalities
+  notice: 'full-does-not-fit' | 'media-omitted' | null
+}
+export async function resolveProjectKnowledgeContext(input: {
+  userId: number; projectId: number; model: KnowledgeSendModel
+  toolsAllowed: boolean; messageTokens: number
+  measuredHistoryTokens: number | null
+  estimated: { systemTokens: number, historyTokens: number, toolTokens: number }
+  logger?: LoggerLike
+}): Promise<ProjectKnowledgeContext | null>   // null = project has no knowledge
+
+// server/utils/knowledge/search.ts
+export interface KnowledgeSearcher {
+  search(input: { query: string, itemIds?: string[] }): KnowledgeSearchResult
+  read(input: { itemId: string, fromChunk?: number, count?: number }): KnowledgeReadResult
+}
+export function createKnowledgeSearcher(input: { lines: KnowledgePackLine[], items: KnowledgeItem[] }): KnowledgeSearcher
+export function getRequestKnowledgeSearcher(input: { userId: number, projectId: number, version: number }): Promise<KnowledgeSearcher | null>   // request-scoped memo
+
+// server/utils/knowledge/tools/index.ts
+export const KNOWLEDGE_TOOL_NAMES: readonly ['search_project_knowledge', 'read_project_knowledge']
+export const KNOWLEDGE_INSTRUCTION: string
+export function createKnowledgeBudget(): { consume(): void, used(): number }   // 3 calls; spent → 429 createError (tool-error, not a stream failure)
+export function getKnowledgeTools(input: { userId: number, projectId: number, version: number, budget: ReturnType<typeof createKnowledgeBudget>, logger?: LoggerLike }): ToolSet
+
+// server/utils/knowledge/pre-retrieval.ts
+export async function buildKnowledgeExcerpts(input: { userId: number, projectId: number, version: number, userText: string }): Promise<string | null>   // <project_knowledge_excerpts>…, ≤ preRetrievalMaxTokens
+```
+
+- **MiniSearch configuration** (fixed by section 17.1): field `stem` (the
+  vendored stemmer from `server/utils/search/ukrainian-stemmer.ts` as
+  `processTerm` for Cyrillic
+  tokens, Latin lowercased) as the **only** indexed field, `prefix: true`,
+  `fuzzy: false`, AND first, OR
+  when AND returns nothing. The breadcrumb plus the previous chunk's last
+  `chunkOverlapTokens` are indexed with each chunk, never returned as text.
+- **Edits K2 owns**:
+  - `server/api/v1/chats/[slug]/index.post.ts`: resolve the context after
+    the project is loaded; place `systemBlock` after the project prompt and
+    before `CHAT_SEARCH_INSTRUCTION`; register the tools; prepend media; add
+    excerpts to the current user turn; call `ensureKnowledgePackFresh` in
+    `waitUntil` when stale; record `knowledgeTokens`.
+  - `server/utils/ai/tool-loop.ts`: knowledge steps, cap 3 + 3 + 3 + 1.
+  - `server/utils/chats/model-turns.ts`: the leading media turn.
+  - `server/utils/gateways/index.ts`: `contextLength` and `maxOutputTokens`
+    on `GatewayChatResult`.
+  - `shared/types/message-usage.d.ts`: optional `knowledgeTokens`.
+  - `server/utils/ai/message-usage.ts`: writes `knowledgeTokens`.
+- **K2 must verify** whether `MessageUsage.inputTokens` is the last step or
+  a loop total (5.5), and use the last step for `measuredHistoryTokens`.
+- **Logging**: `attributes.knowledge = { mode, reason, tokens, budget,
+  items, searchCalls, packStale }`. Never text or queries.
+
+### 16.3 K3: client
+
+Consumes the 16.1 API and the K0 shared utilities. Until K1 lands, K3
+develops against these shapes with mocked `$fetch`.
+
+- **Upload flow**: pick files or a folder → filter with
+  `getKnowledgeFileCategory` / `isIgnoredKnowledgePath` / root `.gitignore`
+  subset → preview ("N added, M skipped, why") → extract in the Worker →
+  for PDFs and images, upload the original with the existing `PUT
+  /api/v1/files/upload` → `POST items` in batches of ≤ 25 items and ≤ 2 MB
+  of text, the last with `commit: true`. A re-sync sends `POST commit {
+  folderId, remove }`.
+- **Extraction Worker** `app/workers/knowledge-extract.ts`, loaded with
+  dynamic `import()`. Message in `{ id, name, bytes: ArrayBuffer }`;
+  message out `{ id, extractor, extractStatus, extractError, text, html?,
+  pageCount, contentHash }`. DOCX returns `html`, and the main thread
+  converts it with `app/utils/knowledge-html-to-markdown.ts` (`turndown` +
+  GFM). SHA-256 is computed over the original bytes.
+- **Files owned**:
+  - `app/components/Projects/Knowledge/**` (panel, item list, note editor
+    with `img: Img`, folder picker, mode selector, capacity meter);
+  - `app/components/Memory/PromptCacheAlert.vue` and its mount in
+    `app/pages/profile/memory.vue`;
+  - the panel's mount in `app/pages/chats/projects/[id].vue`;
+  - `app/composables/project-knowledge.ts` (`useProjectKnowledge(projectId)`:
+    `useLazyFetch` for the summary, `$fetch` mutations);
+  - `app/composables/prompt-cache-estimate.ts` (picker model →
+    `estimatePromptCacheCost` + `computeKnowledgeBudget`);
+  - `app/workers/knowledge-extract.ts`;
+  - `app/utils/knowledge-html-to-markdown.ts`;
+  - the chip labels for the two knowledge tools in `app/utils/reasoning.ts`.
+- **Meter math** is the K0 functions only (`estimateKnowledgeTokens`,
+  `computeKnowledgeBudget`, `resolveKnowledgeTokenFamily`,
+  `estimatePromptCacheCost`), so client and server agree.
+
+### 16.4 Shared files nobody else edits
+
+`package.json` and `pnpm-lock.yaml` (dependencies added in K0), the K0
+shared files, the migration, and `scripts/test-affected-check.mjs` (the
+umbrella registers specs). A workstream that needs a change in a K0 file
+asks the umbrella session instead of editing it.
+
+## 17. Spike results
+
+### 17.1 MiniSearch on workerd with Cyrillic text
+
+Method: 225 long Ukrainian Wikipedia articles plus 10% of bytes from this
+repo's `.md`/`.ts`/`.vue` files, cut into ~2,000-char chunks. Each chunk's
+indexed text carries its breadcrumb and a 400-char tail of the previous
+chunk. Search: AND, then OR, prefix on, 20 realistic Ukrainian queries.
+Node 24.18 (same V8) for heap, because local workerd stubs
+`process.memoryUsage()` and does not enforce the 128 MB limit. workerd
+1.20261012.1 (wrangler 4.151.1) for wall time, with the corpus embedded as
+a Text module so the timed request does no I/O. minisearch 7.2.0, Apple
+Silicon. Scripts and raw output are kept in the session scratchpad
+(`k0-spike/`).
+
+Two-field design (`body` + `stem`), as proposed in revision 2:
+
+| Text | Chunks | Build (Node) | Index heap (× text) | Peak old-space needed | Index JSON / gz | Search | workerd wall |
+|---|---|---|---|---|---|---|---|
+| 1 MB | 339 | 349 ms | 23 MB (23×) | 35–40 MB | 2.6 / 0.68 MB | 0.2–0.35 ms | ~330 ms |
+| 2 MB | 676 | 729 ms | 39 MB (19×) | 45–50 MB | 5.0 / 1.34 MB | 0.25–0.4 ms | ~700 ms |
+| 3 MB | 1,014 | – | 55 MB | 60–65 MB | 7.1 MB | – | – |
+| 4 MB | 1,343 | 1,495 ms | 68 MB (17×) | 80–84 MB | 9.8 / 2.6 MB | 0.4–0.7 ms | ~1,350 ms |
+| 8 MB | 2,690 | 3,112 ms | 114 MB (14×) | OOM at 128 MB | 19 / 5.1 MB | 0.7–0.9 ms | ~2,800 ms |
+
+Field variants at 4 MB:
+
+| Indexed fields | Index heap | Build | Peak old-space needed |
+|---|---|---|---|
+| `body` + `stem` | 68 MB | 1.5 s | 80–84 MB |
+| `body` only | 47 MB | 0.53 s | ≤ 65 MB |
+| **`stem` only** | **30 MB** | 0.93 s | **≤ 45 MB** |
+
+Findings:
+
+- **4 MB with two fields does not fit.** A Worker has ~88 MB for the index
+  after ~40 MB for the rest of a send (AI SDK, history, buffers). 4 MB needs
+  80–84 MB of old space before the young generation and the gunzipped pack.
+- **A prebuilt index does not fix memory.** Loading it (gunzip,
+  `JSON.parse` of 9.8 MB, `loadJSON`) peaked above 128 MB for 4 MB. It saves
+  CPU (~5×) and nothing else, so the "upgrade path" in 6.3 is a CPU
+  optimization only.
+- The revision 2 extrapolations from English were optimistic: build time is
+  ~2.5× higher, and index JSON is 2.3× the text (0.62× gzipped), not 0.93×
+  and 0.24×.
+- Searching is cheap at every size (< 1 ms). The cost is the build.
+
+**Decision (K0):** a **stem-only index** (Cyrillic stemmed, Latin
+lowercased, prefix search) and a **2 MB per-project text cap** in v1.
+Expected: ~15 MB of index heap and ~0.5 s per cold build at the cap, with a
+wide margin under 128 MB. Stem-only loses only the exact-surface ranking
+boost, not recall, which matters little for keyword queries an LLM writes.
+2 MB is about 1.1M Cyrillic characters (~550 pages), ~15× the full-inject
+budget and 10% of the free storage quota. Raising to 4 MB later needs one
+memory check on a deployed preview (stem-only fits in ≤ 45 MB).
+
+### 17.2 Chars per token for Ukrainian and English
+
+Method: 201,058 code points of Ukrainian Wikipedia prose (79% Cyrillic) and
+the same 30 articles' English versions, an 80,000-char TypeScript sample
+from this repo, and a mixed paragraph sample. Open tokenizers only, run
+locally; no API key, no paid call.
+
+| Family | Tokenizer | English | Ukrainian | Code | Per-class solve (Latin / Cyrillic) |
+|---|---|---|---|---|---|
+| openai | o200k_base (`gpt-tokenizer` 4.1.0, tiktoken identical) | 4.56 | 2.83 | 4.59 | 4.55 / 2.57 |
+| qwen | Qwen3-8B | 4.38 | 1.96 | 4.58 | 4.39 / 1.71 |
+| deepseek | DeepSeek-V3 | 4.59 | 2.31 | 4.40 | 4.59 / 2.04 |
+| moonshotai | Kimi-K2-Instruct | 4.49 | 2.31 | 4.59 | 4.49 / 2.04 |
+| google (proxy) | Gemma 3 (`unsloth/gemma-3-4b-it`) | 4.49 | 3.02 | 3.95 | 4.49 / 2.78 |
+| xai (weak proxy) | Grok-1 (third-party conversion) | 4.46 | 2.50 | 3.95 | 4.46 / 2.24 |
+| anthropic | none public | – | – | – | pending |
+
+- The per-class model sums within 1% per paragraph, and under-predicts
+  mixed text by 1.7–4.1%. The × 0.9 factor in 5.4 absorbs that.
+- The old 4 / 2.5 figure under-counts mixed Ukrainian by 16.6% on Qwen,
+  6.6% on DeepSeek and 6.2% on Kimi.
+- **Pending**: Anthropic (needs the free `count_tokens` endpoint with a
+  key), Gemini (Gemma 3 is a proxy), current Grok, and the "other" class
+  (< 0.5% of every sample, not fittable).
+
+## 18. Sources
 
 [M] = measured locally by a research agent (Node, SQLite 3.53.3, MiniSearch
 7.2.0, 1.65 MB of this repo's `docs/`). The scripts are in this session's

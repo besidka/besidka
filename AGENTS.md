@@ -92,9 +92,9 @@ PRAGMA foreign_keys=ON;
 
 These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `users` without recovery plan:
 
-- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`, `memory_entries`, `memory_backfill_jobs`
+- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`, `memory_entries`, `memory_backfill_jobs`, `project_knowledge_items`
 
-Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries).
+Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
 ### MANDATORY pre-apply checklist
 

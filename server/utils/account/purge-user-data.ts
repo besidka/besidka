@@ -6,6 +6,7 @@ import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import { resolveServerLogger } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildSearchOwnerTag } from '~~/server/utils/search/query'
+import { purgeProjectKnowledge } from '~~/server/utils/knowledge/purge'
 
 const r2BatchDeleteLimit = 1000
 
@@ -30,6 +31,7 @@ export interface PurgeUserDataResult {
   filesFound: number
   storageKeysDeleted: number
   storageBatches: number
+  knowledgeObjectsDeleted: number
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
@@ -39,12 +41,14 @@ export interface PurgeUserDataResult {
 /**
  * Removes every trace of a user that deleting the `users` row cannot reach.
  *
- * The D1 cascade takes care of the user's own tables, but five classes of
+ * The D1 cascade takes care of the user's own tables, but six classes of
  * data survive it and must be handled here. The user's `memory_entries` rows
  * are also deleted explicitly, together with the user's
  * `memory_backfill_jobs`, ahead of the R2 and KV work that may abort, as a
  * safeguard next to their cascade foreign keys:
  *   - R2 objects behind `files.storageKey` (a D1 cascade never touches R2),
+ *   - R2 project-knowledge objects under `knowledge/u<userId>/` (extracted
+ *     text and packs, which no D1 row references by key),
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
@@ -129,6 +133,26 @@ export async function purgeUserData(
     }
   }
 
+  let knowledgePurge: Awaited<ReturnType<typeof purgeProjectKnowledge>>
+
+  try {
+    knowledgePurge = await purgeProjectKnowledge(userId)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'knowledge-r2-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
   for (const storageKey of storageKeys) {
     await invalidateFileCache(storageKey, logger)
   }
@@ -210,6 +234,7 @@ export async function purgeUserData(
     filesFound: files.length,
     storageKeysDeleted: storageKeys.length,
     storageBatches,
+    knowledgeObjectsDeleted: knowledgePurge.objectsDeleted,
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
