@@ -142,9 +142,9 @@ How the non-top skip works:
   "Skipped (no build for this commit)" and exit before any download, migration
   or deploy. The check does not depend on whether GitHub reports an all-skipped
   run as `success` or `skipped`.
-- Affected tests diff against `stack.base.ref || base_ref` (the `main` base of
-  the whole stack), so the top layer tests every layer below it. The build still
-  checks out the PR head commit (see `docs/ci-pull-request-checkout-ref.md`).
+- CI runs the full suite, so the top layer tests everything it contains, every
+  layer below it included. The build checks out the PR head commit (see
+  `docs/ci-pull-request-checkout-ref.md`).
 - `preview-cleanup.yml` is left unfiltered on purpose. It handles a PR that was
   retargeted after it deployed, and an unfiltered run costs about one to two
   runner minutes.

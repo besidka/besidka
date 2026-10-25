@@ -112,6 +112,8 @@ Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remo
      - Uses a backup-and-replay strategy for affected child tables.
 4. Even for "safe-looking" additive migrations: **verify the SQL contains only `ALTER TABLE ADD COLUMN`, `CREATE INDEX`, `CREATE TABLE` (new tables only), `DROP INDEX`.** Anything else needs scrutiny.
 
+CI enforces this on the pull request: the `static` job fails a PR whose schema changed without a committed migration, and CI never generates migrations before applying them, so only reviewed, committed SQL ever reaches a remote database.
+
 ### Required when applying to production
 
 - Always take a Time Travel bookmark **before** applying, save it somewhere retrievable:
@@ -334,7 +336,7 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 - `docs/stacked-prs.md` - When to group PRs and how: the umbrella pattern
   (children `--base` the parent branch, no CI on children, parent builds
   everything) versus native `gh stack` layers (only the top layer builds,
-  affected tests diff against the stack base) versus a plain PR; exact
+  CI tests the whole stack) versus a plain PR; exact
   commands, the per-workflow CI table, merge order and squash semantics, the
   no-build gate in `preview-deploy.yml`, and warnings (the "Add to stack"
   banner, retarget-on-merge firing only `edited`, previews only for the
@@ -1018,7 +1020,7 @@ try {
 
 **Stop hooks**: These still run after each response as a safety net, but should not be relied upon as the primary validation mechanism.
 
-**Affected test mappings**: When writing new test files, you MUST update `scripts/test-affected-check.mjs` to register them. This script maps source file patterns to test files for CI — unregistered tests won't run on pull requests when their source files change. Add new test files to existing test groups or create a new group as appropriate.
+**Affected test mappings**: CI runs the full suite on every pull request, so an unregistered test still runs there. The mapping in `scripts/test-affected-check.mjs` now drives the pre-push hook (`.husky/pre-push`) and `pnpm run test:affected`, so when writing new test files you MUST still update it to register them — unregistered tests won't run locally when their source files change. Add new test files to existing test groups or create a new group as appropriate.
 
 ## Commit Messages
 

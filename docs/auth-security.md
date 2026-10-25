@@ -462,10 +462,11 @@ CI facts that set the order:
   then Preview Deploy. Preview Deploy runs
   `wrangler d1 migrations apply DB --remote` against `besidka-preview`.
   There is no draft gate.
-- Merging to `main` runs `production.yml`. It runs `pnpm run db:generate`,
-  which is a no-op while `migrations-clean.spec.ts` passes, then applies
+- Merging to `main` runs `production.yml`. It applies the committed
   migrations to `besidka` with `--env production`, then to
-  `besidka-preview`.
+  `besidka-preview`. It never generates migrations: the pull request's
+  `static` job and `migrations-clean.spec.ts` already fail a schema change
+  that has no committed migration.
 - `wrangler d1 migrations apply` skips any migration already recorded in
   `d1_migrations`. A migration applied by hand from this branch under the
   same directory name is therefore skipped by CI.

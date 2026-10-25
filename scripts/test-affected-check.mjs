@@ -1035,6 +1035,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/resolve-preview-build-source.spec.ts'],
     },
     {
+      pattern: /^(scripts\/ci\/resolve-(production-test|preview-build)-source\.mjs|\.github\/workflows\/(production|preview-build)\.yml)$/,
+      tests: ['tests/unit/scripts/resolve-production-test-source.spec.ts'],
+    },
+    {
       pattern: /^content\/legal\/cookie-policy\.md$/,
       tests: cookieConsentTests,
     },

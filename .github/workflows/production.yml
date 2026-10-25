@@ -35,8 +35,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    name: Gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      skip-tests: ${{ steps.source.outputs.skip-tests }}
+      source-run-id: ${{ steps.source.outputs.source-run-id }}
+      source-sha: ${{ steps.source.outputs.source-sha }}
+      pr-number: ${{ steps.source.outputs.pr-number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Resolve test source
+        id: source
+        run: node scripts/ci/resolve-production-test-source.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+
   static:
     name: Lint & typecheck
+    needs: gate
+    if: needs.gate.outputs.skip-tests != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -54,8 +90,21 @@ jobs:
       - name: Run TypeScript type checks
         run: pnpm run typecheck
 
+      - name: Check that migrations are committed
+        run: |
+          pnpm run db:generate
+          pnpm run db:consents:generate
+
+          if [ -n "$(git status --porcelain -- .drizzle)" ]; then
+            echo "::error::The Drizzle schema changed without a committed migration. Run pnpm run db:generate (and db:consents:generate) locally, review the SQL for DROP TABLE (see AGENTS.md → D1 Migration Safety), and commit it."
+            git status --porcelain -- .drizzle
+            exit 1
+          fi
+
   unit:
     name: Unit tests
+    needs: gate
+    if: needs.gate.outputs.skip-tests != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -75,6 +124,8 @@ jobs:
 
   integration:
     name: Integration tests
+    needs: gate
+    if: needs.gate.outputs.skip-tests != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -91,6 +142,7 @@ jobs:
 
   build:
     name: Build
+    needs: gate
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -146,7 +198,10 @@ jobs:
 
   e2e:
     name: E2E tests (${{ matrix.shard }}/${{ strategy.job-total }})
-    needs: build
+    needs:
+      - gate
+      - build
+    if: needs.gate.outputs.skip-tests != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -201,15 +256,44 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  playwright-cache:
+    name: Warm Playwright cache
+    needs: gate
+    if: needs.gate.outputs.skip-tests == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup project
+        uses: ./.github/actions/setup
+
+      - name: Prepare Playwright
+        uses: ./.github/actions/playwright
+
   deploy:
     name: Deploy to Production
     needs:
+      - gate
       - static
       - unit
       - integration
       - build
       - e2e
-    if: github.ref == 'refs/heads/main' && inputs.dry-run != true
+    if: >-
+      !cancelled()
+      && github.ref == 'refs/heads/main'
+      && inputs.dry-run != true
+      && needs.gate.result == 'success'
+      && needs.build.result == 'success'
+      && (needs.gate.outputs.skip-tests == 'true'
+      || (needs.static.result == 'success'
+      && needs.unit.result == 'success'
+      && needs.integration.result == 'success'
+      && needs.e2e.result == 'success'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -237,7 +321,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          preCommands: pnpm run db:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env production
 
@@ -247,7 +330,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          preCommands: pnpm run db:consents:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote --env production
 
@@ -274,6 +356,9 @@ jobs:
 
       - name: Write run summary
         env:
+          SKIP_TESTS: ${{ needs.gate.outputs.skip-tests }}
+          SOURCE_PR_NUMBER: ${{ needs.gate.outputs.pr-number }}
+          SOURCE_RUN_ID: ${{ needs.gate.outputs.source-run-id }}
           STATIC_DURATION: ${{ steps.durations.outputs.static }}
           UNIT_DURATION: ${{ steps.durations.outputs.unit }}
           INTEGRATION_DURATION: ${{ steps.durations.outputs.integration }}
@@ -283,11 +368,18 @@ jobs:
           TOTAL_DURATION: ${{ steps.durations.outputs.total }}
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
+          if [ "$SKIP_TESTS" = "true" ]; then
+            TESTS_RESULT="reused from PR #$SOURCE_PR_NUMBER (run $SOURCE_RUN_ID)"
+          else
+            TESTS_RESULT="ran on main"
+          fi
+
           {
             echo "## Production deploy"
             echo ""
             echo "| Stage | Result |"
             echo "|-------|--------|"
+            echo "| Tests | $TESTS_RESULT |"
             echo "| Lint & typecheck | $STATIC_DURATION |"
             echo "| Unit tests | $UNIT_DURATION |"
             echo "| Integration tests | $INTEGRATION_DURATION |"
@@ -372,7 +464,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          preCommands: pnpm run db:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
@@ -382,7 +473,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          preCommands: pnpm run db:consents:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote
 

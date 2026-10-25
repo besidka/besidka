@@ -1,5 +1,5 @@
 name: Prepare E2E
-description: Download the build, restore Playwright Chromium, migrate local D1 and write .dev.vars for wrangler dev
+description: Download the build, restore Playwright Chromium, migrate local D1 from the committed migrations and write .dev.vars for wrangler dev
 
 runs:
   using: composite
@@ -10,34 +10,12 @@ runs:
         name: preview-build
         path: .output/
 
-    - name: Resolve Playwright version
-      id: playwright-version
-      shell: bash
-      run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-    - name: Cache Playwright Chromium
-      id: playwright-cache
-      uses: actions/cache@v6
-      with:
-        path: ~/.cache/ms-playwright
-        key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium-headless-shell
-
-    - name: Install Playwright Chromium
-      if: steps.playwright-cache.outputs.cache-hit != 'true'
-      shell: bash
-      run: timeout 180 pnpm exec playwright install chromium --only-shell
-
-    - name: Generate DB migrations
-      shell: bash
-      run: pnpm run db:generate
+    - name: Prepare Playwright
+      uses: ./.github/actions/playwright
 
     - name: Apply DB migrations
       shell: bash
       run: pnpm exec wrangler d1 migrations apply DB --local
-
-    - name: Generate consent DB migrations
-      shell: bash
-      run: pnpm run db:consents:generate
 
     - name: Apply consent DB migrations
       shell: bash

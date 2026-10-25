@@ -6,12 +6,17 @@ configs (`playwright.config.ts`, `vitest.config.mts`,
 `scripts/test-affected*.mjs`). Goal: bring the build back to 5–7 min without
 losing quality, on free GitHub-hosted runners or on Blacksmith 2 vCPU.
 
-**Status:** stages 0 and 1 of the plan below are implemented in the PR that
-adds this document: the Playwright cache, `--only-shell` and no
-`--with-deps`, the dropped duplicate `nuxt prepare`, merged gate jobs, the
-cookie-consent module tests on main, the parallel job graph with 3
-job-level E2E shards, and a single Playwright invocation for affected E2E
-instead of one per spec file. Stages 2 and 3 remain open. The "Now" column
+**Status:** stages 0, 1 and 2 of the plan below, and the migration check
+from F6, are implemented in the PR that adds this document: the Playwright
+cache, `--only-shell` and no `--with-deps`, the dropped duplicate
+`nuxt prepare`, merged gate jobs, the cookie-consent module tests on main,
+the parallel job graph with 3 job-level E2E shards, a full-suite run on every
+PR (the affected selection is gone from CI), and a `gate` job on main that
+skips lint, typecheck, unit, integration and E2E when the merged PR passed the
+full suite on a matching tree (`scripts/ci/resolve-production-test-source.mjs`;
+main still builds and deploys its own build). Instead of generating migrations
+before applying them to production, `static` now fails a PR whose schema
+changed without a committed migration. Stage 3 remains open. The "Now" column
 and the measurements below describe the pipeline as it was before these
 changes.
 
@@ -289,10 +294,11 @@ Result on main: **~3 min** when the tree matches, **~7 min** when it differs
 (full graph + deploy).
 
 Side effect: `scripts/test-affected-check.mjs` (1950 lines of hand-written
-mapping) stops being part of the CI gate. It can stay for the local
-`pnpm run test:affected`, and the rule "register every new test in the
-mapping" can be removed from `AGENTS.md`. A test missing from the mapping is
-a quality gap that the full suite closes by itself.
+mapping) stops being part of the CI gate. It stays for the local
+`pnpm run test:affected` and the pre-push hook, so the rule "register every
+new test in the mapping" stays in `AGENTS.md`, now to keep local runs honest.
+A test missing from the mapping is a quality gap that the full suite closes
+by itself in CI.
 
 ### F5. Unit tests
 

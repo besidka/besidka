@@ -1444,7 +1444,9 @@ main `DB`, mirroring the existing migration pipeline:
   `.drizzle/migrations-consent/`).
 - **Merge / push to `main`** → `production.yml` (`deploy`) applies
   `CONSENT_DB --remote --env production` on every run (the apply is
-  idempotent), regenerating first via `pnpm run db:consents:generate`.
+  idempotent) from the committed migrations. CI never regenerates them; the
+  `static` job fails a pull request whose consent schema changed without a
+  committed migration.
 - **Push to `main`** → `production.yml` (`deploy-preview`) applies
   `CONSENT_DB --remote` to the preview database, then deploys the long-lived
   Workers Preview (`wrangler preview --name preview`). See

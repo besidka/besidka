@@ -29,9 +29,6 @@ concurrency:
   group: preview-build-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-env:
-  AFFECTED_BASE_REF: ${{ github.event.pull_request.stack.base.ref || github.base_ref }}
-
 jobs:
   gate:
     name: Gate
@@ -182,6 +179,17 @@ jobs:
       - name: Run TypeScript type checks
         run: pnpm run typecheck
 
+      - name: Check that migrations are committed
+        run: |
+          pnpm run db:generate
+          pnpm run db:consents:generate
+
+          if [ -n "$(git status --porcelain -- .drizzle)" ]; then
+            echo "::error::The Drizzle schema changed without a committed migration. Run pnpm run db:generate (and db:consents:generate) locally, review the SQL for DROP TABLE (see AGENTS.md → D1 Migration Safety), and commit it."
+            git status --porcelain -- .drizzle
+            exit 1
+          fi
+
   unit:
     name: Unit tests
     needs: gate
@@ -194,14 +202,16 @@ jobs:
       - name: Checkout PR code
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup project
         uses: ./.github/actions/setup
 
-      - name: Run affected unit tests
-        run: node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=unit
+      - name: Run all unit tests
+        run: pnpm run test:unit
+
+      - name: Run cookie-consent module tests
+        run: pnpm run test:cookie-consent
 
   integration:
     name: Integration tests
@@ -215,14 +225,13 @@ jobs:
       - name: Checkout PR code
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup project
         uses: ./.github/actions/setup
 
-      - name: Run affected integration tests
-        run: node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=integration
+      - name: Run all integration tests
+        run: pnpm run test:integration
 
   build:
     name: Build
@@ -233,25 +242,16 @@ jobs:
     permissions:
       contents: read
     outputs:
-      has-e2e: ${{ steps.check-e2e.outputs.has-tests }}
       bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
       build-duration: ${{ steps.build-app.outputs.duration }}
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup project
         uses: ./.github/actions/setup
-
-      - name: Check affected E2E tests
-        id: check-e2e
-        run: >-
-          node scripts/test-affected-check.mjs
-          --base="origin/$AFFECTED_BASE_REF"
-          --type=e2e
 
       - name: Build application
         id: build-app
@@ -283,12 +283,6 @@ jobs:
           echo "✅ Build successful"
           ls -lah .output/
 
-      - name: Generate DB migrations
-        run: pnpm run db:generate
-
-      - name: Generate consent DB migrations
-        run: pnpm run db:consents:generate
-
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
@@ -312,7 +306,6 @@ jobs:
     needs:
       - gate
       - build
-    if: needs.build.outputs.has-e2e == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -336,7 +329,6 @@ jobs:
       - name: Checkout PR code
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup project
@@ -345,9 +337,9 @@ jobs:
       - name: Prepare E2E
         uses: ./.github/actions/prepare-e2e
 
-      - name: Run affected E2E tests
+      - name: Run all E2E tests
         timeout-minutes: 10
-        run: node scripts/test-affected.mjs --base="origin/$AFFECTED_BASE_REF" --type=e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7
@@ -386,7 +378,7 @@ jobs:
       && needs.unit.result == 'success'
       && needs.integration.result == 'success'
       && needs.build.result == 'success'
-      && (needs.e2e.result == 'success' || needs.e2e.result == 'skipped')
+      && needs.e2e.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -427,7 +419,7 @@ jobs:
             |----------|-------|
             | **Author** | [@${{ github.event.pull_request.user.login }}](https://github.com/${{ github.event.pull_request.user.login }}) |
             | **Checks** | Lint & typecheck: ${{ steps.durations.outputs.static }} |
-            | **Tests** | Unit: ${{ steps.durations.outputs.unit }} \| Integration: ${{ steps.durations.outputs.integration }} \| E2E: ${{ needs.e2e.result == 'skipped' && 'skipped' || format('{0} (slowest of 3 shards)', steps.durations.outputs.e2e) }} |
+            | **Tests** | Unit: ${{ steps.durations.outputs.unit }} \| Integration: ${{ steps.durations.outputs.integration }} \| E2E: ${{ format('{0} (slowest of 3 shards)', steps.durations.outputs.e2e) }} |
             | **Build** | Nuxt: ${{ needs.build.outputs.build-duration }} \| Bundle: ${{ needs.build.outputs.bundle-size }} |
             | **Total time** | ${{ steps.durations.outputs.total }} |
             | **Latest commit** | [`${{ steps.pr.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/commits/${{ steps.pr.outputs.sha }}) |

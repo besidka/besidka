@@ -160,19 +160,23 @@ const testMappings = [
 
 ## CI/CD Integration
 
-### GitHub Actions Example
+### GitHub Actions
+
+CI always runs the full suite and never uses the affected mapping. Every pull
+request (`preview-build.yml`) runs these as parallel jobs:
 
 ```yaml
-# Pull Requests: Run only affected tests (fast)
-- name: Run affected tests
-  if: github.event_name == 'pull_request'
-  run: node scripts/test-affected.mjs --base=origin/main
-
-# Main branch: Run complete suite
-- name: Run all tests
-  if: github.ref == 'refs/heads/main'
-  run: pnpm test:all
+- run: pnpm run test:unit
+- run: pnpm run test:cookie-consent
+- run: pnpm run test:integration
+- run: pnpm exec playwright test --shard=<i>/3
 ```
+
+A push to `main` (`production.yml`) reuses that result and skips the same jobs
+when the merged PR passed the full suite on a tree that differs from `main`
+only in ignored paths; otherwise it runs them. See
+`.github/workflows/README.md`. The affected mapping still drives the local
+hooks and `pnpm test:affected`.
 
 See `.github/workflows/test-optimization-example.yml.disabled` for full example.
 
@@ -278,7 +282,8 @@ node scripts/test-affected.mjs --base=main --type=unit
 
 - Skip tests completely
 - Forget to update mappings when adding dependencies
-- Rely solely on affected tests in CI for main branch
+- Treat a passing `test:affected` run as a substitute for CI: CI runs the full
+  suite
 - Ignore "no tests found" warnings
 
 ## Summary
@@ -286,6 +291,6 @@ node scripts/test-affected.mjs --base=main --type=unit
 - **Fast development:** `pnpm test:unit:changed`
 - **Pre-commit:** Automatic via hook (`pnpm test:affected`)
 - **Pre-push:** `pnpm test:all`
-- **CI/CD:** Affected on PRs, full on main
+- **CI/CD:** Full suite on PRs; main reuses the PR result when the tree matches
 
 For complete command reference, see [TEST_COMMANDS.md](../TEST_COMMANDS.md).
