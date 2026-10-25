@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import { and, eq, notInArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
   defineEventHandler,
@@ -12,7 +12,7 @@ import {
   MAX_PUSH_AUTH_KEY_LENGTH,
   MAX_PUSH_ENDPOINT_LENGTH,
   MAX_PUSH_P256DH_KEY_LENGTH,
-  MAX_PUSH_SUBSCRIPTIONS_PER_USER,
+  trimPushSubscriptionsToLimit,
 } from '~~/server/utils/push'
 
 export default defineEventHandler(async (event) => {
@@ -75,8 +75,11 @@ export default defineEventHandler(async (event) => {
   const existing = await db.query.pushSubscriptions.findFirst({
     where: { endpoint },
   })
+  let writtenSubscriptionId: number
 
   if (existing) {
+    writtenSubscriptionId = existing.id
+
     // A push subscription is device/browser-scoped, not permanently
     // user-scoped — a second user signing into the same browser is expected
     // to take over it. Logged (not blocked) so a takeover on a shared device
@@ -115,33 +118,18 @@ export default defineEventHandler(async (event) => {
       },
     })
 
-    const newestSubscriptions = await db.query.pushSubscriptions.findMany({
-      columns: { id: true },
-      where: { userId },
-      orderBy: { lastSeenAt: 'desc', createdAt: 'desc', id: 'desc' },
-      limit: MAX_PUSH_SUBSCRIPTIONS_PER_USER,
-    })
+    const [insertedSubscription] = await db.insert(schema.pushSubscriptions)
+      .values({
+        userId,
+        endpoint,
+        p256dhKey: keys.p256dh,
+        authKey: keys.auth,
+        origin,
+        lastSeenAt,
+      })
+      .returning({ id: schema.pushSubscriptions.id })
 
-    if (newestSubscriptions.length >= MAX_PUSH_SUBSCRIPTIONS_PER_USER) {
-      const retainedIds = newestSubscriptions
-        .slice(0, MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1)
-        .map(subscription => subscription.id)
-
-      await db.delete(schema.pushSubscriptions)
-        .where(and(
-          eq(schema.pushSubscriptions.userId, userId),
-          notInArray(schema.pushSubscriptions.id, retainedIds),
-        ))
-    }
-
-    await db.insert(schema.pushSubscriptions).values({
-      userId,
-      endpoint,
-      p256dhKey: keys.p256dh,
-      authKey: keys.auth,
-      origin,
-      lastSeenAt,
-    })
+    writtenSubscriptionId = insertedSubscription!.id
   }
 
   if (previousEndpoint && previousEndpoint !== endpoint) {
@@ -160,6 +148,8 @@ export default defineEventHandler(async (event) => {
       },
     })
   }
+
+  await trimPushSubscriptionsToLimit(db, userId, writtenSubscriptionId)
 
   setResponseStatus(event, 204)
 

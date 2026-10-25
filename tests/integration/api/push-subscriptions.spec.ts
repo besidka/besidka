@@ -29,6 +29,8 @@ vi.mock('evlog', () => ({
   },
 }))
 
+const INSERTED_ID = 500
+
 const sqlBuilder = drizzle({} as any)
 
 function renderCondition(condition: SQL) {
@@ -42,7 +44,8 @@ function createDb(
   deletedRows: { id: number }[] = [],
   userRows: { id: number }[] = [],
 ) {
-  const insertValues = vi.fn(async () => undefined)
+  const insertReturning = vi.fn(async () => [{ id: INSERTED_ID }])
+  const insertValues = vi.fn(() => ({ returning: insertReturning }))
   const updateSet = vi.fn(() => ({ where: vi.fn(async () => undefined) }))
   const returning = vi.fn(async () => deletedRows)
   const deleteWhere = vi.fn(() => ({ returning }))
@@ -361,11 +364,11 @@ describe('push subscription API', () => {
       expect(insertValues).toHaveBeenCalledTimes(1)
     })
 
-    it('does not evict anything while the user is below the cap', async () => {
+    it('does not trim while the user is at or below the cap', async () => {
       const { db, deleteWhere, insertValues } = createDb(
         null,
         [],
-        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1),
+        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER),
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -383,11 +386,12 @@ describe('push subscription API', () => {
       expect(insertValues).toHaveBeenCalledTimes(1)
     })
 
-    it('evicts the oldest rows, scoped to the user, when at the cap', async () => {
+    it('trims the oldest rows, scoped to the user, after inserting past the cap', async () => {
+      const olderRows = createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER)
       const { db, deleteWhere, insertValues, findManyUserRows } = createDb(
         null,
         [],
-        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER),
+        [{ id: INSERTED_ID }, ...olderRows],
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -403,30 +407,145 @@ describe('push subscription API', () => {
 
       expect(findManyUserRows).toHaveBeenCalledWith(expect.objectContaining({
         where: { userId: 7 },
-        limit: MAX_PUSH_SUBSCRIPTIONS_PER_USER,
+        limit: MAX_PUSH_SUBSCRIPTIONS_PER_USER + 1,
       }))
       expect(deleteWhere).toHaveBeenCalledTimes(1)
 
       const rendered = renderCondition(
         (deleteWhere.mock.calls[0] as unknown[])[0] as SQL,
       )
-      const keptIds = createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER)
+      const keptIds = olderRows
         .slice(0, MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1)
         .map(row => row.id)
 
       expect(rendered.sql).toContain('"user_id"')
       expect(rendered.sql).toContain('not in')
-      expect(rendered.params).toEqual([7, ...keptIds])
-      expect(insertValues).toHaveBeenCalledTimes(1)
+      expect(rendered.params).toEqual([7, INSERTED_ID, ...keptIds])
       expect(deleteWhere.mock.invocationCallOrder[0])
-        .toBeLessThan(insertValues.mock.invocationCallOrder[0]!)
+        .toBeGreaterThan(insertValues.mock.invocationCallOrder[0]!)
     })
 
-    it('still inserts the new endpoint when the user is at the cap', async () => {
+    it('trims to the cap and keeps the row when an endpoint owned by another user is reassigned', async () => {
+      const olderRows = createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER)
+      const { db, deleteWhere, updateSet } = createDb(
+        { id: 99, userId: 3 },
+        [],
+        [{ id: 99 }, ...olderRows],
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'new-p256dh', auth: 'new-auth' },
+        },
+      } as any)
+
+      expect(updateSet).toHaveBeenCalledTimes(1)
+      expect(deleteWhere).toHaveBeenCalledTimes(1)
+
+      const rendered = renderCondition(
+        (deleteWhere.mock.calls[0] as unknown[])[0] as SQL,
+      )
+      const keptIds = olderRows
+        .slice(0, MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1)
+        .map(row => row.id)
+
+      expect(rendered.sql).toContain('"user_id"')
+      expect(rendered.params).toEqual([7, 99, ...keptIds])
+      expect(rendered.params).toHaveLength(MAX_PUSH_SUBSCRIPTIONS_PER_USER + 1)
+    })
+
+    it('keeps the written row even when it ranks outside the newest rows', async () => {
+      const rows = createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER + 1)
+      const { db, deleteWhere } = createDb(
+        { id: 1, userId: 7 },
+        [],
+        rows,
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'new-p256dh', auth: 'new-auth' },
+        },
+      } as any)
+
+      const rendered = renderCondition(
+        (deleteWhere.mock.calls[0] as unknown[])[0] as SQL,
+      )
+      const otherIds = rows
+        .map(row => row.id)
+        .filter(id => id !== 1)
+        .slice(0, MAX_PUSH_SUBSCRIPTIONS_PER_USER - 1)
+
+      expect(rendered.params).toEqual([7, 1, ...otherIds])
+    })
+
+    it('does not trim when a reassigned endpoint leaves the user at the cap', async () => {
+      const { db, deleteWhere, findManyUserRows } = createDb(
+        { id: 99, userId: 3 },
+        [],
+        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER),
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'new-p256dh', auth: 'new-auth' },
+        },
+      } as any)
+
+      expect(findManyUserRows).toHaveBeenCalledWith(expect.objectContaining({
+        where: { userId: 7 },
+      }))
+      expect(deleteWhere).not.toHaveBeenCalled()
+    })
+
+    it('trims after the previous endpoint row is removed', async () => {
+      const { db, deleteWhere } = createDb(
+        null,
+        [{ id: 41 }],
+        [{ id: INSERTED_ID }, ...createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER)],
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-2',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+          previousEndpoint: 'https://push.example.com/sub-1',
+        },
+      } as any)
+
+      expect(deleteWhere).toHaveBeenCalledTimes(2)
+
+      const trimRendered = renderCondition(
+        (deleteWhere.mock.calls[1] as unknown[])[0] as SQL,
+      )
+
+      expect(trimRendered.sql).toContain('not in')
+    })
+
+    it('still inserts the new endpoint when the user is over the cap', async () => {
       const { db, insertValues } = createDb(
         null,
         [],
-        createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER),
+        [{ id: INSERTED_ID }, ...createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER)],
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -446,8 +565,8 @@ describe('push subscription API', () => {
       }))
     })
 
-    it('does not run the cap check when re-subscribing an existing endpoint', async () => {
-      const { db, deleteWhere, findManyUserRows, updateSet } = createDb(
+    it('does not trim when re-subscribing an existing endpoint at the cap', async () => {
+      const { db, deleteWhere, updateSet } = createDb(
         { id: 99, userId: 7 },
         [],
         createRows(MAX_PUSH_SUBSCRIPTIONS_PER_USER),
@@ -464,7 +583,6 @@ describe('push subscription API', () => {
         },
       } as any)
 
-      expect(findManyUserRows).not.toHaveBeenCalled()
       expect(deleteWhere).not.toHaveBeenCalled()
       expect(updateSet).toHaveBeenCalledTimes(1)
     })
