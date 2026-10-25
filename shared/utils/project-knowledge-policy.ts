@@ -52,6 +52,7 @@ export const KNOWLEDGE_BUDGET = {
 export const KNOWLEDGE_LIMITS = {
   maxItemsPerProject: 500,
   maxProjectTextBytes: 2 * 1024 * 1024,
+  maxBatchTextBytes: 1024 * 1024,
   maxItemTextBytes: 2 * 1024 * 1024,
   maxOriginalFileBytes: 30 * 1024 * 1024,
   maxTextFileBytes: 1024 * 1024,

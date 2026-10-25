@@ -78,6 +78,8 @@ describe('KNOWLEDGE_LIMITS', () => {
   it('keeps the size limits consistent with each other', () => {
     expect(KNOWLEDGE_LIMITS.maxItemTextBytes)
       .toBeLessThanOrEqual(KNOWLEDGE_LIMITS.maxProjectTextBytes)
+    expect(KNOWLEDGE_LIMITS.maxBatchTextBytes)
+      .toBeLessThanOrEqual(KNOWLEDGE_LIMITS.maxProjectTextBytes)
     expect(KNOWLEDGE_LIMITS.maxTextFileBytes)
       .toBeLessThanOrEqual(KNOWLEDGE_LIMITS.maxItemTextBytes)
     expect(KNOWLEDGE_LIMITS.maxFolderBytes)
@@ -89,6 +91,7 @@ describe('KNOWLEDGE_LIMITS', () => {
   it('pins the headline values', () => {
     expect(KNOWLEDGE_LIMITS.maxItemsPerProject).toBe(500)
     expect(KNOWLEDGE_LIMITS.maxProjectTextBytes).toBe(2 * 1024 * 1024)
+    expect(KNOWLEDGE_LIMITS.maxBatchTextBytes).toBe(1024 * 1024)
     expect(KNOWLEDGE_LIMITS.maxNoteChars).toBe(100_000)
     expect(KNOWLEDGE_LIMITS.maxDescriptionChars).toBe(100)
     expect(KNOWLEDGE_LIMITS.imageTokens).toBe(1600)

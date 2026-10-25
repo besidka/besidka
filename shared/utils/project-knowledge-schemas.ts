@@ -210,11 +210,11 @@ export const knowledgeItemsBatchCreateSchema = z
         return sum + knowledgeTextByteLength(item.text)
       }, 0)
 
-      return totalBytes <= KNOWLEDGE_LIMITS.maxProjectTextBytes
+      return totalBytes <= KNOWLEDGE_LIMITS.maxBatchTextBytes
     },
     {
       message: 'Batch text must be at most '
-        + `${KNOWLEDGE_LIMITS.maxProjectTextBytes} bytes`,
+        + `${KNOWLEDGE_LIMITS.maxBatchTextBytes} bytes`,
       path: ['items'],
     },
   )

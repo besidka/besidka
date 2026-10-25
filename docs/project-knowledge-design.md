@@ -1021,6 +1021,18 @@ implemented and tested; nothing reads it at runtime yet.
 | `server/utils/knowledge/purge.ts` | `deleteKnowledgePrefix`, `purgeProjectKnowledge(userId)` (wired into `purgeUserData`, `knowledgeObjectsDeleted` in its result, rethrows like file R2 deletes), `purgeProjectKnowledgeForProject` |
 | `server/utils/knowledge/quota.ts`, `file-governance.ts` | `getUserKnowledgeTextBytes`; `getUserStorageUsageBytes` now returns `sum(files.size) + sum(project_knowledge_items.text_bytes)` in one query |
 
+Review fixes applied in K0: gateway vendor lookup guarded with
+`Object.hasOwn` (a model id like `constructor/x` crashed the estimate);
+titles, descriptions and paths reject every control character and line
+separator (a crafted path could forge an extra index line); `ready` items
+need non-whitespace text and other statuses need empty text; `pageCount` ≤
+500; a cheap character cap runs before the UTF-8 byte count; one batch is
+≤ 1 MB of text (`maxBatchTextBytes`), the 2 MB project cap is checked by
+the handler against the database. `deleteKnowledgePrefix` accepts only
+`knowledge/u<id>/` or `knowledge/u<id>/p<id>/`, and a listing page that says
+`truncated` without a cursor **throws after deleting that page's keys**, so
+a K1 sweeper sees a failure, never a silent partial purge.
+
 Notable choices: rounding uses the same 1e-9 epsilon as
 `memory-tokens.ts` (so `ceil(20000 × 1.15)` is 23000, not 23001); in auto
 mode `over-budget` is checked before `does-not-fit`; descriptions may be
@@ -1249,7 +1261,7 @@ develops against these shapes with mocked `$fetch`.
   `getKnowledgeFileCategory` / `isIgnoredKnowledgePath` / root `.gitignore`
   subset → preview ("N added, M skipped, why") → extract in the Worker →
   for PDFs and images, upload the original with the existing `PUT
-  /api/v1/files/upload` → `POST items` in batches of ≤ 25 items and ≤ 2 MB
+  /api/v1/files/upload` → `POST items` in batches of ≤ 25 items and ≤ 1 MB
   of text, the last with `commit: true`. A re-sync sends `POST commit {
   folderId, remove }`.
 - **Extraction Worker** `app/workers/knowledge-extract.ts`, loaded with

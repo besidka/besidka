@@ -709,24 +709,24 @@ describe('knowledgeItemsBatchCreateSchema', () => {
     }).success).toBe(false)
   })
 
-  it('accepts a total exactly at the project byte limit', () => {
-    const itemBytes = KNOWLEDGE_LIMITS.maxProjectTextBytes / 2
+  it('accepts a total exactly at the batch byte limit', () => {
+    const itemBytes = KNOWLEDGE_LIMITS.maxBatchTextBytes / 2
     const items = Array.from({ length: 2 }, () => ({
       ...validPdfItem,
       text: 'a'.repeat(itemBytes),
     }))
 
     expect(items.length * itemBytes)
-      .toBe(KNOWLEDGE_LIMITS.maxProjectTextBytes)
+      .toBe(KNOWLEDGE_LIMITS.maxBatchTextBytes)
     expect(knowledgeItemsBatchCreateSchema.safeParse({ items }).success)
       .toBe(true)
   })
 
-  it('rejects a total above the project byte limit', () => {
+  it('rejects a total above the batch byte limit', () => {
     const items = [
       {
         ...validPdfItem,
-        text: 'a'.repeat(KNOWLEDGE_LIMITS.maxProjectTextBytes),
+        text: 'a'.repeat(KNOWLEDGE_LIMITS.maxBatchTextBytes),
       },
       { ...validPdfItem, text: 'a' },
     ]
@@ -737,12 +737,28 @@ describe('knowledgeItemsBatchCreateSchema', () => {
       .toBe(true)
   })
 
-  it('sums bytes rather than characters', () => {
+  it('rejects a batch total above the batch limit even under the project limit', () => {
+    const itemBytes = KNOWLEDGE_LIMITS.maxBatchTextBytes / 2 + 1
     const items = Array.from({ length: 2 }, () => ({
       ...validPdfItem,
-      text: 'я'.repeat(KNOWLEDGE_LIMITS.maxProjectTextBytes / 4 + 1),
+      text: 'a'.repeat(itemBytes),
     }))
 
+    expect(items.length * itemBytes)
+      .toBeLessThan(KNOWLEDGE_LIMITS.maxProjectTextBytes)
+    expect(knowledgeItemsBatchCreateSchema.safeParse({ items }).success)
+      .toBe(false)
+  })
+
+  it('sums bytes rather than characters', () => {
+    const charactersPerItem = KNOWLEDGE_LIMITS.maxBatchTextBytes / 4 + 1
+    const items = Array.from({ length: 2 }, () => ({
+      ...validPdfItem,
+      text: 'я'.repeat(charactersPerItem),
+    }))
+
+    expect(charactersPerItem * 2)
+      .toBeLessThanOrEqual(KNOWLEDGE_LIMITS.maxBatchTextBytes)
     expect(knowledgeItemsBatchCreateSchema.safeParse({ items }).success)
       .toBe(false)
   })
