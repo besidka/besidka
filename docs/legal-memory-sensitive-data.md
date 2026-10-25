@@ -4,7 +4,15 @@ Date: 2026-10-25. Scope: Besidka (besidka.com), one natural person in Poland
 as controller, GDPR + UODO. This is risk research for an engineering decision,
 not legal advice. Companion drafts for counsel live in
 `docs/legal/memory-legal-changes-draft.md`. The memory design itself is in
-`docs/memory-architecture.md` (sections 3.5 and 3.8 cover sensitivity).
+`docs/memory-architecture.md` (sections 3.5, 3.12, 3.15 and 7 cover
+sensitivity).
+
+**Status, 2026-10-25: the owner chose option (c) for v1. There is no sensitive
+opt-in; special-category text is rejected on every memory write path.** The
+research in sections 1 to 5 is unchanged and is still the basis for the
+revisit path, option (b). Where a later section describes the toggle, the
+flag or the provider allowlist as planned, it describes that path, not what
+ships.
 
 Labels used throughout:
 
@@ -15,14 +23,21 @@ Labels used throughout:
 
 ## Decision summary
 
-- **Recommendation (b): the sensitive-memory opt-in is lawful in principle but
-  not lawful to ship as-is.** Explicit consent under Art. 9(2)(a) is
-  available, and Claude ships the same toggle **[C]**. It stays **hidden
-  behind `NUXT_PUBLIC_MEMORY_SENSITIVE_OPT_IN_ENABLED` (default `false`)**
-  until counsel signs off and launch conditions 1-9 (section 6) are met.
+- **Owner decision, 2026-10-25: option (c) for v1.** No sensitive-memory
+  opt-in. A deterministic classifier rejects special-category text on every
+  write path (UI, `memory_write`, import, `aboutMe`), and extraction never
+  stores it. The lettering follows the owner's brief: (b) is the research
+  recommendation (a hidden opt-in behind a hard launch gate, section 6.1), (c)
+  is no opt-in at all. (b) is the documented path to revisit, with the
+  conditions in section 6.1.
+- Why: explicit consent under Art. 9(2)(a) is lawful in principle, and Claude
+  ships the same toggle **[C]**, but the opt-in is not lawful to ship as-is:
+  no DPIA, no consent receipts, no transfer position for DeepSeek, Moonshot,
+  Qwen or unpinned gateways, and legal pages that say the opposite.
 - The current published legal pages contradict the memory feature and, more
   urgently, today's production chats. See "Open owner/counsel decisions".
-- A DPIA and an Art. 30 record are needed **even with the toggle off**.
+- A DPIA and an Art. 30 record are needed **even without the opt-in**: chats
+  alone trigger them.
 
 ## 0. What the repo says today
 
@@ -34,7 +49,9 @@ Labels used throughout:
   of your data" it says there is **no self-service export button yet**. **[C]**
 - Terms of Use, "Do not submit sensitive personal data", prohibits submitting
   special-category data. **[C]**
-- `docs/memory-architecture.md` 3.5/3.8 and `shared/utils/memory-policy.ts`:
+- (State when the research was written; the opt-in design below was removed on
+  2026-10-25, see the status note at the top.)
+  `docs/memory-architecture.md` 3.5/3.8 and `shared/utils/memory-policy.ts`:
   `memoryIncludeSensitive: false` by default; a never-store list;
   `memorySensitiveCategories` = the eight Art. 9 categories **plus
   `legal-dispute` and `drugs`**; a `people` category; extraction off by
@@ -364,14 +381,41 @@ responsibility (EDPB TF para 24). Add: do not save other people's sensitive
 data; memory output can be wrong; memory is optional and user-controlled; the
 never-store list applies even on request.
 
-## 6. Recommendation: (b), with a hard launch gate
+## 6. Decision: (c) for v1, (b) as the path to revisit
 
-Lawful in principle: explicit consent under Art. 9(2)(a) is available, and
-Claude ships the same toggle. **[C]** It is **not** lawful to ship as-is. The
-current Privacy Policy says there is no basis. There is no DPIA, no consent
-receipt, no transfer gate, and the extractor can infer Art. 9 data on
-third-party models. **[I]** Keep the toggle hidden until conditions 1-9 are
-done:
+**Owner decision, 2026-10-25: option (c).** v1 has no sensitive-memory opt-in.
+
+- Shipping the opt-in as built was not an option: it was not lawful to ship
+  as-is (conditions 1-9 in 6.1 were unmet).
+- **(b)** ship the opt-in behind a hard launch gate. This was the research
+  recommendation, based on: explicit consent under Art. 9(2)(a) is available,
+  and Claude ships the same toggle **[C]**; it is not lawful to ship as-is,
+  because the current Privacy Policy says there is no basis, and there is no
+  DPIA, no consent receipt, no transfer gate, and the extractor could infer
+  Art. 9 data on third-party models **[I]**.
+- **(c)** do not offer it at all. **Chosen for v1.**
+
+What (c) means in the code (details in `docs/memory-architecture.md` 3.12,
+3.15 and the section 7 decision log):
+
+- A deterministic English, Ukrainian and Polish classifier (the rule table also
+  carries Russian patterns) rejects special-category text with a 422 on the
+  entries API, the `memory_write` tool and `aboutMe`, and extraction drops it.
+  An import path must use the same gate when built. The classifier is a
+  safeguard with known misses (names, slang, unusual phrasing), not a legal
+  conclusion.
+- Every row written is `sensitivity = 'none'`. There is no runtime flag, no
+  provider allowlist and no transfer filter.
+- `user_settings.memory_include_sensitive` stays in the database, unused,
+  because dropping it would rebuild `user_settings` on D1 (the migration rules
+  in `AGENTS.md`). The settings GET returns a constant `false`.
+
+### 6.1 The (b) path: conditions to revisit
+
+Revisit only when counsel has signed off, a DPIA and an Art. 30 record exist,
+per-user consent receipts exist (the `CONSENT_DB` receipts table needs user id
+and kind columns first), and each receiving provider's adequacy or DPF status
+is verified. The full launch list the research produced, if (b) is revisited:
 
 1. **Consent dialog** per 1.1, separate from the ToU, with an "I consent"
    confirmation and versioned text.
@@ -382,58 +426,64 @@ done:
 3. **Re-consent** when the consent text or the provider allowlist changes
    materially.
 4. **Extraction never writes `special`**; extraction stores only the
-   non-sensitive core.
+   non-sensitive core. (Already true in v1.)
 5. **No Art. 9 data about third parties**, toggle or not (add to never-store).
+   (Covered in v1 by the classifier for detectable text; special data about a
+   third party inside a non-`people` category is not detectable.)
 6. **Provider gate** for injecting `special` entries: an adequacy/DPF
    allowlist, verified on the DPF list; exclude DeepSeek, Moonshot, Qwen and
    unpinned gateways. Tell the user when a sensitive entry was withheld.
 7. **DPIA** (UODO criteria 4, 8 and 10) and an **Art. 30 record**, before GA.
 8. **Legal-page changes** per section 5.
-9. **Export and delete**: done in code; document it and test the toggle-off
+9. **Export and delete**: done in code; document it and test the withdrawal
    purge and the chat-deletion cascade.
 
-**Must do even with the toggle OFF:**
+### 6.2 Must do regardless of (b) or (c)
 
 - Remove the "no lawful basis" admission and the ToU prohibition. Give chat
   storage an Art. 9(2)(a) basis with a one-time explicit consent. **[L,
-  highest priority]**
+  highest priority]** This affects chats in production today and is
+  independent of memory.
 - Disclose memory, extraction-as-profiling and the classifier. Fix the export
   and Gemini statements.
 - Extractor rule: drop sensitive reasons ("vegetarian", not "vegetarian for
-  religious reasons"). C-184/20 makes the inferred reason Art. 9 data.
-- Never store third-party sensitive data. Do the DPIA and Art. 30 record
-  anyway; chats alone trigger criterion 4.
+  religious reasons"). C-184/20 makes the inferred reason Art. 9 data. (Done
+  in code, `docs/memory-architecture.md` 3.15.)
+- Do the DPIA and Art. 30 record anyway; chats alone trigger criterion 4.
 - Ask counsel about Art. 49 for chats and non-sensitive memory sent to
   DeepSeek, Moonshot and Qwen.
 
 ## Engineering decisions taken 2026-10-25
 
 These are engineering choices that hold regardless of how counsel rules. None
-of them is a legal conclusion.
+of them is a legal conclusion. Bullets marked "superseded" were taken earlier
+the same day and replaced by the owner decision (option (c)).
 
 - **No LLM classification of Art. 9 data.** Detection is a deterministic
   server-side classifier only. An LLM classifier would send candidate special
   category content to a model for a second time and would itself be the kind
   of inference the provider terms (2.1) and C-184/20 warn about.
 - **Extraction never writes special-category entries.** `origin = extraction`
-  cannot produce `sensitivity = special`; sensitive entries come only from
-  explicit user saves with the toggle on (2.1).
-- **Third-party (people) special-category data is always rejected**, with the
-  toggle on or off (1.4).
-- **The sensitive-memory provider allowlist exists and is empty.** Until it is
-  filled, no `special` entry is injected into any provider. The owner fills it
-  after DPF/adequacy checks on dataprivacyframework.gov (section 3).
-- **The sensitive-memory toggle is hidden behind
-  `NUXT_PUBLIC_MEMORY_SENSITIVE_OPT_IN_ENABLED` (default `false`).**
-- **Consent receipts will reuse `CONSENT_DB`** (`server/db/consent/schema.ts`,
-  `server/api/v1/consents/index.post.ts`) with a `memory_sensitive` kind and a
-  text version. Note for the implementer: the current `consent_receipts` table
-  is pseudonymous (no user id, no kind column, `granted`/`denied` JSON lists),
-  while section 6 condition 2 asks for a per-user receipt. The schema needs a
-  user-linked extension, and the `CONSENT_DB` isolation rule still applies (no
-  sharing a database with the main `DB`). Whether a user-linked receipt may
-  live in the isolated consent database is a design point to settle when it
-  is built.
+  cannot produce `sensitivity = special`.
+- **Superseded: sensitive entries from explicit user saves with the toggle
+  on.** There is no toggle; user saves are rejected like every other path.
+- **Superseded: third-party (people) special-category data rejected with the
+  toggle on or off.** Subsumed: all detected special-category text is
+  rejected.
+- **Superseded: the sensitive-memory provider allowlist exists and is
+  empty.** Removed with the opt-in; nothing sensitive is stored or transferred.
+- **Superseded: the toggle hidden behind
+  `NUXT_PUBLIC_MEMORY_SENSITIVE_OPT_IN_ENABLED`.** The flag was never needed
+  and does not exist.
+- **Consent receipts (only for path (b)) will reuse `CONSENT_DB`**
+  (`server/db/consent/schema.ts`, `server/api/v1/consents/index.post.ts`) with
+  a `memory_sensitive` kind and a text version. Note for the implementer: the
+  current `consent_receipts` table is pseudonymous (no user id, no kind
+  column, `granted`/`denied` JSON lists), while 6.1 condition 2 asks for a
+  per-user receipt. The schema needs a user-linked extension, and the
+  `CONSENT_DB` isolation rule still applies (no sharing a database with the
+  main `DB`). Whether a user-linked receipt may live in the isolated consent
+  database is a design point to settle when it is built.
 
 ## Open owner/counsel decisions
 
@@ -458,13 +508,15 @@ Ordered by urgency.
 4. **[L] Art. 49 for non-sensitive data** sent to DeepSeek, Moonshot and Qwen
    (chats and non-sensitive memory), and the legal-basis row for the
    sensitivity classifier (6(1)(f) as a safeguard plus 9(2)(a)?).
-5. **Owner: fill the provider allowlist** after DPF/adequacy verification,
-   including Anthropic's API contracting entity and xAI's DPF status.
-6. **Owner/counsel: DPIA and Art. 30 record** before GA, even with the toggle
-   off. Skeletons are in `docs/legal/memory-legal-changes-draft.md`.
+5. **Owner (only if (b) is revisited): fill a provider allowlist** after
+   DPF/adequacy verification, including Anthropic's API contracting entity and
+   xAI's DPF status. There is no allowlist in v1.
+6. **Owner/counsel: DPIA and Art. 30 record** before GA, even without the
+   opt-in. Skeletons are in `docs/legal/memory-legal-changes-draft.md`.
 7. **Owner/counsel: Gemini paragraph** (EEA/CH/UK paid-terms rule and the
    "not for consumer use" clause, 2.2).
-8. **Counsel: consent receipt retention period** and re-consent triggers.
+8. **Counsel (only if (b) is revisited): consent receipt retention period**
+   and re-consent triggers.
 
 ## Sources
 

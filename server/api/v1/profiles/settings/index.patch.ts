@@ -8,7 +8,10 @@ import { and, eq, isNull, lt, or } from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
-import { neverStoreKinds } from '#shared/utils/memory-policy'
+import {
+  SENSITIVE_TOPIC_REFUSAL_MESSAGE,
+  neverStoreKinds,
+} from '#shared/utils/memory-policy'
 import {
   memorySettingsPatchShape,
   refineMemorySettingsPatch,
@@ -98,9 +101,9 @@ function assertAboutMeHasNoSpecialCategories(
   })
 
   throw createError({
-    message: 'About me contains sensitive data',
+    message: SENSITIVE_TOPIC_REFUSAL_MESSAGE,
     status: 422,
-    why: `Detected: ${categories.join(', ')}.`,
+    why: `Your "About me" text looks like sensitive data (${categories.join(', ')}).`,
     fix: 'Remove the sensitive details from "About me" and save again.',
   })
 }
