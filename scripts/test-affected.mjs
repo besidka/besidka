@@ -4,7 +4,10 @@
  * Smart test runner that only runs tests affected by changed files
  * Usage:
  *   node scripts/test-affected.mjs \
- *      [--base=main] [--type=unit|integration|e2e|all]
+ *      [--base=main] [--type=unit|integration|e2e|all] [--shard=1/3]
+ *
+ * --shard only applies to the Playwright run and is forwarded as
+ * `playwright test --shard=<current>/<total>`.
  */
 
 /* eslint-disable no-console */
@@ -21,6 +24,14 @@ import {
 const args = process.argv.slice(2)
 const base = args.find(arg => arg.startsWith('--base='))?.split('=')[1] || 'HEAD'
 const type = args.find(arg => arg.startsWith('--type='))?.split('=')[1] || 'all'
+const shard = args.find(arg => arg.startsWith('--shard='))?.split('=')[1] || ''
+
+if (shard && !/^\d+\/\d+$/.test(shard)) {
+  console.error(`Invalid --shard value "${shard}", expected <current>/<total>`)
+  process.exit(1)
+}
+
+const shardFlag = shard ? ` --shard=${shard}` : ''
 
 // Run tests
 function runTests(tests, testType) {
@@ -39,7 +50,10 @@ function runTests(tests, testType) {
       execSync('pnpm run test:integration', { stdio: 'inherit' })
     }
     if (testType === 'e2e' || testType === 'all') {
-      execSync('pnpm run test:e2e', { stdio: 'inherit' })
+      execSync(`pnpm exec playwright test${shardFlag}`, {
+        stdio: 'inherit',
+        shell: true,
+      })
     }
     return
   }
@@ -83,8 +97,10 @@ function runTests(tests, testType) {
 
   if (e2eTests.length > 0 && (testType === 'e2e' || testType === 'all')) {
     console.log('\n🎭 Running e2e tests...\n')
-    e2eTests.forEach((test) => {
-      execSync(`pnpm exec playwright test '${test}'`, { stdio: 'inherit' })
+    const quotedTests = e2eTests.map(test => `'${test}'`).join(' ')
+    execSync(`pnpm exec playwright test ${quotedTests}${shardFlag}`, {
+      stdio: 'inherit',
+      shell: true,
     })
   }
 }

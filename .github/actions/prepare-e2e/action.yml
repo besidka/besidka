@@ -1,0 +1,39 @@
+name: Prepare E2E
+description: Download the build, restore Playwright Chromium, migrate local D1 from the committed migrations and write .dev.vars for wrangler dev
+
+runs:
+  using: composite
+  steps:
+    - name: Download build artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: preview-build
+        path: .output/
+
+    - name: Prepare Playwright
+      uses: ./.github/actions/playwright
+
+    - name: Apply DB migrations
+      shell: bash
+      run: pnpm exec wrangler d1 migrations apply DB --local
+
+    - name: Apply consent DB migrations
+      shell: bash
+      run: pnpm exec wrangler d1 migrations apply CONSENT_DB --local
+
+    - name: Write .dev.vars
+      shell: bash
+      run: |
+        cat > .dev.vars <<'EOF'
+        CI=true
+        NUXT_PUBLIC_BASE_URL=http://localhost:3000
+        NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED=true
+        NUXT_ENCRYPTION_HASHIDS=secret
+        NUXT_ENCRYPTION_KEY=secret
+        NUXT_BETTER_AUTH_SECRET=secret
+        NUXT_EMAIL_NOOP_ENABLED=true
+        NUXT_FILES_RETENTION_CLEANUP_ENABLED=true
+        NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE=100
+        NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS=20000
+        NUXT_FILES_MAINTENANCE_TOKEN=token
+        EOF

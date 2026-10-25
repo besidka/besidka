@@ -129,9 +129,11 @@ still the real direct base (the branch below).
 
 How the non-top skip works:
 
-- `check-pr-state` in `preview-build.yml` carries the guard
-  `stack == null || stack.position == stack.size`. Every other job `needs` it
-  and uses the implicit `success()`, so a false guard skips the whole run.
+- `gate` in `preview-build.yml` carries the guard
+  `stack == null || stack.position == stack.size`. Every other job `needs`
+  `gate` directly or through `build`, so a skipped `gate` skips them all. The
+  final `summary` job uses an explicit `!cancelled() && ...` condition that
+  also requires the upstream jobs to have succeeded.
 - A run whose jobs are all skipped still completes, and `preview-deploy.yml`
   fires on `workflow_run` completed with `conclusion == 'success'`, then would
   fail downloading the `preview-build` artifact. The first step of the deploy
@@ -140,9 +142,9 @@ How the non-top skip works:
   "Skipped (no build for this commit)" and exit before any download, migration
   or deploy. The check does not depend on whether GitHub reports an all-skipped
   run as `success` or `skipped`.
-- Affected tests diff against `stack.base.ref || base_ref` (the `main` base of
-  the whole stack), so the top layer tests every layer below it. The build still
-  checks out the PR head commit (see `docs/ci-pull-request-checkout-ref.md`).
+- CI runs the full suite, so the top layer tests everything it contains, every
+  layer below it included. The build checks out the PR head commit (see
+  `docs/ci-pull-request-checkout-ref.md`).
 - `preview-cleanup.yml` is left unfiltered on purpose. It handles a PR that was
   retargeted after it deployed, and an unfiltered run costs about one to two
   runner minutes.
