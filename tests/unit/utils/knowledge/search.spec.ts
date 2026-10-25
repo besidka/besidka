@@ -71,7 +71,7 @@ describe('createKnowledgeSearcher search', () => {
       .toEqual(['item-a', 'item-b'])
   })
 
-  it('never falls back to OR in a strict search', () => {
+  it('does not fall back to OR with fewer than 3 terms in a strict search', () => {
     const searcher = createSearcher([
       chunk('item-a', 0, 'Alpha release notes.'),
       chunk('item-b', 0, 'Beta migration guide.'),
@@ -107,6 +107,67 @@ describe('createKnowledgeSearcher search', () => {
     expect(strictResult.hits.map(hit => hit.itemId)).toEqual(['item-a'])
     expect(strictResult.operator).toBe('and')
     expect(looseResult.operator).toBe('or')
+  })
+
+  it('drops English and Ukrainian stop words from a strict query', () => {
+    const searcher = createSearcher([
+      chunk('item-a', 0, 'The Aurora launch date is the fifth of May.'),
+      chunk('item-b', 0, 'Запуск Аврори відбудеться п’ятого травня.'),
+    ])
+
+    const english = searcher.search({
+      query: 'When is the Aurora launch date?',
+      strict: true,
+    })
+    const ukrainian = searcher.search({
+      query: 'Коли запуск Аврори?',
+      strict: true,
+    })
+
+    expect(english.operator).toBe('and')
+    expect(english.hits.map(hit => hit.itemId)).toEqual(['item-a'])
+    expect(ukrainian.operator).toBe('and')
+    expect(ukrainian.hits.map(hit => hit.itemId)).toEqual(['item-b'])
+  })
+
+  it('returns operator none for a strict query made only of stop words', () => {
+    const searcher = createSearcher([chunk('item-a', 0, 'What is the plan.')])
+
+    expect(searcher.search({ query: 'What is the?', strict: true }).operator)
+      .toBe('none')
+    expect(searcher.search({ query: 'Що це за?', strict: true }))
+      .toEqual({
+        hits: [],
+        operator: 'none',
+        truncated: false,
+        notice: KNOWLEDGE_RESULT_NOTICE,
+      })
+  })
+
+  it('falls back to OR in a strict search when at least half the terms match', () => {
+    const searcher = createSearcher([
+      chunk('item-a', 0, 'Alpha release notes.'),
+      chunk('item-b', 0, 'Unrelated billing text.'),
+    ])
+
+    const result = searcher.search({
+      query: 'alpha release zebra',
+      strict: true,
+    })
+
+    expect(result.operator).toBe('or')
+    expect(result.hits.map(hit => hit.itemId)).toEqual(['item-a'])
+  })
+
+  it('returns no hits when only one of four strict terms matches', () => {
+    const searcher = createSearcher([chunk('item-a', 0, 'Alpha release notes.')])
+
+    const result = searcher.search({
+      query: 'alpha zebra giraffe walrus',
+      strict: true,
+    })
+
+    expect(result.hits).toEqual([])
   })
 
   it('returns operator none when a strict query has only short tokens', () => {

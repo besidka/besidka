@@ -24,6 +24,19 @@ export const KNOWLEDGE_RESULT_NOTICE = 'The text below comes from documents '
 const CHARS_PER_OVERLAP_TOKEN = 4
 const STEM_SEPARATOR = /\s+/
 const STRICT_MIN_TOKEN_LENGTH = 3
+const STRICT_OR_MIN_TERMS = 3
+const STRICT_OR_MIN_MATCH_SHARE = 0.5
+
+const STOP_WORDS = [
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'when', 'where',
+  'who', 'how', 'why', 'which', 'do', 'does', 'did', 'of', 'in', 'on',
+  'for', 'to', 'and', 'or', 'with', 'about', 'please', 'can', 'could',
+  'you', 'me', 'my', 'i',
+  'що', 'як', 'коли', 'де', 'хто', 'чому', 'який', 'яка', 'яке', 'які',
+  'це', 'чи', 'і', 'й', 'та', 'в', 'у', 'на', 'з', 'із', 'до', 'для',
+  'про', 'по', 'за', 'від', 'мені', 'мій', 'моя', 'будь', 'ласка',
+  'можеш', 'скажи',
+]
 
 export interface KnowledgeSearcher {
   search: (input: {
@@ -107,14 +120,26 @@ function buildOverlap(previous: KnowledgePackLine | undefined): string {
   return previous.text.slice(-overlapChars)
 }
 
-function stemQuery(query: string, minTokenLength: number): string {
+const STOP_WORD_STEMS = new Set(
+  buildStemmedSearchText(STOP_WORDS.join(' ')).split(STEM_SEPARATOR),
+)
+
+function stemQuery(query: string): string[] {
   return buildStemmedSearchText(
     query.slice(0, KNOWLEDGE_LIMITS.searchQueryMaxChars),
   )
     .split(STEM_SEPARATOR)
-    .filter(token => token.length >= minTokenLength)
+    .filter(Boolean)
     .slice(0, MAX_SEARCH_TOKENS)
-    .join(' ')
+}
+
+function selectStrictTerms(stemmedTokens: string[]): string[] {
+  const terms = stemmedTokens.filter((token) => {
+    return token.length >= STRICT_MIN_TOKEN_LENGTH
+      && !STOP_WORD_STEMS.has(token)
+  })
+
+  return [...new Set(terms)]
 }
 
 /**
@@ -123,8 +148,10 @@ function stemQuery(query: string, minTokenLength: number): string {
  * previous chunk and the chunk text, so a query can match across a chunk
  * boundary. Returned text always comes from the pack lines, never from the
  * index. Lines of items missing from `items` are ignored. A `strict` search
- * is for queries the model did not write (pre-retrieval): it ignores query
- * tokens shorter than 3 characters and never falls back from AND to OR.
+ * is for queries the model did not write (pre-retrieval): it drops stop
+ * words and tokens shorter than 3 characters, searches AND over the rest,
+ * and falls back to OR only with at least 3 terms left, keeping just the
+ * hits that match at least half of them.
  */
 export function createKnowledgeSearcher(input: {
   lines: KnowledgePackLine[]
@@ -178,10 +205,9 @@ export function createKnowledgeSearcher(input: {
     strict?: boolean
   }): KnowledgeSearchResult {
     const strict = searchInput.strict === true
-    const stemmedQuery = stemQuery(
-      searchInput.query,
-      strict ? STRICT_MIN_TOKEN_LENGTH : 1,
-    )
+    const stemmedTokens = stemQuery(searchInput.query)
+    const strictTerms = strict ? selectStrictTerms(stemmedTokens) : []
+    const stemmedQuery = (strict ? strictTerms : stemmedTokens).join(' ')
     const itemIdFilter = searchInput.itemIds?.length
       ? new Set(searchInput.itemIds)
       : null
@@ -204,6 +230,21 @@ export function createKnowledgeSearcher(input: {
     if (results.length === 0 && !strict) {
       operator = 'or'
       results = index.search(stemmedQuery, { combineWith: 'OR', filter })
+    }
+
+    if (
+      results.length === 0
+      && strict
+      && strictTerms.length >= STRICT_OR_MIN_TERMS
+    ) {
+      const minMatchedTerms = Math.ceil(
+        strictTerms.length * STRICT_OR_MIN_MATCH_SHARE,
+      )
+
+      operator = 'or'
+      results = index
+        .search(stemmedQuery, { combineWith: 'OR', filter })
+        .filter(result => result.queryTerms.length >= minMatchedTerms)
     }
 
     const hits: KnowledgeSearchHit[] = []

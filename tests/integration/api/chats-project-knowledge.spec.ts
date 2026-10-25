@@ -27,7 +27,6 @@ const USER_TEXT = 'When is the Aurora launch date?'
 const ONE_MILLION_TOKENS = 1_000_000
 const QWEN_SIZED_WINDOW = 262_144
 const GATEWAY_FALLBACK_BUDGET = 8960
-const RETRIEVAL_TEXT = 'Aurora launch date'
 const IMAGE_SIZE_BYTES = 2048
 const SMALL_WINDOW = 200_000
 const LONG_TEXT_CHARS = 300_000
@@ -789,21 +788,20 @@ describe('project knowledge send-path wiring', () => {
         },
         toolChoice: { type: 'tool', toolName: 'generate_stub' },
       },
-      userText: RETRIEVAL_TEXT,
       steps: [createTextChunks('The fifth of May.')],
     })
     const callOptions = doStream.mock.calls[0]?.[0] as any
     const lastUserText = readTurnText(readUserTurns(callOptions).at(-1))
 
     expect(readToolNames(callOptions)).toEqual(['generate_stub'])
-    expect(lastUserText).toContain(RETRIEVAL_TEXT)
+    expect(lastUserText).toContain(USER_TEXT)
     expect(lastUserText).toContain('<project_knowledge_excerpts>')
     expect(lastUserText).toContain('fifth of May')
     expect(readSystemPrompt(callOptions)).not.toContain(
       '<project_knowledge_excerpts>',
     )
     expect(userInsert?.parts).toEqual([
-      { type: 'text', text: RETRIEVAL_TEXT },
+      { type: 'text', text: USER_TEXT },
     ])
     expect(JSON.stringify(userInsert)).not.toContain('project_knowledge')
   })
@@ -813,7 +811,6 @@ describe('project knowledge send-path wiring', () => {
 
     const { doStream, userInsert } = await runSend({
       scenario: { mode: 'search' },
-      userText: RETRIEVAL_TEXT,
       steps: [createTextChunks('The fifth of May.')],
     })
     const callOptions = doStream.mock.calls[0]?.[0] as any
@@ -1305,7 +1302,6 @@ describe('project knowledge send-path wiring', () => {
 
         const { doStream } = await runSend({
           scenario: { mode: 'search' },
-          userText: RETRIEVAL_TEXT,
           steps: [createTextChunks('The fifth of May.')],
         })
         const lastUserText = readTurnText(
@@ -1316,7 +1312,7 @@ describe('project knowledge send-path wiring', () => {
         expect(lastUserText).toContain('<project_knowledge_excerpts>')
         expect(originalMessages).toHaveLength(1)
         expect(originalMessages[0].parts).toEqual([
-          { type: 'text', text: RETRIEVAL_TEXT },
+          { type: 'text', text: USER_TEXT },
         ])
         expect(JSON.stringify(originalMessages))
           .not.toContain('project_knowledge')

@@ -1364,8 +1364,11 @@ develops against these shapes with mocked `$fetch`.
 - `knowledgeTokens` counts only what was injected (pack ∩ ready items +
   attached media), so a stale pack cannot under-count the next turn's
   measured history.
-- Pre-retrieval uses AND only and ignores tokens under 3 characters, so a
-  tool-less model is not fed arbitrary excerpts on every turn.
+- Pre-retrieval drops English and Ukrainian stop words and tokens under 3
+  characters, searches AND, and falls back to OR only with 3+ terms and
+  hits matching at least half of them. A tool-less model gets excerpts for
+  real questions ("Коли запуск Аврори?") but not arbitrary ones on every
+  turn. The tools keep plain AND→OR.
 
 **Follow-ups after K1 merges**: swap `send-data.ts`'s reader for K1's
 `readKnowledgePack`; call `ensureKnowledgePackFresh` in `waitUntil` when

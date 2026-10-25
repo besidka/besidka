@@ -96,6 +96,59 @@ describe('buildKnowledgeExcerpts', () => {
     })).toBeNull()
   })
 
+  it('finds excerpts for a conversational English question', () => {
+    const searcher = createSearcher([
+      chunk(0, 'The Aurora launch date is the fifth of May.'),
+    ])
+
+    const block = buildKnowledgeExcerpts({
+      searcher,
+      userText: 'When is the Aurora launch date?',
+    })
+
+    expect(block).toContain('The Aurora launch date is the fifth of May.')
+  })
+
+  it('finds excerpts for a conversational Ukrainian question', () => {
+    const searcher = createSearcher([
+      chunk(0, 'Запуск Аврори відбудеться п’ятого травня.'),
+    ])
+
+    const block = buildKnowledgeExcerpts({
+      searcher,
+      userText: 'Коли запуск Аврори?',
+    })
+
+    expect(block).toContain('Запуск Аврори відбудеться')
+  })
+
+  it('returns null for a message made only of stop words', () => {
+    const searcher = createSearcher([chunk(0, 'What is the plan.')])
+
+    expect(buildKnowledgeExcerpts({ searcher, userText: 'What is the?' }))
+      .toBeNull()
+  })
+
+  it('returns null when only one of four question terms matches', () => {
+    const searcher = createSearcher([chunk(0, 'Billing runs monthly.')])
+
+    expect(buildKnowledgeExcerpts({
+      searcher,
+      userText: 'billing zebra giraffe walrus',
+    })).toBeNull()
+  })
+
+  it('keeps a hit that matches two of three question terms', () => {
+    const searcher = createSearcher([chunk(0, 'Billing runs monthly.')])
+
+    const block = buildKnowledgeExcerpts({
+      searcher,
+      userText: 'billing runs zebra',
+    })
+
+    expect(block).toContain('Billing runs monthly.')
+  })
+
   it('returns null for a conversational message sharing one stop word', () => {
     const searcher = createSearcher([
       chunk(0, 'Invoices are due when the month ends.'),
