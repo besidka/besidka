@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import { toggleProjectMemory } from '~~/server/utils/projects/memory'
+import { toggleProjectMemory } from '~~/server/utils/projects/memory-refresh'
 import {
   defineEventHandler,
   readValidatedBody,
@@ -9,6 +9,9 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
+
+  assertNotCrossSiteRequest(event)
+
   const params = z.object({
     id: z.string().nonempty(),
   }).safeParse(getDecodedRouterParams(event))

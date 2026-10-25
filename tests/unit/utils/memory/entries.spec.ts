@@ -1529,27 +1529,28 @@ describe('memory entries service', () => {
         .toEqual(['Account entry', 'Project entry'])
     })
 
-    it('reflects stored settings', async () => {
-      testDb.insertUserSettings({
-        userId: OWNER,
-        memoryEnabled: true,
-        chatSearchEnabled: false,
-        memoryIncludeSensitive: true,
-        aboutMe: '  I am a tester  ',
-      })
+    it('reflects stored settings and exports a constant false sensitive flag',
+      async () => {
+        testDb.insertUserSettings({
+          userId: OWNER,
+          memoryEnabled: true,
+          chatSearchEnabled: false,
+          memoryIncludeSensitive: true,
+          aboutMe: '  I am a tester  ',
+        })
 
-      const exported = await buildMemoryExport({
-        db: testDb.db,
-        userId: OWNER,
-      })
+        const exported = await buildMemoryExport({
+          db: testDb.db,
+          userId: OWNER,
+        })
 
-      expect(exported.settings).toMatchObject({
-        memoryEnabled: true,
-        chatSearchEnabled: false,
-        memoryIncludeSensitive: true,
-        aboutMe: 'I am a tester',
+        expect(exported.settings).toMatchObject({
+          memoryEnabled: true,
+          chatSearchEnabled: false,
+          memoryIncludeSensitive: false,
+          aboutMe: 'I am a tester',
+        })
       })
-    })
 
     it('never includes another user data', async () => {
       testDb.insertProject({ id: 8, userId: STRANGER, memory: 'Secret blob' })

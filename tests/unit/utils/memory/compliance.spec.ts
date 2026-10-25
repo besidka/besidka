@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { REDACTION_PLACEHOLDER } from '#shared/utils/memory-policy'
-import * as schema from '~~/server/db/schema'
 import {
-  buildSensitiveMemoryPurge,
   detectNeverStore,
   evaluateMemoryEntry,
-  purgeSensitiveMemoryEntries,
   recordBlockedCounts,
   recordSensitiveDetection,
   redactNeverStore,
@@ -130,6 +127,47 @@ describe('payment-card detector', () => {
       `ｆｕｌｌ\u200Bwidth ${REDACTION_PLACEHOLDER} ｔｅｘｔ`,
     )
     expect(redacted.blocked).toEqual({ 'payment-card': 1 })
+  })
+
+  it('keeps blank lines and markdown structure byte-identical', () => {
+    const blob = [
+      '**Purpose & Context**',
+      '',
+      'This memo covers the migration plan.',
+      '',
+      '**Key Learnings and Principles**',
+      '',
+      '- Prefer additive schema changes.',
+      '- Keep entries short.',
+      '',
+      '## Open questions',
+      '',
+      'Who owns the rollout?',
+    ].join('\n')
+    const redacted = redactNeverStore(blob)
+
+    expect(redacted.text).toBe(blob)
+    expect(redacted.blocked).toEqual({})
+  })
+
+  it('changes only the secret span inside a multi-section blob', () => {
+    const before = [
+      '**Purpose & Context**',
+      '',
+      'Deploys use the staging account.',
+      '',
+      '**Key Learnings**',
+      '',
+    ].join('\n')
+    const after = '\n\nKeep entries short.'
+    const redacted = redactNeverStore(
+      `${before}password: hunter22${after}`,
+    )
+
+    expect(redacted.text.startsWith(before)).toBe(true)
+    expect(redacted.text.endsWith(after)).toBe(true)
+    expect(redacted.text).not.toContain('hunter22')
+    expect(redacted.blocked).toEqual({ credential: 1 })
   })
 
   it('maps the span of a normalized card back to original offsets', () => {
@@ -1000,104 +1038,5 @@ describe('evaluateMemoryEntry', () => {
         extractorNeverStoreKind: 'criminal-history',
       }),
     ).toMatchObject({ allowed: false, reason: 'never-store' })
-  })
-})
-
-function flattenQueryChunks(chunk: unknown): unknown[] {
-  if (chunk && typeof chunk === 'object' && 'queryChunks' in chunk) {
-    return (chunk.queryChunks as unknown[]).flatMap(flattenQueryChunks)
-  }
-
-  return [chunk]
-}
-
-function hasNamedColumn(chunks: unknown[], name: string): boolean {
-  return chunks.some((chunk) => {
-    return !!chunk
-      && typeof chunk === 'object'
-      && 'name' in chunk
-      && chunk.name === name
-  })
-}
-
-function hasParamValue(chunks: unknown[], value: unknown): boolean {
-  return chunks.some((chunk) => {
-    return !!chunk
-      && typeof chunk === 'object'
-      && 'value' in chunk
-      && chunk.value === value
-  })
-}
-
-function buildDeleteDb(deletedRows: { id: number }[]) {
-  const query = Object.assign(Promise.resolve(deletedRows), { tag: 'query' })
-  const returning = vi.fn(() => query)
-  const where = vi.fn((_condition: unknown) => ({ returning }))
-  const deleteFrom = vi.fn(() => ({ where }))
-  const db = { delete: deleteFrom } as unknown as Parameters<
-    typeof purgeSensitiveMemoryEntries
-  >[1]
-
-  return { db, deleteFrom, where, returning, query }
-}
-
-describe('buildSensitiveMemoryPurge', () => {
-  it('returns the un-awaited delete query for batching', () => {
-    const { db, deleteFrom, returning, query } = buildDeleteDb([])
-
-    const built = buildSensitiveMemoryPurge(7, db)
-
-    expect(built).toBe(query)
-    expect(deleteFrom).toHaveBeenCalledWith(schema.memoryEntries)
-    expect(returning).toHaveBeenCalledWith({ id: schema.memoryEntries.id })
-  })
-
-  it('scopes the delete to the user and to special sensitivity', () => {
-    const { db, where } = buildDeleteDb([])
-
-    buildSensitiveMemoryPurge(7, db)
-
-    const chunks = flattenQueryChunks(where.mock.calls[0]![0])
-
-    expect(hasNamedColumn(chunks, 'user_id')).toBe(true)
-    expect(hasParamValue(chunks, 7)).toBe(true)
-    expect(hasNamedColumn(chunks, 'sensitivity')).toBe(true)
-    expect(hasParamValue(chunks, 'special')).toBe(true)
-    expect(chunks.filter(chunk => hasParamValue([chunk], ' = '))).toHaveLength(2)
-    expect(hasParamValue(chunks, ') and (')).toBe(true)
-  })
-
-  it('does not match a different user or sensitivity', () => {
-    const { db, where } = buildDeleteDb([])
-
-    buildSensitiveMemoryPurge(7, db)
-
-    const chunks = flattenQueryChunks(where.mock.calls[0]![0])
-
-    expect(hasParamValue(chunks, 8)).toBe(false)
-    expect(hasParamValue(chunks, 'none')).toBe(false)
-  })
-})
-
-describe('purgeSensitiveMemoryEntries', () => {
-  it('returns the number of deleted rows', async () => {
-    const { db, deleteFrom, where, returning } = buildDeleteDb([
-      { id: 1 },
-      { id: 2 },
-      { id: 3 },
-    ])
-
-    const count = await purgeSensitiveMemoryEntries(7, db)
-
-    expect(count).toBe(3)
-    expect(deleteFrom).toHaveBeenCalledWith(schema.memoryEntries)
-    expect(where).toHaveBeenCalledTimes(1)
-    expect(returning).toHaveBeenCalledWith({ id: schema.memoryEntries.id })
-  })
-
-  it('returns zero when nothing matched', async () => {
-    const { db } = buildDeleteDb([])
-
-    expect(await purgeSensitiveMemoryEntries(7, db)).toBe(0)
   })
 })

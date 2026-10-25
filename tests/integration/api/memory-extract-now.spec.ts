@@ -4,6 +4,7 @@ import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
   seedChat,
+  seedProject,
   seedUser,
 } from '../../setup/helpers/memory-extraction-db'
 import type {
@@ -145,6 +146,32 @@ describe('POST /api/v1/memory/extract-now', () => {
       status: 409,
       fix: expect.any(String),
     })
+    expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+  })
+
+  it('runs a project chat with the extraction opt-in off', async () => {
+    const projectId = await seedProject(testDb.db, userId)
+    const chat = await seedChat(testDb.db, userId, { projectId })
+
+    await testDb.db.update(schema.userSettings)
+      .set({ memoryExtractionEnabled: false })
+      .where(eq(schema.userSettings.userId, userId))
+
+    expect(await call(chat.slug)).toMatchObject({ status: 'extracted' })
+    expect(mocks.extractChatMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ chat: { id: chat.id }, ignoreIdle: true }),
+    )
+  })
+
+  it('answers 409 for a project chat when memory is off', async () => {
+    const projectId = await seedProject(testDb.db, userId)
+    const chat = await seedChat(testDb.db, userId, { projectId })
+
+    await testDb.db.update(schema.userSettings)
+      .set({ memoryEnabled: false })
+      .where(eq(schema.userSettings.userId, userId))
+
+    await expect(call(chat.slug)).rejects.toMatchObject({ status: 409 })
     expect(mocks.extractChatMemory).not.toHaveBeenCalled()
   })
 

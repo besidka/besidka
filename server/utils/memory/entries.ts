@@ -887,8 +887,7 @@ export async function buildMemoryExport(options: {
         ?? MEMORY_SETTING_DEFAULTS.memoryEnabled,
       chatSearchEnabled: settings?.chatSearchEnabled
         ?? MEMORY_SETTING_DEFAULTS.chatSearchEnabled,
-      memoryIncludeSensitive: settings?.memoryIncludeSensitive
-        ?? MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
+      memoryIncludeSensitive: MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
       memoryExtractionEnabled: settings?.memoryExtractionEnabled
         ?? MEMORY_SETTING_DEFAULTS.memoryExtractionEnabled,
       aboutMe: settings?.aboutMe?.trim() || MEMORY_SETTING_DEFAULTS.aboutMe,

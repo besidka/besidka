@@ -1,6 +1,11 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
 import MemoryCard from '../../../../app/components/Projects/MemoryCard.vue'
+
+vi.mock('#app', async (importOriginal) => {
+  return await importOriginal<Record<string, unknown>>()
+})
 
 describe('Projects/MemoryCard', () => {
   it('renders ready memory without a ready badge and emits refresh', async () => {
@@ -176,5 +181,83 @@ describe('Projects/MemoryCard', () => {
 
     expect(wrapper.find('[data-testid="manage-project-memory-entries"]')
       .exists()).toBe(false)
+  })
+
+  describe('multi-paragraph memory', () => {
+    const multiParagraphMemory = [
+      '**Purpose & Context**',
+      '',
+      'This memo covers the migration plan.',
+      '',
+      '**Key Learnings**',
+      '',
+      'Prefer additive schema changes.',
+    ].join('\n')
+
+    const props = {
+      memory: multiParagraphMemory,
+      memoryStatus: 'ready' as const,
+      memoryUpdatedAt: '2026-03-13T09:00:00.000Z',
+      memoryProvider: 'google',
+      memoryModel: 'gemini-2.5-flash-lite',
+      memoryError: null,
+      isRefreshing: false,
+      isToggling: false,
+    }
+
+    it('renders every markdown paragraph as its own block element', async () => {
+      const wrapper = await mountSuspended(MemoryCard, {
+        props,
+        global: {
+          stubs: {
+            UiBubble: {
+              template: '<div><slot /></div>',
+            },
+          },
+        },
+      })
+
+      await flushPromises()
+      await vi.waitFor(() => {
+        expect(
+          wrapper.findAll('.chat-markdown p').length,
+        ).toBeGreaterThanOrEqual(4)
+      })
+
+      const paragraphTexts = wrapper
+        .findAll('.chat-markdown p')
+        .map(paragraph => paragraph.text())
+
+      expect(paragraphTexts).toEqual([
+        'Purpose & Context',
+        'This memo covers the migration plan.',
+        'Key Learnings',
+        'Prefer additive schema changes.',
+      ])
+    })
+
+    it('does not strip paragraph wrappers from the memory markdown', async () => {
+      const wrapper = await mountSuspended(MemoryCard, {
+        props,
+        global: {
+          stubs: {
+            UiBubble: {
+              template: '<div><slot /></div>',
+            },
+            MDCCached: {
+              name: 'MDCCached',
+              props: ['value', 'unwrap'],
+              template: '<div>{{ value }}</div>',
+            },
+          },
+        },
+      })
+
+      const markdown = wrapper.findComponent({ name: 'MDCCached' })
+
+      expect(markdown.exists()).toBe(true)
+      expect(markdown.props('unwrap')).toBeUndefined()
+      expect(markdown.props('value')).toBe(multiParagraphMemory)
+    })
   })
 })

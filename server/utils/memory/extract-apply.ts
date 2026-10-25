@@ -29,6 +29,7 @@ type DbClient = ReturnType<typeof useDb>
 const COMPLIANCE_ORIGIN = 'memory-extraction'
 const FALLBACK_SLUG_PREFIX = 'entry'
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint'
+const SENSITIVE_TOPIC_DROP_REASON = 'sensitive-topic'
 const HASH_MULTIPLIER = 31
 const HASH_RADIX = 36
 const SLUG_SEPARATOR_PATTERN = /[^a-z0-9]+/gu
@@ -87,9 +88,10 @@ export interface MemoryExtractionApplyInput {
   db: DbClient
   userId: number
   projectId: string | null
-  chatId: string
+  chatId: string | null
   entries: MemoryExtractionIndexEntry[]
   groundingTexts: string[]
+  createGroundingTexts?: string[]
   logger?: ComplianceLogger
 }
 
@@ -113,6 +115,8 @@ interface PersistedEntryValues {
   title: string
   description: string
   body: string
+  sensitivity: 'none'
+  sensitiveCategory: null
 }
 
 interface DropOutcome {
@@ -181,11 +185,19 @@ function memoryExtractionScope(userId: number, projectId: string | null) {
 
 function memoryExtractionMergeSourceChatIds(
   existing: string[],
-  chatId: string,
+  chatId: string | null,
 ): string[] {
+  if (chatId === null) {
+    return existing
+  }
+
   const merged = [...new Set([...existing, chatId])]
 
   return merged.slice(-MEMORY_LIMITS.maxSourceChatIds)
+}
+
+function isEditableEntry(entry: MemoryExtractionIndexEntry): boolean {
+  return entry.origin === 'extraction' && entry.sensitivity !== 'special'
 }
 
 function memoryExtractionLinks(text: string): string[] {
@@ -206,6 +218,7 @@ class MemoryExtractionApplier {
   private readonly input: MemoryExtractionApplyInput
   private readonly entriesByKey = new Map<string, MemoryExtractionIndexEntry>()
   private readonly groundingTexts: string[]
+  private readonly createGroundingTexts: string[]
   private readonly result: MemoryExtractionApplyResult
   private readonly detectedCategories = new Set<MemorySensitiveCategory>()
 
@@ -221,6 +234,10 @@ class MemoryExtractionApplier {
     this.groundingTexts = input.groundingTexts.map(
       memoryExtractionNormalizeText,
     )
+    this.createGroundingTexts = [
+      ...this.groundingTexts,
+      ...(input.createGroundingTexts ?? []).map(memoryExtractionNormalizeText),
+    ]
     this.result = {
       proposed: input.ops.length,
       created: 0,
@@ -269,7 +286,7 @@ class MemoryExtractionApplier {
     this.result.dropped[reason] = (this.result.dropped[reason] ?? 0) + 1
   }
 
-  private isGrounded(evidence: string): boolean {
+  private isGrounded(evidence: string, groundingTexts: string[]): boolean {
     const needle = memoryExtractionNormalizeText(evidence)
 
     const wordCount = needle
@@ -284,11 +301,12 @@ class MemoryExtractionApplier {
       return false
     }
 
-    return this.groundingTexts.some(text => text.includes(needle))
+    return groundingTexts.some(text => text.includes(needle))
   }
 
   private hasUngroundedLinks(
     values: PersistedEntryValues,
+    groundingTexts: string[],
     knownText = '',
   ): boolean {
     const links = memoryExtractionLinks(
@@ -298,12 +316,16 @@ class MemoryExtractionApplier {
 
     return links.some((link) => {
       return !knownLinks.has(link)
-        && !this.groundingTexts.some(text => text.includes(link))
+        && !groundingTexts.some(text => text.includes(link))
     })
   }
 
   private async applyOp(op: MemoryExtractionOp) {
-    if (!this.isGrounded(op.evidence)) {
+    const evidenceTexts = op.op === 'create'
+      ? this.createGroundingTexts
+      : this.groundingTexts
+
+    if (!this.isGrounded(op.evidence, evidenceTexts)) {
       this.drop('ungrounded')
 
       return
@@ -354,7 +376,7 @@ class MemoryExtractionApplier {
 
     this.collectDetectedCategories(verdict.detectedCategories)
 
-    return { dropped: 'sensitive-topic' }
+    return { dropped: SENSITIVE_TOPIC_DROP_REASON }
   }
 
   private async applyCreate(
@@ -366,6 +388,7 @@ class MemoryExtractionApplier {
       description: op.description ?? '',
       body: op.body?.trim() ?? '',
       sensitivity: 'none',
+      sensitiveCategory: null,
     })
 
     if (!parsed.success) {
@@ -378,7 +401,7 @@ class MemoryExtractionApplier {
     )
 
     if (existing) {
-      if (existing.origin !== 'extraction') {
+      if (!isEditableEntry(existing)) {
         return { dropped: 'duplicate' }
       }
 
@@ -389,21 +412,23 @@ class MemoryExtractionApplier {
       })
     }
 
-    const proposedValues: PersistedEntryValues = {
+    const values: PersistedEntryValues = {
       category: parsed.data.category,
       title: parsed.data.title,
       description: parsed.data.description,
       body: parsed.data.body,
+      sensitivity: 'none',
+      sensitiveCategory: null,
     }
 
-    if (this.hasUngroundedLinks(proposedValues)) {
+    if (this.hasUngroundedLinks(values, this.createGroundingTexts)) {
       return { dropped: 'ungrounded' }
     }
 
-    const dropOutcome = this.evaluate(proposedValues, op)
+    const blockedOutcome = this.evaluate(values, op)
 
-    if (dropOutcome) {
-      return dropOutcome
+    if (blockedOutcome) {
+      return blockedOutcome
     }
 
     const cap = this.input.projectId
@@ -414,33 +439,27 @@ class MemoryExtractionApplier {
       return { dropped: 'cap-reached' }
     }
 
-    const sourceChatIds = [this.input.chatId]
-    const insert = this.input.db
+    const sourceChatIds = this.input.chatId ? [this.input.chatId] : []
+    const rows = await this.input.db
       .insert(schema.memoryEntries)
       .values({
         userId: this.input.userId,
         projectId: this.input.projectId ?? undefined,
-        ...proposedValues,
-        sensitivity: 'none',
-        sensitiveCategory: null,
+        ...values,
         slug,
         origin: 'extraction',
         sourceChatIds,
       })
       .returning({ id: schema.memoryEntries.id })
-    const [written] = await insert
+    const writtenId = rows[0]?.id
 
-    if (!written) {
+    if (!writtenId) {
       return { dropped: 'unknown-target' }
     }
 
-    const createdKey = memoryExtractionEntryKey(proposedValues.category, slug)
-
-    this.entriesByKey.set(createdKey, {
-      id: written.id,
-      ...proposedValues,
-      sensitivity: 'none',
-      sensitiveCategory: null,
+    this.entriesByKey.set(memoryExtractionEntryKey(values.category, slug), {
+      id: writtenId,
+      ...values,
       slug,
       origin: 'extraction',
       sourceChatIds,
@@ -488,7 +507,7 @@ class MemoryExtractionApplier {
       return { dropped: 'unknown-target' }
     }
 
-    if (target.origin !== 'extraction') {
+    if (!isEditableEntry(target)) {
       return { dropped: 'locked' }
     }
 
@@ -515,49 +534,53 @@ class MemoryExtractionApplier {
       title: patch.data.title ?? target.title,
       description: patch.data.description ?? target.description,
       body: patch.data.body ?? target.body,
+      sensitivity: 'none',
+      sensitiveCategory: null,
     })
 
     if (!merged.success) {
       return { dropped: 'invalid' }
     }
 
-    const proposedValues: PersistedEntryValues = {
+    const values: PersistedEntryValues = {
       category: target.category,
       title: merged.data.title,
       description: merged.data.description,
       body: merged.data.body,
+      sensitivity: 'none',
+      sensitiveCategory: null,
     }
 
     if (
-      proposedValues.title === target.title
-      && proposedValues.description === target.description
-      && proposedValues.body === target.body
+      values.title === target.title
+      && values.description === target.description
+      && values.body === target.body
     ) {
       return await this.addSourceChat(target)
     }
 
     const knownText = [target.title, target.description, target.body].join('\n')
 
-    if (this.hasUngroundedLinks(proposedValues, knownText)) {
+    if (this.hasUngroundedLinks(values, this.groundingTexts, knownText)) {
       return { dropped: 'ungrounded' }
     }
 
-    const dropOutcome = this.evaluate(proposedValues, op)
+    const blockedOutcome = this.evaluate(values, op)
 
-    if (dropOutcome) {
-      return dropOutcome
+    if (blockedOutcome) {
+      return blockedOutcome
     }
 
     const sourceChatIds = memoryExtractionMergeSourceChatIds(
       target.sourceChatIds,
       this.input.chatId,
     )
-    const update = this.input.db
+    const rows = await this.input.db
       .update(schema.memoryEntries)
       .set({
-        title: proposedValues.title,
-        description: proposedValues.description,
-        body: proposedValues.body,
+        title: values.title,
+        description: values.description,
+        body: values.body,
         sourceChatIds,
       })
       .where(and(
@@ -565,9 +588,8 @@ class MemoryExtractionApplier {
         memoryExtractionScope(this.input.userId, this.input.projectId),
       ))
       .returning({ id: schema.memoryEntries.id })
-    const [written] = await update
 
-    if (!written) {
+    if (!rows.length) {
       this.entriesByKey.delete(
         memoryExtractionEntryKey(target.category, target.slug),
       )
@@ -577,7 +599,7 @@ class MemoryExtractionApplier {
 
     this.entriesByKey.set(
       memoryExtractionEntryKey(target.category, target.slug),
-      { ...target, ...proposedValues, sourceChatIds },
+      { ...target, ...values, sourceChatIds },
     )
     this.result.updated += 1
 
@@ -587,7 +609,10 @@ class MemoryExtractionApplier {
   private async addSourceChat(
     target: MemoryExtractionIndexEntry,
   ): Promise<DropOutcome | null> {
-    if (target.sourceChatIds.includes(this.input.chatId)) {
+    if (
+      this.input.chatId === null
+      || target.sourceChatIds.includes(this.input.chatId)
+    ) {
       return { dropped: 'unchanged' }
     }
 
@@ -657,9 +682,12 @@ class MemoryExtractionApplier {
  * Applies the extractor's ops sequentially. Each op is independent: it must
  * quote the user's own words (the code-level defence against text echoed by
  * the assistant), pass schema validation on the exact persisted row, pass the
- * compliance gate (text flagged as special-category data is dropped as
- * `sensitive-topic`), and only ever touch an `extraction`-origin row of this
- * user and scope. Returns counts only.
+ * compliance gate (text the server classifier flags as special-category data
+ * is dropped as `sensitive-topic`), and only ever touch an
+ * `extraction`-origin, non-special row of this user and scope. Extraction
+ * never writes a special-category entry: every row it persists has
+ * `sensitivity: 'none'`. Detected category ids (never the text) are logged
+ * once per run. Returns counts only.
  */
 export async function applyMemoryExtractionOps(
   input: MemoryExtractionApplyInput,

@@ -17,6 +17,8 @@ export const MEMORY_EXTRACTION_LIMITS = {
   maxMessagesScanned: 120,
   maxLegacyBlobChars: 4000,
   extractNowCooldownSeconds: 60,
+  projectRefreshMaxChatsPerClick: 6,
+  projectRefreshMaxRuntimeMs: 60_000,
 } as const
 
 export const MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES = 0

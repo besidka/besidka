@@ -23,7 +23,6 @@ export default defineEventHandler(async () => {
       memoryEnabled: true,
       memoryExtractionEnabled: true,
       chatSearchEnabled: true,
-      memoryIncludeSensitive: true,
       aboutMe: true,
       profileMemoryModel: true,
       profileMemoryGateway: true,
@@ -46,8 +45,7 @@ export default defineEventHandler(async () => {
       ?? MEMORY_SETTING_DEFAULTS.memoryExtractionEnabled,
     chatSearchEnabled: settings?.chatSearchEnabled
       ?? MEMORY_SETTING_DEFAULTS.chatSearchEnabled,
-    memoryIncludeSensitive: settings?.memoryIncludeSensitive
-      ?? MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
+    memoryIncludeSensitive: MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
     aboutMe: settings?.aboutMe ?? MEMORY_SETTING_DEFAULTS.aboutMe,
     profileMemoryModel: settings?.profileMemoryModel ?? null,
     profileMemoryGateway: settings?.profileMemoryGateway ?? null,

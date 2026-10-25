@@ -2,11 +2,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
-import {
-  markProjectsMemoryStale,
-  refreshProjectMemory,
-} from '~~/server/utils/projects/memory'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -34,31 +30,6 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
-
-  async function tryRefreshProjectMemory(projectIds: Array<string | null>) {
-    const uniqueProjectIds = [...new Set(projectIds)].filter(
-      (projectId): projectId is string => {
-        return !!projectId
-      },
-    )
-
-    for (const projectId of uniqueProjectIds) {
-      try {
-        await refreshProjectMemory(projectId, userId, db)
-      } catch (exception) {
-        logger.set({
-          projectMemoryRefreshError: {
-            projectId,
-          },
-          attributes: {
-            projectMemoryRefreshError: {
-              message: exceptionMessage(exception),
-            },
-          },
-        })
-      }
-    }
-  }
 
   logger.set({
     userId,
@@ -124,8 +95,6 @@ export default defineEventHandler(async (event) => {
       db,
     )
 
-    await tryRefreshProjectMemory([...sourceProjectIds, project.id])
-
     return { success: true }
   }
 
@@ -140,7 +109,6 @@ export default defineEventHandler(async (event) => {
 
   await refreshProjectActivityAt(sourceProjectIds, userId, db)
   await markProjectsMemoryStale(sourceProjectIds, userId, db)
-  await tryRefreshProjectMemory(sourceProjectIds)
 
   return { success: true }
 })

@@ -207,10 +207,25 @@ describe('memorySettingsPatchShape', () => {
       memoryEnabled: true,
       memoryExtractionEnabled: true,
       chatSearchEnabled: false,
-      memoryIncludeSensitive: false,
       aboutMe: null,
     }).success).toBe(true)
   })
+
+  it.each([true, false])(
+    'strips a legacy memoryIncludeSensitive of %s',
+    (legacyValue) => {
+      const parsed = settingsSchema.safeParse({
+        memoryEnabled: true,
+        memoryIncludeSensitive: legacyValue,
+      })
+
+      expect(parsed.success).toBe(true)
+      expect(parsed.data).toEqual({ memoryEnabled: true })
+      expect(Object.keys(parsed.data ?? {})).not.toContain(
+        'memoryIncludeSensitive',
+      )
+    },
+  )
 
   it('accepts only a boolean memoryExtractionEnabled', () => {
     expect(settingsSchema.safeParse({

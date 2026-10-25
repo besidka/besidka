@@ -8,11 +8,7 @@ import {
   REDACTION_PLACEHOLDER,
   neverStoreKindIds,
 } from '#shared/utils/memory-policy'
-import { and, eq } from 'drizzle-orm'
-import * as schema from '~~/server/db/schema'
 import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
-
-type DbClient = ReturnType<typeof useDb>
 
 export interface NeverStoreMatch {
   kind: NeverStoreKind
@@ -978,26 +974,4 @@ export function evaluateMemoryEntry(
   }
 
   return { allowed: true }
-}
-
-export function buildSensitiveMemoryPurge(
-  userId: number,
-  db: DbClient = useDb(),
-) {
-  return db
-    .delete(schema.memoryEntries)
-    .where(and(
-      eq(schema.memoryEntries.userId, userId),
-      eq(schema.memoryEntries.sensitivity, 'special'),
-    ))
-    .returning({ id: schema.memoryEntries.id })
-}
-
-export async function purgeSensitiveMemoryEntries(
-  userId: number,
-  db: DbClient = useDb(),
-): Promise<number> {
-  const deletedRows = await buildSensitiveMemoryPurge(userId, db)
-
-  return deletedRows.length
 }

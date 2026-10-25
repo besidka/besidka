@@ -153,6 +153,9 @@ describe('extractChatMemory', () => {
     const { extractChatMemory } = await import(
       '~~/server/utils/memory/extract'
     )
+    const stored = overrides.trigger === 'manual'
+      ? await readChat(chat.id)
+      : null
 
     return await extractChatMemory({
       chat,
@@ -160,6 +163,7 @@ describe('extractChatMemory', () => {
       db: testDb.db,
       logger: { set: vi.fn() },
       now: EXTRACTION_NOW,
+      ...(stored?.projectId ? { expectedProjectId: stored.projectId } : {}),
       ...overrides,
     })
   }
@@ -406,7 +410,11 @@ describe('extractChatMemory', () => {
       reason: 'project-unavailable',
     })
     expect(mocks.generateObject).not.toHaveBeenCalled()
-    expect((await readChat(chat.id))?.memoryExtractedAt).not.toBeNull()
+
+    const stamped = await readChat(chat.id)
+
+    expect(stamped?.projectMemorySummaryUpdatedAt).not.toBeNull()
+    expect(stamped?.memoryExtractedAt).toBeNull()
   })
 
   it('skips a project with memory disabled', async () => {
@@ -563,21 +571,361 @@ describe('extractChatMemory', () => {
     expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
   })
 
-  it.each([true, false, null])(
-    'drops flagged ops as a sensitive topic with memoryIncludeSensitive %s',
-    async (memoryIncludeSensitive) => {
+  describe('special categories', () => {
+    function loggedPayload(logger: { set: ReturnType<typeof vi.fn> }) {
+      return JSON.stringify(logger.set.mock.calls)
+    }
+
+    function sensitiveLogs(logger: { set: ReturnType<typeof vi.fn> }) {
+      return logger.set.mock.calls
+        .map(([fields]) => {
+          return (fields as {
+            attributes?: { memoryCompliance?: { sensitive?: unknown } }
+          }).attributes?.memoryCompliance?.sensitive
+        })
+        .filter(Boolean)
+    }
+
+    it.each([true, false, null])(
+      'drops flagged ops as a sensitive topic with memoryIncludeSensitive %s',
+      async (memoryIncludeSensitive) => {
+        const chat = await seedChatWithMessages()
+
+        await testDb.db.update(schema.userSettings)
+          .set({ memoryIncludeSensitive })
+          .where(eq(schema.userSettings.userId, userId))
+        mockOps([createOp({ body: 'The user has type 2 diabetes.' })])
+
+        const result = await run(chat)
+
+        expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
+        expect(await listEntries()).toHaveLength(0)
+      },
+    )
+
+    it('drops a flagged op and logs category ids, never the text',
+      async () => {
+        const chat = await seedChatWithMessages()
+        const logger = { set: vi.fn() }
+
+        await testDb.db.update(schema.userSettings)
+          .set({ memoryIncludeSensitive: true })
+          .where(eq(schema.userSettings.userId, userId))
+        mockOps([createOp({
+          title: 'Condition',
+          body: 'The user has type 2 diabetes.',
+        })])
+
+        const result = await run(chat, { logger })
+
+        expect(result.applied.created).toBe(0)
+        expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
+        expect(await listEntries()).toHaveLength(0)
+        expect(sensitiveLogs(logger)).toEqual([
+          { origin: 'memory-extraction', categories: ['health'] },
+        ])
+        expect(loggedPayload(logger)).not.toContain('diabetes')
+        expect(loggedPayload(logger)).not.toContain('Condition')
+        expect(JSON.stringify(result)).not.toContain('diabetes')
+        expect(JSON.stringify(result)).not.toContain('Condition')
+      })
+
+    it('drops a flagged create and a flagged update with counts only',
+      async () => {
+        const chat = await seedChatWithMessages()
+        const logger = { set: vi.fn() }
+
+        await seedEntry(testDb.db, userId, {
+          slug: 'editor',
+          title: 'Editor',
+          description: 'Old description',
+        })
+        mockOps([
+          createOp({
+            title: 'Diet',
+            body: 'The user has type 2 diabetes.',
+          }),
+          createOp({
+            op: 'update',
+            slug: 'editor',
+            title: null,
+            description: 'Has type 2 diabetes',
+            body: null,
+          }),
+        ])
+
+        const result = await run(chat, { logger })
+        const [entry] = await listEntries()
+
+        expect(result.proposed).toBe(2)
+        expect(result.dropped).toEqual({ 'sensitive-topic': 2 })
+        expect(result.applied).toEqual({ created: 0, updated: 0, deleted: 0 })
+        expect(await listEntries()).toHaveLength(1)
+        expect(entry?.description).toBe('Old description')
+        expect(sensitiveLogs(logger)).toEqual([
+          { origin: 'memory-extraction', categories: ['health'] },
+        ])
+        expect(loggedPayload(logger)).not.toContain('diabetes')
+        expect(loggedPayload(logger)).not.toContain('Diet')
+      })
+
+    it('persists every extracted row as non-sensitive', async () => {
       const chat = await seedChatWithMessages()
 
       await testDb.db.update(schema.userSettings)
-        .set({ memoryIncludeSensitive })
+        .set({ memoryIncludeSensitive: true })
         .where(eq(schema.userSettings.userId, userId))
-      mockOps([createOp({ body: 'The user has type 2 diabetes.' })])
+      mockOps([createOp()])
 
       const result = await run(chat)
 
-      expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
-      expect(await listEntries()).toHaveLength(0)
+      expect(result.applied.created).toBe(1)
+
+      for (const entry of await listEntries()) {
+        expect(entry).toMatchObject({
+          sensitivity: 'none',
+          sensitiveCategory: null,
+        })
+      }
     })
+
+    it('asks the model for no sensitivity labels and no opt-in rule',
+      async () => {
+        const chat = await seedChatWithMessages()
+
+        await testDb.db.update(schema.userSettings)
+          .set({ memoryIncludeSensitive: true })
+          .where(eq(schema.userSettings.userId, userId))
+        await run(chat)
+
+        const options = mocks.generateObject.mock.calls[0]![0]
+
+        expect(options.instructions).toContain('Never record anything about')
+        expect(options.instructions).not.toContain('sensitiveCategory')
+        expect(options.instructions).not.toContain('may be stored only')
+        expect(Object.keys(options.schema.shape.ops.element.shape))
+          .not.toContain('sensitivity')
+        expect(Object.keys(options.schema.shape.ops.element.shape))
+          .not.toContain('sensitiveCategory')
+      })
+
+    it('keeps special rows out of the prompt index', async () => {
+      const chat = await seedChatWithMessages()
+
+      await seedEntry(testDb.db, userId, {
+        slug: 'condition-note',
+        title: 'Hidden special title',
+        description: 'Hidden special description',
+        body: 'Hidden special body',
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+        origin: 'user',
+      })
+      await seedEntry(testDb.db, userId, {
+        slug: 'editor',
+        title: 'Visible editor title',
+      })
+      await run(chat)
+
+      expect(promptContent()).toContain('Visible editor title')
+      expect(promptContent()).not.toContain('Hidden special')
+      expect(promptContent()).not.toContain('condition-note')
+    })
+  })
+
+  describe('project chats', () => {
+    async function seedProjectChatWithMessages(
+      chatValues: Partial<typeof schema.chats.$inferInsert> = {},
+    ) {
+      const projectId = await seedProject(testDb.db, userId)
+
+      return await seedChatWithMessages({ projectId, chatValues })
+    }
+
+    async function setSettings(
+      values: Partial<typeof schema.userSettings.$inferInsert>,
+    ) {
+      await testDb.db.update(schema.userSettings)
+        .set(values)
+        .where(eq(schema.userSettings.userId, userId))
+    }
+
+    it('sweeps a project chat with the extraction opt-in off', async () => {
+      await setSettings({ memoryExtractionEnabled: false })
+
+      const chat = await seedProjectChatWithMessages()
+
+      mockOps([createOp()])
+
+      const result = await run(chat)
+      const stamped = await readChat(chat.id)
+
+      expect(result).toMatchObject({
+        status: 'extracted',
+        applied: { created: 1, updated: 0, deleted: 0 },
+      })
+      expect(stamped?.projectMemorySummaryUpdatedAt)
+        .toEqual(minutesBefore(69))
+      expect(stamped?.memoryExtractedAt).toBeNull()
+      expect(stamped?.memoryExtractionAttemptedAt).toBeNull()
+      expect(stamped?.memoryExtractionFailures).toBeNull()
+    })
+
+    it('sweeps a project chat with the extraction opt-in unset', async () => {
+      await setSettings({ memoryExtractionEnabled: null })
+
+      const chat = await seedProjectChatWithMessages()
+
+      expect((await run(chat)).status).toBe('extracted')
+    })
+
+    it('still refuses a non-project chat with the opt-in off', async () => {
+      await setSettings({ memoryExtractionEnabled: false })
+
+      const chat = await seedChatWithMessages()
+
+      expect(await run(chat)).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+    })
+
+    it('refuses a project chat when memory is turned off', async () => {
+      await setSettings({ memoryEnabled: false })
+
+      const chat = await seedProjectChatWithMessages()
+
+      expect(await run(chat)).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+    })
+
+    it('uses the project watermark for the dirty check', async () => {
+      const clean = await seedProjectChatWithMessages({
+        projectMemorySummaryUpdatedAt: minutesBefore(30),
+      })
+      const dirtyOnlyForAccount = await seedProjectChatWithMessages({
+        memoryExtractedAt: minutesBefore(30),
+      })
+
+      expect(await run(clean)).toMatchObject({ reason: 'not-due' })
+      expect((await run(dirtyOnlyForAccount)).status).toBe('extracted')
+    })
+
+    it('keeps applying ops when only the extraction opt-in flips mid-pass',
+      async () => {
+        const chat = await seedProjectChatWithMessages()
+
+        mocks.generateObject.mockImplementation(async () => {
+          await setSettings({ memoryExtractionEnabled: false })
+
+          return {
+            object: { ops: [createOp()] },
+            usage: { inputTokens: 5, outputTokens: 5 },
+          }
+        })
+
+        const result = await run(chat)
+
+        expect(result.applied.created).toBe(1)
+        expect(await listEntries()).toHaveLength(1)
+      })
+
+    it('applies nothing when memory is switched off mid-pass', async () => {
+      const chat = await seedProjectChatWithMessages()
+
+      mocks.generateObject.mockImplementation(async () => {
+        await setSettings({ memoryEnabled: false })
+
+        return {
+          object: { ops: [createOp()] },
+          usage: { inputTokens: 5, outputTokens: 5 },
+        }
+      })
+
+      const result = await run(chat)
+
+      expect(result).toMatchObject({ status: 'skipped', reason: 'disabled' })
+      expect(await listEntries()).toHaveLength(0)
+      expect((await readChat(chat.id))?.projectMemorySummaryUpdatedAt)
+        .toBeNull()
+    })
+
+    it('accumulates short text on the project watermark', async () => {
+      await setSettings({ memoryExtractionEnabled: false })
+
+      const projectId = await seedProject(testDb.db, userId)
+      const chat = await seedChat(testDb.db, userId, { projectId })
+
+      await seedMessage(testDb.db, chat.id, 'user',
+        [textPart(FIRST_SHORT_CHUNK)], minutesBefore(70))
+
+      const first = await run(chat)
+      const afterFirst = await readChat(chat.id)
+
+      expect(first).toMatchObject({ status: 'skipped', reason: 'too-short' })
+      expect(afterFirst?.projectMemorySummaryUpdatedAt).toBeNull()
+      expect(afterFirst?.memoryExtractedAt).toBeNull()
+      expect(afterFirst?.memoryExtractionFailures).toBe(0)
+
+      await seedMessage(testDb.db, chat.id, 'user',
+        [textPart(SECOND_SHORT_CHUNK)], minutesBefore(40))
+      await testDb.db.update(schema.chats)
+        .set({ activityAt: minutesBefore(40) })
+        .where(eq(schema.chats.id, chat.id))
+
+      const second = await run(chat, {
+        now: new Date(EXTRACTION_NOW.getTime() + 60_000),
+      })
+
+      expect(second.status).toBe('extracted')
+      expect(promptContent()).toContain(FIRST_SHORT_CHUNK.trim())
+      expect(promptContent()).toContain(SECOND_SHORT_CHUNK.trim())
+      expect((await readChat(chat.id))?.projectMemorySummaryUpdatedAt)
+        .toEqual(minutesBefore(40))
+    })
+
+    it('shares one watermark between the sweep and the manual refresh',
+      async () => {
+        const sweptFirst = await seedProjectChatWithMessages()
+
+        expect((await run(sweptFirst)).status).toBe('extracted')
+        expect(await run(sweptFirst, {
+          trigger: 'manual',
+        })).toMatchObject({ status: 'skipped', reason: 'no-user-text' })
+        expect(mocks.generateObject).toHaveBeenCalledOnce()
+
+        mocks.generateObject.mockClear()
+
+        const manualFirst = await seedProjectChatWithMessages()
+
+        expect((await run(manualFirst, { trigger: 'manual' })).status)
+          .toBe('extracted')
+        expect(await run(manualFirst)).toMatchObject({
+          status: 'skipped',
+          reason: 'no-user-text',
+        })
+        expect(mocks.generateObject).toHaveBeenCalledOnce()
+      })
+
+    it('keeps the attempt bookkeeping out of the manual trigger', async () => {
+      const chat = await seedProjectChatWithMessages({
+        memoryExtractionAttemptedAt: minutesBefore(5),
+        memoryExtractionFailures: 2,
+      })
+
+      await run(chat, { trigger: 'manual' })
+
+      const stamped = await readChat(chat.id)
+
+      expect(stamped?.memoryExtractionAttemptedAt)
+        .toEqual(minutesBefore(5))
+      expect(stamped?.memoryExtractionFailures).toBe(2)
+    })
+  })
 
   describe('branched chats', () => {
     async function seedBranch(isShareBranch: boolean) {
@@ -843,7 +1191,7 @@ describe('extractChatMemory', () => {
         .toContain('at most 10 ops')
     })
 
-    it('drops blob-derived ops that carry never-store data', async () => {
+    it('grounds blob evidence on the redacted blob so never-store text cannot be quoted', async () => {
       const projectId = await seedBlobProject()
       const chat = await seedChatWithMessages({ projectId })
 
@@ -856,8 +1204,9 @@ describe('extractChatMemory', () => {
 
       const result = await run(chat)
 
-      expect(result.dropped).toEqual({ 'never-store': 1 })
+      expect(result.dropped).toEqual({ ungrounded: 1 })
       expect(await listEntries()).toHaveLength(0)
+      expect(promptContent()).not.toContain('4111')
     })
   })
 

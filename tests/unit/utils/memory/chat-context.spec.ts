@@ -4,6 +4,7 @@ import {
   loadMemorySettingsFailClosed,
   readUserMessageText,
 } from '~~/server/utils/memory/chat-context'
+import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { createMemoryTestDb } from '../../../setup/helpers/memory-db'
 
 const USER_ID = 1
@@ -118,6 +119,7 @@ describe('chat memory context', () => {
         db: input.db ?? testDb.db,
         userId: USER_ID,
         projectId: null,
+        projectMemoryDisabled: false,
         useAccountMemory: null,
         settings: {
           memoryEnabled: input.memoryEnabled,
@@ -221,6 +223,106 @@ describe('chat memory context', () => {
       testDb.insertEntry({ userId: 2, slug: 'secret', title: 'Secret' })
 
       expect(await instructionsFor({ memoryEnabled: true })).toBeNull()
+    })
+
+    describe('project with memory turned off', () => {
+      const PROJECT_ROW_ID = 7
+
+      function instructionsForProject(
+        useAccountMemory: boolean | null,
+        projectMemoryDisabled: boolean | null,
+        db: typeof testDb.db = testDb.db,
+      ) {
+        return buildMemoryInstructions({
+          db,
+          userId: USER_ID,
+          projectId: encodePublicId(PROJECT_ROW_ID),
+          projectMemoryDisabled,
+          useAccountMemory,
+          settings: {
+            memoryEnabled: true,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          },
+          hasMemoryTools: true,
+          logger: { set: loggerSet },
+        })
+      }
+
+      beforeEach(() => {
+        testDb.insertProject({ id: PROJECT_ROW_ID, userId: USER_ID })
+        testDb.insertEntry({
+          userId: USER_ID,
+          slug: 'account-topic',
+          title: 'Account topic',
+        })
+        testDb.insertEntry({
+          userId: USER_ID,
+          projectId: PROJECT_ROW_ID,
+          slug: 'project-topic',
+          title: 'Project topic',
+        })
+      })
+
+      it('injects project entries while the project memory is on', async () => {
+        const instructions = await instructionsForProject(null, false)
+
+        expect(instructions).toContain('Project topic')
+        expect(instructions).toContain('Account topic')
+      })
+
+      it('injects no project entries but keeps account entries when disabled', async () => {
+        const instructions = await instructionsForProject(null, true)
+
+        expect(instructions).toContain('Account topic')
+        expect(instructions).not.toContain('Project topic')
+      })
+
+      it('injects nothing when disabled and account memory is hidden', async () => {
+        expect(await instructionsForProject(false, true)).toBeNull()
+      })
+
+      it('fails closed when the status could not be determined', async () => {
+        const instructions = await instructionsForProject(null, null)
+
+        expect(instructions).toContain('Account topic')
+        expect(instructions).not.toContain('Project topic')
+        expect(await instructionsForProject(false, null)).toBeNull()
+      })
+
+      it('does not query the project row', async () => {
+        const querySpy = vi.fn()
+        const spiedDb = new Proxy(testDb.db, {
+          get(target, property) {
+            if (property === 'query') {
+              const query = Reflect.get(target, property) as any
+
+              return new Proxy(query, {
+                get(queryTarget, table) {
+                  if (table === 'projects') {
+                    querySpy()
+                  }
+
+                  return Reflect.get(queryTarget, table)
+                },
+              })
+            }
+
+            return Reflect.get(target, property)
+          },
+        })
+
+        await instructionsForProject(null, false, spiedDb)
+
+        expect(querySpy).not.toHaveBeenCalled()
+      })
+
+      it('keeps the entries in the database', async () => {
+        await instructionsForProject(null, true)
+
+        expect(testDb.countEntries(USER_ID)).toBe(2)
+      })
     })
   })
 })

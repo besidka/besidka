@@ -10,8 +10,10 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  *
  * Runs one memory extraction pass for one of the caller's chats right away,
  * ignoring the idle window. Previews have no crons, so this is how extraction
- * is exercised there. Needs the same two flags as the sweep, is rate limited
- * to one run per minute per user, and answers with counts only.
+ * is exercised there. Needs the same flags as the sweep (memory on, plus the
+ * extraction opt-in for account chats; a project chat needs only memory on),
+ * is rate limited to one run per minute per user, and answers with counts
+ * only.
  */
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -40,7 +42,7 @@ export default defineEventHandler(async (event) => {
   const userId = parseInt(session.user.id)
   const chat = await db.query.chats.findFirst({
     where: { slug: body.data.chatSlug, userId },
-    columns: { id: true },
+    columns: { id: true, projectId: true },
   })
 
   if (!chat) {
@@ -55,8 +57,12 @@ export default defineEventHandler(async (event) => {
     columns: { memoryEnabled: true, memoryExtractionEnabled: true },
   })
 
-  if (settings?.memoryEnabled === false
-    || settings?.memoryExtractionEnabled !== true) {
+  const isExtractionOff = chat.projectId
+    ? settings?.memoryEnabled === false
+    : settings?.memoryEnabled === false
+      || settings?.memoryExtractionEnabled !== true
+
+  if (isExtractionOff) {
     throw createError({
       message: 'Memory extraction is turned off',
       status: 409,
@@ -79,7 +85,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const result = await extractChatMemory({
-    chat,
+    chat: { id: chat.id },
     userId,
     db,
     logger,

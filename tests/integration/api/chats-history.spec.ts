@@ -17,9 +17,8 @@ const mocks = vi.hoisted(() => ({
     detached: 0,
   })),
   removeChatsFromSearchIndex: vi.fn(async (_input: unknown) => undefined),
-  refreshProjectMemory: vi.fn(async () => ({
+  refreshProjectMemoryFromChats: vi.fn(async () => ({
     memoryStatus: 'ready',
-    memory: 'Rebuilt memory',
   })),
 }))
 
@@ -64,7 +63,10 @@ vi.mock('~~/server/utils/search/index-writer', () => ({
 
 vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: mocks.markProjectsMemoryStale,
-  refreshProjectMemory: mocks.refreshProjectMemory,
+}))
+
+vi.mock('~~/server/utils/projects/memory-refresh', () => ({
+  refreshProjectMemoryFromChats: mocks.refreshProjectMemoryFromChats,
 }))
 
 async function getHistoryHandler() {
@@ -158,9 +160,8 @@ describe('chat history API', () => {
     vi.resetModules()
     vi.clearAllMocks()
     mocks.refreshProjectActivityAt.mockResolvedValue(undefined)
-    mocks.refreshProjectMemory.mockResolvedValue({
+    mocks.refreshProjectMemoryFromChats.mockResolvedValue({
       memoryStatus: 'ready',
-      memory: 'Rebuilt memory',
     })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -665,7 +666,7 @@ describe('chat history API', () => {
     )
   })
 
-  it('moves chats into projects and refreshes affected project memory', async () => {
+  it('moves chats into projects and marks affected project memory stale', async () => {
     const singleHandler = await getProjectMoveHandler()
     const bulkHandler = await getBulkProjectMoveHandler()
     const schema = await import('../../../server/db/schema')
@@ -734,45 +735,28 @@ describe('chat history API', () => {
       1,
       db,
     )
-    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
-      1,
-      'project-source',
-      1,
-      db,
-    )
-    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
-      2,
-      'project-1',
-      1,
-      db,
-    )
     expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
       2,
       ['project-source', 'project-other'],
       1,
       db,
     )
-    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
-      3,
-      'project-source',
+    expect(mocks.markProjectsMemoryStale).toHaveBeenNthCalledWith(
+      1,
+      ['project-source', 'project-1'],
       1,
       db,
     )
-    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
-      4,
-      'project-other',
+    expect(mocks.markProjectsMemoryStale).toHaveBeenNthCalledWith(
+      2,
+      ['project-source', 'project-other', 'project-1'],
       1,
       db,
     )
-    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
-      5,
-      'project-1',
-      1,
-      db,
-    )
+    expect(mocks.refreshProjectMemoryFromChats).not.toHaveBeenCalled()
   })
 
-  it('removes chats from projects and refreshes source project memory', async () => {
+  it('removes chats from projects and marks the source project memory stale', async () => {
     const singleHandler = await getProjectMoveHandler()
     const bulkHandler = await getBulkProjectMoveHandler()
     const updateWhere = vi.fn(async () => undefined)
@@ -822,30 +806,25 @@ describe('chat history API', () => {
       1,
       db,
     )
-    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
-      1,
-      'project-source',
-      1,
-      db,
-    )
     expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
       2,
       ['project-source', 'project-other'],
       1,
       db,
     )
-    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+    expect(mocks.markProjectsMemoryStale).toHaveBeenNthCalledWith(
+      1,
+      ['project-source'],
+      1,
+      db,
+    )
+    expect(mocks.markProjectsMemoryStale).toHaveBeenNthCalledWith(
       2,
-      'project-source',
+      ['project-source', 'project-other'],
       1,
       db,
     )
-    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
-      3,
-      'project-other',
-      1,
-      db,
-    )
+    expect(mocks.refreshProjectMemoryFromChats).not.toHaveBeenCalled()
   })
 
   it('skips no-op project moves for single and bulk actions', async () => {

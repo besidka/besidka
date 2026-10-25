@@ -6,6 +6,7 @@ import {
   minutesBefore,
   seedChat,
   seedMessage,
+  seedProject,
   seedUser,
   textPart,
 } from '../../../setup/helpers/memory-extraction-db'
@@ -131,6 +132,10 @@ describe('sweepMemoryExtraction', () => {
 
   async function readChat(chatId: string) {
     return await testDb.db.query.chats.findFirst({ where: { id: chatId } })
+  }
+
+  async function readProjectId(chatId: string) {
+    return (await readChat(chatId))?.projectId ?? undefined
   }
 
   describe('selection', () => {
@@ -412,6 +417,194 @@ describe('sweepMemoryExtraction', () => {
       })
   })
 
+  describe('project chats', () => {
+    async function projectChat(
+      owner = userId,
+      projectValues: Partial<typeof schema.projects.$inferInsert> = {},
+      values: ChatValues = {},
+    ) {
+      const projectId = await seedProject(testDb.db, owner, projectValues)
+
+      return await dueChat({ projectId, ...values }, owner)
+    }
+
+    async function wasProjectProcessed(chatId: string) {
+      const chat = await readChat(chatId)
+
+      return chat?.projectMemorySummaryUpdatedAt !== null
+    }
+
+    it('sweeps project chats regardless of the extraction opt-in',
+      async () => {
+        const flagOff = await seedUser(testDb.db, {
+          memoryEnabled: true,
+          memoryExtractionEnabled: false,
+        })
+        const flagNull = await seedUser(testDb.db, {
+          memoryEnabled: true,
+          memoryExtractionEnabled: null,
+        })
+        const noSettings = await seedUser(testDb.db, null)
+        const chats = [
+          await projectChat(flagOff),
+          await projectChat(flagNull),
+          await projectChat(noSettings),
+        ]
+
+        const result = await sweep()
+
+        expect(result).toMatchObject({ selectedCount: 3, extractedCount: 3 })
+
+        for (const chat of chats) {
+          expect(await wasProjectProcessed(chat.id)).toBe(true)
+          expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
+        }
+      })
+
+    it('still skips an account chat with the opt-in off', async () => {
+      const flagOff = await seedUser(testDb.db, {
+        memoryEnabled: true,
+        memoryExtractionEnabled: false,
+      })
+      const accountChat = await dueChat({}, flagOff)
+      const projectOne = await projectChat(flagOff)
+
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect(await wasProcessed(accountChat.id)).toBe(false)
+      expect(await wasProjectProcessed(projectOne.id)).toBe(true)
+    })
+
+    it('skips a project chat whose project is disabled', async () => {
+      const chat = await projectChat(userId, { memoryStatus: 'disabled' })
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(0)
+      expect(await wasProjectProcessed(chat.id)).toBe(false)
+    })
+
+    it('skips project chats when memory is turned off', async () => {
+      const memoryOff = await seedUser(testDb.db, {
+        memoryEnabled: false,
+        memoryExtractionEnabled: true,
+      })
+      const chat = await projectChat(memoryOff)
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(0)
+      expect(await wasProjectProcessed(chat.id)).toBe(false)
+    })
+
+    it('skips a chat pointing at a project of another user', async () => {
+      const otherUser = await seedUser(testDb.db, { memoryEnabled: true })
+      const foreignProjectId = await seedProject(testDb.db, otherUser)
+      const chat = await dueChat({ projectId: foreignProjectId })
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(0)
+      expect(await wasProjectProcessed(chat.id)).toBe(false)
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+    })
+
+    it('decides dirtiness on the project watermark only', async () => {
+      const clean = await projectChat(userId, {}, {
+        projectMemorySummaryUpdatedAt: minutesBefore(30),
+      })
+      const dirtyOnlyForAccount = await projectChat(userId, {}, {
+        memoryExtractedAt: minutesBefore(30),
+      })
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect((await readChat(clean.id))?.projectMemorySummaryUpdatedAt)
+        .toEqual(minutesBefore(30))
+      expect(await wasProjectProcessed(dirtyOnlyForAccount.id)).toBe(true)
+    })
+
+    it('keeps the idle window, backoff and per-user cap for project chats',
+      async () => {
+        const recent = await projectChat(userId, {}, {
+          activityAt: minutesBefore(5),
+        })
+        const backedOff = await projectChat(userId, {}, {
+          memoryExtractionAttemptedAt: minutesBefore(5),
+        })
+
+        const result = await sweep()
+
+        expect(result.selectedCount).toBe(0)
+        expect(await wasProjectProcessed(recent.id)).toBe(false)
+        expect(await wasProjectProcessed(backedOff.id)).toBe(false)
+      })
+
+    it('keeps a short project chat waiting on the project watermark',
+      async () => {
+        const projectId = await seedProject(testDb.db, userId)
+        const chat = await dueChat({ projectId }, userId, SHORT_USER_TEXT)
+        const first = await sweep()
+        const second = await sweep()
+
+        expect(first).toMatchObject({ selectedCount: 1, skippedCount: 1 })
+        expect(second.selectedCount).toBe(0)
+        expect(await readChat(chat.id)).toMatchObject({
+          projectMemorySummaryUpdatedAt: null,
+          memoryExtractedAt: null,
+          memoryExtractionFailures: 0,
+        })
+      })
+
+    it('does not reprocess the same messages after a manual refresh',
+      async () => {
+        const chat = await projectChat()
+        const { extractChatMemory } = await import(
+          '~~/server/utils/memory/extract'
+        )
+
+        await extractChatMemory({
+          chat,
+          userId,
+          db: testDb.db,
+          trigger: 'manual',
+          expectedProjectId: await readProjectId(chat.id),
+          now: EXTRACTION_NOW,
+        })
+
+        expect(mocks.generateObject).toHaveBeenCalledOnce()
+
+        const result = await sweep()
+
+        expect(result).toMatchObject({ selectedCount: 1, skippedCount: 1 })
+        expect(mocks.generateObject).toHaveBeenCalledOnce()
+      })
+
+    it('does not reprocess the same messages when the manual refresh follows',
+      async () => {
+        const chat = await projectChat()
+        const { extractChatMemory } = await import(
+          '~~/server/utils/memory/extract'
+        )
+
+        await sweep()
+        expect(mocks.generateObject).toHaveBeenCalledOnce()
+
+        const manual = await extractChatMemory({
+          chat,
+          userId,
+          db: testDb.db,
+          trigger: 'manual',
+          expectedProjectId: await readProjectId(chat.id),
+          now: EXTRACTION_NOW,
+        })
+
+        expect(manual).toMatchObject({
+          status: 'skipped',
+          reason: 'no-user-text',
+        })
+        expect(mocks.generateObject).toHaveBeenCalledOnce()
+      })
+  })
+
   describe('processing', () => {
     it('processes chats sequentially', async () => {
       let running = 0
@@ -507,8 +700,6 @@ describe('sweepMemoryExtraction', () => {
               title: SECRET_TITLE,
               description: 'Writes Rust',
               body: 'Writes Rust on weekends.',
-              sensitivity: null,
-              sensitiveCategory: null,
               neverStore: null,
               evidence: 'I write Rust on weekends',
             },
@@ -519,8 +710,6 @@ describe('sweepMemoryExtraction', () => {
               title: 'Made up',
               description: 'Made up',
               body: 'Made up',
-              sensitivity: null,
-              sensitiveCategory: null,
               neverStore: null,
               evidence: 'never said by the user',
             },
@@ -570,8 +759,6 @@ describe('sweepMemoryExtraction', () => {
               title: SECRET_TITLE,
               description: 'Writes Rust on weekends',
               body: 'Secret Rust body text',
-              sensitivity: null,
-              sensitiveCategory: null,
               neverStore: null,
               evidence: 'I write Rust on weekends',
             },

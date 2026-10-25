@@ -80,6 +80,7 @@ export interface MemorySettingsFields {
   memoryEnabled: boolean
   memoryExtractionEnabled: boolean
   chatSearchEnabled: boolean
+  /** @deprecated Removed from v1; always false. */
   memoryIncludeSensitive: boolean
   aboutMe: string | null
   profileMemoryModel: string | null

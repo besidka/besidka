@@ -142,6 +142,7 @@ describe('projects API', () => {
     vi.resetModules()
     vi.clearAllMocks()
 
+    vi.stubGlobal('assertNotCrossSiteRequest', vi.fn())
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
       statusCode?: number
@@ -400,19 +401,22 @@ describe('projects API', () => {
   })
 
   it('refreshes project memory through the refresh endpoint', async () => {
-    const refreshProjectMemory = vi.fn(async () => ({
-      id: 'project-1',
-      memory: 'Prefers phased rollouts.',
+    const refreshProjectMemoryFromChats = vi.fn(async () => ({
+      projectId: 'project-1',
       memoryStatus: 'ready',
-      memoryUpdatedAt: new Date('2026-03-13T09:00:00.000Z'),
+      memoryUpdatedAt: '2026-03-13T09:00:00.000Z',
       memoryDirtyAt: null,
       memoryProvider: 'google',
       memoryModel: 'gemini-2.5-flash-lite',
       memoryError: null,
+      usesEntries: true,
+      legacyMemory: null,
+      total: 0,
+      groups: [],
     }))
 
-    vi.doMock('../../../server/utils/projects/memory', () => ({
-      refreshProjectMemory,
+    vi.doMock('../../../server/utils/projects/memory-refresh', () => ({
+      refreshProjectMemoryFromChats,
     }))
 
     const handler = await getRefreshProjectMemoryHandler()
@@ -420,12 +424,11 @@ describe('projects API', () => {
       params: { id: 'project-1' },
     } as any)
 
-    expect(refreshProjectMemory).toHaveBeenCalledWith(
-      'project-1',
-      1,
-      undefined,
-      expect.objectContaining({ set: expect.any(Function) }),
-    )
+    expect(refreshProjectMemoryFromChats).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      userId: 1,
+      logger: expect.objectContaining({ set: expect.any(Function) }),
+    })
     expect(response).toMatchObject({
       memoryStatus: 'ready',
       memoryProvider: 'google',

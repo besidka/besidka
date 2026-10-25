@@ -150,6 +150,11 @@ const {
   updateProject,
 } = useProjectChats(projectId)
 
+const {
+  data: memoryCard,
+  refresh: refreshMemoryCard,
+} = await useFetch(() => `/api/v1/projects/${projectId.value}/memory`)
+
 if (import.meta.client && !nuxtApp.isHydrating) {
   groupedAt.value = new Date().toISOString()
 }
@@ -190,13 +195,6 @@ interface ProjectDetails {
   id: string
   name: string
   instructions: string | null
-  memory: string | null
-  memoryStatus: Project['memoryStatus']
-  memoryUpdatedAt: string | null
-  memoryDirtyAt: string | null
-  memoryProvider: string | null
-  memoryModel: string | null
-  memoryError: string | null
 }
 
 const renameModalRef = shallowRef<RenameModalInstance | null>(null)
@@ -214,28 +212,43 @@ const projectInstructions = shallowRef<string | null>(
 const projectInstructionsDraft = shallowRef<string>(
   initialProjectDetails?.instructions ?? '',
 )
-const projectMemory = shallowRef<string | null>(
-  initialProjectDetails?.memory ?? null,
-)
-const projectMemoryStatus = shallowRef<Project['memoryStatus']>(
-  initialProjectDetails?.memoryStatus ?? 'idle',
-)
-const projectMemoryUpdatedAt = shallowRef<string | null>(
-  initialProjectDetails?.memoryUpdatedAt ?? null,
-)
-const projectMemoryProvider = shallowRef<string | null>(
-  initialProjectDetails?.memoryProvider ?? null,
-)
-const projectMemoryModel = shallowRef<string | null>(
-  initialProjectDetails?.memoryModel ?? null,
-)
-const projectMemoryError = shallowRef<string | null>(
-  initialProjectDetails?.memoryError ?? null,
-)
 const syncedProjectDetailsId = shallowRef<string | null>(
   initialProjectDetails?.id ?? null,
 )
 let syncProjectDetailsRequestId = 0
+
+const projectMemory = computed<string | null>(() => {
+  if (!memoryCard.value) {
+    return null
+  }
+
+  return formatProjectMemoryMarkdown(
+    memoryCard.value.groups,
+    memoryCard.value.legacyMemory,
+  )
+})
+
+const projectMemoryStatus = computed<Project['memoryStatus']>(() => {
+  return memoryCard.value?.memoryStatus
+    ?? project.value?.memoryStatus
+    ?? 'idle'
+})
+
+const projectMemoryUpdatedAt = computed<string | null>(() => {
+  return memoryCard.value?.memoryUpdatedAt ?? null
+})
+
+const projectMemoryProvider = computed<string | null>(() => {
+  return memoryCard.value?.memoryProvider ?? null
+})
+
+const projectMemoryModel = computed<string | null>(() => {
+  return memoryCard.value?.memoryModel ?? null
+})
+
+const projectMemoryError = computed<string | null>(() => {
+  return memoryCard.value?.memoryError ?? null
+})
 
 const hasProjectInstructions = computed(() => {
   return !!projectInstructions.value?.trim()
@@ -280,12 +293,6 @@ async function syncProjectDetails(nextProjectId: string | undefined) {
       if (!shouldPreserveDraft) {
         projectInstructionsDraft.value = ''
       }
-      projectMemory.value = null
-      projectMemoryStatus.value = 'idle'
-      projectMemoryUpdatedAt.value = null
-      projectMemoryProvider.value = null
-      projectMemoryModel.value = null
-      projectMemoryError.value = null
       syncedProjectDetailsId.value = null
 
       return
@@ -295,12 +302,6 @@ async function syncProjectDetails(nextProjectId: string | undefined) {
     if (!shouldPreserveDraft) {
       projectInstructionsDraft.value = projectDetails.instructions ?? ''
     }
-    projectMemory.value = projectDetails.memory ?? null
-    projectMemoryStatus.value = projectDetails.memoryStatus ?? 'idle'
-    projectMemoryUpdatedAt.value = projectDetails.memoryUpdatedAt ?? null
-    projectMemoryProvider.value = projectDetails.memoryProvider ?? null
-    projectMemoryModel.value = projectDetails.memoryModel ?? null
-    projectMemoryError.value = projectDetails.memoryError ?? null
     syncedProjectDetailsId.value = projectDetails.id
   } catch (exception) {
     if (requestId !== syncProjectDetailsRequestId) {
@@ -311,12 +312,6 @@ async function syncProjectDetails(nextProjectId: string | undefined) {
     if (!shouldPreserveDraft) {
       projectInstructionsDraft.value = ''
     }
-    projectMemory.value = null
-    projectMemoryStatus.value = 'failed'
-    projectMemoryUpdatedAt.value = null
-    projectMemoryProvider.value = null
-    projectMemoryModel.value = null
-    projectMemoryError.value = null
 
     if (import.meta.client) {
       const parsedException = parseError(exception)
@@ -335,6 +330,42 @@ async function syncProjectDetails(nextProjectId: string | undefined) {
   }
 }
 
+async function syncProjectDetailsAndMemory(nextProjectId: string | undefined) {
+  await Promise.all([
+    syncProjectDetails(nextProjectId),
+    refreshMemoryCard(),
+  ])
+}
+
+function hasNoProjectMemory(card: {
+  total: number
+  legacyMemory: string | null
+}): boolean {
+  return card.total === 0 && !card.legacyMemory
+}
+
+let memoryCardRequestId = 0
+
+async function pollMemoryCard() {
+  const requestId = ++memoryCardRequestId
+  const requestedProjectId = projectId.value
+
+  try {
+    const card = await $fetch(`/api/v1/projects/${requestedProjectId}/memory`)
+
+    if (
+      requestId !== memoryCardRequestId
+      || requestedProjectId !== projectId.value
+    ) {
+      return
+    }
+
+    memoryCard.value = card
+  } catch (exception) {
+    void exception
+  }
+}
+
 async function refreshProjectMemory() {
   if (
     !project.value
@@ -345,19 +376,43 @@ async function refreshProjectMemory() {
   }
 
   isRefreshingProjectMemory.value = true
+  memoryCardRequestId++
 
   try {
-    await $fetch(`/api/v1/projects/${project.value.id}/memory/refresh`, {
-      method: 'POST',
-    })
+    const response = await $fetch(
+      `/api/v1/projects/${project.value.id}/memory/refresh`,
+      { method: 'POST' },
+    )
 
-    await syncProjectDetails(project.value.id)
+    memoryCardRequestId++
+    memoryCard.value = response
 
     nuxtApp.runWithContext(() => {
+      if (response.memoryStatus === 'refreshing') {
+        return
+      }
+
+      if (['failed', 'unavailable'].includes(response.memoryStatus)) {
+        useErrorMessage(
+          'Failed to refresh project memory',
+          response.memoryError ?? undefined,
+        )
+
+        return
+      }
+
+      if (response.memoryStatus === 'stale') {
+        useWarningMessage(
+          'Project memory partly refreshed. Press Refresh again to continue.',
+        )
+
+        return
+      }
+
       useSuccessMessage(
-        projectMemory.value
-          ? 'Project memory refreshed'
-          : 'Project memory refreshed, but no reusable project memory was found',
+        hasNoProjectMemory(response)
+          ? 'Project memory refreshed, but no reusable project memory was found'
+          : 'Project memory refreshed',
       )
     })
   } catch (exception) {
@@ -369,6 +424,8 @@ async function refreshProjectMemory() {
         parsedException.why,
       )
     })
+
+    await refreshMemoryCard()
   } finally {
     isRefreshingProjectMemory.value = false
   }
@@ -383,24 +440,22 @@ async function toggleProjectMemory() {
 
   try {
     const enabled = projectMemoryStatus.value === 'disabled'
+    memoryCardRequestId++
+
     const response = await $fetch(`/api/v1/projects/${project.value.id}/memory`, {
       method: 'PATCH',
       body: { enabled },
     })
 
-    projectMemory.value = response.memory ?? null
-    projectMemoryStatus.value = response.memoryStatus ?? 'idle'
-    projectMemoryUpdatedAt.value = response.memoryUpdatedAt ?? null
-    projectMemoryProvider.value = response.memoryProvider ?? null
-    projectMemoryModel.value = response.memoryModel ?? null
-    projectMemoryError.value = response.memoryError ?? null
+    memoryCardRequestId++
+    memoryCard.value = response
 
     nuxtApp.runWithContext(() => {
       useSuccessMessage(
         enabled
-          ? response.memory
-            ? 'Project memory enabled'
-            : 'Project memory enabled, but no reusable project memory was found'
+          ? response.memoryStatus === 'ready' && hasNoProjectMemory(response)
+            ? 'Project memory enabled, but no reusable project memory was found'
+            : 'Project memory enabled'
           : 'Project memory disabled',
       )
     })
@@ -471,20 +526,7 @@ nuxtApp.hook('projects:context-updated', ({ projectIds }) => {
     return
   }
 
-  syncProjectDetails(projectId.value)
-})
-
-watch(projectMemoryStatus, (nextStatus, previousStatus) => {
-  if (
-    !project.value
-    || isRefreshingProjectMemory.value
-    || !['stale', 'failed'].includes(nextStatus)
-    || previousStatus === nextStatus
-  ) {
-    return
-  }
-
-  refreshProjectMemory()
+  syncProjectDetailsAndMemory(projectId.value)
 })
 
 watch(projectMemoryStatus, (nextStatus, _previousStatus, onCleanup) => {
@@ -493,11 +535,11 @@ watch(projectMemoryStatus, (nextStatus, _previousStatus, onCleanup) => {
   }
 
   const intervalId = window.setInterval(() => {
-    if (isLoadingProjectDetails.value) {
+    if (isRefreshingProjectMemory.value) {
       return
     }
 
-    syncProjectDetails(projectId.value)
+    pollMemoryCard()
   }, 1500)
 
   onCleanup(() => {
@@ -577,7 +619,7 @@ async function onDeleteChat(chatId: string, slug: string) {
     })
 
     removeChat(chatId)
-    await syncProjectDetails(projectId.value)
+    await syncProjectDetailsAndMemory(projectId.value)
 
     nuxtApp.runWithContext(() => {
       useSuccessMessage('Chat deleted')
@@ -631,7 +673,7 @@ async function onProjectPickerSubmit(payload: {
     })
 
     moveChat(payload.chatId, payload.projectId)
-    await syncProjectDetails(projectId.value)
+    await syncProjectDetailsAndMemory(projectId.value)
 
     nuxtApp.runWithContext(() => {
       useSuccessMessage(
@@ -660,7 +702,7 @@ async function onRemoveFromProject(chatId: string, slug: string) {
     })
 
     removeChat(chatId)
-    await syncProjectDetails(projectId.value)
+    await syncProjectDetailsAndMemory(projectId.value)
 
     nuxtApp.runWithContext(() => {
       useSuccessMessage(

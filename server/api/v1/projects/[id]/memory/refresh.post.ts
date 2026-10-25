@@ -1,11 +1,14 @@
 import { createError } from 'evlog'
-import { refreshProjectMemory } from '~~/server/utils/projects/memory'
+import { refreshProjectMemoryFromChats } from '~~/server/utils/projects/memory-refresh'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
+
+  assertNotCrossSiteRequest(event)
+
   const params = z.object({
     id: z.string().nonempty(),
   }).safeParse(getDecodedRouterParams(event))
@@ -31,10 +34,9 @@ export default defineEventHandler(async (event) => {
     projectId: params.data.id,
   })
 
-  return await refreshProjectMemory(
-    params.data.id,
+  return await refreshProjectMemoryFromChats({
+    projectId: params.data.id,
     userId,
-    undefined,
     logger,
-  )
+  })
 })

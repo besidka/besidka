@@ -1,7 +1,7 @@
 # Memory architecture (profile, project, cross-chat, knowledge)
 
 Status: **proposal**, 2026-10-24, partly implemented: section 1 lists what
-exists today, and the "As built" notes in 3.3, 3.10, 3.11, 3.12 and section 5 record W1-W6.
+exists today, and the "As built" notes in 3.3, 3.10, 3.11, 3.12, 3.14, 3.15 and section 5 record W1-W6.
 Decisions marked **(owner)** are
 recommendations logged per the "minimize questions" preference; the owner can
 overturn any of them before the phase that depends on it starts.
@@ -13,6 +13,9 @@ budget (the user pays every token with their own key) and with hard,
 code-enforced compliance rules for sensitive data.
 
 ## 1. Where we are (audit, HEAD ffaccd56)
+
+> Superseded for project memory: the blob pipeline described here was retired in
+> W6b, see 3.14.
 
 Exists today:
 
@@ -1044,7 +1047,9 @@ later clear those stamps for chosen chats. Resending `true` while already
 **Sweep.** `*/5 * * * *`, same cron expression as the research sweep.
 Config `memoryExtractionSweepEnabled` (default false; true in `wrangler.jsonc`,
 safe because the per-user opt-in is off), `...BatchSize` 20,
-`...MaxRuntimeMs` 120000. Selection is a core `chats JOIN user_settings` query:
+`...MaxRuntimeMs` 120000. Selection is a core `chats JOIN user_settings` query (for
+non-project chats; project chats follow the project rule in 3.14, with their
+own watermark):
 extraction on, `memory_enabled` null or true, `activity_at` at least 10 min
 old, `memory_extracted_at` null or older than `activity_at`, attempt backoff
 30 min, failure cap 3 (reset by newer activity), ordered by
@@ -1090,14 +1095,15 @@ what the prompt only requests:
 - **Extraction only edits what extraction wrote**: update and delete apply only
   to `origin = 'extraction'` rows. Entries written by the user, a tool or an
   import are shown to the model as locked context and are never changed by the
-  sweep (owner principle: the user chooses). An update cannot downgrade
-  `special` to `none`.
+  sweep (owner principle: the user chooses). `special` rows are hidden from
+  the extractor and locked.
 - Every op runs `memoryEntryInputSchema`/`memoryEntryPatchSchema` (and the
   merged row for updates) and `evaluateMemoryEntry` on the exact persisted
   text, with the extractor's `neverStore` label as `extractorNeverStoreKind`.
-  Art. 9 entries are dropped unless `memoryIncludeSensitive` is on; a special
-  write goes in a `db.batch` with a conditional delete so a concurrent opt-out
-  purge cannot leave one behind.
+  Extraction never writes special-category entries (3.15): the op schema has
+  no sensitivity fields, every row is persisted `none`, and
+  `evaluateMemoryEntry` (the server classifier, 3.12) drops flagged text as
+  `sensitive-topic`.
 - Caps (`maxAccountEntries`/`maxProjectEntries`), merge-before-create (a
   create colliding with an extraction-origin slug becomes an update, with any
   other origin it is dropped as `duplicate`), writes scoped by `userId` and
@@ -1135,28 +1141,26 @@ chat has none. Code: `server/utils/memory/entry-sources.ts`.
 first extraction pass of a project with a non-empty blob and no marker, the
 blob is added to the prompt as `<legacy-memory>` (quotable as evidence), so the
 same op pipeline and compliance gate classify it (this is the retro-scrub W3
-left open, including Art. 9 labels). After a successful pass the marker is set
+left open for never-store data). After a successful pass the marker is set
 and never-store matches are redacted in place in `projects.memory`. The column
-is kept and never nulled (rollback) but nothing writes it any more once
-entries are in use: `projectUsesMemoryEntries(project, userId, db?)` in
+is kept and never nulled (rollback, also on disable) but nothing writes it any
+more once entries are in use: `projectUsesMemoryEntries(project, userId, db?)` in
 `server/utils/projects/memory-entries.ts` is true when the marker is set or any
 entry exists, and it is **the single function W4's index builder and prompt
 caller use**. `buildProjectSystemPrompt` takes `memoryEntriesActive` (default
 false = unchanged); W4's caller in `chats/[slug]/index.post.ts` must pass
-`await projectUsesMemoryEntries(project, userId)`. `refreshProjectMemory` and
-`markProjectsMemoryStale` stop touching projects in that state, so nothing
-freezes for users who never opt in. Known limit: Art. 9 text that predates
-W3 may remain in the dormant blob column when the user has not opted in to
-sensitive memory; it is never injected once entries are in use.
+`await projectUsesMemoryEntries(project, userId)`. The W1 blob pipeline is
+retired in W6b (3.14), so nothing writes `projects.memory` any more. Known
+limit: Art. 9 text that predates W3 may remain in the dormant blob column; it
+is never injected once entries are in use and extraction never reads it as
+anything but a grounding source for `create` ops.
 
 **Settings API (for W5).** GET and PATCH carry `memoryExtractionEnabled`
-(default false) and `memoryEnabled` (default true). A PATCH with
-`memoryIncludeSensitive: false` always applies (with the purge) even when model
-validation fails in the same payload: the failing scope's model and gateway are
-dropped from the write, and the response is HTTP 200 with the usual echo plus
-`modelValidationError: { message, why?, fix?, status }` (503 catalog outage,
-429 rate limit, 400 unknown model). Any other payload keeps the old behaviour:
-validate first, throw, save nothing.
+(default false) and `memoryEnabled` (default true). The sensitive opt-in is not
+part of v1: PATCH strips `memoryIncludeSensitive`, GET returns a constant
+`false` (deprecated), and the stored column is ignored by the server. Model
+validation failures throw (503 catalog outage, 429 rate limit, 400 unknown
+model) and nothing is saved. A flagged `aboutMe` is rejected with 422.
 
 **Known limits.**
 
@@ -1185,9 +1189,148 @@ validate first, throw, save nothing.
   setting together.
 - The extractor is the only detector for the topical never-store classes (its
   `neverStore` flag); Art. 9 data is classified by the server (3.12), not by
-  the extractor. User-pasted text that contains instructions is still
-  user-role text (prompt-level defence only).
+  the extractor, and extraction drops flagged ops (3.15). User-pasted text that
+  contains instructions is still user-role text (prompt-level defence only).
 - The extraction sweep is not run on Previews (no crons); use `extract-now`.
+
+### 3.14 Project memory as entries (W6b, 2026-10-26)
+
+Owner feedback on the pr-512 preview: the project card showed one capped blob
+(4000 chars) and its sections were glued together. Both are addressed.
+
+**Formatting bug (not a data bug).** The stored blob was intact (`**Heading**`
+paragraphs separated by `\n\n`, 2625 chars on the PIT-37 project; redaction,
+truncation and the synthesis join all preserve newlines, covered by a test).
+The cause was `unwrap="p"` on the card's `MDCCached`: MDC then strips every
+top-level `<p>` so a multi-paragraph document renders as adjacent inline text
+(`...penalties.Key Learnings`). Removed in `Projects/MemoryCard.vue` and
+`Chat/ProjectInstructions.vue`; unit tests render the real MDC component.
+
+**Unified server side.** The W1 blob pipeline is retired. "Refresh memory" is an
+explicit user action implemented by `refreshProjectMemoryFromChats`
+(`server/utils/projects/memory-refresh.ts`):
+
+- requires `memoryEnabled !== false` (409 otherwise), not
+  `memoryExtractionEnabled`: clicking Refresh is the explicit consent for this
+  project; a `disabled` project does nothing;
+- project lease (`project-memory-refreshing:<id>`), model resolved once with
+  `resolveMemoryModel({ scope: 'project', projectId })`, then `extractChatMemory`
+  with `trigger: 'manual'` over the project's chats, newest activity first, at
+  most 20 considered and 6 sent to the model per click (only chats that reach
+  the model count; the rest keep the project `stale`), strictly sequential;
+- the same op pipeline and compliance gate as the sweep (evidence grounding,
+  extraction-origin-only edits, never-store, caps, merge-before-create);
+- **Project chats keep their own watermark**, `chats.project_memory_summary_updated_at`
+  (the otherwise unused W1 column, no migration), for BOTH the sweep and the
+  manual refresh; non-project chats keep `memory_extracted_at`. This also keeps
+  the forward-only opt-in stamp on `memory_extracted_at` from hiding a project's
+  history from the sweep or an explicit refresh, and one project message is
+  never processed twice. Too-short windows accumulate, as in 3.11;
+- moving chats (single or bulk) no longer calls an LLM and the chat page no
+  longer posts a refresh after every send; they only mark the project `stale`.
+  Updating project memory is the server sweep's job (next paragraph) plus the
+  explicit Refresh button.
+
+**Project chats are swept automatically (owner rule, 2026-10-25).** Project
+memory used to update itself after chats in every project where it was enabled;
+that must not regress when the blob pipeline goes away. The cron sweep extracts
+project chats into project-scope entries whenever the account master
+`memoryEnabled` is not off AND the chat's project exists, belongs to the same
+user and has `memoryStatus != 'disabled'`. It does **not** depend on
+`memoryExtractionEnabled`, which governs only account/profile extraction from
+non-project chats. The per-project Disable/Enable stays the user's explicit
+switch: disabling a project stops its sweep. The model is the project memory
+model from `resolveMemoryModel` (scope `project`) on the user's own key.
+Selection, lease, caps, trust boundary and the compliance gate are the same as
+in 3.11.
+
+**Copy for the UI (W5).** Project card hint: "Projects keep their memory up to
+date automatically; turn it off per project." Memory tab note next to
+"Generate memory from chats": "This setting covers your account memory. Project
+memory updates automatically unless you turn it off in the project."
+
+**Abuse limits and errors.** The refresh and the enable toggle are guarded by
+the cross-site request check; a per-project KV cooldown
+(`project-memory-refresh-cooldown:<projectId>`, 60 s) is set after any pass
+that made a model call, and a refresh inside it answers 429 (the enable toggle
+just enables); a per-click deadline (60 s) stops starting new chat passes
+(leftover chats keep the project `stale`). A pass is skipped as
+`project-changed` when its chat moved to another project (or out of projects)
+meanwhile; manual passes never run in profile scope. Partial failure settles
+`stale` with `memoryError` set to the first failure's class label; a failed
+refresh surfaces as a structured 502 whose `why` is the class label only.
+There is no longer a `project-context/refresh` endpoint: nothing calls it.
+
+**Legacy blob.** The first refresh runs a blob-only pass (`extractProjectLegacyBlob`)
+when `memory_migrated_at` is null and `projects.memory` is non-blank: same op
+pipeline, the blob is the only grounding text. `memory_migrated_at` is set and
+never-store text is redacted in place when the pass applied something or the
+blob is blank; otherwise the blob stays injected and the card carries
+`memoryError: "Existing project memory could not be converted automatically; it
+is kept as is."`. The column is never nulled. From then on injection is single
+source: `projectUsesMemoryEntries` (marker or any entry) suppresses the blob.
+Entries created from chats suppress an unconverted blob in the prompt
+(single-source injection), but the card keeps returning it as `legacyMemory`
+while `memory_migrated_at` is null, so it never silently vanishes; the blob
+pass sends and grounds on the redacted blob and its text can ground `create`
+ops only. Disabling a project keeps the blob (and the entries).
+
+**Card contract (for W5).** `shared/types/project-memory.d.ts`
+`ProjectMemoryCardResponse`, returned by `GET`, `PATCH { enabled }` and
+`POST .../refresh` on `/api/v1/projects/:id/memory`:
+
+```
+{ projectId, memoryStatus, memoryUpdatedAt, memoryDirtyAt, memoryProvider,
+  memoryModel, memoryError, usesEntries, legacyMemory, total, limits, groups }
+```
+
+`total/limits/groups` are W4's `MemoryEntriesResponse` pieces for the project
+scope (`groups` by category, entries in the wire shape, edit/delete through the
+existing `/api/v1/memory/entries/:id` endpoints with the project filter).
+`memoryStatus` is display-resolved (`refreshing` without a live lease reads as
+`stale`); `memoryProvider`/`memoryModel` are the last model used (also bumped
+by sweep passes, together with `memoryUpdatedAt` and status `ready`);
+`legacyMemory` is the unconverted blob while `memory_migrated_at` is null and the blob is non-blank (also when entries already exist: show it read-only as "Earlier project memory (not converted yet)").
+`POST .../refresh` returns the card, so no second call is needed. Disabling
+(`PATCH { enabled: false }`) keeps the entries and the blob, stops injecting
+and refreshing (the old behaviour cleared the blob; deleting entries is left to
+the user); enabling refreshes only when memory is on. Tool writes into a disabled
+project are refused too.
+
+**Open for the owner.** The project cap stays at 15 entries (`maxProjectEntries`):
+if "not that big" means more entries, raising it grows the project part of the
+index (budget 2.5k tokens shared with account memory, 3.2) roughly linearly.
+
+### 3.15 Special-category data in automatic extraction (2026-10-26)
+
+Decision from the legal research (GDPR Art. 9; CJEU C-184/20 and C-252/21 on
+data that indirectly reveals special categories; OpenAI's prohibition on
+inferring sensitive attributes):
+
+- **Automatic extraction never writes special-category entries.** The
+  extraction output schema has no `sensitivity`/`sensitiveCategory`, so the
+  model is not asked to label sensitive attributes; the prompt tells it to
+  record the plain fact and drop the sensitive reason ("vegetarian", not
+  "vegetarian for religious reasons"), to omit facts that only make sense
+  with such a reason, and that the server rejects such data anyway. Server
+  side every extraction op (create, merged create and update, on the exact
+  persisted text) goes through `evaluateMemoryEntry` with `sensitivity:
+  'none'`, which runs W4's deterministic classifier
+  (`classifySensitiveCategories`, 3.12). A hit is dropped and counted as
+  `sensitive-topic`; the detected category ids (never the text) are logged
+  once per pass under `memoryCompliance.sensitive` with origin
+  `memory-extraction`. The blob-only pass (3.14) uses the same pipeline.
+  Every persisted extraction row is `sensitivity: 'none'`.
+- Existing (legacy) `special` rows are loaded into the extraction index with
+  their body hidden but are left out of the rendered `<memory-index>`, so the
+  model never sees them, and they are locked: an update or delete is dropped as
+  `locked` and a create with the same slug as `duplicate`. They still count
+  toward the scope cap.
+- `aboutMe` goes through the same classifier: flagged text is always rejected
+  (422) with a structured why/fix that names categories only.
+- The classifier is merged and wired in, so there is no ship gate on it any
+  more. Its recall limits (names, slang, unusual phrasing; see 3.12) apply to
+  extraction as well; the prompt instruction remains the first line of defence.
 
 ## 4. Cost and performance
 

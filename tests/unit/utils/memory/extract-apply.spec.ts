@@ -22,6 +22,23 @@ vi.mock('~~/server/utils/custom-db-types', async () => {
   return await publicIdMockFactory()
 })
 
+const evaluateOverrideMock = vi.hoisted(() => vi.fn())
+
+vi.mock('~~/server/utils/memory/compliance', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/memory/compliance')
+  >()
+
+  return {
+    ...actual,
+    evaluateMemoryEntry: (
+      input: Parameters<typeof actual.evaluateMemoryEntry>[0],
+    ) => {
+      return evaluateOverrideMock(input) ?? actual.evaluateMemoryEntry(input)
+    },
+  }
+})
+
 const USER_TEXT = 'Hello, I write Rust on weekends and I prefer short answers.'
 
 function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
@@ -66,6 +83,7 @@ describe('applyMemoryExtractionOps', () => {
     testDb = createMemoryExtractionTestDb()
     userId = await seedUser(testDb.db, { memoryIncludeSensitive: false })
     chatId = (await seedChat(testDb.db, userId)).id
+    evaluateOverrideMock.mockReset().mockReturnValue(undefined)
   })
 
   afterEach(() => {
@@ -183,48 +201,127 @@ describe('applyMemoryExtractionOps', () => {
     expect(await listEntries()).toHaveLength(0)
   })
 
-  it('drops special-category text as a sensitive topic', async () => {
-    const result = await run([healthOp()], { groundingTexts: [HEALTH_TEXT] })
+  describe('special-category exclusion', () => {
+    it('drops special-category text as a sensitive topic and keeps the '
+      + 'text out of the result', async () => {
+      const result = await run([healthOp({ title: 'Condition' })], {
+        groundingTexts: [HEALTH_TEXT],
+      })
 
-    expect(result.created).toBe(0)
-    expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
-    expect(await listEntries()).toHaveLength(0)
-  })
+      expect(result.created).toBe(0)
+      expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
+      expect(await listEntries()).toHaveLength(0)
 
-  it('leaves a legacy special entry untouched, it never reaches the index',
-    async () => {
+      const serialized = JSON.stringify(result)
+
+      expect(serialized).not.toContain('Condition')
+      expect(serialized).not.toContain('diabetes')
+    })
+
+    it('evaluates every op as a non-sensitive row', async () => {
+      await run([createOp()])
+
+      expect(evaluateOverrideMock).toHaveBeenCalledWith(
+        expect.objectContaining({ sensitivity: 'none' }),
+      )
+      expect(evaluateOverrideMock).not.toHaveBeenCalledWith(
+        expect.objectContaining({ includeSensitive: expect.anything() }),
+      )
+    })
+
+    it('counts a sensitive-topic verdict under the same drop reason',
+      async () => {
+        evaluateOverrideMock.mockReturnValueOnce({
+          allowed: false,
+          reason: 'sensitive-topic',
+          detectedCategories: ['health'],
+        })
+
+        const result = await run([createOp()])
+
+        expect(result.created).toBe(0)
+        expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
+        expect(await listEntries()).toHaveLength(0)
+      })
+
+    it('persists every extracted row as non-sensitive', async () => {
+      const result = await run([
+        createOp(),
+        createOp({ title: 'Editor', evidence: 'I prefer short answers' }),
+      ])
+
+      expect(result.created).toBe(2)
+
+      for (const entry of await listEntries()) {
+        expect(entry).toMatchObject({
+          sensitivity: 'none',
+          sensitiveCategory: null,
+        })
+      }
+    })
+
+    it('keeps rows non-sensitive when updating', async () => {
+      await seedEntry(testDb.db, userId, { slug: 'rust-hobby' })
+
+      const result = await run([
+        createOp({
+          op: 'update',
+          slug: 'rust-hobby',
+          title: null,
+          description: 'Updated description',
+          body: null,
+        }),
+      ])
+
+      expect(result.updated).toBe(1)
+      expect((await listEntries())[0]).toMatchObject({
+        sensitivity: 'none',
+        sensitiveCategory: null,
+        description: 'Updated description',
+      })
+    })
+
+    it('never edits, deletes or duplicates a legacy special row', async () => {
       await seedEntry(testDb.db, userId, {
         slug: 'health',
         title: 'Health',
+        description: 'Original description',
         sensitivity: 'special',
         sensitiveCategory: 'health',
       })
 
       const { loadMemoryExtractionIndex } = await loadModules()
+      const [indexed] = await loadMemoryExtractionIndex(
+        userId,
+        null,
+        testDb.db,
+      )
 
-      expect(await loadMemoryExtractionIndex(userId, null, testDb.db))
-        .toEqual([])
+      expect(indexed).toMatchObject({ slug: 'health', bodyHidden: true })
 
       const result = await run([
         createOp({
           op: 'update',
           slug: 'health',
           title: null,
-          description: 'Updated description',
+          description: 'Rewritten',
           body: null,
         }),
         createOp({ op: 'delete', slug: 'health' }),
+        createOp({ title: 'Health', description: 'Rewritten' }),
       ])
 
       expect(result.updated).toBe(0)
       expect(result.deleted).toBe(0)
-      expect(result.dropped).toEqual({ 'unknown-target': 2 })
+      expect(result.dropped).toEqual({ locked: 2, duplicate: 1 })
+      expect(await listEntries()).toHaveLength(1)
       expect((await listEntries())[0]).toMatchObject({
         sensitivity: 'special',
         sensitiveCategory: 'health',
-        description: 'Seeded entry',
+        description: 'Original description',
       })
     })
+  })
 
   it('never mutates entries of other origins', async () => {
     const lockedId = await seedEntry(testDb.db, userId, {

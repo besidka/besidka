@@ -155,7 +155,6 @@ export const memorySettingsPatchShape = {
   memoryEnabled: z.boolean().optional(),
   memoryExtractionEnabled: z.boolean().optional(),
   chatSearchEnabled: z.boolean().optional(),
-  memoryIncludeSensitive: z.boolean().optional(),
   aboutMe: z.string().max(MEMORY_LIMITS.maxAboutMeChars).nullable().optional(),
   profileMemoryModel: z.string().trim().min(1).max(200).nullable().optional(),
   profileMemoryGateway: z.enum(gatewayIds).nullable().optional(),

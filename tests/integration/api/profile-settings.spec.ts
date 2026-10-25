@@ -91,8 +91,8 @@ const mocks = vi.hoisted(() => ({
   getCachedGatewayCatalog: vi.fn(),
   getCachedCloudflareGatewayCatalog: vi.fn(),
   getCloudflareGatewayCredentials: vi.fn(),
-  buildSensitiveMemoryPurge: vi.fn(),
   enforceGatewayModelsRateLimit: vi.fn(),
+  classifySensitiveCategories: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/logging/request-logger', () => ({
@@ -112,15 +112,9 @@ vi.mock('~~/server/utils/gateways/catalog-rate-limit', () => ({
   enforceGatewayModelsRateLimit: mocks.enforceGatewayModelsRateLimit,
 }))
 
-vi.mock('~~/server/utils/memory/compliance', async (importOriginal) => {
-  const original
-    = await importOriginal<typeof import('~~/server/utils/memory/compliance')>()
-
-  return {
-    ...original,
-    buildSensitiveMemoryPurge: mocks.buildSensitiveMemoryPurge,
-  }
-})
+vi.mock('~~/server/utils/memory/sensitivity', () => ({
+  classifySensitiveCategories: mocks.classifySensitiveCategories,
+}))
 
 function createDbMock() {
   let currentSettings: SettingsRecord | null = null
@@ -250,13 +244,11 @@ describe('profile settings API', () => {
 
     mocks.callOrder.length = 0
     mocks.batchError = null
+    mocks.classifySensitiveCategories.mockReturnValue([])
     mocks.enforceGatewayModelsRateLimit.mockResolvedValue(undefined)
     mocks.getCachedGatewayCatalog.mockResolvedValue([])
     mocks.getCachedCloudflareGatewayCatalog.mockResolvedValue([])
     mocks.getCloudflareGatewayCredentials.mockResolvedValue(undefined)
-    mocks.buildSensitiveMemoryPurge.mockImplementation(() => {
-      return createStatement('purge', () => [])
-    })
 
     vi.stubGlobal('defineEventHandler', (handler: any) => handler)
     vi.stubGlobal('createError', (input: any) => {
@@ -671,12 +663,24 @@ describe('profile settings API', () => {
       expect(response).toMatchObject({
         memoryEnabled: true,
         chatSearchEnabled: false,
-        memoryIncludeSensitive: true,
+        memoryIncludeSensitive: false,
         aboutMe: 'I like terse answers',
         profileMemoryModel: 'openai/gpt-5',
         profileMemoryGateway: 'vercel',
         projectMemoryModel: 'claude-sonnet-5-5',
         projectMemoryGateway: null,
+      })
+    })
+
+    it('returns a constant false memoryIncludeSensitive even when the '
+      + 'stored column is true', async () => {
+      const getHandler = await getSettingsHandler()
+      const dbMock = setup()
+
+      dbMock.seed({ memoryIncludeSensitive: true })
+
+      expect(await getHandler({} as any)).toMatchObject({
+        memoryIncludeSensitive: false,
       })
     })
 
@@ -969,109 +973,61 @@ describe('profile settings API', () => {
       })
     })
 
-    it('purges sensitive entries in one batch with the settings write',
+    it('strips memoryIncludeSensitive and never writes the column',
       async () => {
         const patchHandler = await patchSettingsHandler()
         const dbMock = setup()
 
         dbMock.seed({ memoryIncludeSensitive: true })
-        mocks.buildSensitiveMemoryPurge.mockImplementation(() => {
-          return createStatement('purge', () => [
-            { id: 'a' },
-            { id: 'b' },
-            { id: 'c' },
-          ])
-        })
 
         const response = await patchHandler(patchEvent({
+          memoryEnabled: false,
           memoryIncludeSensitive: false,
         }))
 
-        expect(response).toEqual({
-          memoryIncludeSensitive: false,
-          sensitiveEntriesDeleted: 3,
+        expect(response).toEqual({ memoryEnabled: false })
+        expect(dbMock.spies.updateSet).toHaveBeenCalledWith({
+          memoryEnabled: false,
         })
-        expect(dbMock.spies.batch).toHaveBeenCalledTimes(1)
-        expect(mocks.buildSensitiveMemoryPurge).toHaveBeenCalledWith(
-          1,
-          dbMock.db,
-        )
-
-        const [statements] = dbMock.spies.batch.mock.calls[0]!
-
-        expect(statements.map((statement: FakeStatement) => {
-          return statement.kind
-        })).toEqual(['update', 'purge'])
-        expect(mocks.callOrder).toEqual(['update', 'purge'])
-        expect(dbMock.getSettings()?.memoryIncludeSensitive).toBe(false)
-        expect(mocks.loggerSet).toHaveBeenCalledWith({
-          attributes: {
-            memorySettings: { sensitiveEntriesDeleted: 3 },
-          },
-        })
+        expect(dbMock.getSettings()?.memoryIncludeSensitive).toBe(true)
+        expect(dbMock.spies.batch).not.toHaveBeenCalled()
       })
 
-    it('batches an insert first when no settings row exists yet', async () => {
-      const patchHandler = await patchSettingsHandler()
-      const dbMock = setup()
-
-      const response = await patchHandler(patchEvent({
-        memoryIncludeSensitive: false,
-      }))
-
-      const [statements] = dbMock.spies.batch.mock.calls[0]!
-
-      expect(response).toEqual({
-        memoryIncludeSensitive: false,
-        sensitiveEntriesDeleted: 0,
-      })
-      expect(statements.map((statement: FakeStatement) => {
-        return statement.kind
-      })).toEqual(['insert', 'purge'])
-    })
-
-    it('changes nothing when the batch rejects', async () => {
-      const patchHandler = await patchSettingsHandler()
-      const dbMock = setup()
-
-      dbMock.seed({ memoryIncludeSensitive: true })
-      mocks.batchError = new Error('d1')
-
-      await expect(patchHandler(patchEvent({
-        memoryIncludeSensitive: false,
-      }))).rejects.toThrow('d1')
-      expect(dbMock.getSettings()?.memoryIncludeSensitive).toBe(true)
-      expect(mocks.callOrder).toEqual([])
-    })
-
-    it.each([
-      ['true', { memoryIncludeSensitive: true }],
-      ['absent', { memoryEnabled: true }],
-    ])('never batches a purge when the flag is %s', async (_label, body) => {
-      const patchHandler = await patchSettingsHandler()
-      const dbMock = setup()
-
-      const response = await patchHandler(patchEvent(body))
-
-      expect(response).toEqual(body)
-      expect(dbMock.spies.batch).not.toHaveBeenCalled()
-      expect(mocks.buildSensitiveMemoryPurge).not.toHaveBeenCalled()
-      expect(mocks.callOrder).toEqual(['insert'])
-    })
-
-    it('does not purge or write when a model is invalid without opt-out',
+    it('never inserts memoryIncludeSensitive when no row exists yet',
       async () => {
         const patchHandler = await patchSettingsHandler()
         const dbMock = setup()
 
-        await expect(patchHandler(patchEvent({
+        const response = await patchHandler(patchEvent({
+          memoryEnabled: true,
           memoryIncludeSensitive: true,
-          profileMemoryModel: 'not-a-real-model',
-        }))).rejects.toMatchObject({ statusCode: 400 })
-        expect(dbMock.spies.batch).not.toHaveBeenCalled()
-        expect(mocks.buildSensitiveMemoryPurge).not.toHaveBeenCalled()
-        expect(mocks.callOrder).toEqual([])
+        }))
+
+        expect(response).toEqual({ memoryEnabled: true })
+        expect(dbMock.spies.insertValues).toHaveBeenCalledWith({
+          userId: 1,
+          memoryEnabled: true,
+        })
+        expect(dbMock.getSettings()?.memoryIncludeSensitive).toBeNull()
       })
+
+    it.each([true, false])(
+      'answers 400 when memoryIncludeSensitive %s is the only key',
+      async (legacyValue) => {
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = setup()
+
+        await expect(patchHandler(patchEvent({
+          memoryIncludeSensitive: legacyValue,
+        }))).rejects.toMatchObject({
+          statusCode: 400,
+          message: 'No fields to update',
+        })
+        expect(dbMock.spies.insert).not.toHaveBeenCalled()
+        expect(dbMock.spies.update).not.toHaveBeenCalled()
+        expect(dbMock.spies.batch).not.toHaveBeenCalled()
+      },
+    )
 
     describe('memoryExtractionEnabled', () => {
       async function stampWhere(dbMock: ReturnType<typeof setup>) {
@@ -1279,232 +1235,237 @@ describe('profile settings API', () => {
         }))).rejects.toThrow('d1')
         expect(dbMock.getSettings()?.memoryExtractionEnabled).toBe(false)
       })
-
-      it('batches the stamp before the purge when both are requested',
-        async () => {
-          const patchHandler = await patchSettingsHandler()
-          const dbMock = setup()
-
-          dbMock.seed({ memoryExtractionEnabled: false })
-
-          await patchHandler(patchEvent({
-            memoryExtractionEnabled: true,
-            memoryIncludeSensitive: false,
-          }))
-
-          expect(mocks.callOrder).toEqual(['update', 'chat-stamp', 'purge'])
-        })
     })
 
-    describe('opt-out survives a model validation failure', () => {
-      function seedSensitive() {
+    describe('model validation failures', () => {
+      function seedOtherSettings() {
         const dbMock = setup()
 
-        dbMock.seed({ memoryIncludeSensitive: true })
-        mocks.buildSensitiveMemoryPurge.mockImplementation(() => {
-          return createStatement('purge', () => [{ id: 'a' }, { id: 'b' }])
-        })
+        dbMock.seed({ memoryEnabled: true, aboutMe: null })
 
         return dbMock
       }
 
-      it('purges, drops the failed model and reports a 503 outage',
-        async () => {
-          const patchHandler = await patchSettingsHandler()
-          const dbMock = seedSensitive()
-
-          mocks.getCachedGatewayCatalog.mockRejectedValue(new Error('boom'))
-
-          const response = await patchHandler(patchEvent({
-            memoryIncludeSensitive: false,
-            aboutMe: 'Backend engineer',
-            profileMemoryModel: 'openai/gpt-5',
-            profileMemoryGateway: 'vercel',
-          }))
-
-          expect(response).toEqual({
-            memoryIncludeSensitive: false,
-            aboutMe: 'Backend engineer',
-            sensitiveEntriesDeleted: 2,
-            modelValidationError: {
-              message: 'Could not verify the memory model',
-              why: expect.stringContaining('vercel'),
-              fix: 'Retry in a moment.',
-              status: 503,
-            },
-          })
-          expect(mocks.callOrder).toEqual(['update', 'purge'])
-          expect(dbMock.getSettings()).toMatchObject({
-            memoryIncludeSensitive: false,
-            aboutMe: 'Backend engineer',
-            profileMemoryModel: null,
-            profileMemoryGateway: null,
-          })
+      function expectNothingSaved(dbMock: ReturnType<typeof setup>) {
+        expect(dbMock.spies.update).not.toHaveBeenCalled()
+        expect(dbMock.spies.insert).not.toHaveBeenCalled()
+        expect(dbMock.spies.batch).not.toHaveBeenCalled()
+        expect(mocks.callOrder).toEqual([])
+        expect(dbMock.getSettings()).toMatchObject({
+          aboutMe: null,
+          profileMemoryModel: null,
+          projectMemoryModel: null,
         })
+      }
 
-      it('still saves a scope whose validation passed', async () => {
+      it('throws the 503 outage and saves nothing', async () => {
         const patchHandler = await patchSettingsHandler()
-        const dbMock = seedSensitive()
+        const dbMock = seedOtherSettings()
 
         mocks.getCachedGatewayCatalog.mockRejectedValue(new Error('boom'))
 
-        const response = await patchHandler(patchEvent({
+        await expect(patchHandler(patchEvent({
           memoryIncludeSensitive: false,
+          aboutMe: 'Backend engineer',
           profileMemoryModel: 'openai/gpt-5',
           profileMemoryGateway: 'vercel',
-          projectMemoryModel: 'claude-sonnet-5-5',
-          projectMemoryGateway: null,
-        })) as Record<string, unknown>
-
-        expect(response).toMatchObject({
-          projectMemoryModel: 'claude-sonnet-5-5',
-          projectMemoryGateway: null,
-          sensitiveEntriesDeleted: 2,
-          modelValidationError: { status: 503 },
-        })
-        expect(response).not.toHaveProperty('profileMemoryModel')
-        expect(response).not.toHaveProperty('profileMemoryGateway')
-        expect(dbMock.getSettings()).toMatchObject({
-          projectMemoryModel: 'claude-sonnet-5-5',
-          profileMemoryModel: null,
-        })
-      })
-
-      it('does not fail on an exhausted catalog rate limit', async () => {
-        const patchHandler = await patchSettingsHandler()
-        const dbMock = seedSensitive()
-
-        mocks.enforceGatewayModelsRateLimit.mockRejectedValue(
-          createEvlogError({
-            message: 'Too many requests',
-            status: 429,
-            why: 'Gateway catalog rate limit exceeded',
-            fix: 'Wait a moment before retrying',
-          }),
-        )
-
-        const response = await patchHandler(patchEvent({
-          memoryIncludeSensitive: false,
-          profileMemoryModel: 'openai/gpt-5',
-          profileMemoryGateway: 'vercel',
-        }))
-
-        expect(response).toMatchObject({
-          sensitiveEntriesDeleted: 2,
-          modelValidationError: {
-            message: 'Too many requests',
-            why: 'Gateway catalog rate limit exceeded',
-            fix: 'Wait a moment before retrying',
-            status: 429,
-          },
-        })
-        expect(mocks.getCachedGatewayCatalog).not.toHaveBeenCalled()
-        expect(dbMock.getSettings()?.memoryIncludeSensitive).toBe(false)
-      })
-
-      it('never leaks the text of an unstructured exception', async () => {
-        const patchHandler = await patchSettingsHandler()
-
-        seedSensitive()
-        mocks.getCachedGatewayCatalog.mockImplementation(() => {
-          throw new Error('secret-sql-text')
-        })
-        mocks.enforceGatewayModelsRateLimit.mockRejectedValue(
-          new Error('secret-sql-text'),
-        )
-
-        const response = await patchHandler(patchEvent({
-          memoryIncludeSensitive: false,
-          profileMemoryModel: 'openai/gpt-5',
-          profileMemoryGateway: 'vercel',
-        })) as Record<string, any>
-
-        expect(response.modelValidationError).toEqual({
+        }))).rejects.toMatchObject({
+          statusCode: 503,
           message: 'Could not verify the memory model',
-          status: 503,
         })
-        expect(JSON.stringify(response)).not.toContain('secret-sql-text')
-        expect(JSON.stringify(mocks.loggerSet.mock.calls))
-          .not.toContain('secret-sql-text')
-        expect(response.sensitiveEntriesDeleted).toBe(2)
+        expectNothingSaved(dbMock)
       })
 
-      it('turns a 400 for an unknown model into a reported error',
+      it('saves neither scope when only one of them fails', async () => {
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = seedOtherSettings()
+
+        mocks.getCachedGatewayCatalog.mockRejectedValue(new Error('boom'))
+
+        await expect(patchHandler(patchEvent({
+          memoryIncludeSensitive: false,
+          profileMemoryModel: 'openai/gpt-5',
+          profileMemoryGateway: 'vercel',
+          projectMemoryModel: 'claude-sonnet-5-5',
+          projectMemoryGateway: null,
+        }))).rejects.toMatchObject({ statusCode: 503 })
+        expectNothingSaved(dbMock)
+      })
+
+      it('throws on an exhausted catalog rate limit and saves nothing',
         async () => {
           const patchHandler = await patchSettingsHandler()
-          const dbMock = seedSensitive()
+          const dbMock = seedOtherSettings()
 
-          const response = await patchHandler(patchEvent({
-            memoryIncludeSensitive: false,
-            profileMemoryModel: 'not-a-real-model',
-          })) as Record<string, unknown>
+          mocks.enforceGatewayModelsRateLimit.mockRejectedValue(
+            createEvlogError({
+              message: 'Too many requests',
+              status: 429,
+              why: 'Gateway catalog rate limit exceeded',
+              fix: 'Wait a moment before retrying',
+            }),
+          )
 
-          expect(response).toMatchObject({
+          await expect(patchHandler(patchEvent({
             memoryIncludeSensitive: false,
-            sensitiveEntriesDeleted: 2,
-            modelValidationError: { status: 400 },
-          })
-          expect(response).not.toHaveProperty('profileMemoryModel')
-          expect(dbMock.getSettings()?.profileMemoryModel).toBeNull()
+            profileMemoryModel: 'openai/gpt-5',
+            profileMemoryGateway: 'vercel',
+          }))).rejects.toMatchObject({ statusCode: 429 })
+          expect(mocks.getCachedGatewayCatalog).not.toHaveBeenCalled()
+          expectNothingSaved(dbMock)
         })
 
-      it('reports the first failure when both scopes fail', async () => {
+      it('throws a 400 for an unknown model and saves nothing', async () => {
         const patchHandler = await patchSettingsHandler()
+        const dbMock = seedOtherSettings()
 
-        seedSensitive()
-
-        const response = await patchHandler(patchEvent({
+        await expect(patchHandler(patchEvent({
           memoryIncludeSensitive: false,
           profileMemoryModel: 'not-a-real-model',
-          projectMemoryModel: 'also-not-real',
-        })) as Record<string, any>
-
-        expect(response.modelValidationError.why).toContain('not-a-real-model')
-        expect(response).not.toHaveProperty('projectMemoryModel')
+        }))).rejects.toMatchObject({ statusCode: 400 })
+        expectNothingSaved(dbMock)
       })
 
-      it('omits modelValidationError when every scope validates',
+      it('throws the first failure when both scopes fail', async () => {
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = seedOtherSettings()
+
+        await expect(patchHandler(patchEvent({
+          profileMemoryModel: 'not-a-real-model',
+          projectMemoryModel: 'also-not-real',
+        }))).rejects.toMatchObject({
+          why: expect.stringContaining('not-a-real-model'),
+        })
+        expectNothingSaved(dbMock)
+      })
+
+      it('returns only the saved fields when every scope validates',
         async () => {
           const patchHandler = await patchSettingsHandler()
 
-          seedSensitive()
+          seedOtherSettings()
 
           const response = await patchHandler(patchEvent({
             memoryIncludeSensitive: false,
             projectMemoryModel: 'claude-sonnet-5-5',
           }))
 
-          expect(response).not.toHaveProperty('modelValidationError')
-        })
-
-      it('keeps rejecting the whole payload without the opt-out',
-        async () => {
-          const patchHandler = await patchSettingsHandler()
-          const dbMock = seedSensitive()
-
-          mocks.getCachedGatewayCatalog.mockRejectedValue(new Error('boom'))
-
-          await expect(patchHandler(patchEvent({
-            memoryIncludeSensitive: true,
-            aboutMe: 'Backend engineer',
-            profileMemoryModel: 'openai/gpt-5',
-            profileMemoryGateway: 'vercel',
-          }))).rejects.toMatchObject({ statusCode: 503 })
-          expect(dbMock.spies.batch).not.toHaveBeenCalled()
-          expect(mocks.callOrder).toEqual([])
-          expect(dbMock.getSettings()?.aboutMe).toBeNull()
+          expect(response).toEqual({
+            projectMemoryModel: 'claude-sonnet-5-5',
+            projectMemoryGateway: null,
+          })
         })
 
       it('keeps structural 400s as whole-payload rejects', async () => {
         const patchHandler = await patchSettingsHandler()
-        const dbMock = seedSensitive()
+        const dbMock = seedOtherSettings()
 
         await expect(patchHandler(patchEvent({
-          memoryIncludeSensitive: false,
+          memoryEnabled: false,
           profileMemoryGateway: 'vercel',
         }))).rejects.toMatchObject({ statusCode: 400 })
+        expect(dbMock.spies.update).not.toHaveBeenCalled()
         expect(dbMock.spies.batch).not.toHaveBeenCalled()
-        expect(mocks.buildSensitiveMemoryPurge).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('aboutMe special categories', () => {
+      const flaggedText = 'My private diagnosis is stage two'
+
+      it('rejects a flagged aboutMe with 422, the categories, not the text',
+        async () => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          mocks.classifySensitiveCategories.mockReturnValue([
+            'health',
+            'religion-or-belief',
+          ])
+
+          const exception = await patchHandler(patchEvent({
+            aboutMe: flaggedText,
+          })).catch((caught: unknown) => {
+            return caught
+          })
+
+          expect(exception).toMatchObject({
+            statusCode: 422,
+            message: 'About me contains sensitive data',
+            why: 'Detected: health, religion-or-belief.',
+            fix: 'Remove the sensitive details from "About me" and save '
+              + 'again.',
+          })
+          expect(JSON.stringify(exception)).not.toContain(flaggedText)
+          expect(JSON.stringify(mocks.loggerSet.mock.calls))
+            .not.toContain(flaggedText)
+          expect(mocks.loggerSet).toHaveBeenCalledWith({
+            attributes: {
+              memoryCompliance: {
+                sensitive: {
+                  origin: 'settings-about-me',
+                  categories: ['health', 'religion-or-belief'],
+                  categoryCount: 2,
+                },
+              },
+            },
+          })
+          expect(dbMock.spies.insert).not.toHaveBeenCalled()
+          expect(dbMock.spies.batch).not.toHaveBeenCalled()
+        })
+
+      it('rejects a flagged aboutMe even when the stored column is true',
+        async () => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          dbMock.seed({ memoryIncludeSensitive: true })
+          mocks.classifySensitiveCategories.mockReturnValue(['health'])
+
+          await expect(patchHandler(patchEvent({
+            aboutMe: flaggedText,
+          }))).rejects.toMatchObject({ statusCode: 422 })
+          expect(dbMock.spies.update).not.toHaveBeenCalled()
+          expect(dbMock.getSettings()?.aboutMe).toBeNull()
+        })
+
+      it.each([true, false])(
+        'rejects a flagged aboutMe sent with a legacy flag of %s',
+        async (legacyValue) => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          mocks.classifySensitiveCategories.mockReturnValue(['drugs'])
+
+          await expect(patchHandler(patchEvent({
+            memoryIncludeSensitive: legacyValue,
+            aboutMe: flaggedText,
+          }))).rejects.toMatchObject({ statusCode: 422 })
+          expect(dbMock.spies.insert).not.toHaveBeenCalled()
+          expect(dbMock.spies.batch).not.toHaveBeenCalled()
+        },
+      )
+
+      it('accepts an aboutMe that is not flagged and logs no detection',
+        async () => {
+          const patchHandler = await patchSettingsHandler()
+
+          setup()
+
+          expect(await patchHandler(patchEvent({
+            aboutMe: 'Backend engineer',
+          }))).toEqual({ aboutMe: 'Backend engineer' })
+          expect(mocks.classifySensitiveCategories)
+            .toHaveBeenCalledWith('Backend engineer')
+          expect(mocks.loggerSet).not.toHaveBeenCalled()
+        })
+
+      it('does not classify a cleared aboutMe', async () => {
+        const patchHandler = await patchSettingsHandler()
+
+        setup()
+        await patchHandler(patchEvent({ aboutMe: '  ' }))
+
+        expect(mocks.classifySensitiveCategories).not.toHaveBeenCalled()
       })
     })
 
@@ -1543,16 +1504,16 @@ describe('profile settings API', () => {
           expect(dbMock.spies.batch).not.toHaveBeenCalled()
         })
 
-      it('blocks the whole request, including the opt-out purge', async () => {
+      it('blocks the whole request', async () => {
         const patchHandler = await patchSettingsHandler()
         const dbMock = setup()
 
         await expect(patchHandler(patchEvent({
-          memoryIncludeSensitive: false,
+          memoryEnabled: false,
           aboutMe: `token: ${apiKey}`,
         }))).rejects.toMatchObject({ statusCode: 400 })
+        expect(dbMock.spies.insert).not.toHaveBeenCalled()
         expect(dbMock.spies.batch).not.toHaveBeenCalled()
-        expect(mocks.buildSensitiveMemoryPurge).not.toHaveBeenCalled()
       })
 
       it('accepts a clean aboutMe and a cleared one', async () => {
@@ -1600,7 +1561,6 @@ describe('profile settings API', () => {
         )
 
         await expect(patchHandler(patchEvent({
-          memoryIncludeSensitive: true,
           profileMemoryModel: 'openai/gpt-5',
           profileMemoryGateway: 'vercel',
         }))).rejects.toMatchObject({ statusCode: 429 })

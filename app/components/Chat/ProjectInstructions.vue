@@ -80,7 +80,6 @@
               :components="components"
               :parser-options="{ highlight: false }"
               class="chat-markdown text-sm"
-              unwrap="p"
             />
           </div>
           <div

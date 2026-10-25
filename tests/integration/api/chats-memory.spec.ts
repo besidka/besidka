@@ -1011,6 +1011,47 @@ describe('memory send-path wiring', () => {
       }))
     })
 
+    it('passes the loaded disabled status to the tools and keeps project '
+      + 'entries out of the index', async () => {
+      const { doStream } = await runSend({
+        scenario: {
+          settings: MEMORY_ON,
+          project: {
+            ...isolatedProject,
+            useAccountMemory: true,
+            memoryStatus: 'disabled',
+          },
+          memoryRows: [
+            createMemoryRow({ slug: 'account-fact', title: 'Account fact' }),
+            createMemoryRow({
+              id: 'entry-project-1',
+              projectId: 'project-1',
+              slug: 'project-fact',
+              title: 'Project fact',
+            }),
+          ],
+        },
+        steps: [createTextChunks('Plain answer.')],
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(mocks.memoryToolsInputs[0]?.projectDisabled).toBe(true)
+      expect(systemPrompt).toContain('topics/account-fact')
+      expect(systemPrompt).not.toContain('project-fact')
+    })
+
+    it('passes projectDisabled false for an enabled project', async () => {
+      await runSend({
+        scenario: {
+          settings: MEMORY_ON,
+          project: { ...isolatedProject, useAccountMemory: true },
+        },
+        steps: [createTextChunks('Plain answer.')],
+      })
+
+      expect(mocks.memoryToolsInputs[0]?.projectDisabled).toBe(false)
+    })
+
     it.each([
       ['null', null],
       ['true', true],
