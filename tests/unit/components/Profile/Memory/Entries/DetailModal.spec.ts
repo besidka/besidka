@@ -142,22 +142,18 @@ describe('Profile/Memory/Entries/DetailModal', () => {
       expect(body.classes()).toContain('whitespace-pre-wrap')
     })
 
-    it('shows the sensitive badge only for special entries', async () => {
-      const plain = await mountModal()
+    it('never renders a sensitive badge, even for special entries',
+      async () => {
+        const wrapper = await mountModal(createEntry({
+          sensitivity: 'special',
+          sensitiveCategory: 'health',
+        }))
 
-      expect(plain.find('[data-testid="memory-entry-sensitive"]').exists())
-        .toBe(false)
-
-      const sensitive = await mountModal(createEntry({
-        sensitivity: 'special',
-        sensitiveCategory: 'health',
-      }))
-
-      expect(byTestId(sensitive, 'memory-entry-sensitive').text())
-        .toContain('Sensitive')
-      expect(byTestId(sensitive, 'memory-entry-sensitive').text())
-        .toContain('health')
-    })
+        expect(wrapper.find('[data-testid="memory-entry-sensitive"]').exists())
+          .toBe(false)
+        expect(byTestId(wrapper, 'memory-entry-view').text())
+          .not.toContain('Sensitive')
+      })
 
     it('offers Edit and Delete in the footer', async () => {
       const wrapper = await mountModal()
@@ -504,6 +500,43 @@ describe('Profile/Memory/Entries/DetailModal', () => {
 
         expect(wrapper.find('[data-testid="memory-entry-error"]').exists())
           .toBe(false)
+      })
+
+    it('renders a 422 rejection as message, why and fix without a toast',
+      async () => {
+        mocks.fetch.mockRejectedValue(Object.assign(new Error('Failed'), {
+          data: {
+            statusCode: 422,
+            message: 'This looks like sensitive information',
+            data: {
+              why: 'Health details are not stored in memory.',
+              fix: 'Remove that detail and save again.',
+            },
+          },
+        }))
+
+        const wrapper = await mountModal()
+
+        await startEditing(wrapper)
+        await byTestId(wrapper, 'memory-entry-body-input')
+          .setValue('I manage a chronic condition')
+        await byTestId(wrapper, 'memory-entry-save').trigger('click')
+        await flushPromises()
+
+        const alert = byTestId(wrapper, 'memory-entry-error')
+        const lines = alert.findAll('p')
+
+        expect(lines.map(line => line.text())).toEqual([
+          'This looks like sensitive information',
+          'Health details are not stored in memory.',
+          'Remove that detail and save again.',
+        ])
+        expect(lines[0]!.classes()).toContain('font-bold')
+        expect(lines.every(line => line.classes().includes('break-words')))
+          .toBe(true)
+        expect(alert.text()).not.toContain('422')
+        expect(mocks.error).not.toHaveBeenCalled()
+        expect(mocks.info).not.toHaveBeenCalled()
       })
 
     it('discards the draft on Cancel', async () => {

@@ -153,10 +153,14 @@
                 size="20"
                 class="mt-0.5 shrink-0"
               />
-              <div class="grid gap-1">
-                <p class="font-bold">{{ saveError.message }}</p>
-                <p v-if="saveError.why" class="text-sm">{{ saveError.why }}</p>
-                <p v-if="saveError.fix" class="text-sm">{{ saveError.fix }}</p>
+              <div class="grid min-w-0 gap-1">
+                <p class="font-bold break-words">{{ saveError.message }}</p>
+                <p v-if="saveError.why" class="text-sm break-words">
+                  {{ saveError.why }}
+                </p>
+                <p v-if="saveError.fix" class="text-sm break-words">
+                  {{ saveError.fix }}
+                </p>
               </div>
             </div>
           </div>
@@ -171,14 +175,6 @@
                 data-testid="memory-entry-category"
               >
                 {{ memoryCategoryLabels[currentEntry.category] }}
-              </span>
-              <span
-                v-if="currentEntry.sensitivity === 'special'"
-                class="badge badge-soft badge-warning gap-1"
-                data-testid="memory-entry-sensitive"
-              >
-                <Icon name="lucide:shield-alert" size="14" />
-                {{ sensitiveLabel }}
               </span>
               <span
                 class="badge badge-outline"
@@ -472,16 +468,6 @@ const heading = computed<string>(() => {
   }
 
   return currentEntry.value?.title ?? 'Memory'
-})
-
-const sensitiveLabel = computed<string>(() => {
-  const sensitiveCategory = currentEntry.value?.sensitiveCategory
-
-  if (!sensitiveCategory) {
-    return 'Sensitive'
-  }
-
-  return `Sensitive · ${memorySensitiveCategoryLabels[sensitiveCategory]}`
 })
 
 const updatedLabel = computed<string>(() => {

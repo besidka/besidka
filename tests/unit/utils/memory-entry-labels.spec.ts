@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   memoryCategories,
   memoryOrigins,
-  memorySensitiveCategories,
 } from '#shared/utils/memory-policy'
 import {
   formatMemoryUpdatedAge,
@@ -10,7 +9,6 @@ import {
   memoryCategoryLabels,
   memoryCategoryOrder,
   memoryOriginLabels,
-  memorySensitiveCategoryLabels,
 } from '~/utils/memory-entry-labels'
 
 describe('memory entry labels', () => {
@@ -45,18 +43,6 @@ describe('memory entry labels', () => {
       tool: 'Saved in chat',
       import: 'Imported',
     })
-  })
-
-  it('labels every sensitive category in lower case', () => {
-    for (const category of memorySensitiveCategories) {
-      const label = memorySensitiveCategoryLabels[category]
-
-      expect(label).toBeTruthy()
-      expect(label).toBe(label.toLowerCase())
-    }
-
-    expect(Object.keys(memorySensitiveCategoryLabels).sort())
-      .toEqual([...memorySensitiveCategories].sort())
   })
 
   describe('formatMemoryUpdatedAge', () => {

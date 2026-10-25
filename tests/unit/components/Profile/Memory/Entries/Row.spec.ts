@@ -85,25 +85,17 @@ describe('Profile/Memory/Entries/Row', () => {
       .toContain(label)
   })
 
-  it('shows the sensitive badge only for special entries', async () => {
-    const special = await mountRow({
-      sensitivity: 'special',
-      sensitiveCategory: 'health',
-    })
-    const plain = await mountRow({ sensitivity: 'none' })
+  it('never renders a sensitive badge, even for special entries',
+    async () => {
+      const wrapper = await mountRow({
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+      })
 
-    expect(special.get('[data-testid="memory-entry-sensitive"]').text())
-      .toBe('Sensitive')
-    expect(special.get('[data-testid="memory-entry-sensitive"]').classes())
-      .toEqual(expect.arrayContaining([
-        'badge',
-        'badge-soft',
-        'badge-warning',
-        'badge-sm',
-      ]))
-    expect(plain.find('[data-testid="memory-entry-sensitive"]').exists())
-      .toBe(false)
-  })
+      expect(wrapper.find('[data-testid="memory-entry-sensitive"]').exists())
+        .toBe(false)
+      expect(wrapper.text()).not.toContain('Sensitive')
+    })
 
   it('emits the entry when clicked', async () => {
     const wrapper = await mountRow()
