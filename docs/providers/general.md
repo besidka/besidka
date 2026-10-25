@@ -405,7 +405,8 @@ mid-stream keeps its partial text: any open text/reasoning part is closed
 before the final `finish`, the abort chunk is swallowed, and available usage
 is folded in. `attributes.toolLoop` on the `ai-stream` event records
 `steps`, `forcedStepToolCall`, `continuationRan`,
-`continuationProducedText`, `continuationError` (first one wins),
+`continuationAttempts`, `continuationProducedText`, `continuationError`
+(first one wins),
 `continuationTruncated`, `continuationFinishReason` (the continuation's own
 finish reason; `length` with no text means it ran out of output tokens,
 usually inside reasoning), `forcedStepError` (the held forced-step error text,
@@ -414,7 +415,8 @@ logged even when the continuation answers), `heldStepError`
 `stepNumber` is 0-based like `prepareStep`'s, so the second model call is
 `1` and the forced step is `3`) and `finishReason` (the final `finish`
 chunk's, which is the main loop's when the continuation wrote nothing). The
-continuation's own `timeout.totalMs` is 90s.
+continuation's own `timeout.totalMs` is 180s (it was 90s; see "Empty
+continuations and the Kimi K3 report" below).
 `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on the loop path
 only. The KV generation-in-progress guard this route writes is a short
 heartbeat-renewed lease, not sized from these timeouts, so it lives exactly as
@@ -429,6 +431,45 @@ rather than an `unknown` 500, see
 `gateways.md` ("`gpt-oss` tool-call quirks"). A tool `execute()` that
 throws produces a `tool-error` output, which the model sees and answers
 from, so a failing tool terminates the loop rather than retrying it.
+
+**Empty continuations and the Kimi K3 report (2026-10-25).** Live testing
+on a PR preview showed `kimi-k3` sometimes ending a search turn with the
+empty-answer notice and a `null` `messages.usage`, after both
+`web_search_brave` and `search_chats`; Anthropic, OpenAI, Google, xAI,
+DeepSeek and `kimi-k2.6` were fine. Previews do not drain to Axiom, so the
+Moonshot-side trigger is **not confirmed**. What was reproduced with a
+mocked model (`tests/integration/api/chats-tool-loop.spec.ts`, "keeps the cost
+of the finished steps...") is a chain that produces exactly these symptoms: a step after the
+search errors or yields no text, the tool-less continuation then reasons
+until its timeout and is aborted before any step completes, so its
+`settle()` and `settleUsage()` both reject, no continuation result exists,
+and persistence read the SDK's `result.usage`, which is empty when the loop
+ended on an error. The turn billed the search step but stored no usage.
+Changes:
+
+- **Usage.** `persistAssistantMessageFromStream()` (and the `onEnd` cost log)
+  sum the recorded `result.steps` whenever there are any, instead of
+  trusting `result.usage`; the continuation's steps are added when it
+  settled. A continuation aborted before it completes a step bills tokens the
+  provider never reports, so that cost stays unknowable.
+- **One retry.** A continuation that settles with no answer text (only
+  reasoning, or a stream that ended early with `stop`/`other`) is retried
+  once (`SEARCH_ANSWER_CONTINUATION_MAX_ATTEMPTS`); the attempts' steps and
+  usage are merged. Not retried: one that failed to settle (a timeout and a
+  provider error look the same there, and retrying a timeout would hit the
+  same cap and double the wait) and one the model ended with `length` or
+  `content-filter`. The retry is billed, so a failing continuation now costs
+  two calls instead of one.
+- **Timeout 90s to 180s.** `kimi-k3` cannot disable reasoning and the cap is
+  total wall-clock, so a slow reasoning pass was a plausible casualty of the
+  old cap. The loop's own total stays 540s.
+
+The fallback notice is still the last resort. If it keeps appearing for
+`kimi-k3` in production, read `attributes.toolLoop` in `besidka-prod`:
+`continuationAttempts`, `continuationTruncated` (timeout) versus
+`continuationFinishReason` (`length` or `stop` with no text) and
+`heldStepError` separate a timeout from a model that answers inside
+`reasoning_content` and leaves `content` empty.
 
 **`toolMs` is cooperative, not enforced.** The AI SDK only passes it to
 `execute()` as `options.abortSignal` — it never wraps the call in its own
