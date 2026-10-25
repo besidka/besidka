@@ -99,6 +99,29 @@ describe('Profile/Memory/Controls', () => {
       }
     })
 
+  it('explains that generation covers account memory only', async () => {
+    const wrapper = await mountControls()
+    const note = wrapper.get('[data-testid="memory-generation-project-note"]')
+
+    expect(note.text()).toBe(
+      'This setting covers your account memory. Project memory updates '
+      + 'automatically unless you turn it off in the project.',
+    )
+    expect(toggle(wrapper, 'memory-generation-toggle')
+      .attributes('aria-describedby'))
+      .toContain(note.attributes('id'))
+  })
+
+  it('omits the project note while memory is off', async () => {
+    const wrapper = await mountControls({ memoryEnabled: false })
+
+    expect(wrapper.find('[data-testid="memory-generation-project-note"]')
+      .exists()).toBe(false)
+    expect(toggle(wrapper, 'memory-generation-toggle')
+      .attributes('aria-describedby'))
+      .not.toContain('memory-generation-project-note')
+  })
+
   it('disables the generation toggle with a hint when memory is off',
     async () => {
       const wrapper = await mountControls({

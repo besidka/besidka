@@ -54,17 +54,13 @@
     />
 
     <ProjectsMemoryCard
-      :project-id="project?.id"
-      :memory="projectMemory"
-      :memory-status="projectMemoryStatus"
-      :memory-updated-at="projectMemoryUpdatedAt"
-      :memory-provider="projectMemoryProvider"
-      :memory-model="projectMemoryModel"
-      :memory-error="projectMemoryError"
+      :project-id="projectId"
+      :card="memoryCard ?? null"
       :is-refreshing="isRefreshingProjectMemory"
       :is-toggling="isTogglingProjectMemory"
       @refresh="refreshProjectMemory"
       @toggle="toggleProjectMemory"
+      @changed="onMemoryEntriesChanged"
     />
 
     <HistoryChatSections
@@ -217,37 +213,10 @@ const syncedProjectDetailsId = shallowRef<string | null>(
 )
 let syncProjectDetailsRequestId = 0
 
-const projectMemory = computed<string | null>(() => {
-  if (!memoryCard.value) {
-    return null
-  }
-
-  return formatProjectMemoryMarkdown(
-    memoryCard.value.groups,
-    memoryCard.value.legacyMemory,
-  )
-})
-
 const projectMemoryStatus = computed<Project['memoryStatus']>(() => {
   return memoryCard.value?.memoryStatus
     ?? project.value?.memoryStatus
     ?? 'idle'
-})
-
-const projectMemoryUpdatedAt = computed<string | null>(() => {
-  return memoryCard.value?.memoryUpdatedAt ?? null
-})
-
-const projectMemoryProvider = computed<string | null>(() => {
-  return memoryCard.value?.memoryProvider ?? null
-})
-
-const projectMemoryModel = computed<string | null>(() => {
-  return memoryCard.value?.memoryModel ?? null
-})
-
-const projectMemoryError = computed<string | null>(() => {
-  return memoryCard.value?.memoryError ?? null
 })
 
 const hasProjectInstructions = computed(() => {
@@ -346,6 +315,12 @@ function hasNoProjectMemory(card: {
 
 let memoryCardRequestId = 0
 
+async function onMemoryEntriesChanged() {
+  memoryCardRequestId++
+
+  await refreshMemoryCard()
+}
+
 async function pollMemoryCard() {
   const requestId = ++memoryCardRequestId
   const requestedProjectId = projectId.value
@@ -416,13 +391,16 @@ async function refreshProjectMemory() {
       )
     })
   } catch (exception) {
-    const parsedException = parseError(exception)
+    const failure = describeProjectMemoryRefreshFailure(parseError(exception))
 
     nuxtApp.runWithContext(() => {
-      useErrorMessage(
-        parsedException.message || 'Failed to refresh project memory',
-        parsedException.why,
-      )
+      if (failure.isCooldown) {
+        useInfoMessage(failure.title, failure.description)
+
+        return
+      }
+
+      useErrorMessage(failure.title, failure.description)
     })
 
     await refreshMemoryCard()
