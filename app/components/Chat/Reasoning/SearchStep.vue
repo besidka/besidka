@@ -97,13 +97,23 @@
           class="flex min-w-0 items-baseline gap-2 text-xs"
         >
           <span
+            v-if="!result.internalPath"
             data-testid="reasoning-search-step-host"
             class="max-w-28 shrink-0 truncate text-base-content/60"
           >
             {{ result.host }}
           </span>
+          <NuxtLink
+            v-if="result.internalPath"
+            :to="result.internalPath"
+            data-testid="reasoning-search-step-chat-link"
+            class="link link-hover min-w-0 truncate text-left"
+            :title="result.title"
+          >
+            {{ result.title }}
+          </NuxtLink>
           <button
-            v-if="result.isLink"
+            v-else-if="result.isLink"
             type="button"
             data-testid="reasoning-search-step-link"
             class="link link-hover min-w-0 truncate text-left"
@@ -157,6 +167,7 @@ interface SearchStepResultRow {
   host: string
   date: string
   isLink: boolean
+  internalPath?: string
 }
 
 const { openResearchLink } = useResearchLink()
@@ -169,12 +180,17 @@ const visibleResults = computed<SearchStepResultRow[]>(() => {
   return props.data.results
     .slice(0, SEARCH_STEP_MAX_RESULTS)
     .map((result) => {
+      const internalPath = isInternalChatPath(result.internalPath)
+        ? result.internalPath
+        : undefined
+
       return {
         url: result.url,
-        title: getResultTitle(result),
-        host: formatResearchLinkLabel(result.url),
+        title: getResultTitle(result, internalPath),
+        host: internalPath ? '' : formatResearchLinkLabel(result.url),
         date: formatSearchResultDate(result.publishedDate ?? ''),
-        isLink: isHttpUrl(result.url),
+        isLink: !internalPath && isHttpUrl(result.url),
+        internalPath,
       }
     })
 })
@@ -191,12 +207,19 @@ const isExpandable = computed<boolean>(() => {
   return props.data.hasOutput && visibleResults.value.length > 0
 })
 
+const isChatStep = computed<boolean>(() => {
+  return props.data.toolName === 'search_chats'
+    || props.data.toolName === 'read_chat'
+})
+
 const countLabel = computed<string>(() => {
   if (props.data.state === 'failed' || !props.data.hasOutput) {
     return ''
   }
 
-  return formatSearchResultCount(props.data.results.length)
+  return isChatStep.value
+    ? formatChatResultCount(props.data.results.length)
+    : formatSearchResultCount(props.data.results.length)
 })
 
 const freshnessLabel = computed<string>(() => {
@@ -231,7 +254,16 @@ function toggle() {
   isExpanded.value = !isExpanded.value
 }
 
-function getResultTitle(result: SearchStepResult): string {
-  return result.title.trim() || formatResearchLinkLabel(result.url)
+function getResultTitle(
+  result: SearchStepResult,
+  internalPath: string | undefined,
+): string {
+  const title = result.title.trim()
+
+  if (title) {
+    return title
+  }
+
+  return internalPath ? 'Untitled chat' : formatResearchLinkLabel(result.url)
 }
 </script>
