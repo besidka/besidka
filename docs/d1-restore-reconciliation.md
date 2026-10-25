@@ -324,7 +324,7 @@ Query `besidka-prod` for the window. Wide events set `message` to
 ['besidka-prod']
 | where _time between (datetime(<B>) .. datetime(<R>))
 | where status < 400
-| where message matches regex @"^(POST /api/v1/chats/[^/]+/share/revoke|POST /api/v1/chats/shared/revoke|DELETE /api/v1/chats/[^/]+$|POST /api/v1/chats/history/delete/bulk|DELETE /api/v1/profiles/keys/[^/]+$|DELETE /api/v1/files/[^/]+$|POST /api/v1/files/delete/bulk|DELETE /api/v1/projects/[^/]+$|POST /api/v1/push/unsubscribe)"
+| where message matches regex @"^(POST /api/v1/chats/[^/]+/share/revoke|POST /api/v1/chats/[^/]+/share$|POST /api/v1/chats/shared/revoke|DELETE /api/v1/chats/[^/]+$|POST /api/v1/chats/history/delete/bulk|DELETE /api/v1/profiles/keys/[^/]+$|DELETE /api/v1/files/[^/]+$|POST /api/v1/files/delete/bulk|DELETE /api/v1/projects/[^/]+$|POST /api/v1/push/unsubscribe)"
 | project _time, message, userId, chatSlug, fileId, projectId, shareRevokeChatIds = attributes['chatShareRevoke']['chatIds'], bulkDeleteChatIds = attributes['chatBulkDelete']['chatIds']
 | order by _time asc
 ```
@@ -353,8 +353,10 @@ compare it with `tostring(userId)`. Then apply, in this order:
    then `UPDATE chats SET shared = 0 WHERE slug IN (...);`. For deleted chats,
    `DELETE FROM chats WHERE slug IN (...);`. Map the bulk routes' public ids
    to row ids first (see "Shares").
-3. **Share settings changes**: set the restrictive flags for those
-   `chatSlug`s and tell the owners.
+3. **Share settings changes** (`POST /api/v1/chats/<slug>/share`): set the
+   restrictive flags for those `chatSlug`s and tell the owners. The same
+   route also creates shares, but a share created after B no longer exists
+   after the restore, so those rows match nothing.
 4. **Key deletions**: `DELETE FROM keys WHERE user_id = <id> AND provider = '<provider from path>';`.
 5. **Push unsubscribes**: `DELETE FROM push_subscriptions WHERE user_id = <id>;`.
    The user re-subscribes from the device that should get pushes.
