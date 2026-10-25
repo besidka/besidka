@@ -129,7 +129,14 @@ export async function findKnowledgeProjectIdsForFiles(
   return [...projectIds]
 }
 
-function getRetentionExpiresAt(retentionDays: number | null): Date | null {
+/**
+ * The expiry a library file gets when it stops being linked: `null` for a
+ * tier without retention (vip), otherwise now plus the retention days, the
+ * same computation `persistFile` applies to a new upload.
+ */
+export function getKnowledgeRetentionExpiresAt(
+  retentionDays: number | null,
+): Date | null {
   if (retentionDays === null) {
     return null
   }
@@ -155,7 +162,7 @@ export async function unlinkKnowledgeProjectFiles(input: {
 
   await db
     .update(schema.files)
-    .set({ expiresAt: getRetentionExpiresAt(input.retentionDays) })
+    .set({ expiresAt: getKnowledgeRetentionExpiresAt(input.retentionDays) })
     .where(and(
       eq(schema.files.userId, input.userId),
       sql`${schema.files.id} in (

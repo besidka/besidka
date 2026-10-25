@@ -4,6 +4,7 @@ import {
   decodeKnowledgeProjectId,
   findKnowledgeLinkedFileIds,
   findKnowledgeProjectIdsForFiles,
+  getKnowledgeRetentionExpiresAt,
   unlinkKnowledgeProjectFiles,
 } from '~~/server/utils/knowledge/linked-files'
 import { createKnowledgeTestDb } from '../../../setup/helpers/knowledge-db'
@@ -47,6 +48,23 @@ describe('knowledge linked files', () => {
     it('returns null for ids that do not decode', () => {
       expect(decodeKnowledgeProjectId('not-a-public-id!')).toBeNull()
       expect(decodeKnowledgeProjectId('')).toBeNull()
+    })
+  })
+
+  describe('getKnowledgeRetentionExpiresAt', () => {
+    it('returns null for a tier without retention', () => {
+      expect(getKnowledgeRetentionExpiresAt(null)).toBeNull()
+    })
+
+    it('returns now plus the retention days otherwise', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-10-26T00:00:00.000Z'))
+
+      expect(getKnowledgeRetentionExpiresAt(30)?.toISOString()).toBe(
+        '2026-11-25T00:00:00.000Z',
+      )
+
+      vi.useRealTimers()
     })
   })
 

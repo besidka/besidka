@@ -195,8 +195,67 @@ describe('files delete API', () => {
         1,
         ['file-1'],
       )
-      expect(mocks.bumpKnowledgeVersion).toHaveBeenCalledWith([4, 9])
-      expect(callOrder).toEqual(['bump', 'delete-object', 'delete-row'])
+      expect(mocks.bumpKnowledgeVersion).toHaveBeenCalledTimes(2)
+      expect(mocks.bumpKnowledgeVersion).toHaveBeenNthCalledWith(1, [4, 9])
+      expect(mocks.bumpKnowledgeVersion).toHaveBeenNthCalledWith(2, [4, 9])
+      expect(callOrder).toEqual([
+        'bump',
+        'delete-object',
+        'delete-row',
+        'bump',
+      ])
+    })
+
+    it('keeps the collected projects for the bump after the delete', async () => {
+      const singleDeleteHandler = await getSingleDeleteHandler()
+
+      mocks.findKnowledgeProjectIdsForFiles.mockResolvedValue([4])
+      stubSingleFileDb([])
+
+      await singleDeleteHandler({
+        context: { params: { id: 'file-1' } },
+      } as any)
+
+      expect(mocks.findKnowledgeProjectIdsForFiles).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not fail the request when the bump after the delete fails', async () => {
+      const singleDeleteHandler = await getSingleDeleteHandler()
+      const callOrder: string[] = []
+
+      mocks.findKnowledgeProjectIdsForFiles.mockResolvedValue([4])
+      mocks.bumpKnowledgeVersion
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('D1 down'))
+      stubSingleFileDb(callOrder)
+
+      const response = await singleDeleteHandler({
+        context: { params: { id: 'file-1' } },
+      } as any)
+
+      expect(response).toEqual({
+        code: 204,
+        message: 'File deleted successfully',
+      })
+      expect(callOrder).toEqual(['delete-object', 'delete-row'])
+      expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(1)
+      expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+        knowledgeVersionBump: { phase: 'after-delete', fileId: 'file-1' },
+      }))
+    })
+
+    it('hands the bump no projects for a file without knowledge links', async () => {
+      const singleDeleteHandler = await getSingleDeleteHandler()
+
+      stubSingleFileDb([])
+
+      await singleDeleteHandler({
+        context: { params: { id: 'file-1' } },
+      } as any)
+
+      for (const [projectIds] of mocks.bumpKnowledgeVersion.mock.calls) {
+        expect(projectIds).toEqual([])
+      }
     })
 
     it('still deletes the file when the bump fails', async () => {
@@ -213,11 +272,11 @@ describe('files delete API', () => {
 
       expect(callOrder).toEqual(['delete-object', 'delete-row'])
       expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-        knowledgeVersionBump: { fileId: 'file-1' },
+        knowledgeVersionBump: { phase: 'before-delete', fileId: 'file-1' },
       }))
     })
 
-    it('bumps once for a bulk delete with every affected project', async () => {
+    it('bumps before and once after a bulk delete with every affected project', async () => {
       const bulkDeleteHandler = await getBulkDeleteHandler()
       const callOrder: string[] = []
       const findFirst = vi.fn(async () => ({ storageKey: 'key' }))
@@ -248,15 +307,67 @@ describe('files delete API', () => {
         1,
         ['file-1', 'file-2'],
       )
-      expect(mocks.bumpKnowledgeVersion).toHaveBeenCalledTimes(1)
-      expect(mocks.bumpKnowledgeVersion).toHaveBeenCalledWith([2, 3])
+      expect(mocks.bumpKnowledgeVersion).toHaveBeenCalledTimes(2)
+      expect(mocks.bumpKnowledgeVersion).toHaveBeenNthCalledWith(1, [2, 3])
+      expect(mocks.bumpKnowledgeVersion).toHaveBeenNthCalledWith(2, [2, 3])
       expect(callOrder).toEqual([
         'bump',
         'delete-object',
         'delete-row',
         'delete-object',
         'delete-row',
+        'bump',
       ])
+    })
+
+    it('does not fail a bulk delete when the bump after it fails', async () => {
+      const bulkDeleteHandler = await getBulkDeleteHandler()
+      const where = vi.fn(async () => undefined)
+
+      mocks.findKnowledgeProjectIdsForFiles.mockResolvedValue([2])
+      mocks.bumpKnowledgeVersion
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('D1 down'))
+      vi.stubGlobal('useDb', () => ({
+        query: {
+          files: { findFirst: vi.fn(async () => ({ storageKey: 'key' })) },
+        },
+        delete: vi.fn(() => ({ where })),
+      }))
+      vi.stubGlobal('useFileStorage', () => ({
+        delete: vi.fn(async () => undefined),
+      }))
+
+      const response = await bulkDeleteHandler({
+        body: { ids: ['file-1'] },
+      } as any)
+
+      expect(response).toEqual({
+        code: 204,
+        message: 'Files deleted successfully',
+      })
+      expect(where).toHaveBeenCalledTimes(1)
+      expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+        knowledgeVersionBump: { phase: 'after-delete', fileCount: 1 },
+      }))
+    })
+
+    it('skips the bump after the delete when nothing was deleted', async () => {
+      const bulkDeleteHandler = await getBulkDeleteHandler()
+
+      mocks.findKnowledgeProjectIdsForFiles.mockResolvedValue([2])
+      vi.stubGlobal('useDb', () => ({
+        query: {
+          files: { findFirst: vi.fn(async () => undefined) },
+        },
+      }))
+      vi.stubGlobal('useFileStorage', () => ({ delete: vi.fn() }))
+
+      await expect(bulkDeleteHandler({
+        body: { ids: ['file-1'] },
+      } as any)).rejects.toMatchObject({ status: 404 })
+
+      expect(mocks.bumpKnowledgeVersion).toHaveBeenCalledTimes(1)
     })
 
     it('still bulk-deletes when collecting the projects fails', async () => {
@@ -278,7 +389,10 @@ describe('files delete API', () => {
 
       await bulkDeleteHandler({ body: { ids: ['file-1'] } } as any)
 
-      expect(mocks.bumpKnowledgeVersion).not.toHaveBeenCalled()
+      for (const [projectIds] of mocks.bumpKnowledgeVersion.mock.calls) {
+        expect(projectIds).toEqual([])
+      }
+
       expect(where).toHaveBeenCalledTimes(1)
     })
 

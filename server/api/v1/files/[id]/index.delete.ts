@@ -54,8 +54,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  let knowledgeProjectIds: number[] = []
+
   try {
-    const knowledgeProjectIds = await findKnowledgeProjectIdsForFiles(
+    knowledgeProjectIds = await findKnowledgeProjectIdsForFiles(
       userId,
       [id],
     )
@@ -64,6 +66,7 @@ export default defineEventHandler(async (event) => {
   } catch (exception) {
     logger.set({
       knowledgeVersionBump: {
+        phase: 'before-delete',
         fileId: id,
       },
       attributes: {
@@ -119,6 +122,22 @@ export default defineEventHandler(async (event) => {
       eq(schema.files.id, id),
       eq(schema.files.userId, userId),
     ))
+
+  try {
+    await bumpKnowledgeVersion(knowledgeProjectIds)
+  } catch (exception) {
+    logger.set({
+      knowledgeVersionBump: {
+        phase: 'after-delete',
+        fileId: id,
+      },
+      attributes: {
+        knowledgeVersionBumpAfterDelete: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 
   await invalidateStorageCache(userId)
 

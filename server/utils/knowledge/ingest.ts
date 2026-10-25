@@ -31,6 +31,9 @@ import {
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { toKnowledgeItemWire, getKnowledgeProjectState } from '~~/server/utils/knowledge/items'
 import type { KnowledgeItemRow } from '~~/server/utils/knowledge/items'
+import {
+  getKnowledgeRetentionExpiresAt,
+} from '~~/server/utils/knowledge/linked-files'
 import { commitKnowledgeChange } from '~~/server/utils/knowledge/pack'
 import {
   deleteKnowledgeItemText,
@@ -40,7 +43,6 @@ import {
 const MAX_IDS_PER_STATEMENT = 90
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint failed'
 const MAX_ERROR_CAUSE_DEPTH = 5
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 const CONTROL_OR_SEPARATOR_PATTERN = /[\p{Cc}\u2028\u2029]/u
 const CONTROL_OR_SEPARATOR_GLOBAL_PATTERN = /[\p{Cc}\u2028\u2029]/gu
 const NOTE_MEDIA_TYPE = 'text/markdown'
@@ -1246,9 +1248,7 @@ async function restoreUnlinkedFileExpiry(
   }
 
   const retentionDays = await getEffectiveRetentionDays(context.userId)
-  const expiresAt = retentionDays === null
-    ? null
-    : new Date(Date.now() + retentionDays * MILLISECONDS_PER_DAY)
+  const expiresAt = getKnowledgeRetentionExpiresAt(retentionDays)
   const filePublicIds = fileIds.map((fileId) => {
     return encodePublicId(fileId)
   })

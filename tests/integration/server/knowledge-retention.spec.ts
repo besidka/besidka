@@ -456,8 +456,8 @@ describe('knowledge retention and cascade handling', () => {
 
       await deleteSingle(1)
 
-      expect(knowledgeVersion(10)).toBe(1)
-      expect(knowledgeVersion(11)).toBe(1)
+      expect(knowledgeVersion(10)).toBe(2)
+      expect(knowledgeVersion(11)).toBe(2)
       expect(knowledgeVersion(12)).toBe(4)
       expect(knowledgeVersion(20)).toBeNull()
       expect(fileExists(1)).toBe(false)
@@ -495,9 +495,9 @@ describe('knowledge retention and cascade handling', () => {
 
       await deleteBulk([1, 2, 3])
 
-      expect(knowledgeVersion(10)).toBe(1)
-      expect(knowledgeVersion(11)).toBe(1)
-      expect(knowledgeVersion(12)).toBe(5)
+      expect(knowledgeVersion(10)).toBe(2)
+      expect(knowledgeVersion(11)).toBe(2)
+      expect(knowledgeVersion(12)).toBe(6)
       expect(knowledgeVersion(20)).toBeNull()
       expect(fileExists(1)).toBe(false)
       expect(fileExists(2)).toBe(false)
@@ -511,9 +511,105 @@ describe('knowledge retention and cascade handling', () => {
 
       await deleteBulk([2, 5])
 
-      expect(knowledgeVersion(10)).toBe(1)
+      expect(knowledgeVersion(10)).toBe(2)
       expect(knowledgeVersion(20)).toBeNull()
       expect(fileExists(5)).toBe(true)
+    })
+
+    function traceBumpsAgainstFile(fileId: number): void {
+      testDb.sqlite.exec(`
+        CREATE TABLE bump_trace (project_id integer, file_present integer);
+        CREATE TRIGGER trace_bump AFTER UPDATE OF knowledge_version
+        ON projects
+        BEGIN
+          INSERT INTO bump_trace
+          SELECT NEW.id, count(*) FROM files WHERE id = ${fileId};
+        END;
+      `)
+    }
+
+    function readBumpTrace(): Array<[number, number]> {
+      const rows = testDb.sqlite
+        .prepare('select project_id, file_present from bump_trace')
+        .all() as Array<{ project_id: number, file_present: number }>
+
+      return rows.map((row) => {
+        return [row.project_id, row.file_present]
+      })
+    }
+
+    it('bumps once before and once after the single file delete', async () => {
+      const bucket = createFakeBucket()
+
+      vi.stubGlobal('useFileStorage', () => bucket.storage)
+      traceBumpsAgainstFile(1)
+
+      await deleteSingle(1)
+
+      expect(readBumpTrace()).toEqual([
+        [10, 1],
+        [11, 1],
+        [10, 0],
+        [11, 0],
+      ])
+    })
+
+    it('bumps once before and once after a bulk delete', async () => {
+      const bucket = createFakeBucket()
+
+      vi.stubGlobal('useFileStorage', () => bucket.storage)
+      traceBumpsAgainstFile(2)
+
+      await deleteBulk([1, 2])
+
+      expect(readBumpTrace()).toEqual([
+        [10, 1],
+        [11, 1],
+        [10, 0],
+        [11, 0],
+      ])
+      expect(knowledgeVersion(10)).toBe(2)
+    })
+
+    it('succeeds when the bump after the delete fails', async () => {
+      const bucket = createFakeBucket()
+
+      vi.stubGlobal('useFileStorage', () => bucket.storage)
+      testDb.sqlite.exec(`
+        CREATE TRIGGER fail_late_bump BEFORE UPDATE OF knowledge_version
+        ON projects
+        WHEN (SELECT count(*) FROM files WHERE id = 1) = 0
+        BEGIN
+          SELECT RAISE(ABORT, 'bump failed');
+        END;
+      `)
+
+      const response = await deleteSingle(1)
+
+      expect(response).toEqual({
+        code: 204,
+        message: 'File deleted successfully',
+      })
+      expect(fileExists(1)).toBe(false)
+      expect(knowledgeVersion(10)).toBe(1)
+      expect(knowledgeVersion(11)).toBe(1)
+      expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(OWNER)
+    })
+
+    it('bumps nothing for files without knowledge links', async () => {
+      const bucket = createFakeBucket()
+
+      vi.stubGlobal('useFileStorage', () => bucket.storage)
+      testDb.insertFile({ id: 9, userId: OWNER, storageKey: 'file-key-9' })
+      testDb.insertFile({ id: 8, userId: OWNER, storageKey: 'file-key-8' })
+      traceBumpsAgainstFile(9)
+
+      await deleteSingle(9)
+      await deleteBulk([8])
+
+      expect(readBumpTrace()).toEqual([])
+      expect(knowledgeVersion(10)).toBeNull()
+      expect(knowledgeVersion(12)).toBe(4)
     })
 
     it('bumps before deleting even when the R2 delete fails', async () => {

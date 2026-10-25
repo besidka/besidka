@@ -38,8 +38,10 @@ export default defineEventHandler(async (event) => {
   const userId = parseInt(session.user.id)
   const db = useDb()
 
+  let knowledgeProjectIds: number[] = []
+
   try {
-    const knowledgeProjectIds = await findKnowledgeProjectIdsForFiles(
+    knowledgeProjectIds = await findKnowledgeProjectIdsForFiles(
       userId,
       ids,
     )
@@ -48,6 +50,7 @@ export default defineEventHandler(async (event) => {
   } catch (exception) {
     logger.set({
       knowledgeVersionBump: {
+        phase: 'before-delete',
         fileCount: ids.length,
       },
       attributes: {
@@ -121,6 +124,24 @@ export default defineEventHandler(async (event) => {
       ))
 
     deletedCount++
+  }
+
+  if (deletedCount > 0) {
+    try {
+      await bumpKnowledgeVersion(knowledgeProjectIds)
+    } catch (exception) {
+      logger.set({
+        knowledgeVersionBump: {
+          phase: 'after-delete',
+          fileCount: ids.length,
+        },
+        attributes: {
+          knowledgeVersionBumpAfterDelete: {
+            error: exceptionMessage(exception),
+          },
+        },
+      })
+    }
   }
 
   if (deletedCount === 0) {
