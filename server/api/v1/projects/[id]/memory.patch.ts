@@ -51,5 +51,7 @@ export default defineEventHandler(async (event) => {
     params.data.id,
     userId,
     body.data.enabled,
+    undefined,
+    logger,
   )
 })

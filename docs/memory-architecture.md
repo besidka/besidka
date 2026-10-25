@@ -33,10 +33,10 @@ Gaps and bugs found:
 
 | # | Finding | Where |
 |---|---|---|
-| G1 | Project memory is injected only when `memoryStatus === 'ready'`; every user message flips it to `stale`, so memory vanishes from the prompt until the client-triggered refresh finishes. | `instructions.ts:27`, `persist-user-message.ts:153` |
-| G2 | Refresh is one synchronous HTTP request over **all** messages of **all** chats in the project, unbounded input, unbounded output. | `memory.ts:122-251` |
-| G3 | A Worker dying mid-refresh leaves `refreshing` forever; refresh returns early on that status and nothing sweeps it. | `memory.ts:155-157` |
-| G4 | Anthropic/xAI/DeepSeek/Moonshot/Qwen-only users get `unavailable`. | `resolveProjectMemoryModel` |
+| G1 | **Fixed in W1.** Project memory is injected only when `memoryStatus === 'ready'`; every user message flips it to `stale`, so memory vanishes from the prompt until the client-triggered refresh finishes. | `instructions.ts:27`, `persist-user-message.ts:153` |
+| G2 | **Fixed in W1.** Refresh is one synchronous HTTP request over **all** messages of **all** chats in the project, unbounded input, unbounded output. | `memory.ts:122-251` |
+| G3 | **Fixed in W1.** A Worker dying mid-refresh leaves `refreshing` forever; refresh returns early on that status and nothing sweeps it. Now a live KV lease decides, and a `refreshing` row without one is reported as `stale` on read. Final writes never override `disabled`, a message arriving mid-pass keeps the project `stale` (detected by comparing `memoryDirtyAt` with its start-of-pass snapshot; a second message in the same second as the existing marker is missed, an accepted limitation), and the 20-chat window never wipes existing memory when it yields nothing. The lease get/put is not atomic and the first finisher deletes the key (no owner token), an accepted limitation shared with the generation guard. | `memory.ts`, `memory-lease.ts` |
+| G4 | **Fixed in W1.** Anthropic/xAI/DeepSeek/Moonshot/Qwen-only users get `unavailable`. | `resolveProjectMemoryModel` |
 | G5 | Memory is not editable, not categorised, no provenance, on by default and silently spends the user's key. | `MemoryCard.vue`, schema default `idle` |
 | G6 | No account-level memory, no "about me", no custom instructions. | `user_settings` |
 | G7 | No cross-chat path at all outside a project's blob; FTS index is never exposed to the model. | — |
@@ -334,6 +334,21 @@ Ownership is by file set so parallel sessions never touch the same files.
   bounded incremental refresh, G4 more providers. Files:
   `server/utils/projects/*`, `server/api/v1/projects/[id]/memory*`,
   `server/api/v1/chats/[slug]/project-context/*`.
+
+  *Implemented* (branch `feat/w1-project-memory-fixes-e3c95e`, no schema
+  change; behaviour documented in `docs/history/projects.md`): G1 injects the
+  last-known-good memory for every status except `disabled`; G3 replaces the
+  sticky `refreshing` status with a 120 s KV lease and 30 s heartbeat; G2
+  bounds the refresh (20 chats considered, 6 summarised per refresh,
+  per-transcript, per-message, per-summary and 4k-char memory caps, leftovers
+  continue on the next refresh); G4 flags one `forProjectMemory` model per
+  direct provider. Decisions: the provider order is a cost ranking (openai
+  `gpt-6-luna`, anthropic `claude-haiku-5-5`, qwen `qwen3.8-flash`, deepseek,
+  google, moonshotai, xai), so openai now precedes google; `qwen3.8-flash`
+  because `qwen3.7-flash` only has a "from" price; 6 chats per refresh
+  because a refresh is a synchronous request, unlike the 20-chat batch the W6
+  cron sweep gets; the 4k-char memory cap is enforced synchronously by
+  truncation, since the blob is injected into every chat turn.
 - **W2 Cross-chat search tools** — `search_chats` / `read_chat`, separate
   step budget, query fallback, tool chips. Files: `server/utils/memory/tools/*`
   (new), `server/utils/ai/tool-loop.ts`, `server/utils/search/query.ts`,

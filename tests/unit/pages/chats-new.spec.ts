@@ -375,6 +375,78 @@ describe('chats new page', () => {
     )
   })
 
+  it.each([
+    ['stale', 'User prefers concise updates.'],
+    ['refreshing', 'User prefers concise updates.'],
+    ['failed', 'User prefers concise updates.'],
+    ['unavailable', 'User prefers concise updates.'],
+    ['disabled', ''],
+  ])('shows last-known-good memory while the status is %s', async (
+    memoryStatus,
+    expectedMemory,
+  ) => {
+    const projectPickerStub = defineComponent({
+      name: 'ChatInputProjectPicker',
+      emits: ['submit'],
+      methods: {
+        open() {},
+        close() {},
+      },
+      template: '<div />',
+    })
+
+    fetchMock.mockImplementation(async () => ({
+      id: 'project-a',
+      name: 'Project A',
+      instructions: 'Stay focused on milestones',
+      memory: 'User prefers concise updates.',
+      memoryStatus,
+    }))
+
+    wrapper = await mountSuspended(ChatsNewPage, {
+      global: {
+        stubs: {
+          ChatContainer: {
+            template: '<div><slot /></div>',
+          },
+          ChatProjectInstructions: {
+            props: ['instructions', 'memory'],
+            template: `
+              <div data-testid="project-instructions">
+                {{ instructions || '' }}|{{ memory || '' }}
+              </div>
+            `,
+          },
+          ChatMessage: {
+            template: '<div><slot /></div>',
+          },
+          LazyBackgroundLogo: true,
+          ChatInput: {
+            props: ['projectContext'],
+            template: '<div />',
+          },
+          ChatInputProjectPicker: projectPickerStub,
+          LazyChatInputProjectPicker: projectPickerStub,
+        },
+      },
+    })
+
+    wrapper.findComponent({ name: 'ChatInputProjectPicker' }).vm.$emit(
+      'submit',
+      {
+        projectId: 'project-a',
+        projectName: 'Project A',
+      },
+    )
+    await nextTick()
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.get('[data-testid="project-instructions"]').text()).toBe(
+      `Stay focused on milestones|${expectedMemory}`,
+    )
+  })
+
   it('backs up the draft and redirects to /signin on a dead-session 401', async () => {
     // createAuthClient is mocked so getSession() resolves { data: null }; the
     // cache-bypassing recovery therefore finds no session and must redirect.

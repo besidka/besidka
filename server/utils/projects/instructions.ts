@@ -24,7 +24,7 @@ export function buildProjectSystemPrompt(
     sections.push(instructions)
   }
 
-  if (memory && project.memoryStatus === 'ready') {
+  if (memory && project.memoryStatus !== 'disabled') {
     sections.push('Project memory:')
     sections.push(memory)
   }
