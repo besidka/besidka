@@ -125,6 +125,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/project-knowledge-policy.spec.ts',
     'tests/unit/utils/project-knowledge-budget.spec.ts',
     'tests/unit/utils/project-knowledge-schemas.spec.ts',
+    'tests/unit/utils/project-knowledge-path.spec.ts',
   ]
   const projectKnowledgeServerTests = [
     'tests/unit/utils/knowledge/storage-keys.spec.ts',
@@ -1951,7 +1952,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^shared\/(types\/project-knowledge\.d|utils\/(project-knowledge-(policy|budget|schemas)))\.ts$/,
+      pattern: /^shared\/(types\/project-knowledge\.d|utils\/(project-knowledge-(policy|budget|schemas|path)))\.ts$/,
       tests: projectKnowledgeContractTests,
     },
     {
