@@ -93,6 +93,17 @@ describe('isMemoryModelSelectable', () => {
     expect(isMemoryModelSelectable(model)).toBe(true)
   })
 
+  it('accepts a curated chat model that can also speak, like Qwen Omni', () => {
+    const model = createModel({
+      modalities: {
+        input: ['text', 'image', 'audio'],
+        output: ['text', 'audio'],
+      },
+    })
+
+    expect(isMemoryModelSelectable(model)).toBe(true)
+  })
+
   it('accepts models retiring in the future', () => {
     expect(isMemoryModelSelectable(createModel({
       retiredAt: '2027-05-07',
@@ -146,6 +157,52 @@ describe('isMemoryGatewayModelSelectable', () => {
     expect(isMemoryGatewayModelSelectable(model)).toBe(true)
   })
 
+  it.each([
+    [['audio'], 'audio only'],
+    [['image'], 'image only'],
+    [['embeddings'], 'embeddings only'],
+    [['text', 'audio'], 'text with audio'],
+    [['text', 'image'], 'text with image'],
+    [['text', 'audio', 'image'], 'text with audio and image'],
+    [['audio', 'text'], 'audio listed before text'],
+    [['video'], 'video only'],
+  ])('rejects declared output %j (%s)', (output) => {
+    const model = createGatewayModel({
+      id: 'openai/gpt-audio',
+      name: 'OpenAI: GPT Audio',
+      modalities: { input: ['text', 'audio'], output },
+    })
+
+    expect(isMemoryGatewayModelSelectable(model)).toBe(false)
+  })
+
+  it('keeps a plain text output model with rich inputs', () => {
+    const model = createGatewayModel({
+      id: 'google/gemini-3.1-flash-lite',
+      modalities: {
+        input: ['text', 'image', 'audio', 'video', 'file'],
+        output: ['text'],
+      },
+    })
+
+    expect(isMemoryGatewayModelSelectable(model)).toBe(true)
+  })
+
+  it('rejects OpenRouter GPT Audio and GPT Audio Mini with declared output', () => {
+    const output = ['text', 'audio']
+
+    expect(isMemoryGatewayModelSelectable(createGatewayModel({
+      id: 'openai/gpt-audio',
+      name: 'OpenAI: GPT Audio',
+      modalities: { input: ['audio', 'text'], output },
+    }))).toBe(false)
+    expect(isMemoryGatewayModelSelectable(createGatewayModel({
+      id: 'openai/gpt-audio-mini',
+      name: 'OpenAI: GPT Audio Mini',
+      modalities: { input: ['audio', 'text'], output },
+    }))).toBe(false)
+  })
+
   it('rejects a gateway model declaring an empty output list', () => {
     const model = createGatewayModel({
       modalities: { input: ['text'], output: [] },
@@ -162,6 +219,9 @@ describe('isMemoryGatewayModelSelectable', () => {
     ['vendor/model', 'Text to speech'],
     ['vendor/omni-moderation', 'Moderation'],
     ['@cf/stabilityai/stable-diffusion-xl', 'Stable Diffusion'],
+    ['openai/gpt-audio', 'OpenAI: GPT Audio'],
+    ['openai/gpt-audio-mini', 'OpenAI: GPT Audio Mini'],
+    ['vendor/model', 'Vendor Audio Chat'],
   ])('rejects %s without modality data by name', (id, name) => {
     expect(isMemoryGatewayModelSelectable(createGatewayModel({ id, name })))
       .toBe(false)
@@ -180,6 +240,27 @@ describe('isMemoryGatewayModelSelectable', () => {
     const model = createGatewayModel({
       id: 'vendor/embedded-assistant-chat',
       name: 'Assistant',
+    })
+
+    expect(isMemoryGatewayModelSelectable(model)).toBe(true)
+  })
+
+  it.each([
+    ['vendor/claudio-chat', 'Claudio Chat'],
+    ['vendor/audiobook-writer', 'Audiobook Writer'],
+    ['anthropic/claude-haiku-5.5', 'Anthropic: Claude Haiku 5.5'],
+    ['openai/gpt-6-luna', 'OpenAI: GPT-6 Luna'],
+    ['qwen/qwen3.8-flash', 'Qwen: Qwen3.8 Flash'],
+  ])('keeps the chat model %s when no modalities are declared', (id, name) => {
+    expect(isMemoryGatewayModelSelectable(createGatewayModel({ id, name })))
+      .toBe(true)
+  })
+
+  it('trusts declared plain text output over an audio token in the name', () => {
+    const model = createGatewayModel({
+      id: 'vendor/audio-describer',
+      name: 'Audio Describer',
+      modalities: { input: ['text'], output: ['text'] },
     })
 
     expect(isMemoryGatewayModelSelectable(model)).toBe(true)

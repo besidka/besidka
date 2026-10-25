@@ -52,6 +52,12 @@ const PanelStub = defineComponent({
   },
 })
 
+const CacheInfoStub = defineComponent({
+  setup() {
+    return () => h('div', { 'data-testid': 'memory-cache-info-stub' })
+  },
+})
+
 async function mountPage(
   settings: Partial<MemorySettingsFields> = {},
   reason: AboutMeNotMigratedReason | null = null,
@@ -60,7 +66,12 @@ async function mountPage(
   serverReason = reason
 
   const wrapper = await mountSuspended(MemoryPage, {
-    global: { stubs: { ChatInputModelsTriggerPanel: PanelStub } },
+    global: {
+      stubs: {
+        ChatInputModelsTriggerPanel: PanelStub,
+        ProfileMemoryCacheInfo: CacheInfoStub,
+      },
+    },
   })
 
   await settle()
@@ -200,6 +211,23 @@ describe('profile memory page', () => {
       .toBe(true)
     expect(wrapper.find('[data-testid="memory-disabled-note"]').exists())
       .toBe(false)
+  })
+
+  it('renders the prompt-cache info between models and entries', async () => {
+    const wrapper = await mountPage()
+    const sections = wrapper.findAll(
+      '[data-testid="memory-model-same-as-chat"], '
+      + '[data-testid="memory-cache-info-stub"], '
+      + '[data-testid="memory-entries-section"]',
+    )
+    const testIds = sections.map(section => section.attributes('data-testid'))
+
+    expect(testIds).toEqual([
+      'memory-model-same-as-chat',
+      'memory-model-same-as-chat',
+      'memory-cache-info-stub',
+      'memory-entries-section',
+    ])
   })
 
   it('passes the settings to the entries list', async () => {
@@ -443,24 +471,24 @@ describe('profile memory page', () => {
       .toHaveLength(1500)
   })
 
-  it('removes leftover about me and hides the block', async () => {
+  it('discards leftover about me and hides the block', async () => {
     const useInfoMessage = vi.spyOn(messagesComposable, 'useInfoMessage')
     const wrapper = await mountPage({ aboutMe: 'Leftover' }, 'profile-exists')
 
-    await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
+    await wrapper.get('[data-testid="memory-legacy-about-me-discard"]')
       .trigger('click')
     await settle()
 
     expect(mocks.patchRequests).toEqual([{ aboutMe: null }])
     expect(useInfoMessage).toHaveBeenCalledWith(
-      'Removed',
-      'Earlier about me removed.',
+      'Discarded',
+      'Earlier about me discarded.',
     )
     expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
       .toBe(false)
   })
 
-  it('keeps the leftover block and toasts when removing fails', async () => {
+  it('keeps the leftover block and toasts when discarding fails', async () => {
     const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
     const wrapper = await mountPage({ aboutMe: 'Leftover' }, 'rejected')
 
@@ -470,7 +498,7 @@ describe('profile memory page', () => {
       data: { why: 'Database unavailable' },
     }
 
-    await wrapper.get('[data-testid="memory-legacy-about-me-remove"]')
+    await wrapper.get('[data-testid="memory-legacy-about-me-discard"]')
       .trigger('click')
     await settle()
 

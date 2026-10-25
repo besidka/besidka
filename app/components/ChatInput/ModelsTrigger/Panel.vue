@@ -64,7 +64,7 @@
         :capability-options="filterCapabilityOptions"
       />
       <div
-        v-else-if="!activeGateway"
+        v-else
         role="group"
         aria-label="Model list"
         data-testid="models-picker-recommended-filter"
@@ -140,6 +140,8 @@
           :detail-model-id="detailModelId"
           :listbox-id="listboxId"
           :filter-model="filterGatewayModel"
+          :recommended-direct-models="recommendedDirectModels"
+          :recommended-only="isRecommendedOnly"
           @select="selectGatewayModel"
           @toggle-favorite="toggleGatewayFavorite"
           @toggle-detail="toggleDetail"
@@ -331,6 +333,7 @@ import type {
   PickerSection,
 } from '~/types/models-picker'
 import { isGatewayToolAllowed } from '#shared/utils/gateway-capabilities'
+import type { RecommendedDirectModel } from '#shared/utils/memory-recommended-models'
 import { enabledGateways, providerMeta } from '#shared/utils/provider-meta'
 
 const GATEWAY_CAPABILITY_FILTER_TOOLS: Partial<
@@ -572,6 +575,27 @@ const allModels = computed<PickerModel[]>(() => {
 
   return entries.filter(({ model }) => {
     return filterModel(model)
+  })
+})
+
+/**
+ * Gateway ids never match the curated ids, so a gateway model is recommended
+ * through the direct models flagged here, paired with their provider so the
+ * vendor on a gateway id can be compared (`memory-recommended-models.ts`).
+ */
+const recommendedDirectModels = computed<RecommendedDirectModel[]>(() => {
+  if (!props.recommendedModelIds.length) {
+    return []
+  }
+
+  return providers.flatMap((provider) => {
+    return provider.models
+      .filter((model) => {
+        return props.recommendedModelIds.includes(model.id)
+      })
+      .map((model) => {
+        return { providerId: provider.id, modelId: model.id }
+      })
   })
 })
 

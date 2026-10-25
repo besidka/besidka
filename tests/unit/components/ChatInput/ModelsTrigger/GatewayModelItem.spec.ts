@@ -26,6 +26,7 @@ function mountGatewayModelItem(
     isHighlighted: boolean
     isFavorite: boolean
     isDetailOpen: boolean
+    isRecommended: boolean
   }> = {},
 ) {
   return mountSuspended(GatewayModelItem, {
@@ -338,5 +339,62 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
 
     expect(wrapper.get('li').attributes('id'))
       .toBe('gateway-model-option-anthropic/claude-opus-5')
+  })
+
+  describe('recommended badge', () => {
+    it('renders the plain Recommended badge right after the price tier', async () => {
+      const wrapper = await mountGatewayModelItem(createModel(), {
+        isRecommended: true,
+      })
+      const badge = wrapper.get('[data-testid="gateway-model-recommended"]')
+
+      expect(badge.text()).toBe('Recommended')
+      expect(badge.classes()).toContain('badge-success')
+      expect(badge.classes()).not.toContain('max-xs:ml-5')
+      expect(
+        badge.element.previousElementSibling?.getAttribute('data-testid'),
+      ).toBe('gateway-model-price-tier')
+    })
+
+    it('indents the badge and tightens the chips when it leads row two', async () => {
+      const wrapper = await mountGatewayModelItem(
+        createModel({ pricing: undefined, supportsReasoning: true }),
+        { isRecommended: true },
+      )
+      const capabilities = wrapper.get(
+        '[data-testid="gateway-model-capabilities"]',
+      )
+
+      expect(wrapper.get('[data-testid="gateway-model-recommended"]')
+        .classes()).toContain('max-xs:ml-5')
+      expect(capabilities.classes()).toContain('max-xs:-ml-1')
+      expect(capabilities.classes()).not.toContain('max-xs:ml-5')
+    })
+
+    it('tightens the mobile badge gap only when recommended', async () => {
+      const recommended = await mountGatewayModelItem(createModel(), {
+        isRecommended: true,
+      })
+      const plain = await mountGatewayModelItem()
+
+      expect(recommended.get('button[aria-label^="Choose"]').classes())
+        .toContain('max-xs:gap-x-1')
+      expect(plain.get('button[aria-label^="Choose"]').classes())
+        .not.toContain('max-xs:gap-x-1')
+    })
+
+    it('renders no badge and keeps the chat layout classes by default', async () => {
+      const wrapper = await mountGatewayModelItem(
+        createModel({ pricing: undefined, supportsReasoning: true }),
+      )
+      const capabilities = wrapper.get(
+        '[data-testid="gateway-model-capabilities"]',
+      )
+
+      expect(wrapper.find('[data-testid="gateway-model-recommended"]')
+        .exists()).toBe(false)
+      expect(capabilities.classes()).toContain('max-xs:ml-5')
+      expect(capabilities.classes()).not.toContain('max-xs:-ml-1')
+    })
   })
 })

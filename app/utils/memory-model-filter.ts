@@ -5,7 +5,7 @@ import { getModelCategory } from '~/utils/models-picker'
 
 const NON_CHAT_GATEWAY_MODEL_PATTERN = new RegExp(
   '(^|[/\\-_:.\\s])('
-  + 'embed(ding)?s?|rerank(er|ing)?|tts|text-to-speech|speech|whisper'
+  + 'embed(ding)?s?|rerank(er|ing)?|tts|text-to-speech|speech|whisper|audio'
   + '|transcri(be|ption)|moderation|text-to-image|image-gen(eration)?'
   + '|stable-diffusion|sdxl|dall-e'
   + ')([/\\-_:.\\s]|$)',
@@ -48,7 +48,12 @@ export function isMemoryGatewayModelSelectable(model: GatewayModel): boolean {
     return !isNonChatGatewayModelName(model)
   }
 
-  if (!modalities.output.includes('text')) {
+  const isPlainTextOutput = modalities.output.length > 0
+    && modalities.output.every((outputModality) => {
+      return outputModality === 'text'
+    })
+
+  if (!isPlainTextOutput) {
     return false
   }
 

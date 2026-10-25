@@ -294,6 +294,7 @@ describe('chat memory context', () => {
         useAccountMemory: boolean | null,
         projectMemoryDisabled: boolean | null,
         db: typeof testDb.db = testDb.db,
+        aboutMe: string | null = null,
       ) {
         return buildMemoryInstructions({
           db,
@@ -305,7 +306,7 @@ describe('chat memory context', () => {
             memoryEnabled: true,
             chatSearchEnabled: true,
             memoryIncludeSensitive: false,
-            aboutMe: null,
+            aboutMe,
           },
           hasMemoryTools: true,
           logger: { set: loggerSet },
@@ -344,6 +345,40 @@ describe('chat memory context', () => {
       it('injects nothing when disabled and account memory is hidden', async () => {
         expect(await instructionsForProject(false, true)).toBeNull()
       })
+
+      it.each([
+        ['project memory on, account memory shown', null, false],
+        ['project memory off, account memory shown', null, true],
+        ['project memory on, account memory hidden', false, false],
+        ['project memory off, account memory hidden', false, true],
+        ['project status unknown, account memory hidden', false, null],
+      ] as const)('keeps the un-migrated about-me text: %s', async (
+        _label,
+        useAccountMemory,
+        projectMemoryDisabled,
+      ) => {
+        const instructions = await instructionsForProject(
+          useAccountMemory,
+          projectMemoryDisabled,
+          testDb.db,
+          ABOUT_ME,
+        )
+
+        expect(instructions).toContain(ABOUT_ME)
+      })
+
+      it('injects only the about-me text when the project hides account memory',
+        async () => {
+          const instructions = await instructionsForProject(
+            false,
+            true,
+            testDb.db,
+            ABOUT_ME,
+          )
+
+          expect(instructions).toContain(ABOUT_ME)
+          expect(instructions).not.toContain('<memory>')
+        })
 
       it('fails closed when the status could not be determined', async () => {
         const instructions = await instructionsForProject(null, null)
