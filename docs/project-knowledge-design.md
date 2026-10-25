@@ -1293,6 +1293,52 @@ develops against these shapes with mocked `$fetch`.
   `computeKnowledgeBudget`, `resolveKnowledgeTokenFamily`,
   `estimatePromptCacheCost`), so client and server agree.
 
+### 16.5 K2 as built (branch `k2-knowledge-send`)
+
+- **Own pack reader instead of K1's.** K1 was not merged when K2 started,
+  so `server/utils/knowledge/send-data.ts` reads items and project state
+  from D1 and the pack from R2 with K0 primitives only (storage keys, pack
+  zod schemas). It loads the pack **lazily**: search mode reads nothing
+  from R2 unless a tool call or pre-retrieval needs it. Swapping to K1's
+  `readKnowledgePack` after K1 merges is a one-import change.
+  `ensureKnowledgePackFresh` is not called yet; a stale pack is logged as
+  `attributes.knowledge.packStale` and the previous pack is used.
+- **Files**: `server/utils/knowledge/{send-data,context,search,pre-retrieval}.ts`,
+  `server/utils/knowledge/tools/{index,excerpt}.ts`,
+  `server/utils/ai/knowledge-tools.ts` (tool names, kept outside
+  `knowledge/tools` to avoid an import cycle with `tool-loop.ts`), and edits
+  to the chat route, `tool-loop.ts`, `search-answer-continuation.ts`,
+  `model-turns.ts`, the three gateway builders, `message-usage.ts`,
+  `shared/types/message-usage.d.ts` and `shared/types/model-context.d.ts`.
+- **Route**: `resolveSendKnowledge` runs after the memory index is built and
+  before the tool loop is resolved. `buildChatInstructions` takes an options
+  object; the order is memory index, project prompt, knowledge block,
+  `KNOWLEDGE_INSTRUCTION` (only with the tools), `CHAT_SEARCH_INSTRUCTION`,
+  then the date-carrying clauses. The continuation call gets the same block.
+- **Loop cap**: web 3 + chat/memory lookup 3 + knowledge 3 + 1 forced
+  answer step = 10 at most. Knowledge results stay "untrusted", so they
+  trip the `memory_write` lock. The continuation renders them under
+  `Project knowledge search N` / `Project knowledge read N` headings inside
+  the untrusted tag, never as web sources.
+- **Media**: `buildKnowledgeMediaTurns` builds a leading user turn with the
+  files plus a `(no reply)` turn (fixed ids, so the prefix stays cacheable),
+  converted and ownership-checked by `convertFilesForAI`, prepended on a
+  copy of the history. Gateways get no media.
+- **Pre-retrieval** appends `<project_knowledge_excerpts>` to a copy of the
+  last user turn; nothing is persisted.
+- **Usage**: `knowledgeTokens`, `firstStepInputTokens` and
+  `lastStepOutputTokens` are written only on knowledge sends. The chat query
+  now also selects `messages.usage` so measured history needs no second
+  query.
+- **Notice**: `data-knowledge-notice` (`KnowledgeNoticeData` in
+  `shared/types/model-context.d.ts`) is written next to the omitted-files
+  notice. K3 must render it and filter it like `data-omitted-context-files`
+  in `app/composables/chat.ts`.
+- **Known gaps handed to K3**: chips for the two knowledge tools
+  (`app/utils/search-step.ts`, `SearchStep.vue`), and an existing bug shared
+  with chat search where a tool's own 429 budget error renders as
+  "provider is rate limiting" in the UI.
+
 ### 16.4 Shared files nobody else edits
 
 `package.json` and `pnpm-lock.yaml` (dependencies added in K0), the K0

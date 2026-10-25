@@ -131,6 +131,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/purge.spec.ts',
     'tests/unit/utils/knowledge/quota.spec.ts',
   ]
+  const projectKnowledgeRetrievalTests = [
+    'tests/unit/utils/knowledge/search.spec.ts',
+    'tests/unit/utils/knowledge/tools.spec.ts',
+    'tests/unit/utils/knowledge/pre-retrieval.spec.ts',
+    'tests/unit/utils/knowledge/send-data.spec.ts',
+    'tests/unit/utils/knowledge/context.spec.ts',
+    'tests/integration/api/chats-project-knowledge.spec.ts',
+  ]
   const memoryEntriesTests = [
     'tests/unit/utils/memory/entries.spec.ts',
     'tests/unit/utils/memory/entry-slug.spec.ts',
@@ -897,6 +905,15 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-single-step-characterization.spec.ts',
         'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
         'tests/unit/utils/providers/deepseek-web-search.spec.ts',
+        'tests/integration/api/chats-project-knowledge.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/ai\/knowledge-tools\.ts$/,
+      tests: [
+        ...projectKnowledgeRetrievalTests,
+        'tests/unit/utils/ai/tool-loop.spec.ts',
+        'tests/unit/utils/ai/search-answer-continuation.spec.ts',
       ],
     },
     {
@@ -922,6 +939,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/unit/utils/gateways/cloudflare.spec.ts',
         'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
+        'tests/integration/api/chats-project-knowledge.spec.ts',
       ],
     },
     {
@@ -1060,6 +1078,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-memory.spec.ts',
         'tests/integration/api/chats-carried-files.spec.ts',
         'tests/integration/api/chats-gateway-images.spec.ts',
+        ...projectKnowledgeRetrievalTests,
       ],
     },
     {
@@ -1838,7 +1857,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/model-turns\.ts$/,
-      tests: modelTurnsTests,
+      tests: [
+        ...modelTurnsTests,
+        'tests/integration/api/chats-project-knowledge.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/files\/carried-media-types\.ts$/,
@@ -1969,6 +1991,36 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/knowledge\/(purge|storage-keys)\.ts$/,
       tests: memoryPurgeTests,
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/(search|pre-retrieval|send-data|context)\.ts$/,
+      tests: projectKnowledgeRetrievalTests,
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/tools\/(index|excerpt)\.ts$/,
+      tests: projectKnowledgeRetrievalTests,
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/.+\.ts$/,
+      tests: ['tests/integration/api/chats-project-knowledge.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/search\/(tokens|ukrainian-stemmer)\.ts$/,
+      tests: projectKnowledgeRetrievalTests,
+    },
+    {
+      pattern: /^shared\/utils\/project-knowledge-(policy|budget|schemas)\.ts$/,
+      tests: [
+        ...projectKnowledgeContractTests,
+        ...projectKnowledgeRetrievalTests,
+      ],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/knowledge-db\.ts$/,
+      tests: [
+        ...projectKnowledgeServerTests,
+        ...projectKnowledgeRetrievalTests,
+      ],
     },
     {
       pattern: /^server\/db\/schemas\/memory-entries\.ts$/,
