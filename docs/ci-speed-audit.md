@@ -15,6 +15,26 @@ instead of one per spec file. Stages 2 and 3 remain open. The "Now" column
 and the measurements below describe the pipeline as it was before these
 changes.
 
+**Observed on PR #499 (GitHub-hosted, 2026-10-25):**
+
+| Run | Wall time | Longest legs |
+|---|---|---|
+| Preview Build (all tests affected) | 6m58s | Build 2m12s → slowest E2E shard 4m18s; Unit 4m20s in parallel |
+| `production.yml` dry run (no deploy job) | 6m06s | Build 2m10s → slowest E2E shard 3m44s; Unit 4m31s in parallel |
+
+- E2E shards: setup 21–39 s, `prepare-e2e` 19–29 s (cold Playwright cache),
+  tests 120–182 s per shard.
+- Add Preview Deploy (~1.1 min), and push → preview URL is about 8 min
+  (before: ~16.7 min). Add the deploy job (~1.2–1.5 min, not yet observed),
+  and merge → production is about 7.5 min (before: ~14 min).
+- The unit job is the second-longest leg: its vitest step took 230 s on both
+  runs (the audit baseline on the same runner type was ~150 s). It finishes
+  ~2 min before the critical path ends, so stage 3 (node environment and
+  `--pool=threads`) becomes the next lever if the suite keeps growing.
+- Not yet observed: the production `deploy` job (first runs on the first
+  merge to main) and a Playwright cache restore (the cache was saved on this
+  branch; `main` will save its own on its first run).
+
 ## TL;DR
 
 | | Now (GitHub-hosted, `ubuntu-24.04`) | Target |
@@ -221,7 +241,8 @@ GitHub-hosted:
 | Preview Deploy | ~1.2 min |
 
 So **~6.5–7 min to the preview URL**. Unit (~3 min) runs in parallel and does
-not land on the critical path. Start with N=3, and move to N=4 if the E2E
+not land on the critical path. (Observed on PR #499: unit took 4m20s, still
+~2 min short of the critical path; the preview URL took ~8 min.) Start with N=3, and move to N=4 if the E2E
 suite grows.
 
 The repeated steps (checkout + pnpm + node + install) should move into a
