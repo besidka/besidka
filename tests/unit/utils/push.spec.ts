@@ -161,6 +161,20 @@ describe('push utils', () => {
     )).toBe(true)
   })
 
+  it('requires the https scheme for known push service hosts', async () => {
+    const { isAllowedPushServiceEndpoint } = await importPushUtils()
+
+    expect(isAllowedPushServiceEndpoint(
+      'http://fcm.googleapis.com/fcm/send/abc',
+    )).toBe(false)
+    expect(isAllowedPushServiceEndpoint(
+      'ftp://updates.push.services.mozilla.com/wpush/v2/abc',
+    )).toBe(false)
+    expect(isAllowedPushServiceEndpoint(
+      'http://web.push.apple.com/abc',
+    )).toBe(false)
+  })
+
   it('rejects an endpoint host that is not a known push service', async () => {
     const { isAllowedPushServiceEndpoint } = await importPushUtils()
 

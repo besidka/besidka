@@ -58,7 +58,7 @@ jobs:
 
       - name: Add to MVP Milestone
         if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: andrefcdias/add-to-milestone@v1.3.0
+        uses: andrefcdias/add-to-milestone@33bbeee733bc6b1241fdc5842c279b8d080b7c22
         continue-on-error: true
         with:
           repo-token: ${{ secrets.PROJECT_ACTIONS_GITHUB_TOKEN }}

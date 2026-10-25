@@ -62,7 +62,7 @@ function stubBindings() {
     public: {
       baseUrl: 'https://example.com',
       turnstileSiteKey: '',
-      cookieConsent: { cookieName: 'cookies_consent', revision: 1 },
+      cookieConsent: { cookieName: 'cookies_consent', revision: 2 },
     },
     turnstileSecretKey: '',
     turnstileEnforced: false,
@@ -875,7 +875,7 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
 
   it('sets no last-login cookie when preferences were not granted', async () => {
     const setCookies = await runLastLoginMethodHook(
-      encodeConsentCookie({ v: 1, granted: ['necessary'] }),
+      encodeConsentCookie({ v: 2, granted: ['necessary'] }),
     )
 
     expect(setCookies).toEqual([])
@@ -899,7 +899,7 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
 
   it('sets the last-login cookie when preferences were granted', async () => {
     const setCookies = await runLastLoginMethodHook(
-      encodeConsentCookie({ v: 1, granted: ['necessary', 'preferences'] }),
+      encodeConsentCookie({ v: 2, granted: ['necessary', 'preferences'] }),
     )
 
     expect(setCookies).toHaveLength(1)
@@ -909,7 +909,7 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
 
   it('sets the last-login cookie on an OAuth callback with preferences', async () => {
     const setCookies = await runLastLoginMethodHook(
-      encodeConsentCookie({ v: 1, granted: ['necessary', 'preferences'] }),
+      encodeConsentCookie({ v: 2, granted: ['necessary', 'preferences'] }),
       { path: '/callback/:id', params: { id: 'google' } },
     )
 
@@ -918,7 +918,7 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
 
   it('sets no last-login cookie on an OAuth callback without preferences', async () => {
     const setCookies = await runLastLoginMethodHook(
-      encodeConsentCookie({ v: 1, granted: ['necessary'] }),
+      encodeConsentCookie({ v: 2, granted: ['necessary'] }),
       { path: '/callback/:id', params: { id: 'google' } },
     )
 
@@ -926,38 +926,50 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
   })
 })
 
+interface ResolvedAuthContext {
+  authCookies: {
+    sessionToken: {
+      name: string
+      attributes: Record<string, unknown>
+    }
+    sessionData: {
+      name: string
+      attributes: Record<string, unknown>
+    }
+  }
+  createAuthCookie: (name: string) => {
+    name: string
+    attributes: Record<string, unknown>
+  }
+  rateLimit: {
+    enabled: boolean
+  }
+  options: {
+    emailAndPassword?: {
+      revokeSessionsOnPasswordReset?: boolean
+    }
+  }
+}
+
+async function importAuthContext(
+  baseUrl: string,
+): Promise<ResolvedAuthContext> {
+  vi.resetModules()
+  stubBindings()
+  useRuntimeConfig().betterAuthSecret = betterAuthSecret
+  useRuntimeConfig().public.baseUrl = baseUrl
+
+  const { useServerAuth } = await import('../../../server/utils/auth')
+
+  return (useServerAuth() as unknown as {
+    $context: Promise<ResolvedAuthContext>
+  }).$context
+}
+
 describe('server/utils/auth.ts cookie attributes', () => {
   afterEach(() => {
     useRuntimeConfig().public.baseUrl = ''
   })
-
-  async function importAuthContext(baseUrl: string) {
-    vi.resetModules()
-    stubBindings()
-    useRuntimeConfig().betterAuthSecret = betterAuthSecret
-    useRuntimeConfig().public.baseUrl = baseUrl
-
-    const { useServerAuth } = await import('../../../server/utils/auth')
-
-    return (useServerAuth() as unknown as {
-      $context: Promise<{
-        authCookies: {
-          sessionToken: {
-            name: string
-            attributes: Record<string, unknown>
-          }
-          sessionData: {
-            name: string
-            attributes: Record<string, unknown>
-          }
-        }
-        createAuthCookie: (name: string) => {
-          name: string
-          attributes: Record<string, unknown>
-        }
-      }>
-    }).$context
-  }
 
   it.each([
     ['https://besidka.com'],
@@ -1009,5 +1021,62 @@ describe('server/utils/auth.ts cookie attributes', () => {
       sameSite: 'lax',
       path: '/',
     })
+  })
+})
+
+describe('server/utils/auth.ts rate limiting', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    useRuntimeConfig().public.baseUrl = ''
+    useRuntimeConfig().public.e2eTestHooksEnabled = false
+  })
+
+  it.each([
+    ['https://besidka.com'],
+    ['https://preview-besidka.chernenko.workers.dev'],
+  ])('enables the rate limiter explicitly for %s', async (baseUrl) => {
+    const context = await importAuthContext(baseUrl)
+
+    expect(context.rateLimit.enabled).toBe(true)
+  })
+
+  it('keeps the rate limiter enabled when only e2e hooks are enabled', async () => {
+    useRuntimeConfig().public.e2eTestHooksEnabled = true
+    vi.stubEnv('CI', 'false')
+
+    const context = await importAuthContext('http://localhost:3000')
+
+    expect(context.rateLimit.enabled).toBe(true)
+  })
+
+  it('keeps the rate limiter enabled when only CI is set', async () => {
+    useRuntimeConfig().public.e2eTestHooksEnabled = false
+    vi.stubEnv('CI', 'true')
+
+    const context = await importAuthContext('http://localhost:3000')
+
+    expect(context.rateLimit.enabled).toBe(true)
+  })
+
+  it('disables the rate limiter when CI and e2e hooks are both set', async () => {
+    useRuntimeConfig().public.e2eTestHooksEnabled = true
+    vi.stubEnv('CI', 'true')
+
+    const context = await importAuthContext('http://localhost:3000')
+
+    expect(context.rateLimit.enabled).toBe(false)
+  })
+})
+
+describe('server/utils/auth.ts password reset', () => {
+  afterEach(() => {
+    useRuntimeConfig().public.baseUrl = ''
+  })
+
+  it('revokes every session when the password is reset', async () => {
+    const context = await importAuthContext('https://besidka.com')
+
+    expect(context.options.emailAndPassword?.revokeSessionsOnPasswordReset)
+      .toBe(true)
   })
 })

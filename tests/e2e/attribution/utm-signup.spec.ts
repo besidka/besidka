@@ -36,7 +36,7 @@ test.describe('UTM attribution funnel', () => {
       await page.context().addCookies([{
         name: CONSENT_COOKIE_NAME,
         value: encodeURIComponent(JSON.stringify({
-          v: 1,
+          v: 2,
           granted: ['necessary'],
           id: 'e2e-funnel',
           date: '2026-01-01T00:00:00.000Z',

@@ -8,6 +8,7 @@ const CONSENT_COOKIE = 'cookies_consent'
 const SHOW_DELAY_BUFFER = 4000
 const SHOW_DELAY = 1200
 const SHOW_DELAY_MARGIN = 1500
+const MULTI_STEP_TIMEOUT = 30_000
 const COLOR_MODE_KEY = 'nuxt-color-mode'
 const PUSH_DATABASE_NAME = 'besidka-push'
 const AUTH_STATE_PATH = '.playwright/auth-user.json'
@@ -19,6 +20,12 @@ const PUBLIC_SSR_ROUTES = [
   '/signin',
   '/signup',
 ]
+
+interface ConsentChangedPayload {
+  granted: string[]
+  denied: string[]
+  changed: string[]
+}
 
 test.use({
   storageState: {
@@ -53,7 +60,7 @@ async function readLayoutSize(locator: Locator) {
 
 function buildConsentCookieHeader(): string {
   const value = encodeURIComponent(JSON.stringify({
-    v: 1,
+    v: 2,
     granted: ['necessary', 'preferences'],
     id: '550e8400-e29b-41d4-a716-446655440000',
     date: '2026-06-11T12:00:00.000Z',
@@ -66,6 +73,18 @@ async function readColorModeKey(page: Page) {
   return page.evaluate((key) => {
     return localStorage.getItem(key)
   }, COLOR_MODE_KEY)
+}
+
+async function readModelKey(page: Page) {
+  return page.evaluate(() => {
+    return localStorage.getItem('model')
+  })
+}
+
+async function seedModelKey(page: Page) {
+  await page.evaluate(() => {
+    localStorage.setItem('model', 'verify-cleanup')
+  })
 }
 
 async function readIndexedDatabaseNames(page: Page) {
@@ -106,6 +125,44 @@ async function commitViaModal(
   await expect(modal).toBeHidden()
 }
 
+async function recordConsentChangedEvents(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const root = document.querySelector('#__nuxt') as unknown as {
+      __vue_app__?: {
+        config?: {
+          globalProperties?: {
+            $nuxt?: {
+              hook: (name: string, cb: (payload: unknown) => void) => void
+            }
+          }
+        }
+      }
+    }
+    const nuxtApp = root?.__vue_app__?.config?.globalProperties?.$nuxt
+
+    if (!nuxtApp) {
+      return false
+    }
+
+    const target = window as unknown as { __consentEvents: unknown[] }
+
+    target.__consentEvents = []
+    nuxtApp.hook('cookie-consent:changed', (payload) => {
+      target.__consentEvents.push(payload)
+    })
+
+    return true
+  })
+}
+
+async function readConsentChangedEvents(page: Page) {
+  return page.evaluate(() => {
+    const target = window as unknown as { __consentEvents: unknown[] }
+
+    return target.__consentEvents
+  })
+}
+
 async function toggleTheme(page: Page) {
   await page
     .locator('[data-testid="theme-switcher"]:visible')
@@ -129,196 +186,80 @@ async function dismissPopupWithEscape(page: Page) {
   await expect(page.getByTestId('cookies-popup')).toBeHidden()
 }
 
+test.describe('Cookie consent SSR HTML', () => {
+  test('public routes carry no consent state or banner markup for a '
+    + 'visitor without a consent cookie', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
+    await test.step('SSR HTML does not contain the banner markup', async () => {
+      const response = await page.request.get('/signin')
+      const html = await response.text()
+
+      expect.soft(html).not.toContain('cookies-popup')
+      expect.soft(html).not.toContain('cookies-trigger')
+    })
+
+    for (const route of PUBLIC_SSR_ROUTES) {
+      await test.step(`SSR HTML of ${route} carries no consent state`,
+        async () => {
+          const response = await page.request.get(route)
+          const html = await response.text()
+
+          expect.soft(response.ok()).toBe(true)
+          expect.soft(html).not.toContain('cookie-consent:')
+        })
+    }
+  })
+
+  test('public routes carry no consent state for a visitor with a consent '
+    + 'cookie', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
+    for (const route of PUBLIC_SSR_ROUTES) {
+      await test.step(`SSR HTML of ${route} carries no consent state for a `
+        + 'visitor with a consent cookie', async () => {
+        const response = await page.request.get(route, {
+          headers: { cookie: buildConsentCookieHeader() },
+        })
+        const html = await response.text()
+
+        expect.soft(response.ok()).toBe(true)
+        expect.soft(html).not.toContain('cookie-consent:')
+        expect.soft(html).not.toContain('cookies-popup')
+      })
+    }
+  })
+})
+
 test.describe('Cookie consent banner', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/signin')
     await page.waitForLoadState('domcontentloaded')
   })
 
-  test('SSR HTML does not contain the banner markup', async ({ page }) => {
-    const response = await page.request.get('/signin')
-    const html = await response.text()
+  test('an undecided visitor gets the translated popup with equal choices, '
+    + 'Esc dismisses it without storing anything, and it auto-shows again '
+    + 'on the next load', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
 
-    expect(html).not.toContain('cookies-popup')
-    expect(html).not.toContain('cookies-trigger')
-  })
-
-  test('auto-opens the popup for an undecided visitor', async ({ page }) => {
-    await expect(page.getByTestId('cookies-popup')).toBeVisible({
-      timeout: SHOW_DELAY_BUFFER,
-    })
-
-    expect(await getConsentCookie(page)).toBeNull()
-  })
-
-  test('dismiss without decision: Esc closes, nothing persisted, '
-    + 'auto-shows again on next load', async ({ page }) => {
     const popup = page.getByTestId('cookies-popup')
 
-    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-    await page.keyboard.press('Escape')
-    await expect(popup).toBeHidden()
+    await test.step('auto-opens the popup for an undecided visitor',
+      async () => {
+        await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
 
-    expect(await getConsentCookie(page)).toBeNull()
+        expect(await getConsentCookie(page)).toBeNull()
+      })
 
-    await page.reload()
-    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-  })
+    await test.step('i18n texts render instead of raw keys', async () => {
+      const title = await popup.locator('h2').first().textContent()
 
-  test('opt-in commit writes versioned cookie and closes popup',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
-
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-
-      await commitViaModal(page, 'allow-selected', ['preferences'])
-      await expect(popup).toBeHidden()
-
-      const consent = await getConsentCookie(page)
-
-      expect(consent.v).toBe(1)
-      expect(consent.granted).toContain('necessary')
-      expect(consent.granted).toContain('preferences')
+      expect(title).not.toContain('cookieConsent')
+      expect(title?.trim().length).toBeGreaterThan(3)
     })
 
-  test('decision persists: no auto-show, popup reflects saved choice',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
-
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-
-      await commitViaModal(page, 'allow-selected', ['preferences'])
-      await expect(popup).toBeHidden()
-
-      await page.reload()
-      await page.waitForTimeout(3000)
-      await expect(popup).toBeHidden()
-
-      await openPopupViaTrigger(page)
-
-      await expect(
-        page.getByTestId('cookies-state-preferences'),
-      ).toHaveAttribute('data-allowed', 'true')
-
-      await expect(
-        page.getByTestId('cookies-details-toggle'),
-      ).toBeVisible()
-    })
-
-  test('i18n texts render instead of raw keys', async ({ page }) => {
-    const popup = page.getByTestId('cookies-popup')
-
-    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-
-    const title = await popup.locator('h2').first().textContent()
-
-    expect(title).not.toContain('cookieConsent')
-    expect(title?.trim().length).toBeGreaterThan(3)
-  })
-
-  test('modal: a11y attributes, entry details, empty category text',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
-
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-      await page.getByTestId('cookies-change').click()
-
-      const modal = page.getByTestId('cookies-modal')
-
-      await expect(modal).toBeVisible()
-      await expect(popup).toBeHidden()
-
-      const dialog = page.locator('[role="dialog"][aria-modal="true"]')
-
-      await expect(dialog).toBeVisible()
-
-      await modal.locator('details > summary').first().click()
-      await expect(
-        modal.locator('code', { hasText: CONSENT_COOKIE }),
-      ).toBeVisible()
-
-      const categorySections = modal.locator('ul > li')
-      const count = await categorySections.count()
-
-      expect(count).toBeGreaterThanOrEqual(2)
-    })
-
-  test('details section shows consent date and id after a decision',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
-
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-
-      await commitViaModal(page, 'allow-all')
-
-      await openPopupViaTrigger(page)
-      await page.getByTestId('cookies-details-toggle').click()
-
-      const consentId = page.getByTestId('cookies-consent-id')
-      const consentDate = page.getByTestId('cookies-consent-date')
-
-      await expect(consentId).toBeVisible()
-      await expect(consentDate).toBeVisible()
-
-      const idText = await consentId.textContent()
-      const dateText = await consentDate.textContent()
-
-      expect(idText?.trim().length).toBeGreaterThan(0)
-      expect(idText?.trim()).not.toBe('—')
-
-      expect(dateText?.trim().length).toBeGreaterThan(0)
-      expect(dateText?.trim()).not.toBe('—')
-    })
-
-  test('modal keeps Tab focus inside the dialog (focus trap loop)',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
-
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-      await page.getByTestId('cookies-change').click()
-      await expect(page.getByTestId('cookies-modal')).toBeVisible()
-
-      for (let step = 0; step < 25; step += 1) {
-        await page.keyboard.press('Tab')
-
-        const inDialog = await page.evaluate(() => {
-          const active = document.activeElement
-          const dialog = document.querySelector(
-            '[role="dialog"][aria-modal="true"]',
-          )
-
-          return !!dialog && !!active && dialog.contains(active)
-        })
-
-        expect(inDialog).toBe(true)
-      }
-    })
-
-  test('allow all from modal grants every category', async ({ page }) => {
-    const popup = page.getByTestId('cookies-popup')
-
-    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-    await page.getByTestId('cookies-change').click()
-
-    const modal = page.getByTestId('cookies-modal')
-
-    await expect(modal).toBeVisible()
-    await modal.getByTestId('cookies-allow-all').click()
-    await expect(modal).toBeHidden()
-
-    const consent = await getConsentCookie(page)
-
-    expect(consent.granted).toEqual(
-      expect.arrayContaining(['necessary', 'preferences']),
-    )
-  })
-
-  test('first layer offers equal Accept all and Reject all choices',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
-
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-
+    await test.step('first layer offers equal Accept all and Reject all '
+      + 'choices', async () => {
       const rejectAll = popup.getByTestId('cookies-reject-all')
       const acceptAll = popup.getByTestId('cookies-allow-all')
 
@@ -342,13 +283,132 @@ test.describe('Cookie consent banner', () => {
       ).toBeLessThanOrEqual(0.5)
     })
 
-  test('Accept all on the first layer grants preferences in one click',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
+    await test.step('color-mode key is not written for an undecided visitor',
+      async () => {
+        expect(await readColorModeKey(page)).toBeNull()
+      })
 
+    await test.step('dismiss without decision: Esc closes, nothing persisted',
+      async () => {
+        await page.keyboard.press('Escape')
+        await expect(popup).toBeHidden()
+
+        expect(await getConsentCookie(page)).toBeNull()
+      })
+
+    await test.step('auto-shows again on next load, still without the '
+      + 'color-mode key', async () => {
+      await page.reload()
       await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-      await popup.getByTestId('cookies-allow-all').click()
+
+      expect(await readColorModeKey(page)).toBeNull()
+    })
+  })
+
+  test('a modal opt-in writes a versioned cookie, fires the changed hook '
+    + 'once, and persists across a reload', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
+    const popup = page.getByTestId('cookies-popup')
+
+    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
+
+    expect(await recordConsentChangedEvents(page)).toBe(true)
+
+    await commitViaModal(page, 'allow-selected', ['preferences'])
+    await expect(popup).toBeHidden()
+
+    await test.step('opt-in commit writes versioned cookie and closes popup',
+      async () => {
+        const consent = await getConsentCookie(page)
+
+        expect(consent.v).toBe(2)
+        expect(consent.granted).toContain('necessary')
+        expect(consent.granted).toContain('preferences')
+      })
+
+    await test.step('cookie-consent:changed hook fires on commit', async () => {
+      const events = await readConsentChangedEvents(page)
+
+      expect(events).toHaveLength(1)
+
+      const payload = events[0] as ConsentChangedPayload
+
+      expect(payload.granted).toContain('necessary')
+      expect(payload.granted).toContain('preferences')
+      expect(payload.changed).toContain('preferences')
+    })
+
+    await test.step('decision persists: no auto-show, popup reflects saved '
+      + 'choice', async () => {
+      await page.reload()
+      await page.waitForTimeout(3000)
       await expect(popup).toBeHidden()
+
+      await openPopupViaTrigger(page)
+
+      await expect(
+        page.getByTestId('cookies-state-preferences'),
+      ).toHaveAttribute('data-allowed', 'true')
+
+      await expect(
+        page.getByTestId('cookies-details-toggle'),
+      ).toBeVisible()
+    })
+  })
+
+  test('Customize opens an accessible modal that keeps Tab focus inside, '
+    + 'and its Accept all grants every category', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
+    const popup = page.getByTestId('cookies-popup')
+    const modal = page.getByTestId('cookies-modal')
+
+    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
+    await page.getByTestId('cookies-change').click()
+
+    await test.step('modal: a11y attributes', async () => {
+      await expect(modal).toBeVisible()
+      await expect(popup).toBeHidden()
+
+      const dialog = page.locator('[role="dialog"][aria-modal="true"]')
+
+      await expect(dialog).toBeVisible()
+    })
+
+    await test.step('modal keeps Tab focus inside the dialog (focus trap '
+      + 'loop)', async () => {
+      for (let step = 0; step < 25; step += 1) {
+        await page.keyboard.press('Tab')
+
+        const inDialog = await page.evaluate(() => {
+          const active = document.activeElement
+          const dialog = document.querySelector(
+            '[role="dialog"][aria-modal="true"]',
+          )
+
+          return !!dialog && !!active && dialog.contains(active)
+        })
+
+        expect(inDialog).toBe(true)
+      }
+    })
+
+    await test.step('modal: entry details and categories', async () => {
+      await modal.locator('details > summary').first().click()
+      await expect(
+        modal.locator('code', { hasText: CONSENT_COOKIE }),
+      ).toBeVisible()
+
+      const categorySections = modal.locator('ul > li')
+      const count = await categorySections.count()
+
+      expect(count).toBeGreaterThanOrEqual(2)
+    })
+
+    await test.step('allow all from modal grants every category', async () => {
+      await modal.getByTestId('cookies-allow-all').click()
+      await expect(modal).toBeHidden()
 
       const consent = await getConsentCookie(page)
 
@@ -356,134 +416,163 @@ test.describe('Cookie consent banner', () => {
         expect.arrayContaining(['necessary', 'preferences']),
       )
     })
-
-  test('Reject all records a necessary-only decision, reopen shows the '
-    + 'current state without withdraw', async ({ page }) => {
-    const popup = page.getByTestId('cookies-popup')
-
-    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-
-    await page.evaluate(() => {
-      localStorage.setItem('model', 'verify-cleanup')
-    })
-
-    await popup.getByTestId('cookies-reject-all').click()
-    await expect(popup).toBeHidden()
-
-    const consent = await getConsentCookie(page)
-
-    expect(consent.granted).toEqual(['necessary'])
-
-    const modelValue = await page.evaluate(() => {
-      return localStorage.getItem('model')
-    })
-
-    expect(modelValue).toBeNull()
-
-    await openPopupViaTrigger(page)
-
-    await expect(popup.getByTestId('cookies-details-toggle')).toBeVisible()
-    await expect(
-      popup.getByTestId('cookies-state-preferences'),
-    ).toHaveAttribute('data-allowed', 'false')
-    await expect(popup.getByTestId('cookies-withdraw')).toHaveCount(0)
-    await expect(popup.getByTestId('cookies-reject-all')).toHaveCount(0)
   })
 
-  test('withdraw appears only after Accept all and removes preference '
-    + 'storage entries (cleanup)', async ({ page }) => {
+  test('Accept all on the first layer grants preferences in one click, then '
+    + 'the receipt details and withdraw are offered', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
     const popup = page.getByTestId('cookies-popup')
 
     await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-    await expect(popup.getByTestId('cookies-withdraw')).toHaveCount(0)
+
+    await test.step('withdraw is not offered before a decision', async () => {
+      await expect(popup.getByTestId('cookies-withdraw')).toHaveCount(0)
+    })
 
     await popup.getByTestId('cookies-allow-all').click()
     await expect(popup).toBeHidden()
 
-    await page.evaluate(() => {
-      localStorage.setItem('model', 'verify-cleanup')
+    await test.step('Accept all on the first layer grants preferences in one '
+      + 'click', async () => {
+      const consent = await getConsentCookie(page)
+
+      expect(consent.granted).toEqual(
+        expect.arrayContaining(['necessary', 'preferences']),
+      )
     })
 
+    await test.step('color-mode key is written once Accept all grants '
+      + 'preferences', async () => {
+      await expect.poll(() => {
+        return readColorModeKey(page)
+      }).not.toBeNull()
+    })
+
+    await seedModelKey(page)
     await openPopupViaTrigger(page)
 
-    const withdraw = popup.getByTestId('cookies-withdraw')
+    await test.step('details section shows consent date and id after a '
+      + 'decision', async () => {
+      await page.getByTestId('cookies-details-toggle').click()
 
-    await expect(withdraw).toBeVisible()
-    await withdraw.click()
-    await expect(popup).toBeHidden()
+      const consentId = page.getByTestId('cookies-consent-id')
+      const consentDate = page.getByTestId('cookies-consent-date')
 
-    const consent = await getConsentCookie(page)
+      await expect(consentId).toBeVisible()
+      await expect(consentDate).toBeVisible()
 
-    expect(consent.granted).toEqual(['necessary'])
+      const idText = await consentId.textContent()
+      const dateText = await consentDate.textContent()
 
-    const modelValue = await page.evaluate(() => {
-      return localStorage.getItem('model')
+      expect(idText?.trim().length).toBeGreaterThan(0)
+      expect(idText?.trim()).not.toBe('—')
+
+      expect(dateText?.trim().length).toBeGreaterThan(0)
+      expect(dateText?.trim()).not.toBe('—')
     })
 
-    expect(modelValue).toBeNull()
+    await test.step('withdraw appears after Accept all and removes preference '
+      + 'storage entries (cleanup)', async () => {
+      const withdraw = popup.getByTestId('cookies-withdraw')
+
+      await expect(withdraw).toBeVisible()
+      await withdraw.click()
+      await expect(popup).toBeHidden()
+
+      const consent = await getConsentCookie(page)
+
+      expect(consent.granted).toEqual(['necessary'])
+      expect(await readModelKey(page)).toBeNull()
+    })
   })
 
-  test('cookie-consent:changed hook fires on commit', async ({ page }) => {
+  test('Reject all records a necessary-only decision the server accepts, '
+    + 'and preference storage stays empty after a reload', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
     const popup = page.getByTestId('cookies-popup')
 
     await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
+    await seedModelKey(page)
 
-    const hooked = await page.evaluate(() => {
-      const root = document.querySelector('#__nuxt') as unknown as {
-        __vue_app__?: {
-          config?: {
-            globalProperties?: {
-              $nuxt?: {
-                hook: (name: string, cb: (payload: unknown) => void) => void
-              }
-            }
-          }
-        }
-      }
-      const nuxtApp = root?.__vue_app__?.config?.globalProperties?.$nuxt
-
-      if (!nuxtApp) {
-        return false
-      }
-
-      const target = window as unknown as { __consentEvents: unknown[] }
-
-      target.__consentEvents = []
-      nuxtApp.hook('cookie-consent:changed', (payload) => {
-        target.__consentEvents.push(payload)
+    await test.step('the consent receipt of a real decision is accepted by '
+      + 'the server', async () => {
+      const receiptResponse = page.waitForResponse((response) => {
+        return response.url().endsWith('/api/v1/consents')
+          && response.request().method() === 'POST'
       })
 
-      return true
+      await popup.getByTestId('cookies-reject-all').click()
+
+      expect((await receiptResponse).status()).toBe(204)
     })
 
-    expect(hooked).toBe(true)
+    await test.step('Reject all records a necessary-only decision and removes '
+      + 'preference storage entries', async () => {
+      await expect(popup).toBeHidden()
 
-    await page.getByTestId('cookies-change').click()
+      const consent = await getConsentCookie(page)
 
-    const modal = page.getByTestId('cookies-modal')
-
-    await expect(modal).toBeVisible()
-    await modal.getByTestId('cookies-toggle-preferences').check()
-    await modal.getByTestId('cookies-allow-selected').click()
-    await expect(modal).toBeHidden()
-
-    const events = await page.evaluate(() => {
-      const target = window as unknown as { __consentEvents: unknown[] }
-
-      return target.__consentEvents
+      expect(consent.granted).toEqual(['necessary'])
+      expect(await readModelKey(page)).toBeNull()
     })
 
-    expect(events).toHaveLength(1)
+    await test.step('reopen shows the current state without withdraw',
+      async () => {
+        await openPopupViaTrigger(page)
 
-    const payload = events[0] as {
-      granted: string[]
-      denied: string[]
-      changed: string[]
-    }
+        await expect(popup.getByTestId('cookies-details-toggle')).toBeVisible()
+        await expect(
+          popup.getByTestId('cookies-state-preferences'),
+        ).toHaveAttribute('data-allowed', 'false')
+        await expect(popup.getByTestId('cookies-withdraw')).toHaveCount(0)
+        await expect(popup.getByTestId('cookies-reject-all')).toHaveCount(0)
+      })
 
-    expect(payload.granted).toContain('necessary')
-    expect(payload.granted).toContain('preferences')
-    expect(payload.changed).toContain('preferences')
+    await test.step('color-mode key stays absent after Reject all and a '
+      + 'reload', async () => {
+      await page.reload()
+      await page.waitForTimeout(SHOW_DELAY + SHOW_DELAY_MARGIN)
+
+      expect(await readColorModeKey(page)).toBeNull()
+    })
+  })
+
+  test('the trigger restores focus after Esc and toggles the popup closed '
+    + 'on a second click', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
+
+    const popup = page.getByTestId('cookies-popup')
+    const trigger = page.getByTestId('cookies-trigger')
+
+    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
+    await page.keyboard.press('Escape')
+    await expect(popup).toBeHidden()
+
+    await test.step('focus restores to the trigger after closing with Esc',
+      async () => {
+        await openPopupViaTrigger(page)
+        await page.keyboard.press('Escape')
+        await expect(popup).toBeHidden()
+
+        const activeTestId = await page.evaluate(() => {
+          return document.activeElement?.getAttribute('data-testid')
+        })
+
+        expect(activeTestId).toBe('cookies-trigger')
+      })
+
+    await test.step('trigger toggles the popup closed on second click',
+      async () => {
+        await trigger.click()
+        await expect(popup).toBeVisible()
+        await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+        await trigger.click()
+        await expect(popup).toBeHidden()
+        await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      })
   })
 
   test('a consent cookie from an older revision triggers re-consent',
@@ -504,45 +593,9 @@ test.describe('Cookie consent banner', () => {
       })
     })
 
-  test('focus restores to the trigger after closing with Esc',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
-
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-      await page.keyboard.press('Escape')
-      await expect(popup).toBeHidden()
-
-      await openPopupViaTrigger(page)
-      await page.keyboard.press('Escape')
-      await expect(popup).toBeHidden()
-
-      const activeTestId = await page.evaluate(() => {
-        return document.activeElement?.getAttribute('data-testid')
-      })
-
-      expect(activeTestId).toBe('cookies-trigger')
-    })
-
-  test('trigger toggles the popup closed on second click', async ({ page }) => {
-    const popup = page.getByTestId('cookies-popup')
-    const trigger = page.getByTestId('cookies-trigger')
-
-    await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-    await page.keyboard.press('Escape')
-    await expect(popup).toBeHidden()
-
-    await trigger.click()
-    await expect(popup).toBeVisible()
-    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
-
-    await trigger.click()
-    await expect(popup).toBeHidden()
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  })
-
   test('dismissed popup does not reopen after a client-side navigation',
     async ({ page }) => {
-      test.setTimeout(30_000)
+      test.setTimeout(MULTI_STEP_TIMEOUT)
 
       await page.goto('/')
 
@@ -561,25 +614,14 @@ test.describe('Cookie consent banner', () => {
       await expect(page.getByTestId('cookies-modal')).toBeHidden()
     })
 
-  test('color-mode key is not written for an undecided visitor',
-    async ({ page }) => {
-      await expect(page.getByTestId('cookies-popup')).toBeVisible({
-        timeout: SHOW_DELAY_BUFFER,
-      })
+  test('push handoff IndexedDB is never created for an undecided visitor, '
+    + 'and one left by an earlier version is removed', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
 
-      expect(await readColorModeKey(page)).toBeNull()
+    await openLanding(page)
 
-      await page.reload()
-      await expect(page.getByTestId('cookies-popup')).toBeVisible({
-        timeout: SHOW_DELAY_BUFFER,
-      })
-
-      expect(await readColorModeKey(page)).toBeNull()
-    })
-
-  test('push handoff IndexedDB is not created for an undecided visitor',
-    async ({ page }) => {
-      await openLanding(page)
+    await test.step('push handoff IndexedDB is not created for an undecided '
+      + 'visitor', async () => {
       await expect(page.getByTestId('cookies-popup')).toBeVisible({
         timeout: SHOW_DELAY_BUFFER,
       })
@@ -594,9 +636,8 @@ test.describe('Cookie consent banner', () => {
         .not.toContain(PUSH_DATABASE_NAME)
     })
 
-  test('a push handoff IndexedDB left by an earlier version is removed',
-    async ({ page }) => {
-      await openLanding(page)
+    await test.step('a push handoff IndexedDB left by an earlier version is '
+      + 'removed', async () => {
       await page.evaluate((name) => {
         return new Promise<void>((resolve) => {
           const request = indexedDB.open(name, 1)
@@ -616,153 +657,75 @@ test.describe('Cookie consent banner', () => {
       await expect.poll(() => readIndexedDatabaseNames(page))
         .not.toContain(PUSH_DATABASE_NAME)
     })
+  })
 
-  test('the consent receipt of a real decision is accepted by the server',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
+  test('the remember prompt asks an undecided visitor, Not now holds for '
+    + 'the page load, it asks again after a reload, and Remember grants '
+    + 'preferences', async ({ page }) => {
+    test.setTimeout(MULTI_STEP_TIMEOUT)
 
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
+    const prompt = page.getByTestId('cookies-remember-prompt')
 
-      const receiptResponse = page.waitForResponse((response) => {
-        return response.url().endsWith('/api/v1/consents')
-          && response.request().method() === 'POST'
-      })
+    await openLanding(page)
 
-      await popup.getByTestId('cookies-reject-all').click()
+    await dismissPopupWithEscape(page)
+    await expect(prompt).toBeHidden()
 
-      expect((await receiptResponse).status()).toBe(204)
-    })
+    await test.step('asks to remember preferences when an undecided visitor '
+      + 'changes the theme', async () => {
+      await toggleTheme(page)
 
-  test('color-mode key stays absent after Reject all and a reload',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
-
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-      await popup.getByTestId('cookies-reject-all').click()
-      await expect(popup).toBeHidden()
-
-      await page.reload()
-      await page.waitForTimeout(SHOW_DELAY + SHOW_DELAY_MARGIN)
-
+      await expect(prompt).toBeVisible()
+      await expect(prompt).toContainText('Remember your preferences')
+      expect(await getConsentCookie(page)).toBeNull()
       expect(await readColorModeKey(page)).toBeNull()
     })
 
-  test('color-mode key is written once Accept all grants preferences',
-    async ({ page }) => {
-      const popup = page.getByTestId('cookies-popup')
+    await test.step('Not now hides the prompt for the rest of the page load '
+      + 'and records no decision', async () => {
+      await page.getByTestId('cookies-remember-dismiss').click()
+      await expect(prompt).toBeHidden()
 
-      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
-      await popup.getByTestId('cookies-allow-all').click()
-      await expect(popup).toBeHidden()
+      await toggleTheme(page)
+      await page.waitForTimeout(500)
 
-      await expect.poll(() => {
-        return readColorModeKey(page)
-      }).not.toBeNull()
+      await expect(prompt).toBeHidden()
+      expect(await getConsentCookie(page)).toBeNull()
     })
 
-  for (const route of PUBLIC_SSR_ROUTES) {
-    test(`SSR HTML of ${route} carries no consent state`,
-      async ({ page }) => {
-        const response = await page.request.get(route)
-        const html = await response.text()
+    await test.step('footer Cookie settings opens the settings dialog',
+      async () => {
+        const opener = page.getByTestId('footer-cookie-settings')
 
-        expect(response.ok()).toBe(true)
-        expect(html).not.toContain('cookie-consent:')
+        await opener.scrollIntoViewIfNeeded()
+        await expect(opener).toBeVisible()
+        await opener.click()
+
+        await expect(page.getByTestId('cookies-modal')).toBeVisible()
       })
 
-    test(`SSR HTML of ${route} carries no consent state for a visitor `
-      + 'with a consent cookie',
-    async ({ page }) => {
-      const response = await page.request.get(route, {
-        headers: { cookie: buildConsentCookieHeader() },
-      })
-      const html = await response.text()
-
-      expect(response.ok()).toBe(true)
-      expect(html).not.toContain('cookie-consent:')
-      expect(html).not.toContain('cookies-popup')
-    })
-  }
-
-  test('footer Cookie settings opens the settings dialog',
-    async ({ page }) => {
-      await openLanding(page)
+    await test.step('the prompt may ask again after a reload, once the popup '
+      + 'is dismissed', async () => {
+      await page.reload()
       await dismissPopupWithEscape(page)
+      await toggleTheme(page)
 
-      const opener = page.getByTestId('footer-cookie-settings')
-
-      await opener.scrollIntoViewIfNeeded()
-      await expect(opener).toBeVisible()
-      await opener.click()
-
-      await expect(page.getByTestId('cookies-modal')).toBeVisible()
+      await expect(prompt).toBeVisible()
+      expect(await readColorModeKey(page)).toBeNull()
     })
 
-  test('asks to remember preferences when an undecided visitor changes '
-    + 'the theme, and Remember grants preferences', async ({ page }) => {
-    const prompt = page.getByTestId('cookies-remember-prompt')
+    await test.step('Remember grants preferences', async () => {
+      await page.getByTestId('cookies-remember').click()
+      await expect(prompt).toBeHidden()
 
-    await openLanding(page)
+      const consent = await getConsentCookie(page)
 
-    await dismissPopupWithEscape(page)
-    await expect(prompt).toBeHidden()
-
-    await toggleTheme(page)
-
-    await expect(prompt).toBeVisible()
-    await expect(prompt).toContainText('Remember your preferences')
-    expect(await getConsentCookie(page)).toBeNull()
-    expect(await readColorModeKey(page)).toBeNull()
-
-    await page.getByTestId('cookies-remember').click()
-    await expect(prompt).toBeHidden()
-
-    const consent = await getConsentCookie(page)
-
-    expect(consent.granted).toEqual(
-      expect.arrayContaining(['necessary', 'preferences']),
-    )
-    expect(consent.granted).not.toContain('analytics')
-    expect(await readColorModeKey(page)).not.toBeNull()
-  })
-
-  test('Not now hides the prompt for the rest of the page load and records '
-    + 'no decision', async ({ page }) => {
-    const prompt = page.getByTestId('cookies-remember-prompt')
-
-    await openLanding(page)
-
-    await dismissPopupWithEscape(page)
-    await toggleTheme(page)
-    await expect(prompt).toBeVisible()
-
-    await page.getByTestId('cookies-remember-dismiss').click()
-    await expect(prompt).toBeHidden()
-
-    await toggleTheme(page)
-    await page.waitForTimeout(500)
-
-    await expect(prompt).toBeHidden()
-    expect(await getConsentCookie(page)).toBeNull()
-  })
-
-  test('the prompt may ask again after a reload, once the popup is '
-    + 'dismissed', async ({ page }) => {
-    const prompt = page.getByTestId('cookies-remember-prompt')
-
-    await openLanding(page)
-
-    await dismissPopupWithEscape(page)
-    await toggleTheme(page)
-    await expect(prompt).toBeVisible()
-    await page.getByTestId('cookies-remember-dismiss').click()
-    await expect(prompt).toBeHidden()
-
-    await page.reload()
-    await dismissPopupWithEscape(page)
-    await toggleTheme(page)
-
-    await expect(prompt).toBeVisible()
+      expect(consent.granted).toEqual(
+        expect.arrayContaining(['necessary', 'preferences']),
+      )
+      expect(consent.granted).not.toContain('analytics')
+      expect(await readColorModeKey(page)).not.toBeNull()
+    })
   })
 
   test('a visitor who chose Reject all is never asked to remember',

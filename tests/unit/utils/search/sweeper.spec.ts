@@ -267,4 +267,123 @@ describe('sweepMessageSearchIndex', () => {
       }),
     }))
   })
+
+  it('still writes the cursor and indexes other users when a row has a '
+    + 'non-string text part', async () => {
+    testDb.insertChat({ id: 1, userId: 7 })
+    testDb.insertChat({ id: 2, userId: 8 })
+    testDb.insertMessage({
+      id: 1, chatId: 1, parts: [{ type: 'text', text: 1 }],
+    })
+    testDb.insertMessage({
+      id: 2, chatId: 2, parts: [{ type: 'text', text: 'healthy row' }],
+    })
+    testDb.sqlite.exec(
+      'insert into message_search(rowid, owner, body, body_stem)'
+      + ' values (99, \'u7\', \'orphan\', \'orphan\')',
+    )
+
+    const kv = createFakeKv()
+
+    vi.stubGlobal('useKV', () => kv)
+
+    const { sweepMessageSearchIndex } = await importSweeper()
+    const result = await sweepMessageSearchIndex({
+      batchSize: 1,
+      maxRuntimeMs: 20000,
+      logger,
+      db: testDb.db,
+    })
+
+    expect(kv.put).toHaveBeenCalledWith('search-index:sweep-cursor', '1')
+    expect(result.backfilledCount).toBe(1)
+    expect(result.garbageCollectedCount).toBe(1)
+
+    const second = await sweepMessageSearchIndex({
+      batchSize: 1,
+      maxRuntimeMs: 20000,
+      logger,
+      db: testDb.db,
+    })
+
+    expect(second.backfilledCount).toBe(1)
+
+    const indexedBodies = testDb.sqlite.prepare(
+      'select rowid, body from message_search order by rowid asc',
+    ).all()
+
+    expect(indexedBodies).toEqual([
+      { rowid: 1, body: '' },
+      { rowid: 2, body: 'healthy row' },
+    ])
+  })
+
+  it('isolates a user whose indexing throws so the cursor is written, '
+    + 'other users are indexed and garbage collection still runs', async () => {
+    vi.resetModules()
+    vi.doMock(
+      '~~/server/utils/search/index-writer',
+      async (importOriginal) => {
+        const actual = await importOriginal<
+          typeof import('~~/server/utils/search/index-writer')
+        >()
+
+        return {
+          ...actual,
+          indexMessagesForSearch: vi.fn(async (
+            input: Parameters<typeof actual.indexMessagesForSearch>[0],
+          ) => {
+            if (input.userId === 7) {
+              throw new Error('poisoned user')
+            }
+
+            return actual.indexMessagesForSearch(input)
+          }),
+        }
+      },
+    )
+
+    testDb.insertChat({ id: 1, userId: 7 })
+    testDb.insertChat({ id: 2, userId: 8 })
+    testDb.insertMessage({
+      id: 1, chatId: 1, parts: [{ type: 'text', text: 'poisoned row' }],
+    })
+    testDb.insertMessage({
+      id: 2, chatId: 2, parts: [{ type: 'text', text: 'healthy row' }],
+    })
+    testDb.sqlite.exec(
+      'insert into message_search(rowid, owner, body, body_stem)'
+      + ' values (99, \'u7\', \'orphan\', \'orphan\')',
+    )
+
+    const kv = createFakeKv()
+
+    vi.stubGlobal('useKV', () => kv)
+
+    const { sweepMessageSearchIndex } = await importSweeper()
+    const result = await sweepMessageSearchIndex({
+      batchSize: 10,
+      maxRuntimeMs: 20000,
+      logger,
+      db: testDb.db,
+    })
+
+    expect(kv.put).toHaveBeenCalledWith('search-index:sweep-cursor', '0')
+    expect(result.backfilledCount).toBe(1)
+    expect(result.garbageCollectedCount).toBe(1)
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      messageSearchSweep: expect.objectContaining({
+        phase: 'user-backfill',
+        userId: 7,
+      }),
+    }))
+
+    const indexedRows = testDb.sqlite.prepare(
+      'select rowid, body from message_search order by rowid asc',
+    ).all()
+
+    expect(indexedRows).toEqual([{ rowid: 2, body: 'healthy row' }])
+
+    vi.doUnmock('~~/server/utils/search/index-writer')
+  })
 })

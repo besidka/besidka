@@ -1,4 +1,5 @@
 import type { FileMetadata } from '#shared/types/files.d'
+import type { CookieConsentChangedPayload } from '@besidka/nuxt-cookie-consent'
 
 declare module '#app' {
   interface RuntimeNuxtHooks {
@@ -6,6 +7,9 @@ declare module '#app' {
     'chat:submit': (payload: { text: string }) => void
     'chat:attach-file': (
       file: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>,
+    ) => void
+    'cookie-consent:receipt-sent': (
+      payload: CookieConsentChangedPayload,
     ) => void
     'chat:stop': () => void
     'chat:regenerate': () => void
