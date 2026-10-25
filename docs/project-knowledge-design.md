@@ -849,15 +849,17 @@ model without `contextLength` reads "Context window unknown, assuming
 panel. On the project page it sits under the meter, collapsed after the
 first view, with the "seen" flag kept in `localStorage`.
 
-**One estimator** in a K0 shared util, used by the 5.3 table, the meter and
-the alert, so all numbers agree:
+**One estimator**, used by the 5.3 table, the meter and the alert, so all
+numbers agree. **As built:** W5 shipped it in #521 as
+`shared/utils/prompt-cache-estimate.ts`, with the alert as
+`app/components/Profile/Memory/CacheInfo.vue` on `/profile/memory`. K0's own
+duplicate was removed after the merge.
 
 ```
-estimatePromptCacheCost({ cost, tokens, turns, knowledgeChanges })
-  in    = cost.input
-  read  = cost.cacheRead  ?? in
-  write = cost.cacheWrite ?? in
-  uncached   = turns × tokens × in
+estimatePromptCacheCost({ tokens, turns, inputPrice, cacheReadPrice?, cacheWritePrice? })
+  read  = cacheReadPrice  ?? inputPrice
+  write = cacheWritePrice ?? inputPrice
+  uncached   = turns × tokens × inputPrice
   cached     = tokens × write + (turns − 1) × tokens × read
   perChange  = tokens × (write − read)
 ```
@@ -914,8 +916,8 @@ Base: the project-knowledge umbrella branch (children `--base` it, per
 - `shared/types/project-knowledge.d.ts`, `shared/utils/project-knowledge-policy.ts`
   (allow-list, caps, `PCT`, `ABS_CAP`, `MARGIN`, family factors),
   `shared/utils/project-knowledge-budget.ts` (pure `estimateKnowledgeTokens`,
-  `decideKnowledgeMode`), `shared/utils/prompt-cache-cost.ts`
-  (`estimatePromptCacheCost`), `shared/utils/project-knowledge-schemas.ts`
+  `decideKnowledgeMode`), `shared/utils/prompt-cache-estimate.ts`
+  (`estimatePromptCacheCost`, already shipped on the base branch), `shared/utils/project-knowledge-schemas.ts`
   (zod), and the pack line format;
 - `server/db/schemas/project-knowledge.ts`, its export, the two `projects`
   columns, and **one additive migration** (checked for `DROP TABLE`,
@@ -955,8 +957,8 @@ route.
 
 **K3: Client (UI and extraction).** Owns `app/components/Projects/Knowledge/**`
 (panel, note editor with `img: Img`, folder picker, mode selector, meter),
-`app/components/Memory/PromptCacheAlert.vue` (also mounted in
-`app/pages/profile/memory.vue`), `app/composables/project-knowledge.ts`,
+the project-panel mount of the existing `CacheInfo.vue`,
+`app/composables/project-knowledge.ts`,
 `app/workers/knowledge-extract.ts` (lazy Web Worker: `unpdf`, `mammoth`
 to HTML, `read-excel-file`, text decoding, ignore rules, SHA-256),
 `app/utils/knowledge-html-to-markdown.ts` (main-thread `turndown`), the new
@@ -1010,9 +1012,9 @@ implemented and tested; nothing reads it at runtime yet.
 | File | Exports |
 |---|---|
 | `shared/utils/project-knowledge-policy.ts` | enums `knowledgeModes`, `knowledgeDecisionModes`, `knowledgeDecisionReasons`, `knowledgeItemKinds`, `knowledgeExtractStatuses`, `knowledgeExtractors`, `knowledgeTokenFamilies`; `KNOWLEDGE_BUDGET`, `KNOWLEDGE_LIMITS`, `KNOWLEDGE_CHARS_PER_TOKEN`; allow-list and ignore lists; `getKnowledgeFileCategory`, `isIgnoredKnowledgePath` |
-| `shared/types/project-knowledge.d.ts` | `KnowledgeItem` (wire), `ProjectKnowledgeSummary`, `KnowledgePackHeader`, `KnowledgePackLine`, `KnowledgeDecisionInput`, `KnowledgeDecision`, `PromptCacheCostInput`/`Estimate`, `KnowledgeSearchHit`/`Result`, `KnowledgeReadResult`, char/media count types |
+| `shared/types/project-knowledge.d.ts` | `KnowledgeItem` (wire), `ProjectKnowledgeSummary`, `KnowledgePackHeader`, `KnowledgePackLine`, `KnowledgeDecisionInput`, `KnowledgeDecision`, `KnowledgeSearchHit`/`Result`, `KnowledgeReadResult`, char/media count types |
 | `shared/utils/project-knowledge-budget.ts` | `countKnowledgeChars`, `addKnowledgeCharCounts`, `resolveKnowledgeTokenFamily`, `estimateKnowledgeTextTokens`, `estimateKnowledgeTokens`, `computeKnowledgeBudget`, `computeReservedOutputTokens`, `measuredHistoryTokens`, `decideKnowledgeMode` |
-| `shared/utils/prompt-cache-cost.ts` | `estimatePromptCacheCost` |
+| `shared/utils/prompt-cache-estimate.ts` | `estimatePromptCacheCost`, `PromptCacheCostInput`, `PromptCacheCostEstimate` (shipped on the base branch, not K0) |
 | `shared/utils/project-knowledge-schemas.ts` | `knowledgeModePatchSchema`, `knowledgeNoteCreateSchema`, `knowledgeNoteUpdateSchema`, `knowledgeItemPatchSchema`, `knowledgeItemCreateSchema`, `knowledgeItemsBatchCreateSchema`, `knowledgeCommitSchema`, `knowledgePackHeaderSchema`, `knowledgePackLineSchema`, `knowledgeSearchToolInputSchema`, `knowledgeReadToolInputSchema`, `knowledgeTextByteLength` |
 | `server/db/schemas/project-knowledge.ts`, `projects.ts`, `relations.ts` | `projectKnowledgeItems`; `projects.knowledgeMode`, `knowledgeVersion`, `knowledgePackVersion`; relations on users, projects, files |
 | `server/utils/knowledge/storage-keys.ts` | `knowledgeUserPrefix`, `knowledgeProjectPrefix`, `knowledgeItemTextKey`, `knowledgePackKey`, `knowledgePackIndexKey` (internal integer ids only; anything else throws) |
@@ -1231,13 +1233,15 @@ develops against these shapes with mocked `$fetch`.
 - **Files owned**:
   - `app/components/Projects/Knowledge/**` (panel, item list, note editor
     with `img: Img`, folder picker, mode selector, capacity meter);
-  - `app/components/Memory/PromptCacheAlert.vue` and its mount in
-    `app/pages/profile/memory.vue`;
+  - `app/components/Profile/Memory/CacheInfo.vue` (exists since #521):
+    replace its local `KNOWLEDGE_TOKEN_CAP`, `KNOWLEDGE_BUDGET_SHARE` and
+    `UNKNOWN_CONTEXT_LENGTH` with `KNOWLEDGE_BUDGET` and
+    `computeKnowledgeBudget` from K0, and add an optional `knowledgeTokens`
+    prop so the project panel shows the project's real `K` (the profile page
+    keeps the 64k example);
   - the panel's mount in `app/pages/chats/projects/[id].vue`;
   - `app/composables/project-knowledge.ts` (`useProjectKnowledge(projectId)`:
     `useLazyFetch` for the summary, `$fetch` mutations);
-  - `app/composables/prompt-cache-estimate.ts` (picker model →
-    `estimatePromptCacheCost` + `computeKnowledgeBudget`);
   - `app/workers/knowledge-extract.ts`;
   - `app/utils/knowledge-html-to-markdown.ts`;
   - the chip labels for the two knowledge tools in `app/utils/reasoning.ts`.

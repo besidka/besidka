@@ -106,24 +106,6 @@ export interface KnowledgeDecision {
   notice: 'full-does-not-fit' | null
 }
 
-export interface PromptCacheCostInput {
-  cost: {
-    input: number
-    cacheRead?: number | null
-    cacheWrite?: number | null
-  }
-  tokens: number
-  turns: number
-}
-
-export interface PromptCacheCostEstimate {
-  uncachedUsd: number
-  cachedUsd: number
-  perChangeUsd: number
-  savingsRatio: number
-  hasCachePrice: boolean
-}
-
 export interface KnowledgeSearchHit {
   itemId: string
   title: string
