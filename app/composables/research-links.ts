@@ -2,6 +2,10 @@ export function useResearchLink() {
   const { allowExternalLinks, setAllowExternalLinks } = useUserSetting()
 
   async function openResearchLink(url: string): Promise<void> {
+    if (!isHttpUrl(url)) {
+      return
+    }
+
     if (allowExternalLinks.value) {
       window.open(url, '_blank', 'noopener,noreferrer')
 

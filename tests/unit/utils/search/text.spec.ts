@@ -27,6 +27,19 @@ describe('extractMessageSearchText', () => {
     expect(extractMessageSearchText(parts)).toBe('Hello world Second line')
   })
 
+  it('ignores parts whose text is not a string', () => {
+    const parts = [
+      { type: 'text', text: 1 },
+      { type: 'text', text: { nested: 'value' } },
+      { type: 'text', text: null },
+      null,
+      'not-an-object',
+      { type: 'text', text: 'Kept' },
+    ]
+
+    expect(extractMessageSearchText(parts)).toBe('Kept')
+  })
+
   it('drops empty and whitespace-only text parts', () => {
     const parts = [
       { type: 'text', text: '   ' },

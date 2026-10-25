@@ -366,14 +366,18 @@ in `production.yml` declare `environment: production`, so the owner can
 restrict which branches may run them (see "Secrets & Environments").
 
 **Migration source consistency**: `preview-build.yml` uploads `.drizzle` as an
-artifact (both `migrations/` and `migrations-consent/`). `preview-deploy.yml`
-removes the default branch's tracked `.drizzle/` and extracts the artifact into
-`.drizzle/`, so the applied migration set is exactly the PR's artifact and not
-an overlay on main's files. It then applies migrations for both `DB` and
-`CONSENT_DB` from it before deploy, keeping both preview DB schemas aligned
-with the deployed PR build. The "Verify migrations match the PR commit" step
-requires that artifact to equal the PR commit's tracked `.drizzle/` blob for
-blob. `preview-build.yml` runs `db:generate` and `db:consents:generate` before
+artifact (both `migrations/` and `migrations-consent/`; the artifact root is
+the contents of `.drizzle/`). `preview-deploy.yml` removes the default
+branch's tracked `.drizzle/` and extracts the artifact into `.drizzle/` (never
+the repository root, so artifact files cannot overwrite checked-out files such
+as `wrangler.jsonc`), so the applied migration set is exactly the PR's
+artifact and not an overlay on main's files. The `wrangler.jsonc`
+`migrations_dir` paths (`.drizzle/migrations`, `.drizzle/migrations-consent`)
+resolve to those files, so `DB` and `CONSENT_DB` migrations are applied from
+that artifact before deploy, keeping both preview DB schemas aligned with the
+deployed PR build. The "Verify migrations match the PR commit" step requires
+that artifact to equal the PR commit's tracked `.drizzle/` blob for blob.
+`preview-build.yml` runs `db:generate` and `db:consents:generate` before
 uploading, so the artifact could otherwise carry generated-but-uncommitted
 migrations (possibly `DROP TABLE` rebuilds that cascade-wipe children on D1).
 A PR with uncommitted schema changes fails its preview deploy with
