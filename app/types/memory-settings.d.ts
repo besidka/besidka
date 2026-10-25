@@ -1,9 +1,7 @@
 import type { parseError } from 'evlog'
 import type { MemorySettingsFields } from '#shared/types/memory.d'
 
-export interface MemorySaveResult extends Partial<MemorySettingsFields> {
-  sensitiveEntriesDeleted?: number
-}
+export type MemorySaveResult = Partial<MemorySettingsFields>
 
 export type MemorySaveError = ReturnType<typeof parseError>
 

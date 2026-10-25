@@ -147,24 +147,46 @@ describe('useMemorySettingsSaver', () => {
     await flushPromises()
     requestAt(0).resolve({
       aboutMe: 'I like short answers',
-      sensitiveEntriesDeleted: 2,
       reasoningExpanded: true,
     })
 
     const result = await outcome
 
     expect(values.value.aboutMe).toBe('I like short answers')
-    expect(values.value).not.toHaveProperty('sensitiveEntriesDeleted')
     expect(values.value).not.toHaveProperty('reasoningExpanded')
     expect(result).toEqual({
       ok: true,
       result: {
         aboutMe: 'I like short answers',
-        sensitiveEntriesDeleted: 2,
         reasoningExpanded: true,
       },
     })
   })
+
+  it('sends exactly the given patch and never adds memoryIncludeSensitive',
+    async () => {
+      const { save } = createSaver()
+
+      const outcome = save({ aboutMe: 'Short and direct' })
+
+      await flushPromises()
+
+      expect(requestAt(0).body).toEqual({ aboutMe: 'Short and direct' })
+      expect(requestAt(0).body).not.toHaveProperty('memoryIncludeSensitive')
+
+      requestAt(0).resolve({ aboutMe: 'Short and direct' })
+      await outcome
+
+      const next = save({ memoryEnabled: false })
+
+      await flushPromises()
+
+      expect(requestAt(1).body).toEqual({ memoryEnabled: false })
+      expect(requestAt(1).body).not.toHaveProperty('memoryIncludeSensitive')
+
+      requestAt(1).resolve({ memoryEnabled: false })
+      await next
+    })
 
   it('serializes saves: the second request waits for the first',
     async () => {

@@ -243,7 +243,7 @@ describe('Profile/Memory/Entries', () => {
         .toBe('Updated just now · Extracted from chats')
     })
 
-    it('marks only special entries as sensitive', async () => {
+    it('renders no sensitive badge for any entry', async () => {
       entriesData.value = createResponse([
         {
           category: 'profile',
@@ -255,11 +255,10 @@ describe('Profile/Memory/Entries', () => {
       ])
 
       const wrapper = await mountEntries()
-      const rows = wrapper.findAll('[data-testid="memory-entry-row"]')
 
-      expect(rows[0]!.find('[data-testid="memory-entry-sensitive"]').exists())
-        .toBe(true)
-      expect(rows[1]!.find('[data-testid="memory-entry-sensitive"]').exists())
+      expect(wrapper.findAll('[data-testid="memory-entry-row"]'))
+        .toHaveLength(2)
+      expect(wrapper.find('[data-testid="memory-entry-sensitive"]').exists())
         .toBe(false)
     })
 

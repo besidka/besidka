@@ -14,14 +14,6 @@
         class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60"
       >
         <span data-testid="memory-entry-meta">{{ metaLabel }}</span>
-        <span
-          v-if="isSensitive"
-          class="badge badge-soft badge-warning badge-sm gap-1"
-          data-testid="memory-entry-sensitive"
-        >
-          <Icon name="lucide:shield-alert" size="12" />
-          Sensitive
-        </span>
       </span>
     </span>
     <Icon
@@ -42,10 +34,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [entry: MemoryEntry]
 }>()
-
-const isSensitive = computed<boolean>(() => {
-  return props.entry.sensitivity === 'special'
-})
 
 const metaLabel = computed<string>(() => {
   const age = formatMemoryUpdatedAge(new Date(props.entry.updatedAt))

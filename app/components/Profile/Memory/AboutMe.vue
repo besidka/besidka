@@ -39,10 +39,14 @@
           size="20"
           class="mt-0.5 shrink-0"
         />
-        <div class="grid gap-1">
-          <p class="font-bold">{{ saveError.message }}</p>
-          <p v-if="saveError.why" class="text-sm">{{ saveError.why }}</p>
-          <p v-if="saveError.fix" class="text-sm">{{ saveError.fix }}</p>
+        <div class="grid min-w-0 gap-1">
+          <p class="font-bold break-words">{{ saveError.message }}</p>
+          <p v-if="saveError.why" class="text-sm break-words">
+            {{ saveError.why }}
+          </p>
+          <p v-if="saveError.fix" class="text-sm break-words">
+            {{ saveError.fix }}
+          </p>
         </div>
       </div>
       <div class="flex flex-wrap justify-end gap-2">

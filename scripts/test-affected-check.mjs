@@ -470,7 +470,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/memory.spec.ts',
     'tests/unit/components/Profile/Memory/ModelPicker.spec.ts',
     'tests/unit/components/Profile/Memory/Controls.spec.ts',
-    'tests/unit/components/Profile/Memory/Sensitive.spec.ts',
+    'tests/unit/components/Profile/Memory/NeverKept.spec.ts',
     'tests/unit/components/Profile/Memory/AboutMe.spec.ts',
     'tests/unit/components/Profile/Memory/Models.spec.ts',
     'tests/unit/components/Profile/Memory/Entries.spec.ts',

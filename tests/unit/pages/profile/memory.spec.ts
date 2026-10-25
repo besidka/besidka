@@ -20,16 +20,6 @@ mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useFetch', () => mocks.useFetch)
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 mockNuxtImport('$fetch', () => mocks.fetch)
-mockNuxtImport('useRuntimeConfig', (original) => {
-  return () => {
-    const config = original()
-
-    return {
-      ...config,
-      public: { ...config.public, memory: { sensitiveOptInEnabled: true } },
-    }
-  }
-})
 
 enableAutoUnmount(afterEach)
 
@@ -162,8 +152,6 @@ describe('profile memory page', () => {
       .toBe(false)
     expect(checkbox(wrapper, 'memory-chat-search-toggle').element.checked)
       .toBe(true)
-    expect(checkbox(wrapper, 'memory-sensitive-toggle').element.checked)
-      .toBe(false)
 
     const sameAsChatRadios = wrapper.findAll<HTMLInputElement>(
       '[data-testid="memory-model-same-as-chat"]',
@@ -342,102 +330,15 @@ describe('profile memory page', () => {
       )
     })
 
-  it('opts in to sensitive topics after confirmation', async () => {
+  it('shows what memory never keeps', async () => {
     const wrapper = await mountPage()
 
-    await checkbox(wrapper, 'memory-sensitive-toggle').setValue(true)
-    await settle()
-
-    expect(mocks.confirm).toHaveBeenCalledOnce()
-
-    const options = mocks.confirm.mock.calls[0]![0] as {
-      subtitle: string
-      actions: string[]
-    }
-
-    expect(options.actions).toEqual(['Allow sensitive topics'])
-    expect(options.subtitle).toContain('GDPR Art. 9')
-    expect(options.subtitle).toContain('health')
-    expect(options.subtitle).toContain('religion or belief')
-    expect(options.subtitle).toContain('political opinion')
-    expect(options.subtitle).toContain('racial or ethnic origin')
-    expect(options.subtitle).toContain('sex life or orientation')
-    expect(options.subtitle).toContain('trade union membership')
-    expect(options.subtitle).toContain('genetic data')
-    expect(options.subtitle).toContain('biometric data')
-    expect(options.subtitle).toContain('legal disputes')
-    expect(options.subtitle).toContain('drugs')
-    expect(mocks.patchRequests).toEqual([{ memoryIncludeSensitive: true }])
-    expect(checkbox(wrapper, 'memory-sensitive-toggle').element.checked)
-      .toBe(true)
-  })
-
-  it('keeps sensitive topics off when the opt-in is cancelled', async () => {
-    mocks.confirm.mockResolvedValue(null as never)
-
-    const wrapper = await mountPage()
-
-    await checkbox(wrapper, 'memory-sensitive-toggle').setValue(true)
-    await settle()
-
-    expect(mocks.patchRequests).toEqual([])
-    expect(checkbox(wrapper, 'memory-sensitive-toggle').element.checked)
-      .toBe(false)
-  })
-
-  it('warns about deletion and reports the deleted count on opt-out',
-    async () => {
-      const useInfoMessage = vi.spyOn(messagesComposable, 'useInfoMessage')
-      const wrapper = await mountPage({ memoryIncludeSensitive: true })
-
-      mocks.patchResponse = { sensitiveEntriesDeleted: 3 }
-
-      await checkbox(wrapper, 'memory-sensitive-toggle').setValue(false)
-      await settle()
-
-      const options = mocks.confirm.mock.calls[0]![0] as {
-        subtitle: string
-        actions: string[]
-      }
-
-      expect(options.actions).toEqual(['Turn off and delete'])
-      expect(options.subtitle).toContain('deleted')
-      expect(mocks.patchRequests).toEqual([{ memoryIncludeSensitive: false }])
-      expect(useInfoMessage).toHaveBeenCalledWith(
-        'Sensitive topics off',
-        '3 sensitive entries deleted.',
-      )
-      expect(checkbox(wrapper, 'memory-sensitive-toggle').element.checked)
-        .toBe(false)
-    })
-
-  it('says there is nothing to delete when no entries were removed',
-    async () => {
-      const useInfoMessage = vi.spyOn(messagesComposable, 'useInfoMessage')
-      const wrapper = await mountPage({ memoryIncludeSensitive: true })
-
-      mocks.patchResponse = { sensitiveEntriesDeleted: 0 }
-
-      await checkbox(wrapper, 'memory-sensitive-toggle').setValue(false)
-      await settle()
-
-      expect(useInfoMessage).toHaveBeenCalledWith(
-        'Sensitive topics off',
-        'No sensitive entries to delete.',
-      )
-    })
-
-  it('leaves sensitive topics on when the opt-out is cancelled', async () => {
-    mocks.confirm.mockResolvedValue(null as never)
-
-    const wrapper = await mountPage({ memoryIncludeSensitive: true })
-
-    await checkbox(wrapper, 'memory-sensitive-toggle').setValue(false)
-    await settle()
-
-    expect(mocks.patchRequests).toEqual([])
-    expect(checkbox(wrapper, 'memory-sensitive-toggle').element.checked)
-      .toBe(true)
+    expect(wrapper.text()).toContain('What memory never keeps')
+    expect(wrapper.get('[data-testid="memory-never-kept-note"]').text())
+      .toContain('are never saved to memory.')
+    expect(
+      wrapper.findAll('[data-testid="memory-never-store-list"] li').length,
+    ).toBeGreaterThan(0)
   })
 
   it('saves trimmed about me text', async () => {
@@ -517,5 +418,34 @@ describe('profile memory page', () => {
 
     expect(wrapper.find('[data-testid="memory-about-me-error"]').exists())
       .toBe(false)
+  })
+
+  it('renders a 422 about me rejection as message, why and fix', async () => {
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+    const wrapper = await mountPage()
+
+    mocks.patchError = {
+      statusCode: 422,
+      message: 'This looks like sensitive information',
+      data: {
+        why: 'Health details are not stored in memory.',
+        fix: 'Remove that detail and save again.',
+      },
+    }
+
+    await wrapper.get('[data-testid="memory-about-me-input"]')
+      .setValue('I manage a chronic condition')
+    await wrapper.get('[data-testid="memory-about-me-save"]')
+      .trigger('click')
+    await settle()
+
+    const alert = wrapper.get('[data-testid="memory-about-me-error"]')
+
+    expect(alert.get('p.font-bold').text())
+      .toBe('This looks like sensitive information')
+    expect(alert.text()).toContain('Health details are not stored in memory.')
+    expect(alert.text()).toContain('Remove that detail and save again.')
+    expect(alert.text()).not.toContain('422')
+    expect(useErrorMessage).not.toHaveBeenCalled()
   })
 })
