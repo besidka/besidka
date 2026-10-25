@@ -61,10 +61,7 @@ describe('Profile/Memory/Entries/Empty', () => {
     const wrapper = await mountEmpty({}, 'project-1')
 
     expect(wrapper.get('[data-testid="memory-entries-empty-project"]').text())
-      .toBe(
-        'Nothing remembered for this project yet. Memory saved in this '
-        + 'project\'s chats shows up here.',
-      )
+      .toBe('Memory saved in this project\'s chats shows up here.')
     expect(wrapper.text()).not.toContain('Ask Besidka in any chat')
     expect(wrapper.find(
       '[data-testid="memory-entries-empty-generation-hint"]',

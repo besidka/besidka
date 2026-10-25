@@ -5,8 +5,12 @@
   >
     <div class="grid gap-3">
       <textarea
+        ref="textarea"
         v-model="draft"
-        class="textarea w-full min-h-32"
+        class="
+          textarea textarea-bordered rounded-box min-h-36 w-full
+          resize-none max-h-[min(300px,33dvh)] overflow-y-auto
+        "
         :class="{ 'textarea-error': isOverLimit || !!saveError }"
         aria-label="About me"
         :placeholder="placeholder"
@@ -41,7 +45,7 @@
           <p v-if="saveError.fix" class="text-sm">{{ saveError.fix }}</p>
         </div>
       </div>
-      <div class="flex justify-end gap-2">
+      <div class="flex flex-wrap justify-end gap-2">
         <UiButton
           v-if="draft"
           mode="neutral"
@@ -52,13 +56,22 @@
           data-testid="memory-about-me-clear"
           @click="clearDraft"
         />
-        <UiButton
-          size="sm"
-          :text="isSaving ? 'Saving...' : 'Save'"
+        <button
+          type="button"
+          class="btn btn-primary btn-sm max-sm:btn-block"
+          :class="{ 'btn-disabled': isSaveDisabled }"
           :disabled="isSaveDisabled"
           data-testid="memory-about-me-save"
           @click="saveAboutMe"
-        />
+        >
+          <span
+            v-if="isSaving"
+            class="loading loading-spinner loading-xs"
+          />
+          <span v-else>
+            Save
+          </span>
+        </button>
       </div>
     </div>
   </ProfileSecuritySectionCard>
@@ -84,6 +97,8 @@ const placeholder = 'For example: I\'m a backend developer who prefers '
 const draft = shallowRef<string>(props.settings.aboutMe ?? '')
 const isSaving = shallowRef<boolean>(false)
 const saveError = shallowRef<MemorySaveError | null>(null)
+
+const { textarea } = useTextareaAutosize({ input: draft })
 
 const isOverLimit = computed<boolean>(() => {
   return draft.value.length > MEMORY_LIMITS.maxAboutMeChars

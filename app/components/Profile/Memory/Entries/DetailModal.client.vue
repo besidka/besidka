@@ -46,7 +46,7 @@
                 :id="titleInputId"
                 v-model="draftTitle"
                 type="text"
-                class="input w-full"
+                class="input w-full rounded-lg"
                 :class="{ 'input-error': isTitleInvalid }"
                 :aria-invalid="isTitleInvalid"
                 :disabled="isSaving"
@@ -72,7 +72,7 @@
                 :id="descriptionInputId"
                 v-model="draftDescription"
                 type="text"
-                class="input w-full"
+                class="input w-full rounded-lg"
                 :class="{ 'input-error': isDescriptionInvalid }"
                 :aria-invalid="isDescriptionInvalid"
                 :disabled="isSaving"
@@ -100,7 +100,10 @@
               <textarea
                 :id="bodyInputId"
                 v-model="draftBody"
-                class="textarea w-full min-h-40"
+                class="
+                  textarea textarea-bordered rounded-box min-h-40 w-full
+                  resize-y max-h-[50dvh] overflow-y-auto
+                "
                 :class="{ 'textarea-error': isBodyInvalid }"
                 :aria-invalid="isBodyInvalid"
                 :disabled="isSaving"
@@ -125,7 +128,7 @@
               <select
                 :id="categoryInputId"
                 v-model="draftCategory"
-                class="select w-full"
+                class="select w-full rounded-lg"
                 :disabled="isSaving"
                 data-testid="memory-entry-category-select"
                 @change="saveError = null"

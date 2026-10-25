@@ -1,6 +1,6 @@
 <template>
   <select
-    class="select select-sm w-full max-w-full sm:w-auto sm:min-w-48"
+    class="select select-sm rounded-lg w-full max-w-full sm:w-auto sm:min-w-48"
     aria-label="Memory scope"
     data-testid="memory-scope-select"
     :value="selectedValue"

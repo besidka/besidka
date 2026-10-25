@@ -485,6 +485,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory-entry-labels.spec.ts',
     'tests/unit/utils/memory-model-filter.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Projects/MemoryCard.spec.ts',
   ]
 
   const accountEmailPasswordTests = [
@@ -1697,7 +1698,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/composables\/(memory-settings|memory-projects)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/memory-settings\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
+        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/memory-settings\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
       tests: memoryTabTests,
     },
     {

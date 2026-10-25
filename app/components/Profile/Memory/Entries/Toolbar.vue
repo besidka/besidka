@@ -1,7 +1,7 @@
 <template>
   <div class="grid gap-2">
     <div
-      class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
     >
       <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
         <ProfileMemoryEntriesScopeSwitch
@@ -61,7 +61,7 @@
     </div>
     <p
       v-if="canUpdateNow"
-      class="text-xs text-base-content/70 sm:text-right"
+      class="text-xs text-base-content/60"
       data-testid="memory-update-now-note"
     >
       Reads your latest chat and runs on your own API key.

@@ -10,8 +10,7 @@
       class="text-sm"
       data-testid="memory-entries-empty-project"
     >
-      Nothing remembered for this project yet. Memory saved in this project's
-      chats shows up here.
+      Memory saved in this project's chats shows up here.
     </p>
     <template v-else>
       <p class="text-sm">
