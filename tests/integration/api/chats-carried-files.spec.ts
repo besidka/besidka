@@ -156,7 +156,14 @@ function createDb() {
 
   return {
     query: {
-      userSettings: { findFirst: vi.fn(async () => undefined) },
+      userSettings: {
+        findFirst: vi.fn(async () => ({
+          memoryEnabled: false,
+          chatSearchEnabled: true,
+          memoryIncludeSensitive: false,
+          aboutMe: null,
+        })),
+      },
       chats: { findFirst: createChatsFindFirst() },
       keys: {
         findFirst: vi.fn(async () => ({ apiKey: 'encrypted-key' })),
