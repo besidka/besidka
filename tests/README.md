@@ -7,7 +7,10 @@ This directory contains comprehensive tests for the Besidka application using Vi
 ```
 tests/
 ├── setup/                      # Test configuration and utilities
-│   ├── vitest.setup.ts        # Global Vitest setup
+│   ├── vitest.projects.ts     # Which spec directories run in `node` vs `nuxt`
+│   ├── vitest.setup.common.ts # Setup for every project (no DOM access)
+│   ├── vitest.setup.dom.ts    # Setup for the `nuxt` project only (DOM)
+│   ├── vitest.setup.node.ts   # Setup for the `node` project only
 │   ├── mocks/                 # Mock implementations
 │   │   ├── auth.ts           # Authentication mocks
 │   │   ├── cloudflare.ts     # D1/KV/bindings mocks
@@ -28,6 +31,70 @@ tests/
     ├── chat/                  # Chat functionality
     ├── settings/              # Settings & preferences
     └── helpers/               # E2E test helpers
+```
+
+## Vitest Projects: `node` vs `nuxt`
+
+`vitest.config.mts` defines two Vitest projects. Every spec file under
+`tests/unit` and `tests/integration` runs in exactly one of them.
+
+| Project | Environment | Setup files |
+|---------|-------------|-------------|
+| `node` | plain Node, no DOM, no Nuxt app | `vitest.setup.common.ts`, `vitest.setup.node.ts` |
+| `nuxt` | `@nuxt/test-utils` Nuxt app + happy-dom | Nuxt entry, `vitest.setup.common.ts`, `vitest.setup.dom.ts` |
+
+Both projects share one Vite config (aliases, auto-imports, the Vapor strip
+plugin), `mockReset`, `globals`, coverage and the `threads` pool. Nuxt is
+booted once per Vitest run, not once per project.
+
+### Which directories run where
+
+The rule is per top-level directory and lives in
+`tests/setup/vitest.projects.ts`:
+
+- `node`: `tests/unit/{assets,config,content,db,middleware,providers,scripts,
+  server,utils,workers}` and `tests/integration/{api,server}`.
+- `nuxt`: `tests/unit/{components,composables,layouts,pages,plugins,
+  service-worker}` and `tests/integration/pages`.
+- `nuxtSpecExceptions`: a short list of spec files inside a `node` directory
+  that need a real DOM or Nuxt app (for example specs that read `window` or
+  use `mountSuspended`). They run in `nuxt`.
+
+`tests/unit/config/vitest-projects.spec.ts` fails when a new top-level spec
+directory is not classified, when a spec sits outside a classified directory,
+or when an exception is stale. Add a new directory to `nodeSpecDirectories` or
+`nuxtSpecDirectories`; do not add it to both.
+
+### What a `node` spec can and cannot use
+
+- Auto-imports, `#shared`, `~~` aliases and `vi.mock` all work.
+- `useRuntimeConfig()` returns the real resolved Nuxt runtime config (the same
+  object a Nuxt app would expose, provided by the config as
+  `nuxtRuntimeConfig`). It is a per-file copy, so a spec may mutate it.
+- `useNuxtApp()` is not available: the Nuxt app does not exist (`NUXT_E1001`).
+- `window`, `document`, and the `@nuxt/test-utils/runtime` helpers
+  (`mountSuspended`, `mockNuxtImport`, `registerEndpoint`) need the `nuxt`
+  project.
+
+### Opting a spec in a `node` directory into `nuxt`
+
+Add its path to `nuxtSpecExceptions` in `tests/setup/vitest.projects.ts`. That
+list is the only opt-in. A `// @vitest-environment nuxt` pragma at the top of
+the spec does not work for a file selected by the `node` project, because the
+Nuxt entry setup and `environmentOptions` exist only in the `nuxt` project.
+To move a spec the other way, delete its entry from the list; the spec then
+has to pass without DOM globals.
+
+A spec in a `nuxt` directory cannot opt out: move or split it into a `node`
+directory instead (for example, pure logic into `tests/unit/utils`).
+
+### Why
+
+Profiling showed that test bodies are about a quarter of the worker time.
+Booting the Nuxt environment (0.2-0.5 s per file) dominates. Pure
+server, provider, config and util specs do not need it, so they run in plain
+Node. `tests/setup/vitest.setup.ts` could not be shared because it touched
+`document.cookie`, `window.history` and `window.matchMedia` at module scope.
 
 ## Running Tests
 

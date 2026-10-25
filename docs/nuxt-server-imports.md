@@ -64,7 +64,7 @@ the helper once evlog accepts the portable event type.
 
 ## Tests
 
-`tests/setup/vitest.setup.ts` mocks `nuxt/server` with
+`tests/setup/vitest.setup.common.ts` mocks `nuxt/server` with
 `tests/setup/mocks/nuxt-server.ts`: a `vi.stubGlobal(name, ...)` of any
 exported helper still wins, otherwise the real helper runs against the
 web-standard event. Specs build events with `req`, `res`, `url` and
