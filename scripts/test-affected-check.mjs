@@ -1051,6 +1051,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/indexnow-submit.spec.ts'],
     },
     {
+      pattern: /^scripts\/(linear-request|linear-docs-sync)\.mjs$/,
+      tests: ['tests/unit/scripts/linear-request.spec.ts'],
+    },
+    {
       pattern: /^(scripts\/ci\/resolve-preview-build-source\.mjs|\.github\/workflows\/preview-build\.yml)$/,
       tests: ['tests/unit/scripts/resolve-preview-build-source.spec.ts'],
     },
