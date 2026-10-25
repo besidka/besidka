@@ -136,6 +136,7 @@ describe('extractChatMemory', () => {
     testDb = createMemoryExtractionTestDb()
     userId = await seedUser(testDb.db, {
       memoryEnabled: true,
+      memoryExtractionEnabledAt: minutesBefore(1000),
     })
     mocks.getModel.mockReturnValue({
       modelName: 'Select Model',
@@ -962,9 +963,36 @@ describe('extractChatMemory', () => {
         .where(eq(schema.userSettings.userId, userId))
     }
 
-    it('sweeps a project chat with the extraction opt-in off', async () => {
+    it('refuses a project chat with the extraction opt-in off', async () => {
       await setSettings({ memoryExtractionEnabled: false })
 
+      const chat = await seedProjectChatWithMessages()
+
+      expect(await run(chat)).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+
+      const stamped = await readChat(chat.id)
+
+      expect(stamped?.projectMemorySummaryUpdatedAt).toBeNull()
+      expect(stamped?.memoryExtractionAttemptedAt).toBeNull()
+    })
+
+    it('refuses a project chat with the extraction opt-in unset', async () => {
+      await setSettings({ memoryExtractionEnabled: null })
+
+      const chat = await seedProjectChatWithMessages()
+
+      expect(await run(chat)).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
+    })
+
+    it('sweeps a project chat with the opt-in on and stamps the project '
+      + 'watermark', async () => {
       const chat = await seedProjectChatWithMessages()
 
       mockOps([createOp()])
@@ -983,12 +1011,117 @@ describe('extractChatMemory', () => {
       expect(stamped?.memoryExtractionFailures).toBeNull()
     })
 
-    it('sweeps a project chat with the extraction opt-in unset', async () => {
-      await setSettings({ memoryExtractionEnabled: null })
+    it('refuses a project chat when the cut-over is not recorded', async () => {
+      await setSettings({ memoryExtractionEnabledAt: null })
 
       const chat = await seedProjectChatWithMessages()
 
-      expect((await run(chat)).status).toBe('extracted')
+      expect(await run(chat)).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+    })
+
+    it('refuses a project chat whose activity predates the cut-over',
+      async () => {
+        await setSettings({ memoryExtractionEnabledAt: minutesBefore(30) })
+
+        const chat = await seedProjectChatWithMessages()
+
+        expect(await run(chat)).toMatchObject({
+          status: 'skipped',
+          reason: 'disabled',
+        })
+        expect(mocks.generateObject).not.toHaveBeenCalled()
+      })
+
+    it('never reads messages from before the cut-over in a sweep pass',
+      async () => {
+        await setSettings({ memoryExtractionEnabledAt: minutesBefore(50) })
+
+        const chat = await seedProjectChatWithMessages({
+          activityAt: minutesBefore(20),
+        })
+
+        await seedMessage(testDb.db, chat.id, 'user',
+          [textPart(`Fresh note. ${'I now prefer tabs. '.repeat(20)}`)],
+          minutesBefore(25))
+
+        const result = await run(chat)
+
+        expect(result.status).toBe('extracted')
+        expect(promptContent()).toContain('I now prefer tabs.')
+        expect(promptContent()).not.toContain('I write Rust on weekends')
+      })
+
+    it('floors the window at the later of the watermark and the cut-over',
+      async () => {
+        await setSettings({ memoryExtractionEnabledAt: minutesBefore(200) })
+
+        const chat = await seedProjectChatWithMessages({
+          projectMemorySummaryUpdatedAt: minutesBefore(65),
+          activityAt: minutesBefore(20),
+        })
+
+        await seedMessage(testDb.db, chat.id, 'user',
+          [textPart(`After the watermark. ${'Newer words here. '.repeat(20)}`)],
+          minutesBefore(25))
+
+        const result = await run(chat)
+
+        expect(result.status).toBe('extracted')
+        expect(promptContent()).toContain('Newer words here.')
+        expect(promptContent()).not.toContain('I write Rust on weekends')
+      })
+
+    it('applies nothing when the cut-over moves past the chat mid-pass',
+      async () => {
+        const chat = await seedProjectChatWithMessages()
+
+        mocks.generateObject.mockImplementation(async () => {
+          await setSettings({ memoryExtractionEnabledAt: minutesBefore(5) })
+
+          return {
+            object: { ops: [createOp()] },
+            usage: { inputTokens: 5, outputTokens: 5 },
+          }
+        })
+
+        const result = await run(chat)
+
+        expect(result).toMatchObject({ status: 'skipped', reason: 'disabled' })
+        expect(await listEntries()).toHaveLength(0)
+      })
+
+    it('reads pre-opt-in history on a manual refresh with the opt-in off',
+      async () => {
+        await setSettings({
+          memoryExtractionEnabled: false,
+          memoryExtractionEnabledAt: null,
+        })
+
+        const chat = await seedProjectChatWithMessages()
+
+        mockOps([createOp()])
+
+        const result = await run(chat, { trigger: 'manual' })
+
+        expect(result.status).toBe('extracted')
+        expect(promptContent()).toContain('I write Rust on weekends')
+        expect((await readChat(chat.id))?.projectMemorySummaryUpdatedAt)
+          .toEqual(minutesBefore(69))
+      })
+
+    it('still refuses a manual refresh when memory is off', async () => {
+      await setSettings({ memoryEnabled: false })
+
+      const chat = await seedProjectChatWithMessages()
+
+      expect(await run(chat, { trigger: 'manual' })).toMatchObject({
+        status: 'skipped',
+        reason: 'disabled',
+      })
     })
 
     it('still refuses a non-project chat with the opt-in off', async () => {
@@ -1027,7 +1160,7 @@ describe('extractChatMemory', () => {
       expect((await run(dirtyOnlyForAccount)).status).toBe('extracted')
     })
 
-    it('keeps applying ops when only the extraction opt-in flips mid-pass',
+    it('applies nothing when the extraction opt-in flips off mid-pass',
       async () => {
         const chat = await seedProjectChatWithMessages()
 
@@ -1042,8 +1175,8 @@ describe('extractChatMemory', () => {
 
         const result = await run(chat)
 
-        expect(result.applied.created).toBe(1)
-        expect(await listEntries()).toHaveLength(1)
+        expect(result).toMatchObject({ status: 'skipped', reason: 'disabled' })
+        expect(await listEntries()).toHaveLength(0)
       })
 
     it('applies nothing when memory is switched off mid-pass', async () => {
@@ -1067,8 +1200,6 @@ describe('extractChatMemory', () => {
     })
 
     it('accumulates short text on the project watermark', async () => {
-      await setSettings({ memoryExtractionEnabled: false })
-
       const projectId = await seedProject(testDb.db, userId)
       const chat = await seedChat(testDb.db, userId, { projectId })
 
@@ -1136,6 +1267,136 @@ describe('extractChatMemory', () => {
       expect(stamped?.memoryExtractionAttemptedAt)
         .toEqual(minutesBefore(5))
       expect(stamped?.memoryExtractionFailures).toBe(2)
+    })
+  })
+
+  describe('explicit pass', () => {
+    async function setSettings(
+      values: Partial<typeof schema.userSettings.$inferInsert>,
+    ) {
+      await testDb.db.update(schema.userSettings)
+        .set(values)
+        .where(eq(schema.userSettings.userId, userId))
+    }
+
+    it('runs for an account chat with the opt-in off and reads its own '
+      + 'history', async () => {
+      await setSettings({
+        memoryExtractionEnabled: false,
+        memoryExtractionEnabledAt: null,
+      })
+
+      const chat = await seedChatWithMessages()
+
+      mockOps([createOp()])
+
+      const result = await run(chat, { explicit: true, ignoreIdle: true })
+      const stamped = await readChat(chat.id)
+
+      expect(result).toMatchObject({
+        status: 'extracted',
+        applied: { created: 1, updated: 0, deleted: 0 },
+      })
+      expect(promptContent()).toContain('I write Rust on weekends')
+      expect(stamped?.memoryExtractedAt).toEqual(minutesBefore(69))
+      expect(stamped?.memoryExtractionAttemptedAt).toBeNull()
+      expect(stamped?.memoryExtractionFailures).toBeNull()
+    })
+
+    it('runs for a project chat with the opt-in off and no cut-over',
+      async () => {
+        await setSettings({
+          memoryExtractionEnabled: false,
+          memoryExtractionEnabledAt: null,
+        })
+
+        const projectId = await seedProject(testDb.db, userId)
+        const chat = await seedChatWithMessages({
+          projectId,
+          activityMinutesAgo: 1,
+        })
+
+        mockOps([createOp()])
+
+        const result = await run(chat, { explicit: true, ignoreIdle: true })
+        const stamped = await readChat(chat.id)
+
+        expect(result.status).toBe('extracted')
+        expect(promptContent()).toContain('I write Rust on weekends')
+        expect(stamped?.projectMemorySummaryUpdatedAt)
+          .toEqual(minutesBefore(69))
+        expect(stamped?.memoryExtractedAt).toBeNull()
+      })
+
+    it('floors the window at the chat watermark and ignores the cut-over',
+      async () => {
+        await setSettings({ memoryExtractionEnabledAt: minutesBefore(10) })
+
+        const chat = await seedChatWithMessages({
+          chatValues: { memoryExtractedAt: minutesBefore(65) },
+        })
+
+        await seedMessage(testDb.db, chat.id, 'user',
+          [textPart(`Later words. ${'More later words. '.repeat(20)}`)],
+          minutesBefore(40))
+
+        const result = await run(chat, { explicit: true, ignoreIdle: true })
+
+        expect(result.status).toBe('extracted')
+        expect(promptContent()).toContain('More later words.')
+        expect(promptContent()).not.toContain('I write Rust on weekends')
+      })
+
+    it('never stamps the attempt or the failure counter, even on failure',
+      async () => {
+        const chat = await seedChatWithMessages({
+          chatValues: {
+            memoryExtractionAttemptedAt: minutesBefore(5),
+            memoryExtractionFailures: 2,
+          },
+        })
+
+        mocks.generateObject.mockRejectedValue(new Error('provider down'))
+
+        const result = await run(chat, { explicit: true, ignoreIdle: true })
+        const stamped = await readChat(chat.id)
+
+        expect(result.status).toBe('failed')
+        expect(stamped?.memoryExtractionAttemptedAt)
+          .toEqual(minutesBefore(5))
+        expect(stamped?.memoryExtractionFailures).toBe(2)
+      })
+
+    it('does not stamp the waiting marker on a too-short window', async () => {
+      const chat = await seedChat(testDb.db, userId)
+
+      await seedMessage(testDb.db, chat.id, 'user', [textPart('Short.')],
+        minutesBefore(70))
+
+      const result = await run(chat, { explicit: true, ignoreIdle: true })
+
+      expect(result).toMatchObject({ status: 'skipped', reason: 'too-short' })
+      expect((await readChat(chat.id))?.memoryExtractionFailures).toBeNull()
+    })
+
+    it('still refuses when memory is off', async () => {
+      await setSettings({ memoryEnabled: false })
+
+      const chat = await seedChatWithMessages()
+
+      expect(await run(chat, { explicit: true, ignoreIdle: true }))
+        .toMatchObject({ status: 'skipped', reason: 'disabled' })
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+    })
+
+    it('still skips a project with memory disabled', async () => {
+      const projectId = await seedProject(testDb.db, userId, {
+        memoryStatus: 'disabled',
+      })
+      const chat = await seedChatWithMessages({ projectId })
+
+      expect(await run(chat, { explicit: true, ignoreIdle: true }))
+        .toMatchObject({ reason: 'project-unavailable' })
     })
   })
 
