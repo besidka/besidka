@@ -5,6 +5,7 @@ import {
   consumeChatSearchCall,
   createChatSearchBudget,
 } from '~~/server/utils/memory/tools/chat-search-budget'
+import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
 import {
   MEMORY_LIST_MAX_ENTRIES,
   MEMORY_TOOL_NOTICE,
@@ -593,6 +594,67 @@ describe('memory tools', () => {
         assertUserRequestQuote(DEFAULT_QUOTE, null)
       }).toThrow(/does not appear/)
     })
+
+    it('requires the whole short message when it has fewer than twelve '
+      + 'characters', () => {
+      expect(() => {
+        assertUserRequestQuote('forget it', 'Forget it.')
+      }).not.toThrow()
+      expect(() => {
+        assertUserRequestQuote('forget', 'Forget it.')
+      }).toThrow(/wrong length/)
+    })
+
+    it('accepts a slice of a long message that reaches twelve characters', () => {
+      expect(() => {
+        assertUserRequestQuote('cook pasta twice', DEFAULT_MESSAGE)
+      }).not.toThrow()
+    })
+
+    it('rejects the four-character substring bypass of a long message', () => {
+      expect(() => {
+        assertUserRequestQuote('cook', DEFAULT_MESSAGE)
+      }).toThrow(/wrong length/)
+      expect(() => {
+        assertUserRequestQuote('pasta', DEFAULT_MESSAGE)
+      }).toThrow(/wrong length/)
+      expect(() => {
+        assertUserRequestQuote('pasta twice a week', DEFAULT_MESSAGE)
+      }).not.toThrow()
+    })
+
+    it('never accepts a quote under four characters, even for a tiny '
+      + 'message', () => {
+      expect(() => {
+        assertUserRequestQuote('ok', 'ok')
+      }).toThrow(/wrong length/)
+    })
+
+    it('tells the model to quote the whole request sentence', () => {
+      let thrown: Error | undefined
+
+      try {
+        assertUserRequestQuote('cook', DEFAULT_MESSAGE)
+      } catch (exception) {
+        thrown = exception as Error
+      }
+
+      expect((thrown as Error & { fix?: string }).fix)
+        .toContain('whole request sentence')
+    })
+
+    it('rejects a short quote through the tool and keeps the entry',
+      async () => {
+        testDb.insertEntry({ id: 1, userId: OWNER, slug: 'cooking' })
+
+        await expect(
+          build().tools.memory_forget!.execute(
+            { id: encodePublicId(1), userRequestQuote: 'cook' },
+            toolOptions,
+          ),
+        ).rejects.toMatchObject({ status: 400 })
+        expect(readRow(1)).toBeDefined()
+      })
   })
 
   describe('memory_write', () => {
@@ -1039,6 +1101,49 @@ describe('memory tools', () => {
         expect(message).toContain('not a quote of the user')
       })
 
+    it('answers a neutral 409 that does not reveal a hidden special '
+      + 'singleton', async () => {
+      testDb.insertEntry({
+        id: 1,
+        userId: OWNER,
+        category: 'profile',
+        slug: 'profile',
+        body: 'Hidden health note.',
+        sensitivity: 'special',
+        sensitiveCategory: 'health',
+      })
+
+      const failure = await build().tools.memory_write!.execute(
+        writeInput({ category: 'profile', sensitivity: 'none' }),
+        toolOptions,
+      ).catch((exception: Error) => exception)
+
+      expect(failure).toMatchObject({
+        status: 409,
+        message: 'The memory entry could not be saved',
+      })
+      expect((failure as Error).message).not.toMatch(/already exists|profile/)
+    })
+
+    it('keeps the already-exists message when the sensitive opt-in is on '
+      + 'and nothing is hidden', async () => {
+      testDb.insertEntry({
+        id: 1,
+        userId: OWNER,
+        category: 'profile',
+        slug: 'profile',
+        body: 'Visible note.',
+      })
+
+      const output = await build({ includeSensitive: true })
+        .tools.memory_write!.execute(
+        writeInput({ category: 'profile' }),
+        toolOptions,
+      )
+
+      expect(output.action).toBe('updated')
+    })
+
     it('answers 409 when the account memory is full', async () => {
       for (let index = 0; index < 30; index++) {
         testDb.insertEntry({ userId: OWNER, slug: `seed-${index}` })
@@ -1194,6 +1299,147 @@ describe('memory tools', () => {
           ),
         ).rejects.toMatchObject({ status: 404 })
         expect(readRow(1)).toBeDefined()
+      })
+  })
+
+  describe('untrusted content guard', () => {
+    beforeEach(() => {
+      testDb.insertEntry({
+        id: 1,
+        userId: OWNER,
+        slug: 'cooking',
+        title: 'Cooking',
+      })
+    })
+
+    it('starts unlocked, so write and forget work before any untrusted '
+      + 'result', async () => {
+      const { tools, budget } = build()
+
+      expect(budget.untrustedResultSeen).toBe(false)
+
+      const written = await tools.memory_write!.execute(
+        writeInput({ title: 'Pasta' }),
+        toolOptions,
+      )
+
+      expect(written.action).toBe('created')
+
+      const forgotten = await tools.memory_forget!.execute(
+        { id: encodePublicId(1), userRequestQuote: DEFAULT_QUOTE },
+        toolOptions,
+      )
+
+      expect(forgotten.removed.title).toBe('Cooking')
+    })
+
+    it('rejects memory_write with a 403 tool error and writes nothing',
+      async () => {
+        const budget = createChatSearchBudget()
+        const { tools } = build({ budget })
+
+        budget.untrustedResultSeen = true
+
+        const failure = await tools.memory_write!.execute(
+          writeInput(),
+          toolOptions,
+        ).catch((exception: Error) => exception)
+
+        expect(failure).toMatchObject({ status: 403 })
+        expect((failure as Error).message).toContain(
+          'Memory writes are unavailable for the rest of this message',
+        )
+        expect((failure as Error).message).toContain('new message')
+        expect(testDb.countEntries()).toBe(1)
+      })
+
+    it('rejects memory_forget with a 403 tool error and keeps the entry',
+      async () => {
+        const budget = createChatSearchBudget()
+        const { tools } = build({ budget })
+
+        budget.untrustedResultSeen = true
+
+        await expect(
+          tools.memory_forget!.execute(
+            { id: encodePublicId(1), userRequestQuote: DEFAULT_QUOTE },
+            toolOptions,
+          ),
+        ).rejects.toMatchObject({ status: 403 })
+        expect(readRow(1)).toBeDefined()
+      })
+
+    it('still spends the budget on a guarded call', async () => {
+      const budget = createChatSearchBudget()
+      const { tools } = build({ budget })
+
+      budget.untrustedResultSeen = true
+
+      await expect(
+        tools.memory_write!.execute(writeInput(), toolOptions),
+      ).rejects.toMatchObject({ status: 403 })
+      expect(budget.usedCalls).toBe(1)
+    })
+
+    it('keeps the read tools working after an untrusted result', async () => {
+      const budget = createChatSearchBudget()
+      const { tools } = build({ budget })
+
+      budget.untrustedResultSeen = true
+
+      const listed = await tools.memory_list!.execute({}, toolOptions)
+      const read = await tools.memory_read!.execute(
+        { id: 'topics/cooking' },
+        toolOptions,
+      )
+
+      expect(listed.entries).toHaveLength(1)
+      expect(read.entry.title).toBe('Cooking')
+    })
+  })
+
+  describe('tool errors', () => {
+    it('turns a non-evlog failure into a generic tool error without '
+      + 'leaking its message', async () => {
+      const failingDb = new Proxy(testDb.db, {
+        get(target, property, receiver) {
+          if (property === 'select' || property === 'query') {
+            return () => {
+              throw new Error(
+                'Failed query: select "secret_column" from "memory_entries"',
+              )
+            }
+          }
+
+          return Reflect.get(target, property, receiver)
+        },
+      })
+      const failure = await build({ db: failingDb as typeof testDb.db })
+        .tools.memory_read!.execute({ id: 'topics/cooking' }, toolOptions)
+        .catch((exception: Error) => exception)
+
+      expect(failure).toMatchObject({
+        status: 500,
+        message: 'The memory service failed',
+      })
+      expect(JSON.stringify(failure)).not.toContain('secret_column')
+      expect((failure as Error).message).not.toContain('Failed query')
+    })
+  })
+
+  describe('tool descriptions', () => {
+    it('states the shared call limit from the constant in every tool',
+      () => {
+        const { tools } = build()
+
+        for (const [name, entry] of Object.entries(tools)) {
+          expect(
+            (entry as unknown as { description: string }).description,
+            name,
+          ).toContain(
+            `At most ${CHAT_SEARCH_MAX_CALLS_PER_TURN} calls per message`,
+          )
+        }
       })
   })
 

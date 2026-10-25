@@ -7,6 +7,8 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
+
+  assertNotCrossSiteRequest(event)
   const session = await useUserSession()
 
   if (!session) {

@@ -689,7 +689,7 @@ describe('memory send-path wiring', () => {
         sourceMessageId: USER_MESSAGE_ID,
         userMessageText: USER_MESSAGE_TEXT,
         includeSensitive: true,
-        budget: { maxCalls: 3, usedCalls: 0 },
+        budget: { maxCalls: 3, usedCalls: 0, untrustedResultSeen: false },
       }))
     })
 
@@ -704,8 +704,8 @@ describe('memory send-path wiring', () => {
           .toBe(mocks.memoryToolsInputs[0]?.budget)
       })
 
-    it('registers no index text and no tools for a memory-on user with no '
-      + 'entries, but still the tools', async () => {
+    it('registers no index text for a memory-on user with no entries, but '
+      + 'still the tools', async () => {
       const { doStream } = await runSend({
         scenario: { settings: MEMORY_ON, memoryRows: [] },
         steps: [createTextChunks('Plain answer.')],
@@ -1088,6 +1088,35 @@ describe('memory send-path wiring', () => {
         writesEnabled: true,
         usedCalls: 2,
       })
+    })
+
+    it('persists memory tool parts without entry bodies while the live '
+      + 'stream still carries them', async () => {
+      const { assistantInsert, chunks } = await runSend({
+        scenario: {
+          settings: { memoryEnabled: true, chatSearchEnabled: false },
+        },
+        steps: [
+          createToolCallChunks('call-1', 'memory_read', { id: 'topics/pasta' }),
+          createTextChunks('Done.'),
+        ],
+      })
+      const readPart = (assistantInsert?.parts ?? []).find((part: any) => {
+        return part.type === 'tool-memory_read'
+      })
+
+      expect(readPart?.output.entry).toEqual({
+        id: 'entry-1',
+        handle: 'topics/pasta',
+        scope: 'account',
+        category: 'topics',
+        title: 'Pasta',
+        description: 'Likes pasta',
+      })
+      expect(JSON.stringify(assistantInsert?.parts)).not.toContain(
+        'Likes pasta.',
+      )
+      expect(JSON.stringify(chunks)).toContain('Likes pasta.')
     })
 
     it('turns the fourth call of one step into a budget tool error across '

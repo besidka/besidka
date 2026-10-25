@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     deleted: 0,
     detached: 0,
   })),
+  removeChatsFromSearchIndex: vi.fn(async (_input: unknown) => undefined),
   refreshProjectMemory: vi.fn(async () => ({
     memoryStatus: 'ready',
     memory: 'Rebuilt memory',
@@ -55,6 +56,10 @@ vi.mock('~~/server/utils/projects/activity', () => ({
 
 vi.mock('~~/server/utils/memory/chat-deletion', () => ({
   detachChatsFromMemory: mocks.detachChatsFromMemory,
+}))
+
+vi.mock('~~/server/utils/search/index-writer', () => ({
+  removeChatsFromSearchIndex: mocks.removeChatsFromSearchIndex,
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -501,7 +506,7 @@ describe('chat history API', () => {
       }
     }
 
-    it('detaches the chat from memory before deleting a single chat', async () => {
+    it('detaches the chat from memory, then the search index, before deleting a single chat', async () => {
       const handler = await getDeleteHandler()
       const callOrder: string[] = []
       const db = createDeleteDb(callOrder, [])
@@ -511,6 +516,9 @@ describe('chat history API', () => {
 
         return { deleted: 1, detached: 0 }
       })
+      mocks.removeChatsFromSearchIndex.mockImplementationOnce(async () => {
+        callOrder.push('search-index')
+      })
       vi.stubGlobal('useDb', () => db)
 
       const response = await handler({
@@ -518,7 +526,11 @@ describe('chat history API', () => {
       } as any)
 
       expect(response).toEqual({ success: true })
-      expect(callOrder).toEqual(['detach-memory', 'delete-chats'])
+      expect(callOrder).toEqual([
+        'detach-memory',
+        'search-index',
+        'delete-chats',
+      ])
       expect(mocks.detachChatsFromMemory).toHaveBeenCalledWith(
         expect.objectContaining({
           db,
@@ -543,12 +555,13 @@ describe('chat history API', () => {
       } as any)).rejects.toThrow('cascade failed')
 
       expect(callOrder).toEqual([])
+      expect(mocks.removeChatsFromSearchIndex).not.toHaveBeenCalled()
       expect(db.delete).not.toHaveBeenCalled()
       expect(mocks.refreshProjectActivityAt).not.toHaveBeenCalled()
       expect(mocks.markProjectsMemoryStale).not.toHaveBeenCalled()
     })
 
-    it('detaches only owned chat ids before a bulk delete', async () => {
+    it('detaches only owned chat ids, then the search index, before a bulk delete', async () => {
       const handler = await getBulkDeleteHandler()
       const callOrder: string[] = []
       const db = createDeleteDb(callOrder, [
@@ -561,6 +574,9 @@ describe('chat history API', () => {
 
         return { deleted: 0, detached: 2 }
       })
+      mocks.removeChatsFromSearchIndex.mockImplementationOnce(async () => {
+        callOrder.push('search-index')
+      })
       vi.stubGlobal('useDb', () => db)
 
       const response = await handler({
@@ -568,7 +584,11 @@ describe('chat history API', () => {
       } as any)
 
       expect(response).toEqual({ success: true })
-      expect(callOrder).toEqual(['detach-memory', 'delete-chats'])
+      expect(callOrder).toEqual([
+        'detach-memory',
+        'search-index',
+        'delete-chats',
+      ])
       expect(mocks.detachChatsFromMemory).toHaveBeenCalledWith(
         expect.objectContaining({
           db,
@@ -599,6 +619,7 @@ describe('chat history API', () => {
         body: { chatIds: ['chat-1'] },
       } as any)).rejects.toThrow('cascade failed')
 
+      expect(mocks.removeChatsFromSearchIndex).not.toHaveBeenCalled()
       expect(db.delete).not.toHaveBeenCalled()
       expect(mocks.refreshProjectActivityAt).not.toHaveBeenCalled()
       expect(mocks.markProjectsMemoryStale).not.toHaveBeenCalled()

@@ -107,6 +107,86 @@ describe('Chat/Reasoning/MemoryStep', () => {
       ).toBeDefined()
     })
 
+  it('names the Undo button after the saved entry', async () => {
+    const wrapper = await mountStep(createWriteData())
+
+    expect(undoButton(wrapper).attributes('aria-label'))
+      .toBe('Undo saving "Anna" to memory')
+  })
+
+  it('falls back to a generic Undo name without an entry title', async () => {
+    const wrapper = await mountStep(createWriteData({ entries: [] }))
+
+    expect(undoButton(wrapper).attributes('aria-label'))
+      .toBe('Undo saving to memory')
+  })
+
+  it('announces Undone in a polite live region', async () => {
+    mocks.fetch.mockResolvedValue({ success: true })
+
+    const wrapper = await mountStep(createWriteData())
+    const status = () => {
+      return wrapper.get('[data-testid="reasoning-memory-step-undo-status"]')
+    }
+
+    expect(status().attributes('aria-live')).toBe('polite')
+    expect(status().text()).toBe('')
+
+    await undoButton(wrapper).trigger('click')
+    await flush(wrapper)
+
+    expect(status().attributes('aria-live')).toBe('polite')
+    expect(status().text()).toBe('Undone')
+    expect(undoButton(wrapper).attributes('aria-label')).toBeUndefined()
+  })
+
+  it('announces Undone when the entry is already gone', async () => {
+    mocks.fetch.mockRejectedValue({
+      status: 404,
+      statusCode: 404,
+      data: { status: 404, message: 'Memory entry not found' },
+    })
+
+    const wrapper = await mountStep(createWriteData())
+
+    await undoButton(wrapper).trigger('click')
+    await flush(wrapper)
+
+    expect(
+      wrapper.get('[data-testid="reasoning-memory-step-undo-status"]').text(),
+    ).toBe('Undone')
+  })
+
+  it('encodes the entry id in the DELETE and PATCH urls', async () => {
+    mocks.fetch.mockResolvedValue({ success: true })
+
+    const created = await mountStep(createWriteData({
+      entryId: 'a/b?c#d',
+    }))
+
+    await undoButton(created).trigger('click')
+    await flush(created)
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/memory/entries/a%2Fb%3Fc%23d',
+      { method: 'DELETE' },
+    )
+
+    const updated = await mountStep(createWriteData({
+      action: 'updated',
+      entryId: 'a/b?c#d',
+      previous: { ...previous },
+    }))
+
+    await undoButton(updated).trigger('click')
+    await flush(updated)
+
+    expect(mocks.fetch).toHaveBeenLastCalledWith(
+      '/api/v1/memory/entries/a%2Fb%3Fc%23d',
+      { method: 'PATCH', body: previous },
+    )
+  })
+
   it('deletes the entry when undoing a created save', async () => {
     mocks.fetch.mockResolvedValue({ success: true })
 

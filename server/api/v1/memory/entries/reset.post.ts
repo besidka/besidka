@@ -15,6 +15,8 @@ const resetBodySchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
+
+  assertNotCrossSiteRequest(event)
   const session = await useUserSession()
 
   if (!session) {

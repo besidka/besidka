@@ -7,6 +7,7 @@ import {
   listMemoryEntries,
 } from '~~/server/utils/memory/entries'
 import type { MemoryScopeFilter } from '~~/server/utils/memory/entries'
+import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const querySchema = z.object({
@@ -60,6 +61,8 @@ export default defineEventHandler(async (event) => {
   logger.set({
     attributes: { memoryEntries: { scope, total: entries.length } },
   })
+
+  applyResponseHeaders(event, { 'Cache-Control': 'no-store' })
 
   const response: MemoryEntriesResponse = {
     scope,

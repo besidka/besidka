@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
+import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { createMemoryTestDb } from '../../setup/helpers/memory-db'
 
@@ -66,12 +67,26 @@ describe('memory entries API', () => {
   let testDb: ReturnType<typeof createMemoryTestDb>
   let sessionUserId: string | null
 
-  function bodyEvent(body: unknown) {
-    return { body, context: {} }
+  function bodyEvent(body: unknown, secFetchSite?: string) {
+    return {
+      body,
+      context: {},
+      headers: secFetchSite ? { 'sec-fetch-site': secFetchSite } : {},
+      res: { headers: new Headers() },
+    }
   }
 
-  function paramsEvent(id: string, body?: unknown) {
-    return { body, context: { params: { id } } }
+  function paramsEvent(id: string, body?: unknown, secFetchSite?: string) {
+    return {
+      body,
+      context: { params: { id } },
+      headers: secFetchSite ? { 'sec-fetch-site': secFetchSite } : {},
+      res: { headers: new Headers() },
+    }
+  }
+
+  function queryEvent(query: Record<string, string> = {}) {
+    return { query, headers: {}, res: { headers: new Headers() } }
   }
 
   function seed(slug: string, userId: number = OWNER, projectId?: number) {
@@ -86,6 +101,13 @@ describe('memory entries API', () => {
     sessionUserId = String(OWNER)
 
     vi.stubGlobal('defineEventHandler', (handler: any) => handler)
+    vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
+    vi.stubGlobal(
+      'getRequestHeader',
+      (event: { headers?: Record<string, string> }, name: string) => {
+        return event.headers?.[name.toLowerCase()]
+      },
+    )
     vi.stubGlobal('useUnauthorizedError', () => {
       throw Object.assign(new Error('Unauthorized'), { status: 401 })
     })
@@ -114,19 +136,63 @@ describe('memory entries API', () => {
       sessionUserId = null
 
       const calls = [
-        [await handlers.list(), { query: {} }],
+        [await handlers.list(), queryEvent()],
         [await handlers.create(), bodyEvent({})],
         [await handlers.get(), paramsEvent('x')],
         [await handlers.patch(), paramsEvent('x', { title: 'a' })],
         [await handlers.remove(), paramsEvent('x')],
         [await handlers.reset(), bodyEvent({ scope: 'all' })],
-        [await handlers.exportAll(), { context: {} }],
+        [await handlers.exportAll(), { context: {}, headers: {} }],
       ] as const
 
       for (const [handler, event] of calls) {
         await expect(handler(event)).rejects.toMatchObject({ status: 401 })
       }
     })
+  })
+
+  describe('cross-site protection', () => {
+    it('returns 403 for a cross-site request on every mutating route', async () => {
+      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
+
+      const calls = [
+        [await handlers.create(), bodyEvent({ category: 'topics', title: 'A', description: 'B', body: 'C' }, 'cross-site')],
+        [await handlers.patch(), paramsEvent(encodePublicId(5), { title: 'X' }, 'cross-site')],
+        [await handlers.remove(), paramsEvent(encodePublicId(5), undefined, 'cross-site')],
+        [await handlers.reset(), bodyEvent({ scope: 'all' }, 'cross-site')],
+      ] as const
+
+      for (const [handler, event] of calls) {
+        await expect(handler(event)).rejects.toMatchObject({ status: 403 })
+      }
+
+      expect(testDb.countEntries(OWNER)).toBe(1)
+      expect(testDb.sqlite.prepare('select title from memory_entries where id = 5').get())
+        .toMatchObject({ title: 'mine' })
+    })
+
+    it('does not delete anything for a cross-site reset', async () => {
+      const handler = await handlers.reset()
+
+      seed('one')
+      seed('two')
+
+      await expect(handler(bodyEvent({ scope: 'all' }, 'cross-site')))
+        .rejects.toMatchObject({ status: 403 })
+      expect(testDb.countEntries(OWNER)).toBe(2)
+    })
+
+    it.each(['same-origin', 'same-site', 'none'])(
+      'allows a %s reset',
+      async (secFetchSite) => {
+        const handler = await handlers.reset()
+
+        seed('one')
+
+        expect(await handler(bodyEvent({ scope: 'all' }, secFetchSite)))
+          .toEqual({ deleted: 1 })
+      },
+    )
   })
 
   describe('GET /entries', () => {
@@ -138,7 +204,7 @@ describe('memory entries API', () => {
       testDb.insertProject({ id: 7, userId: OWNER })
       seed('project-entry', OWNER, 7)
 
-      const response = await handler({ query: {} })
+      const response = await handler(queryEvent())
 
       expect(response.scope).toBe('account')
       expect(response.projectId).toBeNull()
@@ -163,6 +229,15 @@ describe('memory entries API', () => {
       expect(response.groups[0].entries).toEqual([])
     })
 
+    it('marks the list response as uncacheable', async () => {
+      const handler = await handlers.list()
+      const event = queryEvent()
+
+      await handler(event)
+
+      expect(event.res.headers.get('Cache-Control')).toBe('no-store')
+    })
+
     it('lists a project when only projectId is sent', async () => {
       const handler = await handlers.list()
 
@@ -170,9 +245,9 @@ describe('memory entries API', () => {
       seed('account-entry')
       seed('project-entry', OWNER, 7)
 
-      const response = await handler({
-        query: { projectId: encodePublicId(7) },
-      })
+      const response = await handler(queryEvent({
+        projectId: encodePublicId(7),
+      }))
 
       expect(response.scope).toBe('project')
       expect(response.projectId).toBe(encodePublicId(7))
@@ -190,7 +265,7 @@ describe('memory entries API', () => {
       seed('project-entry', OWNER, 7)
       seed('stranger-entry', STRANGER)
 
-      const response = await handler({ query: { scope: 'all' } })
+      const response = await handler(queryEvent({ scope: 'all' }))
 
       expect(response.scope).toBe('all')
       expect(response.projectId).toBeNull()
@@ -200,14 +275,14 @@ describe('memory entries API', () => {
     it('returns 400 for scope=project without a projectId', async () => {
       const handler = await handlers.list()
 
-      await expect(handler({ query: { scope: 'project' } }))
+      await expect(handler(queryEvent({ scope: 'project' })))
         .rejects.toMatchObject({ status: 400 })
     })
 
     it('returns 400 for an unknown scope', async () => {
       const handler = await handlers.list()
 
-      await expect(handler({ query: { scope: 'everything' } }))
+      await expect(handler(queryEvent({ scope: 'everything' })))
         .rejects.toMatchObject({ status: 400 })
     })
 
@@ -217,7 +292,7 @@ describe('memory entries API', () => {
       testDb.insertProject({ id: 8, userId: STRANGER })
       seed('secret', STRANGER, 8)
 
-      await expect(handler({ query: { projectId: encodePublicId(8) } }))
+      await expect(handler(queryEvent({ projectId: encodePublicId(8) })))
         .rejects.toMatchObject({ status: 404 })
     })
   })
@@ -367,6 +442,17 @@ describe('memory entries API', () => {
       })
     })
 
+    it('marks the entry response as uncacheable', async () => {
+      const handler = await handlers.get()
+      const event = paramsEvent(encodePublicId(5))
+
+      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
+
+      await handler(event)
+
+      expect(event.res.headers.get('Cache-Control')).toBe('no-store')
+    })
+
     it('returns 404 for another user entry and unknown ids', async () => {
       const handler = await handlers.get()
 
@@ -399,6 +485,45 @@ describe('memory entries API', () => {
         description: 'New description',
         origin: 'user',
       })
+    })
+
+    it('re-marks an extraction entry as user-owned', async () => {
+      const handler = await handlers.patch()
+
+      testDb.insertEntry({
+        id: 5,
+        userId: OWNER,
+        slug: 'mine',
+        origin: 'extraction',
+        sourceChatIds: ['chat-1'],
+      })
+
+      const response = await handler(paramsEvent(encodePublicId(5), {
+        title: 'Edited by the user',
+      }))
+
+      expect(response.entry).toMatchObject({
+        origin: 'user',
+        sourceChatIds: ['chat-1'],
+      })
+    })
+
+    it('ignores a client-supplied origin on the patch body', async () => {
+      const handler = await handlers.patch()
+
+      testDb.insertEntry({
+        id: 5,
+        userId: OWNER,
+        slug: 'mine',
+        origin: 'extraction',
+      })
+
+      const response = await handler(paramsEvent(encodePublicId(5), {
+        title: 'Edited',
+        origin: 'tool',
+      }))
+
+      expect(response.entry.origin).toBe('user')
     })
 
     it('returns 400 for an empty or invalid patch', async () => {

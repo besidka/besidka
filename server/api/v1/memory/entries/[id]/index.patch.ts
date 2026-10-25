@@ -9,6 +9,8 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
 
+  assertNotCrossSiteRequest(event)
+
   const params = z.object({
     id: z.string().nonempty(),
   }).safeParse(getDecodedRouterParams(event))
@@ -55,6 +57,7 @@ export default defineEventHandler(async (event) => {
     {
       id: params.data.id,
       patch: body.data,
+      origin: 'user',
       complianceOrigin: 'memory-api',
     },
   )

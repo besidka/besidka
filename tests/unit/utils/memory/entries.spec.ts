@@ -322,6 +322,36 @@ describe('memory entries service', () => {
           })
       })
 
+      it('reports the existing singleton instead of the cap at the cap', async () => {
+        seedMany({
+          userId: OWNER,
+          count: MEMORY_LIMITS.maxAccountEntries - 1,
+        })
+        testDb.insertEntry({
+          userId: OWNER,
+          category: 'profile',
+          slug: 'profile',
+        })
+
+        await expect(create({ category: 'profile', title: 'Second' }))
+          .rejects.toMatchObject({
+            status: 409,
+            message: 'The profile entry already exists, edit it instead',
+          })
+        expect(testDb.countEntries(OWNER))
+          .toBe(MEMORY_LIMITS.maxAccountEntries)
+      })
+
+      it('reports the cap for a first singleton when no entry exists', async () => {
+        seedMany({ userId: OWNER, count: MEMORY_LIMITS.maxAccountEntries })
+
+        await expect(create({ category: 'preferences', title: 'First' }))
+          .rejects.toMatchObject({
+            status: 409,
+            message: 'Memory limit reached',
+          })
+      })
+
       it('allows one profile per scope and per user', async () => {
         testDb.insertProject({ id: 7, userId: OWNER })
 
@@ -807,6 +837,43 @@ describe('memory entries service', () => {
         sourceChatIds: ['chat-1', 'chat-2'],
         sourceMessageId: 'message-1',
       })
+    })
+
+    it('re-marks an extraction entry as user-owned when a user edit passes the origin', async () => {
+      testDb.insertEntry({
+        id: 5,
+        userId: OWNER,
+        slug: 'cooking',
+        origin: 'extraction',
+        sourceChatIds: ['chat-1'],
+      })
+
+      const { entry, previous } = await updateMemoryEntry(context(), {
+        id: encodePublicId(5),
+        patch: { title: 'Baking' },
+        origin: 'user',
+        complianceOrigin: 'memory-api',
+      })
+
+      expect(previous.origin).toBe('extraction')
+      expect(entry).toMatchObject({
+        origin: 'user',
+        sourceChatIds: ['chat-1'],
+      })
+      expect(readStoredRow(5)).toMatchObject({ origin: 'user' })
+    })
+
+    it('keeps the stored origin when no origin is passed', async () => {
+      testDb.insertEntry({
+        id: 5,
+        userId: OWNER,
+        slug: 'cooking',
+        origin: 'extraction',
+      })
+
+      const { entry } = await update(encodePublicId(5), { title: 'Baking' })
+
+      expect(entry.origin).toBe('extraction')
     })
 
     it('returns 404 for another user entry and leaves it untouched', async () => {

@@ -59,19 +59,19 @@ export default defineEventHandler(async (event) => {
 
   const originFiles = await findChatOriginFiles(chat.id, userId)
 
+  await detachChatsFromMemory({
+    db,
+    userId,
+    chatIds: [chat.id],
+    logger,
+  })
+
   await removeChatsFromSearchIndex({
     db,
     userId,
     chatIds: [chat.id],
     logger,
     stage: 'chat-delete',
-  })
-
-  await detachChatsFromMemory({
-    db,
-    userId,
-    chatIds: [chat.id],
-    logger,
   })
 
   await db.delete(schema.chats)

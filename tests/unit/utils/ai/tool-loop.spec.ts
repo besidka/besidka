@@ -490,4 +490,173 @@ describe('tool loop trigger', () => {
       }, { chatSearchSteps: LOOKUP_STEPS })).toBeUndefined()
     })
   })
+
+  describe('untrusted content guard', () => {
+    const MODEL = { provider: 'openai.chat', modelId: 'gpt-5.5' }
+
+    function createGuardedPrepareStep() {
+      const guard = { untrustedResultSeen: false }
+      const options = resolveToolLoopOptions({
+        fixture_search: createFixtureFollowUpTool(),
+      }, { guard })
+
+      if (!options) {
+        throw new Error('expected tool loop options to be defined')
+      }
+
+      return { guard, prepareStep: options.prepareStep }
+    }
+
+    function createStep(toolName: string, type = 'tool-result') {
+      return {
+        content: [{ type, toolName, toolCallId: 'call-1' }],
+        toolResults: type === 'tool-result'
+          ? [{ type, toolName, toolCallId: 'call-1' }]
+          : [],
+      }
+    }
+
+    function prepare(
+      prepareStep: ReturnType<typeof createGuardedPrepareStep>['prepareStep'],
+      steps: unknown[],
+      stepNumber = steps.length,
+    ) {
+      return prepareStep({
+        steps,
+        stepNumber,
+        model: MODEL,
+        instructions: undefined,
+      } as any)
+    }
+
+    it('stays false with no previous steps', async () => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [], 0)
+
+      expect(guard.untrustedResultSeen).toBe(false)
+    })
+
+    it.each([
+      'web_search_brave',
+      'web_search',
+      'google_search',
+      'search_chats',
+      'read_chat',
+    ])('is set by a %s result in a previous step', async (toolName) => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [createStep(toolName)])
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+
+    it('is set by a provider-executed result found only in step content',
+      async () => {
+        const { guard, prepareStep } = createGuardedPrepareStep()
+
+        await prepare(prepareStep, [{
+          content: [{
+            type: 'tool-result',
+            toolName: 'web_search',
+            providerExecuted: true,
+          }],
+        }])
+
+        expect(guard.untrustedResultSeen).toBe(true)
+      })
+
+    it('is set by a failed non-memory tool call', async () => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [createStep('web_search_exa', 'tool-error')])
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+
+    it.each([
+      'memory_list',
+      'memory_read',
+      'memory_write',
+      'memory_forget',
+    ])('is not set by a %s result', async (toolName) => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [
+        createStep(toolName),
+        createStep(toolName, 'tool-error'),
+      ])
+
+      expect(guard.untrustedResultSeen).toBe(false)
+    })
+
+    it('ignores tool calls without results and plain text steps',
+      async () => {
+        const { guard, prepareStep } = createGuardedPrepareStep()
+
+        await prepare(prepareStep, [
+          {
+            content: [
+              { type: 'text', text: 'Hello' },
+              { type: 'tool-call', toolName: 'web_search' },
+            ],
+            toolResults: [],
+          },
+        ])
+
+        expect(guard.untrustedResultSeen).toBe(false)
+      })
+
+    it('is set when an untrusted result follows memory results and is '
+      + 'never reset afterwards', async () => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [createStep('memory_list')])
+
+      expect(guard.untrustedResultSeen).toBe(false)
+
+      await prepare(prepareStep, [
+        createStep('memory_list'),
+        createStep('web_search_brave'),
+      ])
+
+      expect(guard.untrustedResultSeen).toBe(true)
+
+      await prepare(prepareStep, [createStep('memory_list')])
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+
+    it('changes nothing else: declarations and non-final steps stay as '
+      + 'they were', async () => {
+      const { prepareStep } = createGuardedPrepareStep()
+      const unguarded = resolveToolLoopOptions({
+        fixture_search: createFixtureFollowUpTool(),
+      })
+      const steps = [createStep('web_search_brave')]
+
+      expect(await prepare(prepareStep, steps, 1)).toBeUndefined()
+
+      const finalStepNumber = TOOL_LOOP_MAX_STEPS - 1
+      const guardedFinal = await prepare(prepareStep, steps, finalStepNumber)
+      const unguardedFinal = await unguarded?.prepareStep({
+        steps,
+        stepNumber: finalStepNumber,
+        model: MODEL,
+        instructions: undefined,
+      } as any)
+
+      expect(guardedFinal).toEqual(unguardedFinal)
+      expect(guardedFinal?.toolChoice).toBe('none')
+    })
+
+    it('works without a guard and without a steps argument', async () => {
+      const options = resolveToolLoopOptions({
+        fixture_search: createFixtureFollowUpTool(),
+      })
+
+      expect(await options?.prepareStep({ stepNumber: 0 } as any))
+        .toBeUndefined()
+    })
+  })
 })

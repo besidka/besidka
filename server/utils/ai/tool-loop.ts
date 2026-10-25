@@ -29,8 +29,13 @@ export interface ToolLoopOptions {
   prepareStep: PrepareStepFunction<ToolSet>
 }
 
+export interface UntrustedContentGuard {
+  untrustedResultSeen: boolean
+}
+
 export interface ToolLoopBudget {
   chatSearchSteps?: number
+  guard?: UntrustedContentGuard
 }
 
 export interface ResolvedToolLoop {
@@ -75,6 +80,33 @@ function isBudgetedLookupToolName(toolName: string): boolean {
   return isChatSearchToolName(toolName) || isMemoryToolName(toolName)
 }
 
+function isUntrustedToolResultPart(part: unknown): boolean {
+  if (typeof part !== 'object' || part === null) {
+    return false
+  }
+
+  const { type, toolName } = part as { type?: unknown, toolName?: unknown }
+
+  return (type === 'tool-result' || type === 'tool-error')
+    && typeof toolName === 'string'
+    && !isMemoryToolName(toolName)
+}
+
+function stepHasUntrustedToolResult(step: unknown): boolean {
+  if (typeof step !== 'object' || step === null) {
+    return false
+  }
+
+  const { content, toolResults } = step as {
+    content?: unknown
+    toolResults?: unknown
+  }
+
+  return [content, toolResults].some((parts) => {
+    return Array.isArray(parts) && parts.some(isUntrustedToolResultPart)
+  })
+}
+
 function buildToolLoopFinalStepInstructions(
   instructions: Instructions | undefined,
 ): string {
@@ -110,11 +142,23 @@ function isAnthropicGatewayModelId(modelId: string): boolean {
  * routed through a gateway keeps the declarations with `toolChoice: 'none'`.
  * Either can still call a tool on this step; the search-answer continuation
  * in the chat route is what guarantees the turn still ends with an answer.
+ *
+ * On every step it also inspects the previous steps' tool results, including
+ * provider-executed ones such as native web search, and raises
+ * `guard.untrustedResultSeen` once any result belongs to a tool that is not a
+ * memory tool. The flag is never reset and the declared tools are left
+ * untouched, so the memory write tools can refuse the rest of the request
+ * without churning the provider's prompt cache.
  */
 function createToolLoopPrepareStep(
   maxSteps: number,
+  guard: UntrustedContentGuard | undefined,
 ): PrepareStepFunction<ToolSet> {
-  return ({ stepNumber, model, instructions }) => {
+  return ({ steps, stepNumber, model, instructions }) => {
+    if (guard && !guard.untrustedResultSeen && Array.isArray(steps)) {
+      guard.untrustedResultSeen = steps.some(stepHasUntrustedToolResult)
+    }
+
     if (stepNumber !== maxSteps - 1) {
       return undefined
     }
@@ -205,7 +249,7 @@ export function resolveToolLoop(
         totalMs: TOOL_LOOP_TOTAL_TIMEOUT_MS,
         toolMs: TOOL_LOOP_TOOL_TIMEOUT_MS,
       },
-      prepareStep: createToolLoopPrepareStep(maxSteps),
+      prepareStep: createToolLoopPrepareStep(maxSteps, budget?.guard),
     },
     maxSteps,
   }

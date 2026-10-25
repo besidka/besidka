@@ -983,6 +983,9 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         'tests/integration/api/chats-title.spec.ts',
         'tests/integration/api/chats-chat-search-tools.spec.ts',
+        'tests/integration/api/chats-memory.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+        'tests/integration/api/chats-gateway-images.spec.ts',
       ],
     },
     {

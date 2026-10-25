@@ -510,6 +510,22 @@ async function throwInsertRejection(
     throw createSensitiveDisabledError()
   }
 
+  if (isSingletonCategory(values.category)) {
+    const [existingSingleton] = await db
+      .select({ id: schema.memoryEntries.id })
+      .from(schema.memoryEntries)
+      .where(and(
+        eq(schema.memoryEntries.userId, values.userId),
+        eq(schema.memoryEntries.category, values.category),
+        projectCondition(projectId),
+      ))
+      .limit(1)
+
+    if (existingSingleton) {
+      throw createUniqueConflictError(values.category)
+    }
+  }
+
   const [counted] = await db
     .select({ total: sql<number>`count(*)` })
     .from(schema.memoryEntries)

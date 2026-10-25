@@ -72,12 +72,21 @@
         v-if="canUndo"
         type="button"
         :disabled="isUndoing || isUndone"
+        :aria-label="undoLabel"
         data-testid="reasoning-memory-step-undo"
         class="btn btn-ghost btn-xs order-4"
         @click="undo"
       >
         {{ isUndone ? 'Undone' : 'Undo' }}
       </button>
+      <span
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="reasoning-memory-step-undo-status"
+        class="sr-only"
+      >
+        {{ isUndone ? 'Undone' : '' }}
+      </span>
     </div>
     <div
       v-if="isExpanded"
@@ -197,6 +206,20 @@ const canUndo = computed<boolean>(() => {
   return canUndoMemoryStep(props.data)
 })
 
+const undoLabel = computed<string | undefined>(() => {
+  if (isUndone.value) {
+    return undefined
+  }
+
+  const entryTitle = props.data.entries[0]?.title
+
+  if (!entryTitle) {
+    return 'Undo saving to memory'
+  }
+
+  return `Undo saving "${entryTitle}" to memory`
+})
+
 watch(isExpandable, (expandable) => {
   if (!expandable) {
     isExpanded.value = false
@@ -218,15 +241,17 @@ async function undo() {
     return
   }
 
+  const entryUrl = `/api/v1/memory/entries/${encodeURIComponent(entryId)}`
+
   isUndoing.value = true
 
   try {
     if (props.data.action === 'created') {
-      await $fetch(`/api/v1/memory/entries/${entryId}`, {
+      await $fetch(entryUrl, {
         method: 'DELETE',
       })
     } else {
-      await $fetch(`/api/v1/memory/entries/${entryId}`, {
+      await $fetch(entryUrl, {
         method: 'PATCH',
         body: props.data.previous,
       })

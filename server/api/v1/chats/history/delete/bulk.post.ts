@@ -55,19 +55,19 @@ export default defineEventHandler(async (event) => {
     },
   })
 
+  await detachChatsFromMemory({
+    db,
+    userId,
+    chatIds: chats.map(chat => chat.id),
+    logger,
+  })
+
   await removeChatsFromSearchIndex({
     db,
     userId,
     chatIds: body.data.chatIds,
     logger,
     stage: 'chat-delete-bulk',
-  })
-
-  await detachChatsFromMemory({
-    db,
-    userId,
-    chatIds: chats.map(chat => chat.id),
-    logger,
   })
 
   await db.delete(schema.chats)

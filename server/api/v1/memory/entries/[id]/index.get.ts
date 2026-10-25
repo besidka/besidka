@@ -3,6 +3,7 @@ import { defineEventHandler } from 'nuxt/server'
 import type { MemoryEntryResponse } from '#shared/types/memory-api.d'
 import { getMemoryEntry } from '~~/server/utils/memory/entries'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
@@ -45,6 +46,8 @@ export default defineEventHandler(async (event) => {
       status: 404,
     })
   }
+
+  applyResponseHeaders(event, { 'Cache-Control': 'no-store' })
 
   const response: MemoryEntryResponse = { entry }
 

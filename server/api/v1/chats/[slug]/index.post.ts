@@ -138,6 +138,7 @@ import {
   isMemoryToolsEnabled,
 } from '~~/server/utils/memory/tools/enabled'
 import { getMemoryTools } from '~~/server/utils/memory/tools/memory-tools'
+import { redactMemoryToolPartsForPersistence } from '~~/server/utils/memory/persist-redaction'
 import {
   buildMemoryInstructions,
   loadMemorySettingsFailClosed,
@@ -1215,6 +1216,7 @@ export default defineEventHandler(async (event) => {
     chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
       : 0,
+    guard: chatSearchBudget,
   })
   const toolLoopOptions = toolLoop?.options
   const followUpToolNames = new Set(
@@ -2373,9 +2375,11 @@ async function persistAssistantMessageFromStream(input: {
         text: getPersistedEmptyAnswerFailureText(),
       }]
       : normalizedParts
-    const finalParts = stripUndeliveredInlineDataParts(
-      partsBeforeSizeGuard,
-      input.logger,
+    const finalParts = redactMemoryToolPartsForPersistence(
+      stripUndeliveredInlineDataParts(
+        partsBeforeSizeGuard,
+        input.logger,
+      ),
     )
 
     if (!hasMeaningfulAssistantParts(finalParts)) {
