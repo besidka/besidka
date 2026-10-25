@@ -1,14 +1,40 @@
 # Security audit, 2026-10-24
 
-**Status: fixes landed on branch `feat/cloudflare-security-audit-a9775d`, not yet
-deployed.** This is a decision log: what the audit found, what was fixed, what
-was deliberately left, and what the owner must do.
+**Status: fixes merged in #496 and deployed to production on 2026-10-25.**
+This is a decision log: what the audit found, what was fixed, what was
+deliberately left, and how each owner action was resolved.
 
-## OWNER ACTIONS REQUIRED
+## OWNER ACTIONS
 
-Items 1 and 2 were done on 2026-10-25: both secrets are set on the production
-Worker, the Preview base config and the live `preview` Preview, and recorded
-in the local `.dev.vars*` files.
+All five were resolved on 2026-10-25:
+
+- Items 1 and 2 are done. Both secrets are set on the production Worker, the
+  Preview base config and the live `preview` Preview, and recorded in the
+  local `.dev.vars*` files.
+- Item 3 was checked, and the answer is yes. Preview Deploy run 39229739041,
+  for Dependabot PR #454, migrated and deployed with the Cloudflare token. The
+  repository has no Dependabot secrets, but the **organization** Dependabot
+  secrets hold `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` and
+  `PROJECT_ACTIONS_GITHUB_TOKEN`, each scoped to one repository. They stay,
+  because Dependabot PRs get previews through them. besidka/besidka#498 removes
+  the dangerous path: the deploy job now runs pnpm, wrangler, the lockfile and
+  `wrangler.jsonc` from the default branch, so dependencies chosen by a PR never
+  run next to the token.
+- Item 4 is done, with one combined rule. The zone is on the Free plan, which
+  allows exactly one rate-limiting rule. That slot previously held "Leaked
+  credential check" (`cf.waf.credential_check.password_leaked`, 5 per 10 s per
+  IP, block). It now holds "API flood limit" instead:
+  - Expression: `http.request.uri.path eq "/api/_evlog/ingest"`, or the path
+    starts with `/__nuxt_content/`, `/api/v1/chats/` or `/api/v1/files/`.
+  - Limit: 100 requests per 10 s per IP, then block for 10 s.
+
+  Sign-in no longer needs the old rule: Better Auth now enforces its own limits
+  (`/sign-in/email` 10 per 300 s per IP) and Turnstile. Zone rules do not cover
+  `*.workers.dev` Preview hosts.
+- Item 5: the owner decided to leave `preview_urls: true`. The `CONTENT_DB`
+  re-import exposure below is accepted.
+
+The original action list:
 
 1. **Set `NUXT_STUDIO_AUTH_SESSION_SECRET` (random, 32+ characters) on the
    production Worker and on the preview base config BEFORE deploying this
@@ -21,12 +47,10 @@ in the local `.dev.vars*` files.
    `docs/cloudflare-previews.md`).
 2. **Set `STUDIO_GITHUB_MODERATORS`** (who may publish through Studio) next to
    the existing `STUDIO_GITHUB_*` secrets. See `docs/landing-studio.md`.
-3. **Answered: Dependabot-actor runs receive `CLOUDFLARE_API_TOKEN` /
-   `CLOUDFLARE_ACCOUNT_ID`** (organization Actions secrets; Preview Deploy run
-   39229739041 for Dependabot PR #454 migrated and deployed with them).
-   besidka/besidka#498 moved `preview-deploy.yml` tooling to the default
-   branch, so PR-selected dependencies never run next to the token. Checking
-   the org Dependabot secrets tab is now optional.
+3. **Check whether `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` also exist in
+   the GitHub Dependabot secrets tab.** Dependabot PRs run workflows with that
+   secret store; if the deploy credentials are there, a malicious dependency
+   update reaches them.
 4. **Add WAF / rate-limit rules** in Cloudflare for: `/api/_evlog/ingest`,
    `/__nuxt_content/*/query`, `/api/v1/chats/*`, `/api/v1/files/*`. The code
    fixes below cap payload size and shape, not request volume.
