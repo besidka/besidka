@@ -108,8 +108,6 @@
         >
           <summary
             class="btn btn-ghost btn-ghost-legacy btn-sm normal-case"
-            role="button"
-            aria-haspopup="menu"
             :aria-expanded="isMoreOpen"
             data-testid="memory-more-trigger"
           >
@@ -118,13 +116,11 @@
           </summary>
           <ul
             class="dropdown-content menu menu-sm z-50 mt-2 w-64 max-w-full rounded-box bg-base-100 p-1 shadow-lg"
-            role="menu"
             aria-label="More memory actions"
           >
-            <li role="none">
+            <li>
               <button
                 type="button"
-                role="menuitem"
                 :class="{ 'opacity-60': isBackfillGated }"
                 :aria-describedby="
                   isBackfillGated ? backfillHintId : undefined
@@ -144,10 +140,9 @@
                 {{ backfillLabel }}
               </button>
             </li>
-            <li role="none">
+            <li>
               <button
                 type="button"
-                role="menuitem"
                 data-testid="memory-import-menu"
                 @click="chooseMenuAction(openImport)"
               >
@@ -155,25 +150,20 @@
                 Import memory
               </button>
             </li>
-            <li role="none">
+            <li>
               <a
                 href="/api/v1/memory/export"
                 download
-                role="menuitem"
                 data-testid="memory-export-menu"
-                @click="closeMoreMenu()"
+                @click="closeMoreMenu(true)"
               >
                 <Icon name="lucide:download" size="16" />
                 Export JSON
               </a>
             </li>
-            <li
-              role="none"
-              :class="{ 'menu-disabled': isResetDisabled }"
-            >
+            <li :class="{ 'menu-disabled': isResetDisabled }">
               <button
                 type="button"
-                role="menuitem"
                 class="text-error"
                 :disabled="isResetDisabled"
                 data-testid="memory-reset-menu"
@@ -321,12 +311,16 @@ function closeMoreMenu(shouldRestoreFocus: boolean = false) {
 }
 
 function chooseMenuAction(action: () => void | Promise<void>) {
-  closeMoreMenu()
+  closeMoreMenu(true)
   action()
 }
 
 onClickOutside(moreMenu, () => {
   closeMoreMenu()
+})
+
+onMounted(() => {
+  loadBackfill()
 })
 
 watch(isBackfillRefreshing, (isRefreshing, _previous, onCleanup) => {

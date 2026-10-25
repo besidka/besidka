@@ -324,6 +324,30 @@
           >
             {{ errorText }}
           </p>
+          <div
+            v-if="view === 'running' && isPaused"
+            class="mt-3 flex flex-wrap items-center justify-between gap-2"
+            data-testid="memory-backfill-paused"
+          >
+            <p
+              role="status"
+              class="text-sm"
+              data-testid="memory-backfill-paused-message"
+            >
+              Progress paused after repeated errors. Try again.
+            </p>
+            <UiButton
+              mode="neutral"
+              outline
+              size="sm"
+              normal-case
+              text="Try again"
+              icon-name="lucide:refresh-cw"
+              :icon-size="16"
+              data-testid="memory-backfill-resume"
+              @click="resumeBuilding"
+            />
+          </div>
         </div>
         <div class="mt-4 flex shrink-0 flex-wrap items-center justify-end gap-2">
           <template v-if="view === 'running'">
@@ -422,6 +446,7 @@ const {
   isRunning,
   isStarting,
   isCancelling,
+  isPaused,
   error,
   load,
   start,
@@ -506,6 +531,10 @@ const costText = computed<string>(() => {
 
   if (costUsd === null) {
     return 'Price unknown for this model, so the cost can\'t be estimated.'
+  }
+
+  if (costUsd === 0) {
+    return `About ${formatBackfillCost(costUsd)}`
   }
 
   return `Approximately ${formatBackfillCost(costUsd)}`
@@ -657,6 +686,10 @@ async function startBuilding() {
   if (!isStarted) {
     showError()
   }
+}
+
+function resumeBuilding() {
+  startPolling()
 }
 
 async function stopBuilding() {

@@ -220,7 +220,10 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
       await byTestId(wrapper, 'memory-import-copy').trigger('click')
       await flushPromises()
 
-      expect(mocks.error).toHaveBeenCalledWith('Failed to copy the prompt')
+      expect(mocks.error).toHaveBeenCalledWith(
+        'Failed to copy the prompt',
+        'denied',
+      )
       expect(mocks.success).not.toHaveBeenCalled()
     })
   })
@@ -520,7 +523,9 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
         expect(byTestId(wrapper, 'memory-import-dropped-duplicate').text())
           .toContain('3')
         expect(byTestId(wrapper, 'memory-import-blocked-api-key').text())
-          .toContain('3')
+          .toContain('1')
+        expect(byTestId(wrapper, 'memory-import-blocked-api-key').text())
+          .not.toContain('3')
         expect(byTestId(wrapper, 'memory-import-meta').text())
           .toContain('Read in 4 parts')
         expect(byTestId(wrapper, 'memory-import-meta').text())

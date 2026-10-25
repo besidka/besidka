@@ -56,7 +56,8 @@ describe('memory backfill utils', () => {
   describe('formatBackfillCost', () => {
     it.each([
       [null, 'price unknown'],
-      [0, '< $0.01'],
+      [0, '$0.00'],
+      [0.0001, '< $0.01'],
       [0.004, '< $0.01'],
       [0.01, '$0.01'],
       [0.516, '$0.52'],

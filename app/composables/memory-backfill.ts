@@ -34,8 +34,10 @@ export function useMemoryBackfill() {
   const isStarting = shallowRef<boolean>(false)
   const isCancelling = shallowRef<boolean>(false)
   const isPolling = shallowRef<boolean>(false)
+  const isPaused = shallowRef<boolean>(false)
   const pendingLoads = shallowRef<number>(0)
   const error = shallowRef<MemoryBackfillErrorMessage | null>(null)
+  const pollError = shallowRef<MemoryBackfillErrorMessage | null>(null)
 
   let isStepping = false
   let hasStepError = false
@@ -291,6 +293,9 @@ export function useMemoryBackfill() {
         : 0
 
       if (consecutiveFailures >= MAX_CONSECUTIVE_STEP_FAILURES) {
+        isPaused.value = true
+        pollError.value = error.value
+
         break
       }
 
@@ -313,12 +318,16 @@ export function useMemoryBackfill() {
 
     pollLoopId += 1
     isPolling.value = true
+    isPaused.value = false
+    pollError.value = null
     runPollLoop(pollLoopId)
   }
 
   function stopPolling() {
     pollLoopId += 1
     isPolling.value = false
+    isPaused.value = false
+    pollError.value = null
     cancelPendingSleep()
   }
 
@@ -336,6 +345,8 @@ export function useMemoryBackfill() {
     isStarting,
     isCancelling,
     isPolling,
+    isPaused,
+    pollError,
     error,
     load,
     start,

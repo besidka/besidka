@@ -28,6 +28,11 @@ mockNuxtImport('useErrorMessage', () => mocks.error)
 enableAutoUnmount(afterEach)
 
 const ENTRIES_URL = '/api/v1/memory/entries'
+const BACKFILL_URL = '/api/v1/memory/backfill'
+
+function fetchCalls() {
+  return mocks.fetch.mock.calls.filter(([url]) => url !== BACKFILL_URL)
+}
 
 const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
@@ -1120,7 +1125,7 @@ describe('Profile/Memory/Entries', () => {
           .trigger('click')
         await flushPromises()
 
-        expect(mocks.fetch).not.toHaveBeenCalled()
+        expect(fetchCalls()).toEqual([])
         expect(refresh).not.toHaveBeenCalled()
       })
 
@@ -1383,7 +1388,7 @@ describe('Profile/Memory/Entries', () => {
           .trigger('click')
         await flushPromises()
 
-        expect(mocks.fetch).not.toHaveBeenCalled()
+        expect(fetchCalls()).toEqual([])
         expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
           .toBe(true)
       })
@@ -1504,7 +1509,7 @@ describe('Profile/Memory/Entries', () => {
 
           await clickSave(wrapper)
 
-          expect(mocks.fetch).not.toHaveBeenCalled()
+          expect(fetchCalls()).toEqual([])
 
           refresh.mockClear()
 
@@ -1512,10 +1517,10 @@ describe('Profile/Memory/Entries', () => {
             .trigger('click')
           await flushPromises()
 
-          expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(
+          expect(fetchCalls()).toEqual([[
             '/api/v1/profiles/settings',
             { method: 'PATCH', body: { aboutMe: null } },
-          )
+          ]])
           expect(mocks.info).toHaveBeenCalledWith(
             'Saved',
             'About me saved as a memory entry.',
@@ -1566,14 +1571,14 @@ describe('Profile/Memory/Entries', () => {
             .$emit('update:open', false)
           await flushPromises()
 
-          expect(mocks.fetch).not.toHaveBeenCalled()
+          expect(fetchCalls()).toEqual([])
           expect(stub(wrapper).attributes('data-initial-title')).toBe('')
 
           await wrapper.get('[data-testid="detail-modal-created"]')
             .trigger('click')
           await flushPromises()
 
-          expect(mocks.fetch).not.toHaveBeenCalled()
+          expect(fetchCalls()).toEqual([])
         })
 
       it('does not clear the text for a normal create after a cancelled save',
@@ -1593,7 +1598,7 @@ describe('Profile/Memory/Entries', () => {
             .trigger('click')
           await flushPromises()
 
-          expect(mocks.fetch).not.toHaveBeenCalled()
+          expect(fetchCalls()).toEqual([])
         })
 
       it('does not clear the text when an unrelated entry is saved',
@@ -1605,7 +1610,7 @@ describe('Profile/Memory/Entries', () => {
             .trigger('click')
           await flushPromises()
 
-          expect(mocks.fetch).not.toHaveBeenCalled()
+          expect(fetchCalls()).toEqual([])
         })
     })
   })

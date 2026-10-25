@@ -54,7 +54,7 @@ export function formatBackfillCost(costUsd: number | null): string {
     return 'price unknown'
   }
 
-  if (costUsd < TINY_COST_THRESHOLD_USD) {
+  if (costUsd > 0 && costUsd < TINY_COST_THRESHOLD_USD) {
     return '< $0.01'
   }
 

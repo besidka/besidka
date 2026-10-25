@@ -48,7 +48,7 @@
             v-if="estimate"
             data-testid="memory-cache-info-example"
           >
-            Example for <strong>{{ modelName }}</strong>:
+            With <strong>{{ modelName }}</strong>,
             {{ TURNS }} messages with
             <span data-testid="memory-cache-info-tokens">{{
               formatApproxTokens(knowledgeTokens)
@@ -72,9 +72,10 @@
               }}</strong>
               once, to cache it again.
             </template>
-            <template v-else>
+            <template v-else-if="isCachingUnavailable">
               because caching isn't available for it.
             </template>
+            <template v-else>. {{ NO_CACHE_PRICE_LINE }}</template>
           </p>
           <p
             v-else
@@ -267,6 +268,10 @@ const isCachingPriced = computed<boolean>(() => {
   return current.cacheReadPrice !== null || current.cacheWritePrice !== null
 })
 
+const isCachingUnavailable = computed<boolean>(() => {
+  return cacheModel.value?.route === 'cloudflare'
+})
+
 const estimate = computed<PromptCacheCostEstimate | null>(() => {
   const current = cacheModel.value
 
@@ -294,7 +299,7 @@ const ROUTE_LINES: Record<Exclude<CacheRoute, 'direct'>, string> = {
 }
 
 const NO_CACHE_PRICE_LINE = 'No cache price is published for this model, so '
-  + 'the estimate assumes full price.'
+  + 'the example assumes full price.'
 
 function describeRoute(current: CacheModel): string {
   if (current.route === 'direct') {
@@ -320,16 +325,7 @@ const statusLines = computed<string[]>(() => {
     return []
   }
 
-  if (current.route === 'cloudflare' || isCachingPriced.value) {
-    return [describeRoute(current)]
-  }
-
-  const isGatewayRoute = current.route !== 'direct'
-    && current.route !== 'anthropic'
-
-  return isGatewayRoute
-    ? [describeRoute(current), NO_CACHE_PRICE_LINE]
-    : [NO_CACHE_PRICE_LINE]
+  return [describeRoute(current)]
 })
 
 const memoryIndexTokens = computed<number>(() => {

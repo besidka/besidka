@@ -305,6 +305,7 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { MEMORY_IMPORT_MAX_CHARS } from '#shared/utils/memory-import-limits'
 import { MEMORY_IMPORT_PROMPT } from '#shared/utils/memory-import-prompt'
 import { neverStoreKinds } from '#shared/utils/memory-policy'
 
@@ -332,7 +333,6 @@ const emit = defineEmits<{
 
 const open = defineModel<boolean>('open', { default: false })
 
-const MAX_IMPORT_CHARS = 60000
 const COOLDOWN_STATUS = 429
 const COOLDOWN_MESSAGE = 'Wait a minute before importing again'
 const COOLDOWN_WHY = 'An import was requested less than a minute ago.'
@@ -349,7 +349,7 @@ const blockedKindLabels: Record<string, string> = Object.fromEntries(
 )
 
 const prompt = MEMORY_IMPORT_PROMPT
-const maxChars = MAX_IMPORT_CHARS
+const maxChars = MEMORY_IMPORT_MAX_CHARS
 
 const headingId = useId()
 const textareaId = useId()
@@ -365,7 +365,7 @@ const error = shallowRef<ParsedError | null>(null)
 const warning = shallowRef<ImportWarning | null>(null)
 
 const isOverLimit = computed<boolean>(() => {
-  return text.value.length > MAX_IMPORT_CHARS
+  return text.value.length > MEMORY_IMPORT_MAX_CHARS
 })
 
 const isSubmitDisabled = computed<boolean>(() => {
@@ -453,8 +453,11 @@ async function copyPrompt() {
     await navigator.clipboard.writeText(MEMORY_IMPORT_PROMPT)
 
     useSuccessMessage('Copied')
-  } catch {
-    useErrorMessage('Failed to copy the prompt')
+  } catch (exception) {
+    useErrorMessage(
+      'Failed to copy the prompt',
+      parseError(exception).message,
+    )
   }
 }
 
@@ -475,7 +478,9 @@ function applyResponse(response: ImportResponse, submittedText: string) {
     updated: (previous?.updated ?? 0) + response.updated,
     appended: (previous?.appended ?? 0) + response.appended,
     dropped: addCounts(previous?.dropped ?? {}, response.dropped),
-    blocked: addCounts(previous?.blocked ?? {}, response.blocked),
+    blocked: previous
+      ? previous.blocked
+      : addCounts({}, response.blocked),
     chunks: (previous?.chunks ?? 0) + response.chunks,
     model: response.model ?? previous?.model ?? null,
   }

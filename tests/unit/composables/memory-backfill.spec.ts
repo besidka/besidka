@@ -736,5 +736,104 @@ describe('useMemoryBackfill', () => {
       expect(backfill.isPolling.value).toBe(false)
       expect(backfill.error.value?.message).toBe('Step failed')
     })
+
+    it('reports a paused state after three failed steps in a row', async () => {
+      mockRunningOverview()
+
+      const backfill = useMemoryBackfill()
+
+      await backfill.load()
+
+      expect(backfill.isPaused.value).toBe(false)
+      expect(backfill.pollError.value).toBeNull()
+
+      mocks.fetch.mockReset().mockRejectedValue(
+        createRejection(500, 'Step failed', 'Model timed out'),
+      )
+
+      backfill.startPolling()
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS * 6)
+
+      expect(backfill.isPaused.value).toBe(true)
+      expect(backfill.pollError.value?.message).toBe('Step failed')
+      expect(backfill.pollError.value?.why).toBe('Model timed out')
+      expect(backfill.isRunning.value).toBe(true)
+    })
+
+    it('does not pause when a step succeeds between failures', async () => {
+      mockRunningOverview()
+
+      const backfill = useMemoryBackfill()
+
+      await backfill.load()
+
+      mocks.fetch.mockReset()
+        .mockRejectedValueOnce(createRejection(500, 'Step failed', 'x'))
+        .mockRejectedValueOnce(createRejection(500, 'Step failed', 'x'))
+        .mockResolvedValueOnce({ job: createJob({ processedChats: 2 }) })
+        .mockRejectedValueOnce(createRejection(500, 'Step failed', 'x'))
+        .mockResolvedValue({ job: createJob({ processedChats: 4 }) })
+
+      backfill.startPolling()
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS * 3)
+
+      expect(backfill.isPaused.value).toBe(false)
+      expect(backfill.isPolling.value).toBe(true)
+
+      backfill.stopPolling()
+    })
+
+    it('resumes from the paused state when polling starts again', async () => {
+      mockRunningOverview()
+
+      const backfill = useMemoryBackfill()
+
+      await backfill.load()
+
+      mocks.fetch.mockReset().mockRejectedValue(
+        createRejection(500, 'Step failed', 'Model timed out'),
+      )
+
+      backfill.startPolling()
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS * 6)
+
+      expect(backfill.isPaused.value).toBe(true)
+
+      mocks.fetch.mockReset().mockResolvedValue({
+        job: createJob({ processedChats: 6 }),
+      })
+
+      backfill.startPolling()
+
+      expect(backfill.isPaused.value).toBe(false)
+      expect(backfill.pollError.value).toBeNull()
+      expect(backfill.isPolling.value).toBe(true)
+
+      await flushPromises()
+
+      expect(callsTo(STEP_URL)).toHaveLength(1)
+      expect(backfill.error.value).toBeNull()
+
+      backfill.stopPolling()
+    })
+
+    it('clears the paused state when polling is stopped', async () => {
+      mockRunningOverview()
+
+      const backfill = useMemoryBackfill()
+
+      await backfill.load()
+
+      mocks.fetch.mockReset().mockRejectedValue(
+        createRejection(500, 'Step failed', 'Model timed out'),
+      )
+
+      backfill.startPolling()
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS * 6)
+      backfill.stopPolling()
+
+      expect(backfill.isPaused.value).toBe(false)
+      expect(backfill.pollError.value).toBeNull()
+    })
   })
 })

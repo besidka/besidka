@@ -161,6 +161,16 @@ function statusLines(wrapper: Awaited<ReturnType<typeof mountInfo>>) {
     .map(line => line.text())
 }
 
+function expectUnpricedExample(
+  wrapper: Awaited<ReturnType<typeof mountInfo>>,
+) {
+  const example = text(wrapper, 'memory-cache-info-example')
+
+  expect(example).toMatch(/\$[\d.,]+\. No cache price is published for this model, so the example assumes full price\.$/)
+  expect(example).not.toContain('isn\'t available')
+  expect(example).not.toContain('with it')
+}
+
 function memoryEntry(
   overrides: Partial<MemoryIndexEstimateEntry> = {},
 ): MemoryIndexEstimateEntry {
@@ -250,7 +260,7 @@ describe('Profile/Memory/CacheInfo', () => {
       const wrapper = await mountInfo()
 
       expect(text(wrapper, 'memory-cache-info-example'))
-        .toContain('Example for Claude Sonnet:')
+        .toContain('With Claude Sonnet, 20 messages with')
       expect(text(wrapper, 'memory-cache-info-example'))
         .toContain('20 messages with')
     })
@@ -429,28 +439,32 @@ describe('Profile/Memory/CacheInfo', () => {
         'OpenAI caches repeated context automatically. It is best effort: '
         + 'the provider decides.',
       ])
+      expect(text(wrapper, 'memory-cache-info-example'))
+        .toContain('without caching and')
+      expect(text(wrapper, 'memory-cache-info-example'))
+        .not.toContain('No cache price is published')
     })
 
-    it('says the Vercel gateway is asked to cache and has no cache price', async () => {
+    it('says the Vercel gateway is asked to cache and the example agrees', async () => {
       selectGateway('vercel', 'vendor/model')
 
       const wrapper = await mountInfo()
 
       expect(statusLines(wrapper)).toEqual([
         'Caching is requested from the gateway (best effort).',
-        'No cache price is published for this model, so the estimate '
-        + 'assumes full price.',
       ])
+      expectUnpricedExample(wrapper)
       expect(wrapper.find('[data-testid="memory-cache-info-cached"]').exists())
         .toBe(false)
     })
 
-    it('says caching is on for OpenRouter anthropic ids', async () => {
+    it('says caching is on for OpenRouter anthropic ids without contradicting itself', async () => {
       selectGateway('openrouter', 'anthropic/claude-sonnet')
 
       const wrapper = await mountInfo()
 
-      expect(statusLines(wrapper)[0]).toBe('Caching is on for this model.')
+      expect(statusLines(wrapper)).toEqual(['Caching is on for this model.'])
+      expectUnpricedExample(wrapper)
     })
 
     it('says it depends on the upstream for other OpenRouter ids', async () => {
@@ -458,7 +472,23 @@ describe('Profile/Memory/CacheInfo', () => {
 
       const wrapper = await mountInfo()
 
-      expect(statusLines(wrapper)[0]).toBe('Depends on the upstream provider.')
+      expect(statusLines(wrapper)).toEqual(['Depends on the upstream provider.'])
+      expectUnpricedExample(wrapper)
+    })
+
+    it('puts the gateway model name with a colon in bold without extra punctuation', async () => {
+      selectGateway('openrouter', 'anthropic/claude-sonnet', {
+        ...GATEWAY_MODEL,
+        name: 'Anthropic: Claude Sonnet 4.5',
+      })
+
+      const wrapper = await mountInfo()
+
+      expect(wrapper.get('[data-testid="memory-cache-info-example"] strong')
+        .text()).toBe('Anthropic: Claude Sonnet 4.5')
+      expect(text(wrapper, 'memory-cache-info-example')).toContain(
+        'With Anthropic: Claude Sonnet 4.5, 20 messages with',
+      )
     })
 
     it('hides the cached figures for Cloudflare AI Gateway', async () => {
@@ -483,6 +513,8 @@ describe('Profile/Memory/CacheInfo', () => {
         .exists()).toBe(false)
       expect(text(wrapper, 'memory-cache-info-example'))
         .toContain('caching isn\'t available for it')
+      expect(text(wrapper, 'memory-cache-info-example'))
+        .not.toContain('No cache price is published')
     })
 
     it('shows only the uncached figure for a model with no cache price', async () => {
@@ -491,11 +523,10 @@ describe('Profile/Memory/CacheInfo', () => {
       const wrapper = await mountInfo()
 
       expect(statusLines(wrapper)).toEqual([
-        'No cache price is published for this model, so the estimate '
-        + 'assumes full price.',
+        'DeepSeek caches repeated context automatically. It is best effort: '
+        + 'the provider decides.',
       ])
-      expect(text(wrapper, 'memory-cache-info-example'))
-        .toContain('caching isn\'t available for it')
+      expectUnpricedExample(wrapper)
       expect(wrapper.find('[data-testid="memory-cache-info-cached"]').exists())
         .toBe(false)
       expect(wrapper.find('[data-testid="memory-cache-info-per-change"]')

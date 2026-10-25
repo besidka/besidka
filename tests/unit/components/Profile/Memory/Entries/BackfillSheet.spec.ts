@@ -425,6 +425,19 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
         .toBe('Approximately < $0.01')
     })
 
+    it('reads naturally when the estimated cost is exactly zero', async () => {
+      const wrapper = await mountSheet({
+        overview: {
+          job: null,
+          estimate: createEstimate({ costUsd: 0 }),
+          reason: null,
+        },
+      })
+
+      expect(textOf(wrapper, 'memory-backfill-estimate-cost'))
+        .toBe('About $0.00')
+    })
+
     it('uses the singular for one chat', async () => {
       const wrapper = await mountSheet({
         overview: {
@@ -832,6 +845,73 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
 
       expect(wrapper.emitted('changed')).toBeUndefined()
     })
+  })
+
+  describe('paused after repeated errors', () => {
+    const PAUSE_COPY = 'Progress paused after repeated errors. Try again.'
+
+    async function mountPaused() {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+
+      const wrapper = await mountSheet({
+        overview: { job: createJob(), estimate: null, reason: null },
+        step: createRejection(500, 'Step failed', 'Model timed out'),
+      })
+
+      await vi.advanceTimersByTimeAsync(60_000)
+      await flushPromises()
+
+      return wrapper
+    }
+
+    it('shows the pause copy and a Try again button after three failures',
+      async () => {
+        try {
+          const wrapper = await mountPaused()
+
+          expect(callsTo(STEP_URL, 'POST')).toHaveLength(3)
+          expect(hasTestId(wrapper, 'memory-backfill-running')).toBe(true)
+          expect(textOf(wrapper, 'memory-backfill-paused-message'))
+            .toBe(PAUSE_COPY)
+          expect(textOf(wrapper, 'memory-backfill-resume'))
+            .toContain('Try again')
+        } finally {
+          vi.useRealTimers()
+        }
+      })
+
+    it('does not show the pause state while steps are still running',
+      async () => {
+        const wrapper = await mountSheet({
+          overview: { job: createJob(), estimate: null, reason: null },
+        })
+
+        expect(hasTestId(wrapper, 'memory-backfill-paused')).toBe(false)
+        expect(hasTestId(wrapper, 'memory-backfill-resume')).toBe(false)
+      })
+
+    it('drives steps again and hides the pause state on Try again',
+      async () => {
+        try {
+          const wrapper = await mountPaused()
+
+          mockApi({
+            overview: { job: createJob(), estimate: null, reason: null },
+            step: createJob({ processedChats: 14 }),
+          })
+
+          await byTestId(wrapper, 'memory-backfill-resume').trigger('click')
+          await flushPromises()
+
+          expect(callsTo(STEP_URL, 'POST')).toHaveLength(4)
+          expect(hasTestId(wrapper, 'memory-backfill-paused')).toBe(false)
+          expect(hasTestId(wrapper, 'memory-backfill-error')).toBe(false)
+          expect(textOf(wrapper, 'memory-backfill-progress-text'))
+            .toBe('14 / 48 chats')
+        } finally {
+          vi.useRealTimers()
+        }
+      })
   })
 
   describe('polling lifecycle', () => {
