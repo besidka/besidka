@@ -1,10 +1,13 @@
 import {
+  getKnowledgeRelativePathIssue,
+  normalizeKnowledgeRelativePath,
+} from '#shared/utils/project-knowledge-path'
+import {
   KNOWLEDGE_LIMITS,
   getKnowledgeFileCategory,
   isIgnoredKnowledgePath,
 } from '#shared/utils/project-knowledge-policy'
 import { sha256Hex } from '~/utils/knowledge-hash'
-import { normalizeKnowledgeRelativePath } from '~/utils/knowledge-paths'
 
 export type KnowledgeSkipReason
   = | 'ignored-path'
@@ -40,6 +43,12 @@ export interface KnowledgeSkippedEntry {
   name: string
   relativePath: string | null
   reason: KnowledgeSkipReason
+  detail?: string
+}
+
+export interface KnowledgeSkipDetail {
+  path: string
+  issue: string
 }
 
 export interface KnowledgeUploadPlan {
@@ -51,6 +60,7 @@ export interface KnowledgeUploadPlan {
 export interface KnowledgePlanSummary {
   added: number
   skipped: number
+  details?: KnowledgeSkipDetail[]
   reasons: Array<{
     reason: KnowledgeSkipReason
     label: string
@@ -229,16 +239,21 @@ async function hasNulByteInHead(file: File): Promise<boolean> {
   return new Uint8Array(head).includes(0)
 }
 
-function normalizeEntryPath(
+function inspectEntryPath(
   entry: KnowledgePlanEntry,
-): KnowledgePlanEntry | null {
+): { entry: KnowledgePlanEntry } | { issue: string } {
   if (entry.relativePath === null) {
-    return entry
+    return { entry }
   }
 
   const relativePath = normalizeKnowledgeRelativePath(entry.relativePath)
+  const issue = getKnowledgeRelativePathIssue(relativePath)
 
-  return relativePath === null ? null : { file: entry.file, relativePath }
+  if (issue) {
+    return { issue }
+  }
+
+  return { entry: { file: entry.file, relativePath } }
 }
 
 export async function planKnowledgeUpload(
@@ -256,12 +271,17 @@ export async function planKnowledgeUpload(
   let totalBytes = 0
 
   for (const rawEntry of entries) {
-    const entry = normalizeEntryPath(rawEntry)
+    const inspection = inspectEntryPath(rawEntry)
 
-    if (!entry) {
-      skipped.push(toSkippedEntry(rawEntry, 'invalid-path'))
+    if ('issue' in inspection) {
+      skipped.push({
+        ...toSkippedEntry(rawEntry, 'invalid-path'),
+        detail: inspection.issue,
+      })
       continue
     }
+
+    const { entry } = inspection
 
     const { file, relativePath } = entry
     const classification = classifyEntry(entry, gitignoreRules)
@@ -319,9 +339,19 @@ export function summarizeKnowledgePlan(
     return { reason, label: knowledgeSkipReasonLabels[reason], count }
   }).sort((first, second) => second.count - first.count)
 
+  const details = plan.skipped.flatMap((skippedEntry) => {
+    return skippedEntry.detail
+      ? [{
+        path: skippedEntry.relativePath ?? skippedEntry.name,
+        issue: skippedEntry.detail,
+      }]
+      : []
+  })
+
   return {
     added: plan.accepted.length,
     skipped: plan.skipped.length,
+    ...(details.length > 0 ? { details } : {}),
     reasons,
   }
 }

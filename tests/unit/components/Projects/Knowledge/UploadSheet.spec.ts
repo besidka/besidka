@@ -211,6 +211,20 @@ describe('Projects/Knowledge/UploadSheet', () => {
         .toBe('Sync folder')
     })
 
+    it('lists the issue for each skipped invalid path', async () => {
+      const wrapper = await mountSheet({
+        plan: {
+          ...plan,
+          details: [
+            { path: 'a\\b.md', issue: 'Path must not contain backslashes' },
+          ],
+        },
+      })
+
+      expect(byTestId(wrapper, 'knowledge-upload-skipped-details').text())
+        .toBe('Skipped: a\\b.md — Path must not contain backslashes')
+    })
+
     it('cannot sync a folder with no changes', async () => {
       const wrapper = await mountSheet({
         syncSummary: {

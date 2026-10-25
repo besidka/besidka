@@ -60,6 +60,19 @@
               {{ describeSync(syncSummary) }}
             </p>
             <ul
+              v-if="plan?.details?.length"
+              class="grid gap-1 break-all text-sm text-base-content/70"
+              aria-label="Skipped files"
+              data-testid="knowledge-upload-skipped-details"
+            >
+              <li
+                v-for="detail in visibleSkipDetails"
+                :key="detail.path"
+              >
+                Skipped: {{ detail.path }} — {{ detail.issue }}
+              </li>
+            </ul>
+            <ul
               v-if="plan && plan.reasons.length > 0"
               class="grid gap-1 text-sm text-base-content/70"
               aria-label="Why files are skipped"
@@ -308,6 +321,7 @@ import type {
 } from '~/types/project-knowledge.d'
 
 const MAX_LISTED_ENTRIES = 100
+const MAX_LISTED_SKIP_DETAILS = 20
 
 const props = defineProps<{
   phase: KnowledgeUploadPhase
@@ -413,6 +427,10 @@ const showEntries = computed<boolean>(() => {
 
 const visibleEntries = computed<KnowledgeUploadEntry[]>(() => {
   return props.entries.slice(0, MAX_LISTED_ENTRIES)
+})
+
+const visibleSkipDetails = computed(() => {
+  return (props.plan?.details ?? []).slice(0, MAX_LISTED_SKIP_DETAILS)
 })
 
 const hiddenEntryCount = computed<number>(() => {

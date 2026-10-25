@@ -1,6 +1,9 @@
+import {
+  normalizeKnowledgeRelativePath,
+  parseKnowledgeRelativePath,
+} from '#shared/utils/project-knowledge-path'
 import { knowledgeIgnoredDirectories } from '#shared/utils/project-knowledge-policy'
 import type { KnowledgePlanEntry } from '~/utils/knowledge-upload-plan'
-import { normalizeKnowledgeRelativePath } from '~/utils/knowledge-paths'
 import {
   isIgnoredByGitignore,
   parseSimpleGitignore,
@@ -56,7 +59,8 @@ const MAX_WALKED_FILES = 5000
 const GITIGNORE_FILE_NAME = '.gitignore'
 
 function toEntryPath(path: string): string {
-  return normalizeKnowledgeRelativePath(path) ?? path
+  return parseKnowledgeRelativePath(path)
+    ?? normalizeKnowledgeRelativePath(path)
 }
 
 export function entriesFromFileList(
@@ -279,8 +283,10 @@ export function diffFolderSync<Incoming extends KnowledgeFolderIncomingItem>(
   const existingByPath = new Map<string, KnowledgeFolderSyncItem>()
 
   for (const item of existing) {
-    if (!existingByPath.has(item.relativePath)) {
-      existingByPath.set(item.relativePath, item)
+    const path = normalizeKnowledgeRelativePath(item.relativePath)
+
+    if (!existingByPath.has(path)) {
+      existingByPath.set(path, item)
     }
   }
 
@@ -293,9 +299,11 @@ export function diffFolderSync<Incoming extends KnowledgeFolderIncomingItem>(
   }
 
   for (const item of incoming) {
-    incomingPaths.add(item.relativePath)
+    const incomingPath = normalizeKnowledgeRelativePath(item.relativePath)
 
-    const match = existingByPath.get(item.relativePath)
+    incomingPaths.add(incomingPath)
+
+    const match = existingByPath.get(incomingPath)
 
     if (!match) {
       diff.add.push(item)
@@ -319,7 +327,7 @@ export function diffFolderSync<Incoming extends KnowledgeFolderIncomingItem>(
   }
 
   for (const item of existing) {
-    if (!incomingPaths.has(item.relativePath)) {
+    if (!incomingPaths.has(normalizeKnowledgeRelativePath(item.relativePath))) {
       diff.remove.push(item.id)
     }
   }

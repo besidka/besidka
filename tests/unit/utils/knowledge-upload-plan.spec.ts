@@ -142,24 +142,62 @@ describe('planKnowledgeUpload classification', () => {
     ])
   })
 
-  it('skips invalid relative paths with their own reason', async () => {
+  it.each([
+    ['a backslash', 'dir\\a.md', 'Path must not contain backslashes'],
+    [
+      'a leading slash',
+      '/abs/b.md',
+      'Path must not start or end with a slash or contain empty segments',
+    ],
+    [
+      'a trailing slash',
+      'dir/b.md/',
+      'Path must not start or end with a slash or contain empty segments',
+    ],
+    [
+      'an empty segment',
+      'dir//c.md',
+      'Path must not start or end with a slash or contain empty segments',
+    ],
+    [
+      'a parent segment',
+      'a/../d.md',
+      'Path must not contain "." or ".." segments',
+    ],
+    [
+      'a control character',
+      'dir/e\u0007.md',
+      'Path must be a single line without control characters',
+    ],
+    [
+      'more than 512 characters',
+      `${'d/'.repeat(300)}f.md`,
+      'Path must be at most 512 characters',
+    ],
+  ])('skips a path with %s and carries the issue', async (_label, path, issue) => {
     const result = await plan([
-      entry(textFile('a.md', 'one'), 'dir\\a.md'),
-      entry(textFile('b.md', 'two'), '/abs/b.md'),
-      entry(textFile('c.md', 'three'), 'dir//c.md'),
-      entry(textFile('d.md', 'four'), '../d.md'),
-      entry(textFile('e.md', 'five'), 'dir/e\u0007.md'),
+      entry(textFile('x.md', 'one'), path),
       entry(textFile('f.md', 'six'), 'ok/f.md'),
     ])
 
     expect(result.accepted.map(item => item.relativePath)).toEqual(['ok/f.md'])
-    expect(result.skipped.map(item => item.reason)).toEqual([
-      'invalid-path',
-      'invalid-path',
-      'invalid-path',
-      'invalid-path',
-      'invalid-path',
+    expect(result.skipped).toEqual([
+      {
+        name: 'x.md',
+        relativePath: path,
+        reason: 'invalid-path',
+        detail: issue,
+      },
     ])
+    expect(summarizeKnowledgePlan(result).details).toEqual([
+      { path, issue },
+    ])
+  })
+
+  it('leaves details out of the summary when every path is valid', async () => {
+    const result = await plan([entry(textFile('a.md', 'one'), 'ok/a.md')])
+
+    expect(summarizeKnowledgePlan(result)).not.toHaveProperty('details')
   })
 
   it('stores the NFC form of an accepted path', async () => {

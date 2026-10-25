@@ -699,6 +699,7 @@ describe('useKnowledgeUpload', () => {
       const [first, second] = itemCalls()[0]?.body?.items ?? []
 
       expect(first.title).toBe('caf\u00E9 notes.md')
+      expect(first.relativePath).toBe('docs/caf\u00E9.md')
       expect(first.folderId).toBeNull()
       expect(second.folderId).toBeNull()
       expect(second.relativePath).toBeNull()

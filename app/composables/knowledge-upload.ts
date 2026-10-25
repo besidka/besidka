@@ -20,10 +20,8 @@ import type {
   KnowledgePlanSummary,
   KnowledgeUploadPlan,
 } from '~/utils/knowledge-upload-plan'
-import {
-  normalizeKnowledgeRelativePath,
-  normalizeKnowledgeTitle,
-} from '~/utils/knowledge-paths'
+import { parseKnowledgeRelativePath } from '#shared/utils/project-knowledge-path'
+import { normalizeKnowledgeTitle } from '~/utils/knowledge-title'
 import { uploadWithProgress } from '~/utils/upload-with-progress'
 
 interface UploadRecord {
@@ -132,7 +130,7 @@ function toRelativePath(relativePath: string | null): string | null {
     return null
   }
 
-  return normalizeKnowledgeRelativePath(relativePath)
+  return parseKnowledgeRelativePath(relativePath)
 }
 
 function toFolderId(folderId: string | null): string | null {
