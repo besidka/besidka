@@ -28,7 +28,6 @@ mockNuxtImport('useErrorMessage', () => mocks.error)
 enableAutoUnmount(afterEach)
 
 const ENTRIES_URL = '/api/v1/memory/entries'
-const PROJECT_ROUTE = '/?scope=project&project=project-1'
 
 const defaultSettings: MemorySettingsFields = {
   memoryEnabled: true,
@@ -84,7 +83,30 @@ const DetailModalStub = defineComponent({
   },
 })
 
+const nuxtLinkStub = {
+  props: ['to'],
+  template: '<a :data-to="JSON.stringify(to)"><slot /></a>',
+}
+
+interface TestProject {
+  id: string
+  name: string
+  memoryStatus: string
+}
+
+const defaultProjects: TestProject[] = [
+  { id: 'project-1', name: 'Home lab', memoryStatus: 'ready' },
+  { id: 'project-2', name: 'Side project', memoryStatus: 'disabled' },
+  { id: 'project-3', name: 'Quiet project', memoryStatus: 'idle' },
+]
+
 const entriesData = shallowRef<MemoryEntriesResponse | null>(null)
+const projectsData = shallowRef<{
+  pinned: TestProject[]
+  projects: TestProject[]
+  nextCursor: null
+} | null>(null)
+const projectsPending = shallowRef<boolean>(false)
 const entriesPending = shallowRef<boolean>(false)
 const entriesError = shallowRef<unknown>(null)
 const refresh = vi.fn()
@@ -119,7 +141,7 @@ function createResponse(
   overrides: Partial<MemoryEntriesResponse> = {},
 ): MemoryEntriesResponse {
   return {
-    scope: 'account',
+    scope: 'all',
     projectId: null,
     total: groups.reduce((sum, group) => sum + group.entries.length, 0),
     limits: {
@@ -139,6 +161,7 @@ async function mountEntries(
   settings: Partial<MemorySettingsFields> = {},
   route = '/',
   aboutMeNotMigratedReason: AboutMeNotMigratedReason | null = null,
+  slots: Record<string, () => unknown> = {},
 ) {
   const wrapper = await mountSuspended(Entries, {
     route,
@@ -147,8 +170,10 @@ async function mountEntries(
       settings: { ...defaultSettings, ...settings },
       aboutMeNotMigratedReason,
     },
+    slots,
     global: {
       stubs: {
+        NuxtLink: nuxtLinkStub,
         LazyProfileMemoryEntriesDetailModal: DetailModalStub,
         ProfileMemoryEntriesDetailModal: DetailModalStub,
       },
@@ -174,6 +199,12 @@ function entriesOptions() {
 describe('Profile/Memory/Entries', () => {
   beforeEach(() => {
     entriesData.value = createResponse([])
+    projectsData.value = {
+      pinned: [],
+      projects: defaultProjects,
+      nextCursor: null,
+    }
+    projectsPending.value = false
     entriesPending.value = false
     entriesError.value = null
     refresh.mockReset()
@@ -192,13 +223,7 @@ describe('Profile/Memory/Entries', () => {
         }
       }
 
-      return {
-        data: shallowRef({
-          pinned: [],
-          projects: [{ id: 'project-1', name: 'Home lab' }],
-          nextCursor: null,
-        }),
-      }
+      return { data: projectsData, pending: projectsPending }
     })
   })
 
@@ -218,11 +243,11 @@ describe('Profile/Memory/Entries', () => {
   })
 
   describe('list', () => {
-    it('puts profile and preferences under You, then the other groups',
+    it('puts profile and preferences under You, then topics, areas, people',
       async () => {
         entriesData.value = createResponse([
           { category: 'topics', entries: [createEntry('t1', 'topics')] },
-          { category: 'people', entries: [] },
+          { category: 'people', entries: [createEntry('o1', 'people')] },
           { category: 'areas', entries: [createEntry('a1', 'areas')] },
           {
             category: 'preferences',
@@ -243,9 +268,9 @@ describe('Profile/Memory/Entries', () => {
         expect(essentials.findAll('[data-testid="memory-entry-label"]')
           .map(label => label.text())).toEqual(['Profile', 'Preferences'])
         expect(groups.map(group => group.attributes('data-category')))
-          .toEqual(['areas', 'topics'])
+          .toEqual(['topics', 'areas', 'people'])
         expect(groups.map(group => group.get('h3 > span').text()))
-          .toEqual(['Areas', 'Topics'])
+          .toEqual(['Topics', 'Areas', 'People'])
 
         const orderedTitles = list.findAll('[data-testid="memory-entry-row"]')
           .map(row => row.text())
@@ -253,9 +278,33 @@ describe('Profile/Memory/Entries', () => {
         expect(orderedTitles).toEqual([
           expect.stringContaining('Title p1'),
           expect.stringContaining('Title f1'),
-          expect.stringContaining('Title a1'),
           expect.stringContaining('Title t1'),
+          expect.stringContaining('Title a1'),
+          expect.stringContaining('Title o1'),
         ])
+      })
+
+    it('renders one continuous list ending with the Projects section',
+      async () => {
+        entriesData.value = createResponse([
+          { category: 'profile', entries: [createEntry('p1', 'profile')] },
+          {
+            category: 'people',
+            entries: [
+              createEntry('o1', 'people'),
+              createEntry('o2', 'people', { projectId: 'project-1' }),
+            ],
+          },
+        ])
+
+        const wrapper = await mountEntries()
+        const headings = wrapper
+          .findAll('[data-testid="memory-entries-list"] section > h3')
+          .map(heading => heading.get('span').text())
+
+        expect(headings).toEqual(['You', 'People', 'Projects'])
+        expect(wrapper.findAll('[data-testid="memory-entries-list"] > section'))
+          .toHaveLength(3)
       })
 
     it('shows a call to action in an empty You group', async () => {
@@ -277,32 +326,8 @@ describe('Profile/Memory/Entries', () => {
 
       expect(modal.attributes('data-open')).toBe('true')
       expect(modal.attributes('data-entry-id')).toBe('')
+      expect(modal.attributes('data-project-id')).toBe('')
     })
-
-    it('labels the group Essentials in project scope without a call to action',
-      async () => {
-        entriesData.value = createResponse([
-          { category: 'topics', entries: [createEntry('t1', 'topics')] },
-        ], { scope: 'project', projectId: 'project-1' })
-
-        const wrapper = await mountEntries({}, PROJECT_ROUTE)
-
-        expect(wrapper.find('[data-testid="memory-entry-essentials"]').exists())
-          .toBe(false)
-
-        entriesData.value = createResponse([
-          {
-            category: 'profile',
-            entries: [createEntry('p1', 'profile', { projectId: 'project-1' })],
-          },
-        ], { scope: 'project', projectId: 'project-1' })
-
-        const withProfile = await mountEntries({}, PROJECT_ROUTE)
-
-        expect(withProfile.get(
-          '[data-testid="memory-entry-essentials-heading"]',
-        ).text()).toBe('Essentials')
-      })
 
     it('shows title, description and updated on each row', async () => {
       entriesData.value = createResponse([
@@ -345,15 +370,280 @@ describe('Profile/Memory/Entries', () => {
         .toBe(false)
     })
 
-    it('shows the count against the account limit', async () => {
+    it('counts only account entries against the account limit', async () => {
       entriesData.value = createResponse([
-        { category: 'profile', entries: [createEntry('p1', 'profile')] },
+        {
+          category: 'profile',
+          entries: [
+            createEntry('p1', 'profile'),
+            createEntry('p2', 'profile', { projectId: 'project-1' }),
+          ],
+        },
+        {
+          category: 'topics',
+          entries: [
+            createEntry('t1', 'topics', { projectId: 'project-1' }),
+            createEntry('t2', 'topics', { projectId: 'project-2' }),
+          ],
+        },
       ])
 
       const wrapper = await mountEntries()
 
       expect(wrapper.get('[data-testid="memory-entries-count"]').text())
         .toBe('1 of 30')
+      expect(wrapper.get('[data-testid="memory-entry-essentials"]')
+        .findAll('[data-testid="memory-entry-row"]')).toHaveLength(1)
+      expect(wrapper.find('[data-testid="memory-entry-group"]').exists())
+        .toBe(false)
+    })
+  })
+
+  describe('projects', () => {
+    function createMixedResponse() {
+      return createResponse([
+        {
+          category: 'profile',
+          entries: [
+            createEntry('p1', 'profile'),
+            createEntry('p2', 'profile', { projectId: 'project-1' }),
+          ],
+        },
+        {
+          category: 'topics',
+          entries: [
+            createEntry('t1', 'topics', { projectId: 'project-2' }),
+            createEntry('t2', 'topics', { projectId: 'project-1' }),
+          ],
+        },
+        {
+          category: 'people',
+          entries: [createEntry('o1', 'people', { projectId: 'project-1' })],
+        },
+      ])
+    }
+
+    it('fetches everything in one request under a stable key', async () => {
+      await mountEntries()
+
+      const options = entriesOptions()
+
+      expect(toValue(options.query)).toEqual({ scope: 'all' })
+      expect(toValue(options.key)).toBe('memory-entries:all')
+      expect(mocks.useLazyFetch.mock.calls.filter(([url]) => {
+        return url === ENTRIES_URL
+      })).toHaveLength(1)
+    })
+
+    it('lists projects that have entries, collapsed, with their counts',
+      async () => {
+        entriesData.value = createMixedResponse()
+
+        const wrapper = await mountEntries()
+        const rows = wrapper.findAll('[data-testid="memory-project"]')
+
+        expect(rows.map(row => row.attributes('data-project-id')))
+          .toEqual(['project-1', 'project-2'])
+        expect(rows.map(row => row.get('[data-testid="memory-project-name"]')
+          .text())).toEqual(['Home lab', 'Side project'])
+        expect(rows.map(row => row.get('[data-testid="memory-project-count"]')
+          .text())).toEqual(['3 of 15', '1 of 15'])
+        expect(rows.map(row => row.get('[data-testid="memory-project-toggle"]')
+          .attributes('aria-expanded'))).toEqual(['false', 'false'])
+        expect(wrapper.get('[data-testid="memory-projects-count"]').text())
+          .toBe('2')
+      })
+
+    it('hides projects without entries', async () => {
+      entriesData.value = createMixedResponse()
+
+      const wrapper = await mountEntries()
+
+      expect(wrapper.text()).not.toContain('Quiet project')
+    })
+
+    it('keeps account entries out of the project rows', async () => {
+      entriesData.value = createMixedResponse()
+
+      const wrapper = await mountEntries()
+      const toggles = wrapper.findAll('[data-testid="memory-project-toggle"]')
+
+      for (const toggle of toggles) {
+        await toggle.trigger('click')
+      }
+
+      const projectTitles = wrapper
+        .findAll('[data-testid="memory-project-panel"] [data-testid="memory-entry-row"]')
+        .map(row => row.get('.truncate').text())
+
+      expect(projectTitles).toEqual([
+        'Title p2',
+        'Title t2',
+        'Title o1',
+        'Title t1',
+      ])
+    })
+
+    it('marks a project with memory off but still lists its entries',
+      async () => {
+        entriesData.value = createMixedResponse()
+
+        const wrapper = await mountEntries()
+        const rows = wrapper.findAll('[data-testid="memory-project"]')
+
+        expect(rows[0]!.find('[data-testid="memory-project-off"]').exists())
+          .toBe(false)
+        expect(rows[1]!.get('[data-testid="memory-project-off"]').text())
+          .toBe('Memory off')
+      })
+
+    it('names a project missing from the projects list', async () => {
+      entriesData.value = createResponse([
+        {
+          category: 'topics',
+          entries: [createEntry('t1', 'topics', { projectId: 'ghost' })],
+        },
+      ])
+
+      const wrapper = await mountEntries()
+      const row = wrapper.get('[data-testid="memory-project"]')
+
+      expect(row.attributes('data-project-id')).toBe('ghost')
+      expect(row.get('[data-testid="memory-project-name"]').text())
+        .toBe('Unknown project')
+    })
+
+    it('waits for the projects before showing any row', async () => {
+      entriesData.value = createMixedResponse()
+      projectsData.value = null
+      projectsPending.value = true
+
+      const wrapper = await mountEntries()
+
+      expect(wrapper.find('[data-testid="memory-entries-skeleton"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="memory-project"]').exists())
+        .toBe(false)
+      expect(wrapper.text()).not.toContain('Unknown project')
+    })
+
+    it('expands and collapses a project with its toggle', async () => {
+      entriesData.value = createMixedResponse()
+
+      const wrapper = await mountEntries()
+      const toggle = wrapper.get('[data-testid="memory-project-toggle"]')
+
+      await toggle.trigger('click')
+
+      const panel = wrapper.get('[data-testid="memory-project-panel"]')
+
+      expect(toggle.attributes('aria-expanded')).toBe('true')
+      expect(toggle.attributes('aria-controls')).toBe(panel.attributes('id'))
+      expect(panel.findAll('[data-testid="memory-entry-row"]'))
+        .toHaveLength(3)
+      expect(panel.findAll('[data-testid="memory-entry-label"]')
+        .map(label => label.text()))
+        .toEqual(['Profile', 'Topics', 'People'])
+
+      await toggle.trigger('click')
+
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+      expect(wrapper.find('[data-testid="memory-project-panel"]').exists())
+        .toBe(false)
+    })
+
+    it('links each expanded project to its page', async () => {
+      entriesData.value = createMixedResponse()
+
+      const wrapper = await mountEntries()
+
+      await wrapper.get('[data-testid="memory-project-toggle"]')
+        .trigger('click')
+
+      expect(JSON.parse(wrapper.get('[data-testid="memory-project-open"]')
+        .attributes('data-to')!)).toBe('/chats/projects/project-1')
+    })
+
+    it('shows projects even when the account has no entries', async () => {
+      entriesData.value = createResponse([
+        {
+          category: 'topics',
+          entries: [createEntry('t1', 'topics', { projectId: 'project-1' })],
+        },
+      ])
+
+      const wrapper = await mountEntries()
+
+      expect(wrapper.find('[data-testid="memory-entries-empty"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="memory-entry-essentials-empty"]')
+        .exists()).toBe(true)
+      expect(wrapper.find('[data-testid="memory-project"]').exists())
+        .toBe(true)
+      expect(wrapper.get('[data-testid="memory-entries-count"]').text())
+        .toBe('0 of 30')
+    })
+
+    it('has no scope switch', async () => {
+      entriesData.value = createMixedResponse()
+
+      const wrapper = await mountEntries()
+
+      expect(wrapper.find('[data-testid="memory-scope-select"]').exists())
+        .toBe(false)
+    })
+
+    describe('?project= query', () => {
+      it.each([
+        ['/?project=project-2'],
+        ['/?scope=project&project=project-2'],
+      ])('expands and focuses the project for %s', async (route) => {
+        entriesData.value = createMixedResponse()
+
+        const wrapper = await mountEntries({}, route)
+        const toggles = wrapper
+          .findAll('[data-testid="memory-project-toggle"]')
+
+        expect(toggles.map(toggle => toggle.attributes('aria-expanded')))
+          .toEqual(['false', 'true'])
+        expect(document.activeElement).toBe(toggles[1]!.element)
+      })
+
+      it('ignores a project that has no entries or does not exist',
+        async () => {
+          entriesData.value = createMixedResponse()
+
+          const quiet = await mountEntries({}, '/?project=project-3')
+          const missing = await mountEntries({}, '/?project=nope')
+
+          for (const wrapper of [quiet, missing]) {
+            expect(wrapper
+              .findAll('[data-testid="memory-project-toggle"]')
+              .map(toggle => toggle.attributes('aria-expanded')))
+              .toEqual(['false', 'false'])
+          }
+        })
+
+      it('does not change which entries are fetched', async () => {
+        entriesData.value = createMixedResponse()
+
+        await mountEntries({}, '/?scope=project&project=project-1')
+
+        expect(toValue(entriesOptions().query)).toEqual({ scope: 'all' })
+      })
+
+      it('expands again when navigated to later', async () => {
+        entriesData.value = createMixedResponse()
+
+        const router = useRouter()
+        const wrapper = await mountEntries()
+
+        await router.push({ query: { project: 'project-1' } })
+        await flushPromises()
+
+        expect(wrapper.get('[data-testid="memory-project-toggle"]')
+          .attributes('aria-expanded')).toBe('true')
+      })
     })
   })
 
@@ -402,12 +692,15 @@ describe('Profile/Memory/Entries', () => {
       ).exists()).toBe(false)
     })
 
-    it('shows the project empty state in project scope', async () => {
-      const wrapper = await mountEntries({}, PROJECT_ROUTE)
+    it('shows the empty state when no project has entries either',
+      async () => {
+        const wrapper = await mountEntries()
 
-      expect(wrapper.find('[data-testid="memory-entries-empty-project"]')
-        .exists()).toBe(true)
-    })
+        expect(wrapper.find('[data-testid="memory-project"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="memory-entries-empty"]').exists())
+          .toBe(true)
+      })
 
     it('shows the memory-off note above the list', async () => {
       const wrapper = await mountEntries({ memoryEnabled: false })
@@ -423,27 +716,7 @@ describe('Profile/Memory/Entries', () => {
         .toBe(false)
     })
 
-    it('offers a way back to account memory in project scope', async () => {
-      entriesData.value = null
-      entriesError.value = Object.assign(new Error('Request failed'), {
-        data: { statusCode: 404, message: 'Project not found' },
-      })
-
-      const router = useRouter()
-      const replace = vi.spyOn(router, 'replace')
-      const wrapper = await mountEntries({}, '/?scope=project&project=gone&x=1')
-
-      replace.mockClear()
-      await wrapper.get('[data-testid="memory-entries-back-to-account"]')
-        .trigger('click')
-      await flushPromises()
-
-      expect(replace).toHaveBeenCalledWith({ query: { x: '1' } })
-      expect(wrapper.find('[data-testid="memory-entries-retry"]').exists())
-        .toBe(true)
-    })
-
-    it('does not offer account memory in the account scope', async () => {
+    it('offers only a retry when loading fails', async () => {
       entriesData.value = null
       entriesError.value = Object.assign(new Error('Request failed'), {
         data: { statusCode: 500, message: 'Could not load memory' },
@@ -451,6 +724,8 @@ describe('Profile/Memory/Entries', () => {
 
       const wrapper = await mountEntries()
 
+      expect(wrapper.find('[data-testid="memory-entries-retry"]').exists())
+        .toBe(true)
       expect(wrapper.find('[data-testid="memory-entries-back-to-account"]')
         .exists()).toBe(false)
     })
@@ -481,91 +756,6 @@ describe('Profile/Memory/Entries', () => {
 
       expect(refresh).toHaveBeenCalledOnce()
     })
-  })
-
-  describe('scope', () => {
-    it('fetches the account scope by default', async () => {
-      await mountEntries()
-
-      const options = entriesOptions()
-
-      expect(toValue(options.query)).toEqual({ scope: 'account' })
-      expect(toValue(options.key)).toBe('memory-entries:account')
-    })
-
-    it('reads the project from the route query', async () => {
-      entriesData.value = createResponse([], {
-        scope: 'project',
-        projectId: 'project-1',
-      })
-
-      const wrapper = await mountEntries({}, PROJECT_ROUTE)
-      const options = entriesOptions()
-
-      expect(toValue(options.query))
-        .toEqual({ scope: 'project', projectId: 'project-1' })
-      expect(toValue(options.key)).toBe('memory-entries:project-1')
-      expect(wrapper.get<HTMLSelectElement>(
-        '[data-testid="memory-scope-select"]',
-      ).element.value).toBe('project-1')
-    })
-
-    it('shows the project limit in project scope', async () => {
-      entriesData.value = createResponse([
-        { category: 'profile', entries: [createEntry('p1', 'profile')] },
-      ], { scope: 'project', projectId: 'project-1' })
-
-      const wrapper = await mountEntries({}, PROJECT_ROUTE)
-
-      expect(wrapper.get('[data-testid="memory-entries-count"]').text())
-        .toBe('1 of 15')
-    })
-
-    it('falls back to the account when the project id is missing', async () => {
-      await mountEntries({}, '/?scope=project')
-
-      expect(toValue(entriesOptions().query)).toEqual({ scope: 'account' })
-    })
-
-    it('writes the chosen project to the route and refetches', async () => {
-      const router = useRouter()
-      const replace = vi.spyOn(router, 'replace')
-      const wrapper = await mountEntries()
-
-      replace.mockClear()
-      await wrapper.get('[data-testid="memory-scope-select"]')
-        .setValue('project-1')
-      await flushPromises()
-
-      expect(replace).toHaveBeenCalledWith({
-        query: { scope: 'project', project: 'project-1' },
-      })
-      await vi.waitFor(() => {
-        expect(toValue(entriesOptions().query))
-          .toEqual({ scope: 'project', projectId: 'project-1' })
-      })
-      expect(toValue(entriesOptions().key)).toBe('memory-entries:project-1')
-    })
-
-    it('clears the scope from the route when switching to account',
-      async () => {
-        const router = useRouter()
-        const replace = vi.spyOn(router, 'replace')
-        const wrapper = await mountEntries(
-          {},
-          '/?scope=project&project=project-1&other=kept',
-        )
-
-        await wrapper.get('[data-testid="memory-scope-select"]')
-          .setValue('account')
-        await flushPromises()
-
-        expect(replace).toHaveBeenCalledWith({ query: { other: 'kept' } })
-        await vi.waitFor(() => {
-          expect(toValue(entriesOptions().query))
-            .toEqual({ scope: 'account' })
-        })
-      })
   })
 
   describe('detail modal', () => {
@@ -632,16 +822,160 @@ describe('Profile/Memory/Entries', () => {
       expect(wrapper.getComponent(DetailModalStub).props('entry')).toBeNull()
     })
 
-    it('passes the project id to the modal in project scope', async () => {
-      entriesData.value = createResponse([], {
-        scope: 'project',
-        projectId: 'project-1',
+    describe('project entries', () => {
+      function createProjectResponse() {
+        return createResponse([
+          {
+            category: 'profile',
+            entries: [
+              createEntry('p1', 'profile'),
+              createEntry('p2', 'profile', { projectId: 'project-1' }),
+            ],
+          },
+          {
+            category: 'topics',
+            entries: [createEntry('t1', 'topics', { projectId: 'project-1' })],
+          },
+        ])
+      }
+
+      it('opens a project entry with its project and singleton categories',
+        async () => {
+          entriesData.value = createProjectResponse()
+
+          const wrapper = await mountEntries()
+
+          await wrapper.get('[data-testid="memory-project-toggle"]')
+            .trigger('click')
+          await wrapper.get('[data-testid="memory-project-panel"] '
+            + '[data-testid="memory-entry-row"]').trigger('click')
+
+          const modal = wrapper.getComponent(DetailModalStub)
+
+          expect(modal.attributes('data-open')).toBe('true')
+          expect(modal.attributes('data-entry-id')).toBe('p2')
+          expect(modal.props('projectId')).toBe('project-1')
+          expect(modal.props('takenSingletonCategories'))
+            .toEqual(['profile'])
+        })
+
+      it('opens create mode for a project from its Add memory button',
+        async () => {
+          entriesData.value = createProjectResponse()
+
+          const wrapper = await mountEntries()
+
+          await wrapper.get('[data-testid="memory-project-toggle"]')
+            .trigger('click')
+          await wrapper.get('[data-testid="memory-project-add"]')
+            .trigger('click')
+
+          const modal = wrapper.getComponent(DetailModalStub)
+
+          expect(modal.attributes('data-open')).toBe('true')
+          expect(modal.attributes('data-entry-id')).toBe('')
+          expect(modal.props('entry')).toBeNull()
+          expect(modal.props('projectId')).toBe('project-1')
+          expect(modal.props('takenSingletonCategories'))
+            .toEqual(['profile'])
+        })
+
+      it('returns to account scope when an account entry opens afterwards',
+        async () => {
+          entriesData.value = createProjectResponse()
+
+          const wrapper = await mountEntries()
+
+          await wrapper.get('[data-testid="memory-project-toggle"]')
+            .trigger('click')
+          await wrapper.get('[data-testid="memory-project-add"]')
+            .trigger('click')
+          await wrapper.get('[data-testid="memory-add"]').trigger('click')
+
+          const modal = wrapper.getComponent(DetailModalStub)
+
+          expect(modal.props('projectId')).toBeNull()
+          expect(modal.props('takenSingletonCategories'))
+            .toEqual(['profile'])
+        })
+
+      it('refreshes after a project reset', async () => {
+        entriesData.value = createProjectResponse()
+        mocks.confirm.mockResolvedValue({ label: 'Delete entries', index: 0 })
+        mocks.fetch.mockResolvedValue({ deleted: 2 })
+
+        const wrapper = await mountEntries()
+
+        await wrapper.get('[data-testid="memory-project-toggle"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="memory-project-reset"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(mocks.confirm.mock.calls[0]![0].text)
+          .toBe('Reset memory for "Home lab"?')
+        expect(mocks.fetch).toHaveBeenCalledWith(
+          '/api/v1/memory/entries/reset',
+          {
+            method: 'POST',
+            body: { scope: 'project', projectId: 'project-1' },
+          },
+        )
+        expect(mocks.info).toHaveBeenCalledWith(
+          'Memory reset',
+          'Deleted 2 entries.',
+        )
+        expect(refresh).toHaveBeenCalledOnce()
       })
 
-      const wrapper = await mountEntries({}, PROJECT_ROUTE)
+      it('keeps the list when the project reset is cancelled', async () => {
+        entriesData.value = createProjectResponse()
+        mocks.confirm.mockResolvedValue(null)
 
-      expect(wrapper.getComponent(DetailModalStub).props('projectId'))
-        .toBe('project-1')
+        const wrapper = await mountEntries()
+
+        await wrapper.get('[data-testid="memory-project-toggle"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="memory-project-reset"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(mocks.fetch).not.toHaveBeenCalled()
+        expect(refresh).not.toHaveBeenCalled()
+      })
+
+      it('shows a toast and keeps the list when the project reset fails',
+        async () => {
+          entriesData.value = createProjectResponse()
+          mocks.confirm.mockResolvedValue({
+            label: 'Delete entries',
+            index: 0,
+          })
+          mocks.fetch.mockRejectedValue(Object.assign(
+            new Error('Request failed'),
+            {
+              data: {
+                statusCode: 500,
+                message: 'Could not reset memory',
+                data: { why: 'Database unavailable' },
+              },
+            },
+          ))
+
+          const wrapper = await mountEntries()
+
+          await wrapper.get('[data-testid="memory-project-toggle"]')
+            .trigger('click')
+          await wrapper.get('[data-testid="memory-project-reset"]')
+            .trigger('click')
+          await flushPromises()
+
+          expect(mocks.error).toHaveBeenCalledWith(
+            'Could not reset memory',
+            'Database unavailable',
+          )
+          expect(refresh).not.toHaveBeenCalled()
+        })
     })
 
     it('refreshes the list after an entry was created without moving focus',
@@ -741,17 +1075,6 @@ describe('Profile/Memory/Entries', () => {
 
     it('is hidden for blank leftover text', async () => {
       const wrapper = await mountLegacy('too-long', '  \n ')
-
-      expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
-        .toBe(false)
-    })
-
-    it('is hidden in project scope', async () => {
-      const wrapper = await mountEntries(
-        { aboutMe: LEGACY_TEXT },
-        PROJECT_ROUTE,
-        'too-long',
-      )
 
       expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
         .toBe(false)
@@ -883,6 +1206,24 @@ describe('Profile/Memory/Entries', () => {
       expect(wrapper.find('[data-testid="memory-legacy-about-me"]').exists())
         .toBe(true)
     })
+  })
+
+  it('renders nothing in the extra actions slot by default', async () => {
+    const wrapper = await mountEntries()
+
+    expect(wrapper.find('.js-memory-extra-actions').exists()).toBe(false)
+  })
+
+  it('forwards the extra actions slot to the toolbar', async () => {
+    const wrapper = await mountEntries({}, '/', null, {
+      'extra-actions': () => h('button', {
+        'type': 'button',
+        'data-testid': 'future-action',
+      }, 'Import memory from another assistant'),
+    })
+
+    expect(wrapper.get('.js-memory-extra-actions')
+      .find('[data-testid="future-action"]').exists()).toBe(true)
   })
 
   it('refreshes the list after the toolbar changes memory', async () => {

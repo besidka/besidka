@@ -7,24 +7,41 @@
       :aria-labelledby="headingId"
       @close="onModalClosed"
     >
-      <div class="modal-box max-w-2xl max-h-[80vh] flex flex-col">
-        <div class="mb-4 flex shrink-0 items-start justify-between gap-2">
-          <h3
-            :id="headingId"
-            class="min-w-0 break-words text-xl font-bold"
-            data-testid="memory-entry-title"
-          >
-            {{ heading }}
-          </h3>
-          <form method="dialog">
-            <button
-              class="btn btn-sm btn-circle btn-ghost"
-              aria-label="Close"
-              data-testid="memory-entry-modal-close"
+      <div class="modal-box max-w-2xl max-h-[85dvh] flex flex-col">
+        <div class="mb-4 grid shrink-0 gap-2">
+          <UiButton
+            mode="neutral"
+            ghost
+            size="sm"
+            icon-name="lucide:arrow-left"
+            :text="backLabel"
+            normal-case
+            class="-ml-2 justify-self-start"
+            data-testid="memory-entry-back"
+            @click="open = false"
+          />
+          <div class="flex items-start justify-between gap-3">
+            <h3
+              :id="headingId"
+              class="min-w-0 break-words text-xl font-bold"
+              data-testid="memory-entry-title"
             >
-              <Icon name="lucide:x" size="16" />
-            </button>
-          </form>
+              {{ heading }}
+            </h3>
+            <UiButton
+              v-if="isViewVisible"
+              mode="error"
+              outline
+              size="sm"
+              icon-name="lucide:trash-2"
+              text="Delete"
+              icon-only-phone
+              class="shrink-0"
+              :disabled="isDeleting"
+              data-testid="memory-entry-delete"
+              @click="deleteEntry"
+            />
+          </div>
         </div>
         <div class="flex-1 min-h-0 overflow-y-auto">
           <div
@@ -34,7 +51,7 @@
           >
             <div class="grid gap-1">
               <label
-                class="text-sm font-bold"
+                class="text-sm font-semibold"
                 :for="titleInputId"
               >
                 Title
@@ -60,10 +77,10 @@
             </div>
             <div class="grid gap-1">
               <label
-                class="text-sm font-bold"
+                class="text-sm font-semibold"
                 :for="descriptionInputId"
               >
-                Description
+                Summary
               </label>
               <input
                 :id="descriptionInputId"
@@ -89,21 +106,23 @@
             </div>
             <div class="grid gap-1">
               <label
-                class="text-sm font-bold"
+                class="text-sm font-semibold"
                 :for="bodyInputId"
               >
                 Details
               </label>
               <textarea
                 :id="bodyInputId"
+                ref="textarea"
                 v-model="draftBody"
                 class="
-                  textarea textarea-bordered rounded-box min-h-40 w-full
-                  resize-y max-h-[50dvh] overflow-y-auto
+                  textarea textarea-bordered rounded-box min-h-36 w-full
+                  resize-none max-h-[50dvh] overflow-y-auto
                 "
                 :class="{ 'textarea-error': isBodyErrorShown }"
                 :aria-invalid="isBodyErrorShown"
                 :disabled="isSaving"
+                :placeholder="bodyPlaceholder"
                 data-testid="memory-entry-body-input"
                 @input="saveError = null"
               />
@@ -117,7 +136,7 @@
             </div>
             <div class="grid gap-1">
               <label
-                class="text-sm font-bold"
+                class="text-sm font-semibold"
                 :for="categoryInputId"
               >
                 Category
@@ -173,9 +192,43 @@
           </div>
           <div
             v-else-if="currentEntry"
-            class="grid gap-4"
+            class="grid gap-5"
             data-testid="memory-entry-view"
           >
+            <section class="grid gap-1">
+              <h4 class="text-sm font-semibold">Last updated</h4>
+              <p
+                class="text-sm"
+                data-testid="memory-entry-meta"
+              >
+                {{ updatedDateLabel }}
+                <span class="text-base-content/70">· {{ updatedAgeLabel }}</span>
+              </p>
+            </section>
+            <section class="grid gap-1">
+              <h4 class="text-sm font-semibold">Summary</h4>
+              <p
+                class="break-words"
+                data-testid="memory-entry-description"
+              >
+                {{ currentEntry.description }}
+              </p>
+            </section>
+            <section class="grid gap-1">
+              <h4 class="text-sm font-semibold">Details</h4>
+              <div
+                class="max-h-[min(360px,40dvh)] overflow-y-auto break-words"
+                data-testid="memory-entry-body"
+              >
+                <MDCCached
+                  :value="currentEntry.body"
+                  :cache-key="bodyCacheKey"
+                  :components="messageComponents"
+                  :parser-options="{ highlight: false }"
+                  class="chat-markdown text-sm"
+                />
+              </div>
+            </section>
             <div class="flex flex-wrap items-center gap-2">
               <span
                 class="badge badge-soft"
@@ -190,29 +243,11 @@
                 {{ getMemoryEntryOriginLabel(currentEntry.origin) }}
               </span>
             </div>
-            <p
-              class="font-bold break-words"
-              data-testid="memory-entry-description"
-            >
-              {{ currentEntry.description }}
-            </p>
-            <p
-              class="whitespace-pre-wrap break-words"
-              data-testid="memory-entry-body"
-            >
-              {{ currentEntry.body }}
-            </p>
-            <p
-              class="text-sm text-base-content/70"
-              data-testid="memory-entry-meta"
-            >
-              {{ updatedLabel }} · Created {{ createdLabel }}
-            </p>
             <section
               class="grid gap-2"
               data-testid="memory-entry-sources"
             >
-              <h4 class="text-sm font-bold">Sources</h4>
+              <h4 class="text-sm font-semibold">Sources</h4>
               <p
                 v-if="!hasSourceIds"
                 class="text-sm text-base-content/70"
@@ -296,26 +331,15 @@
               @click="saveEntry"
             />
           </template>
-          <template v-else>
-            <UiButton
-              mode="error"
-              outline
-              size="sm"
-              icon-name="lucide:trash-2"
-              text="Delete"
-              :disabled="isDeleting"
-              data-testid="memory-entry-delete"
-              @click="deleteEntry"
-            />
-            <UiButton
-              size="sm"
-              icon-name="lucide:pencil"
-              text="Edit"
-              :disabled="isDeleting"
-              data-testid="memory-entry-edit"
-              @click="startEditing"
-            />
-          </template>
+          <UiButton
+            v-else
+            size="sm"
+            icon-name="lucide:pencil"
+            text="Edit"
+            :disabled="isDeleting"
+            data-testid="memory-entry-edit"
+            @click="startEditing"
+          />
         </div>
       </div>
       <form
@@ -351,9 +375,11 @@ const props = withDefaults(defineProps<{
   limits: MemoryEntryLimits
   projectId?: string | null
   takenSingletonCategories?: MemoryCategory[]
+  backLabel?: string
 }>(), {
   projectId: null,
   takenSingletonCategories: () => [],
+  backLabel: 'Memory',
 })
 
 const emit = defineEmits<{
@@ -368,6 +394,8 @@ const descriptionInputId = useId()
 const bodyInputId = useId()
 const categoryInputId = useId()
 const modal = useTemplateRef<HTMLDialogElement>('modal')
+const { messageComponents } = useChatFormat()
+const bodyPlaceholder = '- One fact per line\n- Markdown lists render as bullets'
 
 const currentEntry = shallowRef<MemoryEntry | null>(props.entry)
 const isEditing = shallowRef<boolean>(false)
@@ -377,6 +405,7 @@ const saveError = shallowRef<ParsedError | null>(null)
 const draftTitle = shallowRef<string>('')
 const draftDescription = shallowRef<string>('')
 const draftBody = shallowRef<string>('')
+const { textarea } = useTextareaAutosize({ input: draftBody })
 const draftCategory = shallowRef<MemoryCategory>('topics')
 const sourceChats = shallowRef<SourceChat[]>([])
 const isLoadingSources = shallowRef<boolean>(false)
@@ -484,6 +513,10 @@ const isFormVisible = computed<boolean>(() => {
   return isCreating.value || isEditing.value
 })
 
+const isViewVisible = computed<boolean>(() => {
+  return !!currentEntry.value && !isEditing.value
+})
+
 const isSaveDisabled = computed<boolean>(() => {
   const hasNoChanges = !isCreating.value
     && Object.keys(changedFields.value).length === 0
@@ -525,23 +558,35 @@ const heading = computed<string>(() => {
   return currentEntry.value?.title ?? 'Memory'
 })
 
-const updatedLabel = computed<string>(() => {
+const updatedDateLabel = computed<string>(() => {
   if (!currentEntry.value) {
     return ''
   }
 
-  const age = formatMemoryUpdatedAge(new Date(currentEntry.value.updatedAt))
-
-  return `Updated ${age}`
+  return new Date(currentEntry.value.updatedAt).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 })
 
-const createdLabel = computed<string>(() => {
+const updatedAgeLabel = computed<string>(() => {
   if (!currentEntry.value) {
     return ''
   }
 
-  return new Date(currentEntry.value.createdAt)
-    .toLocaleDateString(undefined, { dateStyle: 'medium' })
+  return formatMemoryUpdatedAge(new Date(currentEntry.value.updatedAt))
+})
+
+const bodyCacheKey = computed<string>(() => {
+  const entry = currentEntry.value
+
+  return [
+    'memory-entry',
+    entry?.id,
+    entry?.updatedAt,
+    entry?.body.length ?? 0,
+  ].join(':')
 })
 
 const hasSourceIds = computed<boolean>(() => {

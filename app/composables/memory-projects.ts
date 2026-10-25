@@ -1,10 +1,11 @@
 export interface MemoryProjectOption {
   id: string
   name: string
+  memoryStatus: string
 }
 
 export function useMemoryProjects() {
-  const { data } = useLazyFetch('/api/v1/projects', {
+  const { data, pending } = useLazyFetch('/api/v1/projects', {
     key: 'memory-scope-projects',
     query: { limit: 100 },
   })
@@ -15,24 +16,20 @@ export function useMemoryProjects() {
     }
 
     return [...data.value.pinned, ...data.value.projects].map((project) => {
-      return { id: project.id, name: project.name }
+      return {
+        id: project.id,
+        name: project.name,
+        memoryStatus: project.memoryStatus,
+      }
     })
   })
 
-  function getProjectName(projectId: string | null): string | null {
-    if (!projectId) {
-      return null
-    }
-
-    const project = projects.value.find((candidate) => {
-      return candidate.id === projectId
-    })
-
-    return project?.name ?? null
-  }
+  const isLoading = computed<boolean>(() => {
+    return pending.value && !data.value
+  })
 
   return {
     projects,
-    getProjectName,
+    isLoading,
   }
 }

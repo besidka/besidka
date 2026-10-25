@@ -28,13 +28,18 @@
         </div>
         <ProfileMemoryEntriesToolbar
           :settings="settings"
-          :project-id="projectId"
-          :total="data?.total ?? null"
-          :limit="entryLimit"
-          @scope-change="changeScope"
+          :total="accountTotal"
+          :limit="accountLimit"
           @changed="refresh()"
-          @add="openCreate"
-        />
+          @add="openCreate(null)"
+        >
+          <template
+            v-if="$slots['extra-actions']"
+            #extra-actions
+          >
+            <slot name="extra-actions" />
+          </template>
+        </ProfileMemoryEntriesToolbar>
         <details
           v-if="hasLegacyAboutMe"
           class="collapse collapse-arrow rounded-box border border-base-content/10"
@@ -115,21 +120,11 @@
               data-testid="memory-entries-retry"
               @click="refresh()"
             />
-            <UiButton
-              v-if="projectId"
-              ghost
-              size="sm"
-              normal-case
-              text="Back to account memory"
-              data-testid="memory-entries-back-to-account"
-              @click="changeScope(null)"
-            />
           </div>
         </div>
         <ProfileMemoryEntriesEmpty
-          v-else-if="orderedGroups.length === 0"
+          v-else-if="orderedGroups.length === 0 && projectSections.length === 0"
           :settings="settings"
-          :project-id="projectId"
         />
         <div
           v-else
@@ -137,11 +132,11 @@
           data-testid="memory-entries-list"
         >
           <ProfileMemoryEntriesEssentials
-            :heading="essentialsHeading"
+            heading="You"
             :entries="essentialEntries"
-            :can-add="!projectId"
+            can-add
             @select="openEntry"
-            @add="openCreate"
+            @add="openCreate(null)"
           />
           <ProfileMemoryEntriesGroup
             v-for="group in otherGroups"
@@ -149,6 +144,16 @@
             :category="group.category"
             :entries="group.entries"
             @select="openEntry"
+          />
+          <ProfileMemoryEntriesProjects
+            v-if="projectSections.length > 0"
+            :projects="projectSections"
+            :limit="projectEntryLimit"
+            :focus-project-id="focusProjectId"
+            @select="openEntry"
+            @add="openCreate"
+            @changed="refresh()"
+            @focused="focusProjectId = null"
           />
         </div>
       </div>
@@ -158,7 +163,7 @@
       v-model:open="isDetailOpen"
       :entry="selectedEntry"
       :limits="data.limits"
-      :project-id="projectId"
+      :project-id="modalProjectId"
       :taken-singleton-categories="takenSingletonCategories"
       @changed="onEntryChanged"
     />
@@ -175,7 +180,10 @@ import type {
   MemorySettingsFields,
 } from '#shared/types/memory.d'
 import type { MemoryEntryGroup } from '#shared/types/memory-api.d'
-import type { MemoryEntryModalChange } from '~/types/memory-entries.d'
+import type {
+  MemoryEntryModalChange,
+  MemoryProjectSection,
+} from '~/types/memory-entries.d'
 
 const props = withDefaults(defineProps<{
   settings: MemorySettingsFields
@@ -203,72 +211,68 @@ const legacyAboutMeReasons: Record<AboutMeNotMigratedReason, string> = {
 
 const GENERIC_LEGACY_ABOUT_ME_REASON = 'It is still sent with every chat.'
 
+const UNKNOWN_PROJECT_NAME = 'Unknown project'
+
 const route = useRoute()
-const router = useRouter()
 
 const entriesHeading = useTemplateRef<HTMLElement>('entriesHeading')
 const shouldRestoreFocus = shallowRef<boolean>(false)
 const selectedEntry = shallowRef<MemoryEntry | null>(null)
+const modalProjectId = shallowRef<string | null>(null)
 const isDetailOpen = shallowRef<boolean>(false)
 const isRemovingAboutMe = shallowRef<boolean>(false)
 const isAboutMeRemoved = shallowRef<boolean>(false)
+const focusProjectId = shallowRef<string | null>(readProjectQuery())
 
-const projectId = computed<string | null>(() => {
-  const { scope, project } = route.query
-
-  if (scope !== 'project' || typeof project !== 'string' || !project) {
-    return null
-  }
-
-  return project
-})
-
-const entriesKey = computed<string>(() => {
-  return `memory-entries:${projectId.value ?? 'account'}`
-})
-
-const entriesQuery = computed(() => {
-  if (projectId.value) {
-    return { scope: 'project', projectId: projectId.value }
-  }
-
-  return { scope: 'account' }
-})
+const { projects, isLoading: isProjectsLoading } = useMemoryProjects()
 
 const { data, pending, error, refresh } = await useLazyFetch(
   '/api/v1/memory/entries',
   {
-    key: entriesKey,
-    query: entriesQuery,
+    key: 'memory-entries:all',
+    query: { scope: 'all' },
   },
 )
 
 const isInitialLoading = computed<boolean>(() => {
-  return pending.value && !data.value
+  return (pending.value && !data.value) || isProjectsLoading.value
 })
 
 const parsedError = computed(() => {
   return error.value ? parseError(error.value) : null
 })
 
-const entryLimit = computed<number | null>(() => {
-  if (!data.value) {
-    return null
-  }
+const accountLimit = computed<number | null>(() => {
+  return data.value?.limits.maxAccountEntries ?? null
+})
 
-  return projectId.value
-    ? data.value.limits.maxProjectEntries
-    : data.value.limits.maxAccountEntries
+const projectEntryLimit = computed<number>(() => {
+  return data.value?.limits.maxProjectEntries ?? 0
+})
+
+const allEntries = computed<MemoryEntry[]>(() => {
+  return (data.value?.groups ?? []).flatMap(group => group.entries)
+})
+
+const accountEntries = computed<MemoryEntry[]>(() => {
+  return allEntries.value.filter(entry => !entry.projectId)
+})
+
+const accountTotal = computed<number | null>(() => {
+  return data.value ? accountEntries.value.length : null
 })
 
 const orderedGroups = computed<MemoryEntryGroup[]>(() => {
-  const groups = data.value?.groups ?? []
-
-  return memoryCategoryOrder.flatMap((category) => {
-    return groups.filter((group) => {
-      return group.category === category && group.entries.length > 0
+  return memoryListCategoryOrder
+    .map((category) => {
+      return {
+        category,
+        entries: accountEntries.value.filter((entry) => {
+          return entry.category === category
+        }),
+      }
     })
-  })
+    .filter(group => group.entries.length > 0)
 })
 
 function isEssentialCategory(category: MemoryCategory): boolean {
@@ -288,18 +292,66 @@ const otherGroups = computed<MemoryEntryGroup[]>(() => {
   })
 })
 
+const entriesByProjectId = computed<Map<string, MemoryEntry[]>>(() => {
+  const entriesByProject = new Map<string, MemoryEntry[]>()
+
+  for (const category of memoryListCategoryOrder) {
+    for (const entry of allEntries.value) {
+      if (!entry.projectId || entry.category !== category) {
+        continue
+      }
+
+      const projectEntries = entriesByProject.get(entry.projectId) ?? []
+
+      projectEntries.push(entry)
+      entriesByProject.set(entry.projectId, projectEntries)
+    }
+  }
+
+  return entriesByProject
+})
+
+const projectSections = computed<MemoryProjectSection[]>(() => {
+  const knownProjectIds = new Set(projects.value.map(project => project.id))
+  const knownSections = projects.value.flatMap((project) => {
+    const entries = entriesByProjectId.value.get(project.id)
+
+    if (!entries) {
+      return []
+    }
+
+    return [{
+      id: project.id,
+      name: project.name,
+      isMemoryOff: project.memoryStatus === 'disabled',
+      entries,
+    }]
+  })
+  const unknownSections = [...entriesByProjectId.value]
+    .filter(([projectId]) => !knownProjectIds.has(projectId))
+    .map(([projectId, entries]) => {
+      return {
+        id: projectId,
+        name: UNKNOWN_PROJECT_NAME,
+        isMemoryOff: false,
+        entries,
+      }
+    })
+
+  return [...knownSections, ...unknownSections]
+})
+
 const takenSingletonCategories = computed<MemoryCategory[]>(() => {
-  return orderedGroups.value
-    .map(group => group.category)
+  return allEntries.value
+    .filter((entry) => {
+      return (entry.projectId ?? null) === modalProjectId.value
+    })
+    .map(entry => entry.category)
     .filter(category => isEssentialCategory(category))
 })
 
-const essentialsHeading = computed<string>(() => {
-  return projectId.value ? 'Essentials' : 'You'
-})
-
 const hasLegacyAboutMe = computed<boolean>(() => {
-  if (projectId.value || isAboutMeRemoved.value) {
+  if (isAboutMeRemoved.value) {
     return false
   }
 
@@ -315,19 +367,19 @@ const legacyAboutMeReason = computed<string>(() => {
     ?? GENERIC_LEGACY_ABOUT_ME_REASON
 })
 
-async function changeScope(nextProjectId: string | null) {
-  const query = { ...route.query }
+function readProjectQuery(): string | null {
+  const { project } = route.query
 
-  delete query.scope
-  delete query.project
-
-  if (nextProjectId) {
-    query.scope = 'project'
-    query.project = nextProjectId
+  if (typeof project !== 'string' || !project) {
+    return null
   }
 
-  await router.replace({ query })
+  return project
 }
+
+watch(() => route.query.project, () => {
+  focusProjectId.value = readProjectQuery()
+})
 
 async function focusHeadingWhenSettled() {
   if (!shouldRestoreFocus.value || isDetailOpen.value || pending.value) {
@@ -359,11 +411,13 @@ watch(isDetailOpen, async (isOpen) => {
 
 function openEntry(entry: MemoryEntry) {
   selectedEntry.value = entry
+  modalProjectId.value = entry.projectId ?? null
   isDetailOpen.value = true
 }
 
-function openCreate() {
+function openCreate(projectId: string | null) {
   selectedEntry.value = null
+  modalProjectId.value = projectId
   isDetailOpen.value = true
 }
 

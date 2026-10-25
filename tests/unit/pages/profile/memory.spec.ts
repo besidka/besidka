@@ -106,7 +106,7 @@ describe('profile memory page', () => {
       if (url === '/api/v1/memory/entries') {
         return {
           data: shallowRef({
-            scope: 'account',
+            scope: 'all',
             projectId: null,
             total: 0,
             limits: {
@@ -127,6 +127,7 @@ describe('profile memory page', () => {
 
       return {
         data: shallowRef({ pinned: [], projects: [], nextCursor: null }),
+        pending: shallowRef(false),
       }
     })
     mocks.fetch.mockReset()

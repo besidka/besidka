@@ -18,12 +18,9 @@ const defaultSettings: MemorySettingsFields = {
   projectMemoryGateway: null,
 }
 
-async function mountEmpty(
-  settings: Partial<MemorySettingsFields> = {},
-  projectId: string | null = null,
-) {
+async function mountEmpty(settings: Partial<MemorySettingsFields> = {}) {
   return await mountSuspended(Empty, {
-    props: { settings: { ...defaultSettings, ...settings }, projectId },
+    props: { settings: { ...defaultSettings, ...settings } },
   })
 }
 
@@ -52,20 +49,6 @@ describe('Profile/Memory/Entries/Empty', () => {
   it('skips the generation hint when it is already on', async () => {
     const wrapper = await mountEmpty({ memoryExtractionEnabled: true })
 
-    expect(wrapper.find(
-      '[data-testid="memory-entries-empty-generation-hint"]',
-    ).exists()).toBe(false)
-  })
-
-  it('explains the project variant instead', async () => {
-    const wrapper = await mountEmpty({}, 'project-1')
-
-    expect(wrapper.get('[data-testid="memory-entries-empty-project"]').text())
-      .toBe(
-        'Memory saved in this project\'s chats shows up here. You can also '
-        + 'add it yourself.',
-      )
-    expect(wrapper.text()).not.toContain('Ask Besidka in any chat')
     expect(wrapper.find(
       '[data-testid="memory-entries-empty-generation-hint"]',
     ).exists()).toBe(false)

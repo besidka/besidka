@@ -14,10 +14,21 @@ describe('useMemoryProjects', () => {
     mocks.useLazyFetch.mockReset()
     mocks.useLazyFetch.mockReturnValue({
       data: shallowRef({
-        pinned: [{ id: 'project-pinned', name: 'Pinned project', extra: 1 }],
-        projects: [{ id: 'project-1', name: 'Home lab', extra: 2 }],
+        pinned: [{
+          id: 'project-pinned',
+          name: 'Pinned project',
+          memoryStatus: 'ready',
+          extra: 1,
+        }],
+        projects: [{
+          id: 'project-1',
+          name: 'Home lab',
+          memoryStatus: 'disabled',
+          extra: 2,
+        }],
         nextCursor: null,
       }),
+      pending: shallowRef(false),
     })
   })
 
@@ -31,28 +42,41 @@ describe('useMemoryProjects', () => {
     )
   })
 
-  it('lists pinned projects first with only id and name', () => {
+  it('lists pinned projects first with only id, name and memory status', () => {
     const { projects } = useMemoryProjects()
 
     expect(projects.value).toEqual([
-      { id: 'project-pinned', name: 'Pinned project' },
-      { id: 'project-1', name: 'Home lab' },
+      { id: 'project-pinned', name: 'Pinned project', memoryStatus: 'ready' },
+      { id: 'project-1', name: 'Home lab', memoryStatus: 'disabled' },
     ])
   })
 
   it('is empty until the projects load', () => {
-    mocks.useLazyFetch.mockReturnValue({ data: shallowRef(null) })
+    mocks.useLazyFetch.mockReturnValue({
+      data: shallowRef(null),
+      pending: shallowRef(true),
+    })
 
-    const { projects } = useMemoryProjects()
+    const { projects, isLoading } = useMemoryProjects()
 
     expect(projects.value).toEqual([])
+    expect(isLoading.value).toBe(true)
   })
 
-  it('resolves a project name by id', () => {
-    const { getProjectName } = useMemoryProjects()
+  it('is not loading once the projects arrived', () => {
+    const { isLoading } = useMemoryProjects()
 
-    expect(getProjectName('project-1')).toBe('Home lab')
-    expect(getProjectName('unknown')).toBeNull()
-    expect(getProjectName(null)).toBeNull()
+    expect(isLoading.value).toBe(false)
+  })
+
+  it('is not loading when the request failed', () => {
+    mocks.useLazyFetch.mockReturnValue({
+      data: shallowRef(null),
+      pending: shallowRef(false),
+    })
+
+    const { isLoading } = useMemoryProjects()
+
+    expect(isLoading.value).toBe(false)
   })
 })

@@ -4,6 +4,14 @@ import { memoryCategories } from '#shared/utils/memory-policy'
 
 export const memoryCategoryOrder: readonly MemoryCategory[] = memoryCategories
 
+export const memoryListCategoryOrder: readonly MemoryCategory[] = [
+  'profile',
+  'preferences',
+  'topics',
+  'areas',
+  'people',
+]
+
 export const memoryCategoryLabels: Record<MemoryCategory, string> = {
   profile: 'Profile',
   preferences: 'Preferences',
