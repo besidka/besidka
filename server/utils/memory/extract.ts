@@ -47,6 +47,13 @@ type DbClient = ReturnType<typeof useDb>
 
 const PASS_START_SAFETY_MS = 1000
 
+const MANUAL_PROJECT_GATE: MemoryExtractionGate = {
+  trigger: 'manual',
+  isProjectChat: true,
+  activityAt: null,
+  isExplicit: false,
+}
+
 export type MemoryExtractionStatus
   = | 'extracted'
     | 'skipped'
@@ -73,6 +80,7 @@ export interface ExtractChatMemoryInput {
   trigger?: MemoryExtractionTrigger
   expectedProjectId?: string
   ignoreIdle?: boolean
+  explicit?: boolean
   generationTimeoutMs?: number
   now?: Date
 }
@@ -138,24 +146,41 @@ async function memoryExtractionReadSettings(db: DbClient, userId: number) {
     columns: {
       memoryEnabled: true,
       memoryExtractionEnabled: true,
+      memoryExtractionEnabledAt: true,
     },
   })
 }
 
+interface MemoryExtractionGate {
+  trigger: MemoryExtractionTrigger
+  isProjectChat: boolean
+  activityAt: Date | null
+  isExplicit: boolean
+}
+
 function memoryExtractionIsAllowed(
   settings: Awaited<ReturnType<typeof memoryExtractionReadSettings>>,
-  trigger: MemoryExtractionTrigger,
-  isProjectChat: boolean,
+  gate: MemoryExtractionGate,
 ): boolean {
   if (settings?.memoryEnabled === false) {
     return false
   }
 
-  if (isProjectChat || trigger === 'manual') {
+  if (gate.isExplicit || gate.trigger === 'manual') {
     return true
   }
 
-  return settings?.memoryExtractionEnabled === true
+  if (settings?.memoryExtractionEnabled !== true) {
+    return false
+  }
+
+  if (gate.trigger === 'backfill' || !gate.isProjectChat) {
+    return true
+  }
+
+  const enabledAt = settings.memoryExtractionEnabledAt
+
+  return !!enabledAt && !!gate.activityAt && gate.activityAt > enabledAt
 }
 
 function memoryExtractionOwnChat(chatId: string, userId: number) {
@@ -176,6 +201,8 @@ async function memoryExtractionStampChat(
     .where(memoryExtractionOwnChat(chatId, userId))
 }
 
+type MemoryExtractionAdvanceMode = 'sweep' | 'watermark' | 'backfill'
+
 async function memoryExtractionAdvance(
   db: DbClient,
   chat: {
@@ -185,9 +212,9 @@ async function memoryExtractionAdvance(
   },
   userId: number,
   extractedAt: Date,
-  trigger: MemoryExtractionTrigger,
+  mode: MemoryExtractionAdvanceMode,
 ) {
-  if (trigger === 'backfill') {
+  if (mode === 'backfill') {
     if (chat.memoryExtractedAt === null) {
       await db.update(schema.chats)
         .set({ memoryExtractedAt: extractedAt })
@@ -204,7 +231,7 @@ async function memoryExtractionAdvance(
     ? { projectMemorySummaryUpdatedAt: extractedAt }
     : { memoryExtractedAt: extractedAt }
 
-  await memoryExtractionStampChat(db, chat.id, userId, trigger === 'manual'
+  await memoryExtractionStampChat(db, chat.id, userId, mode === 'watermark'
     ? watermark
     : {
       ...watermark,
@@ -238,31 +265,37 @@ async function memoryExtractionBumpProjectMetadata(
 /**
  * Runs one extraction pass for one chat under a KV lease. Everything that
  * decides whether the pass may run (settings, chat owner, project owner,
- * dirty/idle) is re-read inside the lease. Never throws for a pass failure:
- * the failure counter on the chat is bumped and `failed` is returned. A
- * project chat needs only memory turned on and an available project of the
- * same owner, never the extraction opt-in, which governs account chats only.
- * The window floor and the advanced stamp are the project watermark
- * (`projectMemorySummaryUpdatedAt`) for a project chat, shared by the sweep
- * and the manual refresh, and `memoryExtractedAt` otherwise. The
- * `no-user-text` and `project-unavailable` skip paths advance the watermark so
- * the chat is not selected again until new activity. `too-short` never
- * advances it: the user text stays in the next window and accumulates until
- * it is long enough, and the chat is only selected again once new activity
- * arrives. The `manual` trigger ignores the idle/dirty rule, never touches
- * the sweep's attempt and failure columns, and requires `expectedProjectId`:
- * a chat that is no longer in that project (moved out or to another one) is
- * skipped as `project-changed` without advancing any watermark, so a manual
- * pass never runs in profile scope. The chat's project is re-read after the
- * model call for the same reason. The `backfill` trigger works through the
- * history of an account chat for a user who turned extraction on: it needs
- * memory and the extraction opt-in (both re-checked after the model call),
- * skips project chats, ignores the idle rule, reads the whole chat up to the
- * chat's current `memoryExtractedAt` (newer messages are left to the sweep),
- * advances `memoryExtractedAt` only when it was null, and never touches the
- * attempt and failure columns. A window that is too short is skipped without
- * touching the stamp. The caller resolves the model once and passes it as
- * `selection`.
+ * dirty/idle) is re-read inside the lease, and the settings gate is checked
+ * again after the model call. Never throws for a pass failure: the failure
+ * counter on the chat is bumped and `failed` is returned. Memory must be on for
+ * every trigger. The `sweep` trigger also needs the extraction opt-in for
+ * account and project chats alike, and a project chat additionally needs
+ * `memory_extraction_enabled_at` set and activity after it; its window floor is
+ * the later of the project watermark and that cut-over, so messages from before
+ * the opt-in are never read. The window floor and the advanced stamp are the
+ * project watermark (`projectMemorySummaryUpdatedAt`) for a project chat and
+ * `memoryExtractedAt` otherwise. The `no-user-text` and `project-unavailable`
+ * skip paths advance the watermark so the chat is not selected again until new
+ * activity. `too-short` never advances it: the user text stays in the next
+ * window and accumulates until it is long enough, and the chat is only
+ * selected again once new activity arrives. The `manual` trigger (project
+ * Refresh) needs no opt-in, ignores the idle/dirty rule, floors the window at
+ * the project watermark only, never touches the sweep's attempt and failure
+ * columns, and requires `expectedProjectId`: a chat that is no longer in that
+ * project is skipped as `project-changed` without advancing any watermark, so a
+ * manual pass never runs in profile scope. The chat's project is re-read after
+ * the model call for the same reason. `explicit` marks a pass the user asked
+ * for (extract-now): it needs only memory on, ignores the opt-in and the
+ * cut-over, floors the window at the chat's own watermark, and behaves like
+ * `manual` for the attempt and failure columns. The `backfill` trigger works
+ * through the history of an account chat for a user who turned extraction on:
+ * it needs memory and the extraction opt-in (both re-checked after the model
+ * call), skips project chats, ignores the idle rule, reads the whole chat up to
+ * the chat's current `memoryExtractedAt` (newer messages are left to the
+ * sweep), advances `memoryExtractedAt` only when it was null, and never
+ * touches the attempt and failure columns. A window that is too short is
+ * skipped without touching the stamp. The caller resolves the model once and
+ * passes it as `selection`.
  */
 export async function extractChatMemory(
   input: ExtractChatMemoryInput,
@@ -292,7 +325,13 @@ async function extractLeasedChatMemory(
   const trigger = input.trigger ?? 'sweep'
   const isManual = trigger === 'manual'
   const isBackfill = trigger === 'backfill'
-  const isBackground = isBackfill || (trigger === 'sweep' && !input.ignoreIdle)
+  const isExplicit = input.explicit === true && !isBackfill
+  const hasNoSweepBookkeeping = isManual || isExplicit
+  const advanceMode: MemoryExtractionAdvanceMode = isBackfill
+    ? 'backfill'
+    : hasNoSweepBookkeeping ? 'watermark' : 'sweep'
+  const isBackground = isBackfill
+    || (trigger === 'sweep' && !input.ignoreIdle && !isExplicit)
   const now = input.now ?? new Date()
   const passStartedAt = new Date(now.getTime() - PASS_START_SAFETY_MS)
 
@@ -334,15 +373,29 @@ async function extractLeasedChatMemory(
     return memoryExtractionEmptyResult('skipped', 'project-changed')
   }
 
-  if (!memoryExtractionIsAllowed(settings, trigger, isProjectChat)) {
+  const gate: MemoryExtractionGate = {
+    trigger,
+    isProjectChat,
+    activityAt: chat.activityAt,
+    isExplicit,
+  }
+
+  if (!memoryExtractionIsAllowed(settings, gate)) {
     return memoryExtractionEmptyResult('skipped', 'disabled')
   }
 
   const watermark = chat.projectId
     ? chat.projectMemorySummaryUpdatedAt
     : chat.memoryExtractedAt
+  const cutOver = settings?.memoryExtractionEnabledAt ?? null
+  const isFlooredAtCutOver = trigger === 'sweep'
+    && !isExplicit
+    && isProjectChat
+    && !!cutOver
+    && (!watermark || cutOver > watermark)
+  const windowFloor = isFlooredAtCutOver ? cutOver : watermark
 
-  if (!input.ignoreIdle && !isManual && !isBackfill) {
+  if (!input.ignoreIdle && !hasNoSweepBookkeeping && !isBackfill) {
     const isIdle = chat.activityAt.getTime()
       <= now.getTime() - MEMORY_EXTRACTION_LIMITS.idleMs
     const isDirty = !watermark || watermark < chat.activityAt
@@ -365,12 +418,18 @@ async function extractLeasedChatMemory(
     : null
 
   if (chat.projectId && (!project || project.memoryStatus === 'disabled')) {
-    await memoryExtractionAdvance(db, chat, userId, passStartedAt, trigger)
+    await memoryExtractionAdvance(
+      db,
+      chat,
+      userId,
+      passStartedAt,
+      advanceMode,
+    )
 
     return memoryExtractionEmptyResult('skipped', 'project-unavailable')
   }
 
-  if (!isManual && !isBackfill) {
+  if (!hasNoSweepBookkeeping && !isBackfill) {
     await memoryExtractionStampChat(db, chat.id, userId, {
       memoryExtractionAttemptedAt: now,
       ...(chat.memoryExtractionFailures
@@ -385,7 +444,7 @@ async function extractLeasedChatMemory(
   try {
     const extractionWindow = await loadMemoryExtractionWindow(
       chat.id,
-      isBackfill ? null : watermark,
+      isBackfill ? null : windowFloor,
       db,
       {
         createdAt: chat.createdAt,
@@ -406,14 +465,14 @@ async function extractLeasedChatMemory(
         isBackfill
           ? extractionWindow.newestCreatedAt ?? passStartedAt
           : passStartedAt,
-        trigger,
+        advanceMode,
       )
 
       return { ...result, status: 'skipped', reason: 'no-user-text' }
     }
 
     if (extractionWindow.userChars < MEMORY_EXTRACTION_LIMITS.minUserChars) {
-      if (!isManual && !isBackfill) {
+      if (!hasNoSweepBookkeeping && !isBackfill) {
         await memoryExtractionStampChat(db, chat.id, userId, {
           memoryExtractionFailures:
             MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
@@ -474,7 +533,7 @@ async function extractLeasedChatMemory(
 
     const freshSettings = await memoryExtractionReadSettings(db, userId)
 
-    if (!memoryExtractionIsAllowed(freshSettings, trigger, isProjectChat)) {
+    if (!memoryExtractionIsAllowed(freshSettings, gate)) {
       return { ...result, status: 'skipped', reason: 'disabled' }
     }
 
@@ -523,7 +582,7 @@ async function extractLeasedChatMemory(
 
     const advancedTo = extractionWindow.newestCreatedAt ?? passStartedAt
 
-    await memoryExtractionAdvance(db, chat, userId, advancedTo, trigger)
+    await memoryExtractionAdvance(db, chat, userId, advancedTo, advanceMode)
 
     if (
       !isManual
@@ -541,7 +600,7 @@ async function extractLeasedChatMemory(
 
     return result
   } catch (exception) {
-    if (isManual || isBackfill) {
+    if (hasNoSweepBookkeeping || isBackfill) {
       return {
         ...result,
         status: 'failed',
@@ -764,7 +823,7 @@ export async function extractProjectLegacyBlob(
   try {
     const settings = await memoryExtractionReadSettings(db, userId)
 
-    if (!memoryExtractionIsAllowed(settings, 'manual', true)) {
+    if (!memoryExtractionIsAllowed(settings, MANUAL_PROJECT_GATE)) {
       return memoryExtractionEmptyBlobResult('skipped', 'disabled')
     }
 
@@ -826,7 +885,7 @@ export async function extractProjectLegacyBlob(
 
     const freshSettings = await memoryExtractionReadSettings(db, userId)
 
-    if (!memoryExtractionIsAllowed(freshSettings, 'manual', true)) {
+    if (!memoryExtractionIsAllowed(freshSettings, MANUAL_PROJECT_GATE)) {
       return { ...result, status: 'skipped', reason: 'disabled' }
     }
 

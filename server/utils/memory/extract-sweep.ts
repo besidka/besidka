@@ -61,11 +61,11 @@ interface SelectedChat {
   userId: number
 }
 
-async function selectDueChats(
+export function buildDueChatsQuery(
   db: DbClient,
   batchSize: number,
   now: Date,
-): Promise<SelectedChat[]> {
+) {
   const limits = MEMORY_EXTRACTION_LIMITS
   const idleCutoff = new Date(now.getTime() - limits.idleMs)
   const backoffCutoff = new Date(now.getTime() - limits.attemptBackoffMs)
@@ -73,6 +73,8 @@ async function selectDueChats(
   const attemptedAt = schema.chats.memoryExtractionAttemptedAt
   const failures = schema.chats.memoryExtractionFailures
   const hasActivitySinceAttempt = gt(schema.chats.activityAt, attemptedAt)
+  const isExtractionOptedIn
+    = sql`${schema.userSettings.memoryExtractionEnabled} = 1`
 
   const attemptedAtOrZero = sql`coalesce(${schema.chats.memoryExtractionAttemptedAt}, 0)`
   const ranked = db
@@ -83,9 +85,9 @@ async function selectDueChats(
       activityAt: schema.chats.activityAt,
       userRank: sql<number>`row_number() over (partition by ${schema.chats.userId} order by ${attemptedAtOrZero}, ${schema.chats.activityAt})`.as('user_rank'),
     })
-    .from(schema.chats)
-    .leftJoin(
-      schema.userSettings,
+    .from(schema.userSettings)
+    .innerJoin(
+      schema.chats,
       eq(schema.chats.userId, schema.userSettings.userId),
     )
     .leftJoin(
@@ -96,6 +98,7 @@ async function selectDueChats(
       ),
     )
     .where(and(
+      isExtractionOptedIn,
       or(
         isNull(schema.userSettings.memoryEnabled),
         eq(schema.userSettings.memoryEnabled, true),
@@ -104,7 +107,6 @@ async function selectDueChats(
       or(
         and(
           isNull(schema.chats.projectId),
-          eq(schema.userSettings.memoryExtractionEnabled, true),
           or(
             isNull(schema.chats.memoryExtractedAt),
             lt(schema.chats.memoryExtractedAt, schema.chats.activityAt),
@@ -114,6 +116,11 @@ async function selectDueChats(
           isNotNull(schema.chats.projectId),
           isNotNull(schema.projects.id),
           ne(schema.projects.memoryStatus, 'disabled'),
+          isNotNull(schema.userSettings.memoryExtractionEnabledAt),
+          gt(
+            schema.chats.activityAt,
+            schema.userSettings.memoryExtractionEnabledAt,
+          ),
           or(
             isNull(schema.chats.projectMemorySummaryUpdatedAt),
             lt(
@@ -139,7 +146,7 @@ async function selectDueChats(
     ))
     .as('ranked_due_chats')
 
-  const rows = await db
+  return db
     .select({ id: ranked.id, userId: ranked.userId })
     .from(ranked)
     .where(lte(ranked.userRank, limits.perUserCapPerTick))
@@ -148,6 +155,15 @@ async function selectDueChats(
       asc(ranked.activityAt),
     )
     .limit(poolSize)
+}
+
+async function selectDueChats(
+  db: DbClient,
+  batchSize: number,
+  now: Date,
+): Promise<SelectedChat[]> {
+  const limits = MEMORY_EXTRACTION_LIMITS
+  const rows = await buildDueChatsQuery(db, batchSize, now)
 
   const perUserCounts = new Map<number, number>()
   const selected: SelectedChat[] = []
@@ -202,16 +218,20 @@ function addCounts(
 
 /**
  * Picks due chats and extracts them one after the other until the batch or
- * the runtime budget is spent. Account chats are eligible only while the
- * extraction opt-in is on; project chats whenever memory is on and their own
- * project (same owner) is not disabled. A chat is due when it is idle and
- * dirty on its kind's watermark, and was never attempted, or crashed outside
- * the attempt backoff, or waits for more user text and has new activity, or
- * failed outside the backoff and under the failure cap unless new activity
- * lifted it. At most `perUserCapPerTick` chats per user. A chat that throws
- * never stops the loop. Afterwards it services running backfill jobs inside
- * whatever runtime budget is left (see `sweepBackfillJobs`). Reports counts
- * only.
+ * the runtime budget is spent. Selection starts from the users who opted in
+ * (`memory_extraction_enabled` on, `memory_enabled` null or true) through a
+ * partial index and reaches their chats through `idx_chats_user_activity`, so
+ * nothing is read while nobody has opted in. Both kinds of chat need the
+ * opt-in: account chats are due when idle and dirty on `memory_extracted_at`;
+ * project chats additionally need their own project (same owner, not
+ * disabled), `memory_extraction_enabled_at` set and activity after it, and are
+ * dirty on the project watermark. A chat is due when it was never attempted,
+ * or crashed outside the attempt backoff, or waits for more user text and has
+ * new activity, or failed outside the backoff and under the failure cap unless
+ * new activity lifted it. At most `perUserCapPerTick` chats per user. A chat
+ * that throws never stops the loop. Afterwards it services running backfill
+ * jobs inside whatever runtime budget is left (see `sweepBackfillJobs`).
+ * Reports counts only.
  */
 export async function sweepMemoryExtraction(
   input: SweepMemoryExtractionInput,

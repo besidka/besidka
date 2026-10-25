@@ -2044,7 +2044,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/utils/project-memory-refresh.spec.ts'],
     },
     {
-      pattern: /^tests\/setup\/helpers\/(memory-extraction-db|memory-backfill-db|public-id-mock)\.ts$/,
+      pattern: /^tests\/setup\/helpers\/(memory-extraction-db|memory-backfill-db|memory-db|public-id-mock)\.ts$/,
       tests: memoryExtractionTests,
     },
     {
