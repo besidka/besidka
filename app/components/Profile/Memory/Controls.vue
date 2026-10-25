@@ -40,8 +40,8 @@
               id="memory-generation-description"
               class="text-sm text-base-content/70"
             >
-              Saves lasting facts and preferences from your chats. Runs on
-              your own API key, with the model you choose below.
+              Saves lasting facts and preferences from your chats. Runs in the
+              background on your own API key, with the model you choose below.
             </span>
             <span
               v-if="settings.memoryEnabled"
@@ -49,8 +49,10 @@
               class="text-sm text-base-content/60"
               data-testid="memory-generation-project-note"
             >
-              This setting covers your account memory. Project memory updates
-              automatically unless you turn it off in the project.
+              Covers your profile and project memory. Off by default. When on,
+              chats you have from now on are summarised in the background on
+              your key. Use "Build memory from past chats" to include older
+              chats.
             </span>
             <span
               v-if="!settings.memoryEnabled"
