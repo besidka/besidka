@@ -1,4 +1,5 @@
 import type { GatewayId } from '#shared/types/gateways.d'
+import { gatewayIds } from '#shared/utils/gateways'
 import {
   snakeCase,
   integer,
@@ -28,6 +29,14 @@ export const userSettings = snakeCase.table(
     favoriteModels: text({ mode: 'json' }).$type<string[]>(),
     favoriteGatewayModels: text({ mode: 'json' })
       .$type<Partial<Record<GatewayId, string[]>>>(),
+    memoryEnabled: integer({ mode: 'boolean' }),
+    chatSearchEnabled: integer({ mode: 'boolean' }),
+    memoryIncludeSensitive: integer({ mode: 'boolean' }),
+    aboutMe: text(),
+    profileMemoryModel: text(),
+    profileMemoryGateway: text({ enum: gatewayIds }),
+    projectMemoryModel: text(),
+    projectMemoryGateway: text({ enum: gatewayIds }),
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),

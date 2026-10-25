@@ -25,6 +25,7 @@ export interface PurgeUserDataInput {
 }
 
 export interface PurgeUserDataResult {
+  memoryEntriesDeleted: number
   filesFound: number
   storageKeysDeleted: number
   storageBatches: number
@@ -38,7 +39,9 @@ export interface PurgeUserDataResult {
  * Removes every trace of a user that deleting the `users` row cannot reach.
  *
  * The D1 cascade takes care of the user's own tables, but five classes of
- * data survive it and must be handled here:
+ * data survive it and must be handled here. The user's `memory_entries` rows
+ * are also deleted explicitly, ahead of the R2 and KV work that may abort,
+ * as a safeguard next to their cascade foreign key:
  *   - R2 objects behind `files.storageKey` (a D1 cascade never touches R2),
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
@@ -66,6 +69,12 @@ export async function purgeUserData(
   const { userId } = input
   const logger = resolveServerLogger(input.logger)
   const db = useDb()
+  const memoryEntries = await db
+    .delete(schema.memoryEntries)
+    .where(eq(schema.memoryEntries.userId, userId))
+    .returning({
+      id: schema.memoryEntries.id,
+    })
   const files = await db.query.files.findMany({
     where: { userId },
     columns: {
@@ -188,6 +197,7 @@ export async function purgeUserData(
   }
 
   const result: PurgeUserDataResult = {
+    memoryEntriesDeleted: memoryEntries.length,
     filesFound: files.length,
     storageKeysDeleted: storageKeys.length,
     storageBatches,

@@ -1,4 +1,5 @@
 import { defineEventHandler } from 'nuxt/server'
+import { MEMORY_SETTING_DEFAULTS } from '#shared/utils/memory-policy'
 
 export default defineEventHandler(async () => {
   const session = await useUserSession()
@@ -19,6 +20,14 @@ export default defineEventHandler(async () => {
       sidebarPinned: true,
       favoriteModels: true,
       favoriteGatewayModels: true,
+      memoryEnabled: true,
+      chatSearchEnabled: true,
+      memoryIncludeSensitive: true,
+      aboutMe: true,
+      profileMemoryModel: true,
+      profileMemoryGateway: true,
+      projectMemoryModel: true,
+      projectMemoryGateway: true,
     },
   })
 
@@ -30,5 +39,16 @@ export default defineEventHandler(async () => {
     sidebarPinned: settings?.sidebarPinned ?? false,
     favoriteModels: settings?.favoriteModels ?? [],
     favoriteGatewayModels: settings?.favoriteGatewayModels ?? {},
+    memoryEnabled: settings?.memoryEnabled
+      ?? MEMORY_SETTING_DEFAULTS.memoryEnabled,
+    chatSearchEnabled: settings?.chatSearchEnabled
+      ?? MEMORY_SETTING_DEFAULTS.chatSearchEnabled,
+    memoryIncludeSensitive: settings?.memoryIncludeSensitive
+      ?? MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
+    aboutMe: settings?.aboutMe ?? MEMORY_SETTING_DEFAULTS.aboutMe,
+    profileMemoryModel: settings?.profileMemoryModel ?? null,
+    profileMemoryGateway: settings?.profileMemoryGateway ?? null,
+    projectMemoryModel: settings?.projectMemoryModel ?? null,
+    projectMemoryGateway: settings?.projectMemoryGateway ?? null,
   }
 })

@@ -32,6 +32,7 @@ export const projects = snakeCase.table(
     memoryProvider: text(),
     memoryModel: text(),
     memoryError: text(),
+    useAccountMemory: integer({ mode: 'boolean' }),
     pinnedAt: integer({ mode: 'timestamp' }),
     archivedAt: integer({ mode: 'timestamp' }),
     activityAt: integer({ mode: 'timestamp' })
