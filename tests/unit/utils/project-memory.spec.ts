@@ -64,6 +64,8 @@ interface HarnessOptions {
   chats?: ChatFixture[]
   rereadState?: Record<string, unknown>
   settings?: Record<string, unknown> | null
+  migratedAt?: Date | null
+  hasEntries?: boolean
 }
 
 interface UpdateCondition {
@@ -146,6 +148,7 @@ function createHarness(options: HarnessOptions = {}) {
     memoryProvider: null,
     memoryModel: null,
     memoryError: null,
+    memoryMigratedAt: options.migratedAt ?? null,
   })
 
   if (options.rereadState) {
@@ -174,6 +177,11 @@ function createHarness(options: HarnessOptions = {}) {
       },
       projects: {
         findFirst: projectFindFirst,
+      },
+      memoryEntries: {
+        findFirst: vi.fn(async () => {
+          return options.hasEntries ? { id: 'entry-1' } : undefined
+        }),
       },
       chats: {
         findMany: vi.fn(async () => {
@@ -225,7 +233,7 @@ function createHarness(options: HarnessOptions = {}) {
   vi.stubGlobal('useDb', () => db)
   vi.stubGlobal('useKV', () => kv)
 
-  return { db, kv, updateCalls, updateConditions }
+  return { db, kv, updateCalls, updateConditions, projectFindFirst }
 }
 
 async function loadMemoryModule() {
@@ -2496,6 +2504,185 @@ describe('project memory utils', () => {
           }),
         },
       })
+    })
+  })
+
+  describe('memory entries gate', () => {
+    it.each([
+      ['a migrated blob', { migratedAt: at(5) }],
+      ['an entry scoped to the project', { hasEntries: true }],
+    ])('keeps the blob untouched when the project has %s', async (
+      _label,
+      options,
+    ) => {
+      const useGoogle = stubGoogle()
+      const { db, kv, updateCalls } = createHarness({
+        ...options,
+        previousMemory: 'Legacy blob.',
+        chats: [{
+          id: 'c1',
+          messages: [textMessage('user', 'Chat c1 text', 1)],
+        }],
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      const result = await refreshProjectMemory('project-1', 1, db as never)
+
+      expect(result).toMatchObject({ id: 'project-1' })
+      expect(mocks.generateText).not.toHaveBeenCalled()
+      expect(useGoogle).not.toHaveBeenCalled()
+      expect(updateCalls).toEqual([{
+        memoryStatus: 'ready',
+        memoryDirtyAt: null,
+        memoryError: null,
+      }])
+      expect(updateCalls[0]).not.toHaveProperty('memory')
+      expect(kv.put).toHaveBeenCalledWith(
+        LEASE_KEY,
+        expect.any(String),
+        expect.anything(),
+      )
+      expect(kv.delete).toHaveBeenCalledWith(LEASE_KEY)
+    })
+
+    it('still refreshes the blob while the project has no entries', async () => {
+      stubGoogle()
+      mockSummaryAndSynthesis('Legacy synthesis.')
+
+      const { db, updateCalls } = createHarness({
+        chats: [{
+          id: 'c1',
+          messages: [textMessage('user', 'Chat c1 text', 1)],
+        }],
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, db as never)
+
+      expect(db.query.memoryEntries.findFirst).toHaveBeenCalledTimes(1)
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memoryStatus: 'ready',
+        memory: 'Legacy synthesis.',
+      }))
+    })
+
+    it('skips the entries lookup for a migrated project', async () => {
+      const { db } = createHarness({ migratedAt: at(5) })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, db as never)
+
+      expect(db.query.memoryEntries.findFirst).not.toHaveBeenCalled()
+    })
+
+    it('settles a stale gated project to idle when the blob is empty', async () => {
+      const { db, updateCalls, updateConditions } = createHarness({
+        hasEntries: true,
+        previousMemory: '  ',
+        projectStatus: 'stale',
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, db as never)
+
+      expect(updateCalls).toEqual([{
+        memoryStatus: 'idle',
+        memoryDirtyAt: null,
+        memoryError: null,
+      }])
+      expect(isGuardedAgainstDisabled(updateConditions[0])).toBe(true)
+    })
+
+    it('never touches a disabled gated project', async () => {
+      const { db, updateCalls } = createHarness({
+        hasEntries: true,
+        projectStatus: 'disabled',
+      })
+      const { refreshProjectMemory } = await loadMemoryModule()
+
+      await refreshProjectMemory('project-1', 1, db as never)
+
+      expect(updateCalls).toEqual([])
+    })
+
+    it('leaves projects with memory entries out of the stale update', async () => {
+      const { db, updateConditions } = createHarness()
+      const { markProjectsMemoryStale } = await loadMemoryModule()
+
+      await markProjectsMemoryStale(['project-1'], 1, db as never)
+
+      const chunks = flattenQueryChunks(updateConditions[0]?.condition)
+      const hasNotExists = chunks.some((chunk) => {
+        return !!chunk
+          && typeof chunk === 'object'
+          && 'value' in chunk
+          && typeof chunk.value === 'string'
+          && chunk.value.includes('not exists (select 1 from memory_entries')
+      })
+
+      expect(hasNotExists).toBe(true)
+    })
+
+    it('does not flip migrated projects to stale', async () => {
+      const { db, updateConditions } = createHarness()
+      const { markProjectsMemoryStale } = await loadMemoryModule()
+
+      await markProjectsMemoryStale(['project-1'], 1, db as never)
+
+      expect(updateConditions).toHaveLength(1)
+      expect(updateConditions[0]?.values).toMatchObject({
+        memoryStatus: 'stale',
+      })
+
+      const chunks = flattenQueryChunks(updateConditions[0]?.condition)
+      const hasMigratedColumn = chunks.some((chunk) => {
+        return !!chunk
+          && typeof chunk === 'object'
+          && 'name' in chunk
+          && chunk.name === 'memory_migrated_at'
+      })
+      const hasIsNullOperator = chunks.some((chunk) => {
+        return !!chunk
+          && typeof chunk === 'object'
+          && 'value' in chunk
+          && chunk.value === ' is null)'
+      })
+
+      expect(hasMigratedColumn).toBe(true)
+      expect(hasIsNullOperator).toBe(true)
+    })
+
+    it('keeps the disable toggle clearing the blob', async () => {
+      const { db, updateCalls } = createHarness({ migratedAt: at(5) })
+      const { toggleProjectMemory } = await loadMemoryModule()
+
+      await toggleProjectMemory('project-1', 1, false, db as never)
+
+      expect(updateCalls).toContainEqual(expect.objectContaining({
+        memory: null,
+        memoryStatus: 'disabled',
+      }))
+    })
+  })
+
+  describe('exported text helpers', () => {
+    it('joins only trimmed text parts', async () => {
+      const { projectMemoryMessageText } = await loadMemoryModule()
+
+      expect(projectMemoryMessageText([
+        { type: 'text', text: '  first  ' },
+        { type: 'reasoning', text: 'hidden' },
+        { type: 'text', text: '   ' },
+        { type: 'text', text: 'second' },
+      ] as never)).toBe('first\nsecond')
+      expect(projectMemoryMessageText(null as never)).toBe('')
+    })
+
+    it('truncates with an ellipsis only past the limit', async () => {
+      const { truncateProjectMemoryText } = await loadMemoryModule()
+
+      expect(truncateProjectMemoryText('abc', 3)).toBe('abc')
+      expect(truncateProjectMemoryText('abcdef', 4)).toBe('abc\u2026')
     })
   })
 })

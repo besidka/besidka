@@ -1,3 +1,4 @@
+import type { GatewayModel } from '#shared/types/gateways.d'
 import type { Model } from '#shared/types/providers.d'
 import { isDeepResearchModel } from '#shared/utils/research'
 
@@ -23,4 +24,19 @@ export function isUsableMemoryCatalogModel(model: Model): boolean {
   const retiredAtTime = Date.parse(model.retiredAt)
 
   return Number.isNaN(retiredAtTime) || retiredAtTime > Date.now()
+}
+
+/**
+ * The gateway-catalog counterpart of `isUsableMemoryCatalogModel`: declared
+ * output modalities must include text; when none are declared, the model is
+ * text unless the catalog flags it as an image-generation model.
+ */
+export function isTextGatewayModel(catalogModel: GatewayModel): boolean {
+  const outputModalities = catalogModel.modalities?.output
+
+  if (outputModalities) {
+    return outputModalities.includes('text')
+  }
+
+  return catalogModel.supportsImageGeneration !== true
 }

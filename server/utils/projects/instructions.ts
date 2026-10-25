@@ -5,13 +5,16 @@ interface ProjectInstructionsContext {
   instructions: string | null
   memory?: string | null
   memoryStatus?: ProjectMemoryStatus | null
+  memoryEntriesActive?: boolean
 }
 
 export function buildProjectSystemPrompt(
   project: ProjectInstructionsContext | null,
 ): string | null {
   const instructions = project?.instructions?.trim()
-  const memory = project?.memory?.trim()
+  const memory = project?.memoryEntriesActive
+    ? undefined
+    : project?.memory?.trim()
 
   if (!project || (!instructions && !memory)) {
     return null

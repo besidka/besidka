@@ -1,7 +1,7 @@
 import type { LanguageModel, UIMessage } from 'ai'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
 import { persistedMessageRoles } from '#shared/utils/chat-message-role'
-import { and, eq, ne } from 'drizzle-orm'
+import { and, eq, isNull, ne, sql } from 'drizzle-orm'
 import { generateText } from 'ai'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
@@ -26,6 +26,7 @@ import {
   noopProjectMemoryLogger,
 } from '~~/server/utils/projects/memory-lease'
 import type { ProjectMemoryLogger } from '~~/server/utils/projects/memory-lease'
+import { projectUsesMemoryEntries } from '~~/server/utils/projects/memory-entries'
 
 export const PROJECT_MEMORY_PROVIDER_ORDER = MEMORY_MODEL_PROVIDER_ORDER
 
@@ -51,6 +52,7 @@ type ProjectMemoryTarget = Pick<
   | 'memoryProvider'
   | 'memoryModel'
   | 'memoryError'
+  | 'memoryMigratedAt'
 >
 
 type ProjectMemoryChat = Pick<
@@ -105,6 +107,8 @@ export async function markProjectsMemoryStale(
         eq(schema.projects.id, projectId),
         eq(schema.projects.userId, userId),
         ne(schema.projects.memoryStatus, 'disabled'),
+        isNull(schema.projects.memoryMigratedAt),
+        sql`not exists (select 1 from memory_entries where memory_entries.user_id = ${userId} and memory_entries.project_id = projects.id)`,
       ))
   }
 }
@@ -129,6 +133,7 @@ export async function refreshProjectMemory(
       memoryProvider: true,
       memoryModel: true,
       memoryError: true,
+      memoryMigratedAt: true,
     },
   })
 
@@ -150,6 +155,16 @@ export async function refreshProjectMemory(
   }
 
   try {
+    if (await projectUsesMemoryEntries(project, userId, db)) {
+      await updateRefreshedProjectMemoryState(project, {
+        memoryStatus: project.memory?.trim() ? 'ready' : 'idle',
+        memoryDirtyAt: null,
+        memoryError: null,
+      }, db)
+
+      return await getProjectMemoryState(project.id, userId, db, logger)
+    }
+
     return await refreshLeasedProjectMemory(project, userId, db, logger)
   } finally {
     await lease.release()
@@ -630,6 +645,7 @@ export async function toggleProjectMemory(
       memoryProvider: true,
       memoryModel: true,
       memoryError: true,
+      memoryMigratedAt: true,
     },
   })
 
@@ -729,7 +745,7 @@ function toChatTranscript(
   let hasOmittedMessages = hasMoreMessages
 
   for (const message of messagesNewestFirst) {
-    const text = toMessageText(message.parts)
+    const text = projectMemoryMessageText(message.parts)
 
     if (!text) {
       continue
@@ -738,7 +754,7 @@ function toChatTranscript(
     const maxMessageChars = message.role === 'user'
       ? PROJECT_MEMORY_LIMITS.maxUserMessageChars
       : PROJECT_MEMORY_LIMITS.maxAssistantMessageChars
-    const line = `${capitalize(message.role)}: ${truncateText(
+    const line = `${capitalize(message.role)}: ${truncateProjectMemoryText(
       text,
       maxMessageChars,
     )}`
@@ -794,7 +810,7 @@ function getTranscriptCharBudget(hasOmittedMessages: boolean) {
     - TRANSCRIPT_LINE_SEPARATOR.length
 }
 
-function toMessageText(parts: UIMessage['parts']) {
+export function projectMemoryMessageText(parts: UIMessage['parts']) {
   if (!Array.isArray(parts)) {
     return ''
   }
@@ -838,7 +854,7 @@ function redactMemoryText(
   return redactedText
 }
 
-function truncateText(value: string, maxChars: number) {
+export function truncateProjectMemoryText(value: string, maxChars: number) {
   if (value.length <= maxChars) {
     return value
   }
@@ -851,7 +867,10 @@ function capSummary(summary: string | null) {
     return null
   }
 
-  return truncateText(summary, PROJECT_MEMORY_LIMITS.maxSummaryChars)
+  return truncateProjectMemoryText(
+    summary,
+    PROJECT_MEMORY_LIMITS.maxSummaryChars,
+  )
 }
 
 function truncateMemory(memory: string) {

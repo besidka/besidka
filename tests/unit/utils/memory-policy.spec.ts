@@ -80,8 +80,9 @@ describe('MEMORY_LIMITS', () => {
 })
 
 describe('MEMORY_SETTING_DEFAULTS', () => {
-  it('keeps extraction off, chat search on and sensitive memory off', () => {
-    expect(MEMORY_SETTING_DEFAULTS.memoryEnabled).toBe(false)
+  it('keeps memory and chat search on, extraction and sensitive off', () => {
+    expect(MEMORY_SETTING_DEFAULTS.memoryEnabled).toBe(true)
+    expect(MEMORY_SETTING_DEFAULTS.memoryExtractionEnabled).toBe(false)
     expect(MEMORY_SETTING_DEFAULTS.chatSearchEnabled).toBe(true)
     expect(MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive).toBe(false)
     expect(MEMORY_SETTING_DEFAULTS.aboutMe).toBeNull()

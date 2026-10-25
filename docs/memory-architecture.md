@@ -324,11 +324,14 @@ position and whether a DPIA is needed before GA.
   that it runs on the user's key and what is never stored. Rationale: EU
   operator, no counsel review yet, and it spends the user's money.
   `memory_write` on explicit request and chat search work without it.
-  **Deviation (W3, 2026-10-25)**: with the single `memoryEnabled` boolean this
-  does not hold. `memoryEnabled` is the master switch (off = no injection, no
-  tools, no extraction), so `memory_write` does not work while it is off. W4,
-  W5 and W6 must either accept that, or the owner adds a separate extraction
-  toggle (an additive nullable column, no rebuild). See 3.10.
+  **Resolved (W6, 2026-10-25)**: W3 shipped one `memoryEnabled` boolean
+  (default off), which made `memory_write` depend on the extraction opt-in.
+  W6 splits it: `memoryEnabled` is the master "use memory" switch and now
+  defaults to **ON** (null = on), so the injected index, `memory_write` and
+  chat search work without extraction; `user_settings.memory_extraction_enabled`
+  ("Generate memory from chats", null = off) is the extraction opt-in. The
+  sweep needs both. Consequence for W4: injection and tools are default-on for
+  users who never touched the setting. See 3.11.
 - Chat search tool **on** by default (no new data processing — it reads the
   user's own chats on demand, nothing stored).
 - Existing project memory: harmonised with the above — existing projects keep
@@ -395,11 +398,16 @@ for a gateway model applies the equivalent check to the live gateway catalog
 entry: rejected when `modalities.output` is declared without `text`, or when
 no modalities are declared and `supportsImageGeneration` is `true`.
 
-Known limit: a gateway model taken from the latest chat (the `chat` step) is
-not catalog-checked at resolution time, because resolution does no network
-calls. If it is unusable (retired upstream, image-only), the refresh fails
-instead of falling through to the next step. A gateway model chosen in the
-settings is checked when it is saved, not when it is used.
+Gateway models from the latest chat (the `chat` step) are catalog-checked
+(W6): `getCachedGatewayCatalog` (KV-cached, stale copy served on an upstream
+failure) or, for Cloudflare, the cached catalog fetched with the user's
+credentials. An unusable one is skipped and resolution falls through to the
+fallback instead of failing the refresh. New skip reasons: `chat:not-in-catalog`,
+`chat:unusable-model` (not a text-output model, via the shared
+`isTextGatewayModel`), `chat:catalog-unavailable` (cold cache plus outage; also
+recorded in `errors`), and `chat:no-key` now also covers missing Cloudflare
+credentials. A gateway model chosen in the settings is still only checked when
+it is saved, not when it is used.
 
 Accepted consequence: the `chat` step can pick an expensive model, since the
 owner's rule is that the default is the model the user is chatting with, not
@@ -428,10 +436,10 @@ creates `memory_entries` rows. The one behavioural change is project memory
 **Settings semantics decided in W3**
 
 - `memoryEnabled`: the master switch. Off means no injection, no memory
-  tools, no extraction; entries are kept. Default `false` (opt-in).
-  **Deviation from 3.8**: 3.8 says `memory_write` works without extraction
-  being on. With a single boolean it does not. W4/W5/W6 must accept this, or
-  the owner adds a separate extraction toggle.
+  tools, no extraction; entries are kept. W3 shipped it default `false`; **W6
+  changed the default to `true`** and added the separate
+  `memoryExtractionEnabled` (default `false`), which resolves the 3.8
+  deviation (see 3.11).
 - `chatSearchEnabled`: default `true`.
 - `memoryIncludeSensitive`: default `false`.
 - `aboutMe`: at most 4000 characters, trimmed; an empty string stores `null`.
@@ -622,6 +630,153 @@ of each chat summary and of the blob.
   with; it only needs a saved key. A chosen or chat-derived model may be
   expensive (3.9); only the fallback optimises for cost.
 
+### 3.11 As built (W6, 2026-10-25)
+
+Extraction sweep, blob migration and the W3 follow-ups. Code:
+`server/utils/memory/extract*.ts`, `server/plugins/memory-extraction-sweep.ts`,
+`server/api/v1/memory/extract-now.post.ts`, `server/utils/projects/memory-entries.ts`.
+
+**Schema (one additive migration, `20261025140221_memory_extraction`)**: five
+nullable columns, no SQL `DEFAULT`, no rebuild: `user_settings.memory_extraction_enabled`,
+`chats.memory_extracted_at`, `chats.memory_extraction_attempted_at`,
+`chats.memory_extraction_failures`, `projects.memory_migrated_at`.
+
+**Opt-in is forward-only.** Switching extraction on stamps
+`memory_extracted_at = now` on every chat of the user that has none, in the
+same `db.batch` as the settings write. Existing history is never extracted
+(it would spend the user's key on the whole archive); only chats active after
+the toggle are. Lead-flippable: an explicit "import from history" action could
+later clear those stamps for chosen chats. Resending `true` while already
+`true` does not restamp, and turning it off does not stamp.
+
+**Sweep.** `*/5 * * * *`, same cron expression as the research sweep.
+Config `memoryExtractionSweepEnabled` (default false; true in `wrangler.jsonc`,
+safe because the per-user opt-in is off), `...BatchSize` 20,
+`...MaxRuntimeMs` 120000. Selection is a core `chats JOIN user_settings` query:
+extraction on, `memory_enabled` null or true, `activity_at` at least 10 min
+old, `memory_extracted_at` null or older than `activity_at`, attempt backoff
+30 min, failure cap 3 (reset by newer activity), ordered by
+`COALESCE(attempted_at, 0), activity_at`. The pool is `batch * 4`; at most 5
+chats per user per tick; chats run sequentially until the runtime budget is
+used. Chats under 300 chars of user text, or without new user text, skip the
+LLM call but advance `memory_extracted_at` so they are not reselected.
+`memory_extraction_attempted_at` is stamped before the call and cleared on
+success; a failure increments `memory_extraction_failures`.
+
+**Lease.** `memory-extraction:<chatId>` through the generic
+`acquireMemoryLease` (120 s TTL, 30 s heartbeat, W1's pattern). The KV
+get-then-put is not atomic, so the design does not rely on it for safety:
+slug uniqueness, the extraction-origin rule and idempotent merges make a
+double pass harmless, and the lease only avoids paying twice.
+
+**Input and trust boundary.** Only `text` parts. User text is the primary
+source, assistant text is labeled low-trust, tool, source, file and reasoning
+parts are never read. Assistant turns whose `tools` column or tool parts name
+`memory_list`/`memory_read` are excluded. The prompt wraps the transcript as
+untrusted data and forbids storing instructions that originate outside the
+user's words. The window is capped (36k chars) and bounded to the messages
+after `memory_extracted_at`. The current entry index of the scope (account
+entries for non-project chats, the project's entries for project chats) is part
+of the prompt so the model merges rather than duplicates.
+
+**Ops and writes.** `generateObject` returns `create | update | delete` ops
+(flat schema, max 10 per pass, 15 with a legacy blob). Identity is
+`(category, slug)` from the index, never a model-supplied id. Code enforces
+what the prompt only requests:
+
+- **Evidence grounding (addition to the original design)**: each create or
+  update op must carry a verbatim quote that occurs in the window's user text
+  (or the legacy blob); otherwise it is dropped as `ungrounded`. This is the
+  code-level defence against assistant echo of web/tool/file content.
+- **Extraction only edits what extraction wrote**: update and delete apply only
+  to `origin = 'extraction'` rows. Entries written by the user, a tool or an
+  import are shown to the model as locked context and are never changed by the
+  sweep (owner principle: the user chooses). An update cannot downgrade
+  `special` to `none`.
+- Every op runs `memoryEntryInputSchema`/`memoryEntryPatchSchema` (and the
+  merged row for updates) and `evaluateMemoryEntry` on the exact persisted
+  text, with the extractor's `neverStore` label as `extractorNeverStoreKind`.
+  Art. 9 entries are dropped unless `memoryIncludeSensitive` is on; a special
+  write goes in a `db.batch` with a conditional delete so a concurrent opt-out
+  purge cannot leave one behind.
+- Caps (`maxAccountEntries`/`maxProjectEntries`), merge-before-create (a
+  create colliding with an extraction-origin slug becomes an update, with any
+  other origin it is dropped as `duplicate`), writes scoped by `userId` and
+  `projectId`, `sourceChatIds` appended, deduped and capped.
+- A project chat is skipped when the project belongs to another user (the FK
+  does not tie them) or its memory is `disabled`.
+
+**Model and cost transparency.** `resolveMemoryModel` with scope `profile`
+(non-project chat) or `project`, `sourceChatId` set. Results of the `setting`
+and `fallback` steps are cached per tick by `(userId, scope, projectId)`; a
+`chat` result depends on the chat and is not cached. Each sweep logs
+`attributes.memoryExtraction = { chatsProcessed, messages, userChars,
+ops: { proposed, applied, dropped }, models: [{ source, providerId,
+gatewayId, modelId, chats }], usage }`: counts and ids only. Errors log the
+error class name, never a message. Per-call 90 s abort timeout.
+
+**`POST /api/v1/memory/extract-now`.** For previews, where crons do not run.
+Session-authed, cross-site request guard, body `{ chatSlug }`. The chat is
+looked up by slug AND user, anything else is a 404. Needs the same two
+flags (409 otherwise), ignores the 10-minute idle rule, 60 s per-user KV
+cooldown (429). Responds with counts and the model source/id only.
+
+**Legacy project blob.** `projects.memory_migrated_at` is the marker. On the
+first extraction pass of a project with a non-empty blob and no marker, the
+blob is added to the prompt as `<legacy-memory>` (quotable as evidence), so the
+same op pipeline and compliance gate classify it (this is the retro-scrub W3
+left open, including Art. 9 labels). After a successful pass the marker is set
+and never-store matches are redacted in place in `projects.memory`. The column
+is kept and never nulled (rollback) but nothing writes it any more once
+entries are in use: `projectUsesMemoryEntries(project, userId, db?)` in
+`server/utils/projects/memory-entries.ts` is true when the marker is set or any
+entry exists, and it is **the single function W4's index builder and prompt
+caller use**. `buildProjectSystemPrompt` takes `memoryEntriesActive` (default
+false = unchanged); W4's caller in `chats/[slug]/index.post.ts` must pass
+`await projectUsesMemoryEntries(project, userId)`. `refreshProjectMemory` and
+`markProjectsMemoryStale` stop touching projects in that state, so nothing
+freezes for users who never opt in. Known limit: Art. 9 text that predates
+W3 may remain in the dormant blob column when the user has not opted in to
+sensitive memory; it is never injected once entries are in use.
+
+**Settings API (for W5).** GET and PATCH carry `memoryExtractionEnabled`
+(default false) and `memoryEnabled` (default true). A PATCH with
+`memoryIncludeSensitive: false` always applies (with the purge) even when model
+validation fails in the same payload: the failing scope's model and gateway are
+dropped from the write, and the response is HTTP 200 with the usual echo plus
+`modelValidationError: { message, why?, fix?, status }` (503 catalog outage,
+429 rate limit, 400 unknown model). Any other payload keeps the old behaviour:
+validate first, throw, save nothing.
+
+**Known limits.**
+
+- Timestamps are second-resolution; a message created in the same second as the
+  newest consumed one could be missed (practically excluded by the 10-minute
+  idle rule, possible with `extract-now`).
+- Two short windows are not merged: each skips and advances.
+- A window is bounded to the newest 120 messages / 36k characters; older
+  unseen messages in the same pass are not revisited.
+- Branching a chat copies messages: share-branched chats ignore messages
+  within 30 s of the chat's creation, and any message older than the chat is
+  ignored (own-chat branches keep original timestamps). W4 may also stamp
+  `memory_extracted_at` in the branch endpoints as defence in depth.
+- Turning extraction (or `memoryEnabled`) back on stamps every chat that is
+  not already up to date, so the period it was off is never mined.
+- The KV lease and the `extract-now` cooldown are check-then-set, not atomic;
+  a burst can run duplicate passes on the caller's own key. Results stay safe
+  (unique slugs, origin rule); an owner-token or Durable Object lease is the
+  upgrade if it matters.
+- Extraction entries are not yet removed when their source chat is deleted
+  (W8 data rights owns the cascade); `sourceChatIds` already records the link.
+- `generateObject` is deprecated in AI SDK 7 but still works (the research
+  clarifier uses it too); move both to `generateText` with an `output`
+  setting together.
+- The extractor is the only classifier for topical never-store classes and
+  for Art. 9 labels; a model that mislabels a special fact as `none` is not
+  caught by code. User-pasted text that contains instructions is still
+  user-role text (prompt-level defence only).
+- The extraction sweep is not run on Previews (no crons); use `extract-now`.
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |
@@ -694,6 +849,8 @@ Ownership is by file set so parallel sessions never touch the same files.
   - **W6 Extraction sweep** — `server/utils/memory/extract.ts`,
     `server/plugins/memory-extraction-sweep.ts`, lease, structured ops,
     project blob migration.
+
+    *Implemented* (branch `feat/w6-memory-extraction-b4d3e2`; see 3.11).
 
 **P3 — knowledge and rights**
 - **W7 Project knowledge** — `project_files`, notes, 8k budget, chunk FTS,
