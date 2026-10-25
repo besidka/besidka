@@ -139,6 +139,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelList.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/Panel.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
   ]
   const userKeysTests = [
@@ -408,6 +409,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Security/Sessions.spec.ts',
     'tests/unit/components/Profile/Security/LinkedAccounts.spec.ts',
     'tests/unit/components/Profile/Security/Passkeys.spec.ts',
+  ]
+
+  const memoryTabTests = [
+    'tests/unit/pages/profile/memory.spec.ts',
+    'tests/unit/components/Profile/Memory/ModelPicker.spec.ts',
+    'tests/unit/utils/memory-model-filter.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
   ]
 
   const accountEmailPasswordTests = [
@@ -1569,6 +1577,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/layouts\/profile\.vue$/,
       tests: ['tests/unit/layouts/profile.spec.ts'],
+    },
+    {
+      pattern:
+        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/composables\/memory-settings\.ts|app\/types\/memory-settings\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
+      tests: memoryTabTests,
     },
     {
       pattern: /^app\/components\/ui\/Button\.vue$/,
