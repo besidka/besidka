@@ -15,7 +15,10 @@ import {
   loadMemoryExtractionIndex,
   loadMemoryExtractionWindow,
 } from '~~/server/utils/memory/extract-input'
-import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
+import {
+  MEMORY_EXTRACTION_LIMITS,
+  MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
+} from '~~/server/utils/memory/extract-limits'
 import { memoryExtractionOutputSchema } from '~~/server/utils/memory/extract-schema'
 import { resolveMemoryModel } from '~~/server/utils/memory/resolve-model'
 import type { ResolvedMemoryModel } from '~~/server/utils/memory/resolve-model'
@@ -163,9 +166,12 @@ async function memoryExtractionAdvance(
  * Runs one extraction pass for one chat under a KV lease. Everything that
  * decides whether the pass may run (settings, chat owner, project owner,
  * dirty/idle) is re-read inside the lease. Never throws for a pass failure:
- * the failure counter on the chat is bumped and `failed` is returned. Skip
- * paths advance `memoryExtractedAt` so the chat is not selected again until
- * new activity.
+ * the failure counter on the chat is bumped and `failed` is returned. The
+ * `no-user-text` and `project-unavailable` skip paths advance
+ * `memoryExtractedAt` so the chat is not selected again until new activity.
+ * `too-short` never advances it: the user text stays in the next window and
+ * accumulates until it is long enough, and the chat is only selected again
+ * once new activity arrives.
  */
 export async function extractChatMemory(
   input: ExtractChatMemoryInput,
@@ -250,6 +256,10 @@ async function extractLeasedChatMemory(
 
   await memoryExtractionStampChat(db, chat.id, userId, {
     memoryExtractionAttemptedAt: now,
+    ...(chat.memoryExtractionFailures
+      === MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES
+      ? { memoryExtractionFailures: null }
+      : {}),
   })
 
   const result = memoryExtractionEmptyResult('extracted')
@@ -268,14 +278,18 @@ async function extractLeasedChatMemory(
     result.messages = extractionWindow.consumedCount
     result.userChars = extractionWindow.userChars
 
-    if (extractionWindow.userChars < MEMORY_EXTRACTION_LIMITS.minUserChars) {
+    if (extractionWindow.userChars === 0) {
       await memoryExtractionAdvance(db, chat.id, userId, passStartedAt)
 
-      return {
-        ...result,
-        status: 'skipped',
-        reason: extractionWindow.userChars === 0 ? 'no-user-text' : 'too-short',
-      }
+      return { ...result, status: 'skipped', reason: 'no-user-text' }
+    }
+
+    if (extractionWindow.userChars < MEMORY_EXTRACTION_LIMITS.minUserChars) {
+      await memoryExtractionStampChat(db, chat.id, userId, {
+        memoryExtractionFailures: MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
+      })
+
+      return { ...result, status: 'skipped', reason: 'too-short' }
     }
 
     const scope: MemoryScope = project ? 'project' : 'profile'

@@ -129,6 +129,10 @@ describe('sweepMemoryExtraction', () => {
       || chat?.memoryExtractionAttemptedAt !== null
   }
 
+  async function readChat(chatId: string) {
+    return await testDb.db.query.chats.findFirst({ where: { id: chatId } })
+  }
+
   describe('selection', () => {
     it('selects a due chat and extracts it', async () => {
       const chat = await dueChat()
@@ -237,6 +241,81 @@ describe('sweepMemoryExtraction', () => {
       }))?.memoryExtractedAt).not.toBeNull()
     })
 
+    it('does not reselect an unchanged too-short chat', async () => {
+      const waiting = await dueChat({
+        memoryExtractionFailures: 0,
+        memoryExtractionAttemptedAt: minutesBefore(500),
+        activityAt: minutesBefore(600),
+      })
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(0)
+      expect(await readChat(waiting.id)).toMatchObject({
+        memoryExtractedAt: null,
+        memoryExtractionFailures: 0,
+      })
+    })
+
+    it('reselects a too-short chat once new activity arrives', async () => {
+      const waiting = await dueChat({
+        memoryExtractionFailures: 0,
+        memoryExtractionAttemptedAt: minutesBefore(100),
+        activityAt: minutesBefore(20),
+      })
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect((await readChat(waiting.id))?.memoryExtractedAt).not.toBeNull()
+    })
+
+    it('keeps the backoff and cap for failed chats', async () => {
+      const backedOff = await dueChat({
+        memoryExtractionFailures: 1,
+        memoryExtractionAttemptedAt: minutesBefore(10),
+        activityAt: minutesBefore(60),
+      })
+      const retry = await dueChat({
+        memoryExtractionFailures: 1,
+        memoryExtractionAttemptedAt: minutesBefore(40),
+        activityAt: minutesBefore(60),
+      })
+      const capped = await dueChat({
+        memoryExtractionFailures: 3,
+        memoryExtractionAttemptedAt: minutesBefore(40),
+        activityAt: minutesBefore(50),
+      })
+      const reactivatedBackedOff = await dueChat({
+        memoryExtractionFailures: 3,
+        memoryExtractionAttemptedAt: minutesBefore(20),
+        activityAt: minutesBefore(15),
+      })
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect((await readChat(backedOff.id))?.memoryExtractedAt).toBeNull()
+      expect((await readChat(capped.id))?.memoryExtractionFailures).toBe(3)
+      expect((await readChat(reactivatedBackedOff.id))?.memoryExtractedAt)
+        .toBeNull()
+      expect((await readChat(retry.id))?.memoryExtractedAt).not.toBeNull()
+    })
+
+    it('retries a crashed pass after the backoff', async () => {
+      const recentlyCrashed = await dueChat({
+        memoryExtractionAttemptedAt: minutesBefore(10),
+        activityAt: minutesBefore(60),
+      })
+      const crashed = await dueChat({
+        memoryExtractionAttemptedAt: minutesBefore(40),
+        activityAt: minutesBefore(60),
+      })
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect((await readChat(recentlyCrashed.id))?.memoryExtractedAt)
+        .toBeNull()
+      expect((await readChat(crashed.id))?.memoryExtractedAt).not.toBeNull()
+    })
+
     it('caps the chats taken per user per tick', async () => {
       const otherUser = await seedUser(testDb.db, { memoryEnabled: true })
 
@@ -317,7 +396,7 @@ describe('sweepMemoryExtraction', () => {
       expect(await wasProcessed(second.id)).toBe(false)
     })
 
-    it('advances the stamp for short chats so they are not reselected',
+    it('keeps a short chat waiting without advancing the stamp',
       async () => {
         const chat = await dueChat({}, userId, SHORT_USER_TEXT)
         const first = await sweep()
@@ -326,9 +405,10 @@ describe('sweepMemoryExtraction', () => {
         expect(first).toMatchObject({ selectedCount: 1, skippedCount: 1 })
         expect(second.selectedCount).toBe(0)
         expect(mocks.generateObject).not.toHaveBeenCalled()
-        expect((await testDb.db.query.chats.findFirst({
-          where: { id: chat.id },
-        }))?.memoryExtractedAt).not.toBeNull()
+        expect(await readChat(chat.id)).toMatchObject({
+          memoryExtractedAt: null,
+          memoryExtractionFailures: 0,
+        })
       })
   })
 

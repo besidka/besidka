@@ -251,7 +251,11 @@ function createNoAnswerFinishChunks() {
   ]
 }
 
-type ScriptedStep = Array<Record<string, unknown>> | Error | 'stall-after-text'
+type ScriptedStep
+  = | Array<Record<string, unknown>>
+    | Error
+    | 'stall-after-text'
+    | 'stall-after-reasoning'
 
 function createStallingStream(abortSignal: AbortSignal | undefined) {
   return new ReadableStream({
@@ -261,6 +265,22 @@ function createStallingStream(abortSignal: AbortSignal | undefined) {
         type: 'text-delta',
         id: 'stalled-text',
         delta: 'Half an answer',
+      })
+      abortSignal?.addEventListener('abort', () => {
+        controller.error(abortSignal.reason)
+      })
+    },
+  })
+}
+
+function createReasoningStallingStream(abortSignal: AbortSignal | undefined) {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue({ type: 'reasoning-start', id: 'stalled-reasoning' })
+      controller.enqueue({
+        type: 'reasoning-delta',
+        id: 'stalled-reasoning',
+        delta: 'Still thinking about the results.',
       })
       abortSignal?.addEventListener('abort', () => {
         controller.error(abortSignal.reason)
@@ -282,6 +302,12 @@ function createScriptedModel(steps: ScriptedStep[]) {
 
     if (chunks === 'stall-after-text') {
       return { stream: createStallingStream(options?.abortSignal) as any }
+    }
+
+    if (chunks === 'stall-after-reasoning') {
+      return {
+        stream: createReasoningStallingStream(options?.abortSignal) as any,
+      }
     }
 
     return {
@@ -722,7 +748,7 @@ describe('multi-step tool loop', () => {
         ],
       })
 
-      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(doStream).toHaveBeenCalledTimes(4)
       expect(assistantInsert).toBeDefined()
       expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
         expect.objectContaining({
@@ -767,7 +793,7 @@ describe('multi-step tool loop', () => {
         ],
       })
 
-      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(doStream).toHaveBeenCalledTimes(4)
       expect(globalThis.sendPushNotificationToUser).not.toHaveBeenCalled()
     })
 
@@ -1035,7 +1061,7 @@ describe('multi-step tool loop', () => {
         return chunk?.type === 'error'
       })
 
-      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(doStream).toHaveBeenCalledTimes(4)
       expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
         type: 'text',
         text: getPersistedEmptyAnswerFailureText(),
@@ -1043,11 +1069,12 @@ describe('multi-step tool loop', () => {
       expect(JSON.parse(errorCall?.[0]?.errorText).code)
         .toBe('assistant-empty-answer')
       expect(assistantInsert?.usage).toEqual(expect.objectContaining({
-        inputTokens: 30,
-        outputTokens: 60,
+        inputTokens: 40,
+        outputTokens: 80,
       }))
       expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
         continuationRan: true,
+        continuationAttempts: 2,
         continuationProducedText: false,
       }))
     })
@@ -1393,6 +1420,86 @@ describe('multi-step tool loop', () => {
         continuationRan: true,
         continuationProducedText: true,
         continuationTruncated: true,
+      }))
+    })
+
+    it('keeps the cost of the finished steps when a step errors and the '
+      + 'continuation times out in reasoning', async () => {
+      const { doStream, assistantInsert } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          new Error('Moonshot stream dropped'),
+          'stall-after-reasoning',
+        ],
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }))
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        inputTokens: 10,
+        outputTokens: 20,
+      }))
+      expect(getAiLoggerField('ai')).toEqual(expect.objectContaining({
+        tokens: expect.objectContaining({ input: 10, output: 20 }),
+      }))
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationRan: true,
+        continuationAttempts: 1,
+        continuationProducedText: false,
+        continuationTruncated: true,
+      }))
+    })
+
+    it('retries a continuation that ends cleanly with only reasoning and '
+      + 'sums every attempt into the usage', async () => {
+      const { doStream, assistantInsert } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createNoAnswerFinishChunks(),
+          [
+            ...createReasoningChunks('reasoning-only', 'Thinking it over.'),
+            ...createNoAnswerFinishChunks(),
+          ],
+          createTextChunks('Answer from the second attempt.'),
+        ],
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(4)
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'Answer from the second attempt.',
+      }))
+      expect(assistantInsert?.parts).not.toContainEqual(
+        expect.objectContaining({
+          type: 'text',
+          text: getPersistedEmptyAnswerFailureText(),
+        }),
+      )
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        inputTokens: 40,
+        outputTokens: 80,
+      }))
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationAttempts: 2,
+        continuationProducedText: true,
+      }))
+    })
+
+    it('does not retry a continuation that answered', async () => {
+      const { doStream } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createNoAnswerFinishChunks(),
+          createTextChunks('Answer'),
+        ],
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationAttempts: 1,
       }))
     })
 
