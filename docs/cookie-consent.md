@@ -347,8 +347,9 @@ never opens it in a way that can create it:
    permission is not granted it also calls `indexedDB.deleteDatabase()` for
    `besidka-push`, which removes the empty database that earlier versions of the
    plugin created for every visitor (deleting a database that does not exist is
-   a no-op and never creates one). The e2e test "a push handoff IndexedDB left
-   by an earlier version is removed" covers it.
+   a no-op and never creates one). The e2e step "a push handoff IndexedDB left
+   by an earlier version is removed" in `tests/e2e/cookies/consent.spec.ts`
+   covers it.
 2. Where `indexedDB.databases()` exists it returns early when no `besidka-push`
    database is listed.
 3. Where it does not (older Firefox), the `open()` request aborts its upgrade
@@ -356,7 +357,7 @@ never opens it in a way that can create it:
    that did not exist.
 
 A visitor who never enabled push has no `besidka-push` database, which the e2e
-test "push handoff IndexedDB is not created for an undecided visitor" asserts in
+step "push handoff IndexedDB is not created for an undecided visitor" asserts in
 Chromium. The handoff itself is unchanged: a user who tapped a notification
 necessarily has permission `granted` and a database written by the worker.
 Permission can in theory be revoked after a tap and before the next launch, in
@@ -414,9 +415,10 @@ function openCookieSettings(event: MouseEvent): void {
 ```
 
 Two tests guard this. `tests/unit/components/LandingFooter.spec.ts` asserts the
-composable is not called while mounting. The e2e tests "SSR HTML of <route>
-carries no consent state" assert that the HTML contains no `cookie-consent:` key
-for each public SSR route (`/`, `/privacy-policy`, `/terms-of-use`,
+composable is not called while mounting. The two e2e tests in the "Cookie
+consent SSR HTML" group, one step per route named "SSR HTML of <route> carries
+no consent state", assert that the HTML contains no `cookie-consent:` key for
+each public SSR route (`/`, `/privacy-policy`, `/terms-of-use`,
 `/cookie-policy`, `/signin`, `/signup`), once without a consent cookie and once
 with a valid `cookies_consent` cookie on the request.
 
