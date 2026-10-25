@@ -1,13 +1,16 @@
 import { parseError } from 'evlog'
 import type { Ref } from 'vue'
-import type { MemorySettingsFields } from '#shared/types/memory.d'
 import type {
   MemorySaveResult,
+  MemoryUiSettings,
   MemorySettingsSave,
 } from '~/types/memory-settings.d'
 
-const memorySettingKeys: Array<keyof MemorySettingsFields> = [
+const MEMORY_EXTRACTION_DEFAULT = false
+
+const memorySettingKeys: Array<keyof MemoryUiSettings> = [
   'memoryEnabled',
+  'memoryExtractionEnabled',
   'chatSearchEnabled',
   'memoryIncludeSensitive',
   'aboutMe',
@@ -18,9 +21,9 @@ const memorySettingKeys: Array<keyof MemorySettingsFields> = [
 ]
 
 function pickMemorySettings(
-  source: Partial<MemorySettingsFields>,
-): Partial<MemorySettingsFields> {
-  const picked: Partial<MemorySettingsFields> = {}
+  source: Partial<MemoryUiSettings>,
+): Partial<MemoryUiSettings> {
+  const picked: Partial<MemoryUiSettings> = {}
 
   for (const key of memorySettingKeys) {
     if (key in source) {
@@ -32,11 +35,12 @@ function pickMemorySettings(
 }
 
 export function useMemorySettingsSaver(
-  settings: Ref<MemorySettingsFields | null | undefined>,
+  settings: Ref<Partial<MemoryUiSettings> | null | undefined>,
 ) {
-  const values = computed<MemorySettingsFields>(() => {
+  const values = computed<MemoryUiSettings>(() => {
     return {
       memoryEnabled: MEMORY_SETTING_DEFAULTS.memoryEnabled,
+      memoryExtractionEnabled: MEMORY_EXTRACTION_DEFAULT,
       chatSearchEnabled: MEMORY_SETTING_DEFAULTS.chatSearchEnabled,
       memoryIncludeSensitive: MEMORY_SETTING_DEFAULTS.memoryIncludeSensitive,
       aboutMe: MEMORY_SETTING_DEFAULTS.aboutMe,
@@ -50,9 +54,9 @@ export function useMemorySettingsSaver(
 
   const save: MemorySettingsSave = async (patch) => {
     const previous = pickMemorySettings(values.value)
-    const rollback: Partial<MemorySettingsFields> = {}
+    const rollback: Partial<MemoryUiSettings> = {}
 
-    for (const key of Object.keys(patch) as Array<keyof MemorySettingsFields>) {
+    for (const key of Object.keys(patch) as Array<keyof MemoryUiSettings>) {
       Object.assign(rollback, { [key]: previous[key] })
     }
 

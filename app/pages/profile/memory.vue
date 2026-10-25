@@ -25,8 +25,6 @@
 </template>
 
 <script setup lang="ts">
-import type { MemorySettingsFields } from '#shared/types/memory.d'
-
 definePageMeta({
   layout: 'profile',
   auth: {
@@ -39,10 +37,9 @@ useSeoMeta({
   robots: 'noindex, nofollow',
 })
 
-const { data: settings } = await useFetch<MemorySettingsFields>(
-  '/api/v1/profiles/settings',
-  { key: 'profile-memory-settings' },
-)
+const { data: settings } = await useFetch('/api/v1/profiles/settings', {
+  key: 'profile-memory-settings',
+})
 
 const { values, save } = useMemorySettingsSaver(settings)
 </script>

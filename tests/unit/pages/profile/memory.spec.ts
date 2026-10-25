@@ -2,7 +2,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, shallowRef } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemorySettingsFields } from '#shared/types/memory.d'
+import type { MemoryUiSettings } from '../../../../app/types/memory-settings.d'
 import * as messagesComposable from '../../../../app/composables/messages'
 import MemoryPage from '../../../../app/pages/profile/memory.vue'
 
@@ -21,8 +21,9 @@ mockNuxtImport('$fetch', () => mocks.fetch)
 
 enableAutoUnmount(afterEach)
 
-const defaultSettings: MemorySettingsFields = {
-  memoryEnabled: false,
+const defaultSettings: MemoryUiSettings = {
+  memoryEnabled: true,
+  memoryExtractionEnabled: false,
   chatSearchEnabled: true,
   memoryIncludeSensitive: false,
   aboutMe: null,
@@ -32,7 +33,7 @@ const defaultSettings: MemorySettingsFields = {
   projectMemoryGateway: null,
 }
 
-let serverSettings: MemorySettingsFields = { ...defaultSettings }
+let serverSettings: MemoryUiSettings = { ...defaultSettings }
 
 const PanelStub = defineComponent({
   setup(_props, { expose }) {
@@ -42,7 +43,7 @@ const PanelStub = defineComponent({
   },
 })
 
-async function mountPage(settings: Partial<MemorySettingsFields> = {}) {
+async function mountPage(settings: Partial<MemoryUiSettings> = {}) {
   serverSettings = { ...defaultSettings, ...settings }
 
   const wrapper = await mountSuspended(MemoryPage, {
@@ -111,7 +112,13 @@ describe('profile memory page', () => {
   it('renders defaults for every section', async () => {
     const wrapper = await mountPage()
 
+    expect(checkbox(wrapper, 'memory-enabled-toggle').element.checked)
+      .toBe(true)
     expect(checkbox(wrapper, 'memory-generation-toggle').element.checked)
+      .toBe(false)
+    expect(checkbox(wrapper, 'memory-generation-toggle').element.disabled)
+      .toBe(false)
+    expect(wrapper.find('[data-testid="memory-generation-hint"]').exists())
       .toBe(false)
     expect(checkbox(wrapper, 'memory-chat-search-toggle').element.checked)
       .toBe(true)
@@ -141,13 +148,16 @@ describe('profile memory page', () => {
 
   it('renders saved settings', async () => {
     const wrapper = await mountPage({
-      memoryEnabled: true,
+      memoryEnabled: false,
+      memoryExtractionEnabled: true,
       chatSearchEnabled: false,
       aboutMe: 'Backend developer',
       profileMemoryModel: 'vendor/model',
       profileMemoryGateway: 'openrouter',
     })
 
+    expect(checkbox(wrapper, 'memory-enabled-toggle').element.checked)
+      .toBe(false)
     expect(checkbox(wrapper, 'memory-generation-toggle').element.checked)
       .toBe(true)
     expect(checkbox(wrapper, 'memory-chat-search-toggle').element.checked)
@@ -159,15 +169,66 @@ describe('profile memory page', () => {
       .toContain('vendor/model')
   })
 
-  it('sends memoryEnabled when the generation toggle changes', async () => {
+  it('sends memoryEnabled when the use memory toggle changes', async () => {
     const wrapper = await mountPage()
 
-    await checkbox(wrapper, 'memory-generation-toggle').setValue(true)
+    await checkbox(wrapper, 'memory-enabled-toggle').setValue(false)
+    await settle()
+
+    expect(mocks.patchRequests).toEqual([{ memoryEnabled: false }])
+    expect(checkbox(wrapper, 'memory-enabled-toggle').element.checked)
+      .toBe(false)
+  })
+
+  it('sends memoryExtractionEnabled when the generation toggle changes',
+    async () => {
+      const wrapper = await mountPage()
+
+      await checkbox(wrapper, 'memory-generation-toggle').setValue(true)
+      await settle()
+
+      expect(mocks.patchRequests).toEqual([{ memoryExtractionEnabled: true }])
+      expect(checkbox(wrapper, 'memory-generation-toggle').element.checked)
+        .toBe(true)
+    })
+
+  it('disables the generation toggle with a hint when memory is off',
+    async () => {
+      const wrapper = await mountPage({
+        memoryEnabled: false,
+        memoryExtractionEnabled: true,
+      })
+      const toggle = checkbox(wrapper, 'memory-generation-toggle')
+
+      expect(toggle.element.disabled).toBe(true)
+      expect(toggle.element.checked).toBe(true)
+      expect(toggle.attributes('aria-describedby'))
+        .toContain('memory-generation-hint')
+      expect(wrapper.get('[data-testid="memory-generation-hint"]').text())
+        .toBe('Turn on Use memory to generate memory from chats.')
+
+      await toggle.trigger('click')
+      await settle()
+
+      expect(mocks.patchRequests).toEqual([])
+      expect(checkbox(wrapper, 'memory-generation-toggle').element.checked)
+        .toBe(true)
+    })
+
+  it('enables the generation toggle after memory is turned on', async () => {
+    const wrapper = await mountPage({ memoryEnabled: false })
+
+    expect(checkbox(wrapper, 'memory-generation-toggle').element.disabled)
+      .toBe(true)
+
+    await checkbox(wrapper, 'memory-enabled-toggle').setValue(true)
     await settle()
 
     expect(mocks.patchRequests).toEqual([{ memoryEnabled: true }])
-    expect(checkbox(wrapper, 'memory-generation-toggle').element.checked)
-      .toBe(true)
+    expect(checkbox(wrapper, 'memory-generation-toggle').element.disabled)
+      .toBe(false)
+    expect(wrapper.find('[data-testid="memory-generation-hint"]').exists())
+      .toBe(false)
   })
 
   it('sends chatSearchEnabled when the chat search toggle changes',
@@ -183,6 +244,7 @@ describe('profile memory page', () => {
     })
 
   it.each([
+    ['memory-enabled-toggle', true, false],
     ['memory-generation-toggle', false, true],
     ['memory-chat-search-toggle', true, false],
   ])('reverts %s and shows a toast when saving fails',

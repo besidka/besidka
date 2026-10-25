@@ -1,7 +1,11 @@
 import type { parseError } from 'evlog'
 import type { MemorySettingsFields } from '#shared/types/memory.d'
 
-export interface MemorySaveResult extends Partial<MemorySettingsFields> {
+export type MemoryUiSettings = MemorySettingsFields & {
+  memoryExtractionEnabled: boolean
+}
+
+export interface MemorySaveResult extends Partial<MemoryUiSettings> {
   sensitiveEntriesDeleted?: number
 }
 
@@ -12,5 +16,5 @@ export type MemorySaveOutcome
     | { ok: false, parsed: MemorySaveError }
 
 export type MemorySettingsSave = (
-  patch: Partial<MemorySettingsFields>,
+  patch: Partial<MemoryUiSettings>,
 ) => Promise<MemorySaveOutcome>

@@ -73,7 +73,7 @@
               </button>
             </form>
           </div>
-          <div class="flex-1 min-h-0 overflow-y-auto">
+          <div class="relative flex-1 min-h-0 overflow-hidden">
             <ChatInputModelsTriggerPanel
               v-if="hasBeenOpened"
               ref="panel"

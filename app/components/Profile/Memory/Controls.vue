@@ -1,6 +1,61 @@
 <template>
   <ProfileSecuritySectionCard heading="Memory controls">
     <div class="grid gap-5">
+      <div class="grid gap-4">
+        <label class="flex items-start justify-between gap-4 cursor-pointer">
+          <span class="grid gap-1">
+            <span class="font-bold">Use memory</span>
+            <span
+              id="memory-enabled-description"
+              class="text-sm text-base-content/70"
+            >
+              Lets the assistant use what it remembers about you, and save
+              things when you ask it to remember.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            class="toggle mt-1 shrink-0"
+            aria-describedby="memory-enabled-description"
+            data-testid="memory-enabled-toggle"
+            :checked="settings.memoryEnabled"
+            :disabled="isSaving"
+            @change="onMemoryEnabledChange"
+          >
+        </label>
+        <label
+          class="ms-6 flex items-start justify-between gap-4 border-s ps-4"
+          :class="settings.memoryEnabled ? 'cursor-pointer' : 'opacity-60'"
+        >
+          <span class="grid gap-1">
+            <span class="font-bold">Generate memory from chats</span>
+            <span
+              id="memory-generation-description"
+              class="text-sm text-base-content/70"
+            >
+              Saves lasting facts and preferences from your chats. Runs on
+              your own API key, with the model you choose below.
+            </span>
+            <span
+              v-if="!settings.memoryEnabled"
+              id="memory-generation-hint"
+              class="text-sm text-base-content/70"
+              data-testid="memory-generation-hint"
+            >
+              Turn on Use memory to generate memory from chats.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            class="toggle mt-1 shrink-0"
+            :aria-describedby="generationDescribedBy"
+            data-testid="memory-generation-toggle"
+            :checked="settings.memoryExtractionEnabled"
+            :disabled="isSaving || !settings.memoryEnabled"
+            @change="onGenerationChange"
+          >
+        </label>
+      </div>
       <label class="flex items-start justify-between gap-4 cursor-pointer">
         <span class="grid gap-1">
           <span class="font-bold">Search and reference chats</span>
@@ -21,44 +76,33 @@
           @change="onChatSearchChange"
         >
       </label>
-      <label class="flex items-start justify-between gap-4 cursor-pointer">
-        <span class="grid gap-1">
-          <span class="font-bold">Generate memory from chats</span>
-          <span
-            id="memory-generation-description"
-            class="text-sm text-base-content/70"
-          >
-            Saves lasting facts and preferences from your chats. Runs on your
-            own API key, with the model you choose below.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          class="toggle mt-1 shrink-0"
-          aria-describedby="memory-generation-description"
-          data-testid="memory-generation-toggle"
-          :checked="settings.memoryEnabled"
-          :disabled="isSaving"
-          @change="onGenerationChange"
-        >
-      </label>
     </div>
   </ProfileSecuritySectionCard>
 </template>
 
 <script setup lang="ts">
-import type { MemorySettingsFields } from '#shared/types/memory.d'
-import type { MemorySettingsSave } from '~/types/memory-settings.d'
+import type {
+  MemorySettingsSave,
+  MemoryUiSettings,
+} from '~/types/memory-settings.d'
 
 const props = defineProps<{
-  settings: MemorySettingsFields
+  settings: MemoryUiSettings
   save: MemorySettingsSave
 }>()
 
 const isSaving = shallowRef<boolean>(false)
 
+const generationDescribedBy = computed<string>(() => {
+  if (props.settings.memoryEnabled) {
+    return 'memory-generation-description'
+  }
+
+  return 'memory-generation-description memory-generation-hint'
+})
+
 async function saveToggle(
-  patch: Partial<MemorySettingsFields>,
+  patch: Partial<MemoryUiSettings>,
   input: HTMLInputElement,
   nextValue: boolean,
 ) {
@@ -85,9 +129,19 @@ async function onChatSearchChange(event: Event) {
   await saveToggle({ chatSearchEnabled: input.checked }, input, input.checked)
 }
 
-async function onGenerationChange(event: Event) {
+async function onMemoryEnabledChange(event: Event) {
   const input = event.target as HTMLInputElement
 
   await saveToggle({ memoryEnabled: input.checked }, input, input.checked)
+}
+
+async function onGenerationChange(event: Event) {
+  const input = event.target as HTMLInputElement
+
+  await saveToggle(
+    { memoryExtractionEnabled: input.checked },
+    input,
+    input.checked,
+  )
 }
 </script>
