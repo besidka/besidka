@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import type { Tools } from '#shared/types/chats.d'
 import type {
   AutoWebSearchOutcome,
@@ -10,6 +11,7 @@ import {
   matchesJevPhrases,
 } from '#shared/utils/jev-policy'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
+import * as schema from '~~/server/db/schema'
 import { createJevDecisionModel } from '~~/server/utils/jev/client'
 import type { JevDecideResult, JevQuestions } from '~~/server/utils/jev/client'
 import { recordJevRoleLog } from '~~/server/utils/jev/logging'
@@ -116,13 +118,16 @@ function reusedOutcome(persistedTools: Tools): AutoWebSearchOutcome {
  * Auto applies only when the client asks for it and the user has a
  * TypeSafe AI key with the `autoWebSearch` role on; otherwise
  * `defaultTools` come back unchanged, as without the key. A message already
- * persisted under the same id (a retry, or a new chat's first message the
- * PUT already resolved) reuses its persisted tools, so the decision is made
- * once per message id; this holds even when the client sent no tools while
- * its model capability was still loading. A new message needs a chosen
- * web-search provider. Otherwise a URL, a domain or a
- * recency phrase forces a search, then one Jev call decides, and any Jev
- * failure searches. Only a `skipped` outcome removes the web-search tools.
+ * persisted under the same id (a retry, or a new chat's first message its
+ * first POST already resolved) reuses its persisted tools, so the decision
+ * is made once per message id; this holds even when the client sent no
+ * tools while its model capability was still loading. The PUT that creates
+ * a chat never asks Jev: the first POST passes the PUT's tools as both the
+ * chosen and the default tools, with `persistedTools: null` until decided.
+ * A new message needs a chosen web-search provider. Otherwise a URL, a
+ * domain or a recency phrase forces a search, then one Jev call decides,
+ * and any Jev failure searches. Only a `skipped` outcome removes the
+ * web-search tools.
  */
 export async function resolveAutoWebSearch(
   input: ResolveAutoWebSearchInput,
@@ -204,5 +209,110 @@ export async function resolveAutoWebSearch(
   return {
     tools: applyAutoWebSearchOutcome(input.defaultTools, answer.outcome),
     outcome: answer.outcome,
+  }
+}
+
+export interface FirstMessageAutoWebSearchKey {
+  chatId: string
+  messageId: string
+}
+
+interface AutoWebSearchDecisionStore {
+  get: (key: string) => Promise<string | null>
+  put: (
+    key: string,
+    value: string,
+    options?: { expirationTtl?: number },
+  ) => Promise<unknown>
+}
+
+const FIRST_MESSAGE_DECISION_KEY_PREFIX = 'auto-web-search-first-message'
+const FIRST_MESSAGE_DECISION_TTL_SECONDS = 24 * 60 * 60
+
+function toDecisionStoreKey(key: FirstMessageAutoWebSearchKey): string {
+  return `${FIRST_MESSAGE_DECISION_KEY_PREFIX}:${key.chatId}:${key.messageId}`
+}
+
+function hasSameTools(left: Tools, right: Tools): boolean {
+  return left.length === right.length
+    && left.every((tool, index) => tool === right[index])
+}
+
+/**
+ * The tools the Auto mode may pick from for one send: the default tools,
+ * plus the persisted tools a retry would reuse. The send path validates
+ * this superset (gateway allowance, model support, search keys, transfer
+ * consent) before Jev is asked, since Auto only ever removes web-search
+ * tools or reuses persisted ones.
+ */
+export function collectAutoWebSearchCandidateTools(input: {
+  mode: WebSearchMode
+  defaultTools: Tools
+  persistedTools: Tools | null
+}): Tools {
+  if (input.mode !== 'auto' || !input.persistedTools) {
+    return input.defaultTools
+  }
+
+  return [...new Set([...input.defaultTools, ...input.persistedTools])]
+}
+
+/**
+ * Whether a chat POST already decided Auto for a new chat's first message,
+ * so a retry of that message reuses the decision. A KV failure reads as
+ * undecided, which only costs one more Jev call.
+ */
+export async function hasFirstMessageAutoWebSearchDecision(
+  store: AutoWebSearchDecisionStore,
+  key: FirstMessageAutoWebSearchKey,
+): Promise<boolean> {
+  try {
+    return await store.get(toDecisionStoreKey(key)) !== null
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Stores the Auto decision for a new chat's first message: the resolved
+ * tools go onto the persisted user row, as for any other message, then a
+ * KV marker (`auto-web-search-first-message:<chat>:<message>`, one day)
+ * says the row is decided. Nothing is written when Auto did not apply, and
+ * a failed KV write only means a retry asks Jev again.
+ */
+export async function recordFirstMessageAutoWebSearchDecision(input: {
+  db: DbClient
+  kv: AutoWebSearchDecisionStore
+  key: FirstMessageAutoWebSearchKey
+  messageRowId: string
+  persistedTools: Tools
+  resolution: AutoWebSearchResolution
+}): Promise<void> {
+  if (!input.resolution.outcome) {
+    return
+  }
+
+  if (!hasSameTools(input.persistedTools, input.resolution.tools)) {
+    await input.db.update(schema.messages)
+      .set({ tools: input.resolution.tools })
+      .where(eq(schema.messages.id, input.messageRowId))
+  }
+
+  await writeDecisionMarker(input.kv, input.key, input.resolution.outcome)
+}
+
+async function writeDecisionMarker(
+  store: AutoWebSearchDecisionStore,
+  key: FirstMessageAutoWebSearchKey,
+  outcome: AutoWebSearchOutcome,
+): Promise<boolean> {
+  try {
+    await store.put(toDecisionStoreKey(key), outcome, {
+      expirationTtl: FIRST_MESSAGE_DECISION_TTL_SECONDS,
+    })
+
+    return true
+  } catch {
+    return false
   }
 }

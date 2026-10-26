@@ -2213,25 +2213,35 @@ The preference is per browser, `prefStorage` key `settings_web_search_auto`
 applies. The Exa level heading is now **Depth**, so its "Auto" level is not
 confused with this mode.
 
-**Request.** Both `PUT /api/v1/chats/new` and `POST /api/v1/chats/[slug]`
-take `webSearchMode: 'auto' | 'always'` (default `always`), a separate field;
-the `tools` enum has no sentinel. The client sends `auto` only with the
+**Request.** `POST /api/v1/chats/[slug]` takes
+`webSearchMode: 'auto' | 'always'` (default `always`), a separate field; the
+`tools` enum has no sentinel. `PUT /api/v1/chats/new` ignores the field: it
+never asks Jev and persists the chosen tools (see "First message" below). The client sends `auto` only with the
 preference on and a web-search tool in `tools`, and falls back to `always`
 once the key is known missing or the role known off. While those are still
 loading it sends `auto` and lets the server decide, so a chat's first POST
 fired on mount keeps its chip.
 
-**Server.** `resolveAutoWebSearch` in `server/utils/chats/auto-web-search.ts`
-runs before `selectedTools` is consumed (validation, the Brave/Exa key reads,
-`persistUserMessage`, the provider switch). In order:
+**Server.** The request is validated before Jev sees anything (delta audit
+finding 3, 2026-10-26): `collectAutoWebSearchCandidateTools` returns the
+tools Auto may pick from (the default tools plus, in Auto, the persisted
+tools a retry reuses), and the gateway tool allowance, model tool support,
+the image-generation conflict, the Brave/Exa key presence and the transfer
+consent are all checked on that superset. Auto only removes web-search tools
+or reuses persisted ones, so validating the superset is sound, and a send
+that ends in 400 or 403 never discloses the message to TypeSafe AI. One
+consequence: the Brave or Exa key row is read even when Jev then skips the
+search. Only then does `resolveAutoWebSearch` in
+`server/utils/chats/auto-web-search.ts` run, before `persistUserMessage` and
+the provider switch. In order:
 
 1. `always`, or no web-search tool chosen: tools unchanged, no D1 read.
 2. `resolveJevRoleApiKey` (key read, decrypt, `typesafe_roles` read): no key
    or role off means tools unchanged and no chip, exactly as without a key.
 3. A message already persisted under the same id reuses its persisted tools
    and calls nothing (`counts.reused`). That covers a retry of the same
-   message id and a new chat's first message, whose tools the PUT already
-   resolved; the chip is derived from whether those tools search.
+   message id and a retry of a new chat's first message its first POST
+   already decided; the chip is derived from whether those tools search.
 4. Guards: `JEV_URL_OR_DOMAIN_PATTERN` or `matchesJevPhrases(text,
    JEV_RECENCY_PHRASES)` forces the search with no Jev call (`forced`).
 5. One `decideSendPathJev` call with `state = { message, recent_turns }`
@@ -2242,9 +2252,16 @@ runs before `selectedTools` is consumed (validation, the Brave/Exa key reads,
    web-search tool (`skipped`). Any failure, refusal or missing answer
    searches (`fallback`).
 
-The PUT runs the same function for the first message (no history, never for
-a deep research start) and persists the resolved tools; the POST then takes
-the reuse branch. Persisted `messages.tools` are always the resolved set, so
+**First message.** The PUT persists the chosen tools and never calls Jev (no
+model is validated there). The chat's first POST sees one persisted user
+message and no reply; unless the KV marker
+`auto-web-search-first-message:<chatId>:<messageId>` exists it passes the
+PUT's tools as both chosen and default with `persistedTools: null`, so Jev
+decides with the full validation above. `recordFirstMessageAutoWebSearchDecision`
+then writes the resolved tools onto the user row and sets the marker (one
+day). A retry of that message finds the marker and takes the reuse branch.
+A KV failure on either side only means the retry asks Jev again (one more
+call, the safe direction). Persisted `messages.tools` are always the resolved set, so
 `hasSameTools` and the duplicate and replay paths work per message id
 unchanged. A skip removes the search tool from `requestedTools`, so the
 search prompt nudge, the Brave/Exa lines, the external tool registration,
@@ -2265,8 +2282,7 @@ finish metadata and the persisted row (`addAutoWebSearchUsage`).
 `Chat/AutoWebSearchChip.vue` renders "Auto: searched the web" or "Auto: no web
 search needed" under the answer, on the owner's chat page only (not on shared
 chats). A turn whose usage capture failed has no chip. For a reused decision
-the chip says searched or skipped; the forced or fallback detail of a first
-message lives only in the PUT's log.
+the chip says searched or skipped.
 
 **Logging.** `attributes.autoWebSearchJev` via `recordJevRoleLog`: `status`,
 `calls`, `questions`, `inputTokens`, `latencyMs`, `scores` (the rounded
