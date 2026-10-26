@@ -2032,7 +2032,7 @@ path, 2,500 ms in the background.
 | `injectionScreening` | Project knowledge files and notes, and Brave and Exa results fetched through Besidka. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | Text used unscreened |
 | `rerank` | Past-chat and project-knowledge search: the query and excerpts of about 300 tokens each, up to 30 per search | Original order |
 | `sharePiiCheck` | Before a public share link is published: the chat text being shared. Warning only, never blocks | Generic "check before sharing" reminder |
-| `pastChatRetrieval` | Models without tool calling, each message: the message and recent turns. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts | No pre-search |
+| `pastChatRetrieval` | Models without tool calling, each message: the message and recent turns. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts | No key or role off: no pre-search. Jev error or timeout: searches anyway (the one role that fails toward acting) |
 
 **Logging.** Each role writes one wide-event field, `attributes.<role>Jev`
 (for example `attributes.rerankJev`), with counts, scores, statuses and
