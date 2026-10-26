@@ -318,8 +318,9 @@ async function findNextMessageId(input: {
 /**
  * Reads a window of messages from one of the user's other chats. Ownership
  * is the `{ slug, userId }` lookup, and a chat that does not exist, belongs
- * to someone else, or sits outside the active project scope all produce the
- * identical 404, so the tool is no existence oracle. The anchor message is
+ * to someone else, sits outside the active project scope, or is excluded
+ * from memory all produce the identical 404, so the tool is no existence
+ * oracle. The anchor message is
  * resolved by `publicId` AND the verified chat id, so a message id from any
  * other chat falls back to the start of the chat. Only text parts are read,
  * whitespace is kept intact (code blocks matter), and the window is bounded
@@ -348,10 +349,11 @@ export async function readChat(input: {
       slug: true,
       title: true,
       projectId: true,
+      memoryExcluded: true,
     },
   })
 
-  if (!chat) {
+  if (!chat || chat.memoryExcluded) {
     throw buildChatNotFoundError()
   }
 

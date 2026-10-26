@@ -272,6 +272,14 @@ describe('memory backfill', () => {
       expect((await start()).totalChats).toBe(1)
     })
 
+    it('leaves chats excluded from memory out of the total', async () => {
+      await chat(10)
+      await chat(20, userId, { memoryExcluded: false })
+      await chat(30, userId, { memoryExcluded: true })
+
+      expect((await start()).totalChats).toBe(2)
+    })
+
     it('caps the total at the newest backfillMaxChats chats', async () => {
       for (let index = 0; index <= MEMORY_LIMITS.backfillMaxChats; index++) {
         await chat(10 + index)
@@ -370,6 +378,17 @@ describe('memory backfill', () => {
           }),
         }),
       )
+    })
+
+    it('never visits a chat excluded from memory', async () => {
+      const included = await chat(10)
+      const excluded = await chat(20, userId, { memoryExcluded: true })
+      const progress = await start()
+
+      await advance(progress.id, { chatsLimit: 5 })
+
+      expect(processedChatIds()).toEqual([included.id])
+      expect(processedChatIds()).not.toContain(excluded.id)
     })
 
     it('breaks ties on equal activity by newest id first', async () => {

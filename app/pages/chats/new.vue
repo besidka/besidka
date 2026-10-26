@@ -50,6 +50,7 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
+    v-model:memory-excluded="memoryExcluded"
     display-project-picker
     :project-context="projectContext"
     :messages-length="0"
@@ -172,6 +173,7 @@ if (import.meta.client) {
 const reasoning = shallowRef<ReasoningLevel>(
   normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
 )
+const memoryExcluded = shallowRef<boolean>(false)
 
 function parseRouteProjectId(projectId: unknown): string | null {
   return typeof projectId === 'string' && projectId.length > 0
@@ -455,6 +457,7 @@ async function createResearchChat(
           answers,
         },
         ...(projectId.value ? { projectId: projectId.value } : {}),
+        ...(memoryExcluded.value ? { memoryExcluded: true } : {}),
       },
       cache: 'no-cache',
     })
@@ -617,6 +620,7 @@ async function onSubmit() {
         tools: tools.value,
         reasoning: reasoning.value,
         ...(projectId.value ? { projectId: projectId.value } : {}),
+        ...(memoryExcluded.value ? { memoryExcluded: true } : {}),
       },
       cache: 'no-cache',
     })

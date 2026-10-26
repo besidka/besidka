@@ -15,6 +15,10 @@ import {
 import * as schema from '~~/server/db/schema'
 import { sweepBackfillJobs } from '~~/server/utils/memory/backfill'
 import type { SweepBackfillJobsResult } from '~~/server/utils/memory/backfill'
+import {
+  chatHasUnextractedActivity,
+  chatIsMemoryIncluded,
+} from '~~/server/utils/memory/chat-memory-filters'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
@@ -87,10 +91,7 @@ export function buildDueChatsQuery(
       userRank: sql<number>`row_number() over (partition by ${schema.chats.userId} order by ${attemptedAtOrZero}, ${schema.chats.activityAt})`.as('user_rank'),
     })
     .from(schema.userSettings)
-    .innerJoin(
-      schema.chats,
-      eq(schema.chats.userId, schema.userSettings.userId),
-    )
+    .crossJoin(schema.chats)
     .leftJoin(
       schema.projects,
       and(
@@ -99,6 +100,7 @@ export function buildDueChatsQuery(
       ),
     )
     .where(and(
+      eq(schema.chats.userId, schema.userSettings.userId),
       isExtractionOptedIn,
       or(
         isNull(schema.userSettings.memoryEnabled),
@@ -106,6 +108,8 @@ export function buildDueChatsQuery(
       ),
       lte(schema.chats.activityAt, idleCutoff),
       gt(schema.chats.activityAt, enabledAtOrZero),
+      chatIsMemoryIncluded(),
+      chatHasUnextractedActivity(),
       or(
         and(
           isNull(schema.chats.projectId),

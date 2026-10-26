@@ -52,6 +52,7 @@ describe('searchChats', () => {
     userId: number
     title?: string
     projectId?: number
+    memoryExcluded?: boolean
   }): void {
     testDb.insertChat({
       id: input.id,
@@ -59,6 +60,7 @@ describe('searchChats', () => {
       slug: `slug-${input.id}`,
       title: input.title ?? `Chat ${input.id}`,
       projectId: input.projectId,
+      memoryExcluded: input.memoryExcluded,
     })
   }
 
@@ -265,6 +267,38 @@ describe('searchChats', () => {
     seedMessage({ chatId: 2, userId: 1, text: 'needle in other chat' })
 
     const { results } = await search({ query: 'needle', currentChatId: 1 })
+
+    expect(results.map(hit => hit.chatId)).toEqual(['slug-2'])
+  })
+
+  it('never returns a chat excluded from memory', async () => {
+    seedChat({ id: 1, userId: 1, memoryExcluded: true })
+    seedChat({ id: 2, userId: 1, memoryExcluded: false })
+    seedChat({ id: 3, userId: 1 })
+    seedMessage({ chatId: 1, userId: 1, text: 'needle in excluded chat' })
+    seedMessage({ chatId: 2, userId: 1, text: 'needle in included chat' })
+    seedMessage({ chatId: 3, userId: 1, text: 'needle in unset chat' })
+
+    const strict = await search({ query: 'needle' })
+    const fallback = await search({ query: 'needle missingword' })
+
+    expect(strict.results.map(hit => hit.chatId).sort())
+      .toEqual(['slug-2', 'slug-3'])
+    expect(fallback.results.map(hit => hit.chatId).sort())
+      .toEqual(['slug-2', 'slug-3'])
+  })
+
+  it('filters excluded chats before the candidate limit', async () => {
+    seedChat({ id: 1, userId: 1, memoryExcluded: true })
+    seedChat({ id: 2, userId: 1 })
+
+    for (let index = 0; index < SEARCH_CHATS_CANDIDATE_LIMIT; index++) {
+      seedMessage({ chatId: 1, userId: 1, text: 'needle needle needle' })
+    }
+
+    seedMessage({ chatId: 2, userId: 1, text: 'needle' })
+
+    const { results } = await search({ query: 'needle' })
 
     expect(results.map(hit => hit.chatId)).toEqual(['slug-2'])
   })
