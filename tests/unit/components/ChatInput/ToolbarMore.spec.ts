@@ -307,4 +307,33 @@ describe('ChatInput/ToolbarMore', () => {
       wrapper.find('[data-testid="reasoning-always-on-menu-item"]').exists(),
     ).toBe(false)
   })
+
+  it('offers the memory exclusion only when the page binds it', async () => {
+    const withoutModel = await mountToolbarMore()
+
+    expect(withoutModel
+      .find('[data-testid="new-chat-memory-exclusion-menu-item"]')
+      .exists()).toBe(false)
+
+    const withModel = await mountToolbarMore({ memoryExcluded: false })
+    const toggle = withModel
+      .get('[data-testid="new-chat-memory-exclusion-menu-item"]')
+
+    expect(withModel.text()).toContain('Don\'t use this chat for memory')
+    expect((toggle.element as HTMLInputElement).checked).toBe(false)
+
+    await toggle.setValue(true)
+
+    expect(withModel.emitted('toggle-memory-excluded')).toHaveLength(1)
+  })
+
+  it('marks the menu active while the chat is excluded from memory',
+    async () => {
+      const wrapper = await mountToolbarMore({
+        isWebSearchSupported: false,
+        memoryExcluded: true,
+      })
+
+      expect(wrapper.find('.indicator-item.badge-accent').exists()).toBe(true)
+    })
 })

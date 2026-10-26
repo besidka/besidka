@@ -43,6 +43,7 @@ export default defineEventHandler(async (event) => {
       title: true,
       projectId: true,
       branchedFromShareSlug: true,
+      memoryExcluded: true,
     },
     with: {
       messages: {

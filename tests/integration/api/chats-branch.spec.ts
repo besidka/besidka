@@ -50,6 +50,7 @@ type BranchTestMessage = ReturnType<typeof createMessages>[number] & {
 
 function createDb(overrides: {
   projectId?: string | null
+  memoryExcluded?: boolean | null
   messages?: BranchTestMessage[]
 } = {}) {
   const batchedQueries: PreparedInsert[][] = []
@@ -75,6 +76,7 @@ function createDb(overrides: {
           id: 'chat-1',
           title: 'Test Chat',
           projectId: overrides.projectId ?? null,
+          memoryExcluded: overrides.memoryExcluded ?? null,
           messages: overrides.messages ?? createMessages(1),
         })),
       },
@@ -320,6 +322,33 @@ describe('chat branch API', () => {
       role: 'assistant',
       parts: [{ type: 'text', text: 'Saved response' }],
     }))
+  })
+
+  it('keeps a branch of an excluded chat out of memory', async () => {
+    const handler = await getHandler()
+    const excluded = createDb({ memoryExcluded: true })
+
+    vi.stubGlobal('useDb', () => excluded.db)
+    await handler({
+      body: { chatSlug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as never)
+
+    expect(excluded.insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: expect.any(String),
+        memoryExcluded: true,
+      }),
+    )
+
+    const included = createDb({ memoryExcluded: false })
+
+    vi.stubGlobal('useDb', () => included.db)
+    await handler({
+      body: { chatSlug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as never)
+
+    expect(included.insertValues.mock.calls[0]![0])
+      .not.toHaveProperty('memoryExcluded')
   })
 
   it('copies only messages up to the branch point', async () => {

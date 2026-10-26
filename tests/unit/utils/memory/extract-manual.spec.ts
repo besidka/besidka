@@ -306,6 +306,61 @@ describe('manual memory extraction', () => {
       expect(await listEntries()).toHaveLength(0)
     })
 
+    it('skips a chat excluded from memory on every trigger', async () => {
+      const { chat } = await seedProjectChat({
+        chatValues: { memoryExcluded: true },
+      })
+      const accountChat = await seedChat(testDb.db, userId, {
+        memoryExcluded: true,
+      })
+
+      await seedMessage(testDb.db, accountChat.id, 'user',
+        [textPart(LONG_USER_TEXT)], minutesBefore(70))
+      mockOps([createOp()])
+
+      const results = [
+        await runManual(chat),
+        await runManual(accountChat, { explicit: true, ignoreIdle: true }),
+        await runManual(accountChat, { trigger: 'backfill' }),
+        await runSweep(accountChat),
+      ]
+
+      for (const result of results) {
+        expect(result).toMatchObject({
+          status: 'skipped',
+          reason: 'memory-excluded',
+        })
+      }
+
+      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(await listEntries()).toHaveLength(0)
+      expect((await readChat(chat.id))?.projectMemorySummaryUpdatedAt)
+        .toBeNull()
+      expect((await readChat(accountChat.id))?.memoryExtractedAt).toBeNull()
+    })
+
+    it('re-checks the exclusion after the model call', async () => {
+      const { chat } = await seedProjectChat()
+
+      mocks.generateObject.mockImplementation(async () => {
+        await testDb.db.update(schema.chats)
+          .set({ memoryExcluded: true })
+
+        return {
+          object: { ops: [createOp()] },
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }
+      })
+
+      const result = await runManual(chat)
+
+      expect(result).toMatchObject({
+        status: 'skipped',
+        reason: 'memory-excluded',
+      })
+      expect(await listEntries()).toHaveLength(0)
+    })
+
     it('ignores the idle and dirty rule', async () => {
       const { chat } = await seedProjectChat({
         activityMinutesAgo: 0,

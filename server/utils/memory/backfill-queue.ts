@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
+import { chatIsMemoryIncluded } from '~~/server/utils/memory/chat-memory-filters'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -17,8 +18,9 @@ export interface BackfillWindow {
 
 /**
  * The one definition of "a chat the backfill will visit": the user's own
- * account chat (never a project chat) created at or before the job's cutoff
- * that holds at least one user message. The start count, the queue cursor
+ * account chat (never a project chat, never one excluded from memory)
+ * created at or before the job's cutoff that holds at least one user
+ * message. The start count, the queue cursor
  * and the estimate all use it, so processed chats can reach the total.
  */
 export function backfillEligibleChats(userId: number, createdBefore: Date) {
@@ -26,6 +28,7 @@ export function backfillEligibleChats(userId: number, createdBefore: Date) {
     eq(schema.chats.userId, userId),
     isNull(schema.chats.projectId),
     lte(schema.chats.createdAt, createdBefore),
+    chatIsMemoryIncluded(),
     sql`exists (
       select 1 from ${schema.messages}
       where ${schema.messages.chatId} = ${schema.chats.id}

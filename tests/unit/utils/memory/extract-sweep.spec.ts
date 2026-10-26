@@ -184,6 +184,25 @@ describe('sweepMemoryExtraction', () => {
       }
     })
 
+    it('never selects a chat excluded from memory', async () => {
+      const excluded = await dueChat({ memoryExcluded: true })
+      const included = await dueChat({ memoryExcluded: false })
+      const unset = await dueChat()
+      const projectId = await seedProject(testDb.db, userId)
+      const excludedProjectChat = await dueChat({
+        projectId,
+        memoryExcluded: true,
+      })
+
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(2)
+      expect(await wasProcessed(excluded.id)).toBe(false)
+      expect(await wasProcessed(excludedProjectChat.id)).toBe(false)
+      expect(await wasProcessed(included.id)).toBe(true)
+      expect(await wasProcessed(unset.id)).toBe(true)
+    })
+
     it('waits for the chat to be idle', async () => {
       const recent = await dueChat({ activityAt: minutesBefore(5) })
       const idle = await dueChat({ activityAt: minutesBefore(11) })
@@ -735,24 +754,25 @@ describe('sweepMemoryExtraction', () => {
     }
 
     it('starts from the partial opted-in index and reaches chats by the '
-      + 'composite user index', () => {
+      + 'partial due-chats index', () => {
       const plan = explain()
 
       expect(plan.some((detail) => {
-        return /user_settings.*idx_user_settings_extraction_enabled/.test(detail)
+        return /SCAN user_settings USING INDEX idx_user_settings_extraction_enabled/
+          .test(detail)
       })).toBe(true)
       expect(plan.some((detail) => {
-        return /SEARCH.*chats.*idx_chats_user_activity/.test(detail)
+        return /SEARCH.*chats.*idx_chats_memory_due/.test(detail)
       })).toBe(true)
       expect(plan.some((detail) => {
         return /SCAN (chats|c)\b/.test(detail)
       })).toBe(false)
     })
 
-    it('ranges the chats index from the opt-in cut-over to the idle cutoff, '
-      + 'so idle chats from before the opt-in are never read', () => {
+    it('ranges the due-chats index from the opt-in cut-over to the idle '
+      + 'cutoff, so idle chats from before the opt-in are never read', () => {
       expect(explain().some((detail) => {
-        return /idx_chats_user_activity \(user_id=\? AND activity_at>\? AND activity_at<\?\)/
+        return /idx_chats_memory_due \(user_id=\? AND activity_at>\? AND activity_at<\?\)/
           .test(detail)
       })).toBe(true)
     })

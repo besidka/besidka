@@ -1877,4 +1877,34 @@ describe('ChatInput.client', () => {
         .toBe(false)
     })
   })
+
+  describe('memory exclusion for a new chat', () => {
+    it('is not offered when the page does not bind it', async () => {
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.find('[data-testid="new-chat-memory-exclusion"]')
+        .exists()).toBe(false)
+    })
+
+    it('toggles the bound value and shows the indicator while on',
+      async () => {
+        const wrapper = await mountChatInput({
+          'memoryExcluded': false,
+          'onUpdate:memoryExcluded': (value: boolean) => {
+            wrapper.setProps({ memoryExcluded: value })
+          },
+        })
+        const button = wrapper.get('[data-testid="new-chat-memory-exclusion"]')
+
+        expect(button.attributes('aria-pressed')).toBe('false')
+        expect(button.attributes('aria-label'))
+          .toBe('Don\'t use this chat for memory')
+
+        await button.trigger('click')
+
+        expect(wrapper.emitted('update:memoryExcluded')).toEqual([[true]])
+        expect(wrapper.get('[data-testid="new-chat-memory-exclusion"]')
+          .text()).toContain('Not used for memory')
+      })
+  })
 })

@@ -87,6 +87,7 @@ async function queryCandidateRows(input: {
     where message_search match ${input.match}
       and ms.owner = ${ownerTag}
       and c.user_id = ${input.userId}
+      and c.memory_excluded is not 1
       ${excludeCurrentChat}
       ${restrictToProject}
     order by score asc, ms.rowid desc
@@ -127,8 +128,9 @@ function pickBestHitPerChat(
 /**
  * Searches the user's other chats over the `message_search` FTS5 table. The
  * strict AND expression runs first; only when it finds nothing is the same
- * query retried with OR, bm25-ranked. The current chat exclusion and the
- * optional project scope are joined inside the FTS query, before the
+ * query retried with OR, bm25-ranked. The current chat exclusion, chats
+ * excluded from memory and the optional project scope are joined inside the
+ * FTS query, before the
  * candidate LIMIT: filtering the candidates afterwards would give a small
  * project zero hits whenever other chats fill the candidate list. Never
  * throws: a failing query is logged and returns no results.
