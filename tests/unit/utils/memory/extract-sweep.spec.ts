@@ -514,17 +514,33 @@ describe('sweepMemoryExtraction', () => {
         expect(await wasProcessed(accountChat.id)).toBe(true)
       })
 
-    it('keeps account chat selection independent of the cut-over', async () => {
+    it('never selects an account chat idle since before the opt-in, even '
+      + 'without a stamp', async () => {
       const lateOptIn = await seedUser(testDb.db, {
         memoryEnabled: true,
-        memoryExtractionEnabledAt: minutesBefore(5),
+        memoryExtractionEnabledAt: minutesBefore(50),
       })
-      const accountChat = await dueChat({}, lateOptIn)
+      const before = await dueChat({ activityAt: minutesBefore(60) }, lateOptIn)
+      const after = await dueChat({ activityAt: minutesBefore(40) }, lateOptIn)
       const result = await sweep()
 
       expect(result.selectedCount).toBe(1)
-      expect(await wasProcessed(accountChat.id)).toBe(true)
+      expect(await wasProcessed(before.id)).toBe(false)
+      expect(await wasProcessed(after.id)).toBe(true)
     })
+
+    it('keeps selecting account chats of a legacy opt-in without a cut-over',
+      async () => {
+        const legacy = await seedUser(testDb.db, {
+          memoryEnabled: true,
+          memoryExtractionEnabledAt: null,
+        })
+        const accountChat = await dueChat({}, legacy)
+        const result = await sweep()
+
+        expect(result.selectedCount).toBe(1)
+        expect(await wasProcessed(accountChat.id)).toBe(true)
+      })
 
     it('never reads project chat messages from before the cut-over',
       async () => {
@@ -731,6 +747,14 @@ describe('sweepMemoryExtraction', () => {
       expect(plan.some((detail) => {
         return /SCAN (chats|c)\b/.test(detail)
       })).toBe(false)
+    })
+
+    it('ranges the chats index from the opt-in cut-over to the idle cutoff, '
+      + 'so idle chats from before the opt-in are never read', () => {
+      expect(explain().some((detail) => {
+        return /idx_chats_user_activity \(user_id=\? AND activity_at>\? AND activity_at<\?\)/
+          .test(detail)
+      })).toBe(true)
     })
 
     it('selects nothing without opted-in users however many chats exist',
