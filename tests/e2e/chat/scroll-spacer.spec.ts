@@ -519,6 +519,26 @@ async function stopScrollSampler(
   })
 }
 
+/**
+ * A short turn can already sit near the top before the smooth pin scroll
+ * starts (a taller chat input, such as one showing a setting tile, makes
+ * that more likely), so the pin poll alone can pass mid-transition. Wait
+ * until scrollTop holds still before sampling the rest of the turn.
+ */
+async function waitForScrollToSettle(page: Page): Promise<void> {
+  let previousScrollTop: number | null = null
+
+  await expect.poll(async () => {
+    const { scrollTop } = await getChatLayoutMetrics(page)
+    const isSettled = previousScrollTop !== null
+      && scrollTop === previousScrollTop
+
+    previousScrollTop = scrollTop
+
+    return isSettled
+  }, { timeout: 5_000, intervals: [250] }).toBe(true)
+}
+
 async function expectStableImageTurnPin(
   page: Page,
   url: string,
@@ -543,6 +563,7 @@ async function expectStableImageTurnPin(
       && metrics.lastUserTopRelative < TOP_ALIGNMENT_MAX
   }, { timeout: 15_000 }).toBe(true)
 
+  await waitForScrollToSettle(page)
   await startScrollSampler(page)
 
   await expect(
