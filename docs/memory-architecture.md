@@ -1269,9 +1269,10 @@ model) and nothing is saved. `aboutMe` accepts only `null`.
   op and every later op of the pass are dropped as `chat-unavailable`. A
   narrow window remains: a pass whose write lands between the detach and the
   row delete (the chat row still exists then) can still write.
-- `generateObject` is deprecated in AI SDK 7 but still works (the research
-  clarifier uses it too); move both to `generateText` with an `output`
-  setting together.
+- Memory extraction, import and the project refresh call `generateText`
+  with `output: Output.object({ schema, name: 'MemoryExtraction' })` and read
+  `result.output` (2026-10-26; `generateObject` is deprecated in AI SDK 7).
+  The research clarifier still uses `generateObject`.
 - The topical never-store classes are detected by the extractor's
   `neverStore` flag and, for home address, immigration status and criminal
   history, by narrow deterministic detectors (3.17); live location and

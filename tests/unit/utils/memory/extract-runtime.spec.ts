@@ -14,14 +14,15 @@ import type {
 } from '../../../setup/helpers/memory-extraction-db'
 
 const mocks = vi.hoisted(() => ({
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
   useOpenAI: vi.fn(),
 }))
 
-vi.mock('ai', () => ({
-  generateObject: mocks.generateObject,
-  generateText: vi.fn(),
-}))
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
+
+  return { ...actual, generateText: mocks.generateText }
+})
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { publicIdMockFactory } = await import(
@@ -68,8 +69,8 @@ describe('extraction runtime wiring', () => {
   beforeEach(async () => {
     testDb = createMemoryExtractionTestDb()
     userId = await seedUser(testDb.db, { memoryEnabled: true })
-    mocks.generateObject.mockResolvedValue({
-      object: { ops: [] },
+    mocks.generateText.mockResolvedValue({
+      output: { ops: [] },
       usage: { inputTokens: 1, outputTokens: 1 },
     })
     mocks.useOpenAI.mockImplementation(async () => {
@@ -134,7 +135,7 @@ describe('extraction runtime wiring', () => {
         return reason.startsWith('chat:')
       })).toBe(true)
       expect(mocks.useOpenAI).toHaveBeenCalled()
-      expect(mocks.generateObject.mock.calls[0]![0].model)
+      expect(mocks.generateText.mock.calls[0]![0].model)
         .toEqual({ id: 'openai-instance' })
     })
 
@@ -143,7 +144,7 @@ describe('extraction runtime wiring', () => {
     const result = await run(chat)
 
     expect(result).toMatchObject({ status: 'failed', reason: 'no-model' })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
   })
 
   it('recovers once the lease of a dead holder has expired', async () => {
@@ -165,14 +166,14 @@ describe('extraction runtime wiring', () => {
     const whileHeld = await run(chat)
 
     expect(whileHeld.status).toBe('leased')
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
 
     vi.setSystemTime(new Date(EXTRACTION_NOW.getTime() + LEASE_TTL_MS + 1000))
 
     const afterExpiry = await run(chat)
 
     expect(afterExpiry.status).toBe('extracted')
-    expect(mocks.generateObject).toHaveBeenCalledOnce()
+    expect(mocks.generateText).toHaveBeenCalledOnce()
     expect(kv.store.has(memoryExtractionLeaseKey(chat.id))).toBe(false)
   })
 
@@ -187,10 +188,10 @@ describe('extraction runtime wiring', () => {
     let keyHeldDuringPass = false
 
     vi.stubGlobal('useKV', () => kv)
-    mocks.generateObject.mockImplementation(async () => {
+    mocks.generateText.mockImplementation(async () => {
       keyHeldDuringPass = kv.store.has(memoryExtractionLeaseKey(chat.id))
 
-      return { object: { ops: [] }, usage: {} }
+      return { output: { ops: [] }, usage: {} }
     })
 
     await run(chat)

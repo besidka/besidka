@@ -15,7 +15,7 @@ import type {
 } from '../../../setup/helpers/memory-extraction-db'
 
 const mocks = vi.hoisted(() => ({
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
   getModel: vi.fn(),
   getCachedGatewayCatalog: vi.fn(),
   resolveMemoryModel: vi.fn(),
@@ -23,10 +23,11 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
 }))
 
-vi.mock('ai', () => ({
-  generateObject: mocks.generateObject,
-  generateText: vi.fn(),
-}))
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
+
+  return { ...actual, generateText: mocks.generateText }
+})
 
 vi.mock('#shared/utils/model', async (importOriginal) => {
   const original = await importOriginal<
@@ -114,14 +115,14 @@ function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
 }
 
 function mockOps(ops: MemoryExtractionOp[]) {
-  mocks.generateObject.mockResolvedValue({
-    object: { ops },
+  mocks.generateText.mockResolvedValue({
+    output: { ops },
     usage: { inputTokens: 120, outputTokens: 30 },
   })
 }
 
 function promptContent(callIndex = 0): string {
-  return mocks.generateObject.mock.calls[callIndex]![0].messages[0].content
+  return mocks.generateText.mock.calls[callIndex]![0].messages[0].content
 }
 
 describe('extractMemoryFromText', () => {
@@ -211,7 +212,7 @@ describe('extractMemoryFromText', () => {
     + 'instructions', async () => {
     await importText(PASTED_TEXT)
 
-    const options = mocks.generateObject.mock.calls[0]![0]
+    const options = mocks.generateText.mock.calls[0]![0]
 
     expect(promptContent()).toContain('<imported-memory>')
     expect(promptContent()).toContain('Works as a backend engineer')
@@ -219,7 +220,10 @@ describe('extractMemoryFromText', () => {
     expect(options.instructions).toContain('<imported-memory>')
     expect(options.instructions).toContain('Never return "delete" ops')
     expect(options.instructions).toContain('at most 20 ops')
-    expect(options.schemaName).toBe('MemoryExtraction')
+    expect(await options.output.responseFormat).toMatchObject({
+      type: 'json',
+      name: 'MemoryExtraction',
+    })
     expect(options.abortSignal).toBeInstanceOf(AbortSignal)
   })
 
@@ -281,7 +285,7 @@ describe('extractMemoryFromText', () => {
         expect(result.blocked).toMatchObject({
           'payment-card': expect.any(Number),
         })
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
       })
 
     it('drops special-category text as a sensitive topic', async () => {
@@ -561,9 +565,9 @@ describe('extractMemoryFromText', () => {
           paragraphText('Bravo', 20000),
         ].join('\n')
 
-        mocks.generateObject
+        mocks.generateText
           .mockResolvedValueOnce({
-            object: { ops: [createOp({
+            output: { ops: [createOp({
               title: 'Alpha topic',
               description: 'Alpha',
               body: '- Alpha fact',
@@ -572,13 +576,13 @@ describe('extractMemoryFromText', () => {
             usage: { inputTokens: 10, outputTokens: 5 },
           })
           .mockResolvedValueOnce({
-            object: { ops: [] },
+            output: { ops: [] },
             usage: { inputTokens: 20, outputTokens: 7 },
           })
 
         const result = await importText(text)
 
-        expect(mocks.generateObject).toHaveBeenCalledTimes(2)
+        expect(mocks.generateText).toHaveBeenCalledTimes(2)
         expect(promptContent(0)).toContain('Alpha fact')
         expect(promptContent(0)).not.toContain('Bravo fact')
         expect(promptContent(1)).toContain('Bravo fact')
@@ -600,7 +604,7 @@ describe('extractMemoryFromText', () => {
           .join('\n')
         const result = await importText(text)
 
-        expect(mocks.generateObject).toHaveBeenCalledTimes(
+        expect(mocks.generateText).toHaveBeenCalledTimes(
           MEMORY_EXTRACTION_LIMITS.importMaxChunksPerRequest,
         )
         const consumed = result.consumedChars
@@ -615,7 +619,7 @@ describe('extractMemoryFromText', () => {
         expect(text.slice(0, consumed).endsWith('\n')).toBe(true)
         expect(text.slice(consumed).startsWith('Delta')).toBe(true)
         expect(promptContent(2)).toContain('Charlie fact')
-        expect(mocks.generateObject.mock.calls.some((_call, index) => {
+        expect(mocks.generateText.mock.calls.some((_call, index) => {
           return promptContent(index).includes('Delta fact')
         })).toBe(false)
       })
@@ -626,9 +630,9 @@ describe('extractMemoryFromText', () => {
         paragraphText('Bravo', 20000),
       ].join('\n')
 
-      mocks.generateObject
+      mocks.generateText
         .mockResolvedValueOnce({
-          object: { ops: [createOp({
+          output: { ops: [createOp({
             title: 'Alpha topic',
             description: 'Alpha',
             body: '- Alpha fact',
@@ -672,7 +676,7 @@ describe('extractMemoryFromText', () => {
       })
 
     it('is zero when nothing was processed', async () => {
-      mocks.generateObject.mockRejectedValue(new Error('down'))
+      mocks.generateText.mockRejectedValue(new Error('down'))
 
       const result = await importText(PASTED_TEXT)
 
@@ -681,13 +685,13 @@ describe('extractMemoryFromText', () => {
 
     it('does not count a chunk dropped because memory was switched off',
       async () => {
-        mocks.generateObject.mockImplementation(async () => {
+        mocks.generateText.mockImplementation(async () => {
           await testDb.db.update(schema.userSettings)
             .set({ memoryEnabled: false })
             .where(eq(schema.userSettings.userId, userId))
 
           return {
-            object: { ops: [] },
+            output: { ops: [] },
             usage: { inputTokens: 1, outputTokens: 1 },
           }
         })
@@ -710,7 +714,7 @@ describe('extractMemoryFromText', () => {
 
       await importText(text)
 
-      for (const call of mocks.generateObject.mock.calls) {
+      for (const call of mocks.generateText.mock.calls) {
         expect(call[0].messages[0].content).not.toContain('4111')
         expect(call[0].messages[0].content).not.toContain('1111 1111')
       }
@@ -728,7 +732,7 @@ describe('extractMemoryFromText', () => {
         reason: 'disabled',
         modelCalled: false,
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('does not need the extraction opt-in', async () => {
@@ -749,13 +753,13 @@ describe('extractMemoryFromText', () => {
 
     it('applies nothing when memory was switched off during the model '
       + 'call', async () => {
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await testDb.db.update(schema.userSettings)
           .set({ memoryEnabled: false })
           .where(eq(schema.userSettings.userId, userId))
 
         return {
-          object: { ops: [createOp()] },
+          output: { ops: [createOp()] },
           usage: { inputTokens: 1, outputTokens: 1 },
         }
       })
@@ -779,11 +783,11 @@ describe('extractMemoryFromText', () => {
           modelCalled: false,
           model: { modelId: null },
         })
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
       })
 
     it('reports a failed first chunk with an error label only', async () => {
-      mocks.generateObject.mockRejectedValue(
+      mocks.generateText.mockRejectedValue(
         new Error(`provider echoed ${PASTED_TEXT}`),
       )
 
@@ -805,7 +809,7 @@ describe('extractMemoryFromText', () => {
           status: 'leased',
           modelCalled: false,
         })
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
         expect(mocks.acquireMemoryLease).toHaveBeenCalledWith(
           `memory-import-lease:${userId}`,
           expect.anything(),
