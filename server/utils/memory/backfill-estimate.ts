@@ -510,14 +510,21 @@ async function claimEstimateComputeSlot(
 }
 
 /**
- * Drops the user's cached estimate. Best effort: a KV failure only means the
- * next read may serve a figure up to ten minutes old.
+ * Drops the user's cached estimate and frees the compute slot, so the next
+ * overview after a backfill starts, finishes or a reset computes right away
+ * instead of answering `estimate-cooldown`. These are server events bounded
+ * by their own cooldowns and limits, unlike the model switch the slot
+ * defends against. Best effort: a KV failure only means the next read may
+ * serve a figure up to ten minutes old.
  */
 export async function invalidateBackfillEstimate(
   userId: number,
 ): Promise<void> {
   try {
-    await useKV().delete(backfillEstimateCacheKey(userId))
+    const kv = useKV()
+
+    await kv.delete(backfillEstimateCacheKey(userId))
+    await kv.delete(backfillEstimateComputeKey(userId))
   } catch {
     return
   }

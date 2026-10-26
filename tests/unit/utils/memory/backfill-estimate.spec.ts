@@ -799,6 +799,25 @@ describe('estimateBackfill', () => {
         })).toHaveLength(status === 'ready' ? 2 : 1)
       })
 
+      it('computes right away after an invalidation inside the cooldown',
+        async () => {
+          const kv = createKvStub()
+
+          vi.stubGlobal('useKV', () => kv)
+          await chatWith([{ role: 'user', text: 'a'.repeat(500) }])
+
+          expect((await lookup()).status).toBe('ready')
+
+          const { invalidateBackfillEstimate } = await import(
+            '~~/server/utils/memory/backfill-estimate'
+          )
+
+          await invalidateBackfillEstimate(userId)
+          vi.setSystemTime(START + 15_000)
+
+          expect((await lookup()).status).toBe('ready')
+        })
+
       it('serves a cached estimate without using the compute slot',
         async () => {
           const kv = createKvStub()

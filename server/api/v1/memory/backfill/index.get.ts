@@ -108,7 +108,7 @@ export default defineEventHandler(async (event) => {
           phase: 'estimate',
           error: lookup.exception
             ? memoryExtractionErrorSummary(lookup.exception)
-            : 'cached-failure',
+            : { errorName: 'cached-failure' },
         },
       },
     })
