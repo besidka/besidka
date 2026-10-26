@@ -138,7 +138,11 @@ removed.
 - **How it is written.** Only by the user (Memory page), by the assistant when
   the user's current message asks for it (`memory_write`, which must quote the
   request), by background extraction (section 3.4), or by an explicit run
-  (Refresh, Update now, Build from past chats, Import).
+  (Refresh, Update now, Build from past chats, Import, and the "tell Besidka
+  what to remember" box from #543: one model call on the user's key proposes
+  changes, which the user reviews and applies; the text is redacted for
+  never-store items and not stored). A chat the user excludes from memory
+  (#542) is never read for memory.
 - **How it is used.** A short index (profile and preferences text plus one line
   per other entry) is added to each message. The assistant can read a full
   entry with a tool.
@@ -173,9 +177,9 @@ removed.
 - **Recipients.** The memory model's provider or gateway. Cloudflare.
 - **Retention.** As memory entries. Run records: the last five runs per user.
 - **Basis.** Consent (Art. 6(1)(a)). Switching it off is withdrawal. The user
-  chooses whether to keep or delete what it already generated (planned, P1-11,
-  in progress in another PR). Until then the entries it made stay until the
-  user deletes them.
+  chooses whether to keep or delete what it already generated (built, #544:
+  the prompt in `app/components/Profile/Memory/Controls.vue` and
+  `POST /api/v1/memory/entries/delete-extracted`).
 
 ### 3.5 Project memory
 

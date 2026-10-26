@@ -90,7 +90,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Let the assistant search your earlier chats and send short excerpts to the provider of the chat you are in | Contract — Art. 6(1)(b) |
 | Store project knowledge and add it to messages in that project | Contract — Art. 6(1)(b) |
 | Generate memory from your chats in the background ("Generate memory from chats") | Your consent — Art. 6(1)(a). Turning it off withdraws it |
-| Update memory when you ask: Refresh, Update now, Build memory from past chats, Import | Contract — Art. 6(1)(b), at your request each time |
+| Update memory when you ask: Refresh, Update now, Build memory from past chats, Import, or telling Besidka what to remember | Contract — Art. 6(1)(b), at your request each time |
 | Check text before it is saved to memory, and refuse never-stored items and sensitive topics | Legitimate interests — Art. 6(1)(f): keeping out of memory what should not be there. For sensitive information, also your explicit consent — Art. 9(2)(a) |
 | Keep a record of your consents, of when you accepted the Terms of Use and of your age confirmation | Legal obligation to be able to prove consent — Art. 6(1)(c) with Art. 7(1) for the consents; legitimate interests — Art. 6(1)(f) for the Terms and age record |
 | Send your messages to DeepSeek, Moonshot AI or Qwen, outside the EU without an adequacy decision | Your explicit consent to the transfer — Art. 49(1)(a) |
@@ -197,6 +197,9 @@ Nothing is written to memory unless you do one of these:
 2. **You ask the assistant** in a message to remember or forget something. It saves it and shows "Saved to memory", with Undo. The assistant saves something only when your current message asks it to.
 3. **You turn on "Generate memory from chats".** It is off until you turn it on. Then, about ten minutes after you stop using a chat, Besidka sends the new part of that chat to the model you chose for memory, **on your own key**, and saves the lasting facts and preferences it finds. It sends your messages, with the assistant's replies as context, and never files, tool results or web results. It runs only for chats you use after turning it on. Each run is billed to your key.
 4. **You start a run yourself**: **Refresh** on a project, **Update now**, **Build memory from past chats**, or **Import** from another assistant. Building from past chats shows a cost estimate first, reads at most 200 chats and 4 million tokens per run, and can be cancelled. When you import, the text you paste is not stored, only the entries made from it.
+5. **You tell Besidka what to remember** in your own words, in the box on the Memory page or on a project. Besidka sends your text, with never-stored items removed, and a list of the entries it may change to the model you chose for memory, **on your own key**. The model proposes changes; nothing is saved until you tick the ones you want and apply them. Your text is not stored.
+
+You can also exclude a single chat from memory. An excluded chat is never read to write memory.
 
 ### What memory never keeps
 
@@ -216,7 +219,7 @@ The check uses fixed word and pattern rules in English, Ukrainian, Polish and Ru
 ### Who receives memory
 
 - The **AI provider or gateway of the chat you are in** receives the memory index, any entry the assistant reads, chat excerpts and project knowledge, with your messages.
-- The **provider of the model you chose for memory** receives the chat text it works on, when memory is written from chats (paths 3 and 4). By default that is "Same as chat", the model you are chatting with. If you choose a different one, that company receives the text.
+- The **provider of the model you chose for memory** receives the chat text it works on, when memory is written from chats or from your own words (paths 3, 4 and 5). By default that is "Same as chat", the model you are chatting with. If you choose a different one, that company receives the text.
 - Nobody else. Cloudflare stores it for me as my processor. Where these companies are, and what that means, is under [Transfers outside the EU](#transfers-outside-the-eu).
 
 ### Profiling
@@ -229,7 +232,7 @@ It is not the kind of automated decision GDPR Art. 22 is about. Nothing is decid
 
 - Edit or delete any entry, or **Reset** to delete all of them.
 - Turn **Use memory** off: entries are kept, but they are no longer added to your messages and nothing new is generated.
-- Turn **Generate memory from chats** off: nothing new is generated in the background. The entries it already made stay until you delete them.
+- Turn **Generate memory from chats** off: nothing new is generated in the background. You choose whether to keep the entries it already made or delete them.
 - Turn memory off for a single project.
 - **Export JSON** on the Memory page downloads your memory entries and memory settings.
 - Withdraw your consent to store sensitive information in **Profile → Security → Privacy & consent**: Besidka then stops all memory work until you consent again.

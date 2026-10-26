@@ -9,7 +9,7 @@
 | Version | 1.0, 2026-10-26 (consent gate and transfer consent built) |
 | Next review | On any new processing activity, processor, provider or storage location, and at least every 12 months |
 | Sibling document | `docs/legal/dpia.md` |
-| State recorded | The release that ships the consent gate (`2026-11-a`), the Art. 49(1)(a) transfer consent, the memory feature and the 2026-10-26 rewrite of the legal pages. Rows marked "planned" describe measures that are not built yet (the keep/delete prompt, P1-11, in another PR) |
+| State recorded | The release that ships the consent gate (`2026-11-a`), the Art. 49(1)(a) transfer consent, the memory feature and the 2026-10-26 rewrite of the legal pages. The keep/delete prompt for memory generation (P1-11) is built too (#544) |
 
 ## 1. Controller
 
