@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import type {
   MemoryExtractionOp,
@@ -280,6 +281,26 @@ describe('refreshProjectMemoryFromChats', () => {
 
     expect(mocks.generateObject).toHaveBeenCalledTimes(6)
     expect(card.memoryStatus).toBe('ready')
+  })
+
+  it('never reads a chat excluded from memory', async () => {
+    const { projectId, chatIds } = await seedProjectWithChats([
+      LONG_USER_TEXT,
+      LONG_USER_TEXT,
+    ])
+    const [includedChatId, excludedChatId] = chatIds as [string, string]
+
+    await testDb.db.update(schema.chats)
+      .set({ memoryExcluded: true })
+      .where(eq(schema.chats.id, excludedChatId))
+
+    await refresh(projectId)
+
+    expect(mocks.generateObject).toHaveBeenCalledOnce()
+    expect((await readChat(includedChatId))?.projectMemorySummaryUpdatedAt)
+      .not.toBeNull()
+    expect((await readChat(excludedChatId))?.projectMemorySummaryUpdatedAt)
+      .toBeNull()
   })
 
   it('counts a chat held by another lease as left over', async () => {

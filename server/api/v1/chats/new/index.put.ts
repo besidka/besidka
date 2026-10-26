@@ -24,6 +24,7 @@ const rules = z.object({
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
   projectId: z.string().nonempty().optional(),
   model: z.string().nonempty().optional(),
+  memoryExcluded: z.boolean().optional(),
   research: z.object({
     answers: z.array(z.object({
       id: z.string().max(200),
@@ -107,6 +108,7 @@ export default defineEventHandler(async (event) => {
       userId,
       activityAt,
       ...(projectId ? { projectId } : {}),
+      ...(body.data.memoryExcluded ? { memoryExcluded: true } : {}),
     })
     .returning({
       id: schema.chats.id,

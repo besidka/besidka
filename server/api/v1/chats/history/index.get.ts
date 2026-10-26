@@ -76,6 +76,7 @@ export default defineEventHandler(async (event) => {
     createdAt: schema.chats.createdAt,
     activityAt: schema.chats.activityAt,
     pinnedAt: schema.chats.pinnedAt,
+    memoryExcluded: schema.chats.memoryExcluded,
     projectId: schema.chats.projectId,
     projectName: schema.projects.name,
     shared: buildChatSharedColumn(),

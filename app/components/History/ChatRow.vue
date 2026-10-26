@@ -77,6 +77,15 @@
           <Icon name="lucide:link" size="10" />
           Shared
         </span>
+        <span
+          v-if="isMemoryExcluded"
+          data-testid="chat-memory-excluded-badge"
+          class="badge badge-ghost badge-sm gap-1"
+          :title="CHAT_MEMORY_EXCLUSION_HELPER"
+        >
+          <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="10" />
+          {{ CHAT_MEMORY_EXCLUSION_INDICATOR }}
+        </span>
       </div>
     </div>
 
@@ -123,6 +132,12 @@ const emit = defineEmits<{
   removeFromProject: [chatId: string, slug: string]
   cancelSharing: [chatId: string, slug: string]
 }>()
+
+const { isChatMemoryExcluded } = useChatMemoryExclusion()
+
+const isMemoryExcluded = computed<boolean>(() => {
+  return isChatMemoryExcluded(props.chat.slug, props.chat.memoryExcluded)
+})
 
 const activityAge = computed(() => {
   return formatActivityAge(new Date(props.chat.activityAt))

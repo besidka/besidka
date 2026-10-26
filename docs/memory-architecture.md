@@ -197,8 +197,8 @@ project entry on first read; the column is left in place and writes stop
   (AND → drop rarest-missing tokens → OR, bm25-ranked). LLM text always goes
   through the `query.ts` sanitizer, never raw into `MATCH`.
 - Scope: in a project with `useAccountMemory = false`, search only that
-  project's chats; otherwise all of the user's chats (incognito chats are not
-  built, 3.7). The current
+  project's chats; otherwise all of the user's chats, never a chat excluded
+  from memory (3.7). The current
   chat is excluded. `message_search` has only `owner`, so project scoping must
   join `rowid → messages.id → chats.projectId` **inside** the FTS query, not
   post-filter the 200-candidate list (a small project would get zero hits).
@@ -254,8 +254,8 @@ project entry on first read; the column is left in place and writes stop
   ~$0.001–0.004 per pass at 10k in / 0.5k out. Superseded by the owner's
   model-choice direction in 3.9: the cheapest flagged model is only the last
   step of the resolution chain.
-- Skip short chats (< ~300 chars of user text). Skipping incognito chats is
-  **not built**: there is no incognito flag (3.7).
+- Skip short chats (< ~300 chars of user text). Chats excluded from memory
+  are never extracted (3.7).
 
 ### 3.5 Compliance gate (code-enforced, not prompt-only)
 
@@ -360,11 +360,37 @@ the reason the opt-in is out of v1 (section 7).
   extends the documented rebuild blast radius; **(owner)** recommendation:
   cascade FK (consistent) **and** explicit purge (belt and braces), and list
   the table in CLAUDE.md's cascade-children list.
-- **Incognito chat** (per-chat flag, locked after first message): never
-  searched, never extracted. **Not built**: there is no incognito flag on
-  `chats`, and the sweep, backfill, extract-now and Refresh paths read every
-  chat that otherwise qualifies. When it is built, all four selection paths
-  and `search_chats`/`read_chat` must filter it (audit finding 16, 3.17).
+- **Per-chat memory exclusion** (built 2026-10-26, audit finding 16): "Don't
+  use this chat for memory". Deliberately not called incognito: the chat is
+  still stored, still in the user's own history, sidebar and history search;
+  only memory stops using it. Column `chats.memory_excluded` (nullable
+  boolean, null reads as false, no SQL `DEFAULT` so the column add never
+  rebuilds `chats`). SQL filters write it as `memory_excluded IS NOT 1` so
+  NULL stays included (`<> 1` or `ne(col, true)` would drop NULL rows).
+  - Filtered at every selection path: the sweep query, `backfillEligibleChats`
+    (start count, queue cursor and estimate), the project Refresh chat list,
+    and inside the `search_chats` FTS query before the candidate limit.
+    `read_chat` answers the same 404 as a missing chat, so it is no existence
+    oracle. `extractChatMemory` also skips the chat as `memory-excluded` for
+    every trigger, before the model call and again after it, so a toggle that
+    lands while a pass is in flight never re-cites the chat.
+  - `PATCH /api/v1/chats/:slug/memory` (`{ excluded }`, ownership in the
+    `UPDATE ... WHERE`) writes the flag first, then, when turning it on, runs
+    the chat-deletion cascade `detachChatsFromMemory` for that chat:
+    extraction entries sourced only from it are deleted, other entries drop
+    the citation, `user`/`tool`/`import` entries are never deleted. A project
+    chat also marks its project memory stale. `activity_at` is not touched, so
+    a toggle never makes a chat due. Turning it off only clears the flag:
+    nothing removed comes back, and messages before the chat's watermark are
+    not re-read.
+  - A branch of an excluded chat is created excluded. A new chat can be
+    created excluded from the new-chat input (next to the project picker on
+    desktop, a row in the overflow menu on mobile).
+  - UI: a toggle in the history row actions menu and in the chat page's "More
+    features" sidebar menu; a "Not used for memory" indicator on the history
+    row and at the top of the chat. A deliberate `memory_write` inside an
+    excluded chat still records that chat in `sourceChatIds` (the user asked
+    for it explicitly); the flag stops learning, not explicit saves.
 - **Pause** keeps entries but stops injection and extraction; **Reset**
   deletes all entries.
 
@@ -1623,9 +1649,9 @@ handled separately.
 | 11 | Low: the sensitive-topic classifier missed hidden characters, unaccented Polish and Latin look-alikes in Cyrillic | Fixed in `sensitivity.ts`: format characters and stray marks stripped, look-alikes folded, a diacritic-folded Polish pass |
 | 12 | Low: home address, immigration and criminal history were enforced only by the extractor label | Fixed: narrow deterministic detectors in `evaluateMemoryEntry` (`topical-never-store.ts`), so every write path refuses them with the unchanged 422 |
 | 13 | Low: a backfill with a failed estimate had no spend cap | Fixed: hard per-job ceilings `backfillMaxChats` (200) and `backfillMaxTokens` (4M), stated in the backfill sheet; a later job continues after the previous job's cursor instead of re-reading the same chats, and starting is refused once every past chat was read (3.15) |
-| 14 | Low: each sweep tick read every idle chat of opted-in users | Fixed by bounding: the chats index range starts at the opt-in cut-over (section 7, "D1 cost of the sweep") |
+| 14 | Low: each sweep tick read every idle chat of opted-in users | Fixed by bounding: the chats index range starts at the opt-in cut-over, and since 2026-10-26 the partial index `idx_chats_memory_due` holds only dirty, non-excluded chats (section 7, "D1 cost of the sweep") |
 | 15 | Info: the export omits processing records and knowledge | Docs only: recorded as a known gap (3.7) |
-| 16 | Info: incognito chats are documented but not built | Docs only: marked not built (3.3, 3.4, 3.7) |
+| 16 | Info: incognito chats are documented but not built | Built 2026-10-26 as the per-chat memory exclusion flag (3.7) |
 
 **Follow-up from the delta verification (2026-10-26).**
 
@@ -1998,7 +2024,8 @@ the query) joined to `chats` through the composite index `idx_chats_user_activit
 on `(user_id, activity_at)`, then a LEFT JOIN to `projects` by primary key. Both
 indexes and the cut-over column ship in one additive migration
 (`ALTER TABLE ... ADD` and two `CREATE INDEX`, no `DROP TABLE`). Query plan on
-the generated SQL (asserted in `extract-sweep.spec.ts`, no `SCAN chats`):
+the generated SQL until 2026-10-26 (superseded by the due-chats partial index
+below, which is what `extract-sweep.spec.ts` asserts now):
 
 ```
 SCAN user_settings USING INDEX idx_user_settings_extraction_enabled
@@ -2016,9 +2043,42 @@ roughly twice the row count for index-driven reads. Since the 2026-10-26 audit
 `activity_at > coalesce(memory_extraction_enabled_at, 0)` at the top level, so
 the index range starts at the opt-in cut-over: chats idle since before the
 opt-in are never read (the enable restamps them, so they were never due).
-Caveats: within that range the `row_number` window still reads every idle chat
+Caveats: within that range the `row_number` window still reads every due chat
 of an opted-in user active since the opt-in (the per-user cap and the pool
-apply after the window), already-extracted idle chats in the range are read and
-then filtered because the dirty test is not an index condition, a legacy
-opt-in without a recorded cut-over keeps the unbounded range, and the plan was
-verified in the in-memory harness without `ANALYZE`, not measured on D1.
+apply after the window), a legacy opt-in without a recorded cut-over keeps the
+unbounded range, and the plan was verified in the in-memory harness without
+`ANALYZE`, not measured on D1.
+
+**Due-chats partial index (2026-10-26, audit 14 follow-up).** The caveat that
+already-extracted idle chats in the range were read and then filtered is gone:
+migration `20261026133213_memory_chat_exclusion` (one `ALTER TABLE chats ADD
+memory_excluded` and one `CREATE INDEX`, nothing else) adds
+`idx_chats_memory_due` on `(user_id, activity_at)` with the predicate
+`memory_excluded IS NOT 1 AND ((project_id IS NULL AND (memory_extracted_at IS
+NULL OR memory_extracted_at < activity_at)) OR (project_id IS NOT NULL AND
+(project_memory_summary_updated_at IS NULL OR project_memory_summary_updated_at
+< activity_at)))`, so the index holds only dirty chats that memory may use. A
+partial index is only usable when a top-level AND term of the query repeats
+its predicate, so the sweep adds `chatIsMemoryIncluded()` and
+`chatHasUnextractedActivity()` (`server/utils/memory/chat-memory-filters.ts`),
+which repeat it term for term with inline literals. The join from
+`user_settings` to `chats` is a `CROSS JOIN` with the user equality in the
+WHERE: with two partial indexes and no `ANALYZE`, SQLite otherwise flips the
+loop to `SCAN chats USING INDEX idx_chats_memory_due` and probes
+`user_settings` per chat, which reads every dirty chat of every user, opted in
+or not. `CROSS JOIN` pins `user_settings` as the outer loop. Plan now
+(asserted in `extract-sweep.spec.ts`):
+
+```
+SCAN user_settings USING INDEX idx_user_settings_extraction_enabled
+SEARCH chats USING INDEX idx_chats_memory_due (user_id=? AND activity_at>? AND activity_at<?)
+SEARCH projects USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+USE TEMP B-TREE FOR ORDER BY
+```
+
+The temp B-tree is the window's per-user sort by
+`coalesce(memory_extraction_attempted_at, 0), activity_at` over the due chats
+only; an index cannot serve it because its first key is an expression, and an
+expression-leading index would lose the `activity_at` range. The cost is one
+extra index entry write when a chat becomes dirty or clean;
+`idx_chats_user_activity` stays: other per-user, activity-ordered chat reads use it.

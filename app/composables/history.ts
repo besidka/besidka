@@ -14,6 +14,17 @@ interface HistoryCacheEntry {
 const UNSEARCHED_CACHE_KEY = 'history:'
 
 export function setHistoryChatSharedBySlug(slug: string, shared: boolean) {
+  patchHistoryChatBySlug(slug, { shared })
+}
+
+export function setHistoryChatMemoryExcludedBySlug(
+  slug: string,
+  memoryExcluded: boolean,
+) {
+  patchHistoryChatBySlug(slug, { memoryExcluded })
+}
+
+function patchHistoryChatBySlug(slug: string, patch: Partial<HistoryChat>) {
   const cache = useState<Record<string, HistoryCacheEntry>>(
     'history:cache',
     () => ({}),
@@ -35,10 +46,10 @@ export function setHistoryChatSharedBySlug(slug: string, shared: boolean) {
     nextCache[cacheKey] = {
       ...entry,
       chats: entry.chats.map((chat) => {
-        return chat.slug === slug ? { ...chat, shared } : chat
+        return chat.slug === slug ? { ...chat, ...patch } : chat
       }),
       pinned: entry.pinned.map((chat) => {
-        return chat.slug === slug ? { ...chat, shared } : chat
+        return chat.slug === slug ? { ...chat, ...patch } : chat
       }),
     }
   }
