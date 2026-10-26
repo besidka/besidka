@@ -40,6 +40,11 @@
             <slot name="extra-actions" />
           </template>
         </ProfileMemoryEntriesToolbar>
+        <ProfileMemoryInstructBox
+          v-if="settings.memoryEnabled"
+          :model-id="settings.profileMemoryModel"
+          @changed="refresh()"
+        />
         <details
           v-if="hasLegacyAboutMe"
           class="collapse collapse-arrow rounded-box border border-base-content/10"
