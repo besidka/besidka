@@ -1370,9 +1370,16 @@ develops against these shapes with mocked `$fetch`.
   real questions ("Коли запуск Аврори?") but not arbitrary ones on every
   turn. The tools keep plain AND→OR.
 
-**Follow-ups after K1 merges**: swap `send-data.ts`'s reader for K1's
-`readKnowledgePack`; call `ensureKnowledgePackFresh` in `waitUntil` when
-`packVersion < version`. **Deferred design call**: mode hysteresis. `fits`
+**After K1 merged (#525)**: `send-data.ts` now reads packs with K1's
+`readKnowledgePack` (stricter than K2's own reader, which was deleted:
+5 MiB compressed, 10 MiB decompressed mid-stream, 20,000 lines, 64 KiB per
+chunk line, header version and order checks). On send, a lagging pointer
+(`packVersion < version`) schedules `ensureKnowledgePackFresh` in
+`waitUntil`; a fresh pointer whose pack reads back null schedules
+`commitKnowledgeChange` (K1 exposes no same-version force rebuild), at most
+once per project per 10 minutes through a KV throttle, because each repair
+bumps the version and would otherwise bypass K1's per-version backoff. The
+send never waits and always uses whatever pack is readable. **Deferred design call**: mode hysteresis. `fits`
 includes the current message, so one very large paste can flip full →
 search → full and invalidate the prompt cache twice.
 

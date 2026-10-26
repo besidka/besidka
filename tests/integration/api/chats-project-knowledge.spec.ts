@@ -47,6 +47,11 @@ const mocks = vi.hoisted(() => ({
   uiStreamOptions: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
   loadKnowledgeSendData: vi.fn(),
+  ensureKnowledgePackFresh: vi.fn(),
+  commitKnowledgeChange: vi.fn(),
+  kvStore: new Map<string, string>(),
+  kvGet: vi.fn(),
+  kvPut: vi.fn(),
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -104,6 +109,15 @@ vi.mock('evlog', () => ({
 vi.mock('~~/server/utils/knowledge/send-data', () => ({
   loadKnowledgeSendData: (input: unknown) => {
     return mocks.loadKnowledgeSendData(input)
+  },
+}))
+
+vi.mock('~~/server/utils/knowledge/pack', () => ({
+  ensureKnowledgePackFresh: (input: unknown) => {
+    return mocks.ensureKnowledgePackFresh(input)
+  },
+  commitKnowledgeChange: (input: unknown) => {
+    return mocks.commitKnowledgeChange(input)
   },
 }))
 
@@ -195,6 +209,9 @@ interface Scenario {
   mode?: 'auto' | 'full' | 'search' | null
   items?: ScenarioItem[]
   packText?: string
+  version?: number
+  packVersion?: number | null
+  isPackUnreadable?: boolean
 }
 
 function createUsage(inputTokens = 10, outputTokens = 20) {
@@ -310,6 +327,10 @@ function createSendData(scenario: Scenario) {
     return !item.mediaType?.startsWith('image/')
   })
   const loadPack = vi.fn(async () => {
+    if (scenario.isPackUnreadable) {
+      return null
+    }
+
     return {
       header: {
         type: 'header' as const,
@@ -335,8 +356,10 @@ function createSendData(scenario: Scenario) {
     data: {
       state: {
         mode: scenario.mode ?? null,
-        version: 3,
-        packVersion: 2,
+        version: scenario.version ?? 3,
+        packVersion: scenario.packVersion === undefined
+          ? 2
+          : scenario.packVersion,
       },
       items,
       loadPack,
@@ -465,7 +488,13 @@ async function runSend(input: {
   providerTools?: Record<string, unknown>
   gateway?: { toolCall: boolean, contextLength?: number }
   userText?: string
+  hasWaitUntil?: boolean
+  awaitScheduled?: boolean
 }) {
+  const scheduledPromises: Promise<unknown>[] = []
+  const waitUntil = vi.fn((promise: Promise<unknown>) => {
+    scheduledPromises.push(promise)
+  })
   const { model, doStream } = createScriptedModel(input.steps)
 
   vi.stubGlobal('useOpenAI', vi.fn(async () => ({
@@ -504,6 +533,9 @@ async function runSend(input: {
   vi.stubGlobal('useDb', () => created.db)
 
   const result = await handler({
+    ...(input.hasWaitUntil
+      ? { context: { cloudflare: { context: { waitUntil } } } }
+      : {}),
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     body: {
       model: input.gateway ? GATEWAY_MODEL_ID : DIRECT_MODEL_ID,
@@ -519,6 +551,10 @@ async function runSend(input: {
   } as any)
 
   await result.ready
+
+  if (input.awaitScheduled !== false) {
+    await Promise.all(scheduledPromises)
+  }
 
   const assistantInsert = created.insertValues.mock.calls.find(([value]) => {
     return value.role === 'assistant'
@@ -538,6 +574,7 @@ async function runSend(input: {
     chunks,
     writtenParts,
     loadPack: sendData?.loadPack,
+    waitUntil,
   }
 }
 
@@ -597,6 +634,13 @@ describe('project knowledge send-path wiring', () => {
     mocks.memoryWriteSawUntrustedResult = []
     mocks.uiStreamOptions = []
     mocks.loadKnowledgeSendData.mockReset()
+    mocks.ensureKnowledgePackFresh.mockReset()
+    mocks.ensureKnowledgePackFresh.mockResolvedValue(undefined)
+    mocks.commitKnowledgeChange.mockReset()
+    mocks.commitKnowledgeChange.mockResolvedValue({
+      version: 4,
+      packVersion: 4,
+    })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('getRequestURL', () => {
@@ -652,9 +696,18 @@ describe('project knowledge send-path wiring', () => {
     }))
     vi.stubGlobal('attachCloudflareMeta', vi.fn())
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
+    mocks.kvStore.clear()
+    mocks.kvGet.mockReset()
+    mocks.kvGet.mockImplementation(async (key: string) => {
+      return mocks.kvStore.get(key) ?? null
+    })
+    mocks.kvPut.mockReset()
+    mocks.kvPut.mockImplementation(async (key: string, value: string) => {
+      mocks.kvStore.set(key, value)
+    })
     vi.stubGlobal('useKV', () => ({
-      get: vi.fn(async () => null),
-      put: vi.fn(async () => undefined),
+      get: mocks.kvGet,
+      put: mocks.kvPut,
       delete: vi.fn(async () => undefined),
     }))
     vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
@@ -1200,6 +1253,243 @@ describe('project knowledge send-path wiring', () => {
         preRetrieval: false,
       }))
     })
+  })
+
+  describe('pack freshness on send', () => {
+    const maintenanceInput = {
+      userId: 1,
+      projectId: PROJECT_INTERNAL_ID,
+      logger: expect.anything(),
+    }
+
+    it('rebuilds a stale pack in the background and sends with the '
+      + 'previous pack', async () => {
+      const { doStream, loadPack } = await runSend({
+        hasWaitUntil: true,
+        scenario: { version: 4, packVersion: 3 },
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledTimes(1)
+      expect(mocks.ensureKnowledgePackFresh)
+        .toHaveBeenCalledWith(maintenanceInput)
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(loadPack).toHaveBeenCalledTimes(1)
+      expect(readSystemPrompt(doStream.mock.calls[0]?.[0]))
+        .toContain(NOTE_TEXT)
+    })
+
+    it('schedules a rebuild for a project that never built a pack',
+      async () => {
+        await runSend({
+          hasWaitUntil: true,
+          scenario: { version: 2, packVersion: null, isPackUnreadable: true },
+          steps: [createTextChunks('No pack yet.')],
+        })
+
+        expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledTimes(1)
+        expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      })
+
+    it('does not wait for the background rebuild before answering',
+      async () => {
+        mocks.ensureKnowledgePackFresh.mockReturnValue(new Promise(() => {}))
+
+        const { doStream, assistantInsert } = await runSend({
+          hasWaitUntil: true,
+          awaitScheduled: false,
+          scenario: { version: 4, packVersion: 3 },
+          steps: [createTextChunks('Answered right away.')],
+        })
+
+        expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledTimes(1)
+        expect(doStream).toHaveBeenCalledTimes(1)
+        expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+          type: 'text',
+          text: 'Answered right away.',
+        }))
+      })
+
+    it('skips silently without waitUntil on a stale pack', async () => {
+      const { doStream } = await runSend({
+        hasWaitUntil: false,
+        scenario: { version: 4, packVersion: 3 },
+        steps: [createTextChunks('No scheduler.')],
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(1)
+      expect(mocks.ensureKnowledgePackFresh).not.toHaveBeenCalled()
+    })
+
+    it('schedules a repair when the pointer is fresh but the pack reads '
+      + 'back null, and still answers', async () => {
+      const { doStream, assistantInsert } = await runSend({
+        hasWaitUntil: true,
+        scenario: { version: 3, packVersion: 3, isPackUnreadable: true },
+        steps: [createTextChunks('Answered without the pack.')],
+      })
+
+      expect(mocks.commitKnowledgeChange).toHaveBeenCalledTimes(1)
+      expect(mocks.commitKnowledgeChange)
+        .toHaveBeenCalledWith(maintenanceInput)
+      expect(mocks.ensureKnowledgePackFresh).not.toHaveBeenCalled()
+      expect(readSystemPrompt(doStream.mock.calls[0]?.[0]))
+        .not.toContain('<project_knowledge>')
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'Answered without the pack.',
+      }))
+    })
+
+    it('swallows a failed repair and logs it as packRepair without text',
+      async () => {
+        mocks.commitKnowledgeChange.mockRejectedValue(
+          new Error('lease unavailable'),
+        )
+
+        const { assistantInsert } = await runSend({
+          hasWaitUntil: true,
+          scenario: { version: 3, packVersion: 3, isPackUnreadable: true },
+          steps: [createTextChunks('Still answered.')],
+        })
+
+        expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+          packRepair: { error: 'lease unavailable' },
+        }))
+        expect(assistantInsert?.parts).toContainEqual(
+          expect.objectContaining({ type: 'text', text: 'Still answered.' }),
+        )
+      })
+
+    it('throttles the repair per project for ten minutes', async () => {
+      const scenario = {
+        version: 3,
+        packVersion: 3,
+        isPackUnreadable: true,
+      }
+
+      await runSend({
+        hasWaitUntil: true,
+        scenario,
+        steps: [createTextChunks('First send.')],
+      })
+
+      expect(mocks.kvPut).toHaveBeenCalledWith(
+        `knowledge:repair:${PROJECT_INTERNAL_ID}`,
+        expect.any(String),
+        { expirationTtl: 600 },
+      )
+
+      mocks.aiLoggerSet.mockClear()
+
+      await runSend({
+        hasWaitUntil: true,
+        scenario,
+        steps: [createTextChunks('Second send.')],
+      })
+
+      expect(mocks.commitKnowledgeChange).toHaveBeenCalledTimes(1)
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        packRepair: { skipped: 'throttled' },
+      }))
+    })
+
+    it('skips the repair and still answers when KV fails', async () => {
+      mocks.kvGet.mockRejectedValue(new Error('kv unavailable'))
+
+      const { assistantInsert } = await runSend({
+        hasWaitUntil: true,
+        scenario: { version: 3, packVersion: 3, isPackUnreadable: true },
+        steps: [createTextChunks('KV is down.')],
+      })
+
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        packRepair: { error: 'kv unavailable' },
+      }))
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'KV is down.',
+      }))
+    })
+
+    it('does not throttle the stale-pointer rebuild', async () => {
+      const scenario = { version: 4, packVersion: 3 }
+
+      await runSend({
+        hasWaitUntil: true,
+        scenario,
+        steps: [createTextChunks('First send.')],
+      })
+      await runSend({
+        hasWaitUntil: true,
+        scenario,
+        steps: [createTextChunks('Second send.')],
+      })
+
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledTimes(2)
+      expect(mocks.kvPut).not.toHaveBeenCalledWith(
+        `knowledge:repair:${PROJECT_INTERNAL_ID}`,
+        expect.anything(),
+        expect.anything(),
+      )
+    })
+
+    it('schedules the repair once however often the pack is read',
+      async () => {
+        stubChatProvider({ toolCall: false })
+
+        await runSend({
+          hasWaitUntil: true,
+          scenario: {
+            mode: 'search',
+            version: 3,
+            packVersion: 3,
+            isPackUnreadable: true,
+          },
+          steps: [createTextChunks('One repair only.')],
+        })
+
+        expect(mocks.commitKnowledgeChange).toHaveBeenCalledTimes(1)
+      })
+
+    it('schedules nothing for a fresh, readable pack', async () => {
+      await runSend({
+        hasWaitUntil: true,
+        scenario: { version: 3, packVersion: 3 },
+        steps: [createTextChunks('All fresh.')],
+      })
+
+      expect(mocks.ensureKnowledgePackFresh).not.toHaveBeenCalled()
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+    })
+
+    it('schedules nothing for a project that has no knowledge version',
+      async () => {
+        await runSend({
+          hasWaitUntil: true,
+          scenario: { version: 0, packVersion: null, isPackUnreadable: true },
+          steps: [createTextChunks('No version.')],
+        })
+
+        expect(mocks.ensureKnowledgePackFresh).not.toHaveBeenCalled()
+        expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      })
+
+    it('skips silently without waitUntil on a corrupt fresh pack',
+      async () => {
+        const { assistantInsert } = await runSend({
+          hasWaitUntil: false,
+          scenario: { version: 3, packVersion: 3, isPackUnreadable: true },
+          steps: [createTextChunks('No scheduler.')],
+        })
+
+        expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+        expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+          type: 'text',
+          text: 'No scheduler.',
+        }))
+      })
   })
 
   describe('prompt-cache stability', () => {

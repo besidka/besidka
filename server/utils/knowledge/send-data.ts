@@ -5,15 +5,11 @@ import type {
   KnowledgePackHeader,
   KnowledgePackLine,
 } from '#shared/types/project-knowledge.d'
-import {
-  knowledgePackHeaderSchema,
-  knowledgePackLineSchema,
-} from '#shared/utils/project-knowledge-schemas'
 import * as schema from '~~/server/db/schema'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { knowledgePackKey } from '~~/server/utils/knowledge/storage-keys'
+import { readKnowledgePack } from '~~/server/utils/knowledge/pack'
 
 export interface KnowledgeSendItem extends KnowledgeItem {
   storageKey: string | null
@@ -34,159 +30,8 @@ export interface KnowledgeSendData {
   loadPack: () => Promise<KnowledgeSendPack | null>
 }
 
-const PACK_MISSING_MESSAGE = 'pack-object-missing'
-const PACK_HEADER_INVALID_MESSAGE = 'pack-header-invalid'
-const PACK_LINE_INVALID_MESSAGE = 'pack-line-invalid'
-const PACK_UNREADABLE_MESSAGE = 'pack-unreadable'
-const PACK_TOO_LARGE_MESSAGE = 'pack-too-large'
-const PACK_VERSION_MISMATCH_MESSAGE = 'pack-version-mismatch'
-const PACK_MAX_BYTES = 10 * 1024 * 1024
-const PACK_MAX_LINES = 20_000
-const PACK_MAX_LINE_LENGTH = 2 * 1024 * 1024
-
-class KnowledgePackFormatError extends Error {}
-
 function toIsoString(value: Date): string {
   return value.toISOString()
-}
-
-function createByteLimiter(maxBytes: number): {
-  stream: TransformStream<Uint8Array, Uint8Array>
-  isExceeded: () => boolean
-} {
-  let totalBytes = 0
-  let exceeded = false
-  const stream = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      totalBytes += chunk.byteLength
-
-      if (totalBytes > maxBytes) {
-        exceeded = true
-        controller.error(new KnowledgePackFormatError(PACK_TOO_LARGE_MESSAGE))
-
-        return
-      }
-
-      controller.enqueue(chunk)
-    },
-  })
-
-  return { stream, isExceeded: () => exceeded }
-}
-
-async function readGzipText(body: ReadableStream): Promise<string> {
-  const limiter = createByteLimiter(PACK_MAX_BYTES)
-  const decompressed = body
-    .pipeThrough(new DecompressionStream('gzip'))
-    .pipeThrough(limiter.stream)
-
-  try {
-    return await new Response(decompressed).text()
-  } catch (exception) {
-    if (limiter.isExceeded()) {
-      throw new KnowledgePackFormatError(PACK_TOO_LARGE_MESSAGE)
-    }
-
-    throw exception
-  }
-}
-
-function parsePackLine(rawLine: string, message: string): unknown {
-  if (rawLine.length > PACK_MAX_LINE_LENGTH) {
-    throw new KnowledgePackFormatError(PACK_TOO_LARGE_MESSAGE)
-  }
-
-  try {
-    return JSON.parse(rawLine)
-  } catch {
-    throw new KnowledgePackFormatError(message)
-  }
-}
-
-function parsePack(text: string, packVersion: number): KnowledgeSendPack {
-  const rawLines = text.split('\n').filter((rawLine) => {
-    return rawLine.trim().length > 0
-  })
-
-  if (rawLines.length > PACK_MAX_LINES) {
-    throw new KnowledgePackFormatError(PACK_TOO_LARGE_MESSAGE)
-  }
-
-  const [rawHeader, ...rawChunks] = rawLines
-
-  if (rawHeader === undefined) {
-    throw new KnowledgePackFormatError(PACK_HEADER_INVALID_MESSAGE)
-  }
-
-  const header = knowledgePackHeaderSchema.safeParse(
-    parsePackLine(rawHeader, PACK_HEADER_INVALID_MESSAGE),
-  )
-
-  if (!header.success) {
-    throw new KnowledgePackFormatError(PACK_HEADER_INVALID_MESSAGE)
-  }
-
-  if (header.data.version !== packVersion) {
-    throw new KnowledgePackFormatError(PACK_VERSION_MISMATCH_MESSAGE)
-  }
-
-  const lines = rawChunks.map((rawChunk) => {
-    const line = knowledgePackLineSchema.safeParse(
-      parsePackLine(rawChunk, PACK_LINE_INVALID_MESSAGE),
-    )
-
-    if (!line.success) {
-      throw new KnowledgePackFormatError(PACK_LINE_INVALID_MESSAGE)
-    }
-
-    return line.data
-  })
-
-  return { header: header.data, lines }
-}
-
-function logPackFailure(
-  exception: unknown,
-  logger: LoggerLike | undefined,
-): void {
-  const message = exception instanceof KnowledgePackFormatError
-    ? exception.message
-    : exceptionMessage(exception)
-
-  logger?.set({ attributes: { knowledge: { error: message } } })
-}
-
-async function readPack(input: {
-  userId: number
-  projectId: number
-  packVersion: number
-}): Promise<KnowledgeSendPack> {
-  const storage = useFileStorage()
-  const object = await storage.get(
-    knowledgePackKey(input.userId, input.projectId, input.packVersion),
-  )
-
-  if (!object) {
-    throw new KnowledgePackFormatError(PACK_MISSING_MESSAGE)
-  }
-
-  if (object.size > PACK_MAX_BYTES) {
-    throw new KnowledgePackFormatError(PACK_TOO_LARGE_MESSAGE)
-  }
-
-  let text: string
-
-  try {
-    text = await readGzipText(object.body as ReadableStream)
-  } catch (exception) {
-    if (exception instanceof KnowledgePackFormatError) {
-      throw exception
-    }
-
-    throw new KnowledgePackFormatError(PACK_UNREADABLE_MESSAGE)
-  }
-
-  return parsePack(text, input.packVersion)
 }
 
 function createPackLoader(input: {
@@ -208,14 +53,14 @@ function createPackLoader(input: {
       return memoized
     }
 
-    const packVersion = input.packVersion
-
-    memoized = readPack({
+    memoized = readKnowledgePack({
       userId: input.userId,
       projectId: input.projectId,
-      packVersion,
+      version: input.packVersion,
     }).catch((exception: unknown) => {
-      logPackFailure(exception, input.logger)
+      input.logger?.set({
+        attributes: { knowledge: { error: exceptionMessage(exception) } },
+      })
 
       return null
     })
@@ -322,14 +167,14 @@ async function queryKnowledgeSendData(input: {
 }
 
 /**
- * The only K2 module that reads knowledge from D1 and R2. The cheap items
- * query runs first and returns null for a project without items, so a
+ * The only K2 module that reads knowledge items and state from D1. The cheap
+ * items query runs first and returns null for a project without items, so a
  * project that never used knowledge costs one D1 read and no R2 call. The
  * pack is fetched only when `loadPack()` is called, once per call of this
- * function. Any D1, read, gunzip, size-cap, version or validation failure
+ * function, through `readKnowledgePack` (which owns every size, line and
+ * version check and resolves to null instead of throwing). A D1 failure
  * resolves to null with a message-only log entry, so knowledge never fails a
- * send. The pack is capped at 10 MiB compressed and decompressed, 20,000
- * lines and 2 MiB per line.
+ * send.
  */
 export async function loadKnowledgeSendData(input: {
   userId: number

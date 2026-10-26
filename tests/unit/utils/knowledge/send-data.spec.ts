@@ -1,86 +1,60 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type {
+  KnowledgePackHeader,
+  KnowledgePackLine,
+} from '#shared/types/project-knowledge.d'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { loadKnowledgeSendData } from '~~/server/utils/knowledge/send-data'
-import { knowledgePackKey } from '~~/server/utils/knowledge/storage-keys'
 import { createKnowledgeTestDb } from '../../../setup/helpers/knowledge-send-db'
 
 const USER_ID = 1
 const OTHER_USER_ID = 2
 const PROJECT_ID = 5
 const PACK_VERSION = 3
-const PACK_KEY = knowledgePackKey(USER_ID, PROJECT_ID, PACK_VERSION)
-const SECRET_TEXT = 'SECRET-DOCUMENT-TEXT'
-const MAX_PACK_BYTES = 10 * 1024 * 1024
-const MAX_PACK_LINES = 20_000
-const MAX_PACK_LINE_LENGTH = 2 * 1024 * 1024
 
-async function gzip(text: string): Promise<Uint8Array> {
-  const stream = new Blob([text])
-    .stream()
-    .pipeThrough(new CompressionStream('gzip'))
+const mocks = vi.hoisted(() => ({
+  readKnowledgePack: vi.fn(),
+}))
 
-  return new Uint8Array(await new Response(stream).arrayBuffer())
-}
+vi.mock('~~/server/utils/knowledge/pack', () => ({
+  readKnowledgePack: (input: unknown) => mocks.readKnowledgePack(input),
+}))
 
-function toBody(bytes: Uint8Array): ReadableStream {
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue(bytes)
-      controller.close()
+function buildPack(itemId: string): {
+  header: KnowledgePackHeader
+  lines: KnowledgePackLine[]
+} {
+  return {
+    header: {
+      type: 'header',
+      version: PACK_VERSION,
+      builtAt: '2026-10-25T00:00:00.000Z',
+      items: [{
+        itemId,
+        updatedAt: '2026-10-25T00:00:00.000Z',
+        chunks: 1,
+      }],
     },
-  })
-}
-
-function createFakeBucket() {
-  const objects = new Map<string, Uint8Array>()
-  const get = vi.fn(async (key: string) => {
-    const bytes = objects.get(key)
-
-    return bytes ? { body: toBody(bytes) } : null
-  })
-
-  return { objects, get }
-}
-
-function buildPackText(options: {
-  itemId: string
-  chunks: string[]
-  version?: number
-}): string {
-  const header = {
-    type: 'header',
-    version: options.version ?? PACK_VERSION,
-    builtAt: '2026-10-25T00:00:00.000Z',
-    items: [{
-      itemId: options.itemId,
-      updatedAt: '2026-10-25T00:00:00.000Z',
-      chunks: options.chunks.length,
+    lines: [{
+      type: 'chunk',
+      itemId,
+      ordinal: 0,
+      breadcrumb: 'Section 0',
+      text: 'first chunk',
     }],
   }
-  const lines = options.chunks.map((text, ordinal) => {
-    return JSON.stringify({
-      type: 'chunk',
-      itemId: options.itemId,
-      ordinal,
-      breadcrumb: `Section ${ordinal}`,
-      text,
-    })
-  })
-
-  return [JSON.stringify(header), ...lines].join('\n') + '\n'
 }
 
 describe('loadKnowledgeSendData', () => {
   let testDb: ReturnType<typeof createKnowledgeTestDb>
-  let bucket: ReturnType<typeof createFakeBucket>
   let loggerSet: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     testDb = createKnowledgeTestDb()
-    bucket = createFakeBucket()
+    mocks.readKnowledgePack.mockReset()
+    mocks.readKnowledgePack.mockResolvedValue(null)
     loggerSet = vi.fn()
     vi.stubGlobal('useDb', () => testDb.db)
-    vi.stubGlobal('useFileStorage', () => bucket)
   })
 
   afterEach(() => {
@@ -113,18 +87,14 @@ describe('loadKnowledgeSendData', () => {
     })
   }
 
-  async function seedPack(text: string) {
-    bucket.objects.set(PACK_KEY, await gzip(text))
-  }
-
   describe('items and state', () => {
-    it('returns null without an R2 read when the project has no items', async () => {
+    it('returns null without a pack read when the project has no items', async () => {
       testDb.insertProject({ id: PROJECT_ID, userId: USER_ID })
 
       const data = await load()
 
       expect(data).toBeNull()
-      expect(bucket.get).not.toHaveBeenCalled()
+      expect(mocks.readKnowledgePack).not.toHaveBeenCalled()
     })
 
     it('returns null when the items belong to another user', async () => {
@@ -254,66 +224,36 @@ describe('loadKnowledgeSendData', () => {
   })
 
   describe('loadPack', () => {
-    it('does not touch R2 until loadPack is called', async () => {
+    it('does not read the pack until loadPack is called', async () => {
       seedProject()
-      await seedPack(buildPackText({ itemId: 'x', chunks: ['one'] }))
 
       await load()
 
-      expect(bucket.get).not.toHaveBeenCalled()
+      expect(mocks.readKnowledgePack).not.toHaveBeenCalled()
     })
 
-    it('reads, gunzips and validates a real gzip NDJSON pack', async () => {
-      seedProject()
-      await seedPack(buildPackText({
-        itemId: encodePublicId(11),
-        chunks: ['first chunk', 'second chunk'],
-      }))
+    it('reads the pack through readKnowledgePack at the pointer version',
+      async () => {
+        const pack = buildPack(encodePublicId(11))
 
-      const data = await load()
-      const pack = await data!.loadPack()
+        seedProject()
+        mocks.readKnowledgePack.mockResolvedValueOnce(pack)
 
-      expect(bucket.get).toHaveBeenCalledWith(PACK_KEY)
-      expect(pack?.header.items).toEqual([{
-        itemId: encodePublicId(11),
-        updatedAt: '2026-10-25T00:00:00.000Z',
-        chunks: 2,
-      }])
-      expect(pack?.lines).toEqual([
-        {
-          type: 'chunk',
-          itemId: encodePublicId(11),
-          ordinal: 0,
-          breadcrumb: 'Section 0',
-          text: 'first chunk',
-        },
-        {
-          type: 'chunk',
-          itemId: encodePublicId(11),
-          ordinal: 1,
-          breadcrumb: 'Section 1',
-          text: 'second chunk',
-        },
-      ])
-      expect(loggerSet).not.toHaveBeenCalled()
-    })
+        const data = await load()
 
-    it('preserves multi-byte text through gzip', async () => {
-      seedProject()
-      await seedPack(buildPackText({
-        itemId: encodePublicId(11),
-        chunks: ['Привіт, світе — 日本語'],
-      }))
-
-      const data = await load()
-      const pack = await data!.loadPack()
-
-      expect(pack?.lines[0]?.text).toBe('Привіт, світе — 日本語')
-    })
+        expect(await data!.loadPack()).toBe(pack)
+        expect(mocks.readKnowledgePack).toHaveBeenCalledTimes(1)
+        expect(mocks.readKnowledgePack).toHaveBeenCalledWith({
+          userId: USER_ID,
+          projectId: PROJECT_ID,
+          version: PACK_VERSION,
+        })
+        expect(loggerSet).not.toHaveBeenCalled()
+      })
 
     it('memoizes the pack per call', async () => {
       seedProject()
-      await seedPack(buildPackText({ itemId: 'x', chunks: ['one'] }))
+      mocks.readKnowledgePack.mockResolvedValue(buildPack('x'))
 
       const data = await load()
       const [first, second] = await Promise.all([
@@ -325,217 +265,45 @@ describe('loadKnowledgeSendData', () => {
       expect(first).not.toBeNull()
       expect(second).toBe(first)
       expect(third).toBe(first)
-      expect(bucket.get).toHaveBeenCalledTimes(1)
+      expect(mocks.readKnowledgePack).toHaveBeenCalledTimes(1)
     })
 
-    it('memoizes a failure too, without a second R2 read', async () => {
+    it('memoizes a null result too, without a second read', async () => {
       seedProject()
 
       const data = await load()
 
       expect(await data!.loadPack()).toBeNull()
       expect(await data!.loadPack()).toBeNull()
-      expect(bucket.get).toHaveBeenCalledTimes(1)
+      expect(mocks.readKnowledgePack).toHaveBeenCalledTimes(1)
     })
 
-    it('returns null without an R2 read when no pack was built', async () => {
+    it('returns null without a read when no pack was built', async () => {
       seedProject(null)
 
       const data = await load()
 
       expect(await data!.loadPack()).toBeNull()
-      expect(bucket.get).not.toHaveBeenCalled()
+      expect(mocks.readKnowledgePack).not.toHaveBeenCalled()
       expect(loggerSet).not.toHaveBeenCalled()
     })
 
-    it('returns null and logs when the pack object is missing', async () => {
+    it('loads each call of loadKnowledgeSendData separately', async () => {
       seedProject()
+      mocks.readKnowledgePack.mockResolvedValue(buildPack('x'))
 
-      const data = await load()
+      const first = await load()
+      const second = await load()
 
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-object-missing' } },
-      })
+      await first!.loadPack()
+      await second!.loadPack()
+
+      expect(mocks.readKnowledgePack).toHaveBeenCalledTimes(2)
     })
 
-    it('returns null and logs on a corrupt pack line without leaking text', async () => {
+    it('returns null and logs when readKnowledgePack rejects', async () => {
       seedProject()
-      await seedPack(
-        buildPackText({ itemId: 'x', chunks: ['one'] })
-        + `{"type":"chunk","text":"${SECRET_TEXT}\n`,
-      )
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-line-invalid' } },
-      })
-      expect(JSON.stringify(loggerSet.mock.calls)).not.toContain(SECRET_TEXT)
-    })
-
-    it('returns null and logs on a schema-invalid chunk line', async () => {
-      seedProject()
-      await seedPack(
-        buildPackText({ itemId: 'x', chunks: ['one'] })
-        + `${JSON.stringify({
-          type: 'chunk',
-          itemId: 'x',
-          ordinal: -1,
-          breadcrumb: '',
-          text: SECRET_TEXT,
-        })}\n`,
-      )
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-line-invalid' } },
-      })
-    })
-
-    it('returns null and logs on an invalid header', async () => {
-      seedProject()
-      await seedPack(`${JSON.stringify({ type: 'chunk' })}\n`)
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-header-invalid' } },
-      })
-    })
-
-    it('returns null and logs on an empty pack', async () => {
-      seedProject()
-      await seedPack('')
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-header-invalid' } },
-      })
-    })
-
-    it('returns null and logs when the object is not gzip', async () => {
-      seedProject()
-      bucket.objects.set(
-        PACK_KEY,
-        new TextEncoder().encode(buildPackText({
-          itemId: 'x',
-          chunks: [SECRET_TEXT],
-        })),
-      )
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-unreadable' } },
-      })
-    })
-
-    it('returns null and logs when the compressed object exceeds the cap', async () => {
-      seedProject()
-      bucket.get.mockResolvedValueOnce({
-        size: MAX_PACK_BYTES + 1,
-        body: toBody(await gzip(buildPackText({
-          itemId: 'x',
-          chunks: ['one'],
-        }))),
-      })
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-too-large' } },
-      })
-    })
-
-    it('aborts a gzip bomb that decompresses past the cap', async () => {
-      seedProject()
-      await seedPack(buildPackText({
-        itemId: 'x',
-        chunks: ['a'.repeat(MAX_PACK_BYTES + 1024)],
-      }))
-
-      const compressedSize = bucket.objects.get(PACK_KEY)!.byteLength
-      const data = await load()
-
-      expect(compressedSize).toBeLessThan(MAX_PACK_BYTES)
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-too-large' } },
-      })
-    })
-
-    it('returns null and logs when the pack has too many lines', async () => {
-      seedProject()
-      await seedPack(buildPackText({
-        itemId: 'x',
-        chunks: Array.from({ length: MAX_PACK_LINES + 1 }, () => 'a'),
-      }))
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-too-large' } },
-      })
-    })
-
-    it('loads a pack with exactly the maximum number of lines', async () => {
-      seedProject()
-      await seedPack(buildPackText({
-        itemId: 'x',
-        chunks: Array.from({ length: MAX_PACK_LINES - 1 }, () => 'a'),
-      }))
-
-      const data = await load()
-      const pack = await data!.loadPack()
-
-      expect(pack?.lines).toHaveLength(MAX_PACK_LINES - 1)
-      expect(loggerSet).not.toHaveBeenCalled()
-    })
-
-    it('returns null and logs when one line exceeds the line cap', async () => {
-      seedProject()
-      await seedPack(buildPackText({
-        itemId: 'x',
-        chunks: ['a'.repeat(MAX_PACK_LINE_LENGTH + 1)],
-      }))
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-too-large' } },
-      })
-    })
-
-    it('returns null and logs when the header version is not the pack version', async () => {
-      seedProject()
-      await seedPack(buildPackText({
-        itemId: 'x',
-        chunks: ['one'],
-        version: PACK_VERSION + 1,
-      }))
-
-      const data = await load()
-
-      expect(await data!.loadPack()).toBeNull()
-      expect(loggerSet).toHaveBeenCalledWith({
-        attributes: { knowledge: { error: 'pack-version-mismatch' } },
-      })
-    })
-
-    it('returns null and logs when the R2 read throws', async () => {
-      seedProject()
-      bucket.get.mockRejectedValueOnce(new Error('r2 timeout'))
+      mocks.readKnowledgePack.mockRejectedValueOnce(new Error('r2 timeout'))
 
       const data = await load()
 

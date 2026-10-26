@@ -2065,6 +2065,13 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^server\/utils\/knowledge\/pack\.ts$/,
+      tests: [
+        'tests/unit/utils/knowledge/send-data.spec.ts',
+        'tests/integration/api/chats-project-knowledge.spec.ts',
+      ],
+    },
+    {
       pattern: /^(server\/utils\/knowledge\/(access|ingest|body|rate-limit)\.ts|server\/api\/v1\/projects\/\[id\]\/knowledge\/.*\.ts)$/,
       tests: knowledgeIngestTests,
     },
@@ -2110,6 +2117,10 @@ export function getAffectedTests(changedFiles) {
         ...projectKnowledgeContractTests,
         ...projectKnowledgeRetrievalTests,
       ],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/knowledge-send-db\.ts$/,
+      tests: projectKnowledgeRetrievalTests,
     },
     {
       pattern: /^tests\/setup\/helpers\/knowledge-db\.ts$/,

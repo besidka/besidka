@@ -152,6 +152,11 @@ import {
 } from '~~/server/utils/ai/tool-loop'
 import { CHAT_SEARCH_INSTRUCTION } from '~~/server/utils/ai/chat-search-tools'
 import { loadKnowledgeSendData } from '~~/server/utils/knowledge/send-data'
+import type { KnowledgeSendData } from '~~/server/utils/knowledge/send-data'
+import {
+  commitKnowledgeChange,
+  ensureKnowledgePackFresh,
+} from '~~/server/utils/knowledge/pack'
 import {
   estimateHistoryTokens,
   holdsUntrustedKnowledge,
@@ -1320,6 +1325,7 @@ export default defineEventHandler(async (event) => {
     ].filter(Boolean).length,
     userMessageText,
     newMessageId: newMessage.id,
+    scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
     logger: aiLogger,
   })
   const knowledgeContext = knowledge?.context ?? null
@@ -2244,6 +2250,109 @@ function readMeasuredHistoryTokens(input: {
   }, 0)
 }
 
+type ScheduleBackgroundWork = (promise: Promise<unknown>) => void
+
+const KNOWLEDGE_REPAIR_THROTTLE_SECONDS = 600
+
+function knowledgeRepairThrottleKey(projectId: number): string {
+  return `knowledge:repair:${projectId}`
+}
+
+async function takeKnowledgeRepairThrottle(
+  projectId: number,
+): Promise<boolean> {
+  const kv = useKV()
+  const key = knowledgeRepairThrottleKey(projectId)
+
+  if (await kv.get(key)) {
+    return false
+  }
+
+  await kv.put(key, '1', {
+    expirationTtl: KNOWLEDGE_REPAIR_THROTTLE_SECONDS,
+  })
+
+  return true
+}
+
+async function repairKnowledgePack(input: {
+  userId: number
+  projectId: number
+  logger: LoggerLike
+}): Promise<void> {
+  try {
+    const isAllowed = await takeKnowledgeRepairThrottle(input.projectId)
+
+    if (!isAllowed) {
+      input.logger.set({
+        attributes: { knowledge: { packRepair: { skipped: 'throttled' } } },
+      })
+
+      return
+    }
+
+    await commitKnowledgeChange(input)
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        knowledge: { packRepair: { error: exceptionMessage(exception) } },
+      },
+    })
+  }
+}
+
+/**
+ * Keeps the project's knowledge pack healthy without ever delaying a send.
+ * A pack behind `knowledge_version` is rebuilt through `waitUntil`, while
+ * this send reads the previous pack. When the pointer says the pack is fresh
+ * but the object reads back as null (missing, corrupt or oversize), the
+ * returned `loadPack` schedules one repair: `ensureKnowledgePackFresh` would
+ * no-op on a fresh pointer, so the repair is a version bump plus a build
+ * under K1's lease, throttled to one per project per ten minutes through KV
+ * (a KV failure skips the repair). Without `waitUntil` nothing is scheduled.
+ */
+function scheduleKnowledgePackMaintenance(input: {
+  data: KnowledgeSendData
+  userId: number
+  projectId: number
+  scheduleBackgroundWork: ScheduleBackgroundWork | undefined
+  logger: LoggerLike
+}): KnowledgeSendData {
+  const { data, scheduleBackgroundWork } = input
+  const { version, packVersion } = data.state
+  const maintenanceInput = {
+    userId: input.userId,
+    projectId: input.projectId,
+    logger: input.logger,
+  }
+
+  if (!scheduleBackgroundWork || version <= 0) {
+    return data
+  }
+
+  if (packVersion === null || packVersion < version) {
+    scheduleBackgroundWork(ensureKnowledgePackFresh(maintenanceInput))
+
+    return data
+  }
+
+  let isRepairScheduled = false
+
+  return {
+    ...data,
+    loadPack: async () => {
+      const pack = await data.loadPack()
+
+      if (!pack && !isRepairScheduled) {
+        isRepairScheduled = true
+        scheduleBackgroundWork(repairKnowledgePack(maintenanceInput))
+      }
+
+      return pack
+    },
+  }
+}
+
 async function prepareKnowledgeMediaTurns(
   parts: KnowledgeMediaFilePart[],
   logger: LoggerLike,
@@ -2331,6 +2440,7 @@ async function resolveSendKnowledge(input: {
   toolGroupCount: number
   userMessageText: string | null
   newMessageId: string
+  scheduleBackgroundWork: ScheduleBackgroundWork | undefined
   logger: LoggerLike
 }): Promise<SendKnowledge | null> {
   const projectId = input.projectId
@@ -2362,7 +2472,13 @@ async function resolveSendKnowledge(input: {
 
     const family = resolveKnowledgeTokenFamily(input.model)
     const context = await resolveProjectKnowledgeContext({
-      data,
+      data: scheduleKnowledgePackMaintenance({
+        data,
+        userId: input.userId,
+        projectId,
+        scheduleBackgroundWork: input.scheduleBackgroundWork,
+        logger: input.logger,
+      }),
       model: input.model,
       toolsAllowed: input.toolsAllowed,
       messageTokens: estimateNewMessageTokens(
