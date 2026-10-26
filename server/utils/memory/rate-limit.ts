@@ -46,13 +46,13 @@ const MEMORY_RATE_LIMIT_KEY_PREFIX = 'memory-rate-limit'
  * Workers binding, works on preview deployments). `write` (60 per minute) is
  * shared by every route that changes memory entries or starts paid memory
  * work: entry create, edit and delete, reset, delete-extracted, import,
- * extract-now and backfill start. "Tell Besidka what to remember" has its own
- * buckets: `instruct-preview` runs a model on the user's key, so it is
- * limited harder than `instruct-apply`. `legal-consent` covers the consent
- * and transfer-consent grant and withdraw routes, and `share-check` the
- * share personal-data check (it may call TypeSafe AI on the user's key).
- * Answers 429 with a
- * `Retry-After` header when the event is given; a KV failure propagates, so
+ * extract-now, backfill start and excluding a chat from memory. "Tell
+ * Besidka what to remember" has its own buckets: `instruct-preview` runs a
+ * model on the user's key, so it is limited harder than `instruct-apply`.
+ * `legal-consent` covers the consent and transfer-consent grant and withdraw
+ * routes, and `share-check` the share personal-data check (it may call
+ * TypeSafe AI on the user's key). Answers 429 with a `Retry-After` header
+ * when the event is given; a KV failure propagates, so
  * the limit fails closed.
  */
 export async function enforceMemoryRateLimit(

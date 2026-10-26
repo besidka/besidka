@@ -89,6 +89,14 @@ const ROUTES: RouteCase[] = [
     event: () => requestEvent({ body: {} }),
   },
   {
+    name: 'chat memory exclusion',
+    path: '../../../server/api/v1/chats/[slug]/memory.patch',
+    event: () => requestEvent({
+      body: { excluded: 'yes' },
+      params: { slug: '01JD0000000000000000000000' },
+    }),
+  },
+  {
     name: 'backfill start',
     path: '../../../server/api/v1/memory/backfill/index.post',
     event: () => requestEvent({ body: { restart: 'yes' } }),

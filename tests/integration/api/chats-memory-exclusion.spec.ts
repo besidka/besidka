@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
+import { createFakeKnowledgeKv } from '../../setup/helpers/knowledge-api'
 import {
   createMemoryExtractionTestDb,
   seedChat,
@@ -49,6 +51,14 @@ describe('PATCH /api/v1/chats/:slug/memory', () => {
     userId = await seedUser(testDb.db, { memoryEnabled: true })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
+    vi.stubGlobal(
+      'getRequestHeader',
+      (event: { headers?: Record<string, string> }, name: string) => {
+        return event.headers?.[name.toLowerCase()]
+      },
+    )
+    vi.stubGlobal('useKV', () => createFakeKnowledgeKv())
     vi.stubGlobal(
       'readValidatedBody',
       async (event: { body: unknown }, parser: (body: unknown) => unknown) => {
@@ -69,12 +79,20 @@ describe('PATCH /api/v1/chats/:slug/memory', () => {
     testDb.close()
   })
 
-  async function call(slug: string, body: unknown) {
+  async function call(
+    slug: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ) {
     const handler = await loadHandler()
 
     mocks.params = { slug }
 
-    return await handler({ body } as never)
+    return await handler({
+      body,
+      headers,
+      res: { headers: new Headers() },
+    } as never)
   }
 
   async function readChatRow(chatId: string) {
@@ -94,6 +112,17 @@ describe('PATCH /api/v1/chats/:slug/memory', () => {
 
     await expect(call(chat.slug, { excluded: true }))
       .rejects.toMatchObject({ status: 401 })
+    expect((await readChatRow(chat.id))?.memoryExcluded).toBeNull()
+  })
+
+  it('rejects a cross-site request before touching the chat', async () => {
+    const chat = await seedChat(testDb.db, userId)
+
+    await expect(call(
+      chat.slug,
+      { excluded: true },
+      { 'sec-fetch-site': 'cross-site' },
+    )).rejects.toMatchObject({ status: 403 })
     expect((await readChatRow(chat.id))?.memoryExcluded).toBeNull()
   })
 

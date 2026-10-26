@@ -20,6 +20,8 @@ const bodyRules = z.object({
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
 
+  assertNotCrossSiteRequest(event)
+
   const params = paramsRules.safeParse(getDecodedRouterParams(event))
 
   if (params.error) {

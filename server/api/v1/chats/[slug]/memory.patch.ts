@@ -9,6 +9,7 @@ import {
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 /**
  * PATCH /chats/:slug/memory
@@ -21,6 +22,9 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  */
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
+
+  assertNotCrossSiteRequest(event)
+
   const params = z.object({
     slug: z.ulid(),
   }).safeParse(getDecodedRouterParams(event))
@@ -33,6 +37,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const session = await useUserSession()
+
+  if (!session) {
+    return useUnauthorizedError()
+  }
+
+  await enforceMemoryRateLimit('write', parseInt(session.user.id), event)
+
   const body = await readValidatedBody(event, z.object({
     excluded: z.boolean(),
   }).safeParse)
@@ -43,12 +55,6 @@ export default defineEventHandler(async (event) => {
       status: 400,
       why: body.error.message,
     })
-  }
-
-  const session = await useUserSession()
-
-  if (!session) {
-    return useUnauthorizedError()
   }
 
   const db = useDb()
