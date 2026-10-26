@@ -2022,7 +2022,8 @@ nullable with no SQL default, so the migration is a plain `ADD COLUMN`.
 **Policy.** Thresholds, timeouts and size caps are constants in
 `shared/utils/jev-policy.ts`. The thresholds come from the 2026-10-26
 synthetic eval and are re-tuned on real traffic. Timeouts: 800 ms on the send
-path, 2,500 ms in the background.
+path, 1,500 ms for the share check (`JEV_SHARE_CHECK_TIMEOUT_MS`, a modal the
+user is already waiting on), 2,500 ms in the background.
 
 | Role id | What is sent, and when | Unavailable |
 |---|---|---|
@@ -2031,7 +2032,7 @@ path, 2,500 ms in the background.
 | `extractionPrefilter` | Before memory is generated from a chat (opt-in extraction, backfill from past chats, project Refresh; never extract-now or import): chat text after never-store removal, in chunks of up to about 8,000 tokens. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | Unsure or unavailable: extract as usual |
 | `injectionScreening` | Project knowledge files and notes, and Brave and Exa results fetched through Besidka. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | Text used unscreened |
 | `rerank` | Past-chat and project-knowledge search: the query and excerpts of about 300 tokens each, up to 30 per search | Original order |
-| `sharePiiCheck` | Before a public share link is published: the chat text being shared. Warning only, never blocks | Generic "check before sharing" reminder |
+| `sharePiiCheck` | When the share window opens, before a public link is published: the chat text being shared, with never-store values, emails and phone numbers removed. Warning only, never blocks (see "Share check" below) | Generic "check before sharing" reminder, next to the built-in detector warnings |
 | `pastChatRetrieval` | Models without tool calling, each message: the message and recent turns. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts | No key or role off: no pre-search. Jev error or timeout: searches anyway (the one role that fails toward acting) |
 
 **Logging.** Each role writes one wide-event field, `attributes.<role>Jev`
@@ -2488,6 +2489,93 @@ The logic lives in `server/utils/memory/extract-prefilter.ts`.
   ("Nothing new worth remembering in that chat."); extract-now is never
   pre-filtered, so the toolbar does not show it today. The backfill sheet's
   "Chats skipped" counter includes these skips.
+
+#### Share check (`sharePiiCheck`)
+
+A warning in the share modal that the chat may hold personal data. It never
+blocks Generate and never changes what is shared.
+
+**Endpoint.** `POST /api/v1/chats/[slug]/share/check` (next to the other share
+routes) takes `{ showFiles, showMetadata }` and returns
+`{ warnings: [{ kind, source }], checked }`. It never returns or logs text.
+It is ownership-scoped (`chats.slug` plus `user_id`, else 404) and limited by
+the `share-check` bucket of `enforceMemoryRateLimit` (20 per minute, one
+counter per user). It is not behind `requireLegalConsent`, because it stores
+nothing and the deterministic half needs no key; only the Jev call is gated on
+`hasUserLegalConsent`, so a user without current consent gets detector
+warnings and `checked: false`.
+
+**What is read.** `collectSharedChatSegments` in
+`server/utils/chats/share-pii-check.ts` builds the text a visitor would see:
+the title, then each user and assistant message through `filterPublicParts`
+(`server/utils/chats/share-public-parts.ts`, the function the shared view uses
+too), taking text and reasoning parts, and file names only when
+`showFiles`. Tool parts, images and file contents are not read.
+`showMetadata` is accepted for contract symmetry but exposes only timestamps,
+usage and tool names, so it changes nothing and the modal does not re-check on
+that toggle.
+
+**Order.**
+
+1. Deterministic detectors, always: email and phone patterns (reserved
+   example domains and `.test` addresses are ignored; the phone patterns need
+   a `+` prefix with 8 to 15 digits, or a 9 to 12 digit national grouping with
+   a 2 or 3 digit lead, so numeric tables and dates do not fire) plus the
+   never-store detectors from `compliance.ts` (payment card by Luhn, IBAN,
+   PESEL, keyword-gated tax numbers including РНОКПП, passport). A bare
+   РНОКПП without a keyword is left to Jev. Secrets (keys, JWTs, credentials)
+   are deliberately not part of this warning. One `{ kind, source: 'detector' }`
+   per kind.
+2. Every match is replaced by `[redacted]` in the text kept for Jev, including
+   matches that raised no warning (a reserved-domain email, say).
+3. Jev, only with a saved key, the role on and current legal consent
+   (`resolveJevRoleModel`, then `hasUserLegalConsent`): the redacted segments
+   are packed into chunks of up to `JEV_SHARE_PII_CHECK.maxChunkTokens` (25,000
+   estimated tokens, the conservative default family so Cyrillic is not
+   undercounted), and one oversized message is split in halves. Each chunk is
+   one `p1_personal` question under the `chat` state key through `jevDecide`,
+   sequentially, sharing one `AbortSignal.timeout(1500)`. A score at or above
+   0.30 adds `{ kind: 'personal-data', source: 'typesafe' }` and stops.
+
+**`checked`.** True only when Jev answered for every chunk it was asked about
+(or flagged one), or when there was no text to check. False without a key,
+role or consent, and on any Jev failure (401, 429, 529, timeout, network,
+refusal, a missing answer). Detector warnings are returned either way.
+
+**Logging.** `attributes.sharePiiCheckJev` through `recordJevRoleLog`: calls,
+questions, input tokens, latency, scores, and counts of chunks, detector
+warnings and a flag. Existing keys `userId` and `chatSlug` are the only other
+fields. No text.
+
+**Modal.** `ShareModal.client.vue` runs `runShareCheck` from `useChatShare()`
+once the modal is open, its share settings have loaded and a debounce
+(`JEV_SHARE_CHECK_DEBOUNCE_MS`, 400 ms) has passed, and again when "Show images
+& file names" changes. The request is aborted when the inputs change or the
+modal closes; any failure, including a 429, becomes `status: 'error'` with no
+toast. One slot sits next to the files and memory notes and always shows one
+of four states: a skeleton, the warning, a quiet "no personal data found"
+(`checked: true`), or "Check the chat for personal data before sharing."
+(`checked: false` without warnings, or an error). The warning names up to
+three kinds, says anyone with the link can read the chat, that the user's own
+contact details count, and adds an emphasized line about search engines while
+indexing is on (client-side, no re-check). The slot is `min-h-36 sm:min-h-28`
+in every state. The height was computed, not measured: a DaisyUI alert is 24 px
+of block padding plus a 2 px border and 20 px per `text-sm` line, and the
+longest state (the warning with the indexing sentence, about 180 characters)
+wraps to 4 lines at the 512 px modal and about 5 on a 375 px phone, so 112 px
+and 144 px leave one spare line. A previous result stays on screen while a
+re-check is pending, so only the very first check shows the skeleton.
+
+**Safe direction.** No key, role off, no consent, any Jev failure, or a failed
+request: the detector warnings (if any) plus the generic reminder, Generate
+untouched.
+
+**Memory page skeleton.** `memory-checks-skeleton` in
+`app/components/Profile/Memory/ExtraChecks.vue` is now two `h-5` lines in a
+`grid gap-1`, the height of the saved state (two `text-sm` lines), so the card
+no longer jumps when the key status resolves. The content wrapper is
+`min-h-11` (the same two lines), so the one-line "add a key" state takes the
+same height and users without a key see no shift either.
 
 ## 4. Cost and performance
 

@@ -29,6 +29,11 @@ export const MEMORY_RATE_LIMITS = {
     max: 20,
     why: 'Too many consent changes in a short time.',
   },
+  'share-check': {
+    window: 60,
+    max: 20,
+    why: 'Too many share checks in a short time.',
+  },
 } as const satisfies Record<string, MemoryRateLimitRule>
 
 export type MemoryRateLimitBucket = keyof typeof MEMORY_RATE_LIMITS
@@ -44,7 +49,9 @@ const MEMORY_RATE_LIMIT_KEY_PREFIX = 'memory-rate-limit'
  * extract-now and backfill start. "Tell Besidka what to remember" has its own
  * buckets: `instruct-preview` runs a model on the user's key, so it is
  * limited harder than `instruct-apply`. `legal-consent` covers the consent
- * and transfer-consent grant and withdraw routes. Answers 429 with a
+ * and transfer-consent grant and withdraw routes, and `share-check` the
+ * share personal-data check (it may call TypeSafe AI on the user's key).
+ * Answers 429 with a
  * `Retry-After` header when the event is given; a KV failure propagates, so
  * the limit fails closed.
  */
