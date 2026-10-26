@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, ne } from 'drizzle-orm'
 import type {
   KnowledgeItem,
   KnowledgeMode,
@@ -88,6 +88,7 @@ async function queryKnowledgeSendData(input: {
     .where(and(
       eq(schema.projectKnowledgeItems.userId, input.userId),
       eq(schema.projectKnowledgeItems.projectId, input.projectId),
+      ne(schema.projectKnowledgeItems.extractStatus, 'flagged'),
     ))
     .orderBy(asc(schema.projectKnowledgeItems.id))
 
@@ -136,9 +137,11 @@ async function queryKnowledgeSendData(input: {
  * project that never used knowledge costs one D1 read and no R2 call. The
  * pack is fetched only when `loadPack()` is called, once per call of this
  * function, through `readKnowledgePack` (which owns every size, line and
- * version check and resolves to null instead of throwing). A D1 failure
- * resolves to null with a message-only log entry, so knowledge never fails a
- * send.
+ * version check and resolves to null instead of throwing). Items flagged by
+ * prompt-injection screening are left out here, so their text, index line,
+ * image and native PDF never reach a send until the user allows them. A D1
+ * failure resolves to null with a message-only log entry, so knowledge never
+ * fails a send.
  */
 export async function loadKnowledgeSendData(input: {
   userId: number

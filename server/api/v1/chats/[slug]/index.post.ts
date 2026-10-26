@@ -238,6 +238,9 @@ import {
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import { createExternalSearchBudget } from '~~/server/utils/search/search-budget'
 import {
+  resolveExternalSearchScreener,
+} from '~~/server/utils/search/injection-screening'
+import {
   DEFAULT_WEB_SEARCH_MODE,
   WEB_SEARCH_MODES,
 } from '#shared/utils/auto-web-search'
@@ -1232,12 +1235,16 @@ export default defineEventHandler(async (event) => {
         : undefined
 
   const externalSearchBudget = createExternalSearchBudget()
+  const externalSearchScreener = externalSearchProvider
+    ? await resolveExternalSearchScreener({ db, userId, logger: aiLogger })
+    : null
 
   if (externalSearchProvider === 'brave' && encryptedBraveApiKey) {
     const { tools: braveTools } = await getBraveWebSearchTools(
       await useDecryptText(encryptedBraveApiKey),
       externalSearchBudget,
       aiLogger,
+      externalSearchScreener,
     )
 
     parsedTools = {
@@ -1252,6 +1259,7 @@ export default defineEventHandler(async (event) => {
       exaSearchLevel,
       externalSearchBudget,
       aiLogger,
+      externalSearchScreener,
     )
 
     parsedTools = {

@@ -508,6 +508,10 @@ describe('useProjectKnowledge', () => {
         run: knowledge => knowledge.patchItem('item-1', { pinned: true }),
       },
       {
+        name: 'allowItem',
+        run: knowledge => knowledge.allowItem('item-1'),
+      },
+      {
         name: 'createNote',
         run: knowledge => knowledge.createNote({ title: 'T', body: 'B' }),
       },
@@ -663,6 +667,26 @@ describe('useProjectKnowledge', () => {
       expect(summaryData.value?.items[0]?.pinned).toBe(true)
       expect(summaryData.value?.items).toHaveLength(1)
     })
+
+    it('allowItem patches the allow route, replaces the item and refreshes',
+      async () => {
+        const allowed = createItem({ extractStatus: 'ready' })
+
+        mocks.fetchMock.mockResolvedValueOnce(allowed)
+
+        const knowledge = useProjectKnowledge('project-shape-allow')
+        const outcome = await knowledge.allowItem('item-1')
+
+        await flushAsync()
+
+        expect(mocks.fetchMock).toHaveBeenCalledWith(
+          '/api/v1/projects/project-shape-allow/knowledge/items/item-1/allow',
+          { method: 'PATCH' },
+        )
+        expect(outcome).toEqual({ ok: true, result: allowed })
+        expect(summaryData.value?.items[0]?.extractStatus).toBe('ready')
+        expect(refreshSummary).toHaveBeenCalled()
+      })
 
     it('createNote posts the note, appends it and refreshes', async () => {
       const note = createItem({ id: 'note-1', kind: 'note', title: 'Plan' })

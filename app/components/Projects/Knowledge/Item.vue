@@ -74,6 +74,16 @@
       >
         failed – retry
       </button>
+      <button
+        v-else-if="item.extractStatus === 'flagged'"
+        type="button"
+        class="badge badge-soft badge-warning badge-sm cursor-pointer"
+        title="Possible prompt injection, review it"
+        data-testid="knowledge-item-status"
+        @click="emit('edit', item)"
+      >
+        needs review
+      </button>
       <span
         v-else
         class="badge badge-soft badge-sm"

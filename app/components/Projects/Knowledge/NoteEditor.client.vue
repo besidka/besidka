@@ -63,6 +63,12 @@
             v-else
             class="grid gap-4"
           >
+            <ProjectsKnowledgeInjectionReview
+              v-if="isReviewNeeded"
+              :is-allowing="isAllowing"
+              :disabled="isSaving"
+              @allow="allow"
+            />
             <div
               v-if="isRepairNeeded"
               role="status"
@@ -296,11 +302,12 @@ const props = defineProps<{
   item: KnowledgeItem | null
   createNote: (
     input: KnowledgeNoteCreateInput,
-  ) => Promise<ProjectKnowledgeOutcome<unknown>>
+  ) => Promise<ProjectKnowledgeOutcome<KnowledgeItem>>
   updateNote: (
     id: string,
     input: KnowledgeNoteUpdateInput,
-  ) => Promise<ProjectKnowledgeOutcome<unknown>>
+  ) => Promise<ProjectKnowledgeOutcome<KnowledgeItem>>
+  allowItem: (id: string) => Promise<ProjectKnowledgeOutcome<unknown>>
   getItemText: (
     id: string,
   ) => Promise<ProjectKnowledgeOutcome<KnowledgeItemTextResult>>
@@ -326,6 +333,7 @@ const originalBody = shallowRef<string>('')
 const activeTab = shallowRef<NoteTab>('write')
 const isLoadingText = shallowRef<boolean>(false)
 const isSaving = shallowRef<boolean>(false)
+const isAllowing = shallowRef<boolean>(false)
 const loadError = shallowRef<ProjectKnowledgeError | null>(null)
 const saveError = shallowRef<ProjectKnowledgeError | null>(null)
 
@@ -355,6 +363,10 @@ const isRepairNeeded = computed<boolean>(() => {
   return props.item?.extractStatus === 'failed'
 })
 
+const isReviewNeeded = computed<boolean>(() => {
+  return props.item?.extractStatus === 'flagged'
+})
+
 const repairMessage = computed<string>(() => {
   return describeKnowledgeExtractError(props.item?.extractError ?? null)
 })
@@ -371,6 +383,7 @@ const hasChanges = computed<boolean>(() => {
 
 const isSaveDisabled = computed<boolean>(() => {
   return isSaving.value
+    || isAllowing.value
     || isLoadingText.value
     || !!loadError.value
     || !normalizedTitle.value
@@ -469,7 +482,40 @@ async function save() {
     return
   }
 
-  useInfoMessage('Saved', item ? 'Note updated.' : 'Note added.')
+  if (outcome.result.extractStatus === 'flagged') {
+    useWarningMessage(
+      'Saved for review',
+      'Possible prompt injection found. The note stays out of your chats '
+      + 'until you allow it.',
+    )
+  } else {
+    useInfoMessage('Saved', item ? 'Note updated.' : 'Note added.')
+  }
+
+  open.value = false
+}
+
+async function allow() {
+  const item = props.item
+
+  if (!item || isAllowing.value) {
+    return
+  }
+
+  isAllowing.value = true
+  saveError.value = null
+
+  const outcome = await props.allowItem(item.id)
+
+  isAllowing.value = false
+
+  if (!outcome.ok) {
+    saveError.value = outcome.parsed
+
+    return
+  }
+
+  useInfoMessage('Allowed', 'This note is used in your chats again.')
   open.value = false
 }
 

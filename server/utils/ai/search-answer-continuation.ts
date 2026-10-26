@@ -1007,6 +1007,13 @@ export function buildSearchResultsContext(
         renderedResults += 1
         renderedChars += rendered.length
       }
+
+      const notice = readStringField(searchResult.output, 'notice')
+
+      if (notice) {
+        lines.push(notice)
+        renderedChars += notice.length
+      }
     } else {
       const remainingChars = SEARCH_ANSWER_CONTEXT_MAX_CHARS - renderedChars
       const rendered = truncate(

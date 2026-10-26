@@ -8,12 +8,15 @@ import { createKnowledgeItem } from '../../../../setup/helpers/knowledge-ui-fixt
 
 const mocks = vi.hoisted(() => ({
   info: vi.fn(),
+  warning: vi.fn(),
   createNote: vi.fn(),
   updateNote: vi.fn(),
+  allowItem: vi.fn(),
   getItemText: vi.fn(),
 }))
 
 mockNuxtImport('useInfoMessage', () => mocks.info)
+mockNuxtImport('useWarningMessage', () => mocks.warning)
 
 enableAutoUnmount(afterEach)
 
@@ -37,6 +40,7 @@ async function mountEditor(item: KnowledgeItem | null = null) {
       item,
       createNote: mocks.createNote,
       updateNote: mocks.updateNote,
+      allowItem: mocks.allowItem,
       getItemText: mocks.getItemText,
       open: false,
     },
@@ -70,6 +74,9 @@ function isSaveDisabled(wrapper: Wrapper): boolean {
 describe('Projects/Knowledge/NoteEditor', () => {
   beforeEach(() => {
     mocks.info.mockReset()
+    mocks.warning.mockReset()
+    mocks.allowItem.mockReset()
+    mocks.allowItem.mockResolvedValue({ ok: true, result: {} })
     mocks.createNote.mockReset()
     mocks.updateNote.mockReset()
     mocks.getItemText.mockReset()
@@ -446,6 +453,57 @@ describe('Projects/Knowledge/NoteEditor', () => {
       expect(wrapper.find('[data-testid="knowledge-note-body"]').exists())
         .toBe(false)
       expect(isSaveDisabled(wrapper)).toBe(true)
+    })
+  })
+
+  describe('a note flagged as a possible prompt injection', () => {
+    const flaggedNote = createKnowledgeItem({
+      ...note,
+      extractStatus: 'flagged',
+    })
+
+    it('explains the flag and allows the note', async () => {
+      const wrapper = await mountEditor(flaggedNote)
+
+      expect(byTestId(wrapper, 'knowledge-item-injection-review').text())
+        .toContain('Possible prompt injection, review it')
+
+      await byTestId(wrapper, 'knowledge-item-allow').trigger('click')
+      await flushPromises()
+
+      expect(mocks.allowItem).toHaveBeenCalledWith('note-1')
+      expect(mocks.info).toHaveBeenCalledWith(
+        'Allowed',
+        'This note is used in your chats again.',
+      )
+      expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
+    })
+
+    it('does not offer a repair save for a flagged note', async () => {
+      const wrapper = await mountEditor(flaggedNote)
+
+      expect(wrapper.find('[data-testid="knowledge-note-repair"]').exists())
+        .toBe(false)
+      expect(isSaveDisabled(wrapper)).toBe(true)
+    })
+
+    it('warns when a saved note comes back flagged', async () => {
+      mocks.createNote.mockResolvedValue({
+        ok: true,
+        result: { ...note, extractStatus: 'flagged' },
+      })
+
+      const wrapper = await mountEditor()
+
+      await fill(wrapper, 'Plan', 'Some body')
+      await byTestId(wrapper, 'knowledge-note-save').trigger('click')
+      await flushPromises()
+
+      expect(mocks.warning).toHaveBeenCalledWith(
+        'Saved for review',
+        expect.stringContaining('Possible prompt injection found.'),
+      )
+      expect(mocks.info).not.toHaveBeenCalled()
     })
   })
 

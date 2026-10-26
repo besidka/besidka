@@ -4,6 +4,7 @@ import type {
   KnowledgeCommitInput,
   KnowledgeFolderSyncInput,
   KnowledgeItemInput,
+  KnowledgeItemsAddResult,
   KnowledgePrepareOptions,
   KnowledgeSyncResult,
   KnowledgeSyncSummary,
@@ -90,6 +91,7 @@ interface SettledItem {
   item: PreparedItem
   outcome: 'created' | 'duplicate' | 'failed'
   message: string | null
+  isFlagged?: boolean
 }
 
 interface SendResult {
@@ -117,6 +119,7 @@ const FOLDER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 const CREATED_STATUSES: readonly KnowledgeUploadEntryStatus[] = [
   'ready',
   'no-text',
+  'flagged',
 ]
 
 const CONFLICT_STATUS = 409
@@ -877,13 +880,31 @@ export function useKnowledgeUpload(
 
   function settleBatchResult(
     sentItems: PreparedItem[],
-    skippedIndexes: Set<number>,
+    result: KnowledgeItemsAddResult,
   ): SettledItem[] {
+    const skippedIndexes = new Set<number>(
+      result.skipped.map(skipped => skipped.index),
+    )
+    const createdCount = sentItems.length - skippedIndexes.size
+    const createdItems = result.items.length === createdCount
+      ? result.items
+      : []
+    let createdIndex = 0
+
     return sentItems.map((item, index) => {
+      if (skippedIndexes.has(index)) {
+        return { item, outcome: 'duplicate', message: null }
+      }
+
+      const createdItem = createdItems[createdIndex]
+
+      createdIndex++
+
       return {
         item,
-        outcome: skippedIndexes.has(index) ? 'duplicate' : 'created',
+        outcome: 'created',
         message: null,
+        isFlagged: createdItem?.extractStatus === 'flagged',
       }
     })
   }
@@ -908,10 +929,7 @@ export function useKnowledgeUpload(
       })
 
       if (outcome.ok) {
-        settled.push(...settleBatchResult(
-          [item],
-          new Set<number>(outcome.result.skipped.map(skipped => skipped.index)),
-        ))
+        settled.push(...settleBatchResult([item], outcome.result))
 
         continue
       }
@@ -943,10 +961,7 @@ export function useKnowledgeUpload(
 
     if (outcome.ok) {
       return {
-        settled: settleBatchResult(
-          sentItems,
-          new Set<number>(outcome.result.skipped.map(skipped => skipped.index)),
-        ),
+        settled: settleBatchResult(sentItems, outcome.result),
         failure: null,
         hasCommitted: commit,
       }
@@ -963,6 +978,18 @@ export function useKnowledgeUpload(
       failure: outcome.parsed.status === CONFLICT_STATUS ? null : failure,
       hasCommitted: false,
     }
+  }
+
+  function settledEntryStatus(
+    settledItem: SettledItem,
+  ): KnowledgeUploadEntryStatus {
+    if (settledItem.isFlagged) {
+      return 'flagged'
+    }
+
+    return settledItem.item.payload.extractStatus === 'no-text'
+      ? 'no-text'
+      : 'ready'
   }
 
   function applySettled(settled: SettledItem[]): void {
@@ -985,10 +1012,7 @@ export function useKnowledgeUpload(
         return { ...entry, status: 'skipped-duplicate', error: null }
       }
 
-      const status: KnowledgeUploadEntryStatus
-        = settledItem.item.payload.extractStatus === 'no-text'
-          ? 'no-text'
-          : 'ready'
+      const status = settledEntryStatus(settledItem)
 
       return { ...entry, status, error: null }
     })

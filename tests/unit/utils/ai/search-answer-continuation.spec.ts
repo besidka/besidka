@@ -161,6 +161,27 @@ describe('buildSearchResultsContext', () => {
     expect(context).toContain('Version 2 shipped.')
   })
 
+  it('keeps the withheld-results notice of a screened search', () => {
+    const notice = '1 search result was withheld as a possible prompt '
+      + 'injection.'
+    const context = buildSearchResultsContext([{
+      toolName: SEARCH_TOOL_NAME,
+      input: { query: 'besidka release' },
+      output: {
+        provider: 'brave',
+        results: [{
+          title: 'Release notes',
+          url: 'https://example.com/notes',
+          snippet: 'Version 2 shipped.',
+        }],
+        notice,
+      },
+    }])
+
+    expect(context).toContain('1. Release notes')
+    expect(context).toContain(notice)
+  })
+
   it('renders a failed search and an opaque output without throwing', () => {
     const context = buildSearchResultsContext([
       {

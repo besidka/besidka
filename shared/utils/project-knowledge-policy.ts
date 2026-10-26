@@ -17,7 +17,16 @@ export const knowledgeDecisionReasons = [
 
 export const knowledgeItemKinds = ['file', 'note'] as const
 
-export const knowledgeExtractStatuses = ['ready', 'no-text', 'failed'] as const
+export const knowledgeUploadExtractStatuses = [
+  'ready',
+  'no-text',
+  'failed',
+] as const
+
+export const knowledgeExtractStatuses = [
+  ...knowledgeUploadExtractStatuses,
+  'flagged',
+] as const
 
 export const knowledgeExtractors = [
   'text',

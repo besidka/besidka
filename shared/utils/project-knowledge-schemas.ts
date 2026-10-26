@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import {
   KNOWLEDGE_LIMITS,
-  knowledgeExtractStatuses,
+  knowledgeUploadExtractStatuses,
   knowledgeExtractors,
   knowledgeModes,
 } from '#shared/utils/project-knowledge-policy'
@@ -159,7 +159,7 @@ export const knowledgeItemCreateSchema = z
       .refine(value => value !== 'note', {
         message: 'Extractor must not be "note" for files',
       }),
-    extractStatus: z.enum(knowledgeExtractStatuses),
+    extractStatus: z.enum(knowledgeUploadExtractStatuses),
     extractError: z.string().max(MAX_EXTRACT_ERROR_CHARS).nullable().optional(),
     pageCount: z.number()
       .int()

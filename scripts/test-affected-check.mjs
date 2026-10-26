@@ -114,6 +114,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/jev-check.spec.ts',
     'tests/integration/api/memory-jev.spec.ts',
   ]
+  const jevInjectionScreeningTests = [
+    'tests/unit/utils/jev/injection-screening.spec.ts',
+    'tests/integration/api/projects-knowledge-injection-screening.spec.ts',
+    'tests/integration/api/projects-knowledge-real-pack.spec.ts',
+    'tests/integration/api/chats-external-search.spec.ts',
+  ]
   const jevRerankTests = [
     'tests/unit/utils/jev/rerank.spec.ts',
     'tests/unit/utils/memory/tools/search-chats-rerank.spec.ts',
@@ -128,6 +134,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/jev-policy.spec.ts',
     'tests/integration/api/chats-share-check.spec.ts',
     ...memoryJevTests,
+    ...jevInjectionScreeningTests,
   ]
   const autoWebSearchTests = [
     'tests/unit/utils/chats/auto-web-search.spec.ts',
@@ -199,6 +206,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/projects-knowledge-ownership.spec.ts',
     'tests/integration/api/projects-knowledge-items.spec.ts',
     'tests/integration/api/projects-knowledge-notes.spec.ts',
+    'tests/integration/api/projects-knowledge-injection-screening.spec.ts',
     'tests/integration/api/projects-knowledge-commit.spec.ts',
     'tests/integration/api/projects-knowledge-summary.spec.ts',
     'tests/integration/api/projects-knowledge-real-pack.spec.ts',
@@ -1610,6 +1618,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/utils\/memory\/tools\/.*\.ts|server\/utils\/ai\/(chat-search-tools|memory-tools)\.ts)$/,
       tests: chatSearchToolTests,
+    },
+    {
+      pattern: /^server\/utils\/(knowledge|search)\/injection-screening\.ts$/,
+      tests: jevInjectionScreeningTests,
     },
     {
       pattern: /^shared\/utils\/past-chat-retrieval\.ts$/,

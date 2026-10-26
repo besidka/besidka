@@ -838,6 +838,36 @@ describe('useKnowledgeUpload', () => {
       ])
       expect(upload.phase.value).toBe('done')
     })
+
+    it('marks items the server flagged as possible prompt injections',
+      async () => {
+        const { upload } = createUpload()
+
+        itemsResponder = (body) => {
+          return {
+            items: [
+              createKnowledgeItem(body.items[0]),
+              { ...createKnowledgeItem(body.items[2]), extractStatus: 'flagged' },
+            ],
+            skipped: [{ index: 1, reason: 'duplicate' }],
+            version: 1,
+            packVersion: 1,
+          }
+        }
+
+        await prepareAndStart(upload, [
+          createSource('a.md'),
+          createSource('b.md'),
+          createSource('c.md'),
+        ])
+
+        expect(upload.entries.value.map(entry => entry.status)).toEqual([
+          'ready',
+          'skipped-duplicate',
+          'flagged',
+        ])
+        expect(upload.phase.value).toBe('done')
+      })
   })
 
   describe('batching', () => {

@@ -138,6 +138,22 @@ describe('Projects/Knowledge/Item', () => {
     expect(wrapper.emitted('edit')).toEqual([[item]])
   })
 
+  it('marks an item flagged as a possible prompt injection for review',
+    async () => {
+      const item = createKnowledgeItem({ extractStatus: 'flagged' })
+      const wrapper = await mountItem(item)
+      const badge = wrapper.get('[data-testid="knowledge-item-status"]')
+
+      expect(badge.element.tagName).toBe('BUTTON')
+      expect(badge.text()).toBe('needs review')
+      expect(badge.attributes('title'))
+        .toBe('Possible prompt injection, review it')
+
+      await badge.trigger('click')
+
+      expect(wrapper.emitted('edit')).toEqual([[item]])
+    })
+
   it('hides tokens until the chat model is known', async () => {
     const wrapper = await mountItem(createKnowledgeItem(), null)
 

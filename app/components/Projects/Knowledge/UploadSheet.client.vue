@@ -213,6 +213,13 @@
                 {{ counts.noText }} with no text found
               </li>
               <li
+                v-if="counts.flagged > 0"
+                class="text-warning"
+                data-testid="knowledge-upload-flagged"
+              >
+                {{ describeFlagged(counts.flagged) }}
+              </li>
+              <li
                 v-if="counts.duplicates > 0"
                 data-testid="knowledge-upload-duplicates"
               >
@@ -395,6 +402,7 @@ const statusLabels: Record<KnowledgeUploadEntry['status'], string> = {
   'uploading-original': 'Uploading original…',
   'ready': 'Added',
   'no-text': 'No text found',
+  'flagged': 'Added, needs review',
   'failed': 'Failed',
   'skipped-duplicate': 'Already added',
 }
@@ -454,10 +462,12 @@ const counts = computed(() => {
     return props.entries.filter(entry => entry.status === status).length
   }
   const noText = countStatus('no-text')
+  const flagged = countStatus('flagged')
 
   return {
-    added: countStatus('ready') + noText,
+    added: countStatus('ready') + noText + flagged,
     noText,
+    flagged,
     duplicates: countStatus('skipped-duplicate'),
     failed: countStatus('failed'),
   }
@@ -488,6 +498,14 @@ function describeSync(syncSummary: KnowledgeSyncSummary | null): string {
 
   return `${syncSummary.added} new, ${syncSummary.replaced} to check, `
     + `${syncSummary.removed} missing, ${syncSummary.unchanged} unchanged.`
+}
+
+function describeFlagged(count: number): string {
+  const subject = count === 1 ? '1 needs review' : `${count} need review`
+  const object = count === 1 ? 'it' : 'them'
+
+  return `${subject}: possible prompt injection, left out of chats until `
+    + `you allow ${object}`
 }
 
 function describeCleanupFailures(count: number): string {

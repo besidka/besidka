@@ -57,8 +57,14 @@
                 {{ statusLabel }}
               </dd>
             </dl>
+            <ProjectsKnowledgeInjectionReview
+              v-if="item.extractStatus === 'flagged'"
+              :is-allowing="isAllowing"
+              :disabled="isSaving"
+              @allow="allow"
+            />
             <div
-              v-if="item.extractStatus !== 'ready'"
+              v-else-if="item.extractStatus !== 'ready'"
               role="status"
               class="alert alert-soft !items-start"
               :class="item.extractStatus === 'failed'
@@ -267,6 +273,7 @@ const props = defineProps<{
     id: string,
     patch: KnowledgeItemPatchInput,
   ) => Promise<ProjectKnowledgeOutcome<unknown>>
+  allowItem: (id: string) => Promise<ProjectKnowledgeOutcome<unknown>>
 }>()
 
 const emit = defineEmits<{
@@ -284,6 +291,7 @@ const modal = useTemplateRef<HTMLDialogElement>('modal')
 const draftDescription = shallowRef<string>('')
 const draftSendAsNativePdf = shallowRef<boolean>(false)
 const isSaving = shallowRef<boolean>(false)
+const isAllowing = shallowRef<boolean>(false)
 const saveError = shallowRef<ProjectKnowledgeError | null>(null)
 
 const itemName = computed<string>(() => {
@@ -308,6 +316,8 @@ const statusLabel = computed<string>(() => {
       return 'Ready'
     case 'no-text':
       return 'No text found'
+    case 'flagged':
+      return 'Needs review'
     default:
       return 'Failed'
   }
@@ -362,6 +372,7 @@ const changes = computed<KnowledgeItemPatchInput>(() => {
 
 const isSaveDisabled = computed<boolean>(() => {
   return isSaving.value
+    || isAllowing.value
     || isDescriptionOverLimit.value
     || Object.keys(changes.value).length === 0
 })
@@ -405,6 +416,30 @@ async function save() {
   }
 
   useInfoMessage('Saved', 'Knowledge item updated.')
+  open.value = false
+}
+
+async function allow() {
+  const item = props.item
+
+  if (!item || isAllowing.value) {
+    return
+  }
+
+  isAllowing.value = true
+  saveError.value = null
+
+  const outcome = await props.allowItem(item.id)
+
+  isAllowing.value = false
+
+  if (!outcome.ok) {
+    saveError.value = outcome.parsed
+
+    return
+  }
+
+  useInfoMessage('Allowed', 'This item is used in your chats again.')
   open.value = false
 }
 
