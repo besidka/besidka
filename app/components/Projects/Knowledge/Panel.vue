@@ -638,7 +638,7 @@ async function runFolderSync(
     return [{
       id: item.id,
       relativePath: item.relativePath,
-      contentHash: '',
+      contentHash: item.contentHash ?? '',
       folderId: item.folderId,
     }]
   })

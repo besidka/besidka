@@ -94,6 +94,7 @@ describe('knowledge items', () => {
         description: 'The spec',
         relativePath: 'docs/Spec.pdf',
         folderId: 'folder-1',
+        contentHash: 'ab'.repeat(32),
         mediaType: 'application/pdf',
         textBytes: 120,
         latinChars: 100,
@@ -118,6 +119,7 @@ describe('knowledge items', () => {
         description: 'The spec',
         relativePath: 'docs/Spec.pdf',
         folderId: 'folder-1',
+        contentHash: 'ab'.repeat(32),
         mediaType: 'application/pdf',
         sizeBytes: null,
         pageCount: null,
@@ -167,7 +169,7 @@ describe('knowledge items', () => {
       expect(wire.fileId).toBeNull()
       expect(wire.sendAsNativePdf).toBe(true)
       expect(wire.pinned).toBe(true)
-      expect(wire).not.toHaveProperty('contentHash')
+      expect(wire.contentHash).toBe('hash')
       expect(wire).not.toHaveProperty('userId')
     })
   })

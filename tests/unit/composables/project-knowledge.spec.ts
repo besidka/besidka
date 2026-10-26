@@ -58,6 +58,7 @@ function createItem(overrides: Partial<KnowledgeItem> = {}): KnowledgeItem {
     description: null,
     relativePath: null,
     folderId: null,
+    contentHash: null,
     mediaType: 'text/markdown',
     sizeBytes: 100,
     pageCount: null,
@@ -746,7 +747,12 @@ describe('useProjectKnowledge', () => {
           createItem({ id: 'item-3' }),
         ],
       })
-      mocks.fetchMock.mockResolvedValueOnce({ version: 4, packVersion: 4 })
+      mocks.fetchMock.mockResolvedValueOnce({
+        version: 4,
+        packVersion: 4,
+        removed: 2,
+        skipped: [],
+      })
 
       const knowledge = useProjectKnowledge('project-shape-9')
       const body = { folderId: 'folder1', remove: ['item-1', 'item-2'] }
@@ -771,7 +777,7 @@ describe('useProjectKnowledge', () => {
       mocks.fetchMock.mockResolvedValueOnce({
         version: 5,
         packVersion: 5,
-        removed: ['item-1'],
+        removed: 1,
         skipped: ['item-2'],
       })
 
@@ -786,7 +792,12 @@ describe('useProjectKnowledge', () => {
     })
 
     it('commit sends an empty body by default', async () => {
-      mocks.fetchMock.mockResolvedValueOnce({ version: 4, packVersion: 4 })
+      mocks.fetchMock.mockResolvedValueOnce({
+        version: 4,
+        packVersion: 4,
+        removed: 0,
+        skipped: [],
+      })
 
       const knowledge = useProjectKnowledge('project-shape-10')
 

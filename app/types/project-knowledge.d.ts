@@ -1,6 +1,7 @@
 import type { parseError } from 'evlog'
 import type { z } from 'zod'
 import type {
+  KnowledgeCommitResponse,
   KnowledgeItem,
   KnowledgeMode,
 } from '#shared/types/project-knowledge.d'
@@ -41,10 +42,7 @@ export interface KnowledgeVersionResult {
   packVersion: number | null
 }
 
-export interface KnowledgeCommitResult extends KnowledgeVersionResult {
-  removed?: string[] | number
-  skipped?: string[]
-}
+export type KnowledgeCommitResult = KnowledgeCommitResponse
 
 export interface KnowledgeItemsAddResult extends KnowledgeVersionResult {
   items: KnowledgeItem[]

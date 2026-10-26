@@ -29,6 +29,7 @@ export function toKnowledgeItemWire(row: KnowledgeItemRow): KnowledgeItem {
     description: row.description,
     relativePath: row.relativePath,
     folderId: row.folderId,
+    contentHash: row.contentHash,
     mediaType: row.mediaType,
     sizeBytes: row.sizeBytes,
     pageCount: row.pageCount,

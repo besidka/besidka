@@ -42,6 +42,7 @@ export interface KnowledgeItem {
   description: string | null
   relativePath: string | null
   folderId: string | null
+  contentHash: string | null
   mediaType: string | null
   sizeBytes: number | null
   pageCount: number | null
@@ -56,6 +57,13 @@ export interface KnowledgeItem {
   pinned: boolean
   createdAt: string
   updatedAt: string
+}
+
+export interface KnowledgeCommitResponse {
+  version: number
+  packVersion: number | null
+  removed: number
+  skipped: string[]
 }
 
 export interface ProjectKnowledgeSummary {

@@ -126,6 +126,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/project-knowledge-budget.spec.ts',
     'tests/unit/utils/project-knowledge-schemas.spec.ts',
     'tests/unit/utils/project-knowledge-path.spec.ts',
+    'tests/unit/utils/knowledge-hash.spec.ts',
   ]
   const projectKnowledgeServerTests = [
     'tests/unit/utils/knowledge/storage-keys.spec.ts',
@@ -535,7 +536,6 @@ export function getAffectedTests(changedFiles) {
 
   const projectKnowledgeClientTests = [
     'tests/unit/workers/knowledge-extract.spec.ts',
-    'tests/unit/utils/knowledge-hash.spec.ts',
     'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
     'tests/unit/utils/knowledge-upload-plan.spec.ts',
     'tests/unit/utils/knowledge-folder.spec.ts',
@@ -1811,7 +1811,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/workers\/knowledge-extract\.ts|app\/components\/Projects\/Knowledge\/.*\.vue|app\/components\/Profile\/Memory\/CacheInfo\.vue|app\/composables\/(knowledge-extract|knowledge-upload|project-knowledge|project-knowledge-model|project-knowledge-folders)\.ts|app\/utils\/(knowledge-hash|knowledge-html-to-markdown|knowledge-upload-plan|knowledge-folder|knowledge-title|knowledge-zip|project-knowledge-ui|reasoning)\.ts|app\/types\/(knowledge-extract|knowledge-ui|project-knowledge)\.d\.ts|tests\/setup\/helpers\/knowledge-(fixtures|ui-fixtures)\.ts)$/,
+        /^(app\/workers\/knowledge-extract\.ts|app\/components\/Projects\/Knowledge\/.*\.vue|app\/components\/Profile\/Memory\/CacheInfo\.vue|app\/composables\/(knowledge-extract|knowledge-upload|project-knowledge|project-knowledge-model|project-knowledge-folders)\.ts|app\/utils\/(knowledge-html-to-markdown|knowledge-upload-plan|knowledge-folder|knowledge-title|knowledge-zip|project-knowledge-ui|reasoning)\.ts|app\/types\/(knowledge-extract|knowledge-ui|project-knowledge)\.d\.ts|tests\/setup\/helpers\/knowledge-(fixtures|ui-fixtures)\.ts)$/,
       tests: projectKnowledgeClientTests,
     },
     {
@@ -2037,7 +2037,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^shared\/(types\/project-knowledge\.d|utils\/(project-knowledge-(policy|budget|schemas|path)))\.ts$/,
+      pattern: /^shared\/(types\/project-knowledge\.d|utils\/(knowledge-hash|project-knowledge-(policy|budget|schemas|path)))\.ts$/,
       tests: projectKnowledgeContractTests,
     },
     {

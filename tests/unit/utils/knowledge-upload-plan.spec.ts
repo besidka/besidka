@@ -7,7 +7,7 @@ import {
   summarizeKnowledgePlan,
 } from '~/utils/knowledge-upload-plan'
 import type { KnowledgePlanEntry } from '~/utils/knowledge-upload-plan'
-import { sha256Hex } from '~/utils/knowledge-hash'
+import { sha256Hex } from '#shared/utils/knowledge-hash'
 
 const MEGABYTE = 1024 * 1024
 
