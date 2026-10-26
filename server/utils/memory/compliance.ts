@@ -104,7 +104,16 @@ const FORMAT_CHARACTER_PATTERN = /^\p{Cf}$/u
 const LINE_SEPARATOR_PATTERN = /^[\u2028\u2029]$/u
 const FORMAT_CHARACTERS_PATTERN = /\p{Cf}/gu
 const UNICODE_SPACES_PATTERN = /\p{Zs}/gu
-const DIGIT_RUN_PATTERN = /(?<![\d+])\d+(?:[\s.\-*/_,]{1,2}\d+)*/gu
+const DIGIT_RUN_PATTERN = /(?<![\d+])\d+(?:[\s.\-*]{1,2}\d+)*/gu
+const CARD_LAYOUT_SEPARATED_PATTERN = new RegExp(
+  [
+    '(?<![\\d+])(?<!\\d[/_])(?:',
+    '\\d{4}([/_])\\d{4}\\1\\d{4}\\1\\d{4}(?:\\1\\d{1,3})?',
+    '|\\d{4}([/_])\\d{6}\\2\\d{5}',
+    ')(?![/_]?\\d)',
+  ].join(''),
+  'gu',
+)
 const DIGIT_GROUP_PATTERN = /\d+/gu
 const IBAN_START_PATTERN = /(?<![A-Za-z0-9])[A-Za-z]{2}\d{2}/gu
 const POLAND_NRB_PATTERN
@@ -398,8 +407,32 @@ function isRnokppValid(digits: string): boolean {
   return remainder % 10 === Number(digits[9])
 }
 
+function isCardNumber(digits: string): boolean {
+  return /^[2-6]/u.test(digits)
+    && !isRepeatedDigit(digits)
+    && isLuhnValid(digits)
+}
+
+/**
+ * Cards written with `/` or `_` between the groups. Unlike spaces, dots and
+ * hyphens, these separators also join ordinary number lists and dates, so
+ * only a whole, isolated card layout counts: 4-4-4-4 (up to 19 digits) or the
+ * 4-6-5 Amex layout, with the same separator throughout.
+ */
+function detectSeparatedLayoutCards(text: string): NeverStoreMatch[] {
+  return [...text.matchAll(CARD_LAYOUT_SEPARATED_PATTERN)]
+    .filter(candidate => isCardNumber(digitsOnly(candidate[0])))
+    .map((candidate) => {
+      return {
+        kind: 'payment-card' as const,
+        start: matchStart(candidate),
+        end: matchStart(candidate) + candidate[0].length,
+      }
+    })
+}
+
 function detectPaymentCards(text: string): NeverStoreMatch[] {
-  const matches: NeverStoreMatch[] = []
+  const matches: NeverStoreMatch[] = detectSeparatedLayoutCards(text)
 
   for (const run of text.matchAll(DIGIT_RUN_PATTERN)) {
     const runStart = matchStart(run)
@@ -440,11 +473,7 @@ function detectPaymentCards(text: string): NeverStoreMatch[] {
           .map(group => group.digits)
           .join('')
 
-        if (
-          /^[2-6]/u.test(digits)
-          && !isRepeatedDigit(digits)
-          && isLuhnValid(digits)
-        ) {
+        if (isCardNumber(digits)) {
           matchedEndIndex = endIndex
           break
         }

@@ -1627,6 +1627,33 @@ handled separately.
 | 15 | Info: the export omits processing records and knowledge | Docs only: recorded as a known gap (3.7) |
 | 16 | Info: incognito chats are documented but not built | Docs only: marked not built (3.3, 3.4, 3.7) |
 
+**Follow-up from the delta verification (2026-10-26).**
+
+- Card separators: `/` and `_` count only inside a whole, isolated card
+  layout (4-4-4-4 up to 19 digits, or 4-6-5 Amex) with one separator
+  throughout, and Luhn still applies. Commas are not card separators. The
+  wider join had flagged 15-39% of comma-joined numbers, comma-thousand
+  numbers and y/m/d date lists in 5000-trial runs, and `redactNeverStore`
+  writes `[redacted]` into extraction input, import chunks and the legacy
+  `projects.memory` blob. It is now 0% on those inputs; four space-separated
+  4-digit numbers stay at about 6% because that is a real card layout.
+- Topical detectors: the street rule needs a house number plus a capitalised
+  street name (a case-preserving view), or an address cue ("my address:",
+  "I live at", "mieszkam przy" plus a capitalised name, "мешкаю за
+  адресою"). Permit, protection, refugee, green card, visa and immigration
+  status terms need a first-person or possessive status statement ("my work
+  permit expires", "I have temporary protection"). Criminal-record terms need
+  a possessive or "has a criminal record".
+- Classifier normalisation: Latin letters lose their accents after
+  decomposition (`diabétes`), Polish diacritics and Cyrillic letters are
+  kept, and look-alikes inside a mixed-script word are folded to the word's
+  main script in both directions (`hіv`, `дiабет`); the `heroinę` escape still
+  works.
+- Saved text: every write is still checked, so editing an entry whose saved
+  text a rule now rejects is a 422 even for a title-only change. Its `why`
+  names the match and says it is in the saved text, its `fix` says to edit
+  the saved text or cancel and delete the entry; deleting never runs the gate.
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |

@@ -180,18 +180,26 @@ function createUniqueConflictError(category: MemoryCategory) {
   })
 }
 
+const SAVED_TEXT_SENTENCE = 'It is in the text already saved in this entry.'
+
+const SAVED_TEXT_FIX = 'Edit the saved title, description or body to '
+  + 'remove it, or cancel and delete the entry.'
+
 function createSensitiveTopicError(
   detectedCategories: MemorySensitiveCategory[],
+  isInSavedText: boolean,
 ) {
-  const why = detectedCategories.length > 0
+  const detected = detectedCategories.length > 0
     ? `This entry looks like sensitive data (${detectedCategories.join(', ')}).`
     : 'This entry is marked sensitive.'
 
   return createError({
     message: SENSITIVE_TOPIC_REFUSAL_MESSAGE,
     status: 422,
-    why,
-    fix: 'Remove the sensitive details and save again.',
+    why: isInSavedText ? `${detected} ${SAVED_TEXT_SENTENCE}` : detected,
+    fix: isInSavedText
+      ? SAVED_TEXT_FIX
+      : 'Remove the sensitive details and save again.',
   })
 }
 
@@ -210,11 +218,24 @@ function createLimitError(isProjectScope: boolean) {
   })
 }
 
+/**
+ * Refuses an entry the compliance gate rejects with a 422 that names what was
+ * detected. `isInSavedText` marks an edit refused because of text the entry
+ * already holds (saved before a rule existed, or a field the edit did not
+ * touch), so the copy says the saved text has to change or the entry can be
+ * deleted; deleting never runs the gate.
+ */
 function assertEntryAllowed(
-  verdict: ReturnType<typeof evaluateMemoryEntry>,
+  check: {
+    verdict: ReturnType<typeof evaluateMemoryEntry>
+    complianceOrigin: string
+    isInSavedText?: boolean
+  },
   logger: MemoryWriteLogger,
-  complianceOrigin: string,
 ): void {
+  const { verdict, complianceOrigin } = check
+  const isInSavedText = check.isInSavedText ?? false
+
   if (verdict.allowed) {
     return
   }
@@ -226,7 +247,7 @@ function assertEntryAllowed(
       complianceOrigin,
     )
 
-    throw createSensitiveTopicError(verdict.detectedCategories)
+    throw createSensitiveTopicError(verdict.detectedCategories, isInSavedText)
   }
 
   const blocked: ComplianceBlockedCounts = {}
@@ -237,11 +258,15 @@ function assertEntryAllowed(
 
   recordBlockedCounts(blocked, logger, complianceOrigin)
 
+  const detected = `Detected: ${describeNeverStoreKinds(verdict.kinds)}.`
+
   throw createError({
     message: 'This memory contains data that cannot be stored',
     status: 422,
-    why: `Detected: ${describeNeverStoreKinds(verdict.kinds)}.`,
-    fix: 'Remove the flagged data from the memory and save again.',
+    why: isInSavedText ? `${detected} ${SAVED_TEXT_SENTENCE}` : detected,
+    fix: isInSavedText
+      ? SAVED_TEXT_FIX
+      : 'Remove the flagged data from the memory and save again.',
   })
 }
 
@@ -643,16 +668,15 @@ export async function createMemoryEntry(
     ? null
     : await resolveOwnedProjectId(db, userId, projectId)
 
-  assertEntryAllowed(
-    evaluateMemoryEntry({
+  assertEntryAllowed({
+    verdict: evaluateMemoryEntry({
       title: input.title,
       description: input.description,
       body: input.body,
       sensitivity: readDeclaredSensitivity(input),
     }),
-    logger,
-    options.complianceOrigin,
-  )
+    complianceOrigin: options.complianceOrigin,
+  }, logger)
 
   const fixedSlug = isSingletonCategory(input.category)
     ? input.category
@@ -729,16 +753,24 @@ export async function updateMemoryEntry(
     return throwInvalidEntry(parsedMerged.error.message)
   }
 
-  assertEntryAllowed(
-    evaluateMemoryEntry({
-      title: parsedMerged.data.title,
-      description: parsedMerged.data.description,
-      body: parsedMerged.data.body,
-      sensitivity: readDeclaredSensitivity(parsedPatch.data),
-    }),
-    logger,
-    options.complianceOrigin,
-  )
+  const mergedVerdict = evaluateMemoryEntry({
+    title: parsedMerged.data.title,
+    description: parsedMerged.data.description,
+    body: parsedMerged.data.body,
+    sensitivity: readDeclaredSensitivity(parsedPatch.data),
+  })
+
+  assertEntryAllowed({
+    verdict: mergedVerdict,
+    complianceOrigin: options.complianceOrigin,
+    isInSavedText: !mergedVerdict.allowed
+      && !evaluateMemoryEntry({
+        title: stored.title,
+        description: stored.description,
+        body: stored.body,
+        sensitivity: 'none',
+      }).allowed,
+  }, logger)
 
   const movesIntoSingleton = merged.category !== stored.category
     && isSingletonCategory(merged.category)
