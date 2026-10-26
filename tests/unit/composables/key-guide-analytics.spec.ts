@@ -109,6 +109,31 @@ describe('useKeyGuideAnalytics', () => {
     })
   })
 
+  it('tracks the explainer video as guide_video_play, never as a key guide '
+    + 'event', () => {
+    const { trackExplainerVideoPlay } = useKeyGuideAnalytics()
+
+    trackExplainerVideoPlay('memory', true)
+    trackExplainerVideoPlay('memory', true)
+    trackExplainerVideoPlay('memory', false)
+
+    expect(mocks.track).toHaveBeenCalledTimes(2)
+    expect(mocks.track).toHaveBeenNthCalledWith(1, 'guide_video_play', {
+      target: 'memory',
+      value: 1,
+      trigger: 'user',
+    })
+    expect(mocks.track).toHaveBeenNthCalledWith(2, 'guide_video_play', {
+      target: 'memory',
+      value: 0,
+      trigger: 'autoplay',
+    })
+    expect(mocks.track).not.toHaveBeenCalledWith(
+      'key_guide_video_play',
+      expect.anything(),
+    )
+  })
+
   it('counts open and play independently', () => {
     const { trackGuideOpen, trackGuideVideoPlay } = useKeyGuideAnalytics()
 

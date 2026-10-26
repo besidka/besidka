@@ -18,6 +18,8 @@ interface ObserverInstance {
 const mocks = vi.hoisted(() => {
   return {
     trackGuideVideoPlay: vi.fn(),
+    trackExplainerVideoPlay: vi.fn(),
+    watchTargets: [] as string[],
     startWatch: vi.fn(),
     updateWatch: vi.fn(),
     upgradeWatchToUser: vi.fn(() => false),
@@ -32,12 +34,15 @@ mockNuxtImport('useKeyGuideAnalytics', () => {
     return {
       trackGuideOpen: vi.fn(),
       trackGuideVideoPlay: mocks.trackGuideVideoPlay,
+      trackExplainerVideoPlay: mocks.trackExplainerVideoPlay,
     }
   }
 })
 
 mockNuxtImport('useVideoWatchAnalytics', () => {
-  return () => {
+  return (getTarget: () => string) => {
+    mocks.watchTargets.push(getTarget())
+
     return {
       start: mocks.startWatch,
       update: mocks.updateWatch,
@@ -158,6 +163,8 @@ describe('Profile/Keys/GuideVideo.client', () => {
     media = environment.media
     media.duration = 60
     mocks.trackGuideVideoPlay.mockReset()
+    mocks.trackExplainerVideoPlay.mockReset()
+    mocks.watchTargets.length = 0
     mocks.startWatch.mockReset()
     mocks.updateWatch.mockReset()
     mocks.upgradeWatchToUser.mockReset().mockReturnValue(false)
@@ -1098,6 +1105,49 @@ describe('Profile/Keys/GuideVideo.client', () => {
       video.dispatchEvent(new Event('volumechange'))
 
       expect(mocks.upgradeWatchToUser).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('explainer analytics', () => {
+    async function mountExplainerVideo() {
+      return mountVideo({ provider: undefined, explainer: 'memory' })
+    }
+
+    it('reports a user-started play as the explainer event, never as a '
+      + 'key guide play', async () => {
+      stubMotionPreference(true)
+
+      const { video } = await mountExplainerVideo()
+
+      video.dispatchEvent(new Event('play'))
+      video.dispatchEvent(new Event('playing'))
+
+      expect(mocks.trackExplainerVideoPlay)
+        .toHaveBeenCalledExactlyOnceWith('memory', true)
+      expect(mocks.trackGuideVideoPlay).not.toHaveBeenCalled()
+    })
+
+    it('reports an autoplay start with isUserInitiated false', async () => {
+      await mountExplainerVideo()
+
+      setVisibility(true)
+      await flushPromises()
+
+      expect(mocks.trackExplainerVideoPlay)
+        .toHaveBeenCalledExactlyOnceWith('memory', false)
+      expect(mocks.trackGuideVideoPlay).not.toHaveBeenCalled()
+    })
+
+    it('watches the explainer target instead of a provider', async () => {
+      await mountExplainerVideo()
+
+      expect(mocks.watchTargets).toEqual(['memory'])
+    })
+
+    it('keeps the provider target when no explainer is set', async () => {
+      await mountVideo()
+
+      expect(mocks.watchTargets).toEqual(['google'])
     })
   })
 

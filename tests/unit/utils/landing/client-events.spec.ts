@@ -14,6 +14,7 @@ describe('resolveSurface', () => {
     expect(resolveSurface('/profile/keys')).toBe('keys')
     expect(resolveSurface('/guides/gemini-api-key')).toBe('guide')
     expect(resolveSurface('/byok')).toBe('byok')
+    expect(resolveSurface('/memory')).toBe('memory')
     expect(resolveSurface('/privacy-policy')).toBe('legal')
   })
 
@@ -28,6 +29,7 @@ describe('clientPathSchema', () => {
   it('strips one trailing slash before validating', () => {
     expect(clientPathSchema.parse('/guides/x/')).toBe('/guides/x')
     expect(clientPathSchema.parse('/')).toBe('/')
+    expect(clientPathSchema.parse('/memory/')).toBe('/memory')
   })
 
   it('rejects paths outside the allow list', () => {
@@ -46,10 +48,29 @@ describe('validateClientEventTarget', () => {
       .toBeDefined()
   })
 
-  it('accepts demo or a provider id for video_watch', () => {
+  it('accepts demo, a provider id or an explainer page for video_watch', () => {
     expect(validateClientEventTarget('video_watch', 'demo')).toBeUndefined()
     expect(validateClientEventTarget('video_watch', 'google')).toBeUndefined()
+    expect(validateClientEventTarget('video_watch', 'memory')).toBeUndefined()
     expect(validateClientEventTarget('video_watch', 'toString')).toBeDefined()
+  })
+
+  it('requires an explainer page for guide_video_play, never a provider', () => {
+    expect(validateClientEventTarget('guide_video_play', 'memory'))
+      .toBeUndefined()
+    expect(validateClientEventTarget('guide_video_play', 'google'))
+      .toBeDefined()
+    expect(validateClientEventTarget('guide_video_play', 'demo'))
+      .toBeDefined()
+    expect(validateClientEventTarget('guide_video_play', undefined))
+      .toBeDefined()
+  })
+
+  it('keeps the explainer page out of the key guide events', () => {
+    expect(validateClientEventTarget('key_guide_video_play', 'memory'))
+      .toBeDefined()
+    expect(validateClientEventTarget('key_guide_open', 'memory'))
+      .toBeDefined()
   })
 
   it('does not constrain other events', () => {
@@ -71,6 +92,7 @@ describe('validateClientEventTrigger', () => {
     for (const name of [
       'video_play',
       'key_guide_video_play',
+      'guide_video_play',
       'video_watch',
     ] as const) {
       expect(validateClientEventTrigger(name, 'autoplay')).toBeUndefined()
@@ -132,6 +154,19 @@ describe('buildClientEventAttributes', () => {
       .toEqual({})
     expect(buildClientEventAttributes('video_play', { trigger: 'user' }))
       .toEqual({ trigger: 'user' })
+  })
+
+  it('logs the explainer target and trigger for guide_video_play', () => {
+    expect(buildClientEventAttributes('guide_video_play', {
+      target: 'memory',
+      path: '/memory',
+      trigger: 'autoplay',
+    })).toEqual({
+      target: 'memory',
+      surface: 'memory',
+      path: '/memory',
+      trigger: 'autoplay',
+    })
   })
 
   it('includes the auto and user trigger for key_guide_open', () => {

@@ -1863,6 +1863,11 @@ stored or echoed.
 
 ### 3.19 TypeSafe AI Jev checks (2026-10-26)
 
+The public explainer for all of memory, including this check, is `/memory`
+(`content/guides/memory.md`, `docs/seo.md` "The memory explainer"). Its copy
+quotes the behaviour documented in 3.1 to 3.19, so re-check it when any of
+those change.
+
 An optional second opinion on memory writes, on the user's own TypeSafe AI
 key. It is add-only: the deterministic gate (3.5) stays the gate, and Jev can
 only block an entry the gate allowed, never allow one the gate blocked.

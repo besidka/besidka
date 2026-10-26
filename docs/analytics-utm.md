@@ -32,6 +32,11 @@ of the funnel either. See "Key guide events" below. Video viewing time
 (`video_watch`) and key saves (`attributes.keys`) are described in "Video
 and key events in Axiom".
 
+The `/memory` explainer has its own video event, `guide_video_play`, so the
+memory video never lands in `video_play` (the home demo funnel) or in
+`key_guide_video_play` (which needs a provider id). See "Explainer video
+events" below.
+
 ### Where the data lives
 
 | Store | Name | Contents | Exact or sampled |
@@ -164,6 +169,32 @@ so `index1` and `blob1` hold the same value.
 | `blob9` | content (`none` if absent) | not written |
 | `double1` | value (landing) | `1` |
 
+### Explainer video events
+
+`guide_video_play` is the play event for the videos on explainer pages in the
+`guides` collection (`/memory`, see `docs/seo.md`). It uses the landing column
+layout, with `blob2` the page path (`/memory`), `blob3` the explainer id
+(`memory`) and `double1` `1` when the user started playback and `0` for muted
+autoplay. The endpoint requires `target` to be in `EXPLAINER_VIDEO_TARGETS`
+(`server/utils/landing/client-events.ts`), so a provider id or `demo` gets a
+400, and `key_guide_video_play` in turn rejects `memory`. A new explainer video
+needs its id added to that set and to `EXPLAINER_VIDEO_IDS` in
+`server/routes/videos/[name].ts`. The lean player (`GuideVideo.client.vue`)
+sends it when `explainer` is set, deduped once per id and per value like the
+key guide play, and sends `video_watch` with the same target. The `/memory`
+path has its own surface (`memory`); before it existed the endpoint answered
+400 to every event sent from the page.
+
+```sql
+SELECT
+  blob3 AS explainer,
+  sum(_sample_interval) AS plays
+FROM besidka_cms_events
+WHERE blob1 = 'guide_video_play'
+  AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY explainer
+```
+
 ### Key guide events
 
 `key_guide_open` and `key_guide_video_play` use the landing column layout. The
@@ -232,8 +263,9 @@ Every accepted client event logs `analytics.event` (flat) and
 the client did not send it. The server derives `surface` from `path`.
 
 `target` is logged only when it is validated. For `key_guide_open`,
-`key_guide_video_play` and `video_watch` the endpoint already rejects anything
-but a provider id (or `demo` for `video_watch`), so the value is logged as is.
+`key_guide_video_play`, `guide_video_play` and `video_watch` the endpoint
+already rejects anything but a provider id (`memory` for `guide_video_play`,
+and `demo` or `memory` also for `video_watch`), so the value is logged as is.
 For every other event `target` is free text from the client, so it is logged
 only when it matches `^[a-z0-9/_#.:-]{1,100}$` and is otherwise omitted from
 the wide event. Analytics Engine keeps its own 100-character truncation of the
@@ -245,6 +277,7 @@ raw `target` regardless of this rule.
 | `keys` | `/profile/keys` |
 | `guide` | `/guides/<slug>` (`^/guides/[a-z0-9-]{1,64}$`) |
 | `byok` | `/byok` |
+| `memory` | `/memory` |
 | `legal` | `/privacy-policy`, `/terms-of-use`, `/cookie-policy` |
 
 The endpoint used to reject `/byok` and `/guides/<slug>` with a 400 (the client
@@ -255,9 +288,10 @@ is stripped before the path is checked.
 | --- | --- | --- |
 | `key_guide_open` | A key guide accordion on `/profile/keys` becomes open, either by the user (`trigger` `user`) or on its own because the key is missing (`trigger` `auto`). Never on collapse. Once per provider per visit. | provider id |
 | `key_guide_video_play` | A guide video starts. Keys page: the guide player. `/guides/<slug>`: the shared landing player with `guideProvider` set. | provider id |
+| `guide_video_play` | The `/memory` explainer video starts, in the lean guide player. Once per page view and per `value`. No video exists yet, so nothing sends it today. | `memory` |
 | `video_play` | The home page demo video starts. Once per page view. | `demo` |
 | `video_complete` | Playback ends. | `demo`, or the provider id on a guide page |
-| `video_watch` | A viewing session ends. See below. | `demo` or provider id |
+| `video_watch` | A viewing session ends. See below. | `demo`, a provider id, or `memory` |
 
 `/guides/<slug>` has no accordion, so it sends no `key_guide_open`.
 
@@ -265,7 +299,7 @@ Extra `attributes.analytics.*` keys:
 
 | Key | Events | Values |
 | --- | --- | --- |
-| `trigger` | `video_play`, `key_guide_video_play`, `video_watch` | `autoplay` or `user` |
+| `trigger` | `video_play`, `key_guide_video_play`, `guide_video_play`, `video_watch` | `autoplay` or `user` |
 | `trigger` | `key_guide_open` | `auto` or `user` |
 | `watchedSeconds` | `video_watch` | played media time, rounded to 0.1 s, 0 to 86400 |
 | `durationSeconds` | `video_watch` | video length, rounded to 0.1 s, 0 to 86400 |
@@ -277,13 +311,13 @@ The Analytics Engine `value` (`double1`) stays as before: `0` autoplay and
 and `watchedSeconds` for `video_watch`. The
 server fills `value` from `watchedSeconds` when the client omits it.
 `video_watch` needs `target`, `trigger`, `watchedSeconds`, `durationSeconds`,
-`completionPercent` and `endReason`, and a `target` of `demo` or a provider id,
-or it gets a 400. It also gets a 400 when `watchedSeconds` exceeds
+`completionPercent` and `endReason`, and a `target` of `demo`, a provider id or
+an explainer page (`memory`), or it gets a 400. It also gets a 400 when `watchedSeconds` exceeds
 `durationSeconds` by more than 1 s; the client clamps `watchedSeconds` to the
 duration, so a larger value is not a real session.
 
 The endpoint checks `trigger` per event. `key_guide_open` accepts only `auto`
-or `user`, the three video events accept only `autoplay` or `user`, and a value
+or `user`, the video play events and `video_watch` accept only `autoplay` or `user`, and a value
 from the other family gets a 400. `trigger` stays optional for
 `key_guide_open`. `user` means the user acted to see the guide: expanding the
 guide's own accordion, or expanding the key card whose guide inside was already
@@ -295,7 +329,8 @@ when it becomes visible.
 
 #### Autoplay or user
 
-Only the keys page guide player autoplays: muted, when it is at least half
+Only the lean guide player autoplays (the keys page, and the `/memory`
+explainer once it has a video): muted, when it is at least half
 visible, unless the user prefers reduced motion or has data saver on. A play
 that comes from that path is `autoplay`. A play from the player's play button, a click
 on the video, or the keyboard is `user`. The home video and the `/guides/<slug>`
@@ -763,5 +798,6 @@ past "yes" to `analytics` would no longer cover it, as a new cookie would.
 - `server/utils/auth.ts`: sign-up hook
 - `app/composables/utm-attribution.ts`, `app/plugins/utm-attribution.client.ts`:
   client capture
-- `app/composables/key-guide-analytics.ts`: once-per-provider guide events
+- `app/composables/key-guide-analytics.ts`: once-per-provider guide events and
+  the once-per-explainer `guide_video_play`
 - `scripts/utm-report.mjs`: funnel report

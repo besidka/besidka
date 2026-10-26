@@ -466,14 +466,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   per-page `canonical` or `ogUrl`; the global one is already correct and a second
   tag risks a duplicate. `new URL()` normalises `/` to a trailing slash so the
   canonical matches the `<loc>` the sitemap emits.
-- Indexable: `/`, `/byok`, `/privacy-policy`, `/terms-of-use`,
+- Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
   `/cookie-policy`, `/guides/<slug>` (public key guides from
   `content/key-guides/*.md`, `keyGuides` collection with
   `source.prefix: '/guides'`, route `app/pages/guides/[slug].vue`), and
   `/shared/<publicId>` when that share's `indexable` flag is set. Everything
   else is `noindex, nofollow`. `/byok` is the first `guides` collection page
-  (`content/guides/`); new explainer routes go there and the two-or-three-route
-  cap in `docs/seo.md` still applies to them. Key guides are one templated page
+  (`content/guides/`) and `/memory` the second; new explainer routes go there
+  and the two-or-three-route cap in `docs/seo.md` still applies to them (one
+  slot left). Key guides are one templated page
   type the owner exempted from that cap on 2026-10-20 (see `docs/seo.md`).
   `/api/`, `/chats/`, `/files/`, `/profile/`, `/_studio`, `/__nuxt_studio` and
   `/__nuxt_content/` are also disallowed in robots.

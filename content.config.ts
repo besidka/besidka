@@ -2,6 +2,7 @@ import { defineCollection, defineContentConfig } from '@nuxt/content'
 import { defineSitemapSchema } from '@nuxtjs/sitemap/content'
 import { z } from 'zod'
 import {
+  guideVideoSchema,
   httpsUrl,
   keyGuideSchema,
 } from './shared/utils/key-guide-schema'
@@ -334,6 +335,12 @@ export default defineContentConfig({
           .string()
           .optional()
           .describe('Short plain-language answer shown above the guide'),
+        video: guideVideoSchema
+          .optional()
+          .describe(
+            'Walkthrough video shown above the guide. Omit it entirely until'
+            + ' a real video exists.',
+          ),
       }),
     }),
     // Public "how to get an API key" pages (content/key-guides/*.md), served at

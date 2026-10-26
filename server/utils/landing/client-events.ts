@@ -17,19 +17,29 @@ export const CLIENT_ALLOWED_EVENTS = new Set<ClientLandingEventName>([
   'github_click',
   'key_guide_open',
   'key_guide_video_play',
+  'guide_video_play',
   'video_watch',
 ])
 
 export const DEMO_VIDEO_TARGET = 'demo'
+
+export const EXPLAINER_VIDEO_TARGETS: ReadonlySet<string> = new Set([
+  'memory',
+])
 
 const PROVIDER_TARGET_EVENTS = new Set<ClientLandingEventName>([
   'key_guide_open',
   'key_guide_video_play',
 ])
 
+const EXPLAINER_TARGET_EVENTS = new Set<ClientLandingEventName>([
+  'guide_video_play',
+])
+
 const VIDEO_TRIGGER_EVENTS = new Set<ClientLandingEventName>([
   'video_play',
   'key_guide_video_play',
+  'guide_video_play',
   'video_watch',
 ])
 
@@ -43,6 +53,7 @@ const HAS_TRIGGER_EVENTS = new Set<ClientLandingEventName>([
 const SURFACE_BY_PATH = new Map<string, AnalyticsSurface>([
   ['/', 'home'],
   ['/byok', 'byok'],
+  ['/memory', 'memory'],
   ['/profile/keys', 'keys'],
   ['/privacy-policy', 'legal'],
   ['/terms-of-use', 'legal'],
@@ -61,6 +72,7 @@ const LOGGABLE_TARGET_PATTERN = /^[a-z0-9/_#.:-]{1,100}$/
 
 const VALIDATED_TARGET_EVENTS = new Set<ClientLandingEventName>([
   ...PROVIDER_TARGET_EVENTS,
+  ...EXPLAINER_TARGET_EVENTS,
   'video_watch',
 ])
 
@@ -121,6 +133,10 @@ export function isProviderTarget(target: string | undefined): boolean {
   return !!target && Object.hasOwn(providerMeta, target)
 }
 
+export function isExplainerVideoTarget(target: string | undefined): boolean {
+  return !!target && EXPLAINER_VIDEO_TARGETS.has(target)
+}
+
 export function validateClientEventTarget(
   name: ClientLandingEventName,
   target: string | undefined,
@@ -129,12 +145,17 @@ export function validateClientEventTarget(
     return `Event "${name}" needs a known provider id as its target`
   }
 
+  if (EXPLAINER_TARGET_EVENTS.has(name) && !isExplainerVideoTarget(target)) {
+    return `Event "${name}" needs a known explainer page as its target`
+  }
+
   if (
     name === 'video_watch'
     && target !== DEMO_VIDEO_TARGET
     && !isProviderTarget(target)
+    && !isExplainerVideoTarget(target)
   ) {
-    return `Event "${name}" needs "${DEMO_VIDEO_TARGET}" or a known provider id as its target`
+    return `Event "${name}" needs "${DEMO_VIDEO_TARGET}", a known provider id or a known explainer page as its target`
   }
 
   return undefined
