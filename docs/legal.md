@@ -63,7 +63,17 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   (JSON, per provider: `consentedAt`, `withdrawnAt`). The migration is
   `.drizzle/migrations/20261026144709_legal_consent/migration.sql` (additive
   `ALTER TABLE ... ADD`, no rebuild). Withdrawal writes a withdrawal timestamp
-  and keeps the earlier ones. The columns go away with the account.
+  and keeps the earlier ones. The columns go away with the account. Times are
+  stored in whole seconds; the code floors `now` before it writes or compares,
+  so a withdrawal and a re-consent inside the same second leave a current
+  consent.
+- **Only the latest grant and withdrawal live in the database.** A re-consent
+  overwrites the grant time and version, and a second withdrawal overwrites the
+  withdrawal time. The full history (every grant, withdrawal and transfer
+  consent, with the version) is in the Axiom wide events under
+  `attributes.legalConsent` (`action`, `version`, `provider`). So the proof of
+  an earlier grant lasts as long as the Axiom retention of the plan in use;
+  that retention is an open placeholder in `docs/legal/dpia.md` section 8.
 - **Why not `CONSENT_DB.consent_receipts`.** That table is pseudonymous by design:
   no user id, cookie receipts only. A record that proves what a named user
   agreed to needs the user id, and putting it in `CONSENT_DB` would either break
@@ -80,17 +90,58 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
 - **Bumping the version re-prompts everyone.** Change `CURRENT_CONSENT_VERSION`
   when the consent text changes in a way that matters (a new purpose, a new kind
   of recipient). Every user then has status `outdated` and must confirm the gate
-  again before the next send.
+  again before the next send. `CURRENT_CONSENT_TEXT_SHA256`, next to the
+  version, is a hash of the two consent boxes' wording in
+  `app/components/Legal/ConsentModal.client.vue` (the `data-consent-text`
+  spans). `tests/unit/server/utils/legal/consent-text-version.spec.ts` fails
+  when the wording changes and the hash does not, so a wording change cannot
+  ship without a deliberate decision on the version.
 - **One version covers chats, project memory and memory.** There is no separate
   memory consent. A `2026-10-a` text was never shipped and nobody consented to
   it, so no record can be in that state.
-- **Refusal or withdrawal** blocks sending (HTTP 403 from the chat endpoints)
-  and the background memory work (extraction sweep, extract-now, backfill,
-  project memory refresh, import). Reading, exporting and deleting stay open.
+- **Refusal or withdrawal blocks sending and storing new content.** Owner
+  decision, 2026-10-26: the consent covers storing, so content writes are gated
+  as well as sends. The server answers 403 with the code
+  `LEGAL_CONSENT_REQUIRED` on: chat send and new chat, chat title generation
+  (which falls back to a plain title instead), deep research start and
+  clarify, file upload and create, project knowledge items (create and
+  description edit) and notes (create and edit), project instructions, memory
+  entry create and edit, "tell Besidka what to remember" (preview and apply),
+  memory import, extract-now, backfill start and step, project memory refresh,
+  and chat branch from an own chat or from a share. The extraction and backfill
+  sweeps skip such users. Reading, exporting and deleting stay open: the
+  knowledge commit (it only removes items and rebuilds the index), item and
+  entry delete, memory reset, the share handoff (it sends a push with a link
+  and stores nothing) and clearing the legacy about-me text are not gated.
+- **Consent is read once per request.** A withdrawal that arrives while an
+  answer is streaming does not drop that answer: the assistant message of the
+  request already under way, and a deep-research job already started, are
+  still saved. The next message is refused. Accepted, owner decision
+  2026-10-26; the policy speaks of new messages.
+- **Rollout.** When this ships, every existing user has status `missing` until
+  they consent. Until then the extraction sweep skips their chats (including
+  users who opted in to background extraction), and a backfill that is running
+  stalls: the sweep skips it and its step route answers 403. Both resume after
+  the user consents.
+- **The client shows the dialog for any consent 403.** Every consent refusal
+  carries `code: 'LEGAL_CONSENT_REQUIRED'` or `'TRANSFER_CONSENT_REQUIRED'`
+  (with `data.provider`). `useLegalConsent().handleConsentError()` reloads the
+  consent state and opens the matching dialog. The client cache is keyed by the
+  signed-in user and cleared on sign-out.
 - **Transfer consents** (Art. 49(1)(a)) for DeepSeek, Moonshot AI and Qwen are
   stored in `provider_transfer_consents` and managed in **Profile → Security →
-  Privacy & consent**. Deleting the key withdraws the consent. They do not apply
-  to a model reached through a gateway.
+  Privacy & consent**. Deleting the key withdraws the consent. Owner decision,
+  2026-10-26: the same consent is required for a model reached through a
+  gateway (Vercel, OpenRouter or Cloudflare) when its id names one of these
+  vendors (`deepseek/`, `moonshotai/`, `alibaba/` or `qwen/`), because the
+  gateway passes the request on to that company. Models a gateway runs itself,
+  such as Cloudflare's `@cf/` Workers AI ids, do not need it. The mapping is
+  `resolveTransferConsentProviderId()` in `shared/utils/legal-consent.ts`, used
+  by the chat send, title generation, the memory model resolver and the client.
+  Writes to `provider_transfer_consents` are one atomic `json_set` UPDATE each,
+  so concurrent grants and withdrawals for different providers cannot drop one
+  another. The consent routes share the `legal-consent` bucket of
+  `server/utils/memory/rate-limit.ts`.
 - The gate copy, the Privacy Policy section, `docs/legal/dpia.md` and
   `docs/legal/art30-record.md` must be edited together. If a change alters what
   the user agrees to, bump the version.

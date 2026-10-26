@@ -109,7 +109,7 @@ Do not use Besidka to:
 You may share sensitive information about yourself in Besidka, such as details of your health or your beliefs, if you want the assistant's help with it. Before you do, know what happens to it:
 
 - It is stored with the rest of the chat and sent to the AI provider, AI gateway or search provider you chose, under your own account with them. On a free Google Gemini key outside the EEA, Switzerland and the UK, Google may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
-- I store and send it only with your explicit consent, which I ask for in the app, separately from these terms. The [Privacy Policy](/privacy-policy#sensitive-information-in-your-chats) explains it, including how to withdraw it. If you do not give that consent, or you withdraw it, you can still read, export and delete your data, but you cannot send new messages.
+- I store and send it only with your explicit consent, which I ask for in the app, separately from these terms. The [Privacy Policy](/privacy-policy#sensitive-information-in-your-chats) explains it, including how to withdraw it. If you do not give that consent, or you withdraw it, you can still read, export and delete your data, but you cannot send new messages or add new content.
 - Please take particular care with other people's sensitive information, and with anything about criminal offences; see [Other people's data](#other-peoples-data).
 
 I do not read your chats. What the app does with chat content beyond storing and sending it, such as memory and looking up your earlier chats, is described in the [Privacy Policy](/privacy-policy). None of it is used to make decisions about you.

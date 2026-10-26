@@ -269,7 +269,15 @@ removed.
   is missing, withdrawn or outdated. The extraction sweep, extract-now,
   backfill, project memory refresh and import skip or refuse users without it.
   Withdrawing cancels a running backfill job. A UI-only gate would not be
-  enough, because consent must come before the processing.
+  enough, because consent must come before the processing. Because the consent
+  covers storing, new content is refused too (owner decision 2026-10-26):
+  file uploads, project knowledge and notes, project instructions, memory
+  entries, "tell Besidka what to remember" and chat branching. Reading,
+  exporting and deleting stay open. The full route list is in
+  `docs/legal.md`, "Consent records". Consent is read once per request, so an
+  answer already streaming when the user withdraws is still saved.
+- **Rollout.** Every existing user starts as `missing`. Until each one
+  consents, the background extraction and backfill pause for that user.
 - **Receipt.** Per-user timestamp and text version on `user_settings`:
   `terms_accepted_at`, `terms_version`, `age_confirmed_at`,
   `sensitive_content_consent_at`, `sensitive_content_consent_version`,
@@ -305,8 +313,10 @@ removed.
   work. The key stays stored.
 - **Withdrawal.** In Profile → Security → Privacy & consent, or by deleting the
   key.
-- **Scope.** It does not apply to models reached through a gateway: the onward
-  step happens under the user's own gateway account.
+- **Scope.** Owner decision 2026-10-26: it also applies to models reached
+  through Vercel AI Gateway, OpenRouter or Cloudflare AI Gateway whose id names
+  one of these vendors (`deepseek/`, `moonshotai/`, `alibaba/`, `qwen/`).
+  Models a gateway runs itself (Cloudflare's `@cf/` ids) are exempt.
 - **Receipt.** `provider_transfer_consents` (JSON) on `user_settings`: per
   provider `consentedAt` and `withdrawnAt`. Deleted with the account.
 - **Status.** **Built** in this release: `server/utils/legal/consent.ts`,
@@ -540,7 +550,10 @@ This list covers this DPIA and `docs/legal/art30-record.md`.
 - **[OWNER NAME], [DATE] and the residual-risk decision** in the sign-off table
   above, and the controller name in the Art. 30 record.
 - **Axiom.** Confirm that Axiom's DPA is accepted on the plan in use, and fill
-  in the log retention that plan sets (Art. 30 record, row 15).
+  in the log retention that plan sets (Art. 30 record, row 15). That retention
+  also bounds the consent history: the database keeps only the latest grant
+  and withdrawal, and every earlier grant, withdrawal and transfer consent is
+  provable only from the Axiom `legalConsent` events.
 - **Brave and Exa DPF status.** Not part of the 2026-10-26 check. The Art. 30
   record still marks them **[U]** and the Privacy Policy states no transfer
   mechanism for them. To check, use the same approach as for the other US
