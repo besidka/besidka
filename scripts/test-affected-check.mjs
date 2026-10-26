@@ -181,6 +181,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/memory-entries-sources.spec.ts',
     'tests/unit/utils/memory/about-me-migration.spec.ts',
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/memory-rate-limit.spec.ts',
   ]
   const memoryIndexTests = [
     'tests/unit/utils/memory-tokens.spec.ts',
@@ -1499,7 +1500,7 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
-      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources|about-me-migration)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
+      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources|about-me-migration|rate-limit)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
       tests: [
         ...memoryEntriesTests,
         ...memoryToolTests,

@@ -1718,6 +1718,17 @@ handled separately.
   text a rule now rejects is a 422 even for a title-only change. Its `why`
   names the match and says it is in the saved text, its `fix` says to edit
   the saved text or cancel and delete the entry; deleting never runs the gate.
+- Write rate limit (2026-10-26): before this, `/api/v1/memory/*` had no
+  request-volume limit (Better Auth's limiter covers `/api/auth/*` only, the
+  Cloudflare "API flood limit" rule covers `/api/v1/chats/` and
+  `/api/v1/files/` only, and import, extract-now and backfill start had
+  per-action cooldowns but no ceiling). `server/utils/memory/rate-limit.ts`
+  is the one memory limiter, a KV per-user counter with named buckets on the
+  same storage as the knowledge write limit (`createAuthRateLimitStorage`):
+  the `write` bucket (60 per minute, shared) runs right after the session
+  check on entry create, edit and delete, reset, delete-extracted, import,
+  extract-now and backfill start, and answers 429 with `Retry-After`. New
+  memory limits are added as buckets there, not as parallel limiters.
 
 ## 4. Cost and performance
 

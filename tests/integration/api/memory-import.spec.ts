@@ -78,6 +78,11 @@ async function loadHandler() {
   return module.default
 }
 
+function cooldownPutsOf(kv: { put: { mock: { calls: unknown[][] } } }) {
+  return kv.put.mock.calls.filter(([key]) => {
+    return !String(key).startsWith('memory-rate-limit:')
+  })
+}
 describe('POST /api/v1/memory/import', () => {
   let testDb: MemoryExtractionTestDb
   let userId: number
@@ -299,7 +304,7 @@ describe('POST /api/v1/memory/import', () => {
 
       expect(error).toMatchObject({ status: 502 })
       expect(JSON.stringify(error)).not.toContain('Acme')
-      expect(kv.put).toHaveBeenCalledOnce()
+      expect(cooldownPutsOf(kv)).toHaveLength(1)
     })
 
   it('answers 409 when another import is running', async () => {

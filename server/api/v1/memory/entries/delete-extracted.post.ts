@@ -2,6 +2,7 @@ import { defineEventHandler } from 'nuxt/server'
 import type { MemoryResetResponse } from '#shared/types/memory-api.d'
 import { deleteExtractedMemoryEntries } from '~~/server/utils/memory/entries'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 /**
  * POST /memory/entries/delete-extracted
@@ -19,6 +20,12 @@ export default defineEventHandler(async (event) => {
   if (!session) {
     return useUnauthorizedError()
   }
+
+  await enforceMemoryRateLimit(
+    'write',
+    parseInt(session.user.id),
+    event,
+  )
 
   const userId = parseInt(session.user.id)
   const deleted = await deleteExtractedMemoryEntries({ db: useDb(), userId })

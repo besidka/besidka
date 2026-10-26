@@ -4,6 +4,7 @@ import type { MemoryEntryResponse } from '#shared/types/memory-api.d'
 import { memoryEntryInputSchema } from '#shared/utils/memory-schemas'
 import { createMemoryEntry } from '~~/server/utils/memory/entries'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -14,6 +15,12 @@ export default defineEventHandler(async (event) => {
   if (!session) {
     return useUnauthorizedError()
   }
+
+  await enforceMemoryRateLimit(
+    'write',
+    parseInt(session.user.id),
+    event,
+  )
 
   const body = await readValidatedBody(event, memoryEntryInputSchema.safeParse)
 

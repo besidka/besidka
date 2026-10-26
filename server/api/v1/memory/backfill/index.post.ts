@@ -7,6 +7,7 @@ import {
   startBackfill,
 } from '~~/server/utils/memory/backfill'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 const startBodySchema = z.object({
   restart: z.boolean().optional(),
@@ -34,6 +35,12 @@ export default defineEventHandler(async (event) => {
   if (!session) {
     return useUnauthorizedError()
   }
+
+  await enforceMemoryRateLimit(
+    'write',
+    parseInt(session.user.id),
+    event,
+  )
 
   const body = await readValidatedBody(event, startBodySchema.safeParse)
 

@@ -4,6 +4,7 @@ import { extractChatMemory } from '~~/server/utils/memory/extract'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 /**
  * POST /memory/extract-now
@@ -25,6 +26,12 @@ export default defineEventHandler(async (event) => {
   if (!session) {
     return useUnauthorizedError()
   }
+
+  await enforceMemoryRateLimit(
+    'write',
+    parseInt(session.user.id),
+    event,
+  )
 
   const body = await readValidatedBody(event, z.object({
     chatSlug: z.string().trim().min(1).max(100),

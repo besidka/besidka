@@ -3,6 +3,7 @@ import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { createMemoryTestDb } from '../../setup/helpers/memory-db'
+import { createFakeKnowledgeKv } from '../../setup/helpers/knowledge-api'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -142,6 +143,7 @@ describe('memory entries API', () => {
       return sessionUserId === null ? null : { user: { id: sessionUserId } }
     })
     vi.stubGlobal('useDb', () => testDb.db)
+    vi.stubGlobal('useKV', () => createFakeKnowledgeKv())
     vi.stubGlobal(
       'readValidatedBody',
       async (event: any, parser: (body: unknown) => unknown) => {

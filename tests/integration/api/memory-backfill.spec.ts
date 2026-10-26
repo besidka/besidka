@@ -116,6 +116,12 @@ function extractionResult(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function cooldownPutsOf(kv: { put: { mock: { calls: unknown[][] } } }) {
+  return kv.put.mock.calls.filter(([key]) => {
+    return !String(key).startsWith('memory-rate-limit:')
+  })
+}
+
 type HandlerName
   = 'index.get'
     | 'index.post'
@@ -527,7 +533,7 @@ describe('memory backfill API', () => {
         await chat(10)
         await post()
 
-        const [key, value, options] = kv.put.mock.calls[0]!
+        const [key, value, options] = cooldownPutsOf(kv)[0]!
 
         expect(key).toBe(`memory-backfill-start:${userId}`)
         expect(Number(value)).toBeGreaterThan(0)
@@ -630,7 +636,7 @@ describe('memory backfill API', () => {
         await post()
         await step()
 
-        const [key, value, options] = kv.put.mock.calls[1]!
+        const [key, value, options] = cooldownPutsOf(kv)[1]!
 
         expect(key).toBe(`memory-backfill-drive:${userId}`)
         expect(Number(value)).toBeGreaterThan(0)
