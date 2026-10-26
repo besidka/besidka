@@ -212,6 +212,7 @@ describe('buildMemoryIndex', () => {
         tokens: 0,
         budgetTokens: MEMORY_LIMITS.indexTokenBudget,
         entryCount: 0,
+        droppedEntries: 0,
         trimSteps: [],
         overBudget: false,
       })
@@ -748,7 +749,8 @@ describe('buildMemoryIndex', () => {
       const input = buildFullAccount('en', { project: true })
       const result = build({ ...input, budgetTokens: 0 })
 
-      expect(result.trimSteps).toEqual([...TRIM_ORDER])
+      expect(result.trimSteps)
+        .toEqual([...TRIM_ORDER, 'drop-least-recently-used'])
       expect(result.text).not.toContain('### Profile')
       expect(result.text).toContain('- profile/profile | Profile')
     })
@@ -874,7 +876,8 @@ describe('buildMemoryIndex', () => {
         budgetTokens: 1,
       })
 
-      expect(result.trimSteps).toEqual(['descriptions-0'])
+      expect(result.trimSteps)
+        .toEqual(['descriptions-0', 'drop-least-recently-used'])
       expect(result.overBudget).toBe(true)
     })
 
@@ -887,7 +890,8 @@ describe('buildMemoryIndex', () => {
       expect(result.overBudget).toBe(true)
       expect(result.tokens).toBeGreaterThan(10)
       expect(result.text).not.toBeNull()
-      expect(result.trimSteps).toEqual([...TRIM_ORDER])
+      expect(result.trimSteps)
+        .toEqual([...TRIM_ORDER, 'drop-least-recently-used'])
     })
   })
 })
@@ -1172,5 +1176,113 @@ describe('loadMemoryIndex', () => {
 
     expect(withTools.text).toContain('memory_read')
     expect(withoutTools.text).not.toContain('memory_read')
+  })
+})
+
+describe('buildMemoryIndex drops the least recently used entries last', () => {
+  beforeEach(() => {
+    nextEntryId = 1
+  })
+
+  function lruEntries() {
+    return {
+      neverUsed: makeEntry({
+        slug: 'never-used',
+        title: 'Never used',
+        description: '',
+        lastUsedAt: null,
+      }),
+      usedLongAgo: makeEntry({
+        slug: 'used-long-ago',
+        title: 'Used long ago',
+        description: '',
+        lastUsedAt: '2026-01-02T00:00:00.000Z',
+      }),
+      usedRecently: makeEntry({
+        slug: 'used-recently',
+        title: 'Used recently',
+        description: '',
+        lastUsedAt: '2026-10-25T00:00:00.000Z',
+      }),
+      profile: makeEntry({
+        category: 'profile',
+        slug: 'profile',
+        title: 'Profile',
+        description: '',
+        body: '',
+        lastUsedAt: null,
+      }),
+    }
+  }
+
+  function tokensOf(entries: MemoryEntry[]): number {
+    return build({
+      accountEntries: entries,
+      budgetTokens: Number.MAX_SAFE_INTEGER,
+    }).tokens
+  }
+
+  it.each([
+    {
+      label: 'one entry over: the never-used one goes',
+      keptForBudget: ['usedLongAgo', 'usedRecently', 'profile'],
+      dropped: ['never-used'],
+      kept: ['used-long-ago', 'used-recently'],
+    },
+    {
+      label: 'two entries over: then the least recently used one',
+      keptForBudget: ['usedRecently', 'profile'],
+      dropped: ['never-used', 'used-long-ago'],
+      kept: ['used-recently'],
+    },
+  ] as const)('$label', ({ keptForBudget, dropped, kept }) => {
+    const entries = lruEntries()
+    const budgetTokens = tokensOf(keptForBudget.map(key => entries[key]))
+    const result = build({
+      accountEntries: Object.values(entries),
+      budgetTokens,
+    })
+
+    expect(result.trimSteps).toEqual(['drop-least-recently-used'])
+    expect(result.droppedEntries).toBe(dropped.length)
+    expect(result.entryCount).toBe(4 - dropped.length)
+    expect(result.overBudget).toBe(false)
+    expect(result.text).toContain('- profile/profile | Profile')
+
+    for (const slug of dropped) {
+      expect(result.text).not.toContain(`topics/${slug}`)
+    }
+
+    for (const slug of kept) {
+      expect(result.text).toContain(`topics/${slug}`)
+    }
+  })
+
+  it('never drops profile or preferences, even far over budget', () => {
+    const entries = lruEntries()
+    const preferences = makeEntry({
+      category: 'preferences',
+      slug: 'preferences',
+      title: 'Preferences',
+      description: '',
+      body: '',
+    })
+    const result = build({
+      accountEntries: [...Object.values(entries), preferences],
+      budgetTokens: 1,
+    })
+
+    expect(result.droppedEntries).toBe(3)
+    expect(result.overBudget).toBe(true)
+    expect(result.text).toContain('- profile/profile | Profile')
+    expect(result.text).toContain('- preferences/preferences | Preferences')
+  })
+
+  it('drops nothing while the index fits, whatever lastUsedAt says', () => {
+    const result = build({ accountEntries: Object.values(lruEntries()) })
+
+    expect(result.droppedEntries).toBe(0)
+    expect(result.trimSteps).toEqual([])
+    expect(result.entryCount).toBe(4)
   })
 })

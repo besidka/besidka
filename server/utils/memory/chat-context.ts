@@ -107,6 +107,9 @@ export async function buildMemoryInstructions(input: {
         memoryIndex: {
           tokens: index.tokens,
           entryCount: index.entryCount,
+          ...(index.droppedEntries > 0
+            ? { droppedEntries: index.droppedEntries }
+            : {}),
           trimSteps: index.trimSteps,
           overBudget: index.overBudget,
         },

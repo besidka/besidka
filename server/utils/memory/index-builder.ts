@@ -6,6 +6,7 @@ import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
 import {
   MEMORY_LIMITS,
   MEMORY_SETTING_DEFAULTS,
+  alwaysInjectedMemoryCategories,
   memoryCategories,
 } from '#shared/utils/memory-policy'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
@@ -20,6 +21,7 @@ export type MemoryIndexTrimStep
     | 'descriptions-20'
     | 'descriptions-0'
     | 'profile-body'
+    | 'drop-least-recently-used'
 
 export interface MemoryIndexInput {
   accountEntries: MemoryEntry[]
@@ -34,6 +36,7 @@ export interface MemoryIndexResult {
   tokens: number
   budgetTokens: number
   entryCount: number
+  droppedEntries: number
   trimSteps: MemoryIndexTrimStep[]
   overBudget: boolean
 }
@@ -166,6 +169,35 @@ function compareEntries(first: MemoryEntry, second: MemoryEntry): number {
   return first.id < second.id ? -1 : 1
 }
 
+function lastUsedTime(entry: MemoryEntry): number {
+  if (!entry.lastUsedAt) {
+    return Number.NEGATIVE_INFINITY
+  }
+
+  return Date.parse(entry.lastUsedAt)
+}
+
+/**
+ * The order in which entries leave an index that still does not fit after
+ * every trim step: never used first, then the least recently used
+ * (`lastUsedAt`, set by `memory_read`/`memory_list`), and among equals the
+ * entry that sorts last in the index goes first.
+ */
+function compareDropOrder(first: MemoryEntry, second: MemoryEntry): number {
+  const usedOrder = lastUsedTime(first) - lastUsedTime(second)
+
+  if (usedOrder !== 0) {
+    return usedOrder
+  }
+
+  return compareEntries(second, first)
+}
+
+function isDroppable(entry: MemoryEntry): boolean {
+  return !(alwaysInjectedMemoryCategories as readonly MemoryCategory[])
+    .includes(entry.category)
+}
+
 function isInjectable(entry: MemoryEntry): boolean {
   return entry.sensitivity !== 'special'
 }
@@ -270,10 +302,13 @@ function renderIndex(
  * that fits: `preferences` bodies become lines, descriptions shrink to 60,
  * 40, 20 and 0 characters, and as the last resort the `profile` body
  * becomes a line too. A step that would not change the text is skipped and
- * not recorded. No entry is ever dropped, because an entry missing from the
- * index is invisible to `memory_read`; when the text is still over budget
- * after the last step it is returned with `overBudget: true`, and the worst
- * case stays bounded by the per-scope entry caps.
+ * not recorded. Only when the text is still over budget after all of them
+ * are entry lines dropped, one at a time, least recently used first (see
+ * `compareDropOrder`); `profile` and `preferences` are never dropped. A
+ * dropped entry stays stored and reachable through `memory_list`; nothing
+ * expires by `lastUsedAt`, which only breaks this tie. When even that does
+ * not fit, the text is returned with `overBudget: true`, and the worst case
+ * stays bounded by the per-scope entry caps.
  */
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const budgetTokens = input.budgetTokens ?? MEMORY_LIMITS.indexTokenBudget
@@ -291,6 +326,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
       tokens: 0,
       budgetTokens,
       entryCount: 0,
+      droppedEntries: 0,
       trimSteps: [],
       overBudget: false,
     }
@@ -329,11 +365,39 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     trimSteps.push(trimStep.id)
   }
 
+  const droppedIds = new Set<string>()
+  const dropOrder = [...accountEntries, ...projectEntries]
+    .filter(isDroppable)
+    .sort(compareDropOrder)
+
+  for (const entry of dropOrder) {
+    if (tokens <= budgetTokens) {
+      break
+    }
+
+    droppedIds.add(entry.id)
+
+    const isKept = (candidate: MemoryEntry) => !droppedIds.has(candidate.id)
+
+    text = renderIndex(
+      accountEntries.filter(isKept),
+      projectEntries.filter(isKept),
+      input.hasMemoryTools,
+      state,
+    )
+    tokens = estimateMemoryTokens(text, input.tokenFamily)
+  }
+
+  if (droppedIds.size > 0) {
+    trimSteps.push('drop-least-recently-used')
+  }
+
   return {
     text,
     tokens,
     budgetTokens,
-    entryCount,
+    entryCount: entryCount - droppedIds.size,
+    droppedEntries: droppedIds.size,
     trimSteps,
     overBudget: tokens > budgetTokens,
   }

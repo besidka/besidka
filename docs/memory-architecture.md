@@ -136,7 +136,7 @@ New table `memory_entries`:
 | `origin` | `user` \| `tool` \| `extraction` \| `import` |
 | `sourceChatIds` | JSON array — provenance + deletion cascade (3.7) |
 | `sourceMessageId` | for tool writes / undo |
-| `createdAt`, `updatedAt`, `lastUsedAt` | `lastUsedAt` is set by `memory_list`/`memory_read`; expiry by `lastUsedAt` is **not built** |
+| `createdAt`, `updatedAt`, `lastUsedAt` | `lastUsedAt` is set by `memory_list`/`memory_read`; there is **no expiry** by `lastUsedAt`, it is only the tie-break for which entry leaves an over-budget index first (3.3) |
 
 Caps: ≤ 30 account entries, ≤ 15 per project (soft: the extractor must merge
 before creating); `profile` and `preferences` bodies ≤ 1.5 KB each since
@@ -787,10 +787,15 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
   its 2500-token budget there; it now trims further on those models (with 4
   profile + 4 preferences bodies at the cap a Ukrainian index on Claude also
   collapses the profile body). The measurements below were taken with the
-  flat figures. Trim order from 3.2, stopping at the first step that fits and never
-  dropping an entry: the `preferences` body becomes a line, descriptions are
-  cut to 60, 40, 20 and 0 characters, and as a last resort the `profile` body
-  becomes a line. Steps that would change nothing are skipped and not recorded.
+  flat figures. Trim order from 3.2, stopping at the first step that fits:
+  the `preferences` body becomes a line, descriptions are cut to 60, 40, 20
+  and 0 characters, and the `profile` body becomes a line. Steps that would
+  change nothing are skipped and not recorded. Only if the index still does
+  not fit (2026-10-26) are entry lines dropped one by one,
+  `drop-least-recently-used`: never-used entries first, then the oldest
+  `lastUsedAt`, ties broken by the last index position; `profile` and
+  `preferences` are never dropped. A dropped entry stays stored and reachable
+  through `memory_list`; the wide event logs `memoryIndex.droppedEntries`.
   Measured with 100-character descriptions and two 1 KB bodies: 30 account
   entries cost 1595 tokens in English and 2251 in Ukrainian (no trim); with 15
   project entries on top, English trims after `preferences-body` (2156) and
