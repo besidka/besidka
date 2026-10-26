@@ -971,6 +971,7 @@ describe('sweepProjectKnowledge', () => {
     it('runs the re-screen pass before the R2 pass and reports it',
       async () => {
         const queue = {
+          get: vi.fn(async () => null),
           put: vi.fn(),
           delete: vi.fn(),
           list: vi.fn(async () => ({ keys: [] })),
@@ -987,6 +988,9 @@ describe('sweepProjectKnowledge', () => {
           listed: 0,
           clean: 0,
           flagged: 0,
+          progressed: 0,
+          failed: 0,
+          abandoned: 0,
           dropped: 0,
           deferred: 0,
         })
@@ -1002,6 +1006,7 @@ describe('sweepProjectKnowledge', () => {
         const result = await sweep(fake, {
           logger,
           unscreenedQueue: {
+            get: vi.fn(async () => null),
             put: vi.fn(),
             delete: vi.fn(),
             list: vi.fn(async () => {

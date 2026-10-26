@@ -2167,12 +2167,21 @@ status `ready` and text are sent, and the key is read once per request.
   time. A user without a current legal consent is deferred (no Jev call);
   without a key or with the role off the keys are dropped (the behaviour
   without a key); an item that is gone, foreign or no longer `ready` is
-  dropped; otherwise the current R2 text is screened with the background
-  timeout. `clean` drops the key, `flagged` sets the status (guarded on
+  dropped; otherwise `rescreenQueuedItem` screens the next
+  `rescreenMaxCallsPerItem` (12, at most 4 waves, so about 10 s at the
+  2.5 s timeout) chunks of the current R2 text, cut exactly as at ingest.
+  The KV value keeps `{ attempts, nextChunk, updatedAt }`, so a long item
+  advances over several runs (a 1 MB item of about 130 chunks needs about 11
+  hourly runs) and a changed `updated_at` starts it over. `clean` (all
+  chunks done) drops the key, `flagged` sets the status (guarded on
   `updated_at`, so a note edited meanwhile is not flagged for its old text)
-  and bumps `knowledge_version`, `unscreened` keeps the key and stops that
-  user's batch. The item counts as `ready` (and is sent) until the sweep
-  reaches it, usually within the hour. A failed queue write is logged as
+  and bumps `knowledge_version`, a failed call counts one attempt and the
+  run goes on with the user's next item, so one item that keeps timing out
+  never holds the others back. After `rescreenMaxAttempts` (5) failed runs
+  the item leaves the queue (`abandoned`) and stays `ready`, unscreened;
+  the UI does not show that, since it reads only D1 rows. The item counts
+  as `ready` (and is sent) until the sweep finishes it, usually within the
+  hour for a short item. A failed queue write is logged as
   `attributes.knowledge.unscreenedQueueFailed` and leaves the item as before.
   The sweep result carries `rescreen` counts; a re-screen failure is logged
   as `knowledgeRescreenFailure` and the R2 pass still runs.

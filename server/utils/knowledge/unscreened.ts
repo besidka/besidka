@@ -1,7 +1,11 @@
 import { sql } from 'drizzle-orm'
 import { JEV_INJECTION_SCREENING } from '#shared/utils/jev-policy'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import { screenTextsForInjection } from '~~/server/utils/jev/injection-screening'
+import {
+  screenTextsForInjection,
+  splitTextForInjectionScreening,
+} from '~~/server/utils/jev/injection-screening'
+import type { Experimental_DecisionModel } from 'ai'
 import type { JevLogger } from '~~/server/utils/jev/logging'
 import { resolveJevRoleModel } from '~~/server/utils/jev/roles'
 import { getKnowledgeItemText } from '~~/server/utils/knowledge/text-store'
@@ -11,6 +15,7 @@ import { hasUserLegalConsent } from '~~/server/utils/legal/consent'
 type DbClient = ReturnType<typeof useDb>
 
 export interface UnscreenedQueueStore {
+  get: (key: string) => Promise<string | null>
   put: (
     key: string,
     value: string,
@@ -30,9 +35,23 @@ export interface KnowledgeRescreenResult {
   listed: number
   clean: number
   flagged: number
+  progressed: number
+  failed: number
+  abandoned: number
   dropped: number
   deferred: number
 }
+
+interface QueueProgress {
+  attempts: number
+  nextChunk: number
+  updatedAt: number | null
+}
+
+type ItemOutcome = Exclude<
+  keyof KnowledgeRescreenResult,
+  'listed' | 'deferred'
+>
 
 interface QueuedItem {
   key: string
@@ -156,6 +175,111 @@ async function markItemFlagged(
   return true
 }
 
+function isCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0
+}
+
+function parseProgress(value: string | null): QueueProgress {
+  const progress: QueueProgress = { attempts: 0, nextChunk: 0, updatedAt: null }
+
+  if (!value || value === QUEUED_MARKER) {
+    return progress
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<QueueProgress>
+
+    return {
+      attempts: isCount(parsed.attempts) ? parsed.attempts : 0,
+      nextChunk: isCount(parsed.nextChunk) ? parsed.nextChunk : 0,
+      updatedAt: isCount(parsed.updatedAt) ? parsed.updatedAt : null,
+    }
+  } catch {
+    return progress
+  }
+}
+
+function countCleanPrefix(verdicts: string[]): number {
+  const firstUndecided = verdicts.findIndex(verdict => verdict !== 'clean')
+
+  return firstUndecided === -1 ? verdicts.length : firstUndecided
+}
+
+/**
+ * Screens the next `rescreenMaxCallsPerItem` chunks of one queued item and
+ * keeps its progress in the KV value, so a long item advances over several
+ * runs instead of timing out on every run. The chunks are the same
+ * `splitTextForInjectionScreening` cut ingest uses; a changed `updated_at`
+ * starts the item over. A call that fails counts one attempt, and after
+ * `rescreenMaxAttempts` the item leaves the queue (`abandoned`) so it can
+ * never hold the user's later items back.
+ */
+async function rescreenQueuedItem(input: {
+  db: DbClient
+  kv: UnscreenedQueueStore
+  model: Experimental_DecisionModel
+  item: QueuedItem
+  snapshot: ItemSnapshot
+  text: string
+  abortSignal: AbortSignal
+  logger?: UnscreenedQueueLogger
+}): Promise<ItemOutcome> {
+  const { kv, item, snapshot } = input
+  const stored = parseProgress(await kv.get(item.key))
+  const progress: QueueProgress = stored.updatedAt === snapshot.updatedAt
+    ? stored
+    : { attempts: stored.attempts, nextChunk: 0, updatedAt: snapshot.updatedAt }
+  const chunks = splitTextForInjectionScreening(input.text)
+  const batch = chunks.slice(
+    progress.nextChunk,
+    progress.nextChunk + JEV_INJECTION_SCREENING.rescreenMaxCallsPerItem,
+  )
+  const verdicts = batch.length === 0
+    ? []
+    : await screenTextsForInjection({
+      model: input.model,
+      texts: batch,
+      source: 'knowledge',
+      timeoutMs: JEV_INJECTION_SCREENING.timeoutMs,
+      maxCalls: JEV_INJECTION_SCREENING.rescreenMaxCallsPerItem,
+      abortSignal: input.abortSignal,
+      logger: input.logger as JevLogger | undefined,
+    })
+
+  if (verdicts.includes('flagged')) {
+    await kv.delete(item.key)
+
+    return await markItemFlagged(input.db, item, snapshot)
+      ? 'flagged'
+      : 'dropped'
+  }
+
+  const nextChunk = progress.nextChunk + countCleanPrefix(verdicts)
+
+  if (nextChunk >= chunks.length) {
+    await kv.delete(item.key)
+
+    return 'clean'
+  }
+
+  const isFailed = countCleanPrefix(verdicts) < batch.length
+  const attempts = progress.attempts + (isFailed ? 1 : 0)
+
+  if (attempts >= JEV_INJECTION_SCREENING.rescreenMaxAttempts) {
+    await kv.delete(item.key)
+
+    return 'abandoned'
+  }
+
+  await kv.put(
+    item.key,
+    JSON.stringify({ attempts, nextChunk, updatedAt: snapshot.updatedAt }),
+    { expirationTtl: JEV_INJECTION_SCREENING.rescreenQueueTtlSeconds },
+  )
+
+  return isFailed ? 'failed' : 'progressed'
+}
+
 function groupByUser(items: QueuedItem[]): Map<number, QueuedItem[]> {
   const groups = new Map<number, QueuedItem[]>()
 
@@ -178,11 +302,12 @@ function groupByUser(items: QueuedItem[]): Map<number, QueuedItem[]> {
  *   keys are dropped: that is the behaviour without a key.
  * - An item that is gone, moved, or no longer `ready` (flagged, allowed,
  *   re-extracted) is dropped.
- * - The current text is screened with the background timeout. `clean`
- *   drops the key; `flagged` sets the status, guarded on `updated_at` so a
- *   note edited meanwhile is never flagged for its old text, and bumps
- *   `knowledge_version` so the pack drops it; `unscreened` keeps the key and
- *   stops that user's batch until the next run.
+ * - Otherwise `rescreenQueuedItem` screens the next chunks of the current
+ *   text with the background timeout. `clean` drops the key; `flagged` sets
+ *   the status, guarded on `updated_at` so a note edited meanwhile is never
+ *   flagged for its old text, and bumps `knowledge_version` so the pack
+ *   drops it; an item with chunks left keeps its progress; a failed call
+ *   counts an attempt, and the run goes on with the user's next item.
  *
  * Logs counts only, under `attributes.injectionScreeningJev` (per Jev call)
  * and the sweep result.
@@ -200,6 +325,9 @@ export async function rescreenUnscreenedKnowledgeItems(input: {
     listed: 0,
     clean: 0,
     flagged: 0,
+    progressed: 0,
+    failed: 0,
+    abandoned: 0,
     dropped: 0,
     deferred: 0,
   }
@@ -282,29 +410,18 @@ export async function rescreenUnscreenedKnowledgeItems(input: {
         continue
       }
 
-      const [verdict] = await screenTextsForInjection({
+      const outcome = await rescreenQueuedItem({
+        db,
+        kv,
         model,
-        texts: [text],
-        source: 'knowledge',
-        timeoutMs: JEV_INJECTION_SCREENING.timeoutMs,
+        item,
+        snapshot,
+        text,
         abortSignal: AbortSignal.timeout(Math.max(remainingMs(), 1)),
-        logger: input.logger as JevLogger | undefined,
+        logger: input.logger,
       })
 
-      if (verdict === 'unscreened') {
-        result.deferred += items.length - index
-        break
-      }
-
-      if (verdict !== 'flagged') {
-        result.clean++
-      } else if (await markItemFlagged(db, item, snapshot)) {
-        result.flagged++
-      } else {
-        result.dropped++
-      }
-
-      await kv.delete(item.key)
+      result[outcome]++
     }
   }
 

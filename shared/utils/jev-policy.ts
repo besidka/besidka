@@ -96,6 +96,8 @@ export const JEV_INJECTION_SCREENING = {
   maxConcurrentCalls: 3,
   maxCallsPerKnowledgeRequest: 24,
   rescreenItemsPerSweep: 10,
+  rescreenMaxCallsPerItem: 12,
+  rescreenMaxAttempts: 5,
   rescreenQueueTtlSeconds: 14 * 24 * 60 * 60,
   timeoutMs: JEV_BACKGROUND_TIMEOUT_MS,
   searchResultsTimeoutMs: JEV_SEND_PATH_TIMEOUT_MS,

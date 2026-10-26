@@ -47,6 +47,7 @@ function createQueueKv() {
 
   return {
     values,
+    get: vi.fn(async (key: string) => values.get(key) ?? null),
     put: vi.fn(async (key: string, value: string) => {
       values.set(key, value)
     }),
@@ -82,6 +83,28 @@ function scoreInjectionText() {
       usage: { inputTokens: 15 },
     }
   })
+}
+
+function answer(probability: number) {
+  return {
+    answers: {
+      [JEV_INJECTION_SCREENING.questionId]: { type: 'boolean', probability },
+    },
+    usage: { inputTokens: 15 },
+  }
+}
+
+function rateLimited() {
+  return new APICallError({
+    message: 'rate limited',
+    url: 'https://api.typesafe.ai/v1/systemone',
+    requestBodyValues: {},
+    statusCode: 429,
+  })
+}
+
+function keyOf(itemId: number): string {
+  return `knowledge-unscreened:u${OWNER}:p${PROJECT}:i${itemId}`
 }
 
 describe('unscreened project knowledge queue', () => {
@@ -196,23 +219,115 @@ describe('unscreened project knowledge queue', () => {
     expect(testDb.getProjectRow(PROJECT)?.knowledge_version).toBe(4)
   })
 
-  it('keeps the queue and the item ready when Jev fails', async () => {
-    const payload = seedItem(INJECTION_TEXT)
+  it('keeps the queue and the item ready when Jev fails, counting one '
+    + 'attempt', async () => {
+    const payload = seedItem(INJECTION_TEXT, { updatedAt: 1_700_000_000 })
 
     await queue([payload])
-    mocks.decide.mockRejectedValue(new APICallError({
-      message: 'rate limited',
-      url: 'https://api.typesafe.ai/v1/systemone',
-      requestBodyValues: {},
-      statusCode: 429,
-    }))
+    mocks.decide.mockRejectedValue(rateLimited())
 
     const result = await rescreen()
 
     expect(statusOf(payload)).toBe('ready')
-    expect(result).toMatchObject({ deferred: 1, flagged: 0 })
-    expect(kv.values.size).toBe(1)
+    expect(result).toMatchObject({ failed: 1, flagged: 0 })
+    expect(JSON.parse(kv.values.get(keyOf(payload))!)).toEqual({
+      attempts: 1,
+      nextChunk: 0,
+      updatedAt: 1_700_000_000,
+    })
   })
+
+  it('goes on with the user\'s next item after one fails', async () => {
+    const stuck = seedItem(BENIGN_TEXT)
+    const payload = seedItem(INJECTION_TEXT)
+
+    await queue([stuck, payload])
+    mocks.decide.mockImplementation(async (call: {
+      state: { text: string }
+    }) => {
+      if (call.state.text.includes('Water the tomatoes')) {
+        throw rateLimited()
+      }
+
+      return answer(0.92)
+    })
+
+    const result = await rescreen()
+
+    expect(result).toMatchObject({ failed: 1, flagged: 1 })
+    expect(statusOf(payload)).toBe('flagged')
+    expect([...kv.values.keys()]).toEqual([keyOf(stuck)])
+  })
+
+  it('leaves the queue after rescreenMaxAttempts failed runs', async () => {
+    const stuck = seedItem(BENIGN_TEXT)
+
+    await queue([stuck])
+    mocks.decide.mockRejectedValue(rateLimited())
+
+    const outcomes = []
+
+    for (
+      let run = 0;
+      run < JEV_INJECTION_SCREENING.rescreenMaxAttempts;
+      run++
+    ) {
+      outcomes.push(await rescreen())
+    }
+
+    expect(outcomes.at(-1)).toMatchObject({ abandoned: 1 })
+    expect(outcomes.slice(0, -1).every(outcome => outcome.failed === 1))
+      .toBe(true)
+    expect(kv.values.size).toBe(0)
+    expect(statusOf(stuck)).toBe('ready')
+  })
+
+  it('screens a long item at most rescreenMaxCallsPerItem chunks per run '
+    + 'and resumes where it stopped', async () => {
+    const { splitTextForInjectionScreening } = await import(
+      '~~/server/utils/jev/injection-screening'
+    )
+    const perItem = JEV_INJECTION_SCREENING.rescreenMaxCallsPerItem
+    const line = `${'garden notes '.repeat(400)}\n`
+    const longText = line.repeat(perItem * 2 + 1) + INJECTION_TEXT
+    const chunkCount = splitTextForInjectionScreening(longText).length
+    const payload = seedItem(longText)
+
+    expect(chunkCount).toBeGreaterThan(perItem * 2)
+
+    await queue([payload])
+
+    const first = await rescreen()
+
+    expect(mocks.decide).toHaveBeenCalledTimes(perItem)
+    expect(first).toMatchObject({ progressed: 1 })
+    expect(JSON.parse(kv.values.get(keyOf(payload))!))
+      .toMatchObject({ attempts: 0, nextChunk: perItem })
+
+    await rescreen()
+    const last = await rescreen()
+
+    expect(mocks.decide).toHaveBeenCalledTimes(chunkCount)
+    expect(last).toMatchObject({ flagged: 1 })
+    expect(statusOf(payload)).toBe('flagged')
+  })
+
+  it('starts an item over when its text changed since the last run',
+    async () => {
+      const note = seedItem(BENIGN_TEXT, { updatedAt: 1_700_000_100 })
+
+      await queue([note])
+      kv.values.set(keyOf(note), JSON.stringify({
+        attempts: 2,
+        nextChunk: 5,
+        updatedAt: 1_700_000_000,
+      }))
+
+      const result = await rescreen()
+
+      expect(mocks.decide).toHaveBeenCalledTimes(1)
+      expect(result).toMatchObject({ clean: 1 })
+    })
 
   it('never calls Jev for a user without a current legal consent',
     async () => {
