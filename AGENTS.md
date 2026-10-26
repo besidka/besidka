@@ -240,21 +240,36 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   Gateway pass-through question, and a non-decided sketch for a
   Brave/Exa-backed external search tool
 - `docs/legal.md` - Privacy Policy / Terms / Cookie Policy as Nuxt Content: why
-  three separate documents, the `{{ privacyEmail }}` config-not-content binding
-  (and its silent-empty failure mode), why no postal address is published
-  (UŚUDE Art. 2 pkt 6 `działalność zarobkową`), and why adding ANY donation
-  channel breaks that conclusion
+  three separate documents, the `:privacy-email-link{}` MDC component
+  config-not-content binding (and its silent-empty failure mode), why no postal
+  address is published (UŚUDE Art. 2 pkt 6 `działalność zarobkową`), why
+  adding ANY donation channel breaks that conclusion, the consent records on
+  `user_settings` (not `CONSENT_DB`) and the `CURRENT_CONSENT_VERSION`
+  re-prompt rule, and how a `content/legal/*.md` edit reaches the production
+  `CONTENT_DB` (build dump, checksum import, Studio, preview and re-import
+  hazards)
 - `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory
   (opt-in removed from v1, owner 2026-10-25, option (c)): why explicit consent
   is the only basis, why it was not shipped, option (b) with its launch
-  conditions as the path to revisit, the 2026-10-25 engineering decisions, and
-  the open owner/counsel questions (the "no lawful basis" chat-storage
-  statement first)
+  conditions as the path to revisit, the 2026-10-25 engineering decisions, the
+  2026-10-26 status (the chat consent gate shipped, refusal blocks sending, the
+  Art. 49(1)(a) transfer-consent decision for DeepSeek, Moonshot AI and Qwen
+  and its residual risk), and the remaining open owner/counsel questions
+- `docs/legal/dpia.md` - DPIA for chats, memory and the consent gate
+  (engineer-drafted, not lawyer-reviewed): UODO and WP248 criteria, systematic
+  description, 19-row risk table with built/planned status, residual risks, and
+  the DPF list check of 2026-10-26; read before changing a purpose, provider,
+  consent text or retention rule
+- `docs/legal/art30-record.md` - GDPR Art. 30 record of processing activities
+  (engineer-drafted, not lawyer-reviewed): why the Art. 30(5) exemption fails,
+  22 activities with recipients, transfers, retention and security codes, and
+  the third-country tables (providers, processors); keep it in step with the
+  Privacy Policy and the DPIA
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
-  only, not legal text (the opt-in-specific clauses are deferred, opt-in
-  removed from v1): Privacy Policy/ToU clause outlines for memory, the
-  anchors the Memory UI links to, a DPIA skeleton (UODO M.P. 2019 poz. 666 +
-  EDPB criteria) and an Art. 30 record skeleton
+  only, not legal text, superseded on 2026-10-26 by the published pages (its
+  anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA
+  skeleton (UODO M.P. 2019 poz. 666 + EDPB criteria) and an Art. 30 record
+  skeleton
 - `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
   auth routes are noindex-but-crawlable, the "besidka"/"бесідка" brand-entity
   collision the schema and copy are shaped around, deliberate non-actions

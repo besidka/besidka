@@ -13,15 +13,28 @@ Structural facts worth knowing before editing:
 - Slugs are `/privacy-policy`, `/terms-of-use`, `/cookie-policy`. The old
   `/privacy` and `/terms` were indexed, so `nuxt.config.ts` `routeRules` 301s
   them. Keep those redirects.
-- **The published contact address is configuration, not content.**
-  `NUXT_PUBLIC_PRIVACY_EMAIL` → `runtimeConfig.public.privacyEmail` → passed to
-  `ContentRenderer` as `:data` → written `{{ privacyEmail }}` in the markdown.
-  If the env var is unset the value resolves to an empty string and the address
-  silently disappears from the page rather than erroring — so any verification
-  must assert the address is *present*, not merely that no `{{ }}` remains.
-- Frontmatter is **not** interpolated. `description` becomes a meta tag and
-  `summary` renders as plain text, so `{{ privacyEmail }}` there would publish
-  literally. Keep the email out of frontmatter.
+- **The published contact address is configuration, not content.** The pages
+  write it as the MDC component `**:privacy-email-link{}**`, which resolves to
+  `app/components/content/PrivacyEmailLink.vue`. That component reads
+  `useRuntimeConfig().public.privacyEmail` (from `NUXT_PUBLIC_PRIVACY_EMAIL`,
+  which `wrangler.jsonc` sets for the local, production and preview configs) and
+  renders a `NuxtLink` to `mailto:<address>` whose text is the address. Keep the
+  component form exactly: `**:privacy-email-link{}**`.
+- **Failure mode: the address vanishes silently.** If the env var is unset or
+  empty the component still renders, as a link to `mailto:` with no visible
+  text, and nothing errors. Any verification must assert that the address is
+  *present* in the rendered page, not merely that the page renders.
+- The old `{{ privacyEmail }}` interpolation is gone from the pages.
+  `LegalDocument.vue` still passes `:data="{ privacyEmail }"` to
+  `ContentRenderer` and still has a comment about `{{ privacyEmail }}`. Both are
+  vestigial: nothing in the markdown reads that data any more, so a
+  `{{ privacyEmail }}` written in a page would publish literally.
+- Frontmatter is **not** rendered through MDC. `description` becomes a meta tag
+  and `summary` renders as plain text, so a component there would publish
+  literally. Keep the email address out of frontmatter, and keep `summary` and
+  `description` double-quoted without inner double quotes: an unquoted `: ` in a
+  frontmatter value breaks the YAML (`tests/unit/config/content-frontmatter.spec.ts`
+  guards this).
 - `updatedAt` is a real editorial date. Bump it when the substance changes.
 - `server/api/v1/events/index.post.ts` has a `CLIENT_ALLOWED_PATHS` allowlist
   that must track these slugs, or client analytics events from a legal page 400.
@@ -34,6 +47,113 @@ Structural facts worth knowing before editing:
   recipients table. A future edit to that section must keep this link —
   removing it silently breaks the condition Cloudflare attaches to using
   Turnstile at all.
+
+## Consent records
+
+The consent gate (`CURRENT_CONSENT_VERSION = '2026-11-a'` in
+`server/utils/legal/consent.ts`) is one gate for every signed-in user (existing,
+email, Google, GitHub, passkey). It has two separate unticked boxes: the Terms of
+Use with the 18+ confirmation, and the explicit Art. 9(2)(a) consent described
+in the Privacy Policy section `#sensitive-information-in-your-chats`.
+
+- **The records live on `user_settings`, not in `CONSENT_DB`.** The nullable
+  columns are `terms_accepted_at`, `terms_version`, `age_confirmed_at`,
+  `sensitive_content_consent_at`, `sensitive_content_consent_version`,
+  `sensitive_content_consent_withdrawn_at` and `provider_transfer_consents`
+  (JSON, per provider: `consentedAt`, `withdrawnAt`). The migration is
+  `.drizzle/migrations/20261026135419_legal_consent/migration.sql` (additive
+  `ALTER TABLE ... ADD`, no rebuild). Withdrawal writes a withdrawal timestamp
+  and keeps the earlier ones. The columns go away with the account.
+- **Why not `CONSENT_DB.consent_receipts`.** That table is pseudonymous by design:
+  no user id, cookie receipts only. A record that proves what a named user
+  agreed to needs the user id, and putting it in `CONSENT_DB` would either break
+  that pseudonymity or break the rule that `CONSENT_DB` stays isolated from the
+  main database. The earlier plan to reuse it (in
+  `docs/legal-memory-sensitive-data.md`) is superseded.
+- **The predicate is `server/utils/legal/consent.ts`.** Status is `current` only
+  when `sensitive_content_consent_version` **and** `terms_version` both equal
+  `CURRENT_CONSENT_VERSION`, `terms_accepted_at` and `age_confirmed_at` are set,
+  and the consent was not withdrawn after it was given. One version string
+  therefore gates the Terms acceptance, the age confirmation and the Art. 9
+  consent together. `currentLegalConsentCondition()` is the same rule as SQL for
+  the background memory passes.
+- **Bumping the version re-prompts everyone.** Change `CURRENT_CONSENT_VERSION`
+  when the consent text changes in a way that matters (a new purpose, a new kind
+  of recipient). Every user then has status `outdated` and must confirm the gate
+  again before the next send.
+- **One version covers chats, project memory and memory.** There is no separate
+  memory consent. A `2026-10-a` text was never shipped and nobody consented to
+  it, so no record can be in that state.
+- **Refusal or withdrawal** blocks sending (HTTP 403 from the chat endpoints)
+  and the background memory work (extraction sweep, extract-now, backfill,
+  project memory refresh, import). Reading, exporting and deleting stay open.
+- **Transfer consents** (Art. 49(1)(a)) for DeepSeek, Moonshot AI and Qwen are
+  stored in `provider_transfer_consents` and managed in **Profile → Security →
+  Privacy & consent**. Deleting the key withdraws the consent. They do not apply
+  to a model reached through a gateway.
+- The gate copy, the Privacy Policy section, `docs/legal/dpia.md` and
+  `docs/legal/art30-record.md` must be edited together. If a change alters what
+  the user agrees to, bump the version.
+
+## How legal text reaches production
+
+A repo edit to `content/legal/*.md` reaches the production `CONTENT_DB` with no
+manual step. Every link of the chain is in the repo:
+
+1. **Collection.** `content.config.ts` defines the `legal` collection with
+   `source: 'legal/*.md'`.
+2. **Storage.** `nuxt.config.ts` sets `content.database` to
+   `{ type: 'd1', bindingName: 'CONTENT_DB' }`. `wrangler.jsonc` binds
+   `CONTENT_DB` to `besidka-content` in `env.production`, and to
+   `besidka-content-preview` in the local config and in
+   `env.production.previews` (every PR preview shares that one database).
+3. **Build.** `pnpm run build` makes Nuxt Content render each collection into a
+   SQL dump with a checksum, bundled into the Worker (`#content/manifest`).
+4. **Deploy.** `.github/workflows/production.yml` runs on every push to `main`.
+   Its `paths-ignore` skips root `*.md`, `docs/**` and similar, but **not**
+   `content/**`, so a commit that touches `content/legal/*.md` builds and
+   deploys. A docs-only commit does not deploy.
+5. **Import.** On the first query to a collection in each Worker isolate,
+   `@nuxt/content` (`runtime/internal/database.server.js`,
+   `checkAndImportDatabaseIntegrity`) compares the checksum stored in
+   `CONTENT_DB` (`checksum_legal`) with the one in the new build. If they
+   differ it deletes the rows that left the dump, runs the new statements, and
+   drops and recreates the table only when the collection structure changed. No
+   migration command is involved. There is no `routeRules` cache on
+   `/privacy-policy`, `/terms-of-use` or `/cookie-policy` (only the `/privacy`
+   and `/terms` redirects), so the new text is served as soon as the import
+   finishes.
+
+Consequences and hazards:
+
+- **Text and gate ship together.** The legal text and the consent gate that
+  refers to it are in the same build, so they go live in the same deploy. Do not
+  split them across deploys.
+- **Studio goes through git.** Studio at `/_studio` publishes by committing to
+  `besidka/besidka@main` (`docs/landing-studio.md`), so it takes the same path
+  and cannot bypass the repo. A Studio draft opened before a repo edit and
+  published afterwards would commit Studio's copy of the file; how Studio
+  resolves that against a newer commit is not documented in this repo, so treat
+  it as an overwrite risk. Do not edit `content/legal/*.md` in the repo and in Studio at the same
+  time. In dev, opening the editor rewrites the file into Studio's own
+  serialization.
+- **Previews share one content database.** `besidka-content-preview` is shared by
+  all PR previews and the long-lived `main` preview, so concurrent PRs that
+  carry different legal text swap the stored text back and forth, one checksum
+  at a time. The text a preview shows is the text of whichever build ran the
+  last import.
+- **An old Worker version can re-import old text.** `docs/security-audit-2026-10.md`
+  ("Content DB re-import") records that a superseded Worker version with a live
+  URL can re-import its older content into `CONTENT_DB`. The risk is accepted
+  and tied to the `preview_urls` decision. After a legal-text deploy, check the
+  live pages, not only the green deploy.
+- **Runbook line.** After the deploy that carries a legal-text change, open the
+  three pages on `https://besidka.com`, and check the `Last updated` date, the
+  privacy address and the anchors the app links to
+  (`/privacy-policy#sensitive-information-in-your-chats`,
+  `/privacy-policy#transfers-outside-the-eu`, `/privacy-policy#memory`). If old
+  text is still served, request the page again (the import runs on the first
+  query per isolate) and re-check. Do not edit `CONTENT_DB` by hand.
 
 ## Independent controller vs. processor classification
 
@@ -101,6 +221,11 @@ lifetime income.
 
 ## Not legal advice
 
-These documents were drafted from a requirements analysis, not by a lawyer. The
-items most worth a Polish `radca prawny`'s eye are the address conclusion above
-and the Art. 9 special-category position.
+The whole legal package is engineer-drafted and has not been reviewed by a
+lawyer: the three pages, the consent gate copy, the DPIA (`docs/legal/dpia.md`)
+and the Art. 30 record (`docs/legal/art30-record.md`). They were drafted from
+requirements analyses and primary-source reading, not by counsel. The items most
+worth a Polish `radca prawny`'s eye are the address conclusion above, the
+Art. 9 special-category position (including that refusing the consent blocks
+sending), and the Art. 49(1)(a) transfer consent for repeated transfers to
+China and Singapore. See `docs/legal-memory-sensitive-data.md`.

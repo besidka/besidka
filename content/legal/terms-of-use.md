@@ -1,7 +1,7 @@
 ---
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
-updatedAt: 2026-09-23
+updatedAt: 2026-10-26
 summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
@@ -23,7 +23,7 @@ These terms are an agreement between you and me about the **hosted service at be
 
 They do not cover copies of Besidka that other people run. If you run your own copy, you set your own terms, you are the data controller for it, and under the EU AI Act you are the provider or deployer of that system. I have no access to and no responsibility for it.
 
-By creating an account or using the service you accept these terms. If you do not accept them, please do not use the service.
+By creating an account or using the service you accept these terms, and the app asks you to confirm that in a box before you send a message. If you do not accept them, please do not use the service.
 
 ## The service
 
@@ -52,7 +52,7 @@ The absence of any revenue is not an accident, and it is part of what these term
 
 ## Who may use it
 
-You must be at least **18 years old**. Besidka only works if you bring your own AI provider API key, and the providers set their own minimum age for an API account — Google AI Studio requires you to be 18 or over. You cannot use Besidka without such an account, so 18 is the minimum here too. By using Besidka you confirm you are 18 or over.
+You must be at least **18 years old**. Besidka only works if you bring your own AI provider API key, and the providers set their own minimum age for an API account — Google AI Studio requires you to be 18 or over. You cannot use Besidka without such an account, so 18 is the minimum here too. You confirm you are 18 or over in the app before your first message.
 
 ## Your account
 
@@ -84,6 +84,15 @@ You are using an **AI system**. The text, code, summaries, images and reports yo
 - Output is not unique to you. Another user with a similar prompt may receive substantially the same answer.
 - Do not use output to make decisions about other people (hiring, credit, eligibility, discipline) without a human being who is competent to make that decision reviewing it.
 
+## Memory and project knowledge
+
+Memory is optional and under your control. You can turn it off, turn off memory generation from chats, edit or delete any entry, reset it, or export it at any time.
+
+- **Memory can be wrong.** An entry generated from your chats is an AI model's summary and can misunderstand, mix up or outdate what you said. Check it, correct it, or delete it.
+- Memory does not keep sensitive topics or the items listed as never stored in the [Privacy Policy](/privacy-policy#memory), even if you ask.
+- Generating memory from chats, building it from past chats, refreshing project memory and importing all run on your own API key and are billed to it. The app shows an estimate before building from past chats.
+- Do not add files or notes to project knowledge that you have no right to use.
+
 ## What you may not do
 
 Do not use Besidka to:
@@ -95,17 +104,19 @@ Do not use Besidka to:
 - Attack the service — no scraping at scale, no brute forcing, no attempt to bypass rate limits or access other users' data, no probing for vulnerabilities beyond good-faith reporting to me.
 - Resell or wrap the hosted service as your own commercial product. You may self-host the code instead; that is what the licence is for.
 
-### Do not submit sensitive personal data
+## Sensitive information
 
-**Do not submit special category personal data.** That means data revealing health, political opinions, religious or philosophical beliefs, trade union membership, genetic or biometric data, sex life or sexual orientation, or data about criminal offences and convictions.
+You may share sensitive information about yourself in Besidka, such as details of your health or your beliefs, if you want the assistant's help with it. Before you do, know what happens to it:
 
-The reason is practical as well as legal: whatever you type is forwarded to a third-party AI provider under your own key, or through the AI gateway you chose, and a search query your model writes from it may go to the search provider you turned on. On a free Google Gemini key that provider may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
+- It is stored with the rest of the chat and sent to the AI provider, AI gateway or search provider you chose, under your own account with them. On a free Google Gemini key outside the EEA, Switzerland and the UK, Google may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
+- I store and send it only with your explicit consent, which I ask for in the app, separately from these terms. The [Privacy Policy](/privacy-policy#sensitive-information-in-your-chats) explains it, including how to withdraw it. If you do not give that consent, or you withdraw it, you can still read, export and delete your data, but you cannot send new messages.
+- Please take particular care with other people's sensitive information, and with anything about criminal offences; see [Other people's data](#other-peoples-data).
 
-I build no features that infer, classify, score or profile anybody from the content of chats, and I do not read your chats.
+I do not read your chats. What the app does with chat content beyond storing and sending it, such as memory and looking up your earlier chats, is described in the [Privacy Policy](/privacy-policy). None of it is used to make decisions about you.
 
-### Other people's data
+## Other people's data
 
-If you put someone else's personal data into a chat, you are responsible for having a lawful reason to do that. If you then publish that chat with a share link, you are responsible for that publication too — see below.
+If you put someone else's personal data into a chat, you are responsible for having a lawful reason to do that. If you then publish that chat with a share link, you are responsible for that publication too — see below. Memory never keeps sensitive information about anyone, you or other people; see the [Privacy Policy](/privacy-policy#memory).
 
 ## Your content
 
@@ -114,8 +125,9 @@ You keep all rights in what you write and upload. I claim no ownership of it.
 To run the service, I need a **narrow, limited permission** from you. You grant me a non-exclusive, royalty-free licence, limited strictly to operating the service for you, to:
 
 1. store your content and serve it back to you;
-2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, and transmit the search queries your model writes from it to the search provider you turned on, using your key; and
-3. render your content on a share page **that you yourself created**, for as long as that share is active.
+2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, including your memory, project knowledge and excerpts of your earlier chats; transmit chat text to the model you chose for memory, using your key, when memory is written from your chats as described in the [Privacy Policy](/privacy-policy#memory); and transmit the search queries your model writes from it to the search provider you turned on, using your key;
+3. keep the memory entries and project knowledge you create or allow, and use them as context for your own later chats; and
+4. render your content on a share page **that you yourself created**, for as long as that share is active.
 
 That is the whole licence. It is not perpetual, not transferable and not for any other purpose. It ends for any given content when you delete that content or your account. I do not use your content to train models, to advertise, or to build any other product.
 
@@ -182,7 +194,9 @@ I am a micro-enterprise and am therefore exempt from the Digital Services Act's 
 
 ## Content moderation
 
-I do not read your private chats and I do not run automated scanning of chat content. There is no system that flags or classifies what you write.
+I do not read your private chats and I do not run automated scanning of chat content for moderation. There is no system that flags, reports or acts on what you write.
+
+The only automatic check on content is part of memory: before text is saved to memory, it is checked so that sensitive topics and never-stored items such as card numbers are kept out, and never-stored items are removed from chat text before it is sent to the memory model. That check only decides what memory may keep. It does not flag your chats, it does not report anything, and it has no effect on your account.
 
 Moderation is therefore **reactive**. I act on reports, on notices from authorities, and on things I notice while running the service. When I act, I may remove or disable specific content, revoke a share link, restrict a feature for an account, or suspend or terminate an account for serious or repeated breaches of these terms. I aim to act proportionately, and I send a statement of reasons as described above.
 
