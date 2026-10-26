@@ -73,8 +73,8 @@ describe('Profile/Keys/TypesafeChecks', () => {
     expect(text).toContain('Decides per message whether a web search is '
       + 'needed. Sends your message and the last few turns. If TypeSafe AI '
       + 'doesn\'t answer, Besidka searches as usual.')
-    expect(text).toContain('Sends the chat text being shared. Never blocks '
-      + 'sharing.')
+    expect(text).toContain('Sends the chat text being shared, with emails, '
+      + 'phone numbers and card numbers removed. Never blocks sharing.')
     expect(text).toContain('results from your model\'s own web search can\'t '
       + 'be checked.')
   })

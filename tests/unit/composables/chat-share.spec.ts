@@ -287,4 +287,112 @@ describe('useChatShare', () => {
       allowBranch: true,
     })
   })
+
+  describe('runShareCheck', () => {
+    const options = { showFiles: true, showMetadata: false }
+
+    it('posts the options and stores the result', async () => {
+      fetchMock.mockResolvedValue({
+        warnings: [{ kind: 'email', source: 'detector' }],
+        checked: false,
+      })
+
+      const { runShareCheck, shareCheck, targetChatSlug } = useChatShare()
+
+      targetChatSlug.value = 'chat-1'
+
+      const pending = runShareCheck('chat-1', options)
+
+      expect(shareCheck.value.status).toBe('pending')
+
+      await pending
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/chats/chat-1/share/check',
+        expect.objectContaining({ method: 'POST', body: options }),
+      )
+      expect(shareCheck.value).toEqual({
+        status: 'done',
+        result: {
+          warnings: [{ kind: 'email', source: 'detector' }],
+          checked: false,
+        },
+      })
+    })
+
+    it('turns a failed request into an error state without a result',
+      async () => {
+        fetchMock.mockRejectedValue(new Error('boom'))
+
+        const { runShareCheck, shareCheck, targetChatSlug } = useChatShare()
+
+        targetChatSlug.value = 'chat-1'
+
+        await runShareCheck('chat-1', options)
+
+        expect(shareCheck.value).toEqual({ status: 'error', result: null })
+      })
+
+    it('turns a response without a warnings list into an error state',
+      async () => {
+        fetchMock.mockResolvedValue({ slug: 'unrelated' })
+
+        const { runShareCheck, shareCheck, targetChatSlug } = useChatShare()
+
+        targetChatSlug.value = 'chat-1'
+
+        await runShareCheck('chat-1', options)
+
+        expect(shareCheck.value.status).toBe('error')
+      })
+
+    it('ignores an answer for a chat the modal no longer targets',
+      async () => {
+        fetchMock.mockResolvedValue({ warnings: [], checked: true })
+
+        const { runShareCheck, shareCheck, targetChatSlug } = useChatShare()
+
+        targetChatSlug.value = 'chat-2'
+
+        await runShareCheck('chat-1', options)
+
+        expect(shareCheck.value.status).toBe('pending')
+      })
+
+    it('ignores an answer that was aborted', async () => {
+      const controller = new AbortController()
+
+      fetchMock.mockImplementation(async () => {
+        controller.abort()
+
+        return { warnings: [], checked: true }
+      })
+
+      const { runShareCheck, shareCheck, targetChatSlug } = useChatShare()
+
+      targetChatSlug.value = 'chat-1'
+
+      await runShareCheck('chat-1', options, controller.signal)
+
+      expect(shareCheck.value.status).toBe('pending')
+    })
+
+    it('ignores a failure that was aborted', async () => {
+      const controller = new AbortController()
+
+      fetchMock.mockImplementation(async () => {
+        controller.abort()
+
+        throw new Error('aborted')
+      })
+
+      const { runShareCheck, shareCheck, targetChatSlug } = useChatShare()
+
+      targetChatSlug.value = 'chat-1'
+
+      await runShareCheck('chat-1', options, controller.signal)
+
+      expect(shareCheck.value.status).toBe('pending')
+    })
+  })
 })

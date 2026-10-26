@@ -126,6 +126,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/jev/roles.spec.ts',
     ...jevRerankTests,
     'tests/unit/utils/jev-policy.spec.ts',
+    'tests/integration/api/chats-share-check.spec.ts',
     ...memoryJevTests,
   ]
   const autoWebSearchTests = [
@@ -151,6 +152,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/compliance.spec.ts',
     'tests/unit/utils/memory/compliance-evasion.spec.ts',
     'tests/unit/utils/memory/sensitivity.spec.ts',
+    'tests/unit/utils/chats/share-pii-check.spec.ts',
     ...memoryJevTests,
   ]
   const memoryModelTests = [
@@ -549,6 +551,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-shares-branch.spec.ts',
     'tests/integration/api/chats-shares-handoff.spec.ts',
     'tests/integration/api/chats-share-create.spec.ts',
+    'tests/integration/api/chats-share-check.spec.ts',
+    'tests/unit/utils/chats/share-pii-check.spec.ts',
+    'tests/unit/utils/share-pii.spec.ts',
     'tests/integration/api/chats-share-revoke.spec.ts',
     'tests/integration/api/chats-share-reshare-slug.spec.ts',
     'tests/integration/api/shared-chat-view.spec.ts',
@@ -1572,7 +1577,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue|shared\/utils\/og-description\.ts)$/,
+        /^(server\/utils\/chats\/share(-pii-check|-public-parts)?\.ts|shared\/utils\/share-pii\.ts|shared\/types\/share-pii\.d\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue|shared\/utils\/og-description\.ts)$/,
       tests: chatShareTests,
     },
     {
