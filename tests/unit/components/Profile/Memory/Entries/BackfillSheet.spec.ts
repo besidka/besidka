@@ -1,6 +1,7 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import type {
   MemoryBackfillEstimate,
   MemoryBackfillProgress,
@@ -367,6 +368,12 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       expect(textOf(wrapper, 'memory-backfill-scope-note')).toBe(
         'Runs on your own API key. Reads your account chats (not projects) '
         + 'and may take several minutes.',
+      )
+      expect(textOf(wrapper, 'memory-backfill-limits-note')).toBe(
+        `Reads at most your ${MEMORY_LIMITS.backfillMaxChats} most recent `
+        + 'account chats and stops after '
+        + `${MEMORY_LIMITS.backfillMaxTokens / 1_000_000} million tokens in `
+        + 'total, even if the cost could not be estimated.',
       )
       expect(isDisabled(wrapper, 'memory-backfill-start')).toBe(false)
       expect(hasTestId(wrapper, 'memory-backfill-last-run')).toBe(false)
@@ -759,7 +766,11 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
 
     it.each([
       ['model-unavailable', 'The model became unavailable.'],
-      ['spend-limit', 'Stopped: spend would exceed the estimate.'],
+      [
+        'spend-limit',
+        'Stopped at the spend limit: 1.5 times the estimate or '
+        + `${MEMORY_LIMITS.backfillMaxTokens / 1_000_000} million tokens.`,
+      ],
       ['too-many-failures', 'Too many chats failed.'],
       ['consecutive-failures', 'Several chats in a row failed.'],
     ] as const)('explains the %s failure', async (failureReason, copy) => {

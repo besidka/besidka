@@ -5,10 +5,21 @@ import type {
   MemoryBackfillUnavailableReason,
 } from '#shared/types/memory-backfill.d'
 import type { MemoryModelSource } from '#shared/types/memory.d'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 
 export const MEMORY_BACKFILL_COOLDOWN_MS = 10_000
 
 const TINY_COST_THRESHOLD_USD = 0.01
+
+const TOKENS_PER_MILLION = 1_000_000
+
+const BACKFILL_MAX_MILLION_TOKENS
+  = MEMORY_LIMITS.backfillMaxTokens / TOKENS_PER_MILLION
+
+export const memoryBackfillLimitsNote = 'Reads at most your '
+  + `${MEMORY_LIMITS.backfillMaxChats} most recent account chats and stops `
+  + `after ${BACKFILL_MAX_MILLION_TOKENS} million tokens in total, even if `
+  + 'the cost could not be estimated.'
 
 export const memoryBackfillModelSourceLabels: Record<
   MemoryModelSource,
@@ -24,7 +35,8 @@ export const memoryBackfillFailureLabels: Record<
   string
 > = {
   'model-unavailable': 'The model became unavailable.',
-  'spend-limit': 'Stopped: spend would exceed the estimate.',
+  'spend-limit': 'Stopped at the spend limit: 1.5 times the estimate or '
+    + `${BACKFILL_MAX_MILLION_TOKENS} million tokens.`,
   'too-many-failures': 'Too many chats failed.',
   'consecutive-failures': 'Several chats in a row failed.',
 }

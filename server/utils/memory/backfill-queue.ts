@@ -1,4 +1,5 @@
 import { and, eq, isNull, lte, sql } from 'drizzle-orm'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 
 /**
@@ -18,4 +19,20 @@ export function backfillEligibleChats(userId: number, createdBefore: Date) {
         and ${schema.messages.role} = 'user'
     )`,
   )
+}
+
+/**
+ * The ids of the chats one backfill job can reach at most: the newest
+ * `MEMORY_LIMITS.backfillMaxChats` eligible chats in the queue's own order
+ * (activity, then id, both descending). The estimate aggregates over this
+ * set only, so its cost is bounded however long the history is.
+ */
+export function backfillCappedChatIds(userId: number, createdBefore: Date) {
+  return sql`(
+    select ${schema.chats.id} as id
+    from ${schema.chats}
+    where ${backfillEligibleChats(userId, createdBefore)}
+    order by ${schema.chats.activityAt} desc, ${schema.chats.id} desc
+    limit ${MEMORY_LIMITS.backfillMaxChats}
+  )`
 }

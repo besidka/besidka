@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import {
   EXTRACTION_NOW,
   createMemoryExtractionTestDb,
@@ -205,6 +206,28 @@ describe('estimateBackfill', () => {
     expect(result.chats).toBe(1)
     expect(result.userChars).toBe(50)
   })
+
+  it('aggregates only the newest backfillMaxChats chats the job can reach',
+    async () => {
+      await chatWith(
+        [{ role: 'user', text: 'z'.repeat(5000) }],
+        userId,
+        { activityAt: minutesBefore(5000) },
+      )
+
+      for (let index = 0; index < MEMORY_LIMITS.backfillMaxChats; index++) {
+        await chatWith(
+          [{ role: 'user', text: 'a'.repeat(10) }],
+          userId,
+          { activityAt: minutesBefore(60 + index) },
+        )
+      }
+
+      const result = await estimate()
+
+      expect(result.chats).toBe(MEMORY_LIMITS.backfillMaxChats)
+      expect(result.userChars).toBe(MEMORY_LIMITS.backfillMaxChats * 10)
+    })
 
   it('returns zeros and a zero cost for a user without chats', async () => {
     const result = await estimate()

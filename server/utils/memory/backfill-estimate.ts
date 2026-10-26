@@ -15,7 +15,7 @@ import {
   getCachedGatewayCatalog,
 } from '~~/server/utils/gateways/catalog'
 import { getCloudflareGatewayCredentials } from '~~/server/utils/gateways/cloudflare'
-import { backfillEligibleChats } from '~~/server/utils/memory/backfill-queue'
+import { backfillCappedChatIds } from '~~/server/utils/memory/backfill-queue'
 import {
   MEMORY_EXTRACTION_LIMITS,
 } from '~~/server/utils/memory/extract-limits'
@@ -71,7 +71,7 @@ async function readChatTotals(
       ) as transcript_chars
     from (
       select
-        chats.id as chat_id,
+        capped_chats.id as chat_id,
         coalesce(sum(
           case when message.role = 'user'
             then min(
@@ -89,17 +89,16 @@ async function readChatTotals(
             end
           )
         ), 0) as transcript_chars
-      from chats
+      from ${backfillCappedChatIds(userId, createdBefore)} as capped_chats
       join messages as message
-        on message.chat_id = chats.id
+        on message.chat_id = capped_chats.id
         and message.role in ('user', 'assistant')
       left join json_each(
         case when json_valid(message.parts) then message.parts else '[]' end
       ) as part
         on part.type = 'object'
         and json_extract(part.value, '$.type') = 'text'
-      where ${backfillEligibleChats(userId, createdBefore)}
-      group by chats.id
+      group by capped_chats.id
     ) as per_chat
   `)
   const row = rows[0]
@@ -121,9 +120,9 @@ async function readScriptSample(
     from (
       select messages.parts as parts
       from messages
-      join chats on chats.id = messages.chat_id
-      where ${backfillEligibleChats(userId, createdBefore)}
-        and messages.role = 'user'
+      join ${backfillCappedChatIds(userId, createdBefore)} as capped_chats
+        on capped_chats.id = messages.chat_id
+      where messages.role = 'user'
       order by messages.created_at desc
       limit ${SCRIPT_SAMPLE_MESSAGES}
     ) as recent

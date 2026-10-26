@@ -43,6 +43,8 @@ export const MEMORY_LIMITS = {
   maxAboutMeChars: 4000,
   maxSourceChatIds: 20,
   indexTokenBudget: 2500,
+  backfillMaxChats: 200,
+  backfillMaxTokens: 4_000_000,
 } as const
 
 export const neverStoreKinds = [

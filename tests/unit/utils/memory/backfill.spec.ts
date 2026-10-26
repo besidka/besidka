@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 import {
   EXTRACTION_NOW,
@@ -262,6 +263,14 @@ describe('memory backfill', () => {
       })
 
       expect((await start()).totalChats).toBe(1)
+    })
+
+    it('caps the total at the newest backfillMaxChats chats', async () => {
+      for (let index = 0; index <= MEMORY_LIMITS.backfillMaxChats; index++) {
+        await chat(10 + index)
+      }
+
+      expect((await start()).totalChats).toBe(MEMORY_LIMITS.backfillMaxChats)
     })
 
     it('answers a second start with a 409 while one is running', async () => {
@@ -927,15 +936,93 @@ describe('memory backfill', () => {
       })
     })
 
-    it('does not limit spend when no estimate was stored', async () => {
-      const job = await jobWithChats(2, { estimate: null })
+    it('stops at the hard token ceiling when no estimate was stored',
+      async () => {
+        const job = await jobWithChats(3, { estimate: null })
 
-      mocks.extractChatMemory.mockResolvedValue(extractionResult({
-        usage: { inputTokens: 9_000_000, outputTokens: 9_000_000 },
-      }))
+        mocks.extractChatMemory.mockResolvedValue(extractionResult({
+          usage: {
+            inputTokens: MEMORY_LIMITS.backfillMaxTokens,
+            outputTokens: 0,
+          },
+        }))
 
-      expect((await advance(job.id)).job?.status).toBe('completed')
-    })
+        const step = await advance(job.id, { chatsLimit: 3 })
+
+        expect(step.job).toMatchObject({
+          status: 'failed',
+          failureReason: 'spend-limit',
+          processedChats: 1,
+        })
+        expect(mocks.extractChatMemory).toHaveBeenCalledTimes(1)
+      })
+
+    it('stops at the hard token ceiling even under a generous estimate',
+      async () => {
+        const job = await jobWithChats(3, {
+          estimate: {
+            ...ESTIMATE,
+            inputTokens: MEMORY_LIMITS.backfillMaxTokens * 10,
+            costUsd: null,
+            pricePerMillion: null,
+          },
+        })
+
+        mocks.extractChatMemory.mockResolvedValue(extractionResult({
+          usage: {
+            inputTokens: MEMORY_LIMITS.backfillMaxTokens / 2,
+            outputTokens: 0,
+          },
+        }))
+
+        const step = await advance(job.id, { chatsLimit: 3 })
+
+        expect(step.job).toMatchObject({
+          status: 'failed',
+          failureReason: 'spend-limit',
+          processedChats: 2,
+        })
+      })
+
+    it('keeps going under the ceiling when no estimate was stored',
+      async () => {
+        const job = await jobWithChats(2, { estimate: null })
+
+        mocks.extractChatMemory.mockResolvedValue(extractionResult({
+          usage: { inputTokens: 1_000, outputTokens: 100 },
+        }))
+
+        expect((await advance(job.id)).job?.status).toBe('completed')
+      })
+
+    it('completes once the chat cap is reached, leaving older chats',
+      async () => {
+        const job = await jobWithChats(3, {
+          processedChats: MEMORY_LIMITS.backfillMaxChats - 1,
+        })
+
+        mocks.extractChatMemory.mockResolvedValue(extractionResult())
+
+        const step = await advance(job.id, { chatsLimit: 3 })
+
+        expect(step.job).toMatchObject({
+          status: 'completed',
+          processedChats: MEMORY_LIMITS.backfillMaxChats,
+        })
+        expect(mocks.extractChatMemory).toHaveBeenCalledTimes(1)
+      })
+
+    it('completes without a model call when the cap was already reached',
+      async () => {
+        const job = await jobWithChats(2, {
+          processedChats: MEMORY_LIMITS.backfillMaxChats,
+        })
+
+        const step = await advance(job.id)
+
+        expect(step.job?.status).toBe('completed')
+        expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+      })
 
     it('fails after five chats fail in a row', async () => {
       const job = await jobWithChats(8, {

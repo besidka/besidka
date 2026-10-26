@@ -160,6 +160,12 @@
               projects) and may take several minutes.
             </p>
             <p
+              class="text-xs text-base-content/70"
+              data-testid="memory-backfill-limits-note"
+            >
+              {{ memoryBackfillLimitsNote }}
+            </p>
+            <p
               v-if="lastRunText"
               class="text-xs text-base-content/70"
               data-testid="memory-backfill-last-run"

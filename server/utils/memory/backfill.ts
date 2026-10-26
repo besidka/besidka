@@ -19,6 +19,7 @@ import {
   sql,
 } from 'drizzle-orm'
 import { createError } from 'evlog'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 import { keyProviderIdForGateway } from '~~/server/utils/gateways/index'
 import {
@@ -306,12 +307,21 @@ async function countEligibleChats(
   userId: number,
   createdBefore: Date,
 ): Promise<number> {
-  const [row] = await db
-    .select({ total: sql<number>`count(*)` })
+  const capped = db
+    .select({ id: schema.chats.id })
     .from(schema.chats)
     .where(backfillEligibleChats(userId, createdBefore))
+    .limit(MEMORY_LIMITS.backfillMaxChats)
+    .as('capped_eligible_chats')
+  const [row] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(capped)
 
   return Number(row?.total ?? 0)
+}
+
+function remainingChatsUnderCap(job: MemoryBackfillJobRow): number {
+  return Math.max(0, MEMORY_LIMITS.backfillMaxChats - job.processedChats)
 }
 
 async function selectNextChats(
@@ -361,8 +371,9 @@ async function pruneFinishedJobs(db: DbClient, userId: number) {
 }
 
 /**
- * Starts the one backfill a user may have running: a pass over every account
- * chat that existed at this moment, newest first, as `trigger: 'backfill'`
+ * Starts the one backfill a user may have running: a pass over the account
+ * chats that existed at this moment, newest first and at most
+ * `MEMORY_LIMITS.backfillMaxChats` of them, as `trigger: 'backfill'`
  * extraction. Needs memory on and the automatic-updates opt-in on, resolves
  * the model once (the job stores the choice, so a later settings change never
  * switches models mid-run) and stores the approximate cost estimate, served
@@ -621,6 +632,12 @@ function addCounts(
 }
 
 function isSpendLimitExceeded(job: MemoryBackfillJobRow): boolean {
+  const usedTokens = job.inputTokens + job.outputTokens
+
+  if (usedTokens >= MEMORY_LIMITS.backfillMaxTokens) {
+    return true
+  }
+
   const estimate = job.estimate as MemoryBackfillEstimate | null
 
   if (!estimate) {
@@ -808,10 +825,20 @@ async function advanceLeasedBackfill(
     return await finishedStep(db, job, 0)
   }
 
-  const nextChats = await selectNextChats(db, job, input.chatsLimit + 1)
-  const batch = nextChats.slice(0, input.chatsLimit)
+  const remainingChats = remainingChatsUnderCap(job)
+
+  if (remainingChats === 0) {
+    await finishJob(db, job, 'completed')
+
+    return await finishedStep(db, job, 0)
+  }
+
+  const stepLimit = Math.min(input.chatsLimit, remainingChats)
+  const nextChats = await selectNextChats(db, job, stepLimit + 1)
+  const batch = nextChats.slice(0, stepLimit)
   const dropped: Record<string, number> = { ...(job.dropped ?? {}) }
-  let isExhausted = nextChats.length <= input.chatsLimit
+  let isExhausted = nextChats.length <= stepLimit
+    || stepLimit === remainingChats
   let isStopped = false
   let chatsProcessed = 0
   let attemptedChatId: string | null = job.retriedChatId
@@ -980,13 +1007,15 @@ async function releaseJobLease(
  * 30 s left; the cron path keeps the background timeout. The chat's attempt
  * is stamped before the model call, so a chat whose invocation died, or whose
  * own lease is held, is retried once and then skipped. The job ends
- * `completed` when the cursor runs out, `cancelled` when memory or automatic
- * updates were switched off, and `failed` (with a reason) when the stored
- * model's key is gone, five chats failed in a row, more than half of at least
- * five processed chats failed, or the actual tokens cost more than 1.5x the
- * estimate; the abort check runs after every chat, so it also precedes
- * completion. Counters move with atomic increments; the cursor advances only
- * after a chat is recorded.
+ * `completed` when the cursor runs out or `backfillMaxChats` chats were
+ * processed, `cancelled` when memory or automatic updates were switched off,
+ * and `failed` (with a reason) when the stored model's key is gone, five
+ * chats failed in a row, more than half of at least five processed chats
+ * failed, or the spend limit was hit: the actual tokens cost more than 1.5x
+ * the estimate, or reached `backfillMaxTokens`, a ceiling that applies even
+ * when no estimate was stored. The abort check runs after every chat, so it
+ * also precedes completion. Counters move with atomic increments; the
+ * cursor advances only after a chat is recorded.
  */
 export async function advanceBackfill(
   input: AdvanceBackfillInput,
