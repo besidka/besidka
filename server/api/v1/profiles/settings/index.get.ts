@@ -77,6 +77,7 @@ export default defineEventHandler(async (event) => {
       profileMemoryGateway: true,
       projectMemoryModel: true,
       projectMemoryGateway: true,
+      typesafeRoles: true,
     },
   })
   const migration = await migrateAboutMe(
@@ -110,5 +111,6 @@ export default defineEventHandler(async (event) => {
     profileMemoryGateway: settings?.profileMemoryGateway ?? null,
     projectMemoryModel: settings?.projectMemoryModel ?? null,
     projectMemoryGateway: settings?.projectMemoryGateway ?? null,
+    typesafeRoles: settings?.typesafeRoles ?? null,
   }
 })

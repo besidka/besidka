@@ -362,7 +362,7 @@ best-available mitigation, not a cure. Stronger alternatives were considered
 and **not** chosen: geoblocking these providers for EEA users, or removing
 them. Revisit if a supervisory authority or counsel objects.
 
-### TypeSafe AI memory checks, 2026-10-26
+### TypeSafe AI checks, 2026-10-26
 
 TypeSafe AI, Inc. (US, not on the DPF, SCCs Module 2 and the UK Addendum in
 its DPA) receives candidate memory entries when a user saves a TypeSafe AI
@@ -372,6 +372,11 @@ deterministic gate allowed are sent, redacted for never-store values, so the
 vendor sees special-category text only where the gate missed it, which is
 exactly what the check exists to catch. Gate-flagged text is never sent. This
 residual is DPIA risk row 20; design in `docs/memory-architecture.md` 3.19.
+The same key later also powers per-role checks beyond memory (Auto web
+search, a memory pre-filter that sends chat text, injection screening,
+re-ranking, a share personal-data check and past-chat retrieval). Those are
+DPIA risk rows 21 to 24, and the wording question they raise is open in
+`docs/legal.md`.
 
 ## 4. What Claude.ai and ChatGPT do
 

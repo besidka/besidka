@@ -337,6 +337,7 @@ const extractionNotices: Record<string, string> = {
   'leased': 'Besidka is already updating memory from this chat.',
   'no-user-text': 'No new messages to read since the last update.',
   'too-short': 'Your latest chat is too short to learn from yet.',
+  'nothing-durable': 'Nothing new worth remembering in that chat.',
   'disabled': 'Memory generation is turned off.',
   'project-unavailable': 'This project is no longer available.',
   'chat-unavailable': 'Your latest chat is no longer available.',

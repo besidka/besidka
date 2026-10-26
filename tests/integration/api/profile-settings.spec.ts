@@ -22,6 +22,7 @@ interface SettingsRecord {
   profileMemoryGateway: string | null
   projectMemoryModel: string | null
   projectMemoryGateway: string | null
+  typesafeRoles: Record<string, boolean> | null
 }
 
 type SettingsValues = Partial<Omit<SettingsRecord, 'id'>>
@@ -44,6 +45,7 @@ const columnDefaults: Omit<SettingsRecord, 'id'> = {
   profileMemoryGateway: null,
   projectMemoryModel: null,
   projectMemoryGateway: null,
+  typesafeRoles: null,
 }
 
 const memoryDefaults = {
@@ -57,6 +59,7 @@ const memoryDefaults = {
   profileMemoryGateway: null,
   projectMemoryModel: null,
   projectMemoryGateway: null,
+  typesafeRoles: null,
 }
 
 interface FakeStatement {
@@ -1849,6 +1852,116 @@ describe('profile settings API', () => {
             profileMemoryGateway: 'vercel',
           }))).toMatchObject({ profileMemoryModel: 'openai/gpt-5' })
         })
+    })
+  })
+
+  describe('TypeSafe AI roles', () => {
+    function setup(userId = '1') {
+      const dbMock = createDbMock()
+
+      vi.stubGlobal('useDb', () => dbMock.db)
+      vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+        user: {
+          id: userId,
+        },
+      }))
+
+      return dbMock
+    }
+
+    function patchEvent(body: Record<string, unknown>) {
+      return {
+        body,
+        context: {},
+      } as any
+    }
+
+    function renderSql(value: unknown) {
+      return new SQLiteDialect().sqlToQuery(
+        value as Parameters<SQLiteDialect['sqlToQuery']>[0],
+      )
+    }
+
+    it('returns null roles by default and the stored roles when set',
+      async () => {
+        const getHandler = await getSettingsHandler()
+        const dbMock = setup()
+
+        expect(await getHandler({} as any)).toMatchObject({
+          typesafeRoles: null,
+        })
+
+        dbMock.seed({ typesafeRoles: { rerank: false } })
+
+        expect(await getHandler({} as any)).toMatchObject({
+          typesafeRoles: { rerank: false },
+        })
+      })
+
+    it('inserts the role object as is when the user has no settings row',
+      async () => {
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = setup()
+
+        expect(await patchHandler(patchEvent({
+          typesafeRoles: { autoWebSearch: false },
+        }))).toEqual({ typesafeRoles: { autoWebSearch: false } })
+        expect(dbMock.spies.insertValues).toHaveBeenCalledWith({
+          userId: 1,
+          typesafeRoles: { autoWebSearch: false },
+        })
+      })
+
+    it('merges one role into the stored object with json_patch, scoped to '
+      + 'the session user', async () => {
+      const patchHandler = await patchSettingsHandler()
+      const dbMock = setup('42')
+
+      dbMock.seed({ typesafeRoles: { rerank: false } })
+
+      await patchHandler(patchEvent({
+        typesafeRoles: { sharePiiCheck: false },
+      }))
+
+      const [values] = dbMock.spies.updateSet.mock.calls[0]! as [
+        { typesafeRoles: unknown },
+      ]
+      const setQuery = renderSql(values.typesafeRoles)
+      const whereQuery = renderSql(dbMock.spies.updateWhere.mock.calls[0]![0])
+
+      expect(setQuery.sql).toBe(
+        'json_patch(coalesce("user_settings"."typesafe_roles", \'{}\'), ?)',
+      )
+      expect(setQuery.params).toEqual(['{"sharePiiCheck":false}'])
+      expect(whereQuery.sql).toBe('"user_settings"."user_id" = ?')
+      expect(whereQuery.params).toEqual([42])
+    })
+
+    it('resets every role to on with null', async () => {
+      const patchHandler = await patchSettingsHandler()
+      const dbMock = setup()
+
+      dbMock.seed({ typesafeRoles: { rerank: false } })
+
+      expect(await patchHandler(patchEvent({ typesafeRoles: null })))
+        .toEqual({ typesafeRoles: null })
+      expect(dbMock.getSettings()?.typesafeRoles).toBeNull()
+    })
+
+    it.each([
+      ['an unknown role', { typesafeRoles: { webSearch: true } }],
+      ['a non-boolean switch', { typesafeRoles: { rerank: 'off' } }],
+      ['an empty role object', { typesafeRoles: {} }],
+      ['an array', { typesafeRoles: ['rerank'] }],
+    ])('rejects %s', async (_label, body) => {
+      const patchHandler = await patchSettingsHandler()
+      const dbMock = setup()
+
+      await expect(patchHandler(patchEvent(body))).rejects.toMatchObject({
+        status: 400,
+      })
+      expect(dbMock.spies.insert).not.toHaveBeenCalled()
+      expect(dbMock.spies.update).not.toHaveBeenCalled()
     })
   })
 })

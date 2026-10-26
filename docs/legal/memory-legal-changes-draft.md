@@ -37,6 +37,17 @@
 >   today. It is the most urgent open item in
 >   `docs/legal-memory-sensitive-data.md`.
 
+> **Open question (owner/counsel), 2026-10-26.** TypeSafe AI now also runs
+> per-role checks beyond memory (see `docs/memory-architecture.md` 3.19). Two
+> of them send text that is not obviously "my chats, project memory and
+> memory": screening of Brave and Exa web results and of project knowledge
+> files (third-party text), and the memory pre-filter, which sends whole chat
+> transcripts. Do these still fit the consent wording ("the AI providers, AI
+> gateways and search providers whose keys I add"), or do they need a wording
+> change and a version bump? Until answered, the wording and the hash are
+> unchanged (`docs/legal.md`) and every check has its own toggle. The consent
+> modal is not changed by this note.
+
 Outlines only. Nothing here is published, and none of it is finished legal
 prose. Source and reasoning: `docs/legal-memory-sensitive-data.md`. Labels:
 **[L]** needs counsel, **[I]** inference by the researcher. The published

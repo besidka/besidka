@@ -1,5 +1,6 @@
 import type { ToolSet } from 'ai'
 import type { KnowledgeSearcher } from '~~/server/utils/knowledge/search'
+import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
 import { tool } from 'ai'
 import { createError } from 'evlog'
 import {
@@ -14,6 +15,7 @@ import {
   isProjectKnowledgeToolName,
   PROJECT_KNOWLEDGE_TOOL_NAMES,
 } from '~~/server/utils/ai/knowledge-tools'
+import { searchKnowledgeWithRerank } from '~~/server/utils/knowledge/rerank'
 import {
   toSingleLine,
   wrapKnowledgeExcerpt,
@@ -105,11 +107,14 @@ function exceptionMessage(exception: unknown): string {
  * pack is fetched lazily on the first call through `getSearcher`, and that
  * one promise is shared by every later and every parallel call. Every
  * `execute` spends one call from the per-request `budget` before anything
- * else. Logged fields never include queries or document text.
+ * else. With `resolveRerankModel`, search hits are re-ranked by TypeSafe
+ * AI Jev before the caps apply. Logged fields never include queries or
+ * document text.
  */
 export function getKnowledgeTools(input: {
   getSearcher: () => Promise<KnowledgeSearcher | null>
   budget: KnowledgeBudget
+  resolveRerankModel?: JevRerankModelResolver
   logger?: KnowledgeToolLogger
 }): { tools: ToolSet } {
   let searcherPromise: Promise<KnowledgeSearcher | null> | null = null
@@ -157,9 +162,15 @@ export function getKnowledgeTools(input: {
             return { notice: KNOWLEDGE_UNAVAILABLE_NOTICE, hits: [] }
           }
 
-          const result = searcher.search({
-            query: toolInput.query,
-            itemIds: toolInput.itemIds,
+          const result = await searchKnowledgeWithRerank({
+            searcher,
+            search: {
+              query: toolInput.query,
+              itemIds: toolInput.itemIds,
+            },
+            keepAtLeast: KNOWLEDGE_LIMITS.searchMaxChunks,
+            resolveRerankModel: input.resolveRerankModel,
+            logger: input.logger,
           })
 
           totalHits += result.hits.length

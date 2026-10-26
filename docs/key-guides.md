@@ -26,15 +26,16 @@ query-shaped and ends in `-api-key` (`gemini-api-key.md`,
 `content.config.ts`, type `page`, source `key-guides/*.md` with
 `prefix: '/guides'`.
 
-`typesafe-ai-api-key.md` is the TypeSafe AI guide for the **Memory checks**
+`typesafe-ai-api-key.md` is the TypeSafe AI guide for the **Smart checks**
 tab (`kind: 'memory-check'`, see `docs/memory-architecture.md` 3.19). Its
 card, free-tier and sign-up facts were not verifiable from TypeSafe AI's
 public pages on 2026-10-26, so the guide states only what the official docs
 say. Its video was recorded on 2026-10-26: steps 2 to 4 use the console and
 Besidka labels the video shows (the **Create key** button and dialog, the
 `Besidka guide demo` key name, the **API key created** dialog and the
-"TypeSafe AI API key updated successfully" toast). Re-check those labels when
-the console changes.
+"TypeSafe AI API key updated successfully" toast). The video still shows the
+tab under its earlier name, **Memory checks**; the text uses the current
+**Smart checks**. Re-check those labels when the console or the tab changes.
 
 The field schema lives in `shared/utils/key-guide-schema.ts` together with
 the `httpsUrl` and `siteRelativeOrHttpsUrl` helpers. `content.config.ts`

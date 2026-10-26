@@ -166,6 +166,10 @@
         </UiBubble>
       </li>
     </ul>
+    <ProfileKeysTypesafeChecks
+      v-if="hasTypesafeKey"
+      class="mt-4"
+    />
   </div>
 </template>
 <script setup lang="ts">
@@ -307,6 +311,10 @@ const itemElements = new Map<string, HTMLElement>()
 
 const { hasAnyKey, keyStatusForProvider } = useUserKeys()
 
+const hasTypesafeKey = computed<boolean>(() => {
+  return keyStatusForProvider('typesafe') === 'saved'
+})
+
 const hasLoadedKeys = computed<boolean>(() => {
   return keyStatusForProvider(defaultProviderId) !== 'unknown'
 })
@@ -423,7 +431,7 @@ const tabs: KeyTab[] = [
   { id: gatewaysTabId, label: 'Gateways', icon: 'lucide:waypoints' },
   {
     id: memoryChecksTabId,
-    label: 'Memory checks',
+    label: 'Smart checks',
     icon: 'lucide:shield-check',
   },
 ]
