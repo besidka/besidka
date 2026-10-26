@@ -7,6 +7,34 @@ keyUrlLabel: Open TypeSafe AI keys page
 updatedAt: '2026-10-26'
 checkedAt: '2026-10-26'
 summary: A TypeSafe AI key adds optional smart checks to Besidka, such as memory checks. It adds no chat models, and chats keep using your own provider keys.
+video:
+  src: /videos/key-guide-typesafe.mp4
+  poster: /key-guides/typesafe.webp
+  duration: PT34S
+  uploadDate: '2026-10-26'
+  alt: Screen recording of the TypeSafe AI console. The API keys page, the Create API key dialog with a key name, the new key shown once and masked, then the key pasted into Besidka under Memory checks and saved. The Memory page then shows Memory checks with TypeSafe AI Jev on.
+  qualities:
+    - src: /videos/key-guide-typesafe-1080.mp4
+      size: 1080
+    - src: /videos/key-guide-typesafe.mp4
+      size: 720
+    - src: /videos/key-guide-typesafe-360.mp4
+      size: 360
+  markers:
+    - time: "0:00"
+      label: Intro
+    - time: "0:03"
+      label: Create key
+    - time: "0:07"
+      label: Name the key
+    - time: "0:12"
+      label: Copy your key
+    - time: "0:17"
+      label: Paste into Besidka
+    - time: "0:24"
+      label: Memory checks on
+    - time: "0:30"
+      label: Done
 requirements:
   card: false
   cardNote: Not stated in the TypeSafe AI documentation. Check the console when you sign up.
@@ -36,9 +64,9 @@ faq:
 ---
 
 1. Open the [TypeSafe AI keys page](https://console.typesafe.ai/keys) and sign in, or create an account.
-2. Create a new API key. If you are asked for a name, type `Besidka`.
-3. Copy the key and keep it somewhere safe before you close the dialog.
-4. In Besidka, go to **Profile**, **API Keys**, **Smart checks**, then the **TypeSafe AI** card. Paste the key into **API Key** and click **Save**. Besidka checks the key with TypeSafe AI before saving it.
+2. Click **Create key**. In the **Create API key** dialog, type a **Key name** you will recognize, such as `Besidka guide demo`, and click **Create key**.
+3. In **API key created**, click **Copy**. The key is shown only once, so copy it before you click **Done**.
+4. In Besidka, go to **Profile**, **API Keys**, **Smart checks**, then the **TypeSafe AI** card. Paste the key into **API Key** and click **Save**. Besidka checks the key with TypeSafe AI before saving it, then shows **TypeSafe AI API key updated successfully**.
 5. Open **Profile**, **Memory**. The **Extra memory checks** card now shows **Memory checks: TypeSafe AI Jev (on)**.
 
 **What this key is not.** It does not add chat models and it does not answer your messages. It only answers short yes/no questions for the checks you leave on, so you will not see it in the model picker. Keep using your OpenAI, Anthropic, Google or other provider keys for conversations.

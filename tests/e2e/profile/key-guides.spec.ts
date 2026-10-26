@@ -9,6 +9,8 @@ interface KeyRow {
 
 const MOBILE_VIEWPORT = { width: 375, height: 812 }
 const DESKTOP_VIEWPORT = { width: 1280, height: 900 }
+const GOOGLE_GUIDE_VIDEO_URL
+  = /\/videos\/key-guide-google(-1080|-360)?\.mp4(\?v=\d+)?$/
 
 function missingRows(...providers: string[]): KeyRow[] {
   return providers.map((provider) => {
@@ -242,7 +244,7 @@ test.describe('Profile keys — how to get a key guides', () => {
 
   test('falls back to the poster and a note when the video fails to load',
     async ({ page }) => {
-      await page.route('**/videos/key-guide-google.mp4', async (route) => {
+      await page.route(GOOGLE_GUIDE_VIDEO_URL, async (route) => {
         await route.fulfill({ status: 404, body: 'Video not found' })
       })
       await mockKeySummary(page, missingRows('google', 'openrouter'))

@@ -20,7 +20,7 @@
         muted
         loop
         playsinline
-        preload="none"
+        :preload="startAt === undefined ? 'none' : 'metadata'"
         :src="currentSrc"
         :poster="poster || undefined"
         :aria-label="label"
@@ -67,10 +67,12 @@ const props = withDefaults(defineProps<{
   poster?: string
   markers?: VideoMarker[]
   qualities?: VideoQuality[]
+  startAt?: number
 }>(), {
   provider: undefined,
   explainer: undefined,
   poster: undefined,
+  startAt: undefined,
   markers: () => [],
   qualities: () => [],
 })
@@ -106,6 +108,7 @@ let isProgrammaticPause = false
 let hasUserPaused = false
 let isPlayPending = false
 let wasMuted = true
+let hasAppliedStartAt = false
 
 const {
   qualityOptions,
@@ -125,6 +128,11 @@ const {
   },
   measureElement: () => {
     return containerRef.value
+  },
+  getPendingStartAt: () => {
+    return !hasAppliedStartAt && isValidStartAt(props.startAt)
+      ? props.startAt
+      : undefined
   },
   onRestored: syncSpeed,
   onSettled: syncPlayback,
@@ -151,6 +159,29 @@ function trackVideoPlay(isUserInitiated: boolean) {
   if (props.provider) {
     trackGuideVideoPlay(props.provider, isUserInitiated)
   }
+}
+
+function isValidStartAt(startAt: number | undefined): startAt is number {
+  return startAt !== undefined && Number.isFinite(startAt) && startAt >= 0
+}
+
+function applyStartAt() {
+  const video = videoRef.value
+
+  if (!video || hasAppliedStartAt || !isValidStartAt(props.startAt)) {
+    return
+  }
+
+  if (
+    video.readyState < HTMLMediaElement.HAVE_METADATA
+    || !Number.isFinite(video.duration)
+    || props.startAt >= video.duration
+  ) {
+    return
+  }
+
+  hasAppliedStartAt = true
+  video.currentTime = props.startAt
 }
 
 function isPictureInPicture(video: HTMLVideoElement): boolean {
@@ -212,6 +243,8 @@ useIntersectionObserver(
     threshold: VISIBILITY_THRESHOLD,
   },
 )
+
+useEventListener(videoRef, 'loadedmetadata', applyStartAt)
 
 useEventListener(videoRef, 'error', () => {
   emit('failed')
@@ -307,6 +340,7 @@ onMounted(() => {
 function onPlayerReady({ timeSlider }: VideoShellReadyPayload) {
   isPlayerReady = true
   attachTimeline(timeSlider)
+  applyStartAt()
   syncPlayback()
 }
 
