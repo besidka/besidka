@@ -382,7 +382,9 @@ the reason the opt-in is out of v1 (section 7).
     oracle. `extractChatMemory` also skips the chat as `memory-excluded` for
     every trigger, before the model call and again after it, so a toggle that
     lands while a pass is in flight never re-cites the chat.
-  - `PATCH /api/v1/chats/:slug/memory` (`{ excluded }`, ownership in the
+  - `PATCH /api/v1/chats/:slug/memory` (`{ excluded }`, behind
+    `assertNotCrossSiteRequest` and the shared `write` rate-limit bucket since
+    #560, ownership in the
     `UPDATE ... WHERE`) writes the flag first, then, when turning it on, runs
     the chat-deletion cascade `detachChatsFromMemory` for that chat:
     extraction entries sourced only from it are deleted, other entries drop
@@ -1235,8 +1237,8 @@ gatewayId, modelId, chats }], usage }`: counts and ids only. Errors log the
 error class name, never a message. Per-call 90 s abort timeout.
 
 **`POST /api/v1/memory/extract-now`.** For previews, where crons do not run.
-Gates, in the order the handler runs them: session (401), cross-site request
-guard, the shared `write` rate-limit bucket (60 per minute, 429), body
+Gates, in the order the handler runs them: cross-site request guard, session
+(401), the shared `write` rate-limit bucket (60 per minute, 429), body
 `{ chatSlug }` (400), `requireLegalConsent` (current consent, else 403), the
 chat looked up by slug AND user (anything else is a 404), `memoryEnabled`
 (409 `Memory is turned off`), and the 60 s per-user KV cooldown (429). It is an
@@ -1824,7 +1826,8 @@ handled separately.
   same storage as the knowledge write limit (`createAuthRateLimitStorage`):
   the `write` bucket (60 per minute, shared) runs right after the session
   check on entry create, edit and delete, reset, delete-extracted, import,
-  extract-now and backfill start, and answers 429 with `Retry-After`. New
+  extract-now, backfill start and the chat memory-exclusion PATCH (#560), and
+  answers 429 with `Retry-After`. New
   memory limits are added as buckets there, not as parallel limiters.
 
 ### 3.18 Tell Besidka what to remember (2026-10-26)
@@ -2551,7 +2554,7 @@ blocks Generate and never changes what is shared.
 **Endpoint.** `POST /api/v1/chats/[slug]/share/check` (next to the other share
 routes) takes `{ showFiles, showMetadata }` and returns
 `{ warnings: [{ kind, source }], checked }`. It never returns or logs text.
-It is ownership-scoped (`chats.slug` plus `user_id`, else 404) and limited by
+It sits behind `assertNotCrossSiteRequest` (#560), is ownership-scoped (`chats.slug` plus `user_id`, else 404) and limited by
 the `share-check` bucket of `enforceMemoryRateLimit` (20 per minute, one
 counter per user). It is not behind `requireLegalConsent`, because it stores
 nothing and the deterministic half needs no key; only the Jev call is gated on
