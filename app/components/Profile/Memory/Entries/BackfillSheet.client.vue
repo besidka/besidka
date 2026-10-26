@@ -73,6 +73,22 @@
               </p>
             </div>
             <div
+              v-if="unavailableReason === 'all-chats-read'"
+              class="flex justify-start"
+            >
+              <UiButton
+                mode="neutral"
+                outline
+                size="sm"
+                normal-case
+                text="Read all past chats again"
+                icon-name="lucide:rotate-ccw"
+                :icon-size="16"
+                data-testid="memory-backfill-restart"
+                @click="offerRestart"
+              />
+            </div>
+            <div
               v-if="unavailableReason === 'estimate-failed'"
               class="flex justify-start"
             >
@@ -147,6 +163,19 @@
                 </dd>
               </div>
             </dl>
+            <div
+              v-if="isRestart"
+              role="alert"
+              class="alert alert-soft alert-warning"
+              data-testid="memory-backfill-restart-note"
+            >
+              <Icon
+                name="lucide:circle-alert"
+                size="20"
+                class="shrink-0"
+              />
+              <span>{{ restartNote }}</span>
+            </div>
             <p
               class="text-xs text-base-content/70"
               data-testid="memory-backfill-estimate-note"
@@ -401,7 +430,7 @@
             <UiButton
               size="sm"
               normal-case
-              text="Build memory"
+              :text="isRestart ? 'Read again' : 'Build memory'"
               :disabled="!isStartEnabled"
               data-testid="memory-backfill-start"
               @click="startBuilding"
@@ -465,6 +494,9 @@ const {
 
 const hasLoaded = shallowRef<boolean>(false)
 const hasSeenRunningJob = shallowRef<boolean>(false)
+const isRestart = shallowRef<boolean>(false)
+
+const restartNote = BACKFILL_RESTART_NOTE
 
 let lastEmittedEntryCount = 0
 
@@ -662,15 +694,22 @@ function syncPolling() {
 async function reload() {
   hasLoaded.value = false
 
-  await load()
+  await load({ restart: isRestart.value })
 
   hasLoaded.value = true
 
   syncPolling()
 }
 
+async function offerRestart() {
+  isRestart.value = true
+
+  await reload()
+}
+
 async function openSession() {
   hasSeenRunningJob.value = false
+  isRestart.value = false
   lastEmittedEntryCount = 0
 
   await reload()
@@ -698,7 +737,7 @@ function showError() {
 }
 
 async function startBuilding() {
-  const isStarted = await start()
+  const isStarted = await start({ restart: isRestart.value })
 
   if (!isStarted) {
     showError()

@@ -1,4 +1,4 @@
-import { defineEventHandler } from 'nuxt/server'
+import { defineEventHandler, getQuery } from 'nuxt/server'
 import type {
   MemoryBackfillOverview,
   MemoryBackfillUnavailableReason,
@@ -23,8 +23,10 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  * its chat cap, see `resolveBackfillWindow`), computed with a dry-run model
  * resolution, or the reason none can be given: `all-chats-read` once the last
  * run read every past chat, `estimate-failed` when the estimate throws (never
- * an error). The estimate is cached per user for ten minutes. Counts only;
- * never any chat text.
+ * an error). The estimate is cached per user for ten minutes. With
+ * `?restart=true` the estimate is for a fresh window from the newest chat
+ * (the "read all past chats again" offer), so `all-chats-read` never
+ * applies. Counts only; never any chat text.
  */
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -36,6 +38,7 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+  const restart = getQuery(event).restart === 'true'
   const job = await getBackfillProgress({ userId, db })
   const response: MemoryBackfillOverview = {
     job,
@@ -58,7 +61,9 @@ export default defineEventHandler(async (event) => {
     return response
   }
 
-  const window = await resolveBackfillWindow(db, userId, new Date())
+  const window = await resolveBackfillWindow(db, userId, new Date(), {
+    restart,
+  })
 
   if (!window) {
     response.reason = 'all-chats-read'

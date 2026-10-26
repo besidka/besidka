@@ -17,6 +17,10 @@ interface StepResult {
   retryAfterMs: number
 }
 
+interface BackfillRequestOptions {
+  restart?: boolean
+}
+
 interface PendingSleep {
   timer: ReturnType<typeof setTimeout>
   resolve: () => void
@@ -117,13 +121,17 @@ export function useMemoryBackfill() {
     pendingSleep = null
   }
 
-  async function load(): Promise<boolean> {
+  async function load(
+    options: BackfillRequestOptions = {},
+  ): Promise<boolean> {
     const sequence = claimSequence()
 
     pendingLoads.value += 1
 
     try {
-      const response = await $fetch('/api/v1/memory/backfill')
+      const response = await $fetch('/api/v1/memory/backfill', {
+        query: options.restart ? { restart: 'true' } : {},
+      })
 
       error.value = null
 
@@ -140,7 +148,9 @@ export function useMemoryBackfill() {
     }
   }
 
-  async function start(): Promise<boolean> {
+  async function start(
+    options: BackfillRequestOptions = {},
+  ): Promise<boolean> {
     if (isStarting.value) {
       return false
     }
@@ -153,6 +163,7 @@ export function useMemoryBackfill() {
     try {
       const response = await $fetch('/api/v1/memory/backfill', {
         method: 'POST',
+        ...(options.restart ? { body: { restart: true } } : {}),
       })
 
       return applyJob(sequence, response.job)

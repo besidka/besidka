@@ -78,6 +78,7 @@ export interface StartBackfillInput {
   db?: DbClient
   logger?: BackfillLogger
   now?: Date
+  restart?: boolean
 }
 
 export interface AdvanceBackfillInput {
@@ -380,7 +381,9 @@ async function pruneFinishedJobs(db: DbClient, userId: number) {
  * the latest finished job stopped before its queue ran out, the new job
  * starts after that job's cursor with the same cutoff, so no chat is paid for
  * twice and older history stays reachable; when the latest job read every
- * past chat, starting is a 409 and no job is created. Needs memory on and the
+ * past chat, starting is a 409 and no job is created. `restart` (the user's
+ * explicit "read all past chats again") always starts a fresh window from
+ * the newest chat, under the same chat and token caps. Needs memory on and the
  * automatic-updates opt-in on, resolves the model once (the job stores the
  * choice, so a later settings change never
  * switches models mid-run) and stores the approximate cost estimate, served
@@ -425,6 +428,7 @@ export async function startBackfill(
     db,
     userId,
     input.now ?? new Date(),
+    { restart: input.restart },
   )
 
   if (!window) {
@@ -593,6 +597,26 @@ export async function cancelBackfill(input: {
     ))
 
   return await getBackfillProgress({ userId: input.userId, db })
+}
+
+/**
+ * Forgets where earlier backfills stopped: cancels a running job and deletes
+ * every job of the user, so the next backfill starts a fresh window from the
+ * newest chat. Used by a memory reset, which empties what those jobs built.
+ */
+export async function clearBackfillWindow(input: {
+  userId: number
+  db?: DbClient
+}): Promise<void> {
+  const db = input.db ?? useDb()
+
+  await cancelBackfill({ userId: input.userId, db })
+  await db.delete(schema.memoryBackfillJobs)
+    .where(and(
+      eq(schema.memoryBackfillJobs.userId, input.userId),
+      ne(schema.memoryBackfillJobs.status, 'running'),
+    ))
+  await invalidateBackfillEstimate(input.userId)
 }
 
 interface RecordedChat {

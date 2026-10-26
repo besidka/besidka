@@ -7,11 +7,11 @@ import { createMemoryTestDb } from '../../setup/helpers/memory-db'
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   setResponseStatus: vi.fn(),
-  cancelBackfill: vi.fn(),
+  clearBackfillWindow: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/memory/backfill', () => ({
-  cancelBackfill: mocks.cancelBackfill,
+  clearBackfillWindow: mocks.clearBackfillWindow,
 }))
 
 vi.mock('evlog', () => ({
@@ -985,8 +985,8 @@ describe('memory entries API', () => {
 
         await handler(bodyEvent({ scope }))
 
-        expect(mocks.cancelBackfill).toHaveBeenCalledTimes(1)
-        expect(mocks.cancelBackfill).toHaveBeenCalledWith(
+        expect(mocks.clearBackfillWindow).toHaveBeenCalledTimes(1)
+        expect(mocks.clearBackfillWindow).toHaveBeenCalledWith(
           expect.objectContaining({ userId: OWNER }),
         )
       },
@@ -1000,7 +1000,7 @@ describe('memory entries API', () => {
         projectId: encodePublicId(7),
       }))
 
-      expect(mocks.cancelBackfill).not.toHaveBeenCalled()
+      expect(mocks.clearBackfillWindow).not.toHaveBeenCalled()
     })
 
     it('does not cancel the backfill for an invalid or cross-site reset',
@@ -1011,7 +1011,7 @@ describe('memory entries API', () => {
         await expect(handler(bodyEvent({ scope: 'all' }, 'cross-site')))
           .rejects.toThrow()
 
-        expect(mocks.cancelBackfill).not.toHaveBeenCalled()
+        expect(mocks.clearBackfillWindow).not.toHaveBeenCalled()
       })
 
     it('resets one project', async () => {

@@ -1502,10 +1502,18 @@ comes from `resolveBackfillWindow`, without any schema change:
   starts from the newest chats and would re-read (and re-bill) the old ones
   too, while bounding it below by the old cutoff would need a stored lower
   bound, which is a schema change; chats created after the cutoff are the
-  forward sweep's job anyway. Known consequence: after a memory Reset, or
-  after extraction was off for a while, there is no way to backfill the same
-  history again; that would need an explicit "start over" action (not built,
-  owner call).
+  forward sweep's job anyway.
+- **Start over (2026-10-26).** In the `all-chats-read` state the sheet offers
+  "Read all past chats again". It loads `GET ?restart=true` (the estimate of a
+  fresh window from the newest chat, never `all-chats-read`) and starts only
+  when the user confirms, with `POST { restart: true }`; that explicit action
+  is the consent to re-read and re-bill chats earlier runs already read.
+  `resolveBackfillWindow(..., { restart: true })` ignores every earlier job,
+  and the job caps (200 chats, 4M tokens) are unchanged.
+- A memory Reset (`account` or `all` scope) calls `clearBackfillWindow`: it
+  cancels a running job and deletes every backfill job of the user, so the
+  next backfill starts fresh from the newest chats. A project reset leaves
+  the backfill alone (backfill reads account chats only).
 
 Passes run with
 `trigger: 'backfill'`: gate `memoryEnabled !== false` and
