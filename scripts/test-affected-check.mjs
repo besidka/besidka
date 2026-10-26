@@ -112,6 +112,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const memoryComplianceTests = [
     'tests/unit/utils/memory/compliance.spec.ts',
+    'tests/unit/utils/memory/compliance-evasion.spec.ts',
     'tests/unit/utils/memory/sensitivity.spec.ts',
   ]
   const memoryModelTests = [
@@ -2162,7 +2163,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules)\.ts$/,
+      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)\.ts$/,
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,

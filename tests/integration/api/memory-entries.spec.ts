@@ -426,6 +426,27 @@ describe('memory entries API', () => {
       expect(testDb.countEntries()).toBe(0)
     })
 
+    it.each([
+      ['a home address', 'Lives at 221B Baker Street, London', 'Precise home address'],
+      ['a residence permit', 'Mam kartę pobytu czasowego', 'Immigration'],
+      ['a criminal record', 'Has a criminal record since 2015', 'Criminal history'],
+    ])('returns the unchanged 422 for %s', async (_label, body, label) => {
+      const handler = await handlers.create()
+
+      const exception = await handler(bodyEvent({
+        ...validBody,
+        body,
+      })).catch((caught: unknown) => {
+        return caught as { status: number, message: string, why: string }
+      })
+
+      expect(exception.status).toBe(422)
+      expect(exception.message)
+        .toBe('This memory contains data that cannot be stored')
+      expect(exception.why).toContain(label)
+      expect(testDb.countEntries()).toBe(0)
+    })
+
     describe('the sensitive-topic rule', () => {
       const reportedBody = {
         category: 'topics',

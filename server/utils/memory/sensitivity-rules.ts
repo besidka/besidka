@@ -947,7 +947,7 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
       uk`наркотик\p{L}*|наркоман\p{L}*|наркозалежн\p{L}*`(['Бореться з наркоманією']),
       uk`алкоголізм\p{L}*|алкозалежн\p{L}*|алкоголік\p{L}*`(['Лікуюсь від алкоголізму']),
       uk`кур(?:ю|имо|ив|ила|ить|ять|я\p{L}*) (?:траву|марихуан\p{L}*)`(['Я курю траву по вихідних']),
-      pl`kokain\p{L}*|heroin(?:a|y|ę|ie|ą)|marihuan\p{L}*`(['Kiedyś brał kokainę']),
+      pl`kokain\p{L}*|heroin(?:a|y|\u0119|ie|ą)|marihuan\p{L}*`(['Kiedyś brał kokainę']),
       pl`amfetamin\p{L}*|metamfetamin\p{L}*|fentanyl\p{L}*`(['Brał amfetaminę']),
       pl`narkotyk\p{L}*|narkoman\p{L}*|dopalacz\p{L}*`(['Walczy z narkomanią']),
       pl`pal(?:ę|imy|i|ą) (?:trawk\p{L}*|zioło|marihuan\p{L}*|skręt\p{L}*)`(['Palę trawkę w weekendy']),

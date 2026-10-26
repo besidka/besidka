@@ -94,17 +94,17 @@ export const neverStoreKinds = [
   {
     id: 'criminal-history',
     label: 'Criminal history',
-    detection: 'extractor',
+    detection: 'deterministic',
   },
   {
     id: 'immigration-status',
     label: 'Immigration or residence-permit status',
-    detection: 'extractor',
+    detection: 'deterministic',
   },
   {
     id: 'home-address',
     label: 'Precise home address',
-    detection: 'extractor',
+    detection: 'deterministic',
   },
   {
     id: 'live-location',
