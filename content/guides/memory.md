@@ -3,6 +3,42 @@ title: "How memory works in Besidka"
 description: "What Besidka remembers about you and your projects, how to see, edit and delete it, how chat search and project files work, what is never stored, and what runs on your own API key."
 updatedAt: 2026-10-26
 summary: 'Besidka keeps small, editable memory entries about you and about each project, can search your past chats, and lets a project hold files and notes. You can see, edit, export and delete all of it. Nothing runs in the background on your API key until you switch it on, and sensitive data is refused, not stored.'
+video:
+  src: /videos/memory.mp4
+  poster: /memory/poster.webp
+  duration: PT1M15S
+  uploadDate: '2026-10-26'
+  alt: Screen recording of the Memory page in Besidka. The list of memory entries, editing an entry, telling Besidka what to change with a preview before Apply, project memory and project knowledge, the Searched your chats step, keeping a chat out of memory, the consent step and extra memory checks with TypeSafe AI.
+  qualities:
+    - src: /videos/memory-1080.mp4
+      size: 1080
+    - src: /videos/memory.mp4
+      size: 720
+    - src: /videos/memory-360.mp4
+      size: 360
+  markers:
+    - time: "0:00"
+      label: How memory works
+    - time: "0:03"
+      label: What Besidka remembers
+    - time: "0:09"
+      label: Edit an entry
+    - time: "0:17"
+      label: Tell Besidka what to change
+    - time: "0:24"
+      label: Preview and apply
+    - time: "0:32"
+      label: Project memory
+    - time: "0:39"
+      label: Project knowledge
+    - time: "0:45"
+      label: Search your past chats
+    - time: "0:52"
+      label: Keep a chat out of memory
+    - time: "0:59"
+      label: Consent
+    - time: "1:06"
+      label: Memory checks with TypeSafe AI
 ---
 
 ## What Besidka remembers

@@ -768,39 +768,26 @@ Wiring, the same as `/byok`:
   object as key guides (`guideVideoSchema` in
   `shared/utils/key-guide-schema.ts`). `LegalDocument.vue` has a `media` slot
   between the summary and the body, and `memory.vue` fills it with the lean
-  `GuideVideo.client.vue` player (`explainer="memory"`) when `video` is set. The
-  memory page has no `video` yet, so nothing renders and no VideoObject is
-  emitted, the same way key guides omit it until the media exists. To add it:
-  encode `memory.mp4` (720), `memory-1080.mp4` and `memory-360.mp4` like the
-  key guide renditions (`docs/key-guides.md`), put them in `.files/`, run
-  `pnpm run cms:files:upload` (its pattern accepts `memory` and the two
+  `GuideVideo.client.vue` player (`explainer="memory"`) when `video` is set.
+  The video went live on 2026-10-26: `memory.mp4` (720), `memory-1080.mp4`
+  and `memory-360.mp4` in `CMS_BUCKET` (uploaded with
+  `pnpm run cms:files:upload`; its pattern accepts `memory` and the two
   suffixes, and `server/routes/videos/[name].ts` allow-lists the three names),
-  commit the poster at `public/memory/poster.webp`, and add this to the
-  frontmatter, with the real date and duration:
+  the poster at `public/memory/poster.webp` (the composed title slide, the same
+  image as frame 0, see "First frame" in `docs/key-guides.md`), and a `video`
+  block in `content/guides/memory.md` with 11 chapter markers. These URLs were
+  never replaced, so they carry no `?v` query; a later replacement follows
+  "Replacing a video or poster" in `docs/key-guides.md`.
 
-  ```yaml
-  video:
-    src: /videos/memory.mp4
-    poster: /memory/poster.webp
-    duration: PT50S
-    uploadDate: 'YYYY-MM-DD'
-    alt: Screen recording of the Memory page in Besidka.
-    qualities:
-      - src: /videos/memory-1080.mp4
-        size: 1080
-      - src: /videos/memory.mp4
-        size: 720
-      - src: /videos/memory-360.mp4
-        size: 360
-    markers:
-      - time: "0:00"
-        label: Intro
-  ```
-
-  Known gap for when the video exists: the lean player has no start offset, so
-  the `Clip` URLs the builder emits for `markers` (`/memory?t=<seconds>`) load
-  the page but do not seek. Either drop the markers from the JSON-LD for this
-  page or add `startAt` to `GuideVideo.client.vue` first.
+  The `Clip` URLs the builder emits for the markers (`/memory?t=<seconds>`)
+  seek: `memory.vue` reads `route.query.t` with the same
+  `parseVideoStartOffset()` as `app/pages/guides/[slug].vue`, scrolls the video
+  block into view on mount and passes the offset to `GuideVideo.client.vue` as
+  `startAt`. With `startAt` set the lean player preloads metadata (otherwise it
+  stays `preload="none"`) and seeks once when the duration is known
+  (`loadedmetadata`, or the player's `ready` if metadata arrived first). A
+  quality switch before that lands on `startAt`, not on 0. It never calls
+  `play()` for the offset; its usual muted autoplay rules still apply.
 - **Analytics.** The video does not use the key-guide or demo events: it sends
   `guide_video_play` and `video_watch` with `target: 'memory'` (see
   `docs/analytics-utm.md`), and `/memory` is its own `memory` surface. Without
