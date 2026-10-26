@@ -9,5 +9,5 @@ definePageMeta({
   },
 })
 
-await navigateTo('/profile/security', { redirectCode: 301 })
+await navigateTo('/profile/preferences', { redirectCode: 301 })
 </script>

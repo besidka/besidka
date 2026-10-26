@@ -279,6 +279,12 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Memory',
           run: () => goTo('/profile/memory'),
         },
+        {
+          id: 'search-option-preferences',
+          iconName: 'lucide:sliders-horizontal',
+          label: 'Preferences',
+          run: () => goTo('/profile/preferences'),
+        },
       ],
     },
   )

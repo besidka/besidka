@@ -1,6 +1,7 @@
 import { defineEventHandler } from 'nuxt/server'
 import type { AboutMeNotMigratedReason } from '#shared/types/memory.d'
 import { MEMORY_SETTING_DEFAULTS } from '#shared/utils/memory-policy'
+import { parseReasoningLevel } from '#shared/utils/reasoning'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { migrateAboutMeToProfileEntry } from '~~/server/utils/memory/about-me-migration'
@@ -64,6 +65,7 @@ export default defineEventHandler(async (event) => {
     columns: {
       reasoningExpanded: true,
       reasoningAutoHide: true,
+      defaultReasoningLevel: true,
       allowExternalLinks: true,
       notificationPromptState: true,
       sidebarPinned: true,
@@ -93,6 +95,9 @@ export default defineEventHandler(async (event) => {
   return {
     reasoningExpanded: settings?.reasoningExpanded ?? false,
     reasoningAutoHide: settings?.reasoningAutoHide ?? true,
+    defaultReasoningLevel: parseReasoningLevel(
+      settings?.defaultReasoningLevel,
+    ),
     allowExternalLinks: settings?.allowExternalLinks ?? null,
     notificationPromptState: settings?.notificationPromptState ?? null,
     sidebarPinned: settings?.sidebarPinned ?? false,

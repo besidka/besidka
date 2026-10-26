@@ -13,6 +13,8 @@ import {
   hasReasoningBadge,
   isReasoningLevelSupported,
   normalizeReasoningLevel,
+  parseReasoningLevel,
+  reasoningLevels,
   shouldSendReasoning,
 } from '../../../shared/utils/reasoning'
 import {
@@ -21,6 +23,30 @@ import {
 } from '../../../server/utils/providers/reasoning'
 
 describe('reasoning levels', () => {
+  it('lists every selectable level in order', () => {
+    expect(reasoningLevels).toEqual(['off', 'low', 'medium', 'high'])
+  })
+
+  it('parses only exact level strings and never coerces', () => {
+    for (const level of reasoningLevels) {
+      expect(parseReasoningLevel(level)).toBe(level)
+    }
+
+    for (const value of [
+      null,
+      undefined,
+      '',
+      'HIGH',
+      'xhigh',
+      'hard',
+      true,
+      false,
+      1,
+    ]) {
+      expect(parseReasoningLevel(value)).toBeNull()
+    }
+  })
+
   it('normalizes legacy and unsupported values', () => {
     expect(normalizeReasoningLevel(true)).toBe('medium')
     expect(normalizeReasoningLevel(false)).toBe('off')

@@ -14,6 +14,21 @@ export const reasoningEnabledLevels: ReasoningEnabledLevel[] = [
   'high',
 ]
 
+export const reasoningLevels = [
+  'off',
+  'low',
+  'medium',
+  'high',
+] as const
+
+export function parseReasoningLevel(
+  value: unknown,
+): ReasoningLevel | null {
+  return reasoningLevels.find((level) => {
+    return level === value
+  }) ?? null
+}
+
 export function normalizeReasoningLevel(
   value: unknown,
 ): ReasoningLevel {

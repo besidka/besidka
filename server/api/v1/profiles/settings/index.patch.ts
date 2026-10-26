@@ -1,7 +1,9 @@
 import { createError } from 'evlog'
 import type { GatewayId } from '#shared/types/gateways.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { JevRoleSettings } from '#shared/utils/jev-policy'
 import { jevRoleSettingsPatchSchema } from '#shared/utils/jev-schemas'
+import { reasoningLevels } from '#shared/utils/reasoning'
 import { and, eq, isNull, lt, or } from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from '~~/server/db/schema'
@@ -44,6 +46,7 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
     reasoningExpanded: z.boolean().optional(),
     reasoningAutoHide: z.boolean().optional(),
+    defaultReasoningLevel: z.enum(reasoningLevels).nullable().optional(),
     allowExternalLinks: z.boolean().nullable().optional(),
     notificationPromptState: z.boolean().nullable().optional(),
     sidebarPinned: z.boolean().optional(),
@@ -72,6 +75,7 @@ export default defineEventHandler(async (event) => {
   const fieldUpdates: {
     reasoningExpanded?: boolean
     reasoningAutoHide?: boolean
+    defaultReasoningLevel?: ReasoningLevel | null
     allowExternalLinks?: boolean | null
     notificationPromptState?: boolean | null
     sidebarPinned?: boolean
@@ -94,6 +98,11 @@ export default defineEventHandler(async (event) => {
 
   if (body.data.reasoningAutoHide !== undefined) {
     fieldUpdates.reasoningAutoHide = body.data.reasoningAutoHide
+  }
+
+  if ('defaultReasoningLevel' in body.data) {
+    fieldUpdates.defaultReasoningLevel
+      = body.data.defaultReasoningLevel ?? null
   }
 
   if ('allowExternalLinks' in body.data) {

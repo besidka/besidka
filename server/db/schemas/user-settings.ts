@@ -1,5 +1,6 @@
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { ProviderTransferConsents } from '#shared/types/legal-consent.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { JevRoleSettings } from '#shared/utils/jev-policy'
 import { gatewayIds } from '#shared/utils/gateways'
 import { sql } from 'drizzle-orm'
@@ -27,6 +28,7 @@ export const userSettings = snakeCase.table(
     reasoningAutoHide: integer({ mode: 'boolean' })
       .notNull()
       .default(true),
+    defaultReasoningLevel: text().$type<ReasoningLevel>(),
     allowExternalLinks: integer({ mode: 'boolean' }),
     notificationPromptState: integer({ mode: 'boolean' }),
     sidebarPinned: integer({ mode: 'boolean' }),

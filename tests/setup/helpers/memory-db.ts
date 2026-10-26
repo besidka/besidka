@@ -88,6 +88,7 @@ export function createMemoryTestDb(): MemoryTestDb {
       user_id integer NOT NULL,
       reasoning_expanded integer NOT NULL DEFAULT 0,
       reasoning_auto_hide integer NOT NULL DEFAULT 1,
+      default_reasoning_level text,
       allow_external_links integer,
       notification_prompt_state integer,
       sidebar_pinned integer,
