@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   typesafeKeyStatus: 'missing' as 'saved' | 'missing' | 'unknown',
   prefilterRoleOn: true,
+  rolesLoaded: true,
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
@@ -25,6 +26,7 @@ mockNuxtImport('useUserKeys', () => {
 })
 mockNuxtImport('useTypesafeRoles', () => {
   return () => ({
+    isLoaded: { value: mocks.rolesLoaded },
     isRoleOn: () => mocks.prefilterRoleOn,
   })
 })
@@ -218,6 +220,7 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
     mocks.error.mockReset()
     mocks.typesafeKeyStatus = 'missing'
     mocks.prefilterRoleOn = true
+    mocks.rolesLoaded = true
     clearNuxtState('memory-backfill-overview')
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
       .mockImplementation(function () {
@@ -519,6 +522,15 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       )
       expect(textOf(wrapper, 'memory-backfill-estimate-cost'))
         .toBe('Approximately $0.52')
+    })
+
+    it('waits for the role settings before showing the note', async () => {
+      mocks.typesafeKeyStatus = 'saved'
+      mocks.rolesLoaded = false
+
+      const wrapper = await mountSheet()
+
+      expect(hasTestId(wrapper, 'memory-backfill-prefilter-note')).toBe(false)
     })
 
     it('hides the lower-cost note when the pre-filter is switched off',

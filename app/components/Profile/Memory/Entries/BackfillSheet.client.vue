@@ -501,10 +501,11 @@ const {
 } = useMemoryBackfill()
 
 const { keyStatusForProvider } = useUserKeys()
-const { isRoleOn } = useTypesafeRoles()
+const { isLoaded: areRolesLoaded, isRoleOn } = useTypesafeRoles()
 
 const isPrefilterOn = computed<boolean>(() => {
   return keyStatusForProvider('typesafe') === 'saved'
+    && areRolesLoaded.value
     && isRoleOn('extractionPrefilter')
 })
 
