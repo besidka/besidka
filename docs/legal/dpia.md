@@ -533,6 +533,30 @@ changes.
 Otherwise review at least every 12 months. Keep the previous version in git
 history.
 
+### Open placeholders
+
+This list covers this DPIA and `docs/legal/art30-record.md`.
+
+- **[OWNER NAME], [DATE] and the residual-risk decision** in the sign-off table
+  above, and the controller name in the Art. 30 record.
+- **Axiom.** Confirm that Axiom's DPA is accepted on the plan in use, and fill
+  in the log retention that plan sets (Art. 30 record, row 15).
+- **Brave and Exa DPF status.** Not part of the 2026-10-26 check. The Art. 30
+  record still marks them **[U]** and the Privacy Policy states no transfer
+  mechanism for them. To check, use the same approach as for the other US
+  providers: `https://www.dataprivacyframework.gov/list` is a single-page app
+  that reads the participants endpoint `https://dpfapi.azurewebsites.net/api/participants`.
+  Fetch that export, and search both the organization names and the covered
+  entity names, active and inactive rows, for the legal entity named in Brave's
+  and Exa's own privacy policy or terms. If one is active, note its
+  participant id and the "EU-U.S. Data Privacy Framework" status. If neither
+  is listed, read the provider's privacy policy or DPA for its stated
+  mechanism (usually SCCs) and cite that. Record the check date here and in
+  the Art. 30 record, not on the public page, and update the Privacy Policy's
+  "Transfers outside the EU" section with the mechanism only.
+- **xAI.** Its documents read on 2026-10-26 were tagged "previous version", so
+  re-read the current DPA and confirm the entity name (SpaceXAI LLC) and SCCs.
+
 ## 9. Sources
 
 Primary text and guidance:

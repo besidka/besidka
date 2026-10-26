@@ -1302,6 +1302,8 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/composables/legal-consent.spec.ts',
         'tests/unit/pages/profile/security.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/plugins/user-settings-sync.client.spec.ts',
+        'tests/unit/composables/auth.spec.ts',
       ],
     },
     {

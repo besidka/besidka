@@ -36,6 +36,14 @@ export function useLegalConsent() {
     'legal-consent:is-saving',
     () => false,
   )
+  const boundUserId = useState<string | null>(
+    'legal-consent:bound-user-id',
+    () => null,
+  )
+  const stateUserId = useState<string | null>(
+    'legal-consent:state-user-id',
+    () => null,
+  )
 
   const isCurrent = computed<boolean>(() => {
     return state.value?.status === 'current'
@@ -43,10 +51,40 @@ export function useLegalConsent() {
 
   function applyState(nextState: LegalConsentState) {
     state.value = nextState
+    stateUserId.value = boundUserId.value
     loadedAt = Date.now()
   }
 
+  /**
+   * Drops the cached consent state and settles any open dialog as refused,
+   * so nothing one user saw or answered is reused for the next one.
+   */
+  function reset() {
+    consentResolver?.(false)
+    consentResolver = null
+    transferResolver?.(false)
+    transferResolver = null
+    state.value = null
+    stateUserId.value = null
+    isConsentModalOpen.value = false
+    transferRequest.value = null
+    loadedAt = 0
+  }
+
+  function bindUser(userId: string | null) {
+    if (boundUserId.value === userId) {
+      return
+    }
+
+    boundUserId.value = userId
+    reset()
+  }
+
   async function load(options: { force?: boolean } = {}) {
+    if (state.value && stateUserId.value !== boundUserId.value) {
+      reset()
+    }
+
     const isFresh = state.value
       && Date.now() - loadedAt < LEGAL_CONSENT_STALE_AFTER_MS
 
@@ -54,8 +92,14 @@ export function useLegalConsent() {
       return state.value
     }
 
+    const requestedForUserId = boundUserId.value
+
     try {
       const response = await $fetch('/api/v1/profiles/consent')
+
+      if (requestedForUserId !== boundUserId.value) {
+        return null
+      }
 
       if (response?.status) {
         applyState(response)
@@ -247,6 +291,8 @@ export function useLegalConsent() {
     isConsentModalOpen,
     transferRequest,
     load,
+    reset,
+    bindUser,
     findTransfer,
     isTransferGranted,
     openConsentModal,

@@ -58,9 +58,8 @@ describe('useLegalConsent', () => {
   beforeEach(() => {
     const consent = useLegalConsent()
 
-    consent.state.value = null
-    consent.isConsentModalOpen.value = false
-    consent.transferRequest.value = null
+    consent.bindUser(null)
+    consent.reset()
     mocks.fetch.mockReset()
     mocks.useErrorMessage.mockReset()
   })
@@ -195,4 +194,90 @@ describe('useLegalConsent', () => {
       expect(mocks.useErrorMessage).toHaveBeenCalled()
       expect(consent.isCurrent.value).toBe(true)
     })
+
+  describe('per-user cache', () => {
+    it('never reuses another user\'s state', async () => {
+      mocks.fetch.mockResolvedValueOnce(consentState())
+      mocks.fetch.mockResolvedValueOnce(consentState({ status: 'missing' }))
+
+      const consent = useLegalConsent()
+
+      consent.bindUser('user-1')
+      await consent.load()
+
+      expect(consent.isCurrent.value).toBe(true)
+
+      consent.bindUser('user-2')
+
+      expect(consent.state.value).toBeNull()
+
+      const result = consent.ensureSendConsent('openai')
+
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      expect(consent.isConsentModalOpen.value).toBe(true)
+
+      consent.resolveConsentModal(false)
+
+      expect(await result).toBe(false)
+    })
+
+    it('discards a response that arrives after the user changed',
+      async () => {
+        let resolveFirst: (value: LegalConsentState) => void = () => {}
+
+        mocks.fetch.mockImplementationOnce(() => {
+          return new Promise((resolve) => {
+            resolveFirst = resolve
+          })
+        })
+
+        const consent = useLegalConsent()
+
+        consent.bindUser('user-1')
+
+        const pending = consent.load()
+
+        consent.bindUser('user-2')
+        resolveFirst(consentState())
+
+        expect(await pending).toBeNull()
+        expect(consent.state.value).toBeNull()
+      })
+
+    it('clears the state and refuses an open dialog on sign-out',
+      async () => {
+        mocks.fetch.mockResolvedValue(consentState({ status: 'missing' }))
+
+        const consent = useLegalConsent()
+
+        consent.bindUser('user-1')
+
+        const result = consent.ensureSendConsent('openai')
+
+        await flushPromises()
+
+        expect(consent.isConsentModalOpen.value).toBe(true)
+
+        consent.bindUser(null)
+
+        expect(await result).toBe(false)
+        expect(consent.state.value).toBeNull()
+        expect(consent.isConsentModalOpen.value).toBe(false)
+      })
+
+    it('keeps the cache while the same user stays signed in', async () => {
+      mocks.fetch.mockResolvedValue(consentState())
+
+      const consent = useLegalConsent()
+
+      consent.bindUser('user-1')
+      await consent.load()
+      consent.bindUser('user-1')
+      await consent.load()
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    })
+  })
 })

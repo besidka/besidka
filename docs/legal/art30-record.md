@@ -121,7 +121,7 @@ provider's location allows.
 | OpenRouter | United States (OpenRouter, Inc.). Can pass the request on to model vendors anywhere, including China | SCCs per its privacy policy (last updated 2026-08-31). No public DPA found | No DPF entry found on 2026-10-26. The onward step happens under the user's own gateway account |
 | Vercel AI Gateway | United States (Vercel Inc.). Can pass the request on to model vendors anywhere, including China | Vercel Inc. is an active participant in the EU-US DPF (participant 6847), adequacy decision (EU) 2023/1795 | Checked 2026-10-26. The onward step happens under the user's own gateway account |
 | Cloudflare AI Gateway | Cloudflare network (United States parent). Routes on to the model vendor | Cloudflare, Inc. DPF participation (see section 6.2) and its Customer DPA | Checked 2026-10-26 |
-| Brave, Exa | United States | DPF status not checked on 2026-10-26 | **[U]** |
+| Brave, Exa | United States | DPF status not checked on 2026-10-26 | **[U]**. How to check: `docs/legal/dpia.md`, section 8, Open placeholders |
 | DeepSeek | People's Republic of China | **No adequacy decision. No contract. No suitable safeguard.** The only tool is the Art. 49(1)(a) derogation: explicit consent after the user is told the risks | Notice in the Privacy Policy. Per-user, per-provider transfer consent built (when a key is added and before the next send through an existing key; refusal blocks that provider; deleting the key withdraws it) |
 | Moonshot AI | Singapore (the API Besidka calls is `api.moonshot.ai`) | As DeepSeek. No adequacy decision for Singapore | As DeepSeek |
 | Qwen (Alibaba Cloud) | Singapore (Besidka calls the international DashScope endpoint, not the mainland one) | As DeepSeek | As DeepSeek |

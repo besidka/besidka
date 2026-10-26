@@ -183,6 +183,7 @@ export function useAuth() {
             // chat_input persists whenever 'preferences' consent is granted.
             draftBackup.clear()
             preferenceStorage.removeItem('chat_input')
+            useLegalConsent().bindUser(null)
 
             if (!redirectTo) {
               return

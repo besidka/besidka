@@ -4,6 +4,7 @@ import userSettingsSyncPlugin
   from '../../../app/plugins/10.user-settings-sync.client'
 import { useAuth } from '../../../app/composables/auth'
 import { useUserSetting } from '../../../app/composables/user-setting'
+import { useLegalConsent } from '../../../app/composables/legal-consent'
 
 const { fetchMock } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
@@ -32,6 +33,7 @@ describe('user settings sync plugin', () => {
 
     clearUserContext()
     user.value = null
+    useLegalConsent().bindUser(null)
   })
 
   it('syncs settings immediately when auth user is already available', async () => {
@@ -105,4 +107,36 @@ describe('user settings sync plugin', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('drops the cached consent state when the signed-in user changes',
+    async () => {
+      fetchMock.mockResolvedValue({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+      })
+      const { user } = useAuth()
+      const consent = useLegalConsent()
+
+      user.value = { id: 'user-1' } as never
+
+      await getPluginSetup()({})
+      await nextTick()
+      await flushPromises()
+
+      consent.state.value = { status: 'current' } as never
+
+      user.value = { id: 'user-2' } as never
+      await nextTick()
+      await flushPromises()
+
+      expect(consent.state.value).toBeNull()
+
+      consent.state.value = { status: 'current' } as never
+
+      user.value = null
+      await nextTick()
+      await flushPromises()
+
+      expect(consent.state.value).toBeNull()
+    })
 })
