@@ -32,11 +32,10 @@ describe('memoryEntryInputSchema', () => {
     expect(memoryEntryInputSchema.safeParse(validEntry).success).toBe(true)
   })
 
-  it('accepts a slug, project id and explicit sensitivity', () => {
+  it('accepts a project id and explicit sensitivity', () => {
     const result = memoryEntryInputSchema.safeParse({
       ...validEntry,
       projectId: 'project-1',
-      slug: 'cloudflare-workers',
       sensitivity: 'special',
       sensitiveCategory: 'health',
       origin: 'user',
@@ -149,18 +148,13 @@ describe('memoryEntryInputSchema', () => {
     }).success).toBe(true)
   })
 
-  it('validates the slug pattern', () => {
-    for (const slug of ['Upper', 'with space', '-edge', 'double--dash']) {
-      expect(memoryEntryInputSchema.safeParse({
-        ...validEntry,
-        slug,
-      }).success).toBe(false)
-    }
+  it('strips a client slug so the server always derives it', () => {
+    for (const slug of ['cloudflare-workers', '4111-1111-1111-1111', 'Upper']) {
+      const result = memoryEntryInputSchema.safeParse({ ...validEntry, slug })
 
-    expect(memoryEntryInputSchema.safeParse({
-      ...validEntry,
-      slug: 'a'.repeat(65),
-    }).success).toBe(false)
+      expect(result.success).toBe(true)
+      expect(result.data).not.toHaveProperty('slug')
+    }
   })
 
   it('requires special sensitivity for a sensitive category', () => {

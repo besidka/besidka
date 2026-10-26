@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MemoryEntryInput } from '#shared/types/memory.d'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
-import { encodePublicId } from '~~/server/utils/custom-db-types'
+import {
+  decodePublicId,
+  encodePublicId,
+} from '~~/server/utils/custom-db-types'
 import {
   assertOwnedProject,
   buildMemoryExport,
@@ -249,21 +252,42 @@ describe('memory entries service', () => {
         expect(entry.slug).toBe('music')
       })
 
-      it('returns 409 for a colliding explicit slug', async () => {
-        await create({ slug: 'my-slug' })
+      it.each([
+        ['a card number', '4111-1111-1111-1111'],
+        ['a PESEL', 'pesel-44051401359'],
+        ['an Art. 9 health fact', 'living-with-hiv-since-2019'],
+        ['a hyphen-grouped Polish NRB', '61-1090-1014-0000-0712-1981-2874'],
+      ])('ignores a client slug carrying %s and derives it from the gated '
+        + 'title', async (_label, clientSlug) => {
+        const entry = await createMemoryEntry(context(), {
+          input: {
+            ...entryInput({ title: 'Travel' }),
+            slug: clientSlug,
+          } as MemoryEntryInput & { slug: string },
+          origin: 'user',
+          complianceOrigin: 'memory-api',
+        })
+        const stored = readStoredRow(decodePublicId(entry.id))
 
-        await expect(create({ slug: 'my-slug', title: 'Other' }))
-          .rejects.toMatchObject({
-            status: 409,
-            message: 'An entry with this name already exists',
-          })
-        expect(testDb.countEntries(OWNER)).toBe(1)
+        expect(entry.slug).toBe('travel')
+        expect(stored?.slug).toBe('travel')
+        expect(JSON.stringify(stored)).not.toContain(clientSlug)
       })
 
-      it('uses an explicit slug without suffixing', async () => {
-        const entry = await create({ slug: 'custom', title: 'Anything' })
+      it('suffixes a derived slug instead of failing on a client slug that '
+        + 'collides', async () => {
+        await create({ title: 'Music' })
 
-        expect(entry.slug).toBe('custom')
+        const second = await createMemoryEntry(context(), {
+          input: {
+            ...entryInput({ title: 'Music' }),
+            slug: 'music',
+          } as MemoryEntryInput & { slug: string },
+          origin: 'user',
+          complianceOrigin: 'memory-api',
+        })
+
+        expect(second.slug).toBe('music-2')
       })
 
       it('scopes slug uniqueness to a project', async () => {
@@ -299,7 +323,6 @@ describe('memory entries service', () => {
         const profile = await create({
           category: 'profile',
           title: 'About me',
-          slug: 'ignored',
         })
         const preferences = await create({
           category: 'preferences',
@@ -625,9 +648,12 @@ describe('memory entries service', () => {
     })
 
     it('never answers a unique violation with a 500', async () => {
-      await create({ slug: 'same' })
+      await create({ category: 'profile', title: 'About me' })
 
-      const exception = await create({ slug: 'same', title: 'Different' })
+      const exception = await create({
+        category: 'profile',
+        title: 'Different',
+      })
         .catch((caught: unknown) => {
           return caught as { status?: number }
         })
@@ -805,6 +831,18 @@ describe('memory entries service', () => {
       })
       expect(new Date(entry.updatedAt).getTime())
         .toBeGreaterThan(new Date(previous.updatedAt).getTime())
+    })
+
+    it('ignores a slug in the patch and keeps the stored one', async () => {
+      const created = await create({ title: 'Travel' })
+      const { entry } = await update(created.id, {
+        title: 'Trips',
+        slug: '4111-1111-1111-1111',
+      } as Parameters<typeof update>[1] & { slug: string })
+      const stored = readStoredRow(decodePublicId(created.id))
+
+      expect(entry.slug).toBe('travel')
+      expect(stored?.slug).toBe('travel')
     })
 
     it('trims patched strings', async () => {

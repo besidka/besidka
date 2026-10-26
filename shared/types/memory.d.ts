@@ -52,7 +52,6 @@ export type MemoryIndexEntry = Pick<
 export interface MemoryEntryInput {
   projectId?: string | null
   category: MemoryCategory
-  slug?: string
   title: string
   description: string
   body: string

@@ -656,7 +656,7 @@ export async function createMemoryEntry(
 
   const fixedSlug = isSingletonCategory(input.category)
     ? input.category
-    : (input.slug ?? null)
+    : null
 
   const insertedId = await insertEntryWithSlug(
     db,
