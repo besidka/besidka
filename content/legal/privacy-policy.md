@@ -425,7 +425,7 @@ No service is perfectly secure. If you find a security problem, please write to 
 
 [Memory](#memory) can be **profiling** under GDPR Art. 4(4) when you turn on "Generate memory from chats", and project memory works the same way. What that means and why it is not an Art. 22 decision is explained under [Profiling](#profiling).
 
-The optional [TypeSafe AI checks](#typesafe-ai-checks) are assistive automated decisions: whether to run a web search, whether to skip a memory pass, in what order search results appear, whether to show a personal-data warning before you share, whether to hold a project file for your review, and whether to search your past chats before answering. None of them has a legal or similarly significant effect on you. Each one falls back to normal behaviour if TypeSafe AI is unsure or unavailable, each can be switched off, and a flag never deletes anything. So Art. 22 does not apply to them either.
+The optional [TypeSafe AI checks](#typesafe-ai-checks) are assistive automated decisions: whether to run a web search, whether to skip a memory pass, in what order search results appear and which clearly irrelevant ones are left out, whether to show a personal-data warning before you share, whether to hold a project file for your review, and whether to search your past chats before answering. None of them has a legal or similarly significant effect on you. Each one falls back to normal behaviour if TypeSafe AI is unsure or unavailable, each can be switched off, and a flag never deletes anything. So Art. 22 does not apply to them either.
 
 ## Sensitive information in your chats
 
