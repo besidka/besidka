@@ -1722,6 +1722,43 @@ handled separately.
   kept, and look-alikes inside a mixed-script word are folded to the word's
   main script in both directions (`hіv`, `дiабет`); the `heroinę` escape still
   works.
+- Smoke-test gaps (2026-10-26): a 48-snippet labelled smoke test (EN, PL,
+  UK) showed 11 gate errors, now all fixed and pinned in
+  `compliance-evasion.spec.ts` as a table with the expected label of every
+  snippet. Political opinion: party votes without "for" ("I vote Labour",
+  "Green" only with an election or party cue, so "I vote green for the logo"
+  stays clean), quoted or named parties after a vote verb ("Głosowałam na
+  Lewicę", "голосувала за «Європейську Солідарність»"), and the election
+  noun before the verb ("на останніх виборах я голосувала за"). Ethnic
+  origin: "I'm half/part/a quarter <demonym>" over a fixed demonym list,
+  "mixed-race", "biracial", and "of/my <demonym> descent|heritage". Religion:
+  identity words (Catholic, Muslim, atheist, religious, katolik, віруюч,
+  верующ…) now need a first-person, possessive, named-person ("Anna is",
+  "Анна —", "Anna jest"), "raised", "converted to" or "Religion:" frame, and
+  the frame takes negations, because "I'm not religious" is belief data too.
+  Extracted entries are often elliptical, so an identity word that starts a
+  line or sentence and ends its clause also counts ("Devout Catholic",
+  "Atheist", a `Religion` title over a `Catholic` body, "Католичка, ходить
+  до церкви"), except a bare "Christian", which is also a first name.
+  Worship places take one word in between ("attends Catholic mass", "goes
+  to the temple"), and "votes Labour", "prays five times a day" and "is in
+  a trade union" match without a subject.
+  An essay on the Catholic Church is no longer caught: 0% of generated essay
+  sentences against 67.5% before. Trade unions: "trade union" needs a
+  membership or possessive frame, so a CRM for a union client is clean.
+  Orientation: "Мій найкращий друг — гей" (possessive plus dash). Spaced
+  letters: three or more single letters separated by spaces or tabs are
+  joined before matching (`d i a b e t e s`), never across a line break; an
+  accepted edge is a leading article joining in (`a d i a b…`). Never-store:
+  a strong password label followed by a prepositional phrase and a colon
+  ("пароль від пошти: …", "hasło do poczty: …") with a digit or symbol in
+  the value and no URL, and a PIN of 4 to 8 digits after "PIN", "PIN code",
+  "PIN-код" or "kod PIN" with a colon or a copula ("PIN is 4821"); only the
+  digits are redacted. The 5000-trial number and date generators from the
+  delta verification are unchanged at 0% (four spaced 4-digit numbers stay
+  at about 5%, a real card layout). Known remaining gaps: ethnic origin in
+  PL and UK, prayer nouns (`молитв`, `modlitw`) still match on their own,
+  and "I vote Green." with no election cue is not caught.
 - Saved text: every write is still checked, so editing an entry whose saved
   text a rule now rejects is a 422 even for a title-only change. Its `why`
   names the match and says it is in the saved text, its `fix` says to edit

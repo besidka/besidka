@@ -5,6 +5,7 @@ import {
   sensitiveWordStart,
 } from '~~/server/utils/memory/sensitivity-rules'
 import {
+  collapseSpacedLetters,
   foldMixedScriptLookalikes,
   foldPolishDiacritics,
   stripLatinDiacritics,
@@ -50,8 +51,9 @@ export function compileSensitiveTextExpression(
 /**
  * The form every rule source is written against: `normalizeSensitiveTextCase`
  * (NFKC, hidden characters removed, Latin accents stripped), lowercased,
- * apostrophe variants straightened, `ё` folded to `е`, and look-alike letters
- * inside a mixed Latin and Cyrillic word mapped to the word's main script.
+ * apostrophe variants straightened, `ё` folded to `е`, spaced-out single
+ * letters joined into a word, and look-alike letters inside a mixed Latin and
+ * Cyrillic word mapped to the word's main script.
  */
 export function normalizeSensitiveText(text: string): string {
   const lowercased = normalizeSensitiveTextCase(text)
@@ -60,7 +62,7 @@ export function normalizeSensitiveText(text: string): string {
     .replace(/[ʼ’‘`´]/g, '\'')
     .replace(/ё/g, 'е')
 
-  return foldMixedScriptLookalikes(lowercased)
+  return foldMixedScriptLookalikes(collapseSpacedLetters(lowercased))
 }
 
 /**
