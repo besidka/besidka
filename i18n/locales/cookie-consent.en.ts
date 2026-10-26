@@ -212,6 +212,12 @@ export default defineI18nLocale(() => ({
           + 'new chats.',
         duration: 'Until deleted',
       },
+      'knowledge-cache-info-seen': {
+        description:
+          'Remembers the projects where you have seen the note about '
+          + 'prompt caching, so it starts collapsed.',
+        duration: 'Until deleted',
+      },
     },
   },
 }))

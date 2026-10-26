@@ -362,10 +362,12 @@ const {
   isDeepResearchModel,
   researchConfig,
   isSelectedModelKeyless,
+  selectedTransferProviderId,
   selectedModelKeyOwnerLabel,
   isModelCapabilityResolved,
   isSelectedModelUnavailable,
 } = useChatInput()
+const { ensureSendConsent } = useLegalConsent()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
@@ -443,13 +445,17 @@ function warnAboutUnavailableModel() {
   )
 }
 
-function onRegenerate() {
+async function onRegenerate() {
   if (isSelectedModelUnavailable.value) {
     return warnAboutUnavailableModel()
   }
 
   if (isSelectedModelKeyless.value) {
     return warnAboutMissingKey()
+  }
+
+  if (!await ensureSendConsent(selectedTransferProviderId.value)) {
+    return
   }
 
   props.regenerate()
@@ -1015,7 +1021,7 @@ function handleEnter(event: KeyboardEvent) {
   sendMessage()
 }
 
-function sendMessage() {
+async function sendMessage() {
   if (!message.value?.trim()) {
     return useWarningMessage('Please enter a message before sending.')
   }
@@ -1036,6 +1042,10 @@ function sendMessage() {
 
   if (props.researchJobActive) {
     return useWarningMessage('Research in progress — please wait.')
+  }
+
+  if (!await ensureSendConsent(selectedTransferProviderId.value)) {
+    return
   }
 
   const text = message.value

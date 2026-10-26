@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: async () => true,
+  handleConsentError: async () => false,
+}))
 
 const BACKFILL_URL = '/api/v1/memory/backfill'
 const STEP_URL = '/api/v1/memory/backfill/step'

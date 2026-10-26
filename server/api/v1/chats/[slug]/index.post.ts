@@ -236,6 +236,11 @@ import {
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import {
+  assertModelTransferConsent,
+  assertProviderTransferConsent,
+  requireLegalConsent,
+} from '~~/server/utils/legal/consent'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -285,6 +290,7 @@ export default defineEventHandler(async (event) => {
   const userId = parseInt(session.user.id)
 
   const db = useDb()
+  const legalConsent = await requireLegalConsent(userId, db)
   const chat = await db.query.chats.findFirst({
     where: {
       slug: params.data.slug,
@@ -389,6 +395,8 @@ export default defineEventHandler(async (event) => {
   if (gatewayId) {
     requestedTools = selectedTools
 
+    assertModelTransferConsent(legalConsent, { gatewayId, modelId: userModel })
+
     await assertGatewayImageInputSupported({
       gatewayId,
       modelId: userModel,
@@ -400,6 +408,8 @@ export default defineEventHandler(async (event) => {
 
     provider = resolved.provider
     model = resolved.model
+
+    assertProviderTransferConsent(legalConsent, provider.id)
 
     reasoningLevel = resolveReasoningLevelForModel(model, reasoningLevel)
 

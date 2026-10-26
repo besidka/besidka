@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { streamText } from 'ai'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 function createMockUIMessageStream(messageId: string) {
   return new ReadableStream({
     start(controller) {

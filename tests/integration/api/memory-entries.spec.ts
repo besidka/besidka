@@ -5,6 +5,10 @@ import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { createMemoryTestDb } from '../../setup/helpers/memory-db'
 import { createFakeKnowledgeKv } from '../../setup/helpers/knowledge-api'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   setResponseStatus: vi.fn(),

@@ -12,6 +12,10 @@ import {
   readVercelGenerationId,
 } from '../../../server/utils/gateways/index'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const CHAT_SEARCH_MODEL_ID = 'gpt-5-mini'
 const CHAT_SEARCH_PROVIDER_ID = 'openai'
 const GATEWAY_MODEL_ID = 'anthropic/claude-opus-5'

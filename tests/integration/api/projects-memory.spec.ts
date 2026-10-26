@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import googleProvider from '../../../providers/google'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const googleProjectMemoryModel = googleProvider.models.find((model) => {
   return model.forProjectMemory
 })

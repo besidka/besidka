@@ -185,6 +185,38 @@ describe('sweepMemoryExtraction', () => {
       }
     })
 
+    it('skips users without a current consent', async () => {
+      const consentedChat = await dueChat()
+      const noConsent = await seedUser(testDb.db, {
+        memoryEnabled: true,
+        sensitiveContentConsentAt: null,
+        sensitiveContentConsentVersion: null,
+      })
+      const withdrawn = await seedUser(testDb.db, {
+        memoryEnabled: true,
+        sensitiveContentConsentWithdrawnAt: minutesBefore(5),
+      })
+      const oldVersion = await seedUser(testDb.db, {
+        memoryEnabled: true,
+        sensitiveContentConsentVersion: '2026-10-a',
+        termsVersion: '2026-10-a',
+      })
+      const skippedChats = [
+        await dueChat({}, noConsent),
+        await dueChat({}, withdrawn),
+        await dueChat({}, oldVersion),
+      ]
+
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(1)
+      expect(await wasProcessed(consentedChat.id)).toBe(true)
+
+      for (const chat of skippedChats) {
+        expect(await wasProcessed(chat.id)).toBe(false)
+      }
+    })
+
     it('never selects a chat excluded from memory', async () => {
       const excluded = await dueChat({ memoryExcluded: true })
       const included = await dueChat({ memoryExcluded: false })

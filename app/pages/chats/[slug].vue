@@ -908,6 +908,7 @@ async function deleteMessage(messageId: string) {
 }
 
 const branchPending = shallowRef(false)
+const { handleConsentError } = useLegalConsent()
 
 async function branchFromMessage(messageId: string) {
   branchPending.value = true
@@ -923,6 +924,10 @@ async function branchFromMessage(messageId: string) {
 
     navigateTo(`/chats/${response.slug}`)
   } catch (exception: any) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     useErrorMessage(
       exception.data?.statusMessage
       || exception.statusMessage

@@ -48,6 +48,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: async () => true,
+  handleConsentError: async () => false,
+}))
 mockNuxtImport('$fetch', () => mocks.fetchMock)
 mockNuxtImport('planKnowledgeUpload', () => mocks.planKnowledgeUpload)
 mockNuxtImport('useKnowledgeExtraction', () => mocks.useKnowledgeExtraction)

@@ -498,8 +498,14 @@ function applyResponse(response: ImportResponse, submittedText: string) {
   phase.value = 'done'
 }
 
+const { ensureSendConsent, handleConsentError } = useLegalConsent()
+
 async function runImport() {
   if (isSubmitDisabled.value) {
+    return
+  }
+
+  if (!await ensureSendConsent(null)) {
     return
   }
 
@@ -518,6 +524,10 @@ async function runImport() {
       emit('changed')
     }
   } catch (exception) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     const parsedException = parseError(exception)
 
     if (parsedException.status === COOLDOWN_STATUS) {

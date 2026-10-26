@@ -9,6 +9,10 @@ import {
 } from '../../setup/helpers/knowledge-api'
 import type { KnowledgeApiHarness } from '../../setup/helpers/knowledge-api'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   invalidateStorageCache: vi.fn(),
   commitKnowledgeChange: vi.fn(),

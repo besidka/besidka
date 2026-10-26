@@ -744,11 +744,28 @@ describe('extractMemoryFromText', () => {
       expect((await importText(PASTED_TEXT)).applied.created).toBe(1)
     })
 
-    it('treats a missing settings row as memory on', async () => {
-      userId = await seedUser(testDb.db, null)
+    it('skips a user with no settings row, because no consent exists',
+      async () => {
+        userId = await seedUser(testDb.db, null)
+        mockOps([createOp()])
+
+        const result = await importText(PASTED_TEXT)
+
+        expect(result.status).toBe('skipped')
+        expect(result.reason).toBe('no-consent')
+        expect(result.applied.created).toBe(0)
+      })
+
+    it('skips a user whose consent was withdrawn', async () => {
+      await testDb.db.update(schema.userSettings)
+        .set({ sensitiveContentConsentWithdrawnAt: new Date() })
+        .where(eq(schema.userSettings.userId, userId))
       mockOps([createOp()])
 
-      expect((await importText(PASTED_TEXT)).applied.created).toBe(1)
+      const result = await importText(PASTED_TEXT)
+
+      expect(result.status).toBe('skipped')
+      expect(result.reason).toBe('no-consent')
     })
 
     it('applies nothing when memory was switched off during the model '

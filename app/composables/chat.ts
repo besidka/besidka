@@ -825,6 +825,7 @@ export function findLastUserMessageTools(messages: Message[]): Tools {
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { selection, userModel } = useUserModel()
+  const { handleConsentError } = useLegalConsent()
   const { isModelCapabilityResolved } = useChatInput()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
@@ -1029,6 +1030,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       })
 
       pendingError.value = parsedError
+      handleConsentError(error)
 
       if (
         parsedError.requestId

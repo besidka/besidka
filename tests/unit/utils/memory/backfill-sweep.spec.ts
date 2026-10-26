@@ -144,6 +144,18 @@ describe('sweepMemoryExtraction backfill servicing', () => {
     expect((await readJob(jobId))?.processedChats).toBe(3)
   })
 
+  it('leaves a running job alone when its user withdrew consent', async () => {
+    const { jobId } = await userWithJob({
+      chats: 3,
+      settings: { sensitiveContentConsentWithdrawnAt: minutesBefore(5) },
+    })
+    const result = await sweep()
+
+    expect(result.backfill).toMatchObject({ jobs: 0, chats: 0 })
+    expect(backfillCallCount()).toBe(0)
+    expect((await readJob(jobId))?.processedChats).toBe(0)
+  })
+
   it('completes a job whose cursor runs out within the tick', async () => {
     const { jobId } = await userWithJob({ chats: 2 })
     const result = await sweep()

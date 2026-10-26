@@ -9,6 +9,7 @@ import { assertOwnedProject } from '~~/server/utils/memory/entries'
 import { previewMemoryInstruction } from '~~/server/utils/memory/instruct'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 function countOperations(operations: MemoryInstructPreviewOperation[]) {
   const counts = { create: 0, update: 0, delete: 0, rejected: 0 }
@@ -65,6 +66,8 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const userId = parseInt(session.user.id)
   const projectId = body.data.projectId ?? null
+
+  await requireLegalConsent(userId, db)
 
   logger.set({
     userId,

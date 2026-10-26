@@ -30,6 +30,10 @@ mockNuxtImport('$fetch', () => fetchMock)
 mockNuxtImport('useUserKeys', () => useUserKeysMock)
 mockNuxtImport('useChatFiles', () => useChatFilesMock)
 mockNuxtImport('useDevice', () => useDeviceMock)
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: async () => true,
+  handleConsentError: async () => false,
+}))
 
 async function flushPromises() {
   await Promise.resolve()

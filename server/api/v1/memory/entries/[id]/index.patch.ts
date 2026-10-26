@@ -6,6 +6,7 @@ import { updateMemoryEntry } from '~~/server/utils/memory/entries'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -47,6 +48,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
 
   logger.set({
     userId,

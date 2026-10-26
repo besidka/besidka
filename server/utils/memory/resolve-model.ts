@@ -25,6 +25,14 @@ import {
   isTextGatewayModel,
   isUsableMemoryCatalogModel,
 } from '~~/server/utils/memory/catalog-usability'
+import type { LegalConsentRecord } from '~~/server/utils/legal/consent'
+import {
+  assertProviderTransferConsent,
+  hasModelTransferConsent,
+  readLegalConsent,
+  withoutUnconsentedTransferProviders,
+} from '~~/server/utils/legal/consent'
+import { resolveTransferConsentProviderId } from '#shared/utils/legal-consent'
 
 export const MEMORY_MODEL_PROVIDER_ORDER = [
   'openai',
@@ -103,6 +111,7 @@ interface MemoryModelResolutionContext {
   input: ResolveMemoryModelInput
   db: DbClient
   availableKeys: Set<string>
+  legalConsent: LegalConsentRecord
   skipped: string[]
   errors: MemoryModelResolutionError[]
 }
@@ -128,6 +137,7 @@ function resolutionErrorLabel(exception: unknown): string {
 async function readAvailableKeys(
   userId: number,
   db: DbClient,
+  legalConsent: LegalConsentRecord,
 ): Promise<Set<string>> {
   const savedKeys = await db.query.keys.findMany({
     where: { userId },
@@ -136,9 +146,11 @@ async function readAvailableKeys(
     },
   })
 
-  return new Set<string>(savedKeys.map((key) => {
+  const providerIds = new Set<string>(savedKeys.map((key) => {
     return key.provider
   }))
+
+  return withoutUnconsentedTransferProviders(providerIds, legalConsent)
 }
 
 function resolveDirectCandidate(
@@ -189,6 +201,12 @@ function resolveGatewayCandidate(
 ): MemoryModelCandidate | null {
   if (!context.availableKeys.has(keyProviderIdForGateway(gatewayId))) {
     context.skipped.push(`${step}:no-key`)
+
+    return null
+  }
+
+  if (!hasModelTransferConsent(context.legalConsent, { gatewayId, modelId })) {
+    context.skipped.push(`${step}:no-transfer-consent`)
 
     return null
   }
@@ -464,11 +482,17 @@ export async function resolveMemoryModel(
   const skipped: string[] = []
   const errors: MemoryModelResolutionError[] = []
   const db = input.db ?? useDb()
-  const availableKeys = await readAvailableKeys(input.userId, db)
+  const legalConsent = await readLegalConsent(input.userId, db)
+  const availableKeys = await readAvailableKeys(
+    input.userId,
+    db,
+    legalConsent,
+  )
   const context: MemoryModelResolutionContext = {
     input,
     db,
     availableKeys,
+    legalConsent,
     skipped,
     errors,
   }
@@ -535,6 +559,19 @@ export async function instantiateMemoryModel(
 ): Promise<MemoryModelInstance> {
   const { gatewayId, providerId, modelId } = selection
   const userIdValue = userId.toString()
+
+  const transferProviderId = resolveTransferConsentProviderId({
+    providerId,
+    gatewayId,
+    modelId,
+  })
+
+  if (transferProviderId) {
+    assertProviderTransferConsent(
+      await readLegalConsent(userId),
+      transferProviderId,
+    )
+  }
 
   if (gatewayId) {
     const result = await useGateway(

@@ -758,6 +758,14 @@ describe('Profile/Memory/CacheInfo', () => {
   describe('collapsed after the first view', () => {
     const SEEN_KEY = 'knowledge-cache-info-seen'
 
+    function seenScopes(): string[] {
+      return JSON.parse(usePreferenceStorage().getItem(SEEN_KEY) ?? '[]')
+    }
+
+    function markSeen(scopes: string[]) {
+      usePreferenceStorage().setItem(SEEN_KEY, JSON.stringify(scopes))
+    }
+
     beforeEach(() => {
       mocks.isPreferencesAllowed = true
       window.localStorage.clear()
@@ -765,7 +773,6 @@ describe('Profile/Memory/CacheInfo', () => {
       const preferenceStorage = usePreferenceStorage()
 
       preferenceStorage.removeItem(SEEN_KEY)
-      preferenceStorage.removeItem(`${SEEN_KEY}:project-1`)
     })
 
     afterEach(() => {
@@ -804,12 +811,25 @@ describe('Profile/Memory/CacheInfo', () => {
       const wrapper = await mountInfo({ collapsedAfterFirstView: true })
 
       expect(wrapper.get('details').attributes('open')).toBeDefined()
-      expect(window.localStorage.getItem(SEEN_KEY)).toBe('1')
+      expect(seenScopes()).toEqual(['default'])
     })
+
+    it('persists one declared key that preferences consent can clear',
+      async () => {
+        await mountInfo({
+          collapsedAfterFirstView: true,
+          storageKey: 'project-1',
+        })
+
+        expect(window.localStorage.getItem(SEEN_KEY))
+          .toBe(JSON.stringify(['project-1']))
+        expect(window.localStorage.getItem(`${SEEN_KEY}:project-1`))
+          .toBeNull()
+      })
 
     it('is collapsed on later views, even on desktop', async () => {
       stubViewport(true)
-      window.localStorage.setItem(SEEN_KEY, '1')
+      markSeen(['default'])
 
       const wrapper = await mountInfo({ collapsedAfterFirstView: true })
 
@@ -819,7 +839,7 @@ describe('Profile/Memory/CacheInfo', () => {
     })
 
     it('opens again when the title is clicked', async () => {
-      window.localStorage.setItem(SEEN_KEY, '1')
+      markSeen(['default'])
 
       const wrapper = await mountInfo({ collapsedAfterFirstView: true })
 
@@ -831,7 +851,7 @@ describe('Profile/Memory/CacheInfo', () => {
 
     it('ignores the seen flag on /profile/memory', async () => {
       stubViewport(true)
-      window.localStorage.setItem(SEEN_KEY, '1')
+      markSeen(['default'])
 
       const wrapper = await mountInfo()
 
@@ -847,9 +867,7 @@ describe('Profile/Memory/CacheInfo', () => {
           storageKey: 'project-1',
         })
 
-        expect(window.localStorage.getItem(`${SEEN_KEY}:project-1`))
-          .toBe('1')
-        expect(window.localStorage.getItem(SEEN_KEY)).toBeNull()
+        expect(seenScopes()).toEqual(['project-1'])
 
         const otherProject = await mountInfo({
           collapsedAfterFirstView: true,
@@ -857,6 +875,7 @@ describe('Profile/Memory/CacheInfo', () => {
         })
 
         expect(otherProject.get('details').attributes('open')).toBeDefined()
+        expect(seenScopes()).toEqual(['project-1', 'project-2'])
 
         const sameProject = await mountInfo({
           collapsedAfterFirstView: true,
@@ -866,10 +885,10 @@ describe('Profile/Memory/CacheInfo', () => {
         expect(sameProject.get('details').attributes('open')).toBeUndefined()
       })
 
-    it('ignores the global seen flag when a storage key is given',
+    it('ignores the default seen flag when a storage key is given',
       async () => {
         stubViewport(false)
-        window.localStorage.setItem(SEEN_KEY, '1')
+        markSeen(['default'])
 
         const wrapper = await mountInfo({
           collapsedAfterFirstView: true,
@@ -878,6 +897,15 @@ describe('Profile/Memory/CacheInfo', () => {
 
         expect(wrapper.get('details').attributes('open')).toBeDefined()
       })
+
+    it('treats a malformed stored value as not seen', async () => {
+      usePreferenceStorage().setItem(SEEN_KEY, '1')
+
+      const wrapper = await mountInfo({ collapsedAfterFirstView: true })
+
+      expect(wrapper.get('details').attributes('open')).toBeDefined()
+      expect(seenScopes()).toEqual(['default'])
+    })
 
     it('enables the chevron transition only after the initial state settles',
       async () => {

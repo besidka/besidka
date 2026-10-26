@@ -157,7 +157,7 @@ const TOKENS_PER_MILLION = 1_000_000
 const DESKTOP_QUERY = '(min-width: 640px)'
 const MEMORY_ENTRIES_KEY = 'memory-entries:all'
 const SEEN_STORAGE_KEY = 'knowledge-cache-info-seen'
-const SEEN_STORAGE_VALUE = '1'
+const DEFAULT_SEEN_SCOPE = 'default'
 const ANTHROPIC_PROVIDER_ID = 'anthropic'
 const ANTHROPIC_MODEL_PREFIX = 'anthropic/'
 
@@ -172,19 +172,35 @@ const isExpanded = shallowRef<boolean>(true)
 const isMounted = shallowRef<boolean>(false)
 const isTransitionEnabled = shallowRef<boolean>(false)
 
-const seenStorageKey = computed<string>(() => {
-  return props.storageKey
-    ? `${SEEN_STORAGE_KEY}:${props.storageKey}`
-    : SEEN_STORAGE_KEY
+const seenScope = computed<string>(() => {
+  return props.storageKey || DEFAULT_SEEN_SCOPE
 })
 
+function readSeenScopes(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      preferenceStorage.getItem(SEEN_STORAGE_KEY) ?? '[]',
+    )
+
+    return Array.isArray(parsed)
+      ? parsed.filter((scope): scope is string => {
+        return typeof scope === 'string'
+      })
+      : []
+  } catch {
+    return []
+  }
+}
+
 function readSeenFlag(): boolean {
-  return preferenceStorage.getItem(seenStorageKey.value)
-    === SEEN_STORAGE_VALUE
+  return readSeenScopes().includes(seenScope.value)
 }
 
 function writeSeenFlag() {
-  preferenceStorage.setItem(seenStorageKey.value, SEEN_STORAGE_VALUE)
+  preferenceStorage.setItem(
+    SEEN_STORAGE_KEY,
+    JSON.stringify([...readSeenScopes(), seenScope.value]),
+  )
 }
 
 function resolveInitialExpansion(): boolean {

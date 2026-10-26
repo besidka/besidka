@@ -30,6 +30,7 @@ export function useChatFiles(
   canAttachMediaType: Ref<(mediaType: string) => boolean>,
 ) {
   const nuxtApp = useNuxtApp()
+  const { ensureSendConsent } = useLegalConsent()
   const uploadingFiles = ref<Map<string, UploadingFile>>(new Map())
   const uploadQueue = ref<string[]>([])
   const emitFilesUploaded = useDebounceFn(() => {
@@ -192,6 +193,10 @@ export function useChatFiles(
     const newFiles = rejectUnsupportedFiles(candidateFiles)
 
     if (newFiles.length === 0) {
+      return
+    }
+
+    if (!await ensureSendConsent(null)) {
       return
     }
 

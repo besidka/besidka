@@ -7,6 +7,21 @@ not legal advice. Companion drafts for counsel live in
 `docs/memory-architecture.md` (sections 3.5, 3.11, 3.14 and 7 cover
 sensitivity).
 
+**Status update, 2026-10-26: the chat consent gate shipped.** Chats now have a
+one-time explicit consent under Art. 9(2)(a), version `2026-11-a`, in a
+separate unticked box next to the Terms and 18+ box. It is enforced on the
+server: refusing or withdrawing it blocks sending (and stops background memory
+work); reading, exporting and deleting stay open. Option (c) for memory (no
+sensitive-memory opt-in) is **unchanged**. The engineering bullet below that
+says consent receipts "will reuse `CONSENT_DB`" is **superseded**: the receipts
+live on `user_settings` (see `docs/legal.md`, "Consent records"). The Privacy
+Policy, Terms of Use and Cookie Policy were rewritten on 2026-10-26 to match.
+Sections 0 to 6 describe the position when they were written; where this note
+or a later note contradicts them, the later note wins. Citations that the
+2026-10-26 pass could not re-read (CJEU paragraph numbers, EDPB Guidelines
+2/2018) are softened below, and the ChatGPT Taskforce paragraph references are
+corrected (para 24 is the Terms-clause rule, para 25 concerns training).
+
 **Status, 2026-10-25: the owner chose option (c) for v1. There is no sensitive
 opt-in; special-category text is rejected on every memory write path.** The
 research in sections 1 to 5 is unchanged and is still the basis for the
@@ -34,12 +49,16 @@ Labels used throughout:
   ships the same toggle **[C]**, but the opt-in is not lawful to ship as-is:
   no DPIA, no consent receipts, no transfer position for DeepSeek, Moonshot,
   Qwen or unpinned gateways, and legal pages that say the opposite.
-- The current published legal pages contradict the memory feature and, more
-  urgently, today's production chats. See "Open owner/counsel decisions".
+- The legal pages as published on 2026-10-25 contradicted the memory feature
+  and, more urgently, production chats. Resolved on 2026-10-26: the pages were
+  rewritten and the consent gate shipped. See "Open owner/counsel decisions".
 - A DPIA and an Art. 30 record are needed **even without the opt-in**: chats
   alone trigger them.
 
-## 0. What the repo says today
+## 0. What the repo said on 2026-10-25
+
+(Superseded on 2026-10-26: the three pages were rewritten and the consent gate
+shipped. This section records the starting point.)
 
 - Privacy Policy (`content/legal/privacy-policy.md`, `updatedAt: 2026-10-24`)
   says under "Special category data" that Besidka has **no lawful basis** to
@@ -66,12 +85,12 @@ is decided about the toggle.
 
 ### 1.1 Is Art. 9(2)(a) explicit consent the right basis?
 
-Yes. It is the only realistic exception. **[C/I]** EDPB Guidelines 05/2020
-para 99 say Art. 9(2) has no "necessary for the performance of a contract"
-exception. If none of (b) to (j) applies, explicit consent is "the only
+Yes. It is the only realistic exception. **[C/I]** See EDPB Guidelines
+05/2020 on conditionality and explicit consent: they say Art. 9(2) has no
+"necessary for the performance of a contract" exception. If none of (b) to (j) applies, explicit consent is "the only
 possible lawful exception". **[C]** None of (b) to (j) fits a consumer chat
 app: no employment, vital interest, health-care provision or public interest.
-Art. 9(2)(e) also does not fit, because C-252/21 para 77 requires that the
+Art. 9(2)(e) also does not fit, because C-252/21 requires that the
 data subject meant, "explicitly and by a clear affirmative action", to make
 the data accessible to the general public. A private chat is the opposite.
 **[C]** Poland adds no general national ban on Art. 9(2)(a) consent outside
@@ -168,17 +187,18 @@ high residual risk remains. **[I]**
 
 Inference widens Art. 9:
 
-- **C-184/20 OT (Grand Chamber, 1 Aug 2022).** Paras 120-128: data that can
-  reveal sensitive information "following an intellectual operation involving
-  deduction or cross-referencing" is special-category data. The protective
+- **C-184/20 OT (Grand Chamber, 1 Aug 2022).** Data that can reveal sensitive
+  information "following an intellectual operation involving deduction or
+  cross-referencing" is special-category data. The protective
   regime cannot exclude indirectly revealing data. **[C]** An LLM extractor is
   a deduction engine. A memory saying "fasts during Ramadan" or "goes to AA
   meetings" is Art. 9 data even though no category was named. **[I]**
-- **C-252/21 Meta v Bundeskartellamt (4 Jul 2023).** Para 68: Art. 9 applies
-  wherever processing allows such information to be revealed, whoever it
-  concerns. Para 69: the prohibition applies whether or not the information is
-  correct, and whether or not the controller aims to obtain it. Paras 77-79:
-  the "manifestly made public" test, as above. **[C]** Consequence: the
+- **C-252/21 Meta v Bundeskartellamt (4 Jul 2023).** Art. 9 applies wherever
+  processing allows such information to be revealed, whoever it concerns. The
+  prohibition applies whether or not the information is correct, and whether
+  or not the controller aims to obtain it. The same judgment sets the
+  "manifestly made public" test, as above. (Paragraph numbers were not
+  re-read on 2026-10-26 and are left out.) **[C]** Consequence: the
   **toggle-OFF classifier that detects and drops sensitive items is itself
   Art. 9 processing**. It is defensible as the safeguard the EDPB ChatGPT
   Taskforce recommends (report para 19, filtering Art. 9 data), but it must be
@@ -197,18 +217,21 @@ Inference widens Art. 9:
 
 This makes the current position **worse, not better**. **[I]**
 
-- EDPB ChatGPT Taskforce report (23/24 May 2024) paras 23-25: under fairness
-  there must be no risk transfer to data subjects. Responsibility must not be
-  shifted "by placing a clause in the Terms and Conditions that data subjects
-  are responsible for their chat inputs". A public chatbot should assume
-  people will input personal data, and the controller "should not argue that
-  the input of certain personal data was prohibited in first place." **[C]**
-  Besidka's ToU prohibition plus "I have no lawful basis" is exactly that
-  pattern. It amounts to a written admission of unlawful processing. **[I]**
+- EDPB ChatGPT Taskforce report (23/24 May 2024), para 24: under fairness
+  there must be no risk transfer to data subjects (para 23), so responsibility
+  for GDPR compliance should not be transferred to data subjects, "for example
+  by placing a clause in the Terms and Conditions that data subjects are
+  responsible for their chat inputs". **[C]** Para 25 is narrower: it is about
+  inputs that "become part of the data model" and are shared with others
+  (training), where the controller "should not argue that the input of certain
+  personal data was prohibited in first place". Besidka does not train, so
+  para 25 is not the rule that applies here. **[C/I]** Besidka's ToU
+  prohibition plus "I have no lawful basis" is the para 24 pattern, and it
+  amounts to a written admission of unlawful processing. **[I]**
 - A possible fallback for *passive* chat storage is the C-136/17 GC v CNIL
-  (24 Sep 2019) reasoning. Paras 45-47: a search-engine operator's Art. 9
-  duties are shaped by its "responsibilities, powers and capabilities", i.e.
-  ex post on request. **[C]** That analogy weakens once Besidka *actively*
+  (24 Sep 2019) reasoning. A search-engine operator's Art. 9 duties are
+  shaped by its "responsibilities, powers and capabilities", i.e. ex post on
+  request. (Paragraph numbers were not re-read on 2026-10-26.) **[C]** That analogy weakens once Besidka *actively*
   classifies and extracts from chat content. **[I/L]**
 - Practical answer: give chat storage its own Art. 9(2)(a) basis. Use a
   one-time explicit consent, separate from the ToU, shown before the first
@@ -216,7 +239,9 @@ This makes the current position **worse, not better**. **[I]**
   including special categories, and sending it to the provider you pick. Keep
   the "please think before sharing" advice as advice, not as a prohibition.
   **[I/L]**
-- **[L] Open question: what happens if the user declines?** If the service
+- **[L] Open question: what happens if the user declines?** (Decided by the
+  owner on 2026-10-26: refusal blocks sending. The consent gate is built; see
+  the status note and "Open owner/counsel decisions".) If the service
   still works, Besidka falls back to the passive-storage argument (C-136/17)
   for that user. If declining blocks the service, Art. 7(4) "freely given" is
   at risk, because consent becomes a condition of the service. Counsel should
@@ -297,8 +322,10 @@ paid-terms rule. **[L]**
   Besidka has none. **[C/I]** Art. 49(1)(a) explicit consent requires the user
   be "informed of the possible risks". **[C]** But EDPB 05/2020 footnote 47
   records WP29's view that consent for transfers "that occur periodically or
-  on an on-going basis is inappropriate". EDPB 2/2018 treats derogations as a
-  last resort. **[C]** Per-message transfers are systematic. **[I]**
+  on an on-going basis is inappropriate". **[C]** EDPB Guidelines 2/2018 treat
+  derogations as exceptions; that PDF could not be re-read in the 2026-10-26
+  pass, so this point rests on the earlier reading. **[S]** Per-message
+  transfers are systematic. **[I]**
 - **Recommendation.** Inject `sensitivity = special` entries **only** for
   recipients covered by adequacy: an EEA contracting entity, or a US entity on
   the EU-US DPF list (Decision 2023/1795). Allowlist candidates: Anthropic
@@ -311,6 +338,29 @@ paid-terms rule. **[L]**
   vendor is itself allowlisted and pinned. Simplest v1: exclude both.
   Non-sensitive memory to non-adequate providers stays the same problem as
   chats today. Disclose it and give counsel the Art. 49 question. **[L]**
+
+### Owner decision, 2026-10-26: transfers to DeepSeek, Moonshot AI and Qwen
+
+The owner kept these three providers. What protects the transfer is a
+per-user, per-provider **Art. 49(1)(a) explicit consent**, asked after a risk
+notice that names the country (DeepSeek: China; Moonshot AI and Qwen:
+Singapore, as Besidka calls them) and says there is no adequacy decision and no
+contract. It is a one-time dialog when a key for one of these providers is
+added, and again before the next send through an existing key. Refusal means
+that provider cannot be used to send (and is not used for memory work); the key
+stays. Deleting the key withdraws the consent. It does not apply to models
+reached through a gateway, where the onward step happens under the user's own
+gateway account. The records are `provider_transfer_consents` on
+`user_settings`.
+
+**Residual risk, recorded.** The EDPB's view is that a derogation consent is
+inappropriate for transfers that occur repeatedly or on an ongoing basis. The
+source for that in this file is EDPB Guidelines 05/2020 (footnote on WP29's
+view) and EDPB Guidelines 2/2018 on derogations (not re-read on 2026-10-26).
+Per-message chat traffic is repeated and ongoing, so this consent is a
+best-available mitigation, not a cure. Stronger alternatives were considered
+and **not** chosen: geoblocking these providers for EEA users, or removing
+them. Revisit if a supervisory authority or counsel objects.
 
 ## 4. What Claude.ai and ChatGPT do
 
@@ -331,16 +381,18 @@ paid-terms rule. **[L]**
   EEA, UK, Switzerland, Norway, Iceland and Liechtenstein. **[S]** Current EEA
   status: unverified.
 - **Why they are cautious.**
-  1. Art. 9 has no contract basis (EDPB 05/2020 para 99), so every sensitive
-     memory needs provable explicit consent. **[C]**
+  1. Art. 9 has no contract basis (see EDPB Guidelines 05/2020 on
+     conditionality), so every sensitive memory needs provable explicit
+     consent. **[C]**
   2. The Garante restricted ChatGPT in March 2023 and fined OpenAI **EUR 15M**
      in Dec 2024 for lack of legal basis and transparency (OpenAI is
      appealing). **[S]**
   3. The Garante fined Replika's operator **EUR 5M** (decision 10 Apr 2025)
      for lacking a valid legal basis, among other findings. **[S, EDPB news]**
   4. The Garante blocked DeepSeek in Jan 2025. **[S]**
-  5. The EDPB ChatGPT Taskforce (May 2024) rejected the "users were told not
-     to input it" defence (paras 24-25). **[C]**
+  5. The EDPB ChatGPT Taskforce (May 2024) rejected shifting GDPR
+     responsibility to users through a Terms clause (para 24). Para 25, on
+     inputs that become part of the model, concerns training. **[C]**
   6. Inference case law (C-184/20, C-252/21) makes almost any rich profile
      Art. 9-relevant. **[C]**
 
@@ -398,8 +450,9 @@ never-store list applies even on request.
 What (c) means in the code (details in `docs/memory-architecture.md` 3.11,
 3.14 and the section 7 decision log):
 
-- A deterministic English, Ukrainian and Polish classifier (the rule table also
-  carries Russian patterns) rejects special-category text with a 422 on the
+- A deterministic English, Ukrainian, Polish and Russian classifier (the rule
+  table carries about as many Russian patterns as Ukrainian ones) rejects
+  special-category text with a 422 on the
   entries API, the `memory_write` tool and `aboutMe`, and extraction drops it.
   The import from another assistant (`POST /api/v1/memory/import`) runs the
   same extraction op pipeline, so it drops such text too. The classifier is a
@@ -413,10 +466,11 @@ What (c) means in the code (details in `docs/memory-architecture.md` 3.11,
 
 ### 6.1 The (b) path: conditions to revisit
 
-Revisit only when counsel has signed off, a DPIA and an Art. 30 record exist,
-per-user consent receipts exist (the `CONSENT_DB` receipts table needs user id
-and kind columns first), and each receiving provider's adequacy or DPF status
-is verified. The full launch list the research produced, if (b) is revisited:
+Revisit only when counsel has signed off and each receiving provider's
+adequacy or DPF status is verified. (Updated 2026-10-26: a DPIA and an Art. 30
+record now exist, `docs/legal/dpia.md` and `docs/legal/art30-record.md`, and
+per-user consent receipts exist on `user_settings`, not in `CONSENT_DB`. Both
+need updating for any (b) path.) The full launch list the research produced, if (b) is revisited:
 
 1. **Consent dialog** per 1.1, separate from the ToU, with an "I consent"
    confirmation and versioned text.
@@ -444,7 +498,7 @@ is verified. The full launch list the research produced, if (b) is revisited:
 - Remove the "no lawful basis" admission and the ToU prohibition. Give chat
   storage an Art. 9(2)(a) basis with a one-time explicit consent. **[L,
   highest priority]** This affects chats in production today and is
-  independent of memory.
+  independent of memory. **Done 2026-10-26:** pages rewritten, gate built.
 - Disclose memory, extraction-as-profiling and the classifier. Fix the export
   and Gemini statements.
 - Extractor rule: drop sensitive reasons ("vegetarian", not "vegetarian for
@@ -476,7 +530,9 @@ the same day and replaced by the owner decision (option (c)).
 - **Superseded: the toggle hidden behind
   `NUXT_PUBLIC_MEMORY_SENSITIVE_OPT_IN_ENABLED`.** The flag was never needed
   and does not exist.
-- **Consent receipts (only for path (b)) will reuse `CONSENT_DB`**
+- **Superseded 2026-10-26: consent receipts live on `user_settings`, not in
+  `CONSENT_DB`.** The note below records the earlier plan: they would reuse
+  `CONSENT_DB`
   (`server/db/consent/schema.ts`, `server/api/v1/consents/index.post.ts`) with
   a `memory_sensitive` kind and a text version. Note for the implementer: the
   current `consent_receipts` table is pseudonymous (no user id, no kind
@@ -484,38 +540,49 @@ the same day and replaced by the owner decision (option (c)).
   per-user receipt. The schema needs a user-linked extension, and the
   `CONSENT_DB` isolation rule still applies (no sharing a database with the
   main `DB`). Whether a user-linked receipt may live in the isolated consent
-  database is a design point to settle when it is built.
+  database is a design point to settle when it is built. It was settled the
+  other way: `CONSENT_DB` stays pseudonymous and isolated, and the per-user
+  receipt is on `user_settings` (`docs/legal.md`, "Consent records").
 
 ## Open owner/counsel decisions
 
 Ordered by urgency.
 
-1. **[L, most urgent] The published "no lawful basis" statement and ToU
-   prohibition.** The Privacy Policy currently says Besidka has no lawful
-   basis for special-category data, and the Terms of Use ban submitting it.
-   The research reads this as the EDPB-rejected risk-shifting pattern
-   (ChatGPT Taskforce paras 23-25) and as a written admission of unlawful
-   processing. It affects **chats in production today, independent of
-   memory**, and does not wait for the memory launch. Needs a counsel decision
-   on the replacement wording and on a one-time Art. 9(2)(a) consent for chat
-   storage (1.5).
-2. **[L] What happens if a user declines Art. 9 consent for chat storage.**
-   Service keeps working (fall back to the C-136/17 passive-storage argument)
-   or service is blocked (Art. 7(4) "freely given" risk). Counsel picks one.
-3. **[L] "No profiling" and "no export button" sentences.** Update the
-   profiling sentence (memory is profiling under Art. 4(4), no Art. 22
-   decisions) and the "no self-service export button yet" sentence once memory
-   ships. Both are false from the day memory is generally available.
-4. **[L] Art. 49 for non-sensitive data** sent to DeepSeek, Moonshot and Qwen
-   (chats and non-sensitive memory), and the legal-basis row for the
-   sensitivity classifier (6(1)(f) as a safeguard plus 9(2)(a)?).
+1. **Decided 2026-10-26 (owner): explicit consent for chat storage.** The
+   published "no lawful basis" statement and the ToU prohibition were removed.
+   Chats now rest on a one-time Art. 9(2)(a) explicit consent, version
+   `2026-11-a`, separate from the Terms. The risk-shifting reading (ChatGPT
+   Taskforce para 24) and the written admission were the reasons. **Residual
+   risk:** the required consent may be challenged as bundled (Art. 7(4)),
+   because no alternative to consenting is offered. An ephemeral chat mode
+   would be that alternative and is not built. Counsel can still review.
+2. **Decided 2026-10-26 (owner): refusal blocks sending.** A user who declines
+   or withdraws can still read, export and delete, but cannot send, and
+   background memory work is skipped or refused. The passive-storage fallback
+   (C-136/17) was not chosen for refusing users, because that would knowingly
+   process without a basis. Residual risk as in item 1.
+3. **Done 2026-10-26: the "no profiling" and "no export button" sentences.**
+   The Privacy Policy now says memory generated from chats is profiling under
+   Art. 4(4) and not an Art. 22 decision, and documents the memory export and
+   its narrower scope.
+4. **Owner-decided 2026-10-26, counsel question open: Art. 49 for data** sent
+   to DeepSeek, Moonshot and Qwen (chats and non-sensitive memory). The owner
+   chose per-user Art. 49(1)(a) consent (see "Owner decision, 2026-10-26:
+   transfers" in section 3). Still open for counsel: whether that is usable for
+   repeated transfers, and the legal-basis row for the sensitivity classifier
+   (6(1)(f) as a safeguard plus 9(2)(a), as now published).
 5. **Owner (only if (b) is revisited): fill a provider allowlist** after
    DPF/adequacy verification, including Anthropic's API contracting entity and
-   xAI's DPF status. There is no allowlist in v1.
-6. **Owner/counsel: DPIA and Art. 30 record** before GA, even without the
-   opt-in. Skeletons are in `docs/legal/memory-legal-changes-draft.md`.
-7. **Owner/counsel: Gemini paragraph** (EEA/CH/UK paid-terms rule and the
-   "not for consumer use" clause, 2.2).
+   xAI's DPF status. There is no allowlist in v1. (The DPF list was read on
+   2026-10-26: Google LLC, Vercel Inc. and Cloudflare, Inc. are active; no entry
+   for Anthropic, OpenAI, xAI or OpenRouter. See `docs/legal/dpia.md`, section 6,
+   item 5.)
+6. **Done 2026-10-26: DPIA and Art. 30 record**, even without the opt-in:
+   `docs/legal/dpia.md` and `docs/legal/art30-record.md` (engineer-drafted, not
+   lawyer-reviewed). The skeletons in `docs/legal/memory-legal-changes-draft.md`
+   are superseded.
+7. **Done 2026-10-26: Gemini paragraph** (EEA/CH/UK paid-terms rule and the
+   "not for consumer use" clause, 2.2). Counsel can still review it.
 8. **Counsel (only if (b) is revisited): consent receipt retention period**
    and re-consent triggers.
 
@@ -523,11 +590,11 @@ Ordered by urgency.
 
 - GDPR (Regulation 2016/679), Recital 18, Arts. 7, 9, 30(5), 35, 49:
   https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679
-- CJEU C-184/20 OT, 1 Aug 2022, paras 120-128:
+- CJEU C-184/20 OT, 1 Aug 2022:
   https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62020CJ0184
-- CJEU C-252/21 Meta v Bundeskartellamt, 4 Jul 2023, paras 68-69, 77-79:
+- CJEU C-252/21 Meta v Bundeskartellamt, 4 Jul 2023:
   https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62021CJ0252
-- CJEU C-136/17 GC v CNIL, 24 Sep 2019, paras 45-47:
+- CJEU C-136/17 GC v CNIL, 24 Sep 2019:
   https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:62017CJ0136
 - CJEU C-21/23 Lindenapotheke, 4 Oct 2024 (secondary):
   https://www.thomashelbing.com/en/wissen/dsgvo-hub/rechtsprechung/1.4.31-eugh-lindenapotheke
@@ -537,9 +604,11 @@ Ordered by urgency.
   https://www.edpb.europa.eu/system/files/documents/files/file1/edpb_guidelines_202005_consent_en.pdf
 - EDPB Guidelines 05/2021 (Art. 3 / Chapter V), Example 1:
   https://edpb.europa.eu/system/files/2023-02/edpb_guidelines_05-2021_interplay_between_the_application_of_art3-chapter_v_of_the_gdpr_v2_en_0.pdf
-- EDPB Guidelines 2/2018 on Art. 49 derogations:
+- EDPB Guidelines 2/2018 on Art. 49 derogations (the PDF could not be re-read
+  on 2026-10-26):
   https://www.edpb.europa.eu/sites/edpb/files/files/file1/edpb_guidelines_2_2018_derogations_en.pdf
-- EDPB ChatGPT Taskforce report, May 2024, paras 18-19, 23-25:
+- EDPB ChatGPT Taskforce report, May 2024, paras 18-19, 23 and 24 (no risk
+  transfer; Terms clause), and 25 (inputs that become part of the model):
   https://www.edpb.europa.eu/system/files/2024-05/edpb_20240523_report_chatgpt_taskforce_en.pdf
 - EDPB news, Garante fines Replika operator:
   https://www.edpb.europa.eu/news/national-news/2025/ai-italian-supervisory-authority-fines-company-behind-chatbot-replika_sv

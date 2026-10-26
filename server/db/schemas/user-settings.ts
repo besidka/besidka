@@ -1,4 +1,5 @@
 import type { GatewayId } from '#shared/types/gateways.d'
+import type { ProviderTransferConsents } from '#shared/types/legal-consent.d'
 import { gatewayIds } from '#shared/utils/gateways'
 import { sql } from 'drizzle-orm'
 import {
@@ -41,6 +42,14 @@ export const userSettings = snakeCase.table(
     profileMemoryGateway: text({ enum: gatewayIds }),
     projectMemoryModel: text(),
     projectMemoryGateway: text({ enum: gatewayIds }),
+    termsAcceptedAt: integer({ mode: 'timestamp' }),
+    termsVersion: text(),
+    ageConfirmedAt: integer({ mode: 'timestamp' }),
+    sensitiveContentConsentAt: integer({ mode: 'timestamp' }),
+    sensitiveContentConsentVersion: text(),
+    sensitiveContentConsentWithdrawnAt: integer({ mode: 'timestamp' }),
+    providerTransferConsents: text({ mode: 'json' })
+      .$type<ProviderTransferConsents>(),
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),

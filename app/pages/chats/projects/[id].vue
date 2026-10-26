@@ -364,12 +364,18 @@ async function pollMemoryCard() {
   }
 }
 
+const { ensureSendConsent, handleConsentError } = useLegalConsent()
+
 async function refreshProjectMemory() {
   if (
     !project.value
     || isRefreshingProjectMemory.value
     || projectMemoryStatus.value === 'disabled'
   ) {
+    return
+  }
+
+  if (!await ensureSendConsent(null)) {
     return
   }
 
@@ -552,6 +558,10 @@ async function saveProjectInstructions() {
       )
     })
   } catch (exception) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     const parsedException = parseError(exception)
 
     nuxtApp.runWithContext(() => {

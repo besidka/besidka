@@ -1,5 +1,16 @@
 # DRAFT FOR COUNSEL — not legal text
 
+> **Status, 2026-10-26: superseded as the working text.** The Privacy Policy,
+> Terms of Use and Cookie Policy were rewritten in `content/legal/` on this
+> date, with the final anchors `#memory`, `#sensitive-information-in-your-chats`
+> and `#transfers-outside-the-eu` (Privacy Policy) and the `Memory and project
+> knowledge` and `Sensitive information` sections (Terms of Use). The anchor
+> table below (`#sensitive-topics-in-memory`,
+> `/terms-of-use#sensitive-information-and-memory`) is **stale**. The DPIA and
+> the Art. 30 record now exist as `docs/legal/dpia.md` and
+> `docs/legal/art30-record.md`. This file stays as the counsel-facing outline of
+> the original reasoning.
+
 > **Scope note, 2026-10-25: the sensitive-memory opt-in is out of v1** (owner
 > decision, option (c) in `docs/legal-memory-sensitive-data.md` section 6).
 > Special-category text is rejected on every memory write path and never

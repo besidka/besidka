@@ -3,6 +3,7 @@ import { refreshProjectMemoryFromChats } from '~~/server/utils/projects/memory-r
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -28,6 +29,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
 
   logger.set({
     userId,

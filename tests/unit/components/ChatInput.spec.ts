@@ -1,6 +1,6 @@
 import { computed, defineComponent, nextTick, reactive, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { enableAutoUnmount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   uploadFiles: vi.fn(),
   useWarningMessage: vi.fn(),
   requestPersistence: vi.fn(),
+  ensureSendConsent: vi.fn(async () => true),
 }))
 
 mockNuxtImport('useChatInput', () => mocks.useChatInput)
@@ -21,6 +22,9 @@ mockNuxtImport('useChatFiles', () => mocks.useChatFiles)
 mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
 mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: mocks.ensureSendConsent,
+}))
 
 const mockRoute = reactive<{ path: string }>({ path: '/chats/abc123' })
 
@@ -128,6 +132,7 @@ describe('ChatInput.client', () => {
       isDeepResearchModel: shallowRef(false),
       researchConfig: shallowRef(null),
       isSelectedModelKeyless: shallowRef(false),
+      selectedTransferProviderId: shallowRef(null),
       selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
       isModelCapabilityResolved: shallowRef(true),
       isSelectedModelUnavailable: shallowRef(false),
@@ -275,6 +280,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(true),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('Anthropic'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
@@ -382,10 +388,27 @@ describe('ChatInput.client', () => {
         .attributes('disabled')).toBeUndefined()
 
       await textarea.trigger('keydown.enter')
+      await flushPromises()
 
       expect(mocks.useWarningMessage).not.toHaveBeenCalled()
       expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(mocks.ensureSendConsent).toHaveBeenCalledWith(null)
     })
+
+    it('keeps the draft and does not send when consent is refused',
+      async () => {
+        mocks.ensureSendConsent.mockResolvedValueOnce(false)
+
+        const wrapper = await mountChatInput()
+        const textarea = wrapper.get('textarea')
+
+        await textarea.setValue('hello')
+        await textarea.trigger('keydown.enter')
+        await flushPromises()
+
+        expect(wrapper.emitted('submit')).toBeUndefined()
+        expect((textarea.element as HTMLTextAreaElement).value).toBe('hello')
+      })
 
     it('leaves the regenerate title alone when a key is present', async () => {
       const wrapper = await mountSuspended(ChatInput, {
@@ -475,6 +498,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
@@ -614,6 +638,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
@@ -640,6 +665,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
@@ -663,6 +689,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(true),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
@@ -810,6 +837,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
@@ -1261,6 +1289,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
@@ -1514,6 +1543,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
         isModelCapabilityResolved,
         isSelectedModelUnavailable: shallowRef(false),
@@ -1721,6 +1751,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(true),
@@ -1793,6 +1824,7 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('xAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),

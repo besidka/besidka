@@ -6,6 +6,10 @@ import { extractChatMemory, extractProjectLegacyBlob } from '~~/server/utils/mem
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import { resolveMemoryModel } from '~~/server/utils/memory/resolve-model'
+import {
+  hasUserLegalConsent,
+  requireLegalConsent,
+} from '~~/server/utils/legal/consent'
 import type { ResolvedMemoryModel } from '~~/server/utils/memory/resolve-model'
 import { getMemoryProviderId } from '~~/server/utils/projects/memory'
 import { buildProjectMemoryCard } from '~~/server/utils/projects/memory-card'
@@ -225,6 +229,8 @@ export async function refreshProjectMemoryFromChats(
   if (project.memoryStatus === 'disabled') {
     return await buildProjectMemoryCard(project.id, userId, db, logger)
   }
+
+  await requireLegalConsent(userId, db)
 
   if (!await readUserMemoryEnabled(db, userId)) {
     throw createError({
@@ -537,9 +543,10 @@ async function writeFinalRefreshState(
  * Turns project memory off (non-destructive for entries: they stay, but are
  * no longer injected or written) or back on. Turning it off keeps the legacy
  * blob column too and only clears the lifecycle fields. Turning it on runs the
- * explicit refresh only while the account has memory turned on and the
- * project is not inside its refresh cooldown; those gates never throw here,
- * the project is just enabled. Returns the card.
+ * explicit refresh only while the account has memory turned on, the user's
+ * consent is current and the project is not inside its refresh cooldown;
+ * those gates never throw here, the project is just enabled. Returns the
+ * card.
  */
 export async function toggleProjectMemory(
   projectId: string,
@@ -596,6 +603,7 @@ export async function toggleProjectMemory(
     ))
 
   const canRefresh = await readUserMemoryEnabled(db, userId)
+    && await hasUserLegalConsent(userId, db)
     && !await isRefreshCoolingDown(project.id, logger)
 
   if (!canRefresh) {

@@ -24,6 +24,11 @@ export const MEMORY_RATE_LIMITS = {
     max: 30,
     why: 'Too many memory changes in a short time.',
   },
+  'legal-consent': {
+    window: 60,
+    max: 20,
+    why: 'Too many consent changes in a short time.',
+  },
 } as const satisfies Record<string, MemoryRateLimitRule>
 
 export type MemoryRateLimitBucket = keyof typeof MEMORY_RATE_LIMITS
@@ -38,9 +43,10 @@ const MEMORY_RATE_LIMIT_KEY_PREFIX = 'memory-rate-limit'
  * work: entry create, edit and delete, reset, delete-extracted, import,
  * extract-now and backfill start. "Tell Besidka what to remember" has its own
  * buckets: `instruct-preview` runs a model on the user's key, so it is
- * limited harder than `instruct-apply`. Answers 429 with a `Retry-After`
- * header when the event is given; a KV failure propagates, so the limit
- * fails closed.
+ * limited harder than `instruct-apply`. `legal-consent` covers the consent
+ * and transfer-consent grant and withdraw routes. Answers 429 with a
+ * `Retry-After` header when the event is given; a KV failure propagates, so
+ * the limit fails closed.
  */
 export async function enforceMemoryRateLimit(
   bucket: MemoryRateLimitBucket,

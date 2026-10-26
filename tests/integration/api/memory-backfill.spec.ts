@@ -16,6 +16,10 @@ import type {
 } from '../../setup/helpers/memory-extraction-db'
 import { seedBackfillJob } from '../../setup/helpers/memory-backfill-db'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   extractChatMemory: vi.fn(),
   resolveMemoryModel: vi.fn(),

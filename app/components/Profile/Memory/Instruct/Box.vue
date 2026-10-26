@@ -323,8 +323,14 @@ function defaultSelection(response: MemoryInstructPreviewResponse): string[] {
     .map(operation => operation.key)
 }
 
+const { ensureSendConsent, handleConsentError } = useLegalConsent()
+
 async function runPreview() {
   if (isPreviewDisabled.value) {
+    return
+  }
+
+  if (!await ensureSendConsent(null)) {
     return
   }
 
@@ -344,6 +350,10 @@ async function runPreview() {
     preview.value = response
     selectedKeys.value = defaultSelection(response)
   } catch (exception) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     handleRequestError(exception)
   } finally {
     isPreviewing.value = false
@@ -433,6 +443,10 @@ async function runApply() {
     text.value = ''
     emit('changed')
   } catch (exception) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     handleRequestError(exception)
   } finally {
     isApplying.value = false

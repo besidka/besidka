@@ -703,6 +703,8 @@ async function loadSources(entry: MemoryEntry) {
   }
 }
 
+const { handleConsentError } = useLegalConsent()
+
 async function createEntry() {
   if (isSaveDisabled.value) {
     return
@@ -730,6 +732,10 @@ async function createEntry() {
     open.value = false
     emit('changed', { reason: 'created', categoryChanged: false })
   } catch (exception) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     saveError.value = parseError(exception)
   } finally {
     isSaving.value = false
@@ -773,6 +779,10 @@ async function saveChanges() {
       categoryChanged: response.entry.category !== entry.category,
     })
   } catch (exception) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     if (currentEntry.value?.id === entry.id) {
       saveError.value = parseError(exception)
     }

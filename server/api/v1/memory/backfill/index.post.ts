@@ -7,6 +7,7 @@ import {
   startBackfill,
 } from '~~/server/utils/memory/backfill'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 const startBodySchema = z.object({
@@ -55,6 +56,8 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const userId = parseInt(session.user.id)
   const restart = body.data?.restart === true
+
+  await requireLegalConsent(userId)
 
   if (await findRunningBackfill(userId, db)) {
     throw createError({

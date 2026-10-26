@@ -4,6 +4,7 @@ import { extractMemoryFromText } from '~~/server/utils/memory/extract'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 const NO_MODEL_REASON = 'no-model'
@@ -57,6 +58,9 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
+
   const settings = await db.query.userSettings.findFirst({
     where: { userId },
     columns: { memoryEnabled: true },
