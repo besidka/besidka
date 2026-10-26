@@ -275,7 +275,7 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
         },
         {
           id: 'search-option-memory',
-          iconName: 'lucide:brain',
+          iconName: 'lucide:book-user',
           label: 'Memory',
           run: () => goTo('/profile/memory'),
         },

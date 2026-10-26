@@ -3,7 +3,7 @@
     class="flex flex-col items-center gap-2 rounded-box bg-base-content/5 px-4 py-8 text-center text-base-content/70"
     data-testid="memory-entries-empty"
   >
-    <Icon name="lucide:brain" size="24" />
+    <Icon name="lucide:book-user" size="24" />
     <p class="font-bold text-base-content">Nothing remembered yet</p>
     <p class="text-sm">
       Ask Besidka in any chat to remember something, or add it yourself.

@@ -124,7 +124,7 @@ const tabs = [
   {
     to: '/profile/memory',
     label: 'Memory',
-    icon: 'lucide:brain',
+    icon: 'lucide:book-user',
     childRoutes: [],
   },
   {

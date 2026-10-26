@@ -222,7 +222,7 @@ describe('Search/Modal.client', () => {
     expect(labelOf('search-option-projects')).toBe('Projects')
     expect(iconOf('search-option-projects')).toContain('i-lucide:folder')
     expect(labelOf('search-option-memory')).toBe('Memory')
-    expect(iconOf('search-option-memory')).toContain('i-lucide:brain')
+    expect(iconOf('search-option-memory')).toContain('i-lucide:book-user')
     expect(labelOf('search-option-preferences')).toBe('Preferences')
     expect(iconOf('search-option-preferences'))
       .toContain('i-lucide:sliders-horizontal')

@@ -150,7 +150,7 @@
               role="note"
               class="alert alert-info alert-soft text-sm"
             >
-              <Icon name="lucide:brain" size="16" />
+              <Icon name="lucide:book-user" size="16" />
               <span>
                 Replies may restate your saved profile and preferences from
                 memory. Anyone with the link can read them.
