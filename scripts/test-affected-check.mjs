@@ -194,6 +194,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const memoryToolTests = [
     'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
     'tests/unit/utils/memory/tools/enabled.spec.ts',
     'tests/unit/utils/ai/memory-tools.spec.ts',
     'tests/integration/api/chats-memory.spec.ts',
