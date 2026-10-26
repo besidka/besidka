@@ -60,13 +60,16 @@ import { canAutoplayGuideVideo } from '~/utils/key-guide-video'
 import { VIDEO_SPEED_OPTIONS } from '~/utils/video-speed'
 
 const props = withDefaults(defineProps<{
-  provider: string
+  provider?: string
+  explainer?: string
   src: string
   label: string
   poster?: string
   markers?: VideoMarker[]
   qualities?: VideoQuality[]
 }>(), {
+  provider: undefined,
+  explainer: undefined,
   poster: undefined,
   markers: () => [],
   qualities: () => [],
@@ -79,14 +82,14 @@ const emit = defineEmits<{
 const VISIBILITY_THRESHOLD = 0.5
 const WEBKIT_PIP_MODE = 'picture-in-picture'
 
-const { trackGuideVideoPlay } = useKeyGuideAnalytics()
+const { trackGuideVideoPlay, trackExplainerVideoPlay } = useKeyGuideAnalytics()
 const {
   start: startWatch,
   update: updateWatch,
   upgradeToUser: upgradeWatchToUser,
   end: endWatch,
 } = useVideoWatchAnalytics(() => {
-  return props.provider
+  return props.explainer ?? props.provider ?? ''
 })
 
 const containerRef = shallowRef<HTMLElement | null>(null)
@@ -137,6 +140,18 @@ const {
   isThumbnailsEnabled: true,
   getThumbnailSource: thumbnailSource,
 })
+
+function trackVideoPlay(isUserInitiated: boolean) {
+  if (props.explainer) {
+    trackExplainerVideoPlay(props.explainer, isUserInitiated)
+
+    return
+  }
+
+  if (props.provider) {
+    trackGuideVideoPlay(props.provider, isUserInitiated)
+  }
+}
 
 function isPictureInPicture(video: HTMLVideoElement): boolean {
   if (document.pictureInPictureElement === video) {
@@ -216,7 +231,7 @@ useEventListener(videoRef, 'playing', () => {
 
   const isUserInitiated = !isAutoplayRequested
 
-  trackGuideVideoPlay(props.provider, isUserInitiated)
+  trackVideoPlay(isUserInitiated)
   startWatch(
     isUserInitiated || !video.muted ? 'user' : 'autoplay',
     video.currentTime,
@@ -256,7 +271,7 @@ useEventListener(videoRef, 'volumechange', () => {
   wasMuted = video.muted
 
   if (isUnmuted && upgradeWatchToUser()) {
-    trackGuideVideoPlay(props.provider, true)
+    trackVideoPlay(true)
   }
 })
 

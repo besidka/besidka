@@ -217,6 +217,129 @@ describe('BYOK guide page', () => {
   })
 })
 
+describe('memory explainer page', () => {
+  function readMemoryGuide(): string {
+    return readPageSource('content/guides/memory.md')
+  }
+
+  function readMemoryFrontmatter(): string {
+    return readMemoryGuide().match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? ''
+  }
+
+  function readFrontmatterValue(key: string): string {
+    const valueMatch = readMemoryFrontmatter().match(
+      new RegExp(`^${key}:\\s*(.+)$`, 'm'),
+    )
+
+    return (valueMatch?.[1] ?? '').trim().replace(/^["']|["']$/g, '')
+  }
+
+  function readQuestionHeadings(): string[] {
+    return [...readMemoryGuide().matchAll(/^## (.+\?)$/gm)].map((match) => {
+      return match[1]!
+    })
+  }
+
+  it(
+    'is content-driven from the guides collection and sources title and '
+    + 'description from it, so the frontmatter stays the single source of '
+    + 'truth for the page meta',
+    () => {
+      const source = readPageSource('app/pages/memory.vue')
+
+      expect(source).toContain('queryCollection(\'guides\')')
+      expect(source).toContain('.path(\'/guides/memory\')')
+      expect(source).toMatch(/description\s*:\s*\(\)\s*=>\s*description\.value/)
+    },
+  )
+
+  it(
+    'stays indexable: it must not set its own noindex, canonical or og:url '
+    + 'and must not be excluded from the sitemap or disallowed in robots',
+    () => {
+      const source = readPageSource('app/pages/memory.vue')
+
+      expect(source).not.toMatch(/noindex/)
+      expect(source).not.toMatch(/canonical:/)
+      expect(source).not.toMatch(/ogUrl/)
+
+      const nuxtConfigSource = readPageSource('nuxt.config.ts')
+
+      expect(nuxtConfigSource).not.toMatch(/['"]\/memory/)
+    },
+  )
+
+  it(
+    'emits TechArticle JSON-LD through the shared landing graph helper and '
+    + 'no FAQPage markup, because FAQ rich results were retired',
+    () => {
+      const source = readPageSource('app/pages/memory.vue')
+
+      expect(source).toContain('buildKeyGuidePageLd(')
+      expect(source).not.toContain('Organization')
+      expect(source).not.toContain('FAQPage')
+    },
+  )
+
+  it('has a title, description and ISO updatedAt in its frontmatter', () => {
+    expect(readFrontmatterValue('title')).toBeTruthy()
+    expect(readFrontmatterValue('description')).toBeTruthy()
+    expect(readFrontmatterValue('updatedAt')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it(
+    'writes the FAQ as question headings in the body instead of a '
+    + 'frontmatter faq field',
+    () => {
+      const questions = readQuestionHeadings()
+
+      expect(questions.length).toBeGreaterThanOrEqual(8)
+      expect(questions.length).toBeLessThanOrEqual(12)
+      expect(readMemoryFrontmatter()).not.toMatch(/^faq:/m)
+    },
+  )
+
+  it('links the TypeSafe AI key guide and the privacy policy', () => {
+    const source = readMemoryGuide()
+
+    expect(source).toContain('](/guides/typesafe-ai-api-key)')
+    expect(source).toContain('](/privacy-policy#memory)')
+  })
+
+  it(
+    'only ships a video block once its poster file exists, so the page '
+    + 'never points at media that is not in the repository',
+    () => {
+      const posterMatch = readMemoryFrontmatter()
+        .match(/^\s+poster:\s*(\S+)$/m)
+
+      if (!posterMatch) {
+        return
+      }
+
+      const posterPath = posterMatch[1]!.replace(/\?.*$/, '')
+
+      expect(() => {
+        readPageSource(join('public', posterPath))
+      }).not.toThrow()
+    },
+  )
+
+  it('reuses the shared video schema in the guides collection', () => {
+    const source = readPageSource('content.config.ts')
+
+    expect(source).toMatch(/video:\s*guideVideoSchema/)
+  })
+
+  it('is linked from the home page, the footer and the profile page', () => {
+    expect(readPageSource('content/index.md')).toContain('](/memory)')
+    expect(readPageSource('app/components/LandingFooter.vue'))
+      .toContain('to="/memory"')
+    expect(readPageSource('app/pages/profile/memory.vue'))
+      .toContain('to="/memory"')
+  })
+})
+
 describe('key guide pages', () => {
   it(
     'serves /guides/<slug> from the keyGuides collection and 404s when the '

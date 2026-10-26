@@ -13,6 +13,8 @@ import { applyResponseHeaders } from '~~/server/utils/http/apply-response-header
 
 const KEY_GUIDE_RENDITION_SUFFIXES = ['', '-1080', '-360']
 
+const EXPLAINER_VIDEO_IDS = ['memory']
+
 const ALLOWED_FILES = new Set([
   'demo.mp4',
   'demo-360.mp4',
@@ -21,6 +23,11 @@ const ALLOWED_FILES = new Set([
   ...Object.keys(providerMeta).flatMap((providerId) => {
     return KEY_GUIDE_RENDITION_SUFFIXES.map((suffix) => {
       return `key-guide-${providerId}${suffix}.mp4`
+    })
+  }),
+  ...EXPLAINER_VIDEO_IDS.flatMap((explainerId) => {
+    return KEY_GUIDE_RENDITION_SUFFIXES.map((suffix) => {
+      return `${explainerId}${suffix}.mp4`
     })
   }),
 ])

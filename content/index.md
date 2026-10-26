@@ -235,6 +235,8 @@ faqs:
     answer: Yes. Besidka is MIT-licensed and designed to run on Cloudflare Workers. Clone the repository, configure your Cloudflare account per the README, and deploy with pnpm run deploy. You bring the Cloudflare account.
   - question: Is my chat history private?
     answer: On the hosted version at besidka.com, your chats are stored in Besidka's database and scoped to your account, so only you can read them through the app. If you self-host, they are stored in your own Cloudflare account and no third party has access. Messages are sent to the AI provider whose key you use, and that provider's own data terms apply to them.
+  - question: Does Besidka remember things about me?
+    answer: Only what you let it. Besidka keeps small memory entries about you and about each project that you can see, edit, export and delete, and it can search your past chats. Generating memory from your chats in the background is off until you switch it on and runs on your own API key. Card numbers, passwords, health details and other sensitive data are refused, not stored. [How memory works](/memory) covers each part.
   - question: Can I share a chat?
     answer: Yes. Any chat can be shared via a public, unguessable link. Recipients view a read-only copy without needing an account, and can branch it into their own chats. You control per-share options like link expiry, search-engine indexing, and whether images, file names, message details, or your avatar are visible, and you can revoke a share at any time. Shared files are served through short-lived, revocable tokens rather than a public bucket.
   - question: Does Besidka support deep research like ChatGPT?

@@ -185,6 +185,15 @@ describe('profile memory page', () => {
     vi.restoreAllMocks()
   })
 
+  it('links the public memory explainer from the page header', async () => {
+    const wrapper = await mountPage()
+    const link = wrapper.get('[data-testid="memory-how-it-works-link"]')
+
+    expect(link.attributes('href') ?? link.attributes('to'))
+      .toBe('/memory')
+    expect(link.text()).toBe('How memory works')
+  })
+
   it('renders defaults for every section', async () => {
     const wrapper = await mountPage()
 

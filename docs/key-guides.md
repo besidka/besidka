@@ -7,8 +7,8 @@ file per provider. The same file is also the public SEO page at
 `/guides/<slug>` (`app/pages/guides/[slug].vue`, TechArticle and VideoObject
 JSON-LD, sitemap, footer links); that route, its SEO rules and the
 `/guides` prefix are documented in `docs/seo.md` ("Public key guides"). Do not
-put key guides in the `guides` collection: that one holds the `/byok`
-explainer and stays capped (see `docs/seo.md`).
+put key guides in the `guides` collection: that one holds the `/byok` and
+`/memory` explainers and stays capped (see `docs/seo.md`).
 
 Related docs: `docs/seo.md` (public route, sign-up `next` redirect),
 `docs/landing-studio.md` ("Demo video player", the R2 video route),
@@ -223,7 +223,9 @@ and the poster file must exist.
   pass it up and give the guide `card-open`. The guide counts as visible when
   the card is open and the guide is open.
 - `app/components/Profile/Keys/GuideVideo.client.vue` is a lean Video.js v10
-  player: the shared `Video/Shell.vue` skin with `variant="lean"` and the
+  player (it also plays the optional `/memory` explainer video: pass
+  `explainer="memory"` instead of `provider`, and it sends `guide_video_play`,
+  see `docs/analytics-utm.md`): the shared `Video/Shell.vue` skin with `variant="lean"` and the
   `.landing-player` theme (see `docs/video-player.md`). It is not
   `LandingVideoPlayer`: that one hard-codes the demo analytics, captions and
   preference persistence. It shares the chapter

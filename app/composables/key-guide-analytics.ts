@@ -2,10 +2,12 @@ import type { KeyGuideOpenTrigger } from '#shared/types/analytics.d'
 
 const openedProviders = new Set<string>()
 const playedVideos = new Set<string>()
+const playedExplainerVideos = new Set<string>()
 
 export function resetKeyGuideTracking(): void {
   openedProviders.clear()
   playedVideos.clear()
+  playedExplainerVideos.clear()
 }
 
 export function useKeyGuideAnalytics() {
@@ -46,5 +48,24 @@ export function useKeyGuideAnalytics() {
     })
   }
 
-  return { trackGuideOpen, trackGuideVideoPlay }
+  function trackExplainerVideoPlay(
+    explainer: string,
+    isUserInitiated: boolean,
+  ): void {
+    const value = isUserInitiated ? 1 : 0
+    const playKey = `${explainer}:${value}`
+
+    if (playedExplainerVideos.has(playKey)) {
+      return
+    }
+
+    playedExplainerVideos.add(playKey)
+    track('guide_video_play', {
+      target: explainer,
+      value,
+      trigger: isUserInitiated ? 'user' : 'autoplay',
+    })
+  }
+
+  return { trackGuideOpen, trackGuideVideoPlay, trackExplainerVideoPlay }
 }

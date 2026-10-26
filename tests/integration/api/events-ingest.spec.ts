@@ -360,6 +360,7 @@ describe('events ingest API', () => {
     const surfaceCases = [
       ['/', 'home'],
       ['/byok', 'byok'],
+      ['/memory', 'memory'],
       ['/profile/keys', 'keys'],
       ['/guides/gemini-api-key', 'guide'],
       ['/guides/gemini-api-key/', 'guide'],
@@ -454,6 +455,51 @@ describe('events ingest API', () => {
           },
         },
       })
+    })
+
+    it('logs the explainer target for guide_video_play on /memory', async () => {
+      await send({
+        event: 'guide_video_play',
+        path: '/memory',
+        target: 'memory',
+        value: 1,
+        trigger: 'user',
+      })
+
+      expect(mocks.loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          analytics: {
+            target: 'memory',
+            surface: 'memory',
+            path: '/memory',
+            trigger: 'user',
+          },
+        },
+      })
+    })
+
+    for (const target of [undefined, 'google', 'demo', '__proto__']) {
+      it(`rejects guide_video_play with target ${String(target)} (400)`,
+        async () => {
+          await expect(send({
+            event: 'guide_video_play',
+            path: '/memory',
+            target,
+            value: 1,
+            trigger: 'user',
+          })).rejects.toMatchObject({ statusCode: 400 })
+          expect(mocks.trackLandingEvent).not.toHaveBeenCalled()
+        })
+    }
+
+    it('accepts video_watch for the memory explainer target', async () => {
+      const result = await send({
+        ...watchBody,
+        path: '/memory',
+        target: 'memory',
+      })
+
+      expect(result).toEqual({ ok: true })
     })
 
     it('logs trigger for the home video_play', async () => {

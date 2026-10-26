@@ -116,8 +116,8 @@ canonical too.
 
 ## Indexable surface
 
-Indexable: `/`, `/byok`, `/privacy-policy`, `/terms-of-use`, `/cookie-policy`,
-every `/guides/<slug>` key guide, and any `/shared/<publicId>` whose share row has `indexable = true`. The old
+Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
+`/cookie-policy`, every `/guides/<slug>` key guide, and any `/shared/<publicId>` whose share row has `indexable = true`. The old
 `/privacy` and `/terms` URLs 301 to the `-policy`/`-of-use` routes
 (`routeRules` in `nuxt.config.ts`).
 
@@ -390,6 +390,9 @@ public key guides (see [Public key guides](#public-key-guides)).
 - **A BYOK explainer** — **built** as `/byok`, see
   [The BYOK guide](#the-byok-guide-byok). It is the first of the two or three
   new routes the cap allows. Key guides are counted separately.
+- **A memory explainer** — **built** as `/memory`, see
+  [The memory explainer](#the-memory-explainer-memory). It is the second of
+  the two or three, so one slot is left.
 - **Comparison pages** (`/vs/...`) rank for this category — Open WebUI maintains
   its own `/alternatives/` page — but they multiply factual claims about named
   third parties, which is the highest-risk content type here. Only with
@@ -465,9 +468,9 @@ explainers above:
   collection sets `source.prefix: '/guides'`, so the content path IS the public
   URL `/guides/<slug>`. No `/key-guides` URL ever exists; that name is only the
   folder on disk.
-- A missing slug is a 404, and so is `/guides/byok`: that file belongs to the
-  `guides` collection and is not a key guide. `/byok` stays the canonical URL
-  of the explainer.
+- A missing slug is a 404, and so are `/guides/byok` and `/guides/memory`:
+  those files belong to the `guides` collection and are not key guides. `/byok`
+  and `/memory` stay the canonical URLs of the explainers.
 - `TechArticle` JSON-LD always; `VideoObject` only when a guide has a video.
 - **`VideoObject` datetime rule.** Google rejects a date-only `uploadDate`
   ("missing a timezone", "invalid datetime"). `toIsoDateTimeWithOffset()` in
@@ -727,7 +730,82 @@ Wiring:
 - `updatedAt` in the frontmatter is shown to readers and emitted as
   `dateModified` — bump it only when the substance changes.
 - New explainer routes go in the same `guides` collection. The cap of two or
-  three new routes stands; `/byok` is the first.
+  three new routes stands; `/byok` is the first and `/memory` the second.
+
+## The memory explainer (`/memory`)
+
+`/memory` is the second page in the `guides` collection
+(`content/guides/memory.md`, rendered by `app/pages/memory.vue` through
+`LegalDocument.vue` in the `legal` layout). English only. It explains what
+memory holds, how to see, edit, export and delete it, profile versus project
+memory, project knowledge, chat search, the per-chat exclusion, what runs on
+the user's key, what is never stored, what the optional TypeSafe AI memory
+check sends and where, and what the user agrees to. Every product claim was
+checked against `docs/memory-architecture.md` (3.1 to 3.19),
+`docs/project-knowledge-design.md`, `content/legal/privacy-policy.md` and the
+UI strings in `app/components/Profile/Memory/**`,
+`app/components/Projects/MemoryCard.vue`, the chat menu and the consent modal.
+Re-check the copy against those when any of them changes, and bump
+`updatedAt`.
+
+Wiring, the same as `/byok`:
+
+- **Indexable and canonical by default.** No robots meta, no per-page
+  `canonical` or `ogUrl` (the global rule in `app/app.vue` derives it), not in
+  `robots.disallow` or `sitemap.exclude`, and `@nuxtjs/sitemap` picks it up
+  from `app/pages/`. `tests/unit/config/seo-pages.spec.ts` guards this.
+- **Linked from** the footer ("Guides → Memory guide" in `LandingFooter.vue`),
+  the home page FAQ ("Does Besidka remember things about me?"), and
+  `/profile/memory` ("How memory works" under the page heading).
+- **FAQ as headings, no FAQPage JSON-LD.** The questions are `##` headings in
+  the body (twelve today, the spec allows 8 to 12). FAQ rich results were
+  retired by Google on 2026-05-07, and a real heading section beats an
+  accordion for the page itself. The page emits `TechArticle` only, through
+  `buildKeyGuidePageLd()` (the same builder as the key guides; without a video
+  it emits the article alone). The landing FAQPage in
+  `app/utils/landing-jsonld.ts` is unchanged.
+- **Optional video slot.** The `guides` collection accepts the same `video`
+  object as key guides (`guideVideoSchema` in
+  `shared/utils/key-guide-schema.ts`). `LegalDocument.vue` has a `media` slot
+  between the summary and the body, and `memory.vue` fills it with the lean
+  `GuideVideo.client.vue` player (`explainer="memory"`) when `video` is set. The
+  memory page has no `video` yet, so nothing renders and no VideoObject is
+  emitted, the same way key guides omit it until the media exists. To add it:
+  encode `memory.mp4` (720), `memory-1080.mp4` and `memory-360.mp4` like the
+  key guide renditions (`docs/key-guides.md`), put them in `.files/`, run
+  `pnpm run cms:files:upload` (its pattern accepts `memory` and the two
+  suffixes, and `server/routes/videos/[name].ts` allow-lists the three names),
+  commit the poster at `public/memory/poster.webp`, and add this to the
+  frontmatter, with the real date and duration:
+
+  ```yaml
+  video:
+    src: /videos/memory.mp4
+    poster: /memory/poster.webp
+    duration: PT50S
+    uploadDate: 'YYYY-MM-DD'
+    alt: Screen recording of the Memory page in Besidka.
+    qualities:
+      - src: /videos/memory-1080.mp4
+        size: 1080
+      - src: /videos/memory.mp4
+        size: 720
+      - src: /videos/memory-360.mp4
+        size: 360
+    markers:
+      - time: "0:00"
+        label: Intro
+  ```
+
+  Known gap for when the video exists: the lean player has no start offset, so
+  the `Clip` URLs the builder emits for `markers` (`/memory?t=<seconds>`) load
+  the page but do not seek. Either drop the markers from the JSON-LD for this
+  page or add `startAt` to `GuideVideo.client.vue` first.
+- **Analytics.** The video does not use the key-guide or demo events: it sends
+  `guide_video_play` and `video_watch` with `target: 'memory'` (see
+  `docs/analytics-utm.md`), and `/memory` is its own `memory` surface. Without
+  that surface the events endpoint answers 400 to every event sent from the
+  page, including footer clicks.
 
 ## Asset-path 404s on `www` (`/_nuxt/`, `/_scripts`)
 
@@ -873,7 +951,7 @@ curl http://localhost:3000/sitemap.xml
 Per-route head check (expect exactly one canonical, and `og:url` equal to it):
 
 ```bash
-for p in / /byok /privacy-policy /terms-of-use /signin; do
+for p in / /byok /memory /privacy-policy /terms-of-use /signin; do
   echo "### $p"
   curl -sS "http://localhost:3000$p" | grep -oE \
     '<title>[^<]*</title>|<link rel="canonical" href="[^"]*"|<meta property="og:url" content="[^"]*"|<meta name="robots" content="[^"]*"'

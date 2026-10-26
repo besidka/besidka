@@ -88,6 +88,25 @@ describe('LandingFooter.vue', () => {
     wrapper.unmount()
   })
 
+  it('links the memory guide from every landing-layout page', async () => {
+    const wrapper = await mountSuspended(LandingFooter, {
+      global: {
+        stubs: {
+          NuxtLink: {
+            props: ['to'],
+            template: '<a :href="to"><slot /></a>',
+          },
+        },
+      },
+    })
+    const link = wrapper.get('[data-testid="landing-footer-memory-link"]')
+
+    expect(link.attributes('href')).toBe('/memory')
+    expect(link.text()).toBe('Memory guide')
+
+    wrapper.unmount()
+  })
+
   describe('key guide links', () => {
     const linkStub = {
       NuxtLink: {
@@ -104,14 +123,16 @@ describe('LandingFooter.vue', () => {
       const guideLinks = wrapper.findAll('nav[aria-label="Guides"] a')
 
       expect(mocks.queryCollection).toHaveBeenCalledWith('keyGuides')
-      expect(guideLinks).toHaveLength(1)
+      expect(guideLinks).toHaveLength(2)
       expect(guideLinks[0]!.attributes('data-testid'))
         .toBe('landing-footer-byok-link')
+      expect(guideLinks[1]!.attributes('data-testid'))
+        .toBe('landing-footer-memory-link')
 
       wrapper.unmount()
     })
 
-    it('appends one link per key guide after the BYOK link', async () => {
+    it('appends one link per key guide after the BYOK and memory links', async () => {
       mocks.keyGuides = [
         {
           path: '/guides/gemini-api-key',
@@ -133,6 +154,7 @@ describe('LandingFooter.vue', () => {
       expect(guideLinks.map((link: any) => link.attributes('href')))
         .toEqual([
           '/byok',
+          '/memory',
           '/guides/gemini-api-key',
           '/guides/openai-api-key',
         ])

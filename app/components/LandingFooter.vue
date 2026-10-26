@@ -118,6 +118,14 @@
                   BYOK guide
                 </NuxtLink>
                 <NuxtLink
+                  to="/memory"
+                  data-testid="landing-footer-memory-link"
+                  class="link link-hover text-sm"
+                  @click="track('footer_link_click', { target: 'memory' })"
+                >
+                  Memory guide
+                </NuxtLink>
+                <NuxtLink
                   v-for="keyGuide in keyGuides"
                   :key="keyGuide.path"
                   :to="keyGuide.path"

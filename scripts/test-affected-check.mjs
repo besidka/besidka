@@ -1326,7 +1326,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/integration/api/legal-consent.spec.ts'],
     },
     {
-      pattern: /^(content\/guides\/.*\.md|app\/pages\/byok\.vue|content\.config\.ts|app\/components\/LegalDocument\.vue)$/,
+      pattern: /^(content\/guides\/.*\.md|app\/pages\/(byok|memory)\.vue|content\.config\.ts|app\/components\/LegalDocument\.vue)$/,
       tests: [
         'tests/unit/config/seo-pages.spec.ts',
         'tests/unit/utils/landing-jsonld.spec.ts',
