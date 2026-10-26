@@ -24,7 +24,6 @@ describe('loadMemoryRuntimeSettings', () => {
     expect(await load()).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: true,
-      aboutMe: null,
     })
   })
 
@@ -34,7 +33,6 @@ describe('loadMemoryRuntimeSettings', () => {
     expect(await load()).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: true,
-      aboutMe: null,
     })
   })
 
@@ -43,13 +41,11 @@ describe('loadMemoryRuntimeSettings', () => {
       userId: 1,
       memoryEnabled: true,
       chatSearchEnabled: false,
-      aboutMe: 'Backend developer',
     })
 
     expect(await load()).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: false,
-      aboutMe: 'Backend developer',
     })
   })
 
@@ -59,7 +55,6 @@ describe('loadMemoryRuntimeSettings', () => {
     expect(await load()).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: true,
-      aboutMe: null,
     })
   })
 
@@ -69,18 +64,10 @@ describe('loadMemoryRuntimeSettings', () => {
     expect((await load()).chatSearchEnabled).toBe(false)
   })
 
-  it('trims aboutMe', async () => {
-    testDb.insertUserSettings({ userId: 1, aboutMe: '  \n Short bio \n ' })
+  it('never carries the legacy aboutMe text', async () => {
+    testDb.insertUserSettings({ userId: 1, aboutMe: 'Backend developer' })
 
-    expect((await load()).aboutMe).toBe('Short bio')
-  })
-
-  it('maps an empty or whitespace-only aboutMe to null', async () => {
-    testDb.insertUserSettings({ userId: 1, aboutMe: '   \n ' })
-    testDb.insertUserSettings({ userId: 2, aboutMe: '' })
-
-    expect((await load(1)).aboutMe).toBeNull()
-    expect((await load(2)).aboutMe).toBeNull()
+    expect(await load()).not.toHaveProperty('aboutMe')
   })
 
   it('does not read another user settings', async () => {
@@ -93,7 +80,6 @@ describe('loadMemoryRuntimeSettings', () => {
     expect(await load(1)).toEqual({
       memoryEnabled: true,
       chatSearchEnabled: true,
-      aboutMe: null,
     })
   })
 })

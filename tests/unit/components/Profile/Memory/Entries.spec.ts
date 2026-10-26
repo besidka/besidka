@@ -1265,17 +1265,17 @@ describe('Profile/Memory/Entries', () => {
         .toBe(false)
     })
 
-    it('is a collapsed block above the groups with plain text only',
+    it('is an expanded notice above the groups with plain text only',
       async () => {
         const wrapper = await mountLegacy('too-long')
         const legacy = wrapper.get('[data-testid="memory-legacy-about-me"]')
         const text = legacy.get('[data-testid="memory-legacy-about-me-text"]')
 
         expect(legacy.element.tagName).toBe('DETAILS')
-        expect(legacy.attributes('open')).toBeUndefined()
+        expect(legacy.attributes('open')).toBeDefined()
         expect(legacy.classes()).toContain('rounded-box')
         expect(legacy.get('summary').text())
-          .toBe('Earlier about me (not converted)')
+          .toBe('Earlier about me (not used in chats)')
         expect(text.text()).toBe(LEGACY_TEXT)
         expect(text.classes()).toEqual(expect.arrayContaining([
           'whitespace-pre-wrap',
@@ -1285,8 +1285,8 @@ describe('Profile/Memory/Entries', () => {
         expect(text.find('strong').exists()).toBe(false)
         expect(legacy.text())
           .toContain(
-            'This text is still sent with every chat until you save or '
-            + 'discard it.',
+            'This text is not sent with your chats. Edit it and save it as a '
+            + 'memory entry, or discard it.',
           )
 
         const section = wrapper.get('[data-testid="memory-entries-section"]')
@@ -1314,14 +1314,17 @@ describe('Profile/Memory/Entries', () => {
       [
         'rejected',
         'It contains details Besidka does not save to memory, so it was not '
-        + 'converted. Saving will be checked again and may be refused.',
+        + 'converted. Remove those details when saving, or discard it.',
       ],
       [
         'entries-full',
         'Your account memory is full (30 entries). Delete one and this '
         + 'converts automatically.',
       ],
-      [null, 'It is still sent with every chat.'],
+      [
+        null,
+        'It is not used in your chats until you save it as a memory entry.',
+      ],
     ] as const)('explains the %s reason', async (reason, expected) => {
       const wrapper = await mountLegacy(reason)
 
@@ -1341,8 +1344,7 @@ describe('Profile/Memory/Entries', () => {
 
       expect(mocks.confirm).toHaveBeenCalledWith({
         text: 'Discard earlier about me?',
-        subtitle: 'It will no longer be sent with your chats. '
-          + 'This cannot be undone.',
+        subtitle: 'The text will be deleted. This cannot be undone.',
         alert: true,
         actions: ['Discard'],
         labelDecline: 'Cancel',
@@ -1367,11 +1369,11 @@ describe('Profile/Memory/Entries', () => {
         .toBe(false)
     })
 
-    it('labels the actions Save as entry and Discard', async () => {
+    it('labels the actions Edit and save and Discard', async () => {
       const wrapper = await mountLegacy('too-long')
 
       expect(wrapper.get('[data-testid="memory-legacy-about-me-save"]')
-        .text()).toBe('Save as entry')
+        .text()).toBe('Edit and save')
       expect(wrapper.get('[data-testid="memory-legacy-about-me-discard"]')
         .text()).toBe('Discard')
       expect(wrapper.find('[data-testid="memory-legacy-about-me-remove"]')

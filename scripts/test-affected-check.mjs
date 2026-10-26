@@ -185,7 +185,6 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory-tokens.spec.ts',
     'tests/unit/utils/memory/index-builder.spec.ts',
     'tests/unit/utils/memory/runtime-settings.spec.ts',
-    'tests/unit/utils/memory/about-me.spec.ts',
     'tests/unit/utils/memory/chat-context.spec.ts',
     'tests/unit/utils/memory/about-me-migration.spec.ts',
     'tests/unit/utils/memory/persist-redaction.spec.ts',
@@ -1489,7 +1488,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(shared\/utils\/memory-tokens|server\/utils\/memory\/(index-builder|runtime-settings|about-me|chat-context|persist-redaction))\.ts$/,
+      pattern: /^(shared\/utils\/memory-tokens|server\/utils\/memory\/(index-builder|runtime-settings|about-me-migration|chat-context|persist-redaction))\.ts$/,
       tests: memoryToolTests,
     },
     {

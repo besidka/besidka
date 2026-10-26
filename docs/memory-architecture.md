@@ -173,11 +173,11 @@ project entry on first read; the column is left in place and writes stop
   first, then truncate descriptions; never silently drop entries from the
   index (the model must know they exist to call `memory_read`).
 - The free-text "About me" is now the account `profile` entry, so it travels
-  inside the memory index (its body is always injected, 1.5 KB cap). Only text
-  that could not be converted (`about_me` still set: too long, a profile entry
-  already exists, memory off, or rejected by the compliance gate) is still
-  injected verbatim as a separate `aboutMe` block, independent of memory (see
-  "About me becomes a profile entry", section 7).
+  inside the memory index (its body is always injected, 1.5 KB cap). Text that
+  could not be converted (`about_me` still set: too long, a profile entry
+  already exists, memory off, or rejected by the compliance gate) is never
+  injected; it waits on the Memory page until the user edits and saves it as
+  an entry or discards it (see "About me becomes a profile entry", section 7).
 - Models without tool support: index only, no tools. Gateway models follow
   `GatewayModel.toolCall`.
 
@@ -787,27 +787,27 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
   single-line at the schema level), so an entry cannot close `<memory>` or
   forge an index line. Legacy `special` entries are always skipped,
   silently (`isInjectable`); new rows are never `special`.
-- `buildChatInstructions` pushes the memory block **first**, then the `aboutMe`
-  block (a one-line header and the text verbatim), then the project prompt,
+- `buildChatInstructions` pushes the memory block **first**, then the project prompt,
   the chat-search line and the date clauses. Both call sites (the main
   `streamText` and the search-answer continuation) get the same
   `memoryInstructions`, computed once per send in
   `server/utils/memory/chat-context.ts`. A project chat loads project entries
   plus account entries unless `projects.useAccountMemory === false`. Nothing
   in `docs/providers/anthropic.md`'s invalidator list is affected: the block
-  is stable text and changes only with entries or `aboutMe`.
-- **Decision: a leftover `aboutMe` is injected whenever it is set,
-  independent of `memoryEnabled`.** It is user-authored custom instructions,
-  not extracted memory; only the index and the tools follow `memoryEnabled`.
-  Since the About-me migration (section 7) most users have `about_me = NULL`
-  and the text travels as the `profile` entry; this block only serves the
-  un-migrated cases (too long, profile entry exists, memory off, rejected).
-  The owner can overturn this.
+  is stable text and changes only with entries.
+- **Decision (2026-10-26): a leftover `aboutMe` is never injected.** The
+  former `aboutMe` block kept text the compliance gate rejected flowing into
+  every chat. Since then `loadMemoryRuntimeSettings` does not read the column
+  at all: a migrated text travels as the `profile` entry, and an un-migrated
+  one (too long, profile entry exists, memory off, rejected, entries full) is
+  only shown on the Memory page as "Earlier about me (not used in chats)" with
+  "Edit and save" (the entry modal, prefilled, so the user can remove what the
+  gate refused) and "Discard".
 
 **Flags** (`server/utils/memory/tools/enabled.ts`, `chat-context.ts`)
 
 - `loadMemorySettingsFailClosed`: the route reads `user_settings` once per
-  send. If the read throws, memory, chat search and `aboutMe` are all treated
+  send. If the read throws, memory and chat search are both treated
   as off for that send and `attributes.memorySettings.error` is logged: a
   failed read must never re-enable something the user turned off.
 - `chatSearchEnabled` gates `search_chats`/`read_chat`
@@ -1895,24 +1895,25 @@ nothing needs invalidating; the next chat after the migration sees the entry.
 | --- | --- | --- | --- | --- |
 | `migrated` | `NULL` | created | `null` | in the memory index |
 | `empty` | unchanged (null/blank) | none | `null` | nothing |
-| `memory-off` | unchanged | none | `memory-off` | `aboutMe` block (entries are not injected while memory is off) |
-| `too-long` | unchanged | none | `too-long` | `aboutMe` block |
-| `profile-exists` | unchanged | existing one untouched | `profile-exists` | index (existing entry) plus the `aboutMe` block |
-| `rejected` | unchanged | none | `rejected` | `aboutMe` block |
-| `entries-full` | unchanged | none | `entries-full` | `aboutMe` block |
+| `memory-off` | unchanged | none | `memory-off` | nothing (entries are not injected while memory is off) |
+| `too-long` | unchanged | none | `too-long` | nothing |
+| `profile-exists` | unchanged | existing one untouched | `profile-exists` | index (existing entry) only |
+| `rejected` | unchanged | none | `rejected` | nothing |
+| `entries-full` | unchanged | none | `entries-full` | nothing |
 
 `aboutMeNotMigratedReason` is derived from the migration outcome of the same
 GET and is `null` whenever the column is empty after the migration (so a call
 that lost a race to a concurrent migration reports `null`). The UI uses it to
-show the leftover text as "Earlier about me (not converted)" with the matching
-explanation until the user shortens or removes it (`PATCH aboutMe: null`).
+show the leftover text as "Earlier about me (not used in chats)" with the
+matching explanation until the user saves it as an entry or removes it
+(`PATCH aboutMe: null`).
 A migration that throws (a D1 error, or a 409 that is neither the singleton
 conflict nor the account cap) is logged as
 `attributes.memoryMigration.aboutMeError` and reported as `null`.
 
 `entries-full`: the account is at the 30-entry cap, so there is no room for the
-profile entry. Nothing is created and the text stays in `about_me`, keeps being
-injected, and is shown with "Your account memory is full (30 entries). Delete
+profile entry. Nothing is created and the text stays in `about_me` (not
+injected) and is shown with "Your account memory is full (30 entries). Delete
 one and this converts automatically." The user frees an entry; the migration
 runs again on the next load (the next GET) and converts the text. The cap is
 told apart from a lost singleton race by looking for an existing profile entry
@@ -1929,26 +1930,23 @@ under `memoryCompliance` with origin `about-me-migration`, as everywhere else.
 
 **Owner decisions (overridable)**
 
-1. **No truncation.** Text over 1536 bytes stays in `about_me`, is shown as
-   "Earlier about me (not converted)" and is still injected, until the user
-   shortens or removes it. Truncating would silently drop what the user wrote.
+1. **No truncation.** Text over 1536 bytes stays in `about_me` and is shown as
+   "Earlier about me (not used in chats)" until the user shortens it into an
+   entry or removes it. Truncating would silently drop what the user wrote.
    Alternative: raise the `profile` cap or split the text into several entries.
 2. **An existing profile entry is never overwritten.** Merging two texts is a
    judgement the server should not make; the user decides on the Memory page.
-3. **Memory-off users are not migrated.** Entries are not injected while memory
-   is off but `aboutMe` is, so migrating would silently remove the text from
-   every chat. The migration runs when they switch memory on (the next GET).
-4. **A full account is not migrated.** At the 30-entry cap the text stays (and
-   keeps being injected) instead of evicting an entry the user chose to keep or
+3. **Memory-off users are not migrated.** The migration runs when they switch
+   memory on (the next GET). While memory is off nothing about the user is
+   injected, the leftover text included.
+4. **A full account is not migrated.** At the 30-entry cap the text stays
+   (not injected) instead of evicting an entry the user chose to keep or
    failing the settings GET; it converts once the user deletes an entry.
 
-**Open question (owner).** Text rejected by the classifier (`rejected`) is
-still injected today for un-migrated users: the old PATCH gates blocked it at
-write time, but text saved before them, or text the classifier now flags, keeps
-flowing into every chat via `buildAboutMeInstruction`. Should rejected text stop
-being injected? It would be a cheap deterministic classifier call in
-`chat-context.ts` (a behaviour change that silently disables the user's own
-instructions). Not done.
+**Resolved (2026-10-26).** Text rejected by the classifier (`rejected`) used to
+keep flowing into every chat through the `aboutMe` block. No skipped text is
+injected any more (see "Decision (2026-10-26)" in section 6); the Memory page
+notice is the only place it appears.
 
 ### No background model calls without an explicit opt-in (owner, 2026-10-26)
 

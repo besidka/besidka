@@ -42,11 +42,12 @@
         </ProfileMemoryEntriesToolbar>
         <details
           v-if="hasLegacyAboutMe"
+          open
           class="collapse collapse-arrow rounded-box border border-base-content/10"
           data-testid="memory-legacy-about-me"
         >
           <summary class="collapse-title text-sm font-semibold">
-            Earlier about me (not converted)
+            Earlier about me (not used in chats)
           </summary>
           <div class="collapse-content grid gap-3">
             <p
@@ -64,8 +65,8 @@
               </p>
             </div>
             <p class="text-xs text-base-content/60">
-              This text is still sent with every chat until you save or
-              discard it.
+              This text is not sent with your chats. Edit it and save it as a
+              memory entry, or discard it.
             </p>
             <div class="flex flex-wrap justify-end gap-2">
               <UiButton
@@ -81,7 +82,7 @@
               <UiButton
                 size="sm"
                 normal-case
-                text="Save as entry"
+                text="Edit and save"
                 :disabled="isRemovingAboutMe"
                 data-testid="memory-legacy-about-me-save"
                 @click="saveLegacyAboutMe"
@@ -239,10 +240,11 @@ const legacyAboutMeReasons: Record<AboutMeNotMigratedReason, string> = {
   'entries-full': 'Your account memory is full (30 entries). Delete one and '
     + 'this converts automatically.',
   'rejected': 'It contains details Besidka does not save to memory, so it '
-    + 'was not converted. Saving will be checked again and may be refused.',
+    + 'was not converted. Remove those details when saving, or discard it.',
 }
 
-const GENERIC_LEGACY_ABOUT_ME_REASON = 'It is still sent with every chat.'
+const GENERIC_LEGACY_ABOUT_ME_REASON = 'It is not used in your chats until '
+  + 'you save it as a memory entry.'
 
 const UNKNOWN_PROJECT_NAME = 'Unknown project'
 
@@ -530,8 +532,7 @@ async function clearSavedLegacyAboutMe() {
 async function discardLegacyAboutMe() {
   const confirmation = await useConfirm({
     text: 'Discard earlier about me?',
-    subtitle: 'It will no longer be sent with your chats. '
-      + 'This cannot be undone.',
+    subtitle: 'The text will be deleted. This cannot be undone.',
     alert: true,
     actions: ['Discard'],
     labelDecline: 'Cancel',
