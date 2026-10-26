@@ -2024,7 +2024,8 @@ the query) joined to `chats` through the composite index `idx_chats_user_activit
 on `(user_id, activity_at)`, then a LEFT JOIN to `projects` by primary key. Both
 indexes and the cut-over column ship in one additive migration
 (`ALTER TABLE ... ADD` and two `CREATE INDEX`, no `DROP TABLE`). Query plan on
-the generated SQL (asserted in `extract-sweep.spec.ts`, no `SCAN chats`):
+the generated SQL until 2026-10-26 (superseded by the due-chats partial index
+below, which is what `extract-sweep.spec.ts` asserts now):
 
 ```
 SCAN user_settings USING INDEX idx_user_settings_extraction_enabled
