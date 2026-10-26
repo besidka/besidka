@@ -8,6 +8,7 @@ import {
 } from '~~/server/utils/memory/backfill'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 /**
  * POST /memory/backfill/step
@@ -31,6 +32,9 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
+
   const running = await findRunningBackfill(userId, db)
 
   if (!running) {

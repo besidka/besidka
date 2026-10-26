@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler, setResponseStatus } from 'nuxt/server'
 import { recordKeyEvent } from '~~/server/utils/analytics/key-events'
+import { withdrawProviderTransferConsent } from '~~/server/utils/legal/consent'
 
 const RATE_LIMIT_RULE = { window: 60, max: 10 }
 const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:deepseek:delete'
@@ -26,6 +27,8 @@ export default defineEventHandler(async (event) => {
       eq(schema.keys.userId, parseInt(session.user.id)),
       eq(schema.keys.provider, 'deepseek'),
     ))
+
+  await withdrawProviderTransferConsent(parseInt(session.user.id), 'deepseek')
 
   recordKeyEvent('deepseek', 'deleted')
 

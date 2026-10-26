@@ -739,6 +739,11 @@ export default defineNuxtConfig({
             name: 'settings_web_search_tool',
             type: 'localStorage',
           },
+          {
+            id: 'knowledge-cache-info-seen',
+            name: 'knowledge-cache-info-seen',
+            type: 'localStorage',
+          },
         ],
       },
       {

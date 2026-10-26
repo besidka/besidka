@@ -5,6 +5,10 @@ import {
 } from '../../../server/utils/ai/generation-guard'
 import { IMAGE_GENERATION_FAILURE_TEXT } from '../../../shared/utils/chat-failure-text'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   failConvertToModelMessages: false,
   toUIMessageStreamOptions: [] as Array<Record<string, any>>,

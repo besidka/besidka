@@ -11,6 +11,10 @@ import type {
   MemoryExtractionTestDb,
 } from '../../setup/helpers/memory-extraction-db'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   extractChatMemory: vi.fn(),
   loggerSet: vi.fn(),

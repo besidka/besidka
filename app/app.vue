@@ -40,6 +40,8 @@
     <LazyUiCursorGlow v-if="$device.isDesktop" />
     <LazyCookiesBanner />
     <LazyCookiesRememberPrompt />
+    <LazyLegalConsentModal v-if="isConsentModalOpen" />
+    <LazyLegalTransferConsentModal v-if="transferRequest" />
   </ClientOnly>
 </template>
 
@@ -69,6 +71,7 @@ useHead({
 const { baseUrl } = useRuntimeConfig().public
 const route = useRoute()
 const hasSidebar = useHasSidebar()
+const { isConsentModalOpen, transferRequest } = useLegalConsent()
 
 // `baseUrl` is '' unless NUXT_PUBLIC_BASE_URL is set, and an empty base throws.
 const siteOrigin = (baseUrl as string) || useRequestURL().origin

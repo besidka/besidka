@@ -4,6 +4,7 @@ import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { relations } from '~~/server/db/relations'
 import * as schema from '~~/server/db/schema'
+import { grantedLegalConsentValues } from '../fixtures/legal-consent'
 
 type TestDb = ReturnType<typeof import('~~/server/utils/db').useDb>
 
@@ -125,6 +126,7 @@ export async function seedUser(
     await db.insert(schema.userSettings).values({
       userId: user!.id,
       memoryExtractionEnabled: true,
+      ...grantedLegalConsentValues,
       ...settings,
     })
   }

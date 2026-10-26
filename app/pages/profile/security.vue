@@ -50,6 +50,13 @@
       <ProfileSecuritySessions />
     </ProfileSecuritySectionCard>
     <ProfileSecuritySectionCard
+      id="privacy-consent"
+      heading="Privacy & consent"
+      :description="privacyConsentDescription"
+    >
+      <ProfileSecurityPrivacyConsent />
+    </ProfileSecuritySectionCard>
+    <ProfileSecuritySectionCard
       heading="Account removal"
       description="Permanently delete your account and all associated data."
       danger
@@ -61,14 +68,12 @@
         text="Delete Account"
         :disabled="isDeleting"
         data-testid="settings-delete-account"
-        @click="deleteAccount"
+        @click="requestAccountDeletion"
       />
     </ProfileSecuritySectionCard>
   </div>
 </template>
 <script setup lang="ts">
-import { parseError } from 'evlog'
-
 definePageMeta({
   layout: 'profile',
   auth: {
@@ -81,42 +86,12 @@ useSeoMeta({
   robots: 'noindex, nofollow',
 })
 
-const $auth = useAuth()
+const {
+  isDeleting,
+  requestAccountDeletion,
+} = useAccountDeletion()
 
-const isDeleting = shallowRef<boolean>(false)
-
-async function deleteAccount() {
-  const result = await useConfirm({
-    text: 'Permanently delete your account?',
-    subtitle: 'We will email you a confirmation link. Opening it erases your '
-      + 'account, chats, projects and files for good — this cannot be undone.',
-    alert: true,
-    actions: ['Delete account'],
-    labelDecline: 'Cancel',
-  })
-
-  if (!result) {
-    return
-  }
-
-  isDeleting.value = true
-
-  try {
-    await $auth.requestAccountDeletion()
-
-    useInfoMessage(
-      'Check your email',
-      'We sent a link to confirm deleting your account.',
-    )
-  } catch (exception) {
-    const parsedException = parseError(exception)
-
-    useErrorMessage(
-      parsedException.message || 'Failed to request account deletion.',
-      parsedException.why,
-    )
-  } finally {
-    isDeleting.value = false
-  }
-}
+const privacyConsentDescription = 'Your consent to store sensitive '
+  + 'information in your chats, and to send messages to providers outside '
+  + 'the EU.'
 </script>

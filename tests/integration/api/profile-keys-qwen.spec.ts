@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { enforceKeysRateLimit } from '../../../server/utils/keys-rate-limit'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 vi.mock('evlog', () => ({
   createError: (input: {
     message: string

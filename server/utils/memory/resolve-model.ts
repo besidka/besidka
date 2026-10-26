@@ -25,6 +25,12 @@ import {
   isTextGatewayModel,
   isUsableMemoryCatalogModel,
 } from '~~/server/utils/memory/catalog-usability'
+import {
+  assertProviderTransferConsent,
+  readLegalConsent,
+  withoutUnconsentedTransferProviders,
+} from '~~/server/utils/legal/consent'
+import { isTransferConsentProviderId } from '#shared/utils/legal-consent'
 
 export const MEMORY_MODEL_PROVIDER_ORDER = [
   'openai',
@@ -136,9 +142,14 @@ async function readAvailableKeys(
     },
   })
 
-  return new Set<string>(savedKeys.map((key) => {
+  const providerIds = new Set<string>(savedKeys.map((key) => {
     return key.provider
   }))
+
+  return withoutUnconsentedTransferProviders(
+    providerIds,
+    await readLegalConsent(userId, db),
+  )
 }
 
 function resolveDirectCandidate(
@@ -535,6 +546,10 @@ export async function instantiateMemoryModel(
 ): Promise<MemoryModelInstance> {
   const { gatewayId, providerId, modelId } = selection
   const userIdValue = userId.toString()
+
+  if (isTransferConsentProviderId(providerId)) {
+    assertProviderTransferConsent(await readLegalConsent(userId), providerId)
+  }
 
   if (gatewayId) {
     const result = await useGateway(

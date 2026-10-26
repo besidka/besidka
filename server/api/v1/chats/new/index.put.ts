@@ -17,6 +17,7 @@ import {
 } from '~~/server/utils/research/start'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 const rules = z.object({
   parts: userMessagePartsSchema,
@@ -60,6 +61,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
 
   logger.set({
     userId,

@@ -16,6 +16,10 @@ import {
   KNOWLEDGE_MEDIA_TURN_TEXT,
 } from '../../../server/utils/chats/model-turns'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const DIRECT_MODEL_ID = 'gpt-5-mini'
 const GATEWAY_MODEL_ID = 'anthropic/claude-opus-5'
 const PROJECT_INTERNAL_ID = 7

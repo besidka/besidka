@@ -7,6 +7,7 @@ import {
   startBackfill,
 } from '~~/server/utils/memory/backfill'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 /**
  * POST /memory/backfill
@@ -31,6 +32,8 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
 
   if (await findRunningBackfill(userId, db)) {
     throw createError({

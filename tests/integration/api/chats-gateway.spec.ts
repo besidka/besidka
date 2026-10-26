@@ -8,6 +8,10 @@ import {
   useGateway,
 } from '../../../server/utils/gateways/index'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 /**
  * Gateway counterpart of `chats-single-step-characterization.spec.ts`. The
  * gateway cases were deleted from that suite when gateway support was

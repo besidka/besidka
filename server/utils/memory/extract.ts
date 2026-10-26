@@ -31,6 +31,10 @@ import {
   getCachedGatewayCatalog,
 } from '~~/server/utils/gateways/catalog'
 import { resolveMemoryModel } from '~~/server/utils/memory/resolve-model'
+import {
+  hasCurrentLegalConsent,
+  legalConsentColumns,
+} from '~~/server/utils/legal/consent'
 import type { ResolvedMemoryModel } from '~~/server/utils/memory/resolve-model'
 import {
   acquireMemoryLease,
@@ -147,6 +151,7 @@ async function memoryExtractionReadSettings(db: DbClient, userId: number) {
       memoryEnabled: true,
       memoryExtractionEnabled: true,
       memoryExtractionEnabledAt: true,
+      ...legalConsentColumns,
     },
   })
 }
@@ -162,7 +167,7 @@ function memoryExtractionIsAllowed(
   settings: Awaited<ReturnType<typeof memoryExtractionReadSettings>>,
   gate: MemoryExtractionGate,
 ): boolean {
-  if (settings?.memoryEnabled === false) {
+  if (settings?.memoryEnabled === false || !hasCurrentLegalConsent(settings)) {
     return false
   }
 
@@ -338,6 +343,10 @@ async function extractLeasedChatMemory(
   const passStartedAt = new Date(now.getTime() - PASS_START_SAFETY_MS)
 
   const settings = await memoryExtractionReadSettings(db, userId)
+
+  if (!hasCurrentLegalConsent(settings)) {
+    return memoryExtractionEmptyResult('skipped', 'no-consent')
+  }
 
   if (settings?.memoryEnabled === false) {
     return memoryExtractionEmptyResult('skipped', 'disabled')
@@ -1106,6 +1115,10 @@ async function extractLeasedMemoryFromText(
   const result = memoryExtractionEmptyTextResult('imported')
   const settings = await memoryExtractionReadSettings(db, userId)
 
+  if (!hasCurrentLegalConsent(settings)) {
+    return memoryExtractionEmptyTextResult('skipped', 'no-consent')
+  }
+
   if (settings?.memoryEnabled === false) {
     return memoryExtractionEmptyTextResult('skipped', 'disabled')
   }
@@ -1199,7 +1212,10 @@ async function extractLeasedMemoryFromText(
 
       const freshSettings = await memoryExtractionReadSettings(db, userId)
 
-      if (freshSettings?.memoryEnabled === false) {
+      if (
+        freshSettings?.memoryEnabled === false
+        || !hasCurrentLegalConsent(freshSettings)
+      ) {
         stopReason = 'disabled'
 
         break

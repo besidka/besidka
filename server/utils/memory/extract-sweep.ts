@@ -18,6 +18,7 @@ import type { SweepBackfillJobsResult } from '~~/server/utils/memory/backfill'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
+import { currentLegalConsentCondition } from '~~/server/utils/legal/consent'
 import {
   MEMORY_EXTRACTION_LIMITS,
   MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
@@ -100,6 +101,7 @@ export function buildDueChatsQuery(
     )
     .where(and(
       isExtractionOptedIn,
+      currentLegalConsentCondition(),
       or(
         isNull(schema.userSettings.memoryEnabled),
         eq(schema.userSettings.memoryEnabled, true),

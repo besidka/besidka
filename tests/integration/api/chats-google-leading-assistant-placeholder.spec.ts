@@ -3,6 +3,10 @@ import {
   keyProviderIdForGateway,
 } from '../../../server/utils/gateways/index'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   streamTextOptions: [] as Array<Record<string, any>>,
   toUIMessageStreamOptions: [] as Array<Record<string, any>>,

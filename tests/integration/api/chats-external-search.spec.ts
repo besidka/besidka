@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const EXTERNAL_SEARCH_MODEL_ID = 'gpt-5-mini'
 const EXTERNAL_SEARCH_PROVIDER_ID = 'openai'
 

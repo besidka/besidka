@@ -6,6 +6,7 @@ import { extractChatMemory, extractProjectLegacyBlob } from '~~/server/utils/mem
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import { resolveMemoryModel } from '~~/server/utils/memory/resolve-model'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 import type { ResolvedMemoryModel } from '~~/server/utils/memory/resolve-model'
 import { getMemoryProviderId } from '~~/server/utils/projects/memory'
 import { buildProjectMemoryCard } from '~~/server/utils/projects/memory-card'
@@ -218,6 +219,8 @@ export async function refreshProjectMemoryFromChats(
   if (project.memoryStatus === 'disabled') {
     return await buildProjectMemoryCard(project.id, userId, db, logger)
   }
+
+  await requireLegalConsent(userId, db)
 
   if (!await readUserMemoryEnabled(db, userId)) {
     throw createError({

@@ -157,11 +157,12 @@ const TOKENS_PER_MILLION = 1_000_000
 const DESKTOP_QUERY = '(min-width: 640px)'
 const MEMORY_ENTRIES_KEY = 'memory-entries:all'
 const SEEN_STORAGE_KEY = 'knowledge-cache-info-seen'
-const SEEN_STORAGE_VALUE = '1'
+const DEFAULT_SEEN_SCOPE = 'default'
 const ANTHROPIC_PROVIDER_ID = 'anthropic'
 const ANTHROPIC_MODEL_PREFIX = 'anthropic/'
 
 const { selection, gatewayModel, name: modelName } = useSelectedModelInfo()
+const prefStorage = usePreferenceStorage()
 const { data: entriesData } = useNuxtData<MemoryEntriesResponse>(
   MEMORY_ENTRIES_KEY,
 )
@@ -170,27 +171,35 @@ const isExpanded = shallowRef<boolean>(true)
 const isMounted = shallowRef<boolean>(false)
 const isTransitionEnabled = shallowRef<boolean>(false)
 
-const seenStorageKey = computed<string>(() => {
-  return props.storageKey
-    ? `${SEEN_STORAGE_KEY}:${props.storageKey}`
-    : SEEN_STORAGE_KEY
+const seenScope = computed<string>(() => {
+  return props.storageKey || DEFAULT_SEEN_SCOPE
 })
 
-function readSeenFlag(): boolean {
+function readSeenScopes(): string[] {
   try {
-    return window.localStorage.getItem(seenStorageKey.value)
-      === SEEN_STORAGE_VALUE
+    const parsed: unknown = JSON.parse(
+      prefStorage.getItem(SEEN_STORAGE_KEY) ?? '[]',
+    )
+
+    return Array.isArray(parsed)
+      ? parsed.filter((scope): scope is string => {
+        return typeof scope === 'string'
+      })
+      : []
   } catch {
-    return false
+    return []
   }
 }
 
+function readSeenFlag(): boolean {
+  return readSeenScopes().includes(seenScope.value)
+}
+
 function writeSeenFlag() {
-  try {
-    window.localStorage.setItem(seenStorageKey.value, SEEN_STORAGE_VALUE)
-  } catch {
-    return
-  }
+  prefStorage.setItem(
+    SEEN_STORAGE_KEY,
+    JSON.stringify([...readSeenScopes(), seenScope.value]),
+  )
 }
 
 function resolveInitialExpansion(): boolean {

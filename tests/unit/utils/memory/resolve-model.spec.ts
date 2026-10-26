@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   unusableModelIds: new Set<string>(),
 }))
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../../setup/mocks/legal-consent')
+})
+
 vi.mock('~~/server/utils/gateways/catalog', () => {
   return {
     getCachedGatewayCatalog: mocks.getCachedGatewayCatalog,
@@ -1335,5 +1339,78 @@ describe('resolveMemoryModel', () => {
         modelName: 'm',
       }, 1)).rejects.toThrow('Unsupported memory provider')
     })
+  })
+  describe('transfer consent', () => {
+    async function withoutTransferConsents() {
+      const consent = await import('~~/server/utils/legal/consent')
+      const granted = await consent.readLegalConsent(1)
+
+      vi.mocked(consent.readLegalConsent).mockResolvedValueOnce({
+        ...granted,
+        providerTransferConsents: null,
+      })
+    }
+
+    it('skips Qwen and DeepSeek in the fallback without transfer consent',
+      async () => {
+        await withoutTransferConsents()
+
+        const db = createDb({ keys: ['qwen', 'deepseek', 'google'] })
+        const { resolveMemoryModel } = await loadResolver()
+
+        const resolved = await resolveMemoryModel({
+          userId: 1,
+          scope: 'project',
+          db: db as never,
+        })
+
+        expect(resolved?.providerId).toBe('google')
+      })
+
+    it('returns null when the only key needs a missing transfer consent',
+      async () => {
+        await withoutTransferConsents()
+
+        const db = createDb({ keys: ['moonshotai'] })
+        const { resolveMemoryModel } = await loadResolver()
+
+        expect(await resolveMemoryModel({
+          userId: 1,
+          scope: 'profile',
+          db: db as never,
+        })).toBeNull()
+      })
+
+    it('uses Qwen once its transfer consent exists', async () => {
+      const db = createDb({ keys: ['qwen', 'google'] })
+      const { resolveMemoryModel } = await loadResolver()
+
+      const resolved = await resolveMemoryModel({
+        userId: 1,
+        scope: 'project',
+        db: db as never,
+      })
+
+      expect(resolved).toMatchObject({
+        providerId: 'qwen',
+        modelId: qwenMemoryModel.id,
+      })
+    })
+
+    it('refuses to build a DeepSeek model without transfer consent',
+      async () => {
+        await withoutTransferConsents()
+
+        const { instantiateMemoryModel } = await loadResolver()
+
+        await expect(instantiateMemoryModel({
+          scope: 'profile',
+          source: 'setting',
+          providerId: 'deepseek',
+          gatewayId: null,
+          modelId: 'deepseek-chat',
+          modelName: 'DeepSeek',
+        }, 1)).rejects.toMatchObject({ status: 403 })
+      })
   })
 })

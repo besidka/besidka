@@ -35,6 +35,7 @@ import {
 import type { BackfillWindow } from '~~/server/utils/memory/backfill-queue'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
+import { currentLegalConsentCondition } from '~~/server/utils/legal/consent'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import {
   instantiateMemoryModel,
@@ -1111,7 +1112,14 @@ export async function sweepBackfillJobs(
       userId: schema.memoryBackfillJobs.userId,
     })
     .from(schema.memoryBackfillJobs)
-    .where(eq(schema.memoryBackfillJobs.status, 'running'))
+    .innerJoin(
+      schema.userSettings,
+      eq(schema.userSettings.userId, schema.memoryBackfillJobs.userId),
+    )
+    .where(and(
+      eq(schema.memoryBackfillJobs.status, 'running'),
+      currentLegalConsentCondition(),
+    ))
     .orderBy(
       asc(schema.memoryBackfillJobs.updatedAt),
       asc(schema.memoryBackfillJobs.id),

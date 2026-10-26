@@ -8,6 +8,7 @@ import { buildResearchAssistModelInstance } from '~~/server/utils/research/assis
 import { generateResearchClarifications } from '~~/server/utils/research/clarify'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 const MOCK_RESEARCH_CLARIFICATIONS: ResearchClarificationResponse = {
   questions: [
@@ -48,6 +49,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
+
   const { provider, model } = useChatProvider(body.data.model)
   const research = getModelResearch(model)
   const supportedProviderId = provider.id === 'openai' || provider.id === 'google'

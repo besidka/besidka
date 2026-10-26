@@ -392,6 +392,7 @@ export function useChatInput() {
     researchConfig,
     isDeepResearchModel,
     isSelectedModelKeyless,
+    selectedModelKeyOwnerId,
     selectedModelKeyOwnerLabel,
     isModelCapabilityResolved,
     isSelectedModelUnavailable,

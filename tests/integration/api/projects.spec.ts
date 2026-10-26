@@ -8,6 +8,10 @@ import {
 import { createHistoryCursor } from '../../../server/utils/chats/history/cursor'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   unlinkKnowledgeProjectFiles: vi.fn(),

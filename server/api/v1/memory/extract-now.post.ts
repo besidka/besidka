@@ -4,6 +4,7 @@ import { extractChatMemory } from '~~/server/utils/memory/extract'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 /**
  * POST /memory/extract-now
@@ -40,6 +41,9 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
+
   const chat = await db.query.chats.findFirst({
     where: { slug: body.data.chatSlug, userId },
     columns: { id: true, projectId: true },

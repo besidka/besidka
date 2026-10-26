@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { relations } from '~~/server/db/relations'
+import { CURRENT_CONSENT_VERSION } from '~~/server/utils/legal/consent'
 
 export interface MemoryTestDb {
   sqlite: InstanceType<typeof Database>
@@ -101,7 +102,14 @@ export function createMemoryTestDb(): MemoryTestDb {
       profile_memory_model text,
       profile_memory_gateway text,
       project_memory_model text,
-      project_memory_gateway text
+      project_memory_gateway text,
+      terms_accepted_at integer,
+      terms_version text,
+      age_confirmed_at integer,
+      sensitive_content_consent_at integer,
+      sensitive_content_consent_version text,
+      sensitive_content_consent_withdrawn_at integer,
+      provider_transfer_consents text
     );
 
     CREATE UNIQUE INDEX uq_user_settings_user ON user_settings (user_id);
@@ -154,7 +162,9 @@ export function createMemoryTestDb(): MemoryTestDb {
     sqlite.prepare(
       'insert into user_settings (created_at, updated_at, user_id,'
       + ' memory_enabled, chat_search_enabled, memory_include_sensitive,'
-      + ' about_me) values (?, ?, ?, ?, ?, ?, ?)',
+      + ' about_me, terms_accepted_at, terms_version, age_confirmed_at,'
+      + ' sensitive_content_consent_at, sensitive_content_consent_version)'
+      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       nowSeconds(),
       nowSeconds(),
@@ -163,6 +173,11 @@ export function createMemoryTestDb(): MemoryTestDb {
       toFlag(input.chatSearchEnabled),
       toFlag(input.memoryIncludeSensitive),
       input.aboutMe ?? null,
+      nowSeconds(),
+      CURRENT_CONSENT_VERSION,
+      nowSeconds(),
+      nowSeconds(),
+      CURRENT_CONSENT_VERSION,
     )
   }
 
