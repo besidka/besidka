@@ -980,7 +980,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             model: userModel.value,
             gateway: getSelectionGatewayId(selection.value),
             tools: sentTools,
-            webSearchMode: resolveWebSearchMode(sentTools),
+            webSearchMode: resolveWebSearchMode(tools.value),
             messages: [lastMessage],
             reasoning: canSendCapabilityGatedFields
               ? reasoning.value

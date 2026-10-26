@@ -343,6 +343,17 @@ describe('resolveAutoWebSearch', () => {
     })
   })
 
+  it('reuses persisted tools even when the client sent no tools', async () => {
+    const result = await resolveAutoWebSearch(baseInput({
+      chosenTools: [],
+      defaultTools: [],
+      persistedTools: [],
+    }))
+
+    expect(result).toEqual({ tools: [], outcome: 'skipped' })
+    expect(mocks.decide).not.toHaveBeenCalled()
+  })
+
   it('reuses persisted tools only while Auto is enabled', async () => {
     const { db } = createDb({ hasKey: false })
 

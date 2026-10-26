@@ -113,12 +113,14 @@ function reusedOutcome(persistedTools: Tools): AutoWebSearchOutcome {
 /**
  * Resolves the web-search tools for one user message in the Auto mode.
  *
- * Auto applies only when the client asks for it with a web-search provider
- * chosen, and the user has a TypeSafe AI key with the `autoWebSearch` role
- * on; otherwise `defaultTools` come back unchanged, as without the key. A
- * message already persisted under the same id (a retry, or a new chat's
- * first message the PUT already resolved) reuses its persisted tools, so the
- * decision is made once per message id. Otherwise a URL, a domain or a
+ * Auto applies only when the client asks for it and the user has a
+ * TypeSafe AI key with the `autoWebSearch` role on; otherwise
+ * `defaultTools` come back unchanged, as without the key. A message already
+ * persisted under the same id (a retry, or a new chat's first message the
+ * PUT already resolved) reuses its persisted tools, so the decision is made
+ * once per message id; this holds even when the client sent no tools while
+ * its model capability was still loading. A new message needs a chosen
+ * web-search provider. Otherwise a URL, a domain or a
  * recency phrase forces a search, then one Jev call decides, and any Jev
  * failure searches. Only a `skipped` outcome removes the web-search tools.
  */
@@ -130,7 +132,11 @@ export async function resolveAutoWebSearch(
     outcome: null,
   }
 
-  if (input.mode !== 'auto' || !hasWebSearchTool(input.chosenTools)) {
+  if (input.mode !== 'auto') {
+    return unchanged
+  }
+
+  if (!input.persistedTools && !hasWebSearchTool(input.chosenTools)) {
     return unchanged
   }
 

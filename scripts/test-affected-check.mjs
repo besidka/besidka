@@ -131,6 +131,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
     'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
     'tests/unit/composables/chat.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
   ]
   const typesafeRolesUiTests = [
     'tests/unit/components/Profile/Keys/TypesafeChecks.spec.ts',

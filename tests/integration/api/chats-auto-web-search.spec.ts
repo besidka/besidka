@@ -582,6 +582,20 @@ describe('Auto web search on the chat send path', () => {
       expect(first.assistantInsert?.usage?.autoWebSearch).toBe(outcome)
     })
 
+  it('labels a first message whose client sent no tools while its model '
+    + 'capability was loading', async () => {
+    const first = await runSend({
+      tools: [],
+      webSearchMode: 'auto',
+      hasTypesafeKey: true,
+      messages: [persistedUserMessage(SENT_MESSAGE_ID, [])],
+    })
+
+    expect(mocks.decide).not.toHaveBeenCalled()
+    expect(first.toolNames).not.toContain('web_search_brave')
+    expect(first.assistantInsert?.usage?.autoWebSearch).toBe('skipped')
+  })
+
   it('ignores Auto when the autoWebSearch role is off', async () => {
     const result = await runSend({
       tools: ['web_search_brave'],
