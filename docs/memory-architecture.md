@@ -813,16 +813,24 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
   its 2500-token budget there; it now trims further on those models (with 4
   profile + 4 preferences bodies at the cap a Ukrainian index on Claude also
   collapses the profile body). The measurements below were taken with the
-  flat figures. Trim order from 3.2, stopping at the first step that fits:
-  the `preferences` body becomes a line, descriptions are cut to 60, 40, 20
-  and 0 characters, and the `profile` body becomes a line. Steps that would
-  change nothing are skipped and not recorded. Only if the index still does
-  not fit (2026-10-26) are entry lines dropped one by one,
-  `drop-least-recently-used`: never-used entries first, then the oldest
-  `lastUsedAt`, ties broken by the last index position; `profile` and
-  `preferences` are never dropped. A dropped entry stays stored and reachable
+  flat figures. Trim order (owner, 2026-10-26: the always-injected core is
+  touched last), stopping at the first step that fits: descriptions of the
+  other entries are cut to 60, 40, 20 and 0 characters; then those entry
+  lines are dropped one by one, `drop-least-recently-used` (never-used
+  entries first, then the oldest `lastUsedAt`, ties broken by the last index
+  position); only when no such entry is left does the `preferences` body
+  become a line, and last of all the `profile` body. A body collapse frees
+  room, so dropped entries then come back, most recently used first, while
+  they fit (when all come back, the drop step is not recorded). `profile`
+  and `preferences` are never dropped. Steps that would change nothing are
+  skipped and not recorded. A dropped entry stays stored and reachable
   through `memory_list`; the wide event logs `memoryIndex.droppedEntries`.
-  Measured with 100-character descriptions and two 1 KB bodies: 30 account
+  With realistic caps (profile and preferences are one per scope, so at most
+  two of each with a project) a full Ukrainian account plus project keeps
+  both profile bodies on every family: on Claude the two preferences bodies
+  collapse (the four bodies alone exceed the budget), on `default` 16
+  never-used lines are dropped instead. The figures below predate this
+  order. Measured with 100-character descriptions and two 1 KB bodies: 30 account
   entries cost 1595 tokens in English and 2251 in Ukrainian (no trim); with 15
   project entries on top, English trims after `preferences-body` (2156) and
   Ukrainian after `descriptions-60` (2390); the last step ends at 528 / 568.

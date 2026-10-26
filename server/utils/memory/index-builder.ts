@@ -88,11 +88,7 @@ const INITIAL_RENDER_STATE: RenderState = {
   descriptionLimit: Number.POSITIVE_INFINITY,
 }
 
-const TRIM_PLAN: TrimPlanStep[] = [
-  {
-    id: 'preferences-body',
-    apply: state => ({ ...state, collapsePreferencesBody: true }),
-  },
+const DESCRIPTION_TRIM_PLAN: TrimPlanStep[] = [
   {
     id: 'descriptions-60',
     apply: state => ({ ...state, descriptionLimit: 60 }),
@@ -108,6 +104,13 @@ const TRIM_PLAN: TrimPlanStep[] = [
   {
     id: 'descriptions-0',
     apply: state => ({ ...state, descriptionLimit: 0 }),
+  },
+]
+
+const CORE_BODY_TRIM_PLAN: TrimPlanStep[] = [
+  {
+    id: 'preferences-body',
+    apply: state => ({ ...state, collapsePreferencesBody: true }),
   },
   {
     id: 'profile-body',
@@ -298,17 +301,19 @@ function renderIndex(
  * heading or an entry line of the index. Legacy `special` entries are
  * always skipped, silently.
  *
- * Over budget, the trim plan runs step by step and stops at the first step
- * that fits: `preferences` bodies become lines, descriptions shrink to 60,
- * 40, 20 and 0 characters, and as the last resort the `profile` body
- * becomes a line too. A step that would not change the text is skipped and
- * not recorded. Only when the text is still over budget after all of them
- * are entry lines dropped, one at a time, least recently used first (see
- * `compareDropOrder`); `profile` and `preferences` are never dropped. A
- * dropped entry stays stored and reachable through `memory_list`; nothing
- * expires by `lastUsedAt`, which only breaks this tie. When even that does
- * not fit, the text is returned with `overBudget: true`, and the worst case
- * stays bounded by the per-scope entry caps.
+ * Over budget, trimming stops at the first step that fits and touches the
+ * always-injected core last: descriptions of the other entries shrink to
+ * 60, 40, 20 and 0 characters; then those entry lines are dropped one at a
+ * time, least recently used first (see `compareDropOrder`); only when no
+ * such entry is left does the `preferences` body become a line, and as the
+ * very last resort the `profile` body too. Collapsing a body frees room, so
+ * the dropped entries then come back, most recently used first, as long as
+ * they fit. `profile` and `preferences` are never dropped. A step that
+ * would not change the text is skipped and not recorded. A dropped entry
+ * stays stored and reachable through `memory_list`; nothing expires by
+ * `lastUsedAt`, which only orders the drops. When even that does not fit,
+ * the text is returned with `overBudget: true`, and the worst case stays
+ * bounded by the per-scope entry caps.
  */
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const budgetTokens = input.budgetTokens ?? MEMORY_LIMITS.indexTokenBudget
@@ -332,40 +337,46 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     }
   }
 
-  let state = INITIAL_RENDER_STATE
-  let text = renderIndex(
-    accountEntries,
-    projectEntries,
-    input.hasMemoryTools,
-    state,
-  )
-  let tokens = estimateMemoryTokens(text, input.tokenFamily)
+  const droppedIds = new Set<string>()
   const trimSteps: MemoryIndexTrimStep[] = []
+  let state = INITIAL_RENDER_STATE
 
-  for (const trimStep of TRIM_PLAN) {
-    if (tokens <= budgetTokens) {
-      break
-    }
+  function render(renderState: RenderState): string {
+    const isKept = (candidate: MemoryEntry) => !droppedIds.has(candidate.id)
 
-    const nextState = trimStep.apply(state)
-    const nextText = renderIndex(
-      accountEntries,
-      projectEntries,
+    return renderIndex(
+      accountEntries.filter(isKept),
+      projectEntries.filter(isKept),
       input.hasMemoryTools,
-      nextState,
+      renderState,
     )
-
-    if (nextText === text) {
-      continue
-    }
-
-    state = nextState
-    text = nextText
-    tokens = estimateMemoryTokens(text, input.tokenFamily)
-    trimSteps.push(trimStep.id)
   }
 
-  const droppedIds = new Set<string>()
+  let text = render(state)
+  let tokens = estimateMemoryTokens(text, input.tokenFamily)
+
+  function runTrimPlan(plan: TrimPlanStep[]) {
+    for (const trimStep of plan) {
+      if (tokens <= budgetTokens) {
+        return
+      }
+
+      const nextState = trimStep.apply(state)
+      const nextText = render(nextState)
+
+      if (nextText === text) {
+        continue
+      }
+
+      state = nextState
+      text = nextText
+      tokens = estimateMemoryTokens(text, input.tokenFamily)
+      trimSteps.push(trimStep.id)
+    }
+  }
+
+  runTrimPlan(DESCRIPTION_TRIM_PLAN)
+
   const dropOrder = [...accountEntries, ...projectEntries]
     .filter(isDroppable)
     .sort(compareDropOrder)
@@ -376,20 +387,38 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     }
 
     droppedIds.add(entry.id)
-
-    const isKept = (candidate: MemoryEntry) => !droppedIds.has(candidate.id)
-
-    text = renderIndex(
-      accountEntries.filter(isKept),
-      projectEntries.filter(isKept),
-      input.hasMemoryTools,
-      state,
-    )
+    text = render(state)
     tokens = estimateMemoryTokens(text, input.tokenFamily)
   }
 
   if (droppedIds.size > 0) {
     trimSteps.push('drop-least-recently-used')
+  }
+
+  runTrimPlan(CORE_BODY_TRIM_PLAN)
+
+  for (const entryId of [...droppedIds].reverse()) {
+    droppedIds.delete(entryId)
+
+    const restoredText = render(state)
+    const restoredTokens = estimateMemoryTokens(restoredText, input.tokenFamily)
+
+    if (restoredTokens > budgetTokens) {
+      droppedIds.add(entryId)
+
+      break
+    }
+
+    text = restoredText
+    tokens = restoredTokens
+  }
+
+  if (droppedIds.size === 0) {
+    const dropStepIndex = trimSteps.indexOf('drop-least-recently-used')
+
+    if (dropStepIndex !== -1) {
+      trimSteps.splice(dropStepIndex, 1)
+    }
   }
 
   return {
