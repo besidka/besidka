@@ -87,42 +87,94 @@
         <span class="grow text-left">{{ option.label }}</span>
       </button>
     </li>
-    <template v-if="isExaSelected">
-      <li class="menu-title text-xs mt-1 pt-2 border-t border-base-content/10">
-        Exa search level
-      </li>
-      <li
-        v-for="level in EXA_SEARCH_LEVELS"
-        :key="level"
-      >
+  </template>
+  <template v-if="isAutoAvailable">
+    <li
+      class="menu-title text-xs mt-1 pt-2 border-t border-base-content/10"
+      data-testid="web-search-auto-section"
+    >
+      <span class="flex items-center gap-1">
+        <span>Auto</span>
         <button
           type="button"
-          class="flex items-center gap-2"
-          :class="{
-            'bg-accent text-accent-content pointer-events-none':
-              exaSearchLevel === level,
-          }"
-          :data-testid="`exa-search-level-${level}`"
-          :title="exaSearchLevelHints[level]"
-          @click="emit('select-exa-search-level', level)"
+          class="tooltip tooltip-left inline-flex cursor-help"
+          :data-tip="AUTO_WEB_SEARCH_EXPLANATION"
+          :aria-label="AUTO_WEB_SEARCH_EXPLANATION"
+          data-testid="web-search-auto-info"
         >
-          <span class="grow text-left">
-            {{ EXA_SEARCH_LEVEL_LABELS[level] }}
-          </span>
-          <span
-            v-if="levelPrices[level]"
-            class="badge badge-xs shrink-0 badge-soft"
-          >
-            {{ levelPrices[level] }}
-          </span>
+          <Icon name="lucide:info" size="12" />
         </button>
-      </li>
-    </template>
+      </span>
+    </li>
+    <li :class="{ 'menu-disabled': !canUseAuto }">
+      <label
+        class="flex items-center gap-2"
+        :class="{ 'cursor-pointer': canUseAuto }"
+      >
+        <Icon name="lucide:sparkles" class="!size-4 shrink-0 text-current" />
+        <span class="grid grow gap-0.5 text-left">
+          <span>Decide per message</span>
+          <span
+            class="text-2xs opacity-60"
+            data-testid="web-search-auto-hint"
+          >
+            {{ canUseAuto
+              ? AUTO_WEB_SEARCH_HINT
+              : AUTO_WEB_SEARCH_PICK_PROVIDER_HINT }}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          class="toggle toggle-xs toggle-accent shrink-0"
+          data-testid="web-search-auto-toggle"
+          aria-label="Auto web search"
+          :checked="canUseAuto && isAutoPreferred"
+          :disabled="!canUseAuto"
+          @change="onToggleAuto"
+        >
+      </label>
+    </li>
+  </template>
+  <template v-if="isExaSelected">
+    <li class="menu-title text-xs mt-1 pt-2 border-t border-base-content/10">
+      Depth
+    </li>
+    <li
+      v-for="level in EXA_SEARCH_LEVELS"
+      :key="level"
+    >
+      <button
+        type="button"
+        class="flex items-center gap-2"
+        :class="{
+          'bg-accent text-accent-content pointer-events-none':
+            exaSearchLevel === level,
+        }"
+        :data-testid="`exa-search-level-${level}`"
+        :title="exaSearchLevelHints[level]"
+        @click="emit('select-exa-search-level', level)"
+      >
+        <span class="grow text-left">
+          {{ EXA_SEARCH_LEVEL_LABELS[level] }}
+        </span>
+        <span
+          v-if="levelPrices[level]"
+          class="badge badge-xs shrink-0 badge-soft"
+        >
+          {{ levelPrices[level] }}
+        </span>
+      </button>
+    </li>
   </template>
 </template>
 
 <script setup lang="ts">
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
+import {
+  AUTO_WEB_SEARCH_EXPLANATION,
+  AUTO_WEB_SEARCH_HINT,
+  AUTO_WEB_SEARCH_PICK_PROVIDER_HINT,
+} from '#shared/utils/auto-web-search'
 import type {
   WebSearchOption,
   WebSearchSelection,
@@ -133,14 +185,31 @@ const props = withDefaults(defineProps<{
   options: WebSearchOption[]
   isToolCallingSupported: boolean
   exaSearchLevel?: ExaSearchLevel
+  isAutoAvailable?: boolean
+  isAutoPreferred?: boolean
 }>(), {
   exaSearchLevel: 'auto',
+  isAutoAvailable: false,
+  isAutoPreferred: false,
 })
 
 const emit = defineEmits<{
   'select-provider': [value: WebSearchSelection]
   'select-exa-search-level': [level: ExaSearchLevel]
+  'toggle-auto': [isOn: boolean]
 }>()
+
+const canUseAuto = computed<boolean>(() => {
+  return props.selected !== 'off'
+})
+
+function onToggleAuto(event: Event) {
+  if (!canUseAuto.value) {
+    return
+  }
+
+  emit('toggle-auto', (event.target as HTMLInputElement).checked)
+}
 
 const exaSearchLevelHints: Record<ExaSearchLevel, string> = {
   lite: 'Fastest and cheapest',

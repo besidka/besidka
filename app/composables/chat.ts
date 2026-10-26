@@ -22,7 +22,10 @@ import {
   getGenerateImageToolPart,
   isVisibleGenerateImageToolPart,
 } from '~/utils/generated-images'
-import { hydrateMessageUsage } from '#shared/utils/message-metadata'
+import {
+  hydrateMessageUsage,
+  isWebSearchTool,
+} from '#shared/utils/message-metadata'
 import { isPastChatPreRetrievalPart } from '#shared/utils/past-chat-retrieval'
 import {
   isPersistedEmptyAnswerFailureText,
@@ -825,10 +828,60 @@ export function findLastUserMessageTools(messages: Message[]): Tools {
   return []
 }
 
+export interface InitialChatToolsPreferences {
+  isAutoWebSearchPreferred: boolean
+  savedWebSearchTool: string | null
+}
+
+/**
+ * The tools a reopened chat starts with: the last user message's. An Auto
+ * web search skip persists that message without its search tool, so while
+ * Auto is preferred an empty set whose turn was skipped, or is still
+ * unanswered (a new chat's first message), falls back to the saved
+ * provider instead of showing search as off.
+ */
+export function resolveInitialChatTools(
+  messages: Message[],
+  preferences: InitialChatToolsPreferences,
+): Tools {
+  const tools = findLastUserMessageTools(messages)
+  const savedTool = preferences.savedWebSearchTool
+
+  if (
+    tools.length > 0
+    || !preferences.isAutoWebSearchPreferred
+    || !isWebSearchTool(savedTool)
+  ) {
+    return tools
+  }
+
+  const lastUserIndex = messages.findLastIndex((message) => {
+    return message.role === 'user'
+  })
+
+  if (lastUserIndex < 0) {
+    return tools
+  }
+
+  const reply = messages.slice(lastUserIndex + 1).find((message) => {
+    return message.role === 'assistant'
+  })
+
+  if (reply && reply.usage?.autoWebSearch !== 'skipped') {
+    return tools
+  }
+
+  return [savedTool]
+}
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { selection, userModel } = useUserModel()
   const { handleConsentError } = useLegalConsent()
   const { isModelCapabilityResolved } = useChatInput()
+  const {
+    isPreferred: isAutoWebSearchPreferred,
+    resolveWebSearchMode,
+  } = useAutoWebSearch()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   // App-wide signal for whether any chat turn is actively streaming, read by
@@ -855,7 +908,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   chat = toValue(chat)
 
-  const tools = shallowRef<Tools>(findLastUserMessageTools(chat.messages))
+  const tools = shallowRef<Tools>(resolveInitialChatTools(chat.messages, {
+    isAutoWebSearchPreferred: isAutoWebSearchPreferred.value,
+    savedWebSearchTool: prefStorage.getItem('settings_web_search_tool'),
+  }))
   const reasoning = shallowRef<ReasoningLevel>(
     normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
   )
@@ -919,12 +975,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         const lastMessage = messages[messages.length - 1]
 
         const canSendCapabilityGatedFields = isModelCapabilityResolved.value
+        const sentTools = canSendCapabilityGatedFields ? tools.value : []
 
         return {
           body: {
             model: userModel.value,
             gateway: getSelectionGatewayId(selection.value),
-            tools: canSendCapabilityGatedFields ? tools.value : [],
+            tools: sentTools,
+            webSearchMode: resolveWebSearchMode(tools.value),
             messages: [lastMessage],
             reasoning: canSendCapabilityGatedFields
               ? reasoning.value
