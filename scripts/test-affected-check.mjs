@@ -104,6 +104,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
     'tests/unit/utils/memory/about-me-migration.spec.ts',
+    'tests/unit/pages/profile/preferences.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
+    'tests/unit/db/default-reasoning-level-migration.spec.ts',
+  ]
+  const preferencesPageTests = [
+    'tests/unit/pages/profile/preferences.spec.ts',
+    'tests/unit/pages/profile/settings.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/composables/user-setting.spec.ts',
   ]
   const memoryContractTests = [
     'tests/unit/utils/memory-policy.spec.ts',
@@ -1999,6 +2008,14 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/layouts/profile.spec.ts'],
     },
     {
+      pattern: /^app\/pages\/profile\/(preferences|settings)\.vue$/,
+      tests: preferencesPageTests,
+    },
+    {
+      pattern: /^app\/components\/Sidebar\/AuthCta\.vue$/,
+      tests: ['tests/unit/components/Sidebar/AuthCta.spec.ts'],
+    },
+    {
       pattern:
         /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects|memory-backfill)\.ts|app\/utils\/(memory-backfill|memory-legacy-about-me|memory-model-filter)\.ts|shared\/utils\/(prompt-cache-estimate|memory-index-estimate|memory-recommended-models|memory-about-me|memory-import-limits)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/(memory-settings|memory-entries)\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
       tests: memoryTabTests,
@@ -2510,6 +2527,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/db/migrations-clean.spec.ts',
         'tests/unit/db/accounts-provider-account-id.spec.ts',
         'tests/unit/db/typesafe-roles-migration.spec.ts',
+        'tests/unit/db/default-reasoning-level-migration.spec.ts',
       ],
     },
     {

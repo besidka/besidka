@@ -183,7 +183,7 @@ describe('Search/Modal.client', () => {
       .toBe('')
   })
 
-  it('renders the seven documented command rows in order for an empty query', async () => {
+  it('renders the eight documented command rows in order for an empty query', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -200,6 +200,7 @@ describe('Search/Modal.client', () => {
       'search-option-security',
       'search-option-keys',
       'search-option-memory',
+      'search-option-preferences',
     ])
   })
 
@@ -217,11 +218,14 @@ describe('Search/Modal.client', () => {
       return wrapper.get(`#${id} .iconify`).classes()
     }
 
-    expect(rows).toHaveLength(7)
+    expect(rows).toHaveLength(8)
     expect(labelOf('search-option-projects')).toBe('Projects')
     expect(iconOf('search-option-projects')).toContain('i-lucide:folder')
     expect(labelOf('search-option-memory')).toBe('Memory')
     expect(iconOf('search-option-memory')).toContain('i-lucide:brain')
+    expect(labelOf('search-option-preferences')).toBe('Preferences')
+    expect(iconOf('search-option-preferences'))
+      .toContain('i-lucide:sliders-horizontal')
 
     const orderedIds = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
@@ -231,11 +235,14 @@ describe('Search/Modal.client', () => {
     expect(chatEnd).toBeLessThan(settingsStart)
     expect(orderedIds.indexOf('search-option-memory'))
       .toBeGreaterThan(settingsStart)
+    expect(orderedIds.indexOf('search-option-preferences'))
+      .toBeGreaterThan(orderedIds.indexOf('search-option-memory'))
   })
 
   it.each([
     ['search-option-projects', '/chats/projects'],
     ['search-option-memory', '/profile/memory'],
+    ['search-option-preferences', '/profile/preferences'],
   ])('closes the modal and navigates from %s to %s', async (id, path) => {
     useSearchModal().isModalOpen.value = true
 
@@ -256,7 +263,7 @@ describe('Search/Modal.client', () => {
     expect(closeSpy).toHaveBeenCalled()
   })
 
-  it('navigates to Memory when it is the active row and Enter is pressed', async () => {
+  it('navigates to Preferences when it is the active row and Enter is pressed', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -265,7 +272,8 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await wrapper.find('input').trigger('keydown', { key: 'Enter' })
 
-    expect(mocks.navigateToMock).toHaveBeenCalledWith('/profile/memory')
+    expect(mocks.navigateToMock)
+      .toHaveBeenCalledWith('/profile/preferences')
   })
 
   it('marks section headings as aria-hidden', async () => {
@@ -575,7 +583,7 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
 
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-memory')
+      .toBe('search-option-preferences')
   })
 
   it('opens the modal on Cmd+K when logged in and no dialog is open', async () => {

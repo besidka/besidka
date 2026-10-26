@@ -912,8 +912,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isAutoWebSearchPreferred: isAutoWebSearchPreferred.value,
     savedWebSearchTool: prefStorage.getItem('settings_web_search_tool'),
   }))
+  const { defaultReasoningLevel } = useUserSetting()
   const reasoning = shallowRef<ReasoningLevel>(
-    normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
+    resolveInitialReasoningLevel(
+      defaultReasoningLevel.value,
+      prefStorage.getItem('settings_reasoning_level'),
+    ),
   )
   const pendingClarification = shallowRef<
     ResearchClarificationResponse | null

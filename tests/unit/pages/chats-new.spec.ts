@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../app/composables/messages'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import { useUserModel } from '../../../app/composables/model'
+import { useUserSetting } from '../../../app/composables/user-setting'
 import { useGatewayCatalogCache } from '../../../app/composables/gateway-catalog'
 import ChatsNewPage from '../../../app/pages/chats/new.vue'
 import {
@@ -199,6 +200,68 @@ describe('chats new page', () => {
 
     prefStorage.removeItem('settings_web_search_tool')
     prefStorage.removeItem('settings_reasoning_level')
+  })
+
+  describe('initial reasoning level', () => {
+    function mountWithReasoningProbe() {
+      const { stubs } = createSendStubs()
+
+      return mountSuspended(ChatsNewPage, {
+        global: {
+          stubs: {
+            ...stubs,
+            ChatInput: {
+              props: ['reasoning'],
+              template: '<div data-testid="reasoning-probe">{{ reasoning }}</div>',
+            },
+          },
+        },
+      })
+    }
+
+    async function loadServerDefault(defaultReasoningLevel: string | null) {
+      fetchMock.mockResolvedValue({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        defaultReasoningLevel,
+      })
+
+      await useUserSetting().syncForUser('user-1')
+    }
+
+    afterEach(() => {
+      useUserSetting().clearUserContext()
+    })
+
+    it('starts from the server default instead of the saved local level', async () => {
+      usePreferenceStorage().setItem('settings_reasoning_level', 'low')
+      await loadServerDefault('high')
+
+      wrapper = await mountWithReasoningProbe()
+
+      expect(wrapper.get('[data-testid="reasoning-probe"]').text())
+        .toBe('high')
+    })
+
+    it('treats a server default of off as set and ignores the local level', async () => {
+      usePreferenceStorage().setItem('settings_reasoning_level', 'low')
+      await loadServerDefault('off')
+
+      wrapper = await mountWithReasoningProbe()
+
+      expect(wrapper.get('[data-testid="reasoning-probe"]').text())
+        .toBe('off')
+    })
+
+    it('falls back to the saved local level when no server default exists', async () => {
+      await loadServerDefault(null)
+      usePreferenceStorage().setItem('settings_reasoning_level', 'low')
+
+      wrapper = await mountWithReasoningProbe()
+
+      expect(wrapper.get('[data-testid="reasoning-probe"]').text())
+        .toBe('low')
+    })
   })
 
   it('ignores stale project lookups after the user selects another project', async () => {

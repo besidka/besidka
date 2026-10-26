@@ -87,7 +87,9 @@
                 :class="{ 'tab-active': isTabActive(tab) }"
               >
                 <Icon :name="tab.icon" size="16" />
-                {{ tab.label }}
+                <span :class="{ 'max-sm:sr-only': !isTabActive(tab) }">
+                  {{ tab.label }}
+                </span>
               </NuxtLink>
             </nav>
             <NuxtPage />
@@ -123,6 +125,12 @@ const tabs = [
     to: '/profile/memory',
     label: 'Memory',
     icon: 'lucide:brain',
+    childRoutes: [],
+  },
+  {
+    to: '/profile/preferences',
+    label: 'Preferences',
+    icon: 'lucide:sliders-horizontal',
     childRoutes: [],
   },
 ]

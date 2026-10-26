@@ -7,6 +7,7 @@ interface SettingsRecord {
   id: number
   reasoningExpanded: boolean
   reasoningAutoHide: boolean
+  defaultReasoningLevel: string | null
   allowExternalLinks: boolean | null
   notificationPromptState: boolean | null
   sidebarPinned: boolean
@@ -30,6 +31,7 @@ type SettingsValues = Partial<Omit<SettingsRecord, 'id'>>
 const columnDefaults: Omit<SettingsRecord, 'id'> = {
   reasoningExpanded: false,
   reasoningAutoHide: true,
+  defaultReasoningLevel: null,
   allowExternalLinks: null,
   notificationPromptState: null,
   sidebarPinned: false,
@@ -343,6 +345,7 @@ describe('profile settings API', () => {
       sidebarPinned: false,
       favoriteModels: [],
       favoriteGatewayModels: {},
+      defaultReasoningLevel: null,
       ...memoryDefaults,
     })
   })
@@ -391,6 +394,7 @@ describe('profile settings API', () => {
       sidebarPinned: false,
       favoriteModels: [],
       favoriteGatewayModels: {},
+      defaultReasoningLevel: null,
       ...memoryDefaults,
     })
   })
@@ -427,6 +431,7 @@ describe('profile settings API', () => {
       sidebarPinned: false,
       favoriteModels: [],
       favoriteGatewayModels: {},
+      defaultReasoningLevel: null,
       ...memoryDefaults,
     })
   })
@@ -463,6 +468,7 @@ describe('profile settings API', () => {
       sidebarPinned: false,
       favoriteModels: [],
       favoriteGatewayModels: {},
+      defaultReasoningLevel: null,
       ...memoryDefaults,
     })
   })
@@ -499,6 +505,7 @@ describe('profile settings API', () => {
       sidebarPinned: false,
       favoriteModels: [],
       favoriteGatewayModels: {},
+      defaultReasoningLevel: null,
       ...memoryDefaults,
     })
   })
@@ -535,6 +542,7 @@ describe('profile settings API', () => {
       sidebarPinned: true,
       favoriteModels: [],
       favoriteGatewayModels: {},
+      defaultReasoningLevel: null,
       ...memoryDefaults,
     })
   })
@@ -571,9 +579,127 @@ describe('profile settings API', () => {
       sidebarPinned: false,
       favoriteModels: ['gpt-5.4', 'gemini-2.5-flash'],
       favoriteGatewayModels: {},
+      defaultReasoningLevel: null,
       ...memoryDefaults,
     })
   })
+
+  it.each([
+    'off',
+    'low',
+    'medium',
+    'high',
+  ])('saves and returns defaultReasoningLevel %s', async (level) => {
+    const getHandler = await getSettingsHandler()
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    const patchResponse = await patchHandler({
+      body: {
+        defaultReasoningLevel: level,
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      defaultReasoningLevel: level,
+    })
+
+    const getResponse = await getHandler({} as any)
+
+    expect(getResponse).toMatchObject({
+      defaultReasoningLevel: level,
+    })
+  })
+
+  it('clears defaultReasoningLevel when patched with null', async () => {
+    const getHandler = await getSettingsHandler()
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    await patchHandler({
+      body: {
+        defaultReasoningLevel: 'high',
+      },
+    } as any)
+
+    const patchResponse = await patchHandler({
+      body: {
+        defaultReasoningLevel: null,
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      defaultReasoningLevel: null,
+    })
+
+    const getResponse = await getHandler({} as any)
+
+    expect(getResponse).toMatchObject({
+      defaultReasoningLevel: null,
+    })
+  })
+
+  it.each([
+    'xhigh',
+    'HIGH',
+    '',
+    true,
+    1,
+  ])('rejects defaultReasoningLevel %j', async (level) => {
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    await expect(patchHandler({
+      body: {
+        defaultReasoningLevel: level,
+      },
+    } as any)).rejects.toMatchObject({
+      statusCode: 400,
+    })
+    expect(dbMock.spies.insert).not.toHaveBeenCalled()
+    expect(dbMock.spies.update).not.toHaveBeenCalled()
+  })
+
+  it('returns null for an unrecognised stored defaultReasoningLevel',
+    async () => {
+      const getHandler = await getSettingsHandler()
+      const dbMock = createDbMock()
+
+      vi.stubGlobal('useDb', () => dbMock.db)
+      vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+        user: {
+          id: '1',
+        },
+      }))
+      dbMock.seed({ defaultReasoningLevel: 'legacy' })
+
+      const getResponse = await getHandler({} as any)
+
+      expect(getResponse).toMatchObject({
+        defaultReasoningLevel: null,
+      })
+    })
 
   it('rejects a favoriteModels list over the cap', async () => {
     const patchHandler = await patchSettingsHandler()

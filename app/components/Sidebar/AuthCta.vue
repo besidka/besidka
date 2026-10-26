@@ -35,6 +35,15 @@
       circle
     />
     <UiButton
+      to="/profile/preferences"
+      :disabled="$route.path === '/profile/preferences'"
+      ghost
+      icon-name="lucide:sliders-horizontal"
+      :icon-only="true"
+      title="Preferences"
+      circle
+    />
+    <UiButton
       to="/profile/security"
       :disabled="$route.path === '/profile/security'"
       ghost
