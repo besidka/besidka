@@ -312,7 +312,7 @@ You can type or upload anything into Besidka. So your chats, projects and files 
 
 I do not ask for this information. I also cannot separate it from the rest of what you write without reading your chats, and I do not read them. If you include it, it is stored and sent together with everything else, to the provider or gateway you chose, and I do not use it for anything else.
 
-I am adding a one-time step in the app that asks for your **explicit consent** to this, under GDPR Art. 9(2)(a). You will be asked before your next message. Until then, if you want sensitive information you already stored removed, delete the chats, projects or files that contain it, or write to **:privacy-email-link{}** and I will delete them.
+You can delete sensitive information you already stored at any time: delete the chats, projects or files that contain it, or write to **:privacy-email-link{}** and I will delete them.
 
 ## Age limit
 
