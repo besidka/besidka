@@ -26,7 +26,10 @@ import type {
   KnowledgeNoticeData,
   OmittedContextFilesData,
 } from '#shared/types/model-context.d'
-import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
+import type {
+  KnowledgeDecisionMode,
+  KnowledgeTokenFamily,
+} from '#shared/types/project-knowledge.d'
 import {
   countKnowledgeChars,
   estimateKnowledgeTextTokens,
@@ -172,6 +175,7 @@ import {
   KNOWLEDGE_INSTRUCTION,
 } from '~~/server/utils/knowledge/tools'
 import { buildKnowledgeExcerpts } from '~~/server/utils/knowledge/pre-retrieval'
+import { readPreviousKnowledgeMode } from '~~/server/utils/knowledge/previous-mode'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { getChatSearchTools } from '~~/server/utils/memory/tools'
 import {
@@ -1700,6 +1704,7 @@ export default defineEventHandler(async (event) => {
             ? addKnowledgeContextUsage(usageWithEstimate, {
               steps,
               knowledgeTokens: knowledgeContext.knowledgeTokens,
+              knowledgeMode: knowledgeContext.decision.mode,
             })
             : usageWithEstimate
 
@@ -1891,6 +1896,7 @@ export default defineEventHandler(async (event) => {
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
           followUpToolNames,
           knowledgeTokens: knowledgeContext?.knowledgeTokens,
+          knowledgeMode: knowledgeContext?.decision.mode,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -2496,6 +2502,7 @@ async function resolveSendKnowledge(input: {
         family,
         fileSizesByStorageKey: input.fileSizesByStorageKey,
       }),
+      previousMode: readPreviousKnowledgeMode(input.chatMessages),
       estimated: {
         systemTokens: estimateTextTokens(input.baseInstructions ?? '', family),
         historyTokens: estimateEarlierMessagesTokens(
@@ -2949,6 +2956,7 @@ async function persistAssistantMessageFromStream(input: {
   gatewayPricing?: GatewayModel['pricing']
   followUpToolNames: Set<string>
   knowledgeTokens?: number
+  knowledgeMode?: KnowledgeDecisionMode
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
 }): Promise<PersistAssistantMessageResult> {
   try {
@@ -3128,6 +3136,7 @@ async function persistAssistantMessageFromStream(input: {
         : addKnowledgeContextUsage(usageWithEstimate, {
           steps: usageSteps,
           knowledgeTokens: input.knowledgeTokens,
+          knowledgeMode: input.knowledgeMode,
         })
     } catch (exception) {
       input.logger.set({

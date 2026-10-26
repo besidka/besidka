@@ -12,6 +12,7 @@ import {
   formatCostUsd,
 } from '../../../../../shared/utils/prompt-cache-estimate'
 import CacheInfo from '../../../../../app/components/Profile/Memory/CacheInfo.vue'
+import { usePreferenceStorage } from '../../../../../app/composables/preference-storage'
 
 interface FakeModel {
   id: string
@@ -33,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   entriesData: { value: null as unknown },
   models: {} as Record<string, unknown>,
   hydrate: vi.fn(),
+  isPreferencesAllowed: true,
 }))
 
 mockNuxtImport('useSelectedModelInfo', () => () => ({
@@ -42,6 +44,9 @@ mockNuxtImport('useSelectedModelInfo', () => () => ({
 }))
 mockNuxtImport('useNuxtData', () => () => ({ data: mocks.entriesData }))
 mockNuxtImport('hydrateGatewayCatalog', () => mocks.hydrate)
+mockNuxtImport('useCookieConsent', () => () => ({
+  isAllowed: () => mocks.isPreferencesAllowed,
+}))
 mockNuxtImport('getModel', () => (modelId: string) => {
   const entry = mocks.models[modelId] as {
     model: FakeModel
@@ -754,7 +759,43 @@ describe('Profile/Memory/CacheInfo', () => {
     const SEEN_KEY = 'knowledge-cache-info-seen'
 
     beforeEach(() => {
+      mocks.isPreferencesAllowed = true
       window.localStorage.clear()
+
+      const preferenceStorage = usePreferenceStorage()
+
+      preferenceStorage.removeItem(SEEN_KEY)
+      preferenceStorage.removeItem(`${SEEN_KEY}:project-1`)
+    })
+
+    afterEach(() => {
+      mocks.isPreferencesAllowed = true
+    })
+
+    it('does not write the seen flag to localStorage without preferences consent', async () => {
+      mocks.isPreferencesAllowed = false
+      stubViewport(false)
+
+      const first = await mountInfo({ collapsedAfterFirstView: true })
+
+      expect(first.get('details').attributes('open')).toBeDefined()
+      expect(window.localStorage.getItem(SEEN_KEY)).toBeNull()
+      expect(window.localStorage.length).toBe(0)
+
+      const second = await mountInfo({ collapsedAfterFirstView: true })
+
+      expect(second.get('details').attributes('open')).toBeUndefined()
+      expect(window.localStorage.getItem(SEEN_KEY)).toBeNull()
+    })
+
+    it('ignores a stored seen flag while preferences are not allowed', async () => {
+      mocks.isPreferencesAllowed = false
+      stubViewport(false)
+      window.localStorage.setItem(SEEN_KEY, '1')
+
+      const wrapper = await mountInfo({ collapsedAfterFirstView: true })
+
+      expect(wrapper.get('details').attributes('open')).toBeDefined()
     })
 
     it('is open the first time and records that it was seen', async () => {

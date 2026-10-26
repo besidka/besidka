@@ -6,6 +6,7 @@ import { defineEventHandler } from 'nuxt/server'
 import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 import { resolveKnowledgeProject } from '~~/server/utils/knowledge/access'
 import {
+  countUserKnowledgeItems,
   getKnowledgeProjectState,
   listKnowledgeItems,
 } from '~~/server/utils/knowledge/items'
@@ -72,6 +73,7 @@ export default defineEventHandler(
     }
 
     const items = await listKnowledgeItems({ userId, projectId })
+    const accountItems = await countUserKnowledgeItems(userId)
     const totals = items.reduce((sums, item) => {
       return {
         latinChars: sums.latinChars + item.latinChars,
@@ -113,6 +115,7 @@ export default defineEventHandler(
         knowledge: {
           operation: 'summary',
           items: totals.items,
+          accountItems,
           textBytes: totals.textBytes,
           version: state.version,
           packVersion: state.packVersion,
@@ -128,6 +131,7 @@ export default defineEventHandler(
       packVersion: state.packVersion,
       items,
       totals,
+      accountItems,
     }
   },
 )

@@ -1,6 +1,7 @@
 import type {
   KnowledgeCharCounts,
   KnowledgeDecision,
+  KnowledgeDecisionMode,
   KnowledgeMode,
   KnowledgeTokenFamily,
 } from '#shared/types/project-knowledge.d'
@@ -66,6 +67,7 @@ export interface ResolveProjectKnowledgeContextInput {
   toolsAllowed: boolean
   messageTokens: number
   measuredHistoryTokens: number | null
+  previousMode?: KnowledgeDecisionMode | null
   estimated: {
     systemTokens: number
     historyTokens: number
@@ -566,6 +568,7 @@ function logDecision(
       knowledge: {
         mode: context.decision.mode,
         reason: context.decision.reason,
+        previousMode: input.previousMode ?? null,
         tokens: context.knowledgeTokens,
         budget: context.decision.budgetTokens,
         items: itemCount,
@@ -588,6 +591,7 @@ function decide(
     maxOutputTokens: input.model.maxOutputTokens,
     messageTokens: input.messageTokens,
     measuredHistoryTokens: input.measuredHistoryTokens,
+    previousMode: input.previousMode ?? null,
     estimatedSystemTokens: input.estimated.systemTokens,
     estimatedHistoryTokens: input.estimated.historyTokens,
     toolTokens: input.estimated.toolTokens,

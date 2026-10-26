@@ -68,6 +68,7 @@
           :mode="knowledge.mode.value"
           :model="modelContext"
           :storage-total-bytes="storageStats?.total ?? null"
+          :account-items="knowledge.accountItems.value"
           :is-ready="isMounted"
         />
         <ProjectsKnowledgeModeSelector

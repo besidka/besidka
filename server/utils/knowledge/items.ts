@@ -71,6 +71,23 @@ export async function listKnowledgeItems(input: {
 }
 
 /**
+ * Counts every knowledge item the user owns across all projects, the figure
+ * `KNOWLEDGE_LIMITS.maxItemsPerUser` is enforced against. Scoped by user id
+ * only, so it never counts another account's rows.
+ */
+export async function countUserKnowledgeItems(
+  userId: number,
+): Promise<number> {
+  const row = await useDb()
+    .select({ total: sql<number>`count(*)` })
+    .from(schema.projectKnowledgeItems)
+    .where(eq(schema.projectKnowledgeItems.userId, userId))
+    .get()
+
+  return row?.total ?? 0
+}
+
+/**
  * Reads the three knowledge columns of a project the user owns. The project
  * id is an internal integer matched with raw SQL. Returns null when the
  * project does not exist or belongs to someone else; `version` is
