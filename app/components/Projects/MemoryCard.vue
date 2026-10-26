@@ -205,7 +205,7 @@
         >
           <span
             v-if="isRefreshing"
-            class="loading loading-spinner loading-xs"
+            class="loading loading-spinner size-4"
           />
           <span v-else>
             Refresh memory
@@ -230,7 +230,7 @@
         >
           <span
             v-if="isToggling"
-            class="loading loading-spinner loading-xs"
+            class="loading loading-spinner size-4"
           />
           <span v-else>
             {{ isDisabled ? 'Enable memory' : 'Disable memory' }}

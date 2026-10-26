@@ -53,7 +53,7 @@
         <template #icon>
           <span
             v-if="isPreviewing"
-            class="loading loading-spinner loading-xs"
+            class="loading loading-spinner size-4"
           />
           <Icon
             v-else
@@ -156,7 +156,7 @@
             v-if="isApplying"
             #icon
           >
-            <span class="loading loading-spinner loading-xs" />
+            <span class="loading loading-spinner size-4" />
           </template>
         </UiButton>
       </div>

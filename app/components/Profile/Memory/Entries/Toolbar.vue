@@ -43,7 +43,7 @@
         >
           <span
             v-if="isUpdating"
-            class="loading loading-spinner loading-xs"
+            class="loading loading-spinner size-4"
           />
           <Icon
             v-else
@@ -84,7 +84,7 @@
           >
             <span
               v-if="isBackfillRunning"
-              class="loading loading-spinner loading-xs"
+              class="loading loading-spinner size-4"
             />
             <Icon
               v-else
@@ -173,7 +173,7 @@
               >
                 <span
                   v-if="isBackfillRunning"
-                  class="loading loading-spinner loading-xs"
+                  class="loading loading-spinner size-4"
                 />
                 <Icon
                   v-else

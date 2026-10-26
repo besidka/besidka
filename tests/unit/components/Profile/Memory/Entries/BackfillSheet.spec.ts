@@ -661,6 +661,22 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       expect(hasTestId(wrapper, 'memory-backfill-confirm')).toBe(false)
     })
 
+    it('pins the start spinner to the icon size while starting', async () => {
+      const wrapper = await mountSheet()
+
+      mocks.fetch.mockImplementation(() => new Promise(() => {}))
+
+      await byTestId(wrapper, 'memory-backfill-start').trigger('click')
+      await flushPromises()
+
+      const spinnerClasses = byTestId(wrapper, 'memory-backfill-start')
+        .get('.loading')
+        .classes()
+
+      expect(spinnerClasses).toContain('size-4')
+      expect(spinnerClasses).not.toContain('loading-xs')
+    })
+
     it('drives a step as soon as the job is running', async () => {
       const wrapper = await mountSheet()
 
