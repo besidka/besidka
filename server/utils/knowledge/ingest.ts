@@ -49,6 +49,7 @@ import {
   deleteKnowledgeItemText,
   putKnowledgeItemText,
 } from '~~/server/utils/knowledge/text-store'
+import { bumpKnowledgeVersion } from '~~/server/utils/knowledge/version'
 
 const MAX_IDS_PER_STATEMENT = 90
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint failed'
@@ -980,6 +981,37 @@ async function readCommitState(
 }
 
 /**
+ * Marks inserted items as pending for the pack: bumps `knowledge_version`
+ * without building, so a later empty commit (or the next send) sees the pack
+ * behind its version and rebuilds it. When the bump fails the rows and text
+ * just written are rolled back, so the client's retry starts clean instead
+ * of finding duplicates it can no longer commit.
+ */
+async function markInsertedItemsPending(
+  context: KnowledgeIngestContext,
+  inserted: { insertedIds: string[], linkedFiles: LinkedFileSnapshot[] },
+): Promise<void> {
+  try {
+    await bumpKnowledgeVersion([context.projectId])
+  } catch (exception) {
+    recordKnowledgeError(context.logger, 'bump-version', exception)
+
+    await rollbackNewKnowledgeRows(context, {
+      insertedIds: inserted.insertedIds,
+      objectIds: inserted.insertedIds.flatMap((insertedId) => {
+        const itemId = decodeKnowledgeEntityId(insertedId)
+
+        return itemId === null ? [] : [itemId]
+      }),
+      linkedFiles: inserted.linkedFiles,
+    })
+    await invalidateStorageCache(context.userId, context.logger)
+
+    throw createCommitError()
+  }
+}
+
+/**
  * Settles a commit that changed nothing (no item added, none removed). A
  * pack that already matches the version is returned as is. A stale pack of a
  * project that has been committed before is rebuilt through the lazy path,
@@ -1040,7 +1072,9 @@ export async function commitKnowledgeProject(
  * to this project), per-project and per-user caps (422), user quota (413),
  * then guarded rows, text objects and the optional commit. `commit: true`
  * on a batch where every item was a duplicate changes nothing, so it only
- * settles a stale pack (no version bump). Counts and byte sizes are
+ * settles a stale pack (no version bump). A batch without `commit` that
+ * inserted rows bumps `knowledge_version` (no build), so a later empty
+ * commit rebuilds the pack. Counts and byte sizes are
  * recomputed here and never read from the client.
  */
 export async function ingestKnowledgeItems(
@@ -1134,6 +1168,10 @@ export async function ingestKnowledgeItems(
       fix: 'Refresh the project knowledge list and try again',
     },
   })
+  if (!input.commit) {
+    await markInsertedItemsPending(context, { insertedIds, linkedFiles })
+  }
+
   const savedRows = await selectItemRows(context, insertedIds)
   const items = insertedIds.flatMap((insertedId) => {
     const row = savedRows.get(insertedId)

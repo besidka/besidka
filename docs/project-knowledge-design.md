@@ -761,6 +761,18 @@ Audit fixes in the limits (P3, findings 5 to 8 of the memory security audit):
   `ensureKnowledgePackFresh` (no bump, honours the build backoff); only a
   never-committed project (version 0) takes the full commit once. The
   `commit: true` duplicates path used to force a build per request.
+- **Uncommitted inserts mark the pack pending.** An items `POST` without
+  `commit` that inserted at least one row bumps `knowledge_version` (no
+  build; if the bump fails the rows and text are rolled back). Without it,
+  the client's closing `commit({})` found `packVersion === version` on every
+  upload after the first and never rebuilt, so the new rows were listed but
+  never reached the pack. Now that commit sees the pack behind its version
+  and rebuilds it through the lazy path. A batch of only duplicates does not
+  bump, and a `commit: true` batch bumps once through the commit flow. Notes
+  already commit (and bump) on create and on a title or body edit. Between
+  batches the K2 send path copes: a pack behind its version is rebuilt in
+  `waitUntil` while the send reads the previous pack, items missing from that
+  pack are simply not injected yet, and nothing errors.
 - **The R2 sweep cannot pin to one page.** `sweepProjectKnowledge` marks a
   page failed on a failed batch delete or an unexpected error (counted,
   logged, listing continues), ends the run after three failed pages in a row,

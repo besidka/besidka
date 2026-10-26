@@ -223,16 +223,97 @@ describe('knowledge ingestion', () => {
       expect(objectKeys()).toHaveLength(3)
     })
 
-    it('reports state without committing when commit is not set', async () => {
+    it('bumps the version without building when commit is not set', async () => {
       harness.testDb.sqlite.prepare(
         'update projects set knowledge_version = 4,'
-        + ' knowledge_pack_version = 3 where id = ?',
+        + ' knowledge_pack_version = 4 where id = ?',
       ).run(PROJECT)
 
       const result = await ingest([fileItem()])
 
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
-      expect(result).toMatchObject({ version: 4, packVersion: 3 })
+      expect(result).toMatchObject({ version: 5, packVersion: 4 })
+    })
+
+    it('rebuilds a current pack on an empty commit after uncommitted batches', async () => {
+      harness.testDb.sqlite.prepare(
+        'update projects set knowledge_version = 4,'
+        + ' knowledge_pack_version = 4 where id = ?',
+      ).run(PROJECT)
+      mocks.ensureKnowledgePackFresh.mockImplementation(async () => {
+        const row = harness.testDb.getProjectRow(PROJECT)!
+
+        harness.testDb.sqlite.prepare(
+          'update projects set knowledge_pack_version = ? where id = ?',
+        ).run(row.knowledge_version, PROJECT)
+      })
+
+      await ingest([fileItem({ title: 'One', contentHash: HASH_A })])
+      await ingest([fileItem({ title: 'Two', text: 'two', contentHash: HASH_B })])
+
+      expect(harness.testDb.getProjectRow(PROJECT)).toMatchObject({
+        knowledge_version: 6,
+        knowledge_pack_version: 4,
+      })
+
+      const result = await commitKnowledgeRequest(
+        context(),
+        { remove: [], folderId: null },
+      )
+
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(result).toMatchObject({ version: 6, packVersion: 6 })
+    })
+
+    it('does not bump when every item of an uncommitted batch is a duplicate', async () => {
+      harness.testDb.sqlite.prepare(
+        'update projects set knowledge_version = 4,'
+        + ' knowledge_pack_version = 4 where id = ?',
+      ).run(PROJECT)
+      harness.testDb.insertItem({
+        userId: OWNER,
+        projectId: PROJECT,
+        contentHash: HASH_A,
+      })
+
+      const result = await ingest([fileItem({ contentHash: HASH_A })])
+
+      expect(result.skipped).toEqual([{ index: 0, reason: 'duplicate' }])
+      expect(result).toMatchObject({ version: 4, packVersion: 4 })
+    })
+
+    it('does not double-bump when commit is true', async () => {
+      harness.testDb.sqlite.prepare(
+        'update projects set knowledge_version = 4,'
+        + ' knowledge_pack_version = 4 where id = ?',
+      ).run(PROJECT)
+
+      const result = await ingest([fileItem()], { commit: true })
+
+      expect(mocks.commitKnowledgeChange).toHaveBeenCalledOnce()
+      expect(result.version).toBe(5)
+    })
+
+    it('rolls the rows back and answers 500 when the bump fails', async () => {
+      const failingDb = harness.testDb.db as unknown as {
+        update: () => unknown
+      }
+      const originalUpdate = failingDb.update.bind(failingDb)
+
+      failingDb.update = () => {
+        failingDb.update = originalUpdate
+
+        throw new Error('D1 is down')
+      }
+
+      await expectRejection(
+        ingest([fileItem()]),
+        { status: 500, message: 'Failed to update the project knowledge index' },
+      )
+
+      expect(harness.testDb.countItems(PROJECT)).toBe(0)
+      expect(objectKeys()).toEqual([])
     })
 
     it('runs the commit flow once when commit is true', async () => {
@@ -319,10 +400,10 @@ describe('knowledge ingestion', () => {
       expect(harness.bucket.calls).toEqual([])
     })
 
-    it('bumps the version when a committing batch only repeats an uncommitted one', async () => {
+    it('settles the pack when a committing batch only repeats an uncommitted one', async () => {
       const first = await ingest([fileItem({ contentHash: HASH_A })])
 
-      expect(first.version).toBe(0)
+      expect(first.version).toBe(1)
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
 
       const second = await ingest(
@@ -333,7 +414,8 @@ describe('knowledge ingestion', () => {
       expect(second.items).toEqual([])
       expect(second.skipped).toEqual([{ index: 0, reason: 'duplicate' }])
       expect(second.version).toBe(1)
-      expect(mocks.commitKnowledgeChange).toHaveBeenCalledOnce()
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
       expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version)
         .toBe(1)
     })
@@ -1145,6 +1227,8 @@ describe('knowledge ingestion', () => {
         extractor: 'client-unpdf',
       })])
 
+      const versionBeforePatch = harness.testDb.getProjectRow(PROJECT)
+        ?.knowledge_version
       const current = (await harness.testDb.db.query.projectKnowledgeItems
         .findFirst({ where: { projectId: PROJECT } }))!
       const updated = await updateKnowledgeItemMetadata(context(), current, {
@@ -1160,7 +1244,7 @@ describe('knowledge ingestion', () => {
       })
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
       expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version)
-        .toBeNull()
+        .toBe(versionBeforePatch)
     })
 
     it('clears the description with an empty string or null', async () => {
@@ -2180,6 +2264,10 @@ describe('knowledge ingestion', () => {
       ).run(PROJECT)
 
       await ingest([fileItem({ contentHash: HASH_A })])
+      harness.testDb.sqlite.prepare(
+        'update projects set knowledge_version = 3,'
+        + ' knowledge_pack_version = 3 where id = ?',
+      ).run(PROJECT)
       mocks.commitKnowledgeChange.mockClear()
 
       const result = await ingest(

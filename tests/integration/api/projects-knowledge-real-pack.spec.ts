@@ -133,4 +133,94 @@ describe('project knowledge routes with the real pack module', () => {
       }),
     ).toEqual([])
   })
+  it('rebuilds a current pack on an empty commit after an uncommitted batch', async () => {
+    const createHandler = await loadKnowledgeHandler('noteCreate')
+
+    await createHandler(knowledgeEvent({
+      projectId: projectPublicId,
+      body: { title: 'Plan', body: 'First body' },
+    }))
+
+    expect(harness.testDb.getProjectRow(PROJECT)).toMatchObject({
+      knowledge_version: 1,
+      knowledge_pack_version: 1,
+    })
+
+    const itemsHandler = await loadKnowledgeHandler('itemsCreate')
+
+    await itemsHandler(knowledgeEvent({
+      projectId: projectPublicId,
+      body: {
+        items: [{
+          title: 'Second upload',
+          mediaType: 'text/plain',
+          extractor: 'text',
+          extractStatus: 'ready',
+          text: 'Aurora launches in May.',
+        }],
+      },
+    }))
+
+    expect(harness.testDb.getProjectRow(PROJECT)).toMatchObject({
+      knowledge_version: 2,
+      knowledge_pack_version: 1,
+    })
+
+    const commitHandler = await loadKnowledgeHandler('commit')
+    const result = await commitHandler(knowledgeEvent({
+      projectId: projectPublicId,
+      body: {},
+    }))
+
+    expect(result).toMatchObject({ version: 2, packVersion: 2, removed: 0 })
+    expect(harness.testDb.getProjectRow(PROJECT)).toMatchObject({
+      knowledge_version: 2,
+      knowledge_pack_version: 2,
+    })
+
+    expect(harness.bucket.objects.has(
+      `knowledge/u${OWNER}/p${PROJECT}/pack/v2.jsonl.gz`,
+    )).toBe(true)
+    expect(harness.bucket.calls).toContainEqual({
+      operation: 'get',
+      key: `knowledge/u${OWNER}/p${PROJECT}/items/2.md`,
+    })
+  })
+
+  it('does not bump or rebuild when an uncommitted batch only repeats an item', async () => {
+    const itemsHandler = await loadKnowledgeHandler('itemsCreate')
+    const body = {
+      items: [{
+        title: 'Upload',
+        mediaType: 'text/plain',
+        extractor: 'text',
+        extractStatus: 'ready',
+        contentHash: 'c'.repeat(64),
+        text: 'Same text.',
+      }],
+    }
+
+    await itemsHandler(knowledgeEvent({ projectId: projectPublicId, body }))
+
+    const commitHandler = await loadKnowledgeHandler('commit')
+
+    await commitHandler(knowledgeEvent({
+      projectId: projectPublicId,
+      body: {},
+    }))
+
+    const before = harness.testDb.getProjectRow(PROJECT)
+
+    await itemsHandler(knowledgeEvent({ projectId: projectPublicId, body }))
+    await commitHandler(knowledgeEvent({
+      projectId: projectPublicId,
+      body: {},
+    }))
+
+    expect(before).toMatchObject({
+      knowledge_version: 1,
+      knowledge_pack_version: 1,
+    })
+    expect(harness.testDb.getProjectRow(PROJECT)).toEqual(before)
+  })
 })
