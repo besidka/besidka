@@ -313,6 +313,9 @@ describe('Profile/Memory/Entries/ImportSheet', () => {
       expect(button.text()).toContain('Importing...')
       expect(button.classes()).toContain('btn-disabled')
       expect(wrapper.find('.loading-spinner').exists()).toBe(true)
+      expect(wrapper.get('.loading-spinner').classes()).toContain('size-4')
+      expect(wrapper.get('.loading-spinner').classes())
+        .not.toContain('loading-xs')
       expect(byTestId<HTMLTextAreaElement>(
         wrapper,
         'memory-import-textarea',

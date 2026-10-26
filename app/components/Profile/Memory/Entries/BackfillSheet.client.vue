@@ -438,7 +438,7 @@
               <template #icon>
                 <span
                   v-if="isStarting"
-                  class="loading loading-spinner loading-xs"
+                  class="loading loading-spinner size-4"
                 />
                 <Icon
                   v-else

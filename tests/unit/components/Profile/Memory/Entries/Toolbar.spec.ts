@@ -104,6 +104,11 @@ function visibleLabel(wrapper: Wrapper, buttonTestId: string): string {
   return labels[0]!.text()
 }
 
+function expectSpinnerPinnedToIconSize(spinnerClasses: string[]) {
+  expect(spinnerClasses).toContain('size-4')
+  expect(spinnerClasses).not.toContain('loading-xs')
+}
+
 function sheetOpen(wrapper: Wrapper, testId: string): string | undefined {
   return wrapper.get(`[data-testid="${testId}"]`).attributes('data-open')
 }
@@ -587,6 +592,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       expect(runningButton.classes()).toContain('btn-disabled')
       expect(visibleLabel(wrapper, 'memory-update-now')).toBe('Updating...')
       expect(runningButton.find('.loading').exists()).toBe(true)
+      expectSpinnerPinnedToIconSize(runningButton.get('.loading').classes())
 
       finishHistory({
         pinned: [],
@@ -815,6 +821,10 @@ describe('Profile/Memory/Entries/Toolbar', () => {
 
       expect(visibleLabel(wrapper, 'memory-backfill')).toBe('Building… 12/48')
       expect(button.find('.loading').exists()).toBe(true)
+      expectSpinnerPinnedToIconSize(button.get('.loading').classes())
+      expectSpinnerPinnedToIconSize(
+        wrapper.get('[data-testid="memory-backfill-menu"] .loading').classes(),
+      )
       expect(wrapper.get('[data-testid="memory-backfill-menu"]').text())
         .toBe('Building… 12/48')
     })

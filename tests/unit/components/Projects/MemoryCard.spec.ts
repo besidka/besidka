@@ -657,6 +657,8 @@ describe('Projects/MemoryCard', () => {
 
       expect(refresh.attributes('disabled')).toBeDefined()
       expect(refresh.find('.loading').exists()).toBe(true)
+      expect(refresh.get('.loading').classes()).toContain('size-4')
+      expect(refresh.get('.loading').classes()).not.toContain('loading-xs')
       expect(wrapper.get('[data-testid="toggle-project-memory"]')
         .attributes('disabled')).toBeDefined()
     })
@@ -667,6 +669,8 @@ describe('Projects/MemoryCard', () => {
 
       expect(toggle.attributes('disabled')).toBeDefined()
       expect(toggle.find('.loading').exists()).toBe(true)
+      expect(toggle.get('.loading').classes()).toContain('size-4')
+      expect(toggle.get('.loading').classes()).not.toContain('loading-xs')
       expect(wrapper.get('[data-testid="refresh-project-memory"]')
         .attributes('disabled')).toBeDefined()
     })

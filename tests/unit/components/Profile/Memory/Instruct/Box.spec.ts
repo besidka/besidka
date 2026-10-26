@@ -134,6 +134,24 @@ describe('Profile/Memory/Instruct/Box', () => {
       expect(isDisabled(wrapper, 'memory-instruct-preview')).toBe(true)
     })
 
+  it('pins the preview spinner to the icon size while previewing',
+    async () => {
+      mocks.fetch.mockReturnValueOnce(new Promise(() => {}))
+
+      const wrapper = await mountBox()
+
+      await byTestId(wrapper, 'memory-instruct-text').setValue('Forget coffee')
+      await byTestId(wrapper, 'memory-instruct-preview').trigger('click')
+      await flushPromises()
+
+      const spinnerClasses = byTestId(wrapper, 'memory-instruct-preview')
+        .get('.loading')
+        .classes()
+
+      expect(spinnerClasses).toContain('size-4')
+      expect(spinnerClasses).not.toContain('loading-xs')
+    })
+
   it('previews with the project id and ticks everything but deletes',
     async () => {
       mocks.fetch.mockResolvedValueOnce(createPreview([

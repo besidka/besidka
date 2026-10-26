@@ -126,6 +126,33 @@ const DIAGNOSED_CONDITIONS_EN = String.raw`lupus|ibs|irritable bowel|arthritis`
   + String.raw`|hyperthyroidism|glaucoma|diabetes|depression|anxiety|adhd`
   + String.raw`|autism|ptsd|ocd|ms`
 
+const PRESCRIPTION_MEDICATIONS_EN = String.raw`sertraline|zoloft|fluoxetine`
+  + String.raw`|prozac|escitalopram|lexapro|citalopram|celexa|paroxetine|paxil`
+  + String.raw`|venlafaxine|effexor|duloxetine|cymbalta|fluvoxamine|bupropion`
+  + String.raw`|wellbutrin|mirtazapine|trazodone|amitriptyline|buspirone`
+  + String.raw`|quetiapine|seroquel|olanzapine|zyprexa|risperidone|risperdal`
+  + String.raw`|aripiprazole|abilify|lamotrigine|lamictal|valpro(?:ate|ic acid)`
+  + String.raw`|depakote|levetiracetam|keppra|topiramate|topamax|gabapentin`
+  + String.raw`|pregabalin|lyrica|alprazolam|xanax|lorazepam|ativan|diazepam`
+  + String.raw`|valium|clonazepam|klonopin|zolpidem|ambien|hydroxyzine`
+  + String.raw`|adderall|ritalin|methylphenidate|concerta|vyvanse`
+  + String.raw`|lisdexamfetamine|atomoxetine|strattera|modafinil`
+  + String.raw`|metformin|glipizide|semaglutide|ozempic|wegovy|tirzepatide`
+  + String.raw`|mounjaro|levothyroxine|synthroid|lisinopril|ramipril|enalapril`
+  + String.raw`|losartan|amlodipine|metoprolol|propranolol|warfarin|clopidogrel`
+  + String.raw`|apixaban|eliquis|xarelto|atorvastatin|rosuvastatin|simvastatin`
+  + String.raw`|omeprazole|pantoprazole|allopurinol|prednisone|methotrexate`
+  + String.raw`|hydroxychloroquine|adalimumab|humira|montelukast|ventolin`
+  + String.raw`|salbutamol|albuterol|tamoxifen|letrozole|anastrozole|finasteride`
+  + String.raw`|isotretinoin|accutane|naltrexone|buprenorphine|suboxone`
+  + String.raw`|methadone|oxycodone|hydrocodone|tramadol`
+
+const MEDICATION_QUANTITY_EN = String.raw`(?:\d+(?:\.\d+)?\s*(?:mg|mcg|ml|iu) (?:of )?`
+  + String.raw`|an? |some |my |daily |generic )*`
+
+const MEDICATION_SELF_EN = String.raw`(?:${I_AM}|i(?:'ve| have| had| was)?(?: been)?)`
+  + String.raw`(?: (?:now|still|currently|just|also|always|recently|regularly))?`
+
 const CRIME_WORDS_EN = String.raw`theft|fraud|assault|murder|manslaughter`
   + String.raw`|burglary|robbery|arson|drunk driving|drink driving|dui|dwi`
   + String.raw`|tax evasion|embezzlement|battery|kidnapping|trespassing`
@@ -405,6 +432,20 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
       en`pregnan\p{L}*`(['I am pregnant']),
       en`allerg\p{L}*`(['I am allergic to penicillin']),
       en`medications?`(['I take medication every morning']),
+      en`${MEDICATION_SELF_EN} (?:take|taking|took|taken|on|started|starting|stopped|stopping|quit|using|use|used|prescribed|switched to) ${MEDICATION_QUANTITY_EN}(?:${PRESCRIPTION_MEDICATIONS_EN})`([
+        'I take sertraline every morning',
+        'I\'m on 50 mg of zoloft',
+        'I have been taking metformin for years',
+        'I was prescribed quetiapine',
+      ]),
+      en`(?:takes|is taking|is on|was on|is prescribed|was prescribed|has been (?:taking|on)|started taking|stopped taking|prescribed (?:me|him|her|them)) ${MEDICATION_QUANTITY_EN}(?:${PRESCRIPTION_MEDICATIONS_EN})`([
+        'Takes sertraline every morning',
+        'She is on lisinopril',
+        'The doctor prescribed me prozac',
+      ]),
+      en`(?:my|his|her) ${MEDICATION_QUANTITY_EN}(?:${PRESCRIPTION_MEDICATIONS_EN})`([
+        'My sertraline dose went up',
+      ]),
       en`antidepressants?`(['I am on antidepressants']),
       en`insulin`(['I take insulin daily']),
       en`migraines?`(['I get migraines']),

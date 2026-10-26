@@ -287,7 +287,7 @@
                 v-if="isImporting"
                 #icon
               >
-                <span class="loading loading-spinner loading-xs" />
+                <span class="loading loading-spinner size-4" />
               </template>
             </UiButton>
           </template>
