@@ -5,7 +5,6 @@ type DbClient = ReturnType<typeof useDb>
 export interface MemoryRuntimeSettings {
   memoryEnabled: boolean
   chatSearchEnabled: boolean
-  aboutMe: string | null
 }
 
 export async function loadMemoryRuntimeSettings(input: {
@@ -17,17 +16,13 @@ export async function loadMemoryRuntimeSettings(input: {
     columns: {
       memoryEnabled: true,
       chatSearchEnabled: true,
-      aboutMe: true,
     },
   })
-
-  const aboutMe = settings?.aboutMe?.trim() ?? ''
 
   return {
     memoryEnabled: settings?.memoryEnabled
       ?? MEMORY_SETTING_DEFAULTS.memoryEnabled,
     chatSearchEnabled: settings?.chatSearchEnabled
       ?? MEMORY_SETTING_DEFAULTS.chatSearchEnabled,
-    aboutMe: aboutMe === '' ? MEMORY_SETTING_DEFAULTS.aboutMe : aboutMe,
   }
 }

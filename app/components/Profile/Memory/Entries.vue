@@ -40,13 +40,19 @@
             <slot name="extra-actions" />
           </template>
         </ProfileMemoryEntriesToolbar>
+        <ProfileMemoryInstructBox
+          v-if="settings.memoryEnabled"
+          :model-id="settings.profileMemoryModel"
+          @changed="refresh()"
+        />
         <details
           v-if="hasLegacyAboutMe"
+          open
           class="collapse collapse-arrow rounded-box border border-base-content/10"
           data-testid="memory-legacy-about-me"
         >
           <summary class="collapse-title text-sm font-semibold">
-            Earlier about me (not converted)
+            Earlier about me (not used in chats)
           </summary>
           <div class="collapse-content grid gap-3">
             <p
@@ -63,9 +69,11 @@
                 {{ settings.aboutMe }}
               </p>
             </div>
-            <p class="text-xs text-base-content/60">
-              This text is still sent with every chat until you save or
-              discard it.
+            <p
+              class="text-xs text-base-content/60"
+              data-testid="memory-legacy-about-me-note"
+            >
+              It isn't sent to chats until you keep it.
             </p>
             <div class="flex flex-wrap justify-end gap-2">
               <UiButton
@@ -73,18 +81,28 @@
                 outline
                 size="sm"
                 normal-case
-                text="Discard"
+                text="Discard old text"
                 :disabled="isRemovingAboutMe"
                 data-testid="memory-legacy-about-me-discard"
                 @click="discardLegacyAboutMe"
               />
               <UiButton
+                mode="neutral"
+                ghost
                 size="sm"
                 normal-case
-                text="Save as entry"
+                text="Edit and keep"
+                :disabled="isRemovingAboutMe"
+                data-testid="memory-legacy-about-me-edit"
+                @click="editLegacyAboutMe"
+              />
+              <UiButton
+                size="sm"
+                normal-case
+                text="Keep as new entry"
                 :disabled="isRemovingAboutMe"
                 data-testid="memory-legacy-about-me-save"
-                @click="saveLegacyAboutMe"
+                @click="keepLegacyAboutMe"
               />
             </div>
           </div>
@@ -233,16 +251,19 @@ const description = 'Everything Besidka keeps about you, grouped by '
 const legacyAboutMeReasons: Record<AboutMeNotMigratedReason, string> = {
   'too-long': 'It is too long to become a Profile entry (limit 1 KB). '
     + 'Shorten it when saving, or discard it.',
-  'profile-exists': 'You already have a Profile entry, so this was not '
-    + 'merged. Save it as its own entry or discard it.',
+  'profile-exists': 'This is your old About me text. It wasn\'t added '
+    + 'automatically because you already have a Profile entry. If it already '
+    + 'covers this, discard it. Otherwise keep it as a new entry, or open it '
+    + 'to edit first.',
   'memory-off': 'Turn on Use memory and it will be converted automatically.',
   'entries-full': 'Your account memory is full (30 entries). Delete one and '
     + 'this converts automatically.',
   'rejected': 'It contains details Besidka does not save to memory, so it '
-    + 'was not converted. Saving will be checked again and may be refused.',
+    + 'was not converted. Open it to edit those details out, or discard it.',
 }
 
-const GENERIC_LEGACY_ABOUT_ME_REASON = 'It is still sent with every chat.'
+const GENERIC_LEGACY_ABOUT_ME_REASON = 'This is your old About me text. It '
+  + 'wasn\'t added to memory automatically.'
 
 const UNKNOWN_PROJECT_NAME = 'Unknown project'
 
@@ -480,7 +501,7 @@ function openCreate(projectId: string | null) {
   isDetailOpen.value = true
 }
 
-function saveLegacyAboutMe() {
+function editLegacyAboutMe() {
   const aboutMe = props.settings.aboutMe
 
   if (!aboutMe?.trim()) {
@@ -495,6 +516,43 @@ function saveLegacyAboutMe() {
   selectedEntry.value = null
   modalProjectId.value = null
   isDetailOpen.value = true
+}
+
+async function keepLegacyAboutMe() {
+  const aboutMe = props.settings.aboutMe
+
+  if (!aboutMe?.trim() || isRemovingAboutMe.value) {
+    return
+  }
+
+  isRemovingAboutMe.value = true
+
+  try {
+    await $fetch('/api/v1/memory/entries', {
+      method: 'POST',
+      body: buildLegacyAboutMeEntryValues(
+        aboutMe,
+        hasAccountProfileEntry.value,
+      ),
+    })
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Failed to keep the earlier about me.',
+      [parsedException.why, 'Use Edit and keep to change it first.']
+        .filter(Boolean)
+        .join(' '),
+    )
+    isRemovingAboutMe.value = false
+
+    return
+  }
+
+  isRemovingAboutMe.value = false
+
+  await clearSavedLegacyAboutMe()
+  await refresh()
 }
 
 async function clearAboutMe() {
@@ -530,8 +588,7 @@ async function clearSavedLegacyAboutMe() {
 async function discardLegacyAboutMe() {
   const confirmation = await useConfirm({
     text: 'Discard earlier about me?',
-    subtitle: 'It will no longer be sent with your chats. '
-      + 'This cannot be undone.',
+    subtitle: 'The text will be deleted. This cannot be undone.',
     alert: true,
     actions: ['Discard'],
     labelDecline: 'Cancel',

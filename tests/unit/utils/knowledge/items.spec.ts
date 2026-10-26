@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { decodePublicId, encodePublicId } from '~~/server/utils/custom-db-types'
 import {
+  countUserKnowledgeItems,
   getKnowledgeProjectState,
   listKnowledgeItems,
   toKnowledgeItemWire,
@@ -78,6 +79,34 @@ describe('knowledge items', () => {
         return item.title
       })).toEqual(['Mine'])
       expect(foreign).toEqual([])
+    })
+  })
+
+  describe('countUserKnowledgeItems', () => {
+    it('counts the items of every project of the user, whatever their status', async () => {
+      testDb.insertProject({ id: 12, userId: OWNER })
+      testDb.insertItem({ userId: OWNER, projectId: PROJECT })
+      testDb.insertItem({ userId: OWNER, projectId: 12 })
+      testDb.insertItem({
+        userId: OWNER,
+        projectId: 12,
+        extractStatus: 'failed',
+      })
+
+      expect(await countUserKnowledgeItems(OWNER)).toBe(3)
+    })
+
+    it('never counts the items of another user', async () => {
+      testDb.insertItem({ userId: OWNER, projectId: PROJECT })
+      testDb.insertItem({ userId: STRANGER, projectId: 11 })
+      testDb.insertItem({ userId: STRANGER, projectId: 11 })
+
+      expect(await countUserKnowledgeItems(OWNER)).toBe(1)
+      expect(await countUserKnowledgeItems(STRANGER)).toBe(2)
+    })
+
+    it('is 0 for a user without items', async () => {
+      expect(await countUserKnowledgeItems(OWNER)).toBe(0)
     })
   })
 

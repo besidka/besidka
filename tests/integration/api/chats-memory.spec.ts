@@ -25,11 +25,12 @@ const PROJECT_INSTRUCTIONS = 'Always answer in a formal tone.'
 const SEARCH_QUERY = 'launch plan'
 
 /**
- * Route-level wiring of the memory index, the `aboutMe` block and the memory
- * tools. The two tool factories are stubs that keep the real shared budget,
- * so the settings gates, the budget sharing and the instruction order are
- * genuine while D1 access for the tools is not needed (the real tools have
- * their own database-backed spec). The index loader, the settings loader and
+ * Route-level wiring of the memory index and the memory tools (the legacy
+ * `aboutMe` column is stored but never reaches the prompt). The two tool
+ * factories are stubs that keep the real shared budget, so the settings
+ * gates, the budget sharing and the instruction order are genuine while D1
+ * access for the tools is not needed (the real tools have their own
+ * database-backed spec). The index loader, the settings loader and
  * `buildChatInstructions` run unmocked over a scripted `db.query`.
  */
 const mocks = vi.hoisted(() => ({
@@ -648,8 +649,8 @@ describe('memory send-path wiring', () => {
       expect(readAttribute('memoryTools')).toBeUndefined()
     })
 
-    it('still injects aboutMe while memory is off and registers no memory '
-      + 'tools', async () => {
+    it('never injects the legacy aboutMe while memory is off and registers '
+      + 'no memory tools', async () => {
       const { doStream, created } = await runSend({
         scenario: {
           settings: { memoryEnabled: false, aboutMe: ABOUT_ME_TEXT },
@@ -659,10 +660,9 @@ describe('memory send-path wiring', () => {
       })
       const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
 
-      expect(systemPrompt).toContain(ABOUT_ME_TEXT)
+      expect(systemPrompt).not.toContain(ABOUT_ME_TEXT)
       expect(systemPrompt).not.toContain('<memory>')
-      expect(systemPrompt.indexOf(ABOUT_ME_TEXT))
-        .toBeLessThan(systemPrompt.indexOf(CHAT_SEARCH_INSTRUCTION))
+      expect(systemPrompt).toBe(CHAT_SEARCH_INSTRUCTION)
       expect(created.memoryFindMany).not.toHaveBeenCalled()
       expect(mocks.memoryToolsInputs).toHaveLength(0)
     })
@@ -843,8 +843,8 @@ describe('memory send-path wiring', () => {
   })
 
   describe('instruction order', () => {
-    it('puts the index, then aboutMe, then the project prompt, the '
-      + 'chat-search line and the dated clause', async () => {
+    it('puts the index, then the project prompt, the chat-search line and '
+      + 'the dated clause, and never the legacy aboutMe', async () => {
       const { doStream } = await runSend({
         tools: ['web_search_brave'],
         scenario: {
@@ -864,12 +864,12 @@ describe('memory send-path wiring', () => {
       const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
       const positions = [
         systemPrompt.indexOf('<memory>'),
-        systemPrompt.indexOf(ABOUT_ME_TEXT),
         systemPrompt.indexOf(PROJECT_INSTRUCTIONS),
         systemPrompt.indexOf(CHAT_SEARCH_INSTRUCTION),
         systemPrompt.indexOf('Today\'s date'),
       ]
 
+      expect(systemPrompt).not.toContain(ABOUT_ME_TEXT)
       expect(positions[0]).toBe(0)
       expect(positions.every(position => position >= 0)).toBe(true)
       expect([...positions].sort((first, second) => first - second))
@@ -920,15 +920,15 @@ describe('memory send-path wiring', () => {
       expect(doStream).toHaveBeenCalledTimes(5)
       expect(continuationOptions?.tools).toBeUndefined()
       expect(continuationPrompt.startsWith('<memory>')).toBe(true)
-      expect(continuationPrompt).toContain(ABOUT_ME_TEXT)
+      expect(continuationPrompt).not.toContain(ABOUT_ME_TEXT)
       expect(continuationPrompt).not.toContain(CHAT_SEARCH_INSTRUCTION)
       expect(mainPrompt.startsWith(continuationPrompt)).toBe(true)
     })
   })
 
   describe('fail-closed settings', () => {
-    it('turns every flag off and drops aboutMe when the settings read '
-      + 'throws, without failing the chat', async () => {
+    it('turns every flag off when the settings read throws, without '
+      + 'failing the chat', async () => {
       const { doStream, assistantInsert, chunks, created } = await runSend({
         scenario: {
           settingsError: new Error('d1 unavailable'),
@@ -965,7 +965,7 @@ describe('memory send-path wiring', () => {
       const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
 
       expect(systemPrompt).not.toContain('<memory>')
-      expect(systemPrompt).toContain(ABOUT_ME_TEXT)
+      expect(systemPrompt).not.toContain(ABOUT_ME_TEXT)
       expect(readAttribute('memoryIndex')).toEqual({
         error: 'memory read failed',
       })

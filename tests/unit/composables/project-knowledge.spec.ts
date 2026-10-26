@@ -95,6 +95,7 @@ function createSummary(
       textBytes: items.reduce((sum, item) => sum + item.textBytes, 0),
       items: items.length,
     },
+    accountItems: items.length + 5,
     ...overrides,
   }
 }
@@ -180,12 +181,14 @@ describe('useProjectKnowledge', () => {
       expect(knowledge.totals.value.textBytes).toBe(100)
       expect(knowledge.version.value).toBe(3)
       expect(knowledge.packVersion.value).toBe(3)
+      expect(knowledge.accountItems.value).toBe(6)
       expect(knowledge.mode.value).toBe('auto')
 
       summaryData.value = undefined
 
       expect(knowledge.items.value).toEqual([])
       expect(knowledge.totals.value.items).toBe(0)
+      expect(knowledge.accountItems.value).toBe(0)
       expect(knowledge.version.value).toBeNull()
       expect(knowledge.mode.value).toBe('auto')
     })
@@ -594,6 +597,7 @@ describe('useProjectKnowledge', () => {
       })
       expect(summaryData.value?.version).toBe(4)
       expect(summaryData.value?.packVersion).toBeNull()
+      expect(summaryData.value?.accountItems).toBe(7)
     })
 
     it('addItems omits commit unless requested', async () => {
@@ -637,6 +641,7 @@ describe('useProjectKnowledge', () => {
       expect(summaryData.value?.items.map(item => item.id)).toEqual(['item-2'])
       expect(summaryData.value?.totals.textBytes).toBe(40)
       expect(summaryData.value?.version).toBe(4)
+      expect(summaryData.value?.accountItems).toBe(6)
     })
 
     it('patchItem sends the patch and replaces the item', async () => {

@@ -81,4 +81,24 @@ describe('History/ChatRow', () => {
     expect(noMatch.find('[data-testid="chat-content-match-badge"]').exists())
       .toBe(false)
   })
+
+  it('shows the memory indicator only for a chat excluded from memory',
+    async () => {
+      const excluded = await mountChatRow(createHistoryChat({
+        slug: 'excluded-chat',
+        memoryExcluded: true,
+      }))
+      const badge = excluded.find('[data-testid="chat-memory-excluded-badge"]')
+
+      expect(badge.exists()).toBe(true)
+      expect(badge.text()).toContain('Not used for memory')
+
+      const included = await mountChatRow(createHistoryChat({
+        slug: 'included-chat',
+        memoryExcluded: false,
+      }))
+
+      expect(included.find('[data-testid="chat-memory-excluded-badge"]')
+        .exists()).toBe(false)
+    })
 })

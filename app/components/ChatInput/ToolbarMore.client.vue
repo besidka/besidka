@@ -131,6 +131,22 @@
               >
             </label>
           </li>
+          <li v-if="memoryExcluded !== null">
+            <label
+              class="flex items-center gap-2 cursor-pointer"
+              :title="CHAT_MEMORY_EXCLUSION_HELPER"
+            >
+              <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="16" />
+              <span class="grow">{{ CHAT_MEMORY_EXCLUSION_LABEL }}</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-xs toggle-accent"
+                data-testid="new-chat-memory-exclusion-menu-item"
+                :checked="memoryExcluded"
+                @change="emit('toggle-memory-excluded')"
+              >
+            </label>
+          </li>
         </ul>
       </div>
     </div>
@@ -174,14 +190,17 @@ const props = withDefaults(defineProps<{
     name: string
   } | null
   filesCount?: number
+  memoryExcluded?: boolean | null
 }>(), {
   canDisableReasoning: true,
+  memoryExcluded: null,
 })
 
 const emit = defineEmits<{
   'select-web-search-provider': [value: WebSearchSelection]
   'select-exa-search-level': [level: ExaSearchLevel]
   'toggle-image-generation': []
+  'toggle-memory-excluded': []
   'open-project-picker': []
   'clear-project-context': []
   'open-files-select': []
@@ -202,6 +221,7 @@ const isAnyFeatureActive = computed<boolean>(() => {
     || props.isDeepResearchModel
     || (props.filesCount ?? 0) > 0
     || props.projectContext
+    || props.memoryExcluded
   )
 })
 

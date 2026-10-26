@@ -415,6 +415,25 @@ describe('estimateBackfill', () => {
     })
   })
 
+  it.each([
+    { providerId: 'anthropic', gatewayId: null, modelId: 'claude-test' },
+    { providerId: 'qwen', gatewayId: null, modelId: 'qwen-test' },
+    { providerId: 'deepseek', gatewayId: null, modelId: 'deepseek-test' },
+    { providerId: 'moonshotai', gatewayId: null, modelId: 'kimi-test' },
+    { providerId: null, gatewayId: 'openrouter', modelId: 'anthropic/claude' },
+  ] as const)('estimates Cyrillic with the $modelId tokenizer family, above '
+    + 'OpenAI', async (selection) => {
+    mocks.getModel.mockReturnValue({ model: null })
+    await chatWith([{ role: 'user', text: 'я'.repeat(2000) }])
+
+    const openai = await estimate(DIRECT_SELECTION)
+    const family = await estimate({ ...DIRECT_SELECTION, ...selection })
+
+    expect(family.inputTokens).toBeGreaterThan(openai.inputTokens)
+    expect(family.overheadTokensPerChat)
+      .toBeGreaterThan(openai.overheadTokensPerChat)
+  })
+
   it('counts Cyrillic text as more tokens than the same Latin length',
     async () => {
       const latinUser = userId
@@ -668,6 +687,153 @@ describe('estimateBackfill', () => {
 
       await expect(invalidateBackfillEstimate(userId)).resolves.toBeUndefined()
       vi.unstubAllGlobals()
+    })
+
+    describe('lookupBackfillEstimate', () => {
+      const START = new Date('2026-10-26T12:00:00.000Z').getTime()
+
+      function failingDb() {
+        const attempts = { count: 0 }
+        const db = new Proxy({}, {
+          get() {
+            attempts.count += 1
+
+            throw new Error('d1 unavailable')
+          },
+        })
+
+        return { db, attempts }
+      }
+
+      async function lookup(input: {
+        db?: unknown
+        selection?: typeof DIRECT_SELECTION | (typeof DIRECT_SELECTION & {
+          modelId: string
+        })
+      } = {}) {
+        const { lookupBackfillEstimate } = await import(
+          '~~/server/utils/memory/backfill-estimate'
+        )
+
+        return await lookupBackfillEstimate({
+          userId,
+          selection: input.selection ?? DIRECT_SELECTION,
+          createdBefore: EXTRACTION_NOW,
+          db: (input.db ?? testDb.db) as typeof testDb.db,
+        })
+      }
+
+      beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(START)
+      })
+
+      afterEach(() => {
+        vi.useRealTimers()
+        vi.unstubAllGlobals()
+      })
+
+      it('caches a failure, so a repeated GET does not recompute', async () => {
+        const kv = createKvStub()
+        const { db, attempts } = failingDb()
+
+        vi.stubGlobal('useKV', () => kv)
+
+        const first = await lookup({ db })
+        const attemptsAfterFirst = attempts.count
+
+        vi.setSystemTime(START + 45_000)
+
+        const second = await lookup({ db })
+
+        expect(first).toMatchObject({ status: 'failed' })
+        expect((first as { exception: Error }).exception.message)
+          .toBe('d1 unavailable')
+        expect(second).toEqual({ status: 'failed', exception: null })
+        expect(attemptsAfterFirst).toBeGreaterThan(0)
+        expect(attempts.count).toBe(attemptsAfterFirst)
+      })
+
+      it.each([
+        ['the failure marker expired', 61_000, 'ready'],
+        ['the failure marker is still fresh', 59_000, 'failed'],
+      ] as const)('recomputes only after %s', async (
+        _label,
+        elapsedMs,
+        status,
+      ) => {
+        const kv = createKvStub()
+
+        vi.stubGlobal('useKV', () => kv)
+        await chatWith([{ role: 'user', text: 'a'.repeat(500) }])
+        await lookup({ db: failingDb().db })
+        vi.setSystemTime(START + elapsedMs)
+
+        expect((await lookup()).status).toBe(status)
+      })
+
+      it.each([
+        ['inside the 30 s cooldown', 10_000, 'cooldown'],
+        ['after the cooldown', 31_000, 'ready'],
+      ] as const)('answers a model flip %s with %s', async (
+        _label,
+        elapsedMs,
+        status,
+      ) => {
+        const kv = createKvStub()
+
+        vi.stubGlobal('useKV', () => kv)
+        await chatWith([{ role: 'user', text: 'a'.repeat(500) }])
+
+        expect((await lookup()).status).toBe('ready')
+
+        vi.setSystemTime(START + elapsedMs)
+
+        const flipped = await lookup({
+          selection: { ...DIRECT_SELECTION, modelId: 'other' },
+        })
+
+        expect(flipped.status).toBe(status)
+        expect(kv.put.mock.calls.filter(([key]) => {
+          return key === `memory-backfill-estimate:${userId}`
+        })).toHaveLength(status === 'ready' ? 2 : 1)
+      })
+
+      it('computes right away after an invalidation inside the cooldown',
+        async () => {
+          const kv = createKvStub()
+
+          vi.stubGlobal('useKV', () => kv)
+          await chatWith([{ role: 'user', text: 'a'.repeat(500) }])
+
+          expect((await lookup()).status).toBe('ready')
+
+          const { invalidateBackfillEstimate } = await import(
+            '~~/server/utils/memory/backfill-estimate'
+          )
+
+          await invalidateBackfillEstimate(userId)
+          vi.setSystemTime(START + 15_000)
+
+          expect((await lookup()).status).toBe('ready')
+        })
+
+      it('serves a cached estimate without using the compute slot',
+        async () => {
+          const kv = createKvStub()
+
+          vi.stubGlobal('useKV', () => kv)
+          await chatWith([{ role: 'user', text: 'a'.repeat(500) }])
+          await lookup()
+          vi.setSystemTime(START + 5_000)
+
+          const cached = await lookup()
+
+          expect(cached.status).toBe('ready')
+          expect(kv.put.mock.calls.filter(([key]) => {
+            return key === `memory-backfill-estimate-compute:${userId}`
+          })).toHaveLength(1)
+        })
     })
 
     it('ignores a corrupt cached value', async () => {

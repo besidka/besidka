@@ -16,16 +16,17 @@ import type {
 } from '../../../setup/helpers/memory-extraction-db'
 
 const mocks = vi.hoisted(() => ({
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
   resolveMemoryModel: vi.fn(),
   acquireMemoryLease: vi.fn(),
   release: vi.fn(),
 }))
 
-vi.mock('ai', () => ({
-  generateObject: mocks.generateObject,
-  generateText: vi.fn(),
-}))
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
+
+  return { ...actual, generateText: mocks.generateText }
+})
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { publicIdMockFactory } = await import(
@@ -82,8 +83,8 @@ describe('sweepMemoryExtraction', () => {
         },
       }
     })
-    mocks.generateObject.mockResolvedValue({
-      object: { ops: [] },
+    mocks.generateText.mockResolvedValue({
+      output: { ops: [] },
       usage: { inputTokens: 10, outputTokens: 5 },
     })
   })
@@ -214,6 +215,25 @@ describe('sweepMemoryExtraction', () => {
       for (const chat of skippedChats) {
         expect(await wasProcessed(chat.id)).toBe(false)
       }
+    })
+
+    it('never selects a chat excluded from memory', async () => {
+      const excluded = await dueChat({ memoryExcluded: true })
+      const included = await dueChat({ memoryExcluded: false })
+      const unset = await dueChat()
+      const projectId = await seedProject(testDb.db, userId)
+      const excludedProjectChat = await dueChat({
+        projectId,
+        memoryExcluded: true,
+      })
+
+      const result = await sweep()
+
+      expect(result.selectedCount).toBe(2)
+      expect(await wasProcessed(excluded.id)).toBe(false)
+      expect(await wasProcessed(excludedProjectChat.id)).toBe(false)
+      expect(await wasProcessed(included.id)).toBe(true)
+      expect(await wasProcessed(unset.id)).toBe(true)
     })
 
     it('waits for the chat to be idle', async () => {
@@ -423,10 +443,10 @@ describe('sweepMemoryExtraction', () => {
       const first = await dueChat({ activityAt: minutesBefore(200) })
       const second = await dueChat({ activityAt: minutesBefore(100) })
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await new Promise(resolve => setTimeout(resolve, 80))
 
-        return { object: { ops: [] }, usage: {} }
+        return { output: { ops: [] }, usage: {} }
       })
 
       const result = await sweep({ maxRuntimeMs: 40 })
@@ -445,7 +465,7 @@ describe('sweepMemoryExtraction', () => {
 
         expect(first).toMatchObject({ selectedCount: 1, skippedCount: 1 })
         expect(second.selectedCount).toBe(0)
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
         expect(await readChat(chat.id)).toMatchObject({
           memoryExtractedAt: null,
           memoryExtractionFailures: 0,
@@ -496,7 +516,7 @@ describe('sweepMemoryExtraction', () => {
       const result = await sweep()
 
       expect(result.selectedCount).toBe(0)
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
 
       for (const chat of chats) {
         expect(await wasProcessed(chat.id)).toBe(false)
@@ -589,7 +609,7 @@ describe('sweepMemoryExtraction', () => {
           minutesBefore(25))
 
         const result = await sweep()
-        const prompt = mocks.generateObject.mock.calls[0]![0]
+        const prompt = mocks.generateText.mock.calls[0]![0]
           .messages[0].content as string
 
         expect(result.extractedCount).toBe(1)
@@ -634,7 +654,7 @@ describe('sweepMemoryExtraction', () => {
 
       expect(result.selectedCount).toBe(0)
       expect(await wasProjectProcessed(chat.id)).toBe(false)
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('decides dirtiness on the project watermark only', async () => {
@@ -700,12 +720,12 @@ describe('sweepMemoryExtraction', () => {
           now: EXTRACTION_NOW,
         })
 
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
 
         const result = await sweep()
 
         expect(result).toMatchObject({ selectedCount: 1, skippedCount: 1 })
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
       })
 
     it('does not reprocess the same messages when the manual refresh follows',
@@ -716,7 +736,7 @@ describe('sweepMemoryExtraction', () => {
         )
 
         await sweep()
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
 
         const manual = await extractChatMemory({
           chat,
@@ -731,7 +751,7 @@ describe('sweepMemoryExtraction', () => {
           status: 'skipped',
           reason: 'no-user-text',
         })
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
       })
   })
 
@@ -767,24 +787,25 @@ describe('sweepMemoryExtraction', () => {
     }
 
     it('starts from the partial opted-in index and reaches chats by the '
-      + 'composite user index', () => {
+      + 'partial due-chats index', () => {
       const plan = explain()
 
       expect(plan.some((detail) => {
-        return /user_settings.*idx_user_settings_extraction_enabled/.test(detail)
+        return /SCAN user_settings USING INDEX idx_user_settings_extraction_enabled/
+          .test(detail)
       })).toBe(true)
       expect(plan.some((detail) => {
-        return /SEARCH.*chats.*idx_chats_user_activity/.test(detail)
+        return /SEARCH.*chats.*idx_chats_memory_due/.test(detail)
       })).toBe(true)
       expect(plan.some((detail) => {
         return /SCAN (chats|c)\b/.test(detail)
       })).toBe(false)
     })
 
-    it('ranges the chats index from the opt-in cut-over to the idle cutoff, '
-      + 'so idle chats from before the opt-in are never read', () => {
+    it('ranges the due-chats index from the opt-in cut-over to the idle '
+      + 'cutoff, so idle chats from before the opt-in are never read', () => {
       expect(explain().some((detail) => {
-        return /idx_chats_user_activity \(user_id=\? AND activity_at>\? AND activity_at<\?\)/
+        return /idx_chats_memory_due \(user_id=\? AND activity_at>\? AND activity_at<\?\)/
           .test(detail)
       })).toBe(true)
     })
@@ -806,7 +827,7 @@ describe('sweepMemoryExtraction', () => {
         const result = await sweep()
 
         expect(result.selectedCount).toBe(0)
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
         expect(explain().some((detail) => {
           return /SCAN (chats|c)\b/.test(detail)
         })).toBe(false)
@@ -822,13 +843,13 @@ describe('sweepMemoryExtraction', () => {
         await dueChat({ activityAt: minutesBefore(100 - index) })
       }
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         running += 1
         maxRunning = Math.max(maxRunning, running)
         await new Promise(resolve => setTimeout(resolve, 10))
         running -= 1
 
-        return { object: { ops: [] }, usage: {} }
+        return { output: { ops: [] }, usage: {} }
       })
 
       await sweep()
@@ -849,7 +870,7 @@ describe('sweepMemoryExtraction', () => {
       const result = await sweep()
 
       expect(result).toMatchObject({ leasedCount: 1, extractedCount: 1 })
-      expect(mocks.generateObject).toHaveBeenCalledOnce()
+      expect(mocks.generateText).toHaveBeenCalledOnce()
       expect(await wasProcessed(leasedChat.id)).toBe(false)
       expect(await wasProcessed(freeChat.id)).toBe(true)
     })
@@ -857,9 +878,9 @@ describe('sweepMemoryExtraction', () => {
     it('counts a failing chat and keeps going', async () => {
       await dueChat({ activityAt: minutesBefore(100) })
       await dueChat({ activityAt: minutesBefore(90) })
-      mocks.generateObject
+      mocks.generateText
         .mockRejectedValueOnce(new Error('provider down'))
-        .mockResolvedValueOnce({ object: { ops: [] }, usage: {} })
+        .mockResolvedValueOnce({ output: { ops: [] }, usage: {} })
 
       const result = await sweep()
 
@@ -898,8 +919,8 @@ describe('sweepMemoryExtraction', () => {
     it('aggregates ops, drops and models across chats', async () => {
       await dueChat({ activityAt: minutesBefore(100) })
       await dueChat({ activityAt: minutesBefore(90) })
-      mocks.generateObject.mockResolvedValue({
-        object: {
+      mocks.generateText.mockResolvedValue({
+        output: {
           ops: [
             {
               op: 'create',
@@ -957,8 +978,8 @@ describe('sweepMemoryExtraction', () => {
       const logger = { set: vi.fn() }
 
       await dueChat()
-      mocks.generateObject.mockResolvedValue({
-        object: {
+      mocks.generateText.mockResolvedValue({
+        output: {
           ops: [
             {
               op: 'create',

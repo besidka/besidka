@@ -61,7 +61,7 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   `sensitive_content_consent_at`, `sensitive_content_consent_version`,
   `sensitive_content_consent_withdrawn_at` and `provider_transfer_consents`
   (JSON, per provider: `consentedAt`, `withdrawnAt`). The migration is
-  `.drizzle/migrations/20261026135419_legal_consent/migration.sql` (additive
+  `.drizzle/migrations/20261026144709_legal_consent/migration.sql` (additive
   `ALTER TABLE ... ADD`, no rebuild). Withdrawal writes a withdrawal timestamp
   and keeps the earlier ones. The columns go away with the account.
 - **Why not `CONSENT_DB.consent_receipts`.** That table is pseudonymous by design:

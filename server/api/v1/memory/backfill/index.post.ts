@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import { defineEventHandler } from 'nuxt/server'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import type { MemoryBackfillJobResponse } from '#shared/types/memory-backfill.d'
 import {
   claimBackfillCooldown,
@@ -8,6 +8,11 @@ import {
 } from '~~/server/utils/memory/backfill'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
+
+const startBodySchema = z.object({
+  restart: z.boolean().optional(),
+}).strict().optional()
 
 /**
  * POST /memory/backfill
@@ -17,7 +22,9 @@ import { requireLegalConsent } from '~~/server/utils/legal/consent'
  * answers 409 (progress is made by `POST /memory/backfill/step`, which never
  * starts one). A short per-user cooldown bounds repeated start attempts.
  * Needs memory and automatic memory updates on, and a usable memory model
- * (409 otherwise). Counts only.
+ * (409 otherwise). `{ restart: true }` is the explicit "read all past chats
+ * again": it ignores where earlier runs stopped and starts from the newest
+ * chat, under the same caps. Counts only.
  */
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -30,8 +37,25 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
+  await enforceMemoryRateLimit(
+    'write',
+    parseInt(session.user.id),
+    event,
+  )
+
+  const body = await readValidatedBody(event, startBodySchema.safeParse)
+
+  if (body.error) {
+    throw createError({
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
+    })
+  }
+
   const db = useDb()
   const userId = parseInt(session.user.id)
+  const restart = body.data?.restart === true
 
   await requireLegalConsent(userId)
 
@@ -47,7 +71,7 @@ export default defineEventHandler(async (event) => {
   await claimBackfillCooldown({ userId, action: 'start' })
 
   const response: MemoryBackfillJobResponse = {
-    job: await startBackfill({ userId, db, logger }),
+    job: await startBackfill({ userId, db, logger, restart }),
   }
 
   return response

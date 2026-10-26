@@ -5,6 +5,7 @@ import type { KnowledgeModelContext } from '~/types/knowledge-ui.d'
 import {
   buildKnowledgeMeterCopy,
   computeKnowledgeMeter,
+  describeKnowledgeAccountWarning,
   describeKnowledgeExtractError,
   describeKnowledgeFailureDetails,
   estimateKnowledgeItemTokens,
@@ -12,6 +13,7 @@ import {
   getKnowledgeItemName,
   getKnowledgeItemTypeLabel,
   groupKnowledgeItems,
+  isKnowledgeAccountLimitReached,
   isKnowledgePdf,
 } from '~/utils/project-knowledge-ui'
 
@@ -158,12 +160,47 @@ describe('project-knowledge-ui', () => {
       expect(describeKnowledgeExtractError('not-utf8')).toContain('UTF-8')
       expect(describeKnowledgeExtractError('unsupported'))
         .toContain('not supported')
+      expect(describeKnowledgeExtractError('text-missing'))
+        .toContain('stored text of this item is missing')
+      expect(describeKnowledgeExtractError('text-mismatch'))
+        .toContain('no longer matches this item')
       expect(describeKnowledgeExtractError('something-new'))
         .toBe('Besidka could not read this file.')
       expect(describeKnowledgeExtractError(null))
         .toBe('Besidka could not read this file.')
       expect(describeKnowledgeExtractError('Upload failed with a message'))
         .toBe('Upload failed with a message')
+    })
+  })
+
+  describe('describeKnowledgeAccountWarning', () => {
+    it('returns null below 90% of the account item limit', () => {
+      expect(describeKnowledgeAccountWarning(0)).toBeNull()
+      expect(describeKnowledgeAccountWarning(1_799)).toBeNull()
+    })
+
+    it('warns from 90% up to the limit', () => {
+      expect(describeKnowledgeAccountWarning(1_800)).toBe(
+        'Close to your account limit: 1,800 of 2,000 knowledge items across '
+        + 'all your projects. New items are blocked at 2,000.',
+      )
+      expect(describeKnowledgeAccountWarning(1_999)).toContain('1,999 of 2,000')
+    })
+
+    it('says the limit is reached at and above it', () => {
+      expect(describeKnowledgeAccountWarning(2_000)).toBe(
+        'Account limit reached: you have 2,000 of 2,000 knowledge items '
+        + 'across all your projects. Remove items from any project to add more.',
+      )
+      expect(describeKnowledgeAccountWarning(2_001)).toContain('2,001 of 2,000')
+    })
+
+    it('tracks the shared limit', () => {
+      expect(isKnowledgeAccountLimitReached(KNOWLEDGE_LIMITS.maxItemsPerUser))
+        .toBe(true)
+      expect(
+        isKnowledgeAccountLimitReached(KNOWLEDGE_LIMITS.maxItemsPerUser - 1),
+      ).toBe(false)
     })
   })
 

@@ -5,10 +5,16 @@ import {
   readUserMessageText,
 } from '~~/server/utils/memory/chat-context'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
+import { migrateAboutMeToProfileEntry } from '~~/server/utils/memory/about-me-migration'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import { createMemoryTestDb } from '../../../setup/helpers/memory-db'
 
 const USER_ID = 1
 const ABOUT_ME = 'I am a backend developer.'
+const REJECTED_ABOUT_ME = 'I have type 2 diabetes and take metformin daily.'
+const TOO_LONG_ABOUT_ME = 'a'.repeat(
+  MEMORY_LIMITS.maxAlwaysInjectedBodyBytes + 1,
+)
 
 describe('chat memory context', () => {
   let testDb: ReturnType<typeof createMemoryTestDb>
@@ -52,7 +58,6 @@ describe('chat memory context', () => {
       expect(settings).toEqual({
         memoryEnabled: true,
         chatSearchEnabled: true,
-        aboutMe: ABOUT_ME,
       })
       expect(loggerSet).not.toHaveBeenCalled()
     })
@@ -67,7 +72,6 @@ describe('chat memory context', () => {
       expect(settings).toEqual({
         memoryEnabled: true,
         chatSearchEnabled: true,
-        aboutMe: null,
       })
     })
 
@@ -82,7 +86,6 @@ describe('chat memory context', () => {
         expect(settings).toEqual({
           memoryEnabled: false,
           chatSearchEnabled: false,
-          aboutMe: null,
         })
         expect(loggerSet).toHaveBeenCalledWith({
           attributes: {
@@ -112,7 +115,6 @@ describe('chat memory context', () => {
   describe('buildMemoryInstructions', () => {
     function instructionsFor(input: {
       memoryEnabled: boolean
-      aboutMe?: string | null
       db?: typeof testDb.db
     }) {
       return buildMemoryInstructions({
@@ -124,7 +126,6 @@ describe('chat memory context', () => {
         settings: {
           memoryEnabled: input.memoryEnabled,
           chatSearchEnabled: true,
-          aboutMe: input.aboutMe ?? null,
         },
         hasMemoryTools: true,
         logger: { set: loggerSet },
@@ -136,52 +137,72 @@ describe('chat memory context', () => {
       expect(await instructionsFor({ memoryEnabled: false })).toBeNull()
     })
 
-    it('puts the index before aboutMe and logs the index figures',
-      async () => {
-        testDb.insertEntry({ userId: USER_ID, slug: 'cooking' })
-
-        const instructions = await instructionsFor({
-          memoryEnabled: true,
-          aboutMe: ABOUT_ME,
-        })
-
-        expect(instructions?.startsWith('<memory>')).toBe(true)
-        expect(instructions?.indexOf('</memory>'))
-          .toBeLessThan(instructions?.indexOf(ABOUT_ME) ?? -1)
-        expect(loggerSet).toHaveBeenCalledWith({
-          attributes: {
-            memoryIndex: {
-              tokens: expect.any(Number),
-              entryCount: 1,
-              trimSteps: [],
-              overBudget: false,
-            },
-          },
-        })
-      })
-
-    it('injects aboutMe without the index while memory is off', async () => {
+    it('returns the index alone and logs the index figures', async () => {
       testDb.insertEntry({ userId: USER_ID, slug: 'cooking' })
 
-      const instructions = await instructionsFor({
-        memoryEnabled: false,
-        aboutMe: ABOUT_ME,
-      })
+      const instructions = await instructionsFor({ memoryEnabled: true })
 
-      expect(instructions).toContain(ABOUT_ME)
-      expect(instructions).not.toContain('<memory>')
+      expect(instructions?.startsWith('<memory>')).toBe(true)
+      expect(instructions?.endsWith('</memory>')).toBe(true)
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          memoryIndex: {
+            tokens: expect.any(Number),
+            entryCount: 1,
+            trimSteps: [],
+            overBudget: false,
+          },
+        },
+      })
     })
 
-    it('drops the index, logs it and keeps aboutMe when the load throws',
+    it('sizes the index with the send model\'s tokenizer family',
+      async () => {
+        testDb.insertEntry({
+          userId: USER_ID,
+          slug: 'kuhnia',
+          title: 'Українська кухня',
+          description: 'Готує борщ і вареники щонеділі',
+        })
+
+        async function loggedTokens(
+          tokenFamily: 'openai' | 'anthropic',
+        ): Promise<number> {
+          loggerSet.mockClear()
+
+          await buildMemoryInstructions({
+            db: testDb.db,
+            userId: USER_ID,
+            projectId: null,
+            projectMemoryDisabled: false,
+            useAccountMemory: null,
+            settings: { memoryEnabled: true, chatSearchEnabled: true },
+            hasMemoryTools: true,
+            tokenFamily,
+            logger: { set: loggerSet },
+          })
+
+          return loggerSet.mock.calls[0]![0].attributes.memoryIndex.tokens
+        }
+
+        expect(await loggedTokens('anthropic'))
+          .toBeGreaterThan(await loggedTokens('openai'))
+      })
+
+    it('injects nothing while memory is off', async () => {
+      testDb.insertEntry({ userId: USER_ID, slug: 'cooking' })
+
+      expect(await instructionsFor({ memoryEnabled: false })).toBeNull()
+    })
+
+    it('drops the index and logs it when the load throws',
       async () => {
         const instructions = await instructionsFor({
           memoryEnabled: true,
-          aboutMe: ABOUT_ME,
           db: throwingDb('memory read failed'),
         })
 
-        expect(instructions).toContain(ABOUT_ME)
-        expect(instructions).not.toContain('<memory>')
+        expect(instructions).toBeNull()
         expect(loggerSet).toHaveBeenCalledWith({
           attributes: {
             memoryIndex: { error: 'memory read failed' },
@@ -231,9 +252,36 @@ describe('chat memory context', () => {
           expect(instructions).not.toContain(ABOUT_ME_HEADER)
         })
 
-      it('still injects the about-me section for an un-migrated user',
-        async () => {
-          testDb.insertUserSettings({ userId: USER_ID, aboutMe: ABOUT_ME })
+      it.each([
+        {
+          reason: 'rejected',
+          aboutMe: REJECTED_ABOUT_ME,
+          memoryEnabled: true,
+          seedProfile: false,
+        },
+        {
+          reason: 'memory-off',
+          aboutMe: ABOUT_ME,
+          memoryEnabled: false,
+          seedProfile: false,
+        },
+        {
+          reason: 'profile-exists',
+          aboutMe: ABOUT_ME,
+          memoryEnabled: true,
+          seedProfile: true,
+        },
+        {
+          reason: 'too-long',
+          aboutMe: TOO_LONG_ABOUT_ME,
+          memoryEnabled: true,
+          seedProfile: false,
+        },
+      ] as const)('never injects an about-me text the migration skipped as '
+        + '$reason', async ({ reason, aboutMe, memoryEnabled, seedProfile }) => {
+        testDb.insertUserSettings({ userId: USER_ID, aboutMe, memoryEnabled })
+
+        if (seedProfile) {
           testDb.insertEntry({
             userId: USER_ID,
             category: 'profile',
@@ -242,13 +290,20 @@ describe('chat memory context', () => {
             description: 'Existing profile',
             body: 'Existing body',
           })
+        }
 
-          const instructions = await instructionsFromStoredSettings()
-
-          expect(instructions).toContain('Existing body')
-          expect(instructions).toContain(ABOUT_ME_HEADER)
-          expect(instructions).toContain(ABOUT_ME)
+        const outcome = await migrateAboutMeToProfileEntry({
+          db: testDb.db,
+          userId: USER_ID,
+          logger: { set: loggerSet },
+          recordCompliance: false,
         })
+        const instructions = await instructionsFromStoredSettings()
+
+        expect(outcome).toEqual({ status: 'skipped', reason })
+        expect(instructions ?? '').not.toContain(ABOUT_ME_HEADER)
+        expect(instructions ?? '').not.toContain(aboutMe)
+      })
     })
 
     it('never injects a legacy special entry', async () => {
@@ -294,7 +349,6 @@ describe('chat memory context', () => {
         useAccountMemory: boolean | null,
         projectMemoryDisabled: boolean | null,
         db: typeof testDb.db = testDb.db,
-        aboutMe: string | null = null,
       ) {
         return buildMemoryInstructions({
           db,
@@ -305,8 +359,6 @@ describe('chat memory context', () => {
           settings: {
             memoryEnabled: true,
             chatSearchEnabled: true,
-            memoryIncludeSensitive: false,
-            aboutMe,
           },
           hasMemoryTools: true,
           logger: { set: loggerSet },
@@ -345,40 +397,6 @@ describe('chat memory context', () => {
       it('injects nothing when disabled and account memory is hidden', async () => {
         expect(await instructionsForProject(false, true)).toBeNull()
       })
-
-      it.each([
-        ['project memory on, account memory shown', null, false],
-        ['project memory off, account memory shown', null, true],
-        ['project memory on, account memory hidden', false, false],
-        ['project memory off, account memory hidden', false, true],
-        ['project status unknown, account memory hidden', false, null],
-      ] as const)('keeps the un-migrated about-me text: %s', async (
-        _label,
-        useAccountMemory,
-        projectMemoryDisabled,
-      ) => {
-        const instructions = await instructionsForProject(
-          useAccountMemory,
-          projectMemoryDisabled,
-          testDb.db,
-          ABOUT_ME,
-        )
-
-        expect(instructions).toContain(ABOUT_ME)
-      })
-
-      it('injects only the about-me text when the project hides account memory',
-        async () => {
-          const instructions = await instructionsForProject(
-            false,
-            true,
-            testDb.db,
-            ABOUT_ME,
-          )
-
-          expect(instructions).toContain(ABOUT_ME)
-          expect(instructions).not.toContain('<memory>')
-        })
 
       it('fails closed when the status could not be determined', async () => {
         const instructions = await instructionsForProject(null, null)

@@ -162,10 +162,11 @@ const ANTHROPIC_PROVIDER_ID = 'anthropic'
 const ANTHROPIC_MODEL_PREFIX = 'anthropic/'
 
 const { selection, gatewayModel, name: modelName } = useSelectedModelInfo()
-const prefStorage = usePreferenceStorage()
 const { data: entriesData } = useNuxtData<MemoryEntriesResponse>(
   MEMORY_ENTRIES_KEY,
 )
+
+const preferenceStorage = usePreferenceStorage()
 
 const isExpanded = shallowRef<boolean>(true)
 const isMounted = shallowRef<boolean>(false)
@@ -178,7 +179,7 @@ const seenScope = computed<string>(() => {
 function readSeenScopes(): string[] {
   try {
     const parsed: unknown = JSON.parse(
-      prefStorage.getItem(SEEN_STORAGE_KEY) ?? '[]',
+      preferenceStorage.getItem(SEEN_STORAGE_KEY) ?? '[]',
     )
 
     return Array.isArray(parsed)
@@ -196,7 +197,7 @@ function readSeenFlag(): boolean {
 }
 
 function writeSeenFlag() {
-  prefStorage.setItem(
+  preferenceStorage.setItem(
     SEEN_STORAGE_KEY,
     JSON.stringify([...readSeenScopes(), seenScope.value]),
   )

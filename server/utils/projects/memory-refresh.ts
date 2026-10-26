@@ -154,7 +154,14 @@ async function selectChatsWithUnreadUserText(
   userId: number,
 ) {
   const recentChats = await db.query.chats.findMany({
-    where: { userId, projectId },
+    where: {
+      userId,
+      projectId,
+      OR: [
+        { memoryExcluded: { isNull: true } },
+        { memoryExcluded: false },
+      ],
+    },
     columns: { id: true, projectMemorySummaryUpdatedAt: true },
     orderBy: { activityAt: 'desc' },
     limit: PROJECT_MEMORY_LIMITS.maxChatsConsidered,

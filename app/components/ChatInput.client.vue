@@ -118,6 +118,24 @@
                     <Icon name="lucide:x" size="12" />
                   </button>
                 </div>
+                <button
+                  v-if="memoryExcluded !== null"
+                  type="button"
+                  class="btn btn-xs btn-accent"
+                  :class="memoryExcluded
+                    ? 'rounded-full'
+                    : 'btn-ghost btn-ghost-legacy !px-1.5 rounded-full'"
+                  :aria-pressed="memoryExcluded"
+                  :aria-label="CHAT_MEMORY_EXCLUSION_LABEL"
+                  :title="CHAT_MEMORY_EXCLUSION_TOOLTIP"
+                  data-testid="new-chat-memory-exclusion"
+                  @click="toggleMemoryExcluded"
+                >
+                  <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="14" />
+                  <span v-if="memoryExcluded">
+                    {{ CHAT_MEMORY_EXCLUSION_INDICATOR }}
+                  </span>
+                </button>
                 <LazyChatInputFilesTrigger
                   v-if="!isDeepResearchModel"
                   hydrate-on-idle
@@ -212,6 +230,8 @@
                 :display-project-picker="shouldDisplayProjectPicker"
                 :project-context="projectContext"
                 :files-count="files.length"
+                :memory-excluded="memoryExcluded"
+                @toggle-memory-excluded="toggleMemoryExcluded"
                 @select-web-search-provider="selectWebSearchProvider"
                 @select-exa-search-level="selectExaSearchLevel"
                 @toggle-image-generation="toggleImageGeneration"
@@ -360,6 +380,14 @@ const message = defineModel<string>('message', {
 const files = defineModel<FileMetadata[]>('files', {
   default: () => [],
 })
+
+const memoryExcluded = defineModel<boolean | null>('memoryExcluded', {
+  default: null,
+})
+
+function toggleMemoryExcluded() {
+  memoryExcluded.value = !memoryExcluded.value
+}
 
 const tools = defineModel<Tools>('tools', {
   default: () => [],

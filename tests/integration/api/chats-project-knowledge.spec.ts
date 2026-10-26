@@ -727,8 +727,9 @@ describe('project knowledge send-path wiring', () => {
     stubChatProvider()
   })
 
-  it('injects the full block on a 1M direct model after the memory block '
-    + 'and the project prompt and before the chat-search line', async () => {
+  it('injects the full block on a 1M direct model after the project prompt '
+    + 'and before the chat-search line, without the legacy about-me text',
+  async () => {
     mocks.isChatSearchToolEnabled = true
 
     const { doStream, assistantInsert, loadPack } = await runSend({
@@ -736,7 +737,6 @@ describe('project knowledge send-path wiring', () => {
     })
     const callOptions = doStream.mock.calls[0]?.[0] as any
     const systemPrompt = readSystemPrompt(callOptions)
-    const aboutMeIndex = systemPrompt.indexOf('ABOUT_ME_MARKER')
     const projectIndex = systemPrompt.indexOf('PROJECT_RULES')
     const blockIndex = systemPrompt.indexOf('<project_knowledge>')
     const chatSearchIndex = systemPrompt.indexOf(CHAT_SEARCH_INSTRUCTION)
@@ -745,8 +745,8 @@ describe('project knowledge send-path wiring', () => {
       expect.objectContaining({ userId: 1, projectId: PROJECT_INTERNAL_ID }),
     )
     expect(loadPack).toHaveBeenCalledTimes(1)
-    expect(aboutMeIndex).toBeGreaterThanOrEqual(0)
-    expect(projectIndex).toBeGreaterThan(aboutMeIndex)
+    expect(systemPrompt).not.toContain('ABOUT_ME_MARKER')
+    expect(projectIndex).toBeGreaterThanOrEqual(0)
     expect(blockIndex).toBeGreaterThan(projectIndex)
     expect(chatSearchIndex).toBeGreaterThan(blockIndex)
     expect(systemPrompt).toContain(NOTE_TEXT)
@@ -1112,6 +1112,94 @@ describe('project knowledge send-path wiring', () => {
       mode: 'full',
       reason: 'within-budget',
     }))
+  })
+
+  describe('mode hysteresis across sends', () => {
+    const KNOWLEDGE_IN_BAND = {
+      items: [{ latinChars: 232_000, textBytes: 232_000 }],
+    }
+
+    function previousAnswer(knowledgeMode?: 'full' | 'search' | 'none') {
+      return [{
+        id: 2,
+        publicId: 'assistant-public-0',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Earlier answer' }],
+        tools: [],
+        reasoning: 'off',
+        usage: {
+          model: DIRECT_MODEL_ID,
+          provider: 'openai',
+          inputTokens: 500,
+          outputTokens: 40,
+          totalTokens: 540,
+          ...(knowledgeMode ? { knowledgeMode } : {}),
+        },
+        createdAt: new Date('2026-10-25T09:01:00.000Z'),
+      }]
+    }
+
+    it('keeps searching in the 85% to 100% band after a search send', async () => {
+      const { assistantInsert } = await runSend({
+        scenario: KNOWLEDGE_IN_BAND,
+        messages: previousAnswer('search'),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'search',
+        reason: 'hysteresis',
+        previousMode: 'search',
+      }))
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        knowledgeMode: 'search',
+        knowledgeTokens: 0,
+      }))
+    })
+
+    it('stays full in the same band after a full send', async () => {
+      const { assistantInsert } = await runSend({
+        scenario: KNOWLEDGE_IN_BAND,
+        messages: previousAnswer('full'),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'full',
+        reason: 'within-budget',
+        previousMode: 'full',
+      }))
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        knowledgeMode: 'full',
+      }))
+    })
+
+    it('uses the plain budget rule for a chat that has no recorded mode', async () => {
+      await runSend({
+        scenario: KNOWLEDGE_IN_BAND,
+        messages: previousAnswer(),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'full',
+        reason: 'within-budget',
+        previousMode: null,
+      }))
+    })
+
+    it('returns to full once the knowledge is under 85% of the budget', async () => {
+      await runSend({
+        scenario: { items: [{ latinChars: 200_000, textBytes: 200_000 }] },
+        messages: previousAnswer('search'),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'full',
+        reason: 'within-budget',
+      }))
+    })
   })
 
   it('never loads knowledge for a chat outside a project', async () => {

@@ -128,7 +128,7 @@ describe('useMemoryBackfill', () => {
 
       await backfill.load()
 
-      expect(mocks.fetch).toHaveBeenCalledWith(BACKFILL_URL)
+      expect(mocks.fetch).toHaveBeenCalledWith(BACKFILL_URL, { query: {} })
       expect(backfill.estimate.value).toEqual(estimate)
       expect(backfill.job.value).toBeNull()
       expect(backfill.reason.value).toBeNull()
@@ -229,6 +229,29 @@ describe('useMemoryBackfill', () => {
       expect(backfill.job.value).toEqual(job)
       expect(backfill.isRunning.value).toBe(true)
       expect(backfill.isStarting.value).toBe(false)
+    })
+
+    it.each([
+      [{}, { query: {} }, { method: 'POST' }],
+      [
+        { restart: true },
+        { query: { restart: 'true' } },
+        { method: 'POST', body: { restart: true } },
+      ],
+    ])('sends the restart flag only when asked (%o)', async (
+      options,
+      loadInit,
+      startInit,
+    ) => {
+      mocks.fetch.mockResolvedValue({ job: createJob() })
+
+      const backfill = useMemoryBackfill()
+
+      await backfill.load(options)
+      await backfill.start(options)
+
+      expect(mocks.fetch).toHaveBeenNthCalledWith(1, BACKFILL_URL, loadInit)
+      expect(mocks.fetch).toHaveBeenNthCalledWith(2, BACKFILL_URL, startInit)
     })
 
     it('ignores a second start while one is in flight', async () => {

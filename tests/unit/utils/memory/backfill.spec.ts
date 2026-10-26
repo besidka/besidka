@@ -272,6 +272,14 @@ describe('memory backfill', () => {
       expect((await start()).totalChats).toBe(1)
     })
 
+    it('leaves chats excluded from memory out of the total', async () => {
+      await chat(10)
+      await chat(20, userId, { memoryExcluded: false })
+      await chat(30, userId, { memoryExcluded: true })
+
+      expect((await start()).totalChats).toBe(2)
+    })
+
     it('caps the total at the newest backfillMaxChats chats', async () => {
       for (let index = 0; index <= MEMORY_LIMITS.backfillMaxChats; index++) {
         await chat(10 + index)
@@ -370,6 +378,17 @@ describe('memory backfill', () => {
           }),
         }),
       )
+    })
+
+    it('never visits a chat excluded from memory', async () => {
+      const included = await chat(10)
+      const excluded = await chat(20, userId, { memoryExcluded: true })
+      const progress = await start()
+
+      await advance(progress.id, { chatsLimit: 5 })
+
+      expect(processedChatIds()).toEqual([included.id])
+      expect(processedChatIds()).not.toContain(excluded.id)
     })
 
     it('breaks ties on equal activity by newest id first', async () => {
@@ -1412,6 +1431,99 @@ describe('memory backfill', () => {
 
         expect(second.totalChats).toBe(3)
         expect(processedChatIds()).toEqual(chatIds.slice(2))
+      })
+
+    async function finishFirstRun(kind: 'all-read' | 'cancelled') {
+      const first = await start()
+
+      if (kind === 'all-read') {
+        await runToEnd(first.id)
+
+        return
+      }
+
+      await advance(first.id, { chatsLimit: 2 })
+
+      const { cancelBackfill } = await import(
+        '~~/server/utils/memory/backfill'
+      )
+
+      await cancelBackfill({ userId, db: testDb.db })
+    }
+
+    it.each(['all-read', 'cancelled'] as const)(
+      'restart reads every chat again from the newest after a %s run',
+      async (kind) => {
+        const chatIds = await seedHistory(5)
+
+        await finishFirstRun(kind)
+        mocks.extractChatMemory.mockClear()
+
+        const { startBackfill } = await import(
+          '~~/server/utils/memory/backfill'
+        )
+        const restarted = await startBackfill({
+          userId,
+          db: testDb.db,
+          logger,
+          now: EXTRACTION_NOW,
+          restart: true,
+        })
+
+        await runToEnd(restarted.id)
+
+        expect(restarted.totalChats).toBe(5)
+        expect(processedChatIds()).toEqual(chatIds)
+      },
+    )
+
+    it.each(['all-read', 'cancelled'] as const)(
+      'a memory reset forgets where a %s run stopped',
+      async (kind) => {
+        const chatIds = await seedHistory(5)
+        const otherUser = await seedUser(testDb.db, { memoryEnabled: true })
+
+        await seedBackfillJob(testDb.db, otherUser, {
+          status: 'completed',
+          processedChats: 1,
+        })
+        await finishFirstRun(kind)
+        mocks.extractChatMemory.mockClear()
+
+        const { clearBackfillWindow } = await import(
+          '~~/server/utils/memory/backfill'
+        )
+
+        await clearBackfillWindow({ userId, db: testDb.db })
+
+        const second = await start()
+
+        await runToEnd(second.id)
+
+        expect(second.totalChats).toBe(5)
+        expect(processedChatIds()).toEqual(chatIds)
+        expect(mocks.invalidateBackfillEstimate).toHaveBeenCalledWith(userId)
+        expect(await testDb.db.query.memoryBackfillJobs.findMany({
+          where: { userId: otherUser },
+        })).toHaveLength(1)
+      },
+    )
+
+    it('a memory reset cancels the running job before forgetting it',
+      async () => {
+        await seedHistory(5)
+
+        const running = await start()
+        const { clearBackfillWindow } = await import(
+          '~~/server/utils/memory/backfill'
+        )
+
+        await clearBackfillWindow({ userId, db: testDb.db })
+
+        expect(await readJob(running.id)).toBeUndefined()
+        expect(await testDb.db.query.memoryBackfillJobs.findMany({
+          where: { userId },
+        })).toHaveLength(0)
       })
   })
 

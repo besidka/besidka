@@ -3,7 +3,7 @@ import type {
   MemoryScope,
 } from '#shared/types/memory.d'
 import { and, eq, isNull, notInArray, sql } from 'drizzle-orm'
-import { generateObject } from 'ai'
+import { Output, generateText } from 'ai'
 import { getModel } from '#shared/utils/model'
 import * as schema from '~~/server/db/schema'
 import {
@@ -291,7 +291,9 @@ async function memoryExtractionBumpProjectMetadata(
  * manual pass never runs in profile scope. The chat is re-read after the model
  * call for the same reason, and a chat deleted meanwhile is skipped as
  * `chat-unavailable` so no entry cites a chat whose memory was already
- * detached. `explicit` marks a pass the user asked
+ * detached. A chat the user excluded from memory is skipped as
+ * `memory-excluded` for every trigger, both before and after the model call.
+ * `explicit` marks a pass the user asked
  * for (extract-now): it needs only memory on, ignores the opt-in and the
  * cut-over, floors the window at the chat's own watermark, and behaves like
  * `manual` for the attempt and failure columns. The `backfill` trigger works
@@ -364,11 +366,16 @@ async function extractLeasedChatMemory(
       memoryExtractionAttemptedAt: true,
       memoryExtractionFailures: true,
       projectMemorySummaryUpdatedAt: true,
+      memoryExcluded: true,
     },
   })
 
   if (!chat) {
     return memoryExtractionEmptyResult('skipped', 'chat-unavailable')
+  }
+
+  if (chat.memoryExcluded) {
+    return memoryExtractionEmptyResult('skipped', 'memory-excluded')
   }
 
   const isProjectChat = !!chat.projectId
@@ -550,11 +557,15 @@ async function extractLeasedChatMemory(
 
     const currentChat = await db.query.chats.findFirst({
       where: { id: chat.id, userId },
-      columns: { projectId: true },
+      columns: { projectId: true, memoryExcluded: true },
     })
 
     if (!currentChat) {
       return { ...result, status: 'skipped', reason: 'chat-unavailable' }
+    }
+
+    if (currentChat.memoryExcluded) {
+      return { ...result, status: 'skipped', reason: 'memory-excluded' }
     }
 
     if ((currentChat.projectId ?? null) !== (chat.projectId ?? null)) {
@@ -562,7 +573,7 @@ async function extractLeasedChatMemory(
     }
 
     const applied = await applyMemoryExtractionOps({
-      ops: generation.object.ops,
+      ops: generation.output.ops,
       maxOps,
       db,
       userId,
@@ -679,7 +690,7 @@ async function memoryExtractionGenerate(input: {
     await memoryExtractionModelOutputLimit(input.selection),
   )
 
-  return await generateObject({
+  return await generateText({
     model: instance.model,
     reasoning: instance.reasoning,
     providerOptions: {
@@ -689,8 +700,10 @@ async function memoryExtractionGenerate(input: {
         strictJsonSchema: false,
       },
     },
-    schema: memoryExtractionOutputSchema,
-    schemaName: 'MemoryExtraction',
+    output: Output.object({
+      schema: memoryExtractionOutputSchema,
+      name: 'MemoryExtraction',
+    }),
     maxOutputTokens,
     abortSignal: AbortSignal.timeout(
       input.timeoutMs ?? memoryExtractionTimeoutMs(input.isBackground),
@@ -904,10 +917,10 @@ export async function extractProjectLegacyBlob(
       return { ...result, status: 'skipped', reason: 'disabled' }
     }
 
-    const createOps = generation.object.ops.filter((op) => {
+    const createOps = generation.output.ops.filter((op) => {
       return op.op === 'create'
     })
-    const invalidOpsCount = generation.object.ops.length - createOps.length
+    const invalidOpsCount = generation.output.ops.length - createOps.length
     const applied = await applyMemoryExtractionOps({
       ops: createOps,
       maxOps,
@@ -1221,10 +1234,10 @@ async function extractLeasedMemoryFromText(
         break
       }
 
-      const acceptedOps = generation.object.ops.filter((op) => {
+      const acceptedOps = generation.output.ops.filter((op) => {
         return op.op !== 'delete'
       })
-      const rejectedOpsCount = generation.object.ops.length - acceptedOps.length
+      const rejectedOpsCount = generation.output.ops.length - acceptedOps.length
       const applied = await applyMemoryExtractionOps({
         ops: acceptedOps,
         maxOps: MEMORY_EXTRACTION_LIMITS.maxOpsPerImportChunk,

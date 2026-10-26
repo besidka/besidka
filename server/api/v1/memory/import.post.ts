@@ -5,6 +5,7 @@ import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 const NO_MODEL_REASON = 'no-model'
 
@@ -33,6 +34,12 @@ export default defineEventHandler(async (event) => {
   if (!session) {
     return useUnauthorizedError()
   }
+
+  await enforceMemoryRateLimit(
+    'write',
+    parseInt(session.user.id),
+    event,
+  )
 
   const body = await readValidatedBody(event, z.object({
     text: z.string()

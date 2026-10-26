@@ -141,6 +141,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/pre-retrieval.spec.ts',
     'tests/unit/utils/knowledge/send-data.spec.ts',
     'tests/unit/utils/knowledge/context.spec.ts',
+    'tests/unit/utils/knowledge/previous-mode.spec.ts',
     'tests/integration/api/chats-project-knowledge.spec.ts',
   ]
   const knowledgeCoreTests = [
@@ -180,12 +181,23 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/memory-entries-sources.spec.ts',
     'tests/unit/utils/memory/about-me-migration.spec.ts',
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/memory-rate-limit.spec.ts',
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
+  ]
+  const memoryInstructTests = [
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
+    'tests/unit/utils/memory-instruct-diff.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Box.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Preview.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries.spec.ts',
+    'tests/unit/components/Projects/MemoryCard.spec.ts',
   ]
   const memoryIndexTests = [
     'tests/unit/utils/memory-tokens.spec.ts',
     'tests/unit/utils/memory/index-builder.spec.ts',
     'tests/unit/utils/memory/runtime-settings.spec.ts',
-    'tests/unit/utils/memory/about-me.spec.ts',
     'tests/unit/utils/memory/chat-context.spec.ts',
     'tests/unit/utils/memory/about-me-migration.spec.ts',
     'tests/unit/utils/memory/persist-redaction.spec.ts',
@@ -230,6 +242,26 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
     'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
+    'tests/integration/api/chats-memory-exclusion.spec.ts',
+  ]
+  const memoryChatExclusionTests = [
+    'tests/integration/api/chats-memory-exclusion.spec.ts',
+    'tests/integration/api/chats-new.spec.ts',
+    'tests/integration/api/chats-branch.spec.ts',
+    'tests/unit/utils/memory/extract-sweep.spec.ts',
+    'tests/unit/utils/memory/extract-manual.spec.ts',
+    'tests/unit/utils/memory/backfill.spec.ts',
+    'tests/unit/utils/projects/memory-refresh.spec.ts',
+    'tests/unit/utils/memory/tools/search-chats.spec.ts',
+    'tests/unit/utils/memory/tools/read-chat.spec.ts',
+    'tests/unit/composables/chat-memory-exclusion.spec.ts',
+    'tests/unit/components/History/ActionsDropdown.spec.ts',
+    'tests/unit/components/History/ChatRow.spec.ts',
+    'tests/unit/components/Sidebar/Development.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
   ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
@@ -598,6 +630,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory-model-filter.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
     'tests/unit/components/Projects/MemoryCard.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Box.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Preview.spec.ts',
   ]
 
   const accountEmailPasswordTests = [
@@ -1481,7 +1515,7 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
-      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources|about-me-migration)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
+      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources|about-me-migration|rate-limit)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
       tests: [
         ...memoryEntriesTests,
         ...memoryToolTests,
@@ -1489,7 +1523,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(shared\/utils\/memory-tokens|server\/utils\/memory\/(index-builder|runtime-settings|about-me|chat-context|persist-redaction))\.ts$/,
+      pattern: /^(shared\/utils\/memory-tokens|server\/utils\/memory\/(index-builder|runtime-settings|about-me-migration|chat-context|persist-redaction))\.ts$/,
       tests: memoryToolTests,
     },
     {
@@ -2102,7 +2136,7 @@ export function getAffectedTests(changedFiles) {
       tests: memoryPurgeTests,
     },
     {
-      pattern: /^server\/utils\/knowledge\/(search|pre-retrieval|send-data|context)\.ts$/,
+      pattern: /^server\/utils\/knowledge\/(search|pre-retrieval|send-data|context|previous-mode)\.ts$/,
       tests: projectKnowledgeRetrievalTests,
     },
     {
@@ -2189,6 +2223,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/utils/memory-import-prompt.spec.ts'],
     },
     {
+      pattern: /^(server\/utils\/memory\/instruct[\w-]*\.ts|server\/api\/v1\/memory\/instruct\/.*\.ts|shared\/utils\/memory-instruct\.ts|shared\/types\/memory-instruct\.d\.ts|app\/utils\/memory-instruct-diff\.ts|app\/components\/Profile\/Memory\/Instruct\/.*\.vue)$/,
+      tests: memoryInstructTests,
+    },
+    {
       pattern: /^(server\/db\/schemas\/memory-backfill-jobs|shared\/types\/memory-backfill\.d)\.ts$/,
       tests: [
         ...memoryExtractionTests,
@@ -2203,6 +2241,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|memory-refresh|memory-card|memory-account|memory-limits|legacy-memory|instructions)\.ts$/,
       tests: [...memoryExtractionTests, ...memoryModelTests],
+    },
+    {
+      pattern: /^(server\/(api\/v1\/chats\/\[slug\]\/memory\.patch|utils\/memory\/(chat-memory-filters|chat-deletion)|db\/schemas\/chats|api\/v1\/chats\/(new\/index\.put|branch\/index\.post))|app\/(composables|utils)\/chat-memory-exclusion|app\/composables\/history|shared\/types\/history\.d|tests\/setup\/helpers\/(search-index-db|history-fixtures))\.ts$|^app\/(components\/(History\/(ActionsDropdown|ChatRow)|Sidebar\/Development|ChatInput\.client|ChatInput\/ToolbarMore\.client)|pages\/chats\/(new|\[slug\]))\.vue$/,
+      tests: memoryChatExclusionTests,
     },
     {
       pattern: /^app\/utils\/project-memory-refresh\.ts$/,

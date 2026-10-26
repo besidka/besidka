@@ -283,7 +283,7 @@ removed.
 - **Status.** **Built** in this release: `server/utils/legal/consent.ts`,
   `server/api/v1/profiles/consent/` (`index.get.ts`, `index.post.ts`,
   `withdraw.post.ts`), the migration
-  `.drizzle/migrations/20261026135419_legal_consent/migration.sql`,
+  `.drizzle/migrations/20261026144709_legal_consent/migration.sql`,
   `app/components/Legal/ConsentModal.client.vue`,
   `app/components/Profile/Security/PrivacyConsent.vue` and
   `app/composables/legal-consent.ts`.

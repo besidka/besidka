@@ -11,6 +11,7 @@ export const knowledgeDecisionReasons = [
   'forced-search',
   'within-budget',
   'over-budget',
+  'hysteresis',
   'does-not-fit',
 ] as const
 
@@ -41,6 +42,7 @@ export const knowledgeTokenFamilies = [
 
 export const KNOWLEDGE_BUDGET = {
   contextWindowShare: 0.07,
+  searchReturnShare: 0.85,
   absoluteCapTokens: 64_000,
   estimateMargin: 1.15,
   unknownContextWindowTokens: 128_000,

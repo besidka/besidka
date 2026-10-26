@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "1466f812-2d41-4e2c-b130-4495b6a486f3",
+  "id": "7f7bc272-789d-43ee-b6e3-a0fd37c638bd",
   "prevIds": [
     "29f651ea-db81-4b4a-af5c-b8e3e5561f6b",
     "3a0d5046-8909-4f50-8cd0-a79a87c46c51"
@@ -684,76 +684,6 @@
       "entityType": "columns"
     },
     {
-      "table": "user_settings",
-      "name": "terms_accepted_at",
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
-      "table": "user_settings",
-      "name": "terms_version",
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
-      "table": "user_settings",
-      "name": "age_confirmed_at",
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
-      "table": "user_settings",
-      "name": "sensitive_content_consent_at",
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
-      "table": "user_settings",
-      "name": "sensitive_content_consent_version",
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
-      "table": "user_settings",
-      "name": "sensitive_content_consent_withdrawn_at",
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
-      "table": "user_settings",
-      "name": "provider_transfer_consents",
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "entityType": "columns"
-    },
-    {
       "table": "projects",
       "name": "id",
       "type": "integer",
@@ -1106,6 +1036,16 @@
     {
       "table": "chats",
       "name": "memory_extraction_failures",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "chats",
+      "name": "memory_excluded",
       "type": "integer",
       "notNull": false,
       "autoincrement": false,
@@ -3230,6 +3170,24 @@
       ],
       "isUnique": false,
       "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "chats",
+      "name": "idx_chats_memory_due",
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        },
+        {
+          "value": "activity_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "memory_excluded IS NOT 1 AND (\n        (project_id IS NULL AND (\n          memory_extracted_at IS NULL OR memory_extracted_at < activity_at\n        ))\n        OR (project_id IS NOT NULL AND (\n          project_memory_summary_updated_at IS NULL\n          OR project_memory_summary_updated_at < activity_at\n        ))\n      )",
       "origin": "manual",
       "entityType": "indexes"
     },

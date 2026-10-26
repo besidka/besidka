@@ -11,6 +11,7 @@ export interface SearchIndexTestDb {
     slug?: string
     title?: string
     projectId?: number
+    memoryExcluded?: boolean
   }) => void
   insertMessage: (input: {
     id: number
@@ -37,7 +38,8 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
       user_id integer NOT NULL,
       slug text,
       title text,
-      project_id integer
+      project_id integer,
+      memory_excluded integer
     );
 
     CREATE TABLE messages (
@@ -69,16 +71,19 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
     slug?: string
     title?: string
     projectId?: number
+    memoryExcluded?: boolean
   }): void {
     sqlite.prepare(
-      'insert into chats (id, user_id, slug, title, project_id)'
-      + ' values (?, ?, ?, ?, ?)',
+      'insert into chats'
+      + ' (id, user_id, slug, title, project_id, memory_excluded)'
+      + ' values (?, ?, ?, ?, ?, ?)',
     ).run(
       input.id,
       input.userId,
       input.slug ?? null,
       input.title ?? null,
       input.projectId ?? null,
+      input.memoryExcluded === undefined ? null : Number(input.memoryExcluded),
     )
   }
 

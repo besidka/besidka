@@ -56,7 +56,14 @@ function withItems(
   summary: ProjectKnowledgeSummary,
   items: KnowledgeItem[],
 ): ProjectKnowledgeSummary {
-  return { ...summary, items, totals: computeTotals(items) }
+  const itemDelta = items.length - summary.items.length
+
+  return {
+    ...summary,
+    items,
+    totals: computeTotals(items),
+    accountItems: Math.max(0, summary.accountItems + itemDelta),
+  }
 }
 
 function upsertItems(
@@ -128,6 +135,10 @@ export function useProjectKnowledge(
 
   const totals = computed<KnowledgeTotals>(() => {
     return data.value?.totals ?? EMPTY_TOTALS
+  })
+
+  const accountItems = computed<number>(() => {
+    return data.value?.accountItems ?? 0
   })
 
   const version = computed<number | null>(() => {
@@ -453,6 +464,7 @@ export function useProjectKnowledge(
     items,
     mode,
     totals,
+    accountItems,
     version,
     packVersion,
     pending,

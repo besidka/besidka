@@ -51,6 +51,16 @@ vi.mock('~~/server/utils/memory/extract', () => ({
 vi.mock('~~/server/utils/memory/backfill-estimate', () => ({
   getBackfillEstimate: mocks.getBackfillEstimate,
   invalidateBackfillEstimate: mocks.invalidateBackfillEstimate,
+  lookupBackfillEstimate: async (input: unknown) => {
+    try {
+      return {
+        status: 'ready',
+        estimate: await mocks.getBackfillEstimate(input),
+      }
+    } catch (exception) {
+      return { status: 'failed', exception }
+    }
+  },
 }))
 
 vi.mock('~~/server/utils/memory/resolve-model', async (importOriginal) => {
@@ -110,6 +120,12 @@ function extractionResult(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function cooldownPutsOf(kv: { put: { mock: { calls: unknown[][] } } }) {
+  return kv.put.mock.calls.filter(([key]) => {
+    return !String(key).startsWith('memory-rate-limit:')
+  })
+}
+
 type HandlerName
   = 'index.get'
     | 'index.post'
@@ -158,6 +174,15 @@ describe('memory backfill API', () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: String(userId) },
     }))
+    vi.stubGlobal(
+      'readValidatedBody',
+      async (event: any, parser: (body: unknown) => unknown) => {
+        return parser(event.body)
+      },
+    )
+    vi.stubGlobal('getQuery', (event: { query?: unknown }) => {
+      return event.query ?? {}
+    })
   })
 
   afterEach(() => {
@@ -179,12 +204,12 @@ describe('memory backfill API', () => {
     return created
   }
 
-  async function get() {
-    return await (await loadHandler('index.get'))({})
+  async function get(query?: Record<string, string>) {
+    return await (await loadHandler('index.get'))({ query })
   }
 
-  async function post() {
-    return await (await loadHandler('index.post'))({})
+  async function post(body?: unknown) {
+    return await (await loadHandler('index.post'))({ body })
   }
 
   async function step() {
@@ -339,6 +364,34 @@ describe('memory backfill API', () => {
       expect(mocks.getBackfillEstimate).not.toHaveBeenCalled()
     })
 
+    it.each([
+      ['a run that read every past chat', 'completed', 3],
+      ['a run that stopped at its cap', 'completed', 200],
+      ['a cancelled run', 'cancelled', 5],
+    ] as const)('estimates a fresh window for ?restart=true after %s',
+      async (_label, status, processedChats) => {
+        const cursorChat = await chat(10)
+
+        await seedBackfillJob(testDb.db, userId, {
+          status,
+          processedChats,
+          createdBefore: new Date('2026-10-20T10:00:00.000Z'),
+          cursorActivityAt: new Date('2026-10-19T10:00:00.000Z'),
+          cursorChatId: cursorChat.id,
+        })
+
+        const response = await get({ restart: 'true' })
+        const [call] = mocks.getBackfillEstimate.mock.calls.at(-1)!
+
+        expect(response).toMatchObject({ estimate: ESTIMATE, reason: null })
+        expect(call.window).toMatchObject({
+          cursor: null,
+          isContinuation: false,
+        })
+        expect(call.window.createdBefore.getTime())
+          .toBeGreaterThan(new Date('2026-10-20T10:00:00.000Z').getTime())
+      })
+
     it('estimates the continuation window after a capped run', async () => {
       const createdBefore = new Date('2026-10-20T10:00:00.000Z')
       const cursorActivityAt = new Date('2026-10-19T10:00:00.000Z')
@@ -388,6 +441,45 @@ describe('memory backfill API', () => {
       expect(await testDb.db.query.memoryBackfillJobs.findMany({
         where: { userId },
       })).toHaveLength(1)
+    })
+
+    it('starts a fresh job from the newest chat on an explicit restart',
+      async () => {
+        await chat(10)
+
+        const older = await chat(20)
+
+        await seedBackfillJob(testDb.db, userId, {
+          status: 'completed',
+          processedChats: 2,
+          cursorActivityAt: minutesBefore(20),
+          cursorChatId: older.id,
+        })
+
+        const response = await post({ restart: true })
+        const started = await testDb.db.query.memoryBackfillJobs.findFirst({
+          where: { userId, status: 'running' },
+        })
+
+        expect(response.job).toMatchObject({
+          status: 'running',
+          totalChats: 2,
+          processedChats: 0,
+        })
+        expect(started?.cursorChatId ?? null).toBeNull()
+        expect(started?.cursorActivityAt ?? null).toBeNull()
+      })
+
+    it.each([
+      ['a non-boolean restart', { restart: 'yes' }],
+      ['an unknown field', { restart: true, cursor: 'x' }],
+    ])('answers 400 for %s', async (_label, body) => {
+      await chat(10)
+
+      await expect(post(body)).rejects.toMatchObject({ status: 400 })
+      expect(await testDb.db.query.memoryBackfillJobs.findMany({
+        where: { userId },
+      })).toHaveLength(0)
     })
 
     it('starts a job and answers its progress and estimate', async () => {
@@ -445,7 +537,7 @@ describe('memory backfill API', () => {
         await chat(10)
         await post()
 
-        const [key, value, options] = kv.put.mock.calls[0]!
+        const [key, value, options] = cooldownPutsOf(kv)[0]!
 
         expect(key).toBe(`memory-backfill-start:${userId}`)
         expect(Number(value)).toBeGreaterThan(0)
@@ -548,7 +640,7 @@ describe('memory backfill API', () => {
         await post()
         await step()
 
-        const [key, value, options] = kv.put.mock.calls[1]!
+        const [key, value, options] = cooldownPutsOf(kv)[1]!
 
         expect(key).toBe(`memory-backfill-drive:${userId}`)
         expect(Number(value)).toBeGreaterThan(0)

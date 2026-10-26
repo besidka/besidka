@@ -85,6 +85,19 @@ async function mountToolbar(
 
 type Wrapper = Awaited<ReturnType<typeof mountToolbar>>
 
+function visibleLabel(wrapper: Wrapper, buttonTestId: string): string {
+  const labels = [
+    wrapper.get(`[data-testid="${buttonTestId}-idle-label"]`),
+    wrapper.get(`[data-testid="${buttonTestId}-busy-label"]`),
+  ].filter((label) => {
+    return !label.classes().includes('invisible')
+  })
+
+  expect(labels).toHaveLength(1)
+
+  return labels[0]!.text()
+}
+
 function sheetOpen(wrapper: Wrapper, testId: string): string | undefined {
   return wrapper.get(`[data-testid="${testId}"]`).attributes('data-open')
 }
@@ -528,7 +541,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       const runningButton = wrapper.get('[data-testid="memory-update-now"]')
 
       expect(runningButton.classes()).toContain('btn-disabled')
-      expect(runningButton.text()).toContain('Updating...')
+      expect(visibleLabel(wrapper, 'memory-update-now')).toBe('Updating...')
       expect(runningButton.find('.loading').exists()).toBe(true)
 
       finishHistory({
@@ -540,7 +553,8 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       const idleButton = wrapper.get('[data-testid="memory-update-now"]')
 
       expect(idleButton.classes()).not.toContain('btn-disabled')
-      expect(idleButton.text()).toContain('Update memory now')
+      expect(visibleLabel(wrapper, 'memory-update-now'))
+        .toBe('Update memory now')
     })
   })
 
@@ -706,7 +720,8 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       const wrapper = await mountToolbar()
       const button = wrapper.get('[data-testid="memory-backfill"]')
 
-      expect(button.text()).toBe('Build memory from past chats')
+      expect(visibleLabel(wrapper, 'memory-backfill'))
+        .toBe('Build memory from past chats')
       expect(button.attributes('title')).toBeUndefined()
       expect(button.classes()).not.toContain('opacity-60')
       expect(button.find('.loading').exists()).toBe(false)
@@ -754,7 +769,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       const wrapper = await mountToolbar()
       const button = wrapper.get('[data-testid="memory-backfill"]')
 
-      expect(button.text()).toBe('Building… 12/48')
+      expect(visibleLabel(wrapper, 'memory-backfill')).toBe('Building… 12/48')
       expect(button.find('.loading').exists()).toBe(true)
       expect(wrapper.get('[data-testid="memory-backfill-menu"]').text())
         .toBe('Building… 12/48')
@@ -787,7 +802,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
 
         await flushPromises()
 
-        expect(wrapper.get('[data-testid="memory-backfill"]').text())
+        expect(visibleLabel(wrapper, 'memory-backfill'))
           .toBe('Building… 12/48')
         expect(wrapper.get('[data-testid="memory-backfill-menu"]').text())
           .toBe('Building… 12/48')
@@ -825,7 +840,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
 
       expect(mocks.error).not.toHaveBeenCalled()
       expect(mocks.info).not.toHaveBeenCalled()
-      expect(wrapper.get('[data-testid="memory-backfill"]').text())
+      expect(visibleLabel(wrapper, 'memory-backfill'))
         .toBe('Build memory from past chats')
     })
 
@@ -1074,6 +1089,63 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       await flushPromises()
 
       expect(mocks.confirm).not.toHaveBeenCalled()
+    })
+
+    it('starts every action row at the left edge, under the count',
+      async () => {
+        const wrapper = await mountToolbar()
+        const rows = wrapper.get('[data-testid="memory-toolbar-rows"]')
+        const actions = wrapper.get('[data-testid="memory-toolbar-actions"]')
+        const layoutClasses = [...rows.classes(), ...actions.classes()]
+
+        expect(layoutClasses.some((className) => {
+          return className.includes('justify-end')
+            || className.includes('justify-between')
+        })).toBe(false)
+        expect(rows.classes()).toEqual(expect.arrayContaining([
+          'flex-col',
+          'items-start',
+        ]))
+        expect(actions.classes()).toContain('justify-start')
+        expect(rows.element.firstElementChild?.querySelector(
+          '[data-testid="memory-entries-count"]',
+        )).not.toBeNull()
+      })
+
+    it.each([
+      {
+        button: 'memory-update-now',
+        idle: 'Update memory now',
+        busy: 'Updating...',
+      },
+      {
+        button: 'memory-backfill',
+        idle: 'Build memory from past chats',
+        busy: 'Building…',
+      },
+    ])('stacks both $button labels in one grid cell so the width never '
+      + 'changes', async ({ button, idle, busy }) => {
+      const wrapper = await mountToolbar()
+      const cell = wrapper.get(`[data-testid="${button}-labels"]`)
+      const idleLabel = wrapper.get(`[data-testid="${button}-idle-label"]`)
+      const busyLabel = wrapper.get(`[data-testid="${button}-busy-label"]`)
+
+      expect(cell.classes()).toContain('grid')
+      expect(idleLabel.element.parentElement).toBe(cell.element)
+      expect(busyLabel.element.parentElement).toBe(cell.element)
+
+      for (const label of [idleLabel, busyLabel]) {
+        expect(label.classes()).toEqual(expect.arrayContaining([
+          'col-start-1',
+          'row-start-1',
+        ]))
+      }
+
+      expect(idleLabel.text()).toBe(idle)
+      expect(busyLabel.text()).toBe(busy)
+      expect(idleLabel.classes()).not.toContain('invisible')
+      expect(busyLabel.classes()).toContain('invisible')
+      expect(busyLabel.attributes('aria-hidden')).toBe('true')
     })
 
     it('hides the row group and the menu with matching breakpoints',

@@ -15,6 +15,10 @@ import {
 import * as schema from '~~/server/db/schema'
 import { sweepBackfillJobs } from '~~/server/utils/memory/backfill'
 import type { SweepBackfillJobsResult } from '~~/server/utils/memory/backfill'
+import {
+  chatHasUnextractedActivity,
+  chatIsMemoryIncluded,
+} from '~~/server/utils/memory/chat-memory-filters'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
@@ -88,10 +92,7 @@ export function buildDueChatsQuery(
       userRank: sql<number>`row_number() over (partition by ${schema.chats.userId} order by ${attemptedAtOrZero}, ${schema.chats.activityAt})`.as('user_rank'),
     })
     .from(schema.userSettings)
-    .innerJoin(
-      schema.chats,
-      eq(schema.chats.userId, schema.userSettings.userId),
-    )
+    .crossJoin(schema.chats)
     .leftJoin(
       schema.projects,
       and(
@@ -100,6 +101,7 @@ export function buildDueChatsQuery(
       ),
     )
     .where(and(
+      eq(schema.chats.userId, schema.userSettings.userId),
       isExtractionOptedIn,
       currentLegalConsentCondition(),
       or(
@@ -108,6 +110,8 @@ export function buildDueChatsQuery(
       ),
       lte(schema.chats.activityAt, idleCutoff),
       gt(schema.chats.activityAt, enabledAtOrZero),
+      chatIsMemoryIncluded(),
+      chatHasUnextractedActivity(),
       or(
         and(
           isNull(schema.chats.projectId),
@@ -224,8 +228,11 @@ function addCounts(
  * Picks due chats and extracts them one after the other until the batch or
  * the runtime budget is spent. Selection starts from the users who opted in
  * (`memory_extraction_enabled` on, `memory_enabled` null or true) through a
- * partial index and reaches their chats through `idx_chats_user_activity`, so
- * nothing is read while nobody has opted in. Both kinds of chat need the
+ * partial index and reaches their chats through the partial index
+ * `idx_chats_memory_due` (dirty chats not excluded from memory), so nothing is
+ * read while nobody has opted in. The join is a `CROSS JOIN` on purpose: it
+ * pins `user_settings` as the outer loop, which SQLite otherwise flips into a
+ * scan of every user's due chats. Both kinds of chat need the
  * opt-in: account chats are due when idle and dirty on `memory_extracted_at`;
  * project chats additionally need their own project (same owner, not
  * disabled), `memory_extraction_enabled_at` set and activity after it, and are

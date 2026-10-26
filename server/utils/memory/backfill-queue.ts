@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
+import { chatIsMemoryIncluded } from '~~/server/utils/memory/chat-memory-filters'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -15,10 +16,15 @@ export interface BackfillWindow {
   isContinuation: boolean
 }
 
+export interface ResolveBackfillWindowOptions {
+  restart?: boolean
+}
+
 /**
  * The one definition of "a chat the backfill will visit": the user's own
- * account chat (never a project chat) created at or before the job's cutoff
- * that holds at least one user message. The start count, the queue cursor
+ * account chat (never a project chat, never one excluded from memory)
+ * created at or before the job's cutoff that holds at least one user
+ * message. The start count, the queue cursor
  * and the estimate all use it, so processed chats can reach the total.
  */
 export function backfillEligibleChats(userId: number, createdBefore: Date) {
@@ -26,6 +32,7 @@ export function backfillEligibleChats(userId: number, createdBefore: Date) {
     eq(schema.chats.userId, userId),
     isNull(schema.chats.projectId),
     lte(schema.chats.createdAt, createdBefore),
+    chatIsMemoryIncluded(),
     sql`exists (
       select 1 from ${schema.messages}
       where ${schema.messages.chatId} = ${schema.chats.id}
@@ -90,13 +97,26 @@ export function backfillCappedChatIds(
  * new job continues that job's queue: same `createdBefore`, starting after its
  * cursor. When the latest job completed because its queue ran out, every
  * past chat has been read and `null` is returned; chats created since are
- * handled by the forward sweep.
+ * handled by the forward sweep. `restart` is the user's explicit "read all
+ * past chats again": it ignores every earlier job and always answers a fresh
+ * window, so the previous cursor is never consulted.
  */
 export async function resolveBackfillWindow(
   db: DbClient,
   userId: number,
   now: Date,
+  options: ResolveBackfillWindowOptions = {},
 ): Promise<BackfillWindow | null> {
+  const freshWindow: BackfillWindow = {
+    createdBefore: now,
+    cursor: null,
+    isContinuation: false,
+  }
+
+  if (options.restart) {
+    return freshWindow
+  }
+
   const jobs = schema.memoryBackfillJobs
   const [latest] = await db
     .select({
@@ -112,7 +132,7 @@ export async function resolveBackfillWindow(
     .limit(1)
 
   if (!latest) {
-    return { createdBefore: now, cursor: null, isContinuation: false }
+    return freshWindow
   }
 
   const isQueueExhausted = latest.status === 'completed'

@@ -30,6 +30,7 @@ export const chats = snakeCase.table(
     memoryExtractedAt: integer({ mode: 'timestamp' }),
     memoryExtractionAttemptedAt: integer({ mode: 'timestamp' }),
     memoryExtractionFailures: integer({ mode: 'number' }),
+    memoryExcluded: integer({ mode: 'boolean' }),
     activityAt: integer({ mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -39,6 +40,17 @@ export const chats = snakeCase.table(
     uniqueIndex('uq_chat_slug').on(table.id, table.slug),
     index('idx_chats_activity_at').on(table.activityAt),
     index('idx_chats_user_activity').on(table.userId, table.activityAt),
+    index('idx_chats_memory_due')
+      .on(table.userId, table.activityAt)
+      .where(sql`memory_excluded IS NOT 1 AND (
+        (project_id IS NULL AND (
+          memory_extracted_at IS NULL OR memory_extracted_at < activity_at
+        ))
+        OR (project_id IS NOT NULL AND (
+          project_memory_summary_updated_at IS NULL
+          OR project_memory_summary_updated_at < activity_at
+        ))
+      )`),
   ],
 )
 

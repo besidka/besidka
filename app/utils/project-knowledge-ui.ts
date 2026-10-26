@@ -45,6 +45,7 @@ const SHEET_EXTENSION_PATTERN = /\.xlsx$/i
 const PDF_EXTENSION_PATTERN = /\.pdf$/i
 const TRAILING_ZERO_PATTERN = /\.0 /
 const PERCENT = 100
+const ACCOUNT_ITEMS_WARNING_SHARE = 0.9
 
 const extractErrorMessages: Record<string, string> = {
   'ios-update-required': 'Update iOS to extract PDFs, or add it as a PDF '
@@ -55,6 +56,10 @@ const extractErrorMessages: Record<string, string> = {
   'binary': 'This looks like a binary file, not text.',
   'not-utf8': 'This file is not valid UTF-8 text.',
   'unsupported': 'This file type is not supported.',
+  'text-missing': 'The stored text of this item is missing, so it is not '
+    + 'sent.',
+  'text-mismatch': 'The stored text no longer matches this item, so it is '
+    + 'not sent.',
 }
 
 const GENERIC_EXTRACT_ERROR = 'Besidka could not read this file.'
@@ -358,6 +363,37 @@ function describeWindowNote(state: KnowledgeMeterState): string | null {
   return `Context window unknown, assuming ${
     formatApproxTokens(state.contextWindow)
   }`
+}
+
+export function isKnowledgeAccountLimitReached(accountItems: number): boolean {
+  return accountItems >= KNOWLEDGE_LIMITS.maxItemsPerUser
+}
+
+/**
+ * Warns when the account-wide item count (all projects, not just this one)
+ * is at 90% or more of `KNOWLEDGE_LIMITS.maxItemsPerUser`, the limit the
+ * server enforces with a 422 and the per-project meter line does not show.
+ */
+export function describeKnowledgeAccountWarning(
+  accountItems: number,
+): string | null {
+  const limit = KNOWLEDGE_LIMITS.maxItemsPerUser
+  const formattedLimit = limit.toLocaleString('en-US')
+  const formattedCount = accountItems.toLocaleString('en-US')
+
+  if (isKnowledgeAccountLimitReached(accountItems)) {
+    return `Account limit reached: you have ${formattedCount} of `
+      + `${formattedLimit} knowledge items across all your projects. `
+      + 'Remove items from any project to add more.'
+  }
+
+  if (accountItems >= limit * ACCOUNT_ITEMS_WARNING_SHARE) {
+    return `Close to your account limit: ${formattedCount} of `
+      + `${formattedLimit} knowledge items across all your projects. `
+      + `New items are blocked at ${formattedLimit}.`
+  }
+
+  return null
 }
 
 export function buildKnowledgeMeterCopy(input: {

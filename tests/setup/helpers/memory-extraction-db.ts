@@ -28,6 +28,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
     'memory_extracted_at',
     'memory_extraction_attempted_at',
     'memory_extraction_failures',
+    'memory_excluded',
   ],
   projects: ['memory_migrated_at'],
   user_settings: ['memory_extraction_enabled'],

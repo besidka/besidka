@@ -262,6 +262,9 @@ describe('knowledge ingestion', () => {
       )
 
       expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledWith(
+        expect.objectContaining({ ignoreBuildInterval: true }),
+      )
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
       expect(result).toMatchObject({ version: 6, packVersion: 6 })
     })
@@ -416,6 +419,9 @@ describe('knowledge ingestion', () => {
       expect(second.version).toBe(1)
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
       expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledWith(
+        expect.objectContaining({ ignoreBuildInterval: true }),
+      )
       expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version)
         .toBe(1)
     })
@@ -1198,6 +1204,136 @@ describe('knowledge ingestion', () => {
       )
 
       expect(updated.textBytes).toBe(30)
+    })
+
+    describe('repairing a failed note', () => {
+      function failNote(error: string) {
+        harness.testDb.sqlite
+          .prepare(
+            'update project_knowledge_items set extract_status = ?,'
+            + ' extract_error = ?, latin_chars = 0',
+          )
+          .run('failed', error)
+      }
+
+      it('rewrites the same body, marks the note ready and commits', async () => {
+        await createNote()
+        failNote('text-mismatch')
+        harness.bucket.objects.set(
+          [...harness.bucket.objects.keys()][0]!,
+          'stale half of an edit',
+        )
+        mocks.commitKnowledgeChange.mockClear()
+
+        const updated = await updateKnowledgeNote(
+          context(),
+          (await selectRow())!,
+          { body: 'Ship the thing.' },
+        )
+
+        expect(updated).toMatchObject({
+          extractStatus: 'ready',
+          extractError: null,
+          textBytes: 15,
+          latinChars: 15,
+        })
+        expect(itemRows()[0]).toMatchObject({
+          extract_status: 'ready',
+          extract_error: null,
+        })
+        expect([...harness.bucket.objects.values()])
+          .toEqual(['Ship the thing.'])
+        expect(mocks.commitKnowledgeChange).toHaveBeenCalledOnce()
+      })
+
+      it('repairs a note whose text was missing with a different body', async () => {
+        await createNote()
+        failNote('text-missing')
+        harness.testDb.sqlite
+          .prepare('update project_knowledge_items set text_bytes = 0')
+          .run()
+
+        const updated = await updateKnowledgeNote(
+          context(),
+          (await selectRow())!,
+          { body: 'Rewritten after the loss' },
+        )
+
+        expect(updated).toMatchObject({
+          extractStatus: 'ready',
+          extractError: null,
+          textBytes: 24,
+        })
+      })
+
+      it('does nothing for a failed note when no body is sent', async () => {
+        await createNote()
+        failNote('text-mismatch')
+        mocks.commitKnowledgeChange.mockClear()
+        harness.bucket.calls.length = 0
+
+        await updateKnowledgeNote(
+          context(),
+          (await selectRow())!,
+          { title: 'Plan' },
+        )
+
+        expect(itemRows()[0]).toMatchObject({
+          extract_status: 'failed',
+          extract_error: 'text-mismatch',
+        })
+        expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+        expect(harness.bucket.calls).toEqual([])
+      })
+
+      it('puts the failed state back when the text cannot be written', async () => {
+        await createNote()
+        failNote('text-mismatch')
+        harness.bucket.failPutAt = 2
+
+        await expectRejection(
+          updateKnowledgeNote(
+            context(),
+            (await selectRow())!,
+            { body: 'Ship the thing.' },
+          ),
+          { status: 500 },
+        )
+
+        expect(itemRows()[0]).toMatchObject({
+          extract_status: 'failed',
+          extract_error: 'text-mismatch',
+        })
+      })
+
+      it('still rejects a body that duplicates another item', async () => {
+        await createNote({ title: 'First', body: 'First body' })
+        await createNote({ title: 'Second', body: 'Second body' })
+        failNote('text-mismatch')
+
+        const second = (await harness.testDb.db.query.projectKnowledgeItems
+          .findFirst({ where: { title: 'Second' } }))!
+
+        await expectRejection(
+          updateKnowledgeNote(context(), second, { body: 'First body' }),
+          { status: 409 },
+        )
+      })
+
+      it('leaves a ready note with an unchanged body alone', async () => {
+        await createNote()
+        mocks.commitKnowledgeChange.mockClear()
+        harness.bucket.calls.length = 0
+
+        await updateKnowledgeNote(
+          context(),
+          (await selectRow())!,
+          { body: 'Ship the thing.' },
+        )
+
+        expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+        expect(harness.bucket.calls).toEqual([])
+      })
     })
 
     it('refuses to update a file item as a note', async () => {
@@ -2226,6 +2362,9 @@ describe('knowledge ingestion', () => {
       )
 
       expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledWith(
+        expect.objectContaining({ ignoreBuildInterval: true }),
+      )
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
       expect(result).toMatchObject({ version: 3, packVersion: 3 })
     })

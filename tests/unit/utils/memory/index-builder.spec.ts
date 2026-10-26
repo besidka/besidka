@@ -14,14 +14,23 @@ import {
   type MemoryTestDb,
 } from '../../../setup/helpers/memory-db'
 
-const TRIM_ORDER = [
-  'preferences-body',
+const DESCRIPTION_TRIM_ORDER = [
   'descriptions-60',
   'descriptions-40',
   'descriptions-20',
   'descriptions-0',
+] as const
+
+const TRIM_ORDER = [
+  ...DESCRIPTION_TRIM_ORDER,
+  'drop-least-recently-used',
+  'preferences-body',
   'profile-body',
 ] as const
+
+function isCoreEntry(entry: MemoryEntry): boolean {
+  return entry.category === 'profile' || entry.category === 'preferences'
+}
 
 let nextEntryId = 1
 
@@ -212,6 +221,7 @@ describe('buildMemoryIndex', () => {
         tokens: 0,
         budgetTokens: MEMORY_LIMITS.indexTokenBudget,
         entryCount: 0,
+        droppedEntries: 0,
         trimSteps: [],
         overBudget: false,
       })
@@ -676,35 +686,72 @@ describe('buildMemoryIndex', () => {
       expect(result.tokens).toBeLessThanOrEqual(result.budgetTokens)
     })
 
-    it('walks the trim plan in order, stopping at the first fit', () => {
-      const results = walkTrim(buildFullAccount('en', { project: true }))
+    it('walks the description steps in order, stopping at the first fit',
+      () => {
+        const results = walkTrim(buildFullAccount('en', { project: true }))
 
-      expect(results[0]!.trimSteps).toEqual([])
+        expect(results[0]!.trimSteps).toEqual([])
 
-      for (const [stepIndex, step] of TRIM_ORDER.entries()) {
-        const result = results[stepIndex + 1]!
-        const previous = results[stepIndex]!
+        for (const [stepIndex, step] of DESCRIPTION_TRIM_ORDER.entries()) {
+          const result = results[stepIndex + 1]!
+          const previous = results[stepIndex]!
 
-        expect(result.trimSteps).toEqual(TRIM_ORDER.slice(0, stepIndex + 1))
-        expect(result.trimSteps.at(-1)).toBe(step)
-        expect(result.tokens).toBeLessThan(previous.tokens)
-        expect(result.entryCount).toBe(previous.entryCount)
-      }
-    })
+          expect(result.trimSteps)
+            .toEqual(DESCRIPTION_TRIM_ORDER.slice(0, stepIndex + 1))
+          expect(result.trimSteps.at(-1)).toBe(step)
+          expect(result.tokens).toBeLessThan(previous.tokens)
+          expect(result.entryCount).toBe(previous.entryCount)
+          expect(result.droppedEntries).toBe(0)
+        }
+      })
 
-    it('turns preferences bodies into lines first and keeps the profile', () => {
+    it('drops other entries before touching the profile and preferences '
+      + 'bodies', () => {
       const input = buildFullAccount('en', { project: true })
-      const full = build({ ...input, budgetTokens: 1_000_000 })
-      const trimmed = build({ ...input, budgetTokens: full.tokens - 1 })
+      const afterDescriptions = build({ ...input, budgetTokens: 0 })
+      const descriptionsOnly = walkTrim(input)[DESCRIPTION_TRIM_ORDER.length]!
+      const result = build({
+        ...input,
+        budgetTokens: descriptionsOnly.tokens - 1,
+      })
 
-      expect(trimmed.trimSteps).toEqual(['preferences-body'])
-      expect(trimmed.text).toContain('### Profile')
-      expect(trimmed.text).not.toContain('### Preferences')
-      expect(trimmed.text).toContain('- preferences/preferences | Preferences')
-      expect(trimmed.text).toContain(
-        '- project/preferences/preferences | Preferences',
-      )
+      expect(afterDescriptions.trimSteps).toEqual([...TRIM_ORDER])
+      expect(result.trimSteps)
+        .toEqual([...DESCRIPTION_TRIM_ORDER, 'drop-least-recently-used'])
+      expect(result.droppedEntries).toBe(1)
+      expect(result.text?.match(/### Profile/g)).toHaveLength(2)
+      expect(result.text?.match(/### Preferences/g)).toHaveLength(2)
     })
+
+    it('collapses preferences bodies only once no other entry is left',
+      () => {
+        const input = buildFullAccount('en', { project: true })
+        const coreOnly = build({
+          accountEntries: input.accountEntries.filter(isCoreEntry),
+          projectEntries: input.projectEntries.filter(isCoreEntry),
+          budgetTokens: Number.MAX_SAFE_INTEGER,
+        })
+        const otherCount = [...input.accountEntries, ...input.projectEntries]
+          .filter(entry => !isCoreEntry(entry)).length
+        const trimmed = build({ ...input, budgetTokens: coreOnly.tokens - 1 })
+
+        const dropIndex = trimmed.trimSteps.indexOf('drop-least-recently-used')
+
+        expect(trimmed.trimSteps.slice(0, DESCRIPTION_TRIM_ORDER.length))
+          .toEqual([...DESCRIPTION_TRIM_ORDER])
+        expect(trimmed.trimSteps.at(-1)).toBe('preferences-body')
+        expect(dropIndex === -1 || dropIndex < trimmed.trimSteps.length - 1)
+          .toBe(true)
+        expect(trimmed.droppedEntries).toBeLessThan(otherCount)
+        expect(trimmed.overBudget).toBe(false)
+        expect(trimmed.text).toContain('### Profile')
+        expect(trimmed.text).not.toContain('### Preferences')
+        expect(trimmed.text)
+          .toContain('- preferences/preferences | Preferences')
+        expect(trimmed.text).toContain(
+          '- project/preferences/preferences | Preferences',
+        )
+      })
 
     it('truncates descriptions with an ellipsis to each limit', () => {
       const description = 'abcdefghij'.repeat(10)
@@ -753,7 +800,7 @@ describe('buildMemoryIndex', () => {
       expect(result.text).toContain('- profile/profile | Profile')
     })
 
-    it('never drops an entry at any trim level', () => {
+    it('keeps every entry through the description steps', () => {
       const input = buildFullAccount('uk', { project: true })
       const total = input.accountEntries.length + input.projectEntries.length
       const results = walkTrim(input)
@@ -771,9 +818,13 @@ describe('buildMemoryIndex', () => {
         return entry.category !== 'profile' && entry.category !== 'preferences'
       })
 
-      expect(results.at(-1)!.trimSteps).toEqual([...TRIM_ORDER])
+      const descriptionResults = results.filter((result) => {
+        return !result.trimSteps.includes('drop-least-recently-used')
+      })
 
-      for (const result of results) {
+      expect(descriptionResults.length).toBeGreaterThan(1)
+
+      for (const result of descriptionResults) {
         const lines = getEntryLines(result.text!)
         const profileBodies = result.text!.match(/### Profile/g) ?? []
         const preferencesBodies = result.text!.match(/### Preferences/g) ?? []
@@ -801,7 +852,8 @@ describe('buildMemoryIndex', () => {
       const english = build(buildFullAccount('en', { project: true }))
       const ukrainian = build(buildFullAccount('uk', { project: true }))
 
-      expect(ukrainian.entryCount).toBe(english.entryCount)
+      expect(ukrainian.entryCount + ukrainian.droppedEntries)
+        .toBe(english.entryCount + english.droppedEntries)
       expect(ukrainian.trimSteps.length).toBeGreaterThan(
         english.trimSteps.length,
       )
@@ -842,9 +894,10 @@ describe('buildMemoryIndex', () => {
         }
         const result = build(denseInput)
 
-        expect(result.entryCount).toBe(
+        expect(result.entryCount + result.droppedEntries).toBe(
           input.accountEntries.length + input.projectEntries.length,
         )
+        expect(result.text?.match(/### Profile/g)).toHaveLength(2)
         expect(result.overBudget).toBe(false)
         expect(result.tokens).toBeLessThanOrEqual(
           MEMORY_LIMITS.indexTokenBudget,
@@ -874,7 +927,8 @@ describe('buildMemoryIndex', () => {
         budgetTokens: 1,
       })
 
-      expect(result.trimSteps).toEqual(['descriptions-0'])
+      expect(result.trimSteps)
+        .toEqual(['descriptions-0', 'drop-least-recently-used'])
       expect(result.overBudget).toBe(true)
     })
 
@@ -897,37 +951,154 @@ describe('buildMemoryIndex with 1536-byte always-injected bodies', () => {
     nextEntryId = 1
   })
 
-  it('keeps 4 profile and 4 preferences bodies at the cap plus 22 other '
-    + 'entries within the 2500-token budget without touching profile '
-    + 'bodies', () => {
-    for (const language of ['en', 'uk'] as const) {
-      const accountEntries = buildRichAccount(language, {
+  function buildAccountAndProject(): {
+    accountEntries: MemoryEntry[]
+    projectEntries: MemoryEntry[]
+  } {
+    const projectEntries = buildRichAccount('uk', {
+      profile: 1,
+      preferences: 1,
+    })
+      .slice(0, MEMORY_LIMITS.maxProjectEntries)
+      .map((entry) => {
+        return { ...entry, id: `P${entry.id}`, projectId: 'PROJECT' }
+      })
+
+    return {
+      accountEntries: buildRichAccount('uk', { profile: 1, preferences: 1 }),
+      projectEntries,
+    }
+  }
+
+  it.each([
+    {
+      family: 'openai',
+      steps: ['descriptions-60', 'descriptions-40', 'descriptions-20'],
+      dropped: 0,
+      preferencesBodies: 2,
+    },
+    {
+      family: 'default',
+      steps: [...DESCRIPTION_TRIM_ORDER, 'drop-least-recently-used'],
+      dropped: 16,
+      preferencesBodies: 2,
+    },
+    {
+      family: 'anthropic',
+      steps: [...DESCRIPTION_TRIM_ORDER, 'preferences-body'],
+      dropped: 0,
+      preferencesBodies: 0,
+    },
+  ] as const)('fits a full Ukrainian account plus project index on $family '
+    + 'and keeps both profile bodies', ({
+    family,
+    steps,
+    dropped,
+    preferencesBodies,
+  }) => {
+    const input = buildAccountAndProject()
+    const result = build({ ...input, tokenFamily: family })
+
+    expect(input.accountEntries).toHaveLength(MEMORY_LIMITS.maxAccountEntries)
+    expect(input.projectEntries).toHaveLength(MEMORY_LIMITS.maxProjectEntries)
+    expect(result.trimSteps).toEqual(steps)
+    expect(result.droppedEntries).toBe(dropped)
+    expect(result.overBudget).toBe(false)
+    expect(result.tokens).toBeLessThanOrEqual(MEMORY_LIMITS.indexTokenBudget)
+    expect(result.text?.match(/### Profile/g)).toHaveLength(2)
+    expect(result.text?.match(/### Preferences/g) ?? [])
+      .toHaveLength(preferencesBodies)
+  })
+
+  it('on Claude keeps the Ukrainian profile and preferences bodies and drops '
+    + 'never-used topics when entries do not fit', () => {
+    const accountEntries = buildRichAccount('uk', {
+      profile: 1,
+      preferences: 1,
+    }).map((entry, index) => {
+      return index % 2 === 0
+        ? { ...entry, lastUsedAt: '2026-10-25T00:00:00.000Z' }
+        : entry
+    })
+    const neverUsed = accountEntries.filter((entry) => {
+      return !isCoreEntry(entry) && entry.lastUsedAt === null
+    })
+    const recentlyUsedOnly = build({
+      accountEntries: accountEntries
+        .filter(entry => !neverUsed.includes(entry))
+        .map(entry => ({ ...entry, description: '' })),
+      budgetTokens: Number.MAX_SAFE_INTEGER,
+      tokenFamily: 'anthropic',
+    })
+    const budgetTokens = recentlyUsedOnly.tokens
+    const result = build({
+      accountEntries,
+      budgetTokens,
+      tokenFamily: 'anthropic',
+    })
+    const droppedSlugs = accountEntries
+      .filter((entry) => {
+        return !isCoreEntry(entry)
+          && !result.text!.includes(`${entry.category}/${entry.slug} |`)
+      })
+
+    expect(result.trimSteps)
+      .toEqual([...DESCRIPTION_TRIM_ORDER, 'drop-least-recently-used'])
+    expect(neverUsed.length).toBeGreaterThan(0)
+    expect(droppedSlugs).toEqual(neverUsed)
+    expect(result.droppedEntries).toBe(neverUsed.length)
+    expect(result.overBudget).toBe(false)
+    expect(result.text).toContain('### Profile')
+    expect(result.text).toContain('### Preferences')
+  })
+
+  it('collapses profile bodies only when the bodies alone exceed the budget',
+    () => {
+      const accountEntries = buildRichAccount('uk', {
         profile: 4,
         preferences: 4,
       })
-      const untrimmed = build({
-        accountEntries,
+      const profileBodiesOnly = build({
+        accountEntries: accountEntries.filter((entry) => {
+          return entry.category === 'profile'
+        }),
         budgetTokens: Number.MAX_SAFE_INTEGER,
+        tokenFamily: 'anthropic',
       })
-      const result = build({ accountEntries })
+      const result = build({ accountEntries, tokenFamily: 'anthropic' })
 
-      expect(accountEntries).toHaveLength(MEMORY_LIMITS.maxAccountEntries)
-      expect(
-        memoryByteLength(accountEntries[0]!.body),
-      ).toBeLessThanOrEqual(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
-      expect(untrimmed.tokens).toBeGreaterThan(
-        MEMORY_LIMITS.indexTokenBudget,
-      )
-      expect(result.trimSteps).toEqual(['preferences-body', 'descriptions-60'])
+      expect(profileBodiesOnly.tokens)
+        .toBeGreaterThan(MEMORY_LIMITS.indexTokenBudget)
+      expect(result.trimSteps).toEqual([
+        ...DESCRIPTION_TRIM_ORDER,
+        'preferences-body',
+        'profile-body',
+      ])
+      expect(result.droppedEntries).toBe(0)
       expect(result.overBudget).toBe(false)
-      expect(result.tokens).toBeLessThanOrEqual(
-        MEMORY_LIMITS.indexTokenBudget,
-      )
-      expect(result.entryCount).toBe(MEMORY_LIMITS.maxAccountEntries)
-      expect(result.text).toContain('### Profile')
-      expect(result.text).not.toContain('### Preferences')
-    }
-  })
+    })
+
+  it.each([
+    'anthropic',
+    'qwen',
+    'deepseek',
+    'moonshotai',
+  ] as const)('estimates the same Cyrillic index higher on %s than on OpenAI',
+    (family) => {
+      const accountEntries = buildRichAccount('uk', {
+        profile: 1,
+        preferences: 1,
+      })
+      const tokensFor = (tokenFamily: typeof family | 'openai') => {
+        return build({
+          accountEntries,
+          budgetTokens: Number.MAX_SAFE_INTEGER,
+          tokenFamily,
+        }).tokens
+      }
+
+      expect(tokensFor(family)).toBeGreaterThan(tokensFor('openai'))
+    })
 
   it('collapses profile bodies as the last resort when eight full-size '
     + 'ones compete for the budget', () => {
@@ -1099,5 +1270,113 @@ describe('loadMemoryIndex', () => {
 
     expect(withTools.text).toContain('memory_read')
     expect(withoutTools.text).not.toContain('memory_read')
+  })
+})
+
+describe('buildMemoryIndex drops the least recently used entries last', () => {
+  beforeEach(() => {
+    nextEntryId = 1
+  })
+
+  function lruEntries() {
+    return {
+      neverUsed: makeEntry({
+        slug: 'never-used',
+        title: 'Never used',
+        description: '',
+        lastUsedAt: null,
+      }),
+      usedLongAgo: makeEntry({
+        slug: 'used-long-ago',
+        title: 'Used long ago',
+        description: '',
+        lastUsedAt: '2026-01-02T00:00:00.000Z',
+      }),
+      usedRecently: makeEntry({
+        slug: 'used-recently',
+        title: 'Used recently',
+        description: '',
+        lastUsedAt: '2026-10-25T00:00:00.000Z',
+      }),
+      profile: makeEntry({
+        category: 'profile',
+        slug: 'profile',
+        title: 'Profile',
+        description: '',
+        body: '',
+        lastUsedAt: null,
+      }),
+    }
+  }
+
+  function tokensOf(entries: MemoryEntry[]): number {
+    return build({
+      accountEntries: entries,
+      budgetTokens: Number.MAX_SAFE_INTEGER,
+    }).tokens
+  }
+
+  it.each([
+    {
+      label: 'one entry over: the never-used one goes',
+      keptForBudget: ['usedLongAgo', 'usedRecently', 'profile'],
+      dropped: ['never-used'],
+      kept: ['used-long-ago', 'used-recently'],
+    },
+    {
+      label: 'two entries over: then the least recently used one',
+      keptForBudget: ['usedRecently', 'profile'],
+      dropped: ['never-used', 'used-long-ago'],
+      kept: ['used-recently'],
+    },
+  ] as const)('$label', ({ keptForBudget, dropped, kept }) => {
+    const entries = lruEntries()
+    const budgetTokens = tokensOf(keptForBudget.map(key => entries[key]))
+    const result = build({
+      accountEntries: Object.values(entries),
+      budgetTokens,
+    })
+
+    expect(result.trimSteps).toEqual(['drop-least-recently-used'])
+    expect(result.droppedEntries).toBe(dropped.length)
+    expect(result.entryCount).toBe(4 - dropped.length)
+    expect(result.overBudget).toBe(false)
+    expect(result.text).toContain('- profile/profile | Profile')
+
+    for (const slug of dropped) {
+      expect(result.text).not.toContain(`topics/${slug}`)
+    }
+
+    for (const slug of kept) {
+      expect(result.text).toContain(`topics/${slug}`)
+    }
+  })
+
+  it('never drops profile or preferences, even far over budget', () => {
+    const entries = lruEntries()
+    const preferences = makeEntry({
+      category: 'preferences',
+      slug: 'preferences',
+      title: 'Preferences',
+      description: '',
+      body: '',
+    })
+    const result = build({
+      accountEntries: [...Object.values(entries), preferences],
+      budgetTokens: 1,
+    })
+
+    expect(result.droppedEntries).toBe(3)
+    expect(result.overBudget).toBe(true)
+    expect(result.text).toContain('- profile/profile | Profile')
+    expect(result.text).toContain('- preferences/preferences | Preferences')
+  })
+
+  it('drops nothing while the index fits, whatever lastUsedAt says', () => {
+    const result = build({ accountEntries: Object.values(lruEntries()) })
+
+    expect(result.droppedEntries).toBe(0)
+    expect(result.trimSteps).toEqual([])
+    expect(result.entryCount).toBe(4)
   })
 })

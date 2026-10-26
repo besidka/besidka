@@ -22,6 +22,7 @@ interface MeterOptions {
   mode?: KnowledgeMode
   model?: KnowledgeModelContext
   storageTotalBytes?: number | null
+  accountItems?: number
   isReady?: boolean
 }
 
@@ -39,6 +40,7 @@ async function mountMeter(options: MeterOptions = {}) {
       storageTotalBytes: options.storageTotalBytes === undefined
         ? 20 * MEGABYTE
         : options.storageTotalBytes,
+      accountItems: options.accountItems ?? 3,
       isReady: options.isReady ?? true,
     },
   })
@@ -180,6 +182,52 @@ describe('Projects/Knowledge/CapacityMeter', () => {
         .toBe('≈ $0.020 per message')
       expect(wrapper.find('[data-testid="knowledge-meter-warning"]').exists())
         .toBe(false)
+    })
+  })
+
+  describe('account item limit', () => {
+    const accountWarning = '[data-testid="knowledge-meter-account-warning"]'
+
+    it('stays quiet while the account is below 90% of its limit', async () => {
+      const wrapper = await mountMeter({ accountItems: 1_799 })
+
+      expect(wrapper.find(accountWarning).exists()).toBe(false)
+    })
+
+    it('warns at 90% and names the account limit', async () => {
+      const wrapper = await mountMeter({ accountItems: 1_800 })
+
+      expect(text(wrapper, 'knowledge-meter-account-warning')).toBe(
+        'Close to your account limit: 1,800 of 2,000 knowledge items '
+        + 'across all your projects. New items are blocked at 2,000.',
+      )
+      expect(wrapper.get(accountWarning).classes())
+        .not.toContain('text-error')
+    })
+
+    it('says the limit is reached at 2,000 and shows it as an error', async () => {
+      const wrapper = await mountMeter({ accountItems: 2_000 })
+
+      expect(text(wrapper, 'knowledge-meter-account-warning')).toContain(
+        'Account limit reached: you have 2,000 of 2,000 knowledge items',
+      )
+      expect(wrapper.get(accountWarning).classes()).toContain('text-error')
+    })
+
+    it('is a status region and not shown while loading', async () => {
+      const wrapper = await mountMeter({ accountItems: 1_900 })
+
+      expect(wrapper.get(accountWarning).attributes('role')).toBe('status')
+
+      const loading = await mountMeter({ accountItems: 1_900, isReady: false })
+
+      expect(loading.find(accountWarning).exists()).toBe(false)
+    })
+
+    it('keeps the per-project cap line next to the account warning', async () => {
+      const wrapper = await mountMeter({ accountItems: 1_900 })
+
+      expect(text(wrapper, 'knowledge-meter-cap')).toContain('of 500 items')
     })
   })
 

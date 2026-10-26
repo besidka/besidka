@@ -13,8 +13,11 @@ import {
   memoryEntryInputSchema,
   memoryEntryPatchSchema,
 } from '#shared/utils/memory-schemas'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { decodePublicId } from '~~/server/utils/custom-db-types'
+import { insertGuardedMemoryEntry } from '~~/server/utils/memory/entries'
+import { chatIsMemoryIncluded } from '~~/server/utils/memory/chat-memory-filters'
 import {
   evaluateMemoryEntry,
   recordSensitiveDetection,
@@ -49,6 +52,7 @@ type MergeFieldsBuilder = (
 ) => MemoryExtractionPatchFields | DropOutcome
 
 const COMPLIANCE_ORIGIN = 'memory-extraction'
+const CHAT_UNAVAILABLE_DROP_REASON = 'chat-unavailable'
 const FALLBACK_SLUG_PREFIX = 'entry'
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint'
 const SENSITIVE_TOPIC_DROP_REASON = 'sensitive-topic'
@@ -294,6 +298,7 @@ class MemoryExtractionApplier {
   private readonly createdOrigin: Extract<MemoryOrigin, 'extraction' | 'import'>
   private readonly mutableOrigins: MemoryOrigin[]
   private readonly detectedCategories = new Set<MemorySensitiveCategory>()
+  private isSourceChatGone = false
 
   constructor(input: MemoryExtractionApplyInput) {
     this.input = input
@@ -436,6 +441,12 @@ class MemoryExtractionApplier {
   }
 
   private async applyOp(op: MemoryExtractionOp) {
+    if (this.isSourceChatGone) {
+      this.drop(CHAT_UNAVAILABLE_DROP_REASON)
+
+      return
+    }
+
     if (op.op !== 'create' && 'dropped' in this.findOpTarget(op)) {
       this.drop('unknown-target')
 
@@ -588,24 +599,26 @@ class MemoryExtractionApplier {
     }
 
     const sourceChatIds = this.input.chatId ? [this.input.chatId] : []
-    const rows = await this.input.db
-      .insert(schema.memoryEntries)
-      .values({
-        userId: this.input.userId,
-        projectId: this.input.projectId ?? undefined,
-        ...values,
-        slug,
-        origin: this.createdOrigin,
-        sourceChatIds,
-      })
-      .returning({
-        id: schema.memoryEntries.id,
-        updatedAt: schema.memoryEntries.updatedAt,
-      })
-    const written = rows[0]
+    const written = await insertGuardedMemoryEntry(this.input.db, {
+      userId: this.input.userId,
+      decodedProjectId: this.input.projectId
+        ? decodePublicId(this.input.projectId)
+        : null,
+      category: values.category,
+      slug,
+      title: values.title,
+      description: values.description,
+      body: values.body,
+      origin: this.createdOrigin,
+      sourceChatIds,
+      sourceMessageId: null,
+      requiredChatId: this.input.chatId
+        ? decodePublicId(this.input.chatId)
+        : null,
+    })
 
     if (!written) {
-      return { dropped: 'unknown-target' }
+      return await this.refusedWriteOutcome({ dropped: 'cap-reached' })
     }
 
     this.entriesByKey.set(memoryExtractionEntryKey(values.category, slug), {
@@ -781,6 +794,56 @@ class MemoryExtractionApplier {
     }
   }
 
+  /**
+   * The atomic "the source chat still exists and is not excluded from
+   * memory" condition every write that records the chat as a source
+   * carries, or none for a pass without a chat (an import). A chat deleted
+   * or excluded after the pass re-read it then makes the write land on
+   * nothing instead of citing it.
+   */
+  private sourceChatGuard() {
+    if (this.input.chatId === null) {
+      return undefined
+    }
+
+    return sql`exists (
+      select 1 from ${schema.chats}
+      where ${eq(schema.chats.id, this.input.chatId)}
+        and ${eq(schema.chats.userId, this.input.userId)}
+        and ${chatIsMemoryIncluded()}
+    )`
+  }
+
+  private async readIsSourceChatGone(): Promise<boolean> {
+    if (this.input.chatId === null) {
+      return false
+    }
+
+    const rows = await this.input.db
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .where(and(
+        eq(schema.chats.id, this.input.chatId),
+        eq(schema.chats.userId, this.input.userId),
+        chatIsMemoryIncluded(),
+      ))
+      .limit(1)
+
+    return rows.length === 0
+  }
+
+  private async refusedWriteOutcome<T>(
+    fallback: T,
+  ): Promise<T | DropOutcome> {
+    if (!(await this.readIsSourceChatGone())) {
+      return fallback
+    }
+
+    this.isSourceChatGone = true
+
+    return { dropped: CHAT_UNAVAILABLE_DROP_REASON }
+  }
+
   private unchangedRowGuard(base: MemoryExtractionIndexEntry) {
     return and(
       eq(schema.memoryEntries.id, base.id),
@@ -916,11 +979,11 @@ class MemoryExtractionApplier {
         body: values.body,
         sourceChatIds,
       })
-      .where(this.unchangedRowGuard(base))
+      .where(and(this.unchangedRowGuard(base), this.sourceChatGuard()))
       .returning({ updatedAt: schema.memoryEntries.updatedAt })
 
     if (!rows.length) {
-      return STALE_ROW
+      return await this.refusedWriteOutcome(STALE_ROW)
     }
 
     this.entriesByKey.set(
@@ -949,11 +1012,11 @@ class MemoryExtractionApplier {
     const rows = await this.input.db
       .update(schema.memoryEntries)
       .set({ sourceChatIds })
-      .where(this.unchangedRowGuard(base))
+      .where(and(this.unchangedRowGuard(base), this.sourceChatGuard()))
       .returning({ updatedAt: schema.memoryEntries.updatedAt })
 
     if (!rows.length) {
-      return STALE_ROW
+      return await this.refusedWriteOutcome(STALE_ROW)
     }
 
     this.entriesByKey.set(
