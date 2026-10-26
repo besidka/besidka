@@ -178,6 +178,51 @@ comparison:
         - no
         - no
         - Not listed by T3
+    - label: Memory you can read, edit and delete
+      values:
+        - yes
+        - yes
+        - yes
+        - US only, Google AI plan needed
+        - US only, Google AI plan needed
+        - yes
+        - Not listed by T3
+    - label: Search your past chats from a new chat
+      values:
+        - yes
+        - yes
+        - yes
+        - yes
+        - yes
+        - yes
+        - Not listed by T3
+    - label: Projects with their own files and memory
+      values:
+        - yes
+        - yes
+        - yes
+        - Notebooks and Gems with files
+        - Notebooks and Gems with files
+        - yes
+        - Not listed by T3
+    - label: Keep one chat out of memory but in your history
+      values:
+        - yes
+        - Temporary Chat, left out of history
+        - Temporary Chat, left out of history
+        - Temporary chat, left out of history
+        - Temporary chat, left out of history
+        - yes
+        - Not listed by T3
+    - label: Optional extra checks on your own key (TypeSafe AI)
+      values:
+        - yes
+        - no
+        - no
+        - no
+        - no
+        - no
+        - Not listed by T3
   note: Besidka is free; you pay the AI provider for what you use. A casual user sending around 100 messages a month uses roughly 50 k input and 50 k output tokens. At Claude Sonnet 5.5's API rates ($2 input / $10 output per million tokens) that is about $0.60; on Claude Opus 5.5 ($4 / $20) about $1.20. Sending 1,000 messages a month lands near $6 on Sonnet 5.5 or $12 on Opus 5.5. Long chats resend earlier messages as input, so real input counts run higher, and prompt caching bills those repeated tokens at a discount. Web search, image generation and deep research are billed separately at the provider's published rates. There is no Besidka markup. Subscription prices are US list prices. The subscription apps bundle features and limits Besidka does not copy, and the free tiers of ChatGPT and Gemini cover plain text chat at no cost.
   priceDate: "2026-10-20"
   sources:
@@ -191,12 +236,28 @@ comparison:
       url: https://help.openai.com/en/articles/8555545-file-uploads-faq
     - label: ChatGPT sharing
       url: https://help.openai.com/en/articles/7925741-sharing-conversations-and-scheduled-tasks-in-chatgpt
+    - label: ChatGPT memory
+      url: https://help.openai.com/en/articles/8590148-memory-in-chatgpt
+    - label: ChatGPT projects
+      url: https://help.openai.com/en/articles/10169521-projects-in-chatgpt
+    - label: ChatGPT Temporary Chat
+      url: https://help.openai.com/en/articles/8914046-temporary-chat-in-chatgpt
     - label: Google AI plans
       url: https://gemini.google/us/subscriptions/
     - label: Gemini models by plan
       url: https://support.google.com/gemini/answer/18648722
     - label: Gemini shared links
       url: https://support.google.com/gemini/answer/13743730
+    - label: Gemini personal context
+      url: https://support.google.com/gemini/answer/16598625
+    - label: Gemini past chats
+      url: https://support.google.com/gemini/answer/16598469
+    - label: Gemini Gems
+      url: https://support.google.com/gemini/answer/15146780
+    - label: Gemini notebooks
+      url: https://support.google.com/gemini/answer/16972047
+    - label: Gemini temporary chats
+      url: https://support.google.com/gemini/answer/13275745
     - label: Claude pricing
       url: https://claude.com/pricing
     - label: Claude images
@@ -207,6 +268,8 @@ comparison:
       url: https://support.claude.com/en/articles/16762496-share-a-chat-with-specific-people
     - label: Claude Research
       url: https://support.claude.com/en/articles/11088861-use-research-on-claude
+    - label: Claude memory and chat search
+      url: https://support.claude.com/en/articles/11817273
     - label: T3 Chat FAQ
       url: https://t3.chat/faq
     - label: T3 Chat terms
@@ -233,10 +296,14 @@ faqs:
     answer: Your keys are stored encrypted in Cloudflare D1, isolated per account behind Better Auth session guards. They are never logged or transmitted to third parties. You can delete them from your profile at any time.
   - question: Can I self-host this?
     answer: Yes. Besidka is MIT-licensed and designed to run on Cloudflare Workers. Clone the repository, configure your Cloudflare account per the README, and deploy with pnpm run deploy. You bring the Cloudflare account.
-  - question: Is my chat history private?
-    answer: On the hosted version at besidka.com, your chats are stored in Besidka's database and scoped to your account, so only you can read them through the app. If you self-host, they are stored in your own Cloudflare account and no third party has access. Messages are sent to the AI provider whose key you use, and that provider's own data terms apply to them.
+  - question: Is my chat history private, and what do I consent to?
+    answer: On the hosted version at besidka.com, your chats, memory and files are stored on Cloudflare and scoped to your account, so only you can read them through the app. If you self-host, they are stored in your own Cloudflare account and no third party has access. Messages go to the AI provider or gateway whose key you use, web searches to the search provider you pick, and, only if you add a TypeSafe AI key, the text its checks need goes to TypeSafe AI. Each of them applies its own data terms. Before your first message, Besidka asks for a separate consent to store any sensitive information you choose to include, to send it to the providers whose keys you add, and to check text automatically before it is saved to memory so that sensitive topics stay out. You can withdraw it in Profile, Security, Privacy & consent. The [Privacy Policy](/privacy-policy) lists every recipient.
   - question: Does Besidka remember things about me?
-    answer: Only what you let it. Besidka keeps small memory entries about you and about each project that you can see, edit, export and delete, and it can search your past chats. Generating memory from your chats in the background is off until you switch it on and runs on your own API key. Card numbers, passwords, health details and other sensitive data are refused, not stored. [How memory works](/memory) covers each part.
+    answer: Only what you let it. Besidka keeps small memory entries about you and about each project. Open Profile, Memory to read, edit, export or delete them, or write what to change in plain words and approve a preview before anything is saved. You can also ask in a chat, for example "remember that I prefer short answers". Generating memory from your chats in the background is off until you switch it on, and then it runs on your own API key. Card numbers, passwords, health details and other sensitive data are refused, not stored. [How memory works](/memory) covers each part.
+  - question: Can Besidka use my past chats and project files?
+    answer: Yes, and you decide how. With Search and reference chats on, which is the default, the model can search your earlier chats, and every time it does, the answer shows a Searched your chats step with links to the chats it used. A project can hold files, notes and its own memory, which only that project's chats use. To keep one chat out of all of this, switch on Don't use this chat for memory. The chat stays in your history, but memory no longer reads it, the model cannot search it, and entries generated only from that chat are removed.
+  - question: What are smart checks with TypeSafe AI?
+    answer: Optional extra checks that run on a second key, from TypeSafe AI. Its Jev model is a decision model, not a chat model. It answers short yes/no questions, such as whether a message needs a web search, whether a memory entry holds sensitive data, or whether a project file hides instructions aimed at the AI. There are seven checks, each with its own switch, and a slow or failed check never blocks you. A check costs a fraction of a cent on your own TypeSafe AI account, and Besidka works fully without the key. [How to get a TypeSafe AI API key](/guides/typesafe-ai-api-key) explains each check, what it sends and how well it works.
   - question: Can I share a chat?
     answer: Yes. Any chat can be shared via a public, unguessable link. Recipients view a read-only copy without needing an account, and can branch it into their own chats. You control per-share options like link expiry, search-engine indexing, and whether images, file names, message details, or your avatar are visible, and you can revoke a share at any time. Shared files are served through short-lived, revocable tokens rather than a public bucket.
   - question: Does Besidka support deep research like ChatGPT?

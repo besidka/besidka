@@ -1,7 +1,7 @@
 ---
 title: "BYOK: use GPT, Claude and Gemini with your own API key"
 description: "How to use GPT, Claude and Gemini with your own API key in Besidka, a BYOK AI chat app: a free Gemini API key without a card, adding keys, cost and key storage."
-updatedAt: 2026-10-20
+updatedAt: 2026-10-26
 summary: 'Besidka is a BYOK AI chat app: you paste an API key from an AI provider such as OpenAI, Anthropic or Google into Besidka. Your chats run on that key, the provider bills you directly at its published API rates, and Besidka charges nothing on top. A free Gemini key from Google AI Studio needs no card.'
 ---
 
@@ -95,6 +95,7 @@ In a long chat, every new message resends the earlier conversation. Providers ca
 - **Web search.** A model's built-in web search is billed by the provider. If you add your own Brave Search or Exa key, those searches are billed by Brave or Exa.
 - **Image generation.** Billed by the provider at its published image prices.
 - **Deep research.** Runs on Google's deep research agent with your Google key and is billed by Google.
+- **Smart checks.** Only if you add a TypeSafe AI key, see below. Each check is billed by TypeSafe AI to your own account.
 
 ## Where your keys are stored
 
@@ -113,6 +114,17 @@ Instead of, or alongside, direct provider keys, you can connect your own account
 - When you use a gateway model, the gateway bills you at its own rates, which can differ from the provider's direct prices.
 - A gateway is useful when you already have an account there, or want one key for many providers.
 - OpenRouter also offers some free models, with IDs ending in `:free`. As of 2026-10-20 they are limited to 50 requests a day if you have bought less than $10 of credit and 1,000 a day with $10 or more, at 20 requests a minute ([OpenRouter limits](https://openrouter.ai/docs/api-reference/limits)). OpenRouter charges a 5.5% fee when you buy credit ([pricing](https://openrouter.ai/pricing)).
+
+## Smart checks: an optional TypeSafe AI key
+
+One more key you can bring is not for chatting at all. A TypeSafe AI key powers Jev, a decision model that answers short yes/no questions with a probability instead of writing text. Besidka uses it for seven optional smart checks, such as deciding whether a message needs a web search (**Auto** in the web search menu), a second opinion before a memory entry is saved, and screening project files and Brave or Exa results for hidden instructions aimed at the AI.
+
+- It is the same BYOK deal: your TypeSafe AI account, billed by TypeSafe AI at its own rates, with nothing added by Besidka. TypeSafe AI lists $0.042 per million input tokens with free output, so a check costs a fraction of a cent.
+- Add it under **Profile → API Keys → Smart checks**. Saving the key switches every check on, each check has its own switch, and deleting the key stops all of them.
+- It adds no chat models and never answers your messages. Besidka works fully without it, and a slow or failed check never blocks you.
+- The checks you leave on send text to TypeSafe AI in the United States, with never-stored values such as card numbers and passwords removed first.
+
+[How to get a TypeSafe AI API key](/guides/typesafe-ai-api-key) covers each check, what it sends, what it costs and how well it worked in testing.
 
 ## Get started
 
