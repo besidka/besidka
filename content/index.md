@@ -285,7 +285,7 @@ faqs:
   - question: Can I use ChatGPT with my own API key?
     answer: The ChatGPT app itself does not accept an API key, and a ChatGPT subscription and OpenAI API billing are separate products. With an OpenAI API key you can use the same GPT models in a BYOK app such as Besidka and pay OpenAI per use. OpenAI sells API credit in advance, with a minimum purchase of $5 as of 20 October 2026. The ChatGPT app has features that an API key does not give you, such as its own apps and voice mode. The BYOK guide has the steps.
   - question: Can I start for free?
-    answer: Yes, with a Gemini API key from Google AI Studio. Creating one needs a Google account but no card or billing account, and Besidka itself is free. [How to get a free Gemini API key](/guides/gemini-api-key) has the steps and a short video. The free tier has rate limits, and Google may use your prompts and responses on the free tier to improve its products, so do not send anything sensitive. Moving to the paid tier (a billing account; new accounts start on prepaid credit) stops Google using your prompts to improve its products. Other providers need prepaid credit or a card before their API accepts requests.
+    answer: Yes, with a Gemini API key from Google AI Studio. Creating one needs a Google account but no card or billing account, and Besidka itself is free. [How to get a free Gemini API key](/guides/gemini-api-key) has the steps and a short video. The free tier has rate limits. Outside the EEA, Switzerland and the UK, Google may use your prompts and responses on the free tier to improve its products, so do not send anything sensitive; inside them, Google applies its paid-tier data terms to all use, including the free quota. Moving to the paid tier (a billing account; new accounts start on prepaid credit) stops Google using your prompts to improve its products. Other providers need prepaid credit or a card before their API accepts requests.
   - question: Which AI providers are supported?
     answer: "Besidka connects directly to seven AI providers: Anthropic (Claude Opus 5, Claude Sonnet 5 and Claude Haiku 4.5), OpenAI (GPT-5.6, GPT-5.5 and the wider GPT family), Google AI Studio (Gemini 3.8 Flash, Gemini 3.1 Pro Preview and other Gemini models), xAI (Grok 4.6 and other Grok models), DeepSeek (DeepSeek V4 Pro and DeepSeek V4.1 Flash), Moonshot AI (Kimi K3 and Kimi K2.6) and Qwen (Qwen3.8 Max, Qwen3.8 Flash and other Qwen models). Instead of per-provider keys, you can also route chats through your own AI gateway account (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), using the models that gateway makes available to your account. For web search, you can add your own Brave Search or Exa key and use it with any model that supports tool calling, whichever provider or gateway runs it. Check the GitHub repository for the full, current model list."
   - question: Can I choose how deep web search goes?
@@ -293,7 +293,7 @@ faqs:
   - question: Can Besidka generate images and documents?
     answer: Yes for images. Select Create image with a supported OpenAI, Google or xAI chat model, and Besidka generates one image per request. The image is stored privately in your file library, counts toward your storage quota, and remains available to download. Besidka does not generate PDF, PPTX, or XLSX files yet.
   - question: Do you store my API keys?
-    answer: Your keys are stored encrypted in Cloudflare D1, isolated per account behind Better Auth session guards. They are never logged or transmitted to third parties. You can delete them from your profile at any time.
+    answer: Your keys are stored encrypted in Cloudflare D1, isolated per account behind Better Auth session guards. They are never logged, and a key is sent to no one but the company that issued it, when Besidka calls it for you. You can delete them from your profile at any time.
   - question: Can I self-host this?
     answer: Yes. Besidka is MIT-licensed and designed to run on Cloudflare Workers. Clone the repository, configure your Cloudflare account per the README, and deploy with pnpm run deploy. You bring the Cloudflare account.
   - question: Is my chat history private, and what do I consent to?
@@ -366,7 +366,7 @@ steps:
     body: Create a free account with email and password, or sign in with Google or GitHub. No credit card required.
   - icon: lucide:key
     title: 2. Add your API key
-    body: Paste an API key from Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen into your profile, or connect your own AI gateway instead. The easiest start is a free Gemini key from Google AI Studio, which needs no card. Keys are encrypted at rest and never shared.
+    body: Paste an API key from Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen into your profile, or connect your own AI gateway instead. The easiest start is a free Gemini key from Google AI Studio, which needs no card. Keys are encrypted at rest and never shared with anyone but the company that issued them.
   - icon: lucide:message-square
     title: 3. Start chatting
     body: Open a new chat, pick your model, and go. You pay your provider or gateway directly. Besidka adds nothing on top.

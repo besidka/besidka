@@ -1,8 +1,8 @@
 ---
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
-updatedAt: 2026-10-26
-summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
+updatedAt: 2026-10-27
+summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
 ## Who I am
@@ -35,13 +35,15 @@ Instead, you may route a chat through your own account with an AI gateway (curre
 
 **I do not provide web search either.** You may add your own API key from a search provider (currently Brave Search or Exa) and turn it on for a message. The search query your model writes from your prompt is then sent to that search provider using your key.
 
-Each AI provider, AI gateway and search provider is a separate company, with its own terms and its own bill.
+**The optional checks are not an AI model either.** You may add your own API key from **TypeSafe AI**, and Besidka then asks TypeSafe AI's Jev model short yes/no questions for the checks you leave on, such as whether a message needs a web search or whether a memory entry holds sensitive information. Jev adds no chat model and never answers your messages. A slow or failed check never blocks you, and Besidka works fully without the key. What each check sends is listed in the [Privacy Policy](/privacy-policy#typesafe-ai-checks).
+
+Each AI provider, AI gateway, search provider and TypeSafe AI is a separate company, with its own terms and its own bill.
 
 ## There is no payment
 
 The hosted service is **free**. There is no subscription, no paid tier, no advertising, no donations and no payment processor. You never pay me anything and I never ask for card details.
 
-You pay your **AI provider** directly for the model usage under your own account with them. If you route a chat through an **AI gateway**, you pay that gateway directly under your own account with it. If you use a **search provider**, you pay that search provider directly under your own account with it, and that is a separate bill from your model usage. Their pricing, invoices and limits are between you and them. I do not resell, mark up or take a share of any of it, and I am not a party to those contracts.
+You pay your **AI provider** directly for the model usage under your own account with them. If you route a chat through an **AI gateway**, you pay that gateway directly under your own account with it. If you use a **search provider**, you pay that search provider directly under your own account with it, and that is a separate bill from your model usage. If you add a TypeSafe AI key, each check is billed by TypeSafe AI to your own account, again separately. Their pricing, invoices and limits are between you and them. I do not resell, mark up or take a share of any of it, and I am not a party to those contracts.
 
 Because you never pay me for anything, there is nothing to refund and no right of withdrawal from a purchase arises.
 
@@ -65,12 +67,13 @@ You can delete your account at any time from your settings. That deletes your ac
 
 ## You need your own API key
 
-This section applies to every key you enter: an AI provider key, an AI gateway key or credential, and a search provider key.
+This section applies to every key you enter: an AI provider key, an AI gateway key or credential, a search provider key, and a TypeSafe AI key.
 
-- You must have the right to use the API key you enter, and you must comply with the terms and usage policies of whoever issued it — your AI provider, AI gateway or search provider. Breaking them is between you and them, but it can also mean Besidka stops working for you.
+- You must have the right to use the API key you enter, and you must comply with the terms and usage policies of whoever issued it — your AI provider, AI gateway, search provider or TypeSafe AI. Breaking them is between you and them, but it can also mean Besidka stops working for you.
 - Your key is stored encrypted (see the [Privacy Policy](/privacy-policy)), but you should still treat entering a key anywhere as a decision with risk. Use a key scoped and limited to what you need, and rotate it if you have any doubt.
 - You are responsible for the usage costs your key incurs, including costs from long conversations, large attachments and deep research runs.
 - **A search provider key is a separate cost.** Every search your model runs with your Brave or Exa key is billed to your Brave or Exa account, separately from what your AI provider or AI gateway charges for the model usage. One message can run more than one search.
+- **TypeSafe AI is a separate cost too.** Every check you leave on is billed to your TypeSafe AI account, a fraction of a cent each, separately from your model usage. You can switch single checks off, or delete the key to stop all of them.
 - **An AI gateway bills you itself.** If you route a chat through a gateway, the model usage is charged through your gateway account, under the gateway's own pricing and terms.
 - I cannot see, refund or cap your spending with any of them. Set spending limits in your provider, gateway and search provider accounts if you want a ceiling.
 
@@ -108,7 +111,7 @@ Do not use Besidka to:
 
 You may share sensitive information about yourself in Besidka, such as details of your health or your beliefs, if you want the assistant's help with it. Before you do, know what happens to it:
 
-- It is stored with the rest of the chat and sent to the AI provider, AI gateway or search provider you chose, under your own account with them. On a free Google Gemini key outside the EEA, Switzerland and the UK, Google may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
+- It is stored with the rest of the chat and sent to the AI provider, AI gateway or search provider you chose, and to TypeSafe AI if you added a key and left a check on, under your own account with them. On a free Google Gemini key outside the EEA, Switzerland and the UK, Google may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
 - I store and send it only with your explicit consent, which I ask for in the app, separately from these terms. The [Privacy Policy](/privacy-policy#sensitive-information-in-your-chats) explains it, including how to withdraw it. If you do not give that consent, or you withdraw it, you can still read, export and delete your data, but you cannot send new messages or add new content.
 - Please take particular care with other people's sensitive information, and with anything about criminal offences; see [Other people's data](#other-peoples-data).
 
@@ -125,13 +128,13 @@ You keep all rights in what you write and upload. I claim no ownership of it.
 To run the service, I need a **narrow, limited permission** from you. You grant me a non-exclusive, royalty-free licence, limited strictly to operating the service for you, to:
 
 1. store your content and serve it back to you;
-2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, including your memory, project knowledge and excerpts of your earlier chats; transmit chat text to the model you chose for memory, using your key, when memory is written from your chats as described in the [Privacy Policy](/privacy-policy#memory); and transmit the search queries your model writes from it to the search provider you turned on, using your key;
+2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, including your memory, project knowledge and excerpts of your earlier chats; transmit chat text to the model you chose for memory, using your key, when memory is written from your chats as described in the [Privacy Policy](/privacy-policy#memory); and transmit the search queries your model writes from it to the search provider you turned on, using your key; transmit the text the TypeSafe AI checks you left on need to TypeSafe AI, using your key, as described in the [Privacy Policy](/privacy-policy#typesafe-ai-checks);
 3. keep the memory entries and project knowledge you create or allow, and use them as context for your own later chats; and
 4. render your content on a share page **that you yourself created**, for as long as that share is active.
 
 That is the whole licence. It is not perpetual, not transferable and not for any other purpose. It ends for any given content when you delete that content or your account. I do not use your content to train models, to advertise, or to build any other product.
 
-The rights of an AI provider, an AI gateway or a search provider over what you send it come from **your** agreement with that company, not from this licence.
+The rights of an AI provider, an AI gateway, a search provider or TypeSafe AI over what you send it come from **your** agreement with that company, not from this licence.
 
 ## Share links
 
@@ -194,16 +197,19 @@ I am a micro-enterprise and am therefore exempt from the Digital Services Act's 
 
 ## Content moderation
 
-I do not read your private chats and I do not run automated scanning of chat content for moderation. There is no system that flags, reports or acts on what you write.
+I do not read your private chats and I do not run automated scanning of chat content for moderation. No automatic system reports what you write to me or to anyone else, and none decides anything about your account.
 
-The only automatic check on content is part of memory: before text is saved to memory, it is checked so that sensitive topics and never-stored items such as card numbers are kept out, and never-stored items are removed from chat text before it is sent to the memory model. That check only decides what memory may keep. It does not flag your chats, it does not report anything, and it has no effect on your account.
+Besidka has two kinds of automatic check on content. Neither is moderation: neither reports anything, and neither acts on you or your account.
+
+- **The memory check.** Before text is saved to memory, it is checked so that sensitive topics and never-stored items such as card numbers are kept out, and never-stored items are removed from chat text before it is sent to the memory model. It only decides what memory may keep.
+- **The optional TypeSafe AI checks,** which run only if you add a TypeSafe AI key and leave them on. They decide whether to search the web, whether memory is worth generating from a chat, how search results are ordered, whether to warn you about personal data before you share a chat, and whether a project file or a search result looks like hidden instructions aimed at the AI. A flagged project file waits for your review and a flagged search result is left out of the model's context, but nothing is deleted, nothing is reported to anyone, and there is no effect on your account.
 
 Moderation is therefore **reactive**. I act on reports, on notices from authorities, and on things I notice while running the service. When I act, I may remove or disable specific content, revoke a share link, restrict a feature for an account, or suspend or terminate an account for serious or repeated breaches of these terms. I aim to act proportionately, and I send a statement of reasons as described above.
 
 ## Availability and changes to the service
 
 - **There is no uptime guarantee.** This is a free service run by one person. It may be slow, unavailable, or interrupted for maintenance, and features may change or be removed.
-- The service depends on third parties (Cloudflare, your AI provider, and any AI gateway or search provider you use). If they have an outage or change their terms, Besidka is affected.
+- The service depends on third parties (Cloudflare, your AI provider, and any AI gateway, search provider or TypeSafe AI you use). If they have an outage or change their terms, Besidka is affected.
 - **I may discontinue the free hosted service.** If I do, I will give you notice in the app and a reasonable period to get your data out before it is deleted, and I will tell you where to find the source code so you can host it yourself.
 
 ## Changes to these terms
@@ -246,7 +252,7 @@ Subject to the above, and to the extent the law allows, I am not liable for:
 
 - loss or corruption of data, beyond restoring from my routine backups;
 - decisions you take, or content you publish, based on AI output;
-- what your AI provider or AI gateway does with your prompts, what your search provider does with your search queries, or what any of them charges your account;
+- what your AI provider or AI gateway does with your prompts, what your search provider does with your search queries, what TypeSafe AI does with the text its checks receive, or what any of them charges your account;
 - unavailability of the service or of a third party it depends on; or
 - consequences of a share link you created, once the content has been public.
 
