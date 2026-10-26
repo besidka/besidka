@@ -283,8 +283,10 @@ async function memoryExtractionBumpProjectMetadata(
  * the project watermark only, never touches the sweep's attempt and failure
  * columns, and requires `expectedProjectId`: a chat that is no longer in that
  * project is skipped as `project-changed` without advancing any watermark, so a
- * manual pass never runs in profile scope. The chat's project is re-read after
- * the model call for the same reason. `explicit` marks a pass the user asked
+ * manual pass never runs in profile scope. The chat is re-read after the model
+ * call for the same reason, and a chat deleted meanwhile is skipped as
+ * `chat-unavailable` so no entry cites a chat whose memory was already
+ * detached. `explicit` marks a pass the user asked
  * for (extract-now): it needs only memory on, ignores the opt-in and the
  * cut-over, floors the window at the chat's own watermark, and behaves like
  * `manual` for the attempt and failure columns. The `backfill` trigger works
@@ -542,7 +544,11 @@ async function extractLeasedChatMemory(
       columns: { projectId: true },
     })
 
-    if ((currentChat?.projectId ?? null) !== (chat.projectId ?? null)) {
+    if (!currentChat) {
+      return { ...result, status: 'skipped', reason: 'chat-unavailable' }
+    }
+
+    if ((currentChat.projectId ?? null) !== (chat.projectId ?? null)) {
       return { ...result, status: 'skipped', reason: 'project-changed' }
     }
 

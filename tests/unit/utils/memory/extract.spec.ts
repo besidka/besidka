@@ -784,6 +784,33 @@ describe('extractChatMemory', () => {
     expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
   })
 
+  it.each([
+    ['a sweep pass', {}],
+    ['an explicit pass', { explicit: true }],
+  ])('writes nothing when the account chat is deleted during the model call '
+    + 'in %s', async (_label, overrides) => {
+    const chat = await seedChatWithMessages()
+
+    mocks.generateObject.mockImplementation(async () => {
+      await testDb.db.delete(schema.chats)
+        .where(eq(schema.chats.id, chat.id))
+
+      return {
+        object: { ops: [createOp()] },
+        usage: { inputTokens: 5, outputTokens: 5 },
+      }
+    })
+
+    const result = await run(chat, overrides)
+
+    expect(result).toMatchObject({
+      status: 'skipped',
+      reason: 'chat-unavailable',
+      applied: { created: 0, updated: 0, deleted: 0 },
+    })
+    expect(await listEntries()).toHaveLength(0)
+  })
+
   describe('special categories', () => {
     function loggedPayload(logger: { set: ReturnType<typeof vi.fn> }) {
       return JSON.stringify(logger.set.mock.calls)
