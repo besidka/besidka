@@ -1,6 +1,6 @@
 <template>
   <UiButton
-    v-if="pushNotifications.isSupported.value"
+    v-if="isSupported"
     :ghost="!isEnabled"
     :mode="isEnabled ? 'accent' : 'primary'"
     :icon-only="true"
@@ -15,40 +15,10 @@
           : 'Enable push notifications'
     "
     :disabled="pending || isBlocked"
-    @click="handleClick"
+    @click="toggle"
   />
 </template>
 
 <script setup lang="ts">
-const pushNotifications = usePushNotifications()
-const notificationPrompt = useNotificationPrompt()
-
-const pending = shallowRef<boolean>(false)
-
-const isEnabled = computed<boolean>(() => {
-  return pushNotifications.permission.value === 'granted'
-    && pushNotifications.isSubscribed.value
-})
-
-const isBlocked = computed<boolean>(() => {
-  return pushNotifications.permission.value === 'denied'
-})
-
-async function handleClick() {
-  if (pending.value) {
-    return
-  }
-
-  pending.value = true
-
-  try {
-    if (isEnabled.value) {
-      await notificationPrompt.disable()
-    } else {
-      await notificationPrompt.requestEnable()
-    }
-  } finally {
-    pending.value = false
-  }
-}
+const { isSupported, isEnabled, isBlocked, pending, toggle } = usePushToggle()
 </script>

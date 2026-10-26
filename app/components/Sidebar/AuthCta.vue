@@ -26,30 +26,21 @@
       tips-position="bottom"
     />
     <UiButton
-      to="/profile/keys"
-      :disabled="$route.path === '/profile/keys'"
-      ghost
-      icon-name="lucide:key-round"
-      :icon-only="true"
-      title="API keys"
-      circle
-    />
-    <UiButton
-      to="/profile/preferences"
-      :disabled="$route.path === '/profile/preferences'"
-      ghost
-      icon-name="lucide:sliders-horizontal"
-      :icon-only="true"
-      title="Preferences"
-      circle
-    />
-    <UiButton
       to="/profile/security"
       :disabled="$route.path === '/profile/security'"
       ghost
       icon-name="lucide:shield-check"
       :icon-only="true"
       title="Security"
+      circle
+    />
+    <UiButton
+      to="/profile/keys"
+      :disabled="$route.path === '/profile/keys'"
+      ghost
+      icon-name="lucide:key-round"
+      :icon-only="true"
+      title="API keys"
       circle
     />
     <LazySidebarPushToggle />

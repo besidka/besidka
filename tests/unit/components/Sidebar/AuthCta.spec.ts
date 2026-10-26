@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SidebarAuthCta from '../../../../app/components/Sidebar/AuthCta.vue'
 
@@ -18,6 +19,16 @@ mockNuxtImport('useRoute', () => {
   return () => ({ path: mocks.routePath })
 })
 
+mockNuxtImport('usePushToggle', () => {
+  return () => ({
+    isSupported: ref(true),
+    isEnabled: ref(false),
+    isBlocked: ref(false),
+    pending: ref(false),
+    toggle: vi.fn(),
+  })
+})
+
 async function mountCta() {
   return await mountSuspended(SidebarAuthCta, {
     global: {
@@ -26,7 +37,6 @@ async function mountCta() {
           template: '<div><slot name="trigger" /><slot /></div>',
         },
         SidebarThemeSwitcher: true,
-        LazySidebarPushToggle: true,
       },
     },
   })
@@ -48,15 +58,54 @@ describe('sidebar auth cta', () => {
     })
   })
 
-  it('links the user menu to the preferences page', async () => {
+  it('orders the user menu like the profile tabs with sign out at the edge',
+    async () => {
+      mocks.routePath = '/chats/new'
+
+      const wrapper = await mountCta()
+
+      await flushPromises()
+
+      const actions = Array.from(
+        wrapper.element.querySelectorAll(
+          'button[aria-label], sidebar-theme-switcher-stub, a[to]',
+        ),
+      ).map((element) => {
+        return element.getAttribute('to')
+          ?? element.getAttribute('aria-label')
+          ?? element.tagName.toLowerCase()
+      })
+
+      expect(actions).toEqual([
+        'Sign out',
+        'sidebar-theme-switcher-stub',
+        '/profile/security',
+        '/profile/keys',
+        'Enable push notifications',
+      ])
+    })
+
+  it('links the profile shortcuts to security and API keys', async () => {
     mocks.routePath = '/chats/new'
 
     const wrapper = await mountCta()
-    const link = wrapper.find('a[to="/profile/preferences"]')
+    const security = wrapper.find('a[to="/profile/security"]')
+    const keys = wrapper.find('a[to="/profile/keys"]')
 
-    expect(link.exists()).toBe(true)
-    expect(link.attributes('aria-label')).toBe('Preferences')
-    expect(link.find('.iconify').classes())
-      .toContain('i-lucide:sliders-horizontal')
+    expect(security.attributes('aria-label')).toBe('Security')
+    expect(security.find('.iconify').classes())
+      .toContain('i-lucide:shield-check')
+    expect(keys.attributes('aria-label')).toBe('API keys')
+    expect(keys.find('.iconify').classes())
+      .toContain('i-lucide:key-round')
+  })
+
+  it('does not link the user menu to the preferences page', async () => {
+    mocks.routePath = '/chats/new'
+
+    const wrapper = await mountCta()
+
+    expect(wrapper.find('a[to="/profile/preferences"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Preferences"]').exists()).toBe(false)
   })
 })

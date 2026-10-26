@@ -4,6 +4,51 @@
     <h2 class="mt-2">Choose how Besidka behaves by default</h2>
   </div>
   <div class="grid gap-6">
+    <ProfileSecuritySectionCard heading="Notifications">
+      <div class="grid gap-2">
+        <label
+          class="flex items-start justify-between gap-4"
+          :class="isPushToggleDisabled ? 'opacity-60' : 'cursor-pointer'"
+        >
+          <span class="grid gap-1">
+            <span
+              id="push-notifications-title"
+              class="font-bold"
+            >Push notifications</span>
+            <span
+              id="push-notifications-description"
+              class="text-sm text-base-content/70"
+            >
+              Get a notification when a response finishes while you're away,
+              and when you open a shared chat in the installed app. They never
+              include your messages. This applies to this browser only.
+            </span>
+          </span>
+          <span
+            v-if="!isMounted"
+            class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
+            data-testid="preferences-push-skeleton"
+          />
+          <input
+            v-else
+            type="checkbox"
+            class="toggle mt-1 shrink-0"
+            aria-labelledby="push-notifications-title"
+            aria-describedby="push-notifications-description"
+            data-testid="preferences-push-toggle"
+            :checked="isPushEnabled"
+            :disabled="isPushToggleDisabled"
+            @click.prevent="togglePush()"
+          >
+        </label>
+        <p
+          class="min-h-4 text-xs text-base-content/60"
+          data-testid="preferences-push-status"
+        >
+          {{ pushStatusNote }}
+        </p>
+      </div>
+    </ProfileSecuritySectionCard>
     <ProfileSecuritySectionCard heading="Reasoning">
       <div class="grid gap-5">
         <fieldset class="grid gap-2">
@@ -158,6 +203,41 @@ const {
   setReasoningExpanded,
   setReasoningAutoHide,
 } = useUserSetting()
+
+const {
+  isSupported: isPushSupported,
+  isEnabled: isPushEnabled,
+  isBlocked: isPushBlocked,
+  pending: isPushPending,
+  toggle: togglePush,
+} = usePushToggle()
+
+const isMounted = shallowRef<boolean>(false)
+
+onMounted(() => {
+  isMounted.value = true
+})
+
+const isPushToggleDisabled = computed<boolean>(() => {
+  return !isPushSupported.value || isPushBlocked.value || isPushPending.value
+})
+
+const pushStatusNote = computed<string>(() => {
+  if (!isMounted.value) {
+    return ''
+  }
+
+  if (!isPushSupported.value) {
+    return 'This browser doesn\'t support push notifications.'
+  }
+
+  if (isPushBlocked.value) {
+    return 'Blocked in browser settings. Allow notifications for this site '
+      + 'to turn them on.'
+  }
+
+  return ''
+})
 
 const prefStorage = usePreferenceStorage()
 

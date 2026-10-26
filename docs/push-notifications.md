@@ -133,9 +133,24 @@ top-level paths count against the Axiom 256-field cap
 
 ### Settings-menu toggle
 
-A bell button in the user settings dropdown (`Sidebar/PushToggle.client.vue`,
-after the API keys button) gives a second, manual entry point alongside the
-banner. It reflects only this device's live `permission`/subscription state,
+A bell button in the user settings dropdown (`Sidebar/PushToggle.client.vue`)
+gives a second, manual entry point alongside the banner. The dropdown reads
+sign out, theme, Security, API keys, then the bell: the profile shortcuts keep
+the order of the `/profile` tabs (Security, API Keys, Memory, Preferences), so
+the menu and the tabs never disagree, and sign out stays at the far edge.
+Preferences and Memory are deliberately not in the dropdown (too many icons);
+they stay reachable from the profile tabs and the search popup's settings
+group.
+
+The same control also lives in the Notifications card at the top of
+`/profile/preferences`, rendered as a toggle with an explanation of what is
+sent (response finished, shared-chat handoff; never message content). The
+bell and the card share `usePushToggle()` (`app/composables/push-toggle.ts`),
+so they follow identical rules: they never call
+`Notification.requestPermission()` directly, `denied` disables the control,
+and an unsupported browser shows a disabled toggle with a note rather than
+hiding the row, to keep the card's height stable. The card shows a skeleton
+until mount because `isSupported` is client-only. The bell reflects only this device's live `permission`/subscription state,
 never `notificationPromptState` alone — an account that enabled push on one
 device but never subscribed this browser must not show as "on" here. Clicking
 it:
