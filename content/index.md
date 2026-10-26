@@ -181,8 +181,8 @@ comparison:
     - label: Memory you can read, edit and delete
       values:
         - yes
-        - yes
-        - yes
+        - Yes, controls vary by plan
+        - Yes, controls vary by plan
         - US only, Google AI plan needed
         - US only, Google AI plan needed
         - yes
