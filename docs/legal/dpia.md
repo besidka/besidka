@@ -271,10 +271,15 @@ removed.
   Thresholds come from a synthetic eval run on 2026-10-26 and are re-tuned on
   real traffic.
 - **Recipient.** TypeSafe AI, Inc., United States, independent controller
-  on the user's own account. Not on the EU-US Data Privacy Framework. Its DPA
-  relies on the SCCs (Module 2) and the UK Addendum, marks sensitive-data
-  safeguards "N/A", keeps data "as long as necessary" and has no SLA. Its
-  privacy policy says it does not train on input.
+  towards Besidka on the user's own account, described like the BYOK model
+  providers (no contract between Besidka and TypeSafe AI). Its DPA is its
+  contract with its own account holder (the user, for the key they add),
+  under which it acts as that account holder's processor; that is why it
+  relies on the SCCs Module 2 (controller to processor) and the UK
+  Addendum, and Besidka is not a party to it (delta audit finding 12,
+  2026-10-26). Not on the EU-US Data Privacy Framework. The DPA marks
+  sensitive-data safeguards "N/A", keeps data "as long as necessary" and has
+  no SLA. Its privacy policy says it does not train on input.
 - **Failure.** Every role is assistive and fails safe to the behaviour
   without the key on a missing key, 401, 429, 529, a network error or a
   timeout.
