@@ -14,6 +14,7 @@ import {
   knowledgeItemKinds,
   knowledgeModes,
   knowledgeTokenFamilies,
+  knowledgeUploadExtractStatuses,
 } from '#shared/utils/project-knowledge-policy'
 
 describe('knowledge enums', () => {
@@ -35,7 +36,17 @@ describe('knowledge enums', () => {
 
   it('lists item kinds, extract statuses and extractors', () => {
     expect(knowledgeItemKinds).toEqual(['file', 'note'])
-    expect(knowledgeExtractStatuses).toEqual(['ready', 'no-text', 'failed'])
+    expect(knowledgeExtractStatuses).toEqual([
+      'ready',
+      'no-text',
+      'failed',
+      'flagged',
+    ])
+    expect(knowledgeUploadExtractStatuses).toEqual([
+      'ready',
+      'no-text',
+      'failed',
+    ])
     expect(knowledgeExtractors).toEqual([
       'text',
       'client-unpdf',

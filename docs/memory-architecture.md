@@ -2092,6 +2092,103 @@ partial map of booleans, merged into the stored object with SQLite
 other; `null` resets every role to on. The `memoryChecks` role is honoured by
 `resolveMemoryJevChecker`.
 
+#### Prompt-injection screening (J3, `injectionScreening`)
+
+Jev screens third-party text with the policy `JEV_INJECTION_SCREENING`
+(`i2_attack` at or above 0.3). The core is `screenTextsForInjection` in
+`server/utils/jev/injection-screening.ts`, and every caller fails toward
+Besidka's behaviour without a key.
+
+- **Chunking.** Each text is cut at line breaks into chunks of at most
+  `maxChunkTokens` (2,000), estimated with the Cyrillic-aware knowledge
+  estimate (`default` family). A longer line is sliced at
+  `maxChunkTokens` × the fewest characters per token, so a chunk never
+  exceeds the cap. The eval found a long document dilutes a one-line
+  injection, which is why a whole file is never sent as one state.
+- **Calls.** One call per chunk, state `{ text }`, the verbatim question.
+  Never-store values are redacted from each chunk before it leaves. Calls run
+  in waves of at most `maxConcurrentCalls` (3), under the Workers
+  six-connection limit. A text is flagged on its first chunk at or above the
+  threshold, and its remaining chunks are not sent.
+- **Failure.** The first failed call (401, 403, 429, 529, timeout, network,
+  refusal, or a missing probability) stops screening for the request. Every
+  text not decided by then is `unscreened`, which callers treat as clean.
+  Work is bounded by the existing caps (1 MB of text per upload batch, 100k
+  characters per note, 8 or 10 results per search) plus the stop on the
+  first failure; no separate request deadline was added.
+- **Logging.** `attributes.injectionScreeningJev`: status, calls, input
+  tokens, latency, the maximum score per text, and counts
+  `knowledgeFlagged|Clean|Unscreened` or `searchFlagged|Clean|Unscreened`.
+  Never text.
+
+**Project knowledge (ingestion time).** `screenKnowledgeTexts`
+(`server/utils/knowledge/injection-screening.ts`) runs inside
+`ingestKnowledgeItems` (after the capacity checks, before the rows are
+built), `createKnowledgeNote` and `updateKnowledgeNote` (only when the body
+changes), with the background timeout (2,500 ms per call). Only items with
+status `ready` and text are sent, and the key is read once per request.
+
+- A flagged item is stored with `extract_status = 'flagged'` and
+  `extract_error = null`. Its text is written to R2 as usual and counts
+  toward the quota. Nothing is deleted.
+- `flagged` is a value of the text enum `knowledgeExtractStatuses`, so
+  `db:generate` reports no change. The upload request schema accepts only
+  `knowledgeUploadExtractStatuses` (`ready`, `no-text`, `failed`), so a client
+  cannot send `flagged` itself.
+- Exclusion: the pack build and every context filter keep only `ready`, and
+  `loadKnowledgeSendData` also drops `flagged` rows. The second filter is
+  needed because images and native PDFs are attached by media type, not by
+  status, so a flagged PDF with "send as PDF" would otherwise still be sent.
+- **Allow anyway**: `PATCH /api/v1/projects/:id/knowledge/items/:itemId/allow`
+  (`allowFlaggedKnowledgeItem`). It is owner-only through
+  `resolveKnowledgeItem` (user and project in the `WHERE`), behind
+  `assertNotCrossSiteRequest`, the knowledge write rate limit and
+  `requireLegalConsent`. One UPDATE matched on user, project and
+  `extract_status = 'flagged'` sets `ready` and moves `updated_at` forward,
+  then the change is committed so the pack picks the item up. A `ready` item
+  comes back unchanged, any other status is a 409.
+- An allowed item is not screened again until its text changes: a note
+  rename keeps the status, a new body is screened again. Saving the same body
+  of a flagged note is not a repair (repair is `failed` or `no-text` only), so
+  it cannot be used to skip the review.
+- Items added before this change are not screened retroactively.
+- UI: the row badge "needs review", and in the item sheet and the note editor
+  the alert "Possible prompt injection, review it" with **Allow anyway**
+  (`InjectionReview.vue`, `allowItem` in `useProjectKnowledge`). The upload
+  sheet counts flagged files as added and lists them as needing review.
+
+**Brave and Exa results (send path).** `resolveExternalSearchScreener`
+(`server/utils/search/injection-screening.ts`) is resolved in the chat route
+only when Brave or Exa search is requested, next to the search key reads, and
+passed to `getBraveWebSearchTools` and `getExaWebSearchTools`. Inside
+`execute`, after the results arrive, each result's title and snippet is
+screened with the send-path timeout (800 ms per call) and the tool's abort
+signal.
+
+- Flagged results are removed from the tool output, and
+  `notice: "N search result(s) were withheld as possible prompt injections."`
+  is added. Withheld URLs never become `source-url` citations. The
+  search-answer continuation renders the notice after the results.
+- A Jev failure keeps every result. No notice is added.
+- Worst-case added latency per search is about 4 waves × 800 ms. The typical
+  cost is 3-4 waves at the eval's p50 of about 180 ms.
+
+**Not screened.** Results of a chat model's own built-in search (native
+provider and gateway search) reach the model with no server hook, so they
+cannot be screened. The Privacy Policy, the `/memory` guide and the key-guide
+FAQ say so. Images are not screened beyond their extracted text.
+
+**Write lock unchanged.** A clean verdict never relaxes anything. The memory
+write lock is still preset for every requested web search and raised by any
+non-memory tool result (`presetMemoryWriteLock`, `createToolLoopPrepareStep`).
+A spec asserts the lock with an all-clean screening.
+
+**Adversarial residual risk** (DPIA risk 24). Text written to manipulate Jev
+into flagging a legitimate document can only cause a review prompt for a file
+(one click puts it back) or withhold one web result with a visible note. It
+can never delete content. A false negative leaves the existing defences: the
+write lock, the data-not-instructions wrapping and the memory gate.
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |
