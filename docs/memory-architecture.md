@@ -2029,7 +2029,7 @@ user is already waiting on), 2,500 ms in the background.
 |---|---|---|
 | `memoryChecks` | The memory check above: entry text after never-store removal plus a short source excerpt, before an entry is saved. Add-only | Built-in gate alone |
 | `autoWebSearch` | Only in the Auto web search mode, each message: the message and the last 2-3 turns. Jev decides whether a search is needed | Search as usual |
-| `extractionPrefilter` | Before memory is generated from a chat (opt-in extraction, project Refresh, explicit extraction): chat text after never-store removal, in chunks of up to about 8,000 tokens. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | Unsure or unavailable: extract as usual |
+| `extractionPrefilter` | Before memory is generated from a chat (opt-in extraction, backfill from past chats, project Refresh; never extract-now or import): chat text after never-store removal, in chunks of up to about 8,000 tokens. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | Unsure or unavailable: extract as usual |
 | `injectionScreening` | Project knowledge files and notes, and Brave and Exa results fetched through Besidka. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | Text used unscreened |
 | `rerank` | Past-chat and project-knowledge search: the query and excerpts of about 300 tokens each, up to 30 per search | Original order |
 | `sharePiiCheck` | When the share window opens, before a public link is published: the chat text being shared, with never-store values, emails and phone numbers removed. Warning only, never blocks (see "Share check" below) | Generic "check before sharing" reminder, next to the built-in detector warnings |
@@ -2092,6 +2092,125 @@ partial map of booleans, merged into the stored object with SQLite
 `json_patch` in the same UPDATE, so two toggles saved at once cannot drop each
 other; `null` resets every role to on. The `memoryChecks` role is honoured by
 `resolveMemoryJevChecker`.
+
+#### Re-ranking (J4, `rerank` role)
+
+Re-ranking orders the candidates of two searches with Jev. It never adds a
+result the search did not find.
+
+**Where it runs.**
+
+- `search_chats` (`server/utils/memory/tools/search-chats.ts`): after the
+  best hit per chat is picked (one candidate per chat, BM25 order) and before
+  the final slice to `limit`. The snippet of each candidate is the passage.
+- `search_project_knowledge` (`server/utils/knowledge/tools/index.ts`) and
+  the pre-retrieval of models without tool calling
+  (`prepareKnowledgeExcerpts` in `server/api/v1/chats/[slug]/index.post.ts`):
+  on the MiniSearch results before the chunk and token caps. `search()` stays
+  synchronous. The searcher exposes `searchCandidates()` (the ranked list,
+  at most 30) and `capHits()` (the existing cap loop); `search()` is the two
+  composed. `searchKnowledgeWithRerank` in `server/utils/knowledge/rerank.ts`
+  is the async path both callers share, and without a resolver or a model it
+  is exactly `search()`.
+
+**Request.** One call to `rerankWithJev` (`server/utils/jev/rerank.ts`): the
+query is the shared state (`{ query }`) and every candidate is a boolean
+question whose `instructions` are `{ task, passage }` from `JEV_RERANK`, so
+no passage sees another and one distractor cannot colour the rest. At most 30
+candidates are judged (`maxCandidates`); passages and the query are cut to
+about 300 tokens (`maxPassageTokens`), which matters for pre-retrieval, where
+the query is the whole user message. The query and every passage go through
+`redactNeverStore` first and are truncated afterwards, so a cut can never
+leave half of a redacted value. The send-path timeout (800 ms) applies,
+including the pre-retrieval before the first token.
+
+**Order and the cut.** Candidates are sorted by descending probability, the
+BM25 position breaking ties. Candidates below `dropBelow` (0.5) are dropped
+only when at least `limit` candidates remain above it (`limit` is the tool
+limit, `searchMaxChunks` for knowledge tools and `preRetrievalMaxChunks` for
+pre-retrieval); otherwise the whole sorted list is returned. The result
+therefore never has fewer entries than the BM25 order would have had.
+
+**Model resolution.** `createJevRerankModelResolver` is created once per send
+and is lazy and memoized: the key and the role settings are read on the first
+search that has two or more candidates, so a send whose tools never search
+costs no D1 read. The route builds it after `requireLegalConsent`, and
+`resolveJevRoleModel` already honours the `rerank` toggle.
+
+**Safe direction.** Without a key, with the role off, with fewer than two
+candidates, on 401, 403, 429, 529, a timeout, a network error, a refusal, an
+answer that misses any candidate, or any exception while building the
+request, the original order comes back unchanged. No migration.
+
+**Logging.** `attributes.rerankJev`: `status`, `calls`, `questions`,
+`inputTokens`, `latencyMs`, `counts.candidates`, `counts.moved` (positions in
+the first `limit` slots that differ from the BM25 order), `counts.dropped`,
+`counts.redacted` (never-store values removed from the query and passages)
+and the rounded scores, highest first. Repeated searches in one request add
+up. No text is logged.
+
+**Known limit: cross-lingual retrieval.** Re-ranking cannot find what was not
+retrieved. `search_chats` retrieves with SQLite FTS5 and project knowledge
+with MiniSearch, both lexical, so a query in Ukrainian does not retrieve a
+chat or document written in English, and Jev never sees it. The eval's
+cross-lingual gain (NDCG@5 0.98 against 0.48 for BM25) applies only to
+candidates that already share a retrieved pool. Closing this needs another
+way to build the shortlist (translated queries, recent chats, or embeddings),
+which is not part of this role. The `/memory` guide FAQ says the same.
+
+**Fragile seams.** `JEV_RERANK` wording and `dropBelow` come from a synthetic
+eval of 8 queries with passages of one or two sentences; re-tune them on the
+logged scores. The `search_chats` snippet is only 32 FTS5 tokens
+(`SEARCH_CHATS_SNIPPET_TOKEN_COUNT`), so the relevance judgement there sees
+less text than the eval did; widening it is a separate change.
+
+##### Extraction pre-filter (J2)
+
+`extractLeasedChatMemory` (`server/utils/memory/extract.ts`) asks Jev one
+question, `JEV_EXTRACTION_PREFILTER.question` (`e1_durable`), about the
+window's transcript right after the `too-short` branch and before
+`loadMemoryExtractionIndex` and `resolveExtractionModel`, so a skip pays for
+neither the index read nor the model call. The transcript is the one
+`loadMemoryExtractionWindow` already built, never-store redacted per message.
+The logic lives in `server/utils/memory/extract-prefilter.ts`.
+
+- **Chunking.** A transcript over `maxChunkTokens` (8,000, estimated with
+  `estimateMemoryTokens`, so Cyrillic splits into more pieces than Latin) is
+  split at line breaks into pieces under the cap and scored one piece per call,
+  sequentially. The chat is skipped only when every piece scores below
+  `skipBelow` (0.40); the first piece at or above it ends the check and the
+  extraction runs. Calls use the background timeout (2,500 ms) each.
+- **Skip.** Stamps the watermark through `memoryExtractionAdvance` with the
+  chat's own `advanceMode`, exactly as the `no-user-text` branch does, and
+  returns `status: 'skipped'`, `reason: 'nothing-durable'`. The failure
+  counters are not incremented. The chat leaves the due query until new
+  activity arrives.
+- **Never pre-filtered.** `explicit` (extract-now, "Update memory now"), the
+  import path (separate code), and a project pass that still carries the
+  legacy blob (the pass also migrates the blob, which a skip would leave
+  undone).
+- **Backfill.** Pre-filtered like the sweep: it is where the saving is
+  largest. The progress counters already treat `skipped` as processed, so a
+  `nothing-durable` skip raises `skippedChats` and `processedChats` and adds no
+  tokens. The cost estimate stays an upper bound, and the confirm step of the
+  backfill sheet says so when the key and the role are on.
+- **Fail-safe.** No key, role off, or any Jev failure (401, 403, 429, 529,
+  timeout, network, refusal, a missing answer, one failing piece after others
+  scored low) runs the extraction as today. The status is in the log only.
+- **Logging.** `attributes.extractionPrefilterJev`: `status`, `calls`,
+  `questions`, `inputTokens`, `latencyMs`, `scores` and `counts.skipped`. For
+  a chat that was extracted after being scored, the highest piece score picks
+  a tenth bucket and three counts are added, for example `chatsAtScore0.4`,
+  `proposedAtScore0.4` and `entriesAtScore0.4` (entries the model proposed and
+  entries that were saved). Extracted chats that produce nothing in the
+  lowest buckets mean `skipBelow` can go up; entries there mean it is right.
+  Chats that were skipped appear only as `counts.skipped` and a score, so
+  "skipped but would have extracted" needs a periodic shadow run (log the
+  score, extract anyway, compare).
+- **UI.** `nothing-durable` has a label in the toolbar's skip-reason map
+  ("Nothing new worth remembering in that chat."); extract-now is never
+  pre-filtered, so the toolbar does not show it today. The backfill sheet's
+  "Chats skipped" counter includes these skips.
 
 #### Share check (`sharePiiCheck`)
 

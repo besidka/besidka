@@ -175,9 +175,12 @@ import {
   KNOWLEDGE_INSTRUCTION,
 } from '~~/server/utils/knowledge/tools'
 import { buildKnowledgeExcerpts } from '~~/server/utils/knowledge/pre-retrieval'
+import { searchKnowledgeWithRerank } from '~~/server/utils/knowledge/rerank'
 import { readPreviousKnowledgeMode } from '~~/server/utils/knowledge/previous-mode'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { getChatSearchTools } from '~~/server/utils/memory/tools'
+import { createJevRerankModelResolver } from '~~/server/utils/jev/rerank'
+import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
 import {
   createChatSearchBudget,
   presetMemoryWriteLock,
@@ -1237,6 +1240,11 @@ export default defineEventHandler(async (event) => {
   const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
     : undefined
+  const resolveRerankModel = createJevRerankModelResolver({
+    db,
+    userId,
+    logger: aiLogger,
+  })
 
   if (chatSearchBudget && chatSearchToolsRegistered) {
     const { tools: chatSearchTools } = getChatSearchTools({
@@ -1247,6 +1255,7 @@ export default defineEventHandler(async (event) => {
         ? { projectId: chat.projectId }
         : {}),
       budget: chatSearchBudget,
+      resolveRerankModel,
       logger: aiLogger,
     })
 
@@ -1347,6 +1356,7 @@ export default defineEventHandler(async (event) => {
     ].filter(Boolean).length,
     userMessageText,
     newMessageId: newMessage.id,
+    resolveRerankModel,
     scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
     logger: aiLogger,
   })
@@ -1365,6 +1375,7 @@ export default defineEventHandler(async (event) => {
     const { tools: knowledgeTools } = getKnowledgeTools({
       getSearcher: knowledgeContext.getSearcher,
       budget: createKnowledgeBudget(),
+      resolveRerankModel,
       logger: aiLogger,
     })
 
@@ -2421,6 +2432,7 @@ async function prepareKnowledgeMediaTurns(
 async function prepareKnowledgeExcerpts(
   context: ProjectKnowledgeContext,
   userText: string,
+  resolveRerankModel: JevRerankModelResolver,
   logger: LoggerLike,
 ): Promise<string | null> {
   try {
@@ -2430,7 +2442,14 @@ async function prepareKnowledgeExcerpts(
       return null
     }
 
-    const excerpts = buildKnowledgeExcerpts({ searcher, userText })
+    const { hits } = await searchKnowledgeWithRerank({
+      searcher,
+      search: { query: userText, strict: true },
+      keepAtLeast: KNOWLEDGE_LIMITS.preRetrievalMaxChunks,
+      resolveRerankModel,
+      logger,
+    })
+    const excerpts = buildKnowledgeExcerpts({ searcher, userText, hits })
 
     logger.set({
       attributes: { knowledge: { preRetrieval: excerpts !== null } },
@@ -2465,6 +2484,7 @@ async function resolveSendKnowledge(input: {
   toolGroupCount: number
   userMessageText: string | null
   newMessageId: string
+  resolveRerankModel: JevRerankModelResolver
   scheduleBackgroundWork: ScheduleBackgroundWork | undefined
   logger: LoggerLike
 }): Promise<SendKnowledge | null> {
@@ -2537,6 +2557,7 @@ async function resolveSendKnowledge(input: {
       ? await prepareKnowledgeExcerpts(
         context,
         input.userMessageText,
+        input.resolveRerankModel,
         input.logger,
       )
       : null

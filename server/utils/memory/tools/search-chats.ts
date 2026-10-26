@@ -2,6 +2,8 @@ import type { LoggerLike } from '~~/server/utils/files/logger'
 import { sql } from 'drizzle-orm'
 import { SNIPPET_END, SNIPPET_START } from '#shared/utils/search'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { rerankWithJev } from '~~/server/utils/jev/rerank'
+import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
 import {
   SEARCH_CHATS_CANDIDATE_LIMIT,
   SEARCH_CHATS_DEFAULT_LIMIT,
@@ -11,6 +13,8 @@ import {
 import {
   buildChatTitle,
   buildSnippetExcerpt,
+  collapseWhitespace,
+  neutralizeChatText,
 } from '~~/server/utils/memory/tools/excerpt'
 import { safeDecodePublicId } from '~~/server/utils/search/index-writer'
 import {
@@ -95,10 +99,9 @@ async function queryCandidateRows(input: {
   `)
 }
 
-function pickBestHitPerChat(
+function pickBestRowPerChat(
   rows: SearchChatsCandidateRow[],
-  limit: number,
-): SearchChatsHit[] {
+): SearchChatsCandidateRow[] {
   const bestRowByChat = new Map<string, SearchChatsCandidateRow>()
 
   for (const row of rows) {
@@ -111,18 +114,45 @@ function pickBestHitPerChat(
 
   return [...bestRowByChat.values()]
     .sort((first, second) => first.score - second.score)
-    .slice(0, limit)
-    .map((row) => {
-      return {
-        chatId: row.chatSlug,
-        title: buildChatTitle(row.chatTitle),
-        url: `/chats/${row.chatSlug}`,
-        ...(row.messageId ? { messageId: row.messageId } : {}),
-        role: row.role,
-        date: buildHitDate(row.createdAt),
-        snippet: buildSnippetExcerpt(row.snippet),
-      }
-    })
+}
+
+function toHit(row: SearchChatsCandidateRow): SearchChatsHit {
+  return {
+    chatId: row.chatSlug,
+    title: buildChatTitle(row.chatTitle),
+    url: `/chats/${row.chatSlug}`,
+    ...(row.messageId ? { messageId: row.messageId } : {}),
+    role: row.role,
+    date: buildHitDate(row.createdAt),
+    snippet: buildSnippetExcerpt(row.snippet),
+  }
+}
+
+function buildRerankPassage(row: SearchChatsCandidateRow): string {
+  return collapseWhitespace(neutralizeChatText(row.snippet))
+}
+
+async function pickBestHitPerChat(input: {
+  rows: SearchChatsCandidateRow[]
+  query: string
+  limit: number
+  resolveRerankModel?: JevRerankModelResolver
+  logger?: Pick<LoggerLike, 'set'>
+}): Promise<SearchChatsHit[]> {
+  const rankedRows = pickBestRowPerChat(input.rows)
+  const model = input.resolveRerankModel && rankedRows.length > 1
+    ? await input.resolveRerankModel()
+    : null
+  const orderedRows = await rerankWithJev({
+    model,
+    query: input.query,
+    candidates: rankedRows,
+    passageOf: buildRerankPassage,
+    keepAtLeast: input.limit,
+    logger: input.logger,
+  })
+
+  return orderedRows.slice(0, input.limit).map(toHit)
 }
 
 /**
@@ -133,7 +163,10 @@ function pickBestHitPerChat(
  * FTS query, before the
  * candidate LIMIT: filtering the candidates afterwards would give a small
  * project zero hits whenever other chats fill the candidate list. Never
- * throws: a failing query is logged and returns no results.
+ * throws: a failing query is logged and returns no results. With
+ * `resolveRerankModel`, the best hit of each chat is re-ranked by TypeSafe
+ * AI Jev before the final slice to `limit`; the relevance cut never leaves
+ * fewer than `limit` hits, and any Jev failure keeps the BM25 order.
  */
 export async function searchChats(input: {
   db: ReturnType<typeof useDb>
@@ -142,6 +175,7 @@ export async function searchChats(input: {
   limit?: number
   currentChatId: string
   projectId?: string
+  resolveRerankModel?: JevRerankModelResolver
   logger?: Pick<LoggerLike, 'set'>
 }): Promise<SearchChatsResult> {
   const andExpression = buildSearchMatchExpression(input.query, input.userId)
@@ -192,7 +226,13 @@ export async function searchChats(input: {
       })
 
       if (rows.length > 0) {
-        const results = pickBestHitPerChat(rows, limit)
+        const results = await pickBestHitPerChat({
+          rows,
+          query: input.query,
+          limit,
+          resolveRerankModel: input.resolveRerankModel,
+          logger: input.logger,
+        })
 
         input.logger?.set({
           attributes: {

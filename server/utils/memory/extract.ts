@@ -13,6 +13,10 @@ import {
 import { REDACTION_PLACEHOLDER } from '#shared/utils/memory-policy'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { applyMemoryExtractionOps } from '~~/server/utils/memory/extract-apply'
+import {
+  memoryExtractionPrefilter,
+  recordMemoryExtractionPrefilterOutcome,
+} from '~~/server/utils/memory/extract-prefilter'
 import { resolveMemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import {
   buildMemoryExtractionInstructions,
@@ -23,6 +27,7 @@ import {
 } from '~~/server/utils/memory/extract-input'
 import {
   MEMORY_EXTRACTION_LIMITS,
+  MEMORY_EXTRACTION_NOTHING_DURABLE_REASON,
   MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
   clampMemoryExtractionOutputTokens,
 } from '~~/server/utils/memory/extract-limits'
@@ -284,7 +289,13 @@ async function memoryExtractionBumpProjectMetadata(
  * skip paths advance the watermark so the chat is not selected again until new
  * activity. `too-short` never advances it: the user text stays in the next
  * window and accumulates until it is long enough, and the chat is only
- * selected again once new activity arrives. The `manual` trigger (project
+ * selected again once new activity arrives. With a TypeSafe AI key and the
+ * `extractionPrefilter` role on, a window that Jev scores as holding nothing
+ * durable is skipped as `nothing-durable` before the model call: it advances
+ * the watermark like `no-user-text` and leaves the failure counters alone. An
+ * `explicit` pass and a project pass that still carries the legacy blob are
+ * never pre-filtered, and any Jev failure runs the extraction as usual. The
+ * `manual` trigger (project
  * Refresh) needs no opt-in, ignores the idle/dirty rule, floors the window at
  * the project watermark only, never touches the sweep's attempt and failure
  * columns, and requires `expectedProjectId`: a chat that is no longer in that
@@ -501,15 +512,42 @@ async function extractLeasedChatMemory(
       return { ...result, status: 'skipped', reason: 'too-short' }
     }
 
-    const scope: MemoryScope = project ? 'project' : 'profile'
-    const projectId = project?.id ?? null
-    const entries = await loadMemoryExtractionIndex(userId, projectId, db)
     const legacyBlobSource = project
       && !isManual
       && !project.memoryMigratedAt
       && project.memory?.trim()
       ? project.memory
       : null
+    const prefilter = isExplicit || legacyBlobSource
+      ? null
+      : await memoryExtractionPrefilter({
+        db,
+        userId,
+        transcript: extractionWindow.transcript,
+        logger: input.logger,
+      })
+
+    if (prefilter?.action === 'skip') {
+      await memoryExtractionAdvance(
+        db,
+        chat,
+        userId,
+        isBackfill
+          ? extractionWindow.newestCreatedAt ?? passStartedAt
+          : passStartedAt,
+        advanceMode,
+      )
+
+      return {
+        ...result,
+        status: 'skipped',
+        reason: MEMORY_EXTRACTION_NOTHING_DURABLE_REASON,
+      }
+    }
+
+    const scope: MemoryScope = project ? 'project' : 'profile'
+    const projectId = project?.id ?? null
+    const entries = await loadMemoryExtractionIndex(userId, projectId, db)
     const legacyBlob = legacyBlobSource
       ? truncateProjectMemoryText(
         redactNeverStore(legacyBlobSource.trim()).text,
@@ -595,6 +633,13 @@ async function extractLeasedChatMemory(
     }
     result.dropped = applied.dropped
     memoryExtractionAddCounts(result.blocked, applied.blocked)
+
+    recordMemoryExtractionPrefilterOutcome({
+      maxScore: prefilter?.maxScore ?? null,
+      entriesProposed: applied.proposed,
+      entriesApplied: applied.created + applied.updated + applied.appended,
+      logger: input.logger,
+    })
 
     if (project && legacyBlobSource) {
       await memoryExtractionMigrateLegacyBlob(
