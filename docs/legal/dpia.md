@@ -357,8 +357,15 @@ removed.
   key.
 - **Scope.** Owner decision 2026-10-26: it also applies to models reached
   through Vercel AI Gateway, OpenRouter or Cloudflare AI Gateway whose id names
-  one of these vendors (`deepseek/`, `moonshotai/`, `alibaba/`, `qwen/`).
-  Models a gateway runs itself (Cloudflare's `@cf/` ids) are exempt.
+  one of these vendors (`deepseek/`, `moonshotai/`, `alibaba/`, `qwen/`,
+  also behind OpenRouter's `~vendor/` aliases). Models a gateway runs itself
+  (Cloudflare's `@cf/` ids) are exempt. Extended the same day (delta audit
+  finding 5): gateway-only consents for Z.ai (`z-ai/`, `zai/`; Singapore),
+  MiniMax (`minimax/`; Singapore entity, US storage), Tencent (`tencent/`;
+  China) and ByteDance (`bytedance/`, `bytedance-seed/`; Malaysia or
+  Indonesia), and one generic `router` consent for OpenRouter meta-routers
+  (`openrouter/`) and `@preset/` model strings, which can send a request to
+  a provider in any country. See `docs/legal.md`.
 - **Receipt.** `provider_transfer_consents` (JSON) on `user_settings`: per
   provider `consentedAt` and `withdrawnAt`. Deleted with the account.
 - **Status.** **Built** in this release: `server/utils/legal/consent.ts`,

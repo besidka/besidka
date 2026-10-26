@@ -40,12 +40,33 @@ describe('Legal transfer consent modal', () => {
     ['deepseek', 'DeepSeek', 'China'],
     ['moonshotai', 'Moonshot AI', 'Singapore'],
     ['qwen', 'Qwen', 'Singapore'],
+    ['zai', 'Z.ai (Zhipu AI)', 'Singapore'],
+    ['minimax', 'MiniMax', 'Singapore'],
+    ['tencent', 'Tencent', 'China'],
+    ['bytedance', 'ByteDance', 'Malaysia or Indonesia'],
   ])('names %s and its country', async (providerId, label, country) => {
     const wrapper = await mountModal(providerId, 'send')
 
     expect(wrapper.text()).toContain(`${label} processes data in ${country}`)
     expect(wrapper.text()).toContain('has not found')
   })
+
+  it('explains that a router may send the request to any country',
+    async () => {
+      const wrapper = await mountModal('router', 'send')
+
+      expect(wrapper.get('[data-testid="legal-transfer-consent-router-text"]')
+        .text()).toContain('such as China or Singapore')
+      expect(wrapper.text()).not.toContain('processes data in')
+      expect(wrapper.text()).toContain('through router and preset models')
+
+      await wrapper.get('[data-testid="legal-transfer-consent-checkbox"]')
+        .setValue(true)
+      await wrapper.get('form').trigger('submit')
+      await flushPromises()
+
+      expect(mocks.giveTransferConsent).toHaveBeenCalledWith('router')
+    })
 
   it('starts unticked and needs the box before continuing', async () => {
     const wrapper = await mountModal('deepseek', 'key')

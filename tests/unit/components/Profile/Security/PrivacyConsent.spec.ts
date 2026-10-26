@@ -50,6 +50,7 @@ function consentState(
         providerId: 'deepseek',
         label: 'DeepSeek',
         country: 'China',
+        route: 'direct',
         consentedAt: '2026-11-01T00:00:00.000Z',
         withdrawnAt: null,
         isGranted: true,
@@ -58,6 +59,7 @@ function consentState(
         providerId: 'moonshotai',
         label: 'Moonshot AI',
         country: 'Singapore',
+        route: 'direct',
         consentedAt: null,
         withdrawnAt: null,
         isGranted: false,
@@ -66,6 +68,25 @@ function consentState(
         providerId: 'qwen',
         label: 'Qwen',
         country: 'Singapore',
+        route: 'direct',
+        consentedAt: null,
+        withdrawnAt: null,
+        isGranted: false,
+      },
+      {
+        providerId: 'zai',
+        label: 'Z.ai (Zhipu AI)',
+        country: 'Singapore',
+        route: 'gateway',
+        consentedAt: null,
+        withdrawnAt: null,
+        isGranted: false,
+      },
+      {
+        providerId: 'router',
+        label: 'Router and preset models',
+        country: 'any country, including China and Singapore',
+        route: 'router',
         consentedAt: null,
         withdrawnAt: null,
         isGranted: false,
@@ -97,6 +118,18 @@ describe('Privacy & consent block', () => {
       .toContain('2026-11-a')
     expect(wrapper.find('[data-testid="privacy-consent-withdraw"]').exists())
       .toBe(true)
+  })
+
+  it('says when gateway-only and router consents are asked', async () => {
+    const wrapper = await mountSuspended(PrivacyConsent)
+
+    expect(wrapper.get('[data-testid="privacy-consent-transfer-qwen"]').text())
+      .toContain('Asked when you add a Qwen key')
+    expect(wrapper.get('[data-testid="privacy-consent-transfer-zai"]').text())
+      .toContain('Asked before your first message to a Z.ai (Zhipu AI) model '
+        + 'through a gateway')
+    expect(wrapper.get('[data-testid="privacy-consent-transfer-router"]')
+      .text()).toContain('router or preset model')
   })
 
   it('withdraws only after a confirmation', async () => {

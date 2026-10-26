@@ -26,6 +26,11 @@ function grantedRecord(): LegalConsentRecord {
       deepseek: transferConsent,
       moonshotai: transferConsent,
       qwen: transferConsent,
+      zai: transferConsent,
+      minimax: transferConsent,
+      tencent: transferConsent,
+      bytedance: transferConsent,
+      router: transferConsent,
     },
   }
 }

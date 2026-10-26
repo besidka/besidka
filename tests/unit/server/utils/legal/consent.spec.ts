@@ -196,6 +196,20 @@ describe('gateway models of transfer-consent vendors', () => {
     ['vercel', 'alibaba/qwen3-max', 'qwen'],
     ['openrouter', 'qwen/qwen3-coder', 'qwen'],
     ['cloudflare', 'deepseek/deepseek-chat', 'deepseek'],
+    ['openrouter', '~deepseek/deepseek-pro-latest', 'deepseek'],
+    ['openrouter', '~moonshotai/kimi-latest', 'moonshotai'],
+    ['openrouter', 'z-ai/glm-5.3', 'zai'],
+    ['openrouter', '~z-ai/glm-latest', 'zai'],
+    ['vercel', 'zai/glm-5.3', 'zai'],
+    ['openrouter', 'minimax/minimax-m3', 'minimax'],
+    ['vercel', 'minimax/minimax-m3', 'minimax'],
+    ['openrouter', 'tencent/hy3', 'tencent'],
+    ['vercel', 'bytedance/seed-2.1', 'bytedance'],
+    ['openrouter', 'bytedance-seed/seed-2-1-turbo', 'bytedance'],
+    ['openrouter', 'openrouter/auto', 'router'],
+    ['openrouter', 'openrouter/free', 'router'],
+    ['openrouter', '@preset/email-copywriter', 'router'],
+    ['openrouter', 'openai/gpt-5-mini@preset/email-copywriter', 'router'],
   ])('needs the %s transfer consent for %s', (gatewayId, modelId, provider) => {
     expect(hasModelTransferConsent(noTransfers, { gatewayId, modelId }))
       .toBe(false)
@@ -207,6 +221,19 @@ describe('gateway models of transfer-consent vendors', () => {
       status: 403,
       code: 'TRANSFER_CONSENT_REQUIRED',
       data: expect.objectContaining({ provider }),
+    }))
+  })
+
+  it('words the router refusal for any country, not one vendor', () => {
+    expect(() => {
+      assertModelTransferConsent(noTransfers, {
+        gatewayId: 'openrouter',
+        modelId: 'openrouter/auto',
+      })
+    }).toThrow(expect.objectContaining({
+      message: 'Consent is required before sending messages through a model '
+        + 'router',
+      why: expect.stringContaining('such as China or Singapore'),
     }))
   })
 
@@ -409,6 +436,15 @@ describe('legal consent storage', () => {
         country: 'Singapore',
         isGranted: true,
         consentedAt: GRANTED_AT.toISOString(),
+      }),
+      expect.objectContaining({ providerId: 'zai', route: 'gateway' }),
+      expect.objectContaining({ providerId: 'minimax', route: 'gateway' }),
+      expect.objectContaining({ providerId: 'tencent', route: 'gateway' }),
+      expect.objectContaining({ providerId: 'bytedance', route: 'gateway' }),
+      expect.objectContaining({
+        providerId: 'router',
+        route: 'router',
+        isGranted: false,
       }),
     ])
   })

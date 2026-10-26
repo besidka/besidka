@@ -30,6 +30,26 @@ export function createGrantedLegalConsentRecord(
         consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
         withdrawnAt: null,
       },
+      zai: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      minimax: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      tencent: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      bytedance: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      router: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
     },
     ...overrides,
   }

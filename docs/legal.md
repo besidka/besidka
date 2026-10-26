@@ -138,6 +138,31 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   such as Cloudflare's `@cf/` Workers AI ids, do not need it. The mapping is
   `resolveTransferConsentProviderId()` in `shared/utils/legal-consent.ts`, used
   by the chat send, title generation, the memory model resolver and the client.
+  Owner decision, 2026-10-26 (delta audit finding 5):
+  - The vendor list covers the other mainland-China/Singapore-linked vendors
+    present in the Vercel and OpenRouter catalogs on that date, each a
+    gateway-only entry (`route: 'gateway'`) in `transferConsentProviders`:
+    `zai` (`z-ai/`, `zai/`; Singapore, JINGSHENG HENGXING TECHNOLOGY PTE.
+    LTD., docs.z.ai privacy policy and DPA), `minimax` (`minimax/`; Singapore
+    entity Nanonoble Pte. Ltd., storage stated as US), `tencent` (`tencent/`;
+    China, since Tencent Cloud names no fixed Hunyuan region and says servers
+    may be in mainland China) and `bytedance` (`bytedance/`,
+    `bytedance-seed/`; BytePlus states processing in Malaysia, Indonesia
+    and/or the EU, shown as "Malaysia or Indonesia"). `zhipuai/` and `baidu/`
+    were not in either catalog. Also present but left out pending an owner
+    call: `xiaomi/`, `meituan/`, `stepfun/`, `inclusionai/`, `xingchen-agi/`
+    (China Telecom), `dots-studio/`.
+  - OpenRouter's `~vendor/...-latest` aliases resolve to the vendor after the
+    `~` (before this, `~deepseek/...` needed no consent at all).
+  - Router ids that can reach any vendor need one generic `router` consent
+    (`route: 'router'`): every `openrouter/` meta-router (`openrouter/auto`,
+    `openrouter/free`, ...) and any model string containing `@preset/`
+    (OpenRouter accepts `@preset/<slug>` as the model and as a
+    `model@preset/<slug>` suffix). The transfer dialog
+    (`TransferConsentModal.client.vue`) has its own router wording; the
+    consent modal and its hash are unchanged. Vercel AI Gateway's catalog
+    had no router id. All of it lives in the existing
+    `provider_transfer_consents` JSON, no migration.
   Writes to `provider_transfer_consents` are one atomic `json_set` UPDATE each,
   so concurrent grants and withdrawals for different providers cannot drop one
   another. The consent routes share the `legal-consent` bucket of
