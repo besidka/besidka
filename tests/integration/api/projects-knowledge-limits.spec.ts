@@ -351,7 +351,7 @@ describe('project knowledge request limits', () => {
       expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version).toBe(4)
     })
 
-    it('commits when the pack is stale', async () => {
+    it('rebuilds a stale pack lazily without a bump', async () => {
       harness.testDb.sqlite.prepare(
         'update projects set knowledge_version = 4,'
         + ' knowledge_pack_version = 3 where id = ?',
@@ -360,8 +360,31 @@ describe('project knowledge request limits', () => {
       const handler = await loadKnowledgeHandler('commit')
       const result = await handler(eventFor('commit', { body: {} }))
 
-      expect(mocks.commitKnowledgeChange).toHaveBeenCalledOnce()
-      expect(result.version).toBe(5)
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(result.version).toBe(4)
+      expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version).toBe(4)
+    })
+
+    it('does not bump or build when no id matches', async () => {
+      harness.testDb.sqlite.prepare(
+        'update projects set knowledge_version = 4,'
+        + ' knowledge_pack_version = 4 where id = ?',
+      ).run(PROJECT)
+
+      const handler = await loadKnowledgeHandler('commit')
+      const result = await handler(eventFor('commit', {
+        body: { remove: ['unknown-id'] },
+      }))
+
+      expect(result).toEqual({
+        version: 4,
+        packVersion: 4,
+        removed: 0,
+        skipped: ['unknown-id'],
+      })
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(mocks.ensureKnowledgePackFresh).not.toHaveBeenCalled()
     })
   })
 })

@@ -1,7 +1,8 @@
 # Project knowledge design (W7: files, notes, folders)
 
-Status: **design proposal, revision 2, 2026-10-25. Nothing here is
-implemented.** The owner approves implementation separately. This document
+Status: **implemented, 2026-10-26.** K0 to K3 are merged into
+`feat/memory-p3` (K1 #525, K2 #526, K3 #527; sections 15 and 16 record what
+was built and where it differs from the proposal). This document
 replaces the sketch in `docs/memory-architecture.md` section 3.6, which
 proposed a fixed 8k-token full-inject threshold. Revision 2 follows the
 owner's review of revision 1. Section 0 lists what changed and why.
@@ -126,8 +127,8 @@ else. No operator-paid AI calls, no unbounded per-user growth in D1.
 
 | Decision | Driven by | Where |
 |---|---|---|
-| Knowledge budget, full-inject vs search, image/PDF modality gating, tool registration | The **chat-send model**: `body.model` (direct) or `body.gateway` + model (gateway). Recomputed on every send, stateless | `server/api/v1/chats/[slug]/index.post.ts:201-209, 294, 345-348, 662-669`. The main `streamText` uses `instance` built from these (`:1429-1430`) |
-| Memory extraction and the project memory refresh | `resolveMemoryModel`: setting → "same as chat" (newest assistant `usage.model` among recent messages) → cheapest fallback | `server/utils/memory/resolve-model.ts:461-522`, called only from `server/utils/memory/extract.ts:578` and `server/utils/projects/memory-refresh.ts:269` |
+| Knowledge budget, full-inject vs search, image/PDF modality gating, tool registration | The **chat-send model**: `body.model` (direct) or `body.gateway` + model (gateway). Recomputed on every send, stateless | `server/api/v1/chats/[slug]/index.post.ts`: `knowledgeSendModel` is built from the request model or gateway and passed to `resolveSendKnowledge`, and the main `streamText` uses the same resolved model instance |
+| Memory extraction and the project memory refresh | `resolveMemoryModel`: setting → "same as chat" (newest assistant `usage.model` among recent messages) → cheapest fallback | `resolveMemoryModel` in `server/utils/memory/resolve-model.ts`, called only from `resolveExtractionModel` in `server/utils/memory/extract.ts` and `refreshProjectMemoryFromChats` in `server/utils/projects/memory-refresh.ts` |
 | Optional user-chosen background work (image captions, scanned-PDF transcription, file summaries) | Same resolver, `scope: 'project'`, or the model the user picks in that dialog | Sections 7.2, 7.3 |
 | Cost numbers in the caching alert and capacity meter | The model in the **chat picker** (`usePreferenceStorage()` + `useSelectedModelInfo()`, client-side) | Section 11 |
 
@@ -718,9 +719,70 @@ written, keeping one previous version for in-flight sends.
 
 ### 9.4 Capacity limits
 
-Per project: ≤ **500 items**, ≤ **2 MB of extracted text** (the searchable
-cap from 6.3, pending the K0 spike), ≤ 30 MB per file. Per user: the storage
-quota (20 MB default). The token-based 2M cap of revision 1 is gone.
+Per project: ≤ **500 items** (`maxItemsPerProject`), ≤ **2 MB of extracted
+text** (`maxProjectTextBytes`, the searchable cap from 6.3, pending the K0
+spike), ≤ 30 MB per file. Per user: the storage quota (20 MB default) and, as
+of the P3 audit fix, ≤ **2000 items across all projects** (`maxItemsPerUser`,
+`shared/utils/project-knowledge-policy.ts`). The token-based 2M cap of
+revision 1 is gone.
+
+Audit fixes in the limits (P3, findings 5 to 8 of the memory security audit):
+
+- **Row caps bind empty-text rows too.** A `no-text` or `failed` item carries
+  `text: ''`, so it adds 0 bytes to the quota and the byte guards skip it
+  (`bytes = 0 or ...`). That is deliberate: such a row is metadata for a file
+  already counted in the library quota, and it stays visible so the user can
+  send the PDF natively. What bounded it before was only the per-project 500;
+  an account could fan out across projects and grow D1 without limit, against
+  section 1's "no unbounded per-user growth in D1". The count of one user's
+  rows is now checked in the readable pre-check (`assertKnowledgeCapacity`,
+  422 "Knowledge item limit reached" with `why` and `fix`) and again inside
+  the guarded `INSERT ... SELECT`, next to the per-project count. No per-row
+  byte overhead is charged to the quota: the figure the meter and
+  `getUserStorageUsageBytes` show stays the real text size.
+- **A note edit checks the caps before it writes R2.** `updateKnowledgeNote`
+  runs the guarded `UPDATE` (project text cap and user quota, for the growth
+  only) first and writes the text second; if the write fails, the row is put
+  back, matched on the update's own `updated_at` so a newer edit is not
+  clobbered. The new order opens a window in which a pack build reads
+  the old text keyed to the new `updatedAt`, and the builder reuses chunks by
+  `updatedAt` alone. So `buildLeasedPack` now reads each item through
+  `readKnowledgeItemText` and leaves out any item whose R2 object size differs
+  from `text_bytes` (counted as `sizeMismatchItems` in the build log, not
+  healed, not cached); the edit's own commit rebuilds and re-reads it. An item
+  whose text really disagrees with its row stays out of the pack until it is
+  next edited or the object is repaired. Before, the text was written first and restored best effort, so a
+  race or a killed invocation could leave text over the cap in R2 or another
+  request's text restored.
+- **An unchanged commit does nothing.** A commit where no id matches an item
+  (empty list, unknown, foreign or out-of-folder ids), and an items `POST`
+  with `commit: true` whose every item is a duplicate, no longer bump
+  `knowledge_version` or rebuild the pack. A stale pack is rebuilt through
+  `ensureKnowledgePackFresh` (no bump, honours the build backoff); only a
+  never-committed project (version 0) takes the full commit once. The
+  `commit: true` duplicates path used to force a build per request.
+- **Uncommitted inserts mark the pack pending.** An items `POST` without
+  `commit` that inserted at least one row bumps `knowledge_version` (no
+  build; if the bump fails the rows and text are rolled back). Without it,
+  the client's closing `commit({})` found `packVersion === version` on every
+  upload after the first and never rebuilt, so the new rows were listed but
+  never reached the pack. Now that commit sees the pack behind its version
+  and rebuilds it through the lazy path. A batch of only duplicates does not
+  bump, and a `commit: true` batch bumps once through the commit flow. Notes
+  already commit (and bump) on create and on a title or body edit. Between
+  batches the K2 send path copes: a pack behind its version is rebuilt in
+  `waitUntil` while the send reads the previous pack, items missing from that
+  pack are simply not injected yet, and nothing errors.
+- **The R2 sweep cannot pin to one page.** `sweepProjectKnowledge` marks a
+  page failed on a failed batch delete or an unexpected error (counted,
+  logged, listing continues), ends the run after three failed pages in a row,
+  and advances the KV cursor past a page cut short by the runtime bound. A
+  failed delete used to reset the cursor to the start and an incomplete page
+  kept the cursor on itself, so one bad key could block every page after it
+  forever. Deletes stay one batched `delete(keys)` per page and KV calls stay
+  sequential. Known trade-off: a page the run could not finish is revisited
+  only on the next full pass.
+
 Growth path beyond 2 MB: stem-only already fits 4 MB in ≤ 45 MB of heap
 (17.1), so a raise to 4 MB needs only a memory check on a deployed preview.
 Beyond that, per-item index shards with a merged top-k.
@@ -1382,6 +1444,75 @@ bumps the version and would otherwise bypass K1's per-version backoff. The
 send never waits and always uses whatever pack is readable. **Deferred design call**: mode hysteresis. `fits`
 includes the current message, so one very large paste can flip full →
 search → full and invalidate the prompt cache twice.
+
+### 16.6 K1 as built (#525)
+
+- **Where**: `server/utils/knowledge/**` (`ingest.ts` for rows, text objects,
+  notes and the commit entry points, `pack.ts` for builds and commits,
+  `text-store.ts` and `storage-keys.ts` for R2, `sweep.ts` for the hourly GC,
+  `purge.ts` for the account hook, `pack-lease.ts`, `rate-limit.ts`,
+  `access.ts`, `linked-files.ts`, `quota.ts`, `version.ts`) and the routes in
+  `server/api/v1/projects/[id]/knowledge/**`.
+- **Writes are guarded in SQL, not only pre-checked.** Every row is one
+  `INSERT ... SELECT ... WHERE <guards> RETURNING id` inside a `db.batch()`
+  (project owned, per-project and per-user item count, project text bytes,
+  user quota), so parallel requests cannot all pass. The readable 404, 422
+  and 413 come from re-running the pre-check after a guard rejects. Text
+  objects are written one after another after the rows land; a failed write
+  rolls back rows, objects and the linked files' expiry.
+- **Commit** removes the listed items (objects first, then rows), bumps
+  `knowledge_version` once and builds the next pack under the
+  `knowledge-pack-build:<projectId>` KV lease. A failed or leased build keeps
+  the bump and returns the previous `packVersion`; the next send or panel
+  load rebuilds lazily, and three failed builds for one version back off for
+  ten minutes. Commits that change nothing skip the bump (section 9.4).
+- **Packs** are incremental: chunks of unchanged items (same `updatedAt`) are
+  reused from the newest earlier pack, only new or changed items have their
+  text read. The sweep keeps the two newest versions plus the newest one
+  below `knowledge_pack_version`.
+- **Abuse limits**: mutating routes share a 60 requests per 60 seconds
+  per-user KV limiter (`enforceKnowledgeWriteRateLimit`); text is rejected
+  when it holds C0 control characters other than tab, newline, carriage
+  return and form feed; titles, paths and descriptions are NFC-normalised and
+  refuse invisible formatting characters; counts and byte sizes are always
+  recomputed server-side.
+- **Deletion**: files and projects cascade to item rows through the FKs; the
+  R2 objects are removed by the item and project paths, the account purge
+  hook, and the sweep for anything a cascade or an interrupted request left
+  behind (grace window one hour).
+
+### 16.7 K3 as built (#527)
+
+- **Where**: `app/components/Projects/Knowledge/*` (`Panel.vue`,
+  `UploadSheet.client.vue`, `ItemList.vue`, `Item.vue`,
+  `ItemEditSheet.client.vue`, `NoteEditor.client.vue`, `LibraryPicker.client.vue`,
+  `ModeSelector.vue`, `CapacityMeter.vue`, `Menu.vue`), the composables
+  `app/composables/project-knowledge.ts` (summary and mutations),
+  `knowledge-upload.ts` (plan, extract, upload, batch, commit),
+  `knowledge-extract.ts` (Worker host), `project-knowledge-folders.ts` and
+  `project-knowledge-model.ts`, and the Worker `app/workers/knowledge-extract.ts`.
+- **Extraction runs only in the browser.** `useKnowledgeExtract` creates the
+  Worker lazily behind `import.meta.client` (the guard reads
+  `!import.meta.client`, that is `import.meta.server`), so the Worker URL and
+  the parsers behind it (`unpdf`, `mammoth`, `read-excel-file`) are
+  dead-code-eliminated from the server build and never enter the Cloudflare
+  Worker bundle. That keeps the server bundle about 3.5 MiB smaller (figure
+  from the K3 session, not re-measured here). The Worker is terminated after
+  30 s idle (`KNOWLEDGE_WORKER_IDLE_MS`) and extraction failures resolve to a
+  `failed` result with a short code instead of throwing.
+- **ZIP-bomb limits for DOCX and XLSX.** Both formats are ZIP containers, so
+  the Worker reads the central directory before it hands the bytes to the
+  parser and refuses the file with extract error `too-large` when it has more
+  than **5000 entries**, more than **150 MB unpacked** in total, or a single
+  entry above **50 MB** (`MAX_ZIP_ENTRIES`, `MAX_ZIP_UNCOMPRESSED_BYTES`,
+  `MAX_ZIP_ENTRY_BYTES` in `app/workers/knowledge-extract.ts`); an unreadable
+  directory is `docx-failed` or `xlsx-failed`. XLSX output is further bounded
+  to 50 sheets, 1000 rows per sheet, 200 columns and 2000 characters per
+  cell. PDFs are refused above `KNOWLEDGE_LIMITS.maxPdfPages` pages.
+- **Upload flow** is as in 16.3: filter, preview, extract in the Worker,
+  upload PDF and image originals through the existing files route, then
+  `POST items` in batches with the last batch committing; a folder re-sync
+  sends `POST commit { folderId, remove }`.
 
 ### 16.4 Shared files nobody else edits
 

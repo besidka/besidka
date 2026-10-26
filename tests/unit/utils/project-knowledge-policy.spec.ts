@@ -86,10 +86,13 @@ describe('KNOWLEDGE_LIMITS', () => {
       .toBeLessThanOrEqual(KNOWLEDGE_LIMITS.maxOriginalFileBytes)
     expect(KNOWLEDGE_LIMITS.maxFolderFiles)
       .toBeLessThanOrEqual(KNOWLEDGE_LIMITS.maxItemsPerProject)
+    expect(KNOWLEDGE_LIMITS.maxItemsPerProject)
+      .toBeLessThanOrEqual(KNOWLEDGE_LIMITS.maxItemsPerUser)
   })
 
   it('pins the headline values', () => {
     expect(KNOWLEDGE_LIMITS.maxItemsPerProject).toBe(500)
+    expect(KNOWLEDGE_LIMITS.maxItemsPerUser).toBe(2000)
     expect(KNOWLEDGE_LIMITS.maxProjectTextBytes).toBe(2 * 1024 * 1024)
     expect(KNOWLEDGE_LIMITS.maxBatchTextBytes).toBe(1024 * 1024)
     expect(KNOWLEDGE_LIMITS.maxNoteChars).toBe(100_000)

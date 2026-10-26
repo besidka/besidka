@@ -212,6 +212,7 @@ interface Scenario {
   version?: number
   packVersion?: number | null
   isPackUnreadable?: boolean
+  packOmitsItemIds?: string[]
 }
 
 function createUsage(inputTokens = 10, outputTokens = 20) {
@@ -325,6 +326,7 @@ function createSendData(scenario: Scenario) {
   const items = (scenario.items ?? [{}]).map(createKnowledgeItem)
   const textItems = items.filter((item) => {
     return !item.mediaType?.startsWith('image/')
+      && !scenario.packOmitsItemIds?.includes(item.id)
   })
   const loadPack = vi.fn(async () => {
     if (scenario.isPackUnreadable) {
@@ -1277,6 +1279,28 @@ describe('project knowledge send-path wiring', () => {
       expect(loadPack).toHaveBeenCalledTimes(1)
       expect(readSystemPrompt(doStream.mock.calls[0]?.[0]))
         .toContain(NOTE_TEXT)
+    })
+
+    it('sends with the old pack and rebuilds in the background when items '
+      + 'were added after it', async () => {
+      const { doStream } = await runSend({
+        hasWaitUntil: true,
+        scenario: {
+          mode: 'full',
+          version: 5,
+          packVersion: 4,
+          items: [{}, { id: 'note-fresh', title: 'Fresh upload' }],
+          packOmitsItemIds: ['note-fresh'],
+        },
+        steps: [createTextChunks('Answered from the old pack.')],
+      })
+      const systemPrompt = readSystemPrompt(doStream.mock.calls[0]?.[0])
+
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledTimes(1)
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(doStream).toHaveBeenCalledTimes(1)
+      expect(systemPrompt).toContain(NOTE_TEXT)
+      expect(systemPrompt).not.toContain('Fresh upload')
     })
 
     it('schedules a rebuild for a project that never built a pack',

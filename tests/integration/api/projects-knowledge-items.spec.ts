@@ -122,7 +122,7 @@ describe('project knowledge items API', () => {
       expect(harness.responses.status).toBe(201)
       expect(result).toMatchObject({
         skipped: [],
-        version: 0,
+        version: 1,
         packVersion: null,
         items: [{
           kind: 'file',
@@ -383,7 +383,7 @@ describe('project knowledge items API', () => {
 
       const result = await remove(itemId)
 
-      expect(result).toEqual({ version: 1, packVersion: null })
+      expect(result).toEqual({ version: 2, packVersion: null })
       expect(mocks.commitKnowledgeChange).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: OWNER,

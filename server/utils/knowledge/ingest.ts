@@ -41,12 +41,15 @@ import type { KnowledgeItemRow } from '~~/server/utils/knowledge/items'
 import {
   getKnowledgeRetentionExpiresAt,
 } from '~~/server/utils/knowledge/linked-files'
-import { commitKnowledgeChange } from '~~/server/utils/knowledge/pack'
+import {
+  commitKnowledgeChange,
+  ensureKnowledgePackFresh,
+} from '~~/server/utils/knowledge/pack'
 import {
   deleteKnowledgeItemText,
-  getKnowledgeItemText,
   putKnowledgeItemText,
 } from '~~/server/utils/knowledge/text-store'
+import { bumpKnowledgeVersion } from '~~/server/utils/knowledge/version'
 
 const MAX_IDS_PER_STATEMENT = 90
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint failed'
@@ -183,6 +186,16 @@ function createQuotaExceededError() {
     status: 413,
     why: 'The upload is larger than the remaining storage quota',
     fix: 'Delete some files or upload a smaller file',
+  })
+}
+
+function createUserItemLimitError(existingItems: number) {
+  return createError({
+    message: 'Knowledge item limit reached',
+    status: 422,
+    why: `An account holds at most ${KNOWLEDGE_LIMITS.maxItemsPerUser} knowledge`
+      + ` items across all projects and it has ${existingItems}`,
+    fix: 'Remove items from other projects before adding more',
   })
 }
 
@@ -405,6 +418,16 @@ async function readProjectFingerprints(
     ))
 }
 
+async function countUserKnowledgeItems(userId: number): Promise<number> {
+  const row = await useDb()
+    .select({ total: sql<number>`count(*)` })
+    .from(schema.projectKnowledgeItems)
+    .where(eq(schema.projectKnowledgeItems.userId, userId))
+    .get()
+
+  return row?.total ?? 0
+}
+
 function sumTextBytes(fingerprints: ProjectFingerprint[]): number {
   return fingerprints.reduce((total, fingerprint) => {
     return total + fingerprint.textBytes
@@ -451,6 +474,14 @@ async function assertKnowledgeCapacity(
       + ` of text and it has ${existingTextBytes}`,
       'Remove some items or add smaller ones',
     )
+  }
+
+  if (input.newItems > 0) {
+    const userItems = await countUserKnowledgeItems(context.userId)
+
+    if (userItems + input.newItems > KNOWLEDGE_LIMITS.maxItemsPerUser) {
+      throw createUserItemLimitError(userItems)
+    }
   }
 
   const policy = await getEffectiveUserFilePolicy(context.userId)
@@ -739,6 +770,10 @@ function buildGuardedInsert(
       select count(*) from project_knowledge_items
       where project_id = ${projectId} and user_id = ${userId}
     ) < ${KNOWLEDGE_LIMITS.maxItemsPerProject}
+    and (
+      select count(*) from project_knowledge_items
+      where user_id = ${userId}
+    ) < ${KNOWLEDGE_LIMITS.maxItemsPerUser}
     and (${bytes} = 0 or (
       select coalesce(sum(text_bytes), 0) from project_knowledge_items
       where project_id = ${projectId} and user_id = ${userId}
@@ -946,6 +981,67 @@ async function readCommitState(
 }
 
 /**
+ * Marks inserted items as pending for the pack: bumps `knowledge_version`
+ * without building, so a later empty commit (or the next send) sees the pack
+ * behind its version and rebuilds it. When the bump fails the rows and text
+ * just written are rolled back, so the client's retry starts clean instead
+ * of finding duplicates it can no longer commit.
+ */
+async function markInsertedItemsPending(
+  context: KnowledgeIngestContext,
+  inserted: { insertedIds: string[], linkedFiles: LinkedFileSnapshot[] },
+): Promise<void> {
+  try {
+    await bumpKnowledgeVersion([context.projectId])
+  } catch (exception) {
+    recordKnowledgeError(context.logger, 'bump-version', exception)
+
+    await rollbackNewKnowledgeRows(context, {
+      insertedIds: inserted.insertedIds,
+      objectIds: inserted.insertedIds.flatMap((insertedId) => {
+        const itemId = decodeKnowledgeEntityId(insertedId)
+
+        return itemId === null ? [] : [itemId]
+      }),
+      linkedFiles: inserted.linkedFiles,
+    })
+    await invalidateStorageCache(context.userId, context.logger)
+
+    throw createCommitError()
+  }
+}
+
+/**
+ * Settles a commit that changed nothing (no item added, none removed). A
+ * pack that already matches the version is returned as is. A stale pack of a
+ * project that has been committed before is rebuilt through the lazy path,
+ * which never bumps `knowledge_version` and honours the build backoff, so
+ * repeating an empty commit cannot churn builds. Only a project that has
+ * never been committed (version 0) takes the full commit once.
+ */
+async function settleUnchangedCommit(
+  context: KnowledgeIngestContext,
+): Promise<KnowledgeCommitResult> {
+  const state = await readCommitState(context)
+
+  if (state.packVersion === state.version) {
+    return state
+  }
+
+  if (state.version === 0) {
+    return await commitKnowledgeProject(context)
+  }
+
+  await ensureKnowledgePackFresh({
+    userId: context.userId,
+    projectId: context.projectId,
+    logger: context.logger,
+  })
+
+  return await readCommitState(context)
+}
+
+/**
  * Runs the commit flow (version bump, optional removals, pack build) and
  * maps any failure to a retryable 500. The committed rows stay in D1, so
  * the client can simply call the commit route again.
@@ -973,10 +1069,13 @@ export async function commitKnowledgeProject(
  * `contentHash` skipping (a skipped item is never looked at again, so its
  * `fileId` is neither validated nor linked), file checks for the accepted
  * items (404 foreign or missing, 400 not a PDF or image, 409 already linked
- * to this project), per-project caps (422), user quota (413), then guarded
- * rows, text objects and the optional commit. `commit: true` commits even
- * when every item was a duplicate. Counts and byte sizes are recomputed here
- * and never read from the client.
+ * to this project), per-project and per-user caps (422), user quota (413),
+ * then guarded rows, text objects and the optional commit. `commit: true`
+ * on a batch where every item was a duplicate changes nothing, so it only
+ * settles a stale pack (no version bump). A batch without `commit` that
+ * inserted rows bumps `knowledge_version` (no build), so a later empty
+ * commit rebuilds the pack. Counts and byte sizes are
+ * recomputed here and never read from the client.
  */
 export async function ingestKnowledgeItems(
   context: KnowledgeIngestContext,
@@ -1013,7 +1112,7 @@ export async function ingestKnowledgeItems(
 
   if (accepted.length === 0) {
     const state = input.commit
-      ? await commitKnowledgeProject(context)
+      ? await settleUnchangedCommit(context)
       : await readCommitState(context)
 
     context.logger.set({
@@ -1069,6 +1168,10 @@ export async function ingestKnowledgeItems(
       fix: 'Refresh the project knowledge list and try again',
     },
   })
+  if (!input.commit) {
+    await markInsertedItemsPending(context, { insertedIds, linkedFiles })
+  }
+
   const savedRows = await selectItemRows(context, insertedIds)
   const items = insertedIds.flatMap((insertedId) => {
     const row = savedRows.get(insertedId)
@@ -1217,15 +1320,16 @@ async function readUpdatedRow(
 /**
  * Updates a note. Only a title or body change commits (the index line is
  * read live, so a description edit does not). A changed body is hashed
- * again and checked against the other items of the project (409). The new
- * text is written to R2 first and the row is updated second, by one guarded
- * UPDATE that enforces the project text cap and the user quota for the
- * growth only; when the row update fails (or a cap was hit concurrently) the
- * previous text is written back, best effort, and the request fails. The
- * row's `updatedAt` always moves to at least one second past its previous
- * value, so a pack build comparing `updatedAt` sees every change even when
- * two edits land within the same second.
- */
+ * again and checked against the other items of the project (409). The row
+ * is updated first, by one guarded UPDATE that enforces the project text cap
+ * and the user quota for the growth only, so nothing is written to R2 unless
+ * the new size fits; the new text is written second, and when that write
+ * fails the row is put back (matched on the update's own `updatedAt`, so a
+ * newer edit is never clobbered) and the request fails. The row's
+ * `updatedAt` always moves to at least one second past its previous value,
+ * so a pack build comparing `updatedAt` sees every change even when two
+ * edits land within the same second.
+  */
 export async function updateKnowledgeNote(
   context: KnowledgeIngestContext,
   current: KnowledgeItemRow,
@@ -1292,45 +1396,6 @@ export async function updateKnowledgeNote(
     throw createNoteNotFoundError()
   }
 
-  let previousText: string | null = null
-
-  if (nextBody !== null) {
-    try {
-      previousText = await getKnowledgeItemText({ userId, projectId, itemId })
-    } catch (exception) {
-      recordKnowledgeError(logger, 'note-update-read-previous', exception)
-    }
-
-    try {
-      await putKnowledgeItemText({ userId, projectId, itemId, text: nextBody })
-    } catch (exception) {
-      recordKnowledgeError(logger, 'note-update-text', exception)
-
-      throw createItemSaveError()
-    }
-  }
-
-  async function restorePreviousText(): Promise<void> {
-    if (nextBody === null) {
-      return
-    }
-
-    try {
-      if (previousText === null) {
-        await deleteKnowledgeItemText({ userId, projectId, itemId: itemId! })
-      } else {
-        await putKnowledgeItemText({
-          userId,
-          projectId,
-          itemId: itemId!,
-          text: previousText,
-        })
-      }
-    } catch (exception) {
-      recordKnowledgeError(logger, 'note-update-restore-text', exception)
-    }
-  }
-
   const updatedAtSeconds = Math.max(
     Math.floor(Date.now() / 1000),
     Math.floor(current.updatedAt.getTime() / 1000) + 1,
@@ -1366,8 +1431,6 @@ export async function updateKnowledgeNote(
       returning id
     `)
   } catch (exception) {
-    await restorePreviousText()
-
     if (isUniqueViolation(exception)) {
       throw createConflictError(duplicateNoteConflict)
     }
@@ -1378,8 +1441,6 @@ export async function updateKnowledgeNote(
   }
 
   if (updatedRows.length === 0) {
-    await restorePreviousText()
-
     const stillThere = await selectItemRows(context, [current.id])
 
     if (!stillThere.has(current.id)) {
@@ -1391,6 +1452,41 @@ export async function updateKnowledgeNote(
       newTextBytes: textBytes,
       replacedTextBytes: current.textBytes,
     })
+  }
+
+  async function revertUpdatedRow(): Promise<void> {
+    try {
+      await useDb().run(sql`
+        update project_knowledge_items set
+          title = ${current.title},
+          description = ${current.description},
+          content_hash = ${current.contentHash},
+          text_bytes = ${current.textBytes},
+          latin_chars = ${current.latinChars},
+          cyrillic_chars = ${current.cyrillicChars},
+          other_chars = ${current.otherChars},
+          updated_at = ${Math.floor(current.updatedAt.getTime() / 1000)}
+        where id = ${itemId}
+          and user_id = ${userId}
+          and project_id = ${projectId}
+          and updated_at = ${updatedAtSeconds}
+      `)
+    } catch (exception) {
+      recordKnowledgeError(logger, 'note-update-revert-row', exception)
+    }
+  }
+
+  if (nextBody !== null) {
+    try {
+      await putKnowledgeItemText({ userId, projectId, itemId, text: nextBody })
+    } catch (exception) {
+      recordKnowledgeError(logger, 'note-update-text', exception)
+
+      await revertUpdatedRow()
+      await invalidateStorageCache(userId, logger)
+
+      throw createItemSaveError()
+    }
   }
 
   if (nextBody !== null) {
@@ -1645,9 +1741,10 @@ export async function findKnowledgeRemovalTargets(
 }
 
 /**
- * Handles `POST commit`. With nothing to remove and a pack that already
- * matches the version there is nothing to commit, so the current state is
- * returned without a version bump or a build (a client cannot churn builds
+ * Handles `POST commit`. When no id matches an item (an empty list, or ids
+ * that are unknown, foreign or outside the folder) nothing changes, so there
+ * is no version bump and no forced rebuild: the current state is returned,
+ * after a lazy rebuild when the pack is stale (a client cannot churn builds
  * by repeating the call). Otherwise the matching items are removed and the
  * change is committed once; ids that do not match are reported in `skipped`.
  */
@@ -1655,24 +1752,26 @@ export async function commitKnowledgeRequest(
   context: KnowledgeIngestContext,
   input: { remove: string[], folderId: string | null },
 ): Promise<KnowledgeCommitResponse> {
-  if (input.remove.length === 0) {
-    const state = await readCommitState(context)
+  const { targets, skipped } = input.remove.length === 0
+    ? { targets: [], skipped: [] }
+    : await findKnowledgeRemovalTargets(context, input)
 
-    if (state.packVersion === state.version) {
-      context.logger.set({
-        attributes: {
-          knowledge: { operation: 'commit', noop: true },
+  if (targets.length === 0) {
+    const state = await settleUnchangedCommit(context)
+
+    context.logger.set({
+      attributes: {
+        knowledge: {
+          operation: 'commit',
+          noop: true,
+          requested: input.remove.length,
+          skipped: skipped.length,
         },
-      })
+      },
+    })
 
-      return { ...state, removed: 0, skipped: [] }
-    }
+    return { ...state, removed: 0, skipped }
   }
-
-  const { targets, skipped } = await findKnowledgeRemovalTargets(
-    context,
-    input,
-  )
 
   context.logger.set({
     attributes: {
