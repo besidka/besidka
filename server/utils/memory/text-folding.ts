@@ -54,6 +54,9 @@ const CYRILLIC_LETTERS_PATTERN = /\p{Script=Cyrillic}/gu
 const COMBINING_MARKS_PATTERN = /\p{M}/gu
 const LATIN_LOOKALIKE_PATTERN = /[abcehikmoptxyï]/gu
 const CYRILLIC_LOOKALIKE_PATTERN = /[авсенікмортхуїјѕ]/gu
+const SPACED_LETTER_RUN_PATTERN
+  = /(?<![\p{L}\p{N}])\p{L}(?:[^\S\r\n]+\p{L}){2,}(?![\p{L}\p{N}])/gu
+const HORIZONTAL_SPACE_PATTERN = /[^\S\r\n]+/gu
 const DECIMAL_DIGIT_PATTERN = /^\p{Nd}$/u
 const ASCII_DIGIT_ZERO = 48
 const DIGITS_PER_BLOCK = 10
@@ -115,6 +118,18 @@ export function stripLatinDiacritics(text: string): string {
     }
 
     return letter.normalize('NFD').replace(COMBINING_MARKS_PATTERN, '')
+  })
+}
+
+/**
+ * Joins a run of three or more single letters separated by spaces or tabs
+ * into one word, so `d i a b e t e s` reads as `diabetes`. A run needs three
+ * letters, so a pair such as `a b` stays apart, and line breaks never join,
+ * because entry fields are combined with newlines.
+ */
+export function collapseSpacedLetters(text: string): string {
+  return text.replace(SPACED_LETTER_RUN_PATTERN, (run) => {
+    return run.replace(HORIZONTAL_SPACE_PATTERN, '')
   })
 }
 

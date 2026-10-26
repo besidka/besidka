@@ -56,6 +56,7 @@ const POLAND_NRB_DIGITS = 26
 const ASCII_LIMIT = 128
 const QUOTED_VALUE_GROUPS = [2, 3, 4]
 const UNQUOTED_VALUE_GROUP = 5
+const PIN_DIGITS_GROUP = 1
 const AWS_SECRET_LENGTH = 40
 const IBAN_SEPARATOR_CODES = new Set([32, 45, 46, 47, 95])
 
@@ -249,6 +250,34 @@ const CREDENTIAL_SENTENCE_PATTERN = new RegExp(
   + `${STRONG_CREDENTIAL_LABELS}|${WEAK_CREDENTIAL_LABELS})`
   + CREDENTIAL_SENTENCE_FILLERS
   + `\\s+(?:${CREDENTIAL_SENTENCE_VERBS})\\s+)${CREDENTIAL_SENTENCE_VALUE}`,
+  'dgiu',
+)
+const CREDENTIAL_LABEL_PREPOSITIONS = [
+  'for|to|of|on|at|from',
+  'від|до|для|на|з|у|в',
+  'od|do|dla|na|z|w',
+  'от|к',
+].join('|')
+const CREDENTIAL_LABEL_PHRASE = `\\s+(?:${CREDENTIAL_LABEL_PREPOSITIONS})`
+  + '(?:\\s+[\\p{L}\\d\'’-]+){1,3}?'
+const URL_VALUE_GUARD = '(?!["\'`]?[A-Za-z][A-Za-z0-9+.-]*://)'
+const STRONG_CREDENTIAL_PHRASE_ASSIGNMENT_PATTERN = new RegExp(
+  `(?<![\\p{L}\\d])((?:${STRONG_CREDENTIAL_LABELS})${CREDENTIAL_LABEL_PHRASE}`
+  + `["'\`]?\\s*[:=]\\s*)${URL_VALUE_GUARD}${CREDENTIAL_SENTENCE_VALUE}`,
+  'dgiu',
+)
+const PIN_LABELS = [
+  'pin(?:[ -]?(?:code|kod|код))?',
+  'kod pin',
+  'пін(?:[ -]?код)?',
+  'пин(?:[ -]?код)?',
+].join('|')
+const PIN_VERBS = 'is|was|є|це|to|jest|это'
+const PIN_PATTERN = new RegExp(
+  `(?<![\\p{L}\\d])(?:${PIN_LABELS})`
+  + `(?:${CREDENTIAL_LABEL_PHRASE})?`
+  + `(?:\\s*[:=]\\s*|\\s+(?:${PIN_VERBS}|[-–—])\\s+)`
+  + '(\\d{4,8})(?![\\d.,]\\d|\\d)',
   'dgiu',
 )
 const STRONG_CREDENTIAL_DASH_PATTERN = new RegExp(
@@ -732,6 +761,14 @@ function collectCredentialValues(
   return matches
 }
 
+function detectPins(text: string): NeverStoreMatch[] {
+  return [...text.matchAll(PIN_PATTERN)].map((pin) => {
+    const [start, end] = pin.indices![PIN_DIGITS_GROUP]!
+
+    return { kind: 'credential' as const, start, end }
+  })
+}
+
 function detectCredentials(text: string): NeverStoreMatch[] {
   return [
     ...collectCredentialValues(
@@ -744,8 +781,14 @@ function detectCredentials(text: string): NeverStoreMatch[] {
       WEAK_CREDENTIAL_ASSIGNMENT_PATTERN,
       true,
     ),
+    ...collectCredentialValues(
+      text,
+      STRONG_CREDENTIAL_PHRASE_ASSIGNMENT_PATTERN,
+      true,
+    ),
     ...collectCredentialValues(text, CREDENTIAL_SENTENCE_PATTERN, true),
     ...collectCredentialValues(text, STRONG_CREDENTIAL_DASH_PATTERN, true),
+    ...detectPins(text),
     ...detectPatternMatches(text, URL_USERINFO_PATTERN, 'credential'),
   ]
 }
