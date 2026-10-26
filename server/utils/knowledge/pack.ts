@@ -31,7 +31,7 @@ import {
 } from '~~/server/utils/knowledge/storage-keys'
 import {
   deleteKnowledgeItemTexts,
-  getKnowledgeItemText,
+  readKnowledgeItemText,
 } from '~~/server/utils/knowledge/text-store'
 import { bumpKnowledgeVersion } from '~~/server/utils/knowledge/version'
 
@@ -622,6 +622,7 @@ async function buildLeasedPack(
   let reusedItems = 0
   let chunkedItems = 0
   let missingTextItems = 0
+  let sizeMismatchItems = 0
   const healCutoffMs = Date.now() - HEAL_MIN_ROW_AGE_MS
   const healItemIds: number[] = []
 
@@ -646,11 +647,19 @@ async function buildLeasedPack(
       continue
     }
 
-    const text = await getKnowledgeItemText({
+    const stored = await readKnowledgeItemText({
       userId,
       projectId,
       itemId: row.internalId,
     })
+
+    if (stored !== null && stored.bytes !== row.textBytes) {
+      sizeMismatchItems++
+
+      continue
+    }
+
+    const text = stored === null ? null : stored.text
 
     if (text === null) {
       missingTextItems++
@@ -747,6 +756,7 @@ async function buildLeasedPack(
     reusedItems,
     chunkedItems,
     missingTextItems,
+    sizeMismatchItems,
   })
 
   try {

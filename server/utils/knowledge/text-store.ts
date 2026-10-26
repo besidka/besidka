@@ -44,13 +44,13 @@ export async function putKnowledgeItemText(
 }
 
 /**
- * Reads an item's text object. Returns null when the object is missing or
- * larger than the per-item cap (anything above the cap was not written by
- * `putKnowledgeItemText`).
+ * Reads an item's text object together with the byte size R2 reports for it.
+ * Returns null when the object is missing or larger than the per-item cap
+ * (anything above the cap was not written by `putKnowledgeItemText`).
  */
-export async function getKnowledgeItemText(
+export async function readKnowledgeItemText(
   input: KnowledgeItemTextInput,
-): Promise<string | null> {
+): Promise<{ text: string, bytes: number } | null> {
   const key = knowledgeItemTextKey(
     input.userId,
     input.projectId,
@@ -67,7 +67,19 @@ export async function getKnowledgeItemText(
     return null
   }
 
-  return await object.text()
+  return { text: await object.text(), bytes: object.size }
+}
+
+/**
+ * Reads an item's text object. Returns null when the object is missing or
+ * larger than the per-item cap.
+ */
+export async function getKnowledgeItemText(
+  input: KnowledgeItemTextInput,
+): Promise<string | null> {
+  const stored = await readKnowledgeItemText(input)
+
+  return stored === null ? null : stored.text
 }
 
 export async function deleteKnowledgeItemText(

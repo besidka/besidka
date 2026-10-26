@@ -262,6 +262,7 @@ describe('knowledge pack', () => {
     updatedAt?: number
     extractStatus?: string
     textBytes?: number
+    reportedSize?: number
   }): number {
     const projectId = input.projectId ?? PROJECT
     const userId = input.userId ?? OWNER
@@ -274,12 +275,14 @@ describe('knowledge pack', () => {
       createdAt: input.createdAt,
       updatedAt: input.updatedAt,
       extractStatus: input.extractStatus,
-      textBytes: input.textBytes,
+      textBytes: input.textBytes
+        ?? (input.text === null ? undefined : toBytes(input.text).length),
     })
 
     if (input.text !== null) {
       bucket.objects.set(textKey(itemId, projectId, userId), {
         bytes: toBytes(input.text),
+        reportedSize: input.reportedSize,
       })
     }
 
@@ -545,6 +548,9 @@ describe('knowledge pack', () => {
       })).toEqual([encodePublicId(present)])
 
       bucket.objects.set(textKey(pending), { bytes: toBytes('now here') })
+      testDb.sqlite
+        .prepare('update project_knowledge_items set text_bytes = 8 where id = ?')
+        .run(pending)
       setProject(2, 1)
       await build()
 
@@ -553,6 +559,68 @@ describe('knowledge pack', () => {
       expect(secondPack!.header.items.map((item) => {
         return item.itemId
       })).toEqual([encodePublicId(present), encodePublicId(pending)])
+    })
+
+    it('leaves out an item whose object size differs from its row and does not cache it', async () => {
+      const steady = seedItem({ text: 'steady', createdAt: 1_000 })
+      const racing = seedItem({
+        text: 'old body',
+        createdAt: 2_000,
+        textBytes: 'a much longer new body'.length,
+      })
+
+      setProject(1, null)
+      await build()
+
+      const firstPack = await readPack(1)
+
+      expect(firstPack!.header.items.map((item) => {
+        return item.itemId
+      })).toEqual([encodePublicId(steady)])
+      expect(firstPack!.lines.some((line) => {
+        return line.itemId === encodePublicId(racing)
+      })).toBe(false)
+      expect(loggedSection('build')).toMatchObject({
+        operation: 'built',
+        sizeMismatchItems: 1,
+      })
+      expect(projectRow().knowledge_pack_version).toBe(1)
+
+      bucket.objects.set(textKey(racing), {
+        bytes: toBytes('a much longer new body'),
+      })
+      bucket.get.mockClear()
+      setProject(2, 1)
+      await build()
+
+      const secondPack = await readPack(2)
+
+      expect(secondPack!.header.items.map((item) => {
+        return item.itemId
+      })).toEqual([encodePublicId(steady), encodePublicId(racing)])
+      expect(secondPack!.lines.find((line) => {
+        return line.itemId === encodePublicId(racing)
+      })).toMatchObject({ text: expect.stringContaining('longer new body') })
+      expect(bucket.get).toHaveBeenCalledWith(textKey(racing))
+    })
+
+    it('does not heal or fail an item over a size mismatch', async () => {
+      const racing = seedItem({
+        text: 'old body',
+        textBytes: 500,
+        createdAt: 1_000,
+        updatedAt: 1_000,
+      })
+
+      setProject(1, null)
+      await build()
+
+      const row = testDb.sqlite
+        .prepare('select extract_status, text_bytes from project_knowledge_items'
+          + ' where id = ?')
+        .get(racing) as { extract_status: string, text_bytes: number }
+
+      expect(row).toEqual({ extract_status: 'ready', text_bytes: 500 })
     })
 
     it('fails the build when a text read fails, leaving the pack version alone', async () => {
@@ -1066,6 +1134,7 @@ describe('knowledge pack', () => {
         seedItem({
           text: '\u0001'.repeat(KNOWLEDGE_LIMITS.maxItemTextBytes - 10),
           textBytes: 0,
+          reportedSize: 0,
         })
         setProject(1, null)
 
@@ -1089,6 +1158,7 @@ describe('knowledge pack', () => {
             text: randomText(KNOWLEDGE_LIMITS.maxItemTextBytes, index + 1),
             createdAt: 1_000 + index,
             textBytes: 0,
+            reportedSize: 0,
           })
         }
 

@@ -744,7 +744,14 @@ Audit fixes in the limits (P3, findings 5 to 8 of the memory security audit):
   runs the guarded `UPDATE` (project text cap and user quota, for the growth
   only) first and writes the text second; if the write fails, the row is put
   back, matched on the update's own `updated_at` so a newer edit is not
-  clobbered. Before, the text was written first and restored best effort, so a
+  clobbered. The new order opens a window in which a pack build reads
+  the old text keyed to the new `updatedAt`, and the builder reuses chunks by
+  `updatedAt` alone. So `buildLeasedPack` now reads each item through
+  `readKnowledgeItemText` and leaves out any item whose R2 object size differs
+  from `text_bytes` (counted as `sizeMismatchItems` in the build log, not
+  healed, not cached); the edit's own commit rebuilds and re-reads it. An item
+  whose text really disagrees with its row stays out of the pack until it is
+  next edited or the object is repaired. Before, the text was written first and restored best effort, so a
   race or a killed invocation could leave text over the cap in R2 or another
   request's text restored.
 - **An unchanged commit does nothing.** A commit where no id matches an item
