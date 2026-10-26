@@ -389,6 +389,12 @@ purged, which is a GDPR Art. 7(3) problem (this is how
 `settings_web_search_tool` went undeclared). `tests/unit/config/
 cookie-consent.spec.ts` pins the manifest against the locale files.
 
+`studio-session-check` is the one necessary cookie that is not written by the
+app or Better Auth: the Nuxt Studio module sets it for the site owner at Studio
+login (no max-age, so it lasts until the browser closes, and it is deleted on
+Studio logout). It is declared in the manifest and the Cookie Policy so the
+documented set is complete.
+
 The manifest cannot declare IndexedDB storage: an entry's `type` is `cookie`,
 `localStorage` or `sessionStorage`. The two databases `besidka-push` and
 `besidka-knowledge` are therefore listed only in `content/legal/cookie-policy.md`

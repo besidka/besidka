@@ -332,7 +332,7 @@ features:
     body: Generate one image at a time with supported OpenAI, Google and xAI models. Besidka saves each result privately in your file library so you can preview and download it.
   - icon: lucide:paperclip
     title: File attachments
-    body: Send images and PDFs. Files are stored in your own R2 bucket and can be reused across different chats.
+    body: Send images and PDFs. Files are stored in Besidka's Cloudflare R2 storage under your account's quota, or in your own bucket if you self-host, and can be reused across different chats.
   - icon: lucide:git-branch
     title: Chat branching
     body: Fork any conversation mid-thread to explore a different direction without losing the original.

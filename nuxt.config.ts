@@ -636,6 +636,11 @@ export default defineNuxtConfig({
             type: 'cookie',
           },
           {
+            id: 'studio-session-check',
+            name: 'studio-session-check',
+            type: 'cookie',
+          },
+          {
             id: 'chat-input-backup',
             name: 'chat_input_backup',
             type: 'localStorage',

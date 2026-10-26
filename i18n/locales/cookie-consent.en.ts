@@ -95,6 +95,13 @@ export default defineI18nLocale(() => ({
           + 'passkey (set by Better Auth).',
         duration: '5 minutes',
       },
+      'studio-session-check': {
+        description:
+          'Set only for the site owner while signed in to Nuxt Studio, the '
+          + 'content editor. It tells the page that an editing session may be '
+          + 'active. Visitors never receive it.',
+        duration: 'Until you close the browser',
+      },
       'chat-input-backup': {
         description:
           'Holds the text of a message you typed but have not '
