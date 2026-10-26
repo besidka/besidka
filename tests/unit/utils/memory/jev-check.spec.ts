@@ -465,7 +465,10 @@ describe('logging', () => {
 })
 
 describe('resolveMemoryJevChecker', () => {
-  function dbWithKey(row: { apiKey: string } | undefined | Error) {
+  function dbWithKey(
+    row: { apiKey: string } | undefined | Error,
+    typesafeRoles: Record<string, boolean> | null = null,
+  ) {
     const findFirst = vi.fn(async () => {
       if (row instanceof Error) {
         throw row
@@ -473,8 +476,18 @@ describe('resolveMemoryJevChecker', () => {
 
       return row
     })
+    const settingsFindFirst = vi.fn(async () => ({ typesafeRoles }))
 
-    return { db: { query: { keys: { findFirst } } } as any, findFirst }
+    return {
+      db: {
+        query: {
+          keys: { findFirst },
+          userSettings: { findFirst: settingsFindFirst },
+        },
+      } as any,
+      findFirst,
+      settingsFindFirst,
+    }
   }
 
   it('returns null without a saved TypeSafe AI key', async () => {
@@ -502,6 +515,36 @@ describe('resolveMemoryJevChecker', () => {
       expect(await resolveMemoryJevChecker({ db, userId: 7, logger }))
         .toBeNull()
       expect(fields[0]?.attributes.memoryJev.status).toBe('key-error')
+    })
+
+  it('returns null without reading settings when there is no key',
+    async () => {
+      const { db, settingsFindFirst } = dbWithKey(undefined)
+
+      expect(await resolveMemoryJevChecker({ db, userId: 7 })).toBeNull()
+      expect(settingsFindFirst).not.toHaveBeenCalled()
+    })
+
+  it('returns null when the user switched memory checks off', async () => {
+    const { db, settingsFindFirst } = dbWithKey(
+      { apiKey: 'encrypted:ts-user-key' },
+      { memoryChecks: false },
+    )
+
+    expect(await resolveMemoryJevChecker({ db, userId: 7 })).toBeNull()
+    expect(settingsFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 7 },
+    }))
+  })
+
+  it('keeps memory checks on when only other roles are switched off',
+    async () => {
+      const { db } = dbWithKey(
+        { apiKey: 'encrypted:ts-user-key' },
+        { autoWebSearch: false, rerank: false },
+      )
+
+      expect(await resolveMemoryJevChecker({ db, userId: 7 })).not.toBeNull()
     })
 
   it('returns null when decryption fails', async () => {

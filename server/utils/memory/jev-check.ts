@@ -1,7 +1,5 @@
 import { createError } from 'evlog'
-import { APICallError, experimental_decide } from 'ai'
 import type { Experimental_DecisionQuestion } from 'ai'
-import { createTypeSafeAi } from '@ai-sdk/typesafe-ai'
 import type { MemorySensitiveCategory } from '#shared/types/memory.d'
 import type { MemoryInstructRejection } from '#shared/types/memory-instruct.d'
 import { SENSITIVE_TOPIC_REFUSAL_MESSAGE } from '#shared/utils/memory-policy'
@@ -14,27 +12,32 @@ import type { ComplianceLogger } from '~~/server/utils/memory/compliance'
 import {
   memoryExtractionEvidenceNeedle,
 } from '~~/server/utils/memory/extract-grounding'
-import { useDecryptText } from '~~/server/utils/encryption'
+import { JEV_BACKGROUND_TIMEOUT_MS, JEV_MODEL_ID } from '#shared/utils/jev-policy'
+import {
+  JEV_KEY_PROVIDER,
+  classifyJevFailure,
+  createJevDecisionModel,
+  jevDecide,
+} from '~~/server/utils/jev/client'
+import type { JevProbabilities, JevStatus } from '~~/server/utils/jev/client'
+import { resolveJevRoleApiKey } from '~~/server/utils/jev/roles'
 
 type DbClient = ReturnType<typeof useDb>
 
-export const MEMORY_JEV_MODEL_ID = 'jev-1.14.0'
-export const MEMORY_JEV_TIMEOUT_MS = 2500
+export const MEMORY_JEV_MODEL_ID = JEV_MODEL_ID
+export const MEMORY_JEV_TIMEOUT_MS = JEV_BACKGROUND_TIMEOUT_MS
 export const MEMORY_JEV_SENSITIVE_THRESHOLD = 0.5
 export const MEMORY_JEV_GROUNDING_THRESHOLD = 0.5
 export const MEMORY_JEV_MAX_QUESTIONS_PER_CALL = 100
 export const MEMORY_JEV_MAX_CHARS_PER_CALL = 90_000
 export const MEMORY_JEV_SOURCE_WINDOW_CHARS = 300
 export const MEMORY_JEV_MAX_SOURCE_CHARS = 9000
-export const MEMORY_JEV_KEY_PROVIDER = 'typesafe'
+export const MEMORY_JEV_KEY_PROVIDER = JEV_KEY_PROVIDER
 export const MEMORY_JEV_REJECTION_KIND = 'extra-check'
 export const MEMORY_JEV_MODELS_URL = 'https://api.typesafe.ai/v1/models'
 export const MEMORY_JEV_KEY_CHECK_TIMEOUT_MS = 5000
 
-const MAX_RETRIES = 0
 const UNAUTHORIZED_STATUSES = new Set([401, 403])
-const RATE_LIMITED_STATUSES = new Set([429, 529])
-const TIMEOUT_ERROR_NAMES = new Set(['TimeoutError', 'AbortError'])
 const NEVER_STORE_QUESTION = 'never-store'
 const GROUNDED_QUESTION = 'grounded'
 const QUESTION_ID_SEPARATOR = '__'
@@ -74,14 +77,7 @@ const SENSITIVE_FALSE_CRITERION = 'The candidate only mentions the subject as '
   + 'a TV show, place name, academic topic, job, workplace, or fiction, and '
   + 'reveals nothing about any person\'s own situation of this kind.'
 
-export type MemoryJevStatus
-  = | 'ok'
-    | 'key-error'
-    | 'unauthorized'
-    | 'rate-limited'
-    | 'timeout'
-    | 'network'
-    | 'error'
+export type MemoryJevStatus = Exclude<JevStatus, 'disabled'>
 
 export interface MemoryJevCandidate {
   title: string
@@ -118,8 +114,6 @@ interface MemoryJevTally {
   latencyMs: number
   status: MemoryJevStatus
 }
-
-type BooleanAnswers = Record<string, { probability?: number } | undefined>
 
 const CLEAR_VERDICT: MemoryJevVerdict = { kind: 'clear' }
 
@@ -263,12 +257,11 @@ function buildCandidateQuestions(
 }
 
 function readProbability(
-  answers: BooleanAnswers,
+  answers: JevProbabilities,
   candidateIndex: number,
   question: string,
 ): number | null {
   const probability = answers[questionId(candidateIndex, question)]
-    ?.probability
 
   return typeof probability === 'number' ? probability : null
 }
@@ -284,7 +277,7 @@ function isUngrounded(probability: number | null): boolean {
 }
 
 function readVerdict(
-  answers: BooleanAnswers,
+  answers: JevProbabilities,
   candidate: PreparedCandidate,
 ): MemoryJevVerdict {
   if (isFlagged(readProbability(
@@ -317,63 +310,13 @@ function readVerdict(
   return CLEAR_VERDICT
 }
 
-function readErrorStatus(exception: unknown): number | undefined {
-  if (APICallError.isInstance(exception)) {
-    return exception.statusCode
-  }
-
-  const lastError = (exception as { lastError?: unknown } | null)?.lastError
-
-  if (lastError && APICallError.isInstance(lastError)) {
-    return lastError.statusCode
-  }
-
-  return undefined
-}
-
-function isTimeoutError(exception: unknown): boolean {
-  let current: unknown = exception
-
-  while (current instanceof Error) {
-    if (TIMEOUT_ERROR_NAMES.has(current.name)) {
-      return true
-    }
-
-    current = current.cause
-  }
-
-  return false
-}
-
 /**
  * Maps a failed Jev call to a status. Every status other than `ok` means
  * Jev was unavailable and the write continues on the deterministic gate
  * alone.
  */
 export function classifyMemoryJevFailure(exception: unknown): MemoryJevStatus {
-  const status = readErrorStatus(exception)
-
-  if (status !== undefined && UNAUTHORIZED_STATUSES.has(status)) {
-    return 'unauthorized'
-  }
-
-  if (status !== undefined && RATE_LIMITED_STATUSES.has(status)) {
-    return 'rate-limited'
-  }
-
-  if (isTimeoutError(exception)) {
-    return 'timeout'
-  }
-
-  if (status !== undefined) {
-    return 'error'
-  }
-
-  if (APICallError.isInstance(exception) || exception instanceof TypeError) {
-    return 'network'
-  }
-
-  return 'error'
+  return classifyJevFailure(exception)
 }
 
 function readLoggedTally(logger: ComplianceLogger): MemoryJevTally | null {
@@ -461,13 +404,13 @@ export function createMemoryJevChecker(input: {
   apiKey: string
   logger?: ComplianceLogger
 }): MemoryJevChecker | null {
-  const apiKey = input.apiKey.trim()
+  const createdModel = createJevDecisionModel(input.apiKey)
 
-  if (!apiKey) {
+  if (!createdModel) {
     return null
   }
 
-  const model = createTypeSafeAi({ apiKey }).decisionModel(MEMORY_JEV_MODEL_ID)
+  const model = createdModel
 
   async function check(
     candidates: MemoryJevCandidate[],
@@ -500,30 +443,27 @@ export function createMemoryJevChecker(input: {
         ...chunk.map(buildCandidateQuestions),
       ) as Record<string, Experimental_DecisionQuestion>
 
-      try {
-        const result = await experimental_decide({
-          model,
-          state: STATE_DESCRIPTION,
-          questions,
-          maxRetries: MAX_RETRIES,
-          abortSignal,
-        })
+      const result = await jevDecide({
+        model,
+        state: STATE_DESCRIPTION,
+        questions,
+        timeoutMs: MEMORY_JEV_TIMEOUT_MS,
+        abortSignal,
+      })
 
-        tally.questions += Object.keys(questions).length
-
-        for (const candidate of chunk) {
-          const verdict = readVerdict(
-            result.answers as BooleanAnswers,
-            candidate,
-          )
-
-          verdicts[candidate.index] = verdict
-          countVerdict(verdict, tally)
-        }
-      } catch (exception) {
-        tally.status = classifyMemoryJevFailure(exception)
+      if (!result.ok) {
+        tally.status = result.status
 
         break
+      }
+
+      tally.questions += Object.keys(questions).length
+
+      for (const candidate of chunk) {
+        const verdict = readVerdict(result.probabilities, candidate)
+
+        verdicts[candidate.index] = verdict
+        countVerdict(verdict, tally)
       }
     }
 
@@ -541,39 +481,26 @@ export function createMemoryJevChecker(input: {
 
 /**
  * Returns the Jev checker for the user's saved TypeSafe AI key, or `null`
- * when there is none. Callers pass it only on paths that already passed the
- * legal consent gate. A failing key read or decryption is logged as
- * `key-error` and also returns `null`: Jev is optional, so it never turns
- * into a failed write.
+ * when there is none or the user switched the `memoryChecks` role off.
+ * Callers pass it only on paths that already passed the legal consent gate.
+ * A failing key read or decryption is logged as `key-error` and also returns
+ * `null`: Jev is optional, so it never turns into a failed write.
  */
 export async function resolveMemoryJevChecker(input: {
   db: DbClient
   userId: number
   logger?: ComplianceLogger
 }): Promise<MemoryJevChecker | null> {
-  try {
-    const row = await input.db.query.keys.findFirst({
-      where: { userId: input.userId, provider: MEMORY_JEV_KEY_PROVIDER },
-      columns: { apiKey: true },
-    })
+  const apiKey = await resolveJevRoleApiKey({
+    ...input,
+    role: 'memoryChecks',
+  })
 
-    if (!row?.apiKey) {
-      return null
-    }
-
-    return createMemoryJevChecker({
-      apiKey: await useDecryptText(row.apiKey),
-      logger: input.logger,
-    })
-  } catch {
-    input.logger?.set({
-      attributes: {
-        memoryJev: { model: MEMORY_JEV_MODEL_ID, status: 'key-error' },
-      },
-    })
-
+  if (!apiKey) {
     return null
   }
+
+  return createMemoryJevChecker({ apiKey, logger: input.logger })
 }
 
 /**

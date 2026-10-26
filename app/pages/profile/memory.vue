@@ -20,7 +20,7 @@
       :settings="values"
       :save="saveSettings"
     />
-    <ProfileMemoryExtraChecks />
+    <ProfileMemoryExtraChecks :typesafe-roles="settings?.typesafeRoles" />
     <ProfileMemoryCacheInfo />
     <ProfileMemoryEntries
       :settings="values"

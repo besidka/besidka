@@ -11,11 +11,12 @@
     />
     <div class="grid gap-2 text-sm">
       <p>
-        Used only for memory checks, never for chat. When you save memory,
-        Besidka sends the candidate entry text to TypeSafe AI (US) to
-        double-check it for sensitive data and to confirm it really comes
-        from your conversation. Costs a fraction of a cent per check on your
-        TypeSafe AI account.
+        Optional checks that run on your own TypeSafe AI key: memory checks,
+        Auto web search, a memory pre-filter, prompt-injection screening,
+        search re-ranking, a share check and past-chat retrieval. Each check
+        sends TypeSafe AI (US) only the text it needs, and you can switch any
+        of them off below once the key is saved. It adds no chat models. Costs
+        a fraction of a cent per check on your TypeSafe AI account.
       </p>
       <p>
         <NuxtLink

@@ -15,16 +15,19 @@ describe('Profile/Keys/MemoryChecksInfo', () => {
     expect(alert.classes()).toContain('alert-info')
   })
 
-  it('says the key is only for memory checks and what is sent where',
+  it('lists every TypeSafe AI check and no longer says memory checks only',
     async () => {
       const wrapper = await mountSuspended(MemoryChecksInfo)
       const text = wrapper.get('[data-testid="memory-checks-info"]').text()
         .replace(/\s+/g, ' ')
 
-      expect(text).toContain('Used only for memory checks, never for chat.')
-      expect(text).toContain('Besidka sends the candidate entry text to '
-        + 'TypeSafe AI (US) to double-check it for sensitive data and to '
-        + 'confirm it really comes from your conversation.')
+      expect(text).not.toContain('never for chat')
+      expect(text).toContain('memory checks, Auto web search, a memory '
+        + 'pre-filter, prompt-injection screening, search re-ranking, a share '
+        + 'check and past-chat retrieval')
+      expect(text).toContain('Each check sends TypeSafe AI (US) only the text '
+        + 'it needs')
+      expect(text).toContain('It adds no chat models.')
       expect(text).toContain('Costs a fraction of a cent per check on your '
         + 'TypeSafe AI account.')
     })
