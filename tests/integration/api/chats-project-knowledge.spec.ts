@@ -723,8 +723,9 @@ describe('project knowledge send-path wiring', () => {
     stubChatProvider()
   })
 
-  it('injects the full block on a 1M direct model after the memory block '
-    + 'and the project prompt and before the chat-search line', async () => {
+  it('injects the full block on a 1M direct model after the project prompt '
+    + 'and before the chat-search line, without the legacy about-me text',
+  async () => {
     mocks.isChatSearchToolEnabled = true
 
     const { doStream, assistantInsert, loadPack } = await runSend({
@@ -732,7 +733,6 @@ describe('project knowledge send-path wiring', () => {
     })
     const callOptions = doStream.mock.calls[0]?.[0] as any
     const systemPrompt = readSystemPrompt(callOptions)
-    const aboutMeIndex = systemPrompt.indexOf('ABOUT_ME_MARKER')
     const projectIndex = systemPrompt.indexOf('PROJECT_RULES')
     const blockIndex = systemPrompt.indexOf('<project_knowledge>')
     const chatSearchIndex = systemPrompt.indexOf(CHAT_SEARCH_INSTRUCTION)
@@ -741,8 +741,8 @@ describe('project knowledge send-path wiring', () => {
       expect.objectContaining({ userId: 1, projectId: PROJECT_INTERNAL_ID }),
     )
     expect(loadPack).toHaveBeenCalledTimes(1)
-    expect(aboutMeIndex).toBeGreaterThanOrEqual(0)
-    expect(projectIndex).toBeGreaterThan(aboutMeIndex)
+    expect(systemPrompt).not.toContain('ABOUT_ME_MARKER')
+    expect(projectIndex).toBeGreaterThanOrEqual(0)
     expect(blockIndex).toBeGreaterThan(projectIndex)
     expect(chatSearchIndex).toBeGreaterThan(blockIndex)
     expect(systemPrompt).toContain(NOTE_TEXT)
