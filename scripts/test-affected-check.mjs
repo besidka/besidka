@@ -141,6 +141,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/pre-retrieval.spec.ts',
     'tests/unit/utils/knowledge/send-data.spec.ts',
     'tests/unit/utils/knowledge/context.spec.ts',
+    'tests/unit/utils/knowledge/previous-mode.spec.ts',
     'tests/integration/api/chats-project-knowledge.spec.ts',
   ]
   const knowledgeCoreTests = [
@@ -2102,7 +2103,7 @@ export function getAffectedTests(changedFiles) {
       tests: memoryPurgeTests,
     },
     {
-      pattern: /^server\/utils\/knowledge\/(search|pre-retrieval|send-data|context)\.ts$/,
+      pattern: /^server\/utils\/knowledge\/(search|pre-retrieval|send-data|context|previous-mode)\.ts$/,
       tests: projectKnowledgeRetrievalTests,
     },
     {

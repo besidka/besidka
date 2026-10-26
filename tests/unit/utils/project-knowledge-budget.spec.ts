@@ -509,6 +509,114 @@ describe('decideKnowledgeMode', () => {
       expect(decision.mode).toBe('full')
     })
 
+    describe('hysteresis', () => {
+      const BUDGET = 64_000
+      const RETURN_LIMIT = 54_400
+
+      function decideWith(
+        knowledgeTokens: number,
+        previousMode: KnowledgeDecisionInput['previousMode'],
+        overrides: Partial<KnowledgeDecisionInput> = {},
+      ) {
+        return decideKnowledgeMode(buildInput({
+          knowledgeTokens,
+          previousMode,
+          ...overrides,
+        }))
+      }
+
+      it('keeps full at the budget and leaves it above 100%', () => {
+        expect(decideWith(BUDGET, 'full').mode).toBe('full')
+
+        const decision = decideWith(BUDGET + 1, 'full')
+
+        expect(decision.mode).toBe('search')
+        expect(decision.reason).toBe('over-budget')
+      })
+
+      it('stays on search inside the 85% to 100% band', () => {
+        for (const tokens of [RETURN_LIMIT + 1, 57_600, BUDGET]) {
+          const decision = decideWith(tokens, 'search')
+
+          expect(decision.mode).toBe('search')
+          expect(decision.reason).toBe('hysteresis')
+          expect(decision.notice).toBeNull()
+        }
+      })
+
+      it('returns to full at or below 85% of the budget', () => {
+        const atLimit = decideWith(RETURN_LIMIT, 'search')
+        const below = decideWith(54_000, 'search')
+
+        expect(atLimit.mode).toBe('full')
+        expect(atLimit.reason).toBe('within-budget')
+        expect(below.mode).toBe('full')
+        expect(below.reason).toBe('within-budget')
+      })
+
+      it('searches above the budget whatever the previous mode', () => {
+        for (const previousMode of ['search', 'full', 'none', null] as const) {
+          expect(decideWith(BUDGET + 1, previousMode).reason)
+            .toBe('over-budget')
+        }
+      })
+
+      it('uses the plain 100% rule without a previous search', () => {
+        for (const previousMode of ['full', 'none', null, undefined] as const) {
+          const decision = decideWith(57_600, previousMode)
+
+          expect(decision.mode).toBe('full')
+          expect(decision.reason).toBe('within-budget')
+        }
+      })
+
+      it('does not flip full, search, full across one large insert', () => {
+        const sends = [50_000, 70_000, 60_000, 58_000, 50_000]
+        const modes: string[] = []
+        let previousMode: KnowledgeDecisionInput['previousMode'] = null
+
+        for (const tokens of sends) {
+          const decision = decideWith(tokens, previousMode)
+
+          modes.push(decision.mode)
+          previousMode = decision.mode
+        }
+
+        expect(modes).toEqual(['full', 'search', 'search', 'search', 'full'])
+      })
+
+      it('scales the band with the model budget', () => {
+        const smallWindow = { contextWindow: 200_000 }
+
+        expect(decideWith(11_901, 'search', smallWindow).reason)
+          .toBe('hysteresis')
+        expect(decideWith(11_900, 'search', smallWindow).mode).toBe('full')
+      })
+
+      it('reports does-not-fit before the hysteresis hold', () => {
+        const decision = decideWith(57_600, 'search', {
+          estimatedHistoryTokens: 950_000,
+        })
+
+        expect(decision.mode).toBe('search')
+        expect(decision.reason).toBe('does-not-fit')
+      })
+
+      it('ignores the previous mode when a mode is forced', () => {
+        const forcedFull = decideWith(57_600, 'search', { mode: 'full' })
+        const forcedSearch = decideWith(1_000, 'full', { mode: 'search' })
+
+        expect(forcedFull.mode).toBe('full')
+        expect(forcedFull.reason).toBe('within-budget')
+        expect(forcedSearch.mode).toBe('search')
+        expect(forcedSearch.reason).toBe('forced-search')
+      })
+
+      it('still returns none for empty knowledge after a search', () => {
+        expect(decideWith(0, 'search').mode).toBe('none')
+      })
+    })
+
     it('searches with over-budget on a tiny window', () => {
       const decision = decideKnowledgeMode(buildInput({
         knowledgeTokens: 574,

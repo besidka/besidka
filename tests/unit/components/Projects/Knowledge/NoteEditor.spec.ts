@@ -392,6 +392,47 @@ describe('Projects/Knowledge/NoteEditor', () => {
       })
     })
 
+    describe('a failed note', () => {
+      const failedNote = createKnowledgeItem({
+        id: 'note-1',
+        kind: 'note',
+        title: 'Meeting notes',
+        extractor: 'note',
+        mediaType: 'text/markdown',
+        extractStatus: 'failed',
+        extractError: 'text-mismatch',
+      })
+
+      it('explains the failure and invites a repair', async () => {
+        const wrapper = await mountEditor(failedNote)
+
+        expect(byTestId(wrapper, 'knowledge-note-repair').text())
+          .toContain('The stored text no longer matches this item')
+        expect(byTestId(wrapper, 'knowledge-note-repair').text())
+          .toContain('save the note to repair it')
+      })
+
+      it('allows saving without edits and sends the body to repair it', async () => {
+        const wrapper = await mountEditor(failedNote)
+
+        expect(isSaveDisabled(wrapper)).toBe(false)
+
+        await byTestId(wrapper, 'knowledge-note-save').trigger('click')
+        await flushPromises()
+
+        expect(mocks.updateNote).toHaveBeenCalledWith('note-1', {
+          body: '# Existing\n\nbody',
+        })
+      })
+
+      it('shows no repair alert for a ready note', async () => {
+        const wrapper = await mountEditor(note)
+
+        expect(wrapper.find('[data-testid="knowledge-note-repair"]').exists())
+          .toBe(false)
+      })
+    })
+
     it('shows a load failure instead of an empty form', async () => {
       mocks.getItemText.mockResolvedValue({
         ok: false,

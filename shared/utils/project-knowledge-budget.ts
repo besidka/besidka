@@ -218,7 +218,12 @@ export function measuredHistoryTokens(
  * inequality is checked against the context window; `over-budget` is
  * evaluated first in auto mode because it depends only on the knowledge and
  * the model, never on history. A forced `full` that does not fit falls back
- * to search with the `full-does-not-fit` notice.
+ * to search with the `full-does-not-fit` notice. Auto mode has hysteresis so
+ * one large insert cannot flip the mode full, search, full and bust the
+ * prompt cache twice: it switches to search above 100% of the budget, and
+ * a chat whose previous send was `search` goes back to full only at or below
+ * `searchReturnShare` (85%) of it; the band in between stays `hysteresis`
+ * search. Without a previous mode the plain 100% rule applies.
  */
 export function decideKnowledgeMode(
   input: KnowledgeDecisionInput,
@@ -277,6 +282,15 @@ export function decideKnowledgeMode(
 
   if (!fits) {
     return { ...decision, mode: 'search', reason: 'does-not-fit' }
+  }
+
+  const returnLimitTokens = budget.budgetTokens
+    * KNOWLEDGE_BUDGET.searchReturnShare
+  const isHeldInBand = input.previousMode === 'search'
+    && input.knowledgeTokens > returnLimitTokens
+
+  if (isHeldInBand) {
+    return { ...decision, mode: 'search', reason: 'hysteresis' }
   }
 
   return { ...decision, mode: 'full', reason: 'within-budget' }

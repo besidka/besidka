@@ -36,7 +36,11 @@ import {
   getUserStorageUsageBytes,
 } from '~~/server/utils/files/file-governance'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { toKnowledgeItemWire, getKnowledgeProjectState } from '~~/server/utils/knowledge/items'
+import {
+  countUserKnowledgeItems,
+  getKnowledgeProjectState,
+  toKnowledgeItemWire,
+} from '~~/server/utils/knowledge/items'
 import type { KnowledgeItemRow } from '~~/server/utils/knowledge/items'
 import {
   getKnowledgeRetentionExpiresAt,
@@ -416,16 +420,6 @@ async function readProjectFingerprints(
       eq(schema.projectKnowledgeItems.userId, context.userId),
       eq(schema.projectKnowledgeItems.projectId, context.projectId),
     ))
-}
-
-async function countUserKnowledgeItems(userId: number): Promise<number> {
-  const row = await useDb()
-    .select({ total: sql<number>`count(*)` })
-    .from(schema.projectKnowledgeItems)
-    .where(eq(schema.projectKnowledgeItems.userId, userId))
-    .get()
-
-  return row?.total ?? 0
 }
 
 function sumTextBytes(fingerprints: ProjectFingerprint[]): number {
@@ -1016,8 +1010,10 @@ async function markInsertedItemsPending(
  * pack that already matches the version is returned as is. A stale pack of a
  * project that has been committed before is rebuilt through the lazy path,
  * which never bumps `knowledge_version` and honours the build backoff, so
- * repeating an empty commit cannot churn builds. Only a project that has
- * never been committed (version 0) takes the full commit once.
+ * repeating an empty commit cannot churn builds. It is an explicit commit, so
+ * it skips the 30 second wait the panel and send paths observe. Only a
+ * project that has never been committed (version 0) takes the full commit
+ * once.
  */
 async function settleUnchangedCommit(
   context: KnowledgeIngestContext,
@@ -1035,6 +1031,7 @@ async function settleUnchangedCommit(
   await ensureKnowledgePackFresh({
     userId: context.userId,
     projectId: context.projectId,
+    ignoreBuildInterval: true,
     logger: context.logger,
   })
 
@@ -1320,7 +1317,10 @@ async function readUpdatedRow(
 /**
  * Updates a note. Only a title or body change commits (the index line is
  * read live, so a description edit does not). A changed body is hashed
- * again and checked against the other items of the project (409). The row
+ * again and checked against the other items of the project (409). Saving a
+ * body on a note that is not `ready` (a `text-mismatch` or `text-missing`
+ * failure) is a repair: the body is written even when it equals the stored
+ * hash, and the row comes back `ready` with its error cleared. The row
  * is updated first, by one guarded UPDATE that enforces the project text cap
  * and the user quota for the growth only, so nothing is written to R2 unless
  * the new size fits; the new text is written second, and when that write
@@ -1349,8 +1349,10 @@ export async function updateKnowledgeNote(
   const nextHash = input.body === undefined
     ? current.contentHash
     : await assertNoteBody(input.body)
+  const isRepair = input.body !== undefined
+    && current.extractStatus !== 'ready'
   const isBodyChanged = input.body !== undefined
-    && nextHash !== current.contentHash
+    && (nextHash !== current.contentHash || isRepair)
   const isTitleChanged = title !== current.title
   const isDescriptionChanged = description !== current.description
 
@@ -1374,9 +1376,10 @@ export async function updateKnowledgeNote(
 
   if (isBodyChanged) {
     const existing = await readProjectFingerprints(context)
-    const isDuplicate = existing.some((fingerprint) => {
-      return fingerprint.contentHash === nextHash
-    })
+    const isDuplicate = nextHash !== current.contentHash
+      && existing.some((fingerprint) => {
+        return fingerprint.contentHash === nextHash
+      })
 
     if (isDuplicate) {
       throw createConflictError(duplicateNoteConflict)
@@ -1412,6 +1415,8 @@ export async function updateKnowledgeNote(
         latin_chars = ${charCounts.latinChars},
         cyrillic_chars = ${charCounts.cyrillicChars},
         other_chars = ${charCounts.otherChars},
+        extract_status = ${isBodyChanged ? 'ready' : current.extractStatus},
+        extract_error = ${isBodyChanged ? null : current.extractError},
         updated_at = ${updatedAtSeconds}
       where id = ${itemId}
         and user_id = ${userId}
@@ -1465,6 +1470,8 @@ export async function updateKnowledgeNote(
           latin_chars = ${current.latinChars},
           cyrillic_chars = ${current.cyrillicChars},
           other_chars = ${current.otherChars},
+          extract_status = ${current.extractStatus},
+          extract_error = ${current.extractError},
           updated_at = ${Math.floor(current.updatedAt.getTime() / 1000)}
         where id = ${itemId}
           and user_id = ${userId}

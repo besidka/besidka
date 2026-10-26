@@ -254,6 +254,104 @@ describe('resolveProjectKnowledgeContext', () => {
     })
   })
 
+  describe('mode hysteresis', () => {
+    const knowledgeInBand = 58_000
+
+    function bandData() {
+      return makeData({
+        items: [makeTextItem('a', knowledgeInBand)],
+        pack: makePack([{ itemId: 'a', chunks: ['alpha'] }]),
+      })
+    }
+
+    it('stays on search inside the band after a search send', async () => {
+      const { data, loadPack } = bandData()
+
+      const context = await resolveProjectKnowledgeContext(makeInput(data, {
+        previousMode: 'search',
+      }))
+
+      expect(context.decision.mode).toBe('search')
+      expect(context.decision.reason).toBe('hysteresis')
+      expect(context.knowledgeTokens).toBe(0)
+      expect(context.registerTools).toBe(true)
+      expect(loadPack).not.toHaveBeenCalled()
+    })
+
+    it('injects the same knowledge when the previous send was full', async () => {
+      const { data } = bandData()
+
+      const context = await resolveProjectKnowledgeContext(makeInput(data, {
+        previousMode: 'full',
+      }))
+
+      expect(context.decision.mode).toBe('full')
+      expect(context.knowledgeTokens).toBe(knowledgeInBand)
+    })
+
+    it('injects it without a previous mode', async () => {
+      const { data } = bandData()
+
+      const withNull = await resolveProjectKnowledgeContext(makeInput(data, {
+        previousMode: null,
+      }))
+      const withoutField = await resolveProjectKnowledgeContext(
+        makeInput(data),
+      )
+
+      expect(withNull.decision.mode).toBe('full')
+      expect(withoutField.decision.mode).toBe('full')
+    })
+
+    it('returns to full once the knowledge is back under 85%', async () => {
+      const { data } = makeData({
+        items: [makeTextItem('a', 50_000)],
+        pack: makePack([{ itemId: 'a', chunks: ['alpha'] }]),
+      })
+
+      const context = await resolveProjectKnowledgeContext(makeInput(data, {
+        previousMode: 'search',
+      }))
+
+      expect(context.decision.mode).toBe('full')
+      expect(context.decision.reason).toBe('within-budget')
+    })
+
+    it('does not hold a forced full mode on search', async () => {
+      const { data } = makeData({
+        items: [makeTextItem('a', knowledgeInBand)],
+        pack: makePack([{ itemId: 'a', chunks: ['alpha'] }]),
+        mode: 'full',
+      })
+
+      const context = await resolveProjectKnowledgeContext(makeInput(data, {
+        previousMode: 'search',
+      }))
+
+      expect(context.decision.mode).toBe('full')
+    })
+
+    it('logs the previous mode with the decision', async () => {
+      const { data } = bandData()
+      const logger = { set: vi.fn() }
+
+      await resolveProjectKnowledgeContext(makeInput(data, {
+        previousMode: 'search',
+        logger,
+      }))
+
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          knowledge: expect.objectContaining({
+            mode: 'search',
+            reason: 'hysteresis',
+            previousMode: 'search',
+          }),
+        },
+      })
+    })
+  })
+
   describe('history accounting', () => {
     const smallWindowModel: KnowledgeSendModel = {
       ...BASE_MODEL,
