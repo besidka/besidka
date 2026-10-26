@@ -10,6 +10,7 @@ import {
 } from '#shared/utils/memory-schemas'
 import { enforceGatewayModelsRateLimit } from '~~/server/utils/gateways/catalog-rate-limit'
 import { assertMemoryModelChoice } from '~~/server/utils/memory/validate-model-choice'
+import { claimExtractionEnableCooldown } from '~~/server/utils/memory/extraction-enable-cooldown'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const favoriteGatewayModelIds = z.array(z.string().max(100)).max(50)
@@ -202,6 +203,11 @@ export default defineEventHandler(async (event) => {
         ?? existingSettings?.memoryExtractionEnabled) === true
   const isEnablingExtraction = !isExtractionEffectiveBefore
     && isExtractionEffectiveAfter
+
+  if (isEnablingExtraction) {
+    await claimExtractionEnableCooldown(userId)
+  }
+
   const stampedAt = new Date()
   const settingsValues = isEnablingExtraction
     ? { ...fieldUpdates, memoryExtractionEnabledAt: stampedAt }
@@ -227,7 +233,7 @@ export default defineEventHandler(async (event) => {
           eq(schema.chats.userId, userId),
           or(
             isNull(schema.chats.memoryExtractedAt),
-            lt(schema.chats.memoryExtractedAt, stampedAt),
+            lt(schema.chats.memoryExtractedAt, schema.chats.activityAt),
           ),
         )),
     )

@@ -99,6 +99,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
@@ -226,6 +227,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/memory-import.spec.ts',
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
+    'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
   ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',

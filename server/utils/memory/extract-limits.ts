@@ -36,6 +36,7 @@ export const MEMORY_EXTRACTION_LIMITS = {
   backfillJobsPerTick: 5,
   backfillStepDeadlineMs: 60000,
   backfillDriveCooldownSeconds: 10,
+  extractionEnableCooldownSeconds: 10,
 } as const
 
 export const MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES = 0
