@@ -94,6 +94,11 @@ export const JEV_INJECTION_SCREENING = {
   flagAtOrAbove: 0.3,
   maxChunkTokens: 2000,
   maxConcurrentCalls: 3,
+  maxCallsPerKnowledgeRequest: 24,
+  rescreenItemsPerSweep: 10,
+  rescreenMaxCallsPerItem: 12,
+  rescreenMaxAttempts: 5,
+  rescreenQueueTtlSeconds: 14 * 24 * 60 * 60,
   timeoutMs: JEV_BACKGROUND_TIMEOUT_MS,
   searchResultsTimeoutMs: JEV_SEND_PATH_TIMEOUT_MS,
   question: {
@@ -111,7 +116,9 @@ export const JEV_RERANK = {
   maxPassageTokens: 300,
   dropBelow: 0.5,
   timeoutMs: JEV_SEND_PATH_TIMEOUT_MS,
-  task: 'Is this passage relevant to `query`?',
+  passageStateKeyPrefix: 'passage_',
+  passagePlaceholder: '{passage}',
+  task: 'Is `{passage}` relevant to `query`?',
   criteria: {
     true: 'The passage contains information that directly answers or '
       + 'addresses what `query` is looking for, even if it uses different '

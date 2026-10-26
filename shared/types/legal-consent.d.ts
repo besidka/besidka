@@ -1,4 +1,7 @@
-import type { TransferConsentProviderKey } from '#shared/utils/legal-consent'
+import type {
+  TransferConsentProviderKey,
+  TransferConsentRouteKind,
+} from '#shared/utils/legal-consent'
 
 export type TransferConsentProviderId = TransferConsentProviderKey
 
@@ -21,6 +24,7 @@ export interface ProviderTransferConsentState {
   providerId: TransferConsentProviderId
   label: string
   country: string
+  route: TransferConsentRouteKind
   consentedAt: string | null
   withdrawnAt: string | null
   isGranted: boolean

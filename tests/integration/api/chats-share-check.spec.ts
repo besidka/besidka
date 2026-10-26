@@ -1,6 +1,7 @@
 import { APICallError } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JEV_SHARE_PII_CHECK } from '#shared/utils/jev-policy'
+import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import {
   createMemoryExtractionTestDb,
   minutesBefore,
@@ -97,12 +98,16 @@ function createKvStub() {
   }
 }
 
-function createEvent(slug: string, body: unknown) {
+function createEvent(
+  slug: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) {
   return {
     body,
     params: { slug },
     context: {},
-    headers: {},
+    headers,
     res: { headers: new Headers() },
   }
 }
@@ -170,6 +175,13 @@ describe('POST /api/v1/chats/[slug]/share/check', () => {
     const kv = createKvStub()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
+    vi.stubGlobal(
+      'getRequestHeader',
+      (event: { headers?: Record<string, string> }, name: string) => {
+        return event.headers?.[name.toLowerCase()]
+      },
+    )
     vi.stubGlobal('getRouterParams', (event: { params: unknown }) => {
       return event.params
     })
@@ -195,6 +207,7 @@ describe('POST /api/v1/chats/[slug]/share/check', () => {
   async function check(
     body: Record<string, unknown> = {},
     slug = chatSlug,
+    headers: Record<string, string> = {},
   ): Promise<CheckResponse> {
     const module = await import(
       '../../../server/api/v1/chats/[slug]/share/check.post'
@@ -205,7 +218,7 @@ describe('POST /api/v1/chats/[slug]/share/check', () => {
       showFiles: true,
       showMetadata: true,
       ...body,
-    }))
+    }, headers))
   }
 
   async function saveTypesafeKey() {
@@ -238,6 +251,14 @@ describe('POST /api/v1/chats/[slug]/share/check', () => {
         })
         expect(mocks.decide).not.toHaveBeenCalled()
       })
+
+    it('rejects a cross-site request and never calls Jev', async () => {
+      await saveTypesafeKey()
+
+      await expect(check({}, chatSlug, { 'sec-fetch-site': 'cross-site' }))
+        .rejects.toMatchObject({ status: 403 })
+      expect(mocks.decide).not.toHaveBeenCalled()
+    })
 
     it('answers 400 for a malformed body', async () => {
       await expect(check({ showFiles: 'yes' })).rejects.toMatchObject({

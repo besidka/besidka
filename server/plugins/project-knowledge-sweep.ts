@@ -101,6 +101,7 @@ export async function runProjectKnowledgeSweepJob(
           failedDeleteCount: result.failedDeleteCount,
           hasMore: result.hasMore,
           runtimeMs: result.runtimeMs,
+          rescreen: result.rescreen,
         },
       },
     })

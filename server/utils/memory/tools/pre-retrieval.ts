@@ -311,6 +311,7 @@ export async function resolvePastChatPreRetrieval(input: {
         limit: JEV_PAST_CHAT_RETRIEVAL.maxHits,
         currentChatId: input.currentChatId,
         projectId: input.projectId,
+        excludeForeignShareBranches: true,
         resolveRerankModel: input.resolveRerankModel,
         logger: input.logger,
       })

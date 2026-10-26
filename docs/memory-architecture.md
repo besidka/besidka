@@ -2084,7 +2084,7 @@ throws on a Jev failure:
   list, so `index.ts`, `app.vue` and `package.json` do not force a search). The state keys the wordings refer to are
   the eval's: `message` and `recent_turns` (web search, past chats),
   `transcript` (pre-filter), `text` (injection), `chat` (share check),
-  `query` with the passage in each question's `instructions` (rerank).
+  `query` plus `passage_<i>` (rerank).
 
 **Settings API.** `GET /api/v1/profiles/settings` returns `typesafeRoles`
 (`null` or a partial role map). `PATCH` takes `typesafeRoles` as a strict
@@ -2113,10 +2113,13 @@ Besidka's behaviour without a key.
   threshold, and its remaining chunks are not sent.
 - **Failure.** The first failed call (401, 403, 429, 529, timeout, network,
   refusal, or a missing probability) stops screening for the request. Every
-  text not decided by then is `unscreened`, which callers treat as clean.
-  Work is bounded by the existing caps (1 MB of text per upload batch, 100k
-  characters per note, 8 or 10 results per search) plus the stop on the
-  first failure; no separate request deadline was added.
+  text not decided by then is `unscreened`. Search results treat it as
+  clean; project knowledge stores it `ready` and queues it (below).
+- **Budget.** `maxCalls` caps the calls one request may make. Project
+  knowledge requests use `maxCallsPerKnowledgeRequest` (24, 8 waves of 3, at
+  most about 20 s at the 2.5 s timeout), so a 1 MB batch (about 130 chunks)
+  no longer blocks an upload for minutes: what the budget does not reach is
+  `unscreened` and queued. Searches are bounded by their 8 or 10 results.
 - **Logging.** `attributes.injectionScreeningJev`: status, calls, input
   tokens, latency, the maximum score per text, and counts
   `knowledgeFlagged|Clean|Unscreened` or `searchFlagged|Clean|Unscreened`.
@@ -2153,6 +2156,35 @@ status `ready` and text are sent, and the key is read once per request.
   of a flagged note is not a repair (repair is `failed` or `no-text` only), so
   it cannot be used to skip the review.
 - Items added before this change are not screened retroactively.
+- **Unscreened queue** (delta audit finding 2, 2026-10-26). An item stored
+  `ready` with an `unscreened` verdict (upload, new note, changed note body)
+  gets a KV key `knowledge-unscreened:u<user>:p<project>:i<item>`
+  (`server/utils/knowledge/unscreened.ts`, TTL `rescreenQueueTtlSeconds`, 14
+  days), so no migration is needed. The hourly knowledge sweep
+  (`sweepProjectKnowledge`) first runs `rescreenUnscreenedKnowledgeItems`
+  within half of its runtime budget: one KV list page of at most
+  `rescreenItemsPerSweep` (10) keys, users one at a time, items one at a
+  time. A user without a current legal consent is deferred (no Jev call);
+  without a key or with the role off the keys are dropped (the behaviour
+  without a key); an item that is gone, foreign or no longer `ready` is
+  dropped; otherwise `rescreenQueuedItem` screens the next
+  `rescreenMaxCallsPerItem` (12, at most 4 waves, so about 10 s at the
+  2.5 s timeout) chunks of the current R2 text, cut exactly as at ingest.
+  The KV value keeps `{ attempts, nextChunk, updatedAt }`, so a long item
+  advances over several runs (a 1 MB item of about 130 chunks needs about 11
+  hourly runs) and a changed `updated_at` starts it over. `clean` (all
+  chunks done) drops the key, `flagged` sets the status (guarded on
+  `updated_at`, so a note edited meanwhile is not flagged for its old text)
+  and bumps `knowledge_version`, a failed call counts one attempt and the
+  run goes on with the user's next item, so one item that keeps timing out
+  never holds the others back. After `rescreenMaxAttempts` (5) failed runs
+  the item leaves the queue (`abandoned`) and stays `ready`, unscreened;
+  the UI does not show that, since it reads only D1 rows. The item counts
+  as `ready` (and is sent) until the sweep finishes it, usually within the
+  hour for a short item. A failed queue write is logged as
+  `attributes.knowledge.unscreenedQueueFailed` and leaves the item as before.
+  The sweep result carries `rescreen` counts; a re-screen failure is logged
+  as `knowledgeRescreenFailure` and the R2 pass still runs.
 - UI: the row badge "needs review", and in the item sheet and the note editor
   the alert "Possible prompt injection, review it" with **Allow anyway**
   (`InjectionReview.vue`, `allowItem` in `useProjectKnowledge`). The upload
@@ -2173,11 +2205,30 @@ signal.
 - A Jev failure keeps every result. No notice is added.
 - Worst-case added latency per search is about 4 waves × 800 ms. The typical
   cost is 3-4 waves at the eval's p50 of about 180 ms.
+- Only the title and snippet are screened, so no other free-text metadata
+  reaches the model: Exa's `author` is dropped in `normalizeExaResults`, and
+  `publishedDate` is kept only when it is an ISO date (`isIsoDateString`, as
+  Brave already did). The URL is kept for citations.
 
 **Not screened.** Results of a chat model's own built-in search (native
 provider and gateway search) reach the model with no server hook, so they
 cannot be screened. The Privacy Policy, the `/memory` guide and the key-guide
 FAQ say so. Images are not screened beyond their extracted text.
+
+Native PDFs (delta audit finding 1, 2026-10-26). Screening reads the text a
+PDF's extractor produced, never the attached pages, so:
+
+- A `ready` PDF sent as a PDF is screened on its text layer only; text that
+  lives in page images or overlays reaches a PDF-reading model unscreened.
+- A `no-text` or `failed` PDF (a scan, a broken file) has no text to screen,
+  yet "Send as PDF" stays available for it, because sending the pages is the
+  only way such a file reaches the model (transcription is not built).
+  Refusing it would change behaviour for users without a TypeSafe AI key.
+  Instead the item sheet marks it **"Not screened for prompt injection"**
+  (`knowledge-item-sheet-native-pdf-unscreened`), and a `ready` PDF's toggle
+  says screening reads the extracted text only. The `/memory` guide and the
+  TypeSafe AI key-guide FAQ say both. `isNativePdfCandidate` is unchanged:
+  a flagged PDF is still dropped by `loadKnowledgeSendData`.
 
 **Write lock unchanged.** A clean verdict never relaxes anything. The memory
 write lock is still preset for every requested web search and raised by any
@@ -2209,25 +2260,35 @@ The preference is per browser, `prefStorage` key `settings_web_search_auto`
 applies. The Exa level heading is now **Depth**, so its "Auto" level is not
 confused with this mode.
 
-**Request.** Both `PUT /api/v1/chats/new` and `POST /api/v1/chats/[slug]`
-take `webSearchMode: 'auto' | 'always'` (default `always`), a separate field;
-the `tools` enum has no sentinel. The client sends `auto` only with the
+**Request.** `POST /api/v1/chats/[slug]` takes
+`webSearchMode: 'auto' | 'always'` (default `always`), a separate field; the
+`tools` enum has no sentinel. `PUT /api/v1/chats/new` ignores the field: it
+never asks Jev and persists the chosen tools (see "First message" below). The client sends `auto` only with the
 preference on and a web-search tool in `tools`, and falls back to `always`
 once the key is known missing or the role known off. While those are still
 loading it sends `auto` and lets the server decide, so a chat's first POST
 fired on mount keeps its chip.
 
-**Server.** `resolveAutoWebSearch` in `server/utils/chats/auto-web-search.ts`
-runs before `selectedTools` is consumed (validation, the Brave/Exa key reads,
-`persistUserMessage`, the provider switch). In order:
+**Server.** The request is validated before Jev sees anything (delta audit
+finding 3, 2026-10-26): `collectAutoWebSearchCandidateTools` returns the
+tools Auto may pick from (the default tools plus, in Auto, the persisted
+tools a retry reuses), and the gateway tool allowance, model tool support,
+the image-generation conflict, the Brave/Exa key presence and the transfer
+consent are all checked on that superset. Auto only removes web-search tools
+or reuses persisted ones, so validating the superset is sound, and a send
+that ends in 400 or 403 never discloses the message to TypeSafe AI. One
+consequence: the Brave or Exa key row is read even when Jev then skips the
+search. Only then does `resolveAutoWebSearch` in
+`server/utils/chats/auto-web-search.ts` run, before `persistUserMessage` and
+the provider switch. In order:
 
 1. `always`, or no web-search tool chosen: tools unchanged, no D1 read.
 2. `resolveJevRoleApiKey` (key read, decrypt, `typesafe_roles` read): no key
    or role off means tools unchanged and no chip, exactly as without a key.
 3. A message already persisted under the same id reuses its persisted tools
    and calls nothing (`counts.reused`). That covers a retry of the same
-   message id and a new chat's first message, whose tools the PUT already
-   resolved; the chip is derived from whether those tools search.
+   message id and a retry of a new chat's first message its first POST
+   already decided; the chip is derived from whether those tools search.
 4. Guards: `JEV_URL_OR_DOMAIN_PATTERN` or `matchesJevPhrases(text,
    JEV_RECENCY_PHRASES)` forces the search with no Jev call (`forced`).
 5. One `decideSendPathJev` call with `state = { message, recent_turns }`
@@ -2238,9 +2299,16 @@ runs before `selectedTools` is consumed (validation, the Brave/Exa key reads,
    web-search tool (`skipped`). Any failure, refusal or missing answer
    searches (`fallback`).
 
-The PUT runs the same function for the first message (no history, never for
-a deep research start) and persists the resolved tools; the POST then takes
-the reuse branch. Persisted `messages.tools` are always the resolved set, so
+**First message.** The PUT persists the chosen tools and never calls Jev (no
+model is validated there). The chat's first POST sees one persisted user
+message and no reply; unless the KV marker
+`auto-web-search-first-message:<chatId>:<messageId>` exists it passes the
+PUT's tools as both chosen and default with `persistedTools: null`, so Jev
+decides with the full validation above. `recordFirstMessageAutoWebSearchDecision`
+then writes the resolved tools onto the user row and sets the marker (one
+day). A retry of that message finds the marker and takes the reuse branch.
+A KV failure on either side only means the retry asks Jev again (one more
+call, the safe direction). Persisted `messages.tools` are always the resolved set, so
 `hasSameTools` and the duplicate and replay paths work per message id
 unchanged. A skip removes the search tool from `requestedTools`, so the
 search prompt nudge, the Brave/Exa lines, the external tool registration,
@@ -2261,8 +2329,7 @@ finish metadata and the persisted row (`addAutoWebSearchUsage`).
 `Chat/AutoWebSearchChip.vue` renders "Auto: searched the web" or "Auto: no web
 search needed" under the answer, on the owner's chat page only (not on shared
 chats). A turn whose usage capture failed has no chip. For a reused decision
-the chip says searched or skipped; the forced or fallback detail of a first
-message lives only in the PUT's log.
+the chip says searched or skipped.
 
 **Logging.** `attributes.autoWebSearchJev` via `recordJevRoleLog`: `status`,
 `calls`, `questions`, `inputTokens`, `latencyMs`, `scores` (the rounded
@@ -2318,7 +2385,13 @@ generation) while **Search and reference chats** is on in the settings.
   costlier mistake, and a pre-search is one cheap indexed D1 query.
 - **Search.** The existing `searchChats` with the same owner, current-chat
   exclusion, `memory_excluded` and project scoping (the project id is passed
-  under the same condition as the tool registration), `limit: 3`. The query is
+  under the same condition as the tool registration), `limit: 3`, plus
+  `excludeForeignShareBranches` (delta audit finding 6, 2026-10-26): a chat
+  whose `branched_from_share_slug` is set is left out unless that share
+  belongs to a chat of the same user, so turns another person wrote and the
+  user only branched are never injected unasked; a branch whose share no
+  longer exists counts as foreign. The `search_chats` tool, which the model
+  calls and whose results it sees as tool output, keeps every branch. The query is
   the message with the guard phrases, stop words (`STOP_WORDS` from the
   knowledge search plus chat filler in EN/UK/PL/RU) and one-character tokens
   removed, so the eight-token cap is spent on distinctive words; an empty
@@ -2392,9 +2465,20 @@ result the search did not find.
   is exactly `search()`.
 
 **Request.** One call to `rerankWithJev` (`server/utils/jev/rerank.ts`): the
-query is the shared state (`{ query }`) and every candidate is a boolean
-question whose `instructions` are `{ task, passage }` from `JEV_RERANK`, so
-no passage sees another and one distractor cannot colour the rest. At most 30
+shared state holds the query and every passage as a top-level key
+(`{ query, passage_0, passage_1, ... }`), and every candidate is a boolean
+question whose `instructions` are only the fixed `JEV_RERANK.task` naming
+its key, "Is `passage_<i>` relevant to `query`?", with `JEV_RERANK.criteria`.
+Delta audit finding 6 (2026-10-26): a passage is third-party text (another
+chat's excerpt or a knowledge chunk), and in the question's `instructions`
+it could steer its own relevance score, so it moved into the state, the
+channel Jev treats as data and references by backtick path (the TypeSafe
+provider docs). Top-level keys are used because nested-path resolution is
+not documented. The trade-off: every question now sees every passage, where
+before each question saw only its own, and the wording departs from the
+2026-10-26 eval's `{ task, passage }` form, so `dropBelow` may need re-tuning
+on real traffic. The per-question limit (32k tokens, state plus one
+question) is far above 30 × 300 tokens. At most 30
 candidates are judged (`maxCandidates`); passages and the query are cut to
 about 300 tokens (`maxPassageTokens`), which matters for pre-retrieval, where
 the query is the whole user message. The query and every passage go through

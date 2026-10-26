@@ -154,28 +154,30 @@ describe('rerankWithJev', () => {
     expect(ordered).toEqual(['b', 'c', 'd', 'a'])
   })
 
-  it('puts the query in the state and each passage in its own question',
-    async () => {
-      answerWith([0.9, 0.8])
+  it('puts the query and every passage in the state, and only a fixed '
+    + 'task naming the passage in each question', async () => {
+    answerWith([0.9, 0.8])
 
-      await rerank({ candidates: ['first passage', 'second passage'] })
+    await rerank({ candidates: ['first passage', 'second passage'] })
 
-      const [options] = mocks.decide.mock.calls[0]!
+    const [options] = mocks.decide.mock.calls[0]!
 
-      expect(options.state).toEqual({ query: 'launch plan' })
-      expect(Object.keys(options.questions)).toEqual(['c0', 'c1'])
-      expect(options.questions.c0).toMatchObject({
-        type: 'boolean',
-        instructions: {
-          task: JEV_RERANK.task,
-          passage: 'first passage',
-        },
-        criteria: JEV_RERANK.criteria,
-      })
-      expect(options.questions.c1.instructions.passage)
-        .toBe('second passage')
-      expect(options.maxRetries).toBe(0)
+    expect(options.state).toEqual({
+      query: 'launch plan',
+      passage_0: 'first passage',
+      passage_1: 'second passage',
     })
+    expect(Object.keys(options.questions)).toEqual(['c0', 'c1'])
+    expect(options.questions.c0).toEqual({
+      type: 'boolean',
+      instructions: 'Is `passage_0` relevant to `query`?',
+      criteria: JEV_RERANK.criteria,
+    })
+    expect(options.questions.c1.instructions)
+      .toBe('Is `passage_1` relevant to `query`?')
+    expect(JSON.stringify(options.questions)).not.toContain('first passage')
+    expect(options.maxRetries).toBe(0)
+  })
 
   it('applies the cut only when at least keepAtLeast remain above it',
     async () => {
@@ -298,12 +300,12 @@ describe('rerankWithJev', () => {
     })
 
     const [options] = mocks.decide.mock.calls[0]!
-    const passage = options.questions.c0.instructions.passage as string
+    const passage = options.state.passage_0 as string
 
     expect(passage.length).toBeLessThan(5000 * 5)
     expect(estimateKnowledgeTextTokens(countKnowledgeChars(passage), 'default'))
       .toBeLessThanOrEqual(JEV_RERANK.maxPassageTokens)
-    expect(options.questions.c1.instructions.passage).toBe('short passage')
+    expect(options.state.passage_1).toBe('short passage')
   })
 
   it('truncates a long query to the passage token cap', async () => {
@@ -334,8 +336,8 @@ describe('rerankWithJev', () => {
     const [options] = mocks.decide.mock.calls[0]!
 
     expect(JSON.stringify(options)).not.toContain('4111')
-    expect(options.questions.c0.instructions.passage).toContain('my card is')
-    expect(options.questions.c0.instructions.passage).toContain('for the trip')
+    expect(options.state.passage_0).toContain('my card is')
+    expect(options.state.passage_0).toContain('for the trip')
   })
 
   it('redacts before truncating so a cut never leaves part of a value',

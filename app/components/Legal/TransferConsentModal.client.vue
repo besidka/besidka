@@ -22,7 +22,21 @@
         id="legal-transfer-consent-description"
         class="grid gap-3 text-sm"
       >
-        <p>
+        <p
+          v-if="isRouter"
+          data-testid="legal-transfer-consent-router-text"
+        >
+          A router or preset model picks the model that answers each message,
+          and it may send your request to providers in countries the European
+          Commission has not found to protect personal data to EU standards,
+          such as China or Singapore. Besidka cannot know in advance which
+          provider will receive it and has no contract with them that adds
+          safeguards. Your messages, files, excerpts of your earlier chats and
+          your memory may be accessed by authorities there under local law,
+          and you may not be able to enforce your EU data-protection rights
+          against those providers.
+        </p>
+        <p v-else>
           {{ provider.label }} processes data in {{ provider.country }}. The
           European Commission has not found that {{ provider.country }}
           protects personal data to EU standards, and Besidka has no contract
@@ -49,7 +63,13 @@
           class="checkbox checkbox-sm mt-0.5"
           data-testid="legal-transfer-consent-checkbox"
         >
-        <span>
+        <span v-if="isRouter">
+          <strong>I explicitly consent</strong> to Besidka sending my
+          messages, files, chat excerpts and memory through router and preset
+          models to providers in any country, including China and Singapore,
+          knowing these risks.
+        </span>
+        <span v-else>
           <strong>I explicitly consent</strong> to Besidka sending my
           messages, files, chat excerpts and memory to {{ provider.label }}
           in {{ provider.country }}, knowing these risks.
@@ -101,12 +121,21 @@ const provider = computed<TransferConsentProvider | null>(() => {
   return providerId ? transferConsentProviders[providerId] : null
 })
 
+const isRouter = computed<boolean>(() => {
+  return provider.value?.route === 'router'
+})
+
 const continueLabel = computed<string>(() => {
   return transferRequest.value?.context === 'key' ? 'Add key' : 'Continue'
 })
 
 const refusalText = computed<string>(() => {
   const label = provider.value?.label ?? ''
+
+  if (isRouter.value) {
+    return 'If you cancel, router and preset models can\'t be used to send '
+      + 'messages. You can pick a specific model instead.'
+  }
 
   if (transferRequest.value?.context === 'key') {
     return `If you cancel, the key is not saved and ${label} can't be used `

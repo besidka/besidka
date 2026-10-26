@@ -8,6 +8,7 @@ import { createError } from 'evlog'
 import { tool } from 'ai'
 import { z } from 'zod'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
+import { isIsoDateString } from '~~/server/utils/search/iso-date'
 import {
   searchFreshnessSchema,
   toExaStartPublishedDate,
@@ -85,10 +86,9 @@ function normalizeExaResults(
       title: result.title ?? hostnameFallback(result.url),
       url: result.url ?? '',
       snippet: readSnippet(result),
-      ...(result.publishedDate === undefined
-        ? {}
-        : { publishedDate: result.publishedDate }),
-      ...(result.author === undefined ? {} : { author: result.author }),
+      ...(isIsoDateString(result.publishedDate)
+        ? { publishedDate: result.publishedDate }
+        : {}),
     }
   })
 }

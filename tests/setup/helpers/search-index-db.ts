@@ -12,7 +12,9 @@ export interface SearchIndexTestDb {
     title?: string
     projectId?: number
     memoryExcluded?: boolean
+    branchedFromShareSlug?: string
   }) => void
+  insertShare: (input: { id: number, slug: string, chatId: number }) => void
   insertMessage: (input: {
     id: number
     chatId: number
@@ -39,7 +41,14 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
       slug text,
       title text,
       project_id integer,
-      memory_excluded integer
+      memory_excluded integer,
+      branched_from_share_slug text
+    );
+
+    CREATE TABLE chat_shares (
+      id integer PRIMARY KEY,
+      slug text,
+      chat_id integer NOT NULL
     );
 
     CREATE TABLE messages (
@@ -72,11 +81,12 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
     title?: string
     projectId?: number
     memoryExcluded?: boolean
+    branchedFromShareSlug?: string
   }): void {
     sqlite.prepare(
-      'insert into chats'
-      + ' (id, user_id, slug, title, project_id, memory_excluded)'
-      + ' values (?, ?, ?, ?, ?, ?)',
+      'insert into chats (id, user_id, slug, title, project_id,'
+      + ' memory_excluded, branched_from_share_slug)'
+      + ' values (?, ?, ?, ?, ?, ?, ?)',
     ).run(
       input.id,
       input.userId,
@@ -84,7 +94,18 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
       input.title ?? null,
       input.projectId ?? null,
       input.memoryExcluded === undefined ? null : Number(input.memoryExcluded),
+      input.branchedFromShareSlug ?? null,
     )
+  }
+
+  function insertShare(input: {
+    id: number
+    slug: string
+    chatId: number
+  }): void {
+    sqlite.prepare(
+      'insert into chat_shares (id, slug, chat_id) values (?, ?, ?)',
+    ).run(input.id, input.slug, input.chatId)
   }
 
   function insertMessage(input: {
@@ -113,6 +134,6 @@ export function createSearchIndexTestDb(): SearchIndexTestDb {
   }
 
   return {
-    sqlite, db, insertChat, insertMessage, close,
+    sqlite, db, insertChat, insertShare, insertMessage, close,
   }
 }

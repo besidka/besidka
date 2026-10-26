@@ -46,6 +46,9 @@ import {
   screenKnowledgeTexts,
 } from '~~/server/utils/knowledge/injection-screening'
 import {
+  queueUnscreenedKnowledgeItems,
+} from '~~/server/utils/knowledge/unscreened'
+import {
   getKnowledgeRetentionExpiresAt,
 } from '~~/server/utils/knowledge/linked-files'
 import {
@@ -1042,35 +1045,84 @@ async function settleUnchangedCommit(
   return await readCommitState(context)
 }
 
+interface PreparedScreening {
+  flagged: Set<number>
+  unscreened: Set<number>
+}
+
 async function screenPreparedItems(
   context: KnowledgeIngestContext,
   items: PreparedKnowledgeItem[],
-): Promise<Set<number>> {
+): Promise<PreparedScreening> {
   const readyItems = items.filter((item) => {
     return item.input.extractStatus === 'ready'
   })
-  const flags = await screenKnowledgeTexts({
+  const verdicts = await screenKnowledgeTexts({
     userId: context.userId,
     texts: readyItems.map(item => item.input.text),
     logger: context.logger,
   })
+  const screening: PreparedScreening = {
+    flagged: new Set(),
+    unscreened: new Set(),
+  }
 
-  return new Set(readyItems.flatMap((item, index) => {
-    return flags[index] ? [item.index] : []
-  }))
+  for (const [index, item] of readyItems.entries()) {
+    if (verdicts[index] === 'flagged') {
+      screening.flagged.add(item.index)
+    }
+
+    if (verdicts[index] === 'unscreened') {
+      screening.unscreened.add(item.index)
+    }
+  }
+
+  return screening
 }
 
 async function screenKnowledgeText(
   context: KnowledgeIngestContext,
   text: string,
-): Promise<boolean> {
-  const [isFlagged] = await screenKnowledgeTexts({
+): Promise<{ isFlagged: boolean, isUnscreened: boolean }> {
+  const [verdict] = await screenKnowledgeTexts({
     userId: context.userId,
     texts: [text],
     logger: context.logger,
   })
 
-  return isFlagged === true
+  return {
+    isFlagged: verdict === 'flagged',
+    isUnscreened: verdict === 'unscreened',
+  }
+}
+
+async function queueUnscreenedItems(
+  context: KnowledgeIngestContext,
+  itemIds: Array<number | null>,
+): Promise<number> {
+  const queuedIds = itemIds.filter((itemId): itemId is number => {
+    return itemId !== null
+  })
+
+  if (queuedIds.length === 0) {
+    return 0
+  }
+
+  const queue = await queueUnscreenedKnowledgeItems({
+    userId: context.userId,
+    projectId: context.projectId,
+    itemIds: queuedIds,
+  })
+
+  if (queue.failed > 0) {
+    context.logger.set({
+      attributes: {
+        knowledge: { unscreenedQueueFailed: queue.failed },
+      },
+    })
+  }
+
+  return queue.queued
 }
 
 /**
@@ -1179,13 +1231,13 @@ export async function ingestKnowledgeItems(
     newTextBytes,
     replacedTextBytes: 0,
   })
-  const flaggedIndexes = await screenPreparedItems(context, accepted)
+  const screening = await screenPreparedItems(context, accepted)
   const rows = accepted.map((item) => {
     return buildFileItemRow(
       context,
       item,
       item.input.fileId ? files.get(item.input.fileId) : undefined,
-      flaggedIndexes.has(item.index),
+      screening.flagged.has(item.index),
     )
   })
   const linkedFiles: LinkedFileSnapshot[] = filePublicIds.map((publicId) => {
@@ -1206,6 +1258,15 @@ export async function ingestKnowledgeItems(
     await markInsertedItemsPending(context, { insertedIds, linkedFiles })
   }
 
+  const unscreenedCount = await queueUnscreenedItems(
+    context,
+    accepted.map((item, index) => {
+      return screening.unscreened.has(item.index)
+        ? decodeKnowledgeEntityId(insertedIds[index])
+        : null
+    }),
+  )
+
   const savedRows = await selectItemRows(context, insertedIds)
   const items = insertedIds.flatMap((insertedId) => {
     const row = savedRows.get(insertedId)
@@ -1224,7 +1285,8 @@ export async function ingestKnowledgeItems(
         skipped: skipped.length,
         textBytes: newTextBytes,
         linkedFiles: linkedFiles.length,
-        flagged: flaggedIndexes.size,
+        flagged: screening.flagged.size,
+        unscreened: unscreenedCount,
         committed: input.commit === true,
       },
     },
@@ -1281,7 +1343,10 @@ export async function createKnowledgeNote(
     newTextBytes: textBytes,
     replacedTextBytes: 0,
   })
-  const isFlagged = await screenKnowledgeText(context, input.body)
+  const { isFlagged, isUnscreened } = await screenKnowledgeText(
+    context,
+    input.body,
+  )
 
   const [insertedId] = await storeNewKnowledgeRows(context, {
     rows: [{
@@ -1321,9 +1386,18 @@ export async function createKnowledgeNote(
 
   await commitKnowledgeProject(context)
 
+  const unscreenedCount = await queueUnscreenedItems(context, [
+    isUnscreened ? decodeKnowledgeEntityId(insertedId) : null,
+  ])
+
   context.logger.set({
     attributes: {
-      knowledge: { operation: 'note-create', textBytes, flagged: isFlagged },
+      knowledge: {
+        operation: 'note-create',
+        textBytes,
+        flagged: isFlagged,
+        unscreened: unscreenedCount,
+      },
     },
   })
 
@@ -1441,8 +1515,10 @@ export async function updateKnowledgeNote(
     throw createNoteNotFoundError()
   }
 
-  const isFlagged = nextBody !== null
-    && await screenKnowledgeText(context, nextBody)
+  const bodyScreening = nextBody === null
+    ? { isFlagged: false, isUnscreened: false }
+    : await screenKnowledgeText(context, nextBody)
+  const isFlagged = bodyScreening.isFlagged
   const nextExtractStatus = nextBody === null
     ? current.extractStatus
     : isFlagged ? 'flagged' : 'ready'
@@ -1551,6 +1627,10 @@ export async function updateKnowledgeNote(
     await commitKnowledgeProject(context)
   }
 
+  const unscreenedCount = await queueUnscreenedItems(context, [
+    bodyScreening.isUnscreened ? itemId : null,
+  ])
+
   logger.set({
     attributes: {
       knowledge: {
@@ -1558,6 +1638,7 @@ export async function updateKnowledgeNote(
         bodyChanged: isBodyChanged,
         titleChanged: isTitleChanged,
         flagged: isFlagged,
+        unscreened: unscreenedCount,
       },
     },
   })

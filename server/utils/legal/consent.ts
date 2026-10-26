@@ -257,6 +257,18 @@ export function assertProviderTransferConsent(
     providerId as TransferConsentProviderId
   ]
 
+  if (provider.route === 'router') {
+    throw createError({
+      code: TRANSFER_CONSENT_ERROR_CODE,
+      message: 'Consent is required before sending messages through a model router',
+      status: 403,
+      data: { reason: 'transfer-consent', provider: provider.id },
+      why: 'A router or preset model can send your messages to providers in countries without an EU adequacy decision, such as China or Singapore, and you have not consented to that transfer.',
+      fix: 'Confirm the transfer in the dialog shown before sending, or choose a specific model instead of a router.',
+      link: '/privacy-policy#transfers-outside-the-eu',
+    })
+  }
+
   throw createError({
     code: TRANSFER_CONSENT_ERROR_CODE,
     message: `Consent is required before sending messages to ${provider.label}`,
@@ -298,6 +310,7 @@ export function toLegalConsentState(
         providerId,
         label: provider.label,
         country: provider.country,
+        route: provider.route,
         consentedAt: toIsoString(consent?.consentedAt),
         withdrawnAt: toIsoString(consent?.withdrawnAt),
         isGranted: isTransferConsentGranted(consent),

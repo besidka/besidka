@@ -1,7 +1,10 @@
 import { APICallError } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JEV_INJECTION_SCREENING } from '#shared/utils/jev-policy'
-import { encodePublicId } from '~~/server/utils/custom-db-types'
+import {
+  decodePublicId,
+  encodePublicId,
+} from '~~/server/utils/custom-db-types'
 import {
   createCommitImplementation,
   createKnowledgeApiHarness,
@@ -162,6 +165,18 @@ describe('project knowledge prompt-injection screening', () => {
     return await handler(knowledgeEvent({ projectId, itemId }))
   }
 
+  function queuedKeys(): string[] {
+    return [...harness.kv.values.keys()].filter((key) => {
+      return key.startsWith('knowledge-unscreened:')
+    })
+  }
+
+  function queueKey(publicId: string): string {
+    return `knowledge-unscreened:u${OWNER}:p${PROJECT}:i${
+      decodePublicId(publicId)
+    }`
+  }
+
   function statusById(id: number): string | undefined {
     const row = harness.testDb.sqlite.prepare(
       'select extract_status from project_knowledge_items where id = ?',
@@ -237,6 +252,47 @@ describe('project knowledge prompt-injection screening', () => {
 
       expect(mocks.decide).toHaveBeenCalled()
       expect(result.items).toMatchObject([{ extractStatus: 'ready' }])
+    })
+
+    it('queues an item TypeSafe AI could not screen for the sweep',
+      async () => {
+        mocks.jevModel = JEV_TEST_MODEL
+        mocks.decide.mockRejectedValue(unauthorized())
+
+        const result = await postItems([
+          textItem({ title: 'Payload', text: INJECTION_TEXT }),
+        ])
+
+        expect(queuedKeys()).toEqual([queueKey(result.items[0].id)])
+      })
+
+    it('queues nothing without a TypeSafe AI key', async () => {
+      await postItems([textItem({ title: 'Payload', text: INJECTION_TEXT })])
+
+      expect(queuedKeys()).toEqual([])
+    })
+
+    it('stops at the per-request budget and queues the rest instead of '
+      + 'blocking the upload', async () => {
+      mocks.jevModel = JEV_TEST_MODEL
+      scoreInjectionText()
+
+      const budget = JEV_INJECTION_SCREENING.maxCallsPerKnowledgeRequest
+      const items = Array.from({ length: budget + 1 }, (_value, index) => {
+        return textItem({
+          title: `Note ${index}`,
+          text: `${BENIGN_TEXT} ${index}`,
+        })
+      })
+      const result = await postItems(items)
+
+      expect(mocks.decide).toHaveBeenCalledTimes(budget)
+      expect(result.items).toHaveLength(budget + 1)
+      expect(queuedKeys().sort()).toEqual(
+        result.items.slice(budget).map((item: { id: string }) => {
+          return queueKey(item.id)
+        }).sort(),
+      )
     })
 
     it('stores items ready when TypeSafe AI times out', async () => {

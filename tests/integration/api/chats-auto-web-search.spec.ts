@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   mergedStreams: [] as ReadableStream[],
   decide: vi.fn(),
   loggerSet: vi.fn(),
+  kvValues: new Map<string, string>(),
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -212,6 +213,7 @@ function createDb(input: SendInput) {
     },
     insertValues,
     keysFindFirst,
+    updateSet,
   }
 }
 
@@ -310,6 +312,7 @@ async function runSend(input: SendInput) {
     assistantInsert,
     finishMetadata,
     keysFindFirst: created.keysFindFirst,
+    updateSet: created.updateSet,
   }
 }
 
@@ -363,10 +366,15 @@ describe('Auto web search on the chat send path', () => {
     })))
     vi.stubGlobal('attachCloudflareMeta', vi.fn())
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
+    mocks.kvValues.clear()
     vi.stubGlobal('useKV', () => ({
-      get: vi.fn(async () => null),
-      put: vi.fn(async () => undefined),
-      delete: vi.fn(async () => undefined),
+      get: vi.fn(async (key: string) => mocks.kvValues.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => {
+        mocks.kvValues.set(key, value)
+      }),
+      delete: vi.fn(async (key: string) => {
+        mocks.kvValues.delete(key)
+      }),
     }))
     vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
@@ -413,8 +421,8 @@ describe('Auto web search on the chat send path', () => {
       expect(readAutoWebSearchLog()).toBeUndefined()
     })
 
-  it('skips the search, the Brave key and the search prompt when Jev says '
-    + 'no search is needed, and persists the resolved tools', async () => {
+  it('skips the search and the search prompt when Jev says no search is '
+    + 'needed, and persists the resolved tools', async () => {
     const always = await runSend({
       tools: [],
       hasTypesafeKey: true,
@@ -434,7 +442,7 @@ describe('Auto web search on the chat send path', () => {
     expect(skipped.toolNames).not.toContain('web_search_brave')
     expect(skipped.systemPrompt)
       .toBe(always.systemPrompt)
-    expect(braveKeyLookups(skipped.keysFindFirst)).toHaveLength(0)
+    expect(braveKeyLookups(skipped.keysFindFirst)).toHaveLength(1)
     expect(skipped.userInsert?.tools).toEqual([])
     expect(skipped.assistantInsert?.usage?.autoWebSearch).toBe('skipped')
     expect(skipped.finishMetadata?.usage?.autoWebSearch).toBe('skipped')
@@ -565,11 +573,48 @@ describe('Auto web search on the chat send path', () => {
   })
 
   it.each([
+    [0.05, 'skipped', [] as string[]],
+    [0.9, 'searched', ['web_search_brave']],
+  ])('decides a new chat\'s first message in its first POST (score %s)',
+    async (score, outcome, resolvedTools) => {
+      mocks.decide.mockResolvedValue(jevAnswer(score))
+
+      const first = await runSend({
+        tools: ['web_search_brave'],
+        webSearchMode: 'auto',
+        hasTypesafeKey: true,
+        messages: [persistedUserMessage(SENT_MESSAGE_ID, ['web_search_brave'])],
+      })
+
+      expect(mocks.decide).toHaveBeenCalledTimes(1)
+      expect(first.toolNames.includes('web_search_brave'))
+        .toBe(resolvedTools.length > 0)
+      expect(first.assistantInsert?.usage?.autoWebSearch).toBe(outcome)
+      expect([...mocks.kvValues.entries()]).toEqual([[
+        `auto-web-search-first-message:chat-1:${SENT_MESSAGE_ID}`,
+        outcome,
+      ]])
+
+      const toolUpdates = first.updateSet.mock.calls.filter(([values]) => {
+        return 'tools' in (values as Record<string, unknown>)
+      })
+
+      expect(toolUpdates).toEqual(
+        resolvedTools.length > 0 ? [] : [[{ tools: resolvedTools }]],
+      )
+    })
+
+  it.each([
     [[] as string[], 'skipped'],
     [['web_search_brave'], 'searched'],
-  ])('uses the tools the new-chat PUT resolved (%j) for the first message',
+  ])('reuses the decided first message\'s persisted tools %j on a retry',
     async (persistedTools, outcome) => {
-      const first = await runSend({
+      mocks.kvValues.set(
+        `auto-web-search-first-message:chat-1:${SENT_MESSAGE_ID}`,
+        outcome,
+      )
+
+      const retried = await runSend({
         tools: ['web_search_brave'],
         webSearchMode: 'auto',
         hasTypesafeKey: true,
@@ -577,23 +622,106 @@ describe('Auto web search on the chat send path', () => {
       })
 
       expect(mocks.decide).not.toHaveBeenCalled()
-      expect(first.toolNames.includes('web_search_brave'))
+      expect(retried.toolNames.includes('web_search_brave'))
         .toBe(persistedTools.length > 0)
-      expect(first.assistantInsert?.usage?.autoWebSearch).toBe(outcome)
+      expect(retried.assistantInsert?.usage?.autoWebSearch).toBe(outcome)
     })
 
-  it('labels a first message whose client sent no tools while its model '
-    + 'capability was loading', async () => {
+  it('decides a first message from the tools the PUT persisted even when '
+    + 'the client sent none while its model capability was loading',
+  async () => {
     const first = await runSend({
       tools: [],
       webSearchMode: 'auto',
       hasTypesafeKey: true,
-      messages: [persistedUserMessage(SENT_MESSAGE_ID, [])],
+      messages: [persistedUserMessage(SENT_MESSAGE_ID, ['web_search_brave'])],
     })
 
-    expect(mocks.decide).not.toHaveBeenCalled()
+    expect(mocks.decide).toHaveBeenCalledTimes(1)
     expect(first.toolNames).not.toContain('web_search_brave')
     expect(first.assistantInsert?.usage?.autoWebSearch).toBe('skipped')
+  })
+
+  it('validates the requested tools before asking Jev: a model without '
+    + 'tool calling answers 400 and nothing reaches TypeSafe AI', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: PROVIDER_ID },
+      model: {
+        id: MODEL_ID,
+        name: 'GPT-5 mini',
+        tools: ['web_search'],
+        toolCall: false,
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+
+    await expect(runSend({
+      tools: ['web_search_brave'],
+      webSearchMode: 'auto',
+      hasTypesafeKey: true,
+    })).rejects.toMatchObject({ status: 400 })
+    expect(mocks.decide).not.toHaveBeenCalled()
+  })
+
+  it('validates a missing Brave key before asking Jev', async () => {
+    const module = await import('../../../server/api/v1/chats/[slug]/index.post')
+    const created = createDb({
+      tools: ['web_search_brave'],
+      webSearchMode: 'auto',
+      hasTypesafeKey: true,
+    })
+
+    created.keysFindFirst.mockImplementation(async (query: {
+      where: { provider: string }
+    }) => {
+      return query.where.provider === 'typesafe'
+        ? { apiKey: 'typesafe-key' }
+        : undefined
+    })
+    vi.stubGlobal('useDb', () => created.db)
+
+    await expect(module.default({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: MODEL_ID,
+        tools: ['web_search_brave'],
+        webSearchMode: 'auto',
+        reasoning: 'off',
+        messages: [{
+          id: SENT_MESSAGE_ID,
+          role: 'user',
+          parts: [{ type: 'text', text: 'Write a haiku about autumn' }],
+        }],
+      },
+    } as any)).rejects.toMatchObject({ status: 400 })
+    expect(mocks.decide).not.toHaveBeenCalled()
+  })
+
+  it('checks the transfer consent before asking Jev', async () => {
+    const consent = await import('~~/server/utils/legal/consent')
+    const granted = await consent.requireLegalConsent(1)
+
+    vi.mocked(consent.requireLegalConsent).mockResolvedValueOnce({
+      ...granted,
+      providerTransferConsents: null,
+    })
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'deepseek' },
+      model: {
+        id: 'deepseek-chat',
+        name: 'DeepSeek',
+        tools: [],
+        toolCall: true,
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+
+    await expect(runSend({
+      tools: ['web_search_brave'],
+      webSearchMode: 'auto',
+      hasTypesafeKey: true,
+    })).rejects.toMatchObject({ status: 403 })
+    expect(mocks.decide).not.toHaveBeenCalled()
   })
 
   it('ignores Auto when the autoWebSearch role is off', async () => {

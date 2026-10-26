@@ -337,4 +337,26 @@ describe('screenTextsForInjection', () => {
     expect(mocks.decide).not.toHaveBeenCalled()
     expect(logger.set).not.toHaveBeenCalled()
   })
+
+  it('stops at maxCalls and leaves the texts it did not reach unscreened',
+    async () => {
+      scoreByMarker()
+
+      const verdicts = await screenTextsForInjection({
+        model: testModel(),
+        texts: ['first', 'second', 'third', 'fourth', 'fifth'],
+        source: 'knowledge',
+        timeoutMs: JEV_INJECTION_SCREENING.timeoutMs,
+        maxCalls: 4,
+      })
+
+      expect(mocks.decide).toHaveBeenCalledTimes(4)
+      expect(verdicts).toEqual([
+        'clean',
+        'clean',
+        'clean',
+        'clean',
+        'unscreened',
+      ])
+    })
 })

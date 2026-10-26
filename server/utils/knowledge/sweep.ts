@@ -1,9 +1,17 @@
 import { sql } from 'drizzle-orm'
+import { JEV_INJECTION_SCREENING } from '#shared/utils/jev-policy'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   KNOWLEDGE_STORAGE_PREFIX,
   knowledgeProjectPrefix,
 } from '~~/server/utils/knowledge/storage-keys'
+import {
+  rescreenUnscreenedKnowledgeItemsSafely,
+} from '~~/server/utils/knowledge/unscreened'
+import type {
+  KnowledgeRescreenResult,
+  UnscreenedQueueStore,
+} from '~~/server/utils/knowledge/unscreened'
 
 const KNOWLEDGE_LIST_PREFIX = `${KNOWLEDGE_STORAGE_PREFIX}/`
 const KNOWLEDGE_KEY_PATTERN = new RegExp(
@@ -18,6 +26,7 @@ const DEFAULT_GRACE_MS = 60 * 60 * 1000
 const SWEEP_CURSOR_KEY = 'knowledge-sweep-cursor'
 const SWEEP_CURSOR_TTL_SECONDS = 6 * 60 * 60
 const MAX_CONSECUTIVE_FAILED_PAGES = 3
+const RESCREEN_RUNTIME_SHARE = 0.5
 
 export interface KnowledgeSweepObject {
   key: string
@@ -49,6 +58,7 @@ export interface KnowledgeSweepInput {
   logger?: KnowledgeSweepLogger
   db?: ReturnType<typeof useDb>
   storage?: KnowledgeSweepBucket
+  unscreenedQueue?: UnscreenedQueueStore
 }
 
 export interface KnowledgeSweepResult {
@@ -62,6 +72,7 @@ export interface KnowledgeSweepResult {
   failedDeleteCount: number
   hasMore: boolean
   runtimeMs: number
+  rescreen: KnowledgeRescreenResult | null
 }
 
 interface ParsedKnowledgeKey {
@@ -368,6 +379,12 @@ function logSweepCursorError(
  * page cut short by the runtime bound is not rescanned (its pack retention is
  * also enforced at build time). One bad key or row therefore cannot pin the
  * sweep to the same page; the next full pass retries it.
+ *
+ * Before the R2 pass, the run re-screens up to
+ * `JEV_INJECTION_SCREENING.rescreenItemsPerSweep` knowledge items that
+ * ingest screening could not decide (`rescreenUnscreenedKnowledgeItems`),
+ * within half of the runtime budget; a failure there is logged and the R2
+ * pass still runs.
  */
 export async function sweepProjectKnowledge(
   input: KnowledgeSweepInput,
@@ -392,6 +409,7 @@ export async function sweepProjectKnowledge(
     failedDeleteCount: 0,
     hasMore: false,
     runtimeMs: 0,
+    rescreen: null,
   }
 
   function isOutOfTime(): boolean {
@@ -425,6 +443,14 @@ export async function sweepProjectKnowledge(
 
     return true
   }
+
+  result.rescreen = await rescreenUnscreenedKnowledgeItemsSafely({
+    maxItems: JEV_INJECTION_SCREENING.rescreenItemsPerSweep,
+    deadlineMs: startedAt + Math.floor(maxRuntimeMs * RESCREEN_RUNTIME_SHARE),
+    db,
+    kv: input.unscreenedQueue,
+    logger,
+  })
 
   let cursor = await readSweepCursor(logger)
   let consecutiveFailedPages = 0

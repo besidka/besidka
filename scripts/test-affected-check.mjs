@@ -116,6 +116,8 @@ export function getAffectedTests(changedFiles) {
   ]
   const jevInjectionScreeningTests = [
     'tests/unit/utils/jev/injection-screening.spec.ts',
+    'tests/unit/utils/knowledge/unscreened.spec.ts',
+    'tests/unit/utils/knowledge/sweep.spec.ts',
     'tests/integration/api/projects-knowledge-injection-screening.spec.ts',
     'tests/integration/api/projects-knowledge-real-pack.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
@@ -217,6 +219,7 @@ export function getAffectedTests(changedFiles) {
   const knowledgeRetentionTests = [
     'tests/unit/utils/knowledge/linked-files.spec.ts',
     'tests/unit/utils/knowledge/sweep.spec.ts',
+    'tests/unit/utils/knowledge/unscreened.spec.ts',
     'tests/integration/server/knowledge-retention.spec.ts',
     'tests/integration/server/project-knowledge-sweep-plugin.spec.ts',
     'tests/integration/server/chat-deletion-cleanup.spec.ts',
@@ -1620,7 +1623,7 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
-      pattern: /^server\/utils\/(knowledge|search)\/injection-screening\.ts$/,
+      pattern: /^server\/utils\/(knowledge\/(injection-screening|unscreened)|search\/injection-screening)\.ts$/,
       tests: jevInjectionScreeningTests,
     },
     {

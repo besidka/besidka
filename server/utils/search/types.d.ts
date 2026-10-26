@@ -5,7 +5,6 @@ export interface ExternalSearchResult {
   url: string
   snippet: string
   publishedDate?: string
-  author?: string
 }
 
 export interface ExternalSearchToolOutput {

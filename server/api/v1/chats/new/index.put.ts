@@ -18,17 +18,10 @@ import {
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
-import {
-  DEFAULT_WEB_SEARCH_MODE,
-  WEB_SEARCH_MODES,
-} from '#shared/utils/auto-web-search'
-import { resolveAutoWebSearch } from '~~/server/utils/chats/auto-web-search'
-import { readUserMessageText } from '~~/server/utils/memory/chat-context'
 
 const rules = z.object({
   parts: userMessagePartsSchema,
   tools: chatToolsSchema,
-  webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
   projectId: z.string().nonempty().optional(),
   model: z.string().nonempty().optional(),
@@ -95,20 +88,6 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const activityAt = new Date()
-  const webSearchMode = body.data.research
-    ? DEFAULT_WEB_SEARCH_MODE
-    : body.data.webSearchMode
-  const autoWebSearch = await resolveAutoWebSearch({
-    db,
-    userId,
-    mode: webSearchMode,
-    chosenTools: body.data.tools,
-    defaultTools: body.data.tools,
-    persistedTools: null,
-    messageText: readUserMessageText(body.data.parts) ?? '',
-    recentTurns: [],
-    logger,
-  })
 
   let projectId: string | undefined
 
@@ -148,7 +127,7 @@ export default defineEventHandler(async (event) => {
       chatId: chat.id,
       role: 'user',
       parts: body.data.parts as (TextUIPart | FileUIPart)[],
-      tools: autoWebSearch.tools,
+      tools: body.data.tools,
       reasoning: body.data.reasoning,
     },
     publicId: userMessagePublicId,

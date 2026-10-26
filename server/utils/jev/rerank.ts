@@ -38,16 +38,39 @@ function prepareText(text: string, maxTokens?: number): PreparedText {
   }
 }
 
-function buildQuestions(passages: string[]): JevQuestions {
-  const questions: JevQuestions = {}
+function passageStateKey(index: number): string {
+  return `${JEV_RERANK.passageStateKeyPrefix}${index}`
+}
+
+/**
+ * The query and every passage go into the shared state, one top-level key
+ * per passage (`passage_<i>`), and each question only names its passage by
+ * that key. A passage is third-party text, so it never sits in a question's
+ * instructions, where it could steer its own relevance score.
+ */
+function buildState(query: string, passages: string[]): Record<string, string> {
+  const state: Record<string, string> = { query }
 
   passages.forEach((passage, index) => {
+    state[passageStateKey(index)] = passage
+  })
+
+  return state
+}
+
+function buildQuestions(count: number): JevQuestions {
+  const questions: JevQuestions = {}
+
+  for (let index = 0; index < count; index++) {
     questions[`c${index}`] = {
       type: 'boolean',
-      instructions: { task: JEV_RERANK.task, passage },
+      instructions: JEV_RERANK.task.replace(
+        JEV_RERANK.passagePlaceholder,
+        passageStateKey(index),
+      ),
       criteria: JEV_RERANK.criteria,
     }
-  })
+  }
 
   return questions
 }
@@ -121,8 +144,8 @@ async function rerankCandidates<Candidate>(
   }, query.redacted)
   const result = await jevDecide({
     model,
-    state: { query: query.text },
-    questions: buildQuestions(passages.map(passage => passage.text)),
+    state: buildState(query.text, passages.map(passage => passage.text)),
+    questions: buildQuestions(passages.length),
     timeoutMs: JEV_RERANK.timeoutMs,
   })
 

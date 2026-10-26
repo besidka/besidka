@@ -124,8 +124,16 @@
                   Asked again before your next message to
                   {{ transfer.label }}.
                 </template>
-                <template v-else>
+                <template v-else-if="transfer.route === 'direct'">
                   Not given. Asked when you add a {{ transfer.label }} key.
+                </template>
+                <template v-else-if="transfer.route === 'router'">
+                  Not given. Asked before your first message to a router or
+                  preset model through a gateway.
+                </template>
+                <template v-else>
+                  Not given. Asked before your first message to a
+                  {{ transfer.label }} model through a gateway.
                 </template>
               </p>
             </div>

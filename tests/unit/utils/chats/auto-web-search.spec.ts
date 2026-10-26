@@ -7,6 +7,8 @@ import {
   JEV_SEND_PATH_TIMEOUT_MS,
 } from '#shared/utils/jev-policy'
 import {
+  collectAutoWebSearchCandidateTools,
+  hasFirstMessageAutoWebSearchDecision,
   readAutoWebSearchAnswer,
   resolveAutoWebSearch,
   shouldForceAutoWebSearch,
@@ -394,5 +396,40 @@ describe('send-path state', () => {
     expect(state.message).toHaveLength(JEV_SEND_PATH_MAX_TURN_CHARS)
     expect(state.recent_turns[0]?.text)
       .toHaveLength(JEV_SEND_PATH_MAX_TURN_CHARS)
+  })
+})
+
+describe('Auto web search candidate tools and first-message decision', () => {
+  it('validates the default tools plus the persisted tools a retry may '
+    + 'reuse, only in the Auto mode', () => {
+    expect(collectAutoWebSearchCandidateTools({
+      mode: 'auto',
+      defaultTools: ['web_search'],
+      persistedTools: ['web_search_brave'],
+    })).toEqual(['web_search', 'web_search_brave'])
+    expect(collectAutoWebSearchCandidateTools({
+      mode: 'always',
+      defaultTools: ['web_search'],
+      persistedTools: ['web_search_brave'],
+    })).toEqual(['web_search'])
+    expect(collectAutoWebSearchCandidateTools({
+      mode: 'auto',
+      defaultTools: ['web_search_exa'],
+      persistedTools: null,
+    })).toEqual(['web_search_exa'])
+  })
+
+  it('reads a KV failure as undecided', async () => {
+    const store = {
+      get: vi.fn(async () => {
+        throw new Error('KV unavailable')
+      }),
+      put: vi.fn(),
+    }
+
+    await expect(hasFirstMessageAutoWebSearchDecision(store, {
+      chatId: 'chat-1',
+      messageId: 'message-1',
+    })).resolves.toBe(false)
   })
 })

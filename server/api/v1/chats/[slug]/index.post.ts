@@ -246,7 +246,12 @@ import {
 } from '#shared/utils/auto-web-search'
 import type { AutoWebSearchOutcome } from '#shared/utils/auto-web-search'
 import { JEV_AUTO_WEB_SEARCH } from '#shared/utils/jev-policy'
-import { resolveAutoWebSearch } from '~~/server/utils/chats/auto-web-search'
+import {
+  collectAutoWebSearchCandidateTools,
+  hasFirstMessageAutoWebSearchDecision,
+  recordFirstMessageAutoWebSearchDecision,
+  resolveAutoWebSearch,
+} from '~~/server/utils/chats/auto-web-search'
 import { readSendPathTurns } from '~~/server/utils/jev/send-path'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
 import {
@@ -396,36 +401,37 @@ export default defineEventHandler(async (event) => {
       return message.role === 'user'
         && (message.publicId ?? message.id) === newMessage.id
     })
-  const autoWebSearch = await resolveAutoWebSearch({
-    db,
-    userId,
+  const autoWebSearchKv = useKV()
+  const firstMessageDecisionKey = firstUserMessage
+    && body.data.webSearchMode === 'auto'
+    ? {
+      chatId: chat.id,
+      messageId: firstUserMessage.publicId ?? firstUserMessage.id,
+    }
+    : null
+  const isFirstMessageDecided = firstMessageDecisionKey
+    ? await hasFirstMessageAutoWebSearchDecision(
+      autoWebSearchKv,
+      firstMessageDecisionKey,
+    )
+    : false
+  const reusablePersistedTools = persistedSentMessage
+    && (!firstUserMessage || isFirstMessageDecided)
+    ? persistedSentMessage.tools || []
+    : null
+  const candidateTools = collectAutoWebSearchCandidateTools({
     mode: body.data.webSearchMode,
-    chosenTools: body.data.tools,
     defaultTools,
-    persistedTools: persistedSentMessage
-      ? persistedSentMessage.tools || []
-      : null,
-    messageText: readUserMessageText(newMessage.parts) ?? '',
-    recentTurns: readSendPathTurns(
-      chat.messages.filter((message) => {
-        return message !== persistedSentMessage
-      }),
-      JEV_AUTO_WEB_SEARCH.recentTurns,
-    ),
-    logger,
+    persistedTools: reusablePersistedTools,
   })
-  const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
-    = autoWebSearch.outcome ?? undefined
-  const selectedTools = autoWebSearch.tools
-
-  const selectedBraveSearch = selectedTools.includes('web_search_brave')
-  const selectedExaSearch = selectedTools.includes('web_search_exa')
+  const candidateBraveSearch = candidateTools.includes('web_search_brave')
+  const candidateExaSearch = candidateTools.includes('web_search_exa')
 
   if (gatewayId) {
-    const unsupportedGatewayTool = selectedTools
+    const unsupportedGatewayTool = candidateTools
       .filter(isProviderResolvedTool)
-      .find((selectedTool) => {
-        return !isGatewayToolAllowed(gatewayId, selectedTool)
+      .find((candidateTool) => {
+        return !isGatewayToolAllowed(gatewayId, candidateTool)
       })
 
     if (unsupportedGatewayTool) {
@@ -440,11 +446,9 @@ export default defineEventHandler(async (event) => {
 
   let provider: Provider | undefined
   let model: Model | undefined
-  let requestedTools: ModelTool[] = []
+  let requiredTools: ModelTool[] = []
 
   if (gatewayId) {
-    requestedTools = selectedTools
-
     assertModelTransferConsent(legalConsent, { gatewayId, modelId: userModel })
 
     await assertGatewayImageInputSupported({
@@ -469,11 +473,11 @@ export default defineEventHandler(async (event) => {
       model.name,
     )
 
-    const requiredTools = getRequiredModelTools(model)
+    requiredTools = getRequiredModelTools(model)
 
     if (
       requiredTools.includes('image_generation')
-      && selectedTools.some(isWebSearchTool)
+      && candidateTools.some(isWebSearchTool)
     ) {
       throw createError({
         message: 'The selected model does not support the requested tool.',
@@ -483,7 +487,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    if ((selectedBraveSearch || selectedExaSearch) && !model.toolCall) {
+    if ((candidateBraveSearch || candidateExaSearch) && !model.toolCall) {
       throw createError({
         message: 'The selected model does not support the requested tool.',
         status: 400,
@@ -493,10 +497,10 @@ export default defineEventHandler(async (event) => {
     }
 
     const supportedTools = [...model.tools, ...requiredTools]
-    const unsupportedTool = selectedTools
+    const unsupportedTool = candidateTools
       .filter(isProviderResolvedTool)
-      .find((selectedTool) => {
-        return !supportedTools.includes(selectedTool)
+      .find((candidateTool) => {
+        return !supportedTools.includes(candidateTool)
       })
 
     if (unsupportedTool) {
@@ -507,19 +511,12 @@ export default defineEventHandler(async (event) => {
         fix: 'Choose a supported model or turn off that tool.',
       })
     }
-
-    requestedTools = [...new Set([
-      ...selectedTools,
-      ...requiredTools,
-    ])]
   }
-
-  logger.set({ tools: requestedTools })
 
   let encryptedBraveApiKey: string | undefined
   let encryptedExaApiKey: string | undefined
 
-  if (selectedBraveSearch) {
+  if (candidateBraveSearch) {
     const braveKey = await db.query.keys.findFirst({
       where: { userId, provider: 'brave' },
       columns: { apiKey: true },
@@ -537,7 +534,7 @@ export default defineEventHandler(async (event) => {
     encryptedBraveApiKey = braveKey.apiKey
   }
 
-  if (selectedExaSearch) {
+  if (candidateExaSearch) {
     const exaKey = await db.query.keys.findFirst({
       where: { userId, provider: 'exa' },
       columns: { apiKey: true },
@@ -554,6 +551,53 @@ export default defineEventHandler(async (event) => {
 
     encryptedExaApiKey = exaKey.apiKey
   }
+
+  const autoWebSearch = await resolveAutoWebSearch({
+    db,
+    userId,
+    mode: body.data.webSearchMode,
+    chosenTools: firstUserMessage ? defaultTools : body.data.tools,
+    defaultTools,
+    persistedTools: reusablePersistedTools,
+    messageText: readUserMessageText(newMessage.parts) ?? '',
+    recentTurns: readSendPathTurns(
+      chat.messages.filter((message) => {
+        return message !== persistedSentMessage
+      }),
+      JEV_AUTO_WEB_SEARCH.recentTurns,
+    ),
+    logger,
+  })
+  const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
+    = autoWebSearch.outcome ?? undefined
+  const selectedTools = autoWebSearch.tools
+  const selectedBraveSearch = selectedTools.includes('web_search_brave')
+  const selectedExaSearch = selectedTools.includes('web_search_exa')
+
+  if (!selectedBraveSearch) {
+    encryptedBraveApiKey = undefined
+  }
+
+  if (!selectedExaSearch) {
+    encryptedExaApiKey = undefined
+  }
+
+  if (firstUserMessage && firstMessageDecisionKey && !isFirstMessageDecided) {
+    await recordFirstMessageAutoWebSearchDecision({
+      db,
+      kv: autoWebSearchKv,
+      key: firstMessageDecisionKey,
+      messageRowId: firstUserMessage.id,
+      persistedTools: firstUserMessage.tools || [],
+      resolution: autoWebSearch,
+    })
+  }
+
+  const requestedTools: ModelTool[] = gatewayId
+    ? selectedTools
+    : [...new Set([...selectedTools, ...requiredTools])]
+
+  logger.set({ tools: requestedTools })
 
   const previousMessages = chat.messages
     .filter((message) => {

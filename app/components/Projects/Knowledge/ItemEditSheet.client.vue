@@ -150,6 +150,22 @@
                     {{ KNOWLEDGE_LIMITS.nativePdfPageTokens.toLocaleString() }}
                     tokens per page. Other models get the extracted text.
                   </span>
+                  <span
+                    v-if="item.extractStatus === 'ready'"
+                    class="text-sm text-base-content/70"
+                    data-testid="knowledge-item-sheet-native-pdf-text-screened"
+                  >
+                    Prompt-injection screening reads the extracted text only,
+                    not the images on the attached pages.
+                  </span>
+                  <span
+                    v-else-if="isUnscreenedPdf"
+                    class="text-sm font-medium text-warning"
+                    data-testid="knowledge-item-sheet-native-pdf-unscreened"
+                  >
+                    Not screened for prompt injection: screening reads a
+                    PDF's extracted text, and this file has none.
+                  </span>
                 </span>
               </label>
               <p
@@ -342,6 +358,12 @@ const isDescriptionOverLimit = computed<boolean>(() => {
 
 const isPdfSectionVisible = computed<boolean>(() => {
   return !!props.item && isKnowledgePdf(props.item)
+})
+
+const isUnscreenedPdf = computed<boolean>(() => {
+  const status = props.item?.extractStatus
+
+  return status === 'no-text' || status === 'failed'
 })
 
 const isNativePdfToggleVisible = computed<boolean>(() => {

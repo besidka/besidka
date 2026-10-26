@@ -271,10 +271,15 @@ removed.
   Thresholds come from a synthetic eval run on 2026-10-26 and are re-tuned on
   real traffic.
 - **Recipient.** TypeSafe AI, Inc., United States, independent controller
-  on the user's own account. Not on the EU-US Data Privacy Framework. Its DPA
-  relies on the SCCs (Module 2) and the UK Addendum, marks sensitive-data
-  safeguards "N/A", keeps data "as long as necessary" and has no SLA. Its
-  privacy policy says it does not train on input.
+  towards Besidka on the user's own account, described like the BYOK model
+  providers (no contract between Besidka and TypeSafe AI). Its DPA is its
+  contract with its own account holder (the user, for the key they add),
+  under which it acts as that account holder's processor; that is why it
+  relies on the SCCs Module 2 (controller to processor) and the UK
+  Addendum, and Besidka is not a party to it (delta audit finding 12,
+  2026-10-26). Not on the EU-US Data Privacy Framework. The DPA marks
+  sensitive-data safeguards "N/A", keeps data "as long as necessary" and has
+  no SLA. Its privacy policy says it does not train on input.
 - **Failure.** Every role is assistive and fails safe to the behaviour
   without the key on a missing key, 401, 429, 529, a network error or a
   timeout.
@@ -286,7 +291,7 @@ removed.
 | `memoryChecks` | Second opinion before a memory entry is saved | Each entry the rules allowed | Entry text with never-store values removed, plus a short redacted source excerpt | Rules alone; add-only, so it can never allow what the rules refused |
 | `autoWebSearch` | Decide whether a web search is needed | Only in the Auto web search mode, each message | The message and the last 2-3 turns | Search as usual |
 | `extractionPrefilter` | Skip the memory model when nothing is worth remembering (saves the user's cost) | Before memory is generated from a chat: opt-in extraction, backfill from past chats, project Refresh. Never for extract-now or import | Chat text with never-store values removed, in chunks of up to about 8,000 tokens | Unsure or unavailable: generate memory as usual |
-| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results fetched through Besidka | That text | Text used unscreened; a flag holds a file for review or leaves a result out of context and never deletes anything |
+| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results fetched through Besidka | That text | Text used unscreened; a project file or note is queued and screened again by the hourly sweep (only while the user's consent is current and the key and check are still on); a flag holds a file for review or leaves a result out of context and never deletes anything |
 | `rerank` | Order search candidates by relevance and leave out clearly irrelevant ones while enough relevant ones remain | Past-chat and project-knowledge search | The query and excerpts of about 300 tokens each, up to 30 per search | Original order |
 | `sharePiiCheck` | Warn about personal data before publishing | When the share window opens or its files toggle changes, before a public share link is created; only with current legal consent | The chat text being shared, with never-store values, emails and phone numbers removed, in chunks of up to about 25,000 tokens | Generic reminder next to the built-in detector warnings; never blocks sharing |
 | `pastChatRetrieval` | Pre-search past chats for models without tool calling | Each message, unless a listed phrase ("last time", "we discussed") already starts the search without a Jev call | The message and recent turns, with never-store values removed | No key or role off: no pre-search. Jev unsure or unavailable: the search runs anyway, so a failed call sends nothing extra to TypeSafe AI |
@@ -357,8 +362,18 @@ removed.
   key.
 - **Scope.** Owner decision 2026-10-26: it also applies to models reached
   through Vercel AI Gateway, OpenRouter or Cloudflare AI Gateway whose id names
-  one of these vendors (`deepseek/`, `moonshotai/`, `alibaba/`, `qwen/`).
-  Models a gateway runs itself (Cloudflare's `@cf/` ids) are exempt.
+  one of these vendors (`deepseek/`, `moonshotai/`, `alibaba/`, `qwen/`,
+  also behind OpenRouter's `~vendor/` aliases). Models a gateway runs itself
+  (Cloudflare's `@cf/` ids) are exempt. Extended the same day (delta audit
+  finding 5): gateway-only consents for Z.ai (`z-ai/`, `zai/`; Singapore),
+  MiniMax (`minimax/`; Singapore entity, US storage), ByteDance
+  (`bytedance/`, `bytedance-seed/`; Malaysia or Indonesia), and, mapped to
+  China defensively, Tencent (`tencent/`), Xiaomi (`xiaomi/`), Meituan
+  (`meituan/`), StepFun (`stepfun/`), inclusionAI (`inclusionai/`), TeleAI
+  (`xingchen-agi/`) and Dots Studio (`dots-studio/`); and one generic
+  `router` consent for OpenRouter meta-routers (`openrouter/`) and
+  `@preset/` model strings, which can send a request to a provider in any
+  country. See `docs/legal.md`.
 - **Receipt.** `provider_transfer_consents` (JSON) on `user_settings`: per
   provider `consentedAt` and `withdrawnAt`. Deleted with the account.
 - **Status.** **Built** in this release: `server/utils/legal/consent.ts`,

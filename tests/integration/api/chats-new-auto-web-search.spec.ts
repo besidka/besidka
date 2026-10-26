@@ -174,29 +174,12 @@ describe('new chat Auto web search', () => {
     expect(mocks.decide).not.toHaveBeenCalled()
   })
 
-  it('persists the resolved tools for a first message Jev skips', async () => {
-    const { persistedTools } = await createChat({
-      hasTypesafeKey: true,
-      tools: ['web_search_exa'],
-      webSearchMode: 'auto',
-    })
-
-    expect(persistedTools).toEqual([])
-    expect(mocks.decide).toHaveBeenCalledTimes(1)
-
-    const [options] = mocks.decide.mock.calls[0] as [Record<string, any>]
-
-    expect(options.state).toEqual({
-      message: 'Write a haiku',
-      recent_turns: [],
-    })
-  })
-
-  it('keeps the search when Jev times out', async () => {
-    const exception = new Error('The operation timed out')
-
-    exception.name = 'TimeoutError'
-    mocks.decide.mockRejectedValue(exception)
+  it.each([
+    ['skip', 0.05],
+    ['search', 0.9],
+  ])('never asks Jev in Auto, whatever it would %s, and persists the '
+    + 'chosen tools for the first POST to decide', async (_label, score) => {
+    mocks.decide.mockResolvedValue(jevAnswer(score))
 
     const { persistedTools } = await createChat({
       hasTypesafeKey: true,
@@ -205,7 +188,27 @@ describe('new chat Auto web search', () => {
     })
 
     expect(persistedTools).toEqual(['web_search_exa'])
+    expect(mocks.decide).not.toHaveBeenCalled()
   })
+
+  it('never reads the TypeSafe AI key before the chat is created',
+    async () => {
+      const module = await import('../../../server/api/v1/chats/new/index.put')
+      const created = createDb(true)
+
+      vi.stubGlobal('useDb', () => created.db)
+
+      await module.default({
+        body: {
+          parts: [{ type: 'text', text: 'Write a haiku' }],
+          tools: ['web_search_exa'],
+          reasoning: 'off',
+          webSearchMode: 'auto',
+        },
+      } as any)
+
+      expect(created.keysFindFirst).not.toHaveBeenCalled()
+    })
 
   it('keeps the search for a recency phrase without calling Jev', async () => {
     const { persistedTools } = await createChat({

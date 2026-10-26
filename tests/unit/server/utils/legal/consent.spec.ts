@@ -196,6 +196,27 @@ describe('gateway models of transfer-consent vendors', () => {
     ['vercel', 'alibaba/qwen3-max', 'qwen'],
     ['openrouter', 'qwen/qwen3-coder', 'qwen'],
     ['cloudflare', 'deepseek/deepseek-chat', 'deepseek'],
+    ['openrouter', '~deepseek/deepseek-pro-latest', 'deepseek'],
+    ['openrouter', '~moonshotai/kimi-latest', 'moonshotai'],
+    ['openrouter', 'z-ai/glm-5.3', 'zai'],
+    ['openrouter', '~z-ai/glm-latest', 'zai'],
+    ['vercel', 'zai/glm-5.3', 'zai'],
+    ['openrouter', 'minimax/minimax-m3', 'minimax'],
+    ['vercel', 'minimax/minimax-m3', 'minimax'],
+    ['openrouter', 'tencent/hy3', 'tencent'],
+    ['vercel', 'bytedance/seed-2.1', 'bytedance'],
+    ['openrouter', 'bytedance-seed/seed-2-1-turbo', 'bytedance'],
+    ['openrouter', 'xiaomi/mimo-v2.6-pro', 'xiaomi'],
+    ['vercel', 'xiaomi/mimo-v2.6-pro', 'xiaomi'],
+    ['openrouter', 'meituan/longcat-2.0', 'meituan'],
+    ['openrouter', 'stepfun/step-5-preview', 'stepfun'],
+    ['vercel', 'inclusionai/ling-3.1-flash', 'inclusionai'],
+    ['openrouter', 'xingchen-agi/xing4.0-29b-a4b:free', 'teleai'],
+    ['openrouter', 'dots-studio/dots-3-note-preview:free', 'dotsstudio'],
+    ['openrouter', 'openrouter/auto', 'router'],
+    ['openrouter', 'openrouter/free', 'router'],
+    ['openrouter', '@preset/email-copywriter', 'router'],
+    ['openrouter', 'openai/gpt-5-mini@preset/email-copywriter', 'router'],
   ])('needs the %s transfer consent for %s', (gatewayId, modelId, provider) => {
     expect(hasModelTransferConsent(noTransfers, { gatewayId, modelId }))
       .toBe(false)
@@ -207,6 +228,19 @@ describe('gateway models of transfer-consent vendors', () => {
       status: 403,
       code: 'TRANSFER_CONSENT_REQUIRED',
       data: expect.objectContaining({ provider }),
+    }))
+  })
+
+  it('words the router refusal for any country, not one vendor', () => {
+    expect(() => {
+      assertModelTransferConsent(noTransfers, {
+        gatewayId: 'openrouter',
+        modelId: 'openrouter/auto',
+      })
+    }).toThrow(expect.objectContaining({
+      message: 'Consent is required before sending messages through a model '
+        + 'router',
+      why: expect.stringContaining('such as China or Singapore'),
     }))
   })
 
@@ -378,6 +412,37 @@ describe('legal consent storage', () => {
     expect(userIds).not.toContain(missing)
   })
 
+  it.each(['zai', 'teleai', 'dotsstudio', 'router'] as const)(
+    'stores and withdraws the %s transfer consent in its own JSON key',
+    async (providerId) => {
+      const userId = await seedUser(testDb.db, null)
+
+      await recordProviderTransferConsent(
+        userId,
+        providerId,
+        testDb.db,
+        GRANTED_AT,
+      )
+
+      expect(hasProviderTransferConsent(
+        await readLegalConsent(userId, testDb.db),
+        providerId,
+      )).toBe(true)
+
+      await withdrawProviderTransferConsent(
+        userId,
+        providerId,
+        testDb.db,
+        new Date(GRANTED_AT.getTime() + 1000),
+      )
+
+      expect(hasProviderTransferConsent(
+        await readLegalConsent(userId, testDb.db),
+        providerId,
+      )).toBe(false)
+    },
+  )
+
   it('exposes the state the settings page shows', async () => {
     const userId = await seedUser(testDb.db, null)
 
@@ -409,6 +474,23 @@ describe('legal consent storage', () => {
         country: 'Singapore',
         isGranted: true,
         consentedAt: GRANTED_AT.toISOString(),
+      }),
+      expect.objectContaining({ providerId: 'zai', route: 'gateway' }),
+      expect.objectContaining({ providerId: 'minimax', route: 'gateway' }),
+      expect.objectContaining({ providerId: 'tencent', route: 'gateway' }),
+      expect.objectContaining({ providerId: 'bytedance', route: 'gateway' }),
+      ...['xiaomi', 'meituan', 'stepfun', 'inclusionai', 'teleai', 'dotsstudio']
+        .map((providerId) => {
+          return expect.objectContaining({
+            providerId,
+            country: 'China',
+            route: 'gateway',
+          })
+        }),
+      expect.objectContaining({
+        providerId: 'router',
+        route: 'router',
+        isGranted: false,
       }),
     ])
   })
