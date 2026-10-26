@@ -128,7 +128,7 @@ else. No operator-paid AI calls, no unbounded per-user growth in D1.
 | Decision | Driven by | Where |
 |---|---|---|
 | Knowledge budget, full-inject vs search, image/PDF modality gating, tool registration | The **chat-send model**: `body.model` (direct) or `body.gateway` + model (gateway). Recomputed on every send, stateless | `server/api/v1/chats/[slug]/index.post.ts`: `knowledgeSendModel` is built from the request model or gateway and passed to `resolveSendKnowledge`, and the main `streamText` uses the same resolved model instance |
-| Memory extraction and the project memory refresh | `resolveMemoryModel`: setting → "same as chat" (newest assistant `usage.model` among recent messages) → cheapest fallback | `resolveMemoryModel` in `server/utils/memory/resolve-model.ts`, called only from `resolveExtractionModel` in `server/utils/memory/extract.ts` and `refreshProjectMemoryFromChats` in `server/utils/projects/memory-refresh.ts` |
+| Memory extraction and the project memory refresh | `resolveMemoryModel`: setting → "same as chat" (newest assistant `usage.model` among recent messages) → cheapest fallback | `resolveMemoryModel` in `server/utils/memory/resolve-model.ts`, called from the extraction pass in `server/utils/memory/extract.ts`, `refreshProjectMemoryFromChats` in `server/utils/projects/memory-refresh.ts`, the backfill (`server/utils/memory/backfill.ts` and the estimate in `server/api/v1/memory/backfill/index.get.ts`) and the instruct flow (`server/utils/memory/instruct.ts`). Never from the send path |
 | Optional user-chosen background work (image captions, scanned-PDF transcription, file summaries) | Same resolver, `scope: 'project'`, or the model the user picks in that dialog | Sections 7.2, 7.3 |
 | Cost numbers in the caching alert and capacity meter | The model in the **chat picker** (`usePreferenceStorage()` + `useSelectedModelInfo()`, client-side) | Section 11 |
 
@@ -194,20 +194,26 @@ visible.
 
 ## 4. Constraints in Besidka today
 
-From the code at `eb5c20f3` (`feat/memory-p2`):
+A pre-W7 snapshot of the code at `eb5c20f3` (`feat/memory-p2`), kept as the
+starting point the design answered. Items that K0 to K3 changed (a project
+link for files, text extraction, tool budgets, the loop cap) say so in
+sections 15 and 16. References point at symbols, not line numbers, because
+`index.post.ts` moves on every change:
 
 - **History is rebuilt from D1 on every send, all messages, with no
-  context-window budgeting** (`index.post.ts:235-275, 444-459, 563-568`).
+  context-window budgeting** (the history load and the model-turn rebuild in
+  `server/api/v1/chats/[slug]/index.post.ts`).
 - **Direct providers get no `maxOutputTokens`**. Only gateway sends set it
-  (`index.post.ts:1453, 1661`).
-- **System prompt order** (`index.post.ts:2767-2830`): `<memory>` index plus
+  (the gateway branch of the `streamText` options in `index.post.ts`).
+- **System prompt order** (`buildChatInstructions` and its callers):
+  `<memory>` index plus
   `aboutMe` → project prompt → `CHAT_SEARCH_INSTRUCTION` → the clauses that
   carry the date. Stable blocks come first.
 - **Context windows at runtime**: `Model.contextLength` and
-  `Model.maxOutputTokens` (`shared/types/providers.d.ts:32-33`, from
+  `Model.maxOutputTokens` (`shared/types/providers.d.ts`, from
   `providers/data/models-dev-snapshot.json`). For gateways,
   `GatewayModel.contextLength?` and `maxOutputTokens?` are optional and not
-  yet on `GatewayChatResult` (`server/utils/gateways/index.ts:15-80`).
+  yet on `GatewayChatResult` (`server/utils/gateways/index.ts`).
   `Model.cost.cacheRead` and `cacheWrite` are on the shared type too, so
   the client can compute caching examples.
 - Curated windows range from 8k (`gpt-4`) through 128k–262k (`gpt-4o`, Kimi
@@ -218,8 +224,8 @@ From the code at `eb5c20f3` (`feat/memory-p2`):
   Tools register only on tool-calling models without a forced `toolChoice`.
 - **Files**: in R2 with metadata in `files`. There is no project link. The
   storage quota is `sum(files.size)` against `storages.storage` (20 MB
-  default; `file-governance.ts:191`). Free-tier files expire after 30 days.
-  The upload allow-list (`nuxt.config.ts:309-315`) rejects `.md` and code
+  default; `server/utils/files/file-governance.ts`). Free-tier files expire after 30 days.
+  The upload allow-list (`allowedFileFormats` in `nuxt.config.ts`) rejects `.md` and code
   files. There is no PDF/DOCX text extraction anywhere.
 - **Modality gating**: images need `modalities.input ∋ image`, PDFs `∋ pdf`.
   Gateways gate images only when the catalog lacks them, never gate PDFs,
@@ -357,10 +363,12 @@ and code × 0.9, rounded down to 0.1. These are the values in
 | anthropic | 3.2 | 1.1 | 1.0 | REPORTED [S19, S20]; **pending** a free `count_tokens` run with a key |
 | default (unknown upstream) | 3.5 | 1.5 | 1.5 | the most conservative measured value per class |
 
-- **Finding:** the old shared figure (Latin 4, Cyrillic 2.5, still used by
-  `shared/utils/memory-tokens.ts`) **under-counts Ukrainian** by 6–17% on
-  Qwen, DeepSeek and Kimi. It is roughly right only for o200k and Gemma.
-  This sharpens follow-up 13.1.
+- **Finding:** the old shared figure (Latin 4, Cyrillic 2.5, once used by
+  `shared/utils/memory-tokens.ts`) **under-counted Ukrainian** by 6–17% on
+  Qwen, DeepSeek and Kimi. It was roughly right only for o200k and Gemma.
+  Fixed on 2026-10-26: `estimateMemoryTokens` now takes the tokenizer family
+  and reads `KNOWLEDGE_CHARS_PER_TOKEN` (`docs/memory-architecture.md` 3.11,
+  and follow-up 13.1).
 - **Pending (needs the owner):** one `count_tokens` call per sample on any
   Anthropic key. The endpoint is free, but no key was used in K0. Until
   then, Claude uses the reported 3.2 / 1.1, which is more conservative than
@@ -1048,7 +1056,7 @@ Then in parallel:
 **K1: Server ingestion and storage.** Owns `server/api/v1/projects/[id]/knowledge/**`
 (list, upload original plus extracted text, link a library file, notes CRUD,
 item PATCH/DELETE, folder sync diff, mode PATCH),
-`server/utils/knowledge/storage.ts` (R2 keys and reads/writes),
+`server/utils/knowledge/storage-keys.ts` (R2 keys, K0) and `server/utils/knowledge/text-store.ts` (reads and writes),
 `server/utils/knowledge/pack.ts` (incremental pack builder, lease,
 conditional put), `server/utils/knowledge/purge.ts`
 (`purgeProjectKnowledge`, project prefix delete),
@@ -1090,15 +1098,19 @@ polish.
 
 ## 13. Follow-ups found (not W7)
 
-1. **The memory token estimator likely under-counts Cyrillic on Claude by
-   ~2×** (5.4). It affects the 2.5k memory-index budget and
-   `READ_CHAT_MAX_CHARS`. This is W4's file and a separate change.
+1. **Fixed (2026-10-26).** The memory token estimator used to under-count
+   Cyrillic on Claude by about 2× (5.4). `estimateMemoryTokens` now uses the
+   per-family factors (`shared/utils/memory-tokens.ts`), including the
+   provisional Anthropic 1.1 that still awaits the `count_tokens` run
+   (`docs/memory-architecture.md` section 7). `READ_CHAT_MAX_CHARS` is a
+   character cap and is unaffected.
 2. **No history budgeting at all** on 128k–262k models, independent of
    knowledge.
 3. **Unbounded inline text file on the newest message** (only the storage
    quota limits it).
-4. `buildProjectSystemPrompt` takes an unused `memoryEntriesActive`
-   parameter (`server/utils/projects/instructions.ts:8`).
+4. **Stale.** `buildProjectSystemPrompt` takes `memoryEntriesActive` and uses
+   it: when project memory is stored as entries the legacy `projects.memory`
+   blob is left out of the prompt (`server/utils/projects/instructions.ts`).
 5. `message_search` already puts all chat text into D1 with stored content
    (≈ 3× text by the 9.6 ratios). That is the same D1-growth concern as rev
    1, already in production. Worth measuring the current D1 size and
@@ -1406,6 +1418,13 @@ develops against these shapes with mocked `$fetch`.
   `computeKnowledgeBudget`, `resolveKnowledgeTokenFamily`,
   `estimatePromptCacheCost`), so client and server agree.
 
+### 16.4 Shared files nobody else edits
+
+`package.json` and `pnpm-lock.yaml` (dependencies added in K0), the K0
+shared files, the migration, and `scripts/test-affected-check.mjs` (the
+umbrella registers specs). A workstream that needs a change in a K0 file
+asks the umbrella session instead of editing it.
+
 ### 16.5 K2 as built (branch `k2-knowledge-send`)
 
 - **Own pack reader instead of K1's.** K1 was not merged when K2 started,
@@ -1564,13 +1583,6 @@ invalidate the prompt cache twice.
   upload PDF and image originals through the existing files route, then
   `POST items` in batches with the last batch committing; a folder re-sync
   sends `POST commit { folderId, remove }`.
-
-### 16.4 Shared files nobody else edits
-
-`package.json` and `pnpm-lock.yaml` (dependencies added in K0), the K0
-shared files, the migration, and `scripts/test-affected-check.mjs` (the
-umbrella registers specs). A workstream that needs a change in a K0 file
-asks the umbrella session instead of editing it.
 
 ## 17. Spike results
 
