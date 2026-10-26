@@ -129,6 +129,18 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-share-check.spec.ts',
     ...memoryJevTests,
   ]
+  const autoWebSearchTests = [
+    'tests/unit/utils/chats/auto-web-search.spec.ts',
+    'tests/integration/api/chats-auto-web-search.spec.ts',
+    'tests/integration/api/chats-new-auto-web-search.spec.ts',
+    'tests/unit/composables/auto-web-search.spec.ts',
+    'tests/unit/components/Chat/AutoWebSearchChip.spec.ts',
+    'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
+    'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
+    'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
+  ]
   const typesafeRolesUiTests = [
     'tests/unit/components/Profile/Keys/TypesafeChecks.spec.ts',
     'tests/unit/components/Profile/Keys/MemoryChecksInfo.spec.ts',
@@ -1611,6 +1623,10 @@ export function getAffectedTests(changedFiles) {
         ...profileSettingsTests,
         ...typesafeRolesUiTests,
       ],
+    },
+    {
+      pattern: /^(shared\/utils\/(auto-web-search|jev-policy)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/(chats\/auto-web-search|jev\/send-path|ai\/message-usage)\.ts|server\/api\/v1\/chats\/(new\/index\.put|\[slug\]\/index\.post)\.ts|app\/composables\/(auto-web-search|chat)\.ts|app\/components\/Chat\/AutoWebSearchChip\.vue|app\/components\/ChatInput(\.client\.vue|\/(WebSearch(Trigger|MenuItems)|ToolbarMore\.client)\.vue)|app\/pages\/chats\/(new|\[slug\])\.vue)$/,
+      tests: autoWebSearchTests,
     },
     {
       pattern: /^(app\/composables\/typesafe-roles\.ts|app\/utils\/typesafe-roles\.ts|app\/components\/Profile\/Keys\/(TypesafeChecks|MemoryChecksInfo)\.vue|app\/components\/Profile\/Memory\/ExtraChecks\.vue)$/,

@@ -30,6 +30,9 @@ mockNuxtImport('$fetch', () => fetchMock)
 mockNuxtImport('useUserKeys', () => useUserKeysMock)
 mockNuxtImport('useChatFiles', () => useChatFilesMock)
 mockNuxtImport('useDevice', () => useDeviceMock)
+mockNuxtImport('useAutoWebSearch', () => () => ({
+  resolveWebSearchMode: () => 'always',
+}))
 mockNuxtImport('useLegalConsent', () => () => ({
   ensureSendConsent: async () => true,
   handleConsentError: async () => false,

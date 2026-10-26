@@ -169,7 +169,7 @@ describe('ChatInput/ToolbarMore', () => {
       exaSearchLevel: 'deep',
     })
 
-    expect(exaWrapper.text()).toContain('Exa search level')
+    expect(exaWrapper.text()).toContain('Depth')
     expect(
       exaWrapper.get('[data-testid="exa-search-level-deep"]').classes(),
     ).toContain('bg-accent')

@@ -360,7 +360,7 @@ describe('ChatInput/WebSearchMenuItems', () => {
         isToolCallingSupported: true,
       })
 
-      expect(wrapper.text()).not.toContain('Exa search level')
+      expect(wrapper.text()).not.toContain('Depth')
       expect(wrapper.find('[data-testid^="exa-search-level-"]').exists())
         .toBe(false)
     })
@@ -372,7 +372,7 @@ describe('ChatInput/WebSearchMenuItems', () => {
         isToolCallingSupported: false,
       })
 
-      expect(wrapper.text()).not.toContain('Exa search level')
+      expect(wrapper.text()).not.toContain('Depth')
       expect(wrapper.find('[data-testid^="exa-search-level-"]').exists())
         .toBe(false)
     })
@@ -385,7 +385,7 @@ describe('ChatInput/WebSearchMenuItems', () => {
         isToolCallingSupported: true,
       })
 
-      expect(wrapper.text()).toContain('Exa search level')
+      expect(wrapper.text()).toContain('Depth')
 
       const labels = wrapper
         .findAll('[data-testid^="exa-search-level-"]')
@@ -515,4 +515,118 @@ describe('ChatInput/WebSearchMenuItems', () => {
       expect(selectedProviders).toEqual([])
     })
   })
+})
+
+describe('ChatInput/WebSearchMenuItems Auto section', () => {
+  async function mountWithAuto(props: {
+    selected: WebSearchSelection
+    isAutoAvailable?: boolean
+    isAutoPreferred?: boolean
+    isToolCallingSupported?: boolean
+  }) {
+    const toggles: boolean[] = []
+    const host = defineComponent({
+      setup() {
+        return () => h('ul', [
+          h(WebSearchMenuItems, {
+            selected: props.selected,
+            options: [nativeOption(), braveOption(), exaOption()],
+            isToolCallingSupported: props.isToolCallingSupported ?? true,
+            isAutoAvailable: props.isAutoAvailable,
+            isAutoPreferred: props.isAutoPreferred,
+            onToggleAuto: (isOn: boolean) => {
+              toggles.push(isOn)
+            },
+          }),
+        ])
+      },
+    })
+
+    const wrapper = await mountSuspended(host)
+
+    return { wrapper, toggles }
+  }
+
+  it('is hidden unless Auto is available', async () => {
+    const { wrapper } = await mountWithAuto({ selected: 'web_search_brave' })
+
+    expect(wrapper.find('[data-testid="web-search-auto-section"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="web-search-auto-toggle"]').exists())
+      .toBe(false)
+  })
+
+  it('explains Auto with a one-line hint and an info tooltip', async () => {
+    const { wrapper } = await mountWithAuto({
+      selected: 'web_search_brave',
+      isAutoAvailable: true,
+    })
+
+    expect(wrapper.get('[data-testid="web-search-auto-section"]').text())
+      .toContain('Auto')
+    expect(wrapper.get('[data-testid="web-search-auto-hint"]').text())
+      .toBe('Searches only when a message needs it.')
+    expect(
+      wrapper.get('[data-testid="web-search-auto-info"]').attributes('data-tip'),
+    ).toBe('TypeSafe AI decides per message whether a web search is needed. '
+      + 'Searches with the provider you picked. If TypeSafe AI doesn\'t '
+      + 'answer, Besidka searches.')
+  })
+
+  it('reflects and toggles the saved preference', async () => {
+    const { wrapper, toggles } = await mountWithAuto({
+      selected: 'web_search_exa',
+      isAutoAvailable: true,
+      isAutoPreferred: true,
+    })
+    const toggle = wrapper.get('[data-testid="web-search-auto-toggle"]')
+
+    expect((toggle.element as HTMLInputElement).checked).toBe(true)
+
+    await toggle.setValue(false)
+
+    expect(toggles).toEqual([false])
+  })
+
+  it('is shown for the built-in search of a model without tool calling',
+    async () => {
+      const { wrapper } = await mountWithAuto({
+        selected: 'web_search',
+        isAutoAvailable: true,
+        isToolCallingSupported: false,
+      })
+
+      expect(wrapper.find('[data-testid="web-search-auto-toggle"]').exists())
+        .toBe(true)
+    })
+
+  it('is disabled with a hint to pick a provider while search is off',
+    async () => {
+      const { wrapper, toggles } = await mountWithAuto({
+        selected: 'off',
+        isAutoAvailable: true,
+        isAutoPreferred: true,
+      })
+      const toggle = wrapper.get('[data-testid="web-search-auto-toggle"]')
+
+      expect(toggle.attributes('disabled')).toBeDefined()
+      expect((toggle.element as HTMLInputElement).checked).toBe(false)
+      expect(wrapper.get('[data-testid="web-search-auto-hint"]').text())
+        .toBe('Pick a provider above to use Auto.')
+
+      await toggle.trigger('change')
+
+      expect(toggles).toEqual([])
+    })
+
+  it('titles the Exa level section Depth, so it is not confused with Auto',
+    async () => {
+      const { wrapper } = await mountWithAuto({
+        selected: 'web_search_exa',
+        isAutoAvailable: true,
+      })
+
+      expect(wrapper.text()).toContain('Depth')
+      expect(wrapper.text()).not.toContain('Exa search level')
+    })
 })

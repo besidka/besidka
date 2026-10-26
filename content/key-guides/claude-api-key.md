@@ -4,21 +4,21 @@ description: Create an Anthropic API key for Claude and add it to Besidka. Prepa
 provider: anthropic
 keyUrl: https://platform.claude.com/settings/keys
 keyUrlLabel: Open Anthropic Console keys page
-updatedAt: '2026-10-20'
+updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Buy a small prepaid balance, create a key, and chat with Claude on your own bill.
 video:
-  src: /videos/key-guide-anthropic.mp4
-  poster: /key-guides/anthropic.webp
+  src: /videos/key-guide-anthropic.mp4?v=2
+  poster: /key-guides/anthropic.webp?v=2
   duration: PT38S
-  uploadDate: '2026-10-20'
+  uploadDate: '2026-10-26'
   alt: Screen recording of Claude Console. The API keys page, the Continue with an API key screen, the dialog for naming the new key, the new key shown once, then the key pasted into Besidka and a first answer from Claude.
   qualities:
-    - src: /videos/key-guide-anthropic-1080.mp4
+    - src: /videos/key-guide-anthropic-1080.mp4?v=2
       size: 1080
-    - src: /videos/key-guide-anthropic.mp4
+    - src: /videos/key-guide-anthropic.mp4?v=2
       size: 720
-    - src: /videos/key-guide-anthropic-360.mp4
+    - src: /videos/key-guide-anthropic-360.mp4?v=2
       size: 360
   markers:
     - time: "0:00"

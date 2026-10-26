@@ -98,7 +98,8 @@ describe('content/key-guides', () => {
       })
 
       it('offers 1080, 720 and 360 renditions of its own provider, the '
-        + '720 one being video.src', async () => {
+        + '720 one being video.src and each with an optional ?v=<n>',
+      async () => {
         const frontmatter = await readFrontmatter(fileName)
         const video = frontmatter.video as
           | {
@@ -113,10 +114,16 @@ describe('content/key-guides', () => {
 
         const provider = String(frontmatter.provider)
 
+        const renditionSource = (suffix: string) => {
+          return expect.stringMatching(new RegExp(
+            `^/videos/key-guide-${provider}${suffix}\\.mp4(\\?v=\\d+)?$`,
+          ))
+        }
+
         expect(video.qualities).toEqual([
-          { src: `/videos/key-guide-${provider}-1080.mp4`, size: 1080 },
+          { src: renditionSource('-1080'), size: 1080 },
           { src: video.src, size: 720 },
-          { src: `/videos/key-guide-${provider}-360.mp4`, size: 360 },
+          { src: renditionSource('-360'), size: 360 },
         ])
       })
 

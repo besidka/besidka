@@ -279,3 +279,70 @@ describe('ChatInput/WebSearchTrigger', () => {
       expect(details.classes()).toContain('max-xs:dropdown-start')
     })
 })
+
+describe('ChatInput/WebSearchTrigger Auto', () => {
+  beforeEach(() => {
+    useDesktopDevice()
+  })
+
+  async function mountAutoTrigger(props: {
+    selected: WebSearchSelection
+    isAutoAvailable: boolean
+    isAutoPreferred: boolean
+  }) {
+    const toggles: boolean[] = []
+    const host = defineComponent({
+      setup() {
+        return () => h(WebSearchTrigger, {
+          ...props,
+          options,
+          isToolCallingSupported: true,
+          onToggleAuto: (isOn: boolean) => {
+            toggles.push(isOn)
+          },
+        })
+      },
+    })
+    const wrapper = await mountSuspended(host, { attachTo: document.body })
+
+    return { wrapper, toggles }
+  }
+
+  it('labels the trigger Auto while Auto rides on a provider', async () => {
+    const { wrapper } = await mountAutoTrigger({
+      selected: 'web_search_brave',
+      isAutoAvailable: true,
+      isAutoPreferred: true,
+    })
+    const summary = wrapper.get('[data-testid="web-search-trigger"]')
+
+    expect(summary.text()).toBe('Auto')
+    expect(summary.attributes('title')).toBe('Auto web search: Brave')
+  })
+
+  it('keeps the Search label when Auto is unavailable', async () => {
+    const { wrapper } = await mountAutoTrigger({
+      selected: 'web_search_brave',
+      isAutoAvailable: false,
+      isAutoPreferred: true,
+    })
+    const summary = wrapper.get('[data-testid="web-search-trigger"]')
+
+    expect(summary.text()).toBe('Search')
+    expect(summary.attributes('title')).toBe('Web search: Brave')
+    expect(wrapper.find('[data-testid="web-search-auto-toggle"]').exists())
+      .toBe(false)
+  })
+
+  it('forwards the Auto toggle from the menu', async () => {
+    const { wrapper, toggles } = await mountAutoTrigger({
+      selected: 'web_search_exa',
+      isAutoAvailable: true,
+      isAutoPreferred: false,
+    })
+
+    await wrapper.get('[data-testid="web-search-auto-toggle"]').setValue(true)
+
+    expect(toggles).toEqual([true])
+  })
+})
