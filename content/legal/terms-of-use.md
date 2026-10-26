@@ -1,7 +1,7 @@
 ---
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
-updatedAt: 2026-09-23
+updatedAt: 2026-10-26
 summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
@@ -95,13 +95,13 @@ Do not use Besidka to:
 - Attack the service — no scraping at scale, no brute forcing, no attempt to bypass rate limits or access other users' data, no probing for vulnerabilities beyond good-faith reporting to me.
 - Resell or wrap the hosted service as your own commercial product. You may self-host the code instead; that is what the licence is for.
 
-### Do not submit sensitive personal data
+### Sensitive information
 
-**Do not submit special category personal data.** That means data revealing health, political opinions, religious or philosophical beliefs, trade union membership, genetic or biometric data, sex life or sexual orientation, or data about criminal offences and convictions.
+You may include sensitive information, for example about your health or your beliefs, in your chats. It is stored with your chats and sent to the AI provider, AI gateway or search provider you choose, under your own account with them. On a free Google Gemini key that provider may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
 
-The reason is practical as well as legal: whatever you type is forwarded to a third-party AI provider under your own key, or through the AI gateway you chose, and a search query your model writes from it may go to the search provider you turned on. On a free Google Gemini key that provider may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
+Think before you share it, especially information about other people. You can delete it at any time, as described in the [Privacy Policy](/privacy-policy#sensitive-information-in-your-chats).
 
-I build no features that infer, classify, score or profile anybody from the content of chats, and I do not read your chats.
+I do not read your chats.
 
 ### Other people's data
 
