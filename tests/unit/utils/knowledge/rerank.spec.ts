@@ -51,14 +51,15 @@ function answerByPassage(
   scoreOf: (passage: string, index: number) => number,
 ) {
   mocks.decide.mockImplementation(async (options: {
-    questions: Record<string, { instructions: { passage: string } }>
+    state: Record<string, string>
+    questions: Record<string, unknown>
   }) => {
     return {
       answers: Object.fromEntries(
-        Object.entries(options.questions).map(([id, question], index) => {
+        Object.keys(options.questions).map((id, index) => {
           return [id, {
             type: 'boolean',
-            probability: scoreOf(question.instructions.passage, index),
+            probability: scoreOf(options.state[`passage_${index}`]!, index),
           }]
         }),
       ),
@@ -242,9 +243,8 @@ describe('searchKnowledgeWithRerank', () => {
       const serialized = JSON.stringify(options)
 
       expect(serialized).not.toMatch(/4111|1111/)
-      expect(options.questions.c0.instructions.passage)
-        .toContain('Handbook > Deploy')
-      expect(options.state).toEqual({ query: 'deploy' })
+      expect(options.state.passage_0).toContain('Handbook > Deploy')
+      expect(options.state.query).toBe('deploy')
     })
 })
 

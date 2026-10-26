@@ -343,6 +343,7 @@ describe('resolvePastChatPreRetrieval', () => {
     title?: string
     projectId?: number
     memoryExcluded?: boolean
+    branchedFromShareSlug?: string
   }): void {
     testDb.insertChat({
       id: input.id,
@@ -351,6 +352,7 @@ describe('resolvePastChatPreRetrieval', () => {
       title: input.title ?? `Chat ${input.id}`,
       projectId: input.projectId,
       memoryExcluded: input.memoryExcluded,
+      branchedFromShareSlug: input.branchedFromShareSlug,
     })
   }
 
@@ -450,6 +452,25 @@ describe('resolvePastChatPreRetrieval', () => {
         calls: 0,
         counts: { forced: 1, searched: 1, hits: 1 },
       })
+    })
+
+  it('never injects a chat branched from another user\'s share',
+    async () => {
+      seedChat({ id: 1, userId: OWNER + 1, title: 'Shared deploy plan' })
+      testDb.insertShare({ id: 1, slug: 'stranger-share', chatId: 1 })
+      seedChat({
+        id: 2,
+        userId: OWNER,
+        title: 'Branch of a stranger',
+        branchedFromShareSlug: 'stranger-share',
+      })
+      seedMessage({ chatId: 2, userId: OWNER, text: 'staging port 8443' })
+
+      const { run } = resolve()
+      const retrieval = await run
+
+      expect(retrieval?.block ?? '').not.toContain('Branch of a stranger')
+      expect(retrieval?.hits ?? []).toEqual([])
     })
 
   it('searches when Jev answers yes and logs the score, not the text',

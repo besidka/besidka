@@ -50,12 +50,13 @@ function apiError(statusCode: number) {
 
 function answerByPassage() {
   mocks.decide.mockImplementation(async (options: {
-    questions: Record<string, { instructions: { passage: string } }>
+    state: Record<string, string>
+    questions: Record<string, unknown>
   }) => {
     return {
       answers: Object.fromEntries(
-        Object.entries(options.questions).map(([id, question]) => {
-          const isWinner = question.instructions.passage
+        Object.keys(options.questions).map((id, index) => {
+          const isWinner = options.state[`passage_${index}`]!
             .includes(WINNER_MARKER)
 
           return [id, {

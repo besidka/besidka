@@ -114,7 +114,9 @@ export const JEV_RERANK = {
   maxPassageTokens: 300,
   dropBelow: 0.5,
   timeoutMs: JEV_SEND_PATH_TIMEOUT_MS,
-  task: 'Is this passage relevant to `query`?',
+  passageStateKeyPrefix: 'passage_',
+  passagePlaceholder: '{passage}',
+  task: 'Is `{passage}` relevant to `query`?',
   criteria: {
     true: 'The passage contains information that directly answers or '
       + 'addresses what `query` is looking for, even if it uses different '

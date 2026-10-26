@@ -67,8 +67,21 @@ async function queryCandidateRows(input: {
   match: string
   currentChatRowId: number | null
   projectRowId: number | null
+  excludeForeignShareBranches: boolean
 }): Promise<SearchChatsCandidateRow[]> {
   const ownerTag = buildSearchOwnerTag(input.userId)
+  const excludeForeignShareBranches = input.excludeForeignShareBranches
+    ? sql`and (
+      c.branched_from_share_slug is null
+      or exists (
+        select 1
+        from chat_shares s
+        inner join chats source_chat on source_chat.id = s.chat_id
+        where s.slug = c.branched_from_share_slug
+          and source_chat.user_id = c.user_id
+      )
+    )`
+    : sql``
   const excludeCurrentChat = input.currentChatRowId === null
     ? sql``
     : sql`and m.chat_id != ${input.currentChatRowId}`
@@ -94,6 +107,7 @@ async function queryCandidateRows(input: {
       and c.memory_excluded is not 1
       ${excludeCurrentChat}
       ${restrictToProject}
+      ${excludeForeignShareBranches}
     order by score asc, ms.rowid desc
     limit ${SEARCH_CHATS_CANDIDATE_LIMIT}
   `)
@@ -166,7 +180,11 @@ async function pickBestHitPerChat(input: {
  * throws: a failing query is logged and returns no results. With
  * `resolveRerankModel`, the best hit of each chat is re-ranked by TypeSafe
  * AI Jev before the final slice to `limit`; the relevance cut never leaves
- * fewer than `limit` hits, and any Jev failure keeps the BM25 order.
+ * fewer than `limit` hits, and any Jev failure keeps the BM25 order. With
+ * `excludeForeignShareBranches` (past-chat pre-retrieval), chats branched
+ * from another user's share are left out: their copied turns were written
+ * by someone else and would be injected without the user asking. A branch
+ * whose share no longer exists counts as foreign.
  */
 export async function searchChats(input: {
   db: ReturnType<typeof useDb>
@@ -175,6 +193,7 @@ export async function searchChats(input: {
   limit?: number
   currentChatId: string
   projectId?: string
+  excludeForeignShareBranches?: boolean
   resolveRerankModel?: JevRerankModelResolver
   logger?: Pick<LoggerLike, 'set'>
 }): Promise<SearchChatsResult> {
@@ -223,6 +242,7 @@ export async function searchChats(input: {
         match,
         currentChatRowId,
         projectRowId,
+        excludeForeignShareBranches: input.excludeForeignShareBranches === true,
       })
 
       if (rows.length > 0) {

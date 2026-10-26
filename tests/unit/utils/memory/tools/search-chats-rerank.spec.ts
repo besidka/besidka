@@ -39,14 +39,15 @@ function answerByPassage(
   scoreOf: (passage: string, index: number) => number,
 ) {
   mocks.decide.mockImplementation(async (options: {
-    questions: Record<string, { instructions: { passage: string } }>
+    state: Record<string, string>
+    questions: Record<string, unknown>
   }) => {
     return {
       answers: Object.fromEntries(
-        Object.entries(options.questions).map(([id, question], index) => {
+        Object.keys(options.questions).map((id, index) => {
           return [id, {
             type: 'boolean',
-            probability: scoreOf(question.instructions.passage, index),
+            probability: scoreOf(options.state[`passage_${index}`]!, index),
           }]
         }),
       ),
@@ -227,7 +228,7 @@ describe('searchChats re-ranking with TypeSafe AI Jev', () => {
     const [options] = mocks.decide.mock.calls[0]!
     const serialized = JSON.stringify(options)
 
-    expect(options.state).toEqual({ query: 'borscht' })
+    expect(options.state.query).toBe('borscht')
     expect(serialized).not.toContain(SNIPPET_START)
     expect(serialized).not.toContain(SNIPPET_END)
     expect(serialized).not.toMatch(/4111|1111/)

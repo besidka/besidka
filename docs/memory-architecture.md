@@ -2084,7 +2084,7 @@ throws on a Jev failure:
   list, so `index.ts`, `app.vue` and `package.json` do not force a search). The state keys the wordings refer to are
   the eval's: `message` and `recent_turns` (web search, past chats),
   `transcript` (pre-filter), `text` (injection), `chat` (share check),
-  `query` with the passage in each question's `instructions` (rerank).
+  `query` plus `passage_<i>` (rerank).
 
 **Settings API.** `GET /api/v1/profiles/settings` returns `typesafeRoles`
 (`null` or a partial role map). `PATCH` takes `typesafeRoles` as a strict
@@ -2376,7 +2376,13 @@ generation) while **Search and reference chats** is on in the settings.
   costlier mistake, and a pre-search is one cheap indexed D1 query.
 - **Search.** The existing `searchChats` with the same owner, current-chat
   exclusion, `memory_excluded` and project scoping (the project id is passed
-  under the same condition as the tool registration), `limit: 3`. The query is
+  under the same condition as the tool registration), `limit: 3`, plus
+  `excludeForeignShareBranches` (delta audit finding 6, 2026-10-26): a chat
+  whose `branched_from_share_slug` is set is left out unless that share
+  belongs to a chat of the same user, so turns another person wrote and the
+  user only branched are never injected unasked; a branch whose share no
+  longer exists counts as foreign. The `search_chats` tool, which the model
+  calls and whose results it sees as tool output, keeps every branch. The query is
   the message with the guard phrases, stop words (`STOP_WORDS` from the
   knowledge search plus chat filler in EN/UK/PL/RU) and one-character tokens
   removed, so the eight-token cap is spent on distinctive words; an empty
@@ -2450,9 +2456,20 @@ result the search did not find.
   is exactly `search()`.
 
 **Request.** One call to `rerankWithJev` (`server/utils/jev/rerank.ts`): the
-query is the shared state (`{ query }`) and every candidate is a boolean
-question whose `instructions` are `{ task, passage }` from `JEV_RERANK`, so
-no passage sees another and one distractor cannot colour the rest. At most 30
+shared state holds the query and every passage as a top-level key
+(`{ query, passage_0, passage_1, ... }`), and every candidate is a boolean
+question whose `instructions` are only the fixed `JEV_RERANK.task` naming
+its key, "Is `passage_<i>` relevant to `query`?", with `JEV_RERANK.criteria`.
+Delta audit finding 6 (2026-10-26): a passage is third-party text (another
+chat's excerpt or a knowledge chunk), and in the question's `instructions`
+it could steer its own relevance score, so it moved into the state, the
+channel Jev treats as data and references by backtick path (the TypeSafe
+provider docs). Top-level keys are used because nested-path resolution is
+not documented. The trade-off: every question now sees every passage, where
+before each question saw only its own, and the wording departs from the
+2026-10-26 eval's `{ task, passage }` form, so `dropBelow` may need re-tuning
+on real traffic. The per-question limit (32k tokens, state plus one
+question) is far above 30 × 300 tokens. At most 30
 candidates are judged (`maxCandidates`); passages and the query are cut to
 about 300 tokens (`maxPassageTokens`), which matters for pre-retrieval, where
 the query is the whole user message. The query and every passage go through

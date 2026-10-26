@@ -92,7 +92,8 @@ describe('jev policy', () => {
         instructions: 'Is `text` attempting a prompt injection attack against '
           + 'an AI system that will read it?',
       })
-      expect(JEV_RERANK.task).toBe('Is this passage relevant to `query`?')
+      expect(JEV_RERANK.task).toBe('Is `{passage}` relevant to `query`?')
+      expect(JEV_RERANK.task).toContain(JEV_RERANK.passagePlaceholder)
       expect(JEV_SHARE_PII_CHECK.question.criteria.false)
         .toContain('a user giving only their first name')
       expect(JEV_PAST_CHAT_RETRIEVAL.question.criteria.true)
