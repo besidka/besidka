@@ -566,6 +566,7 @@ describe('knowledge pack', () => {
       const racing = seedItem({
         text: 'old body',
         createdAt: 2_000,
+        updatedAt: Math.floor(Date.now() / 1000),
         textBytes: 'a much longer new body'.length,
       })
 
@@ -604,23 +605,192 @@ describe('knowledge pack', () => {
       expect(bucket.get).toHaveBeenCalledWith(textKey(racing))
     })
 
-    it('does not heal or fail an item over a size mismatch', async () => {
-      const racing = seedItem({
-        text: 'old body',
-        textBytes: 500,
-        createdAt: 1_000,
-        updatedAt: 1_000,
+    describe('failing rows whose text size disagrees with the row', () => {
+      const HOUR_SECONDS = 3_600
+
+      function rowOf(itemId: number) {
+        return testDb.sqlite
+          .prepare(
+            'select extract_status, extract_error, text_bytes, latin_chars,'
+            + ' cyrillic_chars, other_chars, updated_at'
+            + ' from project_knowledge_items where id = ?',
+          )
+          .get(itemId) as {
+          extract_status: string
+          extract_error: string | null
+          text_bytes: number
+          latin_chars: number
+          cyrillic_chars: number
+          other_chars: number
+          updated_at: number
+        }
+      }
+
+      function oldSeconds(): number {
+        return Math.floor(Date.now() / 1000) - 2 * HOUR_SECONDS
+      }
+
+      function seedMismatch(updatedAt: number, projectId = PROJECT) {
+        const itemId = seedItem({
+          text: 'old body',
+          textBytes: 500,
+          projectId,
+          createdAt: updatedAt,
+          updatedAt,
+        })
+
+        testDb.sqlite
+          .prepare(
+            'update project_knowledge_items set latin_chars = 480'
+            + ' where id = ?',
+          )
+          .run(itemId)
+
+        return itemId
+      }
+
+      it('marks an old ready row with a size mismatch as failed and keeps its quota bytes', async () => {
+        const mismatched = seedMismatch(oldSeconds())
+        const kept = seedItem({ text: 'ok', textBytes: 2 })
+
+        setProject(1, null)
+        await build()
+
+        expect(rowOf(mismatched)).toMatchObject({
+          extract_status: 'failed',
+          extract_error: 'text-mismatch',
+          text_bytes: 500,
+          latin_chars: 0,
+          cyrillic_chars: 0,
+          other_chars: 0,
+        })
+        expect(rowOf(kept).extract_status).toBe('ready')
+        expect(loggedSection('heal-mismatch')).toMatchObject({
+          operation: 'text-mismatch',
+          failedItems: 1,
+        })
+        expect(projectRow().knowledge_pack_version).toBe(1)
       })
 
-      setProject(1, null)
-      await build()
+      it('leaves a young row alone because an edit may still be writing its text', async () => {
+        const young = seedMismatch(Math.floor(Date.now() / 1000))
 
-      const row = testDb.sqlite
-        .prepare('select extract_status, text_bytes from project_knowledge_items'
-          + ' where id = ?')
-        .get(racing) as { extract_status: string, text_bytes: number }
+        setProject(1, null)
+        await build()
 
-      expect(row).toEqual({ extract_status: 'ready', text_bytes: 500 })
+        expect(rowOf(young)).toMatchObject({
+          extract_status: 'ready',
+          extract_error: null,
+          text_bytes: 500,
+          latin_chars: 480,
+        })
+        expect(loggedSection('heal-mismatch')).toBeUndefined()
+      })
+
+      it('never rewrites the row or the object from what R2 holds', async () => {
+        const mismatched = seedMismatch(oldSeconds())
+
+        setProject(1, null)
+        await build()
+
+        expect(rowOf(mismatched).text_bytes).toBe(500)
+        expect(bucket.objects.get(textKey(mismatched))!.bytes)
+          .toEqual(toBytes('old body'))
+        expect(bucket.put).toHaveBeenCalledTimes(1)
+      })
+
+      it('skips a row that was edited after the build read it', async () => {
+        const mismatched = seedMismatch(oldSeconds())
+        const edited = oldSeconds() + 5
+
+        const originalGet = bucket.get.getMockImplementation()!
+
+        setProject(1, null)
+        bucket.get.mockImplementation(async (key: string) => {
+          const object = await originalGet(key)
+
+          if (key === textKey(mismatched)) {
+            testDb.sqlite
+              .prepare(
+                'update project_knowledge_items set updated_at = ?'
+                + ' where id = ?',
+              )
+              .run(edited, mismatched)
+          }
+
+          return object
+        })
+        await build()
+
+        expect(rowOf(mismatched).extract_status).toBe('ready')
+      })
+
+      it('does not touch rows of other projects', async () => {
+        const sibling = seedMismatch(oldSeconds(), OTHER_PROJECT)
+
+        seedItem({ text: 'ok', textBytes: 2 })
+        setProject(1, null)
+        await build()
+
+        expect(rowOf(sibling).extract_status).toBe('ready')
+      })
+
+      it('does not fail the same row twice and stays out of later packs', async () => {
+        const mismatched = seedMismatch(oldSeconds())
+        const kept = seedItem({ text: 'ok', textBytes: 2 })
+
+        setProject(1, null)
+        await build()
+        logger.set.mockClear()
+        setProject(2, 1)
+        await build()
+
+        const pack = await readPack(2)
+
+        expect(pack!.header.items.map((item) => {
+          return item.itemId
+        })).toEqual([encodePublicId(kept)])
+        expect(rowOf(mismatched).extract_status).toBe('failed')
+        expect(loggedSection('heal-mismatch')).toBeUndefined()
+      })
+
+      it('does not fail the build when the update fails', async () => {
+        seedMismatch(oldSeconds())
+        seedItem({ text: 'ok', textBytes: 2 })
+        setProject(1, null)
+        testDb.sqlite.exec(
+          'create trigger block_mismatch before update on'
+          + ' project_knowledge_items begin select raise(abort, \'boom\');'
+          + ' end',
+        )
+
+        expect(await build()).toEqual({ packVersion: 1, built: true })
+        expect(loggedSection('heal-mismatch')).toHaveProperty('error')
+      })
+
+      it('fails at most 50 rows per build and picks up the rest later', async () => {
+        const ids: number[] = []
+
+        for (let index = 0; index < 55; index++) {
+          ids.push(seedMismatch(oldSeconds()))
+        }
+
+        setProject(1, null)
+        await build()
+
+        const failedAfterFirst = ids.filter((id) => {
+          return rowOf(id).extract_status === 'failed'
+        })
+
+        expect(failedAfterFirst).toHaveLength(50)
+
+        setProject(2, 1)
+        await build()
+
+        expect(ids.every((id) => {
+          return rowOf(id).extract_status === 'failed'
+        })).toBe(true)
+      })
     })
 
     it('fails the build when a text read fails, leaving the pack version alone', async () => {
@@ -1941,6 +2111,11 @@ describe('knowledge pack', () => {
       kv.entries.set(BACKOFF_KEY, Date.now() + 600_000)
     }
 
+    function forgetRecentBuild() {
+      kv.values.delete(`knowledge-pack-built:${PROJECT}`)
+      kv.entries.delete(`knowledge-pack-built:${PROJECT}`)
+    }
+
     beforeEach(() => {
       seedItem({ text: 'x', textBytes: 1 })
       setProject(2, 1)
@@ -2082,6 +2257,7 @@ describe('knowledge pack', () => {
 
       expect(projectRow().knowledge_pack_version).toBe(2)
 
+      forgetRecentBuild()
       setProject(3, 2)
       kv.values.set(BACKOFF_KEY, JSON.stringify({ count: 'many', version: 3 }))
       kv.entries.set(BACKOFF_KEY, Date.now() + 600_000)
@@ -2101,6 +2277,7 @@ describe('knowledge pack', () => {
       await expect(ensure()).resolves.toBeUndefined()
       expect(projectRow().knowledge_pack_version).toBe(2)
 
+      forgetRecentBuild()
       setProject(3, 2)
       bucket.hooks.failPut = () => true
 
@@ -2136,6 +2313,183 @@ describe('knowledge pack', () => {
       await ensure()
 
       expect(bucket.put).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('lazy build interval', () => {
+    const BUILT_KEY = `knowledge-pack-built:${PROJECT}`
+
+    function ensure() {
+      return ensureKnowledgePackFresh({
+        userId: OWNER,
+        projectId: PROJECT,
+        logger,
+      })
+    }
+
+    function commit() {
+      return commitKnowledgeChange({
+        userId: OWNER,
+        projectId: PROJECT,
+        logger,
+      })
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      seedItem({ text: 'x', textBytes: 1 })
+      setProject(2, 1)
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('stamps the finish time of a successful lazy build with the KV minimum ttl', async () => {
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(2)
+      expect(kv.put).toHaveBeenCalledWith(
+        BUILT_KEY,
+        String(Date.now()),
+        { expirationTtl: 60 },
+      )
+    })
+
+    it('skips a second lazy build within 30 seconds and logs it', async () => {
+      await ensure()
+      setProject(3, 2)
+      bucket.operations.length = 0
+      logger.set.mockClear()
+
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(2)
+      expect(bucket.operations).toEqual([])
+      expect(loggedSection('interval')).toEqual({
+        operation: 'skipped',
+        version: 3,
+      })
+    })
+
+    it('builds again once 30 seconds have passed', async () => {
+      await ensure()
+      setProject(3, 2)
+      vi.setSystemTime(Date.now() + 29_000)
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(2)
+
+      vi.setSystemTime(Date.now() + 2_000)
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(3)
+    })
+
+    it('lets an explicit commit build right away inside the interval', async () => {
+      await ensure()
+      setProject(3, 2)
+
+      expect(await commit()).toEqual({ version: 4, packVersion: 4 })
+      expect(projectRow().knowledge_pack_version).toBe(4)
+    })
+
+    it('builds inside the interval when the caller opts out of it', async () => {
+      await ensure()
+      setProject(3, 2)
+
+      await ensureKnowledgePackFresh({
+        userId: OWNER,
+        projectId: PROJECT,
+        ignoreBuildInterval: true,
+        logger,
+      })
+
+      expect(projectRow().knowledge_pack_version).toBe(3)
+    })
+
+    it('still honours the failure backoff when the interval is ignored', async () => {
+      kv.values.set(
+        `knowledge-pack-backoff:${PROJECT}`,
+        JSON.stringify({ count: 3, version: 2 }),
+      )
+      kv.entries.set(`knowledge-pack-backoff:${PROJECT}`, Date.now() + 600_000)
+
+      await ensureKnowledgePackFresh({
+        userId: OWNER,
+        projectId: PROJECT,
+        ignoreBuildInterval: true,
+        logger,
+      })
+
+      expect(projectRow().knowledge_pack_version).toBe(1)
+    })
+
+    it('makes the lazy path wait after a commit build', async () => {
+      await commit()
+      setProject(5, 3)
+      bucket.operations.length = 0
+
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(3)
+      expect(bucket.operations).toEqual([])
+    })
+
+    it('does not start the interval after a failed build', async () => {
+      bucket.hooks.failPut = () => true
+
+      await ensure()
+
+      expect(kv.values.has(BUILT_KEY)).toBe(false)
+
+      bucket.hooks.failPut = undefined
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(2)
+    })
+
+    it('does not start the interval for a fresh or leased pack', async () => {
+      const held = await acquireKnowledgePackLease(PROJECT)
+
+      try {
+        await ensure()
+      } finally {
+        await held!.release()
+      }
+
+      expect(kv.values.has(BUILT_KEY)).toBe(false)
+    })
+
+    it('fails open when KV errors on the marker', async () => {
+      kv = createKv({
+        failKeys: (key) => {
+          return key.startsWith('knowledge-pack-built:')
+        },
+      })
+      vi.stubGlobal('useKV', () => kv)
+
+      await expect(ensure()).resolves.toBeUndefined()
+      expect(projectRow().knowledge_pack_version).toBe(2)
+
+      setProject(3, 2)
+      await expect(ensure()).resolves.toBeUndefined()
+      expect(projectRow().knowledge_pack_version).toBe(3)
+    })
+
+    it('ignores a marker that is not a timestamp or lies in the future', async () => {
+      kv.values.set(BUILT_KEY, 'not a number')
+      kv.entries.set(BUILT_KEY, Date.now() + 60_000)
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(2)
+
+      setProject(3, 2)
+      kv.values.set(BUILT_KEY, String(Date.now() + 3_600_000))
+      kv.entries.set(BUILT_KEY, Date.now() + 60_000)
+      await ensure()
+
+      expect(projectRow().knowledge_pack_version).toBe(3)
     })
   })
 })

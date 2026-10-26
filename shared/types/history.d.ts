@@ -13,6 +13,7 @@ type HistoryChatRow = Pick<
   projectId: typeof schema.chats.$inferSelect['projectId'] | null
   projectName: typeof schema.projects.$inferSelect['name'] | null
   shared: boolean
+  memoryExcluded?: typeof schema.chats.$inferSelect['memoryExcluded']
   matchedIn?: 'title' | 'content' | 'both'
   snippet?: string | null
 }

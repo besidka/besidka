@@ -20,10 +20,10 @@
     >
       <Icon name="lucide:ellipsis-vertical" size="16" />
     </summary>
-    <div class="dropdown-content z-50 w-52 pt-2">
+    <div class="dropdown-content z-50 w-64 pt-2">
       <ul
         tabindex="0"
-        class="menu menu-sm bg-base-100 rounded-box shadow-lg w-52 p-1"
+        class="menu menu-sm bg-base-100 rounded-box shadow-lg w-64 p-1"
       >
         <li>
           <button
@@ -72,6 +72,20 @@
             <Icon name="lucide:pencil" size="14" />
             Rename
           </button>
+        </li>
+        <li v-if="variant !== 'shared'">
+          <label :title="CHAT_MEMORY_EXCLUSION_HELPER">
+            <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="14" />
+            <span class="grow">{{ CHAT_MEMORY_EXCLUSION_LABEL }}</span>
+            <input
+              type="checkbox"
+              class="toggle toggle-xs toggle-accent"
+              data-testid="chat-action-memory-exclusion"
+              :checked="isMemoryExcluded"
+              :disabled="isSavingMemoryExclusion"
+              @change="onToggleMemoryExclusion"
+            >
+          </label>
         </li>
         <li v-if="variant !== 'shared'">
           <button
@@ -144,6 +158,19 @@ const emit = defineEmits<{
 }>()
 
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
+const {
+  savingSlug: memoryExclusionSavingSlug,
+  isChatMemoryExcluded,
+  setChatMemoryExcluded,
+} = useChatMemoryExclusion()
+
+const isMemoryExcluded = computed<boolean>(() => {
+  return isChatMemoryExcluded(props.chat.slug, props.chat.memoryExcluded)
+})
+
+const isSavingMemoryExclusion = computed<boolean>(() => {
+  return memoryExclusionSavingSlug.value === props.chat.slug
+})
 
 onClickOutside(dropdownRef, () => {
   if (dropdownRef.value?.open) {
@@ -183,6 +210,15 @@ function onRemoveFromProject() {
 function onRename() {
   closeDropdown()
   emit('rename')
+}
+
+async function onToggleMemoryExclusion(event: Event) {
+  const input = event.target as HTMLInputElement
+  const nextValue = input.checked
+
+  input.checked = isMemoryExcluded.value
+  closeDropdown()
+  await setChatMemoryExcluded(props.chat.slug, nextValue)
 }
 
 function onShare() {

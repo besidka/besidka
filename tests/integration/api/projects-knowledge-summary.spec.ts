@@ -89,6 +89,7 @@ describe('project knowledge summary API', () => {
         textBytes: 0,
         items: 0,
       },
+      accountItems: 0,
     })
   })
 
@@ -146,6 +147,7 @@ describe('project knowledge summary API', () => {
         items: 2,
       },
     })
+    expect(summary.accountItems).toBe(3)
     expect(summary.items.map((item: { title: string }) => {
       return item.title
     })).toEqual(['First', 'Second'])
@@ -158,6 +160,28 @@ describe('project knowledge summary API', () => {
       pinned: false,
     })
     expect(summary.items[1].contentHash).toBeNull()
+  })
+
+  it('counts the items of every project of the owner and none of another account', async () => {
+    harness.testDb.insertProject({ id: PROJECT, userId: OWNER })
+    harness.testDb.insertProject({ id: 11, userId: OWNER })
+    harness.testDb.insertProject({ id: 12, userId: 2 })
+    harness.testDb.insertItem({ userId: OWNER, projectId: PROJECT })
+    harness.testDb.insertItem({ userId: OWNER, projectId: 11 })
+    harness.testDb.insertItem({ userId: OWNER, projectId: 11 })
+    harness.testDb.insertItem({
+      userId: OWNER,
+      projectId: 11,
+      extractStatus: 'failed',
+      textBytes: 0,
+    })
+    harness.testDb.insertItem({ userId: 2, projectId: 12 })
+    harness.testDb.insertItem({ userId: 2, projectId: 12 })
+
+    const summary = await getSummary()
+
+    expect(summary.accountItems).toBe(4)
+    expect(summary.totals.items).toBe(1)
   })
 
   it('schedules a pack refresh through waitUntil when the pack is behind', async () => {

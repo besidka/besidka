@@ -5,6 +5,8 @@ import { acquireMemoryLease } from '~~/server/utils/projects/memory-lease'
 
 const BACKOFF_FAILURE_THRESHOLD = 3
 const BACKOFF_TTL_SECONDS = 600
+const LAZY_BUILD_MIN_INTERVAL_MS = 30_000
+const KV_MIN_EXPIRATION_SECONDS = 60
 
 export function knowledgePackBuildLeaseKey(projectId: number): string {
   return `knowledge-pack-build:${projectId}`
@@ -142,5 +144,56 @@ export async function clearKnowledgePackBackoff(
     await useKV().delete(knowledgePackBackoffKey(projectId))
   } catch (exception) {
     logBackoffError(logger, 'clear', exception)
+  }
+}
+
+export function knowledgePackBuiltKey(projectId: number): string {
+  return `knowledge-pack-built:${projectId}`
+}
+
+/**
+ * True when a pack build for this project finished less than 30 seconds ago,
+ * so the lazy rebuild path (panel loads, sends) waits instead of building
+ * once per insert batch of a running upload. The marker holds the finish
+ * time because KV cannot expire a key sooner than 60 seconds. Explicit
+ * commits never read it. KV errors and unreadable values fail open.
+ */
+export async function isKnowledgePackRecentlyBuilt(
+  projectId: number,
+  logger?: LoggerLike,
+): Promise<boolean> {
+  try {
+    const stored = await useKV().get(knowledgePackBuiltKey(projectId))
+    const builtAt = Number(stored)
+
+    if (!stored || !Number.isFinite(builtAt)) {
+      return false
+    }
+
+    const elapsedMs = Date.now() - builtAt
+
+    return elapsedMs >= 0 && elapsedMs < LAZY_BUILD_MIN_INTERVAL_MS
+  } catch (exception) {
+    logBackoffError(logger, 'read-built', exception)
+
+    return false
+  }
+}
+
+/**
+ * Stamps the finish time of a successful build. Never throws.
+ */
+export async function recordKnowledgePackBuilt(
+  projectId: number,
+  logger?: LoggerLike,
+): Promise<void> {
+  try {
+    await useKV().put(
+      knowledgePackBuiltKey(projectId),
+      String(Date.now()),
+      { expirationTtl: KV_MIN_EXPIRATION_SECONDS },
+    )
+  } catch (exception) {
+    logBackoffError(logger, 'record-built', exception)
   }
 }

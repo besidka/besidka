@@ -73,6 +73,7 @@ export interface ProjectKnowledgeSummary {
   packVersion: number | null
   items: KnowledgeItem[]
   totals: KnowledgeCharCounts & { textBytes: number, items: number }
+  accountItems: number
 }
 
 export interface KnowledgePackHeader {
@@ -100,6 +101,7 @@ export interface KnowledgeDecisionInput {
   estimatedSystemTokens: number
   estimatedHistoryTokens: number
   toolTokens: number
+  previousMode?: KnowledgeDecisionMode | null
 }
 
 export interface KnowledgeDecision {

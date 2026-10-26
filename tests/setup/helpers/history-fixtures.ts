@@ -17,6 +17,7 @@ export function createHistoryChat(
     projectId: overrides.projectId ?? null,
     projectName: overrides.projectName ?? null,
     shared: overrides.shared ?? false,
+    memoryExcluded: overrides.memoryExcluded,
     matchedIn: overrides.matchedIn,
     snippet: overrides.snippet,
   }

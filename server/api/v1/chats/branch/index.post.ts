@@ -45,6 +45,7 @@ export default defineEventHandler(async (event) => {
       id: true,
       title: true,
       projectId: true,
+      memoryExcluded: true,
     },
     with: {
       messages: {
@@ -100,6 +101,7 @@ export default defineEventHandler(async (event) => {
       userId,
       title,
       ...(chat.projectId ? { projectId: chat.projectId } : {}),
+      ...(chat.memoryExcluded ? { memoryExcluded: true } : {}),
     })
     .returning({
       id: schema.chats.id,

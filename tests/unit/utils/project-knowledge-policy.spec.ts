@@ -28,6 +28,7 @@ describe('knowledge enums', () => {
       'forced-search',
       'within-budget',
       'over-budget',
+      'hysteresis',
       'does-not-fit',
     ])
   })
@@ -64,6 +65,7 @@ describe('KNOWLEDGE_BUDGET', () => {
   it('matches the design constants', () => {
     expect(KNOWLEDGE_BUDGET).toEqual({
       contextWindowShare: 0.07,
+      searchReturnShare: 0.85,
       absoluteCapTokens: 64_000,
       estimateMargin: 1.15,
       unknownContextWindowTokens: 128_000,

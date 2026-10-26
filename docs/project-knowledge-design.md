@@ -289,6 +289,23 @@ and the model, so the mode does not flicker turn to turn. History enters
 only through `fits`. History only grows, so a chat flips to search at most
 once per model.
 
+**Hysteresis in auto mode (open item 3, built).** `K ≤ B` alone still lets one
+large insert flip a chat full → search → full (a paste lifts `K` above `B`, a
+removal drops it back) and each flip rewrites the cached prompt prefix. So
+`decideKnowledgeMode` takes the chat's previous mode: auto switches to search
+above 100% of `B` as before, but a chat whose previous send was `search` goes
+back to full only at or below `KNOWLEDGE_BUDGET.searchReturnShare` (85%) of
+`B`; between the two it stays on search with reason `hysteresis`. The `fits`
+check runs first, so `does-not-fit` keeps its own reason. Forced `full` and
+`search`, the meter (no previous mode) and a chat with no recorded mode are
+unchanged. The previous mode needs no column: `addKnowledgeContextUsage`
+writes `knowledgeMode` into the assistant message's `usage` metadata (a JSON
+blob), and `readPreviousKnowledgeMode` reads it from the newest assistant
+message that has usage (`server/utils/knowledge/previous-mode.ts`). It is read
+independently of the token-family check that gates the measured history,
+because the mode carries across model families and measured tokens do not.
+Messages stored before the field existed read as `null`, the plain rule.
+
 ### 5.3 Cost: why 64k
 
 The prompt-cache estimator (section 11.3) gives these numbers for the
@@ -749,11 +766,44 @@ Audit fixes in the limits (P3, findings 5 to 8 of the memory security audit):
   `updatedAt` alone. So `buildLeasedPack` now reads each item through
   `readKnowledgeItemText` and leaves out any item whose R2 object size differs
   from `text_bytes` (counted as `sizeMismatchItems` in the build log, not
-  healed, not cached); the edit's own commit rebuilds and re-reads it. An item
-  whose text really disagrees with its row stays out of the pack until it is
-  next edited or the object is repaired. Before, the text was written first and restored best effort, so a
+  cached); the edit's own commit rebuilds and re-reads it. **Open item 2
+  (built):** a row that stays mismatched past the one-hour heal age gate is
+  marked `failed` with `extract_error = 'text-mismatch'` (`failSizeMismatchRows`,
+  at most 50 per build, matched on the `updated_at` the build saw), so the
+  list stops showing it as `ready`. It is surfaced, not healed from R2:
+  the object may be the older half of a note edit (the row is updated first),
+  so rewriting `text_bytes`, hash and counts from it would silently revert the
+  user's edit and could raise `text_bytes` past cap guards that never ran.
+  `text_bytes` stays as it was (the quota keeps counting it until the user
+  acts) and the character counts go to 0 so the meter stops counting text
+  that is not sent. A file item is repaired with "Remove and add again" (the
+  sheet already offers it for `failed`); a note is repaired by saving it
+  again: `updateKnowledgeNote` treats a body on a non-`ready` note as a
+  body change even when the hash is equal, writes the text, commits and sets
+  the row back to `ready`. `text-missing` and `text-mismatch` now have their
+  own UI copy. Before, the text was written first and restored best effort, so a
   race or a killed invocation could leave text over the cap in R2 or another
   request's text restored.
+- **The account-wide item count is on the meter (open item 1, built).** The
+  knowledge list API returns `accountItems`, an ownership-scoped
+  `COUNT(*)` over all of the user's rows (`countUserKnowledgeItems`, the same
+  function the 2000-item guard uses), at the top level of the summary because
+  `totals` is recomputed from the item list on every optimistic patch. The
+  composable adjusts it by the add/remove delta until the next refresh.
+  `CapacityMeter` shows a warning from 90% of `maxItemsPerUser` (1,800 items)
+  that names the account limit, and an error line at 2,000.
+- **Lazy rebuilds wait 30 seconds after any build (open item 4, built).**
+  `ensureKnowledgePackFresh` (panel loads, sends) skips a rebuild when a build
+  for the project finished less than 30 seconds ago, so the panel refreshes of
+  a running upload do not build once per insert batch. The marker is a KV
+  `knowledge-pack-built:<projectId>` value holding the finish time with a 60 s
+  expiry (KV cannot expire a key sooner) and is written by every successful
+  build; only the lazy path reads it. A commit through
+  `commitKnowledgeChange` builds right away, and so does the empty or
+  all-duplicate commit that settles through `ensureKnowledgePackFresh`, which
+  passes `ignoreBuildInterval: true` (without it the closing `commit({})` of a
+  batched upload could be skipped and the pack left stale). It fails open on KV errors, is logged as `knowledgePack.interval` and is
+  independent of the three-failures backoff.
 - **An unchanged commit does nothing.** A commit where no id matches an item
   (empty list, unknown, foreign or out-of-folder ids), and an items `POST`
   with `commit: true` whose every item is a duplicate, no longer bump
@@ -1441,9 +1491,10 @@ chunk line, header version and order checks). On send, a lagging pointer
 `commitKnowledgeChange` (K1 exposes no same-version force rebuild), at most
 once per project per 10 minutes through a KV throttle, because each repair
 bumps the version and would otherwise bypass K1's per-version backoff. The
-send never waits and always uses whatever pack is readable. **Deferred design call**: mode hysteresis. `fits`
-includes the current message, so one very large paste can flip full →
-search → full and invalidate the prompt cache twice.
+send never waits and always uses whatever pack is readable. Mode hysteresis,
+once a deferred design call, is built (see 5.2): `fits` includes the current
+message, so one very large paste used to flip full → search → full and
+invalidate the prompt cache twice.
 
 ### 16.6 K1 as built (#525)
 

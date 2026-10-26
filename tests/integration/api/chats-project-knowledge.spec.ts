@@ -1110,6 +1110,94 @@ describe('project knowledge send-path wiring', () => {
     }))
   })
 
+  describe('mode hysteresis across sends', () => {
+    const KNOWLEDGE_IN_BAND = {
+      items: [{ latinChars: 232_000, textBytes: 232_000 }],
+    }
+
+    function previousAnswer(knowledgeMode?: 'full' | 'search' | 'none') {
+      return [{
+        id: 2,
+        publicId: 'assistant-public-0',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Earlier answer' }],
+        tools: [],
+        reasoning: 'off',
+        usage: {
+          model: DIRECT_MODEL_ID,
+          provider: 'openai',
+          inputTokens: 500,
+          outputTokens: 40,
+          totalTokens: 540,
+          ...(knowledgeMode ? { knowledgeMode } : {}),
+        },
+        createdAt: new Date('2026-10-25T09:01:00.000Z'),
+      }]
+    }
+
+    it('keeps searching in the 85% to 100% band after a search send', async () => {
+      const { assistantInsert } = await runSend({
+        scenario: KNOWLEDGE_IN_BAND,
+        messages: previousAnswer('search'),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'search',
+        reason: 'hysteresis',
+        previousMode: 'search',
+      }))
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        knowledgeMode: 'search',
+        knowledgeTokens: 0,
+      }))
+    })
+
+    it('stays full in the same band after a full send', async () => {
+      const { assistantInsert } = await runSend({
+        scenario: KNOWLEDGE_IN_BAND,
+        messages: previousAnswer('full'),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'full',
+        reason: 'within-budget',
+        previousMode: 'full',
+      }))
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        knowledgeMode: 'full',
+      }))
+    })
+
+    it('uses the plain budget rule for a chat that has no recorded mode', async () => {
+      await runSend({
+        scenario: KNOWLEDGE_IN_BAND,
+        messages: previousAnswer(),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'full',
+        reason: 'within-budget',
+        previousMode: null,
+      }))
+    })
+
+    it('returns to full once the knowledge is under 85% of the budget', async () => {
+      await runSend({
+        scenario: { items: [{ latinChars: 200_000, textBytes: 200_000 }] },
+        messages: previousAnswer('search'),
+        steps: [createTextChunks('The fifth of May.')],
+      })
+
+      expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
+        mode: 'full',
+        reason: 'within-budget',
+      }))
+    })
+  })
+
   it('never loads knowledge for a chat outside a project', async () => {
     const { doStream, assistantInsert } = await runSend({
       inProject: false,

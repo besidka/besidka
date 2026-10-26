@@ -23,6 +23,7 @@ describe('readChat', () => {
     userId: number
     title?: string
     projectId?: number
+    memoryExcluded?: boolean
   }): void {
     testDb.insertChat({
       id: input.id,
@@ -30,6 +31,7 @@ describe('readChat', () => {
       slug: `slug-${input.id}`,
       title: input.title ?? `Chat ${input.id}`,
       projectId: input.projectId,
+      memoryExcluded: input.memoryExcluded,
     })
   }
 
@@ -124,6 +126,31 @@ describe('readChat', () => {
     expect(missing.message).toBe(foreign.message)
     expect(missing.why).toBe(foreign.why)
     expect(missing.fix).toBe(foreign.fix)
+  })
+
+  it('rejects a chat excluded from memory with the same 404', async () => {
+    seedChat({ id: 1, userId: 1, memoryExcluded: true })
+    seedMessage({ chatId: 1, text: 'kept out of memory' })
+
+    const excluded = await read({ chatId: 'slug-1' })
+      .catch(exception => exception)
+    const missing = await read({ chatId: 'slug-404' })
+      .catch(exception => exception)
+
+    expect(excluded).toBeInstanceOf(Error)
+    expect(excluded.status).toBe(404)
+    expect(excluded.message).toBe(missing.message)
+    expect(excluded.why).toBe(missing.why)
+    expect(excluded.fix).toBe(missing.fix)
+  })
+
+  it('reads a chat whose exclusion flag is off', async () => {
+    seedChat({ id: 1, userId: 1, memoryExcluded: false })
+    seedMessage({ chatId: 1, text: 'back in memory' })
+
+    const result = await read({ chatId: 'slug-1' })
+
+    expect(result.messages).toHaveLength(1)
   })
 
   it('rejects a chat outside the project scope with the same 404', async () => {
