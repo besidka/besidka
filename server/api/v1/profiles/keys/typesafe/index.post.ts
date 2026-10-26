@@ -49,8 +49,8 @@ export default defineEventHandler(async (event) => {
     throw createError({
       message: 'TypeSafe AI rejected this API key',
       status: 400,
-      why: 'TypeSafe AI answered 401 Unauthorized when Besidka checked the '
-        + 'key, so it is wrong, revoked or from another account.',
+      why: 'TypeSafe AI refused the key (401 or 403) when Besidka checked '
+        + 'it, so it is wrong, revoked or from another account.',
       fix: 'Copy the key again from the TypeSafe AI console '
         + '(console.typesafe.ai/keys) and paste it here.',
     })

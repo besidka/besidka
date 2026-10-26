@@ -220,7 +220,7 @@ describe('TypeSafe AI key API', () => {
       } as any)).rejects.toMatchObject({
         status: 400,
         message: 'TypeSafe AI rejected this API key',
-        why: expect.stringContaining('401 Unauthorized'),
+        why: expect.stringContaining('401 or 403'),
         fix: expect.stringContaining('console.typesafe.ai/keys'),
       })
       expect(dbMock.spies.insert).not.toHaveBeenCalled()
