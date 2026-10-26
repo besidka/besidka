@@ -4,21 +4,21 @@ description: Create a Qwen API key on QwenCloud and add it to Besidka. Pay as yo
 provider: qwen
 keyUrl: https://home.qwencloud.com/api-keys
 keyUrlLabel: Open QwenCloud keys page
-updatedAt: '2026-10-20'
+updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Add payment details, create a key on QwenCloud, and chat with Qwen models. QwenCloud may ask you to verify your identity first.
 video:
-  src: /videos/key-guide-qwen.mp4
-  poster: /key-guides/qwen.webp
+  src: /videos/key-guide-qwen.mp4?v=2
+  poster: /key-guides/qwen.webp?v=2
   duration: PT33S
-  uploadDate: '2026-10-20'
+  uploadDate: '2026-10-26'
   alt: Recording of QwenCloud and Besidka. The API Keys page with Create API key, the identity verification notice, the remaining key creation steps shown as text rather than a recording, then the key pasted into Besidka and a first answer from Qwen.
   qualities:
-    - src: /videos/key-guide-qwen-1080.mp4
+    - src: /videos/key-guide-qwen-1080.mp4?v=2
       size: 1080
-    - src: /videos/key-guide-qwen.mp4
+    - src: /videos/key-guide-qwen.mp4?v=2
       size: 720
-    - src: /videos/key-guide-qwen-360.mp4
+    - src: /videos/key-guide-qwen-360.mp4?v=2
       size: 360
   markers:
     - time: "0:00"

@@ -4,21 +4,21 @@ description: Create an OpenAI API key and add it to Besidka. Prepaid credits fro
 provider: openai
 keyUrl: https://platform.openai.com/api-keys
 keyUrlLabel: Open OpenAI keys page
-updatedAt: '2026-10-20'
+updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Buy $5 of credits, create a secret key, and chat with GPT models on your own bill.
 video:
-  src: /videos/key-guide-openai.mp4
-  poster: /key-guides/openai.webp
+  src: /videos/key-guide-openai.mp4?v=2
+  poster: /key-guides/openai.webp?v=2
   duration: PT35S
-  uploadDate: '2026-10-20'
+  uploadDate: '2026-10-26'
   alt: Screen recording of the OpenAI platform. The API keys page, the Create new secret key dialog with a name and an expiration, the new key shown once, then the key pasted into Besidka and a first answer.
   qualities:
-    - src: /videos/key-guide-openai-1080.mp4
+    - src: /videos/key-guide-openai-1080.mp4?v=2
       size: 1080
-    - src: /videos/key-guide-openai.mp4
+    - src: /videos/key-guide-openai.mp4?v=2
       size: 720
-    - src: /videos/key-guide-openai-360.mp4
+    - src: /videos/key-guide-openai-360.mp4?v=2
       size: 360
   markers:
     - time: "0:00"

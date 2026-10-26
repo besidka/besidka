@@ -4,21 +4,21 @@ description: Create a Kimi API key on the Moonshot AI platform and add it to Bes
 provider: moonshotai
 keyUrl: https://platform.kimi.ai/console/api-keys
 keyUrlLabel: Open Kimi platform keys page
-updatedAt: '2026-10-20'
+updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Recharge a small balance, create a key on the Kimi platform, and chat with Kimi models.
 video:
-  src: /videos/key-guide-moonshotai.mp4
-  poster: /key-guides/moonshotai.webp
+  src: /videos/key-guide-moonshotai.mp4?v=2
+  poster: /key-guides/moonshotai.webp?v=2
   duration: PT34S
-  uploadDate: '2026-10-20'
+  uploadDate: '2026-10-26'
   alt: Screen recording of the Kimi platform. The API Keys page, the Create API Key dialog with a name and a project, the new key shown once and masked, then the key pasted into Besidka and a first answer from Kimi.
   qualities:
-    - src: /videos/key-guide-moonshotai-1080.mp4
+    - src: /videos/key-guide-moonshotai-1080.mp4?v=2
       size: 1080
-    - src: /videos/key-guide-moonshotai.mp4
+    - src: /videos/key-guide-moonshotai.mp4?v=2
       size: 720
-    - src: /videos/key-guide-moonshotai-360.mp4
+    - src: /videos/key-guide-moonshotai-360.mp4?v=2
       size: 360
   markers:
     - time: "0:00"
