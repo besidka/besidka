@@ -67,6 +67,57 @@ const POLITICAL_NOUNS_EN = String.raw`parties|party|candidates?|elections?`
   + String.raw`|governor|prime minister|labou?r|tor(?:y|ies)|democrats`
   + String.raw`|republicans|conservatives|greens|libertarians`
 
+const DEMONYMS_EN = 'nigerian|ghanaian|kenyan|ethiopian|eritrean|somali'
+  + '|sudanese|congolese|senegalese|african|moroccan|algerian|tunisian'
+  + '|egyptian|arab|turkish|kurdish|persian|iranian|iraqi|syrian|lebanese'
+  + '|palestinian|israeli|jewish|indian|pakistani|bangladeshi|sri lankan'
+  + '|nepali|chinese|japanese|korean|vietnamese|thai|filipino|filipina'
+  + '|indonesian|malaysian|asian|mexican|cuban|puerto rican|dominican'
+  + '|colombian|brazilian|argentinian|argentine|peruvian|chilean'
+  + '|venezuelan|latino|latina|hispanic|jamaican|haitian|caribbean'
+  + '|native american|cherokee|navajo|aboriginal|maori|polish|ukrainian'
+  + '|russian|belarusian|lithuanian|latvian|estonian|czech|slovak'
+  + '|hungarian|romanian|bulgarian|serbian|croatian|bosnian|albanian'
+  + '|greek|italian|spanish|portuguese|french|german|austrian|swiss|dutch'
+  + '|belgian|danish|swedish|norwegian|finnish|irish|scottish|welsh'
+  + '|english|british|american|canadian|australian|roma|romani|gypsy'
+  + '|tatar|armenian|georgian|azerbaijani|kazakh|uzbek|mongolian|tibetan'
+  + '|uyghur|white|black|caucasian'
+
+const PARTY_NAMES_EN = String.raw`labou?r|tor(?:y|ies)`
+  + String.raw`|conservatives?|lib ?dems?|liberal democrats?|liberals?`
+  + String.raw`|democrats?|democratic|republicans?|socialists?|communists?`
+  + String.raw`|libertarians?|reform uk|snp|ukip|plaid cymru|sinn fein`
+
+const VOTE_ADVERBS_EN = String.raw`(?:always|usually|normally|still|now`
+  + String.raw`|also|just|never|have always|'ve always|would never|will never) `
+
+const VOTER_EN = String.raw`(?:i|we) (?:${VOTE_ADVERBS_EN})?(?:vote|voted|will vote|would vote)`
+  + String.raw`|(?:${VOTE_ADVERBS_EN})?votes|${I_AM} voting|we(?:'re| are) voting`
+
+const VOTE_CONTEXT_EN = String.raw`party|candidates?|ticket`
+  + String.raw`|every (?:\p{L}+ )?elections?`
+  + String.raw`|(?:at|in) (?:the |every |each |this |last |next )?(?:\p{L}+ )?elections?`
+  + String.raw`|(?:in|since) \d{4}`
+
+const VOTE_END_EN = createClauseEnd(
+  'and|but',
+  'i|my|we|our',
+  String.raw`${VOTE_CONTEXT_EN}|again|too`,
+)
+
+const VOTE_CONTEXT_END_EN = String.raw`(?=\s+(?:${VOTE_CONTEXT_EN})${WORD_END})`
+
+const PARTY_NAMES_UK = String.raw`європейськ\p{L}* солідарн\p{L}*`
+  + String.raw`|слуг\p{L}* народу|батьківщин\p{L}*|опзж`
+  + String.raw`|опозиційн\p{L}* платформ\p{L}*|самопоміч\p{L}*`
+  + String.raw`|радикальн\p{L}* парті\p{L}*`
+
+const PARTY_NAMES_PL = String.raw`lewic\p{L}*|prawic\p{L}*|pis`
+  + String.raw`|koalicj\p{L}* obywatelsk\p{L}*|platform\p{L}* obywatelsk\p{L}*`
+  + String.raw`|konfederacj\p{L}*|psl|trzeci\p{L}* drog\p{L}*|polsk\p{L}* 2050`
+  + String.raw`|kukiz\p{L}*|zielonych|partię razem`
+
 const DIAGNOSED_CONDITIONS_EN = String.raw`lupus|ibs|irritable bowel|arthritis`
   + String.raw`|fibromyalgia|psoriasis|eczema|copd|leuk(?:a)?emia|lymphoma`
   + String.raw`|melanoma|tumou?r|cancer|an(?:a)?emia|hepatitis|tuberculosis`
@@ -88,6 +139,175 @@ const MEDICAL_STEMS_UK = String.raw`діабет|астм|епілеп|депр�
 const MEDICAL_STEMS_PL = String.raw`cukrzyc|astm|padaczk|depresj|schizofreni`
   + String.raw`|nowotw|raka?|nadciśnien|migren|białaczk|stwardnien|zapaleni`
   + String.raw`|autyzm|alzheimer|parkinson|chorob`
+
+const NON_PERSON_SUBJECTS_EN = 'it|this|that|there|here|which|what|who'
+  + '|church|cathedral|chapel|school|college|university|hospital|charity'
+  + '|country|nation|state|region|city|town|village|area|population'
+  + '|majority|minority|tradition|text|book|essay|paper|article|movement'
+  + '|order|parish|diocese|empire|kingdom|government|party|art|architecture'
+  + '|style|culture|society|community|religion|holiday|festival|wedding'
+  + '|ceremony|service|food|restaurant|shop|name|surname|nickname|username'
+  + '|title|brand|band|song|film|movie|show|app|tool|server|library|code'
+
+const BELIEF_SUBJECT_EN = String.raw`(?:${I_AM}|we(?:'re| are| were)|i was`
+  + String.raw`|(?:he|she)'s|they(?:'re| are| were)`
+  + String.raw`|(?:my|our|his|her|their) (?:\p{L}+ )?(?!(?:${NON_PERSON_SUBJECTS_EN})(?:e?s)? )\p{L}+ (?:are|were)`
+  + String.raw`|(?!(?:${NON_PERSON_SUBJECTS_EN}) )\p{L}+ (?:is|was)`
+  + String.raw`|as an?|identif(?:y|ies|ied) as)`
+
+const BELIEF_QUALIFIERS_EN = String.raw`(?:(?:not|no longer|never|always`
+  + String.raw`|still|also|now|both|a|an|very|deeply|quite|really|devout(?:ly)?`
+  + String.raw`|practi[cs]ing|non[-\s]?practi[cs]ing|observant|lapsed|strict`
+  + String.raw`|modern|roman|greek|reform|former|cultural(?:ly)?|secular`
+  + String.raw`|evangelical|orthodox|proud) |ex-){0,4}`
+
+const BELIEF_IDENTITIES_EN = String.raw`christians?|catholics?|protestants?`
+  + String.raw`|evangelicals?(?![-\s]+about${WORD_END})|baptists?|lutherans?`
+  + String.raw`|anglicans?|methodists?|pentecostals?|presbyterians?|quakers?`
+  + String.raw`|muslims?|moslems?|sunnis?|shiites?|jews?|jewish|hindus?`
+  + String.raw`|buddhists?|sikhs?|mormons?|jehovah's witness(?:es)?|atheists?`
+  + String.raw`|orthodox (?:christian|jew|catholic)s?|born[-\s]again(?: christians?)?`
+  + String.raw`|religious(?![-\s]+about${WORD_END})`
+  + String.raw`|(?:non[-\s]?)?believers?(?![-\s]+in${WORD_END})`
+
+const BELIEF_DOCTRINES_EN = String.raw`christianity|catholicism`
+  + String.raw`|protestantism|islam(?![-\s]*abad)|judaism|buddhism|hinduism`
+  + String.raw`|sikhism|mormonism|atheism|agnosticism|paganism`
+
+const NOT_BELIEF_INSTITUTION_EN = String.raw`(?![-\s]+(?:church(?:es)?`
+  + String.raw`|cathedrals?|chapels?|schools?|universit(?:y|ies)|colleges?`
+  + String.raw`|hospitals?|charit(?:y|ies)|countr(?:y|ies)|nations?|states?`
+  + String.raw`|empires?|kingdoms?|traditions?|history|theology|doctrines?`
+  + String.raw`|teachings?|art|architecture|press|museums?|calendars?|holidays?`
+  + String.raw`|organi[sz]ations?|institutions?|missions?|monaster(?:y|ies)`
+  + String.raw`|orders?|clergy|hierarchy|population|majority|minority|regions?`
+  + String.raw`|world|kush)${WORD_END})`
+
+const NOT_MASS_EN = String.raw`(?![-\s]+(?:transit|transport\p{L}*`
+  + String.raw`|shooting\p{L}*|market\p{L}*|media|hysteria|extinction|migration`
+  + String.raw`|surveillance|production|protest\p{L}*|spectrom\p{L}*|email\p{L}*`
+  + String.raw`|layoffs?|effect|appeal|adoption)${WORD_END})`
+
+const WORSHIP_PLACE_EN = String.raw`(?:\p{L}+ )?(?:church|mosque|synagogue`
+  + String.raw`|temple|mass${NOT_MASS_EN})`
+
+const BELIEF_LINE_START = String.raw`(?<=(?:(?:^|\n)[^\S\n]*(?:[-*•–—][^\S\n]*)?`
+  + String.raw`|[.;!?:][^\S\n]*))`
+
+const BELIEF_LINE_END_EN = createClauseEnd(
+  'and|but',
+  String.raw`\p{L}+`,
+  String.raw`since (?:\p{L}+|\d{4})|for \p{L}+ years?`,
+)
+
+const BELIEF_LINE_END_UK = createClauseEnd(
+  'і|та|але|а',
+  String.raw`\p{L}+`,
+  String.raw`з \d{4}|від народження`,
+)
+
+const BELIEF_LINE_END_PL = createClauseEnd(
+  'i|ale|a',
+  String.raw`\p{L}+`,
+  String.raw`od (?:\p{L}+|\d{4})`,
+)
+
+const BELIEF_LINE_END_RU = createClauseEnd(
+  'и|но|а',
+  String.raw`\p{L}+`,
+  String.raw`с \d{4}|с рождения`,
+)
+
+const NON_PERSON_SUBJECTS_UK = 'це|церква|школа|університет|країна|держава'
+  + '|польща|україна|регіон|місто|село|традиція|культура|історія|парафія'
+  + '|єпархія|орден|більшість|меншість|громада|населення|мистецтво'
+  + '|архітектура|свято|книга|есе|стаття|текст|робота|тема|організація'
+  + '|партія|назва'
+
+const BELIEF_SUBJECT_UK = String.raw`(?:я|ми|він|вона|вони|користувач\p{L}*`
+  + String.raw`|(?:мій|моя|моє|мої|мого|моєї|моїх|його|її|їхн\p{L}*|наш\p{L}*)(?: \p{L}+)?`
+  + String.raw`|(?!(?:${NON_PERSON_SUBJECTS_UK}) )\p{L}+ (?:[—–-]|є|був|була|були|став|стала|стали))`
+
+const BELIEF_QUALIFIERS_UK = String.raw`(?:(?:не|є|був|була|були|став|стала`
+  + String.raw`|стали|теж|також|вже|завжди|досі|глибоко|щиро|практикуюч\p{L}*`
+  + String.raw`|переконан\p{L}*|ревн\p{L}*|колишн\p{L}*|[—–-]) ){0,4}`
+
+const BELIEF_IDENTITIES_UK = String.raw`(?:греко-|римо-)?католи(?:к|чк|цьк)\p{L}*`
+  + String.raw`|християн\p{L}*|протестант\p{L}*|мусульман\p{L}*|іудей\p{L}*`
+  + String.raw`|юдей\p{L}*|буддист\p{L}*|буддійськ\p{L}*|індуїст\p{L}*|атеїст\p{L}*`
+  + String.raw`|агностик\p{L}*|(?:не)?віруюч\p{L}*|релігійн\p{L}*|православн\p{L}*`
+  + String.raw`|свід(?:ок|к\p{L}*) єгов\p{L}*`
+
+const BELIEF_DOCTRINES_UK = String.raw`іслам(?![-\s]*абад)\p{L}*|іудаїзм\p{L}*`
+  + String.raw`|юдаїзм\p{L}*|буддизм\p{L}*|індуїзм\p{L}*|атеїзм\p{L}*`
+  + String.raw`|християнств\p{L}*|католицизм\p{L}*|православ'?я|протестантизм\p{L}*`
+
+const NOT_BELIEF_INSTITUTION_UK = String.raw`(?! (?:церкв|костел|храм|собор`
+  + String.raw`|школ|університет|громад|традиці|історі|країн|держав|єпархі|парафі`
+  + String.raw`|орден|місі|монастир|ієрархі|духовенств|свят|календар)\p{L}*)`
+
+const NON_PERSON_SUBJECTS_PL = 'to|kościół|szkoła|uczelnia|szpital|polska'
+  + '|kraj|państwo|region|miasto|wieś|tradycja|kultura|historia|parafia'
+  + '|diecezja|zakon|większość|mniejszość|ludność|społeczność|sztuka'
+  + '|architektura|święto|książka|praca|esej|tekst|organizacja|partia'
+  + '|nazwa|imię'
+
+const BELIEF_SUBJECT_PL = String.raw`(?:(?:nie )?(?:jestem|jesteśmy|byłem`
+  + String.raw`|byłam|byliśmy|byłyśmy|zostałem|zostałam|zostaliśmy`
+  + String.raw`|wychowałem się|wychowałam się)`
+  + String.raw`|(?:on|ona|oni|one|użytkownik\p{L}*)(?: nie)? (?:jest|są|był|była|byli|były|został|została)`
+  + String.raw`|(?:mój|moja|moje|moi|mojego|mojej|moich|jego|jej|ich|nasz\p{L}*)(?: \p{L}+)?`
+  + String.raw`|(?!(?:${NON_PERSON_SUBJECTS_PL}) )\p{L}+(?: nie)? (?:jest|był|była|są))`
+
+const BELIEF_QUALIFIERS_PL = String.raw`(?:(?:nie|jest|są|był|była|byli`
+  + String.raw`|były|już|też|także|zawsze|wciąż|bardzo|głęboko|gorliw\p{L}*`
+  + String.raw`|praktykując\p{L}*|niepraktykując\p{L}*|osob\p{L}*|człowiek\p{L}*`
+  + String.raw`|kobiet\p{L}*|mężczyzn\p{L}*|był\p{L}*) ){0,4}`
+
+const BELIEF_IDENTITIES_PL = String.raw`chrześcijan\p{L}*|katolik\p{L}*`
+  + String.raw`|katoliczk\p{L}*|katolick\p{L}*|protestant\p{L}*|ewangelik\p{L}*`
+  + String.raw`|muzułman\p{L}*|żyd(?:em|ówką|ówka|ami|ówkami)?|żydowsk\p{L}*`
+  + String.raw`|buddy(?:st|js)\p{L}*|hinduist\p{L}*|ateist\p{L}*|agnostyk\p{L}*`
+  + String.raw`|(?:nie)?wierząc(?:y|a|ą|ym|ej|ymi|ych)|religijn\p{L}*`
+  + String.raw`|prawosławn\p{L}*|świad(?:ek|k\p{L}*) jehow\p{L}*`
+
+const BELIEF_DOCTRINES_PL = String.raw`islam(?![-\s]*abad)\p{L}*|judaizm\p{L}*`
+  + String.raw`|buddyzm\p{L}*|hinduizm\p{L}*|ateizm\p{L}*|chrześcijaństw\p{L}*`
+  + String.raw`|katolicyzm\p{L}*|prawosławi\p{L}*|protestantyzm\p{L}*`
+
+const NOT_BELIEF_INSTITUTION_PL = String.raw`(?! (?:kości|cerkw|świątyn`
+  + String.raw`|katedr|szkoł|szkol|uczelni|uniwersytet|gmin|tradycj|histori`
+  + String.raw`|kraj|państw|diecezj|parafi|zakon|misj|klasztor|hierarchi`
+  + String.raw`|duchowieńst|święt|kalendarz)\p{L}*)`
+
+const NON_PERSON_SUBJECTS_RU = 'это|церковь|школа|университет|страна'
+  + '|государство|польша|россия|регион|город|село|традиция|культура'
+  + '|история|приход|епархия|орден|большинство|меньшинство|община'
+  + '|население|искусство|архитектура|праздник|книга|эссе|статья|текст'
+  + '|работа|тема|организация|партия|название|имя'
+
+const BELIEF_SUBJECT_RU = String.raw`(?:я|мы|он|она|они|пользовател\p{L}*`
+  + String.raw`|(?:мой|моя|мое|мои|моего|моей|моих|его|ее|их|наш\p{L}*)(?: \p{L}+)?`
+  + String.raw`|(?!(?:${NON_PERSON_SUBJECTS_RU}) )\p{L}+ (?:[—–-]|является|являлся|являлась|был|была|были|стал|стала))`
+
+const BELIEF_QUALIFIERS_RU = String.raw`(?:(?:не|был|была|были|стал|стала`
+  + String.raw`|стали|тоже|также|уже|всегда|глубоко|искренне|практикующ\p{L}*`
+  + String.raw`|убежденн\p{L}*|ревностн\p{L}*|бывш\p{L}*|[—–-]) ){0,4}`
+
+const BELIEF_IDENTITIES_RU = String.raw`христиан\p{L}*|католи(?:к|чк|ческ)\p{L}*`
+  + String.raw`|протестант\p{L}*|мусульман\p{L}*|иудей\p{L}*|буддист\p{L}*`
+  + String.raw`|буддийск\p{L}*|индуист\p{L}*|атеист\p{L}*|агностик\p{L}*`
+  + String.raw`|(?:не)?верующ\p{L}*|религиозн\p{L}*|православн\p{L}*`
+  + String.raw`|свидетел\p{L}* иегов\p{L}*`
+
+const BELIEF_DOCTRINES_RU = String.raw`ислам(?![-\s]*абад)\p{L}*|иудаизм\p{L}*`
+  + String.raw`|буддизм\p{L}*|индуизм\p{L}*|атеизм\p{L}*|христианств\p{L}*`
+  + String.raw`|католицизм\p{L}*|православи\p{L}*|протестантизм\p{L}*`
+
+const NOT_BELIEF_INSTITUTION_RU = String.raw`(?! (?:церк|костел|храм|собор`
+  + String.raw`|школ|университет|общин|традици|истори|стран|государств|епархи`
+  + String.raw`|приход|орден|мисси|монастыр|иерархи|духовенств|праздник`
+  + String.raw`|календар)\p{L}*)`
 
 function createPattern(language: SensitiveTextLanguage) {
   return (strings: TemplateStringsArray, ...values: string[]) => {
@@ -116,8 +336,12 @@ const any = createPattern('any')
  * (diet, church, party, weed, race, union, court, DNA, Face ID, rak, drug use,
  * vote, orthodox, hindu, jewish, psychologist, ramadan) never match on their
  * own: they need a personal frame ("I am", "my") or an unambiguous companion
- * noun. Every pattern carries `examples` it must match, which the spec
- * verifies against the compiled expression.
+ * noun. Religious identities (catholic, muslim, atheist, religious, katolik,
+ * віруюч…) always need a first-person, possessive or named-person frame,
+ * negations included ("I'm not religious", "Anna — католичка"), so an essay
+ * on the Catholic Church is not caught; trade unions and party votes follow
+ * the same rule. Every pattern carries `examples` it must match, which the
+ * spec verifies against the compiled expression.
  */
 export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
   {
@@ -387,64 +611,75 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
   {
     category: 'religion-or-belief',
     patterns: [
-      en`christianity|christians`(['Christians in my town meet weekly']),
-      en`${I_AM} (?:an? )?(?:devout |practicing |born[-\s]again |orthodox )?christian`([
-        'I am a Christian',
+      en`${BELIEF_SUBJECT_EN} ${BELIEF_QUALIFIERS_EN}(?:${BELIEF_IDENTITIES_EN})${NOT_BELIEF_INSTITUTION_EN}`([
+        'I am Catholic',
         'I\'m a devout Christian',
-      ]),
-      en`(?:is|was|are|were|as) an? christian|raised (?:as )?(?:an? )?christian`([
-        'I was raised as a Christian',
-      ]),
-      en`christian (?:faith|beliefs?|church|values|family|upbringing|denomination|community)`([
-        'My Christian faith matters to me',
-      ]),
-      en`born[-\s]again`(['She is a born-again believer']),
-      en`catholic\p{L}*`(['I am Catholic']),
-      en`protestant\p{L}*`(['We are Protestant']),
-      en`muslims?|moslems?`(['I am a practicing Muslim']),
-      en`islam(?![-\s]*abad)\p{L}*`(['I converted to Islam']),
-      en`judaism`(['I practice Judaism']),
-      en`(?:jewish (?:faith|religion|community|family|holidays?|heritage|identity)|(?:my|his|her|our) jewish|${I_AM} (?:an? )?(?:practicing |observant )?jewish)`([
-        'My Jewish family lights candles',
-        'I am Jewish',
-      ]),
-      en`${I_AM} (?:an? )?(?:devout |practicing |practising |observant |strict |modern )?(?:hindu|jewish|jew|orthodox)${CLAUSE_END_EN}`([
-        'I\'m Orthodox',
+        'I\'m not religious at all',
+        'We are Protestant',
+        'She is a practicing Muslim',
+        'Anna is a lapsed Catholic',
+        'My parents are Buddhists',
         'I am a Jew.',
         'I am Hindu and my family prays daily',
+        'The user is an atheist',
+        'As a Christian I find this hard',
       ]),
-      en`buddhis\p{L}*`(['I am a Buddhist']),
-      en`hindu(?:s|ism|ists?)`(['I follow Hinduism']),
-      en`sikh(?:s|ism)?`(['We are Sikh']),
-      en`mormon\p{L}*`(['I am Mormon']),
-      en`jehovah's witness\p{L}*`(['I\'m one of Jehovah\'s Witnesses']),
-      en`atheis\p{L}*`(['I am an atheist']),
-      en`${I_AM} (?:an? )?agnostic(?![-\s]+(?:about|to|of|in|towards?|regarding))`([
+      en`(?:raised|brought up|grew up)(?: as| in(?: the| an?)?)? ${BELIEF_QUALIFIERS_EN}(?:${BELIEF_IDENTITIES_EN})${NOT_BELIEF_INSTITUTION_EN}`([
+        'I was raised Catholic',
+        'She grew up in a Jewish family',
+      ]),
+      en`(?:(?:i|we|he|she|they) (?:follow|followed|follows|embraced|left|renounced)|practi[cs]\p{L}*|convert\p{L}* to) ${BELIEF_QUALIFIERS_EN}(?:${BELIEF_DOCTRINES_EN})`([
+        'I converted to Islam',
+        'I practice Judaism',
+        'I follow Hinduism',
+      ]),
+      en`(?:my|our|his|her|their) ${BELIEF_QUALIFIERS_EN}(?:${BELIEF_IDENTITIES_EN}|${BELIEF_DOCTRINES_EN})`([
+        'My Jewish family lights candles',
+        'My religious beliefs shape my diet',
+        'Her Catholic upbringing',
+      ]),
+      en`(?:religion|faith|denomination|religious affiliation)(?::| -| —| –| =) ${BELIEF_QUALIFIERS_EN}(?:${BELIEF_IDENTITIES_EN}|${BELIEF_DOCTRINES_EN}|none|no religion)`([
+        'Religion: Catholic',
+      ]),
+      en`(?:${I_AM}|we(?:'re| are)) ${BELIEF_QUALIFIERS_EN}orthodox${CLAUSE_END_EN}`([
+        'I\'m Orthodox',
+      ]),
+      en`${I_AM} (?:not |no longer )?(?:an? )?agnostic(?![-\s]+(?:about|to|of|in|towards?|regarding))`([
         'I am agnostic',
       ]),
       en`agnostic about (?:religion|god)`(['I am agnostic about religion']),
-      en`orthodox (?:christian\p{L}*|jew\p{L}*)`(['She is an Orthodox Christian']),
-      en`${I_AM} (?:very |deeply |quite )?religious`(['I am deeply religious']),
-      en`religious (?:beliefs?|views?|affiliation|practices?|background|upbringing)`([
-        'My religious beliefs shape my diet',
+      en`(?:for|due to|because of) religious reasons`([
+        'Vegetarian for religious reasons',
       ]),
       en`my religion`(['My religion forbids it']),
       en`baptized|baptised`(['I was baptized as a child']),
-      en`(?:go|goes|went|going) to (?:the |a )?(?:church|mosque|synagogue)${NOT_STREET_EN}`([
+      en`(?:go|goes|went|going) to (?:the |a )?(?:${WORSHIP_PLACE_EN})${NOT_STREET_EN}`([
         'I go to church every Sunday',
+        'Goes to Catholic church on Sundays',
+        'Goes to the temple on Fridays',
       ]),
-      en`attend\p{L}* (?:the |a )?(?:church|mosque|synagogue)${NOT_STREET_EN}`([
+      en`attend\p{L}* (?:the |a )?(?:${WORSHIP_PLACE_EN})${NOT_STREET_EN}`([
         'I attend the mosque on Fridays',
+        'Attends Catholic mass weekly',
       ]),
-      en`sunday mass(?![-\s]+(?:transit|transport\p{L}*|shooting\p{L}*|market\p{L}*|media|hysteria|extinction|migration|surveillance|production|protest\p{L}*))`([
+      en`sunday mass${NOT_MASS_EN}`([
         'I never miss Sunday mass',
+      ]),
+      en`${BELIEF_LINE_START}(?!christian${BARE_CLAUSE_END})${BELIEF_QUALIFIERS_EN}(?:${BELIEF_IDENTITIES_EN})${BELIEF_LINE_END_EN}`([
+        'Devout Catholic',
+        'Atheist',
+        'Not religious',
+        'Catholic, prays every morning',
+        'Religion\nCatholic',
+        '- Practicing Muslim since 2019',
       ]),
       en`i (?:(?:do not|don't) )?believe in (?:god|allah|jesus)`([
         'I believe in God',
         'I don\'t believe in God',
       ]),
-      en`(?:i|we) pray (?:daily|every|five|regularly|to (?:god|allah))`([
+      en`(?:(?:i|we) pray|prays) (?:daily|every|five|regularly|to (?:god|allah))`([
         'I pray every morning',
+        'Prays five times a day',
       ]),
       en`(?:daily|five daily) prayers?`(['I keep my daily prayers']),
       en`(?:(?:i|we) (?:observe|observed|celebrate|celebrated|keep|kept|am observing|are observing|am celebrating|are celebrating|fast during|fast for|am fasting for|are fasting for|will fast during|will celebrate|will observe)|(?:i|we) (?:am|are|'m|'re) (?:fasting|observing|celebrating)(?: during| for)?|my|our|fasting during|fast during) (?:the )?(?:\p{L}+ )?(?:ramadan|shabbat|yom kippur|hanukkah|eid al-?fitr|passover|lent)`([
@@ -455,27 +690,40 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
       en`keep(?:s|ing)? kosher`(['I keep kosher']),
       en`(?:eat|eats|only) halal`(['I only eat halal']),
       en`my (?:pastor|priest|imam|rabbi)`(['My pastor called me']),
-      uk`християн\p{L}*`(['Я християнин']),
-      uk`католик\p{L}*|католицьк\p{L}*`(['Я католик']),
-      ukRu`протестант\p{L}*`(['Я протестант']),
-      ukRu`мусульман\p{L}*`(['Я мусульманин']),
-      uk`іслам(?![-\s]*абад)\p{L}*`(['Я прийняв іслам']),
-      uk`іудей\p{L}*|іудаїзм\p{L}*|юдей\p{L}*`(['Я сповідую іудаїзм']),
+      uk`${BELIEF_SUBJECT_UK} ${BELIEF_QUALIFIERS_UK}(?:${BELIEF_IDENTITIES_UK})${NOT_BELIEF_INSTITUTION_UK}`([
+        'Я християнин',
+        'Я католик',
+        'Я греко-католик',
+        'Я протестант',
+        'Я мусульманин',
+        'Я буддист',
+        'Я атеїст',
+        'Я агностик',
+        'Я віруюча людина',
+        'Я не релігійна людина',
+        'Я православний',
+        'Мої батьки — католики',
+        'Анна — католичка',
+        'Я свідок Єгови',
+      ]),
+      uk`${BELIEF_LINE_START}${BELIEF_QUALIFIERS_UK}(?:${BELIEF_IDENTITIES_UK})${BELIEF_LINE_END_UK}`([
+        'Католик',
+        'Не віруюча',
+        'Православний, ходить до церкви',
+      ]),
+      uk`(?:сповіду\p{L}*|прийня\p{L}*|перейш\p{L}* (?:в|у|до)|перейшл\p{L}* (?:в|у|до)|практику\p{L}*) (?:${BELIEF_DOCTRINES_UK})`([
+        'Я прийняв іслам',
+        'Я сповідую іудаїзм',
+        'Я сповідую індуїзм',
+      ]),
       uk`я (?:є )?єврей\p{L}*`(['Я єврей', 'Я єврейка']),
-      uk`буддист\p{L}*|буддизм\p{L}*|буддійськ\p{L}*`(['Я буддист']),
-      uk`індуїз\p{L}*|індуїст\p{L}*`(['Я сповідую індуїзм']),
-      uk`атеїст\p{L}*|атеїзм\p{L}*`(['Я атеїст']),
       uk`я (?:не )?вір(?:ю|имо) (?:в|у) (?:бога|аллаха|ісуса|христа)`([
         'Я не вірю в Бога',
         'Я вірю в Бога',
       ]),
-      ukRu`агностик\p{L}*`(['Я агностик']),
-      uk`віруюч\p{L}*`(['Я віруюча людина']),
-      uk`релігійн\p{L}*`(['Я релігійна людина']),
       uk`мо(?:я|єї|ю) (?:релігі\p{L}*|віра|віри|віру)`(['Моя віра забороняє це']),
       uk`молитв\p{L}*`(['Щовечора читаю молитву']),
       uk`молю(?:сь|ся)`(['Я молюсь щодня']),
-      uk`православ\p{L}*`(['Я православний']),
       uk`хрещен\p{L}*`(['Мене хрестили, я хрещена']),
       uk`(?:ходжу|ходимо|ходить|ходив|ходила) до (?:церкви|мечеті|синагоги|храму)`([
         'Я ходжу до церкви щонеділі',
@@ -485,55 +733,81 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
         'Ми святкуємо хануку',
         'Я тримаю піст',
       ]),
-      uk`свід(?:ок|к\p{L}*) єгов\p{L}*`(['Я свідок Єгови']),
-      pl`chrześcijan\p{L}*`(['Jestem chrześcijaninem']),
-      pl`katolik\p{L}*|katolick\p{L}*|katoliczk\p{L}*`(['Jestem katolikiem']),
-      pl`protestant\p{L}*`(['Jestem protestantem']),
-      pl`muzułman\p{L}*`(['Jestem muzułmaninem']),
-      pl`islam(?![-\s]*abad)\p{L}*`(['Przeszedłem na islam']),
-      pl`jestem (?:\p{L}+ )?(?:żyd|żydem|żydówką)|żydowsk\p{L}* (?:wiar|religi|rodzin|święt|gmin)\p{L}*`([
+      pl`${BELIEF_SUBJECT_PL} ${BELIEF_QUALIFIERS_PL}(?:${BELIEF_IDENTITIES_PL})${NOT_BELIEF_INSTITUTION_PL}`([
+        'Jestem chrześcijaninem',
+        'Jestem katolikiem',
+        'Jestem katoliczką',
+        'Jestem protestantem',
+        'Jestem muzułmaninem',
         'Jestem Żydem',
+        'Jestem buddystą',
+        'Jestem ateistą',
+        'Jestem agnostykiem',
+        'Jestem osobą wierzącą',
+        'Nie jestem religijny',
+        'Jestem prawosławny',
+        'Moja rodzina jest katolicka',
+        'Anna jest katoliczką',
+        'Jestem świadkiem Jehowy',
+      ]),
+      pl`${BELIEF_LINE_START}${BELIEF_QUALIFIERS_PL}(?:${BELIEF_IDENTITIES_PL})${BELIEF_LINE_END_PL}`([
+        'Katolik',
+        'Niewierzący',
+        'Katoliczka od urodzenia',
+      ]),
+      pl`(?:wyznaj\p{L}*|praktykuj\p{L}*|przeszedł\p{L}* na|przeszł\p{L}* na|nawróci\p{L}* się na|przyj(?:ął|ęł)\p{L}*) (?:${BELIEF_DOCTRINES_PL})`([
+        'Przeszedłem na islam',
+        'Wyznaję hinduizm',
+      ]),
+      pl`(?:mój|moj\p{L}*) (?:\p{L}+ )?żydowsk\p{L}* (?:wiar|religi|rodzin|święt|gmin)\p{L}*`([
         'Moja żydowska rodzina obchodzi święta',
       ]),
-      pl`buddy(?:st|zm|js)\p{L}*`(['Jestem buddystą']),
-      pl`hindu(?:iz|is|s)\p{L}*`(['Wyznaję hinduizm']),
-      pl`ateist\p{L}*|ateizm\p{L}*`(['Jestem ateistą']),
-      pl`agnostyk\p{L}*`(['Jestem agnostykiem']),
       pl`(?:nie )?wierzę w (?:boga|allaha|jezusa|chrystusa)`([
         'Nie wierzę w Boga',
         'Wierzę w Boga',
       ]),
-      pl`wierząc(?:y|a|ą|ym|ej)`(['Jestem osobą wierzącą']),
-      pl`religijn\p{L}*`(['Jestem religijny']),
       pl`moj\p{L}* (?:wiar|religi)\p{L}*`(['Moja wiara jest ważna']),
       pl`modlitw\p{L}*`(['Codziennie odmawiam modlitwę']),
       pl`modlę się`(['Modlę się co wieczór']),
-      pl`prawosławn\p{L}*`(['Jestem prawosławny']),
       pl`ochrzczon\p{L}*`(['Jestem ochrzczony']),
       pl`chodzę do (?:kościoła|meczetu|synagogi|cerkwi)`(['Chodzę do kościoła w niedzielę']),
       pl`(?:przestrzegam|obchodzę|obchodzimy|poszczę|szczymy|trzymam|pości\p{L}*|poszcz\p{L}*) (?:\p{L}+ )?(?:ramadan|szabat|chanuk|post)\p{L}*`([
         'Przestrzegam ramadanu',
         'Obchodzimy szabat',
       ]),
-      pl`świad(?:ek|k\p{L}*) jehow\p{L}*`(['Jestem świadkiem Jehowy']),
-      ru`христиан\p{L}*`(['Я христианин']),
-      ru`католик\p{L}*|католическ\p{L}*`(['Я католик']),
-      ru`ислам(?![-\s]*абад)\p{L}*`(['Я принял ислам']),
-      ru`иудей\p{L}*|иудаизм\p{L}*`(['Я исповедую иудаизм']),
+      ru`${BELIEF_SUBJECT_RU} ${BELIEF_QUALIFIERS_RU}(?:${BELIEF_IDENTITIES_RU})${NOT_BELIEF_INSTITUTION_RU}`([
+        'Я христианин',
+        'Я католик',
+        'Я протестант',
+        'Я мусульманин',
+        'Он буддист',
+        'Я атеист',
+        'Я агностик',
+        'Я верующий человек',
+        'Я не религиозный человек',
+        'Я православный',
+        'Мои родители — католики',
+        'Анна — католичка',
+        'Я свидетель Иеговы',
+      ]),
+      ru`${BELIEF_LINE_START}${BELIEF_QUALIFIERS_RU}(?:${BELIEF_IDENTITIES_RU})${BELIEF_LINE_END_RU}`([
+        'Католик',
+        'Неверующий',
+        'Православный, ходит в церковь',
+      ]),
+      ru`(?:исповеду\p{L}*|принял\p{L}*|перешел\p{L}* в|перешл\p{L}* в|практику\p{L}*) (?:${BELIEF_DOCTRINES_RU})`([
+        'Я принял ислам',
+        'Я исповедую иудаизм',
+        'Я исповедую индуизм',
+      ]),
       ru`я (?:\p{L}+ )?еврей\p{L}*`(['Я еврей', 'Я наполовину еврейка']),
-      ru`буддист\p{L}*|буддизм\p{L}*|буддийск\p{L}*`(['Он буддист']),
-      ru`индуизм\p{L}*|индуист\p{L}*`(['Я исповедую индуизм']),
-      ru`атеист\p{L}*|атеизм\p{L}*`(['Я атеист']),
       ru`я (?:не )?верю в (?:бога|аллаха|иисуса|христа)`([
         'Я не верю в Бога',
         'Я верю в Бога',
       ]),
-      ru`верующ\p{L}*`(['Я верующий человек']),
-      ru`религиозн\p{L}*`(['Я религиозный человек']),
       ru`мо(?:я|ей|ю) (?:религи\p{L}*|вера|веры|веру)`(['Моя вера запрещает это']),
       ru`молитв\p{L}*`(['Читаю молитву']),
       ru`молюсь|молимся`(['Я молюсь каждый день']),
-      ru`православн\p{L}*`(['Я православный']),
       ru`крещен\p{L}*|крестил\p{L}*`(['Я крещёный']),
       ru`хожу в (?:церковь|мечеть|синагогу|храм)`(['Я хожу в церковь']),
       ru`(?:соблюда\p{L}*|держ\p{L}*|праздну\p{L}*|отмеча\p{L}*|пощусь|постимся) (?:\p{L}+ )?(?:рамадан|шаббат|ханук|пост)\p{L}*`([
@@ -541,7 +815,6 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
         'Мы празднуем хануку',
         'Я держу пост',
       ]),
-      ru`свидетел\p{L}* иегов\p{L}*`(['Я свидетель Иеговы']),
     ],
   },
   {
@@ -560,6 +833,24 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
         'I vote for the Green party',
         'I am voting for a new president',
       ]),
+      en`(?:${VOTER_EN}) (?:for )?(?:the )?(?:${PARTY_NAMES_EN})${VOTE_END_EN}`([
+        'We always vote Labour.',
+        'I voted Conservative in 2019',
+        'I\'m voting Tory again',
+        'Votes Labour',
+        'My dad always votes Tory',
+      ]),
+      en`(?:${VOTER_EN}) (?:for )?(?:the )?greens?${VOTE_CONTEXT_END_EN}`([
+        'I vote Green every election',
+        'I\'m voting Green party',
+        'We voted Green in the local elections',
+      ]),
+      en`${I_AM} (?:an? )?(?:lifelong |loyal |registered |proud )?(?:${PARTY_NAMES_EN}|greens?) (?:voter|supporter|member|activist|canvasser)s?`([
+        'I am a lifelong Labour voter',
+      ]),
+      en`elections?,? (?:\p{L}+ ){0,2}(?:i|we) (?:voted|vote|will vote) for`([
+        'In the last election I voted for them',
+      ]),
       en`(?:member of|belong to|belongs to|joined|supporter of|support|supports|voting for) (?:the |a )?(?:labou?r|conservative|democratic|republican|green|socialist|communist|liberal|nationalist|libertarian|social democratic|tory|political|far[-\s]right|far[-\s]left) party`([
         'I am a member of the Green Party',
       ]),
@@ -577,6 +868,13 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
         'Я голосував за цю партію на виборах',
         'Я голосую за кандидата від опозиції',
         'Буду голосувати за президента',
+      ]),
+      uk`(?:про)?голосу(?:ю|ємо|є|ють|ва\p{L}*) за [«"„]?(?:${PARTY_NAMES_UK})`([
+        'Я голосувала за «Європейську Солідарність»',
+        'Голосую за Слугу народу',
+      ]),
+      uk`виборах,? (?:\p{L}+ ){0,3}(?:про)?голосува\p{L}* за`([
+        'На останніх виборах я голосувала за них',
       ]),
       uk`член\p{L}* партії|належ\p{L}* до партії`(['Я член партії']),
       uk`(?:лівих|правих) (?:поглядів|переконань)`(['Я людина правих поглядів']),
@@ -597,6 +895,14 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
         'Będę głosować na kandydata opozycji',
         'Głosuję na prezydenta',
       ]),
+      pl`(?:za)?(?:głosu(?:ję|jemy|je|ją)|głosowa\p{L}*) na [«"„]?(?:${PARTY_NAMES_PL})`([
+        'Głosowałam na Lewicę',
+        'Zagłosuję na Konfederację',
+        'Głosujemy na PiS',
+      ]),
+      pl`wybor(?:ach|ów),? (?:\p{L}+ ){0,3}(?:za)?(?:głosowa\p{L}*|głosu\p{L}*) na`([
+        'W ostatnich wyborach głosowałam na nich',
+      ]),
       pl`członk\p{L}* partii|należ\p{L}* do partii`(['Jestem członkiem partii od lat']),
       pl`(?:lewicow|prawicow)\p{L}* (?:pogląd|przekonan|orientacj)\p{L}*`([
         'Mam lewicowe poglądy',
@@ -615,6 +921,9 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
         'Буду голосовать за кандидата',
         'Мы голосуем за президента',
       ]),
+      ru`выборах,? (?:\p{L}+ ){0,3}(?:про)?голосова\p{L}* за`([
+        'На последних выборах я голосовал за них',
+      ]),
       ru`член\p{L}* партии|состою в партии`(['Я состою в партии']),
       ru`(?:левых|правых) (?:взглядов|убеждений)`(['Я человек левых взглядов']),
       ru`я (?:консерватор|либерал|социалист|коммунист|националист|монархист|либертариан|анархист)\p{L}*${IDEOLOGY_END_RU}`([
@@ -631,8 +940,18 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
         'I belong to an ethnic minority',
       ]),
       en`racial (?:origin|background|identity|group)`(['My racial background is mixed']),
-      en`(?:african|asian|hispanic|latino|arab|native american|mexican|irish|italian|polish|chinese|korean|indian) (?:descent|heritage|ancestry)`([
+      en`(?:of|my|our|his|her|their) (?:mixed |partly |part )?(?:${DEMONYMS_EN}) (?:descent|heritage|ancestry|roots)`([
         'I am of Korean descent',
+        'My Nigerian heritage',
+      ]),
+      en`${I_AM} (?:half|part|a quarter|quarter|one[-\s]quarter|one[-\s]half)[-\s](?:${DEMONYMS_EN})`([
+        'I\'m half Nigerian, half Polish',
+        'I am part Cherokee',
+        'I\'m a quarter Japanese',
+      ]),
+      en`mixed[-\s]race|biracial|multiracial|mixed (?:heritage|ethnicity|ancestry)`([
+        'I am mixed-race',
+        'Our kids are biracial',
       ]),
       en`african[-\s]american|afro[-\s](?:american|caribbean|latino|brazilian)`([
         'I am African-American',
@@ -709,6 +1028,10 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
         'I have an open relationship with my husband',
       ]),
       uk`(?:я|ми|він|вона|мій|моя) (?:є )?гей`(['Я гей, і мій партнер теж']),
+      uk`(?:мій|моя|мого|моєї|наш|наша|його|її|їхній|їхня)(?: \p{L}+){1,2}(?: [—–-])?(?: (?:є|теж|також))? гей`([
+        'Мій найкращий друг — гей',
+        'Її брат теж гей',
+      ]),
       uk`геї|геїв|геєм|гей-пар\p{L}*`(['Ми з партнером гей-пара']),
       uk`лесбі\p{L}*|бісексуал\p{L}*|гомосексуал\p{L}*`(['Вона лесбійка']),
       uk`трансгендер\p{L}*|транс(?:жінк|чолов)\p{L}*|небінарн\p{L}*`(['Вона трансгендерна жінка']),
@@ -730,6 +1053,9 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
       ]),
       pl`zaburzeni\p{L}* erekcji|libido|fetysz\p{L}*|poliamor\p{L}*`(['Mam zaburzenia erekcji']),
       ru`(?:я|мы|он|она|мой|моя|мои|как|стал|является|быть) гей(?:ем|я)?`(['Я гей и живу с партнёром']),
+      ru`(?:мой|моя|моего|моей|наш|наша|его|ее|их)(?: \p{L}+){1,2}(?: [—–-])?(?: (?:тоже|также))? гей(?:ем)?`([
+        'Мой лучший друг — гей',
+      ]),
       ru`геи|геев|геям|геями|гей-(?:пар|сообществ|парад)\p{L}*`(['Мы с партнером гей-пара']),
       ru`лесби\p{L}*|бисексуал\p{L}*|гомосексуал\p{L}*`(['Она лесбиянка']),
       ru`трансгендер\p{L}*|транс(?:жен|мужч)\p{L}*|небинарн\p{L}*`(['Она трансгендерная женщина']),
@@ -744,7 +1070,12 @@ export const sensitiveTextRuleTable: readonly SensitiveTextRule[] = [
   {
     category: 'trade-union',
     patterns: [
-      en`trade[-\s]unions?|labou?r unions?`(['I am a member of a trade union']),
+      en`(?:members? of|belong(?:s|ed)? to|joined|join|joining|organi[sz]ing|${I_AM} in|we(?:'re| are) in|(?:is|are|was|were) in|my|our|his|her|their) (?:an? |the |my |our |local )?(?:\p{L}+ ){0,2}(?:trade|labou?r)[-\s]unions?`([
+        'I am a member of a trade union',
+        'My trade union pays strike money',
+        'I joined the local labour union',
+        'Is in a trade union',
+      ]),
       en`union (?:member|members|membership|dues|rep|representative|steward|organi[sz]er)`([
         'Our union dues went up again',
       ]),
