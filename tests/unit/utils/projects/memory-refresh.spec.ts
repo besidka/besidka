@@ -297,7 +297,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     await refresh(projectId)
 
-    expect(mocks.generateObject).toHaveBeenCalledOnce()
+    expect(mocks.generateText).toHaveBeenCalledOnce()
     expect((await readChat(includedChatId))?.projectMemorySummaryUpdatedAt)
       .not.toBeNull()
     expect((await readChat(excludedChatId))?.projectMemorySummaryUpdatedAt)

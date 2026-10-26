@@ -17,6 +17,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { decodePublicId } from '~~/server/utils/custom-db-types'
 import { insertGuardedMemoryEntry } from '~~/server/utils/memory/entries'
+import { chatIsMemoryIncluded } from '~~/server/utils/memory/chat-memory-filters'
 import {
   evaluateMemoryEntry,
   recordSensitiveDetection,
@@ -794,10 +795,11 @@ class MemoryExtractionApplier {
   }
 
   /**
-   * The atomic "the source chat still exists" condition every write that
-   * records the chat as a source carries, or none for a pass without a chat
-   * (an import). A chat deleted after the pass re-read it then makes the
-   * write land on nothing instead of citing a chat that is gone.
+   * The atomic "the source chat still exists and is not excluded from
+   * memory" condition every write that records the chat as a source
+   * carries, or none for a pass without a chat (an import). A chat deleted
+   * or excluded after the pass re-read it then makes the write land on
+   * nothing instead of citing it.
    */
   private sourceChatGuard() {
     if (this.input.chatId === null) {
@@ -808,6 +810,7 @@ class MemoryExtractionApplier {
       select 1 from ${schema.chats}
       where ${eq(schema.chats.id, this.input.chatId)}
         and ${eq(schema.chats.userId, this.input.userId)}
+        and ${chatIsMemoryIncluded()}
     )`
   }
 
@@ -822,6 +825,7 @@ class MemoryExtractionApplier {
       .where(and(
         eq(schema.chats.id, this.input.chatId),
         eq(schema.chats.userId, this.input.userId),
+        chatIsMemoryIncluded(),
       ))
       .limit(1)
 

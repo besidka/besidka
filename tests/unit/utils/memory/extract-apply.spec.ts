@@ -1770,6 +1770,18 @@ describe('applyMemoryExtractionOps', () => {
       expect(await listEntries()).toEqual([])
     })
 
+    it('writes nothing once the chat was excluded from memory', async () => {
+      await testDb.db.update(schema.chats)
+        .set({ memoryExcluded: true })
+        .where(eq(schema.chats.id, chatId))
+
+      const result = await run([createOp(), createOp({ title: 'Go work' })])
+
+      expect(result.created).toBe(0)
+      expect(result.dropped).toEqual({ 'chat-unavailable': 2 })
+      expect(await listEntries()).toEqual([])
+    })
+
     it('refuses a chat that belongs to another user', async () => {
       const otherUserId = await seedUser(testDb.db, null)
       const foreignChatId = (await seedChat(testDb.db, otherUserId)).id

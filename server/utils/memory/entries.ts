@@ -502,7 +502,7 @@ async function runGuardedInsert(
   const chatGuard = values.requiredChatId === undefined
     || values.requiredChatId === null
     ? sql`1 = 1`
-    : sql`exists (select 1 from chats where id = ${values.requiredChatId} and user_id = ${values.userId})`
+    : sql`exists (select 1 from chats where id = ${values.requiredChatId} and user_id = ${values.userId} and memory_excluded is not 1)`
 
   const rows = await db.all<{ id: number, updated_at: number }>(sql`
     insert into memory_entries (
@@ -537,9 +537,10 @@ async function runGuardedInsert(
  * The guarded insert behind every memory write, for callers that pick the
  * slug themselves (the extraction applier). It lands only while the
  * account or project scope is under its entry cap, the project belongs to
- * the user and, when `requiredChatId` is set, that chat still exists and
- * belongs to the user, all inside the one `insert ... select` statement, so a
- * chat deleted after the caller's last read can never gain an entry. Returns
+ * the user and, when `requiredChatId` is set, that chat still exists,
+ * belongs to the user and is not excluded from memory, all inside the one
+ * `insert ... select` statement, so a chat deleted or excluded after the
+ * caller's last read can never gain an entry. Returns
  * the new row's public id and edit time, or `null` when a guard refused it;
  * a slug collision throws the database's unique-constraint error.
  */

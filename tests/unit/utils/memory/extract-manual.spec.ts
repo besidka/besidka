@@ -333,7 +333,7 @@ describe('manual memory extraction', () => {
         })
       }
 
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(await listEntries()).toHaveLength(0)
       expect((await readChat(chat.id))?.projectMemorySummaryUpdatedAt)
         .toBeNull()
@@ -343,12 +343,12 @@ describe('manual memory extraction', () => {
     it('re-checks the exclusion after the model call', async () => {
       const { chat } = await seedProjectChat()
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await testDb.db.update(schema.chats)
           .set({ memoryExcluded: true })
 
         return {
-          object: { ops: [createOp()] },
+          output: { ops: [createOp()] },
           usage: { inputTokens: 1, outputTokens: 1 },
         }
       })
