@@ -6,10 +6,37 @@ import {
   createHistoryChat,
 } from '../../setup/helpers/history-fixtures'
 import { createHistoryCursor } from '../../../server/utils/chats/history/cursor'
+import { encodePublicId } from '~~/server/utils/custom-db-types'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
+  unlinkKnowledgeProjectFiles: vi.fn(),
+  purgeProjectKnowledgeForProject: vi.fn(),
+  invalidateStorageCache: vi.fn(),
+  getEffectiveRetentionDays: vi.fn(),
 }))
+
+vi.mock('~~/server/utils/knowledge/linked-files', async (importOriginal) => {
+  return {
+    ...await importOriginal<Record<string, unknown>>(),
+    unlinkKnowledgeProjectFiles: mocks.unlinkKnowledgeProjectFiles,
+  }
+})
+
+vi.mock('~~/server/utils/knowledge/purge', () => ({
+  purgeProjectKnowledgeForProject: mocks.purgeProjectKnowledgeForProject,
+}))
+
+vi.mock('~~/server/api/v1/storage/index.get', () => ({
+  invalidateStorageCache: mocks.invalidateStorageCache,
+}))
+
+vi.mock('~~/server/utils/files/file-governance', async (importOriginal) => {
+  return {
+    ...await importOriginal<Record<string, unknown>>(),
+    getEffectiveRetentionDays: mocks.getEffectiveRetentionDays,
+  }
+})
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
@@ -176,6 +203,13 @@ describe('projects API', () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
     }))
+    mocks.unlinkKnowledgeProjectFiles.mockResolvedValue(undefined)
+    mocks.purgeProjectKnowledgeForProject.mockResolvedValue({
+      objectsDeleted: 3,
+      batches: 1,
+    })
+    mocks.invalidateStorageCache.mockResolvedValue(undefined)
+    mocks.getEffectiveRetentionDays.mockResolvedValue(30)
   })
 
   it('lists projects with search, sort, and archive filters', async () => {
@@ -436,39 +470,176 @@ describe('projects API', () => {
     })
   })
 
-  it('deletes projects without deleting chats', async () => {
-    const handler = await getDeleteProjectHandler()
-    const chatsWhere = vi.fn(async () => undefined)
-    const projectsWhere = vi.fn(async () => undefined)
-    const chatsSet = vi.fn(() => ({
-      where: chatsWhere,
-    }))
-    const db = {
-      query: {
-        projects: {
-          findFirst: vi.fn(async () => ({ id: 'project-1' })),
+  describe('delete project', () => {
+    const PROJECT_PUBLIC_ID = encodePublicId(7)
+
+    function createDeleteDb(callOrder: string[] = []) {
+      const chatsWhere = vi.fn(async () => {
+        callOrder.push('detach-chats')
+      })
+      const projectsWhere = vi.fn(async () => {
+        callOrder.push('delete-project')
+      })
+      const chatsSet = vi.fn(() => ({
+        where: chatsWhere,
+      }))
+      const db = {
+        query: {
+          projects: {
+            findFirst: vi.fn(async () => ({ id: PROJECT_PUBLIC_ID })),
+          },
         },
-      },
-      update: vi.fn(() => ({
-        set: chatsSet,
-      })),
-      delete: vi.fn(() => ({
-        where: projectsWhere,
-      })),
+        update: vi.fn(() => ({
+          set: chatsSet,
+        })),
+        delete: vi.fn(() => ({
+          where: projectsWhere,
+        })),
+      }
+
+      return { db, chatsSet, chatsWhere, projectsWhere }
     }
 
-    vi.stubGlobal('useDb', () => db)
+    it('deletes projects without deleting chats', async () => {
+      const handler = await getDeleteProjectHandler()
+      const { db, chatsSet, chatsWhere, projectsWhere } = createDeleteDb()
 
-    const response = await handler({
-      params: { id: 'project-1' },
-    } as any)
+      vi.stubGlobal('useDb', () => db)
 
-    expect(response).toEqual({ success: true })
-    expect(chatsSet).toHaveBeenCalledWith(expect.objectContaining({
-      activityAt: expect.any(Date),
-    }))
-    expect(chatsWhere).toHaveBeenCalled()
-    expect(projectsWhere).toHaveBeenCalled()
+      const response = await handler({
+        params: { id: PROJECT_PUBLIC_ID },
+      } as any)
+
+      expect(response).toEqual({ success: true })
+      expect(chatsSet).toHaveBeenCalledWith(expect.objectContaining({
+        activityAt: expect.any(Date),
+      }))
+      expect(chatsWhere).toHaveBeenCalled()
+      expect(projectsWhere).toHaveBeenCalled()
+    })
+
+    it('unlinks originals before the delete and purges R2 after it', async () => {
+      const handler = await getDeleteProjectHandler()
+      const callOrder: string[] = []
+      const { db } = createDeleteDb(callOrder)
+
+      mocks.unlinkKnowledgeProjectFiles.mockImplementation(async () => {
+        callOrder.push('unlink')
+      })
+      mocks.purgeProjectKnowledgeForProject.mockImplementation(async () => {
+        callOrder.push('purge')
+
+        return { objectsDeleted: 0, batches: 0 }
+      })
+      mocks.invalidateStorageCache.mockImplementation(async () => {
+        callOrder.push('invalidate-storage')
+      })
+      vi.stubGlobal('useDb', () => db)
+
+      await handler({ params: { id: PROJECT_PUBLIC_ID } } as any)
+
+      expect(callOrder).toEqual([
+        'detach-chats',
+        'unlink',
+        'delete-project',
+        'purge',
+        'invalidate-storage',
+      ])
+      expect(mocks.unlinkKnowledgeProjectFiles).toHaveBeenCalledWith({
+        userId: 1,
+        projectId: 7,
+        retentionDays: 30,
+      })
+      expect(mocks.purgeProjectKnowledgeForProject).toHaveBeenCalledWith(1, 7)
+      expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(
+        1,
+        expect.anything(),
+      )
+    })
+
+    it('passes a null retention through for a vip tier', async () => {
+      const handler = await getDeleteProjectHandler()
+      const { db } = createDeleteDb()
+
+      mocks.getEffectiveRetentionDays.mockResolvedValue(null)
+      vi.stubGlobal('useDb', () => db)
+
+      await handler({ params: { id: PROJECT_PUBLIC_ID } } as any)
+
+      expect(mocks.unlinkKnowledgeProjectFiles).toHaveBeenCalledWith(
+        expect.objectContaining({ retentionDays: null }),
+      )
+    })
+
+    it('still succeeds when the R2 purge fails and leaves it to the sweeper', async () => {
+      const handler = await getDeleteProjectHandler()
+      const { db, projectsWhere } = createDeleteDb()
+
+      mocks.purgeProjectKnowledgeForProject.mockRejectedValue(
+        new Error('R2 unavailable'),
+      )
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { id: PROJECT_PUBLIC_ID },
+      } as any)
+
+      expect(response).toEqual({ success: true })
+      expect(projectsWhere).toHaveBeenCalled()
+      expect(mocks.invalidateStorageCache).toHaveBeenCalled()
+      expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+        knowledgePurge: { failed: true },
+      }))
+    })
+
+    it('keeps the project when restoring the file expiry fails', async () => {
+      const handler = await getDeleteProjectHandler()
+      const { db, projectsWhere } = createDeleteDb()
+
+      mocks.unlinkKnowledgeProjectFiles.mockRejectedValue(
+        new Error('D1 unavailable'),
+      )
+      vi.stubGlobal('useDb', () => db)
+
+      await expect(handler({
+        params: { id: PROJECT_PUBLIC_ID },
+      } as any)).rejects.toThrow('D1 unavailable')
+
+      expect(projectsWhere).not.toHaveBeenCalled()
+      expect(mocks.purgeProjectKnowledgeForProject).not.toHaveBeenCalled()
+    })
+
+    it('answers 404 for a missing project before touching anything', async () => {
+      const handler = await getDeleteProjectHandler()
+      const { db } = createDeleteDb()
+
+      db.query.projects.findFirst.mockResolvedValue(undefined as never)
+      vi.stubGlobal('useDb', () => db)
+
+      await expect(handler({
+        params: { id: PROJECT_PUBLIC_ID },
+      } as any)).rejects.toMatchObject({ status: 404 })
+
+      expect(db.update).not.toHaveBeenCalled()
+      expect(mocks.unlinkKnowledgeProjectFiles).not.toHaveBeenCalled()
+      expect(mocks.purgeProjectKnowledgeForProject).not.toHaveBeenCalled()
+    })
+
+    it('answers 404 when the id does not decode to an internal id', async () => {
+      const handler = await getDeleteProjectHandler()
+      const { db } = createDeleteDb()
+
+      db.query.projects.findFirst.mockResolvedValue({
+        id: 'not-a-public-id!',
+      } as never)
+      vi.stubGlobal('useDb', () => db)
+
+      await expect(handler({
+        params: { id: 'not-a-public-id!' },
+      } as any)).rejects.toMatchObject({ status: 404 })
+
+      expect(db.delete).not.toHaveBeenCalled()
+    })
   })
 
   it('returns project chats with pinned rows and a next cursor', async () => {

@@ -27,9 +27,11 @@
         <Icon
           name="lucide:chevron-right"
           class="
-            size-4 shrink-0 text-base-content/60 transition-transform
+            size-4 shrink-0 text-base-content/60 motion-reduce:transition-none
             group-open:rotate-90
           "
+          :class="{ 'transition-transform': isTransitionEnabled }"
+          data-testid="memory-cache-info-chevron"
         />
       </summary>
       <div class="mt-3 grid gap-2">
@@ -51,7 +53,7 @@
             With <strong>{{ modelName }}</strong>,
             {{ TURNS }} messages with
             <span data-testid="memory-cache-info-tokens">{{
-              formatApproxTokens(knowledgeTokens)
+              formatApproxTokens(exampleTokens)
             }}</span>
             tokens of project knowledge cost
             {{ amountLeads.uncached }}
@@ -92,7 +94,7 @@
             {{ statusLine }}
           </p>
           <p
-            v-if="memoryIndexTokens > 0"
+            v-if="showMemoryIndex && memoryIndexTokens > 0"
             data-testid="memory-cache-info-memory-index"
           >
             Your memory index ({{ formatApproxTokens(memoryIndexTokens) }}
@@ -110,6 +112,8 @@
 import type { MemoryEntriesResponse } from '#shared/types/memory-api.d'
 import { parsePerTokenPrice } from '#shared/utils/gateway-pricing'
 import { estimateMemoryIndexTokens } from '#shared/utils/memory-index-estimate'
+import { computeKnowledgeBudget } from '#shared/utils/project-knowledge-budget'
+import { KNOWLEDGE_BUDGET } from '#shared/utils/project-knowledge-policy'
 import type { PromptCacheCostEstimate } from '#shared/utils/prompt-cache-estimate'
 import {
   estimatePromptCacheCost,
@@ -136,13 +140,24 @@ interface CacheModel {
   contextLength: number
 }
 
+const props = withDefaults(defineProps<{
+  knowledgeTokens?: number
+  collapsedAfterFirstView?: boolean
+  storageKey?: string
+  showMemoryIndex?: boolean
+}>(), {
+  knowledgeTokens: undefined,
+  collapsedAfterFirstView: false,
+  storageKey: undefined,
+  showMemoryIndex: true,
+})
+
 const TURNS = 20
-const KNOWLEDGE_TOKEN_CAP = 64_000
-const KNOWLEDGE_BUDGET_SHARE = 0.07
-const UNKNOWN_CONTEXT_LENGTH = 128_000
 const TOKENS_PER_MILLION = 1_000_000
 const DESKTOP_QUERY = '(min-width: 640px)'
 const MEMORY_ENTRIES_KEY = 'memory-entries:all'
+const SEEN_STORAGE_KEY = 'knowledge-cache-info-seen'
+const SEEN_STORAGE_VALUE = '1'
 const ANTHROPIC_PROVIDER_ID = 'anthropic'
 const ANTHROPIC_MODEL_PREFIX = 'anthropic/'
 
@@ -153,10 +168,52 @@ const { data: entriesData } = useNuxtData<MemoryEntriesResponse>(
 
 const isExpanded = shallowRef<boolean>(true)
 const isMounted = shallowRef<boolean>(false)
+const isTransitionEnabled = shallowRef<boolean>(false)
 
-onMounted(() => {
-  isExpanded.value = window.matchMedia(DESKTOP_QUERY).matches
+const seenStorageKey = computed<string>(() => {
+  return props.storageKey
+    ? `${SEEN_STORAGE_KEY}:${props.storageKey}`
+    : SEEN_STORAGE_KEY
+})
+
+function readSeenFlag(): boolean {
+  try {
+    return window.localStorage.getItem(seenStorageKey.value)
+      === SEEN_STORAGE_VALUE
+  } catch {
+    return false
+  }
+}
+
+function writeSeenFlag() {
+  try {
+    window.localStorage.setItem(seenStorageKey.value, SEEN_STORAGE_VALUE)
+  } catch {
+    return
+  }
+}
+
+function resolveInitialExpansion(): boolean {
+  if (!props.collapsedAfterFirstView) {
+    return window.matchMedia(DESKTOP_QUERY).matches
+  }
+
+  const hasBeenSeen = readSeenFlag()
+
+  if (!hasBeenSeen) {
+    writeSeenFlag()
+  }
+
+  return !hasBeenSeen
+}
+
+onMounted(async () => {
+  isExpanded.value = resolveInitialExpansion()
   isMounted.value = true
+
+  await nextTick()
+
+  isTransitionEnabled.value = true
 })
 
 watchPostEffect(() => {
@@ -235,7 +292,8 @@ function resolveGatewayCacheModel(
       : pricePerToken * TOKENS_PER_MILLION,
     cacheReadPrice: null,
     cacheWritePrice: null,
-    contextLength: gatewayModel.value?.contextLength ?? UNKNOWN_CONTEXT_LENGTH,
+    contextLength: gatewayModel.value?.contextLength
+      ?? KNOWLEDGE_BUDGET.unknownContextWindowTokens,
   }
 }
 
@@ -249,13 +307,18 @@ const cacheModel = computed<CacheModel | null>(() => {
   return resolveGatewayCacheModel(current.gatewayId, current.modelId)
 })
 
-const knowledgeTokens = computed<number>(() => {
-  const contextLength = cacheModel.value?.contextLength ?? 0
+const exampleTokens = computed<number>(() => {
+  if (props.knowledgeTokens !== undefined && props.knowledgeTokens > 0) {
+    return props.knowledgeTokens
+  }
 
-  return Math.min(
-    KNOWLEDGE_TOKEN_CAP,
-    Math.floor(KNOWLEDGE_BUDGET_SHARE * contextLength),
-  )
+  const current = cacheModel.value
+
+  if (!current) {
+    return 0
+  }
+
+  return computeKnowledgeBudget(current.contextLength).budgetTokens
 })
 
 const isCachingPriced = computed<boolean>(() => {
@@ -280,7 +343,7 @@ const estimate = computed<PromptCacheCostEstimate | null>(() => {
   }
 
   return estimatePromptCacheCost({
-    tokens: knowledgeTokens.value,
+    tokens: exampleTokens.value,
     turns: TURNS,
     inputPrice: current.inputPrice,
     cacheReadPrice: current.cacheReadPrice,

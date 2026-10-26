@@ -140,6 +140,36 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/context.spec.ts',
     'tests/integration/api/chats-project-knowledge.spec.ts',
   ]
+  const knowledgeCoreTests = [
+    'tests/unit/utils/knowledge/items.spec.ts',
+    'tests/unit/utils/knowledge/version.spec.ts',
+    'tests/unit/utils/knowledge/text-store.spec.ts',
+    'tests/unit/utils/knowledge/chunk.spec.ts',
+    'tests/unit/utils/knowledge/pack.spec.ts',
+    'tests/unit/utils/knowledge/pack-lease.spec.ts',
+  ]
+  const knowledgeIngestTests = [
+    'tests/unit/utils/knowledge/access.spec.ts',
+    'tests/unit/utils/knowledge/ingest.spec.ts',
+    'tests/integration/api/projects-knowledge-ownership.spec.ts',
+    'tests/integration/api/projects-knowledge-items.spec.ts',
+    'tests/integration/api/projects-knowledge-notes.spec.ts',
+    'tests/integration/api/projects-knowledge-commit.spec.ts',
+    'tests/integration/api/projects-knowledge-summary.spec.ts',
+    'tests/integration/api/projects-knowledge-real-pack.spec.ts',
+    'tests/integration/api/projects-knowledge-limits.spec.ts',
+    'tests/unit/utils/knowledge/body.spec.ts',
+    'tests/unit/utils/knowledge/rate-limit.spec.ts',
+  ]
+  const knowledgeRetentionTests = [
+    'tests/unit/utils/knowledge/linked-files.spec.ts',
+    'tests/unit/utils/knowledge/sweep.spec.ts',
+    'tests/integration/server/knowledge-retention.spec.ts',
+    'tests/integration/server/project-knowledge-sweep-plugin.spec.ts',
+    'tests/integration/server/chat-deletion-cleanup.spec.ts',
+    'tests/integration/api/files-delete.spec.ts',
+    'tests/integration/api/projects.spec.ts',
+  ]
   const memoryEntriesTests = [
     'tests/unit/utils/memory/entries.spec.ts',
     'tests/unit/utils/memory/entry-slug.spec.ts',
@@ -501,6 +531,34 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Security/Sessions.spec.ts',
     'tests/unit/components/Profile/Security/LinkedAccounts.spec.ts',
     'tests/unit/components/Profile/Security/Passkeys.spec.ts',
+  ]
+
+  const projectKnowledgeClientTests = [
+    'tests/unit/workers/knowledge-extract.spec.ts',
+    'tests/unit/utils/knowledge-hash.spec.ts',
+    'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
+    'tests/unit/utils/knowledge-upload-plan.spec.ts',
+    'tests/unit/utils/knowledge-folder.spec.ts',
+    'tests/unit/utils/knowledge-title.spec.ts',
+    'tests/unit/utils/knowledge-zip.spec.ts',
+    'tests/unit/utils/project-knowledge-ui.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/composables/knowledge-extract.spec.ts',
+    'tests/unit/composables/project-knowledge.spec.ts',
+    'tests/unit/composables/knowledge-upload.spec.ts',
+    'tests/unit/composables/project-knowledge-model.spec.ts',
+    'tests/unit/composables/project-knowledge-folders.spec.ts',
+    'tests/unit/components/Profile/Memory/CacheInfo.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Panel.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Item.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ItemList.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ItemEditSheet.spec.ts',
+    'tests/unit/components/Projects/Knowledge/NoteEditor.spec.ts',
+    'tests/unit/components/Projects/Knowledge/UploadSheet.spec.ts',
+    'tests/unit/components/Projects/Knowledge/LibraryPicker.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ModeSelector.spec.ts',
+    'tests/unit/components/Projects/Knowledge/CapacityMeter.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Menu.spec.ts',
   ]
 
   const memoryTabTests = [
@@ -1752,6 +1810,11 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern:
+        /^(app\/workers\/knowledge-extract\.ts|app\/components\/Projects\/Knowledge\/.*\.vue|app\/components\/Profile\/Memory\/CacheInfo\.vue|app\/composables\/(knowledge-extract|knowledge-upload|project-knowledge|project-knowledge-model|project-knowledge-folders)\.ts|app\/utils\/(knowledge-hash|knowledge-html-to-markdown|knowledge-upload-plan|knowledge-folder|knowledge-title|knowledge-zip|project-knowledge-ui|reasoning)\.ts|app\/types\/(knowledge-extract|knowledge-ui|project-knowledge)\.d\.ts|tests\/setup\/helpers\/knowledge-(fixtures|ui-fixtures)\.ts)$/,
+      tests: projectKnowledgeClientTests,
+    },
+    {
       pattern: /^app\/layouts\/profile\.vue$/,
       tests: ['tests/unit/layouts/profile.spec.ts'],
     },
@@ -1987,7 +2050,39 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/files\/file-governance\.ts$/,
-      tests: ['tests/unit/utils/knowledge/quota.spec.ts'],
+      tests: [
+        'tests/unit/utils/knowledge/quota.spec.ts',
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/(items|version|text-store|chunk|pack|pack-lease)\.ts$/,
+      tests: [
+        ...knowledgeCoreTests,
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
+    },
+    {
+      pattern: /^(server\/utils\/knowledge\/(access|ingest|body|rate-limit)\.ts|server\/api\/v1\/projects\/\[id\]\/knowledge\/.*\.ts)$/,
+      tests: knowledgeIngestTests,
+    },
+    {
+      pattern: /^(server\/utils\/knowledge\/(linked-files|sweep)\.ts|server\/plugins\/project-knowledge-sweep\.ts|server\/utils\/files\/(cleanup-expired-files|chat-deletion-cleanup)\.ts|server\/api\/v1\/files\/(\[id\]\/index\.delete|delete\/bulk\.post)\.ts|server\/api\/v1\/projects\/\[id\]\/index\.delete\.ts)$/,
+      tests: knowledgeRetentionTests,
+    },
+    {
+      pattern: /^server\/utils\/evlog-attributes\.ts$/,
+      tests: ['tests/unit/utils/evlog-attributes.spec.ts'],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/knowledge-(db|api)\.ts$/,
+      tests: [
+        ...knowledgeCoreTests,
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
     },
     {
       pattern: /^server\/utils\/knowledge\/(purge|storage-keys)\.ts$/,

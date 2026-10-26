@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { loadKnowledgeSendData } from '~~/server/utils/knowledge/send-data'
 import { knowledgePackKey } from '~~/server/utils/knowledge/storage-keys'
-import { createKnowledgeTestDb } from '../../../setup/helpers/knowledge-db'
+import { createKnowledgeTestDb } from '../../../setup/helpers/knowledge-send-db'
 
 const USER_ID = 1
 const OTHER_USER_ID = 2
