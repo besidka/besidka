@@ -914,7 +914,15 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-external-search.spec.ts',
   ]
 
+  const pastChatRetrievalTests = [
+    'tests/unit/utils/memory/tools/pre-retrieval.spec.ts',
+    'tests/unit/utils/past-chat-retrieval.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
+    'tests/integration/api/chats-past-chat-pre-retrieval.spec.ts',
+  ]
+
   const searchStepTests = [
+    'tests/unit/utils/past-chat-retrieval.spec.ts',
     'tests/unit/utils/search-step.spec.ts',
     'tests/unit/components/Chat/Reasoning/SearchStep.spec.ts',
     'tests/unit/components/Chat/Reasoning.spec.ts',
@@ -922,6 +930,7 @@ export function getAffectedTests(changedFiles) {
 
   const chatSearchToolTests = [
     ...memoryToolTests,
+    ...pastChatRetrievalTests,
     'tests/unit/utils/memory/tools/search-chats.spec.ts',
     'tests/unit/utils/memory/tools/read-chat.spec.ts',
     'tests/unit/utils/memory/tools/chat-search-budget.spec.ts',
@@ -1591,9 +1600,14 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
+      pattern: /^shared\/utils\/past-chat-retrieval\.ts$/,
+      tests: [...pastChatRetrievalTests, ...searchStepTests],
+    },
+    {
       pattern: /^(server\/utils\/jev\/.*|shared\/utils\/jev-(policy|schemas))\.ts$/,
       tests: [
         ...jevFoundationTests,
+        ...pastChatRetrievalTests,
         ...profileSettingsTests,
         ...typesafeRolesUiTests,
       ],

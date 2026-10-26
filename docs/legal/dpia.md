@@ -289,7 +289,7 @@ removed.
 | `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results fetched through Besidka | That text | Text used unscreened; a flag holds a file for review or leaves a result out of context and never deletes anything |
 | `rerank` | Order search candidates by relevance and leave out clearly irrelevant ones while enough relevant ones remain | Past-chat and project-knowledge search | The query and excerpts of about 300 tokens each, up to 30 per search | Original order |
 | `sharePiiCheck` | Warn about personal data before publishing | When the share window opens or its files toggle changes, before a public share link is created; only with current legal consent | The chat text being shared, with never-store values, emails and phone numbers removed, in chunks of up to about 25,000 tokens | Generic reminder next to the built-in detector warnings; never blocks sharing |
-| `pastChatRetrieval` | Pre-search past chats for models without tool calling | Each message, only when the message refers to an earlier, separate conversation | The message and recent turns | No pre-search |
+| `pastChatRetrieval` | Pre-search past chats for models without tool calling | Each message, unless a listed phrase ("last time", "we discussed") already starts the search without a Jev call | The message and recent turns, with never-store values removed | No key or role off: no pre-search. Jev unsure or unavailable: the search runs anyway, so a failed call sends nothing extra to TypeSafe AI |
 
 ### 3.8 Consent gate, version 2026-11-a
 

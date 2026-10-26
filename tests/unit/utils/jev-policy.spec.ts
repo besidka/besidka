@@ -15,6 +15,7 @@ import {
   JEV_URL_OR_DOMAIN_PATTERN,
   isJevRoleSwitchedOn,
   matchesJevPhrases,
+  stripJevPhrases,
 } from '#shared/utils/jev-policy'
 import { jevRoleSettingsPatchSchema } from '#shared/utils/jev-schemas'
 
@@ -161,6 +162,37 @@ describe('jev policy', () => {
     expect(isJevRoleSwitchedOn(null, 'rerank')).toBe(true)
     expect(isJevRoleSwitchedOn({}, 'rerank')).toBe(true)
     expect(isJevRoleSwitchedOn({ rerank: false }, 'rerank')).toBe(false)
+  })
+})
+
+describe('stripJevPhrases', () => {
+  function squash(text: string): string {
+    return text.replace(/\s+/g, ' ').trim()
+  }
+
+  it('replaces whole-word phrases and keeps the rest', () => {
+    expect(squash(stripJevPhrases(
+      'As we discussed last time, which port?',
+      JEV_PAST_CHAT_PHRASES,
+    ))).toBe('As , which port?')
+    expect(squash(stripJevPhrases(
+      'Ти казав порт 8080',
+      JEV_PAST_CHAT_PHRASES,
+    ))).toBe('порт 8080')
+    expect(squash(stripJevPhrases(
+      'В прошлый раз ты говорил порт 8080',
+      JEV_PAST_CHAT_PHRASES,
+    ))).toBe('порт 8080')
+  })
+
+  it('leaves text with no listed phrase unchanged', () => {
+    expect(stripJevPhrases('Explain recursion', JEV_PAST_CHAT_PHRASES))
+      .toBe('Explain recursion')
+  })
+
+  it('carries the past-chat caps next to the threshold', () => {
+    expect(JEV_PAST_CHAT_RETRIEVAL.maxHits).toBe(3)
+    expect(JEV_PAST_CHAT_RETRIEVAL.maxExcerptTokens).toBe(1500)
   })
 })
 

@@ -124,4 +124,16 @@ describe('Profile/Memory/ExtraChecks', () => {
     expect(saved.classList.contains('text-sm')).toBe(true)
     expect(saved.children).toHaveLength(2)
   })
+
+  it.each(['saved', 'missing', 'unknown'] as const)(
+    'reserves the two-line height in the %s state',
+    async (status) => {
+      mocks.status = status
+
+      const wrapper = await mountExtraChecks()
+
+      expect(wrapper.get('[data-testid="memory-checks-content"]').classes())
+        .toContain('min-h-11')
+    },
+  )
 })

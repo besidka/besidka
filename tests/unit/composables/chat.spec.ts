@@ -1665,6 +1665,40 @@ describe('hasMeaningfulAssistantParts omitted context files notice', () => {
   })
 })
 
+describe('hasMeaningfulAssistantParts past-chat pre-retrieval chip', () => {
+  const chipPart = {
+    type: 'tool-search_chats',
+    toolCallId: 'past-chat-pre-retrieval-user-1',
+    state: 'output-available',
+    input: { query: 'invoice' },
+    output: { results: [] },
+  }
+
+  it('does not count a lone pre-retrieval chip as an answer', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [chipPart],
+    } as unknown as UIMessage)).toBe(false)
+  })
+
+  it('still counts a model-called search_chats part', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ ...chipPart, toolCallId: 'call-1' }],
+    } as unknown as UIMessage)).toBe(true)
+  })
+
+  it('still counts real content next to the chip', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [chipPart, { type: 'text', text: 'An answer.' }],
+    } as unknown as UIMessage)).toBe(true)
+  })
+})
+
 describe('useChat request body exaSearchLevel', () => {
   const prefStorage = usePreferenceStorage()
 
