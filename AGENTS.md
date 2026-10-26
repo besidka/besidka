@@ -401,10 +401,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   path; no GDPR Art. 9 opt-in in v1, see its decision log), project memory
   swept only after the extraction opt-in, token budgets incl. the Cyrillic
   multiplier, owner-overridable defaults, the parallel workstreams, the
-  2026-10-26 security audit dispositions (3.17), and the optional add-only
-  TypeSafe AI Jev second opinion on memory writes (3.19: the `memory-check`
-  key kind, gate-first ordering, fail-open, and the `experimental_decide`
-  seam to re-check on SDK upgrades)
+  2026-10-26 security audit dispositions (3.17), and the optional TypeSafe AI
+  Jev checks (3.19: the add-only memory check, the `memory-check` key kind,
+  the seven per-role toggles in `user_settings.typesafe_roles`, fail-safe
+  behaviour, and the `experimental_decide` seam to re-check on SDK upgrades)
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a

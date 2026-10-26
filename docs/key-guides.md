@@ -26,7 +26,7 @@ query-shaped and ends in `-api-key` (`gemini-api-key.md`,
 `content.config.ts`, type `page`, source `key-guides/*.md` with
 `prefix: '/guides'`.
 
-`typesafe-ai-api-key.md` is the TypeSafe AI guide for the **Memory checks**
+`typesafe-ai-api-key.md` is the TypeSafe AI guide for the **Smart checks**
 tab (`kind: 'memory-check'`, see `docs/memory-architecture.md` 3.19). It has
 no `video` block yet, and its card, free-tier and sign-up facts were not
 verifiable from TypeSafe AI's public pages on 2026-10-26, so the guide states

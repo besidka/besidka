@@ -739,8 +739,8 @@ Wiring:
 `LegalDocument.vue` in the `legal` layout). English only. It explains what
 memory holds, how to see, edit, export and delete it, profile versus project
 memory, project knowledge, chat search, the per-chat exclusion, what runs on
-the user's key, what is never stored, what the optional TypeSafe AI memory
-check sends and where, and what the user agrees to. Every product claim was
+the user's key, what is never stored, what the optional TypeSafe AI checks
+(memory and the per-role smart checks) send and where, and what the user agrees to. Every product claim was
 checked against `docs/memory-architecture.md` (3.1 to 3.19),
 `docs/project-knowledge-design.md`, `content/legal/privacy-policy.md` and the
 UI strings in `app/components/Profile/Memory/**`,

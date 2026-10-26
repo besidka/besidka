@@ -150,12 +150,27 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   gateways and search providers whose keys I add (for my chats, project
   memory and memory)", and it already names the automatic check before text
   is saved to memory. TypeSafe AI is an AI provider whose key the user adds,
-  used only for memory checks, so the agreed wording covers it and the hash
-  is unchanged. A wording that listed vendors would have needed a bump. The
+  used at the time only for memory checks, so the agreed wording covers it and
+  the hash is unchanged. A wording that listed vendors would have needed a bump. The
   recipient is listed in the Privacy Policy (recipients table, Memory and
   Transfers sections), in `docs/legal/art30-record.md` row 11a and in
   `docs/legal/dpia.md` section 3.7a and risk row 20. Design:
   `docs/memory-architecture.md` 3.19.
+- **Broadening TypeSafe AI to per-role checks did not bump the version
+  (2026-10-26).** The pinned Art. 9 wording names recipients by category:
+  "the AI providers, AI gateways and search providers whose keys I add (for
+  my chats, project memory and memory)". TypeSafe AI is an AI provider whose
+  key the user adds. The new checks (Auto web search, the memory pre-filter,
+  injection screening, re-ranking, the share personal-data check and
+  past-chat retrieval) send text from the user's chats, project memory and
+  memory to that provider, which the wording already covers. Nothing about
+  what is collected, or for which purpose beyond that, changes, and the hash
+  is unchanged. Each check has its own toggle under Profile → API Keys →
+  Smart checks. **Open owner and counsel question:** whether screening
+  Brave and Exa results and project knowledge files (third-party text, not
+  strictly "my chats, project memory and memory") and sending whole
+  transcripts for the pre-filter still fit that wording, or need a wording
+  change and a version bump. See `docs/legal/memory-legal-changes-draft.md`.
 
 ## How legal text reaches production
 
@@ -222,7 +237,7 @@ Consequences and hazards:
 The recipients table classifies a party as an **independent controller**
 whenever Besidka has no contract governing what that party does with the
 data — true for AI providers, search providers, AI gateways and the TypeSafe
-AI memory check alike, since in every one of those categories the user
+AI checks alike, since in every one of those categories the user
 supplies their own key or account to the recipient directly. A party is a **processor** only when
 Besidka itself holds a data-processing agreement with it, which today is
 true solely for Cloudflare-as-host and Axiom. This is the same test applied
