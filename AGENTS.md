@@ -198,6 +198,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   min; the 120s lease + heartbeat fix, the deterministic tab-close repro, the
   Axiom investigation runbook, and unresolved options (waitUntil,
   Queues/Workflows, Durable Objects) for surviving the disconnect itself
+- `docs/chats/chat-input-tools-menu.md` - The chat input "+" tools menu
+  (popover at md+, bottom sheet below) and the setting tiles in the
+  attachments row: component map, tile rules and order, capability gating
+  before resolution, the effective default reasoning level and the "Save as
+  default" toggle, memory icons, the inline Exa mark
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no

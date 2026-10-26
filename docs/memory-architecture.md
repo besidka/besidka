@@ -2155,9 +2155,9 @@ Auto is a modifier on the chosen search provider (the model's built-in
 search, Brave or Exa), not a provider of its own: Jev decides per message
 whether that provider searches.
 
-**UI.** `ChatInput/WebSearchMenuItems.vue` (in both `WebSearchTrigger.vue`
-and `ToolbarMore.client.vue`) gets an **Auto** section with a one-line hint
-and an info tooltip, shown only when `useUserKeys().keyStatusForProvider(
+**UI.** `ChatInput/ToolsMenu/WebSearchSection.vue` (the "+" menu, see
+`docs/chats/chat-input-tools-menu.md`) has an **Auto** row with a one-line hint
+and an info disclosure, shown only when `useUserKeys().keyStatusForProvider(
 'typesafe') === 'saved'` and the role settings have loaded with
 `autoWebSearch` on (`useAutoWebSearch()` in `app/composables/
 auto-web-search.ts`, which fetches `/api/v1/profiles/settings` only once the
