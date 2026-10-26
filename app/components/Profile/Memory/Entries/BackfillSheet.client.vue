@@ -184,6 +184,14 @@
               may cost more than shown.
             </p>
             <p
+              v-if="isPrefilterOn"
+              class="text-xs text-base-content/70"
+              data-testid="memory-backfill-prefilter-note"
+            >
+              With TypeSafe AI checks on, chats with nothing to remember
+              are skipped, so the real cost is usually lower.
+            </p>
+            <p
               class="text-sm"
               data-testid="memory-backfill-scope-note"
             >
@@ -491,6 +499,14 @@ const {
   startPolling,
   stopPolling,
 } = useMemoryBackfill()
+
+const { keyStatusForProvider } = useUserKeys()
+const { isRoleOn } = useTypesafeRoles()
+
+const isPrefilterOn = computed<boolean>(() => {
+  return keyStatusForProvider('typesafe') === 'saved'
+    && isRoleOn('extractionPrefilter')
+})
 
 const hasLoaded = shallowRef<boolean>(false)
 const hasSeenRunningJob = shallowRef<boolean>(false)

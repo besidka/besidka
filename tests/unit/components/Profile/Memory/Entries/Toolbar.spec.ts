@@ -482,6 +482,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
     it.each([
       ['skipped', 'too-short', 'Your latest chat is too short to learn from yet.'],
       ['skipped', 'no-user-text', 'No new messages to read since the last update.'],
+      ['skipped', 'nothing-durable', 'Nothing new worth remembering in that chat.'],
       ['skipped', 'project-unavailable', 'This project is no longer available.'],
       ['skipped', 'chat-unavailable', 'Your latest chat is no longer available.'],
       ['leased', undefined, 'Besidka is already updating memory from this chat.'],

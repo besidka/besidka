@@ -512,6 +512,30 @@ describe('memory backfill', () => {
         })
       })
 
+    it('counts a chat skipped as nothing-durable as processed and skipped '
+      + 'without spending tokens', async () => {
+      await chat(10)
+      await chat(20)
+      mocks.extractChatMemory
+        .mockResolvedValueOnce(extractionResult({
+          status: 'skipped',
+          reason: 'nothing-durable',
+          applied: { created: 0, updated: 0, deleted: 0 },
+          usage: { inputTokens: 0, outputTokens: 0 },
+        }))
+        .mockResolvedValueOnce(extractionResult())
+
+      const progress = await start()
+      const step = await advance(progress.id, { chatsLimit: 5 })
+
+      expect(step.job).toMatchObject({
+        processedChats: 2,
+        skippedChats: 1,
+        failedChats: 0,
+        status: 'completed',
+      })
+    })
+
     it('counts a chat whose extraction throws as failed and goes on',
       async () => {
         await chat(10)
