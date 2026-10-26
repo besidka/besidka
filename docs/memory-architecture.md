@@ -2116,8 +2116,9 @@ result the search did not find.
 query is the shared state (`{ query }`) and every candidate is a boolean
 question whose `instructions` are `{ task, passage }` from `JEV_RERANK`, so
 no passage sees another and one distractor cannot colour the rest. At most 30
-candidates are judged (`maxCandidates`); passages are cut to about 300 tokens
-(`maxPassageTokens`). The query and every passage go through
+candidates are judged (`maxCandidates`); passages and the query are cut to
+about 300 tokens (`maxPassageTokens`), which matters for pre-retrieval, where
+the query is the whole user message. The query and every passage go through
 `redactNeverStore` first and are truncated afterwards, so a cut can never
 leave half of a redacted value. The send-path timeout (800 ms) applies,
 including the pre-retrieval before the first token.

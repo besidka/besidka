@@ -109,7 +109,7 @@ async function rerankCandidates<Candidate>(
 ): Promise<Candidate[]> {
   const judged = input.candidates.slice(0, JEV_RERANK.maxCandidates)
   const unjudged = input.candidates.slice(JEV_RERANK.maxCandidates)
-  const query = prepareText(input.query)
+  const query = prepareText(input.query, JEV_RERANK.maxPassageTokens)
   const passages = judged.map((candidate) => {
     return prepareText(
       input.passageOf(candidate),
@@ -177,10 +177,11 @@ async function rerankCandidates<Candidate>(
  * state and every passage is the instructions of its own boolean question,
  * so no passage sees another. At most `JEV_RERANK.maxCandidates` candidates
  * are judged; the rest follow in their original order. Passages and the
- * query are never-store redacted before truncation, so a cut can never
- * leave half of a redacted value. Without a model, with fewer than two
- * candidates, or on any Jev failure or incomplete answer, the candidates
- * come back unchanged.
+ * query are never-store redacted before truncation to
+ * `JEV_RERANK.maxPassageTokens`, so a cut can never leave half of a redacted
+ * value and a pasted message cannot exceed the Jev input cap. Without a
+ * model, with fewer than two candidates, or on any Jev failure or incomplete
+ * answer, the candidates come back unchanged.
  */
 export async function rerankWithJev<Candidate>(
   input: JevRerankInput<Candidate>,

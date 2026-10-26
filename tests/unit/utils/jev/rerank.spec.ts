@@ -306,6 +306,22 @@ describe('rerankWithJev', () => {
     expect(options.questions.c1.instructions.passage).toBe('short passage')
   })
 
+  it('truncates a long query to the passage token cap', async () => {
+    answerWith([0.9, 0.8])
+
+    await rerank({
+      query: 'pasted '.repeat(20_000),
+      candidates: ['first passage', 'second passage'],
+    })
+
+    const [options] = mocks.decide.mock.calls[0]!
+    const query = options.state.query as string
+
+    expect(query.length).toBeGreaterThan(0)
+    expect(estimateKnowledgeTextTokens(countKnowledgeChars(query), 'default'))
+      .toBeLessThanOrEqual(JEV_RERANK.maxPassageTokens)
+  })
+
   it('redacts never-store values from passages and the query before '
     + 'sending', async () => {
     answerWith([0.9, 0.8])
