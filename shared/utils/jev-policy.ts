@@ -166,8 +166,15 @@ export const JEV_PAST_CHAT_RETRIEVAL = {
   [key: string]: unknown
 }
 
-export const JEV_URL_OR_DOMAIN_PATTERN
-  = /\bhttps?:\/\/\S+|\b[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.[a-z]{2,24}\b/iu
+const WEB_TLDS = 'com|org|net|io|dev|app|ai|co|info|eu|gov|edu|pl|ua|ru'
+  + '|de|uk|fr|es|it|nl|cz|us|ca'
+
+export const JEV_URL_OR_DOMAIN_PATTERN = new RegExp(
+  '(?:https?:\\/\\/|\\bwww\\.)\\S+'
+  + `|(?<![\\p{L}\\p{N}.-])(?:[\\p{L}\\p{N}-]+\\.)+(?:${WEB_TLDS})`
+  + '(?![\\p{L}\\p{N}])',
+  'iu',
+)
 
 export const JEV_RECENCY_PHRASES = {
   en: ['today', 'now', 'latest', 'current price', 'news', 'score', 'weather'],
@@ -183,16 +190,37 @@ export const JEV_PAST_CHAT_PHRASES = {
   ru: ['в прошлый раз', 'ты говорил'],
 } as const
 
+export const JEV_PHRASE_STEMS: ReadonlySet<string> = new Set([
+  'najnowsz',
+  'последн',
+])
+
 type JevPhraseLists = Readonly<Record<string, readonly string[]>>
 
+const WORD_START = '(?<![\\p{L}\\p{N}])'
+const WORD_END = '(?![\\p{L}\\p{N}])'
+
+function escapePattern(phrase: string): string {
+  return phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function phrasePattern(phrase: string): RegExp {
+  const end = JEV_PHRASE_STEMS.has(phrase) ? '' : WORD_END
+
+  return new RegExp(`${WORD_START}${escapePattern(phrase)}${end}`, 'iu')
+}
+
+/**
+ * True when the text contains a listed phrase as whole words (a phrase in
+ * `JEV_PHRASE_STEMS` may continue with more letters), so "now" never
+ * matches "know" and "курс" never matches "курсор".
+ */
 export function matchesJevPhrases(
   text: string,
   phraseLists: JevPhraseLists,
 ): boolean {
-  const normalized = text.toLocaleLowerCase()
-
   return Object.values(phraseLists).some((phrases) => {
-    return phrases.some(phrase => normalized.includes(phrase))
+    return phrases.some(phrase => phrasePattern(phrase).test(text))
   })
 }
 

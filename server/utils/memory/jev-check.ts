@@ -77,7 +77,7 @@ const SENSITIVE_FALSE_CRITERION = 'The candidate only mentions the subject as '
   + 'a TV show, place name, academic topic, job, workplace, or fiction, and '
   + 'reveals nothing about any person\'s own situation of this kind.'
 
-export type MemoryJevStatus = Exclude<JevStatus, 'disabled'>
+export type MemoryJevStatus = JevStatus
 
 export interface MemoryJevCandidate {
   title: string

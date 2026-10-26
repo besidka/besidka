@@ -115,11 +115,43 @@ describe('jev policy', () => {
       .toBe(false)
   })
 
-  it('detects URLs and bare domains', () => {
-    expect(JEV_URL_OR_DOMAIN_PATTERN.test('read https://example.com/a'))
+  it('matches whole words, and stems only where marked', () => {
+    expect(matchesJevPhrases('I know the answer', JEV_RECENCY_PHRASES))
+      .toBe(false)
+    expect(matchesJevPhrases('rename the underscore', JEV_RECENCY_PHRASES))
+      .toBe(false)
+    expect(matchesJevPhrases('подвинь курсор', JEV_RECENCY_PHRASES))
+      .toBe(false)
+    expect(matchesJevPhrases('przesuń kursor', JEV_RECENCY_PHRASES))
+      .toBe(false)
+    expect(matchesJevPhrases('Jaki jest kurs euro?', JEV_RECENCY_PHRASES))
       .toBe(true)
-    expect(JEV_URL_OR_DOMAIN_PATTERN.test('is nuxt.com down?')).toBe(true)
-    expect(JEV_URL_OR_DOMAIN_PATTERN.test('explain closures')).toBe(false)
+    expect(matchesJevPhrases('najnowsza wersja Vue', JEV_RECENCY_PHRASES))
+      .toBe(true)
+    expect(matchesJevPhrases('последние новости', JEV_RECENCY_PHRASES))
+      .toBe(true)
+  })
+
+  it('detects URLs and web domains, not file names or versions', () => {
+    for (const text of [
+      'read https://example.com/a',
+      'is nuxt.com down?',
+      'open www.example.org',
+      'what is on pravda.com.ua',
+    ]) {
+      expect(JEV_URL_OR_DOMAIN_PATTERN.test(text)).toBe(true)
+    }
+
+    for (const text of [
+      'explain closures',
+      'fix index.ts',
+      'my app.vue is blank',
+      'update package.json',
+      'bump to v1.2.3',
+      'edit vite.config.ts',
+    ]) {
+      expect(JEV_URL_OR_DOMAIN_PATTERN.test(text)).toBe(false)
+    }
   })
 
   it('treats a missing or null role as on', () => {

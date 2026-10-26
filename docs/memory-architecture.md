@@ -2076,8 +2076,11 @@ throws on a Jev failure:
   `JEV_EXTRACTION_PREFILTER`, `JEV_INJECTION_SCREENING`, `JEV_RERANK`,
   `JEV_SHARE_PII_CHECK`, `JEV_PAST_CHAT_RETRIEVAL` (question id, verbatim
   wording and criteria, threshold, size cap, timeout), the phrase lists
-  `JEV_RECENCY_PHRASES` and `JEV_PAST_CHAT_PHRASES` with `matchesJevPhrases`,
-  and `JEV_URL_OR_DOMAIN_PATTERN`. The state keys the wordings refer to are
+  `JEV_RECENCY_PHRASES` and `JEV_PAST_CHAT_PHRASES` with `matchesJevPhrases`
+  (whole words, so "now" never matches "know" and "курс" never matches
+  "курсор"; only `JEV_PHRASE_STEMS` may continue), and
+  `JEV_URL_OR_DOMAIN_PATTERN` (a scheme, `www.` or a web TLD from a short
+  list, so `index.ts`, `app.vue` and `package.json` do not force a search). The state keys the wordings refer to are
   the eval's: `message` and `recent_turns` (web search, past chats),
   `transcript` (pre-filter), `text` (injection), `chat` (share check),
   `query` with the passage in each question's `instructions` (rerank).

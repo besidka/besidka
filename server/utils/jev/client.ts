@@ -19,7 +19,7 @@ export type JevFailureStatus
     | 'network'
     | 'error'
 
-export type JevStatus = 'ok' | 'key-error' | 'disabled' | JevFailureStatus
+export type JevStatus = 'ok' | 'key-error' | JevFailureStatus
 
 export type JevQuestions = Record<string, Experimental_DecisionQuestion>
 

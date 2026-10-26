@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3'
 import { SQLiteDialect } from 'drizzle-orm/sqlite-core/dialect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { JEV_ROLE_IDS } from '#shared/utils/jev-policy'
@@ -182,6 +183,30 @@ describe('jevRoleSettingsUpdateValue', () => {
       'json_patch(coalesce("user_settings"."typesafe_roles", \'{}\'), ?)',
     )
     expect(query.params).toEqual(['{"rerank":false}'])
+  })
+
+  it('keeps the other stored roles when SQLite applies the patch', () => {
+    const sqlite = new Database(':memory:')
+    const query = new SQLiteDialect().sqlToQuery(
+      jevRoleSettingsUpdateValue({ rerank: true, sharePiiCheck: false })!,
+    )
+
+    sqlite.exec('create table user_settings (typesafe_roles text)')
+    sqlite.prepare('insert into user_settings values (?)')
+      .run('{"rerank":false,"autoWebSearch":false}')
+    sqlite.prepare(`update user_settings set typesafe_roles = ${query.sql}`)
+      .run(...query.params)
+
+    const row = sqlite.prepare('select typesafe_roles from user_settings')
+      .get() as { typesafe_roles: string }
+
+    sqlite.close()
+
+    expect(JSON.parse(row.typesafe_roles)).toEqual({
+      rerank: true,
+      autoWebSearch: false,
+      sharePiiCheck: false,
+    })
   })
 
   it('resets to null', () => {
