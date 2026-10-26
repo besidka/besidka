@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { countKnowledgeChars } from '#shared/utils/project-knowledge-budget'
 import { getKnowledgeRelativePathIssue } from '#shared/utils/project-knowledge-path'
 import { KNOWLEDGE_LIMITS } from '#shared/utils/project-knowledge-policy'
@@ -868,6 +869,19 @@ describe('knowledge ingestion', () => {
       expect(await hashKnowledgeText('abc')).toBe(
         'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
       )
+    })
+
+    it('matches the client hash of the same bytes, Cyrillic included', async () => {
+      const texts = ['abc', 'Привіт, світе!', 'caf\u00E9 \u2615', '']
+
+      for (const text of texts) {
+        const file = new File([text], 'note.md', { type: 'text/markdown' })
+
+        expect(await hashKnowledgeText(text))
+          .toBe(await sha256Hex(await file.arrayBuffer()))
+        expect(await hashKnowledgeText(text))
+          .toBe(await sha256Hex(new TextEncoder().encode(text)))
+      }
     })
   })
 

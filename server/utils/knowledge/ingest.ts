@@ -4,9 +4,11 @@ import type { BatchItem } from 'drizzle-orm/batch'
 import type { z } from 'zod'
 import type {
   KnowledgeCharCounts,
+  KnowledgeCommitResponse,
   KnowledgeItem,
   KnowledgeMode,
 } from '#shared/types/project-knowledge.d'
+import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { countKnowledgeChars } from '#shared/utils/project-knowledge-budget'
 import {
   getKnowledgeRelativePathIssue,
@@ -380,15 +382,8 @@ function toFileTitle(fileName: string): string {
  * `contentHash`. Notes are hashed server-side so the per-project unique
  * index also rejects an identical note body.
  */
-export async function hashKnowledgeText(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(text),
-  )
-
-  return Array.from(new Uint8Array(digest), (byte) => {
-    return byte.toString(16).padStart(2, '0')
-  }).join('')
+export function hashKnowledgeText(text: string): Promise<string> {
+  return sha256Hex(text)
 }
 
 function isPdfOrImage(mediaType: string): boolean {
@@ -1659,7 +1654,7 @@ export async function findKnowledgeRemovalTargets(
 export async function commitKnowledgeRequest(
   context: KnowledgeIngestContext,
   input: { remove: string[], folderId: string | null },
-): Promise<KnowledgeCommitResult & { removed: number, skipped: string[] }> {
+): Promise<KnowledgeCommitResponse> {
   if (input.remove.length === 0) {
     const state = await readCommitState(context)
 

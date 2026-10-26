@@ -7,7 +7,7 @@ import {
   getKnowledgeFileCategory,
   isIgnoredKnowledgePath,
 } from '#shared/utils/project-knowledge-policy'
-import { sha256Hex } from '~/utils/knowledge-hash'
+import { sha256Hex } from '#shared/utils/knowledge-hash'
 
 export type KnowledgeSkipReason
   = | 'ignored-path'

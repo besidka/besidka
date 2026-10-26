@@ -433,7 +433,7 @@ export function useProjectKnowledge(
         })
       },
       (id, result) => {
-        const skippedIds = new Set<string>(result.skipped ?? [])
+        const skippedIds = new Set<string>(result.skipped)
         const removedIds = new Set<string>(
           (body.remove ?? []).filter(itemId => !skippedIds.has(itemId)),
         )

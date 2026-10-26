@@ -24,6 +24,7 @@ function createItem(overrides: Partial<KnowledgeItem> = {}): KnowledgeItem {
     description: null,
     relativePath: null,
     folderId: null,
+    contentHash: null,
     mediaType: 'text/markdown',
     sizeBytes: 1000,
     pageCount: null,

@@ -7,7 +7,7 @@ import {
   KNOWLEDGE_LIMITS,
   getKnowledgeFileCategory,
 } from '#shared/utils/project-knowledge-policy'
-import { sha256Hex } from '~/utils/knowledge-hash'
+import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { readZipSummary } from '~/utils/knowledge-zip'
 
 interface KnowledgeWorkerScope {

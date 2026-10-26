@@ -21,6 +21,7 @@ import type {
   KnowledgeUploadPlan,
 } from '~/utils/knowledge-upload-plan'
 import { parseKnowledgeRelativePath } from '#shared/utils/project-knowledge-path'
+import { KNOWLEDGE_CONTENT_HASH_PATTERN } from '#shared/utils/project-knowledge-schemas'
 import { normalizeKnowledgeTitle } from '~/utils/knowledge-title'
 import { uploadWithProgress } from '~/utils/upload-with-progress'
 
@@ -45,6 +46,7 @@ interface PendingBatch {
 
 interface SyncRemoval {
   itemId: string
+  contentHash: string
   replacedByKey: string | null
   hasKnownHash: boolean
 }
@@ -52,6 +54,7 @@ interface SyncRemoval {
 interface SyncState {
   removals: SyncRemoval[]
   addKeys: Set<string>
+  addHashByKey: Map<string, string>
   unchanged: number
   foreignFolderItems: number
   keptIneligible: number
@@ -108,8 +111,6 @@ const MAX_UNLINKED_UPLOAD_BYTES = 10 * 1024 * 1024
 const RUN_STOPPING_STATUSES: ReadonlySet<number> = new Set([402, 413, 422, 429])
 
 const STORAGE_MESSAGE_PATTERN = /storage|quota/i
-
-const CONTENT_HASH_PATTERN = /^[a-f0-9]{64}$/
 
 const FOLDER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -171,11 +172,11 @@ function toContentHash(
   extractedHash: string,
   plannedHash: string,
 ): string | null {
-  if (CONTENT_HASH_PATTERN.test(extractedHash)) {
+  if (KNOWLEDGE_CONTENT_HASH_PATTERN.test(extractedHash)) {
     return extractedHash
   }
 
-  return CONTENT_HASH_PATTERN.test(plannedHash) ? plannedHash : null
+  return KNOWLEDGE_CONTENT_HASH_PATTERN.test(plannedHash) ? plannedHash : null
 }
 
 function toPageCount(pageCount: number | null): number | null {
@@ -639,13 +640,22 @@ export function useKnowledgeUpload(
           queued,
           collectFileIds(input.incoming),
         )
+        const storedHashById = new Map<string, string>(
+          input.existing.map(item => [item.id, item.contentHash]),
+        )
         const removals: SyncRemoval[] = diff.remove.map((itemId) => {
-          return { itemId, replacedByKey: null, hasKnownHash: false }
+          return {
+            itemId,
+            contentHash: storedHashById.get(itemId) ?? '',
+            replacedByKey: null,
+            hasKnownHash: false,
+          }
         })
 
         for (const replacement of diff.replace) {
           removals.push({
             itemId: replacement.itemId,
+            contentHash: storedHashById.get(replacement.itemId) ?? '',
             replacedByKey: keyByAccepted.get(replacement.incoming) ?? null,
             hasKnownHash: replacement.hasKnownHash,
           })
@@ -655,6 +665,13 @@ export function useKnowledgeUpload(
           removals,
           addKeys: new Set<string>(
             diff.add.flatMap(entry => keyByAccepted.get(entry) ?? []),
+          ),
+          addHashByKey: new Map<string, string>(
+            diff.add.flatMap((entry) => {
+              const key = keyByAccepted.get(entry)
+
+              return key ? [[key, entry.contentHash] as const] : []
+            }),
           ),
           unchanged: diff.unchanged,
           foreignFolderItems: foreignFolderItems.length,
@@ -1047,9 +1064,12 @@ export function useKnowledgeUpload(
   }
 
   function planRemovals(sync: SyncState, isRunComplete: boolean): RemovalPlan {
-    const hasSkippedAdd = Array.from(sync.addKeys).some((key) => {
+    const skippedAddKeys = Array.from(sync.addKeys).filter((key) => {
       return getEntryStatus(key) === 'skipped-duplicate'
     })
+    const skippedAddHashes = new Set<string>(
+      skippedAddKeys.flatMap(key => sync.addHashByKey.get(key) ?? []),
+    )
     const removalPlan: RemovalPlan = {
       removableIds: [],
       keptRenamed: 0,
@@ -1063,7 +1083,11 @@ export function useKnowledgeUpload(
           continue
         }
 
-        if (hasSkippedAdd) {
+        const isRenameSuspect = removal.contentHash.length > 0
+          ? skippedAddHashes.has(removal.contentHash)
+          : skippedAddKeys.length > 0
+
+        if (isRenameSuspect) {
           removalPlan.keptRenamed += 1
 
           continue
@@ -1192,12 +1216,12 @@ export function useKnowledgeUpload(
       const outcome = await knowledge.commit(body)
 
       if (outcome.ok) {
-        const skippedIds = new Set<string>(outcome.result.skipped ?? [])
+        const skippedIds = new Set<string>(outcome.result.skipped)
         const skippedCount = removableIds.filter((itemId) => {
           return skippedIds.has(itemId)
         }).length
 
-        sync.removed += removableIds.length - skippedCount
+        sync.removed += outcome.result.removed
         sync.couldNotRemove += skippedCount
         sync.removals = sync.removals.filter((removal) => {
           return !removableIds.includes(removal.itemId)

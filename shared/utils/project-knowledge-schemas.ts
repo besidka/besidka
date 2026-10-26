@@ -13,7 +13,7 @@ import {
 
 const CONTROL_OR_SEPARATOR_PATTERN = /[\p{Cc}\u2028\u2029]/u
 const FOLDER_ID_PATTERN = /^[A-Za-z0-9_-]+$/
-const CONTENT_HASH_PATTERN = /^[a-f0-9]{64}$/
+export const KNOWLEDGE_CONTENT_HASH_PATTERN = /^[a-f0-9]{64}$/
 const MAX_FOLDER_ID_CHARS = 64
 const MAX_EXTRACT_ERROR_CHARS = 64
 const MAX_MEDIA_TYPE_CHARS = 100
@@ -108,6 +108,10 @@ const atLeastOneKeyMessage = {
   message: 'At least one field is required',
 }
 
+export const knowledgeContentHashSchema = z
+  .string()
+  .regex(KNOWLEDGE_CONTENT_HASH_PATTERN)
+
 export const knowledgeModeSchema = z.enum(knowledgeModes)
 
 export const knowledgeModePatchSchema = z.object({
@@ -149,7 +153,7 @@ export const knowledgeItemCreateSchema = z
     mediaType: z.string().min(1).max(MAX_MEDIA_TYPE_CHARS).optional(),
     relativePath: relativePathField.nullable().optional(),
     folderId: folderIdField.nullable().optional(),
-    contentHash: z.string().regex(CONTENT_HASH_PATTERN).nullable().optional(),
+    contentHash: knowledgeContentHashSchema.nullable().optional(),
     extractor: z.enum(knowledgeExtractors)
       .refine(value => value !== 'note', {
         message: 'Extractor must not be "note" for files',

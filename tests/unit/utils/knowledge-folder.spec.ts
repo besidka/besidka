@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { sha256Hex } from '#shared/utils/knowledge-hash'
 import {
   collectWalkedPaths,
   diffFolderSync,
@@ -322,6 +323,41 @@ describe('diffFolderSync', () => {
 
     expect(diff.remove).toEqual([])
     expect(diff.kept).toEqual([])
+  })
+
+  it('counts a Cyrillic NFC file as unchanged when the disk path is NFD', () => {
+    const storedPath = 'нотатки/й.md'
+    const diskPath = 'нотатки/и\u0306.md'
+    const contentHash = 'a'.repeat(64)
+    const diff = diffFolderSync({
+      existing: [{ id: 'i1', relativePath: storedPath, contentHash }],
+      incoming: [{ relativePath: diskPath, contentHash }],
+      walkedPaths: [diskPath],
+    })
+
+    expect(diff).toEqual({
+      add: [],
+      replace: [],
+      remove: [],
+      kept: [],
+      unchanged: 1,
+    })
+  })
+
+  it('reproduces the stored hash from the same bytes on the client', async () => {
+    const text = 'Привіт, світе!'
+    const serverHash = await sha256Hex(text)
+    const clientHash = await sha256Hex(
+      await new File([text], 'привіт.md').arrayBuffer(),
+    )
+    const diff = diffFolderSync({
+      existing: [{ id: 'i1', relativePath: 'привіт.md', contentHash: serverHash }],
+      incoming: [{ relativePath: 'привіт.md', contentHash: clientHash }],
+      walkedPaths: ['привіт.md'],
+    })
+
+    expect(diff.unchanged).toBe(1)
+    expect(diff.replace).toEqual([])
   })
 
   it('compares walked paths after NFC normalisation', () => {

@@ -13,6 +13,7 @@ export function createKnowledgeItem(
     description: null,
     relativePath: null,
     folderId: null,
+    contentHash: null,
     mediaType: 'text/markdown',
     sizeBytes: 1024,
     pageCount: null,

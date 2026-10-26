@@ -147,6 +147,20 @@ describe('project knowledge items API', () => {
       expect(result.version).toBe(1)
     })
 
+    it('returns the stored contentHash on the created item', async () => {
+      const hash = 'c'.repeat(64)
+      const result = await post({
+        items: [
+          textItem({ contentHash: hash }),
+          textItem({ title: 'No hash' }),
+        ],
+      })
+
+      expect(result.items.map((item: { contentHash: string | null }) => {
+        return item.contentHash
+      })).toEqual([hash, null])
+    })
+
     it('answers 200 and reports skipped duplicates', async () => {
       const hash = 'd'.repeat(64)
 

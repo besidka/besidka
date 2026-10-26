@@ -116,6 +116,7 @@ describe('project knowledge summary API', () => {
       userId: OWNER,
       projectId: PROJECT,
       title: 'First',
+      contentHash: 'f'.repeat(64),
       createdAt: 1000,
       textBytes: 12,
       latinChars: 4,
@@ -152,9 +153,11 @@ describe('project knowledge summary API', () => {
       id: encodePublicId(1),
       projectId: projectPublicId,
       kind: 'note',
+      contentHash: 'f'.repeat(64),
       sendAsNativePdf: false,
       pinned: false,
     })
+    expect(summary.items[1].contentHash).toBeNull()
   })
 
   it('schedules a pack refresh through waitUntil when the pack is behind', async () => {
