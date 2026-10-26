@@ -1,3 +1,5 @@
+import type { KnowledgeDecisionMode } from '#shared/types/project-knowledge.d'
+
 export type SearchBillingUnit = 'query' | 'grounded-prompt' | 'search'
 
 // The provider that actually ran the search: the native integrations
@@ -48,6 +50,7 @@ export type MessageUsage = {
   searchCost?: number
   searchProvider?: SearchProvider
   knowledgeTokens?: number
+  knowledgeMode?: KnowledgeDecisionMode
   firstStepInputTokens?: number
   lastStepOutputTokens?: number
 }
