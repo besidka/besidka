@@ -2394,6 +2394,37 @@ describe('knowledge pack', () => {
       expect(projectRow().knowledge_pack_version).toBe(4)
     })
 
+    it('builds inside the interval when the caller opts out of it', async () => {
+      await ensure()
+      setProject(3, 2)
+
+      await ensureKnowledgePackFresh({
+        userId: OWNER,
+        projectId: PROJECT,
+        ignoreBuildInterval: true,
+        logger,
+      })
+
+      expect(projectRow().knowledge_pack_version).toBe(3)
+    })
+
+    it('still honours the failure backoff when the interval is ignored', async () => {
+      kv.values.set(
+        `knowledge-pack-backoff:${PROJECT}`,
+        JSON.stringify({ count: 3, version: 2 }),
+      )
+      kv.entries.set(`knowledge-pack-backoff:${PROJECT}`, Date.now() + 600_000)
+
+      await ensureKnowledgePackFresh({
+        userId: OWNER,
+        projectId: PROJECT,
+        ignoreBuildInterval: true,
+        logger,
+      })
+
+      expect(projectRow().knowledge_pack_version).toBe(1)
+    })
+
     it('makes the lazy path wait after a commit build', async () => {
       await commit()
       setProject(5, 3)

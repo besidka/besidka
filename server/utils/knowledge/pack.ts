@@ -1102,12 +1102,15 @@ export async function commitKnowledgeChange(input: {
  * `knowledge_version` it stops scheduling rebuilds for ten minutes (a KV
  * counter; a new version resets it and a finished build clears it). It also
  * waits 30 seconds after any finished build (a KV timestamp), so the panel
- * and sends of a running upload do not build once per insert batch; an
- * explicit commit ignores that wait and builds right away.
+ * and sends of a running upload do not build once per insert batch.
+ * `ignoreBuildInterval` lifts that wait for the commit requests that settle
+ * through this path (an empty or all-duplicate commit), which must build
+ * right away; the backoff and the lease still apply.
  */
 export async function ensureKnowledgePackFresh(input: {
   userId: number
   projectId: number
+  ignoreBuildInterval?: boolean
   logger?: LoggerLike
 }): Promise<void> {
   const logger = resolveServerLogger(input.logger)
@@ -1134,10 +1137,8 @@ export async function ensureKnowledgePackFresh(input: {
       return
     }
 
-    const isRecentlyBuilt = await isKnowledgePackRecentlyBuilt(
-      input.projectId,
-      logger,
-    )
+    const isRecentlyBuilt = input.ignoreBuildInterval !== true
+      && await isKnowledgePackRecentlyBuilt(input.projectId, logger)
 
     if (isRecentlyBuilt) {
       packLog(logger, 'interval', {

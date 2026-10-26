@@ -798,8 +798,11 @@ Audit fixes in the limits (P3, findings 5 to 8 of the memory security audit):
   a running upload do not build once per insert batch. The marker is a KV
   `knowledge-pack-built:<projectId>` value holding the finish time with a 60 s
   expiry (KV cannot expire a key sooner) and is written by every successful
-  build; only the lazy path reads it, so an explicit commit builds right away.
-  It fails open on KV errors, is logged as `knowledgePack.interval` and is
+  build; only the lazy path reads it. A commit through
+  `commitKnowledgeChange` builds right away, and so does the empty or
+  all-duplicate commit that settles through `ensureKnowledgePackFresh`, which
+  passes `ignoreBuildInterval: true` (without it the closing `commit({})` of a
+  batched upload could be skipped and the pack left stale). It fails open on KV errors, is logged as `knowledgePack.interval` and is
   independent of the three-failures backoff.
 - **An unchanged commit does nothing.** A commit where no id matches an item
   (empty list, unknown, foreign or out-of-folder ids), and an items `POST`

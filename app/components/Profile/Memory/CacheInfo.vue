@@ -166,6 +166,8 @@ const { data: entriesData } = useNuxtData<MemoryEntriesResponse>(
   MEMORY_ENTRIES_KEY,
 )
 
+const preferenceStorage = usePreferenceStorage()
+
 const isExpanded = shallowRef<boolean>(true)
 const isMounted = shallowRef<boolean>(false)
 const isTransitionEnabled = shallowRef<boolean>(false)
@@ -177,20 +179,12 @@ const seenStorageKey = computed<string>(() => {
 })
 
 function readSeenFlag(): boolean {
-  try {
-    return window.localStorage.getItem(seenStorageKey.value)
-      === SEEN_STORAGE_VALUE
-  } catch {
-    return false
-  }
+  return preferenceStorage.getItem(seenStorageKey.value)
+    === SEEN_STORAGE_VALUE
 }
 
 function writeSeenFlag() {
-  try {
-    window.localStorage.setItem(seenStorageKey.value, SEEN_STORAGE_VALUE)
-  } catch {
-    return
-  }
+  preferenceStorage.setItem(seenStorageKey.value, SEEN_STORAGE_VALUE)
 }
 
 function resolveInitialExpansion(): boolean {

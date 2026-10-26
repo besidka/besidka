@@ -112,6 +112,25 @@ describe('project knowledge commit and mode API', () => {
       )
     })
 
+    it('rebuilds a stale pack through the lazy path without waiting out the build interval', async () => {
+      harness.testDb.sqlite.prepare(
+        'update projects set knowledge_version = 3,'
+        + ' knowledge_pack_version = 2 where id = ?',
+      ).run(PROJECT)
+
+      await commit({})
+
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: OWNER,
+          projectId: PROJECT,
+          ignoreBuildInterval: true,
+        }),
+      )
+    })
+
     it('removes the listed items in one commit', async () => {
       const first = seedItem({ title: 'One' })
       const second = seedItem({ title: 'Two' })

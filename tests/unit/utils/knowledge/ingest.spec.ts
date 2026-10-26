@@ -262,6 +262,9 @@ describe('knowledge ingestion', () => {
       )
 
       expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledWith(
+        expect.objectContaining({ ignoreBuildInterval: true }),
+      )
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
       expect(result).toMatchObject({ version: 6, packVersion: 6 })
     })
@@ -416,6 +419,9 @@ describe('knowledge ingestion', () => {
       expect(second.version).toBe(1)
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
       expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledWith(
+        expect.objectContaining({ ignoreBuildInterval: true }),
+      )
       expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version)
         .toBe(1)
     })
@@ -2356,6 +2362,9 @@ describe('knowledge ingestion', () => {
       )
 
       expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledWith(
+        expect.objectContaining({ ignoreBuildInterval: true }),
+      )
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
       expect(result).toMatchObject({ version: 3, packVersion: 3 })
     })

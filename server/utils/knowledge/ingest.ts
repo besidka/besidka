@@ -1010,8 +1010,10 @@ async function markInsertedItemsPending(
  * pack that already matches the version is returned as is. A stale pack of a
  * project that has been committed before is rebuilt through the lazy path,
  * which never bumps `knowledge_version` and honours the build backoff, so
- * repeating an empty commit cannot churn builds. Only a project that has
- * never been committed (version 0) takes the full commit once.
+ * repeating an empty commit cannot churn builds. It is an explicit commit, so
+ * it skips the 30 second wait the panel and send paths observe. Only a
+ * project that has never been committed (version 0) takes the full commit
+ * once.
  */
 async function settleUnchangedCommit(
   context: KnowledgeIngestContext,
@@ -1029,6 +1031,7 @@ async function settleUnchangedCommit(
   await ensureKnowledgePackFresh({
     userId: context.userId,
     projectId: context.projectId,
+    ignoreBuildInterval: true,
     logger: context.logger,
   })
 
