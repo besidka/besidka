@@ -1,8 +1,7 @@
-import type { UIMessage } from 'ai'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { isToolUIPart } from 'ai'
 import { createError } from 'evlog'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
+import { filterPublicParts } from '~~/server/utils/chats/share-public-parts'
 import {
   hideFileParts,
   rewriteShareFileParts,
@@ -124,16 +123,3 @@ export default defineEventHandler(async (event) => {
     messages,
   }
 })
-
-function filterPublicParts<TMessage extends { parts: UIMessage['parts'] }>(
-  messages: TMessage[],
-): TMessage[] {
-  return messages.map((message) => {
-    return {
-      ...message,
-      parts: message.parts.filter((part) => {
-        return !isToolUIPart(part)
-      }),
-    }
-  })
-}

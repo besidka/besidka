@@ -57,7 +57,10 @@ describe('jev policy', () => {
     })
     expect(JEV_SHARE_PII_CHECK).toMatchObject({
       questionId: 'p1_personal',
+      stateKey: 'chat',
       warnAtOrAbove: 0.3,
+      maxChunkTokens: 25_000,
+      timeoutMs: 1500,
     })
     expect(JEV_PAST_CHAT_RETRIEVAL).toMatchObject({
       questionId: 's1_previous',

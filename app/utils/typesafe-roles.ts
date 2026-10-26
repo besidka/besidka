@@ -50,7 +50,8 @@ export const typesafeRoleCopies: TypesafeRoleCopy[] = [
     id: 'sharePiiCheck',
     title: 'Share check',
     description: 'Before you share a chat, checks it for personal data and '
-      + 'warns you. Sends the chat text being shared. Never blocks sharing.',
+      + 'warns you. Sends the chat text being shared, with emails, phone '
+      + 'numbers and card numbers removed. Never blocks sharing.',
   },
   {
     id: 'pastChatRetrieval',

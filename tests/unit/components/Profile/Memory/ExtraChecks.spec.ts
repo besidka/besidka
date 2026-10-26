@@ -95,4 +95,33 @@ describe('Profile/Memory/ExtraChecks', () => {
     expect(wrapper.find('[data-testid="memory-checks-add-key"]').exists())
       .toBe(false)
   })
+
+  it('keeps the skeleton as tall as the saved two-line state', async () => {
+    mocks.status = 'unknown'
+
+    const skeleton = (await mountExtraChecks())
+      .get('[data-testid="memory-checks-skeleton"]')
+    const lines = skeleton.findAll('.skeleton')
+
+    expect(skeleton.classes()).toContain('grid')
+    expect(skeleton.classes()).toContain('gap-1')
+    expect(lines).toHaveLength(2)
+
+    for (const line of lines) {
+      expect(line.classes()).toContain('h-5')
+    }
+  })
+
+  it('renders the saved state as the same two text-sm lines the skeleton '
+    + 'stands in for', async () => {
+    mocks.status = 'saved'
+
+    const saved = (await mountExtraChecks())
+      .get('[data-testid="memory-checks-on"]').element.parentElement!
+
+    expect(saved.classList.contains('grid')).toBe(true)
+    expect(saved.classList.contains('gap-1')).toBe(true)
+    expect(saved.classList.contains('text-sm')).toBe(true)
+    expect(saved.children).toHaveLength(2)
+  })
 })

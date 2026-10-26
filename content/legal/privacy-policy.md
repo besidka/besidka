@@ -257,7 +257,7 @@ TypeSafe AI receives only the text each check you left on needs:
 | Memory pre-filter | Before memory is generated from a chat, and only when that runs ("Generate memory from chats", a project Refresh or an explicit extraction): the chat text, with never-stored values such as passwords and card numbers removed, in chunks of up to about 8,000 tokens. If Jev finds nothing worth remembering, the memory model is skipped, which saves your own key's cost | If Jev is unsure or unavailable, memory is generated as usual |
 | Prompt-injection screening | The text of project knowledge files and notes, and of Brave and Exa search results fetched through Besidka. Flagged project files wait for your review. Flagged search results are left out of the model's context. A flag never deletes anything. Results from the chat model's own built-in web search cannot be checked | The text is used unscreened |
 | Re-ranking | When your past chats or project knowledge are searched: the search query and short excerpts (about 300 tokens each, up to 30 per search) of the candidate results | The original search order is kept |
-| Share personal-data check | Before you publish a public share link for a chat: the chat text being shared. It shows a warning only and never blocks sharing | A generic "check before sharing" reminder is shown |
+| Share personal-data check | When you open the share window for a chat, before you publish a public link: the chat text being shared, with never-stored values such as card numbers, and emails and phone numbers, removed. Besidka first looks for emails, phone numbers and similar identifiers itself, and only the TypeSafe AI step reads the text. It shows a warning only and never blocks sharing | A generic "check before sharing" reminder is shown, next to anything Besidka's own check found |
 | Past-chat retrieval | For models without tool calling, for each message: the message and recent turns. If the message refers to an earlier, separate conversation, Besidka searches your past chats in its own database and adds relevant excerpts | No pre-search is done |
 
 The text can contain whatever your chats, projects and memory contain, including sensitive information. The memory pre-filter reads whole chat text, so it is the check that sends the most. If that matters to you, switch it off.
@@ -369,7 +369,7 @@ I want to be honest about the limit of that. Once something has been public, I *
 
 If you plan to share a chat, please re-read it first, and remember that it may contain other people's personal data as well as your own.
 
-With a TypeSafe AI key and the share check on, the chat text being shared is sent to TypeSafe AI before you publish, to look for personal data. It shows a warning only and never blocks sharing. See [TypeSafe AI checks](#typesafe-ai-checks).
+With a TypeSafe AI key and the share check on, the chat text being shared is sent to TypeSafe AI when you open the share window, before you publish, to look for personal data. Emails, phone numbers, card numbers and similar identifiers are removed from it first. It shows a warning only and never blocks sharing. See [TypeSafe AI checks](#typesafe-ai-checks).
 
 ## Push notifications
 

@@ -37,11 +37,17 @@
       </NuxtLink>
       <div
         v-else
-        class="skeleton skeleton--default h-5 w-64"
+        class="grid gap-1"
         data-testid="memory-checks-skeleton"
-      />
-      <template #fallback>
+      >
         <div class="skeleton skeleton--default h-5 w-64" />
+        <div class="skeleton skeleton--default h-5 w-48" />
+      </div>
+      <template #fallback>
+        <div class="grid gap-1">
+          <div class="skeleton skeleton--default h-5 w-64" />
+          <div class="skeleton skeleton--default h-5 w-48" />
+        </div>
       </template>
     </ClientOnly>
   </ProfileSecuritySectionCard>

@@ -16,6 +16,8 @@ export type JevRoleSettings = Partial<Record<JevRoleId, boolean>>
 
 export const JEV_SEND_PATH_TIMEOUT_MS = 800
 export const JEV_BACKGROUND_TIMEOUT_MS = 2500
+export const JEV_SHARE_CHECK_TIMEOUT_MS = 1500
+export const JEV_SHARE_CHECK_DEBOUNCE_MS = 400
 
 export interface JevBooleanCriteria {
   true: string
@@ -118,9 +120,10 @@ export const JEV_RERANK = {
 
 export const JEV_SHARE_PII_CHECK = {
   questionId: 'p1_personal',
+  stateKey: 'chat',
   warnAtOrAbove: 0.3,
   maxChunkTokens: 25_000,
-  timeoutMs: JEV_BACKGROUND_TIMEOUT_MS,
+  timeoutMs: JEV_SHARE_CHECK_TIMEOUT_MS,
   question: {
     type: 'boolean',
     instructions: 'Does `chat` contain personal data about a real person '

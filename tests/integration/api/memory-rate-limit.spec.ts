@@ -196,6 +196,7 @@ describe('memory write rate limit', () => {
     ['instruct-preview', 6],
     ['instruct-apply', 30],
     ['legal-consent', 20],
+    ['share-check', 20],
   ] as const)('limits the %s bucket to %i per minute on its own counter',
     async (bucket, max) => {
       const { enforceMemoryRateLimit } = await import(
