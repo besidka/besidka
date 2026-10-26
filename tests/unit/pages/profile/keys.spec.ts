@@ -40,9 +40,14 @@ class FakeResizeObserver {
   }
 }
 
-const keyState = reactive<{ hasAnyKey: boolean, googleStatus: string }>({
+const keyState = reactive<{
+  hasAnyKey: boolean
+  googleStatus: string
+  typesafeStatus: string
+}>({
   hasAnyKey: true,
   googleStatus: 'unknown',
+  typesafeStatus: 'missing',
 })
 
 mockNuxtImport('queryCollection', () => {
@@ -61,8 +66,10 @@ mockNuxtImport('useUserKeys', () => {
       hasAnyKey: computed(() => {
         return keyState.hasAnyKey
       }),
-      keyStatusForProvider: () => {
-        return keyState.googleStatus
+      keyStatusForProvider: (providerId: string) => {
+        return providerId === 'typesafe'
+          ? keyState.typesafeStatus
+          : keyState.googleStatus
       },
     }
   }
@@ -85,6 +92,9 @@ mockNuxtImport('useRoute', () => {
 
 function stubs() {
   return {
+    ProfileKeysTypesafeChecks: {
+      template: '<section data-testid="typesafe-checks" />',
+    },
     ProfileKeysProviderKeyCard: {
       props: {
         providerId: { type: String, default: '' },
@@ -156,6 +166,7 @@ describe('profile keys page', () => {
     vi.stubGlobal('ResizeObserver', FakeResizeObserver)
     keyState.hasAnyKey = true
     keyState.googleStatus = 'unknown'
+    keyState.typesafeStatus = 'missing'
     HTMLElement.prototype.scrollIntoView = vi.fn()
     mocks.providers = [
       { id: 'anthropic', models: [] },
@@ -343,8 +354,9 @@ describe('profile keys page', () => {
     const info = panel.get('[data-testid="memory-checks-info"]')
     const providerCards = panel.findAll('[data-testid="provider-card"]')
 
-    expect(info.text()).toContain('Used only for memory checks, never for '
-      + 'chat.')
+    expect(info.text()).toContain('Each check sends TypeSafe AI (US) only '
+      + 'the text it needs')
+    expect(info.text()).not.toContain('never for chat')
     expect(info.get('[data-testid="memory-checks-guide-link"]').text())
       .toBe('How to get a TypeSafe AI API key')
     expect(providerCards.map((card: any) => {
@@ -352,6 +364,47 @@ describe('profile keys page', () => {
     })).toEqual(['typesafe'])
     expect(providerCards[0]?.attributes('data-group'))
       .toBe('profile-memory-check-keys')
+  })
+
+  it('labels the TypeSafe AI tab Smart checks and keeps its id', async () => {
+    const wrapper = await mountPage()
+    const tab = wrapper.get('[data-testid="key-tab-memory-checks"]')
+
+    expect(tab.attributes('aria-label')).toBe('Smart checks')
+  })
+
+  it.each(['missing', 'unknown'])(
+    'hides the TypeSafe AI checks section when the key is %s',
+    async (status) => {
+      keyState.typesafeStatus = status
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.find('[data-testid="typesafe-checks"]').exists())
+        .toBe(false)
+    },
+  )
+
+  it('shows the TypeSafe AI checks section in the Smart checks tab once the '
+    + 'key is saved', async () => {
+    keyState.typesafeStatus = 'saved'
+
+    const wrapper = await mountPage()
+    const panel = wrapper.get('[data-testid="key-panel-memory-checks"]')
+
+    expect(panel.find('[data-testid="typesafe-checks"]').exists()).toBe(true)
+  })
+
+  it('opens the Smart checks tab for tab=memory-checks without expanding '
+    + 'the card', async () => {
+    mockRoute.query = { tab: 'memory-checks' }
+
+    const wrapper = await mountPage()
+    const card = wrapper.get('[data-provider="typesafe"]')
+
+    expect(wrapper.get('[data-testid="key-tab-memory-checks"]').classes())
+      .toContain('tab-active')
+    expect(card.attributes('data-open')).toBe('false')
   })
 
   it('never renders the TypeSafe AI card in the direct providers tab',

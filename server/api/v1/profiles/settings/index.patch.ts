@@ -1,5 +1,7 @@
 import { createError } from 'evlog'
 import type { GatewayId } from '#shared/types/gateways.d'
+import type { JevRoleSettings } from '#shared/utils/jev-policy'
+import { jevRoleSettingsPatchSchema } from '#shared/utils/jev-schemas'
 import { and, eq, isNull, lt, or } from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from '~~/server/db/schema'
@@ -12,6 +14,7 @@ import { enforceGatewayModelsRateLimit } from '~~/server/utils/gateways/catalog-
 import { assertMemoryModelChoice } from '~~/server/utils/memory/validate-model-choice'
 import { claimExtractionEnableCooldown } from '~~/server/utils/memory/extraction-enable-cooldown'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { jevRoleSettingsUpdateValue } from '~~/server/utils/jev/roles'
 
 const favoriteGatewayModelIds = z.array(z.string().max(100)).max(50)
 
@@ -50,6 +53,7 @@ export default defineEventHandler(async (event) => {
       cloudflare: favoriteGatewayModelIds.optional(),
       openrouter: favoriteGatewayModelIds.optional(),
     }).optional(),
+    typesafeRoles: jevRoleSettingsPatchSchema.nullable().optional(),
     ...memorySettingsPatchShape,
   }).superRefine(refineMemorySettingsPatch).safeParse)
 
@@ -81,6 +85,7 @@ export default defineEventHandler(async (event) => {
     profileMemoryGateway?: GatewayId | null
     projectMemoryModel?: string | null
     projectMemoryGateway?: GatewayId | null
+    typesafeRoles?: JevRoleSettings | null
   } = {}
 
   if (body.data.reasoningExpanded !== undefined) {
@@ -138,6 +143,10 @@ export default defineEventHandler(async (event) => {
 
   if (body.data.aboutMe === null) {
     fieldUpdates.aboutMe = null
+  }
+
+  if (body.data.typesafeRoles !== undefined) {
+    fieldUpdates.typesafeRoles = body.data.typesafeRoles
   }
 
   const memoryModelChoices: MemoryModelChoiceToValidate[] = []
@@ -213,7 +222,16 @@ export default defineEventHandler(async (event) => {
     ? { ...fieldUpdates, memoryExtractionEnabledAt: stampedAt }
     : fieldUpdates
   const settingsStatement = existingSettings
-    ? db.update(schema.userSettings).set(settingsValues)
+    ? db.update(schema.userSettings).set(
+      fieldUpdates.typesafeRoles === undefined
+        ? settingsValues
+        : {
+          ...settingsValues,
+          typesafeRoles: jevRoleSettingsUpdateValue(
+            fieldUpdates.typesafeRoles,
+          ),
+        },
+    )
       .where(eq(schema.userSettings.userId, userId))
     : db.insert(schema.userSettings).values({
       userId,

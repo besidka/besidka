@@ -114,6 +114,20 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/jev-check.spec.ts',
     'tests/integration/api/memory-jev.spec.ts',
   ]
+  const jevFoundationTests = [
+    'tests/unit/utils/jev/client.spec.ts',
+    'tests/unit/utils/jev/logging.spec.ts',
+    'tests/unit/utils/jev/roles.spec.ts',
+    'tests/unit/utils/jev-policy.spec.ts',
+    ...memoryJevTests,
+  ]
+  const typesafeRolesUiTests = [
+    'tests/unit/components/Profile/Keys/TypesafeChecks.spec.ts',
+    'tests/unit/components/Profile/Keys/MemoryChecksInfo.spec.ts',
+    'tests/unit/components/Profile/Memory/ExtraChecks.spec.ts',
+    'tests/unit/composables/typesafe-roles.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+  ]
   const memoryComplianceTests = [
     'tests/unit/utils/memory/compliance.spec.ts',
     'tests/unit/utils/memory/compliance-evasion.spec.ts',
@@ -1562,6 +1576,18 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
+      pattern: /^(server\/utils\/jev\/.*|shared\/utils\/jev-(policy|schemas))\.ts$/,
+      tests: [
+        ...jevFoundationTests,
+        ...profileSettingsTests,
+        ...typesafeRolesUiTests,
+      ],
+    },
+    {
+      pattern: /^(app\/composables\/typesafe-roles\.ts|app\/utils\/typesafe-roles\.ts|app\/components\/Profile\/Keys\/(TypesafeChecks|MemoryChecksInfo)\.vue|app\/components\/Profile\/Memory\/ExtraChecks\.vue)$/,
+      tests: typesafeRolesUiTests,
+    },
+    {
       pattern: /^server\/utils\/memory\/jev-check\.ts$/,
       tests: [
         ...memoryJevTests,
@@ -2423,6 +2449,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/db/migrations-clean.spec.ts',
         'tests/unit/db/accounts-provider-account-id.spec.ts',
+        'tests/unit/db/typesafe-roles-migration.spec.ts',
       ],
     },
     {

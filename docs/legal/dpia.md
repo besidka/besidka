@@ -249,27 +249,47 @@ removed.
   it (Art. 9(2)(a)).
 - **Known limit.** It can miss unusual wording (section 6).
 
-### 3.7a TypeSafe AI Jev second opinion (optional, add-only)
+### 3.7a TypeSafe AI Jev checks (optional, per-role toggles)
 
 - **Purpose.** Catch special-category data and never-store values the rules
   in 3.7 miss, and reject entries a model wrote that are not supported by the
-  user's own text.
+  user's own text (the memory check). The same key also powers six more
+  assistive checks, listed in the table below.
 - **When.** Only for a user who saved a TypeSafe AI key (Profile → API Keys
-  → Memory checks). Saving the key is the opt-in; deleting it stops the
-  checks. Only on write paths already behind the consent gate.
-- **How.** `server/utils/memory/jev-check.ts`. The rules in 3.7 run first.
-  Only entries they allow are sent, with never-store values removed, plus,
-  for model-written entries, a short excerpt of the user's text (also
-  redacted, and dropped if the rules would refuse it). Jev can only add a
-  refusal. Model pinned to `jev-1.14.0`; threshold 0.5.
+  → Smart checks). Saving the key is the opt-in; deleting it stops every
+  check. Each check also has its own toggle in a "TypeSafe AI checks" section
+  on that tab. All are on after the key is saved; a role is on unless the
+  user switched it off. Only on paths already behind the consent gate.
+- **How (memory check).** `server/utils/memory/jev-check.ts`. The rules in
+  3.7 run first. Only entries they allow are sent, with never-store values
+  removed, plus, for model-written entries, a short excerpt of the user's
+  text (also redacted, and dropped if the rules would refuse it). Jev can
+  only add a refusal. Model pinned to `jev-1.14.0`; threshold 0.5.
+- **Shared client.** All roles call one client in `server/utils/jev/`. The
+  per-role setting is `user_settings.typesafe_roles` (nullable JSON, null =
+  all on). Timeouts: 800 ms on the send path, 2.5 s in the background.
+  Thresholds come from a synthetic eval run on 2026-10-26 and are re-tuned on
+  real traffic.
 - **Recipient.** TypeSafe AI, Inc., United States, independent controller
   on the user's own account. Not on the EU-US Data Privacy Framework. Its DPA
   relies on the SCCs (Module 2) and the UK Addendum, marks sensitive-data
   safeguards "N/A", keeps data "as long as necessary" and has no SLA. Its
   privacy policy says it does not train on input.
-- **Failure.** Fails open to the rules alone on a missing key, 401, 429,
-  529, a network error or a 2.5 s timeout.
-- **Data in logs.** Counts and category ids under `memoryJev`, never text.
+- **Failure.** Every role is assistive and fails safe to the behaviour
+  without the key on a missing key, 401, 429, 529, a network error or a
+  timeout.
+- **Data in logs.** Counts, scores, statuses and latency under
+  `attributes.<role>Jev` (the memory check keeps `memoryJev`), never text.
+
+| Role | Purpose | When | Data sent | On failure |
+|---|---|---|---|---|
+| `memoryChecks` | Second opinion before a memory entry is saved | Each entry the rules allowed | Entry text with never-store values removed, plus a short redacted source excerpt | Rules alone; add-only, so it can never allow what the rules refused |
+| `autoWebSearch` | Decide whether a web search is needed | Only in the Auto web search mode, each message | The message and the last 2-3 turns | Search as usual |
+| `extractionPrefilter` | Skip the memory model when nothing is worth remembering (saves the user's cost) | Before memory is generated from a chat: opt-in extraction, project Refresh, explicit extraction | Chat text with never-store values removed, in chunks of up to about 8,000 tokens | Unsure or unavailable: generate memory as usual |
+| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results fetched through Besidka | That text | Text used unscreened; a flag holds a file for review or leaves a result out of context and never deletes anything |
+| `rerank` | Order search candidates by relevance | Past-chat and project-knowledge search | The query and excerpts of about 300 tokens each, up to 30 per search | Original order |
+| `sharePiiCheck` | Warn about personal data before publishing | Before a public share link is created | The chat text being shared | Generic reminder; never blocks sharing |
+| `pastChatRetrieval` | Pre-search past chats for models without tool calling | Each message, only when the message refers to an earlier, separate conversation | The message and recent turns | No pre-search |
 
 ### 3.8 Consent gate, version 2026-11-a
 
@@ -381,7 +401,7 @@ removed.
 | 3 | Worker | Provider or gateway | Message, history, memory index, excerpts, knowledge | User's own key; transfer notice and consent where needed |
 | 4 | Worker | Search provider | Query the model writes | Only if the user turned search on, user's own key |
 | 5 | Worker | Memory model | New chat text (opt-in) | Never-store redaction, then gate on output |
-| 5a | Worker | TypeSafe AI (only with a TypeSafe AI key) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt | Gate first; flagged text never sent; add-only; fail-open |
+| 5a | Worker | TypeSafe AI (only with a TypeSafe AI key, per enabled check) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt; chat text for the pre-filter, the share check and Auto web search; project knowledge and Brave or Exa results for injection screening; query and excerpts for re-ranking; recent turns for past-chat retrieval | Per-role toggle; gate first for memory; flagged text never sent; add-only for memory; every role fails safe |
 | 6 | Worker | Axiom | Counts and ids | No memory or chat text |
 
 ## 4. Necessity and proportionality
@@ -398,6 +418,7 @@ removed.
 | Background extraction | Consent, Art. 6(1)(a) |
 | Explicit runs (Refresh, Update now, backfill, import) | Contract, Art. 6(1)(b) |
 | Compliance gate | Legitimate interests, Art. 6(1)(f), plus the chat consent |
+| TypeSafe AI checks the user leaves on | Contract, Art. 6(1)(b), because the user added the key and left the check on; for sensitive text, also the chat consent |
 | Consent and opt-in records | Legal obligation to prove consent, Art. 6(1)(c) with Art. 7(1) (judgment call) |
 | Transfers to providers with no adequacy decision | Explicit consent to the transfer, Art. 49(1)(a) (built) |
 | Terms and age record | Legitimate interests, Art. 6(1)(f): proving the user agreed and is an adult |
@@ -416,6 +437,10 @@ to send messages. It is a judgment call (section 6, item 1).
 - **Opt-in where it profiles or spends money.** Extraction is off by default.
   There is no background model call on a user's key without an explicit opt-in.
 - **No secondary use.** No training, no advertising, no sale, no scoring.
+- **TypeSafe AI checks.** Optional, tied to the user's own key, each with its own
+  toggle. Each sends only the text that check needs and fails safe to the
+  behaviour without it. The pre-filter and the share check send the most text;
+  both can be switched off alone.
 - **Accuracy.** Memory can be wrong. The user can see, edit and delete every
   entry. The Terms say so.
 - **Transparency.** Privacy Policy sections on sensitive information, memory,
@@ -464,6 +489,10 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 18 | Memory text leaks through logs | Low | High | Wide events carry counts, outcome labels, category ids and model names only; audit and consent datasets separate | built | Low |
 | 19 | Account takeover exposes all chats and memory | Low | High | Better Auth, rate limits, Turnstile, optional TOTP and passkeys, encrypted API keys, sessions in KV | built | Low |
 | 20 | The optional TypeSafe AI memory check sends candidate entries, which can hold special-category data the rules missed, to a young US vendor: out of stealth about six weeks (2026-09-15), its DPA marks sensitive-data safeguards "N/A", retention "as long as necessary", no SLA, not on the DPF (SCCs Module 2 and UK Addendum only) | Low | Medium | Only with a key the user saves; only entries the deterministic gate already allowed, redacted for never-store values; source excerpts redacted and dropped when the gate flags them; add-only, so an outage or a wrong answer can never let sensitive text in; fails open to the gate on 401, 429, 529, network errors and a 2.5 s timeout; model pinned; counts only in logs; disclosed in the Privacy Policy and on the keys page | built | Medium (vendor maturity and contract terms are outside Besidka's control) |
+| 21 | The memory pre-filter sends whole chat transcripts, which can hold special-category data the user wrote, to a US vendor before memory is generated | Medium | High | Only with a key the user saves and a toggle left on; never-store values removed first; chunks of up to about 8,000 tokens; runs only when memory generation already runs behind the consent gate; unsure or unavailable means normal extraction; counts only in logs; the user can switch the check off alone; disclosed in the Privacy Policy | built | Medium (the transcript leaves Besidka to a vendor with weak contract terms, same as row 20) |
+| 22 | Auto web search and the share check send chat text (message and recent turns; the chat being shared) to the vendor | Medium | Medium | Auto web search sends only in the Auto mode; the share check only when the user starts a share; both only with a key and a toggle; a failure means a normal search or a generic reminder; the share check warns and never blocks; counts only in logs; disclosed in the Privacy Policy | built | Low to medium |
+| 23 | Injection screening sends project knowledge and third-party web text (Brave and Exa results) to the vendor | Medium | Medium | Only with a key and a toggle; project files are the user's own content already covered by the consent; web text is public; results from a model's built-in search are never sent; nothing is stored by Besidka; counts only in logs; whether this third-party text fits the consent wording is an open owner and counsel question (`docs/legal.md`) | built | Medium |
+| 24 | Attacker-crafted content makes screening withhold legitimate results or files (false positive), or evades it (false negative) | Medium | Low | Screening is an add-only signal, never the only defence: the write lock, the data-not-instructions wrapping and the memory gate in row 6 stay; a flag never deletes anything, a flagged file waits for the user's review and a flagged result is only left out of context; thresholds come from an eval and are re-tuned on real traffic; the toggle turns it off | built | Low |
 
 ## 6. Residual risks
 
@@ -478,6 +507,9 @@ the Privacy Policy or should be.
    slang and unusual wording. A miss means special-category data in memory. The
    policy says so, the user can delete entries, and the chat consent names the
    check. Decision: accept.
+   The optional TypeSafe AI checks (section 3.7a) are a second, add-only
+   signal. They can also miss things, and the injection screening can flag
+   legitimate text or miss crafted text (risk 24). Decision: accept.
 3. **Criminal-offence data (Art. 10) in chats.** Art. 10 allows such processing
    only under official authority or where the law authorises it. Consent does
    not cover it. Every free-text chat service carries this. Mitigation is
@@ -524,6 +556,13 @@ the Privacy Policy or should be.
    Besidka could not get Art. 26 arrangements from the providers.
 9. **Consent records are deleted with the account.** That means no proof after
    deletion. Accepted for simplicity.
+10. **TypeSafe AI checks and the consent wording.** The consent text names
+    recipients by category (the AI providers whose keys the user adds, for
+    chats, project memory and memory). Whether screening third-party web
+    results and project files, and sending whole transcripts for the
+    pre-filter, still fit that wording is an open owner and counsel question
+    (`docs/legal/memory-legal-changes-draft.md`). Decision: ship, keep every
+    check switchable, revisit with counsel.
 
 **Overall.** With the consent gate, the transfer notice and consent, and the
 removal of the ungated background refresh in place (all built in this release),

@@ -46,6 +46,32 @@ describe('Profile/Memory/ExtraChecks', () => {
       expect(mocks.keyStatusForProvider).toHaveBeenCalledWith('typesafe')
     })
 
+  it('links to the TypeSafe AI checks settings when a key is saved',
+    async () => {
+      mocks.status = 'saved'
+
+      const wrapper = await mountExtraChecks()
+      const link = wrapper.get('[data-testid="memory-checks-settings-link"]')
+
+      expect(link.text()).toBe('Choose which TypeSafe AI checks run')
+      expect(link.attributes('href') ?? link.attributes('to'))
+        .toBe('/profile/keys?tab=memory-checks')
+    })
+
+  it('shows memory checks as off when the user switched the role off',
+    async () => {
+      mocks.status = 'saved'
+
+      const wrapper = await mountSuspended(ExtraChecks, {
+        props: { typesafeRoles: { memoryChecks: false } },
+      })
+
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="memory-checks-on"]').text())
+        .toBe('Memory checks: TypeSafe AI Jev (off)')
+    })
+
   it('links to the TypeSafe AI card when no key is saved', async () => {
     const wrapper = await mountExtraChecks()
     const link = wrapper.get('[data-testid="memory-checks-add-key"]')

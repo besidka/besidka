@@ -1889,7 +1889,7 @@ key. It is add-only: the deterministic gate (3.5) stays the gate, and Jev can
 only block an entry the gate allowed, never allow one the gate blocked.
 
 **Key type.** `providerMeta.typesafe` has its own kind, `memory-check`, and a
-fourth tab, **Memory checks**, on `/profile/keys` (`?provider=typesafe` and
+fourth tab, **Smart checks** (renamed from **Memory checks** in J0; the tab id and the deep links are unchanged), on `/profile/keys` (`?provider=typesafe` and
 `?tab=memory-checks` deep links pass `resolveSafeNextPath`). The key is
 stored encrypted in `keys` like the others (`provider = 'typesafe'`; the
 column is a text enum, so `db:generate` produced no migration). It is not a
@@ -1901,8 +1901,9 @@ it. Saving it calls `GET https://api.typesafe.ai/v1/models` with the key
 why and a fix; a network error, a timeout or another status still saves,
 because memory checks fail open anyway. `/profile/memory` shows "Memory
 checks: TypeSafe AI Jev (on)" or a link to add the key. Saving the key is the
-user's opt-in to the spend and to the recipient; there is no separate toggle
-yet (delete the key to stop). The key guide is
+user's opt-in to the spend and to the recipient. Each role has its own toggle
+in the "TypeSafe AI checks" section of the Smart checks tab (see "Per-role
+checks (J0 foundation)" below); deleting the key stops all of them. The key guide is
 `content/key-guides/typesafe-ai-api-key.md`, without a video for now.
 
 **Code.** `server/utils/memory/jev-check.ts`, through `experimental_decide`
@@ -1960,7 +1961,7 @@ values. `createMemoryEntry` and `updateMemoryEntry` take an optional `jev`
 in their context and call `assertMemoryJevAllowed` after the gate. The
 About-me migration runs on `GET /api/v1/profiles/settings`, outside the
 consent gate, so it passes no checker and never calls Jev. Jev is not used
-for "worth remembering".
+for "worth remembering"; the separate `extractionPrefilter` role (below) is.
 
 **Logging.** One wide-event field per request,
 `attributes.memoryJev: { model, questions, blocked, groundingRejected,
@@ -2000,10 +2001,96 @@ Criminal Minds line.
 **Legal.** TypeSafe AI, Inc. is a US recipient, not on the Data Privacy
 Framework, relying on the SCCs (Module 2) and the UK Addendum in its DPA, which
 marks sensitive-data safeguards "N/A". It is listed in the Privacy Policy, the
-Art. 30 record and the DPIA (risk row 20). The consent modal names recipients
-by category ("the AI providers ... whose keys I add (for ... memory)"), so the
+Art. 30 record and the DPIA (risk rows 20 to 24, section 3.7a). The consent
+modal names recipients by category ("the AI providers ... whose keys I add (for ... memory)"), so the
 consent version stays `2026-11-a`. Research and test results:
 `typesafe-jev-findings.md` in the session scratchpad.
+
+#### Per-role checks (J0 foundation)
+
+The memory check above is the first of seven roles that share one client in
+`server/utils/jev/`. The same key powers all of them. Each role is assistive
+and fails safe: when TypeSafe AI errors, times out or is rate-limited,
+Besidka behaves as it does without the key.
+
+**Settings.** `user_settings.typesafe_roles` is a nullable JSON column. `null`
+means every role is on. A role is on unless it is explicitly `false`. With no
+TypeSafe AI key every role is off, whatever the column says. The roles are
+toggled on the Smart checks tab under "TypeSafe AI checks". The column is
+nullable with no SQL default, so the migration is a plain `ADD COLUMN`.
+
+**Policy.** Thresholds, timeouts and size caps are constants in
+`shared/utils/jev-policy.ts`. The thresholds come from the 2026-10-26
+synthetic eval and are re-tuned on real traffic. Timeouts: 800 ms on the send
+path, 2,500 ms in the background.
+
+| Role id | What is sent, and when | Unavailable |
+|---|---|---|
+| `memoryChecks` | The memory check above: entry text after never-store removal plus a short source excerpt, before an entry is saved. Add-only | Built-in gate alone |
+| `autoWebSearch` | Only in the Auto web search mode, each message: the message and the last 2-3 turns. Jev decides whether a search is needed | Search as usual |
+| `extractionPrefilter` | Before memory is generated from a chat (opt-in extraction, project Refresh, explicit extraction): chat text after never-store removal, in chunks of up to about 8,000 tokens. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | Unsure or unavailable: extract as usual |
+| `injectionScreening` | Project knowledge files and notes, and Brave and Exa results fetched through Besidka. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | Text used unscreened |
+| `rerank` | Past-chat and project-knowledge search: the query and excerpts of about 300 tokens each, up to 30 per search | Original order |
+| `sharePiiCheck` | Before a public share link is published: the chat text being shared. Warning only, never blocks | Generic "check before sharing" reminder |
+| `pastChatRetrieval` | Models without tool calling, each message: the message and recent turns. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts | No pre-search |
+
+**Logging.** Each role writes one wide-event field, `attributes.<role>Jev`
+(for example `attributes.rerankJev`), with counts, scores, statuses and
+latency only, never text. The memory check keeps its existing
+`attributes.memoryJev` shape.
+
+**SDK seam.** `experimental_decide` from `ai` 7.0.153 with
+`@ai-sdk/typesafe-ai` 3.0.27 accepts per-question `instructions` (a string or
+a JSON object) and `criteria: { true, false }` for boolean questions. The
+provider rewrites `boolean` to `noul` and sends a JSON-object state unchanged,
+so no raw `fetch` is needed. Fragile seams to re-check on every upgrade:
+
+- The `experimental_` prefix: the name and options can change in a patch
+  release.
+- The answer shape `{ type: 'boolean', probability }`.
+- `Experimental_DecisionRefusalError`, thrown on a refusal answer. The client
+  classifies it as `error`, so the role fails safe.
+- `providerOptions.typesafe.longContext` must stay off on the send path. The
+  eval measured a p95 of 840 ms at 50k tokens, which breaks the 800 ms budget.
+
+**API for role PRs (J1-J6).** Every role builds on these; none of them
+throws on a Jev failure:
+
+- `resolveJevRoleModel({ db, userId, role, logger? })` in
+  `server/utils/jev/roles.ts`: the pinned decision model when the user has a
+  key and the role is on, else `null` (one D1 read for the key and, only with a
+  key, one for `typesafe_roles`; a read or decrypt failure logs `key-error`).
+  `resolveJevRoleApiKey` is the same without building the model.
+- `isJevRoleEnabled({ typesafeRoles, hasTypesafeKey }, role)`: the pure
+  check, `false` without a key.
+- `jevDecide({ model, state, questions, timeoutMs, abortSignal? })` in
+  `server/utils/jev/client.ts`: one call with no retries, returning
+  `{ ok: true, probabilities, inputTokens, latencyMs }` or
+  `{ ok: false, status, latencyMs }`, where `status` comes from
+  `classifyJevFailure` (`unauthorized`, `rate-limited`, `timeout`, `network`,
+  `error`).
+- `recordJevRoleLog(role, { status, calls?, questions?, inputTokens?,
+  latencyMs?, counts?, scores? }, logger)` in `server/utils/jev/logging.ts`:
+  numbers and a status only, summed across calls in one request.
+- `shared/utils/jev-policy.ts`: `JEV_AUTO_WEB_SEARCH`,
+  `JEV_EXTRACTION_PREFILTER`, `JEV_INJECTION_SCREENING`, `JEV_RERANK`,
+  `JEV_SHARE_PII_CHECK`, `JEV_PAST_CHAT_RETRIEVAL` (question id, verbatim
+  wording and criteria, threshold, size cap, timeout), the phrase lists
+  `JEV_RECENCY_PHRASES` and `JEV_PAST_CHAT_PHRASES` with `matchesJevPhrases`
+  (whole words, so "now" never matches "know" and "курс" never matches
+  "курсор"; only `JEV_PHRASE_STEMS` may continue), and
+  `JEV_URL_OR_DOMAIN_PATTERN` (a scheme, `www.` or a web TLD from a short
+  list, so `index.ts`, `app.vue` and `package.json` do not force a search). The state keys the wordings refer to are
+  the eval's: `message` and `recent_turns` (web search, past chats),
+  `transcript` (pre-filter), `text` (injection), `chat` (share check),
+  `query` with the passage in each question's `instructions` (rerank).
+
+**Settings API.** `GET /api/v1/profiles/settings` returns `typesafeRoles`
+(`null` or a partial role map). `PATCH` takes `typesafeRoles` as a strict
+partial map of booleans, merged into the stored object with SQLite
+`json_patch` in the same UPDATE, so two toggles saved at once cannot drop each
+other; `null` resets every role to on. The `memoryChecks` role is honoured by
+`resolveMemoryJevChecker`.
 
 ## 4. Cost and performance
 
