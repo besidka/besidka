@@ -170,6 +170,10 @@
             v-if="hasVisibleTextPart(m)"
             :message="m"
           />
+          <ChatAutoWebSearchChip
+            v-if="m.role === 'assistant'"
+            :message="m"
+          />
         </ChatMessage>
       </div>
       <ChatMessage

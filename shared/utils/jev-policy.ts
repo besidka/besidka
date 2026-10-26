@@ -16,6 +16,7 @@ export type JevRoleSettings = Partial<Record<JevRoleId, boolean>>
 
 export const JEV_SEND_PATH_TIMEOUT_MS = 800
 export const JEV_BACKGROUND_TIMEOUT_MS = 2500
+export const JEV_SEND_PATH_MAX_TURN_CHARS = 4000
 
 export interface JevBooleanCriteria {
   true: string

@@ -83,6 +83,7 @@ import * as schema from '~~/server/db/schema'
 import {
   buildMessageUsage,
   addImageGenerationCostToUsage,
+  addAutoWebSearchUsage,
   addKnowledgeContextUsage,
   addSearchUsage,
   sumLanguageModelUsages,
@@ -228,6 +229,14 @@ import {
 } from '#shared/utils/exa-search-level'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import { createExternalSearchBudget } from '~~/server/utils/search/search-budget'
+import {
+  DEFAULT_WEB_SEARCH_MODE,
+  WEB_SEARCH_MODES,
+} from '#shared/utils/auto-web-search'
+import type { AutoWebSearchOutcome } from '#shared/utils/auto-web-search'
+import { JEV_AUTO_WEB_SEARCH } from '#shared/utils/jev-policy'
+import { resolveAutoWebSearch } from '~~/server/utils/chats/auto-web-search'
+import { readSendPathTurns } from '~~/server/utils/jev/send-path'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
 import {
   defineEventHandler,
@@ -263,6 +272,7 @@ export default defineEventHandler(async (event) => {
     reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
     exaSearchLevel: z.enum(EXA_SEARCH_LEVELS)
       .default(DEFAULT_EXA_SEARCH_LEVEL),
+    webSearchMode: z.enum(WEB_SEARCH_MODES).default(DEFAULT_WEB_SEARCH_MODE),
     messages: z.array(incomingUserMessageSchema).length(1),
   }).safeParse)
 
@@ -363,10 +373,39 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const selectedTools = chat.messages.length === 1
+  const firstUserMessage = chat.messages.length === 1
     && chat.messages[0]?.role === 'user'
-    ? chat.messages[0]?.tools || []
+    ? chat.messages[0]
+    : undefined
+  const defaultTools = firstUserMessage
+    ? firstUserMessage.tools || []
     : body.data.tools
+  const persistedSentMessage = firstUserMessage
+    ?? chat.messages.find((message) => {
+      return message.role === 'user'
+        && (message.publicId ?? message.id) === newMessage.id
+    })
+  const autoWebSearch = await resolveAutoWebSearch({
+    db,
+    userId,
+    mode: body.data.webSearchMode,
+    chosenTools: body.data.tools,
+    defaultTools,
+    persistedTools: persistedSentMessage
+      ? persistedSentMessage.tools || []
+      : null,
+    messageText: readUserMessageText(newMessage.parts) ?? '',
+    recentTurns: readSendPathTurns(
+      chat.messages.filter((message) => {
+        return message !== persistedSentMessage
+      }),
+      JEV_AUTO_WEB_SEARCH.recentTurns,
+    ),
+    logger,
+  })
+  const autoWebSearchOutcome: AutoWebSearchOutcome | undefined
+    = autoWebSearch.outcome ?? undefined
+  const selectedTools = autoWebSearch.tools
 
   const selectedBraveSearch = selectedTools.includes('web_search_brave')
   const selectedExaSearch = selectedTools.includes('web_search_exa')
@@ -1715,13 +1754,17 @@ export default defineEventHandler(async (event) => {
           const usageWithEstimate = usageWithCosts && gatewayCost?.costEstimated
             ? { ...usageWithCosts, costEstimated: true }
             : usageWithCosts
-          const usage = knowledgeContext
+          const usageWithKnowledge = knowledgeContext
             ? addKnowledgeContextUsage(usageWithEstimate, {
               steps,
               knowledgeTokens: knowledgeContext.knowledgeTokens,
               knowledgeMode: knowledgeContext.decision.mode,
             })
             : usageWithEstimate
+          const usage = addAutoWebSearchUsage(
+            usageWithKnowledge,
+            autoWebSearchOutcome,
+          )
 
           return {
             createdAt: new Date().toISOString(),
@@ -1912,6 +1955,7 @@ export default defineEventHandler(async (event) => {
           followUpToolNames,
           knowledgeTokens: knowledgeContext?.knowledgeTokens,
           knowledgeMode: knowledgeContext?.decision.mode,
+          autoWebSearch: autoWebSearchOutcome,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -2972,6 +3016,7 @@ async function persistAssistantMessageFromStream(input: {
   followUpToolNames: Set<string>
   knowledgeTokens?: number
   knowledgeMode?: KnowledgeDecisionMode
+  autoWebSearch?: AutoWebSearchOutcome
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
 }): Promise<PersistAssistantMessageResult> {
   try {
@@ -3146,13 +3191,15 @@ async function persistAssistantMessageFromStream(input: {
         ? { ...usageWithCosts, costEstimated: true }
         : usageWithCosts
 
-      usage = input.knowledgeTokens === undefined
+      const usageWithKnowledge = input.knowledgeTokens === undefined
         ? usageWithEstimate
         : addKnowledgeContextUsage(usageWithEstimate, {
           steps: usageSteps,
           knowledgeTokens: input.knowledgeTokens,
           knowledgeMode: input.knowledgeMode,
         })
+
+      usage = addAutoWebSearchUsage(usageWithKnowledge, input.autoWebSearch)
     } catch (exception) {
       input.logger.set({
         attributes: {
