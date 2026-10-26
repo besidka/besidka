@@ -430,6 +430,27 @@ describe('Chat/Reasoning/SearchStep', () => {
         expect(mocks.openResearchLink).not.toHaveBeenCalled()
       })
 
+    it('hides the count for a pre-retrieval step whose title carries it',
+      async () => {
+        const wrapper = await mountStep(chatData({ preRetrieval: true }), {
+          title: 'Used 1 earlier chat',
+        })
+
+        expect(
+          wrapper.find('[data-testid="reasoning-search-step-count"]').exists(),
+        ).toBe(false)
+        expect(
+          wrapper.get('[data-testid="reasoning-search-step-title"]').text(),
+        ).toBe('Used 1 earlier chat')
+
+        await trigger(wrapper).trigger('click')
+
+        expect(
+          wrapper.get('[data-testid="reasoning-search-step-chat-link"]')
+            .attributes('href'),
+        ).toBe('/chats/abc1')
+      })
+
     it('pluralizes the chat count', async () => {
       const wrapper = await mountStep(chatData({
         results: [

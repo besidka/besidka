@@ -149,6 +149,10 @@ export const JEV_PAST_CHAT_RETRIEVAL = {
   questionId: 's1_previous',
   preSearchAtOrAbove: 0.25,
   recentTurns: 3,
+  maxHits: 3,
+  maxExcerptTokens: 1500,
+  maxMessageChars: 2000,
+  maxTurnChars: 600,
   timeoutMs: JEV_SEND_PATH_TIMEOUT_MS,
   question: {
     type: 'boolean',
@@ -224,6 +228,31 @@ export function matchesJevPhrases(
   return Object.values(phraseLists).some((phrases) => {
     return phrases.some(phrase => phrasePattern(phrase).test(text))
   })
+}
+
+/**
+ * The text with every listed phrase (matched as whole words, like
+ * `matchesJevPhrases`) replaced by a space, so a query built from a message
+ * is not spent on the words that only point at an earlier chat.
+ */
+export function stripJevPhrases(
+  text: string,
+  phraseLists: JevPhraseLists,
+): string {
+  let stripped = text
+
+  for (const phrases of Object.values(phraseLists)) {
+    for (const phrase of phrases) {
+      const pattern = phrasePattern(phrase)
+
+      stripped = stripped.replace(
+        new RegExp(pattern.source, 'giu'),
+        ' ',
+      )
+    }
+  }
+
+  return stripped
 }
 
 export function isJevRoleSwitchedOn(
