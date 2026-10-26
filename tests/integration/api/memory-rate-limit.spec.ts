@@ -191,6 +191,35 @@ describe('memory write rate limit', () => {
     }
   })
 
+  it.each([
+    ['write', 60],
+    ['instruct-preview', 6],
+    ['instruct-apply', 30],
+  ] as const)('limits the %s bucket to %i per minute on its own counter',
+    async (bucket, max) => {
+      const { enforceMemoryRateLimit } = await import(
+        '~~/server/utils/memory/rate-limit'
+      )
+
+      for (let count = 0; count < max; count++) {
+        await enforceMemoryRateLimit(bucket, USER_ID)
+      }
+
+      await expect(enforceMemoryRateLimit(bucket, USER_ID)).rejects
+        .toMatchObject({ status: 429 })
+
+      for (const other of ['write', 'instruct-preview', 'instruct-apply']) {
+        if (other === bucket) {
+          continue
+        }
+
+        await expect(enforceMemoryRateLimit(
+          other as typeof bucket,
+          USER_ID,
+        )).resolves.toBeUndefined()
+      }
+    })
+
   it('counts each user separately and frees up after the window',
     async () => {
       const handler = await loadHandler(ROUTES[0]!.path)

@@ -1730,6 +1730,87 @@ handled separately.
   extract-now and backfill start, and answers 429 with `Retry-After`. New
   memory limits are added as buckets there, not as parallel limiters.
 
+### 3.18 Tell Besidka what to remember (2026-10-26)
+
+A free-text box in the Memory tab (account scope, under the entries toolbar,
+shown while memory is on) and in the project Memory card (project scope).
+The user writes loose facts or instructions in any language ("I moved to
+Kraków. Forget the coffee thing."). The model sorts them into the existing
+category and topic entries. Nothing is written until the user has seen and
+ticked each change. Import stays as it is; this box is the everyday path.
+
+**Two steps, preview then apply.**
+
+- `POST /api/v1/memory/instruct/preview` `{ text (1..4000 chars), projectId? }`
+  makes one `generateText` + `Output.object` call on the user's own key
+  (`resolveMemoryModel`, the same model and gateway rules as import) and
+  writes nothing. It needs memory on (409 otherwise). Without a usable
+  key it returns 409 with why and fix. The response is
+  `{ projectId, operations[], blocked, model, capacity: { total, limit } }`,
+  where each operation is
+  `{ key, kind: create|update|delete, status: ready|rejected, category, id,
+  updatedAt, before, after, reason, rejection: { message, why } | null }`.
+- `POST /api/v1/memory/instruct/apply`
+  `{ projectId?, operations: 1..20 of create { category, title, description,
+  body } | update { id, updatedAt, title, description, body } | delete { id,
+  updatedAt } }` makes no model call. It answers
+  `{ projectId, created, updated, deleted, skipped, entries, deletedIds }`.
+
+**Preview rules** (`server/utils/memory/instruct*.ts`):
+
+- Never-store data is redacted from the text before the model call, as
+  import does.
+- The model sees the scope's index through `renderMemoryExtractionIndex`
+  with every origin editable, because the user is instructing directly.
+  Bodies are shown for profile and preferences, plus up to 8 entries that
+  share words with the text (diacritics folded, five-letter stem), within
+  16k chars. The rest show `[body hidden]`.
+- Entries are referenced by `category/slug` and mapped to ids on the
+  server. Unknown refs are rejected.
+- Every create and update passes `memoryEntryInputSchema` and
+  `evaluateMemoryEntry`. A never-store or sensitive operation comes back as
+  a rejected row carrying the 422 message, and is never applied.
+- **Add-only for unseen bodies:** an update to an entry whose body the model
+  was not shown only appends lines that are not stored yet, so no stored
+  fact can be dropped blind. A `create` for an existing profile or
+  preferences entry becomes such an update.
+- **Delete-quote rule:** a delete must carry a verbatim quote of the user's
+  request to forget, and that quote must appear in the text. Otherwise the
+  row is rejected as "Not removed". The prompt allows deletes only on an
+  explicit ask, and the UI leaves deletes unticked until the user ticks
+  them.
+- Creates past the cap (30 account, 15 per project, counting proposed
+  deletes) are rejected. A second op on the same entry is rejected, and
+  updates that change nothing are dropped.
+
+**Apply** re-validates every operation as ordinary entry CRUD:
+
+- Ownership is checked with `assertOwnedProject` plus a user and scope
+  WHERE.
+- Update and delete targets must still carry the preview's `updatedAt`;
+  otherwise it returns 409 "Memory changed since the preview".
+- The field rules and the compliance gate run again (400 or 422).
+- Profile and preferences stay single, the cap must hold after deletes, and
+  each entry can be targeted once.
+- Writes go in one `db.batch()`: deletes, then updates, then guarded
+  inserts. Each statement is keyed on owner, scope and `updatedAt` (inserts
+  on the cap and project ownership), so a concurrent edit is never
+  overwritten. A statement that lands nothing in a race is counted as
+  `skipped`. Written rows get origin `user`.
+
+**Rate limits:** the shared memory limiter (`server/utils/memory/rate-limit.ts`,
+KV-backed `createAuthRateLimitStorage`, like the knowledge write limiter)
+with its own buckets: `instruct-preview` allows 6 per minute (it spends the
+user's tokens), `instruct-apply` 30 per minute. Both answer 429 with
+`Retry-After`. They are separate from the `write` bucket (60 per minute) of
+the other memory write routes (3.17).
+
+**Logging:** only counts, kinds and the model id, under
+`attributes.memoryInstruct` (phase, scope, chars, status, op counts, applied
+counts, usage, model id, failure label). Compliance counts go under
+`memoryCompliance` with origin `memory-instruct`. The text is never logged,
+stored or echoed.
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |

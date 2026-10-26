@@ -182,6 +182,17 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/about-me-migration.spec.ts',
     'tests/integration/api/profile-settings.spec.ts',
     'tests/integration/api/memory-rate-limit.spec.ts',
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
+  ]
+  const memoryInstructTests = [
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
+    'tests/unit/utils/memory-instruct-diff.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Box.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Preview.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries.spec.ts',
+    'tests/unit/components/Projects/MemoryCard.spec.ts',
   ]
   const memoryIndexTests = [
     'tests/unit/utils/memory-tokens.spec.ts',
@@ -231,6 +242,8 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
     'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
     'tests/integration/api/chats-memory-exclusion.spec.ts',
   ]
   const memoryChatExclusionTests = [
@@ -617,6 +630,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory-model-filter.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
     'tests/unit/components/Projects/MemoryCard.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Box.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Preview.spec.ts',
   ]
 
   const accountEmailPasswordTests = [
@@ -2206,6 +2221,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^shared\/utils\/memory-import-prompt\.ts$/,
       tests: ['tests/unit/utils/memory-import-prompt.spec.ts'],
+    },
+    {
+      pattern: /^(server\/utils\/memory\/instruct[\w-]*\.ts|server\/api\/v1\/memory\/instruct\/.*\.ts|shared\/utils\/memory-instruct\.ts|shared\/types\/memory-instruct\.d\.ts|app\/utils\/memory-instruct-diff\.ts|app\/components\/Profile\/Memory\/Instruct\/.*\.vue)$/,
+      tests: memoryInstructTests,
     },
     {
       pattern: /^(server\/db\/schemas\/memory-backfill-jobs|shared\/types\/memory-backfill\.d)\.ts$/,
