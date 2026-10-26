@@ -176,15 +176,15 @@ The [Privacy Policy](/privacy-policy#typesafe-ai-checks) lists what each check s
 
 Before shipping, every check was tested against `jev-1.14.0` with data sets written for the test, in English, Ukrainian, Polish and, for most checks, Russian. For the two checks that scored perfectly at first, a second, harder set was written and labelled before any of its results were seen.
 
-| Check | Test set | Result at the shipped threshold |
-| --- | --- | --- |
-| Auto web search | 179 messages, 99 need a search | 99.0% precision, 100% recall; 1 needless search out of 80 |
-| Memory pre-filter | 99 chats, 54 with a lasting fact about the user | 0 of 54 wrongly skipped; 44 of the 45 chats without one skipped |
-| Prompt-injection screening | 104 snippets, 53 injections, 13 security articles that quote attacks | 94.6% precision, 100% recall; 1 of 13 articles flagged |
-| Search re-ranking | 8 queries, 20 to 30 candidates each | Ranking quality (NDCG@5) 0.99, against 0.42 for keyword order |
-| Share check | 64 chats, 32 with personal data | 100% precision, 100% recall |
-| Past-chat retrieval | 80 messages, 39 refer to an earlier chat | 97.5% precision, 100% recall |
-| Memory checks | 48 short texts, many with sensitive data | All 48 classified correctly; the built-in word rules alone got 39 |
+Results at the shipped thresholds:
+
+- **Auto web search** (179 messages, 99 need a search): 99.0% precision, 100% recall; 1 needless search out of 80.
+- **Memory pre-filter** (99 chats, 54 with a lasting fact about the user): 0 of 54 wrongly skipped; 44 of the 45 chats without one skipped.
+- **Prompt-injection screening** (104 snippets, 53 injections, 13 security articles that quote attacks): 94.6% precision, 100% recall; 1 of 13 articles flagged.
+- **Search re-ranking** (8 queries, 20 to 30 candidates each): ranking quality (NDCG@5) 0.99, against 0.42 for keyword order.
+- **Share check** (64 chats, 32 with personal data): 100% precision, 100% recall.
+- **Past-chat retrieval** (80 messages, 39 refer to an earlier chat): 97.5% precision, 100% recall.
+- **Memory checks** (48 short texts, many with sensitive data): all 48 classified correctly; the built-in word rules alone got 39.
 
 Read these numbers with their limits:
 
