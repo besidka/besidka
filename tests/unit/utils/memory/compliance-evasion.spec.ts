@@ -858,3 +858,118 @@ describe('smoke-test gate gaps (2026-10-26)', () => {
     expect(flagged).toBe(0)
   })
 })
+
+describe('first-person medication framing in every entry field (QA 2026-10-26)', () => {
+  const sentence = 'I take sertraline every morning.'
+
+  function evaluateFields(title: string, description: string, body: string) {
+    return evaluateMemoryEntry({ title, description, body, sensitivity: 'none' })
+  }
+
+  it.each<[string, string, string, string]>([
+    ['title only', sentence, '', ''],
+    ['description only', 'Note', sentence, ''],
+    ['body only', 'Note', 'A saved note', sentence],
+    ['all three', sentence, sentence, sentence],
+    ['a generic title and the sentence in the body', 'Medication', '', sentence],
+    ['a neutral title and the sentence in the description', 'Note', sentence, 'Daily'],
+    ['a drug title with an extractor-style description', 'Sertraline', 'Takes sertraline every morning', ''],
+    ['the sentence split across title and body', 'I take', '', 'sertraline every morning'],
+  ])('refuses the sentence in %s', (_label, title, description, body) => {
+    expect(evaluateFields(title, description, body)).toMatchObject({
+      allowed: false,
+      reason: 'sensitive-topic',
+      detectedCategories: ['health'],
+    })
+  })
+
+  it('gives the same verdict whichever field carries the sentence', () => {
+    const verdicts = [
+      evaluateFields(sentence, '', ''),
+      evaluateFields('Note', sentence, ''),
+      evaluateFields('Note', '', sentence),
+      evaluateFields(sentence, sentence, sentence),
+    ]
+
+    expect(new Set(verdicts.map(verdict => JSON.stringify(verdict))).size)
+      .toBe(1)
+  })
+
+  it.each([
+    'I\'m on 50 mg of zoloft',
+    'I have been taking metformin for years',
+    'I was prescribed quetiapine',
+    'Takes sertraline every morning',
+    'She is on lisinopril',
+    'The doctor prescribed me prozac',
+    'My sertraline dose went up',
+  ])('flags %j as health', (text) => {
+    expect(classifySensitiveCategories(text)).toContain('health')
+  })
+
+  it.each([
+    'Sertraline is an SSRI',
+    'sertraline is an SSRI studied in many clinical trials',
+    'Pfizer manufactures sertraline',
+    'Metformin was first synthesised in 1922',
+    'The history of Prozac in American culture',
+    'I am writing an essay on sertraline',
+    'An article on the price of Ozempic',
+    'I take the bus every morning',
+    'I take notes in every meeting',
+    'I take vitamin D in winter',
+    'I use lithium batteries in my camera',
+    'I\'m on the metformin Wikipedia page',
+  ])('does not flag %j', (text) => {
+    expect(evaluateFields('Note', 'A saved note', text)).toEqual({
+      allowed: true,
+    })
+  })
+
+  it('flags none of 2000 generated essay sentences about medications', () => {
+    const drugs = ['sertraline', 'Prozac', 'metformin', 'Ozempic', 'warfarin',
+      'Adderall', 'levothyroxine', 'atorvastatin', 'Xanax', 'Ritalin']
+    const subjects = ['history of', 'pharmacology of', 'price of',
+      'patent for', 'clinical trials of', 'side effects described for']
+    const documents = ['an essay', 'a paper', 'an article', 'a report',
+      'a literature review']
+    const contexts = ['in medieval Poland', 'in the United States',
+      'since 1990', 'for a pharmacy course']
+    let flagged = 0
+
+    for (let trial = 0; trial < 2000; trial++) {
+      const drug = drugs[trial % drugs.length]
+      const subject = subjects[(trial * 7) % subjects.length]
+      const document = documents[(trial * 11) % documents.length]
+      const context = contexts[(trial * 13) % contexts.length]
+      const text = `I am writing ${document} on the ${subject} ${drug} `
+        + `${context}. ${drug} is a widely discussed drug.`
+
+      if (evaluateFields('Note', 'A saved note', text).allowed === false) {
+        flagged += 1
+      }
+    }
+
+    expect(flagged).toBe(0)
+  })
+
+  it('flags none of 2000 generated first-person sentences without a drug', () => {
+    const verbs = ['take', 'am on', 'was on', 'started', 'use', 'am taking']
+    const objects = ['the bus', 'notes', 'a break', 'the stairs', 'vitamin D',
+      'a taxi', 'lithium batteries', 'the metformin Wikipedia page',
+      'Xanadu Street', 'two weeks off']
+    let flagged = 0
+
+    for (let trial = 0; trial < 2000; trial++) {
+      const verb = verbs[trial % verbs.length]
+      const object = objects[(trial * 7) % objects.length]
+      const text = `I ${verb} ${object} every morning.`
+
+      if (classifySensitiveCategories(text).length > 0) {
+        flagged += 1
+      }
+    }
+
+    expect(flagged).toBe(0)
+  })
+})

@@ -1764,6 +1764,22 @@ handled separately.
   at about 5%, a real card layout). Known remaining gaps: ethnic origin in
   PL and UK, prayer nouns (`молитв`, `modlitw`) still match on their own,
   and "I vote Green." with no election cue is not caught.
+- Medication names (QA 2026-10-26): "I take sertraline every morning." was
+  allowed in every field, while the title `Medication` over "Takes sertraline"
+  was blocked. The gate was never field-dependent: `evaluateMemoryEntry`
+  joins title, description and body with newlines and runs one pass, so one
+  sentence gets one verdict wherever it sits. The blocked case matched only
+  the bare noun `medications?` in the title; no rule knew a drug name or an
+  intake frame. Health now has three English rules over a curated list of
+  prescription names and brands (SSRIs and other psychiatric drugs, ADHD
+  stimulants, diabetes, thyroid, blood pressure, statins, anticoagulants,
+  biologics, opioids): a first-person intake frame ("I take", "I'm on",
+  "I was prescribed", "I have been taking"), an extractor-style frame
+  ("Takes", "is on", "prescribed me") and "my sertraline". A bare drug name
+  is never a cue, so "sertraline is an SSRI" in an essay stays allowed (0 of
+  2000 generated essay sentences flagged). Left out on purpose: over-the-
+  counter drugs and supplements (ibuprofen, vitamin D, melatonin), lithium
+  (batteries) and the PL, UK and RU drug vocabulary.
 - Saved text: every write is still checked, so editing an entry whose saved
   text a rule now rejects is a 422 even for a title-only change. Its `why`
   names the match and says it is in the saved text, its `fix` says to edit
