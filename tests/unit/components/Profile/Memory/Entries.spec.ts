@@ -1284,10 +1284,7 @@ describe('Profile/Memory/Entries', () => {
         expect(text.find('b').exists()).toBe(false)
         expect(text.find('strong').exists()).toBe(false)
         expect(legacy.text())
-          .toContain(
-            'This text is not sent with your chats. Edit it and save it as a '
-            + 'memory entry, or discard it.',
-          )
+          .toContain('It isn\'t sent to chats until you keep it.')
 
         const section = wrapper.get('[data-testid="memory-entries-section"]')
         const html = section.html()
@@ -1304,8 +1301,10 @@ describe('Profile/Memory/Entries', () => {
       ],
       [
         'profile-exists',
-        'You already have a Profile entry, so this was not merged. Save it '
-        + 'as its own entry or discard it.',
+        'This is your old About me text. It wasn\'t added automatically '
+        + 'because you already have a Profile entry. If it already covers '
+        + 'this, discard it. Otherwise keep it as a new entry, or open it to '
+        + 'edit first.',
       ],
       [
         'memory-off',
@@ -1314,7 +1313,7 @@ describe('Profile/Memory/Entries', () => {
       [
         'rejected',
         'It contains details Besidka does not save to memory, so it was not '
-        + 'converted. Remove those details when saving, or discard it.',
+        + 'converted. Open it to edit those details out, or discard it.',
       ],
       [
         'entries-full',
@@ -1323,7 +1322,8 @@ describe('Profile/Memory/Entries', () => {
       ],
       [
         null,
-        'It is not used in your chats until you save it as a memory entry.',
+        'This is your old About me text. It wasn\'t added to memory '
+        + 'automatically.',
       ],
     ] as const)('explains the %s reason', async (reason, expected) => {
       const wrapper = await mountLegacy(reason)
@@ -1369,13 +1369,22 @@ describe('Profile/Memory/Entries', () => {
         .toBe(false)
     })
 
-    it('labels the actions Edit and save and Discard', async () => {
-      const wrapper = await mountLegacy('too-long')
+    it('labels the three actions so the adopting one is obvious', async () => {
+      const wrapper = await mountLegacy('profile-exists')
+      const save = wrapper.get('[data-testid="memory-legacy-about-me-save"]')
+      const edit = wrapper.get('[data-testid="memory-legacy-about-me-edit"]')
+      const discard = wrapper.get(
+        '[data-testid="memory-legacy-about-me-discard"]',
+      )
 
-      expect(wrapper.get('[data-testid="memory-legacy-about-me-save"]')
-        .text()).toBe('Edit and save')
-      expect(wrapper.get('[data-testid="memory-legacy-about-me-discard"]')
-        .text()).toBe('Discard')
+      expect(save.text()).toBe('Keep as new entry')
+      expect(save.classes()).toContain('btn-primary')
+      expect(edit.text()).toBe('Edit and keep')
+      expect(edit.classes()).toContain('btn-ghost')
+      expect(discard.text()).toBe('Discard old text')
+      expect(discard.classes()).toEqual(
+        expect.arrayContaining(['btn-error', 'btn-outline']),
+      )
       expect(wrapper.find('[data-testid="memory-legacy-about-me-remove"]')
         .exists()).toBe(false)
     })
@@ -1421,7 +1430,107 @@ describe('Profile/Memory/Entries', () => {
         .toBe(true)
     })
 
-    describe('save as entry', () => {
+    describe('keep as new entry', () => {
+      function postCalls() {
+        return fetchCalls().filter(([url]) => {
+          return url === '/api/v1/memory/entries'
+        })
+      }
+
+      async function clickKeep(
+        wrapper: Awaited<ReturnType<typeof mountLegacy>>,
+      ) {
+        await wrapper.get('[data-testid="memory-legacy-about-me-save"]')
+          .trigger('click')
+        await flushPromises()
+      }
+
+      it.each([
+        { reason: null, hasProfile: false, category: 'profile' },
+        { reason: 'profile-exists', hasProfile: true, category: 'topics' },
+      ] as const)('saves the text directly ($category), clears it and '
+        + 'refetches', async ({ reason, hasProfile, category }) => {
+        mocks.fetch.mockResolvedValue({})
+
+        if (hasProfile) {
+          entriesData.value = createResponse([
+            {
+              category: 'profile',
+              entries: [createEntry('p1', 'profile')],
+            },
+          ])
+        }
+
+        const wrapper = await mountEntries(
+          { aboutMe: LEGACY_TEXT },
+          '/',
+          reason,
+        )
+
+        refresh.mockClear()
+        await clickKeep(wrapper)
+
+        expect(fetchCalls()).toEqual([
+          [
+            '/api/v1/memory/entries',
+            {
+              method: 'POST',
+              body: {
+                title: 'About me',
+                description: 'I am a **backend** developer',
+                body: LEGACY_TEXT,
+                category,
+              },
+            },
+          ],
+          [
+            '/api/v1/profiles/settings',
+            { method: 'PATCH', body: { aboutMe: null } },
+          ],
+        ])
+        expect(mocks.info).toHaveBeenCalledWith(
+          'Saved',
+          'About me saved as a memory entry.',
+        )
+        expect(wrapper.emitted('aboutMeRemoved')).toHaveLength(1)
+        expect(refresh).toHaveBeenCalled()
+        expect(wrapper.get('[data-testid="detail-modal-stub"]')
+          .attributes('data-open')).not.toBe('true')
+      })
+
+      it('keeps the text and explains the refusal when the save fails',
+        async () => {
+          mocks.fetch.mockRejectedValue(Object.assign(
+            new Error('Request failed'),
+            {
+              data: {
+                statusCode: 422,
+                message: 'Not saved',
+                data: { why: 'It contains a payment card number.' },
+              },
+            },
+          ))
+
+          const wrapper = await mountLegacy('rejected')
+
+          await clickKeep(wrapper)
+
+          expect(postCalls()).toHaveLength(1)
+          expect(fetchCalls()).toHaveLength(1)
+          expect(mocks.error).toHaveBeenCalledWith(
+            'Not saved',
+            'It contains a payment card number. Use Edit and keep to '
+            + 'change it first.',
+          )
+          expect(wrapper.emitted('aboutMeRemoved')).toBeUndefined()
+          expect(wrapper.find('[data-testid="memory-legacy-about-me"]')
+            .exists()).toBe(true)
+          expect(wrapper.get('[data-testid="memory-legacy-about-me-save"]')
+            .attributes('disabled')).toBeUndefined()
+        })
+    })
+
+    describe('edit and keep', () => {
       const LONG_LEGACY_TEXT = `${'word '.repeat(40)}end\nsecond line`
 
       function stub(wrapper: Awaited<ReturnType<typeof mountLegacy>>) {
@@ -1431,7 +1540,7 @@ describe('Profile/Memory/Entries', () => {
       async function clickSave(
         wrapper: Awaited<ReturnType<typeof mountLegacy>>,
       ) {
-        await wrapper.get('[data-testid="memory-legacy-about-me-save"]')
+        await wrapper.get('[data-testid="memory-legacy-about-me-edit"]')
           .trigger('click')
         await flushPromises()
       }

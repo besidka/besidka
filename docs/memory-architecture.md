@@ -800,9 +800,11 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
   every chat. Since then `loadMemoryRuntimeSettings` does not read the column
   at all: a migrated text travels as the `profile` entry, and an un-migrated
   one (too long, profile entry exists, memory off, rejected, entries full) is
-  only shown on the Memory page as "Earlier about me (not used in chats)" with
-  "Edit and save" (the entry modal, prefilled, so the user can remove what the
-  gate refused) and "Discard".
+  only shown on the Memory page as "Earlier about me (not used in chats)"
+  with three actions: "Keep as new entry" (saves it directly: `profile`, or
+  `topics` when a Profile entry exists, since `profile` is a singleton),
+  "Edit and keep" (the entry modal, prefilled, so the user can remove what
+  the gate refused) and "Discard old text".
 
 **Flags** (`server/utils/memory/tools/enabled.ts`, `chat-context.ts`)
 

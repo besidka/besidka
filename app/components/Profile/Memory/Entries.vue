@@ -64,9 +64,11 @@
                 {{ settings.aboutMe }}
               </p>
             </div>
-            <p class="text-xs text-base-content/60">
-              This text is not sent with your chats. Edit it and save it as a
-              memory entry, or discard it.
+            <p
+              class="text-xs text-base-content/60"
+              data-testid="memory-legacy-about-me-note"
+            >
+              It isn't sent to chats until you keep it.
             </p>
             <div class="flex flex-wrap justify-end gap-2">
               <UiButton
@@ -74,18 +76,28 @@
                 outline
                 size="sm"
                 normal-case
-                text="Discard"
+                text="Discard old text"
                 :disabled="isRemovingAboutMe"
                 data-testid="memory-legacy-about-me-discard"
                 @click="discardLegacyAboutMe"
               />
               <UiButton
+                mode="neutral"
+                ghost
                 size="sm"
                 normal-case
-                text="Edit and save"
+                text="Edit and keep"
+                :disabled="isRemovingAboutMe"
+                data-testid="memory-legacy-about-me-edit"
+                @click="editLegacyAboutMe"
+              />
+              <UiButton
+                size="sm"
+                normal-case
+                text="Keep as new entry"
                 :disabled="isRemovingAboutMe"
                 data-testid="memory-legacy-about-me-save"
-                @click="saveLegacyAboutMe"
+                @click="keepLegacyAboutMe"
               />
             </div>
           </div>
@@ -234,17 +246,19 @@ const description = 'Everything Besidka keeps about you, grouped by '
 const legacyAboutMeReasons: Record<AboutMeNotMigratedReason, string> = {
   'too-long': 'It is too long to become a Profile entry (limit 1 KB). '
     + 'Shorten it when saving, or discard it.',
-  'profile-exists': 'You already have a Profile entry, so this was not '
-    + 'merged. Save it as its own entry or discard it.',
+  'profile-exists': 'This is your old About me text. It wasn\'t added '
+    + 'automatically because you already have a Profile entry. If it already '
+    + 'covers this, discard it. Otherwise keep it as a new entry, or open it '
+    + 'to edit first.',
   'memory-off': 'Turn on Use memory and it will be converted automatically.',
   'entries-full': 'Your account memory is full (30 entries). Delete one and '
     + 'this converts automatically.',
   'rejected': 'It contains details Besidka does not save to memory, so it '
-    + 'was not converted. Remove those details when saving, or discard it.',
+    + 'was not converted. Open it to edit those details out, or discard it.',
 }
 
-const GENERIC_LEGACY_ABOUT_ME_REASON = 'It is not used in your chats until '
-  + 'you save it as a memory entry.'
+const GENERIC_LEGACY_ABOUT_ME_REASON = 'This is your old About me text. It '
+  + 'wasn\'t added to memory automatically.'
 
 const UNKNOWN_PROJECT_NAME = 'Unknown project'
 
@@ -482,7 +496,7 @@ function openCreate(projectId: string | null) {
   isDetailOpen.value = true
 }
 
-function saveLegacyAboutMe() {
+function editLegacyAboutMe() {
   const aboutMe = props.settings.aboutMe
 
   if (!aboutMe?.trim()) {
@@ -497,6 +511,43 @@ function saveLegacyAboutMe() {
   selectedEntry.value = null
   modalProjectId.value = null
   isDetailOpen.value = true
+}
+
+async function keepLegacyAboutMe() {
+  const aboutMe = props.settings.aboutMe
+
+  if (!aboutMe?.trim() || isRemovingAboutMe.value) {
+    return
+  }
+
+  isRemovingAboutMe.value = true
+
+  try {
+    await $fetch('/api/v1/memory/entries', {
+      method: 'POST',
+      body: buildLegacyAboutMeEntryValues(
+        aboutMe,
+        hasAccountProfileEntry.value,
+      ),
+    })
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Failed to keep the earlier about me.',
+      [parsedException.why, 'Use Edit and keep to change it first.']
+        .filter(Boolean)
+        .join(' '),
+    )
+    isRemovingAboutMe.value = false
+
+    return
+  }
+
+  isRemovingAboutMe.value = false
+
+  await clearSavedLegacyAboutMe()
+  await refresh()
 }
 
 async function clearAboutMe() {

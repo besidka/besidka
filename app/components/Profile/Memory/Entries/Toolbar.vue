@@ -1,7 +1,8 @@
 <template>
   <div class="grid gap-2">
     <div
-      class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
+      class="flex flex-col items-start gap-3"
+      data-testid="memory-toolbar-rows"
     >
       <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
         <p
@@ -12,7 +13,10 @@
           {{ total }} of {{ limit }}
         </p>
       </div>
-      <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+      <div
+        class="flex w-full flex-wrap items-center justify-start gap-2"
+        data-testid="memory-toolbar-actions"
+      >
         <UiButton
           size="sm"
           normal-case
@@ -28,27 +32,46 @@
         >
           <slot name="extra-actions" />
         </div>
-        <UiButton
+        <button
           v-if="canUpdateNow"
-          size="sm"
-          normal-case
-          :text="isUpdating ? 'Updating...' : 'Update memory now'"
+          type="button"
+          class="btn btn-sm btn-primary normal-case"
+          :class="{ 'btn-disabled': isUpdating }"
           :disabled="isUpdating"
           data-testid="memory-update-now"
           @click="updateMemoryNow"
         >
-          <template #icon>
+          <span
+            v-if="isUpdating"
+            class="loading loading-spinner loading-xs"
+          />
+          <Icon
+            v-else
+            name="lucide:refresh-cw"
+            size="16"
+          />
+          <span
+            class="grid"
+            data-testid="memory-update-now-labels"
+          >
             <span
-              v-if="isUpdating"
-              class="loading loading-spinner loading-xs"
-            />
-            <Icon
-              v-else
-              name="lucide:refresh-cw"
-              size="16"
-            />
-          </template>
-        </UiButton>
+              class="col-start-1 row-start-1"
+              :class="{ invisible: isUpdating }"
+              :aria-hidden="isUpdating"
+              data-testid="memory-update-now-idle-label"
+            >
+              Update memory now
+            </span>
+            <span
+              class="col-start-1 row-start-1"
+              :class="{ invisible: !isUpdating }"
+              :aria-hidden="!isUpdating"
+              data-testid="memory-update-now-busy-label"
+            >
+              Updating...
+            </span>
+          </span>
+        </button>
         <div class="hidden sm:contents">
           <button
             type="button"
@@ -68,7 +91,27 @@
               name="lucide:history"
               size="16"
             />
-            {{ backfillLabel }}
+            <span
+              class="grid"
+              data-testid="memory-backfill-labels"
+            >
+              <span
+                class="col-start-1 row-start-1"
+                :class="{ invisible: isBackfillBusy }"
+                :aria-hidden="isBackfillBusy"
+                data-testid="memory-backfill-idle-label"
+              >
+                {{ BACKFILL_IDLE_LABEL }}
+              </span>
+              <span
+                class="col-start-1 row-start-1"
+                :class="{ invisible: !isBackfillBusy }"
+                :aria-hidden="!isBackfillBusy"
+                data-testid="memory-backfill-busy-label"
+              >
+                {{ backfillProgressLabel }}
+              </span>
+            </span>
           </button>
           <button
             type="button"
@@ -221,6 +264,10 @@ const HISTORY_LOOKUP_LIMIT = 100
 
 const BACKFILL_REFRESH_INTERVAL_MS = 20_000
 
+const BACKFILL_IDLE_LABEL = 'Build memory from past chats'
+
+const BACKFILL_BUSY_PLACEHOLDER = 'Building…'
+
 const backfillHintId = useId()
 const moreMenu = useTemplateRef<HTMLDetailsElement>('moreMenu')
 const {
@@ -255,14 +302,24 @@ const backfillGateHint = computed<string>(() => {
     : memoryBackfillUnavailableCopy['memory-disabled']
 })
 
-const backfillLabel = computed<string>(() => {
+const isBackfillBusy = computed<boolean>(() => {
+  return isBackfillRunning.value && !!backfillJob.value
+})
+
+const backfillProgressLabel = computed<string>(() => {
   const job = backfillJob.value
 
-  if (!isBackfillRunning.value || !job) {
-    return 'Build memory from past chats'
+  if (!job) {
+    return BACKFILL_BUSY_PLACEHOLDER
   }
 
   return `Building… ${job.processedChats}/${job.totalChats}`
+})
+
+const backfillLabel = computed<string>(() => {
+  return isBackfillBusy.value
+    ? backfillProgressLabel.value
+    : BACKFILL_IDLE_LABEL
 })
 
 const backfillTitle = computed<string | undefined>(() => {
