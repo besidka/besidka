@@ -55,7 +55,11 @@ export function useLegalConsent() {
     }
 
     try {
-      applyState(await $fetch('/api/v1/profiles/consent'))
+      const response = await $fetch('/api/v1/profiles/consent')
+
+      if (response?.status) {
+        applyState(response)
+      }
     } catch {
       return state.value
     }
