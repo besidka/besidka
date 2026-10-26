@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -280,6 +280,29 @@ describe('memory explainer page', () => {
       expect(source).not.toContain('FAQPage')
     },
   )
+
+  it(
+    'honors the ?t= start offset its Clip URLs carry, parsed like the key '
+    + 'guide pages and passed to the lean player as startAt',
+    () => {
+      const source = readPageSource('app/pages/memory.vue')
+
+      expect(source).toContain('parseVideoStartOffset(')
+      expect(source).toContain('route.query.t')
+      expect(source).toContain(':start-at="videoStartAt"')
+    },
+  )
+
+  it('carries its video, poster and 11 chapter markers in the frontmatter',
+    () => {
+      const frontmatter = readMemoryFrontmatter()
+
+      expect(frontmatter).toMatch(/^ {2}src: \/videos\/memory\.mp4$/m)
+      expect(frontmatter).toMatch(/^ {2}poster: \/memory\/poster\.webp$/m)
+      expect(existsSync(join(process.cwd(), 'public/memory/poster.webp')))
+        .toBe(true)
+      expect(frontmatter.match(/^ {4}- time: /gm)).toHaveLength(11)
+    })
 
   it('has a title, description and ISO updatedAt in its frontmatter', () => {
     expect(readFrontmatterValue('title')).toBeTruthy()

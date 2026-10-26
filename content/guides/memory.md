@@ -3,6 +3,42 @@ title: "How memory works in Besidka"
 description: "What Besidka remembers about you and your projects, how to see, edit and delete it, how chat search and project files work, what is never stored, and what runs on your own API key."
 updatedAt: 2026-10-26
 summary: 'Besidka keeps small, editable memory entries about you and about each project, can search your past chats, and lets a project hold files and notes. You can see, edit, export and delete all of it. Nothing runs in the background on your API key until you switch it on, and sensitive data is refused, not stored.'
+video:
+  src: /videos/memory.mp4
+  poster: /memory/poster.webp
+  duration: PT1M15S
+  uploadDate: '2026-10-26'
+  alt: Screen recording of the Memory page in Besidka. The list of memory entries, editing an entry, telling Besidka what to change with a preview before Apply, project memory and project knowledge, the Searched your chats step, keeping a chat out of memory, the consent step and extra memory checks with TypeSafe AI.
+  qualities:
+    - src: /videos/memory-1080.mp4
+      size: 1080
+    - src: /videos/memory.mp4
+      size: 720
+    - src: /videos/memory-360.mp4
+      size: 360
+  markers:
+    - time: "0:00"
+      label: How memory works
+    - time: "0:03"
+      label: What Besidka remembers
+    - time: "0:09"
+      label: Edit an entry
+    - time: "0:17"
+      label: Tell Besidka what to change
+    - time: "0:24"
+      label: Preview and apply
+    - time: "0:32"
+      label: Project memory
+    - time: "0:39"
+      label: Project knowledge
+    - time: "0:45"
+      label: Search your past chats
+    - time: "0:52"
+      label: Keep a chat out of memory
+    - time: "0:59"
+      label: Consent
+    - time: "1:06"
+      label: Memory checks with TypeSafe AI
 ---
 
 ## What Besidka remembers
@@ -75,7 +111,7 @@ The first is a second opinion before an entry is saved. Jev looks for sensitive 
 
 The second is a pre-filter before memory is generated from a chat. It runs only when memory generation runs: **Generate memory from chats**, **Build memory from past chats**, or a project **Refresh**. It never runs for **Update memory now** or **Import memory**, which always go ahead. Besidka sends the chat text, with never-stored items such as passwords and card numbers removed, to Jev in chunks. If Jev finds nothing worth remembering, the memory model is skipped, which saves cost on your own key; for **Build memory from past chats**, the cost shown beforehand is an upper bound for this reason. If Jev is unsure or cannot be reached, memory is generated as usual. Because this reads whole chat text, you can switch it off on its own.
 
-Besidka has other optional TypeSafe AI checks too, such as deciding whether a web search is needed, screening files and search results for hidden instructions, ordering search results, and a personal-data warning before you share a chat. Screening covers Brave and Exa results, which Besidka fetches itself; a flagged result is left out and the model is told how many were withheld. A chat model's own built-in web search returns its results straight to the model, so Besidka cannot screen them. Each one has its own toggle under **Profile**, **API Keys**, **Smart checks**. They are all on after you save the key, and each one falls back to normal behaviour if TypeSafe AI is unavailable.
+Besidka has other optional TypeSafe AI checks too, such as deciding whether a web search is needed, screening files and search results for hidden instructions, ordering search results, and a personal-data warning before you share a chat. Each one has its own toggle under **Profile**, **API Keys**, **Smart checks**. They are all on after you save the key, and each one falls back to normal behaviour if TypeSafe AI is unavailable. The web search one is **Auto** in the chat input's web search menu: with a provider picked and Auto on, Jev decides for each message whether to search with that provider, and if TypeSafe AI does not answer, Besidka searches. Screening covers Brave and Exa results, which Besidka fetches itself; a flagged result is left out and the model is told how many were withheld. A chat model's own built-in web search returns its results straight to the model, so Besidka cannot screen them.
 
 TypeSafe AI, Inc. is in the United States and is not certified under the EU–US Data Privacy Framework. Its data processing agreement relies on the Standard Contractual Clauses and the UK Addendum, and its privacy policy says it does not train models on your input. It keeps data as long as necessary, with no fixed period. Each check costs a fraction of a cent on your TypeSafe AI account. Delete the key to stop all the checks, or switch off single checks. The [Privacy Policy](/privacy-policy#typesafe-ai-checks) lists what each check sends. How to get a key: [How to get a TypeSafe AI API key](/guides/typesafe-ai-api-key).
 

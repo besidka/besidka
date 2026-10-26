@@ -176,8 +176,11 @@
                   :is-tool-calling-supported="isToolCallingSupported"
                   :exa-search-level="exaSearchLevel"
                   :align="toolbarDropdownAlign"
+                  :is-auto-available="isAutoWebSearchAvailable"
+                  :is-auto-preferred="isAutoWebSearchPreferred"
                   @select-provider="selectWebSearchProvider"
                   @select-exa-search-level="selectExaSearchLevel"
+                  @toggle-auto="setAutoWebSearchPreferred"
                 />
                 <LazyChatInputReasoningTrigger
                   v-if="isReasoningTriggerVisible"
@@ -217,6 +220,8 @@
                 :web-search-options="webSearchProviderOptions"
                 :selected-web-search-provider="selectedWebSearchProvider"
                 :exa-search-level="exaSearchLevel"
+                :is-auto-web-search-available="isAutoWebSearchAvailable"
+                :is-auto-web-search-preferred="isAutoWebSearchPreferred"
                 :is-image-generation-supported="isImageGenerationSupported"
                 :is-image-generation-enabled="isImageGenerationEnabled"
                 :is-image-generation-required="isImageGenerationRequired"
@@ -234,6 +239,7 @@
                 @toggle-memory-excluded="toggleMemoryExcluded"
                 @select-web-search-provider="selectWebSearchProvider"
                 @select-exa-search-level="selectExaSearchLevel"
+                @toggle-auto-web-search="setAutoWebSearchPreferred"
                 @toggle-image-generation="toggleImageGeneration"
                 @open-project-picker="emit('open-project-picker')"
                 @clear-project-context="emit('clear-project-context')"
@@ -368,6 +374,11 @@ const {
   isSelectedModelUnavailable,
 } = useChatInput()
 const { ensureSendConsent } = useLegalConsent()
+const {
+  isAvailable: isAutoWebSearchAvailable,
+  isPreferred: isAutoWebSearchPreferred,
+  setPreferred: setAutoWebSearchPreferred,
+} = useAutoWebSearch()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()

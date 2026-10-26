@@ -57,10 +57,13 @@
               :options="webSearchOptions ?? []"
               :is-tool-calling-supported="!!isToolCallingSupported"
               :exa-search-level="exaSearchLevel"
+              :is-auto-available="isAutoWebSearchAvailable"
+              :is-auto-preferred="isAutoWebSearchPreferred"
               @select-provider="emit('select-web-search-provider', $event)"
               @select-exa-search-level="
                 emit('select-exa-search-level', $event)
               "
+              @toggle-auto="emit('toggle-auto-web-search', $event)"
             />
           </template>
           <li
@@ -173,6 +176,8 @@ const props = withDefaults(defineProps<{
   webSearchOptions?: WebSearchOption[]
   selectedWebSearchProvider?: WebSearchSelection
   exaSearchLevel?: ExaSearchLevel
+  isAutoWebSearchAvailable?: boolean
+  isAutoWebSearchPreferred?: boolean
   isImageGenerationSupported?: boolean
   isImageGenerationEnabled?: boolean
   isImageGenerationRequired?: boolean
@@ -194,11 +199,14 @@ const props = withDefaults(defineProps<{
 }>(), {
   canDisableReasoning: true,
   memoryExcluded: null,
+  isAutoWebSearchAvailable: false,
+  isAutoWebSearchPreferred: false,
 })
 
 const emit = defineEmits<{
   'select-web-search-provider': [value: WebSearchSelection]
   'select-exa-search-level': [level: ExaSearchLevel]
+  'toggle-auto-web-search': [isOn: boolean]
   'toggle-image-generation': []
   'toggle-memory-excluded': []
   'open-project-picker': []

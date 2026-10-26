@@ -35,10 +35,13 @@
               :options="options"
               :is-tool-calling-supported="isToolCallingSupported"
               :exa-search-level="exaSearchLevel"
+              :is-auto-available="isAutoAvailable"
+              :is-auto-preferred="isAutoPreferred"
               @select-provider="emit('select-provider', $event)"
               @select-exa-search-level="
                 emit('select-exa-search-level', $event)
               "
+              @toggle-auto="emit('toggle-auto', $event)"
             />
           </ul>
         </div>
@@ -60,13 +63,18 @@ const props = withDefaults(defineProps<{
   isToolCallingSupported: boolean
   exaSearchLevel?: ExaSearchLevel
   align?: 'start' | 'end'
+  isAutoAvailable?: boolean
+  isAutoPreferred?: boolean
 }>(), {
   exaSearchLevel: 'auto',
+  isAutoAvailable: false,
+  isAutoPreferred: false,
 })
 
 const emit = defineEmits<{
   'select-provider': [value: WebSearchSelection]
   'select-exa-search-level': [level: ExaSearchLevel]
+  'toggle-auto': [isOn: boolean]
 }>()
 
 const { isIos, isAndroid } = useDevice()
@@ -78,8 +86,16 @@ const isActive = computed<boolean>(() => {
   return props.selected !== 'off'
 })
 
+const isAutoActive = computed<boolean>(() => {
+  return isActive.value && props.isAutoAvailable && props.isAutoPreferred
+})
+
 const triggerLabel = computed<string>(() => {
-  return isActive.value ? 'Search' : ''
+  if (!isActive.value) {
+    return ''
+  }
+
+  return isAutoActive.value ? 'Auto' : 'Search'
 })
 
 const selectedProviderId = computed<string | undefined>(() => {
@@ -100,16 +116,28 @@ const providerTitles: Record<Exclude<WebSearchSelection, 'off'>, string> = {
   web_search_exa: 'Exa',
 }
 
+const providerTitle = computed<string>(() => {
+  if (props.selected === 'off') {
+    return ''
+  }
+
+  if (props.selected === 'web_search_exa') {
+    return `Exa (${EXA_SEARCH_LEVEL_LABELS[props.exaSearchLevel]})`
+  }
+
+  return providerTitles[props.selected]
+})
+
 const triggerTitle = computed<string>(() => {
   if (props.selected === 'off') {
     return 'Choose a web search provider'
   }
 
-  if (props.selected === 'web_search_exa') {
-    return `Web search: Exa (${EXA_SEARCH_LEVEL_LABELS[props.exaSearchLevel]})`
+  if (isAutoActive.value) {
+    return `Auto web search: ${providerTitle.value}`
   }
 
-  return `Web search: ${providerTitles[props.selected]}`
+  return `Web search: ${providerTitle.value}`
 })
 
 onClickOutside(dropdown, () => {

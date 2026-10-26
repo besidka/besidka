@@ -27,11 +27,15 @@ query-shaped and ends in `-api-key` (`gemini-api-key.md`,
 `prefix: '/guides'`.
 
 `typesafe-ai-api-key.md` is the TypeSafe AI guide for the **Smart checks**
-tab (`kind: 'memory-check'`, see `docs/memory-architecture.md` 3.19). It has
-no `video` block yet, and its card, free-tier and sign-up facts were not
-verifiable from TypeSafe AI's public pages on 2026-10-26, so the guide states
-only what the official docs say. Re-check the console flow and button labels
-before recording the video.
+tab (`kind: 'memory-check'`, see `docs/memory-architecture.md` 3.19). Its
+card, free-tier and sign-up facts were not verifiable from TypeSafe AI's
+public pages on 2026-10-26, so the guide states only what the official docs
+say. Its video was recorded on 2026-10-26: steps 2 to 4 use the console and
+Besidka labels the video shows (the **Create key** button and dialog, the
+`Besidka guide demo` key name, the **API key created** dialog and the
+"TypeSafe AI API key updated successfully" toast). The video still shows the
+tab under its earlier name, **Memory checks**; the text uses the current
+**Smart checks**. Re-check those labels when the console or the tab changes.
 
 The field schema lives in `shared/utils/key-guide-schema.ts` together with
 the `httpsUrl` and `siteRelativeOrHttpsUrl` helpers. `content.config.ts`
@@ -99,7 +103,7 @@ restart.
 - Videos are served from the `CMS_BUCKET` R2 bucket by
   `server/routes/videos/[name].ts` as `key-guide-<id>.mp4`,
   `key-guide-<id>-1080.mp4` and `key-guide-<id>-360.mp4`. The allow-list is
-  explicit and derived from the `providerMeta` ids (12 ids, 3 files each), so
+  explicit and derived from the `providerMeta` ids (13 ids, 3 files each), so
   any other name, such as `-720` or `-480`, is a 404. The route keeps its
   single-read, range and conditional-request behavior.
 - Put the encoded files in `.files/` (gitignored) and run
@@ -109,18 +113,20 @@ restart.
   one is not an error. `cms:files:download` only pulls the known demo assets,
   not the guides. Encode like the demo: H.264, `yuv420p`, fixed 2-second GOP,
   `+faststart`. The player autoplays muted and loops, so no audio is needed.
-- Encode recipe: see the encoding section of `docs/landing-studio.md`. The
-  key-guide renditions were encoded with mediabunny and `@mediabunny/server`
-  because the local Homebrew ffmpeg was broken.
-  The 1080 and 360 renditions were encoded on 2026-10-22 from the 1080
-  masters (`key guides 2026-10/finals/key-guide-<id>-1080.mp4` in iCloud). The
-  720 `key-guide-<id>.mp4` files are the earlier encodes and were not
-  re-encoded. Settings, same for every guide:
+- Encode recipe: see the encoding section of `docs/landing-studio.md`. On
+  2026-10-26 all 13 guides were re-rendered from their HyperFrames projects
+  with a composed title spliced in as frame 0 (see "First frame" below), and
+  every rendition, 1080, 720 and 360, was re-encoded from the 1920x1080
+  masters with the static ffmpeg build
+  (`ffmpeg-static`), because the local Homebrew ffmpeg is broken. The
+  2026-10-22 1080 and 360 encodes used mediabunny (see "Tooling"). Settings,
+  same for every guide:
   - Codec: libx264 High profile, `yuv420p`, preset `slow`, tune `animation`,
     no audio.
-  - Quality: CRF 21 for 1080 (about 1.3 to 1.8 Mbps) and CRF 26 for 360
-    (640x360, about 115 to 160 kbps). CRF, not a bitrate target, so flat UI
-    frames stay small and busy ones get what they need.
+  - Quality: CRF 21 for 1080 (about 1.3 to 1.8 Mbps), CRF 23 for 720
+    (OpenRouter 24 and Cloudflare 26, to stay under about 3 MB) and CRF 26
+    for 360 (640x360, about 115 to 160 kbps). CRF, not a bitrate target, so
+    flat UI frames stay small and busy ones get what they need.
   - GOP: `keyint=60:min-keyint=60:scenecut=0`, a fixed 2-second GOP at 30 fps,
     so every rendition has keyframes at the same timestamps and a quality
     switch can resume cleanly.
@@ -130,7 +136,7 @@ restart.
     start without reading the tail of the file.
   - 360p legibility: headlines and buttons are readable, fine UI text is soft.
     It is a low-bandwidth fallback, not a reading rendition.
-- Tooling: mediabunny 1.55.3 with `@mediabunny/server` 1.62.0 (node-av 6.1.1,
+- Tooling (2026-10-22 encodes): mediabunny 1.55.3 with `@mediabunny/server` 1.62.0 (node-av 6.1.1,
   its postinstall build is not approved) running in Node. Stock
   `@mediabunny/server` encodes with x264 `medium` and exposes no CRF or
   scenecut control, so the encode script monkeypatches node-av in-process:
@@ -142,6 +148,36 @@ restart.
 - Upload: `pnpm run cms:files:upload --remote -e preview`, then
   `-e production --yes`. The 24 new objects (12 guides, 1080 and 360) were
   uploaded on 2026-10-22; existing objects are skipped without `--force`.
+  On 2026-10-26 all 39 objects (13 guides, 3 renditions) were uploaded with
+  `--force` to preview and production, and the URLs were versioned (see
+  "Replacing a video or poster").
+
+### First frame
+
+Frame 0 of every guide video is the title slide, fully composed: background,
+logo, the full headline with its accent phrase, glow and both chips. It is
+what a link preview, a paused player and the moment before the poster loads
+show, so it must say what the video is about. The intro animation itself is
+unchanged: from frame 1 on, each video is the original render, starting with
+the empty background and the title building in. Only frame 0 is replaced.
+
+How it is made (2026-10-26, all 13 guides):
+
+1. Render the HyperFrames project (`key guides 2026-10/source/hf-<id>` in
+   iCloud) as before; the title composition still animates in from empty.
+2. Make the composed title still: a copy of the project whose
+   `compositions/frames/01-title.html` starts in its end state (word, chip
+   and glow CSS rules at their final opacity, no entrance tweens), rendered,
+   frame 0 extracted as a 1920x1080 PNG. Do not edit the real project: a GSAP
+   `fromTo` applies its "from" state at frame 0, which is why the original
+   renders open blank.
+3. Splice the still over frame 0 only while encoding each rendition:
+   `-loop 1 -i title.png -filter_complex "[0:v][1:v]overlay=shortest=1:enable='eq(n\,0)',scale=..."`.
+   Frame 0 is the first keyframe of the fixed 2-second GOP, so the title is a
+   full I-frame. Frame count, duration and chapter markers do not change.
+
+Before an upload, extract frame 0 and frame 1 of each rendition: frame 0 must
+be the whole title slide and frame 1 the near-empty first intro frame.
 
 ### Renditions
 
@@ -149,14 +185,15 @@ Each guide has three files, picked from the quality menu on both surfaces:
 
 | Height | File | Where it is in the frontmatter |
 | --- | --- | --- |
-| 1080 | `key-guide-<id>-1080.mp4` | `video.qualities`, no query |
+| 1080 | `key-guide-<id>-1080.mp4` | `video.qualities`, with `?v=<n>` if replaced |
 | 720 | `key-guide-<id>.mp4` | `video.src` and `video.qualities`, with `?v=<n>` if replaced |
-| 360 | `key-guide-<id>-360.mp4` | `video.qualities`, no query |
+| 360 | `key-guide-<id>-360.mp4` | `video.qualities`, with `?v=<n>` if replaced |
 
 The 720 file keeps the original name so every existing URL, R2 object and
 cached copy stays valid. It is also what the hover-preview thumbnails always
 use, whatever rendition is playing. `tests/unit/content/key-guides.spec.ts`
-pins the three entries per guide and that the 720 one equals `video.src`.
+pins the three entries per guide, that the 720 one equals `video.src`, and
+that each may carry only a `?v=<digits>` query.
 `video.src` stays required: it is the JSON-LD `contentUrl` and the single
 source for a guide without `qualities`.
 
@@ -167,25 +204,35 @@ width, pixel ratio, data saver, slow network) and falls back to 720; see
 page (a deliberate menu pick is stored there), while the `/profile/keys`
 player persists nothing.
 
-A rendition replaced later is versioned on its own entry
+A replaced rendition is versioned on its own entry
 (`/videos/key-guide-<id>-1080.mp4?v=2`); the query is harmless for the same
-reasons as on the 720 file below.
-- Posters are committed at `public/key-guides/<id>.webp`, 16:9, taken from
-  the paste step of the recording. The component tolerates a missing poster
-  and shows a plain box.
+reasons as on the 720 file below. When all three are replaced together, they
+share the same `<n>`.
+
+Posters are committed at `public/key-guides/<id>.webp`, 1280x720. Since
+2026-10-26 each poster is the same composed title still as frame 0 (the
+1920x1080 PNG resized with `magick -resize 1280x720 -quality 86 -define
+webp:method=6`), so poster and first frame agree. Before that they were taken
+from the paste step. The component tolerates a missing poster and shows a
+plain box.
 
 ### Replacing a video or poster
 
-The video route answers with `Cache-Control: public, max-age=86400` and the
-posters are static public files, so a replaced file under the same URL can
-stay stale in browsers and at the edge for a day. Version the URLs in the
-guide frontmatter instead of renaming files: bump `?v=<n>` on both
-`video.src` and `video.poster` (`/videos/key-guide-<id>.mp4?v=3`,
+The video route answers with `Cache-Control: public, max-age=86400` and an
+R2 `ETag`, and the posters are static public files, so a replaced file under
+the same URL can stay stale in browsers for a day. The route does not use the
+Workers Cache API and its responses carry no `cf-cache-status`, so the
+Cloudflare edge does not hold a copy and no purge step is needed. Version the
+URLs in the guide frontmatter instead of renaming files: bump `?v=<n>` on
+both `video.src` and `video.poster` (`/videos/key-guide-<id>.mp4?v=3`,
 `/key-guides/<id>.webp?v=3`) in the same change that replaces either file,
 and on the 720 entry of `video.qualities`, which must stay identical to
-`video.src` (a `-1080` or `-360` file is versioned on its own entry only),
-and upload the new mp4 with `pnpm run cms:files:upload --force`. A guide
-that was never replaced has no query.
+`video.src`. A replaced `-1080` or `-360` file gets the query on its own
+entry. Then upload the new mp4s with `pnpm run cms:files:upload --force`. A
+guide that was never replaced has no query. On 2026-10-26 the 12 existing
+guides moved from no query to `?v=2`, or from `?v=2` to `?v=3` (brave, exa,
+vercel, openrouter, cloudflare), on all five URLs; TypeSafe AI, uploaded for
+the first time, has none.
 
 The query is harmless everywhere it flows. Router params never contain it, so
 `server/routes/videos/[name].ts` still resolves `key-guide-<id>.mp4` against

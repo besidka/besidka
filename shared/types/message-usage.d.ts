@@ -1,4 +1,5 @@
 import type { KnowledgeDecisionMode } from '#shared/types/project-knowledge.d'
+import type { AutoWebSearchOutcome } from '#shared/utils/auto-web-search'
 
 export type SearchBillingUnit = 'query' | 'grounded-prompt' | 'search'
 
@@ -51,6 +52,7 @@ export type MessageUsage = {
   searchProvider?: SearchProvider
   knowledgeTokens?: number
   knowledgeMode?: KnowledgeDecisionMode
+  autoWebSearch?: AutoWebSearchOutcome
   firstStepInputTokens?: number
   lastStepOutputTokens?: number
 }

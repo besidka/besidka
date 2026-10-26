@@ -98,6 +98,7 @@ const { handleConsentError } = useLegalConsent()
 const prefStorage = usePreferenceStorage()
 const nuxtApp = useNuxtApp()
 const { userModel } = useUserModel()
+const { resolveWebSearchMode } = useAutoWebSearch()
 const message = customRef<string>((track, trigger) => ({
   get() {
     track()
@@ -452,6 +453,7 @@ async function createResearchChat(
           ),
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
+        webSearchMode: resolveWebSearchMode(tools.value),
         reasoning: reasoning.value,
         model: userModel.value,
         research: {
@@ -619,6 +621,7 @@ async function onSubmit() {
           ),
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
+        webSearchMode: resolveWebSearchMode(tools.value),
         reasoning: reasoning.value,
         ...(projectId.value ? { projectId: projectId.value } : {}),
         ...(memoryExcluded.value ? { memoryExcluded: true } : {}),

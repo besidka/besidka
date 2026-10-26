@@ -1,6 +1,7 @@
 import type { LanguageModelUsage } from 'ai'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import type { KnowledgeDecisionMode } from '#shared/types/project-knowledge.d'
+import type { AutoWebSearchOutcome } from '#shared/utils/auto-web-search'
 import { getModel } from '#shared/utils/model'
 import { getModelResearch } from '#shared/utils/research'
 import { hasUnknownTokenSplit } from '#shared/utils/message-metadata'
@@ -242,6 +243,17 @@ export function addKnowledgeContextUsage(
     ...(firstStepInputTokens === undefined ? {} : { firstStepInputTokens }),
     ...(lastStepOutputTokens === undefined ? {} : { lastStepOutputTokens }),
   }
+}
+
+export function addAutoWebSearchUsage(
+  usage: MessageUsage | undefined,
+  outcome: AutoWebSearchOutcome | undefined,
+): MessageUsage | undefined {
+  if (!usage || outcome === undefined) {
+    return usage
+  }
+
+  return { ...usage, autoWebSearch: outcome }
 }
 
 function parseResearchCostEstimate(costEstimate: string): number | undefined {

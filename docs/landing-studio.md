@@ -464,6 +464,23 @@ binaries); they live in the `CMS_BUCKET` R2 bucket.
   and exits non-zero. `--force` and `--yes` are rejected for `download`, which
   pulls the objects back into `.files/` and skips files already there.
 
+#### Replacing the promo (cache-safe URLs)
+
+`/videos/*` answers with `Cache-Control: public, max-age=86400`, so a
+re-uploaded `demo*.mp4` under the same URL can stay stale in browsers for a
+day. Version the URLs in `content/index.md` instead of renaming objects: bump
+`?v=<n>` on `video.src`, every `video.qualities` entry and `video.poster` in
+the change that replaces the files (the poster is a static file served with
+`max-age=0, must-revalidate`, so its query only keeps the pair in step). The
+route reads the name from the router param, so the query never reaches the
+allow-list or the R2 key. Then upload with `--force`. The captions file did
+not change, so `demo.en.vtt` keeps its URL.
+
+On 2026-10-26 the three renditions were replaced (`?v=2`): frame 0 is now the
+composed hook title, the same image as the new poster, and from frame 1 on the
+video is unchanged (same 1620 frames, captions and markers). The splice and
+its checks are described under "First frame" in `docs/key-guides.md`.
+
 #### Serving: one R2 read per request
 
 `server/routes/videos/[name].ts` serves a fixed allow-list (`demo.mp4`,

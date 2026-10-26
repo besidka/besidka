@@ -4,21 +4,21 @@ description: Create a DeepSeek API key and add it to Besidka. Prepaid balance th
 provider: deepseek
 keyUrl: https://platform.deepseek.com/api_keys
 keyUrlLabel: Open DeepSeek keys page
-updatedAt: '2026-10-20'
+updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Top up a small balance, create a key, and chat with DeepSeek models. Check the data note below first.
 video:
-  src: /videos/key-guide-deepseek.mp4
-  poster: /key-guides/deepseek.webp
+  src: /videos/key-guide-deepseek.mp4?v=2
+  poster: /key-guides/deepseek.webp?v=2
   duration: PT34S
-  uploadDate: '2026-10-20'
+  uploadDate: '2026-10-26'
   alt: Screen recording of DeepSeek Platform. The API keys page, the Create new API key dialog with a name, the new key shown once, then the key pasted into Besidka and a first answer from DeepSeek.
   qualities:
-    - src: /videos/key-guide-deepseek-1080.mp4
+    - src: /videos/key-guide-deepseek-1080.mp4?v=2
       size: 1080
-    - src: /videos/key-guide-deepseek.mp4
+    - src: /videos/key-guide-deepseek.mp4?v=2
       size: 720
-    - src: /videos/key-guide-deepseek-360.mp4
+    - src: /videos/key-guide-deepseek-360.mp4?v=2
       size: 360
   markers:
     - time: "0:00"

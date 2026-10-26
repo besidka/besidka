@@ -5,6 +5,7 @@
       #media
     >
       <div
+        ref="videoContainer"
         class="w-full"
         data-testid="memory-guide-video"
       >
@@ -16,6 +17,7 @@
             :label="page.video.alt || title"
             :qualities="page.video.qualities ?? []"
             :markers="page.video.markers ?? []"
+            :start-at="videoStartAt"
           />
           <template #fallback>
             <img
@@ -49,6 +51,10 @@
 
 <script setup lang="ts">
 import { buildKeyGuidePageLd } from '~/utils/landing-jsonld'
+import {
+  parseIsoDurationToSeconds,
+  parseVideoStartOffset,
+} from '#shared/utils/video'
 
 definePageMeta({
   layout: 'legal',
@@ -66,6 +72,33 @@ const title = computed<string>(() => {
   return page.value?.title || 'How memory works in Besidka'
 })
 const description = computed<string>(() => page.value?.description || '')
+
+const videoContainer = useTemplateRef<HTMLElement>('videoContainer')
+
+const videoStartAt = computed<number | undefined>(() => {
+  const duration = page.value?.video?.duration
+
+  if (!duration) {
+    return undefined
+  }
+
+  return parseVideoStartOffset(
+    route.query.t,
+    parseIsoDurationToSeconds(duration),
+  ) ?? undefined
+})
+
+onMounted(async () => {
+  if (videoStartAt.value === undefined) {
+    return
+  }
+
+  await nextTick()
+  videoContainer.value?.scrollIntoView({
+    block: 'start',
+    behavior: 'instant',
+  })
+})
 
 useSeoMeta({
   title: () => title.value,

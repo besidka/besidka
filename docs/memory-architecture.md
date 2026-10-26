@@ -2189,6 +2189,108 @@ into flagging a legitimate document can only cause a review prompt for a file
 can never delete content. A false negative leaves the existing defences: the
 write lock, the data-not-instructions wrapping and the memory gate.
 
+#### Auto web search (`autoWebSearch`, J1)
+
+Auto is a modifier on the chosen search provider (the model's built-in
+search, Brave or Exa), not a provider of its own: Jev decides per message
+whether that provider searches.
+
+**UI.** `ChatInput/WebSearchMenuItems.vue` (in both `WebSearchTrigger.vue`
+and `ToolbarMore.client.vue`) gets an **Auto** section with a one-line hint
+and an info tooltip, shown only when `useUserKeys().keyStatusForProvider(
+'typesafe') === 'saved'` and the role settings have loaded with
+`autoWebSearch` on (`useAutoWebSearch()` in `app/composables/
+auto-web-search.ts`, which fetches `/api/v1/profiles/settings` only once the
+key is known to be saved, so users without a key pay no extra request). With
+search Off the toggle is disabled with "Pick a provider above to use Auto."
+The preference is per browser, `prefStorage` key `settings_web_search_auto`
+(`on`/`off`). The trigger reads **Auto** instead of **Search** while it
+applies. The Exa level heading is now **Depth**, so its "Auto" level is not
+confused with this mode.
+
+**Request.** Both `PUT /api/v1/chats/new` and `POST /api/v1/chats/[slug]`
+take `webSearchMode: 'auto' | 'always'` (default `always`), a separate field;
+the `tools` enum has no sentinel. The client sends `auto` only with the
+preference on and a web-search tool in `tools`, and falls back to `always`
+once the key is known missing or the role known off. While those are still
+loading it sends `auto` and lets the server decide, so a chat's first POST
+fired on mount keeps its chip.
+
+**Server.** `resolveAutoWebSearch` in `server/utils/chats/auto-web-search.ts`
+runs before `selectedTools` is consumed (validation, the Brave/Exa key reads,
+`persistUserMessage`, the provider switch). In order:
+
+1. `always`, or no web-search tool chosen: tools unchanged, no D1 read.
+2. `resolveJevRoleApiKey` (key read, decrypt, `typesafe_roles` read): no key
+   or role off means tools unchanged and no chip, exactly as without a key.
+3. A message already persisted under the same id reuses its persisted tools
+   and calls nothing (`counts.reused`). That covers a retry of the same
+   message id and a new chat's first message, whose tools the PUT already
+   resolved; the chip is derived from whether those tools search.
+4. Guards: `JEV_URL_OR_DOMAIN_PATTERN` or `matchesJevPhrases(text,
+   JEV_RECENCY_PHRASES)` forces the search with no Jev call (`forced`).
+5. One `decideSendPathJev` call with `state = { message, recent_turns }`
+   (the last `JEV_AUTO_WEB_SEARCH.recentTurns` persisted turns with text),
+   each text never-store-redacted and capped at
+   `JEV_SEND_PATH_MAX_TURN_CHARS`, on `JEV_SEND_PATH_TIMEOUT_MS`. Search when
+   `p >= JEV_AUTO_WEB_SEARCH.searchAtOrAbove` (`searched`), else drop only the
+   web-search tool (`skipped`). Any failure, refusal or missing answer
+   searches (`fallback`).
+
+The PUT runs the same function for the first message (no history, never for
+a deep research start) and persists the resolved tools; the POST then takes
+the reuse branch. Persisted `messages.tools` are always the resolved set, so
+`hasSameTools` and the duplicate and replay paths work per message id
+unchanged. A skip removes the search tool from `requestedTools`, so the
+search prompt nudge, the Brave/Exa lines, the external tool registration,
+the key lookup and the `presetMemoryWriteLock` lock (which keys on
+`requestedTools`) all drop for that message only.
+
+**Reopening a chat after a skip.** The skipped message persists without a
+search tool, so `findLastUserMessageTools` alone would show search as Off.
+`resolveInitialChatTools` (`app/composables/chat.ts`) restores the saved
+provider (`settings_web_search_tool`) when Auto is preferred, the last user
+message has no tools and its reply was `skipped` or is still missing (a new
+chat's pending first message). A turn the user sent with search Off keeps
+Off. Without the Auto preference it is `findLastUserMessageTools` unchanged.
+
+**Chip.** The outcome is stored as `usage.autoWebSearch` on the assistant
+message (`searched`, `skipped`, `forced`, `fallback`), in both the streamed
+finish metadata and the persisted row (`addAutoWebSearchUsage`).
+`Chat/AutoWebSearchChip.vue` renders "Auto: searched the web" or "Auto: no web
+search needed" under the answer, on the owner's chat page only (not on shared
+chats). A turn whose usage capture failed has no chip. For a reused decision
+the chip says searched or skipped; the forced or fallback detail of a first
+message lives only in the PUT's log.
+
+**Logging.** `attributes.autoWebSearchJev` via `recordJevRoleLog`: `status`,
+`calls`, `questions`, `inputTokens`, `latencyMs`, `scores` (the rounded
+probability) and `counts` keyed by outcome plus `reused`. No text.
+
+**J6 seam.** `server/utils/jev/send-path.ts` holds the shared send-path
+pieces: `readSendPathTurns`, `buildSendPathJevState` and
+`decideSendPathJev({ model, state, questions })`, which takes any question
+map. `autoWebSearchJevQuestions()` and `readAutoWebSearchAnswer(result)` are
+exported separately, so past-chat retrieval can merge its question into the
+same call and read both answers from one result. J6 shipped first with its
+own call (`decidePastChatSearch` in `server/utils/memory/tools/
+pre-retrieval.ts`, `recent_turns` as `User: …` strings capped by
+`JEV_PAST_CHAT_RETRIEVAL.maxTurnChars`), and the two roles run at different
+points of the send (Auto before tool validation, J6 only when tool calling is
+off), so they overlap only for a model without tool calling that uses its
+built-in search in Auto. Batching them means one shared state first: move J6
+to `buildSendPathJevState`, decide both before tool validation, and pass the
+merged question map to `decideSendPathJev` once.
+
+**Tests.** `tests/unit/utils/chats/auto-web-search.spec.ts`,
+`tests/integration/api/chats-auto-web-search.spec.ts` (no key identical to
+`always`, skip, search, 401 and timeout fallback, forced, recent turns,
+retry and first-message reuse, role off),
+`tests/integration/api/chats-new-auto-web-search.spec.ts`,
+`tests/unit/composables/auto-web-search.spec.ts`,
+`tests/unit/components/Chat/AutoWebSearchChip.spec.ts`, and Auto cases in the
+`WebSearchMenuItems`, `WebSearchTrigger` and `chat` specs.
+
 #### Past-chat retrieval (`pastChatRetrieval`, J6)
 
 Pre-retrieval of past chats for sends where `search_chats` and `read_chat`
