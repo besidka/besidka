@@ -184,6 +184,11 @@ import {
 } from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
 import {
+  buildPastChatChipPart,
+  resolvePastChatPreRetrieval,
+} from '~~/server/utils/memory/tools/pre-retrieval'
+import type { PastChatPreRetrieval } from '~~/server/utils/memory/tools/pre-retrieval'
+import {
   isChatSearchToolEnabled,
   isMemoryToolsEnabled,
 } from '~~/server/utils/memory/tools/enabled'
@@ -1257,6 +1262,30 @@ export default defineEventHandler(async (event) => {
   }
 
   const userMessageText = readUserMessageText(newMessage.parts)
+  const pastChatPreRetrievalRun: Promise<PastChatPreRetrieval | null>
+    = isChatSearchToolEnabled(memorySettings)
+      && !toolCallingAllowed
+      && userMessageText !== null
+      ? resolvePastChatPreRetrieval({
+        db,
+        userId,
+        currentChatId: chat.id,
+        ...(chat.projectId && chat.project?.useAccountMemory === false
+          ? { projectId: chat.projectId }
+          : {}),
+        message: userMessageText,
+        earlierMessages: messagesForAI.filter((message) => {
+          return message.id !== newMessage.id
+        }),
+        userMessageId: newMessage.id,
+        tokenFamily: resolveKnowledgeTokenFamily({
+          providerId: telemetryProviderId,
+          modelId,
+          gateway: !!gatewayId,
+        }),
+        logger: aiLogger,
+      })
+      : Promise.resolve(null)
   const projectMemoryDisabled = chat.projectId === null
     ? false
     : chat.project
@@ -1350,6 +1379,7 @@ export default defineEventHandler(async (event) => {
     scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
     logger: aiLogger,
   })
+  const pastChatPreRetrieval = await pastChatPreRetrievalRun
   const knowledgeContext = knowledge?.context ?? null
   const knowledgeToolsRegistered = knowledgeContext?.registerTools === true
 
@@ -1358,6 +1388,7 @@ export default defineEventHandler(async (event) => {
       requestedTools,
       holdsUntrustedKnowledge: !!knowledgeContext
         && holdsUntrustedKnowledge(knowledgeContext),
+      holdsPastChatExcerpts: pastChatPreRetrieval !== null,
     })
   }
 
@@ -1455,6 +1486,22 @@ export default defineEventHandler(async (event) => {
           })
         }
 
+        if (pastChatPreRetrieval) {
+          const pastChatChipPart = buildPastChatChipPart(pastChatPreRetrieval)
+
+          writer.write({
+            type: 'tool-input-available',
+            toolCallId: pastChatChipPart.toolCallId,
+            toolName: 'search_chats',
+            input: pastChatChipPart.input,
+          })
+          writer.write({
+            type: 'tool-output-available',
+            toolCallId: pastChatChipPart.toolCallId,
+            output: pastChatChipPart.output,
+          })
+        }
+
         let result: MultiConsumerStreamTextResult
         let modelMessages: ModelMessage[] = []
         let mainLoopSteps: SearchAnswerContinuationStep[] = []
@@ -1462,7 +1509,9 @@ export default defineEventHandler(async (event) => {
           messagesForAI,
           modelProviderId,
           mediaTurns: knowledge?.mediaTurns ?? [],
-          excerpts: knowledge?.excerpts ?? null,
+          excerpts: [knowledge?.excerpts, pastChatPreRetrieval?.block]
+            .filter((excerpts): excerpts is string => !!excerpts)
+            .join('\n\n') || null,
         })
 
         function recordSdkWarnings(
@@ -1912,6 +1961,11 @@ export default defineEventHandler(async (event) => {
           followUpToolNames,
           knowledgeTokens: knowledgeContext?.knowledgeTokens,
           knowledgeMode: knowledgeContext?.decision.mode,
+          pastChatChipPart: pastChatPreRetrieval
+            ? buildPastChatChipPart(
+              pastChatPreRetrieval,
+            ) as UIMessage['parts'][number]
+            : undefined,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -2973,6 +3027,7 @@ async function persistAssistantMessageFromStream(input: {
   knowledgeTokens?: number
   knowledgeMode?: KnowledgeDecisionMode
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
+  pastChatChipPart?: UIMessage['parts'][number]
 }): Promise<PersistAssistantMessageResult> {
   try {
     let isAborted = false
@@ -3168,7 +3223,9 @@ async function persistAssistantMessageFromStream(input: {
       values: {
         chatId: input.chatId,
         role: 'assistant',
-        parts: finalParts,
+        parts: input.pastChatChipPart
+          ? [input.pastChatChipPart, ...finalParts]
+          : finalParts,
         tools: usedImageGeneration ? ['image_generation'] : [],
         reasoning: input.reasoning,
         usage: usage ?? null,

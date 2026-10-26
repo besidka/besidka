@@ -23,6 +23,7 @@ import {
   isVisibleGenerateImageToolPart,
 } from '~/utils/generated-images'
 import { hydrateMessageUsage } from '#shared/utils/message-metadata'
+import { isPastChatPreRetrievalPart } from '#shared/utils/past-chat-retrieval'
 import {
   isPersistedEmptyAnswerFailureText,
   isPersistedOversizedResponseFailureText,
@@ -562,6 +563,7 @@ export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
     }
 
     return part.type !== 'data-omitted-context-files'
+      && !isPastChatPreRetrievalPart(part)
   })
 }
 

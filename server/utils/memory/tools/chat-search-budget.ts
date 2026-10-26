@@ -58,19 +58,25 @@ export function consumeChatSearchCall(budget: ChatSearchBudget) {
  * the send itself brings untrusted content: any requested web search (keyed
  * off the send's tools, never off which tool definitions got registered,
  * because native provider and gateway search can run inside the same step as
- * a write or return no tool part at all) or project knowledge already in the
- * prompt. The read tools stay available.
+ * a write or return no tool part at all), project knowledge already in the
+ * prompt, or past-chat excerpts pre-retrieved into the last user turn. The
+ * read tools stay available.
  */
 export function presetMemoryWriteLock(
   budget: ChatSearchBudget,
   send: {
     requestedTools: readonly unknown[]
     holdsUntrustedKnowledge: boolean
+    holdsPastChatExcerpts?: boolean
   },
 ): void {
   const requestsWebSearch = send.requestedTools.some(isWebSearchTool)
 
-  if (requestsWebSearch || send.holdsUntrustedKnowledge) {
+  if (
+    requestsWebSearch
+    || send.holdsUntrustedKnowledge
+    || send.holdsPastChatExcerpts === true
+  ) {
     budget.untrustedResultSeen = true
   }
 }

@@ -2092,6 +2092,83 @@ partial map of booleans, merged into the stored object with SQLite
 other; `null` resets every role to on. The `memoryChecks` role is honoured by
 `resolveMemoryJevChecker`.
 
+#### Past-chat retrieval (`pastChatRetrieval`, J6)
+
+Pre-retrieval of past chats for sends where `search_chats` and `read_chat`
+are not registered. Tools stay registered exactly as before for
+tool-calling models, with no per-message tool churn, so the provider's prompt
+cache is untouched; this role only covers `toolCallingAllowed === false` (a
+model or gateway without tool calling, a forced `toolChoice`, or image
+generation) while **Search and reference chats** is on in the settings.
+
+- **Gate.** `isChatSearchToolEnabled(memorySettings) && !toolCallingAllowed
+  && userMessageText !== null`, in `index.post.ts` right after the user text
+  is read. `resolveJevRoleModel({ role: 'pastChatRetrieval' })` runs first:
+  with no TypeSafe AI key, or with the role switched off, nothing else runs,
+  not even the phrase guard, so the send is identical to before.
+- **Decision.** `decidePastChatSearch` in
+  `server/utils/memory/tools/pre-retrieval.ts`. A message containing a
+  `JEV_PAST_CHAT_PHRASES` entry forces the search with no Jev call. Otherwise
+  one `s1_previous` question runs over `{ recent_turns, message }` (the last
+  three text turns before the message as `User: …` / `Assistant: …`, each cut
+  to 600 characters, the message cut to 2,000, never-store values removed
+  from all of it) with the 800 ms send-path timeout; a probability at or
+  above 0.25 searches. Any Jev failure (401, 429, 529, timeout, network,
+  refusal, or a missing answer) also searches: skipping a needed search is the
+  costlier mistake, and a pre-search is one cheap indexed D1 query.
+- **Search.** The existing `searchChats` with the same owner, current-chat
+  exclusion, `memory_excluded` and project scoping (the project id is passed
+  under the same condition as the tool registration), `limit: 3`. The query is
+  the message with the guard phrases, stop words (`STOP_WORDS` from the
+  knowledge search plus chat filler in EN/UK/PL/RU) and one-character tokens
+  removed, so the eight-token cap is spent on distinctive words; an empty
+  query skips the search.
+- **Injection.** The top hits become a `<past_chats>` block (notice, then a
+  `<past_chat>` entry per hit with title, date and the bracket-neutralized
+  `<chat_excerpt>` snippet, never-store values removed) capped at
+  `JEV_PAST_CHAT_RETRIEVAL.maxExcerptTokens` (1,500, with the send's token
+  family; hits are added in rank order until the next one would not fit).
+  It is appended to the last user turn of the model-facing copy next to the
+  project-knowledge excerpts, exactly like `buildKnowledgeAwareMessagesForModel`
+  does, so it never reaches `messagesForAI`, `originalMessages` or the
+  persisted user row. The block says it is quoted history and never
+  instructions.
+- **Write lock.** `presetMemoryWriteLock` takes `holdsPastChatExcerpts`, set
+  when a block was added. On these sends `chatSearchBudget` is `undefined`
+  (both `chatSearchToolsRegistered` and `memoryToolsRegistered` need
+  `toolCallingAllowed`) and `memory_write` is not registered at all, so the
+  lock is wired but has nothing to lock today; it takes effect if memory
+  tools are ever enabled for sends without tool calling. Do not create a
+  budget for these sends just to exercise it: a budget grants
+  `CHAT_SEARCH_MAX_CALLS_PER_TURN` extra tool-loop steps.
+- **Chip.** A synthetic `tool-search_chats` part with a
+  `past-chat-pre-retrieval-<user message id>` tool call id, written to the
+  client stream (`tool-input-available` and `tool-output-available`) and put
+  first in the persisted assistant parts after the empty-answer checks. It
+  carries the query and each chat's title, link and date, never an excerpt.
+  It renders in the existing `SearchStep` as "Used 3 earlier chats" with links.
+  Because it is a tool part it is stripped by the public share view
+  (`filterPublicParts`) and by the model-context sanitizer (only text survives
+  past assistant turns), and the client `hasMeaningfulAssistantParts` ignores
+  it so an empty reply still surfaces as empty (the server-side check never
+  counts `tool-search_chats`).
+- **Logging.** `attributes.pastChatRetrievalJev` through `recordJevRoleLog`:
+  `calls` is 0 when the phrase forced the search, `scores` holds the Jev
+  probability, and `counts` holds one of `forced`, `search`, `skip` or
+  `failed` plus `searched` (0 or 1) and `hits`. No text is logged.
+- **Cost and latency.** About 420 input tokens per Jev call (about $0.00002),
+  p50 170 ms and p95 about 215 ms in the eval. The Jev call and the memory
+  index and project-knowledge loads run concurrently; the route awaits the
+  Jev result just before the stream starts.
+- **Seam for the Auto web search role (J1).** The call is one small function,
+  `decidePastChatSearch({ model, message, recentTurns })`, that builds its own
+  state and question map. When J1 lands, both roles' questions
+  (`w1_live` and `s1_previous`) can share one `jevDecide` call over the same
+  `{ recent_turns, message }` state, as the eval's batched shape does (about
+  105 extra tokens, no measurable latency): hoist the call into the route,
+  pass each role the probabilities, and keep each role's own log record.
+  Until then each role makes its own call.
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |
