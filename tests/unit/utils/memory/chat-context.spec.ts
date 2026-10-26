@@ -156,6 +156,39 @@ describe('chat memory context', () => {
       })
     })
 
+    it('sizes the index with the send model\'s tokenizer family',
+      async () => {
+        testDb.insertEntry({
+          userId: USER_ID,
+          slug: 'kuhnia',
+          title: 'Українська кухня',
+          description: 'Готує борщ і вареники щонеділі',
+        })
+
+        async function loggedTokens(
+          tokenFamily: 'openai' | 'anthropic',
+        ): Promise<number> {
+          loggerSet.mockClear()
+
+          await buildMemoryInstructions({
+            db: testDb.db,
+            userId: USER_ID,
+            projectId: null,
+            projectMemoryDisabled: false,
+            useAccountMemory: null,
+            settings: { memoryEnabled: true, chatSearchEnabled: true },
+            hasMemoryTools: true,
+            tokenFamily,
+            logger: { set: loggerSet },
+          })
+
+          return loggerSet.mock.calls[0]![0].attributes.memoryIndex.tokens
+        }
+
+        expect(await loggedTokens('anthropic'))
+          .toBeGreaterThan(await loggedTokens('openai'))
+      })
+
     it('injects nothing while memory is off', async () => {
       testDb.insertEntry({ userId: USER_ID, slug: 'cooking' })
 

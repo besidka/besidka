@@ -7,7 +7,10 @@ import type {
 import { sql } from 'drizzle-orm'
 import { getModel } from '#shared/utils/model'
 import { parsePerTokenPrice } from '#shared/utils/gateway-pricing'
+import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
 import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
+import { resolveKnowledgeTokenFamily } from '#shared/utils/project-knowledge-budget'
+import { KNOWLEDGE_CHARS_PER_TOKEN } from '#shared/utils/project-knowledge-policy'
 import { parseUpperBoundPrice } from '~~/providers/merge'
 import {
   findGatewayCatalogModel,
@@ -30,7 +33,6 @@ type DbClient = ReturnType<typeof useDb>
 
 const TOKENS_PER_MILLION = 1_000_000
 const DIRECT_PRICE_TOKEN_UNIT = 1_000_000
-const LATIN_CHARS_PER_TOKEN = 4
 const SCRIPT_SAMPLE_MESSAGES = 40
 const SCRIPT_SAMPLE_MAX_CHARS = 4000
 const INSTRUCTIONS_TOKENS_PER_CHAT = 2500
@@ -164,21 +166,42 @@ async function readScriptSample(
   return sample.join('\n').slice(0, SCRIPT_SAMPLE_MAX_CHARS)
 }
 
-function tokensPerCharacter(sample: string): number {
-  if (!sample.length) {
-    return 1 / LATIN_CHARS_PER_TOKEN
+function selectionTokenFamily(
+  selection: ResolvedMemoryModelSelection | null,
+): KnowledgeTokenFamily {
+  if (!selection) {
+    return 'default'
   }
 
-  return estimateMemoryTokens(sample) / sample.length
+  return resolveKnowledgeTokenFamily({
+    providerId: selection.providerId ?? '',
+    modelId: selection.modelId,
+    gateway: selection.gatewayId !== null,
+  })
+}
+
+function tokensPerCharacter(
+  sample: string,
+  family: KnowledgeTokenFamily,
+): number {
+  if (!sample.length) {
+    return 1 / KNOWLEDGE_CHARS_PER_TOKEN[family].latin
+  }
+
+  return estimateMemoryTokens(sample, family) / sample.length
 }
 
 async function estimateIndexTokens(
   db: DbClient,
   userId: number,
+  family: KnowledgeTokenFamily,
 ): Promise<number> {
   const entries = await loadMemoryExtractionIndex(userId, null, db)
 
-  return estimateMemoryTokens(renderMemoryExtractionIndex('profile', entries))
+  return estimateMemoryTokens(
+    renderMemoryExtractionIndex('profile', entries),
+    family,
+  )
 }
 
 function resolveDirectPrice(
@@ -267,8 +290,13 @@ export async function estimateBackfill(
   const sample = totals.chats > 0
     ? await readScriptSample(db, input.userId, window)
     : ''
-  const tokensPerChar = tokensPerCharacter(sample)
-  const currentIndexTokens = await estimateIndexTokens(db, input.userId)
+  const family = selectionTokenFamily(input.selection)
+  const tokensPerChar = tokensPerCharacter(sample, family)
+  const currentIndexTokens = await estimateIndexTokens(
+    db,
+    input.userId,
+    family,
+  )
   const maxIndexTokens = Math.ceil(
     MEMORY_EXTRACTION_LIMITS.indexBodyBudgetChars * tokensPerChar,
   )

@@ -2,6 +2,7 @@ import type {
   MemoryCategory,
   MemoryEntry,
 } from '#shared/types/memory.d'
+import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
 import {
   MEMORY_LIMITS,
   MEMORY_SETTING_DEFAULTS,
@@ -25,6 +26,7 @@ export interface MemoryIndexInput {
   projectEntries: MemoryEntry[]
   hasMemoryTools: boolean
   budgetTokens?: number
+  tokenFamily?: KnowledgeTokenFamily
 }
 
 export interface MemoryIndexResult {
@@ -301,7 +303,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     input.hasMemoryTools,
     state,
   )
-  let tokens = estimateMemoryTokens(text)
+  let tokens = estimateMemoryTokens(text, input.tokenFamily)
   const trimSteps: MemoryIndexTrimStep[] = []
 
   for (const trimStep of TRIM_PLAN) {
@@ -323,7 +325,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
 
     state = nextState
     text = nextText
-    tokens = estimateMemoryTokens(text)
+    tokens = estimateMemoryTokens(text, input.tokenFamily)
     trimSteps.push(trimStep.id)
   }
 
@@ -344,6 +346,7 @@ export async function loadMemoryIndex(input: {
   useAccountMemory: boolean | null
   hasMemoryTools: boolean
   budgetTokens?: number
+  tokenFamily?: KnowledgeTokenFamily
 }): Promise<MemoryIndexResult> {
   const includesAccountEntries = input.projectId === null
     || (input.useAccountMemory ?? MEMORY_SETTING_DEFAULTS.useAccountMemory)
@@ -363,5 +366,6 @@ export async function loadMemoryIndex(input: {
     projectEntries: projectRows.map(toMemoryEntryWire),
     hasMemoryTools: input.hasMemoryTools,
     budgetTokens: input.budgetTokens,
+    tokenFamily: input.tokenFamily,
   })
 }

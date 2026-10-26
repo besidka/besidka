@@ -415,6 +415,25 @@ describe('estimateBackfill', () => {
     })
   })
 
+  it.each([
+    { providerId: 'anthropic', gatewayId: null, modelId: 'claude-test' },
+    { providerId: 'qwen', gatewayId: null, modelId: 'qwen-test' },
+    { providerId: 'deepseek', gatewayId: null, modelId: 'deepseek-test' },
+    { providerId: 'moonshotai', gatewayId: null, modelId: 'kimi-test' },
+    { providerId: null, gatewayId: 'openrouter', modelId: 'anthropic/claude' },
+  ] as const)('estimates Cyrillic with the $modelId tokenizer family, above '
+    + 'OpenAI', async (selection) => {
+    mocks.getModel.mockReturnValue({ model: null })
+    await chatWith([{ role: 'user', text: 'я'.repeat(2000) }])
+
+    const openai = await estimate(DIRECT_SELECTION)
+    const family = await estimate({ ...DIRECT_SELECTION, ...selection })
+
+    expect(family.inputTokens).toBeGreaterThan(openai.inputTokens)
+    expect(family.overheadTokensPerChat)
+      .toBeGreaterThan(openai.overheadTokensPerChat)
+  })
+
   it('counts Cyrillic text as more tokens than the same Latin length',
     async () => {
       const latinUser = userId

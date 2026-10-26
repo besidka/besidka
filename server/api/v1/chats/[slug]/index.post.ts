@@ -1277,6 +1277,11 @@ export default defineEventHandler(async (event) => {
     useAccountMemory: chat.project?.useAccountMemory ?? null,
     settings: memorySettings,
     hasMemoryTools: memoryToolsRegistered,
+    tokenFamily: resolveKnowledgeTokenFamily({
+      providerId: telemetryProviderId,
+      modelId,
+      gateway: !!gatewayId,
+    }),
     logger: aiLogger,
   })
 

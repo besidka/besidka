@@ -1,27 +1,65 @@
 import { describe, expect, it } from 'vitest'
-import {
-  MEMORY_CHARS_PER_TOKEN,
-  estimateMemoryTokens,
-} from '#shared/utils/memory-tokens'
+import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
+import { estimateMemoryTokens } from '#shared/utils/memory-tokens'
+import { KNOWLEDGE_CHARS_PER_TOKEN } from '#shared/utils/project-knowledge-policy'
+
+const CYRILLIC_PROFILE = 'Я бекенд-розробник, пишу на TypeScript і Rust. '
+  .repeat(20)
+
+const LEGACY_CYRILLIC_CHARS_PER_TOKEN = 2.5
 
 describe('estimateMemoryTokens', () => {
   it('returns 0 for an empty string', () => {
     expect(estimateMemoryTokens('')).toBe(0)
   })
 
-  it('counts ASCII at a quarter token per character', () => {
-    expect(MEMORY_CHARS_PER_TOKEN.latin).toBe(4)
-    expect(estimateMemoryTokens('a'.repeat(400))).toBe(100)
+  it.each([
+    ['default', 'a', 'latin'],
+    ['default', 'я', 'cyrillic'],
+    ['default', '漢', 'other'],
+    ['anthropic', 'a', 'latin'],
+    ['anthropic', 'я', 'cyrillic'],
+    ['anthropic', '漢', 'other'],
+    ['qwen', 'я', 'cyrillic'],
+    ['deepseek', 'я', 'cyrillic'],
+    ['moonshotai', 'я', 'cyrillic'],
+    ['openai', 'я', 'cyrillic'],
+    ['google', 'я', 'cyrillic'],
+  ] as const)('uses the %s knowledge factor for %s (%s)', (
+    family,
+    character,
+    characterClass,
+  ) => {
+    const charsPerToken = KNOWLEDGE_CHARS_PER_TOKEN[family][characterClass]
+    const count = 600
+
+    expect(estimateMemoryTokens(character.repeat(count), family))
+      .toBe(Math.ceil(count / charsPerToken))
   })
 
-  it('counts Cyrillic at 2.5 characters per token', () => {
-    expect(MEMORY_CHARS_PER_TOKEN.cyrillic).toBe(2.5)
-    expect(estimateMemoryTokens('я'.repeat(250))).toBe(100)
+  it.each([
+    'anthropic',
+    'qwen',
+    'deepseek',
+    'moonshotai',
+  ] as const)('estimates Cyrillic on %s above the old 2.5 chars per token',
+    (family: KnowledgeTokenFamily) => {
+      const legacyEstimate = Math.ceil(
+        'я'.repeat(1000).length / LEGACY_CYRILLIC_CHARS_PER_TOKEN,
+      )
+
+      expect(estimateMemoryTokens('я'.repeat(1000), family))
+        .toBeGreaterThan(legacyEstimate)
+    })
+
+  it('estimates a Cyrillic profile higher on Claude than by default', () => {
+    expect(estimateMemoryTokens(CYRILLIC_PROFILE, 'anthropic'))
+      .toBeGreaterThan(estimateMemoryTokens(CYRILLIC_PROFILE))
   })
 
-  it('counts other non-ASCII at 1.5 characters per token', () => {
-    expect(MEMORY_CHARS_PER_TOKEN.other).toBe(1.5)
-    expect(estimateMemoryTokens('漢'.repeat(150))).toBe(100)
+  it('falls back to the default family without one', () => {
+    expect(estimateMemoryTokens(CYRILLIC_PROFILE))
+      .toBe(estimateMemoryTokens(CYRILLIC_PROFILE, 'default'))
   })
 
   it('counts an emoji surrogate pair as one character', () => {
@@ -29,7 +67,7 @@ describe('estimateMemoryTokens', () => {
   })
 
   it('treats accented Latin letters as Latin', () => {
-    expect(estimateMemoryTokens('ąćęłńóśźż'.repeat(4))).toBe(9)
+    expect(estimateMemoryTokens('ąćęłńóśźż'.repeat(4))).toBe(11)
   })
 
   it('treats typographic punctuation as other characters', () => {
@@ -39,14 +77,8 @@ describe('estimateMemoryTokens', () => {
 
   it('rounds the summed total up once, not per class', () => {
     expect(estimateMemoryTokens('ab')).toBe(1)
-    expect(estimateMemoryTokens('abя')).toBe(1)
-    expect(estimateMemoryTokens('abяя')).toBe(2)
-  })
-
-  it('sums mixed classes', () => {
-    const text = `${'a'.repeat(40)}${'я'.repeat(25)}${'漢'.repeat(15)}`
-
-    expect(estimateMemoryTokens(text)).toBe(10 + 10 + 10)
+    expect(estimateMemoryTokens('abя', 'openai')).toBe(1)
+    expect(estimateMemoryTokens('abяя', 'openai')).toBe(2)
   })
 
   it('estimates the same Cyrillic text higher than Latin text', () => {

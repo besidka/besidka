@@ -775,9 +775,19 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
 - **Handles instead of ids.** A 26-character public id costs about 18 tokens,
   so lines carry `<category>/<slug>` (account) or `project/<category>/<slug>`
   (project). `memory_read` accepts a handle or a public id.
-- **Budget** (`shared/utils/memory-tokens.ts`): `MEMORY_CHARS_PER_TOKEN` =
-  Latin 4, Cyrillic 2.5 (the figure W2 uses for `read_chat`), everything else
-  1.5. Trim order from 3.2, stopping at the first step that fits and never
+- **Budget** (`shared/utils/memory-tokens.ts`): since 2026-10-26
+  `estimateMemoryTokens(text, family)` reuses the project knowledge factors
+  (`KNOWLEDGE_CHARS_PER_TOKEN`, `countKnowledgeChars` +
+  `estimateKnowledgeTextTokens`) for the tokenizer family of the send's model
+  (`resolveKnowledgeTokenFamily`, threaded from the chat route through
+  `buildMemoryInstructions` and `loadMemoryIndex`; the backfill estimate uses
+  the memory model's family; the Memory page uses `default`). The former flat
+  Latin 4 / Cyrillic 2.5 / other 1.5 under-counted Cyrillic on Claude (1.1),
+  Qwen (1.5), DeepSeek and Kimi (1.8), so a full Ukrainian index could exceed
+  its 2500-token budget there; it now trims further on those models (with 4
+  profile + 4 preferences bodies at the cap a Ukrainian index on Claude also
+  collapses the profile body). The measurements below were taken with the
+  flat figures. Trim order from 3.2, stopping at the first step that fits and never
   dropping an entry: the `preferences` body becomes a line, descriptions are
   cut to 60, 40, 20 and 0 characters, and as a last resort the `profile` body
   becomes a line. Steps that would change nothing are skipped and not recorded.

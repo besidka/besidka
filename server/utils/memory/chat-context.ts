@@ -1,3 +1,4 @@
+import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { MemoryRuntimeSettings } from '~~/server/utils/memory/runtime-settings'
 import { MEMORY_SETTING_DEFAULTS } from '#shared/utils/memory-policy'
@@ -59,7 +60,9 @@ export function readUserMessageText(
  * not deleted). `projectMemoryDisabled` is the status the caller already loaded
  * with the chat's project; `null` means it could not be determined for a
  * project chat and is treated as disabled (fail closed). A failing index
- * load drops the index, is logged, and never fails the chat.
+ * load drops the index, is logged, and never fails the chat. `tokenFamily`
+ * is the tokenizer family of the send's model, used to fit the index into
+ * its token budget.
  */
 export async function buildMemoryInstructions(input: {
   db: DbClient
@@ -69,6 +72,7 @@ export async function buildMemoryInstructions(input: {
   useAccountMemory: boolean | null
   settings: MemoryRuntimeSettings
   hasMemoryTools: boolean
+  tokenFamily?: KnowledgeTokenFamily
   logger: Pick<LoggerLike, 'set'>
 }): Promise<string | null> {
   if (!input.settings.memoryEnabled) {
@@ -91,6 +95,7 @@ export async function buildMemoryInstructions(input: {
       projectId: isProjectDisabled ? null : input.projectId,
       useAccountMemory: input.useAccountMemory,
       hasMemoryTools: input.hasMemoryTools,
+      tokenFamily: input.tokenFamily,
     })
 
     if (!index.text) {

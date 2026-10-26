@@ -897,37 +897,110 @@ describe('buildMemoryIndex with 1536-byte always-injected bodies', () => {
     nextEntryId = 1
   })
 
-  it('keeps 4 profile and 4 preferences bodies at the cap plus 22 other '
-    + 'entries within the 2500-token budget without touching profile '
-    + 'bodies', () => {
-    for (const language of ['en', 'uk'] as const) {
-      const accountEntries = buildRichAccount(language, {
-        profile: 4,
-        preferences: 4,
-      })
-      const untrimmed = build({
-        accountEntries,
-        budgetTokens: Number.MAX_SAFE_INTEGER,
-      })
-      const result = build({ accountEntries })
+  const DESCRIPTION_STEPS = [
+    'descriptions-60',
+    'descriptions-40',
+    'descriptions-20',
+    'descriptions-0',
+  ] as const
 
-      expect(accountEntries).toHaveLength(MEMORY_LIMITS.maxAccountEntries)
-      expect(
-        memoryByteLength(accountEntries[0]!.body),
-      ).toBeLessThanOrEqual(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
-      expect(untrimmed.tokens).toBeGreaterThan(
-        MEMORY_LIMITS.indexTokenBudget,
-      )
-      expect(result.trimSteps).toEqual(['preferences-body', 'descriptions-60'])
-      expect(result.overBudget).toBe(false)
-      expect(result.tokens).toBeLessThanOrEqual(
-        MEMORY_LIMITS.indexTokenBudget,
-      )
-      expect(result.entryCount).toBe(MEMORY_LIMITS.maxAccountEntries)
-      expect(result.text).toContain('### Profile')
-      expect(result.text).not.toContain('### Preferences')
-    }
+  it.each([
+    {
+      language: 'en',
+      family: 'openai',
+      steps: ['preferences-body', 'descriptions-60'],
+      keepsProfile: true,
+    },
+    {
+      language: 'uk',
+      family: 'openai',
+      steps: ['preferences-body', 'descriptions-60'],
+      keepsProfile: true,
+    },
+    {
+      language: 'en',
+      family: 'anthropic',
+      steps: ['preferences-body', ...DESCRIPTION_STEPS],
+      keepsProfile: true,
+    },
+    {
+      language: 'uk',
+      family: 'default',
+      steps: ['preferences-body', ...DESCRIPTION_STEPS],
+      keepsProfile: true,
+    },
+    {
+      language: 'uk',
+      family: 'qwen',
+      steps: ['preferences-body', ...DESCRIPTION_STEPS],
+      keepsProfile: true,
+    },
+    {
+      language: 'uk',
+      family: 'deepseek',
+      steps: ['preferences-body', ...DESCRIPTION_STEPS.slice(0, 3)],
+      keepsProfile: true,
+    },
+    {
+      language: 'uk',
+      family: 'moonshotai',
+      steps: ['preferences-body', ...DESCRIPTION_STEPS.slice(0, 3)],
+      keepsProfile: true,
+    },
+    {
+      language: 'uk',
+      family: 'anthropic',
+      steps: ['preferences-body', ...DESCRIPTION_STEPS, 'profile-body'],
+      keepsProfile: false,
+    },
+  ] as const)('fits 4 profile and 4 preferences bodies at the cap plus 22 '
+    + 'other entries into the 2500-token budget for $language on $family',
+  ({ language, family, steps, keepsProfile }) => {
+    const accountEntries = buildRichAccount(language, {
+      profile: 4,
+      preferences: 4,
+    })
+    const untrimmed = build({
+      accountEntries,
+      budgetTokens: Number.MAX_SAFE_INTEGER,
+      tokenFamily: family,
+    })
+    const result = build({ accountEntries, tokenFamily: family })
+
+    expect(accountEntries).toHaveLength(MEMORY_LIMITS.maxAccountEntries)
+    expect(
+      memoryByteLength(accountEntries[0]!.body),
+    ).toBeLessThanOrEqual(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes)
+    expect(untrimmed.tokens).toBeGreaterThan(MEMORY_LIMITS.indexTokenBudget)
+    expect(result.trimSteps).toEqual(steps)
+    expect(result.overBudget).toBe(false)
+    expect(result.tokens).toBeLessThanOrEqual(MEMORY_LIMITS.indexTokenBudget)
+    expect(result.entryCount).toBe(MEMORY_LIMITS.maxAccountEntries)
+    expect(result.text?.includes('### Profile')).toBe(keepsProfile)
+    expect(result.text).not.toContain('### Preferences')
   })
+
+  it.each([
+    'anthropic',
+    'qwen',
+    'deepseek',
+    'moonshotai',
+  ] as const)('estimates the same Cyrillic index higher on %s than on OpenAI',
+    (family) => {
+      const accountEntries = buildRichAccount('uk', {
+        profile: 1,
+        preferences: 1,
+      })
+      const tokensFor = (tokenFamily: typeof family | 'openai') => {
+        return build({
+          accountEntries,
+          budgetTokens: Number.MAX_SAFE_INTEGER,
+          tokenFamily,
+        }).tokens
+      }
+
+      expect(tokensFor(family)).toBeGreaterThan(tokensFor('openai'))
+    })
 
   it('collapses profile bodies as the last resort when eight full-size '
     + 'ones compete for the budget', () => {
