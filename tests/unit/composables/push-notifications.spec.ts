@@ -222,6 +222,34 @@ describe('usePushNotifications', () => {
         expect(composable.isSubscribed.value).toBe(true)
       })
 
+    it('becomes known before the subscription re-upload finishes',
+      async () => {
+        Notification.permission = 'granted'
+        getSubscriptionMock.mockResolvedValue({
+          endpoint: 'https://push.example.com/existing',
+          getKey: () => new TextEncoder().encode('bytes').buffer,
+        })
+
+        let finishUpload: () => void = () => undefined
+
+        mocks.fetch.mockImplementationOnce(() => {
+          return new Promise<undefined>((resolve) => {
+            finishUpload = () => resolve(undefined)
+          })
+        })
+
+        const composable = usePushNotifications()
+
+        await flushPromises()
+
+        expect(mocks.fetch).toHaveBeenCalledTimes(1)
+        expect(composable.isStateKnown.value).toBe(true)
+        expect(composable.isSubscribed.value).toBe(true)
+
+        finishUpload()
+        await flushPromises()
+      })
+
     it('becomes known when the subscription lookup fails', async () => {
       getSubscriptionMock.mockRejectedValue(new Error('Lookup failed'))
 

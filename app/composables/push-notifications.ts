@@ -197,6 +197,7 @@ export function usePushNotifications() {
       }
 
       isSubscribed.value = subscription !== null
+      isStateKnown.value = true
 
       if (subscription !== null && loggedIn.value) {
         try {
