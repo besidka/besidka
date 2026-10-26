@@ -337,6 +337,7 @@ describe('project memory API', () => {
       { useAccountMemory: 'no' },
       { enabled: 'yes' },
       { useAccountMemory: null },
+      { enabled: 'yes', useAccountMemory: false },
     ]
 
     for (const body of invalidBodies) {

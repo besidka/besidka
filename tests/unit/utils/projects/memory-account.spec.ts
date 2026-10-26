@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import * as schema from '../../../../server/db/schema'
+import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
   seedProject,

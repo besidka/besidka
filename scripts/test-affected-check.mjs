@@ -386,6 +386,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/pages/chats/history/index.spec.ts',
     'tests/unit/pages/projects-index.spec.ts',
+    'tests/unit/pages/chats/projects/[id].spec.ts',
     'tests/unit/utils/date-groups.spec.ts',
     'tests/unit/utils/project-activity.spec.ts',
     'tests/unit/utils/project-instructions.spec.ts',

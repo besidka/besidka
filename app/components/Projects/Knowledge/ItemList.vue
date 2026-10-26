@@ -21,12 +21,12 @@
       No files match
     </p>
     <ul
-      v-if="preparingRows.length > 0"
+      v-if="visiblePreparingRows.length > 0"
       class="grid gap-1"
       aria-label="Files being prepared"
     >
       <li
-        v-for="row in preparingRows"
+        v-for="row in visiblePreparingRows"
         :key="row.key"
         class="
           rounded-box flex min-w-0 items-center justify-between gap-3 p-3
@@ -57,7 +57,9 @@
                 gap-2 p-3 text-left hover:bg-base-content/5
                 focus-visible:outline-none focus-visible:ring-2
                 focus-visible:ring-inset focus-visible:ring-accent
+                disabled:cursor-default
               "
+              :disabled="isFiltering"
               :aria-expanded="isExpanded(group.folderId)"
               :aria-controls="
                 isExpanded(group.folderId)
@@ -226,8 +228,23 @@ const visibleItems = computed<KnowledgeItem[]>(() => {
   }
 
   return props.items.filter((item) => {
-    return item.title.toLowerCase().includes(normalizedQuery.value)
-      || (item.relativePath ?? '').toLowerCase().includes(normalizedQuery.value)
+    const searchableText = [
+      item.title,
+      item.relativePath ?? '',
+      item.folderId ? props.folderNames[item.folderId] ?? '' : '',
+    ].join('\n').toLowerCase()
+
+    return searchableText.includes(normalizedQuery.value)
+  })
+})
+
+const visiblePreparingRows = computed<KnowledgePreparingRow[]>(() => {
+  if (!isFiltering.value) {
+    return props.preparingRows
+  }
+
+  return props.preparingRows.filter((row) => {
+    return row.name.toLowerCase().includes(normalizedQuery.value)
   })
 })
 
@@ -236,7 +253,9 @@ const grouped = computed(() => {
 })
 
 const isFilterEmpty = computed<boolean>(() => {
-  return isFiltering.value && visibleItems.value.length === 0
+  return isFiltering.value
+    && visibleItems.value.length === 0
+    && visiblePreparingRows.value.length === 0
 })
 
 const groups = computed(() => grouped.value.groups)

@@ -25,15 +25,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = await readValidatedBody(event, z.object({
-    enabled: z.boolean().optional(),
-    useAccountMemory: z.boolean().optional(),
-  }).refine((value) => {
-    return value.enabled !== undefined
-      || value.useAccountMemory !== undefined
-  }, {
-    message: 'Provide enabled or useAccountMemory',
-  }).safeParse)
+  const body = await readValidatedBody(event, z.union([
+    z.object({
+      enabled: z.boolean(),
+      useAccountMemory: z.boolean().optional(),
+    }),
+    z.strictObject({
+      useAccountMemory: z.boolean(),
+    }),
+  ]).safeParse)
 
   if (body.error) {
     throw createError({
@@ -51,41 +51,41 @@ export default defineEventHandler(async (event) => {
 
   const userId = parseInt(session.user.id)
 
+  const data = body.data
+
   logger.set({
     userId,
     projectId: params.data.id,
-    enabled: body.data.enabled,
-    useAccountMemory: body.data.useAccountMemory,
+    enabled: 'enabled' in data ? data.enabled : undefined,
+    attributes: {
+      projectMemory: { useAccountMemory: data.useAccountMemory },
+    },
   })
 
-  const { enabled, useAccountMemory } = body.data
-
-  if (useAccountMemory !== undefined) {
-    const card = await setProjectUseAccountMemory(
+  if (!('enabled' in data)) {
+    return await setProjectUseAccountMemory(
       params.data.id,
       userId,
-      useAccountMemory,
+      data.useAccountMemory,
       undefined,
       logger,
     )
-
-    if (enabled === undefined) {
-      return card
-    }
   }
 
-  if (enabled === undefined) {
-    throw createError({
-      message: 'Invalid request body',
-      status: 400,
-      why: 'Provide enabled or useAccountMemory',
-    })
+  if (data.useAccountMemory !== undefined) {
+    await setProjectUseAccountMemory(
+      params.data.id,
+      userId,
+      data.useAccountMemory,
+      undefined,
+      logger,
+    )
   }
 
   return await toggleProjectMemory(
     params.data.id,
     userId,
-    enabled,
+    data.enabled,
     undefined,
     logger,
   )

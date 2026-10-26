@@ -221,6 +221,65 @@ describe('Projects/Knowledge/ItemList', () => {
           .toBe(false)
       })
 
+    it('matches the folder display name and keeps its whole group',
+      async () => {
+        const wrapper = await mountFiltered('MY-APP')
+
+        expect(wrapper.get('[data-testid="knowledge-group-count"]').text())
+          .toBe('3 files')
+        expect(wrapper.get('[data-testid="knowledge-group-items"]').text())
+          .toContain('src/deep/e.ts')
+        expect(wrapper.find('[data-testid="knowledge-loose-items"]').exists())
+          .toBe(false)
+      })
+
+    it('filters the files being prepared too', async () => {
+      const wrapper = await mountList({
+        items: manyItems,
+        preparingRows: [
+          { key: 'entry-0', name: 'big.pdf' },
+          { key: 'entry-1', name: 'other.docx' },
+        ],
+      })
+
+      await wrapper.get('[data-testid="knowledge-filter"]').setValue('big')
+
+      const rows = wrapper.findAll('[data-testid="knowledge-item-preparing"]')
+
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.text()).toContain('big.pdf')
+      expect(wrapper.find('[data-testid="knowledge-filter-empty"]').exists())
+        .toBe(false)
+    })
+
+    it('shows No files match only when nothing is left to show', async () => {
+      const wrapper = await mountList({
+        items: manyItems,
+        preparingRows: [{ key: 'entry-0', name: 'big.pdf' }],
+      })
+
+      await wrapper.get('[data-testid="knowledge-filter"]').setValue('zzz')
+
+      expect(wrapper.find('[data-testid="knowledge-item-preparing"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="knowledge-filter-empty"]').exists())
+        .toBe(true)
+    })
+
+    it('disables the group toggle while filtering and keeps it visible',
+      async () => {
+        const wrapper = await mountFiltered('src/a')
+        const toggle = wrapper.get('[data-testid="knowledge-group-toggle"]')
+
+        expect(toggle.attributes('disabled')).toBeDefined()
+        expect(toggle.attributes('aria-expanded')).toBe('true')
+
+        await wrapper.get('[data-testid="knowledge-filter"]').setValue('')
+
+        expect(toggle.attributes('disabled')).toBeUndefined()
+        expect(toggle.attributes('aria-expanded')).toBe('false')
+      })
+
     it('shows No files match when nothing matches', async () => {
       const wrapper = await mountFiltered('zzz')
 
