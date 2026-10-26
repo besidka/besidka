@@ -230,6 +230,24 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
     'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
+    'tests/integration/api/chats-memory-exclusion.spec.ts',
+  ]
+  const memoryChatExclusionTests = [
+    'tests/integration/api/chats-memory-exclusion.spec.ts',
+    'tests/integration/api/chats-new.spec.ts',
+    'tests/integration/api/chats-branch.spec.ts',
+    'tests/unit/utils/memory/extract-sweep.spec.ts',
+    'tests/unit/utils/memory/extract-manual.spec.ts',
+    'tests/unit/utils/memory/backfill.spec.ts',
+    'tests/unit/utils/projects/memory-refresh.spec.ts',
+    'tests/unit/utils/memory/tools/search-chats.spec.ts',
+    'tests/unit/utils/memory/tools/read-chat.spec.ts',
+    'tests/unit/composables/chat-memory-exclusion.spec.ts',
+    'tests/unit/components/History/ActionsDropdown.spec.ts',
+    'tests/unit/components/History/ChatRow.spec.ts',
+    'tests/unit/components/Sidebar/Development.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
   ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
@@ -2203,6 +2221,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|memory-refresh|memory-card|memory-account|memory-limits|legacy-memory|instructions)\.ts$/,
       tests: [...memoryExtractionTests, ...memoryModelTests],
+    },
+    {
+      pattern: /^(server\/(api\/v1\/chats\/\[slug\]\/memory\.patch|utils\/memory\/(chat-memory-filters|chat-deletion)|db\/schemas\/chats|api\/v1\/chats\/(new\/index\.put|branch\/index\.post))|app\/(composables|utils)\/chat-memory-exclusion|app\/composables\/history|shared\/types\/history\.d|tests\/setup\/helpers\/(search-index-db|history-fixtures))\.ts$|^app\/(components\/(History\/(ActionsDropdown|ChatRow)|Sidebar\/Development|ChatInput\.client|ChatInput\/ToolbarMore\.client)|pages\/chats\/(new|\[slug\]))\.vue$/,
+      tests: memoryChatExclusionTests,
     },
     {
       pattern: /^app\/utils\/project-memory-refresh\.ts$/,
