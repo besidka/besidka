@@ -63,6 +63,24 @@
             v-else
             class="grid gap-4"
           >
+            <div
+              v-if="isRepairNeeded"
+              role="status"
+              class="alert alert-soft alert-error !items-start"
+              data-testid="knowledge-note-repair"
+            >
+              <Icon
+                name="lucide:circle-alert"
+                size="20"
+                class="mt-0.5 shrink-0"
+              />
+              <div class="grid min-w-0 gap-1">
+                <p class="break-words">{{ repairMessage }}</p>
+                <p class="text-sm">
+                  Check the text below and save the note to repair it.
+                </p>
+              </div>
+            </div>
             <div class="grid gap-1">
               <label
                 class="text-sm font-semibold"
@@ -333,12 +351,21 @@ const isBodyOverLimit = computed<boolean>(() => {
   return draftBody.value.length > KNOWLEDGE_LIMITS.maxNoteChars
 })
 
+const isRepairNeeded = computed<boolean>(() => {
+  return props.item?.extractStatus === 'failed'
+})
+
+const repairMessage = computed<string>(() => {
+  return describeKnowledgeExtractError(props.item?.extractError ?? null)
+})
+
 const hasChanges = computed<boolean>(() => {
   if (!props.item) {
     return true
   }
 
-  return normalizedTitle.value !== props.item.title
+  return isRepairNeeded.value
+    || normalizedTitle.value !== props.item.title
     || draftBody.value !== originalBody.value
 })
 
@@ -425,7 +452,7 @@ async function save() {
       ...(normalizedTitle.value !== item.title
         ? { title: normalizedTitle.value }
         : {}),
-      ...(draftBody.value !== originalBody.value
+      ...(isRepairNeeded.value || draftBody.value !== originalBody.value
         ? { body: draftBody.value }
         : {}),
     })

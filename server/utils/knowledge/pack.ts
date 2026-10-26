@@ -23,6 +23,8 @@ import {
   acquireKnowledgePackLease,
   clearKnowledgePackBackoff,
   isKnowledgePackBackedOff,
+  isKnowledgePackRecentlyBuilt,
+  recordKnowledgePackBuilt,
   recordKnowledgePackFailure,
 } from '~~/server/utils/knowledge/pack-lease'
 import {
@@ -48,6 +50,7 @@ const R2_LIST_PAGE_SIZE = 1000
 const R2_DELETE_BATCH_SIZE = 1000
 const PACKS_TO_KEEP = 2
 const HEAL_MIN_ROW_AGE_MS = 60 * 60 * 1000
+const MAX_MISMATCH_HEALS_PER_BUILD = 50
 const PACK_KEY_PATTERN = /\/pack\/v(\d+)\.(?:jsonl|index\.json)\.gz$/
 
 interface KnowledgePack {
@@ -519,6 +522,73 @@ async function healMissingTextRows(input: {
   }
 }
 
+interface SizeMismatchRow {
+  internalId: number
+  updatedAt: Date
+}
+
+/**
+ * Marks ready rows whose R2 object size disagrees with `text_bytes` as
+ * `failed` with `text-mismatch`, so the list stops showing them as ready
+ * while the pack leaves them out. Healing from R2 instead would trust an
+ * object that may be the older half of a note edit (the row is updated
+ * first, the object second), so the row is only surfaced, never rewritten
+ * from storage: `text_bytes` stays as it was (the quota keeps counting it
+ * until the user removes or repairs the item) and the character counts go to
+ * 0 so the meter stops counting text that is not sent. Each update is
+ * matched on the `updated_at` the build saw, so an edit that landed since is
+ * left alone, and the caller passes only rows past the heal age gate.
+ */
+async function failSizeMismatchRows(input: {
+  userId: number
+  projectId: number
+  rows: SizeMismatchRow[]
+  logger: LoggerLike
+}): Promise<void> {
+  if (input.rows.length === 0) {
+    return
+  }
+
+  let failedItems = 0
+
+  try {
+    const db = useDb()
+
+    for (const row of input.rows.slice(0, MAX_MISMATCH_HEALS_PER_BUILD)) {
+      const updated = await db
+        .update(schema.projectKnowledgeItems)
+        .set({
+          extractStatus: 'failed',
+          extractError: 'text-mismatch',
+          latinChars: 0,
+          cyrillicChars: 0,
+          otherChars: 0,
+        })
+        .where(and(
+          sql`${schema.projectKnowledgeItems.id} = ${row.internalId}`,
+          eq(schema.projectKnowledgeItems.userId, input.userId),
+          eq(schema.projectKnowledgeItems.projectId, input.projectId),
+          eq(schema.projectKnowledgeItems.extractStatus, 'ready'),
+          eq(schema.projectKnowledgeItems.updatedAt, row.updatedAt),
+        ))
+        .returning({ internalId: sql<number>`${schema.projectKnowledgeItems.id}` })
+
+      failedItems += updated.length
+    }
+
+    packLog(input.logger, 'heal-mismatch', {
+      operation: 'text-mismatch',
+      failedItems,
+    })
+  } catch (exception) {
+    packLog(input.logger, 'heal-mismatch', {
+      operation: 'text-mismatch',
+      failedItems,
+      error: exceptionMessage(exception),
+    })
+  }
+}
+
 function refuseWrite(
   logger: LoggerLike,
   state: KnowledgeProjectState,
@@ -625,6 +695,7 @@ async function buildLeasedPack(
   let sizeMismatchItems = 0
   const healCutoffMs = Date.now() - HEAL_MIN_ROW_AGE_MS
   const healItemIds: number[] = []
+  const mismatchRows: SizeMismatchRow[] = []
 
   for (const row of rows) {
     if (row.extractStatus !== 'ready') {
@@ -655,6 +726,13 @@ async function buildLeasedPack(
 
     if (stored !== null && stored.bytes !== row.textBytes) {
       sizeMismatchItems++
+
+      if (row.updatedAt.getTime() <= healCutoffMs) {
+        mismatchRows.push({
+          internalId: row.internalId,
+          updatedAt: row.updatedAt,
+        })
+      }
 
       continue
     }
@@ -688,6 +766,7 @@ async function buildLeasedPack(
   }
 
   await healMissingTextRows({ userId, projectId, itemIds: healItemIds, logger })
+  await failSizeMismatchRows({ userId, projectId, rows: mismatchRows, logger })
 
   const header: KnowledgePackHeader = {
     type: 'header',
@@ -837,6 +916,7 @@ async function runTrackedBuild(
     await recordKnowledgePackFailure(input.projectId, input.version, logger)
   } else if (result.outcome === 'built') {
     await clearKnowledgePackBackoff(input.projectId, logger)
+    await recordKnowledgePackBuilt(input.projectId, logger)
   }
 
   return result
@@ -861,7 +941,10 @@ async function runTrackedBuild(
  * is written and the pointer does not move); `packVersion` is then the
  * current pack version, or 0 when the project has never had a pack. A `ready`
  * row with text bytes whose text object is missing and which has not been
- * touched for an hour is marked `failed` with `text-missing`.
+ * touched for an hour is marked `failed` with `text-missing`, and so is one
+ * whose text object has a different size than the row declares
+ * (`text-mismatch`, never healed from R2); a younger row is left to the
+ * edit that may still be writing its object.
  */
 export async function buildKnowledgePack(input: {
   userId: number
@@ -1017,7 +1100,10 @@ export async function commitKnowledgeChange(input: {
  * when the pack is fresh, and effectively a no-op while another build holds
  * the lease. After three consecutive failed or refused builds for the same
  * `knowledge_version` it stops scheduling rebuilds for ten minutes (a KV
- * counter; a new version resets it and a finished build clears it).
+ * counter; a new version resets it and a finished build clears it). It also
+ * waits 30 seconds after any finished build (a KV timestamp), so the panel
+ * and sends of a running upload do not build once per insert batch; an
+ * explicit commit ignores that wait and builds right away.
  */
 export async function ensureKnowledgePackFresh(input: {
   userId: number
@@ -1041,6 +1127,20 @@ export async function ensureKnowledgePackFresh(input: {
 
     if (isBackedOff) {
       packLog(logger, 'backoff', {
+        operation: 'skipped',
+        version: state.version,
+      })
+
+      return
+    }
+
+    const isRecentlyBuilt = await isKnowledgePackRecentlyBuilt(
+      input.projectId,
+      logger,
+    )
+
+    if (isRecentlyBuilt) {
+      packLog(logger, 'interval', {
         operation: 'skipped',
         version: state.version,
       })

@@ -170,6 +170,7 @@ function createState() {
   })
   mocks.state.items = shallowRef<KnowledgeItem[]>([])
   mocks.state.totals = shallowRef(sumKnowledgeTotals([]))
+  mocks.state.accountItems = shallowRef<number>(0)
   mocks.state.summary = shallowRef<unknown>({ items: [] })
   mocks.state.mode = shallowRef<KnowledgeMode>('auto')
   mocks.state.pending = shallowRef<boolean>(false)
@@ -178,6 +179,7 @@ function createState() {
     summary: mocks.state.summary,
     items: mocks.state.items,
     totals: mocks.state.totals,
+    accountItems: mocks.state.accountItems,
     mode: mocks.state.mode,
     pending: mocks.state.pending,
     error: mocks.state.error,
@@ -444,6 +446,15 @@ describe('Projects/Knowledge/Panel', () => {
         expect(byTestId(wrapper, 'knowledge-meter-storage').text())
           .toContain('of your 20 MB storage')
       })
+
+    it('feeds the meter the account item count', async () => {
+      mocks.state.accountItems.value = 1_850
+
+      const wrapper = await mountPanel()
+
+      expect(byTestId(wrapper, 'knowledge-meter-account-warning').text())
+        .toContain('1,850 of 2,000')
+    })
 
     it('shows the item tokens for the current model after mount', async () => {
       const wrapper = await mountPanel()

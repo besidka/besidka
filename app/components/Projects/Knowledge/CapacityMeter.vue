@@ -66,6 +66,17 @@
       >
         {{ capLine }}
       </p>
+      <p
+        v-if="accountWarning"
+        class="text-xs"
+        :class="isAccountLimitReached
+          ? 'text-error'
+          : 'text-warning-content/80 dark:text-warning'"
+        role="status"
+        data-testid="knowledge-meter-account-warning"
+      >
+        {{ accountWarning }}
+      </p>
     </template>
   </div>
 </template>
@@ -89,6 +100,7 @@ const props = defineProps<{
   mode: KnowledgeMode
   model: KnowledgeModelContext
   storageTotalBytes: number | null
+  accountItems: number
   isReady: boolean
 }>()
 
@@ -107,6 +119,14 @@ const copy = computed<KnowledgeMeterCopy>(() => {
     mode: props.mode,
     modelName: props.model.name,
   })
+})
+
+const accountWarning = computed<string | null>(() => {
+  return describeKnowledgeAccountWarning(props.accountItems)
+})
+
+const isAccountLimitReached = computed<boolean>(() => {
+  return isKnowledgeAccountLimitReached(props.accountItems)
 })
 
 const storageLine = computed<string>(() => {

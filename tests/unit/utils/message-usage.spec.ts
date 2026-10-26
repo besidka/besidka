@@ -823,6 +823,25 @@ describe('addKnowledgeContextUsage', () => {
     expect(result).toEqual({ ...baseUsage, knowledgeTokens: 11 })
   })
 
+  it('records the knowledge mode the send used when given', () => {
+    const result = addKnowledgeContextUsage(baseUsage, {
+      steps: [step(10, 5)],
+      knowledgeTokens: 0,
+      knowledgeMode: 'search',
+    })
+
+    expect(result?.knowledgeMode).toBe('search')
+  })
+
+  it('leaves the knowledge mode unset when none is given', () => {
+    const result = addKnowledgeContextUsage(baseUsage, {
+      steps: [step(10, 5)],
+      knowledgeTokens: 3,
+    })
+
+    expect(result).not.toHaveProperty('knowledgeMode')
+  })
+
   it('returns undefined when there is no usage to extend', () => {
     expect(addKnowledgeContextUsage(undefined, {
       steps: [step(1, 1)],
