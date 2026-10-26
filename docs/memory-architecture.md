@@ -1251,9 +1251,14 @@ model) and nothing is saved. `aboutMe` accepts only `null`.
   `detachChatsFromMemory` before the row delete, which deletes `extraction`
   entries whose only source is the deleted chat and drops the id elsewhere
   (3.7). A pass whose model call outlives the delete re-reads the chat
-  afterwards and is skipped as `chat-unavailable` (audit finding 9, 3.17). A
-  narrow window remains: a pass whose re-check lands between the detach and
-  the row delete can still write.
+  afterwards and is skipped as `chat-unavailable` (audit finding 9, 3.17).
+  Since 2026-10-26 every write that records the chat as a source (the
+  create `insert ... select`, the merge and source-only updates) also carries
+  `exists (select 1 from chats where id = ? and user_id = ?)`, so a delete
+  that lands between that re-read and the write leaves nothing behind; the
+  op and every later op of the pass are dropped as `chat-unavailable`. A
+  narrow window remains: a pass whose write lands between the detach and the
+  row delete (the chat row still exists then) can still write.
 - `generateObject` is deprecated in AI SDK 7 but still works (the research
   clarifier uses it too); move both to `generateText` with an `output`
   setting together.
@@ -1636,7 +1641,7 @@ handled separately.
 | 2 | Medium: every off-to-on extraction toggle rewrote all chat rows | Fixed: per-chat stamps stay (they floor the account sweep and cap backfill), restamp only chats with activity since their stamp, 10 s per-user enable cooldown (3.12) |
 | 3 | Low: a client `slug` skipped the compliance gate | Fixed: slug removed from the entry input, always derived from the gated title (3.1) |
 | 4 | Low: the backfill estimate scanned the full history with an easy-to-bypass cache | Fixed by bounding: the estimate aggregates only the at most `backfillMaxChats` chats of the next job's window (3.15); the cache is additionally keyed by window |
-| 9 | Low: extraction could attach entries to a chat deleted during the model call | Fixed: a missing chat ends the pass as `chat-unavailable`; a narrow detach-to-delete window remains (3.12) |
+| 9 | Low: extraction could attach entries to a chat deleted during the model call | Fixed: a missing chat ends the pass as `chat-unavailable`, and every write carries an atomic `exists(chat owned by user)` guard; a narrow detach-to-delete window remains (3.12) |
 | 10 | Low: never-store detectors missed non-ASCII digits, other separators, spaced PESEL, NIP keyword after the number, AWS secrets with `/`, Polish `hasło to X` | Fixed in `compliance.ts` with table-driven positive and negative specs |
 | 11 | Low: the sensitive-topic classifier missed hidden characters, unaccented Polish and Latin look-alikes in Cyrillic | Fixed in `sensitivity.ts`: format characters and stray marks stripped, look-alikes folded, a diacritic-folded Polish pass |
 | 12 | Low: home address, immigration and criminal history were enforced only by the extractor label | Fixed: narrow deterministic detectors in `evaluateMemoryEntry` (`topical-never-store.ts`), so every write path refuses them with the unchanged 422 |

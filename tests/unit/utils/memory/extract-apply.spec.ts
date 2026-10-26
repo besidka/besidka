@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
@@ -99,6 +100,7 @@ describe('applyMemoryExtractionOps', () => {
       groundingTexts?: string[]
       maxOps?: number
       forUserId?: number
+      forChatId?: string | null
       origin?: 'extraction' | 'import'
     } = {},
   ) {
@@ -118,7 +120,7 @@ describe('applyMemoryExtractionOps', () => {
       db: testDb.db,
       userId: scopedUserId,
       projectId,
-      chatId,
+      chatId: options.forChatId === undefined ? chatId : options.forChatId,
       entries,
       groundingTexts: options.groundingTexts ?? [USER_TEXT],
       origin: options.origin,
@@ -971,6 +973,7 @@ describe('applyMemoryExtractionOps', () => {
     { label: 'no settings row', setting: undefined },
   ])('with memoryIncludeSensitive $label', ({ setting }) => {
     let settingUserId: number
+    let settingChatId: string
 
     beforeEach(async () => {
       settingUserId = await seedUser(
@@ -979,6 +982,7 @@ describe('applyMemoryExtractionOps', () => {
           ? null
           : { memoryIncludeSensitive: setting },
       )
+      settingChatId = (await seedChat(testDb.db, settingUserId)).id
     })
 
     it('drops flagged create, merge and update as sensitive-topic and '
@@ -1002,7 +1006,11 @@ describe('applyMemoryExtractionOps', () => {
           description: null,
           body: 'The user has type 2 diabetes.',
         }),
-      ], { groundingTexts: [HEALTH_TEXT], forUserId: settingUserId })
+      ], {
+        groundingTexts: [HEALTH_TEXT],
+        forUserId: settingUserId,
+        forChatId: settingChatId,
+      })
 
       expect(result.created).toBe(0)
       expect(result.updated).toBe(0)
@@ -1028,7 +1036,7 @@ describe('applyMemoryExtractionOps', () => {
           description: 'Sister, writes Rust on weekends',
           body: 'Anna: sister, lives in Lviv.',
         }),
-      ], { forUserId: settingUserId })
+      ], { forUserId: settingUserId, forChatId: settingChatId })
 
       expect(result.created).toBe(3)
 
@@ -1683,6 +1691,106 @@ describe('applyMemoryExtractionOps', () => {
         .toBe('import')
       expect(entries.find(entry => entry.slug === 'shell')?.body)
         .toBe('- Uses zsh')
+    })
+  })
+
+  describe('source chat deleted during the pass', () => {
+    async function deleteChat(id: string) {
+      await testDb.db.delete(schema.chats).where(eq(schema.chats.id, id))
+    }
+
+    async function seedExtractionEntry(sourceChatIds: string[] = []) {
+      await seedEntry(testDb.db, userId, {
+        slug: 'rust-hobby',
+        title: 'Rust hobby',
+        description: 'Writes Rust on weekends',
+        body: 'The user writes Rust on weekends.',
+        sourceChatIds,
+      })
+    }
+
+    it.each([
+      {
+        label: 'a create',
+        seedExisting: false,
+        ops: [createOp()],
+      },
+      {
+        label: 'a create that only adds the chat as a source',
+        seedExisting: true,
+        ops: [createOp()],
+      },
+      {
+        label: 'an append to an existing entry',
+        seedExisting: true,
+        ops: [createOp({
+          op: 'append',
+          slug: 'rust-hobby',
+          title: null,
+          description: null,
+          body: 'Also writes Go at work.',
+          evidence: 'I write Rust on weekends',
+        })],
+      },
+    ])('writes nothing for $label', async ({ seedExisting, ops }) => {
+      if (seedExisting) {
+        await seedExtractionEntry(['pub-77'])
+      }
+
+      const before = await listEntries()
+
+      await deleteChat(chatId)
+
+      const result = await run(ops)
+      const after = await listEntries()
+
+      expect(result.created).toBe(0)
+      expect(result.updated + result.appended).toBe(0)
+      expect(result.dropped).toEqual({ 'chat-unavailable': 1 })
+      expect(after).toEqual(before)
+      expect(after.flatMap(entry => entry.sourceChatIds))
+        .not.toContain(chatId)
+    })
+
+    it('drops every remaining op once the chat is gone', async () => {
+      await deleteChat(chatId)
+
+      const result = await run([
+        createOp(),
+        createOp({
+          category: 'people',
+          title: 'Anna',
+          description: 'Sister',
+          body: 'Anna is the user\'s sister.',
+        }),
+      ])
+
+      expect(result.created).toBe(0)
+      expect(result.dropped).toEqual({ 'chat-unavailable': 2 })
+      expect(await listEntries()).toEqual([])
+    })
+
+    it('refuses a chat that belongs to another user', async () => {
+      const otherUserId = await seedUser(testDb.db, null)
+      const foreignChatId = (await seedChat(testDb.db, otherUserId)).id
+
+      const result = await run([createOp()], { forChatId: foreignChatId })
+
+      expect(result.created).toBe(0)
+      expect(result.dropped).toEqual({ 'chat-unavailable': 1 })
+      expect(await listEntries()).toEqual([])
+    })
+
+    it('still writes an import pass, which has no source chat', async () => {
+      await deleteChat(chatId)
+
+      const result = await run([createOp()], {
+        forChatId: null,
+        origin: 'import',
+      })
+
+      expect(result.created).toBe(1)
+      expect((await listEntries())[0]?.sourceChatIds).toEqual([])
     })
   })
 

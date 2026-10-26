@@ -86,6 +86,7 @@ export const memoryBackfillDroppedLabels: Record<string, string> = {
   'never-store': 'Private data (never saved)',
   'duplicate': 'Already remembered',
   'ungrounded': 'No supporting quote',
+  'chat-unavailable': 'Chat deleted while it was read',
 }
 
 export function describeBackfillDroppedReason(reason: string): string {
