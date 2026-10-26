@@ -70,12 +70,14 @@ export async function runProjectKnowledgeSweepJob(
   let status = 200
 
   logger.set({
-    projectKnowledgeSweepJob: {
-      job: 'project-knowledge-sweep',
-      cron: input.controller.cron,
-      scheduledTime,
-      batchSize,
-      maxRuntimeMs,
+    attributes: {
+      projectKnowledgeSweepJob: {
+        job: 'project-knowledge-sweep',
+        cron: input.controller.cron,
+        scheduledTime,
+        batchSize,
+        maxRuntimeMs,
+      },
     },
   })
 
@@ -87,27 +89,27 @@ export async function runProjectKnowledgeSweepJob(
     })
 
     logger.set({
-      projectKnowledgeSweepResult: {
-        pagesScanned: result.pagesScanned,
-        scannedCount: result.scannedCount,
-        orphanItemObjectsDeleted: result.orphanItemObjectsDeleted,
-        orphanProjectObjectsDeleted: result.orphanProjectObjectsDeleted,
-        stalePackObjectsDeleted: result.stalePackObjectsDeleted,
-        youngSkippedCount: result.youngSkippedCount,
-        unrecognizedCount: result.unrecognizedCount,
-        failedDeleteCount: result.failedDeleteCount,
-        hasMore: result.hasMore,
-        runtimeMs: result.runtimeMs,
+      attributes: {
+        projectKnowledgeSweepResult: {
+          pagesScanned: result.pagesScanned,
+          scannedCount: result.scannedCount,
+          orphanItemObjectsDeleted: result.orphanItemObjectsDeleted,
+          orphanProjectObjectsDeleted: result.orphanProjectObjectsDeleted,
+          stalePackObjectsDeleted: result.stalePackObjectsDeleted,
+          youngSkippedCount: result.youngSkippedCount,
+          unrecognizedCount: result.unrecognizedCount,
+          failedDeleteCount: result.failedDeleteCount,
+          hasMore: result.hasMore,
+          runtimeMs: result.runtimeMs,
+        },
       },
     })
   } catch (exception) {
     status = 500
     logger.set({
-      projectKnowledgeSweepError: {
-        phase: 'sweep-run',
-      },
       attributes: {
         projectKnowledgeSweepError: {
+          phase: 'sweep-run',
           message: exceptionMessage(exception),
           stack: getSafeErrorStack(exception),
         },

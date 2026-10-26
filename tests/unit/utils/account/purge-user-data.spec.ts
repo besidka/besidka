@@ -251,11 +251,21 @@ describe('purgeUserData', () => {
     stubBindings(db, storage)
 
     const { purgeUserData } = await importPurgeUserData()
+    const set = vi.fn()
     const result = await purgeUserData({
       userId: 42,
-      logger: { set: vi.fn() },
+      logger: { set },
     })
 
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: {
+        accountPurge: {
+          memoryEntriesDeleted: result.memoryEntriesDeleted,
+          memoryBackfillJobsDeleted: result.memoryBackfillJobsDeleted,
+          knowledgeObjectsDeleted: 2,
+        },
+      },
+    }))
     expect(storage.list).toHaveBeenCalledWith(
       expect.objectContaining({ prefix: 'knowledge/u42/' }),
     )

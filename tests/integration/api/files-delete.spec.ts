@@ -240,7 +240,9 @@ describe('files delete API', () => {
       expect(callOrder).toEqual(['delete-object', 'delete-row'])
       expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(1)
       expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-        knowledgeVersionBump: { phase: 'after-delete', fileId: 'file-1' },
+        attributes: expect.objectContaining({
+          knowledgeVersionBump: { phase: 'after-delete', fileId: 'file-1' },
+        }),
       }))
     })
 
@@ -272,7 +274,12 @@ describe('files delete API', () => {
 
       expect(callOrder).toEqual(['delete-object', 'delete-row'])
       expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-        knowledgeVersionBump: { phase: 'before-delete', fileId: 'file-1' },
+        attributes: {
+          knowledgeVersionBump: expect.objectContaining({
+            phase: 'before-delete',
+            fileId: 'file-1',
+          }),
+        },
       }))
     })
 
@@ -348,7 +355,9 @@ describe('files delete API', () => {
       })
       expect(where).toHaveBeenCalledTimes(1)
       expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-        knowledgeVersionBump: { phase: 'after-delete', fileCount: 1 },
+        attributes: expect.objectContaining({
+          knowledgeVersionBump: { phase: 'after-delete', fileCount: 1 },
+        }),
       }))
     })
 

@@ -241,11 +241,25 @@ export async function purgeUserData(
     sessionKeysDeleted: sessionStorageKeys.length,
   }
 
+  const {
+    memoryEntriesDeleted,
+    memoryBackfillJobsDeleted,
+    knowledgeObjectsDeleted,
+    ...existingResult
+  } = result
+
   logger.set({
     accountPurge: {
       phase: 'completed',
       userId,
-      ...result,
+      ...existingResult,
+    },
+    attributes: {
+      accountPurge: {
+        memoryEntriesDeleted,
+        memoryBackfillJobsDeleted,
+        knowledgeObjectsDeleted,
+      },
     },
   })
 

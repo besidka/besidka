@@ -328,12 +328,12 @@ export async function sweepMemoryExtraction(
     } catch (exception) {
       result.erroredCount += 1
       logger?.set({
-        memoryExtractionSweep: {
-          phase: 'extract',
-          chatId: chat.id,
-        },
         attributes: {
-          memoryExtractionSweep: memoryExtractionErrorSummary(exception),
+          memoryExtractionSweep: {
+            phase: 'extract',
+            chatId: chat.id,
+            ...memoryExtractionErrorSummary(exception),
+          },
         },
       })
       await memoryExtractionMarkAttemptFailed(db, chat, now)
@@ -348,9 +348,11 @@ export async function sweepMemoryExtraction(
     })
   } catch (exception) {
     logger?.set({
-      memoryExtractionSweep: { phase: 'backfill' },
       attributes: {
-        memoryExtractionSweep: memoryExtractionErrorSummary(exception),
+        memoryExtractionSweep: {
+          phase: 'backfill',
+          ...memoryExtractionErrorSummary(exception),
+        },
       },
     })
   }

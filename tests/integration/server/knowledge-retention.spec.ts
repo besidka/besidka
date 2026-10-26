@@ -743,7 +743,9 @@ describe('knowledge retention and cascade handling', () => {
       expect(projectExists(10)).toBe(false)
       expect(failingStorage.delete).not.toHaveBeenCalled()
       expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-        knowledgePurge: { failed: true },
+        attributes: {
+          knowledgePurge: expect.objectContaining({ failed: true }),
+        },
       }))
       expect(mocks.invalidateStorageCache).toHaveBeenCalled()
     })
