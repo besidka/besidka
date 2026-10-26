@@ -83,6 +83,20 @@ on both pages. That is why the FAQ is a frontmatter field and not part of the
 body: a body section would also render on the keys card, and the FAQ is meant
 for the public page only.
 
+Long-form copy meant only for the public page goes inside a
+`::key-guide-article` block at the end of the body
+(`app/components/content/KeyGuideArticle.vue`). `Profile/Keys/Guide.vue`
+provides the `card` surface (`KEY_GUIDE_SURFACE_INJECTION_KEY` in
+`app/utils/key-guide-surface.ts`), and the block renders nothing there, so the
+keys card keeps only the steps and notes. On `/guides/<slug>` nothing is
+provided and the block renders, with real `##` headings in the server HTML.
+The TypeSafe AI guide uses it for its explainer of the Jev model: the seven
+checks, what each sends and what happens when it fails, the privacy approach,
+why the key is optional, and the 2026-10-26 synthetic eval with its caveats.
+Every claim there is taken from `docs/memory-architecture.md` 3.19,
+`shared/utils/jev-policy.ts`, the Privacy Policy and the eval summary; re-check
+it when a role, threshold or timeout changes.
+
 `content/key-guides/gemini-api-key.md` and `openrouter-api-key.md` carry
 verified copy. When a console flow or a price changes, re-verify the facts
 against `requirements.sources` and bump `checkedAt` and `updatedAt`.

@@ -788,6 +788,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const keyGuideTests = [
+    'tests/unit/components/content/KeyGuideArticle.spec.ts',
     'tests/unit/utils/external-url.spec.ts',
     'tests/unit/utils/iso-datetime.spec.ts',
     'tests/unit/utils/video.spec.ts',
@@ -859,6 +860,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Keys/GatewaysInfo.spec.ts',
     'tests/unit/components/Profile/Keys/Guide.spec.ts',
     'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
+    'tests/unit/components/content/KeyGuideArticle.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
     'tests/unit/components/ProviderIcon.spec.ts',
     'tests/unit/utils/provider-meta.spec.ts',
@@ -866,6 +868,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const profileKeyGuideTests = [
     'tests/unit/content/key-guides.spec.ts',
+    'tests/unit/components/content/KeyGuideArticle.spec.ts',
     'tests/unit/utils/iso-datetime.spec.ts',
     'tests/unit/config/content-frontmatter.spec.ts',
     'tests/unit/pages/guides/[slug].spec.ts',
@@ -1304,7 +1307,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/(key-guide-analytics|video-watch-analytics)\.ts|app\/utils\/key-guide-video\.ts|shared\/utils\/(key-guide-schema|iso-datetime)\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
+        /^(app\/composables\/(key-guide-analytics|video-watch-analytics)\.ts|app\/utils\/(key-guide-video|key-guide-surface)\.ts|app\/components\/content\/KeyGuideArticle\.vue|shared\/utils\/(key-guide-schema|iso-datetime)\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
       tests: profileKeyGuideTests,
     },
     {

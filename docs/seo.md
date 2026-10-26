@@ -441,6 +441,22 @@ October 2026". Changes in that pass:
   Google AI Plus are marked the same as Plus and AI Pro because the vendors'
   sharing help pages describe the feature without any plan restriction.
 
+- **Memory rows were added on 2026-10-26** (memory you can read, edit and
+  delete; search your past chats from a new chat; projects with their own
+  files and memory; keep one chat out of memory but in your history; optional
+  extra checks on your own key). Every new competitor cell cites a vendor help
+  page added to `comparison.sources` (OpenAI memory, projects and Temporary
+  Chat; Gemini personal context, past chats, Gems, notebooks and temporary
+  chats; Claude memory and chat search), checked that day. Most of these are
+  parity rows, kept because the table should not imply the subscriptions lack
+  memory. Gemini's personal context is US only and needs a Google AI plan,
+  and the help page does not say whether AI Plus counts, so both Google cells
+  quote the requirement instead of saying yes. Google says Gems on personal
+  accounts become skills from November 2026, so re-check the projects row
+  then. T3 cells are `Not listed by T3`: its public FAQ documents only a
+  temporary-chat URL parameter. `priceDate` was not bumped, because the
+  existing cells were not re-checked.
+
 Rules for the next refresh:
 
 - Re-verify **every** competitor cell, not only the prices, and bump
