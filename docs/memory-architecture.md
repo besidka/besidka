@@ -2173,6 +2173,10 @@ signal.
 - A Jev failure keeps every result. No notice is added.
 - Worst-case added latency per search is about 4 waves × 800 ms. The typical
   cost is 3-4 waves at the eval's p50 of about 180 ms.
+- Only the title and snippet are screened, so no other free-text metadata
+  reaches the model: Exa's `author` is dropped in `normalizeExaResults`, and
+  `publishedDate` is kept only when it is an ISO date (`isIsoDateString`, as
+  Brave already did). The URL is kept for citations.
 
 **Not screened.** Results of a chat model's own built-in search (native
 provider and gateway search) reach the model with no server hook, so they
