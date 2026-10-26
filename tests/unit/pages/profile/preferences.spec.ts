@@ -7,10 +7,48 @@ import PreferencesPage from '../../../../app/pages/profile/preferences.vue'
 const mocks = vi.hoisted(() => ({
   errorMessage: vi.fn(),
   fetch: vi.fn(),
+  isPushSupported: true,
+  isPushStateKnown: true,
+  pushPermission: 'default' as NotificationPermission,
+  isPushSubscribed: false,
+  disablePush: vi.fn(async () => undefined),
+  requestEnablePush: vi.fn(async () => undefined),
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useErrorMessage', () => mocks.errorMessage)
+
+mockNuxtImport('usePushNotifications', () => {
+  return () => ({
+    isSupported: {
+      get value() {
+        return mocks.isPushSupported
+      },
+    },
+    isStateKnown: {
+      get value() {
+        return mocks.isPushStateKnown
+      },
+    },
+    permission: {
+      get value() {
+        return mocks.pushPermission
+      },
+    },
+    isSubscribed: {
+      get value() {
+        return mocks.isPushSubscribed
+      },
+    },
+  })
+})
+
+mockNuxtImport('useNotificationPrompt', () => {
+  return () => ({
+    disable: mocks.disablePush,
+    requestEnable: mocks.requestEnablePush,
+  })
+})
 
 enableAutoUnmount(afterEach)
 
@@ -64,6 +102,10 @@ describe('profile preferences page', () => {
     vi.clearAllMocks()
     localStorage.clear()
     mocks.fetch.mockReset()
+    mocks.isPushSupported = true
+    mocks.isPushStateKnown = true
+    mocks.pushPermission = 'default'
+    mocks.isPushSubscribed = false
     useUserSetting().clearUserContext()
   })
 
@@ -108,7 +150,11 @@ describe('profile preferences page', () => {
       .exists()).toBe(true)
     expect(wrapper.find('[data-testid="preferences-auto-hide-skeleton"]')
       .exists()).toBe(true)
-    expect(wrapper.find('input').exists()).toBe(false)
+    expect(wrapper.find('input[name="default-reasoning-level"]').exists())
+      .toBe(false)
+    expect(wrapper.find(
+      '[data-testid="preferences-reasoning-expanded-toggle"]',
+    ).exists()).toBe(false)
 
     await loadSettings({ defaultReasoningLevel: 'high' })
     await flushPromises()
@@ -298,5 +344,142 @@ describe('profile preferences page', () => {
 
     expect(patchBodies()).toEqual([{ reasoningAutoHide: false }])
     expect(useUserSetting().reasoningAutoHide.value).toBe(false)
+  })
+
+  describe('notifications section', () => {
+    const pushToggle = '[data-testid="preferences-push-toggle"]'
+    const pushStatus = '[data-testid="preferences-push-status"]'
+
+    function pushInput(wrapper: Awaited<ReturnType<typeof mountPage>>) {
+      return wrapper.get(pushToggle).element as HTMLInputElement
+    }
+
+    it('renders the Notifications card above Reasoning', async () => {
+      await loadSettings()
+
+      const wrapper = await mountPage()
+      const headings = wrapper.findAll('h2')
+        .map(heading => heading.text())
+        .filter(text => text === 'Notifications' || text === 'Reasoning')
+
+      expect(headings).toEqual(['Notifications', 'Reasoning'])
+      expect(wrapper.text()).toContain('Push notifications')
+      expect(wrapper.text()).toContain('a response finishes')
+      expect(wrapper.text()).toContain('a shared chat')
+      expect(wrapper.text()).toContain('never include your messages')
+    })
+
+    it('keeps the skeleton and no toggle or status until the push state is '
+      + 'known', async () => {
+      mocks.isPushStateKnown = false
+      mocks.pushPermission = 'denied'
+      await loadSettings()
+
+      const wrapper = await mountPage()
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="preferences-push-skeleton"]')
+        .exists()).toBe(true)
+      expect(wrapper.find(pushToggle).exists()).toBe(false)
+      expect(wrapper.get(pushStatus).text()).toBe('')
+    })
+
+    it('replaces the skeleton with an accessible toggle once known',
+      async () => {
+        await loadSettings()
+
+        const wrapper = await mountPage()
+        await flushPromises()
+
+        expect(wrapper.find('[data-testid="preferences-push-skeleton"]')
+          .exists()).toBe(false)
+        expect(wrapper.get(pushToggle).attributes('aria-labelledby'))
+          .toBe('push-notifications-title')
+        expect(wrapper.get(pushToggle).attributes('aria-describedby'))
+          .toBe('push-notifications-description')
+      })
+
+    it('reflects the granted and subscribed state', async () => {
+      mocks.pushPermission = 'granted'
+      mocks.isPushSubscribed = true
+      await loadSettings()
+
+      const wrapper = await mountPage()
+
+      expect(pushInput(wrapper).checked).toBe(true)
+      expect(pushInput(wrapper).disabled).toBe(false)
+      expect(wrapper.get(pushStatus).text()).toBe('')
+    })
+
+    it('shows the toggle off when granted but not subscribed', async () => {
+      mocks.pushPermission = 'granted'
+      mocks.isPushSubscribed = false
+      await loadSettings()
+
+      const wrapper = await mountPage()
+
+      expect(pushInput(wrapper).checked).toBe(false)
+    })
+
+    it('opens the disclosed prompt instead of enabling directly',
+      async () => {
+        await loadSettings()
+
+        const wrapper = await mountPage()
+
+        await wrapper.get(pushToggle).trigger('click')
+        await flushPromises()
+
+        expect(mocks.requestEnablePush).toHaveBeenCalledTimes(1)
+        expect(mocks.disablePush).not.toHaveBeenCalled()
+        expect(pushInput(wrapper).checked).toBe(false)
+      })
+
+    it('disables push for this browser when it is enabled', async () => {
+      mocks.pushPermission = 'granted'
+      mocks.isPushSubscribed = true
+      await loadSettings()
+
+      const wrapper = await mountPage()
+
+      await wrapper.get(pushToggle).trigger('click')
+      await flushPromises()
+
+      expect(mocks.disablePush).toHaveBeenCalledTimes(1)
+      expect(mocks.requestEnablePush).not.toHaveBeenCalled()
+    })
+
+    it('disables the toggle and explains when notifications are blocked',
+      async () => {
+        mocks.pushPermission = 'denied'
+        await loadSettings()
+
+        const wrapper = await mountPage()
+
+        expect(pushInput(wrapper).disabled).toBe(true)
+        expect(wrapper.get(pushStatus).text())
+          .toContain('Blocked in browser settings')
+      })
+
+    it('disables the toggle and explains when push is unsupported',
+      async () => {
+        mocks.isPushSupported = false
+        await loadSettings()
+
+        const wrapper = await mountPage()
+
+        expect(pushInput(wrapper).disabled).toBe(true)
+        expect(wrapper.get(pushStatus).text())
+          .toContain('doesn\'t support push notifications')
+      })
+
+    it('does not wait for user settings to render the toggle', async () => {
+      const wrapper = await mountPage()
+      await flushPromises()
+
+      expect(wrapper.find(pushToggle).exists()).toBe(true)
+      expect(wrapper.find('[data-testid="preferences-reasoning-skeleton"]')
+        .exists()).toBe(true)
+    })
   })
 })

@@ -1,54 +1,51 @@
 <template>
   <UiButton
-    v-if="pushNotifications.isSupported.value"
-    :ghost="!isEnabled"
-    :mode="isEnabled ? 'accent' : 'primary'"
+    v-if="isSupported"
+    :ghost="!isActive"
+    :mode="isActive ? 'accent' : 'primary'"
     :icon-only="true"
     circle
-    :class="{ 'btn-active': isEnabled }"
-    :icon-name="isEnabled ? 'lucide:bell-ring' : 'lucide:bell-off'"
-    :title="
-      isBlocked
-        ? 'Notifications blocked in browser settings'
-        : isEnabled
-          ? 'Disable push notifications'
-          : 'Enable push notifications'
-    "
-    :disabled="pending || isBlocked"
-    @click="handleClick"
+    :class="{ 'btn-active': isActive }"
+    :icon-name="iconName"
+    :title="title"
+    :disabled="!isStateKnown || pending || isBlocked"
+    @click="toggle"
   />
 </template>
 
 <script setup lang="ts">
-const pushNotifications = usePushNotifications()
-const notificationPrompt = useNotificationPrompt()
+const {
+  isSupported,
+  isStateKnown,
+  isEnabled,
+  isBlocked,
+  pending,
+  toggle,
+} = usePushToggle()
 
-const pending = shallowRef<boolean>(false)
-
-const isEnabled = computed<boolean>(() => {
-  return pushNotifications.permission.value === 'granted'
-    && pushNotifications.isSubscribed.value
+const isActive = computed<boolean>(() => {
+  return isStateKnown.value && isEnabled.value
 })
 
-const isBlocked = computed<boolean>(() => {
-  return pushNotifications.permission.value === 'denied'
+const iconName = computed<string>(() => {
+  if (!isStateKnown.value) {
+    return 'lucide:bell'
+  }
+
+  return isEnabled.value ? 'lucide:bell-ring' : 'lucide:bell-off'
 })
 
-async function handleClick() {
-  if (pending.value) {
-    return
+const title = computed<string>(() => {
+  if (!isStateKnown.value) {
+    return 'Checking notification status'
   }
 
-  pending.value = true
-
-  try {
-    if (isEnabled.value) {
-      await notificationPrompt.disable()
-    } else {
-      await notificationPrompt.requestEnable()
-    }
-  } finally {
-    pending.value = false
+  if (isBlocked.value) {
+    return 'Notifications blocked in browser settings'
   }
-}
+
+  return isEnabled.value
+    ? 'Disable push notifications'
+    : 'Enable push notifications'
+})
 </script>
