@@ -49,6 +49,10 @@ describe('jev policy', () => {
     expect(JEV_INJECTION_SCREENING).toMatchObject({
       questionId: 'i2_attack',
       flagAtOrAbove: 0.3,
+      maxChunkTokens: 2000,
+      maxConcurrentCalls: 3,
+      timeoutMs: 2500,
+      searchResultsTimeoutMs: 800,
     })
     expect(JEV_RERANK).toMatchObject({
       maxCandidates: 30,

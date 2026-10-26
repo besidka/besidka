@@ -8,6 +8,7 @@ import { createKnowledgeItem } from '../../../../setup/helpers/knowledge-ui-fixt
 const mocks = vi.hoisted(() => ({
   info: vi.fn(),
   patchItem: vi.fn(),
+  allowItem: vi.fn(),
 }))
 
 mockNuxtImport('useInfoMessage', () => mocks.info)
@@ -41,6 +42,7 @@ async function mountSheet(options: SheetOptions = {}) {
       modelName: 'Test Model',
       canSendPdf: options.canSendPdf ?? true,
       patchItem: mocks.patchItem,
+      allowItem: mocks.allowItem,
       open: false,
     },
     global: {
@@ -65,6 +67,8 @@ describe('Projects/Knowledge/ItemEditSheet', () => {
     mocks.info.mockReset()
     mocks.patchItem.mockReset()
     mocks.patchItem.mockResolvedValue({ ok: true, result: {} })
+    mocks.allowItem.mockReset()
+    mocks.allowItem.mockResolvedValue({ ok: true, result: {} })
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
       .mockImplementation(function () {
         this.setAttribute('open', '')
@@ -275,6 +279,65 @@ describe('Projects/Knowledge/ItemEditSheet', () => {
 
         expect(wrapper.emitted('readd')).toEqual([[failed]])
       })
+  })
+
+  describe('an item flagged as a possible prompt injection', () => {
+    const flagged = createKnowledgeItem({
+      id: 'flagged-1',
+      extractStatus: 'flagged',
+    })
+
+    it('explains the flag and offers Allow anyway', async () => {
+      const wrapper = await mountSheet({ item: flagged })
+      const review = byTestId(wrapper, 'knowledge-item-injection-review')
+
+      expect(byTestId(wrapper, 'knowledge-item-sheet-status').text())
+        .toBe('Needs review')
+      expect(review.text()).toContain('Possible prompt injection, review it')
+      expect(review.text()).toContain('Nothing was deleted.')
+      expect(wrapper.find(
+        '[data-testid="knowledge-item-sheet-extract-message"]',
+      ).exists()).toBe(false)
+    })
+
+    it('allows the item and closes', async () => {
+      const wrapper = await mountSheet({ item: flagged })
+
+      await byTestId(wrapper, 'knowledge-item-allow').trigger('click')
+      await flushPromises()
+
+      expect(mocks.allowItem).toHaveBeenCalledWith('flagged-1')
+      expect(mocks.info).toHaveBeenCalledWith(
+        'Allowed',
+        'This item is used in your chats again.',
+      )
+      expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
+    })
+
+    it('keeps the sheet open with the error when allowing fails',
+      async () => {
+        mocks.allowItem.mockResolvedValue({
+          ok: false,
+          parsed: { message: 'This item is not waiting for review' },
+        })
+
+        const wrapper = await mountSheet({ item: flagged })
+
+        await byTestId(wrapper, 'knowledge-item-allow').trigger('click')
+        await flushPromises()
+
+        expect(byTestId(wrapper, 'knowledge-item-sheet-error').text())
+          .toContain('This item is not waiting for review')
+        expect(mocks.info).not.toHaveBeenCalled()
+      })
+
+    it('shows no review prompt for a ready item', async () => {
+      const wrapper = await mountSheet()
+
+      expect(wrapper.find(
+        '[data-testid="knowledge-item-injection-review"]',
+      ).exists()).toBe(false)
+    })
   })
 
   it('emits remove from the Remove button', async () => {

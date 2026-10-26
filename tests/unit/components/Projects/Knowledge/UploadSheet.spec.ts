@@ -348,6 +348,33 @@ describe('Projects/Knowledge/UploadSheet', () => {
           .toBe('1 failed')
       })
 
+    it('counts flagged files as added and asks for their review',
+      async () => {
+        const wrapper = await mountSheet({
+          phase: 'done',
+          entries: [
+            entry('a', 'ready'),
+            entry('b', 'flagged'),
+          ],
+        })
+
+        expect(byTestId(wrapper, 'knowledge-upload-added').text())
+          .toBe('2 files added')
+        expect(byTestId(wrapper, 'knowledge-upload-flagged').text())
+          .toBe('1 needs review: possible prompt injection, left out of chats '
+            + 'until you allow it')
+      })
+
+    it('shows no review line when nothing was flagged', async () => {
+      const wrapper = await mountSheet({
+        phase: 'done',
+        entries: [entry('a', 'ready')],
+      })
+
+      expect(wrapper.find('[data-testid="knowledge-upload-flagged"]').exists())
+        .toBe(false)
+    })
+
     it('offers a retry for failed files only', async () => {
       const failed = await mountSheet({
         phase: 'done',

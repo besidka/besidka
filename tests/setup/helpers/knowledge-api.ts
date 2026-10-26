@@ -45,6 +45,7 @@ export const knowledgeRoutes = {
   commit: 'commit.post',
   itemsCreate: 'items/index.post',
   itemPatch: 'items/[itemId]/index.patch',
+  itemAllow: 'items/[itemId]/allow.patch',
   itemDelete: 'items/[itemId]/index.delete',
   itemText: 'items/[itemId]/text.get',
   noteCreate: 'notes/index.post',
