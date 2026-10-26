@@ -176,14 +176,22 @@ import {
   KNOWLEDGE_INSTRUCTION,
 } from '~~/server/utils/knowledge/tools'
 import { buildKnowledgeExcerpts } from '~~/server/utils/knowledge/pre-retrieval'
+import { searchKnowledgeWithRerank } from '~~/server/utils/knowledge/rerank'
 import { readPreviousKnowledgeMode } from '~~/server/utils/knowledge/previous-mode'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { getChatSearchTools } from '~~/server/utils/memory/tools'
+import { createJevRerankModelResolver } from '~~/server/utils/jev/rerank'
+import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
 import {
   createChatSearchBudget,
   presetMemoryWriteLock,
 } from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
+import {
+  buildPastChatChipPart,
+  resolvePastChatPreRetrieval,
+} from '~~/server/utils/memory/tools/pre-retrieval'
+import type { PastChatPreRetrieval } from '~~/server/utils/memory/tools/pre-retrieval'
 import {
   isChatSearchToolEnabled,
   isMemoryToolsEnabled,
@@ -1276,6 +1284,11 @@ export default defineEventHandler(async (event) => {
   const chatSearchBudget = chatSearchToolsRegistered || memoryToolsRegistered
     ? createChatSearchBudget()
     : undefined
+  const resolveRerankModel = createJevRerankModelResolver({
+    db,
+    userId,
+    logger: aiLogger,
+  })
 
   if (chatSearchBudget && chatSearchToolsRegistered) {
     const { tools: chatSearchTools } = getChatSearchTools({
@@ -1286,6 +1299,7 @@ export default defineEventHandler(async (event) => {
         ? { projectId: chat.projectId }
         : {}),
       budget: chatSearchBudget,
+      resolveRerankModel,
       logger: aiLogger,
     })
 
@@ -1296,6 +1310,31 @@ export default defineEventHandler(async (event) => {
   }
 
   const userMessageText = readUserMessageText(newMessage.parts)
+  const pastChatPreRetrievalRun: Promise<PastChatPreRetrieval | null>
+    = isChatSearchToolEnabled(memorySettings)
+      && !toolCallingAllowed
+      && userMessageText !== null
+      ? resolvePastChatPreRetrieval({
+        db,
+        userId,
+        currentChatId: chat.id,
+        ...(chat.projectId && chat.project?.useAccountMemory === false
+          ? { projectId: chat.projectId }
+          : {}),
+        message: userMessageText,
+        earlierMessages: messagesForAI.filter((message) => {
+          return message.id !== newMessage.id
+        }),
+        userMessageId: newMessage.id,
+        resolveRerankModel,
+        tokenFamily: resolveKnowledgeTokenFamily({
+          providerId: telemetryProviderId,
+          modelId,
+          gateway: !!gatewayId,
+        }),
+        logger: aiLogger,
+      })
+      : Promise.resolve(null)
   const projectMemoryDisabled = chat.projectId === null
     ? false
     : chat.project
@@ -1386,9 +1425,11 @@ export default defineEventHandler(async (event) => {
     ].filter(Boolean).length,
     userMessageText,
     newMessageId: newMessage.id,
+    resolveRerankModel,
     scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
     logger: aiLogger,
   })
+  const pastChatPreRetrieval = await pastChatPreRetrievalRun
   const knowledgeContext = knowledge?.context ?? null
   const knowledgeToolsRegistered = knowledgeContext?.registerTools === true
 
@@ -1397,6 +1438,7 @@ export default defineEventHandler(async (event) => {
       requestedTools,
       holdsUntrustedKnowledge: !!knowledgeContext
         && holdsUntrustedKnowledge(knowledgeContext),
+      holdsPastChatExcerpts: pastChatPreRetrieval !== null,
     })
   }
 
@@ -1404,6 +1446,7 @@ export default defineEventHandler(async (event) => {
     const { tools: knowledgeTools } = getKnowledgeTools({
       getSearcher: knowledgeContext.getSearcher,
       budget: createKnowledgeBudget(),
+      resolveRerankModel,
       logger: aiLogger,
     })
 
@@ -1494,6 +1537,22 @@ export default defineEventHandler(async (event) => {
           })
         }
 
+        if (pastChatPreRetrieval) {
+          const pastChatChipPart = buildPastChatChipPart(pastChatPreRetrieval)
+
+          writer.write({
+            type: 'tool-input-available',
+            toolCallId: pastChatChipPart.toolCallId,
+            toolName: 'search_chats',
+            input: pastChatChipPart.input,
+          })
+          writer.write({
+            type: 'tool-output-available',
+            toolCallId: pastChatChipPart.toolCallId,
+            output: pastChatChipPart.output,
+          })
+        }
+
         let result: MultiConsumerStreamTextResult
         let modelMessages: ModelMessage[] = []
         let mainLoopSteps: SearchAnswerContinuationStep[] = []
@@ -1501,7 +1560,9 @@ export default defineEventHandler(async (event) => {
           messagesForAI,
           modelProviderId,
           mediaTurns: knowledge?.mediaTurns ?? [],
-          excerpts: knowledge?.excerpts ?? null,
+          excerpts: [knowledge?.excerpts, pastChatPreRetrieval?.block]
+            .filter((excerpts): excerpts is string => !!excerpts)
+            .join('\n\n') || null,
         })
 
         function recordSdkWarnings(
@@ -1956,6 +2017,11 @@ export default defineEventHandler(async (event) => {
           knowledgeTokens: knowledgeContext?.knowledgeTokens,
           knowledgeMode: knowledgeContext?.decision.mode,
           autoWebSearch: autoWebSearchOutcome,
+          pastChatChipPart: pastChatPreRetrieval
+            ? buildPastChatChipPart(
+              pastChatPreRetrieval,
+            ) as UIMessage['parts'][number]
+            : undefined,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -2465,6 +2531,7 @@ async function prepareKnowledgeMediaTurns(
 async function prepareKnowledgeExcerpts(
   context: ProjectKnowledgeContext,
   userText: string,
+  resolveRerankModel: JevRerankModelResolver,
   logger: LoggerLike,
 ): Promise<string | null> {
   try {
@@ -2474,7 +2541,14 @@ async function prepareKnowledgeExcerpts(
       return null
     }
 
-    const excerpts = buildKnowledgeExcerpts({ searcher, userText })
+    const { hits } = await searchKnowledgeWithRerank({
+      searcher,
+      search: { query: userText, strict: true },
+      keepAtLeast: KNOWLEDGE_LIMITS.preRetrievalMaxChunks,
+      resolveRerankModel,
+      logger,
+    })
+    const excerpts = buildKnowledgeExcerpts({ searcher, userText, hits })
 
     logger.set({
       attributes: { knowledge: { preRetrieval: excerpts !== null } },
@@ -2509,6 +2583,7 @@ async function resolveSendKnowledge(input: {
   toolGroupCount: number
   userMessageText: string | null
   newMessageId: string
+  resolveRerankModel: JevRerankModelResolver
   scheduleBackgroundWork: ScheduleBackgroundWork | undefined
   logger: LoggerLike
 }): Promise<SendKnowledge | null> {
@@ -2581,6 +2656,7 @@ async function resolveSendKnowledge(input: {
       ? await prepareKnowledgeExcerpts(
         context,
         input.userMessageText,
+        input.resolveRerankModel,
         input.logger,
       )
       : null
@@ -3018,6 +3094,7 @@ async function persistAssistantMessageFromStream(input: {
   knowledgeMode?: KnowledgeDecisionMode
   autoWebSearch?: AutoWebSearchOutcome
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
+  pastChatChipPart?: UIMessage['parts'][number]
 }): Promise<PersistAssistantMessageResult> {
   try {
     let isAborted = false
@@ -3215,7 +3292,9 @@ async function persistAssistantMessageFromStream(input: {
       values: {
         chatId: input.chatId,
         role: 'assistant',
-        parts: finalParts,
+        parts: input.pastChatChipPart
+          ? [input.pastChatChipPart, ...finalParts]
+          : finalParts,
         tools: usedImageGeneration ? ['image_generation'] : [],
         reasoning: input.reasoning,
         usage: usage ?? null,

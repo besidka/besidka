@@ -11,6 +11,7 @@ import {
   countKnowledgeChars,
   estimateKnowledgeTextTokens,
 } from '#shared/utils/project-knowledge-budget'
+import { JEV_RERANK } from '#shared/utils/jev-policy'
 import { KNOWLEDGE_LIMITS } from '#shared/utils/project-knowledge-policy'
 import {
   buildStemmedSearchText,
@@ -26,8 +27,9 @@ const STEM_SEPARATOR = /\s+/
 const STRICT_MIN_TOKEN_LENGTH = 3
 const STRICT_OR_MIN_TERMS = 3
 const STRICT_OR_MIN_MATCH_SHARE = 0.5
+const SEARCH_CANDIDATE_LIMIT = JEV_RERANK.maxCandidates
 
-const STOP_WORDS = [
+export const STOP_WORDS = [
   'the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'when', 'where',
   'who', 'how', 'why', 'which', 'do', 'does', 'did', 'of', 'in', 'on',
   'for', 'to', 'and', 'or', 'with', 'about', 'please', 'can', 'could',
@@ -38,12 +40,26 @@ const STOP_WORDS = [
   'можеш', 'скажи',
 ]
 
+export interface KnowledgeSearchInput {
+  query: string
+  itemIds?: string[]
+  strict?: boolean
+}
+
+export interface KnowledgeSearchCandidates {
+  hits: KnowledgeSearchHit[]
+  operator: KnowledgeSearchResult['operator']
+}
+
 export interface KnowledgeSearcher {
-  search: (input: {
-    query: string
-    itemIds?: string[]
-    strict?: boolean
-  }) => KnowledgeSearchResult
+  search: (input: KnowledgeSearchInput) => KnowledgeSearchResult
+  searchCandidates: (
+    input: KnowledgeSearchInput,
+  ) => KnowledgeSearchCandidates
+  capHits: (
+    hits: KnowledgeSearchHit[],
+    operator: KnowledgeSearchResult['operator'],
+  ) => KnowledgeSearchResult
   read: (input: { itemId: string, fromChunk?: number, count?: number }) =>
   KnowledgeReadResult | null
 }
@@ -58,7 +74,7 @@ function estimateTokens(text: string): number {
   return estimateKnowledgeTextTokens(countKnowledgeChars(text), 'default')
 }
 
-function truncateToTokens(text: string, maxTokens: number): string {
+export function truncateToTokens(text: string, maxTokens: number): string {
   const tokens = estimateTokens(text)
 
   if (tokens <= maxTokens) {
@@ -199,11 +215,9 @@ export function createKnowledgeSearcher(input: {
     }
   }
 
-  function search(searchInput: {
-    query: string
-    itemIds?: string[]
-    strict?: boolean
-  }): KnowledgeSearchResult {
+  function searchCandidates(
+    searchInput: KnowledgeSearchInput,
+  ): KnowledgeSearchCandidates {
     const strict = searchInput.strict === true
     const stemmedTokens = stemQuery(searchInput.query)
     const strictTerms = strict ? selectStrictTerms(stemmedTokens) : []
@@ -213,12 +227,7 @@ export function createKnowledgeSearcher(input: {
       : null
 
     if (!stemmedQuery) {
-      return {
-        hits: [],
-        operator: 'none',
-        truncated: false,
-        notice: KNOWLEDGE_RESULT_NOTICE,
-      }
+      return { hits: [], operator: 'none' }
     }
 
     const filter = itemIdFilter
@@ -247,17 +256,28 @@ export function createKnowledgeSearcher(input: {
         .filter(result => result.queryTerms.length >= minMatchedTerms)
     }
 
+    return {
+      hits: results
+        .slice(0, SEARCH_CANDIDATE_LIMIT)
+        .map(result => toHit(result.id as number)),
+      operator,
+    }
+  }
+
+  function capHits(
+    candidates: KnowledgeSearchHit[],
+    operator: KnowledgeSearchResult['operator'],
+  ): KnowledgeSearchResult {
     const hits: KnowledgeSearchHit[] = []
     let usedTokens = 0
     let truncated = false
 
-    for (const result of results) {
+    for (const hit of candidates) {
       if (hits.length >= KNOWLEDGE_LIMITS.searchMaxChunks) {
         truncated = true
         break
       }
 
-      const hit = toHit(result.id as number)
       const remainingTokens = KNOWLEDGE_LIMITS.searchMaxTokens - usedTokens
       const hitTokens = estimateTokens(hit.text)
 
@@ -286,6 +306,12 @@ export function createKnowledgeSearcher(input: {
       truncated,
       notice: KNOWLEDGE_RESULT_NOTICE,
     }
+  }
+
+  function search(searchInput: KnowledgeSearchInput): KnowledgeSearchResult {
+    const candidates = searchCandidates(searchInput)
+
+    return capHits(candidates.hits, candidates.operator)
   }
 
   function read(readInput: {
@@ -343,5 +369,5 @@ export function createKnowledgeSearcher(input: {
     }
   }
 
-  return { search, read }
+  return { search, searchCandidates, capHits, read }
 }

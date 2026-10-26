@@ -213,7 +213,11 @@ const isChatStep = computed<boolean>(() => {
 })
 
 const countLabel = computed<string>(() => {
-  if (props.data.state === 'failed' || !props.data.hasOutput) {
+  if (
+    props.data.state === 'failed'
+    || !props.data.hasOutput
+    || props.data.preRetrieval === true
+  ) {
     return ''
   }
 

@@ -51,6 +51,8 @@ const mocks = vi.hoisted(() => ({
   uiStreamOptions: [] as Array<Record<string, any>>,
   aiLoggerSet: vi.fn(),
   loadKnowledgeSendData: vi.fn(),
+  rerankModel: null as unknown,
+  decide: vi.fn(),
   ensureKnowledgePackFresh: vi.fn(),
   commitKnowledgeChange: vi.fn(),
   kvStore: new Map<string, string>(),
@@ -75,6 +77,7 @@ vi.mock('ai', async (importOriginal) => {
       return { writer, ready }
     },
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
+    experimental_decide: (...args: unknown[]) => mocks.decide(...args),
     toUIMessageStream: (
       options: Parameters<typeof actual.toUIMessageStream>[0],
     ) => {
@@ -109,6 +112,17 @@ vi.mock('evlog', () => ({
     return exception
   },
 }))
+
+vi.mock('~~/server/utils/jev/rerank', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('~~/server/utils/jev/rerank')
+  >()
+
+  return {
+    ...actual,
+    createJevRerankModelResolver: () => async () => mocks.rerankModel,
+  }
+})
 
 vi.mock('~~/server/utils/knowledge/send-data', () => ({
   loadKnowledgeSendData: (input: unknown) => {
@@ -640,6 +654,8 @@ describe('project knowledge send-path wiring', () => {
     mocks.memoryWriteSawUntrustedResult = []
     mocks.uiStreamOptions = []
     mocks.loadKnowledgeSendData.mockReset()
+    mocks.rerankModel = null
+    mocks.decide.mockReset()
     mocks.ensureKnowledgePackFresh.mockReset()
     mocks.ensureKnowledgePackFresh.mockResolvedValue(undefined)
     mocks.commitKnowledgeChange.mockReset()
@@ -1346,6 +1362,68 @@ describe('project knowledge send-path wiring', () => {
       expect(readKnowledgeAttributes()).toEqual(expect.objectContaining({
         preRetrieval: false,
       }))
+    })
+  })
+
+  describe('pre-retrieval re-ranking with TypeSafe AI Jev', () => {
+    const TWO_NOTES = [
+      { id: 'note-alpha', title: 'Alpha', relativePath: 'plans/alpha.md' },
+      { id: 'note-beta', title: 'Beta', relativePath: 'plans/beta.md' },
+    ]
+
+    async function readExcerptOrder() {
+      stubChatProvider({ toolCall: false })
+
+      const { doStream } = await runSend({
+        scenario: { mode: 'search', items: TWO_NOTES },
+        steps: [createTextChunks('The fifth of May.')],
+      })
+      const lastUserText = readTurnText(
+        readUserTurns(doStream.mock.calls[0]?.[0]).at(-1),
+      )
+
+      return {
+        lastUserText,
+        alphaAt: lastUserText.indexOf('plans/alpha.md'),
+        betaAt: lastUserText.indexOf('plans/beta.md'),
+      }
+    }
+
+    it('keeps the BM25 order without a rerank model', async () => {
+      const { alphaAt, betaAt } = await readExcerptOrder()
+
+      expect(alphaAt).toBeGreaterThan(-1)
+      expect(alphaAt).toBeLessThan(betaAt)
+      expect(mocks.decide).not.toHaveBeenCalled()
+    })
+
+    it('puts the chunk Jev rates higher first', async () => {
+      mocks.rerankModel = {}
+      mocks.decide.mockResolvedValue({
+        answers: {
+          c0: { type: 'boolean', probability: 0.3 },
+          c1: { type: 'boolean', probability: 0.9 },
+        },
+        usage: { inputTokens: 100 },
+      })
+
+      const { alphaAt, betaAt } = await readExcerptOrder()
+
+      expect(betaAt).toBeGreaterThan(-1)
+      expect(betaAt).toBeLessThan(alphaAt)
+      expect(mocks.decide).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the BM25 order when Jev fails', async () => {
+      mocks.rerankModel = {}
+      mocks.decide.mockRejectedValue(
+        Object.assign(new Error('timed out'), { name: 'TimeoutError' }),
+      )
+
+      const { alphaAt, betaAt } = await readExcerptOrder()
+
+      expect(alphaAt).toBeGreaterThan(-1)
+      expect(alphaAt).toBeLessThan(betaAt)
     })
   })
 

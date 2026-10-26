@@ -114,10 +114,17 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/jev-check.spec.ts',
     'tests/integration/api/memory-jev.spec.ts',
   ]
+  const jevRerankTests = [
+    'tests/unit/utils/jev/rerank.spec.ts',
+    'tests/unit/utils/memory/tools/search-chats-rerank.spec.ts',
+    'tests/unit/utils/knowledge/rerank.spec.ts',
+    'tests/integration/api/jev-rerank.spec.ts',
+  ]
   const jevFoundationTests = [
     'tests/unit/utils/jev/client.spec.ts',
     'tests/unit/utils/jev/logging.spec.ts',
     'tests/unit/utils/jev/roles.spec.ts',
+    ...jevRerankTests,
     'tests/unit/utils/jev-policy.spec.ts',
     ...memoryJevTests,
   ]
@@ -174,6 +181,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge/context.spec.ts',
     'tests/unit/utils/knowledge/previous-mode.spec.ts',
     'tests/integration/api/chats-project-knowledge.spec.ts',
+    ...jevRerankTests,
   ]
   const knowledgeCoreTests = [
     'tests/unit/utils/knowledge/items.spec.ts',
@@ -259,6 +267,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/extract-runtime.spec.ts',
     'tests/unit/utils/memory/extract-sweep.spec.ts',
     'tests/unit/utils/memory/extract.spec.ts',
+    'tests/unit/utils/memory/extract-prefilter.spec.ts',
     'tests/unit/utils/projects/memory-entries.spec.ts',
     'tests/unit/utils/projects/memory-refresh.spec.ts',
     'tests/unit/utils/projects/memory-card.spec.ts',
@@ -912,7 +921,15 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-external-search.spec.ts',
   ]
 
+  const pastChatRetrievalTests = [
+    'tests/unit/utils/memory/tools/pre-retrieval.spec.ts',
+    'tests/unit/utils/past-chat-retrieval.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
+    'tests/integration/api/chats-past-chat-pre-retrieval.spec.ts',
+  ]
+
   const searchStepTests = [
+    'tests/unit/utils/past-chat-retrieval.spec.ts',
     'tests/unit/utils/search-step.spec.ts',
     'tests/unit/components/Chat/Reasoning/SearchStep.spec.ts',
     'tests/unit/components/Chat/Reasoning.spec.ts',
@@ -920,11 +937,13 @@ export function getAffectedTests(changedFiles) {
 
   const chatSearchToolTests = [
     ...memoryToolTests,
+    ...pastChatRetrievalTests,
     'tests/unit/utils/memory/tools/search-chats.spec.ts',
     'tests/unit/utils/memory/tools/read-chat.spec.ts',
     'tests/unit/utils/memory/tools/chat-search-budget.spec.ts',
     'tests/unit/utils/memory/tools/index.spec.ts',
     'tests/integration/api/chats-chat-search-tools.spec.ts',
+    ...jevRerankTests,
     'tests/integration/api/chats-single-step-characterization.spec.ts',
     'tests/integration/api/chats-tool-loop.spec.ts',
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
@@ -1588,9 +1607,14 @@ export function getAffectedTests(changedFiles) {
       tests: chatSearchToolTests,
     },
     {
+      pattern: /^shared\/utils\/past-chat-retrieval\.ts$/,
+      tests: [...pastChatRetrievalTests, ...searchStepTests],
+    },
+    {
       pattern: /^(server\/utils\/jev\/.*|shared\/utils\/jev-(policy|schemas))\.ts$/,
       tests: [
         ...jevFoundationTests,
+        ...pastChatRetrievalTests,
         ...profileSettingsTests,
         ...typesafeRolesUiTests,
       ],
@@ -2232,7 +2256,7 @@ export function getAffectedTests(changedFiles) {
       tests: memoryPurgeTests,
     },
     {
-      pattern: /^server\/utils\/knowledge\/(search|pre-retrieval|send-data|context|previous-mode)\.ts$/,
+      pattern: /^server\/utils\/knowledge\/(search|pre-retrieval|rerank|send-data|context|previous-mode)\.ts$/,
       tests: projectKnowledgeRetrievalTests,
     },
     {

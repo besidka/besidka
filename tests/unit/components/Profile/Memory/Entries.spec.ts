@@ -29,6 +29,8 @@ enableAutoUnmount(afterEach)
 
 const ENTRIES_URL = '/api/v1/memory/entries'
 const BACKFILL_URL = '/api/v1/memory/backfill'
+const KEYS_URL = '/api/v1/profiles/keys'
+const SETTINGS_URL = '/api/v1/profiles/settings'
 
 function fetchCalls() {
   return mocks.fetch.mock.calls.filter(([url]) => url !== BACKFILL_URL)
@@ -247,6 +249,15 @@ describe('Profile/Memory/Entries', () => {
       url: string,
       options: { query: { archived?: boolean } },
     ) => {
+      if (url === KEYS_URL || url === SETTINGS_URL) {
+        return {
+          data: shallowRef(null),
+          pending: shallowRef(false),
+          error: shallowRef(null),
+          refresh: vi.fn(),
+        }
+      }
+
       if (url === ENTRIES_URL) {
         return {
           data: entriesData,

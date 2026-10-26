@@ -57,6 +57,7 @@ export const typesafeRoleCopies: TypesafeRoleCopy[] = [
     title: 'Past-chat retrieval',
     description: 'For models without tool calling, finds relevant past chats '
       + 'when you refer to them. Sends your message and recent turns. If '
-      + 'TypeSafe AI doesn\'t answer, the reply goes ahead without them.',
+      + 'TypeSafe AI doesn\'t answer, Besidka searches your past chats '
+      + 'anyway.',
   },
 ]

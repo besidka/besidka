@@ -1385,6 +1385,50 @@ describe('Chat/Reasoning', () => {
     expect(wrapper.text()).not.toContain('Body')
   })
 
+  it('titles a past-chat pre-retrieval step by its count with links',
+    async () => {
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage([
+            {
+              type: 'tool-search_chats',
+              toolCallId: 'past-chat-pre-retrieval-user-1',
+              state: 'output-available',
+              input: { query: 'invoice' },
+              output: {
+                results: [
+                  { title: 'A', url: '/chats/a', date: '' },
+                  { title: 'B', url: '/chats/b', date: '' },
+                  { title: 'C', url: '/chats/c', date: '' },
+                ],
+              },
+            },
+          ] as UIMessage['parts']),
+          status: 'ready',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+      })
+      const stepTrigger = wrapper.get(
+        '[data-testid="reasoning-search-step-trigger"]',
+      )
+
+      expect(stepTrigger.text()).toContain('Used 3 earlier chats')
+      expect(stepTrigger.text()).not.toContain('Searched your chats')
+      expect(
+        wrapper.find('[data-testid="reasoning-search-step-count"]').exists(),
+      ).toBe(false)
+
+      await stepTrigger.trigger('click')
+
+      expect(
+        wrapper.findAll('[data-testid="reasoning-search-step-chat-link"]'),
+      ).toHaveLength(3)
+    })
+
   it('shows a streaming external search step with a partial input',
     async () => {
       const wrapper = await mountSuspended(Reasoning, {

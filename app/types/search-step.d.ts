@@ -25,4 +25,5 @@ export interface SearchStepData {
   results: SearchStepResult[]
   hasOutput: boolean
   errorReason: string
+  preRetrieval?: boolean
 }

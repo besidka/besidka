@@ -180,6 +180,30 @@ describe('memory write lock for web-search sends', () => {
     expect(budget.untrustedResultSeen).toBe(true)
   })
 
+  it('locks on pre-retrieved past-chat excerpts without a web search', () => {
+    const budget = createChatSearchBudget()
+
+    presetMemoryWriteLock(budget, {
+      requestedTools: [],
+      holdsUntrustedKnowledge: false,
+      holdsPastChatExcerpts: true,
+    })
+
+    expect(budget.untrustedResultSeen).toBe(true)
+  })
+
+  it('stays unlocked when no past-chat excerpts were pre-retrieved', () => {
+    const budget = createChatSearchBudget()
+
+    presetMemoryWriteLock(budget, {
+      requestedTools: [],
+      holdsUntrustedKnowledge: false,
+      holdsPastChatExcerpts: false,
+    })
+
+    expect(budget.untrustedResultSeen).toBe(false)
+  })
+
   it('does not lock for image generation alone', () => {
     const budget = createChatSearchBudget()
 

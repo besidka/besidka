@@ -41,6 +41,8 @@ export const MEMORY_EXTRACTION_LIMITS = {
 
 export const MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES = 0
 
+export const MEMORY_EXTRACTION_NOTHING_DURABLE_REASON = 'nothing-durable'
+
 export const MEMORY_EXTRACTION_EDITABLE_ORIGINS = [
   'extraction',
   'import',
