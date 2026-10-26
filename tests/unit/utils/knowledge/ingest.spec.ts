@@ -27,6 +27,7 @@ import type { KnowledgeApiHarness } from '../../../setup/helpers/knowledge-api'
 const mocks = vi.hoisted(() => ({
   invalidateStorageCache: vi.fn(),
   commitKnowledgeChange: vi.fn(),
+  ensureKnowledgePackFresh: vi.fn(),
   loggerSet: vi.fn(),
 }))
 
@@ -54,7 +55,7 @@ vi.mock('~~/server/api/v1/storage/index.get', () => ({
 
 vi.mock('~~/server/utils/knowledge/pack', () => ({
   commitKnowledgeChange: mocks.commitKnowledgeChange,
-  ensureKnowledgePackFresh: vi.fn(),
+  ensureKnowledgePackFresh: mocks.ensureKnowledgePackFresh,
 }))
 
 const OWNER = 1
@@ -1780,6 +1781,107 @@ describe('knowledge ingestion', () => {
     })
   })
 
+  describe('per-user item cap', () => {
+    const USER_CAP_PROJECTS = [20, 21, 22, 23]
+
+    function fillUserItems(count: number) {
+      for (let index = 0; index < count; index++) {
+        harness.testDb.insertItem({
+          userId: OWNER,
+          projectId: USER_CAP_PROJECTS[
+            Math.floor(index / KNOWLEDGE_LIMITS.maxItemsPerProject)
+          ]!,
+        })
+      }
+    }
+
+    function noTextItem(): BatchItem {
+      return fileItem({
+        title: 'Scanned',
+        extractStatus: 'no-text',
+        extractError: 'no-text',
+        text: '',
+      })
+    }
+
+    it('rejects an empty-text item once the account holds the cap', async () => {
+      fillUserItems(KNOWLEDGE_LIMITS.maxItemsPerUser)
+
+      await expect(ingest([noTextItem()])).rejects.toMatchObject({
+        status: 422,
+        message: 'Knowledge item limit reached',
+        why: expect.stringContaining(
+          String(KNOWLEDGE_LIMITS.maxItemsPerUser),
+        ),
+        fix: expect.any(String),
+      })
+
+      expect(harness.testDb.countItems(PROJECT)).toBe(0)
+      expect(harness.bucket.calls).toEqual([])
+    })
+
+    it('accepts items up to the cap and rejects the one past it', async () => {
+      fillUserItems(KNOWLEDGE_LIMITS.maxItemsPerUser - 1)
+
+      const accepted = await ingest([noTextItem()])
+
+      expect(accepted.items).toHaveLength(1)
+
+      await expect(ingest([noTextItem()]))
+        .rejects.toMatchObject({ status: 422 })
+    })
+
+    it('counts the whole batch against the cap', async () => {
+      fillUserItems(KNOWLEDGE_LIMITS.maxItemsPerUser - 1)
+
+      await expect(ingest([
+        noTextItem(),
+        { ...noTextItem(), title: 'Second' },
+      ])).rejects.toMatchObject({ status: 422 })
+
+      expect(harness.testDb.countItems(PROJECT)).toBe(0)
+    })
+
+    it('guards the insert when the account fills up during the batch', async () => {
+      harness.beforeBatchHooks.push(() => {
+        fillUserItems(KNOWLEDGE_LIMITS.maxItemsPerUser)
+        harness.beforeBatchHooks.length = 0
+      })
+
+      await expect(ingest([noTextItem()]))
+        .rejects.toMatchObject({
+          status: 422,
+          message: 'Knowledge item limit reached',
+        })
+
+      expect(harness.testDb.countItems(PROJECT)).toBe(0)
+    })
+
+    it('rejects a note once the account holds the cap', async () => {
+      fillUserItems(KNOWLEDGE_LIMITS.maxItemsPerUser)
+
+      await expect(createKnowledgeNote(context(), {
+        title: 'Plan',
+        body: 'Ship it',
+      })).rejects.toMatchObject({ status: 422 })
+
+      expect(harness.bucket.calls).toEqual([])
+    })
+
+    it('leaves other accounts alone', async () => {
+      fillUserItems(KNOWLEDGE_LIMITS.maxItemsPerUser)
+      harness.testDb.insertProject({ id: 30, userId: STRANGER })
+      harness.testDb.insertStorage({ userId: STRANGER })
+
+      const result = await ingest([noTextItem()], {
+        userId: STRANGER,
+        projectId: 30,
+      })
+
+      expect(result.items).toHaveLength(1)
+    })
+  })
+
   describe('note update ordering', () => {
     async function seedNote() {
       const note = await createKnowledgeNote(context(), {
@@ -1799,7 +1901,7 @@ describe('knowledge ingestion', () => {
       return itemRows()[0]!
     }
 
-    it('writes the text before it touches the row', async () => {
+    it('updates the row before it writes the text', async () => {
       const { row } = await seedNote()
       const observedRows: Array<number | undefined> = []
       const originalPut = harness.bucket.put
@@ -1812,11 +1914,11 @@ describe('knowledge ingestion', () => {
 
       await updateKnowledgeNote(context(), row, { body: 'A much longer body' })
 
-      expect(observedRows).toEqual([7])
+      expect(observedRows).toEqual([18])
       expect(rawRow().text_bytes).toBe(18)
     })
 
-    it('leaves the row alone when the text write fails', async () => {
+    it('puts the row back when the text write fails', async () => {
       const { row } = await seedNote()
       const before = rawRow()
 
@@ -1868,62 +1970,56 @@ describe('knowledge ingestion', () => {
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
     })
 
-    it('never throws from inside the restore', async () => {
+    it('never throws from inside the row revert', async () => {
       const { row } = await seedNote()
       const failingDb = harness.testDb.db as unknown as {
-        all: (query: unknown) => unknown
+        run: (query: unknown) => unknown
       }
-      const originalAll = failingDb.all
+      const originalRun = failingDb.run
 
-      failingDb.all = () => {
+      failingDb.run = () => {
         return Promise.reject(new Error('D1 is down'))
       }
-      harness.bucket.failPutForKey = () => {
-        return harness.bucket.calls.filter((call) => {
-          return call.operation === 'put'
-        }).length >= 2
-      }
+      harness.bucket.failPutAt = 1
 
       await expectRejection(
         updateKnowledgeNote(context(), row, { body: 'Another body' }),
         { status: 500, message: 'Failed to save the knowledge item' },
       )
 
-      failingDb.all = originalAll
+      failingDb.run = originalRun
 
       expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
         attributes: expect.objectContaining({
           knowledge: expect.objectContaining({
-            operation: 'note-update-restore-text',
+            operation: 'note-update-revert-row',
           }),
         }),
       }))
     })
 
-    function runOnceAfterNextPut(action: () => void) {
-      const originalPut = harness.bucket.put
-      let isDone = false
+    function runBeforeGuardedUpdate(action: () => void) {
+      const failingDb = harness.testDb.db as unknown as {
+        all: (query: unknown) => unknown
+      }
+      const originalAll = failingDb.all.bind(failingDb)
 
-      harness.bucket.put = async (key, value) => {
-        const result = await originalPut(key, value)
+      failingDb.all = (query: unknown) => {
+        failingDb.all = originalAll
+        action()
 
-        if (!isDone) {
-          isDone = true
-          action()
-        }
-
-        return result
+        return originalAll(query)
       }
     }
 
-    it('answers 413 and restores the previous text when the quota fills during the update', async () => {
+    it('answers 413 and never writes the text when the quota fills before the update', async () => {
       harness.testDb.sqlite.prepare('delete from storages').run()
       harness.testDb.insertStorage({ userId: OWNER, storage: 100 })
 
       const { row } = await seedNote()
       const key = [...harness.bucket.objects.keys()][0]!
 
-      runOnceAfterNextPut(() => {
+      runBeforeGuardedUpdate(() => {
         harness.testDb.insertFile({ id: 6, userId: OWNER, size: 90 })
       })
 
@@ -1932,16 +2028,17 @@ describe('knowledge ingestion', () => {
         { status: 413 },
       )
 
+      expect(harness.bucket.calls).toEqual([])
       expect(harness.bucket.objects.get(key)).toBe('Ship it')
       expect(rawRow().text_bytes).toBe(7)
       expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
     })
 
-    it('answers 422 and restores the previous text when the project cap fills during the update', async () => {
+    it('answers 422 and never writes the text when the project cap fills before the update', async () => {
       const { row } = await seedNote()
       const key = [...harness.bucket.objects.keys()][0]!
 
-      runOnceAfterNextPut(() => {
+      runBeforeGuardedUpdate(() => {
         harness.testDb.insertItem({
           userId: OWNER,
           projectId: PROJECT,
@@ -1954,7 +2051,9 @@ describe('knowledge ingestion', () => {
         { status: 422 },
       )
 
+      expect(harness.bucket.calls).toEqual([])
       expect(harness.bucket.objects.get(key)).toBe('Ship it')
+      expect(rawRow().text_bytes).toBe(7)
     })
 
     it('moves updatedAt at least one second past its previous value', async () => {
@@ -2026,19 +2125,71 @@ describe('knowledge ingestion', () => {
       expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version).toBe(3)
     })
 
-    it('commits when the pack is behind the version', async () => {
+    it('rebuilds a stale pack lazily without bumping the version', async () => {
       harness.testDb.sqlite.prepare(
         'update projects set knowledge_version = 3,'
         + ' knowledge_pack_version = 2 where id = ?',
       ).run(PROJECT)
+      mocks.ensureKnowledgePackFresh.mockImplementation(async () => {
+        harness.testDb.sqlite.prepare(
+          'update projects set knowledge_pack_version = 3 where id = ?',
+        ).run(PROJECT)
+      })
 
       const result = await commitKnowledgeRequest(
         context(),
         { remove: [], folderId: null },
       )
 
-      expect(mocks.commitKnowledgeChange).toHaveBeenCalledOnce()
-      expect(result.version).toBe(4)
+      expect(mocks.ensureKnowledgePackFresh).toHaveBeenCalledOnce()
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(result).toMatchObject({ version: 3, packVersion: 3 })
+    })
+
+    it('does not bump or build when no id matches and the pack is current', async () => {
+      harness.testDb.sqlite.prepare(
+        'update projects set knowledge_version = 3,'
+        + ' knowledge_pack_version = 3 where id = ?',
+      ).run(PROJECT)
+
+      const foreignItemId = harness.testDb.insertItem({
+        userId: OWNER,
+        projectId: OTHER_PROJECT,
+      })
+      const result = await commitKnowledgeRequest(context(), {
+        remove: ['nope', encodePublicId(foreignItemId)],
+        folderId: null,
+      })
+
+      expect(result).toEqual({
+        version: 3,
+        packVersion: 3,
+        removed: 0,
+        skipped: ['nope', encodePublicId(foreignItemId)],
+      })
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(mocks.ensureKnowledgePackFresh).not.toHaveBeenCalled()
+      expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version).toBe(3)
+      expect(harness.testDb.countItems(OTHER_PROJECT)).toBe(1)
+    })
+
+    it('does not bump when a commit batch holds only duplicates', async () => {
+      harness.testDb.sqlite.prepare(
+        'update projects set knowledge_version = 3,'
+        + ' knowledge_pack_version = 3 where id = ?',
+      ).run(PROJECT)
+
+      await ingest([fileItem({ contentHash: HASH_A })])
+      mocks.commitKnowledgeChange.mockClear()
+
+      const result = await ingest(
+        [fileItem({ contentHash: HASH_A })],
+        { commit: true },
+      )
+
+      expect(result.skipped).toEqual([{ index: 0, reason: 'duplicate' }])
+      expect(mocks.commitKnowledgeChange).not.toHaveBeenCalled()
+      expect(harness.testDb.getProjectRow(PROJECT)?.knowledge_version).toBe(3)
     })
 
     it('commits when the project has never had a pack', async () => {

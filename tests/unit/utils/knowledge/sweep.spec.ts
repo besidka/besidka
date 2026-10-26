@@ -858,6 +858,93 @@ describe('sweepProjectKnowledge', () => {
       expect(kv.delete).toHaveBeenCalledWith(CURSOR_KEY)
     })
 
+    it('moves on to the next page when a delete fails instead of starting over', async () => {
+      const fake = createFakeBucket(orphanKeys(6))
+      const logger = { set: vi.fn() }
+
+      fake.deleteKeys.mockRejectedValueOnce(new Error('R2 unavailable'))
+
+      const result = await sweep(fake, { batchSize: 3, logger })
+
+      expect(result.pagesScanned).toBe(2)
+      expect(result.failedDeleteCount).toBe(3)
+      expect(result.orphanProjectObjectsDeleted).toBe(3)
+      expect(result.hasMore).toBe(true)
+      expect(fake.keys()).toHaveLength(3)
+      expect(kv.put).not.toHaveBeenCalled()
+      expect(kv.delete).toHaveBeenCalledWith(CURSOR_KEY)
+    })
+
+    it('skips a page that throws and keeps sweeping the rest', async () => {
+      const fake = createFakeBucket(orphanKeys(6))
+      const logger = { set: vi.fn() }
+
+      vi.spyOn(testDb.db, 'all').mockRejectedValueOnce(new Error('D1 down'))
+
+      const result = await sweep(fake, { batchSize: 3, logger })
+
+      expect(result.pagesScanned).toBe(2)
+      expect(result.hasMore).toBe(true)
+      expect(fake.keys()).toHaveLength(3)
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          knowledgeSweepPageFailure: { error: 'D1 down' },
+        },
+      })
+    })
+
+    it('ends the run after three failed pages and keeps the cursor past them', async () => {
+      const fake = createFakeBucket(orphanKeys(12))
+
+      fake.deleteKeys.mockRejectedValue(new Error('R2 unavailable'))
+
+      const result = await sweep(fake, { batchSize: 2 })
+
+      expect(result.pagesScanned).toBe(3)
+      expect(result.hasMore).toBe(true)
+      expect(kv.values.get(CURSOR_KEY)).toBe(fake.keys()[5])
+    })
+
+    it('advances the cursor past a page cut short by the runtime limit', async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(NOW)
+
+      const fake = createFakeBucket()
+      const projectIds = [10, 11, 12, 13]
+
+      for (const projectId of projectIds) {
+        testDb.insertProject({
+          id: projectId,
+          userId: OWNER,
+          knowledgePackVersion: 5,
+        })
+
+        for (let version = 1; version <= 5; version++) {
+          fake.put(knowledgePackKey(OWNER, projectId, version), OLD)
+        }
+      }
+
+      const originalList = fake.list.getMockImplementation()!
+
+      fake.list.mockImplementation(async (options) => {
+        vi.advanceTimersByTime(600)
+
+        return originalList(options)
+      })
+
+      const result = await sweep(fake, { batchSize: 15, maxRuntimeMs: 1000 })
+      const firstPage = await fake.list.mock.results[0]!.value
+
+      expect(result.hasMore).toBe(true)
+      expect(firstPage.cursor).toBeDefined()
+      expect(kv.values.get(CURSOR_KEY)).toBe(firstPage.cursor)
+
+      fake.list.mockClear()
+      await sweep(fake, { batchSize: 15, maxRuntimeMs: 1000 })
+
+      expect(fake.list.mock.calls[0]![0].cursor).toBe(firstPage.cursor)
+    })
+
     it('does not keep a cursor when R2 truncates without one', async () => {
       const fake = createFakeBucket()
 

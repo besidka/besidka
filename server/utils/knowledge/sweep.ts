@@ -17,6 +17,7 @@ const NEWEST_PACK_VERSIONS_KEPT = 2
 const DEFAULT_GRACE_MS = 60 * 60 * 1000
 const SWEEP_CURSOR_KEY = 'knowledge-sweep-cursor'
 const SWEEP_CURSOR_TTL_SECONDS = 6 * 60 * 60
+const MAX_CONSECUTIVE_FAILED_PAGES = 3
 
 export interface KnowledgeSweepObject {
   key: string
@@ -358,8 +359,15 @@ function logSweepCursorError(
  * `delete(keys)` call per page. When a run ends on its runtime bound the
  * listing cursor is kept in KV (`knowledge-sweep-cursor`, 6 h) and the next
  * run resumes there, so a bucket larger than one run's budget is eventually
- * covered; a finished listing, a delete failure or any KV error means the
- * next run starts from the beginning.
+ * covered; a finished listing or any KV error means the next run starts from
+ * the beginning.
+ *
+ * The cursor always moves forward past a page the run could not finish: a
+ * failed delete or an unexpected error marks the page failed (counted, logged)
+ * and the listing continues, three failed pages in a row end the run, and a
+ * page cut short by the runtime bound is not rescanned (its pack retention is
+ * also enforced at build time). One bad key or row therefore cannot pin the
+ * sweep to the same page; the next full pass retries it.
  */
 export async function sweepProjectKnowledge(
   input: KnowledgeSweepInput,
@@ -421,29 +429,16 @@ export async function sweepProjectKnowledge(
   }
 
   let cursor = await readSweepCursor(logger)
-  let stopped = false
-  let isPageIncomplete = false
+  let consecutiveFailedPages = 0
   let isListingFinished = false
 
   if (cursor) {
     logger?.set({ knowledgeSweepResumed: true })
   }
 
-  do {
-    if (isOutOfTime()) {
-      result.hasMore = true
-      break
-    }
-
-    const page = await storage.list({
-      prefix: KNOWLEDGE_LIST_PREFIX,
-      cursor,
-      limit: pageSize,
-    })
-
-    result.pagesScanned++
-    result.scannedCount += page.objects.length
-
+  async function scanPage(page: {
+    objects: KnowledgeSweepObject[]
+  }): Promise<{ isFailed: boolean, isIncomplete: boolean }> {
     const candidates: ParsedKnowledgeKey[] = []
 
     for (const object of page.objects) {
@@ -506,8 +501,7 @@ export async function sweepProjectKnowledge(
 
     if (orphanProjectKeys.length > 0) {
       if (!await deleteKeys(orphanProjectKeys)) {
-        stopped = true
-        break
+        return { isFailed: true, isIncomplete: false }
       }
 
       result.orphanProjectObjectsDeleted += orphanProjectKeys.length
@@ -515,8 +509,7 @@ export async function sweepProjectKnowledge(
 
     if (orphanItemKeys.length > 0) {
       if (!await deleteKeys(orphanItemKeys)) {
-        stopped = true
-        break
+        return { isFailed: true, isIncomplete: false }
       }
 
       result.orphanItemObjectsDeleted += orphanItemKeys.length
@@ -529,8 +522,8 @@ export async function sweepProjectKnowledge(
 
       if (isOutOfTime()) {
         result.hasMore = true
-        isPageIncomplete = true
-        break
+
+        return { isFailed: false, isIncomplete: true }
       }
 
       packProjectsChecked.add(projectId)
@@ -550,15 +543,65 @@ export async function sweepProjectKnowledge(
       }
 
       if (!await deleteKeys(stalePacks.keys)) {
-        stopped = true
-        break
+        return { isFailed: true, isIncomplete: false }
       }
 
       result.stalePackObjectsDeleted += stalePacks.keys.length
     }
 
-    if (stopped || isPageIncomplete) {
+    return { isFailed: false, isIncomplete: false }
+  }
+
+  async function scanPageSafely(page: {
+    objects: KnowledgeSweepObject[]
+  }): Promise<{ isFailed: boolean, isIncomplete: boolean }> {
+    try {
+      return await scanPage(page)
+    } catch (exception) {
+      logger?.set({
+        attributes: {
+          knowledgeSweepPageFailure: {
+            error: exceptionMessage(exception),
+          },
+        },
+      })
+
+      return { isFailed: true, isIncomplete: false }
+    }
+  }
+
+  do {
+    if (isOutOfTime()) {
+      result.hasMore = true
       break
+    }
+
+    let page: Awaited<ReturnType<KnowledgeSweepBucket['list']>>
+
+    try {
+      page = await storage.list({
+        prefix: KNOWLEDGE_LIST_PREFIX,
+        cursor,
+        limit: pageSize,
+      })
+    } catch (exception) {
+      if (cursor) {
+        await saveSweepCursor(undefined, logger)
+      }
+
+      throw exception
+    }
+
+    result.pagesScanned++
+    result.scannedCount += page.objects.length
+
+    const outcome = await scanPageSafely(page)
+
+    if (outcome.isFailed) {
+      result.hasMore = true
+      consecutiveFailedPages++
+    } else {
+      consecutiveFailedPages = 0
     }
 
     if (page.truncated && !page.cursor) {
@@ -569,13 +612,17 @@ export async function sweepProjectKnowledge(
 
     cursor = page.truncated ? page.cursor : undefined
     isListingFinished = cursor === undefined
+
+    if (consecutiveFailedPages >= MAX_CONSECUTIVE_FAILED_PAGES) {
+      break
+    }
+
+    if (outcome.isIncomplete) {
+      break
+    }
   } while (cursor)
 
-  if (stopped) {
-    result.hasMore = true
-  }
-
-  const cursorToKeep = !stopped && !isListingFinished && result.hasMore
+  const cursorToKeep = !isListingFinished && result.hasMore
     ? cursor
     : undefined
 
