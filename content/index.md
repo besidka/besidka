@@ -33,8 +33,14 @@ carousel:
     alt: The web search menu with Exa selected and its three search levels, Lite $4/1k, Auto $7/1k and Deep $12/1k with Deep active, next to the message info cards for a Lite answer (~$0.004) and a Deep answer (~$0.012).
     caption: Pick Lite, Auto or Deep for Exa web search, and see what each answer cost
   - src: /carousel/projects.webp
-    alt: A project page with project instructions marked Active and project memory synthesized from the project's chats.
-    caption: Projects with shared instructions and memory
+    alt: A project page with a Project knowledge panel listing two notes, a text file and a PDF under a capacity meter, next to the Project memory card with entries grouped as Essentials, Areas and Topics.
+    caption: Projects with memory, files and notes
+  - src: /carousel/memory.webp
+    alt: The Memory page with Use memory on, Generate memory from chats off and Search and reference chats on, next to What Besidka remembers with a Tell Besidka what to remember or change box and entries grouped as You and Topics.
+    caption: Profile memory you can read, edit and delete
+  - src: /carousel/chat-search.webp
+    alt: A chat answer with a Searched your chats step listing two earlier chats with their dates, and the answer built from what they said.
+    caption: Search your past chats, with links to the sources
   - src: /carousel/code-and-diagrams.webp
     alt: A light-theme chat answer with a syntax-highlighted TypeScript snippet and a rendered sequence diagram of a Worker reading from KV and falling back to D1.
     caption: Highlighted code and rendered diagrams
@@ -266,7 +272,7 @@ features:
     body: Share a chat with a public, unguessable link. Anyone can view it without an account and branch it into their own chats. You control expiry, indexing, and what's visible.
   - icon: lucide:folder-kanban
     title: Projects
-    body: Group related chats under a project with shared instructions and memory so every conversation has context.
+    body: Group related chats under a project with shared instructions, files, notes and memory so every conversation has context.
   - icon: lucide:telescope
     title: Deep research
     body: Kick off an autonomous agent that browses the web, cross-checks sources, and writes a cited report while you do something else. Runs on your own key for roughly $1 to $10 per task, with a push notification when it's done.
