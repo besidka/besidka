@@ -99,7 +99,9 @@
               class="rounded-box bg-base-content/5 p-4 text-sm"
               data-testid="memory-backfill-empty"
             >
-              There are no chats to read.
+              {{ isContinuation
+                ? 'There are no older chats to read.'
+                : 'There are no chats to read.' }}
             </p>
             <dl
               v-else-if="estimate"
@@ -163,7 +165,7 @@
               class="text-xs text-base-content/70"
               data-testid="memory-backfill-limits-note"
             >
-              {{ memoryBackfillLimitsNote }}
+              {{ limitsText }}
             </p>
             <p
               v-if="lastRunText"
@@ -517,10 +519,19 @@ const isStartEnabled = computed<boolean>(() => {
     && !isStarting.value
 })
 
-const chatsText = computed<string>(() => {
-  const chats = estimate.value?.chats ?? 0
+const isContinuation = computed<boolean>(() => {
+  return estimate.value?.continuesPreviousRun === true
+})
 
-  return `${chats} ${chats === 1 ? 'chat' : 'chats'}`
+const chatsText = computed<string>(() => {
+  return describeBackfillChats(
+    estimate.value?.chats ?? 0,
+    isContinuation.value,
+  )
+})
+
+const limitsText = computed<string>(() => {
+  return describeBackfillLimits(isContinuation.value)
 })
 
 const tokensText = computed<string>(() => {

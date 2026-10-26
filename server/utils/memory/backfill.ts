@@ -26,7 +26,13 @@ import {
   getBackfillEstimate,
   invalidateBackfillEstimate,
 } from '~~/server/utils/memory/backfill-estimate'
-import { backfillEligibleChats } from '~~/server/utils/memory/backfill-queue'
+import {
+  backfillAfterCursor,
+  backfillEligibleChats,
+  backfillWindowChats,
+  resolveBackfillWindow,
+} from '~~/server/utils/memory/backfill-queue'
+import type { BackfillWindow } from '~~/server/utils/memory/backfill-queue'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
@@ -305,12 +311,12 @@ async function isStoredModelKeyAvailable(
 async function countEligibleChats(
   db: DbClient,
   userId: number,
-  createdBefore: Date,
+  window: BackfillWindow,
 ): Promise<number> {
   const capped = db
     .select({ id: schema.chats.id })
     .from(schema.chats)
-    .where(backfillEligibleChats(userId, createdBefore))
+    .where(backfillWindowChats(userId, window))
     .limit(MEMORY_LIMITS.backfillMaxChats)
     .as('capped_eligible_chats')
   const [row] = await db
@@ -329,15 +335,11 @@ async function selectNextChats(
   job: MemoryBackfillJobRow,
   limit: number,
 ) {
-  const cursor = job.cursorActivityAt && job.cursorChatId
-    ? or(
-      lt(schema.chats.activityAt, job.cursorActivityAt),
-      and(
-        eq(schema.chats.activityAt, job.cursorActivityAt),
-        lt(schema.chats.id, job.cursorChatId),
-      ),
-    )
-    : undefined
+  const cursor = backfillAfterCursor(
+    job.cursorActivityAt && job.cursorChatId
+      ? { activityAt: job.cursorActivityAt, chatId: job.cursorChatId }
+      : null,
+  )
 
   return await db
     .select({ id: schema.chats.id, activityAt: schema.chats.activityAt })
@@ -371,11 +373,16 @@ async function pruneFinishedJobs(db: DbClient, userId: number) {
 }
 
 /**
- * Starts the one backfill a user may have running: a pass over the account
- * chats that existed at this moment, newest first and at most
- * `MEMORY_LIMITS.backfillMaxChats` of them, as `trigger: 'backfill'`
- * extraction. Needs memory on and the automatic-updates opt-in on, resolves
- * the model once (the job stores the choice, so a later settings change never
+ * Starts the one backfill a user may have running: a pass over at most
+ * `MEMORY_LIMITS.backfillMaxChats` account chats, newest first, as
+ * `trigger: 'backfill'` extraction. The window comes from
+ * `resolveBackfillWindow`: a first run reads the chats that exist now; when
+ * the latest finished job stopped before its queue ran out, the new job
+ * starts after that job's cursor with the same cutoff, so no chat is paid for
+ * twice and older history stays reachable; when the latest job read every
+ * past chat, starting is a 409 and no job is created. Needs memory on and the
+ * automatic-updates opt-in on, resolves the model once (the job stores the
+ * choice, so a later settings change never
  * switches models mid-run) and stores the approximate cost estimate, served
  * from the per-user cache when fresh. Chats created afterwards belong to the
  * normal sweep. A second start while one runs is a 409, enforced by the
@@ -414,15 +421,30 @@ export async function startBackfill(
     })
   }
 
-  const createdBefore = input.now ?? new Date()
-  const totalChats = await countEligibleChats(db, userId, createdBefore)
+  const window = await resolveBackfillWindow(
+    db,
+    userId,
+    input.now ?? new Date(),
+  )
+
+  if (!window) {
+    throw createError({
+      message: 'All past chats were already read',
+      status: 409,
+      why: 'The last backfill read every past account chat. Newer chats are added to memory automatically.',
+      fix: 'Nothing to do: memory keeps updating from new chats.',
+    })
+  }
+
+  const { createdBefore } = window
+  const totalChats = await countEligibleChats(db, userId, window)
   let estimate: MemoryBackfillEstimate | null = null
 
   try {
     estimate = await getBackfillEstimate({
       userId,
       selection,
-      createdBefore,
+      window,
       db,
     })
   } catch (exception) {
@@ -460,6 +482,12 @@ export async function startBackfill(
       modelId: selection.modelId,
       estimate: estimate as unknown as Record<string, unknown> | null,
       createdBefore,
+      ...(window.cursor
+        ? {
+          cursorActivityAt: window.cursor.activityAt,
+          cursorChatId: window.cursor.chatId,
+        }
+        : {}),
     }).returning()
 
     await invalidateBackfillEstimate(userId)

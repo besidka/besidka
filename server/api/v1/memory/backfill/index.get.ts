@@ -8,6 +8,7 @@ import {
   getBackfillProgress,
   readBackfillGate,
 } from '~~/server/utils/memory/backfill'
+import { resolveBackfillWindow } from '~~/server/utils/memory/backfill-queue'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { resolveMemoryModel } from '~~/server/utils/memory/resolve-model'
 import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
@@ -17,10 +18,12 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  * GET /memory/backfill
  *
  * The caller's latest backfill job (running, or the last finished one). While
- * no job is running it also carries an approximate estimate of what a new run
- * would cost, computed with a dry-run model resolution, or the reason none
- * can be given (the estimate is cached per user for ten minutes, and a
- * failing estimate answers `estimate-failed`, never an error). Counts only;
+ * no job is running it also carries an approximate estimate of what the next
+ * run would cost (a fresh run, or the continuation of a run that stopped at
+ * its chat cap, see `resolveBackfillWindow`), computed with a dry-run model
+ * resolution, or the reason none can be given: `all-chats-read` once the last
+ * run read every past chat, `estimate-failed` when the estimate throws (never
+ * an error). The estimate is cached per user for ten minutes. Counts only;
  * never any chat text.
  */
 export default defineEventHandler(async (event) => {
@@ -55,6 +58,14 @@ export default defineEventHandler(async (event) => {
     return response
   }
 
+  const window = await resolveBackfillWindow(db, userId, new Date())
+
+  if (!window) {
+    response.reason = 'all-chats-read'
+
+    return response
+  }
+
   const selection = await resolveMemoryModel({
     userId,
     scope: 'profile',
@@ -72,6 +83,7 @@ export default defineEventHandler(async (event) => {
     response.estimate = await getBackfillEstimate({
       userId,
       selection,
+      window,
       db,
     })
   } catch (exception) {

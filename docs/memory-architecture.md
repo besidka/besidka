@@ -1479,10 +1479,33 @@ cursor over the user's non-project chats (`activity_at desc, id desc`, created
 before the job started); counters are updated with atomic increments, so the
 cron sweep and the drive endpoint can both advance a job. The model is resolved
 once at job start (`resolveMemoryModel`, scope `profile`) and the same
-selection is used for every chat, so the estimate does not lie. A job reaches at most `MEMORY_LIMITS.backfillMaxChats` (200) of the newest
-chats; the start count and the estimate aggregate only that capped set. A
-second run starts again from the newest chats, it does not continue past the
-cap. Passes run with
+selection is used for every chat, so the estimate does not lie. A job reaches at most `MEMORY_LIMITS.backfillMaxChats` (200) chats of its
+window; the start count and the estimate aggregate only that capped set, so
+they always describe exactly the chats the job will read
+(`backfillCappedChatIds`, `server/utils/memory/backfill-queue.ts`). The window
+comes from `resolveBackfillWindow`, without any schema change:
+
+- No finished job yet: a fresh window, every eligible chat created up to now,
+  from the newest.
+- The latest finished job stopped before its queue ran out (it reached the
+  chat cap, was cancelled, or failed): the new job **continues** it. It keeps
+  that job's `created_before` and starts after its `cursor_activity_at` /
+  `cursor_chat_id`, which are copied into the new row, so no chat is paid for
+  twice and older history stays reachable 200 chats at a time. The sheet
+  says "next N older chats".
+- The latest job completed because its queue ran out: every past chat has
+  been read. GET answers `reason: 'all-chats-read'` and POST answers 409
+  `All past chats were already read`, and no job is created. Chosen over
+  "start fresh only if new eligible chats exist" because a fresh job always
+  starts from the newest chats and would re-read (and re-bill) the old ones
+  too, while bounding it below by the old cutoff would need a stored lower
+  bound, which is a schema change; chats created after the cutoff are the
+  forward sweep's job anyway. Known consequence: after a memory Reset, or
+  after extraction was off for a while, there is no way to backfill the same
+  history again; that would need an explicit "start over" action (not built,
+  owner call).
+
+Passes run with
 `trigger: 'backfill'`: gate `memoryEnabled !== false` and
 `memoryExtractionEnabled === true` (a job is cancelled when either is switched
 off, or when the user resets memory), project chats skipped, the chat's history
@@ -1504,10 +1527,11 @@ API (all session-scoped; POSTs have the cross-site guard):
 
 - `GET /api/v1/memory/backfill` -> `{ job, estimate, reason }`. No running job:
   `estimate` is a dry-run for the resolved model (null with `reason`
-  `memory-disabled | extraction-disabled | no-model | estimate-failed` when unavailable; the dry-run estimate is cached per user for 10 minutes) and
+  `memory-disabled | extraction-disabled | all-chats-read | no-model | estimate-failed` when unavailable; the dry-run estimate covers the next job's window, carries `continuesPreviousRun`, and is cached per user for 10 minutes, keyed by model and window) and
   `job` is the latest finished job or null; a running job: its progress.
 - `POST /api/v1/memory/backfill` -> `{ job }`: START only (409 when a gate
-  fails, no model, or one is already running; 10 s start cooldown). It never
+  fails, no model, every past chat was already read, or one is already
+  running; 10 s start cooldown). It never
   drives, so a retry or a second tab can never begin a second full-history
   run.
 - `POST /api/v1/memory/backfill/step` -> `{ job }`: drives ONE bounded step of
@@ -1593,12 +1617,12 @@ handled separately.
 | 1 | Medium: the memory-write lock missed web search in the same step or without a tool part | Fixed: the route presets the lock before the first step on any requested web search (3.11) |
 | 2 | Medium: every off-to-on extraction toggle rewrote all chat rows | Fixed: per-chat stamps stay (they floor the account sweep and cap backfill), restamp only chats with activity since their stamp, 10 s per-user enable cooldown (3.12) |
 | 3 | Low: a client `slug` skipped the compliance gate | Fixed: slug removed from the entry input, always derived from the gated title (3.1) |
-| 4 | Low: the backfill estimate scanned the full history with an easy-to-bypass cache | Fixed by bounding: the estimate aggregates only the newest `backfillMaxChats` chats (3.15); the cache is unchanged |
+| 4 | Low: the backfill estimate scanned the full history with an easy-to-bypass cache | Fixed by bounding: the estimate aggregates only the at most `backfillMaxChats` chats of the next job's window (3.15); the cache is additionally keyed by window |
 | 9 | Low: extraction could attach entries to a chat deleted during the model call | Fixed: a missing chat ends the pass as `chat-unavailable`; a narrow detach-to-delete window remains (3.12) |
 | 10 | Low: never-store detectors missed non-ASCII digits, other separators, spaced PESEL, NIP keyword after the number, AWS secrets with `/`, Polish `hasło to X` | Fixed in `compliance.ts` with table-driven positive and negative specs |
 | 11 | Low: the sensitive-topic classifier missed hidden characters, unaccented Polish and Latin look-alikes in Cyrillic | Fixed in `sensitivity.ts`: format characters and stray marks stripped, look-alikes folded, a diacritic-folded Polish pass |
 | 12 | Low: home address, immigration and criminal history were enforced only by the extractor label | Fixed: narrow deterministic detectors in `evaluateMemoryEntry` (`topical-never-store.ts`), so every write path refuses them with the unchanged 422 |
-| 13 | Low: a backfill with a failed estimate had no spend cap | Fixed: hard per-job ceilings `backfillMaxChats` (200) and `backfillMaxTokens` (4M), stated in the backfill sheet (3.15) |
+| 13 | Low: a backfill with a failed estimate had no spend cap | Fixed: hard per-job ceilings `backfillMaxChats` (200) and `backfillMaxTokens` (4M), stated in the backfill sheet; a later job continues after the previous job's cursor instead of re-reading the same chats, and starting is refused once every past chat was read (3.15) |
 | 14 | Low: each sweep tick read every idle chat of opted-in users | Fixed by bounding: the chats index range starts at the opt-in cut-over (section 7, "D1 cost of the sweep") |
 | 15 | Info: the export omits processing records and knowledge | Docs only: recorded as a known gap (3.7) |
 | 16 | Info: incognito chats are documented but not built | Docs only: marked not built (3.3, 3.4, 3.7) |

@@ -293,6 +293,11 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       ['memory-disabled', 'Turn on Use memory first.'],
       ['extraction-disabled', 'Turn on Generate memory from chats first.'],
       ['estimate-failed', 'Couldn\'t estimate the cost. Try again.'],
+      [
+        'all-chats-read',
+        'The last run already read all your past chats. New chats are added '
+        + 'to memory automatically.',
+      ],
     ] as const)('explains %s and disables Start', async (reason, copy) => {
       const wrapper = await mountSheet({
         overview: { job: null, estimate: null, reason },
@@ -371,12 +376,32 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       )
       expect(textOf(wrapper, 'memory-backfill-limits-note')).toBe(
         `Reads at most your ${MEMORY_LIMITS.backfillMaxChats} most recent `
-        + 'account chats and stops after '
+        + 'account chats. Stops after '
         + `${MEMORY_LIMITS.backfillMaxTokens / 1_000_000} million tokens in `
         + 'total, even if the cost could not be estimated.',
       )
       expect(isDisabled(wrapper, 'memory-backfill-start')).toBe(false)
       expect(hasTestId(wrapper, 'memory-backfill-last-run')).toBe(false)
+    })
+
+    it('describes a continuation as the next older chats', async () => {
+      const wrapper = await mountSheet({
+        overview: {
+          job: null,
+          estimate: createEstimate({ chats: 3, continuesPreviousRun: true }),
+          reason: null,
+        },
+      })
+
+      expect(textOf(wrapper, 'memory-backfill-estimate-chats'))
+        .toBe('next 3 older chats')
+      expect(textOf(wrapper, 'memory-backfill-limits-note')).toBe(
+        'Continues where the last run stopped and reads at most the next '
+        + `${MEMORY_LIMITS.backfillMaxChats} older account chats. Stops after `
+        + `${MEMORY_LIMITS.backfillMaxTokens / 1_000_000} million tokens in `
+        + 'total, even if the cost could not be estimated.',
+      )
+      expect(isDisabled(wrapper, 'memory-backfill-start')).toBe(false)
     })
 
     it.each([

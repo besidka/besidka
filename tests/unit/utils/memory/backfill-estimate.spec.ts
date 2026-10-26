@@ -229,6 +229,49 @@ describe('estimateBackfill', () => {
       expect(result.userChars).toBe(MEMORY_LIMITS.backfillMaxChats * 10)
     })
 
+  it('estimates only the chats after a continuation cursor', async () => {
+    const newest = await chatWith(
+      [{ role: 'user', text: 'n'.repeat(700) }],
+      userId,
+      { activityAt: minutesBefore(10) },
+    )
+
+    await chatWith(
+      [{ role: 'user', text: 'o'.repeat(40) }],
+      userId,
+      { activityAt: minutesBefore(20) },
+    )
+    await chatWith(
+      [{ role: 'user', text: 'p'.repeat(60) }],
+      userId,
+      { activityAt: minutesBefore(30) },
+    )
+
+    const { estimateBackfill } = await import(
+      '~~/server/utils/memory/backfill-estimate'
+    )
+    const result = await estimateBackfill({
+      userId,
+      selection: DIRECT_SELECTION,
+      window: {
+        createdBefore: EXTRACTION_NOW,
+        cursor: { activityAt: minutesBefore(10), chatId: newest.id },
+        isContinuation: true,
+      },
+      db: testDb.db,
+    })
+
+    expect(result.chats).toBe(2)
+    expect(result.userChars).toBe(100)
+    expect(result.continuesPreviousRun).toBe(true)
+  })
+
+  it('marks a fresh window as not continuing a previous run', async () => {
+    await chatWith([{ role: 'user', text: 'a'.repeat(50) }])
+
+    expect((await estimate()).continuesPreviousRun).toBe(false)
+  })
+
   it('returns zeros and a zero cost for a user without chats', async () => {
     const result = await estimate()
 
@@ -536,6 +579,44 @@ describe('estimateBackfill', () => {
         expect.any(String),
         { expirationTtl: 600 },
       )
+      vi.unstubAllGlobals()
+    })
+
+    it('recomputes for a different window', async () => {
+      const kv = createKvStub()
+
+      vi.stubGlobal('useKV', () => kv)
+
+      const newest = await chatWith(
+        [{ role: 'user', text: 'a'.repeat(500) }],
+        userId,
+        { activityAt: minutesBefore(10) },
+      )
+
+      await chatWith(
+        [{ role: 'user', text: 'b'.repeat(500) }],
+        userId,
+        { activityAt: minutesBefore(20) },
+      )
+
+      const fresh = await cached()
+      const { getBackfillEstimate } = await import(
+        '~~/server/utils/memory/backfill-estimate'
+      )
+      const continued = await getBackfillEstimate({
+        userId,
+        selection: DIRECT_SELECTION,
+        window: {
+          createdBefore: EXTRACTION_NOW,
+          cursor: { activityAt: minutesBefore(10), chatId: newest.id },
+          isContinuation: true,
+        },
+        db: testDb.db,
+      })
+
+      expect(fresh.chats).toBe(2)
+      expect(continued.chats).toBe(1)
+      expect(kv.put).toHaveBeenCalledTimes(2)
       vi.unstubAllGlobals()
     })
 

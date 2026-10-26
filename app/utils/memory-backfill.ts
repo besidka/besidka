@@ -16,10 +16,32 @@ const TOKENS_PER_MILLION = 1_000_000
 const BACKFILL_MAX_MILLION_TOKENS
   = MEMORY_LIMITS.backfillMaxTokens / TOKENS_PER_MILLION
 
-export const memoryBackfillLimitsNote = 'Reads at most your '
-  + `${MEMORY_LIMITS.backfillMaxChats} most recent account chats and stops `
-  + `after ${BACKFILL_MAX_MILLION_TOKENS} million tokens in total, even if `
-  + 'the cost could not be estimated.'
+const BACKFILL_TOKEN_LIMIT_SENTENCE = 'Stops after '
+  + `${BACKFILL_MAX_MILLION_TOKENS} million tokens in total, even if the `
+  + 'cost could not be estimated.'
+
+export function describeBackfillLimits(isContinuation: boolean): string {
+  const chatLimit = MEMORY_LIMITS.backfillMaxChats
+
+  if (isContinuation) {
+    return 'Continues where the last run stopped and reads at most the next '
+      + `${chatLimit} older account chats. ${BACKFILL_TOKEN_LIMIT_SENTENCE}`
+  }
+
+  return `Reads at most your ${chatLimit} most recent account chats. `
+    + BACKFILL_TOKEN_LIMIT_SENTENCE
+}
+
+export function describeBackfillChats(
+  chats: number,
+  isContinuation: boolean,
+): string {
+  const noun = chats === 1 ? 'chat' : 'chats'
+
+  return isContinuation
+    ? `next ${chats} older ${noun}`
+    : `${chats} ${noun}`
+}
 
 export const memoryBackfillModelSourceLabels: Record<
   MemoryModelSource,
@@ -48,6 +70,8 @@ export const memoryBackfillUnavailableCopy: Record<
   'memory-disabled': 'Turn on Use memory first.',
   'extraction-disabled': 'Turn on Generate memory from chats first.',
   'estimate-failed': 'Couldn\'t estimate the cost. Try again.',
+  'all-chats-read': 'The last run already read all your past chats. New '
+    + 'chats are added to memory automatically.',
 }
 
 export const memoryBackfillDroppedLabels: Record<string, string> = {
