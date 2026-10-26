@@ -66,12 +66,6 @@ interface PanelHandle {
   resetTransientState: () => void
 }
 
-defineProps<{
-  isWebSearchEnabled: boolean
-  isImageGenerationEnabled: boolean
-  isReasoningEnabled: boolean
-}>()
-
 const { selection } = useUserModel()
 const {
   name: selectedModelName,
@@ -84,6 +78,10 @@ const root = useTemplateRef<HTMLDivElement>('root')
 const trigger = useTemplateRef<HTMLButtonElement>('trigger')
 const panel = useTemplateRef<PanelHandle>('panel')
 const panelId = useId()
+const openPopover = useState<'models' | 'tools' | null>(
+  'chat-input:open-popover',
+  () => null,
+)
 
 const selectedModelId = computed<string>(() => {
   return selection.value.modelId
@@ -101,6 +99,10 @@ function resetTransientState() {
 
 function close() {
   isOpen.value = false
+
+  if (openPopover.value === 'models') {
+    openPopover.value = null
+  }
 }
 
 function closeAndRestoreFocus() {
@@ -124,8 +126,15 @@ function toggle() {
 
   hasOpened.value = true
   isOpen.value = true
+  openPopover.value = 'models'
   mountedPanel?.prepareOpen()
 }
+
+watch(openPopover, (current) => {
+  if (current !== 'models' && isOpen.value) {
+    close()
+  }
+})
 
 function onSelect({ modelId, gatewayId }: {
   modelId: string

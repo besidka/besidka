@@ -32,8 +32,12 @@ mockNuxtImport('useUserKeys', () => useUserKeysMock)
 mockNuxtImport('useChatFiles', () => useChatFilesMock)
 mockNuxtImport('useDevice', () => useDeviceMock)
 mockNuxtImport('useAutoWebSearch', () => () => ({
+  isAvailable: { value: false },
+  isPreferred: { value: false },
+  setPreferred: () => {},
   resolveWebSearchMode: () => 'always',
 }))
+mockNuxtImport('useMediaQuery', () => () => computed(() => true))
 mockNuxtImport('useLegalConsent', () => () => ({
   ensureSendConsent: async () => true,
   handleConsentError: async () => false,
@@ -1227,13 +1231,7 @@ describe('chats new page with a real ChatInput and a gateway image-only '
           ChatInputFilesModal: filesModalStub,
           LazyChatInputFilesDropZone: true,
           LazyChatScroll: true,
-          LazyChatInputFilesAttachedPreview: true,
           LazyChatInputModelsTrigger: true,
-          LazyChatInputFilesTrigger: true,
-          LazyChatInputWebSearchTrigger: true,
-          LazyChatInputReasoningTrigger: true,
-          LazyChatInputDeepResearchTrigger: true,
-          LazyChatInputToolbarMore: true,
           UiBubble: { template: '<div><slot /></div>' },
           UiButton: uiButtonStub,
         },
@@ -1261,14 +1259,19 @@ describe('chats new page with a real ChatInput and a gateway image-only '
     await nextTick()
     await flushPromises()
 
-    const createImageButton = wrapper.get(
-      '[title="Image creation is required for this model"]',
+    const imageTile = wrapper.get(
+      '[data-testid="chat-input-tile-image-body"]',
     )
 
-    expect(createImageButton.classes()).toContain('btn-active')
+    expect(imageTile.attributes('aria-label'))
+      .toBe('Image creation is required for this model')
     expect(wrapper.find(
-      '[title="Disable image creation"]',
+      '[data-testid="chat-input-tile-image-remove"]',
     ).exists()).toBe(false)
+    expect(wrapper.find('[data-testid="chat-input-tile-search"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="chat-input-tile-reasoning"]')
+      .exists()).toBe(false)
 
     await wrapper.get('textarea').setValue('draw me a cat')
     await wrapper.get('[data-testid="send-message"]').trigger('click')

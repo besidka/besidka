@@ -12,4 +12,13 @@ export const CHAT_MEMORY_EXCLUSION_CONFIRM_SUBTITLE
   = `${CHAT_MEMORY_EXCLUSION_HELPER} Memories learned only from this chat `
     + 'are removed.'
 
-export const CHAT_MEMORY_EXCLUSION_ICON = 'lucide:eye-off'
+export const CHAT_MEMORY_EXCLUSION_ICON = 'lucide:book-x'
+
+export const CHAT_MEMORY_ICON = 'lucide:book-user'
+
+export const CHAT_MEMORY_USE_LABEL = 'Use memory'
+
+export const CHAT_MEMORY_USE_HINT
+  = 'Learns from this chat and finds it in chat search.'
+
+export const CHAT_MEMORY_OFF_LABEL = 'Memory off'
