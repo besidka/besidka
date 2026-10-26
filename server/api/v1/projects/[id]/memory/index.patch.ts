@@ -1,4 +1,5 @@
 import { createError } from 'evlog'
+import { setProjectUseAccountMemory } from '~~/server/utils/projects/memory-account'
 import { toggleProjectMemory } from '~~/server/utils/projects/memory-refresh'
 import {
   defineEventHandler,
@@ -25,7 +26,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedBody(event, z.object({
-    enabled: z.boolean(),
+    enabled: z.boolean().optional(),
+    useAccountMemory: z.boolean().optional(),
+  }).refine((value) => {
+    return value.enabled !== undefined
+      || value.useAccountMemory !== undefined
+  }, {
+    message: 'Provide enabled or useAccountMemory',
   }).safeParse)
 
   if (body.error) {
@@ -48,12 +55,37 @@ export default defineEventHandler(async (event) => {
     userId,
     projectId: params.data.id,
     enabled: body.data.enabled,
+    useAccountMemory: body.data.useAccountMemory,
   })
+
+  const { enabled, useAccountMemory } = body.data
+
+  if (useAccountMemory !== undefined) {
+    const card = await setProjectUseAccountMemory(
+      params.data.id,
+      userId,
+      useAccountMemory,
+      undefined,
+      logger,
+    )
+
+    if (enabled === undefined) {
+      return card
+    }
+  }
+
+  if (enabled === undefined) {
+    throw createError({
+      message: 'Invalid request body',
+      status: 400,
+      why: 'Provide enabled or useAccountMemory',
+    })
+  }
 
   return await toggleProjectMemory(
     params.data.id,
     userId,
-    body.data.enabled,
+    enabled,
     undefined,
     logger,
   )

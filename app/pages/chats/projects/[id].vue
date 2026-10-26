@@ -64,8 +64,10 @@
       :is-refreshing="isRefreshingProjectMemory"
       :is-toggling="isTogglingProjectMemory"
       :automatic-updates="hasAutomaticMemoryUpdates"
+      :is-saving-account-memory="isSavingAccountMemory"
       @refresh="refreshProjectMemory"
       @toggle="toggleProjectMemory"
+      @update-account-memory="saveAccountMemory"
       @changed="onMemoryEntriesChanged"
     />
 
@@ -217,6 +219,7 @@ const isSavingProjectInstructions = shallowRef<boolean>(false)
 const isRefreshingProjectMemory = shallowRef<boolean>(false)
 const initialProjectDetails = project.value
 const isTogglingProjectMemory = shallowRef<boolean>(false)
+const isSavingAccountMemory = shallowRef<boolean>(false)
 const projectInstructions = shallowRef<string | null>(
   initialProjectDetails?.instructions ?? null,
 )
@@ -463,6 +466,44 @@ async function toggleProjectMemory() {
     })
   } finally {
     isTogglingProjectMemory.value = false
+  }
+}
+
+async function saveAccountMemory(useAccountMemory: boolean) {
+  const previousCard = memoryCard.value
+
+  if (!project.value || !previousCard || isSavingAccountMemory.value) {
+    return
+  }
+
+  isSavingAccountMemory.value = true
+  memoryCardRequestId++
+  memoryCard.value = { ...previousCard, useAccountMemory }
+
+  try {
+    const response = await $fetch(`/api/v1/projects/${project.value.id}/memory`, {
+      method: 'PATCH',
+      body: { useAccountMemory },
+    })
+
+    memoryCardRequestId++
+    memoryCard.value = response
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    memoryCardRequestId++
+    memoryCard.value = memoryCard.value
+      ? { ...memoryCard.value, useAccountMemory: !useAccountMemory }
+      : previousCard
+
+    nuxtApp.runWithContext(() => {
+      useErrorMessage(
+        parsedException.message || 'Failed to update account memory sharing',
+        parsedException.why,
+      )
+    })
+  } finally {
+    isSavingAccountMemory.value = false
   }
 }
 

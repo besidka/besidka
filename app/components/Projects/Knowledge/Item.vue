@@ -47,6 +47,7 @@
         {{ typeLabel }}
       </span>
       <span data-testid="knowledge-item-size">{{ sizeLabel }}</span>
+      <span data-testid="knowledge-item-updated">{{ updatedLabel }}</span>
       <span
         v-if="tokensLabel"
         data-testid="knowledge-item-tokens"
@@ -141,6 +142,10 @@ const tokensLabel = computed<string | null>(() => {
 
 const typeLabel = computed<string>(() => {
   return getKnowledgeItemTypeLabel(props.item)
+})
+
+const updatedLabel = computed<string>(() => {
+  return `Updated ${formatMemoryUpdatedAge(new Date(props.item.updatedAt))}`
 })
 
 const sizeLabel = computed<string>(() => {

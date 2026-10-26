@@ -1,4 +1,5 @@
 import type { ProjectMemoryCardResponse } from '#shared/types/project-memory.d'
+import { MEMORY_SETTING_DEFAULTS } from '#shared/utils/memory-policy'
 import { createError } from 'evlog'
 import {
   assertOwnedProject,
@@ -40,6 +41,7 @@ export async function buildProjectMemoryCard(
       memoryModel: true,
       memoryError: true,
       memoryMigratedAt: true,
+      useAccountMemory: true,
     },
   })
 
@@ -73,6 +75,8 @@ export async function buildProjectMemoryCard(
     memoryModel: project.memoryModel,
     memoryError: project.memoryError,
     usesEntries,
+    useAccountMemory: project.useAccountMemory
+      ?? MEMORY_SETTING_DEFAULTS.useAccountMemory,
     legacyMemory,
     total: entries.length,
     limits: getMemoryEntryLimits(),

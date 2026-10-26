@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   refreshProjectMemoryFromChats: vi.fn(),
   toggleProjectMemory: vi.fn(),
   buildProjectMemoryCard: vi.fn(),
+  setProjectUseAccountMemory: vi.fn(),
   assertNotCrossSiteRequest: vi.fn(),
 }))
 
@@ -44,6 +45,10 @@ vi.mock('~~/server/utils/projects/memory-refresh', () => ({
   toggleProjectMemory: mocks.toggleProjectMemory,
 }))
 
+vi.mock('~~/server/utils/projects/memory-account', () => ({
+  setProjectUseAccountMemory: mocks.setProjectUseAccountMemory,
+}))
+
 vi.mock('~~/server/utils/projects/memory-card', () => ({
   buildProjectMemoryCard: mocks.buildProjectMemoryCard,
 }))
@@ -58,6 +63,7 @@ function createCard(overrides: Record<string, unknown> = {}) {
     memoryModel: googleProjectMemoryModel!.id,
     memoryError: null,
     usesEntries: true,
+    useAccountMemory: true,
     legacyMemory: null,
     total: 1,
     limits: {},
@@ -96,6 +102,11 @@ describe('project memory API', () => {
     vi.clearAllMocks()
     mocks.refreshProjectMemoryFromChats.mockResolvedValue(createCard())
     mocks.buildProjectMemoryCard.mockResolvedValue(createCard())
+    mocks.setProjectUseAccountMemory.mockImplementation(
+      async (_projectId: string, _userId: number, value: boolean) => {
+        return createCard({ useAccountMemory: value })
+      },
+    )
     mocks.toggleProjectMemory.mockImplementation(
       async (_projectId: string, _userId: number, enabled: boolean) => {
         return createCard({
@@ -219,6 +230,150 @@ describe('project memory API', () => {
       memoryProvider: 'google',
       memoryModel: googleProjectMemoryModel!.id,
     })
+  })
+
+  it('returns useAccountMemory on the project memory card', async () => {
+    mocks.buildProjectMemoryCard.mockResolvedValue(
+      createCard({ useAccountMemory: false }),
+    )
+
+    const handler = await getProjectMemoryCardHandler()
+    const response = await handler({ params: { id: 'project-1' } } as never)
+
+    expect(response).toMatchObject({ useAccountMemory: false })
+  })
+
+  it('turns account memory sharing off and on without toggling memory',
+    async () => {
+      const handler = await getToggleProjectMemoryHandler()
+
+      const offResponse = await handler({
+        params: { id: 'project-1' },
+        body: { useAccountMemory: false },
+      } as never)
+      const onResponse = await handler({
+        params: { id: 'project-1' },
+        body: { useAccountMemory: true },
+      } as never)
+
+      expect(mocks.setProjectUseAccountMemory).toHaveBeenNthCalledWith(
+        1,
+        'project-1',
+        1,
+        false,
+        undefined,
+        expect.objectContaining({ set: expect.any(Function) }),
+      )
+      expect(mocks.setProjectUseAccountMemory).toHaveBeenNthCalledWith(
+        2,
+        'project-1',
+        1,
+        true,
+        undefined,
+        expect.objectContaining({ set: expect.any(Function) }),
+      )
+      expect(mocks.toggleProjectMemory).not.toHaveBeenCalled()
+      expect(offResponse).toMatchObject({
+        projectId: 'project-1',
+        memoryStatus: 'ready',
+        useAccountMemory: false,
+      })
+      expect(onResponse).toMatchObject({ useAccountMemory: true })
+    })
+
+  it('applies both fields in one request and returns the toggle card',
+    async () => {
+      const handler = await getToggleProjectMemoryHandler()
+
+      const response = await handler({
+        params: { id: 'project-1' },
+        body: { enabled: false, useAccountMemory: false },
+      } as never)
+
+      expect(mocks.setProjectUseAccountMemory).toHaveBeenCalledTimes(1)
+      expect(mocks.toggleProjectMemory).toHaveBeenCalledWith(
+        'project-1',
+        1,
+        false,
+        undefined,
+        expect.objectContaining({ set: expect.any(Function) }),
+      )
+      expect(response).toMatchObject({ memoryStatus: 'disabled' })
+    })
+
+  it('does not touch account memory when only enabled is sent', async () => {
+    const handler = await getToggleProjectMemoryHandler()
+
+    await handler({
+      params: { id: 'project-1' },
+      body: { enabled: true },
+    } as never)
+
+    expect(mocks.setProjectUseAccountMemory).not.toHaveBeenCalled()
+    expect(mocks.toggleProjectMemory).toHaveBeenCalledTimes(1)
+  })
+
+  it('propagates a 404 for a foreign or missing project', async () => {
+    mocks.setProjectUseAccountMemory.mockRejectedValue(
+      (globalThis as any).createError({
+        status: 404,
+        message: 'Project not found',
+      }),
+    )
+
+    const handler = await getToggleProjectMemoryHandler()
+
+    await expect(handler({
+      params: { id: 'foreign-project' },
+      body: { useAccountMemory: false },
+    } as never)).rejects.toMatchObject({ status: 404 })
+    expect(mocks.toggleProjectMemory).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty or invalid body before doing any work', async () => {
+    const handler = await getToggleProjectMemoryHandler()
+    const invalidBodies = [
+      {},
+      { useAccountMemory: 'no' },
+      { enabled: 'yes' },
+      { useAccountMemory: null },
+    ]
+
+    for (const body of invalidBodies) {
+      await expect(handler({
+        params: { id: 'project-1' },
+        body,
+      } as never)).rejects.toMatchObject({ status: 400 })
+    }
+
+    expect(mocks.setProjectUseAccountMemory).not.toHaveBeenCalled()
+    expect(mocks.toggleProjectMemory).not.toHaveBeenCalled()
+  })
+
+  it('rejects an account memory change without a session', async () => {
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
+
+    const handler = await getToggleProjectMemoryHandler()
+
+    await expect(handler({
+      params: { id: 'project-1' },
+      body: { useAccountMemory: false },
+    } as never)).rejects.toMatchObject({ statusCode: 401 })
+    expect(mocks.setProjectUseAccountMemory).not.toHaveBeenCalled()
+  })
+
+  it('rejects a cross-site account memory change', async () => {
+    mocks.assertNotCrossSiteRequest.mockImplementation(() => {
+      throw (globalThis as any).createError({ status: 403, message: 'Forbidden' })
+    })
+
+    const handler = await getToggleProjectMemoryHandler()
+
+    await expect(handler({
+      params: { id: 'project-1' },
+      body: { useAccountMemory: false },
+    } as never)).rejects.toMatchObject({ status: 403 })
+    expect(mocks.setProjectUseAccountMemory).not.toHaveBeenCalled()
   })
 
   it('rejects a cross-site refresh and toggle before doing any work', async () => {

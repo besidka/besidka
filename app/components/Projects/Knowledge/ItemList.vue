@@ -3,6 +3,23 @@
     class="grid gap-2"
     data-testid="knowledge-items"
   >
+    <input
+      v-if="isFilterVisible"
+      v-model="filterQuery"
+      type="search"
+      class="input input-sm w-full"
+      placeholder="Filter files and notes"
+      aria-label="Filter files and notes"
+      data-testid="knowledge-filter"
+    >
+    <p
+      v-if="isFilterEmpty"
+      class="rounded-box bg-base-200/60 px-4 py-3 text-sm opacity-70"
+      role="status"
+      data-testid="knowledge-filter-empty"
+    >
+      No files match
+    </p>
     <ul
       v-if="preparingRows.length > 0"
       class="grid gap-1"
@@ -180,11 +197,46 @@ const emit = defineEmits<{
   sync: [folderId: string]
 }>()
 
+const KNOWLEDGE_FILTER_MIN_ITEMS = 6
+
 const idPrefix = useId()
 const expandedFolderIds = shallowRef<string[]>([])
 
+const filterQuery = shallowRef<string>('')
+
+const isFilterVisible = computed<boolean>(() => {
+  return props.items.length >= KNOWLEDGE_FILTER_MIN_ITEMS
+})
+
+const normalizedQuery = computed<string>(() => {
+  if (!isFilterVisible.value) {
+    return ''
+  }
+
+  return filterQuery.value.trim().toLowerCase()
+})
+
+const isFiltering = computed<boolean>(() => {
+  return normalizedQuery.value.length > 0
+})
+
+const visibleItems = computed<KnowledgeItem[]>(() => {
+  if (!isFiltering.value) {
+    return props.items
+  }
+
+  return props.items.filter((item) => {
+    return item.title.toLowerCase().includes(normalizedQuery.value)
+      || (item.relativePath ?? '').toLowerCase().includes(normalizedQuery.value)
+  })
+})
+
 const grouped = computed(() => {
-  return groupKnowledgeItems(props.items, props.folderNames)
+  return groupKnowledgeItems(visibleItems.value, props.folderNames)
+})
+
+const isFilterEmpty = computed<boolean>(() => {
+  return isFiltering.value && visibleItems.value.length === 0
 })
 
 const groups = computed(() => grouped.value.groups)
@@ -195,7 +247,7 @@ function regionId(folderId: string): string {
 }
 
 function isExpanded(folderId: string): boolean {
-  return expandedFolderIds.value.includes(folderId)
+  return isFiltering.value || expandedFolderIds.value.includes(folderId)
 }
 
 function toggle(folderId: string) {

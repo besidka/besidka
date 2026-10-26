@@ -157,4 +157,105 @@ describe('Projects/Knowledge/ItemList', () => {
     expect(wrapper.get('[data-testid="knowledge-group-name"]').text())
       .toBe('Folder 1')
   })
+
+  describe('filter', () => {
+    const manyItems: KnowledgeItem[] = [
+      ...items,
+      createKnowledgeItem({ id: 'c', title: 'Roadmap.md' }),
+      createKnowledgeItem({ id: 'd', title: 'Budget.md' }),
+      createKnowledgeItem({
+        id: 'e',
+        title: 'e.ts',
+        folderId: 'folder-1',
+        relativePath: 'src/deep/e.ts',
+      }),
+    ]
+
+    async function mountFiltered(query: string) {
+      const wrapper = await mountList({ items: manyItems })
+
+      await wrapper.get('[data-testid="knowledge-filter"]').setValue(query)
+
+      return wrapper
+    }
+
+    it('shows no filter below six items', async () => {
+      const wrapper = await mountList({ items: manyItems.slice(0, 5) })
+
+      expect(wrapper.find('[data-testid="knowledge-filter"]').exists())
+        .toBe(false)
+    })
+
+    it('shows a full-width filter from six items', async () => {
+      const wrapper = await mountList({ items: manyItems })
+      const input = wrapper.get('[data-testid="knowledge-filter"]')
+
+      expect(input.attributes('placeholder')).toBe('Filter files and notes')
+      expect(input.classes()).toEqual(expect.arrayContaining([
+        'input',
+        'input-sm',
+        'w-full',
+      ]))
+    })
+
+    it('filters loose items by title, case-insensitively', async () => {
+      const wrapper = await mountFiltered('ROADMAP')
+      const loose = wrapper.get('[data-testid="knowledge-loose-items"]')
+
+      expect(loose.text()).toContain('Roadmap.md')
+      expect(loose.text()).not.toContain('Budget.md')
+      expect(wrapper.find('[data-testid="knowledge-group"]').exists())
+        .toBe(false)
+    })
+
+    it('filters folder items by relative path and keeps only matches',
+      async () => {
+        const wrapper = await mountFiltered('src/deep')
+        const groupItems = wrapper.get('[data-testid="knowledge-group-items"]')
+
+        expect(groupItems.text()).toContain('src/deep/e.ts')
+        expect(groupItems.text()).not.toContain('src/a.ts')
+        expect(wrapper.get('[data-testid="knowledge-group-count"]').text())
+          .toBe('1 file')
+        expect(wrapper.find('[data-testid="knowledge-loose-items"]').exists())
+          .toBe(false)
+      })
+
+    it('shows No files match when nothing matches', async () => {
+      const wrapper = await mountFiltered('zzz')
+
+      expect(wrapper.get('[data-testid="knowledge-filter-empty"]').text())
+        .toBe('No files match')
+      expect(wrapper.find('[data-testid="knowledge-group"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="knowledge-loose-items"]').exists())
+        .toBe(false)
+    })
+
+    it('restores the full list when the query is cleared', async () => {
+      const wrapper = await mountFiltered('zzz')
+
+      await wrapper.get('[data-testid="knowledge-filter"]').setValue('  ')
+
+      expect(wrapper.find('[data-testid="knowledge-filter-empty"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="knowledge-group-count"]').text())
+        .toBe('3 files')
+      expect(wrapper.find('[data-testid="knowledge-group-items"]').exists())
+        .toBe(false)
+    })
+
+    it('ignores the query once the list drops below six items', async () => {
+      const wrapper = await mountFiltered('roadmap')
+
+      await wrapper.setProps({ items: manyItems.slice(0, 5) })
+
+      expect(wrapper.find('[data-testid="knowledge-filter"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="knowledge-filter-empty"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="knowledge-loose-items"]').text())
+        .toContain('Loose.md')
+    })
+  })
 })

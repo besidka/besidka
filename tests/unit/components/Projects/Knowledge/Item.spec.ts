@@ -32,6 +32,28 @@ describe('Projects/Knowledge/Item', () => {
     expect(text(wrapper, 'knowledge-item-status')).toBe('ready')
   })
 
+  it('shows the updated age in the meta line next to the size', async () => {
+    const wrapper = await mountItem(createKnowledgeItem({
+      updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+        .toISOString(),
+    }))
+    const updated = wrapper.get('[data-testid="knowledge-item-updated"]')
+
+    expect(updated.text()).toBe('Updated 3 days ago')
+    expect(updated.element.parentElement)
+      .toBe(wrapper.get('[data-testid="knowledge-item-size"]')
+        .element.parentElement)
+  })
+
+  it('keeps the meta line on its own row on mobile', async () => {
+    const wrapper = await mountItem()
+    const meta = wrapper.get('[data-testid="knowledge-item-type"]')
+      .element.parentElement!
+
+    expect(meta.className).toContain('col-span-2')
+    expect(meta.className).toContain('sm:col-span-1')
+  })
+
   it('names folder items by their relative path', async () => {
     const wrapper = await mountItem(createKnowledgeItem({
       title: 'a.ts',
