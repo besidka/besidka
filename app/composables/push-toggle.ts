@@ -8,6 +8,10 @@ export function usePushToggle() {
     return pushNotifications.isSupported.value
   })
 
+  const isStateKnown = computed<boolean>(() => {
+    return pushNotifications.isStateKnown.value
+  })
+
   const isEnabled = computed<boolean>(() => {
     return pushNotifications.permission.value === 'granted'
       && pushNotifications.isSubscribed.value
@@ -37,6 +41,7 @@ export function usePushToggle() {
 
   return {
     isSupported,
+    isStateKnown,
     isEnabled,
     isBlocked,
     pending,

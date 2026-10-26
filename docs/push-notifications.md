@@ -149,8 +149,11 @@ bell and the card share `usePushToggle()` (`app/composables/push-toggle.ts`),
 so they follow identical rules: they never call
 `Notification.requestPermission()` directly, `denied` disables the control,
 and an unsupported browser shows a disabled toggle with a note rather than
-hiding the row, to keep the card's height stable. The card shows a skeleton
-until mount because `isSupported` is client-only. The bell reflects only this device's live `permission`/subscription state,
+hiding the row, to keep the card's height stable. `usePushNotifications()` exposes `isStateKnown`, set once the first
+`refreshState()` settles (success or failure) or after a 5s fallback when the
+service worker never becomes ready. The card keeps its skeleton until then so
+the toggle never renders unchecked and flips; the bell stays a neutral,
+disabled `lucide:bell` of the same size until then. The bell reflects only this device's live `permission`/subscription state,
 never `notificationPromptState` alone — an account that enabled push on one
 device but never subscribed this browser must not show as "on" here. Clicking
 it:

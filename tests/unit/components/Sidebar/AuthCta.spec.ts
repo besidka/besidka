@@ -22,6 +22,7 @@ mockNuxtImport('useRoute', () => {
 mockNuxtImport('usePushToggle', () => {
   return () => ({
     isSupported: ref(true),
+    isStateKnown: ref(true),
     isEnabled: ref(false),
     isBlocked: ref(false),
     pending: ref(false),

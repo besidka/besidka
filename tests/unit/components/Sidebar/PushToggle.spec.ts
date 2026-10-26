@@ -4,6 +4,7 @@ import SidebarPushToggle from '../../../../app/components/Sidebar/PushToggle.cli
 
 const mocks = vi.hoisted(() => ({
   isSupported: true,
+  isStateKnown: true,
   permission: 'default' as NotificationPermission,
   isSubscribed: false,
   disable: vi.fn(async () => undefined),
@@ -15,6 +16,11 @@ mockNuxtImport('usePushNotifications', () => {
     isSupported: {
       get value() {
         return mocks.isSupported
+      },
+    },
+    isStateKnown: {
+      get value() {
+        return mocks.isStateKnown
       },
     },
     permission: {
@@ -50,6 +56,7 @@ async function mountPushToggle() {
 describe('Sidebar/PushToggle', () => {
   beforeEach(() => {
     mocks.isSupported = true
+    mocks.isStateKnown = true
     mocks.permission = 'default'
     mocks.isSubscribed = false
     mocks.disable.mockClear()
@@ -62,6 +69,29 @@ describe('Sidebar/PushToggle', () => {
     const wrapper = await mountPushToggle()
 
     expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  it('shows a neutral disabled bell until the state is known', async () => {
+    mocks.isStateKnown = false
+    mocks.permission = 'granted'
+    mocks.isSubscribed = true
+
+    const wrapper = await mountPushToggle()
+    const button = wrapper.get('[aria-label="Checking notification status"]')
+
+    expect(button.classes()).toContain('btn-disabled')
+    expect(button.classes()).toContain('btn-ghost')
+    expect(button.classes()).not.toContain('btn-active')
+    expect(button.classes()).not.toContain('btn-accent')
+    expect(wrapper.get('.iconify').classes())
+      .toContain('i-lucide:bell')
+    expect(wrapper.get('.iconify').classes())
+      .not.toContain('i-lucide:bell-ring')
+
+    await button.trigger('click')
+
+    expect(mocks.disable).not.toHaveBeenCalled()
+    expect(mocks.requestEnable).not.toHaveBeenCalled()
   })
 
   it('shows the enabled state when granted and subscribed', async () => {

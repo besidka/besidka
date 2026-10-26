@@ -4,6 +4,7 @@ import { usePushToggle } from '../../../app/composables/push-toggle'
 
 const mocks = vi.hoisted(() => ({
   isSupported: true,
+  isStateKnown: true,
   permission: 'default' as NotificationPermission,
   isSubscribed: false,
   disable: vi.fn(async () => undefined),
@@ -15,6 +16,11 @@ mockNuxtImport('usePushNotifications', () => {
     isSupported: {
       get value() {
         return mocks.isSupported
+      },
+    },
+    isStateKnown: {
+      get value() {
+        return mocks.isStateKnown
       },
     },
     permission: {
@@ -40,6 +46,7 @@ mockNuxtImport('useNotificationPrompt', () => {
 describe('usePushToggle', () => {
   beforeEach(() => {
     mocks.isSupported = true
+    mocks.isStateKnown = true
     mocks.permission = 'default'
     mocks.isSubscribed = false
     mocks.disable.mockReset()
@@ -52,6 +59,16 @@ describe('usePushToggle', () => {
     mocks.isSupported = false
 
     expect(usePushToggle().isSupported.value).toBe(false)
+  })
+
+  it('reports whether the push state is known', () => {
+    mocks.isStateKnown = false
+
+    expect(usePushToggle().isStateKnown.value).toBe(false)
+
+    mocks.isStateKnown = true
+
+    expect(usePushToggle().isStateKnown.value).toBe(true)
   })
 
   it('is enabled only when permission is granted and subscribed', () => {

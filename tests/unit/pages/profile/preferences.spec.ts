@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   errorMessage: vi.fn(),
   fetch: vi.fn(),
   isPushSupported: true,
+  isPushStateKnown: true,
   pushPermission: 'default' as NotificationPermission,
   isPushSubscribed: false,
   disablePush: vi.fn(async () => undefined),
@@ -22,6 +23,11 @@ mockNuxtImport('usePushNotifications', () => {
     isSupported: {
       get value() {
         return mocks.isPushSupported
+      },
+    },
+    isStateKnown: {
+      get value() {
+        return mocks.isPushStateKnown
       },
     },
     permission: {
@@ -97,6 +103,7 @@ describe('profile preferences page', () => {
     localStorage.clear()
     mocks.fetch.mockReset()
     mocks.isPushSupported = true
+    mocks.isPushStateKnown = true
     mocks.pushPermission = 'default'
     mocks.isPushSubscribed = false
     useUserSetting().clearUserContext()
@@ -362,7 +369,22 @@ describe('profile preferences page', () => {
       expect(wrapper.text()).toContain('never include your messages')
     })
 
-    it('replaces the skeleton with an accessible toggle once mounted',
+    it('keeps the skeleton and no toggle or status until the push state is '
+      + 'known', async () => {
+      mocks.isPushStateKnown = false
+      mocks.pushPermission = 'denied'
+      await loadSettings()
+
+      const wrapper = await mountPage()
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="preferences-push-skeleton"]')
+        .exists()).toBe(true)
+      expect(wrapper.find(pushToggle).exists()).toBe(false)
+      expect(wrapper.get(pushStatus).text()).toBe('')
+    })
+
+    it('replaces the skeleton with an accessible toggle once known',
       async () => {
         await loadSettings()
 

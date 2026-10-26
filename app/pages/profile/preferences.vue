@@ -25,7 +25,7 @@
             </span>
           </span>
           <span
-            v-if="!isMounted"
+            v-if="!isPushStateKnown"
             class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
             data-testid="preferences-push-skeleton"
           />
@@ -206,24 +206,19 @@ const {
 
 const {
   isSupported: isPushSupported,
+  isStateKnown: isPushStateKnown,
   isEnabled: isPushEnabled,
   isBlocked: isPushBlocked,
   pending: isPushPending,
   toggle: togglePush,
 } = usePushToggle()
 
-const isMounted = shallowRef<boolean>(false)
-
-onMounted(() => {
-  isMounted.value = true
-})
-
 const isPushToggleDisabled = computed<boolean>(() => {
   return !isPushSupported.value || isPushBlocked.value || isPushPending.value
 })
 
 const pushStatusNote = computed<string>(() => {
-  if (!isMounted.value) {
+  if (!isPushStateKnown.value) {
     return ''
   }
 
