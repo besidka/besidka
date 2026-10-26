@@ -1,9 +1,12 @@
 # Memory architecture (profile, project, cross-chat, knowledge)
 
-Status: **proposal**, 2026-10-24, partly implemented: section 1 lists what
-exists today, the "As built" notes in 3.3 and 3.10 to 3.16 and section 5
-record W1-W6c, the decision log (section 7) records owner decisions after W6,
-and 3.17 records the 2026-10-26 security audit of the memory feature.
+Status: **proposal**, 2026-10-24, **implemented on `feat/memory-p3`** as of
+2026-10-26 (not yet on `main`). Section 1 is the pre-W1 audit, the "As built"
+notes in 3.3 and 3.10 to 3.16 and section 5 record W1-W6c, 3.17 records the
+2026-10-26 security audit of the memory feature, 3.18 the "tell Besidka what to
+remember" editor, 3.19 the TypeSafe AI (Jev) checks and their delta audit, and
+the decision log (section 7) records the owner decisions after W6. Project
+knowledge (3.6) is documented in `docs/project-knowledge-design.md`.
 Decisions marked **(owner)** are
 recommendations logged per the "minimize questions" preference; the owner can
 overturn any of them before the phase that depends on it starts.
@@ -379,7 +382,9 @@ the reason the opt-in is out of v1 (section 7).
     oracle. `extractChatMemory` also skips the chat as `memory-excluded` for
     every trigger, before the model call and again after it, so a toggle that
     lands while a pass is in flight never re-cites the chat.
-  - `PATCH /api/v1/chats/:slug/memory` (`{ excluded }`, ownership in the
+  - `PATCH /api/v1/chats/:slug/memory` (`{ excluded }`, behind
+    `assertNotCrossSiteRequest` and the shared `write` rate-limit bucket since
+    #560, ownership in the
     `UPDATE ... WHERE`) writes the flag first, then, when turning it on, runs
     the chat-deletion cascade `detachChatsFromMemory` for that chat:
     extraction entries sourced only from it are deleted, other entries drop
@@ -543,7 +548,8 @@ created `memory_entries` rows (W4 changed that, see 3.11). The one behavioural c
   400 from the body schema. GET moves the text into the `profile` entry (see
   "About me becomes a profile entry", section 7). The column stays (no
   rebuild).
-- `projects.useAccountMemory`: default `true`; `null` means the default.
+- `projects.useAccountMemory`: default `true`; `null` means the default. It is
+  settable since #532 (see 3.13, "Use account memory").
 - All defaults live in app code (`MEMORY_SETTING_DEFAULTS`); the columns are
   nullable with no SQL `DEFAULT`, per the D1 rebuild rule.
 
@@ -1231,13 +1237,19 @@ gatewayId, modelId, chats }], usage }`: counts and ids only. Errors log the
 error class name, never a message. Per-call 90 s abort timeout.
 
 **`POST /api/v1/memory/extract-now`.** For previews, where crons do not run.
-Session-authed, cross-site request guard, body `{ chatSlug }`. The chat is
-looked up by slug AND user, anything else is a 404. It is an explicit
-action, so the API needs only `memoryEnabled` (409 otherwise) and runs even
-with the extraction toggle off (section 7); the UI additionally shows the
+Gates, in the order the handler runs them: cross-site request guard, session
+(401), the shared `write` rate-limit bucket (60 per minute, 429), body
+`{ chatSlug }` (400), `requireLegalConsent` (current consent, else 403), the
+chat looked up by slug AND user (anything else is a 404), `memoryEnabled`
+(409 `Memory is turned off`), and the 60 s per-user KV cooldown (429). It is an
+explicit action, so the API does not need "Generate memory from chats" and
+runs even with that toggle off (section 7); the UI additionally shows the
 button only while both memory and "Generate memory from chats" are on
-(`Toolbar.vue`). It ignores the 10-minute idle rule and has a 60 s per-user KV
-cooldown (429). Responds with counts and the model source/id only.
+(`Toolbar.vue`). It ignores the 10-minute idle rule. The cooldown key is
+written only after a pass that ends `extracted` or `failed`, so a `skipped` or
+`leased` result does not start it. A chat excluded from memory is skipped
+inside `extractChatMemory` (`memory-excluded`), as for every trigger. Responds
+with counts and the model source/id only.
 
 **`GET /api/v1/memory/entries/[id]/sources`.** Resolves an entry's provenance
 for the UI: `MemoryEntry.sourceChatIds` holds chat public ids, but chat URLs
@@ -1427,6 +1439,19 @@ by sweep passes, together with `memoryUpdatedAt` and status `ready`);
 and refreshing (the old behaviour cleared the blob; deleting entries is left to
 the user); enabling refreshes only when memory is on. Tool writes into a disabled
 project are refused too.
+
+**Use account memory is settable (#532).** `PATCH /api/v1/projects/:id/memory`
+takes either `{ enabled, useAccountMemory? }` or a strict
+`{ useAccountMemory }` alone; the second form changes only the sharing choice
+and leaves the enabled state, the entries and refresh untouched
+(`setProjectUseAccountMemory`, ownership in the `UPDATE ... WHERE`, a foreign
+project reads as 404). It stores an explicit `true` or `false`; `null` stays
+the "never chosen" state and reads as the default `true`. The card returns
+`useAccountMemory`, and the project card shows a "Use account memory" toggle
+(`Projects/MemoryCard.vue`, `project-memory-account-toggle`). With it off, the
+chat's memory index holds only the project's entries, the memory tools see
+only project scope (`accountVisible` is false), and `search_chats` is limited
+to that project's chats (3.3, 3.11). No schema change: the column has existed since W3.
 
 **Open for the owner.** The project cap stays at 15 entries (`maxProjectEntries`):
 if "not that big" means more entries, raising it grows the project part of the
@@ -1665,23 +1690,31 @@ user's language, skip sensitive topics, plain text).
 
 ### 3.16 As built (W5, Memory tab UI)
 
-Short note; the contracts it consumes are in 3.11, 3.12 and 3.15.
+Short note; the contracts it consumes are in 3.11, 3.12 and 3.15. W5 shipped in
+two parts (#509, then #514), and later workstreams added cards to the same
+page; this section lists the page as it is on `feat/memory-p3`.
 
 - Page `app/pages/profile/memory.vue` (profile layout, signed-in only,
   `noindex`). It stacks the components under `app/components/Profile/Memory/`:
   `Controls.vue` (Use memory, Generate memory from chats, chat search),
   `NeverKept.vue` (the never-store kinds from `shared/utils/memory-policy.ts`),
   `Models.vue` with `ModelPicker.client.vue` (account and project memory
-  models, 3.9), `CacheInfo.vue` and `Entries.vue`.
+  models, 3.9), `ExtraChecks.vue` (the TypeSafe AI key status card, 3.19),
+  `CacheInfo.vue` and `Entries.vue`, in that order. The page has no sensitive
+  opt-in card (section 7).
 - `Entries/` holds the entry list (`Essentials.vue` for `profile` and
   `preferences`, `Group.vue`, `Row.vue`, `DetailModal.client.vue`, `Empty.vue`),
   the toolbar (`Toolbar.vue`: "Update now" calls `extract-now` and shows only
   while both toggles are on, plus the backfill and import entry points), the
   sheets (`BackfillSheet.client.vue`, `ImportSheet.client.vue`) and the project
-  memory list (`Projects.vue`, `Project.vue`).
+  memory list (`Projects.vue`, `Project.vue`). `Entries.vue` also mounts the
+  "tell Besidka what to remember" box (`Instruct/Box.vue` and
+  `Instruct/Preview.vue`, 3.18).
 - State: `app/composables/memory-settings.ts` (optimistic PATCH with per-key
-  rollback on error), `memory-backfill.ts`, `memory-projects.ts`; copy and
-  helpers in `app/utils/memory-backfill.ts`.
+  rollback on error), `memory-backfill.ts`, `memory-projects.ts`,
+  `chat-memory-exclusion.ts` (the per-chat "Don't use this chat for memory"
+  toggle, 3.7); copy and helpers in `app/utils/memory-backfill.ts` and
+  `app/utils/memory-instruct-diff.ts`.
 
 ### 3.17 Security audit 2026-10-26
 
@@ -1793,7 +1826,8 @@ handled separately.
   same storage as the knowledge write limit (`createAuthRateLimitStorage`):
   the `write` bucket (60 per minute, shared) runs right after the session
   check on entry create, edit and delete, reset, delete-extracted, import,
-  extract-now and backfill start, and answers 429 with `Retry-After`. New
+  extract-now, backfill start and the chat memory-exclusion PATCH (#560), and
+  answers 429 with `Retry-After`. New
   memory limits are added as buckets there, not as parallel limiters.
 
 ### 3.18 Tell Besidka what to remember (2026-10-26)
@@ -1884,134 +1918,33 @@ The public explainer for all of memory, including this check, is `/memory`
 quotes the behaviour documented in 3.1 to 3.19, so re-check it when any of
 those change.
 
-An optional second opinion on memory writes, on the user's own TypeSafe AI
-key. It is add-only: the deterministic gate (3.5) stays the gate, and Jev can
-only block an entry the gate allowed, never allow one the gate blocked.
+TypeSafe AI Jev is an optional helper that runs on the user's own TypeSafe AI
+key. One key powers seven roles (`JEV_ROLE_IDS` in `shared/utils/jev-policy.ts`).
+Saving the key is the opt-in: every role is then on, each has its own switch,
+and deleting the key stops all of them. No role can allow what a deterministic
+rule refused, and no role can delete user content. Reading order of this
+section:
 
-**Key type.** `providerMeta.typesafe` has its own kind, `memory-check`, and a
-fourth tab, **Smart checks** (renamed from **Memory checks** in J0; the tab id and the deep links are unchanged), on `/profile/keys` (`?provider=typesafe` and
-`?tab=memory-checks` deep links pass `resolveSafeNextPath`). The key is
-stored encrypted in `keys` like the others (`provider = 'typesafe'`; the
-column is a text enum, so `db:generate` produced no migration). It is not a
-chat provider: it is not in the model catalog, so it never appears in the
-chat or memory-model pickers, the memory-model resolver never considers it,
-it is never routed through a gateway, and `useUserKeys().hasAnyKey` ignores
-it. Saving it calls `GET https://api.typesafe.ai/v1/models` with the key
-(`verifyMemoryJevApiKey`, 5 s timeout): a 401 or 403 refuses the save with a
-why and a fix; a network error, a timeout or another status still saves,
-because memory checks fail open anyway. `/profile/memory` shows "Memory
-checks: TypeSafe AI Jev (on)" or a link to add the key. Saving the key is the
-user's opt-in to the spend and to the recipient. Each role has its own toggle
-in the "TypeSafe AI checks" section of the Smart checks tab (see "Per-role
-checks (J0 foundation)" below); deleting the key stops all of them. The key guide is
-`content/key-guides/typesafe-ai-api-key.md`, without a video for now.
+1. **J0: foundation** - the shared client, settings, the one role table, the
+   API every role uses.
+2. **Memory checks** - the first role, the add-only check on memory writes.
+3. **J1 to J6** - one section per role, in order: Auto web search, extraction
+   pre-filter, prompt-injection screening, re-ranking, share check, past-chat
+   retrieval.
+4. **Delta audit fixes (#560)** - the findings of the 2026-10-26 delta audit
+   and where each one is described.
+5. **Legal and consent** - recipient, transfer basis and consent version.
 
-**Code.** `server/utils/memory/jev-check.ts`, through `experimental_decide`
-from `ai` with `@ai-sdk/typesafe-ai`:
+#### J0: foundation (shared client, settings, role table)
 
-- `resolveMemoryJevChecker({ db, userId, logger })` reads and decrypts the
-  saved key and returns a checker, or `null` without a key. A failed read or
-  decryption logs `key-error` and returns `null`.
-- `createMemoryJevChecker({ apiKey })` refuses an empty key, so the SDK can
-  never fall back to its `TYPESAFE_AI_API_KEY` environment variable. The
-  decrypted key is passed per checker; there is no operator key.
-- `check(candidates)` runs `evaluateMemoryEntry` on every candidate first and
-  sends only the ones it allows. Gate-refused text, including its never-store
-  values, never leaves Besidka. Extraction ops the extractor itself flagged
-  as never-store, and ops whose evidence fails the deterministic grounding
-  check, are not sent either.
-- Questions per candidate: one boolean per Art. 9 category (health, religion
-  or belief, political opinion, racial or ethnic origin, sex life or
-  orientation, trade union, genetic, biometric) and one never-store
-  question, each quoting the candidate text, with the criteria wording from
-  the research run. `legal-dispute` and `drugs` stay gate-only. The boolean
-  type is used because the SDK drops `confidence` on choice answers.
-- Grounding (one more boolean) only where there is a source text. The source
-  is redacted for never-store values, capped at 9,000 characters, and dropped
-  (no grounding question) when the gate would refuse it, so flagged source
-  text is never sent either.
-- Thresholds: `MEMORY_JEV_SENSITIVE_THRESHOLD = 0.5` (block at or above) and
-  `MEMORY_JEV_GROUNDING_THRESHOLD = 0.5` (reject below), the research's
-  working threshold. Model pinned to `jev-1.14.0`, not `jev-latest`, so a
-  model update cannot move the tuned thresholds silently.
-- Batching: all candidates of one write in one call, split only past 100
-  questions or 90,000 question characters. The calls share one
-  `MEMORY_JEV_TIMEOUT_MS` (2,500 ms) budget with `maxRetries: 0`.
-- Fail-open: a missing key, 401, 403, 429, 529, any other status, a network
-  error or the timeout leaves every unanswered candidate `clear`, so the
-  write proceeds on the gate alone.
-
-**Where it runs.** Every write path that reaches the gate behind the consent
-gate (`requireLegalConsent`, or `currentLegalConsentCondition` in the sweep
-and backfill queries):
-
-| Path | Checks | Source for grounding | Result on a Jev hit |
-|---|---|---|---|
-| Chat extraction (sweep, Update now), backfill, project refresh, legacy blob | (a) + (b) | A window of 300 characters around the op's evidence quote in the user's own text | Op dropped as `extra-check-sensitive` or `extra-check-ungrounded` |
-| Import | (a) + (b) | The same window in the pasted chunk | Same |
-| Instruct preview | (a) + (b) | The redacted instruction, plus the saved entry's text for an update | Row `rejected` with `rejection.kind = 'extra-check'` |
-| Instruct apply | (a) | None (no model text left to ground) | 422, `data.kind = 'extra-check'` |
-| Manual create and edit (`/api/v1/memory/entries`) | (a) | None (the user typed it) | 422, `data.kind = 'extra-check'` |
-| `memory_write` tool | (a) | None | 422 folded into the tool error |
-
-The extraction family resolves the checker in `extract.ts` and runs one
-batched pre-pass in `MemoryExtractionApplier.run()`, before any write; the
-verdict is applied in `evaluate()` after the gate allowed the exact persisted
-values. `createMemoryEntry` and `updateMemoryEntry` take an optional `jev`
-in their context and call `assertMemoryJevAllowed` after the gate. The
-About-me migration runs on `GET /api/v1/profiles/settings`, outside the
-consent gate, so it passes no checker and never calls Jev. Jev is not used
-for "worth remembering"; the separate `extractionPrefilter` role (below) is.
-
-**Logging.** One wide-event field per request,
-`attributes.memoryJev: { model, questions, blocked, groundingRejected,
-gateDisagreements, latencyMs, status }`, summed across calls in the request
-through `getContext()`. `gateDisagreements` maps each Art. 9 category id or
-`never-store` to how many candidates Jev flagged that the gate passed; it is
-the list to mine for new deterministic rules. No text is logged.
-
-**Fragile seams to re-check on every `ai` or `@ai-sdk/typesafe-ai` upgrade.**
-
-- `experimental_decide` is experimental in `ai@7`: its name, its options
-  (`state`, `questions`, `maxRetries`, `abortSignal`) and the answer shape
-  `{ type: 'boolean', probability }` can change in a patch release.
-- The provider package is about six weeks old and ships patches weekly. It
-  maps the SDK `boolean` question to the API's `noul`; a renamed or
-  remapped type breaks every check, which then fails open silently except for
-  `status: 'error'` in the logs.
-- `createTypeSafeAi` falls back to `TYPESAFE_AI_API_KEY` when `apiKey` is
-  empty. The empty-key guard in `createMemoryJevChecker` must stay.
-- The SDK's choice answer drops `confidence`; another reason the checks use
-  booleans only.
-- `@ai-sdk/provider` and `provider-utils` must stay at the versions the
-  provider pins (4.0.34 and 5.0.68 at the time of writing), so the whole
-  `@ai-sdk/*` train is bumped together. `pnpm why @ai-sdk/provider` should
-  list one 4.x copy; the 3.x copy belongs to `nuxt-studio` (`ai@6`).
-- Thresholds were tuned on `jev-1.14.0`. A model bump needs the research run
-  repeated before the pin moves.
-
-**Smoke test (2026-10-26, synthetic text, owner's key).** One batched call
-through the real module: 6 candidates in, the card-number candidate refused by
-the gate and not sent, 5 sent as 48 questions; 351 ms; 7,206 input tokens
-(about $0.0003). Jev flagged "half Nigerian" as racial or ethnic origin (the
-gate passed it), rejected "Uses React and Next.js" against a source saying
-"We use Vue 3 and Nuxt", and cleared the language preference, the job and the
-Criminal Minds line.
-
-**Legal.** TypeSafe AI, Inc. is a US recipient, not on the Data Privacy
-Framework, relying on the SCCs (Module 2) and the UK Addendum in its DPA, which
-marks sensitive-data safeguards "N/A". It is listed in the Privacy Policy, the
-Art. 30 record and the DPIA (risk rows 20 to 24, section 3.7a). The consent
-modal names recipients by category ("the AI providers ... whose keys I add (for ... memory)"), so the
-consent version stays `2026-11-a`. Research and test results:
-`typesafe-jev-findings.md` in the session scratchpad.
-
-#### Per-role checks (J0 foundation)
-
-The memory check above is the first of seven roles that share one client in
-`server/utils/jev/`. The same key powers all of them. Each role is assistive
-and fails safe: when TypeSafe AI errors, times out or is rate-limited,
-Besidka behaves as it does without the key.
+The memory check (next section) is the first of seven roles that share one
+client in `server/utils/jev/`. The same key powers all of them. Each role is
+assistive. Six of the seven fail toward what Besidka does without the key: when
+TypeSafe AI errors, times out or is rate-limited, the answer is the built-in
+behaviour. The exception is `pastChatRetrieval` (J6), which fails toward
+acting: without a key it does not pre-search, but a Jev failure makes it
+search. The "Failure direction" column below is the single statement of this
+for every role; each role's section repeats it in the same words.
 
 **Settings.** `user_settings.typesafe_roles` is a nullable JSON column. `null`
 means every role is on. A role is on unless it is explicitly `false`. With no
@@ -2020,20 +1953,27 @@ toggled on the Smart checks tab under "TypeSafe AI checks". The column is
 nullable with no SQL default, so the migration is a plain `ADD COLUMN`.
 
 **Policy.** Thresholds, timeouts and size caps are constants in
-`shared/utils/jev-policy.ts`. The thresholds come from the 2026-10-26
-synthetic eval and are re-tuned on real traffic. Timeouts: 800 ms on the send
-path, 1,500 ms for the share check (`JEV_SHARE_CHECK_TIMEOUT_MS`, a modal the
-user is already waiting on), 2,500 ms in the background.
+`shared/utils/jev-policy.ts` (the memory check keeps its own in `jev-check.ts`).
+The thresholds come from the 2026-10-26 synthetic eval and are re-tuned on
+real traffic. Timeouts: 800 ms on the send path, 1,500 ms for the share check
+(`JEV_SHARE_CHECK_TIMEOUT_MS`, a modal the user is already waiting on), 2,500
+ms in the background, including the memory check on interactive writes.
 
-| Role id | What is sent, and when | Unavailable |
-|---|---|---|
-| `memoryChecks` | The memory check above: entry text after never-store removal plus a short source excerpt, before an entry is saved. Add-only | Built-in gate alone |
-| `autoWebSearch` | Only in the Auto web search mode, each message: the message and the last 2-3 turns. Jev decides whether a search is needed | Search as usual |
-| `extractionPrefilter` | Before memory is generated from a chat (opt-in extraction, backfill from past chats, project Refresh; never extract-now or import): chat text after never-store removal, in chunks of up to about 8,000 tokens. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | Unsure or unavailable: extract as usual |
-| `injectionScreening` | Project knowledge files and notes, and Brave and Exa results fetched through Besidka. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | Text used unscreened |
-| `rerank` | Past-chat and project-knowledge search: the query and excerpts of about 300 tokens each, up to 30 per search | Original order |
-| `sharePiiCheck` | When the share window opens, before a public link is published: the chat text being shared, with never-store values, emails and phone numbers removed. Warning only, never blocks (see "Share check" below) | Generic "check before sharing" reminder, next to the built-in detector warnings |
-| `pastChatRetrieval` | Models without tool calling, each message: the message and recent turns. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts | No key or role off: no pre-search. Jev error or timeout: searches anyway (the one role that fails toward acting) |
+**Role table.** One row per role, in the order `JEV_ROLE_IDS` lists them.
+Constants are from `shared/utils/jev-policy.ts` unless a file is named;
+`JEV_MODEL_ID` is `jev-1.14.0` for all of them. Timeouts:
+`JEV_SEND_PATH_TIMEOUT_MS` 800 ms, `JEV_SHARE_CHECK_TIMEOUT_MS` 1,500 ms,
+`JEV_BACKGROUND_TIMEOUT_MS` 2,500 ms.
+
+| Role id | Section | What is sent, and when | Thresholds and caps | Timeout | Failure direction |
+|---|---|---|---|---|---|
+| `memoryChecks` | Memory checks | Entry text after never-store removal plus a short source excerpt, before an entry is saved. Add-only: it can block what the gate allowed, never allow what the gate blocked | Block at or above 0.5 (`MEMORY_JEV_SENSITIVE_THRESHOLD`), reject ungrounded below 0.5 (`MEMORY_JEV_GROUNDING_THRESHOLD`); at most 100 questions or 90,000 characters per call; source window 300 characters, source cap 9,000 (all in `server/utils/memory/jev-check.ts`) | 2,500 ms (`MEMORY_JEV_TIMEOUT_MS`) | Fails open to the built-in gate alone |
+| `autoWebSearch` | J1 | Only in the Auto web search mode, each message: the message and the last three turns, never-store removed. A URL, a domain or a recency phrase searches with no Jev call | `w1_live`: search at or above 0.2 (`searchAtOrAbove`); `recentTurns` 3; each turn capped at 4,000 characters (`JEV_SEND_PATH_MAX_TURN_CHARS`) | 800 ms | Searches, as without a key |
+| `extractionPrefilter` | J2 | Before memory is generated from a chat (opt-in extraction, backfill, project Refresh; never extract-now or import): chat text after never-store removal, in chunks. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | `e1_durable`: skip only when every piece scores below 0.4 (`skipBelow`); chunks of up to 8,000 tokens (`maxChunkTokens`) | 2,500 ms per call | Extracts as usual |
+| `injectionScreening` | J3 | Project knowledge files and notes (chunks of the extracted text) and the title and snippet of each Brave and Exa result fetched through Besidka, never-store removed. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | `i2_attack`: flag at or above 0.3 (`flagAtOrAbove`); chunks of 2,000 tokens; 3 concurrent calls; 24 calls per knowledge request; re-screen 10 items per sweep, 12 calls per item, 5 attempts, 14-day queue | 2,500 ms for knowledge, 800 ms for search results | Undecided text is used unscreened: search results are kept with no notice, knowledge is stored `ready` and queued for the hourly re-screen |
+| `rerank` | J4 | Past-chat and project-knowledge search: the query and passages, never-store removed, each cut to about 300 tokens, up to 30 per search | Up to 30 candidates (`maxCandidates`); passages 300 tokens (`maxPassageTokens`); drop below 0.5 (`dropBelow`), and only while at least `limit` candidates remain | 800 ms | Original BM25 order |
+| `sharePiiCheck` | J5 | When the share window opens, before a public link is published: the chat text being shared, with never-store values, emails and phone numbers removed. Warning only, never blocks | `p1_personal`: warn at or above 0.3 (`warnAtOrAbove`); chunks of 25,000 tokens; request debounce 400 ms (`JEV_SHARE_CHECK_DEBOUNCE_MS`) | 1,500 ms | Detector warnings plus a generic "check before sharing" reminder; Generate untouched |
+| `pastChatRetrieval` | J6 | Sends where `search_chats` and `read_chat` are not registered (a model or gateway without tool calling, a forced `toolChoice`, or image generation), only while **Search and reference chats** is on, each message: the message and the last three turns, never-store removed. If the message refers to an earlier, separate conversation, Besidka searches the user's past chats in its own database and adds excerpts. A listed phrase searches with no Jev call | `s1_previous`: search at or above 0.25 (`preSearchAtOrAbove`); 3 hits; excerpts capped at 1,500 tokens; message 2,000 characters, each turn 600 | 800 ms | **Searches anyway** (the one role that fails toward acting). Without a key or with the role off: no pre-search |
 
 **Logging.** Each role writes one wide-event field, `attributes.<role>Jev`
 (for example `attributes.rerankJev`), with counts, scores, statuses and
@@ -2093,7 +2033,290 @@ partial map of booleans, merged into the stored object with SQLite
 other; `null` resets every role to on. The `memoryChecks` role is honoured by
 `resolveMemoryJevChecker`.
 
-#### Prompt-injection screening (J3, `injectionScreening`)
+#### Memory checks (`memoryChecks`)
+
+An optional second opinion on memory writes, on the user's own TypeSafe AI
+key. It is add-only: the deterministic gate (3.5) stays the gate, and Jev can
+only block an entry the gate allowed, never allow one the gate blocked.
+
+**Key type.** `providerMeta.typesafe` has its own kind, `memory-check`, and a
+fourth tab, **Smart checks** (renamed from **Memory checks** in J0; the tab id and the deep links are unchanged), on `/profile/keys` (`?provider=typesafe` and
+`?tab=memory-checks` deep links pass `resolveSafeNextPath`). The key is
+stored encrypted in `keys` like the others (`provider = 'typesafe'`; the
+column is a text enum, so `db:generate` produced no migration). It is not a
+chat provider: it is not in the model catalog, so it never appears in the
+chat or memory-model pickers, the memory-model resolver never considers it,
+it is never routed through a gateway, and `useUserKeys().hasAnyKey` ignores
+it. Saving it calls `GET https://api.typesafe.ai/v1/models` with the key
+(`verifyMemoryJevApiKey`, 5 s timeout): a 401 or 403 refuses the save with a
+why and a fix; a network error, a timeout or another status still saves,
+because memory checks fail open anyway. `/profile/memory` shows "Memory
+checks: TypeSafe AI Jev (on)" or a link to add the key. Saving the key is the
+user's opt-in to the spend and to the recipient. Each role has its own toggle
+in the "TypeSafe AI checks" section of the Smart checks tab (see "J0:
+foundation" above); deleting the key stops all of them. The key guide is
+`content/key-guides/typesafe-ai-api-key.md`, without a video for now.
+
+**Code.** `server/utils/memory/jev-check.ts`, through `experimental_decide`
+from `ai` with `@ai-sdk/typesafe-ai`:
+
+- `resolveMemoryJevChecker({ db, userId, logger })` reads and decrypts the
+  saved key and returns a checker, or `null` without a key. A failed read or
+  decryption logs `key-error` and returns `null`.
+- `createMemoryJevChecker({ apiKey })` refuses an empty key, so the SDK can
+  never fall back to its `TYPESAFE_AI_API_KEY` environment variable. The
+  decrypted key is passed per checker; there is no operator key.
+- `check(candidates)` runs `evaluateMemoryEntry` on every candidate first and
+  sends only the ones it allows. Gate-refused text, including its never-store
+  values, never leaves Besidka. Extraction ops the extractor itself flagged
+  as never-store, and ops whose evidence fails the deterministic grounding
+  check, are not sent either.
+- Questions per candidate: one boolean per Art. 9 category (health, religion
+  or belief, political opinion, racial or ethnic origin, sex life or
+  orientation, trade union, genetic, biometric) and one never-store
+  question, each quoting the candidate text, with the criteria wording from
+  the research run. `legal-dispute` and `drugs` stay gate-only. The boolean
+  type is used because the SDK drops `confidence` on choice answers.
+- Grounding (one more boolean) only where there is a source text. The source
+  is redacted for never-store values, capped at 9,000 characters, and dropped
+  (no grounding question) when the gate would refuse it, so flagged source
+  text is never sent either.
+- Thresholds: `MEMORY_JEV_SENSITIVE_THRESHOLD = 0.5` (block at or above) and
+  `MEMORY_JEV_GROUNDING_THRESHOLD = 0.5` (reject below), the research's
+  working threshold. Model pinned to `jev-1.14.0`, not `jev-latest`, so a
+  model update cannot move the tuned thresholds silently.
+- Batching: all candidates of one write in one call, split only past 100
+  questions or 90,000 question characters. The calls share one
+  `MEMORY_JEV_TIMEOUT_MS` (2,500 ms) budget with `maxRetries: 0`.
+- Fail-open: a missing key, 401, 403, 429, 529, any other status, a network
+  error or the timeout leaves every unanswered candidate `clear`, so the
+  write proceeds on the gate alone.
+
+**Where it runs.** Every write path that reaches the gate behind the consent
+gate (`requireLegalConsent`, or `currentLegalConsentCondition` in the sweep
+and backfill queries):
+
+| Path | Checks | Source for grounding | Result on a Jev hit |
+|---|---|---|---|
+| Chat extraction (sweep, Update now), backfill, project refresh, legacy blob | (a) + (b) | A window of 300 characters around the op's evidence quote in the user's own text | Op dropped as `extra-check-sensitive` or `extra-check-ungrounded` |
+| Import | (a) + (b) | The same window in the pasted chunk | Same |
+| Instruct preview | (a) + (b) | The redacted instruction, plus the saved entry's text for an update | Row `rejected` with `rejection.kind = 'extra-check'` |
+| Instruct apply | (a) | None (no model text left to ground) | 422, `data.kind = 'extra-check'` |
+| Manual create and edit (`/api/v1/memory/entries`) | (a) | None (the user typed it) | 422, `data.kind = 'extra-check'` |
+| `memory_write` tool | (a) | None | 422 folded into the tool error |
+
+The extraction family resolves the checker in `extract.ts` and runs one
+batched pre-pass in `MemoryExtractionApplier.run()`, before any write; the
+verdict is applied in `evaluate()` after the gate allowed the exact persisted
+values. `createMemoryEntry` and `updateMemoryEntry` take an optional `jev`
+in their context and call `assertMemoryJevAllowed` after the gate. The
+About-me migration runs on `GET /api/v1/profiles/settings`, outside the
+consent gate, so it passes no checker and never calls Jev. Jev is not used
+for "worth remembering"; the separate `extractionPrefilter` role (J2) is.
+
+**Logging.** One wide-event field per request,
+`attributes.memoryJev: { model, questions, blocked, groundingRejected,
+gateDisagreements, latencyMs, status }`, summed across calls in the request
+through `getContext()`. `gateDisagreements` maps each Art. 9 category id or
+`never-store` to how many candidates Jev flagged that the gate passed; it is
+the list to mine for new deterministic rules. No text is logged.
+
+**Fragile seams to re-check on every `ai` or `@ai-sdk/typesafe-ai` upgrade.**
+
+- `experimental_decide` is experimental in `ai@7`: its name, its options
+  (`state`, `questions`, `maxRetries`, `abortSignal`) and the answer shape
+  `{ type: 'boolean', probability }` can change in a patch release.
+- The provider package is about six weeks old and ships patches weekly. It
+  maps the SDK `boolean` question to the API's `noul`; a renamed or
+  remapped type breaks every check, which then fails open silently except for
+  `status: 'error'` in the logs.
+- `createTypeSafeAi` falls back to `TYPESAFE_AI_API_KEY` when `apiKey` is
+  empty. The empty-key guard in `createMemoryJevChecker` must stay.
+- The SDK's choice answer drops `confidence`; another reason the checks use
+  booleans only.
+- `@ai-sdk/provider` and `provider-utils` must stay at the versions the
+  provider pins (4.0.34 and 5.0.68 at the time of writing), so the whole
+  `@ai-sdk/*` train is bumped together. `pnpm why @ai-sdk/provider` should
+  list one 4.x copy; the 3.x copy belongs to `nuxt-studio` (`ai@6`).
+- Thresholds were tuned on `jev-1.14.0`. A model bump needs the research run
+  repeated before the pin moves.
+
+**Smoke test (2026-10-26, synthetic text, owner's key).** One batched call
+through the real module: 6 candidates in, the card-number candidate refused by
+the gate and not sent, 5 sent as 48 questions; 351 ms; 7,206 input tokens
+(about $0.0003). Jev flagged "half Nigerian" as racial or ethnic origin (the
+gate passed it), rejected "Uses React and Next.js" against a source saying
+"We use Vue 3 and Nuxt", and cleared the language preference, the job and the
+Criminal Minds line.
+
+#### J1: Auto web search (`autoWebSearch`)
+
+Auto is a modifier on the chosen search provider (the model's built-in
+search, Brave or Exa), not a provider of its own: Jev decides per message
+whether that provider searches.
+
+**UI.** `ChatInput/WebSearchMenuItems.vue` (in both `WebSearchTrigger.vue`
+and `ToolbarMore.client.vue`) gets an **Auto** section with a one-line hint
+and an info tooltip, shown only when `useUserKeys().keyStatusForProvider(
+'typesafe') === 'saved'` and the role settings have loaded with
+`autoWebSearch` on (`useAutoWebSearch()` in `app/composables/
+auto-web-search.ts`, which fetches `/api/v1/profiles/settings` only once the
+key is known to be saved, so users without a key pay no extra request). With
+search Off the toggle is disabled with "Pick a provider above to use Auto."
+The preference is per browser, `prefStorage` key `settings_web_search_auto`
+(`on`/`off`). The trigger reads **Auto** instead of **Search** while it
+applies. The Exa level heading is now **Depth**, so its "Auto" level is not
+confused with this mode.
+
+**Request.** `POST /api/v1/chats/[slug]` takes
+`webSearchMode: 'auto' | 'always'` (default `always`), a separate field; the
+`tools` enum has no sentinel. `PUT /api/v1/chats/new` ignores the field: it
+never asks Jev and persists the chosen tools (see "First message" below). The client sends `auto` only with the
+preference on and a web-search tool in `tools`, and falls back to `always`
+once the key is known missing or the role known off. While those are still
+loading it sends `auto` and lets the server decide, so a chat's first POST
+fired on mount keeps its chip.
+
+**Server.** The request is validated before Jev sees anything (delta audit
+finding 3, 2026-10-26): `collectAutoWebSearchCandidateTools` returns the
+tools Auto may pick from (the default tools plus, in Auto, the persisted
+tools a retry reuses), and the gateway tool allowance, model tool support,
+the image-generation conflict, the Brave/Exa key presence and the transfer
+consent are all checked on that superset. Auto only removes web-search tools
+or reuses persisted ones, so validating the superset is sound, and a send
+that ends in 400 or 403 never discloses the message to TypeSafe AI. One
+consequence: the Brave or Exa key row is read even when Jev then skips the
+search. Only then does `resolveAutoWebSearch` in
+`server/utils/chats/auto-web-search.ts` run, before `persistUserMessage` and
+the provider switch. In order:
+
+1. `always`, or no web-search tool chosen: tools unchanged, no D1 read.
+2. `resolveJevRoleApiKey` (key read, decrypt, `typesafe_roles` read): no key
+   or role off means tools unchanged and no chip, exactly as without a key.
+3. A message already persisted under the same id reuses its persisted tools
+   and calls nothing (`counts.reused`). That covers a retry of the same
+   message id and a retry of a new chat's first message its first POST
+   already decided; the chip is derived from whether those tools search.
+4. Guards: `JEV_URL_OR_DOMAIN_PATTERN` or `matchesJevPhrases(text,
+   JEV_RECENCY_PHRASES)` forces the search with no Jev call (`forced`).
+5. One `decideSendPathJev` call with `state = { message, recent_turns }`
+   (the last `JEV_AUTO_WEB_SEARCH.recentTurns` persisted turns with text),
+   each text never-store-redacted and capped at
+   `JEV_SEND_PATH_MAX_TURN_CHARS`, on `JEV_SEND_PATH_TIMEOUT_MS`. Search when
+   `p >= JEV_AUTO_WEB_SEARCH.searchAtOrAbove` (`searched`), else drop only the
+   web-search tool (`skipped`). Any failure, refusal or missing answer
+   searches (`fallback`).
+
+**First message.** The PUT persists the chosen tools and never calls Jev (no
+model is validated there). The chat's first POST sees one persisted user
+message and no reply; unless the KV marker
+`auto-web-search-first-message:<chatId>:<messageId>` exists it passes the
+PUT's tools as both chosen and default with `persistedTools: null`, so Jev
+decides with the full validation above. `recordFirstMessageAutoWebSearchDecision`
+then writes the resolved tools onto the user row and sets the marker (one
+day). A retry of that message finds the marker and takes the reuse branch.
+A KV failure on either side only means the retry asks Jev again (one more
+call, the safe direction). Persisted `messages.tools` are always the resolved set, so
+`hasSameTools` and the duplicate and replay paths work per message id
+unchanged. A skip removes the search tool from `requestedTools`, so the
+search prompt nudge, the Brave/Exa lines, the external tool registration,
+the key lookup and the `presetMemoryWriteLock` lock (which keys on
+`requestedTools`) all drop for that message only.
+
+**Reopening a chat after a skip.** The skipped message persists without a
+search tool, so `findLastUserMessageTools` alone would show search as Off.
+`resolveInitialChatTools` (`app/composables/chat.ts`) restores the saved
+provider (`settings_web_search_tool`) when Auto is preferred, the last user
+message has no tools and its reply was `skipped` or is still missing (a new
+chat's pending first message). A turn the user sent with search Off keeps
+Off. Without the Auto preference it is `findLastUserMessageTools` unchanged.
+
+**Chip.** The outcome is stored as `usage.autoWebSearch` on the assistant
+message (`searched`, `skipped`, `forced`, `fallback`), in both the streamed
+finish metadata and the persisted row (`addAutoWebSearchUsage`).
+`Chat/AutoWebSearchChip.vue` renders "Auto: searched the web" or "Auto: no web
+search needed" under the answer, on the owner's chat page only (not on shared
+chats). A turn whose usage capture failed has no chip. For a reused decision
+the chip says searched or skipped.
+
+**Logging.** `attributes.autoWebSearchJev` via `recordJevRoleLog`: `status`,
+`calls`, `questions`, `inputTokens`, `latencyMs`, `scores` (the rounded
+probability) and `counts` keyed by outcome plus `reused`. No text.
+
+**J6 seam.** `server/utils/jev/send-path.ts` holds the shared send-path
+pieces: `readSendPathTurns`, `buildSendPathJevState` and
+`decideSendPathJev({ model, state, questions })`, which takes any question
+map. `autoWebSearchJevQuestions()` and `readAutoWebSearchAnswer(result)` are
+exported separately, so past-chat retrieval can merge its question into the
+same call and read both answers from one result. J6 shipped first with its
+own call (`decidePastChatSearch` in `server/utils/memory/tools/
+pre-retrieval.ts`, `recent_turns` as `User: …` strings capped by
+`JEV_PAST_CHAT_RETRIEVAL.maxTurnChars`), and the two roles run at different
+points of the send (Auto before tool validation, J6 only when tool calling is
+off), so they overlap only for a model without tool calling that uses its
+built-in search in Auto. Batching them means one shared state first: move J6
+to `buildSendPathJevState`, decide both before tool validation, and pass the
+merged question map to `decideSendPathJev` once.
+
+**Tests.** `tests/unit/utils/chats/auto-web-search.spec.ts`,
+`tests/integration/api/chats-auto-web-search.spec.ts` (no key identical to
+`always`, skip, search, 401 and timeout fallback, forced, recent turns,
+retry and first-message reuse, role off),
+`tests/integration/api/chats-new-auto-web-search.spec.ts`,
+`tests/unit/composables/auto-web-search.spec.ts`,
+`tests/unit/components/Chat/AutoWebSearchChip.spec.ts`, and Auto cases in the
+`WebSearchMenuItems`, `WebSearchTrigger` and `chat` specs.
+
+#### J2: Extraction pre-filter (`extractionPrefilter`)
+
+`extractLeasedChatMemory` (`server/utils/memory/extract.ts`) asks Jev one
+question, `JEV_EXTRACTION_PREFILTER.question` (`e1_durable`), about the
+window's transcript right after the `too-short` branch and before
+`loadMemoryExtractionIndex` and `resolveExtractionModel`, so a skip pays for
+neither the index read nor the model call. The transcript is the one
+`loadMemoryExtractionWindow` already built, never-store redacted per message.
+The logic lives in `server/utils/memory/extract-prefilter.ts`.
+
+- **Chunking.** A transcript over `maxChunkTokens` (8,000, estimated with
+  `estimateMemoryTokens`, so Cyrillic splits into more pieces than Latin) is
+  split at line breaks into pieces under the cap and scored one piece per call,
+  sequentially. The chat is skipped only when every piece scores below
+  `skipBelow` (0.40); the first piece at or above it ends the check and the
+  extraction runs. Calls use the background timeout (2,500 ms) each.
+- **Skip.** Stamps the watermark through `memoryExtractionAdvance` with the
+  chat's own `advanceMode`, exactly as the `no-user-text` branch does, and
+  returns `status: 'skipped'`, `reason: 'nothing-durable'`. The failure
+  counters are not incremented. The chat leaves the due query until new
+  activity arrives.
+- **Never pre-filtered.** `explicit` (extract-now, "Update memory now"), the
+  import path (separate code), and a sweep pass of a project that still
+  carries the legacy blob (the pass also migrates the blob, which a skip would
+  leave undone). The project Refresh button (`manual` trigger) is
+  pre-filtered.
+- **Backfill.** Pre-filtered like the sweep: it is where the saving is
+  largest. The progress counters already treat `skipped` as processed, so a
+  `nothing-durable` skip raises `skippedChats` and `processedChats` and adds no
+  tokens. The cost estimate stays an upper bound, and the confirm step of the
+  backfill sheet says so when the key and the role are on.
+- **Fail-safe.** No key, role off, or any Jev failure (401, 403, 429, 529,
+  timeout, network, refusal, a missing answer, one failing piece after others
+  scored low) runs the extraction as today. The status is in the log only.
+- **Logging.** `attributes.extractionPrefilterJev`: `status`, `calls`,
+  `questions`, `inputTokens`, `latencyMs`, `scores` and `counts.skipped`. For
+  a chat that was extracted after being scored, the highest piece score picks
+  a tenth bucket and three counts are added, for example `chatsAtScore0.4`,
+  `proposedAtScore0.4` and `entriesAtScore0.4` (entries the model proposed and
+  entries that were saved). Extracted chats that produce nothing in the
+  lowest buckets mean `skipBelow` can go up; entries there mean it is right.
+  Chats that were skipped appear only as `counts.skipped` and a score, so
+  "skipped but would have extracted" needs a periodic shadow run (log the
+  score, extract anyway, compare).
+- **UI.** `nothing-durable` has a label in the toolbar's skip-reason map
+  ("Nothing new worth remembering in that chat."); extract-now is never
+  pre-filtered, so the toolbar does not show it today. The backfill sheet's
+  "Chats skipped" counter includes these skips.
+
+#### J3: Prompt-injection screening (`injectionScreening`)
 
 Jev screens third-party text with the policy `JEV_INJECTION_SCREENING`
 (`i2_attack` at or above 0.3). The core is `screenTextsForInjection` in
@@ -2241,210 +2464,7 @@ into flagging a legitimate document can only cause a review prompt for a file
 can never delete content. A false negative leaves the existing defences: the
 write lock, the data-not-instructions wrapping and the memory gate.
 
-#### Auto web search (`autoWebSearch`, J1)
-
-Auto is a modifier on the chosen search provider (the model's built-in
-search, Brave or Exa), not a provider of its own: Jev decides per message
-whether that provider searches.
-
-**UI.** `ChatInput/WebSearchMenuItems.vue` (in both `WebSearchTrigger.vue`
-and `ToolbarMore.client.vue`) gets an **Auto** section with a one-line hint
-and an info tooltip, shown only when `useUserKeys().keyStatusForProvider(
-'typesafe') === 'saved'` and the role settings have loaded with
-`autoWebSearch` on (`useAutoWebSearch()` in `app/composables/
-auto-web-search.ts`, which fetches `/api/v1/profiles/settings` only once the
-key is known to be saved, so users without a key pay no extra request). With
-search Off the toggle is disabled with "Pick a provider above to use Auto."
-The preference is per browser, `prefStorage` key `settings_web_search_auto`
-(`on`/`off`). The trigger reads **Auto** instead of **Search** while it
-applies. The Exa level heading is now **Depth**, so its "Auto" level is not
-confused with this mode.
-
-**Request.** `POST /api/v1/chats/[slug]` takes
-`webSearchMode: 'auto' | 'always'` (default `always`), a separate field; the
-`tools` enum has no sentinel. `PUT /api/v1/chats/new` ignores the field: it
-never asks Jev and persists the chosen tools (see "First message" below). The client sends `auto` only with the
-preference on and a web-search tool in `tools`, and falls back to `always`
-once the key is known missing or the role known off. While those are still
-loading it sends `auto` and lets the server decide, so a chat's first POST
-fired on mount keeps its chip.
-
-**Server.** The request is validated before Jev sees anything (delta audit
-finding 3, 2026-10-26): `collectAutoWebSearchCandidateTools` returns the
-tools Auto may pick from (the default tools plus, in Auto, the persisted
-tools a retry reuses), and the gateway tool allowance, model tool support,
-the image-generation conflict, the Brave/Exa key presence and the transfer
-consent are all checked on that superset. Auto only removes web-search tools
-or reuses persisted ones, so validating the superset is sound, and a send
-that ends in 400 or 403 never discloses the message to TypeSafe AI. One
-consequence: the Brave or Exa key row is read even when Jev then skips the
-search. Only then does `resolveAutoWebSearch` in
-`server/utils/chats/auto-web-search.ts` run, before `persistUserMessage` and
-the provider switch. In order:
-
-1. `always`, or no web-search tool chosen: tools unchanged, no D1 read.
-2. `resolveJevRoleApiKey` (key read, decrypt, `typesafe_roles` read): no key
-   or role off means tools unchanged and no chip, exactly as without a key.
-3. A message already persisted under the same id reuses its persisted tools
-   and calls nothing (`counts.reused`). That covers a retry of the same
-   message id and a retry of a new chat's first message its first POST
-   already decided; the chip is derived from whether those tools search.
-4. Guards: `JEV_URL_OR_DOMAIN_PATTERN` or `matchesJevPhrases(text,
-   JEV_RECENCY_PHRASES)` forces the search with no Jev call (`forced`).
-5. One `decideSendPathJev` call with `state = { message, recent_turns }`
-   (the last `JEV_AUTO_WEB_SEARCH.recentTurns` persisted turns with text),
-   each text never-store-redacted and capped at
-   `JEV_SEND_PATH_MAX_TURN_CHARS`, on `JEV_SEND_PATH_TIMEOUT_MS`. Search when
-   `p >= JEV_AUTO_WEB_SEARCH.searchAtOrAbove` (`searched`), else drop only the
-   web-search tool (`skipped`). Any failure, refusal or missing answer
-   searches (`fallback`).
-
-**First message.** The PUT persists the chosen tools and never calls Jev (no
-model is validated there). The chat's first POST sees one persisted user
-message and no reply; unless the KV marker
-`auto-web-search-first-message:<chatId>:<messageId>` exists it passes the
-PUT's tools as both chosen and default with `persistedTools: null`, so Jev
-decides with the full validation above. `recordFirstMessageAutoWebSearchDecision`
-then writes the resolved tools onto the user row and sets the marker (one
-day). A retry of that message finds the marker and takes the reuse branch.
-A KV failure on either side only means the retry asks Jev again (one more
-call, the safe direction). Persisted `messages.tools` are always the resolved set, so
-`hasSameTools` and the duplicate and replay paths work per message id
-unchanged. A skip removes the search tool from `requestedTools`, so the
-search prompt nudge, the Brave/Exa lines, the external tool registration,
-the key lookup and the `presetMemoryWriteLock` lock (which keys on
-`requestedTools`) all drop for that message only.
-
-**Reopening a chat after a skip.** The skipped message persists without a
-search tool, so `findLastUserMessageTools` alone would show search as Off.
-`resolveInitialChatTools` (`app/composables/chat.ts`) restores the saved
-provider (`settings_web_search_tool`) when Auto is preferred, the last user
-message has no tools and its reply was `skipped` or is still missing (a new
-chat's pending first message). A turn the user sent with search Off keeps
-Off. Without the Auto preference it is `findLastUserMessageTools` unchanged.
-
-**Chip.** The outcome is stored as `usage.autoWebSearch` on the assistant
-message (`searched`, `skipped`, `forced`, `fallback`), in both the streamed
-finish metadata and the persisted row (`addAutoWebSearchUsage`).
-`Chat/AutoWebSearchChip.vue` renders "Auto: searched the web" or "Auto: no web
-search needed" under the answer, on the owner's chat page only (not on shared
-chats). A turn whose usage capture failed has no chip. For a reused decision
-the chip says searched or skipped.
-
-**Logging.** `attributes.autoWebSearchJev` via `recordJevRoleLog`: `status`,
-`calls`, `questions`, `inputTokens`, `latencyMs`, `scores` (the rounded
-probability) and `counts` keyed by outcome plus `reused`. No text.
-
-**J6 seam.** `server/utils/jev/send-path.ts` holds the shared send-path
-pieces: `readSendPathTurns`, `buildSendPathJevState` and
-`decideSendPathJev({ model, state, questions })`, which takes any question
-map. `autoWebSearchJevQuestions()` and `readAutoWebSearchAnswer(result)` are
-exported separately, so past-chat retrieval can merge its question into the
-same call and read both answers from one result. J6 shipped first with its
-own call (`decidePastChatSearch` in `server/utils/memory/tools/
-pre-retrieval.ts`, `recent_turns` as `User: …` strings capped by
-`JEV_PAST_CHAT_RETRIEVAL.maxTurnChars`), and the two roles run at different
-points of the send (Auto before tool validation, J6 only when tool calling is
-off), so they overlap only for a model without tool calling that uses its
-built-in search in Auto. Batching them means one shared state first: move J6
-to `buildSendPathJevState`, decide both before tool validation, and pass the
-merged question map to `decideSendPathJev` once.
-
-**Tests.** `tests/unit/utils/chats/auto-web-search.spec.ts`,
-`tests/integration/api/chats-auto-web-search.spec.ts` (no key identical to
-`always`, skip, search, 401 and timeout fallback, forced, recent turns,
-retry and first-message reuse, role off),
-`tests/integration/api/chats-new-auto-web-search.spec.ts`,
-`tests/unit/composables/auto-web-search.spec.ts`,
-`tests/unit/components/Chat/AutoWebSearchChip.spec.ts`, and Auto cases in the
-`WebSearchMenuItems`, `WebSearchTrigger` and `chat` specs.
-
-#### Past-chat retrieval (`pastChatRetrieval`, J6)
-
-Pre-retrieval of past chats for sends where `search_chats` and `read_chat`
-are not registered. Tools stay registered exactly as before for
-tool-calling models, with no per-message tool churn, so the provider's prompt
-cache is untouched; this role only covers `toolCallingAllowed === false` (a
-model or gateway without tool calling, a forced `toolChoice`, or image
-generation) while **Search and reference chats** is on in the settings.
-
-- **Gate.** `isChatSearchToolEnabled(memorySettings) && !toolCallingAllowed
-  && userMessageText !== null`, in `index.post.ts` right after the user text
-  is read. `resolveJevRoleModel({ role: 'pastChatRetrieval' })` runs first:
-  with no TypeSafe AI key, or with the role switched off, nothing else runs,
-  not even the phrase guard, so the send is identical to before.
-- **Decision.** `decidePastChatSearch` in
-  `server/utils/memory/tools/pre-retrieval.ts`. A message containing a
-  `JEV_PAST_CHAT_PHRASES` entry forces the search with no Jev call. Otherwise
-  one `s1_previous` question runs over `{ recent_turns, message }` (the last
-  three text turns before the message as `User: …` / `Assistant: …`, each cut
-  to 600 characters, the message cut to 2,000, never-store values removed
-  from all of it) with the 800 ms send-path timeout; a probability at or
-  above 0.25 searches. Any Jev failure (401, 429, 529, timeout, network,
-  refusal, or a missing answer) also searches: skipping a needed search is the
-  costlier mistake, and a pre-search is one cheap indexed D1 query.
-- **Search.** The existing `searchChats` with the same owner, current-chat
-  exclusion, `memory_excluded` and project scoping (the project id is passed
-  under the same condition as the tool registration), `limit: 3`, plus
-  `excludeForeignShareBranches` (delta audit finding 6, 2026-10-26): a chat
-  whose `branched_from_share_slug` is set is left out unless that share
-  belongs to a chat of the same user, so turns another person wrote and the
-  user only branched are never injected unasked; a branch whose share no
-  longer exists counts as foreign. The `search_chats` tool, which the model
-  calls and whose results it sees as tool output, keeps every branch. The query is
-  the message with the guard phrases, stop words (`STOP_WORDS` from the
-  knowledge search plus chat filler in EN/UK/PL/RU) and one-character tokens
-  removed, so the eight-token cap is spent on distinctive words; an empty
-  query skips the search. The call receives the route's memoized
-  `resolveRerankModel` (the J4 re-ranking), so with the `rerank` role on the
-  hits are ordered like the tool's; no other Jev call is added for it.
-- **Injection.** The top hits become a `<past_chats>` block (notice, then a
-  `<past_chat>` entry per hit with title, date and the bracket-neutralized
-  `<chat_excerpt>` snippet, never-store values removed) capped at
-  `JEV_PAST_CHAT_RETRIEVAL.maxExcerptTokens` (1,500, with the send's token
-  family; hits are added in rank order until the next one would not fit).
-  It is appended to the last user turn of the model-facing copy next to the
-  project-knowledge excerpts, exactly like `buildKnowledgeAwareMessagesForModel`
-  does, so it never reaches `messagesForAI`, `originalMessages` or the
-  persisted user row. The block says it is quoted history and never
-  instructions.
-- **Write lock.** `presetMemoryWriteLock` takes `holdsPastChatExcerpts`, set
-  when a block was added. On these sends `chatSearchBudget` is `undefined`
-  (both `chatSearchToolsRegistered` and `memoryToolsRegistered` need
-  `toolCallingAllowed`) and `memory_write` is not registered at all, so the
-  lock is wired but has nothing to lock today; it takes effect if memory
-  tools are ever enabled for sends without tool calling. Do not create a
-  budget for these sends just to exercise it: a budget grants
-  `CHAT_SEARCH_MAX_CALLS_PER_TURN` extra tool-loop steps.
-- **Chip.** A synthetic `tool-search_chats` part with a
-  `past-chat-pre-retrieval-<user message id>` tool call id, written to the
-  client stream (`tool-input-available` and `tool-output-available`) and put
-  first in the persisted assistant parts after the empty-answer checks. It
-  carries the query and each chat's title, link and date, never an excerpt.
-  It renders in the existing `SearchStep` as "Used 3 earlier chats" with links.
-  Because it is a tool part it is stripped by the public share view
-  (`filterPublicParts`) and by the model-context sanitizer (only text survives
-  past assistant turns), and the client `hasMeaningfulAssistantParts` ignores
-  it so an empty reply still surfaces as empty (the server-side check never
-  counts `tool-search_chats`).
-- **Logging.** `attributes.pastChatRetrievalJev` through `recordJevRoleLog`:
-  `calls` is 0 when the phrase forced the search, `scores` holds the Jev
-  probability, and `counts` holds one of `forced`, `search`, `skip` or
-  `failed` plus `searched` (0 or 1) and `hits`. No text is logged.
-- **Cost and latency.** About 420 input tokens per Jev call (about $0.00002),
-  p50 170 ms and p95 about 215 ms in the eval. The Jev call and the memory
-  index and project-knowledge loads run concurrently; the route awaits the
-  Jev result just before the stream starts.
-- **Seam for the Auto web search role (J1).** The call is one small function,
-  `decidePastChatSearch({ model, message, recentTurns })`, that builds its own
-  state and question map. When J1 lands, both roles' questions
-  (`w1_live` and `s1_previous`) can share one `jevDecide` call over the same
-  `{ recent_turns, message }` state, as the eval's batched shape does (about
-  105 extra tokens, no measurable latency): hoist the call into the route,
-  pass each role the probabilities, and keep each role's own log record.
-  Until then each role makes its own call.
-
-#### Re-ranking (J4, `rerank` role)
+#### J4: Re-ranking (`rerank`)
 
 Re-ranking orders the candidates of two searches with Jev. It never adds a
 result the search did not find.
@@ -2526,55 +2546,7 @@ logged scores. The `search_chats` snippet is only 32 FTS5 tokens
 (`SEARCH_CHATS_SNIPPET_TOKEN_COUNT`), so the relevance judgement there sees
 less text than the eval did; widening it is a separate change.
 
-#### Extraction pre-filter (J2)
-
-`extractLeasedChatMemory` (`server/utils/memory/extract.ts`) asks Jev one
-question, `JEV_EXTRACTION_PREFILTER.question` (`e1_durable`), about the
-window's transcript right after the `too-short` branch and before
-`loadMemoryExtractionIndex` and `resolveExtractionModel`, so a skip pays for
-neither the index read nor the model call. The transcript is the one
-`loadMemoryExtractionWindow` already built, never-store redacted per message.
-The logic lives in `server/utils/memory/extract-prefilter.ts`.
-
-- **Chunking.** A transcript over `maxChunkTokens` (8,000, estimated with
-  `estimateMemoryTokens`, so Cyrillic splits into more pieces than Latin) is
-  split at line breaks into pieces under the cap and scored one piece per call,
-  sequentially. The chat is skipped only when every piece scores below
-  `skipBelow` (0.40); the first piece at or above it ends the check and the
-  extraction runs. Calls use the background timeout (2,500 ms) each.
-- **Skip.** Stamps the watermark through `memoryExtractionAdvance` with the
-  chat's own `advanceMode`, exactly as the `no-user-text` branch does, and
-  returns `status: 'skipped'`, `reason: 'nothing-durable'`. The failure
-  counters are not incremented. The chat leaves the due query until new
-  activity arrives.
-- **Never pre-filtered.** `explicit` (extract-now, "Update memory now"), the
-  import path (separate code), and a project pass that still carries the
-  legacy blob (the pass also migrates the blob, which a skip would leave
-  undone).
-- **Backfill.** Pre-filtered like the sweep: it is where the saving is
-  largest. The progress counters already treat `skipped` as processed, so a
-  `nothing-durable` skip raises `skippedChats` and `processedChats` and adds no
-  tokens. The cost estimate stays an upper bound, and the confirm step of the
-  backfill sheet says so when the key and the role are on.
-- **Fail-safe.** No key, role off, or any Jev failure (401, 403, 429, 529,
-  timeout, network, refusal, a missing answer, one failing piece after others
-  scored low) runs the extraction as today. The status is in the log only.
-- **Logging.** `attributes.extractionPrefilterJev`: `status`, `calls`,
-  `questions`, `inputTokens`, `latencyMs`, `scores` and `counts.skipped`. For
-  a chat that was extracted after being scored, the highest piece score picks
-  a tenth bucket and three counts are added, for example `chatsAtScore0.4`,
-  `proposedAtScore0.4` and `entriesAtScore0.4` (entries the model proposed and
-  entries that were saved). Extracted chats that produce nothing in the
-  lowest buckets mean `skipBelow` can go up; entries there mean it is right.
-  Chats that were skipped appear only as `counts.skipped` and a score, so
-  "skipped but would have extracted" needs a periodic shadow run (log the
-  score, extract anyway, compare).
-- **UI.** `nothing-durable` has a label in the toolbar's skip-reason map
-  ("Nothing new worth remembering in that chat."); extract-now is never
-  pre-filtered, so the toolbar does not show it today. The backfill sheet's
-  "Chats skipped" counter includes these skips.
-
-#### Share check (`sharePiiCheck`)
+#### J5: Share check (`sharePiiCheck`)
 
 A warning in the share modal that the chat may hold personal data. It never
 blocks Generate and never changes what is shared.
@@ -2582,7 +2554,7 @@ blocks Generate and never changes what is shared.
 **Endpoint.** `POST /api/v1/chats/[slug]/share/check` (next to the other share
 routes) takes `{ showFiles, showMetadata }` and returns
 `{ warnings: [{ kind, source }], checked }`. It never returns or logs text.
-It is ownership-scoped (`chats.slug` plus `user_id`, else 404) and limited by
+It sits behind `assertNotCrossSiteRequest` (#560), is ownership-scoped (`chats.slug` plus `user_id`, else 404) and limited by
 the `share-check` bucket of `enforceMemoryRateLimit` (20 per minute, one
 counter per user). It is not behind `requireLegalConsent`, because it stores
 nothing and the deterministic half needs no key; only the Jev call is gated on
@@ -2661,6 +2633,119 @@ no longer jumps when the key status resolves. The content wrapper is
 `min-h-11` (the same two lines), so the one-line "add a key" state takes the
 same height and users without a key see no shift either.
 
+#### J6: Past-chat retrieval (`pastChatRetrieval`)
+
+Pre-retrieval of past chats for sends where `search_chats` and `read_chat`
+are not registered. Tools stay registered exactly as before for
+tool-calling models, with no per-message tool churn, so the provider's prompt
+cache is untouched; this role only covers `toolCallingAllowed === false` (a
+model or gateway without tool calling, a forced `toolChoice`, or image
+generation) while **Search and reference chats** is on in the settings.
+
+- **Gate.** `isChatSearchToolEnabled(memorySettings) && !toolCallingAllowed
+  && userMessageText !== null`, in `index.post.ts` right after the user text
+  is read. `resolveJevRoleModel({ role: 'pastChatRetrieval' })` runs first:
+  with no TypeSafe AI key, or with the role switched off, nothing else runs,
+  not even the phrase guard, so the send is identical to before.
+- **Decision.** `decidePastChatSearch` in
+  `server/utils/memory/tools/pre-retrieval.ts`. A message containing a
+  `JEV_PAST_CHAT_PHRASES` entry forces the search with no Jev call. Otherwise
+  one `s1_previous` question runs over `{ recent_turns, message }` (the last
+  three text turns before the message as `User: …` / `Assistant: …`, each cut
+  to 600 characters, the message cut to 2,000, never-store values removed
+  from all of it) with the 800 ms send-path timeout; a probability at or
+  above 0.25 searches. Any Jev failure (401, 429, 529, timeout, network,
+  refusal, or a missing answer) also searches: skipping a needed search is the
+  costlier mistake, and a pre-search is one cheap indexed D1 query.
+- **Search.** The existing `searchChats` with the same owner, current-chat
+  exclusion, `memory_excluded` and project scoping (the project id is passed
+  under the same condition as the tool registration), `limit: 3`, plus
+  `excludeForeignShareBranches` (delta audit finding 6, 2026-10-26): a chat
+  whose `branched_from_share_slug` is set is left out unless that share
+  belongs to a chat of the same user, so turns another person wrote and the
+  user only branched are never injected unasked; a branch whose share no
+  longer exists counts as foreign. The `search_chats` tool, which the model
+  calls and whose results it sees as tool output, keeps every branch. The query is
+  the message with the guard phrases, stop words (`STOP_WORDS` from the
+  knowledge search plus chat filler in EN/UK/PL/RU) and one-character tokens
+  removed, so the eight-token cap is spent on distinctive words; an empty
+  query skips the search. The call receives the route's memoized
+  `resolveRerankModel` (the J4 re-ranking), so with the `rerank` role on the
+  hits are ordered like the tool's; no other Jev call is added for it.
+- **Injection.** The top hits become a `<past_chats>` block (notice, then a
+  `<past_chat>` entry per hit with title, date and the bracket-neutralized
+  `<chat_excerpt>` snippet, never-store values removed) capped at
+  `JEV_PAST_CHAT_RETRIEVAL.maxExcerptTokens` (1,500, with the send's token
+  family; hits are added in rank order until the next one would not fit).
+  It is appended to the last user turn of the model-facing copy next to the
+  project-knowledge excerpts, exactly like `buildKnowledgeAwareMessagesForModel`
+  does, so it never reaches `messagesForAI`, `originalMessages` or the
+  persisted user row. The block says it is quoted history and never
+  instructions.
+- **Write lock.** `presetMemoryWriteLock` takes `holdsPastChatExcerpts`, set
+  when a block was added. On these sends `chatSearchBudget` is `undefined`
+  (both `chatSearchToolsRegistered` and `memoryToolsRegistered` need
+  `toolCallingAllowed`) and `memory_write` is not registered at all, so the
+  lock is wired but has nothing to lock today; it takes effect if memory
+  tools are ever enabled for sends without tool calling. Do not create a
+  budget for these sends just to exercise it: a budget grants
+  `CHAT_SEARCH_MAX_CALLS_PER_TURN` extra tool-loop steps.
+- **Chip.** A synthetic `tool-search_chats` part with a
+  `past-chat-pre-retrieval-<user message id>` tool call id, written to the
+  client stream (`tool-input-available` and `tool-output-available`) and put
+  first in the persisted assistant parts after the empty-answer checks. It
+  carries the query and each chat's title, link and date, never an excerpt.
+  It renders in the existing `SearchStep` as "Used 3 earlier chats" with links.
+  Because it is a tool part it is stripped by the public share view
+  (`filterPublicParts`) and by the model-context sanitizer (only text survives
+  past assistant turns), and the client `hasMeaningfulAssistantParts` ignores
+  it so an empty reply still surfaces as empty (the server-side check never
+  counts `tool-search_chats`).
+- **Logging.** `attributes.pastChatRetrievalJev` through `recordJevRoleLog`:
+  `calls` is 0 when the phrase forced the search, `scores` holds the Jev
+  probability, and `counts` holds one of `forced`, `search`, `skip` or
+  `failed` plus `searched` (0 or 1) and `hits`. No text is logged.
+- **Cost and latency.** About 420 input tokens per Jev call (about $0.00002),
+  p50 170 ms and p95 about 215 ms in the eval. The Jev call and the memory
+  index and project-knowledge loads run concurrently; the route awaits the
+  Jev result just before the stream starts.
+- **Seam with Auto web search (J1).** `decidePastChatSearch({ model, message,
+  recentTurns })` builds its own state and question map and makes its own call.
+  J1 shipped later with `server/utils/jev/send-path.ts` and did not merge the
+  two calls; the two roles run at different points of the send and overlap only
+  for a model without tool calling that uses its built-in search in Auto. The
+  merge, one shared state and one `decideSendPathJev` call, is described under
+  "J6 seam" in J1 and is not done.
+
+#### Delta audit fixes (#560)
+
+The 2026-10-26 security audit of the Jev roles (J0 to J6) was fixed in #560.
+The behaviour is described in the section of the role it changed; this is the
+index, so a reader can see the whole set in one place.
+
+| Finding | Fix | Described in |
+|---|---|---|
+| 1. A native PDF's pages are never screened, only its extracted text | A scan keeps "Send as PDF" and is marked "Not screened for prompt injection"; a `ready` PDF's toggle says screening reads the text layer only | J3, "Native PDFs" |
+| 2. Ingest screening stopped on the first Jev failure and stored the rest `ready` forever | Per-item KV re-screen queue (14 days), re-screened by the hourly knowledge sweep (10 items per run, 12 chunks per item, 5 attempts); 24 Jev calls per knowledge request | J3, "Unscreened queue" |
+| 3. Auto web search asked Jev before the send was validated | The chat POST validates the superset of tools Auto may pick, then asks; the new-chat PUT never calls Jev; the first POST decides and sets a one-day marker | J1, "Server" and "First message" |
+| - Exa `author` and non-ISO `publishedDate` reached the model unscreened | Both dropped from model-facing results; only title and snippet are screened | J3, "Brave and Exa results" |
+| - Cross-site and volume guards missing on two new routes | `PATCH /chats/:slug/memory` and `POST /chats/:slug/share/check` call `assertNotCrossSiteRequest`; the memory exclusion route uses the shared `write` rate-limit bucket | 3.7 (per-chat exclusion), J5 |
+| 6. Re-ranked passages could steer their own score; pre-retrieval could inject another person's turns | Passages and query moved into the shared state as `passage_<i>` keys; past-chat pre-retrieval skips chats branched from another user's share (or a share that no longer exists) | J4, "Request"; J6, "Search" |
+| 5. Transfer consent covered four gateway vendors and not router models | Consent for more gateway vendors and one generic router consent (`docs/legal.md`) | `docs/legal.md`, the DPIA and the Art. 30 record |
+| 12. TypeSafe AI described inconsistently as controller and processor | Independent controller towards Besidka; its DPA is its contract with the account holder | Privacy Policy, DPIA, Art. 30 record, `docs/legal.md` |
+
+The numbers are the audit's own; "-" marks a fix without a finding number.
+
+#### Legal and consent
+
+TypeSafe AI, Inc. is a US recipient, not on the Data Privacy
+Framework, relying on the SCCs (Module 2) and the UK Addendum in its DPA, which
+marks sensitive-data safeguards "N/A". It is listed in the Privacy Policy, the
+Art. 30 record and the DPIA (risk rows 20 to 24, section 3.7a). The consent
+modal names recipients by category ("the AI providers ... whose keys I add (for ... memory)"), so the
+consent version stays `2026-11-a`. Research and test results:
+`typesafe-jev-findings.md` in the session scratchpad.
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |
@@ -2678,6 +2763,22 @@ per edit — acceptable, edits are rare relative to turns.
 ## 5. Phases and parallel workstreams
 
 Ownership is by file set so parallel sessions never touch the same files.
+
+**As built: how the plan was actually split (checked against the commit history, 2026-10-26).**
+The P1/P2/P3 grouping below is the plan. The work shipped on three branches,
+and the workstream names did not map one to one onto them:
+
+| Plan | Branch and PRs | What it holds |
+|---|---|---|
+| P1 | W1 #500, W2 #501 | Project-memory fixes and `search_chats` / `read_chat` |
+| P2 | umbrella `feat/memory-p2`: W3 #508, W5 part 1 #509, W6 #510, W4 #511, W5 part 2 #514; then #515 to #521 and #523, #524 | Contract and gate, backend, extraction sweep, the Memory tab, removal of the sensitive opt-in (#515, #516), project memory as entries (#517, #518), About me as a profile entry (#519), rich entries with backfill and import (W6c, #520, #521), opt-in extraction (#523, #524) |
+| P3 | umbrella `feat/memory-p3`: K0 #522, K1 #525, K2 #526, K3 #527, then #532 to #560 | Project knowledge (W7), Claude-parity and client-only extraction (#532), the two 2026-10-26 audits (#533, #534, #535, #536), per-chat exclusion (#542), "tell Besidka what to remember" (#543), open backend items (#544), the consent gate (#545, #547), the TypeSafe AI key and memory checks (#549), the `/memory` guide (#550), and the Jev roles J0 to J6 with their delta audit (#552 to #555, #557 to #560) |
+
+W5 (the Memory tab) landed inside P2, not P3; W8 (data rights) was spread over
+W4, W6c, the audits and #542 rather than built as one workstream. The
+as-built sections are 3.10 (W3), 3.11 (W4), 3.12 (W6), 3.13 to 3.15 (W6b,
+special-category data, W6c), 3.16 (W5), 3.17 and 3.18 to 3.19, and
+`docs/project-knowledge-design.md` sections 15 and 16 (W7).
 
 **P1 — quick wins, no schema change (days)**
 - **W1 Project-memory fixes** — G1 last-known-good injection, G3 lease,
@@ -2739,6 +2840,9 @@ Ownership is by file set so parallel sessions never touch the same files.
   - **W5 Memory UI** — `app/pages/profile/memory.vue`, entry list grouped by
     category, edit/delete, toggles (no sensitive opt-in, section 7), "About me",
     project Memory modal with *Use account memory*.
+
+    *Implemented* in two parts (#509, #514) and extended by later PRs; see
+    3.16. The "About me" box became the account `profile` entry (section 7).
   - **W6 Extraction sweep** — `server/utils/memory/extract.ts`,
     `server/plugins/memory-extraction-sweep.ts`, lease, structured ops,
     project blob migration.
@@ -2746,16 +2850,28 @@ Ownership is by file set so parallel sessions never touch the same files.
     *Implemented* (branch `feat/w6-memory-extraction-b4d3e2`; see 3.12).
 
 **P3 — knowledge and rights**
-- **W7 Project knowledge** — `project_files`, notes, dynamic budget
-  `min(64k, 7% × context window)` with a per-send fit check
-  (`docs/project-knowledge-design.md`), chunk FTS,
-  `search_project_knowledge`, folder upload (Chromium link + webkitdirectory).
-- **W8 Data rights** — export/import, chat-deletion cascade, purge, incognito
-  flag (not built, 3.7), privacy-policy text (`content/` legal docs).
+- **W7 Project knowledge** — dynamic budget `min(64k, 7% × context window)`
+  with a per-send fit check (`docs/project-knowledge-design.md`),
+  `search_project_knowledge`, folder upload (Chromium link +
+  webkitdirectory).
+
+  *Implemented* (K0 #522, K1 #525, K2 #526, K3 #527, close-out #541): not the
+  `project_files` link table and chunk FTS this plan named. Items are rows in
+  `project_knowledge_items` (metadata only), extracted text and a per-project
+  search pack live in R2, and search is MiniSearch BM25 built in the Worker
+  (`docs/project-knowledge-design.md` sections 9, 15 and 16).
+- **W8 Data rights** — export/import, chat-deletion cascade, purge, a way to
+  keep a chat out of memory, privacy-policy text (`content/` legal docs).
+
+  *Implemented* piecemeal: export (3.11), import (3.15), the chat-deletion
+  cascade (3.11), account purge (3.7), the privacy policy and consent gate
+  (#545), and, in place of an "incognito" flag, the per-chat memory exclusion
+  `chats.memory_excluded` (3.7, #542). The export's known gaps are in 3.7 and
+  3.17.
 
 **P4 — only if needed**: Vectorize semantic recall; Queues for lower
-extraction latency; "Tell Claude what to change" NL editor (an extraction
-call over the index with the user's instruction).
+extraction latency. The "tell Besidka what to change" natural-language editor
+this list once held shipped early (3.18, #543).
 
 Every workstream: register new specs in `scripts/test-affected-check.mjs`,
 run `pnpm run format && pnpm run typecheck`, inspect any generated migration
@@ -3061,3 +3177,87 @@ only; an index cannot serve it because its first key is an expression, and an
 expression-leading index would lose the `activity_at` range. The cost is one
 extra index entry write when a chat becomes dirty or clean;
 `idx_chats_user_activity` stays: other per-user, activity-ordered chat reads use it.
+
+### Decisions recorded 2026-10-26 (owner and orchestrator)
+
+One line each, with the reason. Where a decision has an open follow-up, the
+issue is named.
+
+- **No automatic expiry; `last_used_at` only breaks ties.** An entry the user
+  or the model saved is never deleted for age, because silently dropping what
+  someone asked to be remembered is worse than a stale line they can delete.
+  `lastUsedAt` (set by `memory_list` and `memory_read`) only orders which
+  entry leaves an over-budget index first (3.1, 3.3).
+- **`profile` and `preferences` are singletons per scope.** They are injected
+  in full on every turn, so one body each bounds the always-on budget (2 x
+  1.5 KB), and a unique slug makes a second create a 409 "edit it instead"
+  (3.11).
+- **15 entries per project stay for v1.** A project's entries share the 2.5k
+  token index with account memory, and the extractor merges before creating;
+  raise the cap only on real usage data, not in advance (`MEMORY_LIMITS`).
+- **Memory writes stay locked when documents or web results are in the
+  prompt.** Project knowledge, web search results (including provider-native
+  search) and pre-retrieved past-chat excerpts are third-party text, and a
+  stored entry outlives the chat, so a clean TypeSafe AI verdict never
+  relaxes the lock (`presetMemoryWriteLock`, 3.11, 3.19 J3). The user can
+  still ask for the save in a message without those sources.
+- **The Anthropic characters-per-token factor is pending a `count_tokens`
+  measurement.** `KNOWLEDGE_CHARS_PER_TOKEN.anthropic` (Latin 3.2, Cyrillic
+  1.1) comes from reports, not from a tokenizer run, and Anthropic publishes
+  no tokenizer; it stays conservative until measured. The endpoint is free.
+  Run it for one English prose sample, one Ukrainian prose sample and one code
+  sample, and once with a one-word message for the fixed overhead:
+
+  ```bash
+  count_tokens() {
+    curl -s https://api.anthropic.com/v1/messages/count_tokens \
+      -H "x-api-key: $ANTHROPIC_API_KEY" \
+      -H "anthropic-version: 2023-06-01" \
+      -H "content-type: application/json" \
+      -d "$(jq -n --rawfile text "$1" '{model: "claude-sonnet-5-5", messages: [{role: "user", content: $text}]}')" \
+      | jq .input_tokens
+  }
+  count_tokens sample-en.txt
+  count_tokens sample-uk.txt
+  count_tokens sample-code.txt
+  printf 'ok' > sample-overhead.txt && count_tokens sample-overhead.txt
+  python3 -c "import sys; print(len(open(sys.argv[1], encoding='utf-8').read()))" sample-uk.txt
+  ```
+
+  Characters per token for a sample is its code-point count divided by
+  (`input_tokens` minus the overhead call). Apply the rule from
+  `docs/project-knowledge-design.md` 5.4 (minimum of prose and code, times 0.9,
+  rounded down to 0.1) and update `KNOWLEDGE_CHARS_PER_TOKEN.anthropic` and the
+  5.4 table. Tracked in #537.
+- **KV leases are non-atomic, and that is accepted.** The memory lease, the
+  `extract-now` cooldown and the knowledge pack lease are get-then-put, so a
+  burst can run two passes on the caller's own key; every write is idempotent
+  (unique slugs, origin rules, merges), so the cost is one wasted model call.
+  The upgrade (an owner token or a Durable Object per user) is #538.
+- **Live location is label-only.** It is enforced only by the extractor's
+  `neverStore` label, a model flag the server cannot verify; unlike a home
+  address (number plus street, or a cue phrase) it has no stable textual shape
+  a narrow deterministic rule can match without also refusing ordinary text
+  about places. The leftover is a documented residual (3.5, 3.14, 3.17).
+- **All TypeSafe AI roles are on once the key is saved.** Saving the key is
+  the opt-in to the spend and to the recipient (the key exists only for these
+  checks), each role has its own switch under Smart checks, and deleting the
+  key stops all of them (3.19, J0). `typesafe_roles = null` means every role
+  is on.
+- **The consent version is not bumped for the TypeSafe AI roles.** The consent
+  text names recipients by category ("the AI providers ... whose keys I
+  add"), and TypeSafe AI is one of them, so a bump would force every user to
+  re-consent without a change in what they consented to; the Privacy Policy,
+  the DPIA and the Art. 30 record name TypeSafe AI itself. The version stays
+  `2026-11-a` (3.19, Legal and consent).
+- **The chat-input redesign is planned.** The chat input has grown a project
+  picker, the memory exclusion toggle, a web-search menu with Auto, and the
+  files button; a redesign is planned and is not part of this work.
+- **Deferred work is tracked as issues #537 to #540.** #537: project
+  knowledge K4 and P4 (pinned files, provider Files APIs, PPTX, image captions
+  and OCR, the `unpdf` fallback, provider-side search, a note edit flow, and
+  the Anthropic factor above). #538: atomic leases with Durable Objects, and
+  a Vectorize evaluation for projects above the 2 MB text cap. #539: a token
+  budget for chat history on 128k to 262k context models. #540: moving the
+  deep-research clarifier from `generateObject` to `generateText` with
+  `output`.

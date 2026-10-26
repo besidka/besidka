@@ -38,7 +38,10 @@
 >   `docs/legal-memory-sensitive-data.md`.
 
 > **Open question (owner/counsel), 2026-10-26.** TypeSafe AI now also runs
-> per-role checks beyond memory (see `docs/memory-architecture.md` 3.19). Two
+> per-role checks beyond memory (see `docs/memory-architecture.md` 3.19): the
+> seven roles are `memoryChecks`, `autoWebSearch`, `extractionPrefilter`,
+> `injectionScreening`, `rerank`, `sharePiiCheck` and `pastChatRetrieval`
+> (`shared/utils/jev-policy.ts`), all on once the key is saved. Two
 > of them send text that is not obviously "my chats, project memory and
 > memory": screening of Brave and Exa web results and of project knowledge
 > files (third-party text), and the memory pre-filter, which sends whole chat
@@ -56,8 +59,9 @@ pages live in `content/legal/` and are not edited by this document.
 Facts the drafts rely on (verify against `shared/utils/memory-policy.ts` and
 `docs/memory-architecture.md` before use): memory entries, About-me text and
 source chat ids are stored in D1; origins are user save, tool (`memory_write`),
-extraction (opt-in) and import; caps of 30 entries and 2 KB; incognito chats
-excluded; never-store list; sensitivity classifier on every write.
+extraction (opt-in) and import; caps of 30 account entries, 15 per project and 4 KB per entry (the
+2 KB figure in the first draft is stale); chats the user excludes from memory
+(`chats.memory_excluded`, not an incognito mode) are never read; never-store list; sensitivity classifier on every write.
 
 ## Anchors the Memory UI links to
 
@@ -102,8 +106,9 @@ rename them without updating the links.
   and the reason (DeepSeek: PRC; Moonshot and Qwen: Singapore; no adequacy
   decision). **[L]** on Art. 49 for non-sensitive memory to those providers.
 - **Never-store list.** Quote verbatim from `memory-policy.ts`.
-- **Incognito chats** are excluded.
-- **Caps.** 30 entries, 2 KB per entry (confirm current values).
+- **Chats the user excludes from memory** are never read for memory.
+- **Caps.** 30 account entries, 15 per project, 4 KB per entry, 1.5 KB for the
+  always-injected profile and preferences.
 - **Classifier.** Runs on every write, drops content, logs hold counts only.
   Describe as Art. 9 processing used as a safeguard. **[L]**
 - **Accuracy.** Memory can be wrong; the user can edit or delete.

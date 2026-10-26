@@ -130,7 +130,11 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   signed-in user and cleared on sign-out.
 - **Transfer consents** (Art. 49(1)(a)) for DeepSeek, Moonshot AI and Qwen are
   stored in `provider_transfer_consents` and managed in **Profile → Security →
-  Privacy & consent**. Deleting the key withdraws the consent. Owner decision,
+  Privacy & consent**. Deleting the DeepSeek, Moonshot AI or Qwen key withdraws
+  the consent (their `server/api/v1/profiles/keys/<provider>/index.delete.ts`
+  routes call `withdrawProviderTransferConsent`). The gateway-vendor and
+  `router` consents below have no key of their own, so deleting a gateway key
+  does not withdraw them; only the Privacy & consent page does. Owner decision,
   2026-10-26: the same consent is required for a model reached through a
   gateway (Vercel, OpenRouter or Cloudflare) when its id names one of these
   vendors (`deepseek/`, `moonshotai/`, `alibaba/` or `qwen/`), because the
@@ -185,6 +189,26 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   Transfers sections), in `docs/legal/art30-record.md` row 11a and in
   `docs/legal/dpia.md` section 3.7a and risk row 20. Design:
   `docs/memory-architecture.md` 3.19.
+- **The TypeSafe AI roles, one list for every legal document.** The source of
+  truth is `JEV_ROLE_IDS` in `shared/utils/jev-policy.ts`: `memoryChecks`,
+  `autoWebSearch`, `extractionPrefilter`, `injectionScreening`, `rerank`,
+  `sharePiiCheck` and `pastChatRetrieval`. Default: all seven are on once the
+  user saves a TypeSafe AI key (`user_settings.typesafe_roles` null means all
+  on, and a missing role id means on); saving the key is the opt-in, each role
+  has its own switch under Profile → API Keys → Smart checks, and deleting the
+  key stops every role. Failure direction, from the code: `memoryChecks` fails
+  open to the deterministic gate alone and can only add a refusal;
+  `autoWebSearch` fails toward searching; `extractionPrefilter` fails toward
+  generating memory as usual; `injectionScreening` treats undecided text as
+  unscreened (search results are kept, project files and notes are stored
+  `ready` and queued in KV for re-screening by the hourly knowledge sweep,
+  kept 14 days, at most 5 failed attempts); `rerank` keeps the original
+  order; `sharePiiCheck` only ever warns, and shows the generic reminder when
+  Jev did not answer; `pastChatRetrieval` fails toward searching the past
+  chats. Every text is stripped of never-store values before it is sent. A new
+  role means editing the Privacy Policy table "TypeSafe AI checks", the
+  DPIA table in section 3.7a, Art. 30 row 11a and this list in the same
+  change.
 - **Broadening TypeSafe AI to per-role checks did not bump the version
   (2026-10-26).** The pinned Art. 9 wording names recipients by category:
   "the AI providers, AI gateways and search providers whose keys I add (for
@@ -272,6 +296,19 @@ Besidka itself holds a data-processing agreement with it, which today is
 true solely for Cloudflare-as-host and Axiom. This is the same test applied
 across all three "new recipient" categories in `privacy-policy.md`, not a
 per-category judgment call.
+
+TypeSafe AI is the one recipient whose own paperwork says something different,
+so the wording is fixed here and must be the same in the Privacy Policy,
+`docs/legal/dpia.md` (section 3.7a) and `docs/legal/art30-record.md` (row 11a,
+section 6.1). Towards Besidka, TypeSafe AI, Inc. is an independent controller
+and there is no contract between them. Its data processing agreement is its
+contract with its own account holder, the user for the key they add, under
+which it acts as that account holder's processor; for the transfer to the
+United States it relies on the Standard Contractual Clauses (Decision (EU)
+2021/914, Module 2, controller to processor) and the UK Addendum, and Besidka
+is not a party to it. It is not certified under the EU-US Data Privacy
+Framework. Nobody should describe it as Besidka's processor or as a joint
+controller.
 
 ## Why no postal address is published
 

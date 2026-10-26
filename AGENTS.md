@@ -92,9 +92,9 @@ PRAGMA foreign_keys=ON;
 
 These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `users` without recovery plan:
 
-- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`, `memory_entries`, `memory_backfill_jobs`, `project_knowledge_items`
+- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`, `memory_entries`, `memory_backfill_jobs`, `project_knowledge_items`, `push_subscriptions`
 
-Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
+Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
 ### MANDATORY pre-apply checklist
 
@@ -253,16 +253,19 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   is the only basis, why it was not shipped, option (b) with its launch
   conditions as the path to revisit, the 2026-10-25 engineering decisions, the
   2026-10-26 status (the chat consent gate shipped, refusal blocks sending, the
-  Art. 49(1)(a) transfer-consent decision for DeepSeek, Moonshot AI and Qwen
-  and its residual risk), and the remaining open owner/counsel questions
+  Art. 49(1)(a) transfer-consent decision for DeepSeek, Moonshot AI, Qwen and
+  the gateway vendors in China, Singapore and Malaysia/Indonesia, the TypeSafe
+  AI recipient, and the residual risk), and the remaining open owner/counsel questions
 - `docs/legal/dpia.md` - DPIA for chats, memory and the consent gate
   (engineer-drafted, not lawyer-reviewed): UODO and WP248 criteria, systematic
-  description, 19-row risk table with built/planned status, residual risks, and
+  description including the seven TypeSafe AI roles (3.7a), 24-row risk table
+  with built/planned status, residual risks, and
   the DPF list check of 2026-10-26; read before changing a purpose, provider,
   consent text or retention rule
 - `docs/legal/art30-record.md` - GDPR Art. 30 record of processing activities
   (engineer-drafted, not lawyer-reviewed): why the Art. 30(5) exemption fails,
-  22 activities with recipients, transfers, retention and security codes, and
+  23 activities (rows 1 to 22 and 11a, the TypeSafe AI roles) with recipients,
+  transfers, retention and security codes, and
   the third-country tables (providers, processors); keep it in step with the
   Privacy Policy and the DPIA
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
@@ -401,14 +404,22 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   path; no GDPR Art. 9 opt-in in v1, see its decision log), project memory
   swept only after the extraction opt-in, token budgets incl. the Cyrillic
   multiplier, owner-overridable defaults, the parallel workstreams, the
-  2026-10-26 security audit dispositions (3.17), and the optional TypeSafe AI
-  Jev checks (3.19: the add-only memory check, the `memory-check` key kind,
-  the seven per-role toggles in `user_settings.typesafe_roles`, fail-safe
-  behaviour, and the `experimental_decide` seam to re-check on SDK upgrades)
+  2026-10-26 security audit dispositions (3.17), the "tell Besidka what to
+  remember" editor (3.18), the optional TypeSafe AI Jev checks (3.19: one role
+  table matching `shared/utils/jev-policy.ts`, the add-only memory check, the
+  `memory-check` key kind, the seven per-role toggles in
+  `user_settings.typesafe_roles`, the failure direction of each role, J1 to
+  J6, the delta audit fixes #560, and the `experimental_decide` seam to
+  re-check on SDK upgrades), the as-built phase map (section 5), and the
+  decision log (section 7: no expiry, singletons, entry caps, the write lock,
+  the pending Anthropic token factor, non-atomic leases, deferred issues
+  #537 to #540)
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
-  per-send fit check), R2 text and packs, and the owner decisions
+  per-send fit check), R2 text and packs, the owner decisions, and, now that
+  it is implemented, the K0 to K3 as-built sections (15, 16.5 to 16.7: DOCX
+  and XLSX ZIP-bomb limits, the send path, the spike results)
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,

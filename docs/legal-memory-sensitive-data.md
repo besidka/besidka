@@ -348,10 +348,19 @@ Singapore, as Besidka calls them) and says there is no adequacy decision and no
 contract. It is a one-time dialog when a key for one of these providers is
 added, and again before the next send through an existing key. Refusal means
 that provider cannot be used to send (and is not used for memory work); the key
-stays. Deleting the key withdraws the consent. It does not apply to models
-reached through a gateway, where the onward step happens under the user's own
-gateway account. The records are `provider_transfer_consents` on
-`user_settings`.
+stays. Deleting the key withdraws the consent. As first decided it did not
+apply to models reached through a gateway, where the onward step happens under
+the user's own gateway account. **That was reversed later the same day:** the
+consent is also required for a model reached through a gateway when its id
+names DeepSeek, Moonshot AI or Qwen (`deepseek/`, `moonshotai/`, `alibaba/`,
+`qwen/`, also behind OpenRouter's `~vendor/` aliases), and was extended (delta
+audit finding 5) to Z.ai, MiniMax, Tencent, ByteDance, Xiaomi, Meituan,
+StepFun, inclusionAI, TeleAI and Dots Studio models and to one generic `router`
+consent for `openrouter/` meta-routers and `@preset/` model strings. Models a
+gateway runs itself (Cloudflare's `@cf/` ids) are exempt. The code is
+`resolveTransferConsentProviderId()` in `shared/utils/legal-consent.ts`, and
+`docs/legal.md` has the full decision. The records are
+`provider_transfer_consents` on `user_settings`.
 
 **Residual risk, recorded.** The EDPB's view is that a derogation consent is
 inappropriate for transfers that occur repeatedly or on an ongoing basis. The
@@ -364,9 +373,12 @@ them. Revisit if a supervisory authority or counsel objects.
 
 ### TypeSafe AI checks, 2026-10-26
 
-TypeSafe AI, Inc. (US, not on the DPF, SCCs Module 2 and the UK Addendum in
-its DPA) receives candidate memory entries when a user saves a TypeSafe AI
-key. The recommendation above, that only adequacy-covered recipients should
+TypeSafe AI, Inc. (US, not on the DPF) receives candidate memory entries when
+a user saves a TypeSafe AI key. Towards Besidka it is an independent controller
+and there is no contract between them. Its DPA is its contract with the user as
+account holder, under which it is the account holder's processor, and it relies
+there on the SCCs (Module 2, controller to processor) and the UK Addendum;
+Besidka is not a party to it (wording fixed in `docs/legal.md`). The recommendation above, that only adequacy-covered recipients should
 receive sensitive memory, is met as far as the design can: only entries the
 deterministic gate allowed are sent, redacted for never-store values, so the
 vendor sees special-category text only where the gate missed it, which is
@@ -374,7 +386,10 @@ exactly what the check exists to catch. Gate-flagged text is never sent. This
 residual is DPIA risk row 20; design in `docs/memory-architecture.md` 3.19.
 The same key later also powers per-role checks beyond memory (Auto web
 search, a memory pre-filter that sends chat text, injection screening,
-re-ranking, a share personal-data check and past-chat retrieval). Those are
+re-ranking, a share personal-data check and past-chat retrieval; seven roles in
+all, `JEV_ROLE_IDS` in `shared/utils/jev-policy.ts`, all on once the key is
+saved, each with its own switch, and each failing toward the behaviour without
+the key). Those are
 DPIA risk rows 21 to 24, and the wording question they raise is open in
 `docs/legal.md`.
 
@@ -582,7 +597,9 @@ Ordered by urgency.
    Art. 4(4) and not an Art. 22 decision, and documents the memory export and
    its narrower scope.
 4. **Owner-decided 2026-10-26, counsel question open: Art. 49 for data** sent
-   to DeepSeek, Moonshot and Qwen (chats and non-sensitive memory). The owner
+   to DeepSeek, Moonshot and Qwen and, through a gateway, to the other
+   China, Singapore, Malaysia and Indonesia vendors and router or preset models
+   (chats and non-sensitive memory). The owner
    chose per-user Art. 49(1)(a) consent (see "Owner decision, 2026-10-26:
    transfers" in section 3). Still open for counsel: whether that is usable for
    repeated transfers, and the legal-basis row for the sensitivity classifier

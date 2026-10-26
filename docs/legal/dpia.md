@@ -83,8 +83,9 @@ removed.
   analytics, Turnstile) and Axiom (logs). Besidka has a data-processing
   agreement with these two only.
 - **Independent controllers.** The AI providers, gateways and search providers
-  the user picks. The user holds the account with them. Besidka has no contract
-  with them.
+  the user picks, and TypeSafe AI when the user saves a TypeSafe AI key
+  (section 3.7a). The user holds the account with them. Besidka has no
+  contract with them.
 - **Out of scope here.** Cookie consent records, push, email, campaign
   attribution and analytics. They have their own rows in the Art. 30 record and
   carry no special-category content.
@@ -219,7 +220,9 @@ removed.
 - **Outside the compliance gate.** Knowledge is user-supplied material, like a
   chat attachment. The Art. 9 classifier and the never-store list do **not**
   run on it. A medical PDF the user adds is stored and sent like any file. It is
-  covered by the chat consent (section 3.8), not by the memory gate.
+  covered by the chat consent (section 3.8), not by the memory gate. The only
+  check that reads it is the optional TypeSafe AI injection screening
+  (section 3.7a), which looks for hidden instructions, not for sensitive data.
 - **Basis.** Contract (Art. 6(1)(b)). Explicit consent for any special category
   inside the files.
 
@@ -227,9 +230,9 @@ removed.
 
 - **Purpose.** Keep what should not be in memory out of memory.
 - **How.** Server code (`server/utils/memory/compliance.ts`), on every write
-  path: Memory page, assistant tool, extraction, import and the one-time
-  About-me migration. It is code, not a prompt. The model's own refusal is not
-  treated as a control.
+  path: Memory page, assistant tool, extraction, import, "tell Besidka what to
+  remember" (apply) and the one-time About-me migration. It is code, not a
+  prompt. The model's own refusal is not treated as a control.
   - **Never-store detectors.** Card numbers (Luhn), IBAN, PESEL, tax and
     passport numbers, API keys and tokens, JSON Web Tokens, passwords and
     credentials, private keys. Narrow detectors for precise home address,
@@ -267,7 +270,11 @@ removed.
   only add a refusal. Model pinned to `jev-1.14.0`; threshold 0.5.
 - **Shared client.** All roles call one client in `server/utils/jev/`. The
   per-role setting is `user_settings.typesafe_roles` (nullable JSON, null =
-  all on). Timeouts: 800 ms on the send path, 2.5 s in the background.
+  all on). Timeouts: 800 ms on the send path, 2.5 s in the background, 1.5 s
+  for the share check. Role ids (`JEV_ROLE_IDS` in
+  `shared/utils/jev-policy.ts`): `memoryChecks`, `autoWebSearch`,
+  `extractionPrefilter`, `injectionScreening`, `rerank`, `sharePiiCheck`,
+  `pastChatRetrieval`; the table below has one row for each.
   Thresholds come from a synthetic eval run on 2026-10-26 and are re-tuned on
   real traffic.
 - **Recipient.** TypeSafe AI, Inc., United States, independent controller
@@ -281,20 +288,29 @@ removed.
   sensitive-data safeguards "N/A", keeps data "as long as necessary" and has
   no SLA. Its privacy policy says it does not train on input.
 - **Failure.** Every role is assistive and fails safe to the behaviour
-  without the key on a missing key, 401, 429, 529, a network error or a
-  timeout.
+  without the key on a missing key, 401, 403, 429, 529, a network error or a
+  timeout. The direction differs by role and is in the last column of the
+  table: `memoryChecks` falls back to the gate alone, `autoWebSearch` and
+  `pastChatRetrieval` fall toward searching, `extractionPrefilter` toward
+  generating memory, `rerank` keeps the original order, `injectionScreening`
+  treats undecided text as unscreened, and `sharePiiCheck` only warns.
+- **Retention at Besidka.** The prompts are not stored. Two KV markers exist:
+  the re-screening queue entry of `injectionScreening` (user, project and item
+  ids, plus an attempt counter; 14 days) and the Auto web search first-message
+  marker (`auto-web-search-first-message:<chat>:<message>`, holds the outcome
+  only; 1 day).
 - **Data in logs.** Counts, scores, statuses and latency under
   `attributes.<role>Jev` (the memory check keeps `memoryJev`), never text.
 
 | Role | Purpose | When | Data sent | On failure |
 |---|---|---|---|---|
 | `memoryChecks` | Second opinion before a memory entry is saved | Each entry the rules allowed | Entry text with never-store values removed, plus a short redacted source excerpt | Rules alone; add-only, so it can never allow what the rules refused |
-| `autoWebSearch` | Decide whether a web search is needed | Only in the Auto web search mode, each message | The message and the last 2-3 turns | Search as usual |
+| `autoWebSearch` | Decide whether a web search is needed | Only in the Auto web search mode, each message, unless a URL, a domain or a recency phrase ("today", "latest") already decides it without a Jev call | The message and the last three turns, with never-store values removed | Search as usual |
 | `extractionPrefilter` | Skip the memory model when nothing is worth remembering (saves the user's cost) | Before memory is generated from a chat: opt-in extraction, backfill from past chats, project Refresh. Never for extract-now or import | Chat text with never-store values removed, in chunks of up to about 8,000 tokens | Unsure or unavailable: generate memory as usual |
-| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results fetched through Besidka | That text | Text used unscreened; a project file or note is queued and screened again by the hourly sweep (only while the user's consent is current and the key and check are still on); a flag holds a file for review or leaves a result out of context and never deletes anything |
-| `rerank` | Order search candidates by relevance and leave out clearly irrelevant ones while enough relevant ones remain | Past-chat and project-knowledge search | The query and excerpts of about 300 tokens each, up to 30 per search | Original order |
+| `injectionScreening` | Flag hidden instructions in third-party text | Project knowledge files and notes; Brave and Exa results (title and snippet) fetched through Besidka | That text in chunks of up to about 2,000 tokens, with never-store values removed | Text used unscreened: search results are kept; a project file or note is stored ready and queued in KV (ids only, no text, kept 14 days, at most 5 failed attempts) and screened again by the hourly sweep, only while the user's consent is current and the key and check are still on; a flag holds a file for review or leaves a result out of context and never deletes anything |
+| `rerank` | Order search candidates by relevance and leave out clearly irrelevant ones while enough relevant ones remain | Past-chat and project-knowledge search | The query and excerpts of about 300 tokens each, up to 30 per search, with never-store values removed | Original order |
 | `sharePiiCheck` | Warn about personal data before publishing | When the share window opens or its files toggle changes, before a public share link is created; only with current legal consent | The chat text being shared, with never-store values, emails and phone numbers removed, in chunks of up to about 25,000 tokens | Generic reminder next to the built-in detector warnings; never blocks sharing |
-| `pastChatRetrieval` | Pre-search past chats for models without tool calling | Each message, unless a listed phrase ("last time", "we discussed") already starts the search without a Jev call | The message and recent turns, with never-store values removed | No key or role off: no pre-search. Jev unsure or unavailable: the search runs anyway, so a failed call sends nothing extra to TypeSafe AI |
+| `pastChatRetrieval` | Pre-search past chats for sends where the chat search tools are not registered (models without tool calling) | Each such message, only while "Search and reference chats" is on, unless a listed phrase ("last time", "we discussed") already starts the search without a Jev call | The message and the last three turns, with never-store values removed | No key or role off: no pre-search. Jev unsure or unavailable: the search runs anyway, so a failed call sends nothing extra to TypeSafe AI |
 
 ### 3.8 Consent gate, version 2026-11-a
 
@@ -358,8 +374,10 @@ removed.
   consent box.
 - **Refusal.** That provider cannot be used to send, and is not used for memory
   work. The key stays stored.
-- **Withdrawal.** In Profile → Security → Privacy & consent, or by deleting the
-  key.
+- **Withdrawal.** In Profile → Security → Privacy & consent. Deleting the
+  DeepSeek, Moonshot AI or Qwen key withdraws that consent too. The
+  gateway-vendor and `router` consents have no key of their own, so only the
+  Privacy & consent page withdraws them.
 - **Scope.** Owner decision 2026-10-26: it also applies to models reached
   through Vercel AI Gateway, OpenRouter or Cloudflare AI Gateway whose id names
   one of these vendors (`deepseek/`, `moonshotai/`, `alibaba/`, `qwen/`,
@@ -391,7 +409,7 @@ removed.
   the text of memory, a chat, a file or anything imported. Fields live under the
   `attributes` map (see `docs/axiom-map-fields.md`).
 - **Consent fields.** `attributes.legalConsent` holds the action (`granted`,
-  `withdrawn`, `transfer-granted`), the text version and, for a transfer, the
+  `withdrawn`, `transfer-granted`, `transfer-withdrawn`), the text version and, for a transfer, the
   provider name, with the user id.
 - **Processor.** Axiom, under its data-processing agreement. Retention is as
   set by the Axiom plan in use.
@@ -506,7 +524,7 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 20 | The optional TypeSafe AI memory check sends candidate entries, which can hold special-category data the rules missed, to a young US vendor: out of stealth about six weeks (2026-09-15), its DPA marks sensitive-data safeguards "N/A", retention "as long as necessary", no SLA, not on the DPF (SCCs Module 2 and UK Addendum only) | Low | Medium | Only with a key the user saves; only entries the deterministic gate already allowed, redacted for never-store values; source excerpts redacted and dropped when the gate flags them; add-only, so an outage or a wrong answer can never let sensitive text in; fails open to the gate on 401, 429, 529, network errors and a 2.5 s timeout; model pinned; counts only in logs; disclosed in the Privacy Policy and on the keys page | built | Medium (vendor maturity and contract terms are outside Besidka's control) |
 | 21 | The memory pre-filter sends whole chat transcripts, which can hold special-category data the user wrote, to a US vendor before memory is generated | Medium | High | Only with a key the user saves and a toggle left on; never-store values removed first; chunks of up to about 8,000 tokens; runs only when memory generation already runs behind the consent gate; unsure or unavailable means normal extraction; counts only in logs; the user can switch the check off alone; disclosed in the Privacy Policy | built | Medium (the transcript leaves Besidka to a vendor with weak contract terms, same as row 20) |
 | 22 | Auto web search and the share check send chat text (message and recent turns; the chat being shared) to the vendor | Medium | Medium | Auto web search sends only in the Auto mode; the share check only when the user starts a share; both only with a key and a toggle; a failure means a normal search or a generic reminder; the share check warns and never blocks; counts only in logs; disclosed in the Privacy Policy | built | Low to medium |
-| 23 | Injection screening sends project knowledge and third-party web text (Brave and Exa results) to the vendor | Medium | Medium | Only with a key and a toggle; project files are the user's own content already covered by the consent; web text is public; results from a model's built-in search are never sent; nothing is stored by Besidka; counts only in logs; whether this third-party text fits the consent wording is an open owner and counsel question (`docs/legal.md`) | built | Medium |
+| 23 | Injection screening sends project knowledge and third-party web text (Brave and Exa results) to the vendor | Medium | Medium | Only with a key and a toggle; project files are the user's own content already covered by the consent; web text is public; never-store values are removed before sending; results from a model's built-in search are never sent; Besidka stores no screened text for this check (the re-screening queue holds item ids only, 14 days); counts only in logs; whether this third-party text fits the consent wording is an open owner and counsel question (`docs/legal.md`) | built | Medium |
 | 24 | Attacker-crafted content makes screening withhold legitimate results or files (false positive), or evades it (false negative). This includes text written against Jev itself, to make it flag a legitimate document or result | Medium | Low | Screening is an add-only signal, never the only defence: the memory write lock (set for every Brave or Exa search whatever the verdict), the data-not-instructions wrapping and the memory gate in row 6 stay, and a clean verdict never relaxes any of them; a flag never deletes anything, so the worst a manipulated flag can do is ask the user to review a file (one "Allow anyway" click puts it back, and it is not screened again until its text changes) or leave one web result out of the model's context, with a note saying how many were withheld; a Jev failure keeps the file usable and the results in context; thresholds come from an eval and are re-tuned on real traffic; the toggle turns it off; results from a model's built-in search cannot be screened and rely on the other defences alone | built | Low |
 
 ## 6. Residual risks
@@ -605,7 +623,7 @@ changes.
 | Prepared by | Engineer draft, 2026-10-26 |
 | Approved by | [OWNER NAME], controller |
 | Date approved | [DATE] |
-| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 9] |
+| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 10] |
 | Counsel reviewed | No |
 
 **Review this DPIA when:**
