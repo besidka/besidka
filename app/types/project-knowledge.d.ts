@@ -95,6 +95,7 @@ export interface KnowledgeUploadProgress {
 export interface KnowledgeUploadFailure {
   message: string
   why: string | undefined
+  fix: string | undefined
   status: number
 }
 

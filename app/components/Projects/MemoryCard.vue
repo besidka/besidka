@@ -145,6 +145,49 @@
       </template>
     </div>
 
+    <div
+      v-if="card"
+      class="
+        mt-4 flex flex-col gap-3 border-t border-base-200/80 pt-4
+        sm:flex-row sm:items-start sm:justify-between sm:gap-4
+      "
+      data-testid="project-memory-account"
+    >
+      <label class="flex min-w-0 cursor-pointer items-start justify-between gap-4 sm:flex-1">
+        <span class="grid min-w-0 gap-1">
+          <span
+            :id="`${idPrefix}-account-title`"
+            class="text-sm font-bold"
+          >Use account memory</span>
+          <span
+            :id="`${idPrefix}-account-description`"
+            class="text-sm text-base-content/70"
+          >
+            Share memory between this project and your chats outside of
+            projects. When off, chats in this project use only project memory
+            and search only this project's chats.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          class="toggle mt-1 shrink-0"
+          :aria-labelledby="`${idPrefix}-account-title`"
+          :aria-describedby="`${idPrefix}-account-description`"
+          data-testid="project-memory-account-toggle"
+          :checked="card.useAccountMemory"
+          :disabled="isSavingAccountMemory"
+          @change="onAccountMemoryChange"
+        >
+      </label>
+      <NuxtLink
+        to="/profile/memory"
+        class="link shrink-0 text-sm"
+        data-testid="view-account-memory"
+      >
+        View account memory
+      </NuxtLink>
+    </div>
+
     <div class="mt-3 flex flex-wrap items-center justify-end gap-3">
       <div class="max-sm:grid max-sm:w-full sm:flex sm:flex-row-reverse sm:items-center gap-2">
         <button
@@ -226,15 +269,20 @@ const props = withDefaults(defineProps<{
   isRefreshing: boolean
   isToggling: boolean
   automaticUpdates?: boolean
+  isSavingAccountMemory?: boolean
 }>(), {
   automaticUpdates: false,
+  isSavingAccountMemory: false,
 })
 
 const emit = defineEmits<{
-  refresh: []
-  toggle: []
-  changed: []
+  'refresh': []
+  'toggle': []
+  'changed': []
+  'update-account-memory': [useAccountMemory: boolean]
 }>()
+
+const idPrefix = useId()
 
 const { messageComponents } = useChatFormat()
 
@@ -394,6 +442,12 @@ const metaLines = computed<string[]>(() => {
 
   return lines
 })
+
+function onAccountMemoryChange(event: Event) {
+  const input = event.target as HTMLInputElement
+
+  emit('update-account-memory', input.checked)
+}
 
 function openEntry(entry: MemoryEntry) {
   selectedEntry.value = entry

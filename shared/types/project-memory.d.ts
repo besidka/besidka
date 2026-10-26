@@ -11,5 +11,6 @@ export interface ProjectMemoryCardResponse
   memoryModel: string | null
   memoryError: string | null
   usesEntries: boolean
+  useAccountMemory: boolean
   legacyMemory: string | null
 }

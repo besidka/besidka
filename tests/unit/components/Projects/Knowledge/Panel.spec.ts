@@ -1352,6 +1352,27 @@ describe('Projects/Knowledge/Panel', () => {
       )
     })
 
+    it('toasts the why and fix of the account item limit', async () => {
+      mocks.state.upload.phase.value = 'running'
+
+      await mountPanel()
+
+      mocks.state.upload.error.value = {
+        message: 'Knowledge item limit reached',
+        why: 'An account holds at most 500 knowledge items',
+        fix: 'Remove items from other projects before adding more',
+        status: 422,
+      }
+      mocks.state.upload.phase.value = 'error'
+      await flushPromises()
+
+      expect(mocks.error).toHaveBeenCalledWith(
+        'Knowledge item limit reached',
+        'An account holds at most 500 knowledge items '
+        + 'Remove items from other projects before adding more',
+      )
+    })
+
     it('keeps the summary for the sheet when it is still open', async () => {
       const wrapper = await mountPanel()
 

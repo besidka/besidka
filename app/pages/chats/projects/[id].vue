@@ -64,8 +64,10 @@
       :is-refreshing="isRefreshingProjectMemory"
       :is-toggling="isTogglingProjectMemory"
       :automatic-updates="hasAutomaticMemoryUpdates"
+      :is-saving-account-memory="isSavingAccountMemory"
       @refresh="refreshProjectMemory"
       @toggle="toggleProjectMemory"
+      @update-account-memory="saveAccountMemory"
       @changed="onMemoryEntriesChanged"
     />
 
@@ -217,6 +219,7 @@ const isSavingProjectInstructions = shallowRef<boolean>(false)
 const isRefreshingProjectMemory = shallowRef<boolean>(false)
 const initialProjectDetails = project.value
 const isTogglingProjectMemory = shallowRef<boolean>(false)
+const isSavingAccountMemory = shallowRef<boolean>(false)
 const projectInstructions = shallowRef<string | null>(
   initialProjectDetails?.instructions ?? null,
 )
@@ -330,6 +333,14 @@ function hasNoProjectMemory(card: {
 
 let memoryCardRequestId = 0
 
+function isMemoryCardRequestCurrent(
+  requestId: number,
+  requestedProjectId: string,
+): boolean {
+  return requestId === memoryCardRequestId
+    && requestedProjectId === projectId.value
+}
+
 async function onMemoryEntriesChanged() {
   memoryCardRequestId++
 
@@ -343,10 +354,7 @@ async function pollMemoryCard() {
   try {
     const card = await $fetch(`/api/v1/projects/${requestedProjectId}/memory`)
 
-    if (
-      requestId !== memoryCardRequestId
-      || requestedProjectId !== projectId.value
-    ) {
+    if (!isMemoryCardRequestCurrent(requestId, requestedProjectId)) {
       return
     }
 
@@ -366,7 +374,9 @@ async function refreshProjectMemory() {
   }
 
   isRefreshingProjectMemory.value = true
-  memoryCardRequestId++
+
+  const requestId = ++memoryCardRequestId
+  const requestedProjectId = projectId.value
 
   try {
     const response = await $fetch(
@@ -374,8 +384,9 @@ async function refreshProjectMemory() {
       { method: 'POST' },
     )
 
-    memoryCardRequestId++
-    memoryCard.value = response
+    if (isMemoryCardRequestCurrent(requestId, requestedProjectId)) {
+      memoryCard.value = response
+    }
 
     nuxtApp.runWithContext(() => {
       if (response.memoryStatus === 'refreshing') {
@@ -433,15 +444,17 @@ async function toggleProjectMemory() {
 
   try {
     const enabled = projectMemoryStatus.value === 'disabled'
-    memoryCardRequestId++
+    const requestId = ++memoryCardRequestId
+    const requestedProjectId = projectId.value
 
     const response = await $fetch(`/api/v1/projects/${project.value.id}/memory`, {
       method: 'PATCH',
       body: { enabled },
     })
 
-    memoryCardRequestId++
-    memoryCard.value = response
+    if (isMemoryCardRequestCurrent(requestId, requestedProjectId)) {
+      memoryCard.value = response
+    }
 
     nuxtApp.runWithContext(() => {
       useSuccessMessage(
@@ -463,6 +476,53 @@ async function toggleProjectMemory() {
     })
   } finally {
     isTogglingProjectMemory.value = false
+  }
+}
+
+async function saveAccountMemory(useAccountMemory: boolean) {
+  const previousCard = memoryCard.value
+
+  if (!project.value || !previousCard || isSavingAccountMemory.value) {
+    return
+  }
+
+  isSavingAccountMemory.value = true
+
+  const requestId = ++memoryCardRequestId
+  const requestedProjectId = projectId.value
+
+  memoryCard.value = { ...previousCard, useAccountMemory }
+
+  try {
+    const response = await $fetch(`/api/v1/projects/${project.value.id}/memory`, {
+      method: 'PATCH',
+      body: { useAccountMemory },
+    })
+
+    if (isMemoryCardRequestCurrent(requestId, requestedProjectId)) {
+      memoryCard.value = response
+    }
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    if (
+      isMemoryCardRequestCurrent(requestId, requestedProjectId)
+      && memoryCard.value
+    ) {
+      memoryCard.value = {
+        ...memoryCard.value,
+        useAccountMemory: !useAccountMemory,
+      }
+    }
+
+    nuxtApp.runWithContext(() => {
+      useErrorMessage(
+        parsedException.message || 'Failed to update account memory sharing',
+        parsedException.why,
+      )
+    })
+  } finally {
+    isSavingAccountMemory.value = false
   }
 }
 

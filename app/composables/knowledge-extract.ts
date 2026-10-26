@@ -123,6 +123,10 @@ async function convertWorkerResultText(
     }
   }
 
+  if (import.meta.server) {
+    return { ...resultWithoutHtml, extractStatus: 'failed', text: '' }
+  }
+
   throwIfAborted(signal)
   await yieldToEventLoop()
   throwIfAborted(signal)
@@ -284,6 +288,10 @@ export function useKnowledgeExtraction() {
   async function runOnMainThread(
     request: KnowledgeWorkerRequest,
   ): Promise<KnowledgeWorkerResult> {
+    if (import.meta.server) {
+      return createFailedWorkerResult('extract-failed')
+    }
+
     const { extractKnowledgeBytes } = await import('~/workers/knowledge-extract')
 
     return await extractKnowledgeBytes({
