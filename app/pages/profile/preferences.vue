@@ -20,8 +20,9 @@
               class="text-sm text-base-content/70"
             >
               Get a notification when a response finishes while you're away,
-              and when you open a shared chat in the installed app. They never
-              include your messages. This applies to this browser only.
+              when you open a shared chat in the installed app, and when a
+              shared chat you branched is ready. They never include your
+              messages. This applies to this browser only.
             </span>
           </span>
           <span

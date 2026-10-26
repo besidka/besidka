@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-10-26
+updatedAt: 2026-10-27
 summary: "Besidka stores your account, chats, projects, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway you chose, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. The assistant can also look up your earlier chats and send short excerpts of them to the provider of the chat you are in, and memory, if you use it, can be written by an AI model on one of your own keys. If you add a TypeSafe AI key, TypeSafe AI in the United States can also answer short yes/no questions about your text for optional checks, such as memory entries, whether a web search is needed, files and search results screened for hidden instructions, and chats you are about to share, and each check has its own off switch. Each provider is a separate company with its own privacy terms, and some of them are outside the EU, in the United States, China or Singapore. Because you can type anything, your chats may contain sensitive information such as health details or beliefs; I ask for your explicit consent to store it and send it where you tell me to, and I never use it for anything else. If you use a free Google Gemini key outside the EEA, Switzerland and the UK, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
 ---
 
@@ -27,7 +27,7 @@ Besidka does not process personal data on the scale that requires a data protect
 
 ## How Besidka works, in one paragraph
 
-Besidka is a free AI chat app. You bring your own API key from an AI provider (Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen), and you pay that provider directly for the usage. Instead of a provider key, you can route a chat through your own account with an AI gateway (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), and you pay that gateway directly. You can also add your own Brave Search or Exa API key to use as a web search tool, and you pay that search provider directly. **There is no payment relationship between you and me at all** — no subscription, no ads, no donations, no payment processor, and therefore no billing or card data anywhere in this policy. What I store is what is needed to run the chat app for you.
+Besidka is a free AI chat app. You bring your own API key from an AI provider (Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen), and you pay that provider directly for the usage. Instead of a provider key, you can route a chat through your own account with an AI gateway (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), and you pay that gateway directly. You can also add your own Brave Search or Exa API key to use as a web search tool, and you pay that search provider directly. If you want the optional [TypeSafe AI checks](#typesafe-ai-checks), you add your own TypeSafe AI key and TypeSafe AI bills you directly for them. **There is no payment relationship between you and me at all** — no subscription, no ads, no donations, no payment processor, and therefore no billing or card data anywhere in this policy. What I store is what is needed to run the chat app for you.
 
 ## What I store
 
@@ -45,7 +45,7 @@ Everything below lives in a Cloudflare D1 database, except files, which live in 
 - Your chats and messages. The full message content is stored, including text, attachments references and model output.
 - Your projects, including the project name, its instructions, its memory entries and its knowledge (see [Memory](#memory))
 - Metadata about your files (name, size, type, storage key, expiry). The file itself is stored in Cloudflare R2.
-- Your settings, such as your preferred model and file retention period
+- Your settings, such as your file retention period, your default reasoning effort and whether reasoning is shown expanded, whether the sidebar is pinned, your favourite models, whether links in deep research reports open without a warning, whether you were asked about push notifications and what you answered, and which TypeSafe AI checks you left on (all of them are on until you switch one off)
 - Deep research jobs, including the request and the resulting report
 - Your memory entries and memory settings (see [Memory](#memory))
 - Your consent record: when you accepted the Terms of Use and confirmed that you are 18 or over, when you gave your consent to store sensitive information and when you withdrew it, if you did, and which version of the text you agreed to (see [Sensitive information in your chats](#sensitive-information-in-your-chats)). If you consent to sending your messages to DeepSeek, Moonshot AI, Qwen, one of the other vendors listed there, or through a router or preset model, I also keep when you gave that consent and when you withdrew it (see [Transfers outside the EU](#transfers-outside-the-eu))
@@ -54,7 +54,7 @@ Everything below lives in a Cloudflare D1 database, except files, which live in 
 
 Your provider API keys are stored **encrypted**. That column uses AES-256-GCM with a key derived using PBKDF2-SHA512 (5000 iterations), with a random salt and a random initialisation vector for every stored value.
 
-The same applies to the keys you add for an AI gateway or a search provider. A Cloudflare AI Gateway credential is stored as one encrypted value that holds your Cloudflare account ID, and the gateway name if you set one, together with the token, so those identifiers are encrypted at rest as well.
+The same applies to the keys you add for an AI gateway, a search provider or TypeSafe AI. A Cloudflare AI Gateway credential is stored as one encrypted value that holds your Cloudflare account ID, and the gateway name if you set one, together with the token, so those identifiers are encrypted at rest as well.
 
 This is the only field encrypted in this way. Please do not read it as a claim that the whole database is encrypted at the application level.
 
@@ -81,7 +81,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | --- | --- |
 | Create your account, sign you in, keep you signed in | Contract — GDPR Art. 6(1)(b) |
 | Store your chats, messages, projects, files and settings | Contract — Art. 6(1)(b) |
-| Store your AI provider, AI gateway and search provider API keys, encrypted | Contract — Art. 6(1)(b) |
+| Store your AI provider, AI gateway, search provider and TypeSafe AI API keys, encrypted | Contract — Art. 6(1)(b) |
 | Send your prompt, message history and attachments to the AI provider you chose | Contract — Art. 6(1)(b) |
 | Send your prompt, message history and attachments through the AI gateway you chose to route a chat through | Contract — Art. 6(1)(b) |
 | Send the search query your model writes from your prompt to Brave Search or Exa, when you turn that search on for a message | Contract — Art. 6(1)(b) |
@@ -188,6 +188,7 @@ Memory lets the assistant remember things about you and your projects across cha
 ### What memory holds
 
 - **Memory entries.** Each has a title, a one-line description, a text, a category (profile, preferences, areas, topics or people), whether it belongs to your account or to a project, how it was created (by you, by the assistant when you asked it to remember something, generated from your chats, or imported), which chats it came from, and when it was created, changed and last read. Your account can hold up to 30 entries and each project up to 15. An entry holds up to 4 KB of text; your profile and preferences up to 1.5 KB each, because they are sent with every message.
+- **Chat exclusions.** A flag on each chat you keep out of memory, stored with the chat.
 - **Memory settings.** Whether memory is on, whether memory is generated from your chats and when you turned that on, whether chat search is on, and which models update your account and project memory.
 - **Past-chat runs.** If you build memory from past chats, a record of each run: its progress, counts, the model used, the cost estimate and the tokens used. The last 5 runs are kept.
 - **Project knowledge.** Files, notes and folders you add to a project, the text taken from them, and a search index. The text is extracted in your browser. Originals, text and index are stored in Cloudflare R2, with a short record of each item in the database. If you link a folder from your computer, its name is kept only in your browser; see the [Cookie Policy](/cookie-policy).
@@ -202,7 +203,7 @@ Nothing is written to memory unless you do one of these:
 4. **You start a run yourself**: **Refresh** on a project, **Update now**, **Build memory from past chats**, or **Import** from another assistant. Building from past chats shows a cost estimate first, reads at most 200 chats and 4 million tokens per run, and can be cancelled. When you import, the text you paste is not stored, only the entries made from it.
 5. **You tell Besidka what to remember** in your own words, in the box on the Memory page or on a project. Besidka sends your text, with never-stored items removed, and a list of the entries it may change to the model you chose for memory, **on your own key**. The model proposes changes; nothing is saved until you tick the ones you want and apply them. Your text is not stored.
 
-You can also exclude a single chat from memory. An excluded chat is never read to write memory.
+You can also exclude a single chat from memory. An excluded chat is never read to write memory, the assistant cannot search it or read it, entries that were generated only from it are removed, and a branch of it is excluded too. Entries you wrote or asked the assistant to save stay.
 
 ### What memory never keeps
 
@@ -255,7 +256,7 @@ TypeSafe AI receives only the text each check you left on needs:
 | Memory checks | When a memory entry is about to be saved: the entry text, with never-stored items removed, and a short excerpt of the text it came from. It can refuse an entry the built-in checks allowed, never allow one they refused | Memory is saved on the built-in checks alone |
 | Auto web search | Only when you pick **Auto** web search in the chat input, for each message: the message and your last three turns, each cut to 4,000 characters, with never-stored values removed. A message with a link, a domain or a word such as "today" or "latest" is searched without asking TypeSafe AI, so nothing is sent for it. Jev decides whether a web search is needed | Besidka searches as usual |
 | Memory pre-filter | Before memory is generated from a chat, and only when that runs ("Generate memory from chats", "Build memory from past chats" or a project Refresh; never for "Update memory now" or "Import memory"): the chat text, with never-stored values such as passwords and card numbers removed, in chunks of up to about 8,000 tokens. If Jev finds nothing worth remembering, the memory model is skipped, which saves your own key's cost | If Jev is unsure or unavailable, memory is generated as usual |
-| Prompt-injection screening | The text of project knowledge files and notes, and of Brave and Exa search results fetched through Besidka. Flagged project files wait for your review. Flagged search results are left out of the model's context. A flag never deletes anything. Results from the chat model's own built-in web search cannot be checked | Project files and notes are used unscreened and checked again later, usually within the hour. Search results are used unscreened |
+| Prompt-injection screening | The extracted text of project knowledge files and notes, and the title and snippet of each Brave and Exa search result fetched through Besidka. Flagged project files wait for your review. Flagged search results are left out of the model's context. A flag never deletes anything. Results from the chat model's own built-in web search cannot be checked | Project files and notes are used unscreened and checked again later, usually within the hour. Search results are used unscreened |
 | Re-ranking | When your past chats or project knowledge are searched: the search query and short excerpts (about 300 tokens each, up to 30 per search) of the candidate results | The original search order is kept |
 | Share personal-data check | When you open the share window for a chat, before you publish a public link: the chat text being shared, with never-stored values such as card numbers, and emails and phone numbers, removed. Besidka first looks for emails, phone numbers and similar identifiers itself, and only the TypeSafe AI step reads the text. It shows a warning only and never blocks sharing | A generic "check before sharing" reminder is shown, next to anything Besidka's own check found |
 | Past-chat retrieval | For models or sends without chat search tools (a model without tool calling, for example), and only while **Search and reference chats** is on, for each message: the message and your last three turns, with never-stored values removed. If the message refers to an earlier, separate conversation, Besidka searches your past chats in its own database and adds relevant excerpts. A message that names an earlier chat ("last time", "we discussed") starts the search without asking TypeSafe AI | Without a TypeSafe AI key, or with the check switched off, no pre-search is done. If TypeSafe AI is unsure or unavailable, Besidka searches your past chats anyway |
@@ -339,7 +340,7 @@ My logs are deliberately narrow. Specifically:
 | Account, chats, messages, projects, settings, API keys | Until you delete them, or until you delete your account |
 | Files | **30 days by default.** You can change this in your settings, including setting files never to expire. Files linked to a project as knowledge do not expire while they are linked. An hourly job deletes the expired file from R2 and then its database row. |
 | Share links | Until you revoke the share, or until the expiry you chose (1 hour, 1 day, 1 week, 1 month, 1 year, or never). Revoking deletes the share record. |
-| Push subscriptions | Until you turn notifications off, or until your browser's push service reports the endpoint as invalid |
+| Push subscriptions | Until you turn notifications off, until your browser's push service reports the endpoint as invalid, or until you have not opened Besidka in that browser for 60 days, whichever comes first |
 | Sessions | Until they expire or you sign out |
 | Campaign attribution and milestone records | Until you delete your account. They are deleted together with it. |
 | Aggregate analytics counters | About three months, which is how long Cloudflare keeps Workers Analytics Engine data |
@@ -348,6 +349,7 @@ My logs are deliberately narrow. Specifically:
 | Memory entries | Until you delete them or reset memory, delete the only chat a generated entry came from, delete the project (for project entries), or delete your account |
 | Text sent to TypeSafe AI for TypeSafe AI checks (only with a TypeSafe AI key) | Not stored by Besidka. Held by TypeSafe AI "as long as necessary" under its data processing agreement, which sets no fixed period |
 | Two short markers for TypeSafe AI checks, kept in Cloudflare KV with no text in them | A project file or note that screening could not check yet is queued by its ids and an attempt counter, for up to **14 days** or until it is checked, whichever comes first. Auto web search keeps the outcome of the first message of a new chat (searched or not) for **1 day**, so a retry of that message does not ask TypeSafe AI again |
+| Short-lived technical markers in Cloudflare KV | Rate-limit counters, request locks and cooldowns last from seconds to minutes, a back-off counter for building project knowledge 10 minutes, a position marker for the knowledge sweep 6 hours, and the cost estimate for "Build memory from past chats" 10 minutes. They hold ids, counters, timestamps or counts, never message text. The exception is a copy of a file you attached, in the form sent to the model, which is kept for **5 minutes** so a quick follow-up does not read it from storage again |
 | Memory settings, including when you turned memory generation on | Until you delete your account |
 | Past-chat run records | The last 5 runs; deleted with your account |
 | Project knowledge | Until you remove it or delete the project. The original files then stay in your file library under its normal rules |
@@ -386,9 +388,11 @@ With a TypeSafe AI key and the share check on, the chat text being shared is sen
 
 ## Push notifications
 
-Push notifications are optional and based on your consent. If you turn them on, your browser issues a subscription endpoint and I store it, along with the keys needed to encrypt a message to your browser. Delivery goes through your browser's own push service — Google FCM for Chrome, Apple APNs for Safari, Mozilla autopush for Firefox. Those services see the endpoint and the encrypted payload.
+Push notifications are optional and based on your consent. You switch them on or off in **Profile → Preferences → Notifications**, in the user menu, or in the prompt Besidka shows you; each choice applies to the browser you make it in. Besidka sends one when a response finishes while you are away, when you open a shared chat in the installed app, and when a shared chat you branched is ready in your chats. The text is fixed and generic. It never contains your messages, a chat title or anything you wrote, only a link to the chat to open.
 
-Turning notifications off in your settings, or in your browser, revokes the subscription.
+If you turn them on, your browser issues a subscription endpoint and I store it, along with the keys needed to encrypt a message to your browser, the site address the subscription was created on and when you last opened Besidka in that browser. Delivery goes through your browser's own push service: Google FCM for Chrome, Apple APNs for Safari, Mozilla autopush for Firefox. Those services see the endpoint, the encrypted payload and the link.
+
+Turning notifications off in your settings, or in your browser, revokes the subscription. A subscription from a browser you have not opened for 60 days is deleted automatically, and you are subscribed again the next time you open Besidka there, if the browser still allows notifications.
 
 ## Email I send you
 
@@ -427,7 +431,7 @@ The full list, with names and durations, is in the [Cookie Policy](/cookie-polic
 
 - All traffic is served over HTTPS.
 - Session cookies are `HttpOnly`.
-- Your AI provider, AI gateway and search provider API keys are encrypted as described above.
+- Your AI provider, AI gateway, search provider and TypeSafe AI API keys are encrypted as described above.
 - Access to production data is limited to the controller.
 
 No service is perfectly secure. If you find a security problem, please write to **:privacy-email-link{}** and give me a chance to fix it before disclosing it.
@@ -499,16 +503,17 @@ For everything else, including your account data, chats, projects, project knowl
 
 ### Deleting your account
 
-You can delete your account from your settings. I email you a confirmation link, and opening it removes your account and all data associated with it, including your chats, projects, settings, memory entries and memory settings, past-chat run records, project knowledge, your consent records, stored provider, gateway and search API keys, share records, push subscriptions, your campaign attribution and milestone records and your stored files.
+You can delete your account from your settings. I email you a confirmation link, and opening it removes your account and all data associated with it, including your chats, projects, settings, memory entries and memory settings, past-chat run records, project knowledge, your consent records, stored provider, gateway, search and TypeSafe AI API keys, share records, push subscriptions, your campaign attribution and milestone records and your stored files.
 
 Open that link in the same browser you are signed in to. The link is tied to your signed-in session, so opening it on a different device will not work.
 
-Four honest limits:
+Five honest limits:
 
 1. **Backups.** As described under [Backups](#backups), Cloudflare D1 keeps point-in-time backups for up to 30 days. Deleted data can persist there for that window before rolling off. Those backups exist only for disaster recovery.
 2. **Your AI provider.** I **cannot** erase anything from Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI or Qwen. That processing happened under **your** provider account, with your key, and they are independent controllers. To delete data there, use their own controls and privacy requests — Anthropic automatically deletes API data within 30 days, OpenAI at [privacy.openai.com](https://privacy.openai.com/) and Google through your Google account's privacy settings. For xAI, DeepSeek, Moonshot AI and Qwen, use their own controls and privacy requests.
 3. **Your AI gateway.** If you routed a chat through Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter, I **cannot** erase anything the gateway kept, such as its own logs of your requests, or anything the model vendor behind it received. That happened under **your** gateway account, and they are independent controllers. Use the gateway's own controls and privacy requests.
 4. **Your search provider.** I **cannot** erase a search query from Brave's or Exa's own records. The query was sent under **your** Brave or Exa account, with your key, and they are independent controllers. Brave states that it keeps a record of API queries for up to 90 days; for anything else, use their own controls and privacy requests.
+5. **TypeSafe AI.** If you used the [TypeSafe AI checks](#typesafe-ai-checks), I **cannot** erase the text those checks sent from TypeSafe AI's records. It was sent under **your** TypeSafe AI account, with your key. TypeSafe AI keeps it "as long as necessary" under its data processing agreement, with no fixed period, so use its own controls and privacy requests.
 
 ### Complaining
 

@@ -139,6 +139,10 @@ import type { KeyGuideOpenTrigger } from '#shared/types/analytics.d'
 import { providerMeta } from '#shared/utils/provider-meta'
 import type { UserKeyStatus } from '~/composables/user-keys'
 import { formatUtcDate } from '~/utils/utc-date'
+import {
+  KEY_GUIDE_SURFACE_INJECTION_KEY,
+  type KeyGuideSurface,
+} from '~/utils/key-guide-surface'
 
 const props = withDefaults(defineProps<{
   provider: string
@@ -151,6 +155,8 @@ const props = withDefaults(defineProps<{
   cardOpen: true,
   cardOpenTrigger: 'auto',
 })
+
+provide<KeyGuideSurface>(KEY_GUIDE_SURFACE_INJECTION_KEY, 'card')
 
 const VIDEO_ROOT_MARGIN = '300px'
 

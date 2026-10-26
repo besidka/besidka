@@ -2055,7 +2055,10 @@ checks: TypeSafe AI Jev (on)" or a link to add the key. Saving the key is the
 user's opt-in to the spend and to the recipient. Each role has its own toggle
 in the "TypeSafe AI checks" section of the Smart checks tab (see "J0:
 foundation" above); deleting the key stops all of them. The key guide is
-`content/key-guides/typesafe-ai-api-key.md`, without a video for now.
+`content/key-guides/typesafe-ai-api-key.md`, with its video since #556
+(`key-guide-typesafe*.mp4`, recorded when the tab was still called Memory
+checks). Its public page also carries the long-form Jev explainer inside a
+`::key-guide-article` block, which the keys card hides (`docs/key-guides.md`).
 
 **Code.** `server/utils/memory/jev-check.ts`, through `experimental_decide`
 from `ai` with `@ai-sdk/typesafe-ai`:

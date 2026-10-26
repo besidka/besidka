@@ -636,6 +636,11 @@ export default defineNuxtConfig({
             type: 'cookie',
           },
           {
+            id: 'studio-session-check',
+            name: 'studio-session-check',
+            type: 'cookie',
+          },
+          {
             id: 'chat-input-backup',
             name: 'chat_input_backup',
             type: 'localStorage',
@@ -643,6 +648,11 @@ export default defineNuxtConfig({
           {
             id: 'push-endpoint',
             name: 'besidka:push-endpoint',
+            type: 'localStorage',
+          },
+          {
+            id: 'knowledge-folders',
+            name: 'knowledge-folders:*',
             type: 'localStorage',
           },
           {
@@ -737,6 +747,11 @@ export default defineNuxtConfig({
           {
             id: 'web-search-tool',
             name: 'settings_web_search_tool',
+            type: 'localStorage',
+          },
+          {
+            id: 'web-search-auto',
+            name: 'settings_web_search_auto',
             type: 'localStorage',
           },
           {
