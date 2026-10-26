@@ -136,7 +136,7 @@ New table `memory_entries`:
 | `origin` | `user` \| `tool` \| `extraction` \| `import` |
 | `sourceChatIds` | JSON array — provenance + deletion cascade (3.7) |
 | `sourceMessageId` | for tool writes / undo |
-| `createdAt`, `updatedAt`, `lastUsedAt` | `lastUsedAt` is set by `memory_list`/`memory_read`; expiry by `lastUsedAt` is **not built** |
+| `createdAt`, `updatedAt`, `lastUsedAt` | `lastUsedAt` is set by `memory_list`/`memory_read`; there is **no expiry** by `lastUsedAt`, it is only the tie-break for which entry leaves an over-budget index first (3.3) |
 
 Caps: ≤ 30 account entries, ≤ 15 per project (soft: the extractor must merge
 before creating); `profile` and `preferences` bodies ≤ 1.5 KB each since
@@ -173,11 +173,11 @@ project entry on first read; the column is left in place and writes stop
   first, then truncate descriptions; never silently drop entries from the
   index (the model must know they exist to call `memory_read`).
 - The free-text "About me" is now the account `profile` entry, so it travels
-  inside the memory index (its body is always injected, 1.5 KB cap). Only text
-  that could not be converted (`about_me` still set: too long, a profile entry
-  already exists, memory off, or rejected by the compliance gate) is still
-  injected verbatim as a separate `aboutMe` block, independent of memory (see
-  "About me becomes a profile entry", section 7).
+  inside the memory index (its body is always injected, 1.5 KB cap). Text that
+  could not be converted (`about_me` still set: too long, a profile entry
+  already exists, memory off, or rejected by the compliance gate) is never
+  injected; it waits on the Memory page until the user edits and saves it as
+  an entry or discards it (see "About me becomes a profile entry", section 7).
 - Models without tool support: index only, no tools. Gateway models follow
   `GatewayModel.toolCall`.
 
@@ -408,6 +408,14 @@ the reason the opt-in is out of v1 (section 7).
   ("Generate memory from chats", null = off) is the extraction opt-in. The
   sweep needs both. Consequence for W4: injection and tools are default-on for
   users who never touched the setting. See 3.12.
+- Turning "Generate memory from chats" **off** (legal research P1-11,
+  2026-10-26) asks in-page "Keep entries" or "Delete them" (Cancel changes
+  nothing). "Delete them" calls `POST /memory/entries/delete-extracted`
+  after the PATCH succeeds: it deletes the caller's entries with origin
+  `extraction` (chat passes, "Update memory now" and backfill) in every
+  scope. Entries the user or the assistant edited become `user`/`tool`, and
+  imported entries keep `import` even after extraction appended to them, so
+  an entry is deleted only when extraction is its sole author.
 - Chat search tool **on** by default (no new data processing — it reads the
   user's own chats on demand, nothing stored).
 - Existing project memory: harmonised with the above — existing projects keep
@@ -793,13 +801,36 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
 - **Handles instead of ids.** A 26-character public id costs about 18 tokens,
   so lines carry `<category>/<slug>` (account) or `project/<category>/<slug>`
   (project). `memory_read` accepts a handle or a public id.
-- **Budget** (`shared/utils/memory-tokens.ts`): `MEMORY_CHARS_PER_TOKEN` =
-  Latin 4, Cyrillic 2.5 (the figure W2 uses for `read_chat`), everything else
-  1.5. Trim order from 3.2, stopping at the first step that fits and never
-  dropping an entry: the `preferences` body becomes a line, descriptions are
-  cut to 60, 40, 20 and 0 characters, and as a last resort the `profile` body
-  becomes a line. Steps that would change nothing are skipped and not recorded.
-  Measured with 100-character descriptions and two 1 KB bodies: 30 account
+- **Budget** (`shared/utils/memory-tokens.ts`): since 2026-10-26
+  `estimateMemoryTokens(text, family)` reuses the project knowledge factors
+  (`KNOWLEDGE_CHARS_PER_TOKEN`, `countKnowledgeChars` +
+  `estimateKnowledgeTextTokens`) for the tokenizer family of the send's model
+  (`resolveKnowledgeTokenFamily`, threaded from the chat route through
+  `buildMemoryInstructions` and `loadMemoryIndex`; the backfill estimate uses
+  the memory model's family; the Memory page uses `default`). The former flat
+  Latin 4 / Cyrillic 2.5 / other 1.5 under-counted Cyrillic on Claude (1.1),
+  Qwen (1.5), DeepSeek and Kimi (1.8), so a full Ukrainian index could exceed
+  its 2500-token budget there; it now trims further on those models (with 4
+  profile + 4 preferences bodies at the cap a Ukrainian index on Claude also
+  collapses the profile body). The measurements below were taken with the
+  flat figures. Trim order (owner, 2026-10-26: the always-injected core is
+  touched last), stopping at the first step that fits: descriptions of the
+  other entries are cut to 60, 40, 20 and 0 characters; then those entry
+  lines are dropped one by one, `drop-least-recently-used` (never-used
+  entries first, then the oldest `lastUsedAt`, ties broken by the last index
+  position); only when no such entry is left does the `preferences` body
+  become a line, and last of all the `profile` body. A body collapse frees
+  room, so dropped entries then come back, most recently used first, while
+  they fit (when all come back, the drop step is not recorded). `profile`
+  and `preferences` are never dropped. Steps that would change nothing are
+  skipped and not recorded. A dropped entry stays stored and reachable
+  through `memory_list`; the wide event logs `memoryIndex.droppedEntries`.
+  With realistic caps (profile and preferences are one per scope, so at most
+  two of each with a project) a full Ukrainian account plus project keeps
+  both profile bodies on every family: on Claude the two preferences bodies
+  collapse (the four bodies alone exceed the budget), on `default` 16
+  never-used lines are dropped instead. The figures below predate this
+  order. Measured with 100-character descriptions and two 1 KB bodies: 30 account
   entries cost 1595 tokens in English and 2251 in Ukrainian (no trim); with 15
   project entries on top, English trims after `preferences-body` (2156) and
   Ukrainian after `descriptions-60` (2390); the last step ends at 528 / 568.
@@ -813,27 +844,29 @@ id or token. **Deviation from 3.7**: the path is `/api/v1/memory/export`, not
   single-line at the schema level), so an entry cannot close `<memory>` or
   forge an index line. Legacy `special` entries are always skipped,
   silently (`isInjectable`); new rows are never `special`.
-- `buildChatInstructions` pushes the memory block **first**, then the `aboutMe`
-  block (a one-line header and the text verbatim), then the project prompt,
+- `buildChatInstructions` pushes the memory block **first**, then the project prompt,
   the chat-search line and the date clauses. Both call sites (the main
   `streamText` and the search-answer continuation) get the same
   `memoryInstructions`, computed once per send in
   `server/utils/memory/chat-context.ts`. A project chat loads project entries
   plus account entries unless `projects.useAccountMemory === false`. Nothing
   in `docs/providers/anthropic.md`'s invalidator list is affected: the block
-  is stable text and changes only with entries or `aboutMe`.
-- **Decision: a leftover `aboutMe` is injected whenever it is set,
-  independent of `memoryEnabled`.** It is user-authored custom instructions,
-  not extracted memory; only the index and the tools follow `memoryEnabled`.
-  Since the About-me migration (section 7) most users have `about_me = NULL`
-  and the text travels as the `profile` entry; this block only serves the
-  un-migrated cases (too long, profile entry exists, memory off, rejected).
-  The owner can overturn this.
+  is stable text and changes only with entries.
+- **Decision (2026-10-26): a leftover `aboutMe` is never injected.** The
+  former `aboutMe` block kept text the compliance gate rejected flowing into
+  every chat. Since then `loadMemoryRuntimeSettings` does not read the column
+  at all: a migrated text travels as the `profile` entry, and an un-migrated
+  one (too long, profile entry exists, memory off, rejected, entries full) is
+  only shown on the Memory page as "Earlier about me (not used in chats)"
+  with three actions: "Keep as new entry" (saves it directly: `profile`, or
+  `topics` when a Profile entry exists, since `profile` is a singleton),
+  "Edit and keep" (the entry modal, prefilled, so the user can remove what
+  the gate refused) and "Discard old text".
 
 **Flags** (`server/utils/memory/tools/enabled.ts`, `chat-context.ts`)
 
 - `loadMemorySettingsFailClosed`: the route reads `user_settings` once per
-  send. If the read throws, memory, chat search and `aboutMe` are all treated
+  send. If the read throws, memory and chat search are both treated
   as off for that send and `attributes.memorySettings.error` is logged: a
   failed read must never re-enable something the user turned off.
 - `chatSearchEnabled` gates `search_chats`/`read_chat`
@@ -1267,12 +1300,18 @@ model) and nothing is saved. `aboutMe` accepts only `null`.
   `detachChatsFromMemory` before the row delete, which deletes `extraction`
   entries whose only source is the deleted chat and drops the id elsewhere
   (3.7). A pass whose model call outlives the delete re-reads the chat
-  afterwards and is skipped as `chat-unavailable` (audit finding 9, 3.17). A
-  narrow window remains: a pass whose re-check lands between the detach and
-  the row delete can still write.
-- `generateObject` is deprecated in AI SDK 7 but still works (the research
-  clarifier uses it too); move both to `generateText` with an `output`
-  setting together.
+  afterwards and is skipped as `chat-unavailable` (audit finding 9, 3.17).
+  Since 2026-10-26 every write that records the chat as a source (the
+  create `insert ... select`, the merge and source-only updates) also carries
+  `exists (select 1 from chats where id = ? and user_id = ?)`, so a delete
+  that lands between that re-read and the write leaves nothing behind; the
+  op and every later op of the pass are dropped as `chat-unavailable`. A
+  narrow window remains: a pass whose write lands between the detach and the
+  row delete (the chat row still exists then) can still write.
+- Memory extraction, import and the project refresh call `generateText`
+  with `output: Output.object({ schema, name: 'MemoryExtraction' })` and read
+  `result.output` (2026-10-26; `generateObject` is deprecated in AI SDK 7).
+  The research clarifier still uses `generateObject`.
 - The topical never-store classes are detected by the extractor's
   `neverStore` flag and, for home address, immigration status and criminal
   history, by narrow deterministic detectors (3.17); live location and
@@ -1526,10 +1565,18 @@ comes from `resolveBackfillWindow`, without any schema change:
   starts from the newest chats and would re-read (and re-bill) the old ones
   too, while bounding it below by the old cutoff would need a stored lower
   bound, which is a schema change; chats created after the cutoff are the
-  forward sweep's job anyway. Known consequence: after a memory Reset, or
-  after extraction was off for a while, there is no way to backfill the same
-  history again; that would need an explicit "start over" action (not built,
-  owner call).
+  forward sweep's job anyway.
+- **Start over (2026-10-26).** In the `all-chats-read` state the sheet offers
+  "Read all past chats again". It loads `GET ?restart=true` (the estimate of a
+  fresh window from the newest chat, never `all-chats-read`) and starts only
+  when the user confirms, with `POST { restart: true }`; that explicit action
+  is the consent to re-read and re-bill chats earlier runs already read.
+  `resolveBackfillWindow(..., { restart: true })` ignores every earlier job,
+  and the job caps (200 chats, 4M tokens) are unchanged.
+- A memory Reset (`account` or `all` scope) calls `clearBackfillWindow`: it
+  cancels a running job and deletes every backfill job of the user, so the
+  next backfill starts fresh from the newest chats. A project reset leaves
+  the backfill alone (backfill reads account chats only).
 
 Passes run with
 `trigger: 'backfill'`: gate `memoryEnabled !== false` and
@@ -1553,7 +1600,7 @@ API (all session-scoped; POSTs have the cross-site guard):
 
 - `GET /api/v1/memory/backfill` -> `{ job, estimate, reason }`. No running job:
   `estimate` is a dry-run for the resolved model (null with `reason`
-  `memory-disabled | extraction-disabled | all-chats-read | no-model | estimate-failed` when unavailable; the dry-run estimate covers the next job's window, carries `continuesPreviousRun`, and is cached per user for 10 minutes, keyed by model and window) and
+  `memory-disabled | extraction-disabled | all-chats-read | no-model | estimate-failed | estimate-cooldown` when unavailable; the dry-run estimate covers the next job's window, carries `continuesPreviousRun`, and is cached per user for 10 minutes, keyed by model and window; a failed estimate is cached as a failure marker for 60 s, and a cache miss computes at most once per 30 s per user (`lookupBackfillEstimate`), so flipping the memory model cannot force a recompute on every GET) and
   `job` is the latest finished job or null; a running job: its progress.
 - `POST /api/v1/memory/backfill` -> `{ job }`: START only (409 when a gate
   fails, no model, every past chat was already read, or one is already
@@ -1644,7 +1691,7 @@ handled separately.
 | 2 | Medium: every off-to-on extraction toggle rewrote all chat rows | Fixed: per-chat stamps stay (they floor the account sweep and cap backfill), restamp only chats with activity since their stamp, 10 s per-user enable cooldown (3.12) |
 | 3 | Low: a client `slug` skipped the compliance gate | Fixed: slug removed from the entry input, always derived from the gated title (3.1) |
 | 4 | Low: the backfill estimate scanned the full history with an easy-to-bypass cache | Fixed by bounding: the estimate aggregates only the at most `backfillMaxChats` chats of the next job's window (3.15); the cache is additionally keyed by window |
-| 9 | Low: extraction could attach entries to a chat deleted during the model call | Fixed: a missing chat ends the pass as `chat-unavailable`; a narrow detach-to-delete window remains (3.12) |
+| 9 | Low: extraction could attach entries to a chat deleted during the model call | Fixed: a missing chat ends the pass as `chat-unavailable`, and every write carries an atomic `exists(chat owned by user)` guard; a narrow detach-to-delete window remains (3.12) |
 | 10 | Low: never-store detectors missed non-ASCII digits, other separators, spaced PESEL, NIP keyword after the number, AWS secrets with `/`, Polish `hasło to X` | Fixed in `compliance.ts` with table-driven positive and negative specs |
 | 11 | Low: the sensitive-topic classifier missed hidden characters, unaccented Polish and Latin look-alikes in Cyrillic | Fixed in `sensitivity.ts`: format characters and stray marks stripped, look-alikes folded, a diacritic-folded Polish pass |
 | 12 | Low: home address, immigration and criminal history were enforced only by the extractor label | Fixed: narrow deterministic detectors in `evaluateMemoryEntry` (`topical-never-store.ts`), so every write path refuses them with the unchanged 422 |
@@ -1679,6 +1726,17 @@ handled separately.
   text a rule now rejects is a 422 even for a title-only change. Its `why`
   names the match and says it is in the saved text, its `fix` says to edit
   the saved text or cancel and delete the entry; deleting never runs the gate.
+- Write rate limit (2026-10-26): before this, `/api/v1/memory/*` had no
+  request-volume limit (Better Auth's limiter covers `/api/auth/*` only, the
+  Cloudflare "API flood limit" rule covers `/api/v1/chats/` and
+  `/api/v1/files/` only, and import, extract-now and backfill start had
+  per-action cooldowns but no ceiling). `server/utils/memory/rate-limit.ts`
+  is the one memory limiter, a KV per-user counter with named buckets on the
+  same storage as the knowledge write limit (`createAuthRateLimitStorage`):
+  the `write` bucket (60 per minute, shared) runs right after the session
+  check on entry create, edit and delete, reset, delete-extracted, import,
+  extract-now and backfill start, and answers 429 with `Retry-After`. New
+  memory limits are added as buckets there, not as parallel limiters.
 
 ### 3.18 Tell Besidka what to remember (2026-10-26)
 
@@ -1748,10 +1806,12 @@ ticked each change. Import stays as it is; this box is the everyday path.
   overwritten. A statement that lands nothing in a race is counted as
   `skipped`. Written rows get origin `user`.
 
-**Rate limits:** `instruct-rate-limit.ts` uses the KV-backed
-`createAuthRateLimitStorage`, like the knowledge write limiter. Preview
-allows 6 per minute (it spends the user's tokens); apply allows 30 per
-minute. Both answer 429 with `Retry-After`.
+**Rate limits:** the shared memory limiter (`server/utils/memory/rate-limit.ts`,
+KV-backed `createAuthRateLimitStorage`, like the knowledge write limiter)
+with its own buckets: `instruct-preview` allows 6 per minute (it spends the
+user's tokens), `instruct-apply` 30 per minute. Both answer 429 with
+`Retry-After`. They are separate from the `write` bucket (60 per minute) of
+the other memory write routes (3.17).
 
 **Logging:** only counts, kinds and the model id, under
 `attributes.memoryInstruct` (phase, scope, chars, status, op counts, applied
@@ -2000,24 +2060,25 @@ nothing needs invalidating; the next chat after the migration sees the entry.
 | --- | --- | --- | --- | --- |
 | `migrated` | `NULL` | created | `null` | in the memory index |
 | `empty` | unchanged (null/blank) | none | `null` | nothing |
-| `memory-off` | unchanged | none | `memory-off` | `aboutMe` block (entries are not injected while memory is off) |
-| `too-long` | unchanged | none | `too-long` | `aboutMe` block |
-| `profile-exists` | unchanged | existing one untouched | `profile-exists` | index (existing entry) plus the `aboutMe` block |
-| `rejected` | unchanged | none | `rejected` | `aboutMe` block |
-| `entries-full` | unchanged | none | `entries-full` | `aboutMe` block |
+| `memory-off` | unchanged | none | `memory-off` | nothing (entries are not injected while memory is off) |
+| `too-long` | unchanged | none | `too-long` | nothing |
+| `profile-exists` | unchanged | existing one untouched | `profile-exists` | index (existing entry) only |
+| `rejected` | unchanged | none | `rejected` | nothing |
+| `entries-full` | unchanged | none | `entries-full` | nothing |
 
 `aboutMeNotMigratedReason` is derived from the migration outcome of the same
 GET and is `null` whenever the column is empty after the migration (so a call
 that lost a race to a concurrent migration reports `null`). The UI uses it to
-show the leftover text as "Earlier about me (not converted)" with the matching
-explanation until the user shortens or removes it (`PATCH aboutMe: null`).
+show the leftover text as "Earlier about me (not used in chats)" with the
+matching explanation until the user saves it as an entry or removes it
+(`PATCH aboutMe: null`).
 A migration that throws (a D1 error, or a 409 that is neither the singleton
 conflict nor the account cap) is logged as
 `attributes.memoryMigration.aboutMeError` and reported as `null`.
 
 `entries-full`: the account is at the 30-entry cap, so there is no room for the
-profile entry. Nothing is created and the text stays in `about_me`, keeps being
-injected, and is shown with "Your account memory is full (30 entries). Delete
+profile entry. Nothing is created and the text stays in `about_me` (not
+injected) and is shown with "Your account memory is full (30 entries). Delete
 one and this converts automatically." The user frees an entry; the migration
 runs again on the next load (the next GET) and converts the text. The cap is
 told apart from a lost singleton race by looking for an existing profile entry
@@ -2034,26 +2095,23 @@ under `memoryCompliance` with origin `about-me-migration`, as everywhere else.
 
 **Owner decisions (overridable)**
 
-1. **No truncation.** Text over 1536 bytes stays in `about_me`, is shown as
-   "Earlier about me (not converted)" and is still injected, until the user
-   shortens or removes it. Truncating would silently drop what the user wrote.
+1. **No truncation.** Text over 1536 bytes stays in `about_me` and is shown as
+   "Earlier about me (not used in chats)" until the user shortens it into an
+   entry or removes it. Truncating would silently drop what the user wrote.
    Alternative: raise the `profile` cap or split the text into several entries.
 2. **An existing profile entry is never overwritten.** Merging two texts is a
    judgement the server should not make; the user decides on the Memory page.
-3. **Memory-off users are not migrated.** Entries are not injected while memory
-   is off but `aboutMe` is, so migrating would silently remove the text from
-   every chat. The migration runs when they switch memory on (the next GET).
-4. **A full account is not migrated.** At the 30-entry cap the text stays (and
-   keeps being injected) instead of evicting an entry the user chose to keep or
+3. **Memory-off users are not migrated.** The migration runs when they switch
+   memory on (the next GET). While memory is off nothing about the user is
+   injected, the leftover text included.
+4. **A full account is not migrated.** At the 30-entry cap the text stays
+   (not injected) instead of evicting an entry the user chose to keep or
    failing the settings GET; it converts once the user deletes an entry.
 
-**Open question (owner).** Text rejected by the classifier (`rejected`) is
-still injected today for un-migrated users: the old PATCH gates blocked it at
-write time, but text saved before them, or text the classifier now flags, keeps
-flowing into every chat via `buildAboutMeInstruction`. Should rejected text stop
-being injected? It would be a cheap deterministic classifier call in
-`chat-context.ts` (a behaviour change that silently disables the user's own
-instructions). Not done.
+**Resolved (2026-10-26).** Text rejected by the classifier (`rejected`) used to
+keep flowing into every chat through the `aboutMe` block. No skipped text is
+injected any more (see "Decision (2026-10-26)" in section 6); the Memory page
+notice is the only place it appears.
 
 ### No background model calls without an explicit opt-in (owner, 2026-10-26)
 

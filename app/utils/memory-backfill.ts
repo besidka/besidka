@@ -32,6 +32,10 @@ export function describeBackfillLimits(isContinuation: boolean): string {
     + BACKFILL_TOKEN_LIMIT_SENTENCE
 }
 
+export const BACKFILL_RESTART_NOTE = 'Starts over from your newest chat '
+  + 'and reads chats that earlier runs already read, so your API key is '
+  + 'charged for them again.'
+
 export function describeBackfillChats(
   chats: number,
   isContinuation: boolean,
@@ -70,8 +74,11 @@ export const memoryBackfillUnavailableCopy: Record<
   'memory-disabled': 'Turn on Use memory first.',
   'extraction-disabled': 'Turn on Generate memory from chats first.',
   'estimate-failed': 'Couldn\'t estimate the cost. Try again.',
+  'estimate-cooldown': 'The cost was estimated moments ago. Try again in '
+    + 'half a minute.',
   'all-chats-read': 'The last run already read all your past chats. New '
-    + 'chats are added to memory automatically.',
+    + 'chats are added to memory automatically. You can still read them all '
+    + 'again from the newest.',
 }
 
 export const memoryBackfillDroppedLabels: Record<string, string> = {
@@ -79,6 +86,7 @@ export const memoryBackfillDroppedLabels: Record<string, string> = {
   'never-store': 'Private data (never saved)',
   'duplicate': 'Already remembered',
   'ungrounded': 'No supporting quote',
+  'chat-unavailable': 'Chat deleted while it was read',
 }
 
 export function describeBackfillDroppedReason(reason: string): string {

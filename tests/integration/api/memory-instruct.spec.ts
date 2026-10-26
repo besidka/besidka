@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { MEMORY_INSTRUCT_LIMITS } from '#shared/utils/memory-instruct'
-import { MEMORY_INSTRUCT_RATE_LIMITS } from '~~/server/utils/memory/instruct-rate-limit'
+import { MEMORY_RATE_LIMITS } from '~~/server/utils/memory/rate-limit'
 import {
   createMemoryExtractionTestDb,
   seedEntry,
@@ -303,7 +303,7 @@ describe('memory instruct routes', () => {
       mocks.resolveMemoryModel.mockResolvedValue(createSelection())
       mockOps([])
 
-      const { max } = MEMORY_INSTRUCT_RATE_LIMITS.preview
+      const { max } = MEMORY_RATE_LIMITS['instruct-preview']
 
       for (let index = 0; index < max; index++) {
         await callPreview({ text: SECRET_TEXT })

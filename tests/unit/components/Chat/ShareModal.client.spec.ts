@@ -96,6 +96,22 @@ describe('Chat/ShareModal.client', () => {
       .toBe(false)
   })
 
+  it.each([true, false])('warns that replies may restate memory '
+    + '(chat has files: %s)', async (hasFiles) => {
+    const { targetHasFiles } = useChatShare()
+
+    targetHasFiles.value = hasFiles
+
+    const wrapper = await mountSuspended(ShareModal)
+    const warning = wrapper.find('[data-testid="share-memory-warning"]')
+
+    expect(warning.exists()).toBe(true)
+    expect(warning.text().replace(/\s+/g, ' ')).toBe(
+      'Replies may restate your saved profile and preferences from memory. '
+      + 'Anyone with the link can read them.',
+    )
+  })
+
   it('defaults the author avatar toggle to on', async () => {
     const wrapper = await mountSuspended(ShareModal)
 

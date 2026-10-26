@@ -22,7 +22,7 @@ import type {
 } from '../../../setup/helpers/memory-extraction-db'
 
 const mocks = vi.hoisted(() => ({
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
   getModel: vi.fn(),
   getCachedGatewayCatalog: vi.fn(),
   resolveMemoryModel: vi.fn(),
@@ -30,10 +30,11 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
 }))
 
-vi.mock('ai', () => ({
-  generateObject: mocks.generateObject,
-  generateText: vi.fn(),
-}))
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
+
+  return { ...actual, generateText: mocks.generateText }
+})
 
 vi.mock('#shared/utils/model', async (importOriginal) => {
   const original = await importOriginal<
@@ -118,14 +119,14 @@ function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
 }
 
 function mockOps(ops: MemoryExtractionOp[]) {
-  mocks.generateObject.mockResolvedValue({
-    object: { ops },
+  mocks.generateText.mockResolvedValue({
+    output: { ops },
     usage: { inputTokens: 120, outputTokens: 30 },
   })
 }
 
 function promptContent(): string {
-  return mocks.generateObject.mock.calls[0]![0].messages[0].content
+  return mocks.generateText.mock.calls[0]![0].messages[0].content
 }
 
 describe('extractChatMemory', () => {
@@ -236,9 +237,13 @@ describe('extractChatMemory', () => {
 
     await run(chat)
 
-    const options = mocks.generateObject.mock.calls[0]![0]
+    const options = mocks.generateText.mock.calls[0]![0]
 
-    expect(options.schemaName).toBe('MemoryExtraction')
+    expect(options.output.name).toBe('object')
+    expect(await options.output.responseFormat).toMatchObject({
+      type: 'json',
+      name: 'MemoryExtraction',
+    })
     expect(options.maxOutputTokens)
       .toBe(MEMORY_EXTRACTION_LIMITS.maxOutputTokens)
     expect(options.maxOutputTokens).toBe(12000)
@@ -266,7 +271,7 @@ describe('extractChatMemory', () => {
 
       await run(chat)
 
-      return mocks.generateObject.mock.calls[0]![0].maxOutputTokens
+      return mocks.generateText.mock.calls[0]![0].maxOutputTokens
     }
 
     it('clamps to the model output limit when it is lower', async () => {
@@ -391,7 +396,7 @@ describe('extractChatMemory', () => {
 
         await run(chat)
 
-        const instructions = mocks.generateObject.mock.calls[0]![0]
+        const instructions = mocks.generateText.mock.calls[0]![0]
           .instructions as string
 
         expect(instructions).toContain(`${MEMORY_LIMITS.maxTitleChars} characters`)
@@ -441,7 +446,7 @@ describe('extractChatMemory', () => {
     const result = await run(chat)
 
     expect(result.status).toBe('leased')
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
     expect(mocks.release).not.toHaveBeenCalled()
     expect((await readChat(chat.id))?.memoryExtractionAttemptedAt).toBeNull()
   })
@@ -449,7 +454,7 @@ describe('extractChatMemory', () => {
   it('releases the lease when the pass fails', async () => {
     const chat = await seedChatWithMessages()
 
-    mocks.generateObject.mockRejectedValue(new Error('provider down'))
+    mocks.generateText.mockRejectedValue(new Error('provider down'))
 
     const result = await run(chat)
 
@@ -467,7 +472,7 @@ describe('extractChatMemory', () => {
       const result = await run(chat)
 
       expect(result).toMatchObject({ status: 'skipped', reason: 'too-short' })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
 
       const stamped = await readChat(chat.id)
 
@@ -492,7 +497,7 @@ describe('extractChatMemory', () => {
       const first = await run(chat)
 
       expect(first).toMatchObject({ status: 'skipped', reason: 'too-short' })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
 
       const afterFirst = await readChat(chat.id)
 
@@ -511,7 +516,7 @@ describe('extractChatMemory', () => {
 
       expect(second).toMatchObject({ status: 'extracted' })
       expect(second.applied.created).toBeGreaterThanOrEqual(1)
-      expect(mocks.generateObject).toHaveBeenCalledOnce()
+      expect(mocks.generateText).toHaveBeenCalledOnce()
       expect(promptContent()).toContain(FIRST_SHORT_CHUNK.trim())
       expect(promptContent()).toContain(SECOND_SHORT_CHUNK.trim())
 
@@ -547,7 +552,7 @@ describe('extractChatMemory', () => {
       },
     })
 
-    mocks.generateObject.mockRejectedValue(new Error('provider down'))
+    mocks.generateText.mockRejectedValue(new Error('provider down'))
 
     const result = await run(chat)
 
@@ -587,7 +592,7 @@ describe('extractChatMemory', () => {
       .where(eq(schema.userSettings.userId, userId))
 
     expect(await run(chat)).toMatchObject({ reason: 'disabled' })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
   })
 
   it('treats a null memoryEnabled as on', async () => {
@@ -609,7 +614,7 @@ describe('extractChatMemory', () => {
       status: 'skipped',
       reason: 'chat-unavailable',
     })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
   })
 
   it('skips a project owned by someone else and advances the stamp', async () => {
@@ -622,7 +627,7 @@ describe('extractChatMemory', () => {
       status: 'skipped',
       reason: 'project-unavailable',
     })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
 
     const stamped = await readChat(chat.id)
 
@@ -677,7 +682,7 @@ describe('extractChatMemory', () => {
   it('counts failures and keeps the extraction stamp', async () => {
     const chat = await seedChatWithMessages()
 
-    mocks.generateObject.mockRejectedValue(new Error('provider down'))
+    mocks.generateText.mockRejectedValue(new Error('provider down'))
 
     const first = await run(chat)
 
@@ -702,7 +707,7 @@ describe('extractChatMemory', () => {
       },
     })
 
-    mocks.generateObject.mockRejectedValue(new Error('provider down'))
+    mocks.generateText.mockRejectedValue(new Error('provider down'))
 
     await run(chat)
 
@@ -717,7 +722,7 @@ describe('extractChatMemory', () => {
     const result = await run(chat)
 
     expect(result).toMatchObject({ status: 'failed', reason: 'no-model' })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
     expect((await readChat(chat.id))?.memoryExtractionFailures).toBe(1)
   })
 
@@ -734,7 +739,7 @@ describe('extractChatMemory', () => {
     await run(second, { resolveCache })
 
     expect(mocks.resolveMemoryModel).toHaveBeenCalledOnce()
-    expect(mocks.generateObject).toHaveBeenCalledTimes(2)
+    expect(mocks.generateText).toHaveBeenCalledTimes(2)
   })
 
   it('does not cache a model chosen from the chat', async () => {
@@ -766,13 +771,13 @@ describe('extractChatMemory', () => {
   it('applies nothing when extraction was switched off mid-pass', async () => {
     const chat = await seedChatWithMessages()
 
-    mocks.generateObject.mockImplementation(async () => {
+    mocks.generateText.mockImplementation(async () => {
       await testDb.db.update(schema.userSettings)
         .set({ memoryExtractionEnabled: false })
         .where(eq(schema.userSettings.userId, userId))
 
       return {
-        object: { ops: [createOp()] },
+        output: { ops: [createOp()] },
         usage: { inputTokens: 5, outputTokens: 5 },
       }
     })
@@ -791,12 +796,12 @@ describe('extractChatMemory', () => {
     + 'in %s', async (_label, overrides) => {
     const chat = await seedChatWithMessages()
 
-    mocks.generateObject.mockImplementation(async () => {
+    mocks.generateText.mockImplementation(async () => {
       await testDb.db.delete(schema.chats)
         .where(eq(schema.chats.id, chat.id))
 
       return {
-        object: { ops: [createOp()] },
+        output: { ops: [createOp()] },
         usage: { inputTokens: 5, outputTokens: 5 },
       }
     })
@@ -938,15 +943,19 @@ describe('extractChatMemory', () => {
           .where(eq(schema.userSettings.userId, userId))
         await run(chat)
 
-        const options = mocks.generateObject.mock.calls[0]![0]
+        const options = mocks.generateText.mock.calls[0]![0]
 
         expect(options.instructions).toContain('Never record anything about')
         expect(options.instructions).not.toContain('sensitiveCategory')
         expect(options.instructions).not.toContain('may be stored only')
-        expect(Object.keys(options.schema.shape.ops.element.shape))
-          .not.toContain('sensitivity')
-        expect(Object.keys(options.schema.shape.ops.element.shape))
-          .not.toContain('sensitiveCategory')
+        const { schema: jsonSchema } = await options.output.responseFormat
+        const opProperties = Object.keys(
+          jsonSchema.properties.ops.items.properties,
+        )
+
+        expect(opProperties).toContain('evidence')
+        expect(opProperties).not.toContain('sensitivity')
+        expect(opProperties).not.toContain('sensitiveCategory')
       })
 
     it('keeps special rows out of the prompt index', async () => {
@@ -999,7 +1008,7 @@ describe('extractChatMemory', () => {
         status: 'skipped',
         reason: 'disabled',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
 
       const stamped = await readChat(chat.id)
 
@@ -1047,7 +1056,7 @@ describe('extractChatMemory', () => {
         status: 'skipped',
         reason: 'disabled',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('refuses a project chat whose activity predates the cut-over',
@@ -1060,7 +1069,7 @@ describe('extractChatMemory', () => {
           status: 'skipped',
           reason: 'disabled',
         })
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
       })
 
     it('never reads messages from before the cut-over in a sweep pass',
@@ -1106,11 +1115,11 @@ describe('extractChatMemory', () => {
       async () => {
         const chat = await seedProjectChatWithMessages()
 
-        mocks.generateObject.mockImplementation(async () => {
+        mocks.generateText.mockImplementation(async () => {
           await setSettings({ memoryExtractionEnabledAt: minutesBefore(5) })
 
           return {
-            object: { ops: [createOp()] },
+            output: { ops: [createOp()] },
             usage: { inputTokens: 5, outputTokens: 5 },
           }
         })
@@ -1160,7 +1169,7 @@ describe('extractChatMemory', () => {
         status: 'skipped',
         reason: 'disabled',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('refuses a project chat when memory is turned off', async () => {
@@ -1172,7 +1181,7 @@ describe('extractChatMemory', () => {
         status: 'skipped',
         reason: 'disabled',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('uses the project watermark for the dirty check', async () => {
@@ -1191,11 +1200,11 @@ describe('extractChatMemory', () => {
       async () => {
         const chat = await seedProjectChatWithMessages()
 
-        mocks.generateObject.mockImplementation(async () => {
+        mocks.generateText.mockImplementation(async () => {
           await setSettings({ memoryExtractionEnabled: false })
 
           return {
-            object: { ops: [createOp()] },
+            output: { ops: [createOp()] },
             usage: { inputTokens: 5, outputTokens: 5 },
           }
         })
@@ -1209,11 +1218,11 @@ describe('extractChatMemory', () => {
     it('applies nothing when memory is switched off mid-pass', async () => {
       const chat = await seedProjectChatWithMessages()
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await setSettings({ memoryEnabled: false })
 
         return {
-          object: { ops: [createOp()] },
+          output: { ops: [createOp()] },
           usage: { inputTokens: 5, outputTokens: 5 },
         }
       })
@@ -1266,9 +1275,9 @@ describe('extractChatMemory', () => {
         expect(await run(sweptFirst, {
           trigger: 'manual',
         })).toMatchObject({ status: 'skipped', reason: 'no-user-text' })
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
 
-        mocks.generateObject.mockClear()
+        mocks.generateText.mockClear()
 
         const manualFirst = await seedProjectChatWithMessages()
 
@@ -1278,7 +1287,7 @@ describe('extractChatMemory', () => {
           status: 'skipped',
           reason: 'no-user-text',
         })
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
       })
 
     it('keeps the attempt bookkeeping out of the manual trigger', async () => {
@@ -1383,7 +1392,7 @@ describe('extractChatMemory', () => {
           },
         })
 
-        mocks.generateObject.mockRejectedValue(new Error('provider down'))
+        mocks.generateText.mockRejectedValue(new Error('provider down'))
 
         const result = await run(chat, { explicit: true, ignoreIdle: true })
         const stamped = await readChat(chat.id)
@@ -1413,7 +1422,7 @@ describe('extractChatMemory', () => {
 
       expect(await run(chat, { explicit: true, ignoreIdle: true }))
         .toMatchObject({ status: 'skipped', reason: 'disabled' })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('still skips a project with memory disabled', async () => {
@@ -1466,7 +1475,7 @@ describe('extractChatMemory', () => {
       const result = await run(chat)
 
       expect(result).toMatchObject({ status: 'skipped', reason: 'no-user-text' })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect((await readChat(chat.id))?.memoryExtractedAt).not.toBeNull()
     })
 
@@ -1615,7 +1624,7 @@ describe('extractChatMemory', () => {
 
       expect(result.applied.created).toBe(1)
       expect(promptContent()).toContain('<legacy-memory>')
-      expect(mocks.generateObject.mock.calls[0]![0].instructions)
+      expect(mocks.generateText.mock.calls[0]![0].instructions)
         .toContain('at most 15 ops')
 
       const project = await testDb.db.query.projects.findFirst({
@@ -1633,7 +1642,7 @@ describe('extractChatMemory', () => {
       const projectId = await seedBlobProject()
       const chat = await seedChatWithMessages({ projectId })
 
-      mocks.generateObject.mockRejectedValue(new Error('provider down'))
+      mocks.generateText.mockRejectedValue(new Error('provider down'))
 
       expect((await run(chat)).status).toBe('failed')
 
@@ -1687,7 +1696,7 @@ describe('extractChatMemory', () => {
       await run(chat)
 
       expect(promptContent()).not.toContain('<legacy-memory>')
-      expect(mocks.generateObject.mock.calls[0]![0].instructions)
+      expect(mocks.generateText.mock.calls[0]![0].instructions)
         .toContain('at most 10 ops')
     })
 
@@ -1808,7 +1817,7 @@ describe('extractChatMemory', () => {
         { label: 'HISTORY', minutesAgo: 100 },
       ])
 
-      mocks.generateObject.mockRejectedValue(new Error('provider down'))
+      mocks.generateText.mockRejectedValue(new Error('provider down'))
 
       const result = await runBackfill(chat)
       const stamped = await readChat(chat.id)
@@ -1841,7 +1850,7 @@ describe('extractChatMemory', () => {
         status: 'skipped',
         reason: 'disabled',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect((await readChat(chat.id))?.memoryExtractedAt).toBeNull()
     })
 
@@ -1858,7 +1867,7 @@ describe('extractChatMemory', () => {
         status: 'skipped',
         reason: 'project-chat',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(stamped?.memoryExtractedAt).toBeNull()
       expect(stamped?.projectMemorySummaryUpdatedAt).toBeNull()
     })
@@ -1869,13 +1878,13 @@ describe('extractChatMemory', () => {
         { label: 'HISTORY', minutesAgo: 100 },
       ])
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await testDb.db.update(schema.userSettings)
           .set({ memoryExtractionEnabled: false })
           .where(eq(schema.userSettings.userId, userId))
 
         return {
-          object: { ops: [createOp({
+          output: { ops: [createOp({
             evidence: 'HISTORY sentence of the user.',
           })] },
           usage: { inputTokens: 1, outputTokens: 1 },
@@ -1910,7 +1919,7 @@ describe('extractChatMemory', () => {
       const stamped = await readChat(chat.id)
 
       expect(result).toMatchObject({ status: 'skipped', reason: 'too-short' })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(stamped?.memoryExtractedAt).toBeNull()
       expect(stamped?.memoryExtractionFailures).toBeNull()
     })

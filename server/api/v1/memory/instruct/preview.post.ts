@@ -7,7 +7,7 @@ import {
 } from '#shared/utils/memory-instruct'
 import { assertOwnedProject } from '~~/server/utils/memory/entries'
 import { previewMemoryInstruction } from '~~/server/utils/memory/instruct'
-import { enforceMemoryInstructRateLimit } from '~~/server/utils/memory/instruct-rate-limit'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 function countOperations(operations: MemoryInstructPreviewOperation[]) {
@@ -95,7 +95,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await enforceMemoryInstructRateLimit(userId, 'preview', event)
+  await enforceMemoryRateLimit('instruct-preview', userId, event)
 
   const result = await previewMemoryInstruction({
     db,

@@ -16,16 +16,17 @@ import type {
 } from '../../../setup/helpers/memory-extraction-db'
 
 const mocks = vi.hoisted(() => ({
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
   resolveMemoryModel: vi.fn(),
   acquireMemoryLease: vi.fn(),
   release: vi.fn(),
 }))
 
-vi.mock('ai', () => ({
-  generateObject: mocks.generateObject,
-  generateText: vi.fn(),
-}))
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
+
+  return { ...actual, generateText: mocks.generateText }
+})
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { publicIdMockFactory } = await import(
@@ -82,8 +83,8 @@ describe('sweepMemoryExtraction', () => {
         },
       }
     })
-    mocks.generateObject.mockResolvedValue({
-      object: { ops: [] },
+    mocks.generateText.mockResolvedValue({
+      output: { ops: [] },
       usage: { inputTokens: 10, outputTokens: 5 },
     })
   })
@@ -410,10 +411,10 @@ describe('sweepMemoryExtraction', () => {
       const first = await dueChat({ activityAt: minutesBefore(200) })
       const second = await dueChat({ activityAt: minutesBefore(100) })
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await new Promise(resolve => setTimeout(resolve, 80))
 
-        return { object: { ops: [] }, usage: {} }
+        return { output: { ops: [] }, usage: {} }
       })
 
       const result = await sweep({ maxRuntimeMs: 40 })
@@ -432,7 +433,7 @@ describe('sweepMemoryExtraction', () => {
 
         expect(first).toMatchObject({ selectedCount: 1, skippedCount: 1 })
         expect(second.selectedCount).toBe(0)
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
         expect(await readChat(chat.id)).toMatchObject({
           memoryExtractedAt: null,
           memoryExtractionFailures: 0,
@@ -483,7 +484,7 @@ describe('sweepMemoryExtraction', () => {
       const result = await sweep()
 
       expect(result.selectedCount).toBe(0)
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
 
       for (const chat of chats) {
         expect(await wasProcessed(chat.id)).toBe(false)
@@ -576,7 +577,7 @@ describe('sweepMemoryExtraction', () => {
           minutesBefore(25))
 
         const result = await sweep()
-        const prompt = mocks.generateObject.mock.calls[0]![0]
+        const prompt = mocks.generateText.mock.calls[0]![0]
           .messages[0].content as string
 
         expect(result.extractedCount).toBe(1)
@@ -621,7 +622,7 @@ describe('sweepMemoryExtraction', () => {
 
       expect(result.selectedCount).toBe(0)
       expect(await wasProjectProcessed(chat.id)).toBe(false)
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('decides dirtiness on the project watermark only', async () => {
@@ -687,12 +688,12 @@ describe('sweepMemoryExtraction', () => {
           now: EXTRACTION_NOW,
         })
 
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
 
         const result = await sweep()
 
         expect(result).toMatchObject({ selectedCount: 1, skippedCount: 1 })
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
       })
 
     it('does not reprocess the same messages when the manual refresh follows',
@@ -703,7 +704,7 @@ describe('sweepMemoryExtraction', () => {
         )
 
         await sweep()
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
 
         const manual = await extractChatMemory({
           chat,
@@ -718,7 +719,7 @@ describe('sweepMemoryExtraction', () => {
           status: 'skipped',
           reason: 'no-user-text',
         })
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
       })
   })
 
@@ -794,7 +795,7 @@ describe('sweepMemoryExtraction', () => {
         const result = await sweep()
 
         expect(result.selectedCount).toBe(0)
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
         expect(explain().some((detail) => {
           return /SCAN (chats|c)\b/.test(detail)
         })).toBe(false)
@@ -810,13 +811,13 @@ describe('sweepMemoryExtraction', () => {
         await dueChat({ activityAt: minutesBefore(100 - index) })
       }
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         running += 1
         maxRunning = Math.max(maxRunning, running)
         await new Promise(resolve => setTimeout(resolve, 10))
         running -= 1
 
-        return { object: { ops: [] }, usage: {} }
+        return { output: { ops: [] }, usage: {} }
       })
 
       await sweep()
@@ -837,7 +838,7 @@ describe('sweepMemoryExtraction', () => {
       const result = await sweep()
 
       expect(result).toMatchObject({ leasedCount: 1, extractedCount: 1 })
-      expect(mocks.generateObject).toHaveBeenCalledOnce()
+      expect(mocks.generateText).toHaveBeenCalledOnce()
       expect(await wasProcessed(leasedChat.id)).toBe(false)
       expect(await wasProcessed(freeChat.id)).toBe(true)
     })
@@ -845,9 +846,9 @@ describe('sweepMemoryExtraction', () => {
     it('counts a failing chat and keeps going', async () => {
       await dueChat({ activityAt: minutesBefore(100) })
       await dueChat({ activityAt: minutesBefore(90) })
-      mocks.generateObject
+      mocks.generateText
         .mockRejectedValueOnce(new Error('provider down'))
-        .mockResolvedValueOnce({ object: { ops: [] }, usage: {} })
+        .mockResolvedValueOnce({ output: { ops: [] }, usage: {} })
 
       const result = await sweep()
 
@@ -886,8 +887,8 @@ describe('sweepMemoryExtraction', () => {
     it('aggregates ops, drops and models across chats', async () => {
       await dueChat({ activityAt: minutesBefore(100) })
       await dueChat({ activityAt: minutesBefore(90) })
-      mocks.generateObject.mockResolvedValue({
-        object: {
+      mocks.generateText.mockResolvedValue({
+        output: {
           ops: [
             {
               op: 'create',
@@ -945,8 +946,8 @@ describe('sweepMemoryExtraction', () => {
       const logger = { set: vi.fn() }
 
       await dueChat()
-      mocks.generateObject.mockResolvedValue({
-        object: {
+      mocks.generateText.mockResolvedValue({
+        output: {
           ops: [
             {
               op: 'create',

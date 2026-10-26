@@ -469,7 +469,7 @@ export async function listMemoryEntries(options: {
   return sortMemoryEntries(rows.map(toMemoryEntryWire))
 }
 
-interface GuardedInsertValues {
+export interface GuardedInsertValues {
   userId: number
   decodedProjectId: number | null
   category: MemoryCategory
@@ -480,12 +480,18 @@ interface GuardedInsertValues {
   origin: MemoryOrigin
   sourceChatIds: string[]
   sourceMessageId: string | null
+  requiredChatId?: number | null
+}
+
+interface GuardedInsertRow {
+  id: number
+  updatedAt: Date
 }
 
 async function runGuardedInsert(
   db: DbClient,
   values: GuardedInsertValues,
-): Promise<number | null> {
+): Promise<GuardedInsertRow | null> {
   const timestamp = Math.floor(Date.now() / 1000)
   const cap = values.decodedProjectId === null
     ? MEMORY_LIMITS.maxAccountEntries
@@ -493,8 +499,12 @@ async function runGuardedInsert(
   const ownershipGuard = values.decodedProjectId === null
     ? sql`1 = 1`
     : sql`exists (select 1 from projects where id = ${values.decodedProjectId} and user_id = ${values.userId})`
+  const chatGuard = values.requiredChatId === undefined
+    || values.requiredChatId === null
+    ? sql`1 = 1`
+    : sql`exists (select 1 from chats where id = ${values.requiredChatId} and user_id = ${values.userId} and memory_excluded is not 1)`
 
-  const rows = await db.all<{ id: number }>(sql`
+  const rows = await db.all<{ id: number, updated_at: number }>(sql`
     insert into memory_entries (
       created_at, updated_at, user_id, project_id, category, slug, title,
       description, body, sensitivity, sensitive_category, origin,
@@ -512,12 +522,35 @@ async function runGuardedInsert(
         and project_id is ${values.decodedProjectId}
     ) < ${cap}
     and ${ownershipGuard}
-    returning id
+    and ${chatGuard}
+    returning id, updated_at
   `)
 
   const [row] = rows
 
-  return row ? Number(row.id) : null
+  return row
+    ? { id: Number(row.id), updatedAt: new Date(Number(row.updated_at) * 1000) }
+    : null
+}
+
+/**
+ * The guarded insert behind every memory write, for callers that pick the
+ * slug themselves (the extraction applier). It lands only while the
+ * account or project scope is under its entry cap, the project belongs to
+ * the user and, when `requiredChatId` is set, that chat still exists,
+ * belongs to the user and is not excluded from memory, all inside the one
+ * `insert ... select` statement, so a chat deleted or excluded after the
+ * caller's last read can never gain an entry. Returns
+ * the new row's public id and edit time, or `null` when a guard refused it;
+ * a slug collision throws the database's unique-constraint error.
+ */
+export async function insertGuardedMemoryEntry(
+  db: DbClient,
+  values: GuardedInsertValues,
+): Promise<{ id: string, updatedAt: Date } | null> {
+  const row = await runGuardedInsert(db, values)
+
+  return row ? { id: encodePublicId(row.id), updatedAt: row.updatedAt } : null
 }
 
 async function throwInsertRejection(
@@ -628,13 +661,13 @@ async function insertEntryWithSlug(
     const insertValues = { ...values, slug }
 
     try {
-      const insertedId = await runGuardedInsert(db, insertValues)
+      const inserted = await runGuardedInsert(db, insertValues)
 
-      if (insertedId === null) {
+      if (inserted === null) {
         return await throwInsertRejection(db, insertValues, projectId)
       }
 
-      return insertedId
+      return inserted.id
     } catch (exception) {
       if (!isUniqueViolation(exception)) {
         throw exception
@@ -871,6 +904,28 @@ export async function resetMemoryEntries(options: {
     .where(and(
       eq(schema.memoryEntries.userId, options.userId),
       scopeCondition,
+    ))
+    .returning({ id: schema.memoryEntries.id })
+
+  return deleted.length
+}
+
+/**
+ * Deletes every entry of the user that only automatic extraction wrote
+ * (chat passes, "Update memory now" and backfill all store `extraction`),
+ * in every scope. An entry the user or the assistant edited carries the
+ * `user` or `tool` origin, and an imported entry keeps `import` even after
+ * extraction appended to it, so none of those is touched.
+ */
+export async function deleteExtractedMemoryEntries(options: {
+  db: DbClient
+  userId: number
+}): Promise<number> {
+  const deleted = await options.db
+    .delete(schema.memoryEntries)
+    .where(and(
+      eq(schema.memoryEntries.userId, options.userId),
+      eq(schema.memoryEntries.origin, 'extraction'),
     ))
     .returning({ id: schema.memoryEntries.id })
 

@@ -72,6 +72,11 @@ async function loadHandler() {
   return module.default
 }
 
+function cooldownPutsOf(kv: { put: { mock: { calls: unknown[][] } } }) {
+  return kv.put.mock.calls.filter(([key]) => {
+    return !String(key).startsWith('memory-rate-limit:')
+  })
+}
 describe('POST /api/v1/memory/extract-now', () => {
   let testDb: MemoryExtractionTestDb
   let userId: number
@@ -132,7 +137,7 @@ describe('POST /api/v1/memory/extract-now', () => {
     await expect(call(foreignChat.slug)).rejects.toMatchObject({ status: 404 })
     await expect(call('does-not-exist')).rejects.toMatchObject({ status: 404 })
     expect(mocks.extractChatMemory).not.toHaveBeenCalled()
-    expect(kv.put).not.toHaveBeenCalled()
+    expect(cooldownPutsOf(kv)).toHaveLength(0)
   })
 
   it('runs an account chat with the extraction toggle off', async () => {
@@ -261,7 +266,7 @@ describe('POST /api/v1/memory/extract-now', () => {
       })
       await call(chat.slug)
 
-      expect(kv.put).not.toHaveBeenCalled()
+      expect(cooldownPutsOf(kv)).toHaveLength(0)
 
       mocks.extractChatMemory.mockResolvedValue({
         ...createExtractionResult(),
@@ -270,7 +275,7 @@ describe('POST /api/v1/memory/extract-now', () => {
       })
       await call(chat.slug)
 
-      expect(kv.put).toHaveBeenCalledOnce()
+      expect(cooldownPutsOf(kv)).toHaveLength(1)
     })
 
   it('reports a null model when none resolved', async () => {

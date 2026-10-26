@@ -20,16 +20,17 @@ import type {
 } from '../../../setup/helpers/memory-extraction-db'
 
 const mocks = vi.hoisted(() => ({
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
   resolveMemoryModel: vi.fn(),
   acquireMemoryLease: vi.fn(),
   release: vi.fn(),
 }))
 
-vi.mock('ai', () => ({
-  generateObject: mocks.generateObject,
-  generateText: vi.fn(),
-}))
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
+
+  return { ...actual, generateText: mocks.generateText }
+})
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { publicIdMockFactory } = await import(
@@ -94,8 +95,8 @@ function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
 }
 
 function mockOps(ops: MemoryExtractionOp[]) {
-  mocks.generateObject.mockResolvedValue({
-    object: { ops },
+  mocks.generateText.mockResolvedValue({
+    output: { ops },
     usage: { inputTokens: 120, outputTokens: 30 },
   })
 }
@@ -226,7 +227,7 @@ describe('manual memory extraction', () => {
         const result = await runSweep(chat)
 
         expect(result).toMatchObject({ status: 'skipped', reason: 'disabled' })
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
         expect((await readChat(chat.id))?.projectMemorySummaryUpdatedAt)
           .toBeNull()
       })
@@ -246,7 +247,7 @@ describe('manual memory extraction', () => {
         const result = await runManual(chat)
 
         expect(result).toMatchObject({ status: 'extracted' })
-        expect(mocks.generateObject).toHaveBeenCalledOnce()
+        expect(mocks.generateText).toHaveBeenCalledOnce()
       })
 
     it('keeps the sweep path refused for an account chat with the opt-in off',
@@ -264,7 +265,7 @@ describe('manual memory extraction', () => {
         const result = await runSweep(chat)
 
         expect(result).toMatchObject({ status: 'skipped', reason: 'disabled' })
-        expect(mocks.generateObject).not.toHaveBeenCalled()
+        expect(mocks.generateText).not.toHaveBeenCalled()
       })
 
     it('is refused when memory is turned off', async () => {
@@ -284,18 +285,18 @@ describe('manual memory extraction', () => {
       const result = await runManual(chat)
 
       expect(result).toMatchObject({ status: 'skipped', reason: 'disabled' })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('re-checks memory after the model call', async () => {
       const { chat } = await seedProjectChat()
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await testDb.db.update(schema.userSettings)
           .set({ memoryEnabled: false })
 
         return {
-          object: { ops: [createOp()] },
+          output: { ops: [createOp()] },
           usage: { inputTokens: 1, outputTokens: 1 },
         }
       })
@@ -332,7 +333,7 @@ describe('manual memory extraction', () => {
         })
       }
 
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(await listEntries()).toHaveLength(0)
       expect((await readChat(chat.id))?.projectMemorySummaryUpdatedAt)
         .toBeNull()
@@ -342,12 +343,12 @@ describe('manual memory extraction', () => {
     it('re-checks the exclusion after the model call', async () => {
       const { chat } = await seedProjectChat()
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await testDb.db.update(schema.chats)
           .set({ memoryExcluded: true })
 
         return {
-          object: { ops: [createOp()] },
+          output: { ops: [createOp()] },
           usage: { inputTokens: 1, outputTokens: 1 },
         }
       })
@@ -415,7 +416,7 @@ describe('manual memory extraction', () => {
       await runManual(chat)
 
       const prompt: string
-        = mocks.generateObject.mock.calls[0]![0].messages[0].content
+        = mocks.generateText.mock.calls[0]![0].messages[0].content
 
       expect(prompt).toContain('Newer note.')
       expect(prompt).not.toContain(`User: ${USER_SENTENCE}`)
@@ -430,7 +431,7 @@ describe('manual memory extraction', () => {
       const stamped = await readChat(chat.id)
 
       expect(result).toMatchObject({ status: 'skipped', reason: 'too-short' })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(stamped?.projectMemorySummaryUpdatedAt).toBeNull()
       expect(stamped?.memoryExtractionFailures).toBeNull()
       expect(stamped?.memoryExtractionAttemptedAt).toBeNull()
@@ -475,7 +476,7 @@ describe('manual memory extraction', () => {
     it('never bumps the failure counter on a failed pass', async () => {
       const { chat } = await seedProjectChat()
 
-      mocks.generateObject.mockRejectedValue(new Error('provider down'))
+      mocks.generateText.mockRejectedValue(new Error('provider down'))
 
       const result = await runManual(chat)
       const stamped = await readChat(chat.id)
@@ -632,7 +633,7 @@ describe('manual memory extraction', () => {
 
       await runBlobPass(projectId)
 
-      const options = mocks.generateObject.mock.calls[0]![0]
+      const options = mocks.generateText.mock.calls[0]![0]
 
       expect(options.messages[0].content).toContain('<legacy-memory>')
       expect(options.instructions).toContain('at most 15 ops')
@@ -660,7 +661,7 @@ describe('manual memory extraction', () => {
       mockOps([blobOp({ body: 'The user has type 2 diabetes.' })])
 
       const result = await runBlobPass(projectId, logger)
-      const options = mocks.generateObject.mock.calls[0]![0]
+      const options = mocks.generateText.mock.calls[0]![0]
 
       expect(result.applied.created).toBe(0)
       expect(result.dropped).toEqual({ 'sensitive-topic': 1 })
@@ -714,7 +715,7 @@ describe('manual memory extraction', () => {
       const result = await runBlobPass(projectId)
 
       expect(result.status).toBe('migrated')
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect((await readProject(projectId))?.memoryMigratedAt)
         .toEqual(EXTRACTION_NOW)
     })
@@ -722,7 +723,7 @@ describe('manual memory extraction', () => {
     it('reports a failed pass without nulling the blob', async () => {
       const projectId = await seedProject(testDb.db, userId, { memory: BLOB })
 
-      mocks.generateObject.mockRejectedValue(new Error('provider down'))
+      mocks.generateText.mockRejectedValue(new Error('provider down'))
 
       const result = await runBlobPass(projectId)
       const project = await readProject(projectId)
@@ -745,7 +746,7 @@ describe('manual memory extraction', () => {
         status: 'skipped',
         reason: 'no-legacy-memory',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
 
     it('does nothing when memory is turned off', async () => {
@@ -756,7 +757,7 @@ describe('manual memory extraction', () => {
       const result = await runBlobPass(projectId)
 
       expect(result).toMatchObject({ status: 'skipped', reason: 'disabled' })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
   })
 
@@ -770,7 +771,7 @@ describe('manual memory extraction', () => {
         status: 'skipped',
         reason: 'project-changed',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(mocks.resolveMemoryModel).not.toHaveBeenCalled()
     })
 
@@ -788,7 +789,7 @@ describe('manual memory extraction', () => {
         status: 'skipped',
         reason: 'project-changed',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(mocks.resolveMemoryModel).not.toHaveBeenCalled()
       expect(stored?.projectMemorySummaryUpdatedAt).toBeNull()
       expect(stored?.memoryExtractedAt).toBeNull()
@@ -809,7 +810,7 @@ describe('manual memory extraction', () => {
         status: 'skipped',
         reason: 'project-changed',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(
         (await readChat(chat.id))?.projectMemorySummaryUpdatedAt,
       ).toBeNull()
@@ -818,13 +819,13 @@ describe('manual memory extraction', () => {
     it('skips without writing when the chat moves during the model call', async () => {
       const { chat, projectId } = await seedProjectChat()
 
-      mocks.generateObject.mockImplementation(async () => {
+      mocks.generateText.mockImplementation(async () => {
         await testDb.db.update(schema.chats)
           .set({ projectId: null })
           .where(eq(schema.chats.id, chat.id))
 
         return {
-          object: { ops: [createOp()] },
+          output: { ops: [createOp()] },
           usage: { inputTokens: 1, outputTokens: 1 },
         }
       })
@@ -881,7 +882,7 @@ describe('manual memory extraction', () => {
       })
 
       const content: string
-        = mocks.generateObject.mock.calls[0]![0].messages[0].content
+        = mocks.generateText.mock.calls[0]![0].messages[0].content
 
       expect(content).not.toContain('4111')
       expect(content).toContain('Test card [redacted]')
@@ -976,7 +977,7 @@ describe('manual memory extraction', () => {
       expect((await run(blankProjectId)).modelCalled).toBe(false)
       expect((await run(projectId)).modelCalled).toBe(true)
 
-      mocks.generateObject.mockRejectedValue(new Error('provider down'))
+      mocks.generateText.mockRejectedValue(new Error('provider down'))
 
       const failedProjectId = await seedProject(testDb.db, userId, {
         memory: BLOB,
@@ -1022,7 +1023,7 @@ describe('manual memory extraction', () => {
       const result = await runSweep(chat)
       const entries = await listEntries()
       const content: string
-        = mocks.generateObject.mock.calls[0]![0].messages[0].content
+        = mocks.generateText.mock.calls[0]![0].messages[0].content
 
       expect(content).not.toContain('4111')
       expect(result.dropped).toEqual({ ungrounded: 1 })

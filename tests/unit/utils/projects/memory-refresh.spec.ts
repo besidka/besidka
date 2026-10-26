@@ -19,7 +19,7 @@ import type {
 } from '../../../setup/helpers/memory-extraction-db'
 
 const mocks = vi.hoisted(() => ({
-  generateObject: vi.fn(),
+  generateText: vi.fn(),
   resolveMemoryModel: vi.fn(),
   acquireMemoryLease: vi.fn(),
   acquireProjectMemoryLease: vi.fn(),
@@ -27,10 +27,11 @@ const mocks = vi.hoisted(() => ({
   projectRelease: vi.fn(),
 }))
 
-vi.mock('ai', () => ({
-  generateObject: mocks.generateObject,
-  generateText: vi.fn(),
-}))
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
+
+  return { ...actual, generateText: mocks.generateText }
+})
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
   const { publicIdMockFactory } = await import(
@@ -101,8 +102,8 @@ function createOp(overrides: Partial<MemoryExtractionOp> = {}) {
 }
 
 function mockOps(ops: MemoryExtractionOp[]) {
-  mocks.generateObject.mockResolvedValue({
-    object: { ops },
+  mocks.generateText.mockResolvedValue({
+    output: { ops },
     usage: { inputTokens: 120, outputTokens: 30 },
   })
 }
@@ -248,7 +249,7 @@ describe('refreshProjectMemoryFromChats', () => {
     expect(mocks.resolveMemoryModel).toHaveBeenCalledWith(
       expect.objectContaining({ scope: 'project', userId }),
     )
-    expect(mocks.generateObject).toHaveBeenCalledTimes(3)
+    expect(mocks.generateText).toHaveBeenCalledTimes(3)
   })
 
   it('processes at most six chats per click and leaves the project stale', async () => {
@@ -258,7 +259,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     const first = await refresh(projectId)
 
-    expect(mocks.generateObject).toHaveBeenCalledTimes(6)
+    expect(mocks.generateText).toHaveBeenCalledTimes(6)
     expect(first.memoryStatus).toBe('stale')
     expect(first.memoryDirtyAt).toEqual(expect.any(String))
 
@@ -266,7 +267,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     const second = await refresh(projectId)
 
-    expect(mocks.generateObject).toHaveBeenCalledTimes(8)
+    expect(mocks.generateText).toHaveBeenCalledTimes(8)
     expect(second.memoryStatus).toBe('ready')
     expect(second.memoryDirtyAt).toBeNull()
   })
@@ -279,7 +280,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     const card = await refresh(projectId)
 
-    expect(mocks.generateObject).toHaveBeenCalledTimes(6)
+    expect(mocks.generateText).toHaveBeenCalledTimes(6)
     expect(card.memoryStatus).toBe('ready')
   })
 
@@ -296,7 +297,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     await refresh(projectId)
 
-    expect(mocks.generateObject).toHaveBeenCalledOnce()
+    expect(mocks.generateText).toHaveBeenCalledOnce()
     expect((await readChat(includedChatId))?.projectMemorySummaryUpdatedAt)
       .not.toBeNull()
     expect((await readChat(excludedChatId))?.projectMemorySummaryUpdatedAt)
@@ -310,7 +311,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     const card = await refresh(projectId)
 
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
     expect(card.memoryStatus).toBe('stale')
   })
 
@@ -334,7 +335,7 @@ describe('refreshProjectMemoryFromChats', () => {
       message: 'Memory is turned off',
       fix: 'Turn memory on in the settings.',
     })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
     expect(mocks.acquireProjectMemoryLease).not.toHaveBeenCalled()
   })
 
@@ -346,7 +347,7 @@ describe('refreshProjectMemoryFromChats', () => {
     const card = await refresh(projectId)
 
     expect(card.memoryStatus).toBe('disabled')
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
     expect(mocks.resolveMemoryModel).not.toHaveBeenCalled()
     expect(mocks.acquireProjectMemoryLease).not.toHaveBeenCalled()
   })
@@ -356,7 +357,7 @@ describe('refreshProjectMemoryFromChats', () => {
     const projectId = await seedProject(testDb.db, otherUserId)
 
     await expect(refresh(projectId)).rejects.toMatchObject({ status: 404 })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
   })
 
   it('returns the current card without work while the project lease is held', async () => {
@@ -367,7 +368,7 @@ describe('refreshProjectMemoryFromChats', () => {
     const card = await refresh(projectId)
 
     expect(card.memoryStatus).toBe('stale')
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
     expect(mocks.resolveMemoryModel).not.toHaveBeenCalled()
   })
 
@@ -375,11 +376,11 @@ describe('refreshProjectMemoryFromChats', () => {
     const { projectId } = await seedProjectWithChats([LONG_USER_TEXT])
     const observedStatuses: Array<string | undefined> = []
 
-    mocks.generateObject.mockImplementation(async () => {
+    mocks.generateText.mockImplementation(async () => {
       observedStatuses.push((await readProject(projectId))?.memoryStatus)
 
       return {
-        object: { ops: [] },
+        output: { ops: [] },
         usage: { inputTokens: 1, outputTokens: 1 },
       }
     })
@@ -402,7 +403,7 @@ describe('refreshProjectMemoryFromChats', () => {
       memoryModel: null,
       memoryError: 'No saved API key is available for project memory.',
     })
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
   })
 
   it('marks the project failed with an error label when every chat fails', async () => {
@@ -412,7 +413,7 @@ describe('refreshProjectMemoryFromChats', () => {
     ])
 
     await seedEntry(testDb.db, userId, { projectId })
-    mocks.generateObject.mockRejectedValue(new Error('provider down: secret'))
+    mocks.generateText.mockRejectedValue(new Error('provider down: secret'))
 
     const card = await refresh(projectId)
 
@@ -428,10 +429,10 @@ describe('refreshProjectMemoryFromChats', () => {
       LONG_USER_TEXT,
     ])
 
-    mocks.generateObject
+    mocks.generateText
       .mockRejectedValueOnce(new Error('provider down'))
       .mockResolvedValueOnce({
-        object: { ops: [createOp()] },
+        output: { ops: [createOp()] },
         usage: { inputTokens: 1, outputTokens: 1 },
       })
 
@@ -465,7 +466,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     await refresh(projectId)
 
-    expect(mocks.generateObject).toHaveBeenCalledOnce()
+    expect(mocks.generateText).toHaveBeenCalledOnce()
     expect(await listEntries()).toHaveLength(1)
     expect((await readChat(chat.id))?.memoryExtractedAt)
       .toEqual(minutesBefore(1))
@@ -476,7 +477,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     const first = await refresh(projectId)
 
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
     expect(first.memoryStatus).toBe('idle')
     expect((await readChat(chatIds[0]!))?.projectMemorySummaryUpdatedAt)
       .toBeNull()
@@ -492,7 +493,7 @@ describe('refreshProjectMemoryFromChats', () => {
     await refresh(projectId)
 
     const prompt: string
-      = mocks.generateObject.mock.calls[0]![0].messages[0].content
+      = mocks.generateText.mock.calls[0]![0].messages[0].content
 
     expect(prompt).toContain('Short note one.')
     expect(prompt).toContain('Second chunk of context.')
@@ -505,7 +506,7 @@ describe('refreshProjectMemoryFromChats', () => {
     kvStore.clear()
     await refresh(projectId)
 
-    expect(mocks.generateObject).toHaveBeenCalledOnce()
+    expect(mocks.generateText).toHaveBeenCalledOnce()
   })
 
   it('makes the project stale again after a new message', async () => {
@@ -540,11 +541,11 @@ describe('refreshProjectMemoryFromChats', () => {
       '~~/server/utils/projects/memory'
     )
 
-    mocks.generateObject.mockImplementation(async () => {
+    mocks.generateText.mockImplementation(async () => {
       await markProjectsMemoryStale([projectId], userId, testDb.db)
 
       return {
-        object: { ops: [createOp()] },
+        output: { ops: [createOp()] },
         usage: { inputTokens: 1, outputTokens: 1 },
       }
     })
@@ -558,12 +559,12 @@ describe('refreshProjectMemoryFromChats', () => {
   it('does not overwrite a project disabled during the pass', async () => {
     const { projectId } = await seedProjectWithChats([LONG_USER_TEXT])
 
-    mocks.generateObject.mockImplementation(async () => {
+    mocks.generateText.mockImplementation(async () => {
       await testDb.db.update(schema.projects)
         .set({ memoryStatus: 'disabled' })
 
       return {
-        object: { ops: [createOp()] },
+        output: { ops: [createOp()] },
         usage: { inputTokens: 1, outputTokens: 1 },
       }
     })
@@ -580,7 +581,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
     expect(card.memoryStatus).toBe('idle')
     expect(card.memoryDirtyAt).toBeNull()
-    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect(mocks.generateText).not.toHaveBeenCalled()
   })
 
   describe('cooldown and deadline', () => {
@@ -612,7 +613,7 @@ describe('refreshProjectMemoryFromChats', () => {
       const { projectId } = await seedProjectWithChats([LONG_USER_TEXT])
 
       await refresh(projectId)
-      mocks.generateObject.mockClear()
+      mocks.generateText.mockClear()
       mocks.acquireProjectMemoryLease.mockClear()
 
       await expect(refresh(projectId)).rejects.toMatchObject({
@@ -621,14 +622,14 @@ describe('refreshProjectMemoryFromChats', () => {
         why: 'A refresh already ran in the last minute.',
         fix: 'Try again in a minute.',
       })
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(mocks.acquireProjectMemoryLease).not.toHaveBeenCalled()
     })
 
     it('starts the cooldown even when the pass failed', async () => {
       const { projectId } = await seedProjectWithChats([LONG_USER_TEXT])
 
-      mocks.generateObject.mockRejectedValue(new Error('provider down'))
+      mocks.generateText.mockRejectedValue(new Error('provider down'))
 
       await refresh(projectId)
 
@@ -664,7 +665,7 @@ describe('refreshProjectMemoryFromChats', () => {
         { set: vi.fn() },
       )
 
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(card.memoryStatus).toBe('idle')
     })
 
@@ -679,18 +680,18 @@ describe('refreshProjectMemoryFromChats', () => {
           LONG_USER_TEXT,
         ])
 
-        mocks.generateObject.mockImplementation(async () => {
+        mocks.generateText.mockImplementation(async () => {
           vi.setSystemTime(Date.now() + 61_000)
 
           return {
-            object: { ops: [createOp()] },
+            output: { ops: [createOp()] },
             usage: { inputTokens: 1, outputTokens: 1 },
           }
         })
 
         const card = await refresh(projectId)
 
-        expect(mocks.generateObject).toHaveBeenCalledTimes(1)
+        expect(mocks.generateText).toHaveBeenCalledTimes(1)
         expect(card.memoryStatus).toBe('stale')
         expect(card.memoryDirtyAt).toEqual(expect.any(String))
       } finally {
@@ -758,14 +759,14 @@ describe('refreshProjectMemoryFromChats', () => {
         memoryStatus: 'ready',
       })
 
-      mocks.generateObject.mockImplementation(async (options: {
+      mocks.generateText.mockImplementation(async (options: {
         messages: Array<{ content: string }>
       }) => {
         const isBlobPass = options.messages[0]!.content
           .includes('(no chat messages)')
 
         return {
-          object: {
+          output: {
             ops: [
               isBlobPass
                 ? createOp({
@@ -784,8 +785,8 @@ describe('refreshProjectMemoryFromChats', () => {
       const card = await refresh(projectId)
       const project = await readProject(projectId)
 
-      expect(mocks.generateObject).toHaveBeenCalledTimes(2)
-      expect(mocks.generateObject.mock.calls[0]![0].messages[0].content)
+      expect(mocks.generateText).toHaveBeenCalledTimes(2)
+      expect(mocks.generateText.mock.calls[0]![0].messages[0].content)
         .toContain('(no chat messages)')
       expect(project?.memoryMigratedAt).toBeInstanceOf(Date)
       expect(project?.memory).toContain('[redacted]')
@@ -826,7 +827,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
       const card = await refresh(projectId)
 
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect((await readProject(projectId))?.memoryMigratedAt)
         .toBeInstanceOf(Date)
       expect(card.memoryError).toBeNull()
@@ -835,7 +836,7 @@ describe('refreshProjectMemoryFromChats', () => {
     it('never nulls the blob when the blob pass fails', async () => {
       const { projectId } = await seedProjectWithChats([], { memory: BLOB })
 
-      mocks.generateObject.mockRejectedValue(new Error('provider down'))
+      mocks.generateText.mockRejectedValue(new Error('provider down'))
 
       const card = await refresh(projectId)
 
@@ -851,7 +852,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
       await refresh(projectId)
 
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
     })
   })
 
@@ -902,7 +903,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
       const card = await toggle(projectId, true)
 
-      expect(mocks.generateObject).toHaveBeenCalledOnce()
+      expect(mocks.generateText).toHaveBeenCalledOnce()
       expect(card).toMatchObject({ memoryStatus: 'ready', total: 1 })
     })
 
@@ -918,7 +919,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
       const card = await toggle(projectId, true)
 
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(card.memoryStatus).toBe('ready')
     })
 
@@ -927,7 +928,7 @@ describe('refreshProjectMemoryFromChats', () => {
 
       const card = await toggle(projectId, true)
 
-      expect(mocks.generateObject).not.toHaveBeenCalled()
+      expect(mocks.generateText).not.toHaveBeenCalled()
       expect(card.memoryStatus).toBe('stale')
     })
 

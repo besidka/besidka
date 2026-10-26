@@ -16,6 +16,10 @@ export interface BackfillWindow {
   isContinuation: boolean
 }
 
+export interface ResolveBackfillWindowOptions {
+  restart?: boolean
+}
+
 /**
  * The one definition of "a chat the backfill will visit": the user's own
  * account chat (never a project chat, never one excluded from memory)
@@ -93,13 +97,26 @@ export function backfillCappedChatIds(
  * new job continues that job's queue: same `createdBefore`, starting after its
  * cursor. When the latest job completed because its queue ran out, every
  * past chat has been read and `null` is returned; chats created since are
- * handled by the forward sweep.
+ * handled by the forward sweep. `restart` is the user's explicit "read all
+ * past chats again": it ignores every earlier job and always answers a fresh
+ * window, so the previous cursor is never consulted.
  */
 export async function resolveBackfillWindow(
   db: DbClient,
   userId: number,
   now: Date,
+  options: ResolveBackfillWindowOptions = {},
 ): Promise<BackfillWindow | null> {
+  const freshWindow: BackfillWindow = {
+    createdBefore: now,
+    cursor: null,
+    isContinuation: false,
+  }
+
+  if (options.restart) {
+    return freshWindow
+  }
+
   const jobs = schema.memoryBackfillJobs
   const [latest] = await db
     .select({
@@ -115,7 +132,7 @@ export async function resolveBackfillWindow(
     .limit(1)
 
   if (!latest) {
-    return { createdBefore: now, cursor: null, isContinuation: false }
+    return freshWindow
   }
 
   const isQueueExhausted = latest.status === 'completed'

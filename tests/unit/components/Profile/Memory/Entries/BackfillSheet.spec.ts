@@ -102,6 +102,11 @@ interface ApiOptions {
     estimate: MemoryBackfillEstimate | null
     reason: MemoryBackfillUnavailableReason | null
   } | Error
+  restartOverview?: {
+    job: MemoryBackfillProgress | null
+    estimate: MemoryBackfillEstimate | null
+    reason: MemoryBackfillUnavailableReason | null
+  }
   start?: MemoryBackfillProgress | Error
   step?: MemoryBackfillProgress | Error
   cancel?: MemoryBackfillProgress | null | Error
@@ -109,15 +114,22 @@ interface ApiOptions {
 
 function mockApi(options: ApiOptions = {}) {
   mocks.fetch.mockImplementation(
-    async (url: string, init?: { method?: string }) => {
+    async (
+      url: string,
+      init?: { method?: string, query?: Record<string, string> },
+    ) => {
+      const isRestartLoad = init?.query?.restart === 'true'
+        && !!options.restartOverview
       const response = {
         [BACKFILL_URL]: init?.method === 'POST'
           ? options.start ?? createJob({ processedChats: 0 })
-          : options.overview ?? {
-            job: null,
-            estimate: createEstimate(),
-            reason: null,
-          },
+          : isRestartLoad
+            ? options.restartOverview
+            : options.overview ?? {
+              job: null,
+              estimate: createEstimate(),
+              reason: null,
+            },
         [STEP_URL]: options.step ?? createJob(),
         [CANCEL_URL]: options.cancel === undefined
           ? createJob({ status: 'cancelled', finishedAt: 'x' })
@@ -294,9 +306,14 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       ['extraction-disabled', 'Turn on Generate memory from chats first.'],
       ['estimate-failed', 'Couldn\'t estimate the cost. Try again.'],
       [
+        'estimate-cooldown',
+        'The cost was estimated moments ago. Try again in half a minute.',
+      ],
+      [
         'all-chats-read',
         'The last run already read all your past chats. New chats are added '
-        + 'to memory automatically.',
+        + 'to memory automatically. You can still read them all again from '
+        + 'the newest.',
       ],
     ] as const)('explains %s and disables Start', async (reason, copy) => {
       const wrapper = await mountSheet({
@@ -307,6 +324,93 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
         .toBe(copy)
       expect(hasTestId(wrapper, 'memory-backfill-confirm')).toBe(false)
       expect(isDisabled(wrapper, 'memory-backfill-start')).toBe(true)
+    })
+
+    it.each([
+      'memory-disabled',
+      'extraction-disabled',
+      'estimate-failed',
+      'no-model',
+    ] as const)('offers no restart for %s', async (reason) => {
+      const wrapper = await mountSheet({
+        overview: { job: null, estimate: null, reason },
+      })
+
+      expect(hasTestId(wrapper, 'memory-backfill-restart')).toBe(false)
+    })
+
+    describe('read all past chats again', () => {
+      const allRead = {
+        overview: {
+          job: createFinishedJob(),
+          estimate: null,
+          reason: 'all-chats-read' as const,
+        },
+        restartOverview: {
+          job: createFinishedJob(),
+          estimate: createEstimate({ chats: 120 }),
+          reason: null,
+        },
+      }
+
+      it('shows the fresh-window estimate and starts nothing yet',
+        async () => {
+          const wrapper = await mountSheet(allRead)
+
+          expect(textOf(wrapper, 'memory-backfill-restart'))
+            .toBe('Read all past chats again')
+
+          await byTestId(wrapper, 'memory-backfill-restart').trigger('click')
+          await flushPromises()
+
+          expect(mocks.fetch).toHaveBeenCalledWith(BACKFILL_URL, {
+            query: { restart: 'true' },
+          })
+          expect(hasTestId(wrapper, 'memory-backfill-confirm')).toBe(true)
+          expect(textOf(wrapper, 'memory-backfill-estimate-chats'))
+            .toBe('120 chats')
+          expect(textOf(wrapper, 'memory-backfill-restart-note')).toBe(
+            'Starts over from your newest chat and reads chats that earlier '
+            + 'runs already read, so your API key is charged for them again.',
+          )
+          expect(textOf(wrapper, 'memory-backfill-limits-note')).toContain(
+            `Reads at most your ${MEMORY_LIMITS.backfillMaxChats} most recent `
+            + 'account chats.',
+          )
+          expect(textOf(wrapper, 'memory-backfill-start')).toBe('Read again')
+          expect(callsTo(BACKFILL_URL, 'POST')).toHaveLength(0)
+        })
+
+      it('starts the restart only on confirm', async () => {
+        const wrapper = await mountSheet(allRead)
+
+        await byTestId(wrapper, 'memory-backfill-restart').trigger('click')
+        await flushPromises()
+        await byTestId(wrapper, 'memory-backfill-start').trigger('click')
+        await flushPromises()
+
+        expect(callsTo(BACKFILL_URL, 'POST')).toEqual([[
+          BACKFILL_URL,
+          { method: 'POST', body: { restart: true } },
+        ]])
+      })
+
+      it('forgets the restart offer when the sheet is reopened', async () => {
+        const wrapper = await mountSheet(allRead)
+
+        await byTestId(wrapper, 'memory-backfill-restart').trigger('click')
+        await flushPromises()
+        await wrapper.setProps({ open: false })
+        await flushPromises()
+        await wrapper.setProps({ open: true })
+        await flushPromises()
+
+        expect(mocks.fetch).toHaveBeenLastCalledWith(BACKFILL_URL, {
+          query: {},
+        })
+        expect(hasTestId(wrapper, 'memory-backfill-restart')).toBe(true)
+        expect(hasTestId(wrapper, 'memory-backfill-restart-note')).toBe(false)
+      })
     })
 
     it('points to the API keys page when no model is available',
@@ -327,10 +431,10 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
         expect(hasTestId(wrapper, 'memory-backfill-retry')).toBe(false)
       })
 
-    it('offers Try again only for a failed estimate and reloads',
-      async () => {
+    it.each(['estimate-failed', 'estimate-cooldown'] as const)(
+      'offers Try again for %s and reloads', async (reason) => {
         const wrapper = await mountSheet({
-          overview: { job: null, estimate: null, reason: 'estimate-failed' },
+          overview: { job: null, estimate: null, reason },
         })
 
         expect(hasTestId(wrapper, 'memory-backfill-retry')).toBe(true)
