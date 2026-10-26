@@ -43,6 +43,9 @@ import {
 } from '~~/server/utils/knowledge/items'
 import type { KnowledgeItemRow } from '~~/server/utils/knowledge/items'
 import {
+  screenKnowledgeTexts,
+} from '~~/server/utils/knowledge/injection-screening'
+import {
   getKnowledgeRetentionExpiresAt,
 } from '~~/server/utils/knowledge/linked-files'
 import {
@@ -621,6 +624,7 @@ function buildFileItemRow(
   context: KnowledgeIngestContext,
   prepared: PreparedKnowledgeItem,
   file: LinkedFileRow | undefined,
+  isFlagged: boolean,
 ): NewKnowledgeRow {
   const { input } = prepared
   const fileId = input.fileId ? decodeKnowledgeEntityId(input.fileId) : null
@@ -645,7 +649,7 @@ function buildFileItemRow(
       latinChars: prepared.charCounts.latinChars,
       cyrillicChars: prepared.charCounts.cyrillicChars,
       otherChars: prepared.charCounts.otherChars,
-      extractStatus: input.extractStatus,
+      extractStatus: isReady && isFlagged ? 'flagged' : input.extractStatus,
       extractError: isReady ? null : prepared.extractError,
       extractor: input.extractor,
     },
@@ -1038,6 +1042,37 @@ async function settleUnchangedCommit(
   return await readCommitState(context)
 }
 
+async function screenPreparedItems(
+  context: KnowledgeIngestContext,
+  items: PreparedKnowledgeItem[],
+): Promise<Set<number>> {
+  const readyItems = items.filter((item) => {
+    return item.input.extractStatus === 'ready'
+  })
+  const flags = await screenKnowledgeTexts({
+    userId: context.userId,
+    texts: readyItems.map(item => item.input.text),
+    logger: context.logger,
+  })
+
+  return new Set(readyItems.flatMap((item, index) => {
+    return flags[index] ? [item.index] : []
+  }))
+}
+
+async function screenKnowledgeText(
+  context: KnowledgeIngestContext,
+  text: string,
+): Promise<boolean> {
+  const [isFlagged] = await screenKnowledgeTexts({
+    userId: context.userId,
+    texts: [text],
+    logger: context.logger,
+  })
+
+  return isFlagged === true
+}
+
 /**
  * Runs the commit flow (version bump, optional removals, pack build) and
  * maps any failure to a retryable 500. The committed rows stay in D1, so
@@ -1144,11 +1179,13 @@ export async function ingestKnowledgeItems(
     newTextBytes,
     replacedTextBytes: 0,
   })
+  const flaggedIndexes = await screenPreparedItems(context, accepted)
   const rows = accepted.map((item) => {
     return buildFileItemRow(
       context,
       item,
       item.input.fileId ? files.get(item.input.fileId) : undefined,
+      flaggedIndexes.has(item.index),
     )
   })
   const linkedFiles: LinkedFileSnapshot[] = filePublicIds.map((publicId) => {
@@ -1187,6 +1224,7 @@ export async function ingestKnowledgeItems(
         skipped: skipped.length,
         textBytes: newTextBytes,
         linkedFiles: linkedFiles.length,
+        flagged: flaggedIndexes.size,
         committed: input.commit === true,
       },
     },
@@ -1243,6 +1281,7 @@ export async function createKnowledgeNote(
     newTextBytes: textBytes,
     replacedTextBytes: 0,
   })
+  const isFlagged = await screenKnowledgeText(context, input.body)
 
   const [insertedId] = await storeNewKnowledgeRows(context, {
     rows: [{
@@ -1264,7 +1303,7 @@ export async function createKnowledgeNote(
         latinChars: charCounts.latinChars,
         cyrillicChars: charCounts.cyrillicChars,
         otherChars: charCounts.otherChars,
-        extractStatus: 'ready',
+        extractStatus: isFlagged ? 'flagged' : 'ready',
         extractError: null,
         extractor: 'note',
       },
@@ -1284,7 +1323,7 @@ export async function createKnowledgeNote(
 
   context.logger.set({
     attributes: {
-      knowledge: { operation: 'note-create', textBytes },
+      knowledge: { operation: 'note-create', textBytes, flagged: isFlagged },
     },
   })
 
@@ -1318,9 +1357,11 @@ async function readUpdatedRow(
  * Updates a note. Only a title or body change commits (the index line is
  * read live, so a description edit does not). A changed body is hashed
  * again and checked against the other items of the project (409). Saving a
- * body on a note that is not `ready` (a `text-mismatch` or `text-missing`
- * failure) is a repair: the body is written even when it equals the stored
- * hash, and the row comes back `ready` with its error cleared. The row
+ * body on a note that failed (a `text-mismatch` or `text-missing` failure)
+ * is a repair: the body is written even when it equals the stored hash, and
+ * the row comes back `ready` with its error cleared. A new body is screened
+ * for prompt injection and comes back `flagged` when Jev flags it; a note
+ * that is only renamed keeps its status. The row
  * is updated first, by one guarded UPDATE that enforces the project text cap
  * and the user quota for the growth only, so nothing is written to R2 unless
  * the new size fits; the new text is written second, and when that write
@@ -1351,6 +1392,7 @@ export async function updateKnowledgeNote(
     : await assertNoteBody(input.body)
   const isRepair = input.body !== undefined
     && current.extractStatus !== 'ready'
+    && current.extractStatus !== 'flagged'
   const isBodyChanged = input.body !== undefined
     && (nextHash !== current.contentHash || isRepair)
   const isTitleChanged = title !== current.title
@@ -1399,6 +1441,11 @@ export async function updateKnowledgeNote(
     throw createNoteNotFoundError()
   }
 
+  const isFlagged = nextBody !== null
+    && await screenKnowledgeText(context, nextBody)
+  const nextExtractStatus = nextBody === null
+    ? current.extractStatus
+    : isFlagged ? 'flagged' : 'ready'
   const updatedAtSeconds = Math.max(
     Math.floor(Date.now() / 1000),
     Math.floor(current.updatedAt.getTime() / 1000) + 1,
@@ -1415,7 +1462,7 @@ export async function updateKnowledgeNote(
         latin_chars = ${charCounts.latinChars},
         cyrillic_chars = ${charCounts.cyrillicChars},
         other_chars = ${charCounts.otherChars},
-        extract_status = ${isBodyChanged ? 'ready' : current.extractStatus},
+        extract_status = ${nextExtractStatus},
         extract_error = ${isBodyChanged ? null : current.extractError},
         updated_at = ${updatedAtSeconds}
       where id = ${itemId}
@@ -1510,6 +1557,7 @@ export async function updateKnowledgeNote(
         operation: 'note-update',
         bodyChanged: isBodyChanged,
         titleChanged: isTitleChanged,
+        flagged: isFlagged,
       },
     },
   })
@@ -1583,6 +1631,90 @@ export async function updateKnowledgeItemMetadata(
   })
 
   return toKnowledgeItemWire(row)
+}
+
+function createItemNotFoundError() {
+  return createError({
+    message: 'Knowledge item not found',
+    status: 404,
+    why: 'The item does not exist in this project',
+    fix: 'Refresh the project knowledge list',
+  })
+}
+
+function createNotFlaggedError() {
+  return createError({
+    message: 'This item is not waiting for review',
+    status: 409,
+    why: 'Only an item flagged as a possible prompt injection can be allowed',
+    fix: 'Refresh the project knowledge list',
+  })
+}
+
+/**
+ * "Allow anyway" for an item that prompt-injection screening flagged: one
+ * UPDATE, matched on user, project and the `flagged` status in its `WHERE`,
+ * sets it `ready` and moves `updatedAt` past its previous value, then the
+ * change is committed so the pack picks the item up. An item that is
+ * already `ready` comes back unchanged; any other status is a 409. The item
+ * is not screened again until its text changes.
+ */
+export async function allowFlaggedKnowledgeItem(
+  context: KnowledgeIngestContext,
+  current: KnowledgeItemRow,
+): Promise<KnowledgeItem> {
+  if (current.extractStatus === 'ready') {
+    return toKnowledgeItemWire(current)
+  }
+
+  if (current.extractStatus !== 'flagged') {
+    throw createNotFlaggedError()
+  }
+
+  const itemId = decodeKnowledgeEntityId(current.id)
+
+  if (itemId === null) {
+    throw createItemNotFoundError()
+  }
+
+  const { userId, projectId, logger } = context
+  const updatedAtSeconds = Math.max(
+    Math.floor(Date.now() / 1000),
+    Math.floor(current.updatedAt.getTime() / 1000) + 1,
+  )
+  const updatedRows = await useDb().all<{ id: number }>(sql`
+    update project_knowledge_items set
+      extract_status = 'ready',
+      updated_at = ${updatedAtSeconds}
+    where id = ${itemId}
+      and user_id = ${userId}
+      and project_id = ${projectId}
+      and extract_status = 'flagged'
+    returning id
+  `)
+  const savedRow = (await selectItemRows(context, [current.id])).get(current.id)
+
+  if (!savedRow) {
+    throw createItemNotFoundError()
+  }
+
+  if (updatedRows.length === 0) {
+    if (savedRow.extractStatus === 'ready') {
+      return toKnowledgeItemWire(savedRow)
+    }
+
+    throw createNotFlaggedError()
+  }
+
+  await commitKnowledgeProject(context)
+
+  logger.set({
+    attributes: {
+      knowledge: { operation: 'allow-flagged' },
+    },
+  })
+
+  return toKnowledgeItemWire(savedRow)
 }
 
 /**

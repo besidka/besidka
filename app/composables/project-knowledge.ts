@@ -367,6 +367,29 @@ export function useProjectKnowledge(
     )
   }
 
+  async function allowItem(
+    itemId: string,
+  ): Promise<ProjectKnowledgeOutcome<KnowledgeItem>> {
+    const outcome = await runMutation<KnowledgeItem>(
+      (id) => {
+        return $fetch<KnowledgeItem>(`${itemUrl(id, itemId)}/allow`, {
+          method: 'PATCH',
+        })
+      },
+      (id, result) => {
+        patchSummary(id, (summary) => {
+          return withItems(summary, upsertItems(summary.items, [result]))
+        })
+      },
+    )
+
+    if (outcome.ok) {
+      refresh()
+    }
+
+    return outcome
+  }
+
   async function createNote(
     input: KnowledgeNoteCreateInput,
   ): Promise<ProjectKnowledgeOutcome<KnowledgeItem>> {
@@ -477,6 +500,7 @@ export function useProjectKnowledge(
     addItems,
     removeItem,
     patchItem,
+    allowItem,
     createNote,
     updateNote,
     getItemText,

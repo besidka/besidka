@@ -292,6 +292,7 @@
       :item="selectedNote"
       :create-note="knowledge.createNote"
       :update-note="knowledge.updateNote"
+      :allow-item="knowledge.allowItem"
       :get-item-text="knowledge.getItemText"
     />
     <LazyProjectsKnowledgeItemEditSheet
@@ -301,6 +302,7 @@
       :model-name="modelContext.name"
       :can-send-pdf="modelContext.acceptsPdf"
       :patch-item="knowledge.patchItem"
+      :allow-item="knowledge.allowItem"
       @remove="removeWithConfirm"
       @readd="replaceItemFile"
     />
@@ -355,7 +357,7 @@ const props = defineProps<{
 const MAX_PREPARING_ROWS = 8
 const GITIGNORE_FILE_NAME = '.gitignore'
 const PREPARING_STATUSES = ['queued', 'extracting', 'uploading-original']
-const CREATED_STATUSES = ['ready', 'no-text']
+const CREATED_STATUSES = ['ready', 'no-text', 'flagged']
 const UNAVAILABLE_FOLDER_ERRORS = [
   'NotFoundError',
   'NotAllowedError',
@@ -846,7 +848,7 @@ function onUploadCancel() {
 function describeFinishedUpload(): string {
   const entries = upload.entries.value
   const added = entries.filter((entry) => {
-    return entry.status === 'ready' || entry.status === 'no-text'
+    return CREATED_STATUSES.includes(entry.status)
   }).length
   const failed = entries.filter(entry => entry.status === 'failed').length
   const addedText = `${added} ${added === 1 ? 'file' : 'files'} added`

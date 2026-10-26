@@ -1,6 +1,6 @@
 import type {
-  KnowledgeExtractStatus,
   KnowledgeExtractor,
+  KnowledgeUploadExtractStatus,
 } from '#shared/types/project-knowledge.d'
 
 export interface KnowledgeWorkerRequest {
@@ -11,7 +11,7 @@ export interface KnowledgeWorkerRequest {
 
 export interface KnowledgeWorkerResult {
   extractor: KnowledgeExtractor
-  extractStatus: KnowledgeExtractStatus
+  extractStatus: KnowledgeUploadExtractStatus
   extractError: string | null
   text: string
   html?: string
@@ -25,7 +25,7 @@ export interface KnowledgeWorkerResponse extends KnowledgeWorkerResult {
 
 export interface KnowledgeExtractionResult {
   extractor: KnowledgeExtractor
-  extractStatus: KnowledgeExtractStatus
+  extractStatus: KnowledgeUploadExtractStatus
   extractError: string | null
   text: string
   pageCount: number | null

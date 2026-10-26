@@ -12,4 +12,5 @@ export interface ExternalSearchToolOutput {
   results: ExternalSearchResult[]
   provider: ExternalSearchProviderId
   costDollars?: number
+  notice?: string
 }

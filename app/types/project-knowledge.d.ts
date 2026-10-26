@@ -71,6 +71,7 @@ export type KnowledgeUploadEntryStatus
     | 'uploading-original'
     | 'ready'
     | 'no-text'
+    | 'flagged'
     | 'failed'
     | 'skipped-duplicate'
 

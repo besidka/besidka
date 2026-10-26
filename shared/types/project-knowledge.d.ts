@@ -6,6 +6,7 @@ import type {
   knowledgeItemKinds,
   knowledgeModes,
   knowledgeTokenFamilies,
+  knowledgeUploadExtractStatuses,
 } from '#shared/utils/project-knowledge-policy'
 
 export type KnowledgeMode = typeof knowledgeModes[number]
@@ -17,6 +18,9 @@ export type KnowledgeDecisionReason = typeof knowledgeDecisionReasons[number]
 export type KnowledgeItemKind = typeof knowledgeItemKinds[number]
 
 export type KnowledgeExtractStatus = typeof knowledgeExtractStatuses[number]
+
+export type KnowledgeUploadExtractStatus
+  = typeof knowledgeUploadExtractStatuses[number]
 
 export type KnowledgeExtractor = typeof knowledgeExtractors[number]
 

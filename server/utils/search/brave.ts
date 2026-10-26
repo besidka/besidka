@@ -26,6 +26,9 @@ import {
 import type {
   ExternalSearchBudget,
 } from '~~/server/utils/search/search-budget'
+import type {
+  ExternalSearchScreener,
+} from '~~/server/utils/search/injection-screening'
 
 const BRAVE_SEARCH_API_URL = 'https://api.search.brave.com/res/v1/llm/context'
 const BRAVE_SEARCH_REQUEST_TIMEOUT_MS = 10_000
@@ -208,12 +211,16 @@ async function executeBraveSearch(
  * so external and native search stay distinguishable in telemetry and in
  * persisted message parts. Every `execute` spends one call from the
  * per-request `searchBudget` before any provider request, so parallel calls
- * in one step cannot exceed `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN`.
+ * in one step cannot exceed `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN`. With a
+ * `screenResults` screener (a TypeSafe AI key and injection screening on),
+ * results flagged as possible prompt injections are withheld from the
+ * output before the model sees it.
  */
 export async function getBraveWebSearchTools(
   apiKey: string,
   searchBudget: ExternalSearchBudget = createExternalSearchBudget(),
   logger?: LoggerLike,
+  screenResults: ExternalSearchScreener | null = null,
 ): Promise<FormattedTools> {
   return {
     tools: {
@@ -232,13 +239,17 @@ export async function getBraveWebSearchTools(
         async execute(input, options) {
           consumeExternalSearchCall(searchBudget)
 
-          return await executeBraveSearch(
+          const output = await executeBraveSearch(
             apiKey,
             input.query,
             input.freshness,
             options.abortSignal,
             logger,
           )
+
+          return screenResults
+            ? await screenResults(output, options.abortSignal)
+            : output
         },
       })),
     },
