@@ -4,6 +4,7 @@ import type { ChatSearchBudget } from '~~/server/utils/memory/tools/chat-search-
 import { tool } from 'ai'
 import { z } from 'zod'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
+import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
 import { consumeChatSearchCall } from '~~/server/utils/memory/tools/chat-search-budget'
 import {
   CHAT_HISTORY_NOTICE,
@@ -45,9 +46,10 @@ const READ_CHAT_DESCRIPTION = 'Read the messages around a match in one of '
  * Builds the `search_chats` and `read_chat` tools over the user's other
  * chats, both marked with `withFollowUpTurn()` because their result is input
  * to an answer. Every `execute` spends one call from the per-request
- * `budget` before any database access. Their output deliberately carries no
- * `provider` field, so the hits are never mirrored into web-source
- * citations.
+ * `budget` before any database access. With `resolveRerankModel`,
+ * `search_chats` hits are re-ranked by TypeSafe AI Jev. Their output
+ * deliberately carries no `provider` field, so the hits are never mirrored
+ * into web-source citations.
  */
 export function getChatSearchTools(input: {
   db: ReturnType<typeof useDb>
@@ -55,6 +57,7 @@ export function getChatSearchTools(input: {
   currentChatId: string
   projectId?: string
   budget: ChatSearchBudget
+  resolveRerankModel?: JevRerankModelResolver
   logger?: Pick<LoggerLike, 'set'>
 }): FormattedTools {
   return {
@@ -76,6 +79,7 @@ export function getChatSearchTools(input: {
             limit: toolInput.limit,
             currentChatId: input.currentChatId,
             projectId: input.projectId,
+            resolveRerankModel: input.resolveRerankModel,
             logger: input.logger,
           })
 

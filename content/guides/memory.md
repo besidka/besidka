@@ -35,7 +35,7 @@ Knowledge text counts toward your storage quota, and a project holds up to 2 MB 
 
 ## Can Besidka search my past chats?
 
-Yes, when **Search and reference chats** is on, which is the default. The model can search your chat history and read short excerpts, and every use shows a **Searched your chats** step with links to the chats it used. The chat you are in is left out. Inside a project that does not use account memory, only that project's chats are searched. With a TypeSafe AI key, Besidka can also use it to order the search results and, for models that cannot call tools, to decide whether your message refers to an earlier chat worth searching first. Both are optional and can be switched off.
+Yes, when **Search and reference chats** is on, which is the default. The model can search your chat history and read short excerpts, and every use shows a **Searched your chats** step with links to the chats it used. The chat you are in is left out. Inside a project that does not use account memory, only that project's chats are searched. With a TypeSafe AI key, Besidka can also use it to order the search results and, for models that cannot call tools, to decide whether your message refers to an earlier chat worth searching first. Both are optional and can be switched off. Ordering only sorts what the search already found, and the search matches words, so it does not find a chat written in another language than your search words.
 
 ## How do I keep a chat out of memory?
 

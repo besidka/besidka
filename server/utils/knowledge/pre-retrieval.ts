@@ -1,3 +1,4 @@
+import type { KnowledgeSearchHit } from '#shared/types/project-knowledge.d'
 import type { KnowledgeSearcher } from '~~/server/utils/knowledge/search'
 import {
   countKnowledgeChars,
@@ -20,16 +21,18 @@ export const PRE_RETRIEVAL_NOTICE = 'Excerpts from documents the user '
  * is nothing to add. The search is strict (every token of three or more
  * characters must match, no OR fallback), so an unrelated message is not
  * fed arbitrary excerpts. Capped at the pre-retrieval chunk and token
- * limits, which are tighter than the tool limits.
+ * limits, which are tighter than the tool limits. `hits` replaces the
+ * built-in search with an already ranked list (the re-ranked one).
  */
 export function buildKnowledgeExcerpts(input: {
   searcher: KnowledgeSearcher
   userText: string
+  hits?: KnowledgeSearchHit[]
 }): string | null {
-  const { hits } = input.searcher.search({
+  const hits = input.hits ?? input.searcher.search({
     query: input.userText,
     strict: true,
-  })
+  }).hits
   const excerpts: string[] = []
   let usedTokens = 0
 
