@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-10-24
+updatedAt: 2026-10-26
 summary: "Besidka stores your account, chats, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway whose account you chose to route it through, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. Each of them is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
 ---
 
@@ -306,11 +306,13 @@ No service is perfectly secure. If you find a security problem, please write to 
 
 I also build no features that infer, classify, score or profile you from the content of your chats.
 
-## Special category data
+## Sensitive information in your chats
 
-Please do not put special category data into Besidka — health data, political opinions, religious or philosophical beliefs, trade union membership, genetic or biometric data, sex life or sexual orientation, or data about criminal convictions. This is also a rule in the [Terms of Use](/terms-of-use).
+You can type or upload anything into Besidka. So your chats, projects and files may contain what the GDPR calls special category data: information about your health, racial or ethnic origin, political opinions, religious or philosophical beliefs, trade union membership, genetic or biometric data, or sex life or sexual orientation.
 
-I do not ask for it, I have no lawful basis to process it, and content you type is forwarded to a third-party AI provider, and possibly to an AI gateway or a search provider, whose handling of it I do not control.
+I do not ask for this information. I also cannot separate it from the rest of what you write without reading your chats, and I do not read them. If you include it, it is stored and sent together with everything else, to the provider or gateway you chose, and I do not use it for anything else.
+
+I am adding a one-time step in the app that asks for your **explicit consent** to this, under GDPR Art. 9(2)(a). You will be asked before your next message. Until then, if you want sensitive information you already stored removed, delete the chats, projects or files that contain it, or write to **:privacy-email-link{}** and I will delete them.
 
 ## Age limit
 

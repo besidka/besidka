@@ -533,7 +533,6 @@ async function fetchProjectContext(nextProjectId: string) {
 async function syncProjectContext(
   nextProjectId: string | null,
   canApply: () => boolean = () => true,
-  forceRefresh = false,
 ) {
   if (!nextProjectId) {
     if (canApply()) {
@@ -547,8 +546,7 @@ async function syncProjectContext(
   }
 
   if (
-    !forceRefresh
-    && projectContext.value?.id === nextProjectId
+    projectContext.value?.id === nextProjectId
     && projectContext.value.name !== 'Project'
     && projectInstructions.value !== undefined
   ) {
@@ -628,28 +626,6 @@ onMounted(() => {
 
   nuxtApp.callHook('chat:rendered', scrollContainerRef)
 })
-
-if (import.meta.client) {
-  watch(() => chatSdk.status, async (nextStatus, previousStatus) => {
-    if (
-      !projectId.value
-      || nextStatus !== 'ready'
-      || !['submitted', 'streaming'].includes(previousStatus)
-    ) {
-      return
-    }
-
-    try {
-      await $fetch(`/api/v1/chats/${route.params.slug}/project-context/refresh`, {
-        method: 'POST',
-      })
-
-      await syncProjectContext(projectId.value, () => true, true)
-    } catch (exception) {
-      void exception
-    }
-  })
-}
 
 const {
   spacerHeight,

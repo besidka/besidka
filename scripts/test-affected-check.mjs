@@ -261,6 +261,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/pages/chats/history/index.spec.ts',
     'tests/unit/pages/projects-index.spec.ts',
+    'tests/unit/config/project-memory-no-automatic-refresh.spec.ts',
     'tests/unit/utils/date-groups.spec.ts',
     'tests/unit/utils/project-activity.spec.ts',
     'tests/unit/utils/project-instructions.spec.ts',
@@ -1594,6 +1595,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/pages\/chats\/projects\/.*\.vue$/,
       tests: historyProjectsTests,
+    },
+    {
+      pattern: /^app\/pages\/chats\/\[slug\]\.vue$/,
+      tests: ['tests/unit/config/project-memory-no-automatic-refresh.spec.ts'],
     },
     {
       pattern: /^server\/utils\/db\/like\.ts$/,

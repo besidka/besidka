@@ -473,19 +473,6 @@ nuxtApp.hook('projects:context-updated', ({ projectIds }) => {
   syncProjectDetails(projectId.value)
 })
 
-watch(projectMemoryStatus, (nextStatus, previousStatus) => {
-  if (
-    !project.value
-    || isRefreshingProjectMemory.value
-    || !['stale', 'failed'].includes(nextStatus)
-    || previousStatus === nextStatus
-  ) {
-    return
-  }
-
-  refreshProjectMemory()
-})
-
 watch(projectMemoryStatus, (nextStatus, _previousStatus, onCleanup) => {
   if (!import.meta.client || nextStatus !== 'refreshing' || !project.value) {
     return
