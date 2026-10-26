@@ -94,7 +94,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Check text before it is saved to memory, and refuse never-stored items and sensitive topics | Legitimate interests — Art. 6(1)(f): keeping out of memory what should not be there. For sensitive information, also your explicit consent — Art. 9(2)(a) |
 | Send text to TypeSafe AI for the TypeSafe AI checks you leave on (see [TypeSafe AI checks](#typesafe-ai-checks)), only if you saved a TypeSafe AI key | Contract — Art. 6(1)(b), because you added the key and left the check on. For sensitive information, also your explicit consent — Art. 9(2)(a) |
 | Keep a record of your consents, of when you accepted the Terms of Use and of your age confirmation | Legal obligation to be able to prove consent — Art. 6(1)(c) with Art. 7(1) for the consents; legitimate interests — Art. 6(1)(f) for the Terms and age record |
-| Send your messages to DeepSeek, Moonshot AI or Qwen, outside the EU without an adequacy decision | Your explicit consent to the transfer — Art. 49(1)(a) |
+| Send your messages to DeepSeek, Moonshot AI, Qwen, one of the other gateway vendors listed under [Transfers outside the EU](#transfers-outside-the-eu) (in China, Singapore, Malaysia or Indonesia), or to a router or preset model that can pick any provider, outside the EU without an adequacy decision | Your explicit consent to the transfer — Art. 49(1)(a) |
 | Send the email verification and password reset emails | Contract — Art. 6(1)(b) |
 | Send you push notifications | Your consent — Art. 6(1)(a) |
 | Publish a chat behind a share link | Your consent — Art. 6(1)(a) |
@@ -253,12 +253,12 @@ TypeSafe AI receives only the text each check you left on needs:
 | Check | What is sent, and when | If TypeSafe AI is unavailable |
 |---|---|---|
 | Memory checks | When a memory entry is about to be saved: the entry text, with never-stored items removed, and a short excerpt of the text it came from. It can refuse an entry the built-in checks allowed, never allow one they refused | Memory is saved on the built-in checks alone |
-| Auto web search | Only when you pick **Auto** web search in the chat input, for each message: the message and the last few turns. Jev decides whether a web search is needed | Besidka searches as usual |
+| Auto web search | Only when you pick **Auto** web search in the chat input, for each message: the message and your last three turns, each cut to 4,000 characters, with never-stored values removed. A message with a link, a domain or a word such as "today" or "latest" is searched without asking TypeSafe AI, so nothing is sent for it. Jev decides whether a web search is needed | Besidka searches as usual |
 | Memory pre-filter | Before memory is generated from a chat, and only when that runs ("Generate memory from chats", "Build memory from past chats" or a project Refresh; never for "Update memory now" or "Import memory"): the chat text, with never-stored values such as passwords and card numbers removed, in chunks of up to about 8,000 tokens. If Jev finds nothing worth remembering, the memory model is skipped, which saves your own key's cost | If Jev is unsure or unavailable, memory is generated as usual |
 | Prompt-injection screening | The text of project knowledge files and notes, and of Brave and Exa search results fetched through Besidka. Flagged project files wait for your review. Flagged search results are left out of the model's context. A flag never deletes anything. Results from the chat model's own built-in web search cannot be checked | Project files and notes are used unscreened and checked again later, usually within the hour. Search results are used unscreened |
 | Re-ranking | When your past chats or project knowledge are searched: the search query and short excerpts (about 300 tokens each, up to 30 per search) of the candidate results | The original search order is kept |
 | Share personal-data check | When you open the share window for a chat, before you publish a public link: the chat text being shared, with never-stored values such as card numbers, and emails and phone numbers, removed. Besidka first looks for emails, phone numbers and similar identifiers itself, and only the TypeSafe AI step reads the text. It shows a warning only and never blocks sharing | A generic "check before sharing" reminder is shown, next to anything Besidka's own check found |
-| Past-chat retrieval | For models without tool calling, for each message: the message and recent turns. If the message refers to an earlier, separate conversation, Besidka searches your past chats in its own database and adds relevant excerpts. A message that names an earlier chat ("last time", "we discussed") starts the search without asking TypeSafe AI | Without a TypeSafe AI key, or with the check switched off, no pre-search is done. If TypeSafe AI is unsure or unavailable, Besidka searches your past chats anyway |
+| Past-chat retrieval | For models or sends without chat search tools (a model without tool calling, for example), and only while **Search and reference chats** is on, for each message: the message and your last three turns, with never-stored values removed. If the message refers to an earlier, separate conversation, Besidka searches your past chats in its own database and adds relevant excerpts. A message that names an earlier chat ("last time", "we discussed") starts the search without asking TypeSafe AI | Without a TypeSafe AI key, or with the check switched off, no pre-search is done. If TypeSafe AI is unsure or unavailable, Besidka searches your past chats anyway |
 
 The text can contain whatever your chats, projects and memory contain, including sensitive information. The memory pre-filter reads whole chat text, so it is the check that sends the most. If that matters to you, switch it off.
 
@@ -347,10 +347,11 @@ My logs are deliberately narrow. Specifically:
 | Operational logs | As kept by Axiom under my plan, and only in the reduced form described above |
 | Memory entries | Until you delete them or reset memory, delete the only chat a generated entry came from, delete the project (for project entries), or delete your account |
 | Text sent to TypeSafe AI for TypeSafe AI checks (only with a TypeSafe AI key) | Not stored by Besidka. Held by TypeSafe AI "as long as necessary" under its data processing agreement, which sets no fixed period |
+| Two short markers for TypeSafe AI checks, kept in Cloudflare KV with no text in them | A project file or note that screening could not check yet is queued by its ids and an attempt counter, for up to **14 days** or until it is checked, whichever comes first. Auto web search keeps the outcome of the first message of a new chat (searched or not) for **1 day**, so a retry of that message does not ask TypeSafe AI again |
 | Memory settings, including when you turned memory generation on | Until you delete your account |
 | Past-chat run records | The last 5 runs; deleted with your account |
 | Project knowledge | Until you remove it or delete the project. The original files then stay in your file library under its normal rules |
-| Your consent to store sensitive information, your acceptance of the Terms of Use and age confirmation, and your consent to transfers to DeepSeek, Moonshot AI or Qwen | While your account exists. Withdrawing keeps the record of when you gave and withdrew it. Deleted with your account |
+| Your consent to store sensitive information, your acceptance of the Terms of Use and age confirmation, and your consent to transfers to DeepSeek, Moonshot AI, Qwen, the other gateway vendors or router and preset models | While your account exists. Withdrawing keeps the record of when you gave and withdrew it. Deleted with your account |
 | Cookie consent records | Stored in a separate database, pseudonymously — see [Cookie consent records](#cookie-consent-records) |
 
 ### Backups
@@ -484,7 +485,7 @@ Under the GDPR you have the right to:
 
 ### How to use them
 
-Most things you can do yourself in the app: edit your profile, delete a chat, delete a file, revoke a share, turn notifications off, change your cookie choices, see, edit, export or reset your memory, withdraw your consent to store sensitive information or to a transfer to DeepSeek, Moonshot AI or Qwen (in **Profile → Security → Privacy & consent**), or delete your whole account.
+Most things you can do yourself in the app: edit your profile, delete a chat, delete a file, revoke a share, turn notifications off, change your cookie choices, see, edit, export or reset your memory, withdraw your consent to store sensitive information or to a transfer to DeepSeek, Moonshot AI, Qwen, another vendor or a router or preset model (in **Profile → Security → Privacy & consent**), or delete your whole account.
 
 For anything else, email **:privacy-email-link{}**. I answer within **one month**. If a request is complex I may extend that by up to **two further months**, and if I do, I will tell you within the first month and explain why.
 

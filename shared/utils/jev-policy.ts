@@ -35,7 +35,10 @@ export interface JevBooleanQuestion {
  * Role policies for TypeSafe AI Jev (`JEV_MODEL_ID`). Question wordings and
  * criteria are copied verbatim from the 2026-10-26 synthetic eval; the
  * thresholds are that eval's starting points and are re-tuned on real
- * traffic. Every role fails toward Besidka's behaviour without a key.
+ * traffic. Every role except `pastChatRetrieval` fails toward Besidka's
+ * behaviour without a key. Without a key that role does not pre-search past
+ * chats, but when Jev errors or times out it searches anyway, because skipping
+ * a needed search costs more than one cheap indexed query.
  */
 export const JEV_AUTO_WEB_SEARCH = {
   questionId: 'w1_live',
