@@ -914,8 +914,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }))
   const { defaultReasoningLevel } = useUserSetting()
   const reasoning = shallowRef<ReasoningLevel>(
-    defaultReasoningLevel.value
-    ?? normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
+    resolveInitialReasoningLevel(
+      defaultReasoningLevel.value,
+      prefStorage.getItem('settings_reasoning_level'),
+    ),
   )
   const pendingClarification = shallowRef<
     ResearchClarificationResponse | null

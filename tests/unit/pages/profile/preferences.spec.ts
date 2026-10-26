@@ -20,6 +20,9 @@ interface ServerSettings {
   reasoningAutoHide: boolean
 }
 
+const productDefaultNote = '[data-testid="default-reasoning-product-default"]'
+const productDefaultLabel = 'Off'
+
 function patchBodies() {
   return mocks.fetch.mock.calls
     .filter(([, options]) => {
@@ -123,13 +126,60 @@ describe('profile preferences page', () => {
     expect(checkedLevels(wrapper)).toEqual(['Medium'])
   })
 
-  it('shows Off when no default is saved', async () => {
-    await loadSettings({ defaultReasoningLevel: null })
+  it('selects the product default and labels it when no default is saved',
+    async () => {
+      await loadSettings({ defaultReasoningLevel: null })
+
+      const wrapper = await mountPage()
+
+      expect(checkedLevels(wrapper)).toEqual([
+        productDefaultLabel,
+      ])
+      expect(wrapper.get(productDefaultNote).text())
+        .toBe('Product default')
+    })
+
+  it('selects the level new chats would use when saving it failed to sync',
+    async () => {
+      localStorage.setItem('settings_reasoning_level', 'high')
+      mocks.fetch.mockResolvedValueOnce({
+        defaultReasoningLevel: null,
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+      })
+      mocks.fetch.mockRejectedValueOnce(new Error('Save failed'))
+
+      await useUserSetting().syncForUser('user-1')
+
+      const wrapper = await mountPage()
+
+      expect(checkedLevels(wrapper)).toEqual(['High'])
+      expect(wrapper.get(productDefaultNote).text())
+        .toBe('Product default')
+    })
+
+  it('hides the product default note once a default is saved', async () => {
+    await loadSettings({ defaultReasoningLevel: 'low' })
 
     const wrapper = await mountPage()
 
-    expect(checkedLevels(wrapper)).toEqual(['Off'])
+    expect(wrapper.get(productDefaultNote).text()).toBe('')
   })
+
+  it('drops the product default note after the user picks a level',
+    async () => {
+      await loadSettings({ defaultReasoningLevel: null })
+      mocks.fetch.mockResolvedValueOnce({ defaultReasoningLevel: 'medium' })
+
+      const wrapper = await mountPage()
+
+      await wrapper.get('[data-testid="default-reasoning-level-medium"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(wrapper.get(productDefaultNote).text()).toBe('')
+      expect(checkedLevels(wrapper)).toEqual(['Medium'])
+    })
 
   it('saves the picked level to the server', async () => {
     await loadSettings({ defaultReasoningLevel: 'low' })

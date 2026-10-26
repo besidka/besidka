@@ -29,6 +29,13 @@ export function parseReasoningLevel(
   }) ?? null
 }
 
+export function resolveInitialReasoningLevel(
+  defaultLevel: ReasoningLevel | null,
+  savedLevel: unknown,
+): ReasoningLevel {
+  return defaultLevel ?? normalizeReasoningLevel(savedLevel)
+}
+
 export function normalizeReasoningLevel(
   value: unknown,
 ): ReasoningLevel {

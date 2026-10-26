@@ -15,6 +15,7 @@ import {
   normalizeReasoningLevel,
   parseReasoningLevel,
   reasoningLevels,
+  resolveInitialReasoningLevel,
   shouldSendReasoning,
 } from '../../../shared/utils/reasoning'
 import {
@@ -25,6 +26,14 @@ import {
 describe('reasoning levels', () => {
   it('lists every selectable level in order', () => {
     expect(reasoningLevels).toEqual(['off', 'low', 'medium', 'high'])
+  })
+
+  it('resolves the initial level from the server default first', () => {
+    expect(resolveInitialReasoningLevel('high', 'low')).toBe('high')
+    expect(resolveInitialReasoningLevel('off', 'low')).toBe('off')
+    expect(resolveInitialReasoningLevel(null, 'low')).toBe('low')
+    expect(resolveInitialReasoningLevel(null, null)).toBe('off')
+    expect(resolveInitialReasoningLevel(null, 'garbage')).toBe('off')
   })
 
   it('parses only exact level strings and never coerces', () => {

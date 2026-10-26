@@ -46,6 +46,14 @@
               @click="onLevelClick(level.value)"
             >
           </div>
+          <p
+            class="min-h-4 text-xs text-base-content/60"
+            data-testid="default-reasoning-product-default"
+          >
+            <template v-if="isSettingsLoaded && defaultReasoningLevel === null">
+              Product default
+            </template>
+          </p>
         </fieldset>
         <label class="flex items-start justify-between gap-4 cursor-pointer">
           <span class="grid gap-1">
@@ -151,8 +159,13 @@ const {
   setReasoningAutoHide,
 } = useUserSetting()
 
+const prefStorage = usePreferenceStorage()
+
 const selectedLevel = computed<ReasoningLevel>(() => {
-  return defaultReasoningLevel.value ?? 'off'
+  return resolveInitialReasoningLevel(
+    defaultReasoningLevel.value,
+    prefStorage.getItem('settings_reasoning_level'),
+  )
 })
 
 async function onLevelClick(level: ReasoningLevel) {

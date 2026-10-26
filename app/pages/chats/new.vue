@@ -174,8 +174,10 @@ if (import.meta.client) {
 
 const { defaultReasoningLevel } = useUserSetting()
 const reasoning = shallowRef<ReasoningLevel>(
-  defaultReasoningLevel.value
-  ?? normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
+  resolveInitialReasoningLevel(
+    defaultReasoningLevel.value,
+    prefStorage.getItem('settings_reasoning_level'),
+  ),
 )
 const memoryExcluded = shallowRef<boolean>(false)
 
