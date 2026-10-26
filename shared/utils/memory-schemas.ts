@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { gatewayIds } from '#shared/utils/gateways'
 import {
-  MEMORY_ENTRY_SLUG_PATTERN,
   MEMORY_LIMITS,
   alwaysInjectedMemoryCategories,
   memoryCategories,
@@ -117,11 +116,6 @@ export const memoryEntryInputSchema = z
   .object({
     projectId: z.string().min(1).nullable().optional(),
     category: categoryField,
-    slug: z
-      .string()
-      .max(MEMORY_LIMITS.maxSlugChars)
-      .regex(MEMORY_ENTRY_SLUG_PATTERN)
-      .optional(),
     title: titleField,
     description: descriptionField,
     body: bodyField,

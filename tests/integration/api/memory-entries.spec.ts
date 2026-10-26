@@ -354,6 +354,24 @@ describe('memory entries API', () => {
       expect(testDb.countEntries(OWNER)).toBe(1)
     })
 
+    it.each([
+      ['a card number', '4111-1111-1111-1111'],
+      ['an Art. 9 health fact', 'living-with-hiv-since-2019'],
+    ])('ignores a client slug carrying %s', async (_label, clientSlug) => {
+      const handler = await handlers.create()
+
+      const response = await handler(bodyEvent({
+        category: 'topics',
+        slug: clientSlug,
+        title: 'Travel',
+        description: 'Trip notes',
+        body: 'Likes Lisbon.',
+      }))
+
+      expect(response.entry.slug).toBe('travel')
+      expect(JSON.stringify(response)).not.toContain(clientSlug)
+    })
+
     it('creates an entry in an owned project', async () => {
       const handler = await handlers.create()
 
@@ -405,6 +423,27 @@ describe('memory entries API', () => {
 
       expect(exception.status).toBe(422)
       expect(exception.why).not.toContain('4111')
+      expect(testDb.countEntries()).toBe(0)
+    })
+
+    it.each([
+      ['a home address', 'Lives at 221B Baker Street, London', 'Precise home address'],
+      ['a residence permit', 'Mam kartę pobytu czasowego', 'Immigration'],
+      ['a criminal record', 'Has a criminal record since 2015', 'Criminal history'],
+    ])('returns the unchanged 422 for %s', async (_label, body, label) => {
+      const handler = await handlers.create()
+
+      const exception = await handler(bodyEvent({
+        ...validBody,
+        body,
+      })).catch((caught: unknown) => {
+        return caught as { status: number, message: string, why: string }
+      })
+
+      expect(exception.status).toBe(422)
+      expect(exception.message)
+        .toBe('This memory contains data that cannot be stored')
+      expect(exception.why).toContain(label)
       expect(testDb.countEntries()).toBe(0)
     })
 
@@ -659,6 +698,19 @@ describe('memory entries API', () => {
         description: 'New description',
         origin: 'user',
       })
+    })
+
+    it('ignores a slug sent in the patch', async () => {
+      const handler = await handlers.patch()
+
+      testDb.insertEntry({ id: 5, userId: OWNER, slug: 'mine' })
+
+      const response = await handler(paramsEvent(encodePublicId(5), {
+        title: 'Renamed',
+        slug: 'living-with-hiv-since-2019',
+      }))
+
+      expect(response.entry.slug).toBe('mine')
     })
 
     it('re-marks an extraction entry as user-owned', async () => {

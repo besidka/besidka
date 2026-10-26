@@ -1,4 +1,5 @@
 import { createError } from 'evlog'
+import { isWebSearchTool } from '#shared/utils/message-metadata'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
 
 export const CHAT_SEARCH_LIMIT_MESSAGE = 'Lookup limit for this message '
@@ -18,9 +19,12 @@ export interface ChatSearchBudget {
  * by the tool loop once a step returned a result from any non-memory tool
  * (web search, files, other chats) and locks `memory_write` and
  * `memory_forget` for the rest of the request. The chat route also presets
- * it when project knowledge puts document text (full mode) or media into the
- * prompt, so those sends refuse memory writes too (see
- * `holdsUntrustedKnowledge` in `server/utils/knowledge/context.ts`). Create it
+ * it up front when the send requests any web search (native provider search,
+ * gateway search or Brave/Exa, keyed off the requested tools, because native
+ * search can run inside the same step as a write or return no tool part at
+ * all), and when project knowledge puts document text (full mode) or media
+ * into the prompt (see `holdsUntrustedKnowledge` in
+ * `server/utils/knowledge/context.ts`). Create it
  * per request, never at module scope: a module-level counter would leak across
  * requests on a reused Worker isolate.
  */
@@ -47,4 +51,26 @@ export function consumeChatSearchCall(budget: ChatSearchBudget) {
   }
 
   budget.usedCalls += 1
+}
+
+/**
+ * Locks `memory_write` and `memory_forget` before the first model step when
+ * the send itself brings untrusted content: any requested web search (keyed
+ * off the send's tools, never off which tool definitions got registered,
+ * because native provider and gateway search can run inside the same step as
+ * a write or return no tool part at all) or project knowledge already in the
+ * prompt. The read tools stay available.
+ */
+export function presetMemoryWriteLock(
+  budget: ChatSearchBudget,
+  send: {
+    requestedTools: readonly unknown[]
+    holdsUntrustedKnowledge: boolean
+  },
+): void {
+  const requestsWebSearch = send.requestedTools.some(isWebSearchTool)
+
+  if (requestsWebSearch || send.holdsUntrustedKnowledge) {
+    budget.untrustedResultSeen = true
+  }
 }

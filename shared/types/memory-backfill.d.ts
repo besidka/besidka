@@ -15,6 +15,7 @@ export type MemoryBackfillUnavailableReason
     | 'extraction-disabled'
     | 'no-model'
     | 'estimate-failed'
+    | 'all-chats-read'
 
 export type MemoryBackfillFailureReason
   = 'model-unavailable'
@@ -48,6 +49,7 @@ export interface MemoryBackfillEstimate {
   pricePerMillion: MemoryBackfillPricePerMillion | null
   costUsd: number | null
   approximate: true
+  continuesPreviousRun?: boolean
   model: MemoryBackfillEstimateModel | null
 }
 

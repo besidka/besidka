@@ -43,6 +43,8 @@ export const MEMORY_LIMITS = {
   maxAboutMeChars: 4000,
   maxSourceChatIds: 20,
   indexTokenBudget: 2500,
+  backfillMaxChats: 200,
+  backfillMaxTokens: 4_000_000,
 } as const
 
 export const neverStoreKinds = [
@@ -94,17 +96,17 @@ export const neverStoreKinds = [
   {
     id: 'criminal-history',
     label: 'Criminal history',
-    detection: 'extractor',
+    detection: 'deterministic',
   },
   {
     id: 'immigration-status',
     label: 'Immigration or residence-permit status',
-    detection: 'extractor',
+    detection: 'deterministic',
   },
   {
     id: 'home-address',
     label: 'Precise home address',
-    detection: 'extractor',
+    detection: 'deterministic',
   },
   {
     id: 'live-location',

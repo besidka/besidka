@@ -77,6 +77,7 @@ export function buildDueChatsQuery(
     = sql`${schema.userSettings.memoryExtractionEnabled} = 1`
 
   const attemptedAtOrZero = sql`coalesce(${schema.chats.memoryExtractionAttemptedAt}, 0)`
+  const enabledAtOrZero = sql`coalesce(${schema.userSettings.memoryExtractionEnabledAt}, 0)`
   const ranked = db
     .select({
       id: schema.chats.id,
@@ -104,6 +105,7 @@ export function buildDueChatsQuery(
         eq(schema.userSettings.memoryEnabled, true),
       ),
       lte(schema.chats.activityAt, idleCutoff),
+      gt(schema.chats.activityAt, enabledAtOrZero),
       or(
         and(
           isNull(schema.chats.projectId),

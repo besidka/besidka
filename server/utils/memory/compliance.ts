@@ -9,6 +9,11 @@ import {
   neverStoreKindIds,
 } from '#shared/utils/memory-policy'
 import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
+import {
+  foldPolishDiacritics,
+  toAsciiDigit,
+} from '~~/server/utils/memory/text-folding'
+import { detectTopicalNeverStoreKinds } from '~~/server/utils/memory/topical-never-store'
 
 export interface NeverStoreMatch {
   kind: NeverStoreKind
@@ -51,8 +56,8 @@ const POLAND_NRB_DIGITS = 26
 const ASCII_LIMIT = 128
 const QUOTED_VALUE_GROUPS = [2, 3, 4]
 const UNQUOTED_VALUE_GROUP = 5
-const SPACE_CODE = 32
-const HYPHEN_CODE = 45
+const AWS_SECRET_LENGTH = 40
+const IBAN_SEPARATOR_CODES = new Set([32, 45, 46, 47, 95])
 
 const IBAN_COUNTRY_LENGTHS: Record<string, number> = {
   AT: 20,
@@ -99,15 +104,24 @@ const FORMAT_CHARACTER_PATTERN = /^\p{Cf}$/u
 const LINE_SEPARATOR_PATTERN = /^[\u2028\u2029]$/u
 const FORMAT_CHARACTERS_PATTERN = /\p{Cf}/gu
 const UNICODE_SPACES_PATTERN = /\p{Zs}/gu
-const DIGIT_RUN_PATTERN = /(?<![\d+])\d+(?:[\s.\-*]{1,2}\d+)*/gu
+const DIGIT_RUN_PATTERN = /(?<![\d+])\d+(?:[\s.\-*/_,]{1,2}\d+)*/gu
 const DIGIT_GROUP_PATTERN = /\d+/gu
 const IBAN_START_PATTERN = /(?<![A-Za-z0-9])[A-Za-z]{2}\d{2}/gu
 const POLAND_NRB_PATTERN
-  = /(?<![\d+])\d{2}(?:[ -]{0,2}\d{4}){6}(?!\d)/gu
-const PESEL_PATTERN = /(?<![\d+])\d{11}(?!\d)/gu
+  = /(?<![\d+])\d{2}(?:[ .\-/_]{0,2}\d{4}){6}(?!\d)/gu
+const PESEL_PATTERN
+  = /(?<![\d+])\d{2}(?:[ .\-/_]?\d{2}){2}[ .\-/_]?\d{5}(?!\d)/gu
 const SSN_PATTERN = /(?<![\d-])\d{3}-\d{2}-\d{4}(?![\d-])/gu
-const TAX_NUMBER_PATTERN
-  = /(?<![\d+])(?:\d{3}-\d{3}-\d{2}-\d{2}|\d{10})(?!\d)/gu
+const TAX_NUMBER_PATTERN = new RegExp(
+  [
+    '(?<![\\d+])(?:',
+    '\\d{3}([ -])\\d{3}\\1\\d{2}\\1\\d{2}',
+    '|\\d{3}([ -])\\d{2}\\2\\d{2}\\2\\d{3}',
+    '|\\d{10}',
+    ')(?!\\d)',
+  ].join(''),
+  'gu',
+)
 const TAX_KEYWORD_PATTERN = new RegExp(
   [
     '(?<![\\p{L}])(?:',
@@ -164,7 +178,7 @@ const KEY_CONTEXT_PATTERN = new RegExp(
   [
     '(?<![\\p{L}])(?:',
     'exa|cloudflare|brave|vercel|openrouter',
-    '|api[ _-]?keys?|tokens?|secrets?',
+    '|aws|api[ _-]?keys?|tokens?|secrets?',
     '|секрет\\p{L}{0,4}|ключ\\p{L}{0,4}|токен\\p{L}{0,4}',
     ')(?![\\p{L}])',
   ].join(''),
@@ -180,6 +194,10 @@ const UUID_PATTERN = new RegExp(
 )
 const LONG_TOKEN_PATTERN
   = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,64}(?![A-Za-z0-9_-])/gu
+const AWS_SECRET_PATTERN = new RegExp(
+  `(?<![A-Za-z0-9/+])[A-Za-z0-9/+]{${AWS_SECRET_LENGTH}}(?![A-Za-z0-9/+=])`,
+  'gu',
+)
 const JWT_PATTERN
   = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/gu
 const STRONG_CREDENTIAL_LABELS = [
@@ -200,7 +218,15 @@ const CREDENTIAL_VALUE = [
   '|`([^`\\n]+)`',
   '|["\'`]?([^\\s"\'`]+))',
 ].join('')
-const CREDENTIAL_SENTENCE_VERBS = 'is|є|це|jest|это|was'
+const CREDENTIAL_SENTENCE_VERBS = 'is|є|це|jest|это|was|to'
+const CREDENTIAL_SENTENCE_FILLERS = '(?:\\s+[\\p{L}\\d\'’-]+){0,4}?'
+const CREDENTIAL_SENTENCE_VALUE = [
+  '(?:"([^"\\n]+)"',
+  '|\'([^\'\\n]+)\'',
+  '|`([^`\\n]+)`',
+  '|(?=[^\\s"\'`]*(?:\\p{N}|[^\\p{L}\\p{N}\\s_]))',
+  `["'\`]?([^\\s"'\`]{${MIN_CREDENTIAL_VALUE_LENGTH},}))`,
+].join('')
 const STRONG_CREDENTIAL_ASSIGNMENT_PATTERN = new RegExp(
   `((?:${STRONG_CREDENTIAL_LABELS})["'\`]?\\s*[:=]\\s*)${CREDENTIAL_VALUE}`,
   'dgiu',
@@ -212,7 +238,8 @@ const WEAK_CREDENTIAL_ASSIGNMENT_PATTERN = new RegExp(
 const CREDENTIAL_SENTENCE_PATTERN = new RegExp(
   '(?<![\\p{L}\\d])((?:'
   + `${STRONG_CREDENTIAL_LABELS}|${WEAK_CREDENTIAL_LABELS})`
-  + `\\s+(?:${CREDENTIAL_SENTENCE_VERBS})\\s+)${CREDENTIAL_VALUE}`,
+  + CREDENTIAL_SENTENCE_FILLERS
+  + `\\s+(?:${CREDENTIAL_SENTENCE_VERBS})\\s+)${CREDENTIAL_SENTENCE_VALUE}`,
   'dgiu',
 )
 const STRONG_CREDENTIAL_DASH_PATTERN = new RegExp(
@@ -446,9 +473,7 @@ function skipIbanSeparator(text: string, position: number): number {
   let separatorEnd = position
 
   while (separatorEnd - position < 2 && separatorEnd < text.length) {
-    const code = text.charCodeAt(separatorEnd)
-
-    if (code !== SPACE_CODE && code !== HYPHEN_CODE) {
+    if (!IBAN_SEPARATOR_CODES.has(text.charCodeAt(separatorEnd))) {
       break
     }
 
@@ -539,7 +564,7 @@ function detectNationalIds(text: string): NeverStoreMatch[] {
   const matches: NeverStoreMatch[] = []
 
   for (const pesel of text.matchAll(PESEL_PATTERN)) {
-    if (isPeselValid(pesel[0])) {
+    if (isPeselValid(digitsOnly(pesel[0]))) {
       matches.push({
         kind: 'national-id',
         start: matchStart(pesel),
@@ -566,26 +591,27 @@ function detectTaxIds(text: string): NeverStoreMatch[] {
 
   for (const candidate of text.matchAll(TAX_NUMBER_PATTERN)) {
     const start = matchStart(candidate)
+    const end = start + candidate[0].length
     const precedingWindow = text.slice(
       Math.max(0, start - TAX_KEYWORD_WINDOW),
       start,
     )
+    const followingWindow = text.slice(end, end + TAX_KEYWORD_WINDOW)
 
-    if (!TAX_KEYWORD_PATTERN.test(precedingWindow)) {
+    if (
+      !TAX_KEYWORD_PATTERN.test(precedingWindow)
+      && !TAX_KEYWORD_PATTERN.test(followingWindow)
+    ) {
       continue
     }
 
     const digits = digitsOnly(candidate[0])
-    const isHyphenated = candidate[0].includes('-')
+    const isGrouped = candidate[0].length !== digits.length
     const isValid = isNipValid(digits)
-      || (!isHyphenated && isRnokppValid(digits))
+      || (!isGrouped && isRnokppValid(digits))
 
     if (isValid) {
-      matches.push({
-        kind: 'tax-id',
-        start,
-        end: start + candidate[0].length,
-      })
+      matches.push({ kind: 'tax-id', start, end })
     }
   }
 
@@ -724,6 +750,26 @@ function detectKeywordGatedKeys(text: string): NeverStoreMatch[] {
     })
 }
 
+function isAwsSecretShaped(candidate: string): boolean {
+  return ASCII_LETTER_PATTERN.test(candidate)
+    && (DIGIT_PATTERN.test(candidate) || /[/+]/u.test(candidate))
+}
+
+function detectAwsSecrets(text: string): NeverStoreMatch[] {
+  return [...text.matchAll(AWS_SECRET_PATTERN)]
+    .filter((candidate) => {
+      return isAwsSecretShaped(candidate[0])
+        && hasKeyContextBefore(text, matchStart(candidate))
+    })
+    .map((candidate) => {
+      return {
+        kind: 'api-key' as const,
+        start: matchStart(candidate),
+        end: matchStart(candidate) + candidate[0].length,
+      }
+    })
+}
+
 function mergeMatches(matches: NeverStoreMatch[]): NeverStoreMatch[] {
   const sorted = matches.toSorted((first, second) => {
     if (first.start !== second.start) {
@@ -764,10 +810,12 @@ function normalizeSourceCharacter(character: string): string {
     return '\n'
   }
 
-  return character
+  const normalized = character
     .normalize('NFKC')
     .replace(FORMAT_CHARACTERS_PATTERN, '')
     .replace(UNICODE_SPACES_PATTERN, ' ')
+
+  return toAsciiDigit(normalized) ?? foldPolishDiacritics(normalized)
 }
 
 function buildNormalizedView(text: string): NormalizedView {
@@ -816,10 +864,12 @@ function mapMatchToSource(
 
 /**
  * Deterministic never-store detection (regex plus checksums) over a
- * normalized detection view (NFKC, no format characters, plain spaces);
- * spans are mapped back to offsets in the original text. Topical classes
- * such as criminal history or home address are not detectable here and rely
- * on the extractor label.
+ * normalized detection view (NFKC, no format characters, plain spaces, any
+ * script's decimal digits as ASCII, Polish diacritics folded); spans are
+ * mapped back to offsets in the original text. Topical classes (home
+ * address, immigration status, criminal history) are not redacted here,
+ * because this also runs over whole transcripts; `evaluateMemoryEntry`
+ * checks them on every stored entry instead.
  */
 export function detectNeverStore(text: string): NeverStoreMatch[] {
   const view = buildNormalizedView(text)
@@ -828,6 +878,7 @@ export function detectNeverStore(text: string): NeverStoreMatch[] {
     ...detectPatternMatches(view.text, JWT_PATTERN, 'jwt'),
     ...detectPatternMatches(view.text, API_KEY_PATTERN, 'api-key'),
     ...detectKeywordGatedKeys(view.text),
+    ...detectAwsSecrets(view.text),
     ...detectPaymentCards(view.text),
     ...detectIbans(view.text),
     ...detectNationalIds(view.text),
@@ -955,6 +1006,10 @@ export function evaluateMemoryEntry(
 
   for (const match of detectNeverStore(combinedText)) {
     detectedKinds.add(match.kind)
+  }
+
+  for (const kind of detectTopicalNeverStoreKinds(combinedText)) {
+    detectedKinds.add(kind)
   }
 
   if (input.extractorNeverStoreKind) {

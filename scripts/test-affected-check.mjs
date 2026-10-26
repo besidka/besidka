@@ -99,6 +99,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
@@ -111,6 +112,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const memoryComplianceTests = [
     'tests/unit/utils/memory/compliance.spec.ts',
+    'tests/unit/utils/memory/compliance-evasion.spec.ts',
     'tests/unit/utils/memory/sensitivity.spec.ts',
   ]
   const memoryModelTests = [
@@ -194,6 +196,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const memoryToolTests = [
     'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
     'tests/unit/utils/memory/tools/enabled.spec.ts',
     'tests/unit/utils/ai/memory-tools.spec.ts',
     'tests/integration/api/chats-memory.spec.ts',
@@ -226,6 +229,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/memory-import.spec.ts',
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
+    'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
   ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
@@ -2161,7 +2165,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules)\.ts$/,
+      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)\.ts$/,
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,

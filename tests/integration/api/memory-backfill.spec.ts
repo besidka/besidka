@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 import {
   createMemoryExtractionTestDb,
@@ -307,13 +308,56 @@ describe('memory backfill API', () => {
 
     it('answers the last finished job together with a fresh estimate',
       async () => {
-        await seedBackfillJob(testDb.db, userId, { status: 'completed' })
+        await seedBackfillJob(testDb.db, userId, {
+          status: 'completed',
+          processedChats: MEMORY_LIMITS.backfillMaxChats,
+        })
 
         const response = await get()
 
         expect(response.job.status).toBe('completed')
         expect(response.estimate).toEqual(ESTIMATE)
       })
+
+    it('answers all-chats-read without an estimate once the last run read '
+      + 'every past chat', async () => {
+      await seedBackfillJob(testDb.db, userId, {
+        status: 'completed',
+        processedChats: 3,
+      })
+
+      const response = await get()
+
+      expect(response).toMatchObject({
+        estimate: null,
+        reason: 'all-chats-read',
+      })
+      expect(mocks.getBackfillEstimate).not.toHaveBeenCalled()
+    })
+
+    it('estimates the continuation window after a capped run', async () => {
+      const createdBefore = new Date('2026-10-20T10:00:00.000Z')
+      const cursorActivityAt = new Date('2026-10-19T10:00:00.000Z')
+      const cursorChat = await chat(10)
+
+      await seedBackfillJob(testDb.db, userId, {
+        status: 'completed',
+        processedChats: MEMORY_LIMITS.backfillMaxChats,
+        createdBefore,
+        cursorActivityAt,
+        cursorChatId: cursorChat.id,
+      })
+
+      await get()
+
+      const [call] = mocks.getBackfillEstimate.mock.calls.at(-1)!
+
+      expect(call.window).toEqual({
+        createdBefore,
+        cursor: { activityAt: cursorActivityAt, chatId: cursorChat.id },
+        isContinuation: true,
+      })
+    })
 
     it('never shows another user\'s job', async () => {
       const otherUser = await seedUser(testDb.db, { memoryEnabled: true })
@@ -325,6 +369,23 @@ describe('memory backfill API', () => {
   })
 
   describe('POST /memory/backfill', () => {
+    it('answers 409 and starts nothing once the last run read every past '
+      + 'chat', async () => {
+      await chat(10)
+      await seedBackfillJob(testDb.db, userId, {
+        status: 'completed',
+        processedChats: 1,
+      })
+
+      await expect(post()).rejects.toMatchObject({
+        status: 409,
+        message: 'All past chats were already read',
+      })
+      expect(await testDb.db.query.memoryBackfillJobs.findMany({
+        where: { userId },
+      })).toHaveLength(1)
+    })
+
     it('starts a job and answers its progress and estimate', async () => {
       await chat(10)
       await chat(20)

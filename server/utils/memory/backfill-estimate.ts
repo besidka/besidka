@@ -15,7 +15,8 @@ import {
   getCachedGatewayCatalog,
 } from '~~/server/utils/gateways/catalog'
 import { getCloudflareGatewayCredentials } from '~~/server/utils/gateways/cloudflare'
-import { backfillEligibleChats } from '~~/server/utils/memory/backfill-queue'
+import { backfillCappedChatIds } from '~~/server/utils/memory/backfill-queue'
+import type { BackfillWindow } from '~~/server/utils/memory/backfill-queue'
 import {
   MEMORY_EXTRACTION_LIMITS,
 } from '~~/server/utils/memory/extract-limits'
@@ -50,14 +51,23 @@ interface ScriptSampleRow {
 export interface EstimateBackfillInput {
   userId: number
   selection: ResolvedMemoryModelSelection | null
+  window?: BackfillWindow
   createdBefore?: Date
   db?: DbClient
+}
+
+function resolveEstimateWindow(input: EstimateBackfillInput): BackfillWindow {
+  return input.window ?? {
+    createdBefore: input.createdBefore ?? new Date(),
+    cursor: null,
+    isContinuation: false,
+  }
 }
 
 async function readChatTotals(
   db: DbClient,
   userId: number,
-  createdBefore: Date,
+  window: BackfillWindow,
 ): Promise<{ chats: number, userChars: number, transcriptChars: number }> {
   const limits = MEMORY_EXTRACTION_LIMITS
   const rows = await db.all<ChatTotalsRow>(sql`
@@ -71,7 +81,7 @@ async function readChatTotals(
       ) as transcript_chars
     from (
       select
-        chats.id as chat_id,
+        capped_chats.id as chat_id,
         coalesce(sum(
           case when message.role = 'user'
             then min(
@@ -89,17 +99,16 @@ async function readChatTotals(
             end
           )
         ), 0) as transcript_chars
-      from chats
+      from ${backfillCappedChatIds(userId, window)} as capped_chats
       join messages as message
-        on message.chat_id = chats.id
+        on message.chat_id = capped_chats.id
         and message.role in ('user', 'assistant')
       left join json_each(
         case when json_valid(message.parts) then message.parts else '[]' end
       ) as part
         on part.type = 'object'
         and json_extract(part.value, '$.type') = 'text'
-      where ${backfillEligibleChats(userId, createdBefore)}
-      group by chats.id
+      group by capped_chats.id
     ) as per_chat
   `)
   const row = rows[0]
@@ -114,16 +123,16 @@ async function readChatTotals(
 async function readScriptSample(
   db: DbClient,
   userId: number,
-  createdBefore: Date,
+  window: BackfillWindow,
 ): Promise<string> {
   const rows = await db.all<ScriptSampleRow>(sql`
     select json_extract(part.value, '$.text') as text
     from (
       select messages.parts as parts
       from messages
-      join chats on chats.id = messages.chat_id
-      where ${backfillEligibleChats(userId, createdBefore)}
-        and messages.role = 'user'
+      join ${backfillCappedChatIds(userId, window)} as capped_chats
+        on capped_chats.id = messages.chat_id
+      where messages.role = 'user'
       order by messages.created_at desc
       limit ${SCRIPT_SAMPLE_MESSAGES}
     ) as recent
@@ -250,10 +259,10 @@ export async function estimateBackfill(
   input: EstimateBackfillInput,
 ): Promise<MemoryBackfillEstimate> {
   const db = input.db ?? useDb()
-  const createdBefore = input.createdBefore ?? new Date()
-  const totals = await readChatTotals(db, input.userId, createdBefore)
+  const window = resolveEstimateWindow(input)
+  const totals = await readChatTotals(db, input.userId, window)
   const sample = totals.chats > 0
-    ? await readScriptSample(db, input.userId, createdBefore)
+    ? await readScriptSample(db, input.userId, window)
     : ''
   const tokensPerChar = tokensPerCharacter(sample)
   const currentIndexTokens = await estimateIndexTokens(db, input.userId)
@@ -293,6 +302,7 @@ export async function estimateBackfill(
     pricePerMillion,
     costUsd,
     approximate: true,
+    continuesPreviousRun: window.isContinuation,
     model: input.selection
       ? {
         source: input.selection.source,
@@ -307,6 +317,19 @@ export async function estimateBackfill(
 
 interface CachedBackfillEstimate {
   estimate: MemoryBackfillEstimate
+  windowKey: string
+}
+
+function backfillWindowKey(window: BackfillWindow): string {
+  if (!window.isContinuation) {
+    return 'fresh'
+  }
+
+  return [
+    window.createdBefore.getTime(),
+    window.cursor?.activityAt.getTime() ?? '',
+    window.cursor?.chatId ?? '',
+  ].join(':')
 }
 
 export function backfillEstimateCacheKey(userId: number): string {
@@ -330,6 +353,7 @@ function isSameSelection(
 async function readCachedEstimate(
   userId: number,
   selection: ResolvedMemoryModelSelection | null,
+  windowKey: string,
 ): Promise<MemoryBackfillEstimate | null> {
   try {
     const raw = await useKV().get(backfillEstimateCacheKey(userId))
@@ -340,7 +364,8 @@ async function readCachedEstimate(
 
     const cached = JSON.parse(raw) as CachedBackfillEstimate
 
-    return isSameSelection(cached.estimate, selection)
+    return cached.windowKey === windowKey
+      && isSameSelection(cached.estimate, selection)
       ? cached.estimate
       : null
   } catch {
@@ -351,11 +376,12 @@ async function readCachedEstimate(
 async function writeCachedEstimate(
   userId: number,
   estimate: MemoryBackfillEstimate,
+  windowKey: string,
 ): Promise<void> {
   try {
     await useKV().put(
       backfillEstimateCacheKey(userId),
-      JSON.stringify({ estimate } satisfies CachedBackfillEstimate),
+      JSON.stringify({ estimate, windowKey } satisfies CachedBackfillEstimate),
       { expirationTtl: ESTIMATE_CACHE_TTL_SECONDS },
     )
   } catch {
@@ -380,13 +406,19 @@ export async function invalidateBackfillEstimate(
 /**
  * `estimateBackfill` behind a per-user KV cache (10 minutes), so repeated
  * page loads and the start request do not each rerun the heavy aggregate. A
- * cached figure is used only for the same resolved model; KV failures fall
- * through to a fresh computation.
+ * cached figure is used only for the same resolved model and the same window
+ * (a fresh run, or the continuation of one cursor); KV failures fall through
+ * to a fresh computation.
  */
 export async function getBackfillEstimate(
   input: EstimateBackfillInput,
 ): Promise<MemoryBackfillEstimate> {
-  const cached = await readCachedEstimate(input.userId, input.selection)
+  const windowKey = backfillWindowKey(resolveEstimateWindow(input))
+  const cached = await readCachedEstimate(
+    input.userId,
+    input.selection,
+    windowKey,
+  )
 
   if (cached) {
     return cached
@@ -394,7 +426,7 @@ export async function getBackfillEstimate(
 
   const estimate = await estimateBackfill(input)
 
-  await writeCachedEstimate(input.userId, estimate)
+  await writeCachedEstimate(input.userId, estimate, windowKey)
 
   return estimate
 }
