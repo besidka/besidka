@@ -17,9 +17,12 @@ export interface ChatSearchBudget {
  * parallel calls cannot multiply the D1 reads. `untrustedResultSeen` is set
  * by the tool loop once a step returned a result from any non-memory tool
  * (web search, files, other chats) and locks `memory_write` and
- * `memory_forget` for the rest of the request. Create it per request, never
- * at module scope: a module-level counter would leak across requests on a
- * reused Worker isolate.
+ * `memory_forget` for the rest of the request. The chat route also presets
+ * it when project knowledge puts document text (full mode) or media into the
+ * prompt, so those sends refuse memory writes too (see
+ * `holdsUntrustedKnowledge` in `server/utils/knowledge/context.ts`). Create it
+ * per request, never at module scope: a module-level counter would leak across
+ * requests on a reused Worker isolate.
  */
 export function createChatSearchBudget(
   maxCalls: number = CHAT_SEARCH_MAX_CALLS_PER_TURN,
