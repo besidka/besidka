@@ -646,6 +646,11 @@ export default defineNuxtConfig({
             type: 'localStorage',
           },
           {
+            id: 'knowledge-folders',
+            name: 'knowledge-folders:*',
+            type: 'localStorage',
+          },
+          {
             id: 'pwa-refresher-dismissed',
             name: 'pwa:refresher-dismissed-until',
             type: 'sessionStorage',
@@ -737,6 +742,11 @@ export default defineNuxtConfig({
           {
             id: 'web-search-tool',
             name: 'settings_web_search_tool',
+            type: 'localStorage',
+          },
+          {
+            id: 'web-search-auto',
+            name: 'settings_web_search_auto',
             type: 'localStorage',
           },
           {

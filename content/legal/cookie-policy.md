@@ -1,7 +1,7 @@
 ---
 title: "Cookie Policy"
 description: "Every cookie and browser storage entry Besidka uses, what it is for, how long it lasts, and how to change or withdraw your consent."
-updatedAt: 2026-10-26
+updatedAt: 2026-10-27
 summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, hand a tapped push notification to the open app, and remember a folder you linked to a project. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree. There is also an optional Analytics category: if you allow it, Besidka loads Cloudflare Web Analytics, a script that measures page views and page-load speed and, according to Cloudflare, sets no cookie and stores nothing on your device. It is off until you allow it. The only other third-party script is a security check on the sign-in forms. There is no marketing category. My own page-view counting happens on the server with no cookie, no identifier and no stored IP address, and the campaign tags in a link you click are read from the web address, never stored on your device. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
 ---
 
@@ -57,6 +57,8 @@ These are needed to run the service you asked for. They are not consent-gated un
 | `pwa:refresher-dismissed-until` | sessionStorage | Besidka | Remembers, for the current tab only, that you dismissed the "new version available" prompt, so it does not come straight back | 30 minutes, and gone when the tab closes |
 | `pwa:auto-refresh-applied-until` | sessionStorage | Besidka | Stops the installed app from reloading itself over and over while it applies an update in the background. Current tab only | 5 minutes, and gone when the tab closes |
 
+The cookie settings dialog lists cookies, localStorage keys and sessionStorage keys. The two IndexedDB databases above, `besidka-push` and `besidka-knowledge`, are listed only on this page, because the dialog has no entry type for them. Both are necessary, and neither exists unless you used the feature it belongs to.
+
 I treat the two folder entries as necessary because they exist only to run the folder link you asked for. The folder name stays in your browser on purpose, so that I never receive it.
 
 I treat `chat_input_backup` as necessary because it exists solely to protect your own input in the service you asked for, and because losing a long message is exactly the kind of failure the storage prevents. It stays in your browser. If you would rather it did not exist at all, clear your site data — the app works without it, you just lose the safety net.
@@ -75,12 +77,13 @@ These only remember how you like the app set up. They are kept **only if you agr
 | `file-manager-view-mode` | localStorage | Besidka | Whether the file manager shows a grid or a list | Until removed |
 | `settings_reasoning_expanded` | localStorage | Besidka | Whether a model's reasoning block starts expanded | Until removed |
 | `settings_reasoning_auto_hide` | localStorage | Besidka | Whether reasoning collapses by itself once an answer is done | Until removed |
-| `settings_reasoning_level` | localStorage | Besidka | Your preferred reasoning effort level | Until removed |
+| `settings_reasoning_level` | localStorage | Besidka | The reasoning effort level you last picked in the chat input. Until you save a default on the Preferences page (which is stored with your account, not in your browser), it also serves as your starting level | Until removed |
 | `settings_sidebar_pinned` | localStorage | Besidka | Whether the sidebar stays pinned open | Until removed |
 | `settings_favorite_models` | localStorage | Besidka | Your favorited models in the model picker, mirrored from your account settings | Until removed |
 | `settings_favorite_gateway_models` | localStorage | Besidka | Your favorited models for each AI gateway in the model picker, mirrored from your account settings | Until removed |
 | `settings_web_search_tool` | localStorage | Besidka | Which web search tool you last chose for new chats | Until removed |
 | `settings_exa_search_level` | localStorage | Besidka | Which Exa web search level (Lite, Auto or Deep) you last chose | Until removed |
+| `settings_web_search_auto` | localStorage | Besidka | Whether you switched Auto web search on in the chat input, so it stays on for new chats. Written only if you have a TypeSafe AI key and use that switch | Until removed |
 | `model` | localStorage | Besidka | The model you used last, so a new chat starts with it | Until removed |
 | `chat_input` | localStorage | Besidka | The draft of the message currently in the input box, so it is still there if you navigate away and come back. Like the backup above it holds **your text verbatim**, in your browser only. Unlike the backup it is a convenience, so it is consent-gated and is deleted if you deny preferences | Until sent, cleared, or removed |
 | `video-player` | localStorage | Besidka | Video player preferences such as volume, mute, speed, quality and captions | Until removed |

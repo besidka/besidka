@@ -109,6 +109,14 @@ export default defineI18nLocale(() => ({
           + 'turn notifications on.',
         duration: 'Until deleted',
       },
+      'knowledge-folders': {
+        description:
+          'Remembers, for each project, the name of a folder you linked '
+          + 'from your computer and which folder is synced. It stays in your '
+          + 'browser and is never sent to the server. Written only after you '
+          + 'link a folder.',
+        duration: 'Until the folder is removed',
+      },
       'pwa-refresher-dismissed': {
         description:
           'Remembers for this tab that you dismissed the '
@@ -123,8 +131,8 @@ export default defineI18nLocale(() => ({
       },
       'last-login-method': {
         description:
-          'Remembers which sign-in method (email, Google, GitHub) '
-          + 'you last used, to pre-select it on the next visit.',
+          'Remembers which sign-in method (email, Google, GitHub or '
+          + 'passkey) you last used, to pre-select it on the next visit.',
         duration: '30 days',
       },
       'color-mode': {
@@ -210,6 +218,12 @@ export default defineI18nLocale(() => ({
         description:
           'Remembers which web search tool you last chose for '
           + 'new chats.',
+        duration: 'Until deleted',
+      },
+      'web-search-auto': {
+        description:
+          'Remembers whether you switched Auto web search on in the chat '
+          + 'input, so it stays on for new chats.',
         duration: 'Until deleted',
       },
       'knowledge-cache-info-seen': {

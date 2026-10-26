@@ -389,6 +389,15 @@ purged, which is a GDPR Art. 7(3) problem (this is how
 `settings_web_search_tool` went undeclared). `tests/unit/config/
 cookie-consent.spec.ts` pins the manifest against the locale files.
 
+The manifest cannot declare IndexedDB storage: an entry's `type` is `cookie`,
+`localStorage` or `sessionStorage`. The two databases `besidka-push` and
+`besidka-knowledge` are therefore listed only in `content/legal/cookie-policy.md`
+(which says so), not in the consent dialog. `cookie-consent.spec.ts` checks that
+every manifest entry appears in the Cookie Policy, so a key added to the
+manifest cannot go unlisted. A per-project key such as
+`knowledge-folders:<project id>` is declared with a trailing `*`
+(`knowledge-folders:*`), which the cleanup routine treats as a prefix.
+
 ### Never call consent composables during SSR
 
 `useCookieConsent()` and `useCookieConsentUi()` read and write `useState` keys
