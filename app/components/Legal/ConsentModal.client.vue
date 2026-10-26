@@ -51,7 +51,7 @@
             class="checkbox checkbox-sm mt-0.5"
             data-testid="legal-consent-terms"
           >
-          <span>
+          <span data-consent-text>
             I am 18 or over and I accept the
             <NuxtLink
               to="/terms-of-use"
@@ -68,7 +68,7 @@
             class="checkbox checkbox-sm mt-0.5"
             data-testid="legal-consent-sensitive"
           >
-          <span>
+          <span data-consent-text>
             <strong>I explicitly consent</strong> to Besidka storing any
             sensitive information I choose to include in my chats, projects
             and files, sending it to the AI providers, AI gateways and search
@@ -87,8 +87,8 @@
       <p class="text-sm text-base-content/70">
         This consent is separate from the Terms of Use. You can withdraw it at
         any time in Profile → Security → Privacy &amp; consent. Besidka then
-        stops sending new messages until you consent again; your existing
-        chats stay until you delete them.
+        stops sending new messages and storing new content until you consent
+        again; your existing chats stay until you delete them.
       </p>
       <div class="modal-action mt-0 flex-wrap">
         <button
@@ -115,7 +115,7 @@
       >
         <p>
           If you choose "Not now", you can still read, export and delete your
-          data, but you can't send messages.
+          data, but you can't send messages or add new content.
         </p>
         <div class="flex flex-wrap gap-2">
           <a

@@ -39,6 +39,9 @@ function grantedRecord(): LegalConsentRecord {
  * module waits on itself.
  */
 export const CURRENT_CONSENT_VERSION = actual.CURRENT_CONSENT_VERSION
+export const CURRENT_CONSENT_TEXT_SHA256 = actual.CURRENT_CONSENT_TEXT_SHA256
+export const hasModelTransferConsent = actual.hasModelTransferConsent
+export const assertModelTransferConsent = actual.assertModelTransferConsent
 export const legalConsentColumns = actual.legalConsentColumns
 export const getLegalConsentStatus = actual.getLegalConsentStatus
 export const hasCurrentLegalConsent = actual.hasCurrentLegalConsent

@@ -4,6 +4,7 @@ import { memoryInstructApplyBodySchema } from '#shared/utils/memory-instruct'
 import { applyMemoryInstruction } from '~~/server/utils/memory/instruct-apply'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 /**
  * POST /memory/instruct/apply
@@ -39,6 +40,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
+
   const projectId = body.data.projectId ?? null
   const requested = { create: 0, update: 0, delete: 0 }
 

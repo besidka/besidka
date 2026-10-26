@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   resolveActiveShareBySlug: vi.fn(),
   loggerSet: vi.fn(),

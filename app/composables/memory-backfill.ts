@@ -155,8 +155,16 @@ export function useMemoryBackfill() {
       return false
     }
 
+    const { ensureSendConsent, handleConsentError } = useLegalConsent()
+
     isStarting.value = true
     error.value = null
+
+    if (!await ensureSendConsent(null)) {
+      isStarting.value = false
+
+      return false
+    }
 
     const sequence = claimSequence()
 
@@ -168,6 +176,10 @@ export function useMemoryBackfill() {
 
       return applyJob(sequence, response.job)
     } catch (exception) {
+      if (await handleConsentError(exception)) {
+        return false
+      }
+
       const described = describeBackfillError(
         exception,
         'Failed to start building memory.',

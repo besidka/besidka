@@ -907,6 +907,46 @@ describe('refreshProjectMemoryFromChats', () => {
       expect(card).toMatchObject({ memoryStatus: 'ready', total: 1 })
     })
 
+    it('enables without a refresh and without throwing when consent is '
+      + 'missing', async () => {
+      await testDb.db.update(schema.userSettings)
+        .set({ sensitiveContentConsentWithdrawnAt: new Date() })
+
+      const { projectId } = await seedProjectWithChats([LONG_USER_TEXT], {
+        memoryStatus: 'disabled',
+      })
+
+      const card = await toggle(projectId, true)
+      const project = await readProject(projectId)
+
+      expect(mocks.generateText).not.toHaveBeenCalled()
+      expect(mocks.resolveMemoryModel).not.toHaveBeenCalled()
+      expect(card.memoryStatus).toBe('idle')
+      expect(project?.memoryStatus).toBe('idle')
+    })
+
+    it('refuses an explicit refresh with 403 when consent is missing',
+      async () => {
+        await testDb.db.update(schema.userSettings)
+          .set({ sensitiveContentConsentWithdrawnAt: new Date() })
+
+        const { projectId } = await seedProjectWithChats([LONG_USER_TEXT])
+        const { refreshProjectMemoryFromChats } = await import(
+          '~~/server/utils/projects/memory-refresh'
+        )
+
+        await expect(refreshProjectMemoryFromChats({
+          projectId,
+          userId,
+          db: testDb.db,
+          logger: { set: vi.fn() },
+        })).rejects.toMatchObject({
+          status: 403,
+          code: 'LEGAL_CONSENT_REQUIRED',
+        })
+        expect(mocks.generateText).not.toHaveBeenCalled()
+      })
+
     it('enables without a refresh and without throwing when memory is off', async () => {
       await testDb.db.update(schema.userSettings)
         .set({ memoryEnabled: false })

@@ -94,6 +94,7 @@ useSeoMeta({
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
+const { handleConsentError } = useLegalConsent()
 const prefStorage = usePreferenceStorage()
 const nuxtApp = useNuxtApp()
 const { userModel } = useUserModel()
@@ -640,6 +641,10 @@ async function onSubmit() {
     draftBackup.save(draft)
     message.value = draft
     files.value = draftFiles
+
+    if (await handleConsentError(exception)) {
+      return
+    }
 
     const parsedException = parseError(exception)
 

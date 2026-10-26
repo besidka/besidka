@@ -1,4 +1,5 @@
 import type { SQL } from 'drizzle-orm'
+import type { TransferConsentRoute } from '#shared/utils/legal-consent'
 import type {
   LegalConsentState,
   LegalConsentStatus,
@@ -7,15 +8,29 @@ import type {
   TransferConsentProviderId,
 } from '#shared/types/legal-consent.d'
 import {
+  LEGAL_CONSENT_ERROR_CODE,
+  TRANSFER_CONSENT_ERROR_CODE,
   isTransferConsentProviderId,
+  resolveTransferConsentProviderId,
   transferConsentProviderIds,
   transferConsentProviders,
 } from '#shared/utils/legal-consent'
-import { and, eq, isNotNull, isNull, lt, or } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 
 export const CURRENT_CONSENT_VERSION = '2026-11-a'
+
+/**
+ * SHA-256 of the consent wording in the consent modal
+ * (`app/components/Legal/ConsentModal.client.vue`, the `data-consent-text`
+ * spans, tags stripped, whitespace collapsed). The spec
+ * `tests/unit/server/utils/legal/consent-text-version.spec.ts` fails when the
+ * wording changes, so a wording change cannot ship without a deliberate
+ * decision on `CURRENT_CONSENT_VERSION`, whose bump asks every user again.
+ */
+export const CURRENT_CONSENT_TEXT_SHA256
+  = '5d5e5bb79d6ddeb80074fabebd6fb21c2046ed1ae8849e4f499337feefeb7ad5'
 
 const PRIVACY_POLICY_CONSENT_LINK
   = '/privacy-policy#sensitive-information-in-your-chats'
@@ -119,6 +134,16 @@ export function hasProviderTransferConsent(
   )
 }
 
+export function hasModelTransferConsent(
+  record: Partial<LegalConsentRecord> | null | undefined,
+  route: TransferConsentRoute,
+): boolean {
+  return hasProviderTransferConsent(
+    record,
+    resolveTransferConsentProviderId(route),
+  )
+}
+
 export function withoutUnconsentedTransferProviders(
   providerIds: Set<string>,
   record: Partial<LegalConsentRecord> | null | undefined,
@@ -180,7 +205,7 @@ const refusalByStatus: Record<
     fix: 'Open any chat and confirm the two boxes in the consent dialog, or open Profile → Security → Privacy & consent.',
   },
   withdrawn: {
-    why: 'You withdrew your consent to store sensitive information, so Besidka does not send new messages.',
+    why: 'You withdrew your consent to store sensitive information, so Besidka does not send new messages or store new content.',
     fix: 'Give your consent again in Profile → Security → Privacy & consent, or keep reading, exporting and deleting your data.',
   },
   outdated: {
@@ -199,11 +224,13 @@ export function assertLegalConsent(
   }
 
   throw createError({
-    message: 'Consent is required before sending messages',
+    code: LEGAL_CONSENT_ERROR_CODE,
+    message: 'Consent is required before you send messages or add content',
     status: 403,
     why: refusalByStatus[status].why,
     fix: refusalByStatus[status].fix,
     link: PRIVACY_POLICY_CONSENT_LINK,
+    data: { reason: 'legal-consent', consentStatus: status },
   })
 }
 
@@ -231,8 +258,10 @@ export function assertProviderTransferConsent(
   ]
 
   throw createError({
+    code: TRANSFER_CONSENT_ERROR_CODE,
     message: `Consent is required before sending messages to ${provider.label}`,
     status: 403,
+    data: { reason: 'transfer-consent', provider: provider.id },
     why: `${provider.label} processes data in ${provider.country}, which has no EU adequacy decision, and you have not consented to that transfer.`,
     fix: `Confirm the transfer to ${provider.country} in the dialog shown before sending, or choose a model from another provider.`,
     link: '/privacy-policy#transfers-outside-the-eu',
@@ -277,6 +306,20 @@ export function toLegalConsentState(
   }
 }
 
+export function assertModelTransferConsent(
+  record: Partial<LegalConsentRecord> | null | undefined,
+  route: TransferConsentRoute,
+): void {
+  assertProviderTransferConsent(
+    record,
+    resolveTransferConsentProviderId(route),
+  )
+}
+
+function toWholeSecond(date: Date): Date {
+  return new Date(Math.floor(date.getTime() / 1000) * 1000)
+}
+
 async function upsertUserSettings(
   userId: number,
   values: Partial<typeof schema.userSettings.$inferInsert>,
@@ -295,17 +338,18 @@ export async function recordLegalConsent(
   db: DbClient = useDb(),
   now: Date = new Date(),
 ): Promise<LegalConsentRecord> {
+  const grantedAt = toWholeSecond(now)
   const existing = await readLegalConsent(userId, db)
   const hasSameSecondWithdrawal = isWithdrawnAfterGrant(
-    now,
+    grantedAt,
     existing.sensitiveContentConsentWithdrawnAt,
   )
 
   await upsertUserSettings(userId, {
-    termsAcceptedAt: now,
+    termsAcceptedAt: grantedAt,
     termsVersion: CURRENT_CONSENT_VERSION,
-    ageConfirmedAt: now,
-    sensitiveContentConsentAt: now,
+    ageConfirmedAt: grantedAt,
+    sensitiveContentConsentAt: grantedAt,
     sensitiveContentConsentVersion: CURRENT_CONSENT_VERSION,
     ...(hasSameSecondWithdrawal
       ? { sensitiveContentConsentWithdrawnAt: null }
@@ -321,7 +365,7 @@ export async function withdrawLegalConsent(
   now: Date = new Date(),
 ): Promise<LegalConsentRecord> {
   await upsertUserSettings(userId, {
-    sensitiveContentConsentWithdrawnAt: now,
+    sensitiveContentConsentWithdrawnAt: toWholeSecond(now),
   }, db)
   await db.update(schema.memoryBackfillJobs)
     .set({ status: 'cancelled', finishedAt: now })
@@ -333,6 +377,12 @@ export async function withdrawLegalConsent(
   return await readLegalConsent(userId, db)
 }
 
+/**
+ * One atomic UPDATE per change, so a grant and a withdrawal for different
+ * providers racing each other can never drop one another: SQLite's
+ * `json_set` rewrites only this provider's key inside the stored object. A
+ * withdrawal touches only a provider that was granted before.
+ */
 async function writeProviderTransferConsent(
   userId: number,
   providerId: TransferConsentProviderId,
@@ -340,27 +390,31 @@ async function writeProviderTransferConsent(
   db: DbClient,
   now: Date,
 ): Promise<LegalConsentRecord> {
-  const existing = await readLegalConsent(userId, db)
-  const consents = { ...existing.providerTransferConsents }
-  const previous = consents[providerId]
+  const column = schema.userSettings.providerTransferConsents
+  const stored = sql`coalesce(${column}, '{}')`
+  const providerPath = `$.${providerId}`
+  const timestamp = now.getTime()
 
-  if (!isGranted && !previous) {
-    return existing
+  await db.insert(schema.userSettings)
+    .values({ userId })
+    .onConflictDoNothing({ target: schema.userSettings.userId })
+
+  if (isGranted) {
+    await db.update(schema.userSettings)
+      .set({
+        providerTransferConsents: sql`json_set(${stored}, ${providerPath}, json_object('consentedAt', ${timestamp}, 'withdrawnAt', json_extract(${stored}, ${`${providerPath}.withdrawnAt`})))`,
+      })
+      .where(eq(schema.userSettings.userId, userId))
+  } else {
+    await db.update(schema.userSettings)
+      .set({
+        providerTransferConsents: sql`json_set(${stored}, ${`${providerPath}.withdrawnAt`}, ${timestamp})`,
+      })
+      .where(and(
+        eq(schema.userSettings.userId, userId),
+        sql`json_extract(${stored}, ${providerPath}) is not null`,
+      ))
   }
-
-  consents[providerId] = isGranted
-    ? {
-      consentedAt: now.getTime(),
-      withdrawnAt: previous?.withdrawnAt ?? null,
-    }
-    : {
-      consentedAt: previous!.consentedAt,
-      withdrawnAt: now.getTime(),
-    }
-
-  await upsertUserSettings(userId, {
-    providerTransferConsents: consents,
-  }, db)
 
   return await readLegalConsent(userId, db)
 }

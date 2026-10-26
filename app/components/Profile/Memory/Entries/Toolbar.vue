@@ -427,7 +427,13 @@ async function findLatestChatSlug(): Promise<string | null> {
   return pickLatestChatSlug(accountChats)
 }
 
+const { ensureSendConsent, handleConsentError } = useLegalConsent()
+
 async function updateMemoryNow() {
+  if (!await ensureSendConsent(null)) {
+    return
+  }
+
   isUpdating.value = true
 
   try {
@@ -450,6 +456,10 @@ async function updateMemoryNow() {
     announceExtraction(result)
     emit('changed')
   } catch (exception) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     const parsedException = parseError(exception)
 
     useErrorMessage(

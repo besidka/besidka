@@ -27,8 +27,8 @@
         >
           You withdrew your consent on
           <UiLocalDate :value="state.sensitiveContentConsentWithdrawnAt!" />.
-          Besidka does not send new messages until you consent again. You can
-          still read, export and delete your data.
+          Besidka does not send new messages or store new content until you
+          consent again. You can still read, export and delete your data.
         </p>
         <p
           v-else-if="state.status === 'outdated'"
@@ -44,7 +44,8 @@
           class="text-sm"
           data-testid="privacy-consent-status"
         >
-          You have not given your consent yet. You need it to send messages.
+          You have not given your consent yet. You need it to send messages
+          and add new content.
         </p>
         <p class="text-sm text-base-content/70">
           Read what it covers in the
@@ -174,8 +175,8 @@ function withdrawTestId(providerId: TransferConsentProviderId): string {
 async function withdraw() {
   const result = await useConfirm({
     text: 'Withdraw your consent?',
-    subtitle: 'Besidka will stop sending new messages until you consent '
-      + 'again. Your chats stay until you delete them. To remove sensitive '
+    subtitle: 'Besidka will stop sending new messages and storing new '
+      + 'content until you consent again. Your chats stay until you delete them. To remove sensitive '
       + 'information you already stored, delete the chats, projects or files '
       + 'that contain it, or email the address in the Privacy Policy.',
     alert: true,
@@ -193,8 +194,8 @@ async function withdraw() {
 
   useInfoMessage(
     'Consent withdrawn',
-    'Besidka will not send new messages until you consent again. You can '
-    + 'still delete your account below.',
+    'Besidka will not send new messages or store new content until you '
+    + 'consent again. You can still delete your account below.',
   )
 }
 

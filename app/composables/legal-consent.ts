@@ -3,7 +3,11 @@ import type {
   ProviderTransferConsentState,
   TransferConsentProviderId,
 } from '#shared/types/legal-consent.d'
-import { isTransferConsentProviderId } from '#shared/utils/legal-consent'
+import {
+  LEGAL_CONSENT_ERROR_CODE,
+  TRANSFER_CONSENT_ERROR_CODE,
+  isTransferConsentProviderId,
+} from '#shared/utils/legal-consent'
 import { parseError } from 'evlog'
 
 export type TransferConsentContext = 'key' | 'send'
@@ -14,6 +18,65 @@ export interface TransferConsentRequest {
 }
 
 const LEGAL_CONSENT_STALE_AFTER_MS = 60_000
+
+interface ConsentRefusal {
+  code: string | undefined
+  provider: string | undefined
+}
+
+function readRefusalBody(body: unknown): ConsentRefusal {
+  const record = (body ?? {}) as {
+    code?: unknown
+    data?: { code?: unknown, provider?: unknown }
+  }
+  const code = record.code ?? record.data?.code
+  const provider = record.data?.provider
+
+  return {
+    code: typeof code === 'string' ? code : undefined,
+    provider: typeof provider === 'string' ? provider : undefined,
+  }
+}
+
+/**
+ * Reads the consent refusal code from a `$fetch` error, or from the JSON body
+ * that the chat transport puts into a plain `Error` message.
+ */
+export function readConsentRefusal(exception: unknown): ConsentRefusal {
+  const parsedException = parseError(exception)
+
+  if (parsedException.code) {
+    return {
+      code: parsedException.code,
+      provider: typeof parsedException.data?.provider === 'string'
+        ? parsedException.data.provider
+        : undefined,
+    }
+  }
+
+  const responseBody = (exception as { data?: unknown } | null)?.data
+
+  if (responseBody && typeof responseBody === 'object') {
+    const refusal = readRefusalBody(responseBody)
+
+    if (refusal.code) {
+      return refusal
+    }
+  }
+
+  if (
+    !(exception instanceof Error)
+    || !exception.message.trim().startsWith('{')
+  ) {
+    return { code: undefined, provider: undefined }
+  }
+
+  try {
+    return readRefusalBody(JSON.parse(exception.message))
+  } catch {
+    return { code: undefined, provider: undefined }
+  }
+}
 
 let consentResolver: ((isGranted: boolean) => void) | null = null
 let transferResolver: ((isGranted: boolean) => void) | null = null
@@ -127,9 +190,14 @@ export function useLegalConsent() {
     return findTransfer(providerId)?.isGranted === true
   }
 
-  function openConsentModal(): Promise<boolean> {
+  function showConsentModal() {
     consentResolver?.(false)
+    consentResolver = null
     isConsentModalOpen.value = true
+  }
+
+  function openConsentModal(): Promise<boolean> {
+    showConsentModal()
 
     return new Promise((resolve) => {
       consentResolver = resolve
@@ -145,15 +213,52 @@ export function useLegalConsent() {
     resolve?.(isGranted)
   }
 
+  function showTransferModal(request: TransferConsentRequest) {
+    transferResolver?.(false)
+    transferResolver = null
+    transferRequest.value = request
+  }
+
   function openTransferModal(
     request: TransferConsentRequest,
   ): Promise<boolean> {
-    transferResolver?.(false)
-    transferRequest.value = request
+    showTransferModal(request)
 
     return new Promise((resolve) => {
       transferResolver = resolve
     })
+  }
+
+  /**
+   * Turns a server refusal into the matching dialog: a 403 whose error code
+   * marks a missing consent reloads the consent state and opens the consent
+   * or transfer dialog. Returns `true` when the error was such a refusal, so
+   * the caller shows the dialog instead of an error message. The caller's
+   * action is not retried; the user repeats it after consenting.
+   */
+  async function handleConsentError(exception: unknown): Promise<boolean> {
+    const refusal = readConsentRefusal(exception)
+
+    if (refusal.code === LEGAL_CONSENT_ERROR_CODE) {
+      await load({ force: true })
+      showConsentModal()
+
+      return true
+    }
+
+    const providerId = refusal.provider
+
+    if (
+      refusal.code !== TRANSFER_CONSENT_ERROR_CODE
+      || !isTransferConsentProviderId(providerId)
+    ) {
+      return false
+    }
+
+    await load({ force: true })
+    showTransferModal({ providerId, context: 'send' })
+
+    return true
   }
 
   function resolveTransferModal(isGranted: boolean) {
@@ -296,6 +401,7 @@ export function useLegalConsent() {
     findTransfer,
     isTransferGranted,
     openConsentModal,
+    handleConsentError,
     resolveConsentModal,
     resolveTransferModal,
     ensureSendConsent,

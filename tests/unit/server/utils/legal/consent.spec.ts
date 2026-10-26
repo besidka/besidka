@@ -5,10 +5,12 @@ import type { LegalConsentRecord } from '~~/server/utils/legal/consent'
 import {
   CURRENT_CONSENT_VERSION,
   assertLegalConsent,
+  assertModelTransferConsent,
   assertProviderTransferConsent,
   currentLegalConsentCondition,
   getLegalConsentStatus,
   hasCurrentLegalConsent,
+  hasModelTransferConsent,
   hasProviderTransferConsent,
   readLegalConsent,
   recordLegalConsent,
@@ -185,6 +187,40 @@ describe('provider transfer consent', () => {
   })
 })
 
+describe('gateway models of transfer-consent vendors', () => {
+  const noTransfers = record({ providerTransferConsents: null })
+
+  it.each([
+    ['openrouter', 'deepseek/deepseek-chat', 'deepseek'],
+    ['vercel', 'moonshotai/kimi-k2', 'moonshotai'],
+    ['vercel', 'alibaba/qwen3-max', 'qwen'],
+    ['openrouter', 'qwen/qwen3-coder', 'qwen'],
+    ['cloudflare', 'deepseek/deepseek-chat', 'deepseek'],
+  ])('needs the %s transfer consent for %s', (gatewayId, modelId, provider) => {
+    expect(hasModelTransferConsent(noTransfers, { gatewayId, modelId }))
+      .toBe(false)
+    expect(hasModelTransferConsent(record(), { gatewayId, modelId }))
+      .toBe(true)
+    expect(() => {
+      assertModelTransferConsent(noTransfers, { gatewayId, modelId })
+    }).toThrow(expect.objectContaining({
+      status: 403,
+      code: 'TRANSFER_CONSENT_REQUIRED',
+      data: expect.objectContaining({ provider }),
+    }))
+  })
+
+  it.each([
+    ['cloudflare', '@cf/qwen/qwen3-30b-a3b-fp8'],
+    ['cloudflare', '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b'],
+    ['openrouter', 'anthropic/claude-haiku-5-5'],
+    ['vercel', 'openai/gpt-5-mini'],
+  ])('needs none for the %s model %s', (gatewayId, modelId) => {
+    expect(hasModelTransferConsent(noTransfers, { gatewayId, modelId }))
+      .toBe(true)
+  })
+})
+
 describe('legal consent storage', () => {
   let testDb: MemoryExtractionTestDb
 
@@ -265,6 +301,28 @@ describe('legal consent storage', () => {
     const reConsented = await recordLegalConsent(userId, testDb.db, LATER)
 
     expect(getLegalConsentStatus(reConsented)).toBe('current')
+  })
+
+  it('stays current when a re-consent follows a withdrawal in the same '
+    + 'second at a later millisecond', async () => {
+    const userId = await seedUser(testDb.db, null)
+
+    await recordLegalConsent(userId, testDb.db, GRANTED_AT)
+    await withdrawLegalConsent(
+      userId,
+      testDb.db,
+      new Date('2026-11-03T10:00:00.200Z'),
+    )
+
+    const reConsented = await recordLegalConsent(
+      userId,
+      testDb.db,
+      new Date('2026-11-03T10:00:00.700Z'),
+    )
+
+    expect(getLegalConsentStatus(reConsented)).toBe('current')
+    expect(reConsented.sensitiveContentConsentAt)
+      .toEqual(new Date('2026-11-03T10:00:00.000Z'))
   })
 
   it('records and withdraws a transfer consent per provider', async () => {

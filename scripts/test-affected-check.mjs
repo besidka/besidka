@@ -1286,8 +1286,10 @@ export function getAffectedTests(changedFiles) {
       pattern: /^(server\/utils\/legal\/.*|server\/api\/v1\/profiles\/consent\/.*|server\/api\/v1\/profiles\/keys\/(deepseek|moonshotai|qwen)\/index\.delete|shared\/utils\/legal-consent|shared\/types\/legal-consent\.d|tests\/setup\/(fixtures|mocks)\/legal-consent)\.ts$/,
       tests: [
         'tests/unit/server/utils/legal/consent.spec.ts',
+        'tests/unit/server/utils/legal/consent-text-version.spec.ts',
         'tests/integration/api/legal-consent.spec.ts',
         'tests/unit/utils/memory/resolve-model.spec.ts',
+        'tests/unit/utils/projects/memory-refresh.spec.ts',
         'tests/unit/utils/memory/extract-sweep.spec.ts',
         'tests/unit/utils/memory/backfill-sweep.spec.ts',
         'tests/unit/utils/memory/extract-text.spec.ts',
@@ -1297,6 +1299,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^(app\/components\/Legal\/.*\.vue|app\/composables\/(legal-consent|account-deletion)\.ts|app\/components\/Profile\/Security\/PrivacyConsent\.vue)$/,
       tests: [
         'tests/unit/components/Legal/ConsentModal.spec.ts',
+        'tests/unit/server/utils/legal/consent-text-version.spec.ts',
         'tests/unit/components/Legal/TransferConsentModal.spec.ts',
         'tests/unit/components/Profile/Security/PrivacyConsent.spec.ts',
         'tests/unit/composables/legal-consent.spec.ts',
@@ -1307,7 +1310,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/api\/v1\/(chats\/new\/index\.put|chats\/\[slug\]\/index\.post|memory\/instruct\/preview\.post)\.ts$/,
+      pattern: /^server\/api\/v1\/(chats\/new\/index\.put|chats\/\[slug\]\/(index\.post|title\.patch)|chats\/branch\/index\.post|memory\/instruct\/preview\.post|memory\/entries\/index\.post|projects\/\[id\]\/instructions\.patch|files\/upload\.put)\.ts$/,
       tests: ['tests/integration/api/legal-consent.spec.ts'],
     },
     {

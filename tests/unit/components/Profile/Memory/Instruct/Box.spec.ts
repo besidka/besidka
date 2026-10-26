@@ -14,6 +14,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: async () => true,
+  handleConsentError: async () => false,
+}))
 mockNuxtImport('useSuccessMessage', () => mocks.success)
 mockNuxtImport('useWarningMessage', () => mocks.warning)
 

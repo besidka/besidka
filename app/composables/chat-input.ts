@@ -9,6 +9,7 @@ import {
 } from '#shared/utils/gateway-capabilities'
 import { providerMeta } from '#shared/utils/provider-meta'
 import type { WebSearchOption } from '~/types/web-search'
+import { resolveTransferConsentProviderId } from '#shared/utils/legal-consent'
 
 const noToolCallReason = 'This model does not support tool calling, so it '
   + 'cannot use an external search provider.'
@@ -336,6 +337,26 @@ export function useChatInput() {
     return getModel(current.modelId).provider?.id ?? null
   })
 
+  /**
+   * The provider whose Art. 49 transfer consent a send with the current
+   * selection needs, if any: DeepSeek, Moonshot AI or Qwen directly, or one
+   * of their models through a gateway.
+   */
+  const selectedTransferProviderId = computed<string | null>(() => {
+    const current = selection.value
+
+    if (current.source === 'gateway') {
+      return resolveTransferConsentProviderId({
+        gatewayId: current.gatewayId,
+        modelId: current.modelId,
+      })
+    }
+
+    return resolveTransferConsentProviderId({
+      providerId: getModel(current.modelId).provider?.id,
+    })
+  })
+
   const selectedModelKeyOwnerLabel = computed<string>(() => {
     const ownerId = selectedModelKeyOwnerId.value
 
@@ -392,7 +413,7 @@ export function useChatInput() {
     researchConfig,
     isDeepResearchModel,
     isSelectedModelKeyless,
-    selectedModelKeyOwnerId,
+    selectedTransferProviderId,
     selectedModelKeyOwnerLabel,
     isModelCapabilityResolved,
     isSelectedModelUnavailable,

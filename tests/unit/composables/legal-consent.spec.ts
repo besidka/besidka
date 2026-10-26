@@ -2,7 +2,10 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LegalConsentState } from '#shared/types/legal-consent.d'
-import { useLegalConsent } from '../../../app/composables/legal-consent'
+import {
+  readConsentRefusal,
+  useLegalConsent,
+} from '../../../app/composables/legal-consent'
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -278,6 +281,79 @@ describe('useLegalConsent', () => {
       await consent.load()
 
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('server refusals', () => {
+    it('reads the code from a structured error', () => {
+      const refusal = readConsentRefusal(Object.assign(new Error('Forbidden'), {
+        statusCode: 403,
+        data: {
+          data: {
+            code: 'TRANSFER_CONSENT_REQUIRED',
+            provider: 'deepseek',
+          },
+        },
+      }))
+
+      expect(refusal).toEqual({
+        code: 'TRANSFER_CONSENT_REQUIRED',
+        provider: 'deepseek',
+      })
+    })
+
+    it('reads the code from a chat transport error body', () => {
+      const refusal = readConsentRefusal(new Error(JSON.stringify({
+        message: 'Consent is required',
+        data: { code: 'LEGAL_CONSENT_REQUIRED' },
+      })))
+
+      expect(refusal.code).toBe('LEGAL_CONSENT_REQUIRED')
+    })
+
+    it('reloads the state and opens the consent dialog', async () => {
+      mocks.fetch.mockResolvedValue(consentState({ status: 'withdrawn' }))
+
+      const consent = useLegalConsent()
+
+      await consent.load()
+      mocks.fetch.mockClear()
+
+      const isHandled = await consent.handleConsentError(
+        Object.assign(new Error('Forbidden'), {
+          statusCode: 403,
+          data: { code: 'LEGAL_CONSENT_REQUIRED' },
+        }),
+      )
+
+      expect(isHandled).toBe(true)
+      expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/profiles/consent')
+      expect(consent.isConsentModalOpen.value).toBe(true)
+    })
+
+    it('opens the transfer dialog for the named provider', async () => {
+      mocks.fetch.mockResolvedValue(consentState())
+
+      const consent = useLegalConsent()
+      const isHandled = await consent.handleConsentError(new Error(
+        JSON.stringify({
+          data: { code: 'TRANSFER_CONSENT_REQUIRED', provider: 'qwen' },
+        }),
+      ))
+
+      expect(isHandled).toBe(true)
+      expect(consent.transferRequest.value).toEqual({
+        providerId: 'qwen',
+        context: 'send',
+      })
+    })
+
+    it('leaves other errors to the caller', async () => {
+      const consent = useLegalConsent()
+
+      expect(await consent.handleConsentError(new Error('Network down')))
+        .toBe(false)
+      expect(consent.isConsentModalOpen.value).toBe(false)
     })
   })
 })

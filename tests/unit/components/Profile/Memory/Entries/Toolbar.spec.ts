@@ -7,12 +7,18 @@ import Toolbar from '../../../../../../app/components/Profile/Memory/Entries/Too
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
+  ensureSendConsent: vi.fn(async () => true),
+  handleConsentError: vi.fn(async () => false),
   confirm: vi.fn(),
   info: vi.fn(),
   error: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: mocks.ensureSendConsent,
+  handleConsentError: mocks.handleConsentError,
+}))
 mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useInfoMessage', () => mocks.info)
 mockNuxtImport('useErrorMessage', () => mocks.error)
@@ -156,6 +162,10 @@ function callsTo(url: string) {
 describe('Profile/Memory/Entries/Toolbar', () => {
   beforeEach(() => {
     mocks.fetch.mockReset()
+    mocks.ensureSendConsent.mockReset()
+    mocks.ensureSendConsent.mockResolvedValue(true)
+    mocks.handleConsentError.mockReset()
+    mocks.handleConsentError.mockResolvedValue(false)
     mocks.confirm.mockReset()
     mocks.confirm.mockResolvedValue({ label: 'Delete entries', index: 0 })
     mocks.info.mockReset()
@@ -308,6 +318,40 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       )
       expect(wrapper.emitted('changed')).toHaveLength(1)
     })
+
+    it('asks for consent first and reads nothing when it is refused',
+      async () => {
+        mocks.ensureSendConsent.mockResolvedValue(false)
+
+        const wrapper = await mountToolbar()
+
+        await wrapper.get('[data-testid="memory-update-now"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(mocks.ensureSendConsent).toHaveBeenCalledWith(null)
+        expect(callsTo('/api/v1/memory/extract-now')).toHaveLength(0)
+      })
+
+    it('opens the consent dialog instead of an error on a consent 403',
+      async () => {
+        mocks.handleConsentError.mockResolvedValue(true)
+        mockApi({
+          extract: Object.assign(new Error('Forbidden'), {
+            statusCode: 403,
+            data: { code: 'LEGAL_CONSENT_REQUIRED' },
+          }),
+        })
+
+        const wrapper = await mountToolbar()
+
+        await wrapper.get('[data-testid="memory-update-now"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(mocks.handleConsentError).toHaveBeenCalledTimes(1)
+        expect(mocks.error).not.toHaveBeenCalled()
+      })
 
     it('prefers a pinned chat with newer activity', async () => {
       mockApi({

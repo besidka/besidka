@@ -16,6 +16,12 @@ import {
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import {
+  assertLegalConsent,
+  assertModelTransferConsent,
+  assertProviderTransferConsent,
+  readLegalConsent,
+} from '~~/server/utils/legal/consent'
 
 export default defineEventHandler(async (event) => {
   const params = z.object({
@@ -98,8 +104,11 @@ export default defineEventHandler(async (event) => {
   let title = ''
 
   const runtimeConfig = useRuntimeConfig()
+  const legalConsent = await readLegalConsent(userId, db)
 
   try {
+    assertLegalConsent(legalConsent)
+
     if (!initialText.trim()) {
       title = CHAT_TITLE_DEFAULT
     } else if (
@@ -108,6 +117,11 @@ export default defineEventHandler(async (event) => {
     ) {
       title = buildMockChatTitle(initialText)
     } else if (gatewayId) {
+      assertModelTransferConsent(legalConsent, {
+        gatewayId,
+        modelId: body.data.model,
+      })
+
       const { generateChatTitle } = await useGateway(
         gatewayId,
         session.user.id,
@@ -121,6 +135,8 @@ export default defineEventHandler(async (event) => {
       const { provider, model } = useChatProvider(body.data.model)
       const research = getModelResearch(model)
       const titleModelId = research ? research.assistModel : model.id
+
+      assertProviderTransferConsent(legalConsent, provider.id)
 
       switch (provider.id) {
         case 'openai': {

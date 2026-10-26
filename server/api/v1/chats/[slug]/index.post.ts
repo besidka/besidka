@@ -237,6 +237,7 @@ import {
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import {
+  assertModelTransferConsent,
   assertProviderTransferConsent,
   requireLegalConsent,
 } from '~~/server/utils/legal/consent'
@@ -393,6 +394,8 @@ export default defineEventHandler(async (event) => {
 
   if (gatewayId) {
     requestedTools = selectedTools
+
+    assertModelTransferConsent(legalConsent, { gatewayId, modelId: userModel })
 
     await assertGatewayImageInputSupported({
       gatewayId,

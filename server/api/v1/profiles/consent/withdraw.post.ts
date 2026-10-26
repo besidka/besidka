@@ -4,6 +4,7 @@ import {
   withdrawLegalConsent,
 } from '~~/server/utils/legal/consent'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -15,6 +16,12 @@ export default defineEventHandler(async (event) => {
   if (!session) {
     return useUnauthorizedError()
   }
+
+  await enforceMemoryRateLimit(
+    'legal-consent',
+    parseInt(session.user.id),
+    event,
+  )
 
   const userId = parseInt(session.user.id)
   const record = await withdrawLegalConsent(userId)

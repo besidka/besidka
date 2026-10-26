@@ -111,6 +111,7 @@ export function useProjectKnowledge(
   const resolvedProjectId = computed<string | undefined>(() => {
     return toValue(projectId) || undefined
   })
+  const { handleConsentError } = useLegalConsent()
 
   const {
     data,
@@ -251,6 +252,8 @@ export function useProjectKnowledge(
 
         return { ok: true, result } as const
       } catch (exception) {
+        await handleConsentError(exception)
+
         return { ok: false, parsed: parseError(exception) } as const
       }
     })

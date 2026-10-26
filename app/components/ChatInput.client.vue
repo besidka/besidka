@@ -362,7 +362,7 @@ const {
   isDeepResearchModel,
   researchConfig,
   isSelectedModelKeyless,
-  selectedModelKeyOwnerId,
+  selectedTransferProviderId,
   selectedModelKeyOwnerLabel,
   isModelCapabilityResolved,
   isSelectedModelUnavailable,
@@ -454,7 +454,7 @@ async function onRegenerate() {
     return warnAboutMissingKey()
   }
 
-  if (!await ensureSendConsent(selectedModelKeyOwnerId.value)) {
+  if (!await ensureSendConsent(selectedTransferProviderId.value)) {
     return
   }
 
@@ -1044,7 +1044,7 @@ async function sendMessage() {
     return useWarningMessage('Research in progress — please wait.')
   }
 
-  if (!await ensureSendConsent(selectedModelKeyOwnerId.value)) {
+  if (!await ensureSendConsent(selectedTransferProviderId.value)) {
     return
   }
 

@@ -6,6 +6,7 @@ import type {
 
 export function useChatShare() {
   const nuxtApp = useNuxtApp()
+  const { handleConsentError } = useLegalConsent()
 
   const isModalOpen = useState<boolean>(
     'chat-share:is-modal-open',
@@ -179,6 +180,10 @@ export function useChatShare() {
 
       await navigateTo(`/chats/${response.slug}`)
     } catch (exception) {
+      if (await handleConsentError(exception)) {
+        return
+      }
+
       const parsedException = parseError(exception)
 
       nuxtApp.runWithContext(() => {
@@ -210,6 +215,10 @@ export function useChatShare() {
 
       await navigateTo(`/chats/${response.slug}`)
     } catch (exception) {
+      if (await handleConsentError(exception)) {
+        return
+      }
+
       const parsedException = parseError(exception)
 
       nuxtApp.runWithContext(() => {

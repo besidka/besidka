@@ -12,6 +12,7 @@ import {
   updateKnowledgeItemMetadata,
 } from '~~/server/utils/knowledge/ingest'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -35,6 +36,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const { userId, projectId, projectPublicId, item } = access
+
+  await requireLegalConsent(userId)
 
   logger.set({
     userId,

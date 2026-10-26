@@ -15,6 +15,7 @@ import {
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { defineEventHandler, getRequestHeader } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 /**
  * @example
@@ -62,6 +63,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
+
   const config = useRuntimeConfig().public
   const allowedFileFormats = config.allowedFileFormats as AllowedFileFormats
 

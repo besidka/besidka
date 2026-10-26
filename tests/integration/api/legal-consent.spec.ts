@@ -3,9 +3,18 @@ import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { CURRENT_CONSENT_VERSION } from '~~/server/utils/legal/consent'
 import {
+  LEGAL_CONSENT_ERROR_CODE,
+  TRANSFER_CONSENT_ERROR_CODE,
+} from '#shared/utils/legal-consent'
+import { buildFallbackChatTitle } from '~~/server/utils/chats/title'
+import {
   createMemoryExtractionTestDb,
+  seedMessage,
+  seedProject,
   seedUser,
+  textPart,
 } from '../../setup/helpers/memory-extraction-db'
+import { createFakeKnowledgeKv } from '../../setup/helpers/knowledge-api'
 import type {
   MemoryExtractionTestDb,
 } from '../../setup/helpers/memory-extraction-db'
@@ -14,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   assertNotCrossSiteRequest: vi.fn(),
   assertInputFilesSupported: vi.fn(),
+  generateChatTitle: vi.fn(async () => 'Generated title'),
 }))
 
 vi.mock('~~/server/utils/custom-db-types', async () => {
@@ -95,9 +105,14 @@ describe('legal consent gate', () => {
       throw Object.assign(new Error('Unauthorized'), { status: 401 })
     })
     vi.stubGlobal('useDb', () => testDb.db)
+    const kv = createFakeKnowledgeKv()
+
+    vi.stubGlobal('useKV', () => kv)
     vi.stubGlobal('useUserSession', vi.fn(async () => ({
       user: { id: String(userId) },
     })))
+    mocks.generateChatTitle.mockReset()
+    mocks.generateChatTitle.mockResolvedValue('Generated title')
   })
 
   afterEach(() => {
@@ -108,7 +123,12 @@ describe('legal consent gate', () => {
   async function call(path: string, body?: unknown, params?: unknown) {
     const handler = await loadHandler(path)
 
-    return await handler({ body, params })
+    return await handler({
+      body,
+      params,
+      headers: {},
+      res: { headers: new Headers() },
+    })
   }
 
   async function giveConsent(version = CURRENT_CONSENT_VERSION) {
@@ -179,6 +199,49 @@ describe('legal consent gate', () => {
       })
       expect(mocks.assertNotCrossSiteRequest).toHaveBeenCalled()
     })
+
+    it('limits consent changes with the shared rate limiter', async () => {
+      for (let count = 0; count < 20; count++) {
+        await giveConsent()
+      }
+
+      await expect(giveConsent()).rejects.toMatchObject({ status: 429 })
+    })
+
+    it('marks a refusal with a stable code for the client', async () => {
+      await expect(createChat()).rejects.toMatchObject({
+        status: 403,
+        code: LEGAL_CONSENT_ERROR_CODE,
+      })
+    })
+
+    it('keeps both transfer consents when they are written together',
+      async () => {
+        await call('profiles/consent/transfers/index.post', {
+          provider: 'qwen',
+          transferConsent: true,
+        })
+        await Promise.all([
+          call('profiles/consent/transfers/index.post', {
+            provider: 'deepseek',
+            transferConsent: true,
+          }),
+          call('profiles/consent/transfers/withdraw.post', {
+            provider: 'qwen',
+          }),
+        ])
+
+        const state = await call('profiles/consent/index.get') as {
+          transfers: { providerId: string, isGranted: boolean }[]
+        }
+        const granted = state.transfers.filter((transfer) => {
+          return transfer.isGranted
+        }).map((transfer) => {
+          return transfer.providerId
+        })
+
+        expect(granted).toEqual(['deepseek'])
+      })
 
     it('rejects a signed-out request', async () => {
       vi.stubGlobal('useUserSession', vi.fn(async () => null))
@@ -330,12 +393,188 @@ describe('legal consent gate', () => {
       },
     )
 
+    it.each([
+      ['openrouter', 'deepseek/deepseek-chat', 'deepseek'],
+      ['vercel', 'moonshotai/kimi-k2', 'moonshotai'],
+      ['vercel', 'alibaba/qwen3-max', 'qwen'],
+      ['openrouter', 'qwen/qwen3-coder', 'qwen'],
+    ])(
+      'needs the transfer consent for a %s model %s',
+      async (gatewayId, modelId, providerId) => {
+        await seedOwnChat()
+        await giveConsent()
+
+        await expect(call('chats/[slug]/index.post', {
+          model: modelId,
+          gateway: gatewayId,
+          tools: [],
+          messages: [{
+            id: 'message-1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'Hello' }],
+          }],
+        }, { slug: CHAT_SLUG })).rejects.toMatchObject({
+          status: 403,
+          code: TRANSFER_CONSENT_ERROR_CODE,
+          data: expect.objectContaining({ provider: providerId }),
+        })
+      },
+    )
+
     it('needs no transfer consent for an EU-adequate route', async () => {
       stubProvider('anthropic', 'claude-haiku-5-5')
       await seedOwnChat()
       await giveConsent()
 
       await expect(send('claude-haiku-5-5')).rejects.toThrow(PROVIDER_REACHED)
+    })
+  })
+
+  describe('chat title route', () => {
+    const FIRST_MESSAGE = 'Plan a weekend trip to Krakow'
+
+    async function seedUntitledChat() {
+      const [chat] = await testDb.db.insert(schema.chats).values({
+        slug: CHAT_SLUG,
+        userId,
+        activityAt: new Date(),
+      }).returning({ id: schema.chats.id })
+
+      await seedMessage(testDb.db, chat!.id, 'user', [textPart(FIRST_MESSAGE)])
+    }
+
+    function stubTitleProviders(providerId: string, modelId: string) {
+      const titleClient = async () => ({
+        generateChatTitle: mocks.generateChatTitle,
+      })
+
+      vi.stubGlobal('useChatProvider', () => ({
+        provider: { id: providerId },
+        model: { id: modelId },
+      }))
+      vi.stubGlobal('useOpenAI', vi.fn(titleClient))
+      vi.stubGlobal('useDeepSeek', vi.fn(titleClient))
+      vi.stubGlobal('useGateway', vi.fn(titleClient))
+    }
+
+    async function generateTitle(body: Record<string, unknown>) {
+      return await call('chats/[slug]/title.patch', body, { slug: CHAT_SLUG })
+    }
+
+    it('saves a plain title without calling a model when consent is missing',
+      async () => {
+        stubTitleProviders('openai', 'gpt-5-mini')
+        await seedUntitledChat()
+
+        const title = await generateTitle({ model: 'gpt-5-mini' })
+
+        expect(title).toBe(buildFallbackChatTitle(FIRST_MESSAGE))
+        expect(mocks.generateChatTitle).not.toHaveBeenCalled()
+      })
+
+    it('generates the title once consent is given', async () => {
+      stubTitleProviders('openai', 'gpt-5-mini')
+      await seedUntitledChat()
+      await giveConsent()
+
+      expect(await generateTitle({ model: 'gpt-5-mini' }))
+        .toBe('Generated title')
+    })
+
+    it('does not send the message to DeepSeek without transfer consent',
+      async () => {
+        stubTitleProviders('deepseek', 'deepseek-flash')
+        await seedUntitledChat()
+        await giveConsent()
+
+        const title = await generateTitle({ model: 'deepseek-flash' })
+
+        expect(title).toBe(buildFallbackChatTitle(FIRST_MESSAGE))
+        expect(mocks.generateChatTitle).not.toHaveBeenCalled()
+      })
+
+    it('does not send it to a gateway DeepSeek model without the consent',
+      async () => {
+        stubTitleProviders('openai', 'gpt-5-mini')
+        await seedUntitledChat()
+        await giveConsent()
+
+        const title = await generateTitle({
+          model: 'deepseek/deepseek-chat',
+          gateway: 'openrouter',
+        })
+
+        expect(title).toBe(buildFallbackChatTitle(FIRST_MESSAGE))
+        expect(mocks.generateChatTitle).not.toHaveBeenCalled()
+      })
+  })
+
+  describe('content writes', () => {
+    it('refuses a memory entry without consent and saves it after',
+      async () => {
+        const entry = {
+          category: 'preferences',
+          title: 'Answer style',
+          description: 'Prefers short answers',
+          body: 'Prefers short answers with examples.',
+        }
+
+        await expect(call('memory/entries/index.post', entry))
+          .rejects.toMatchObject({
+            status: 403,
+            code: LEGAL_CONSENT_ERROR_CODE,
+          })
+
+        await giveConsent()
+
+        await expect(call('memory/entries/index.post', entry)).resolves
+          .toBeDefined()
+      })
+
+    it('refuses project instructions without consent', async () => {
+      const projectId = await seedProject(testDb.db, userId)
+
+      await expect(call(
+        'projects/[id]/instructions.patch',
+        { instructions: 'Answer in Polish.' },
+        { id: projectId },
+      )).rejects.toMatchObject({ status: 403 })
+
+      const project = await testDb.db.query.projects.findFirst({
+        where: { id: projectId },
+        columns: { instructions: true },
+      })
+
+      expect(project?.instructions ?? null).toBeNull()
+    })
+
+    it('refuses to branch a chat without consent', async () => {
+      await testDb.db.insert(schema.chats).values({
+        slug: CHAT_SLUG,
+        userId,
+        activityAt: new Date(),
+      })
+
+      await expect(call('chats/branch/index.post', { chatSlug: CHAT_SLUG }))
+        .rejects.toMatchObject({ status: 403 })
+      expect(await countChats()).toBe(1)
+    })
+
+    it('refuses a file upload before reading the body', async () => {
+      vi.stubGlobal(
+        'getRequestHeader',
+        (_event: unknown, name: string) => {
+          return {
+            'content-type': 'text/plain',
+            'x-filename': 'notes.txt',
+          }[name.toLowerCase()]
+        },
+      )
+
+      await expect(call('files/upload.put')).rejects.toMatchObject({
+        status: 403,
+        code: LEGAL_CONSENT_ERROR_CODE,
+      })
     })
   })
 

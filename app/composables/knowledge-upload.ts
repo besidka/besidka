@@ -293,6 +293,7 @@ export function useKnowledgeUpload(
   const resolvedProjectId = computed<string | undefined>(() => {
     return toValue(projectId) || undefined
   })
+  const { ensureSendConsent } = useLegalConsent()
 
   const phase = shallowRef<KnowledgeUploadPhase>('idle')
   const plan = shallowRef<KnowledgePlanSummary | null>(null)
@@ -522,7 +523,7 @@ export function useKnowledgeUpload(
     gitignoreText: string,
     adopt: (knowledgePlan: KnowledgeUploadPlan) => void,
   ): Promise<void> {
-    if (isBusy.value) {
+    if (isBusy.value || !await ensureSendConsent(null)) {
       return
     }
 
@@ -596,7 +597,7 @@ export function useKnowledgeUpload(
   }
 
   async function syncFolder(input: KnowledgeFolderSyncInput): Promise<void> {
-    if (isBusy.value) {
+    if (isBusy.value || !await ensureSendConsent(null)) {
       return
     }
 

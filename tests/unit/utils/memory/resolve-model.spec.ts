@@ -1397,6 +1397,48 @@ describe('resolveMemoryModel', () => {
       })
     })
 
+    it('skips a gateway DeepSeek model setting without transfer consent',
+      async () => {
+        await withoutTransferConsents()
+
+        const db = createDb({
+          keys: ['openrouter', 'openai'],
+          settings: {
+            profileMemoryModel: 'deepseek/deepseek-chat',
+            profileMemoryGateway: 'openrouter',
+          },
+        })
+        const { resolveMemoryModel } = await loadResolver()
+
+        const resolved = await resolveMemoryModel({
+          userId: 1,
+          scope: 'profile',
+          db: db as never,
+        })
+
+        expect(resolved).toMatchObject({
+          source: 'fallback',
+          providerId: 'openai',
+        })
+      })
+
+    it('refuses to build a gateway Qwen model without transfer consent',
+      async () => {
+        await withoutTransferConsents()
+
+        const { instantiateMemoryModel } = await loadResolver()
+
+        await expect(instantiateMemoryModel({
+          scope: 'profile',
+          source: 'setting',
+          providerId: null,
+          gatewayId: 'vercel',
+          modelId: 'alibaba/qwen3-max',
+          modelName: 'Qwen',
+        }, 1)).rejects.toMatchObject({ status: 403 })
+        expect(mocks.useGateway).not.toHaveBeenCalled()
+      })
+
     it('refuses to build a DeepSeek model without transfer consent',
       async () => {
         await withoutTransferConsents()
