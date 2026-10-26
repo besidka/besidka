@@ -1,10 +1,22 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { parseError } from 'evlog'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MemorySettingsFields } from '../../../../../shared/types/memory.d'
 import * as messagesComposable from '../../../../../app/composables/messages'
 import Controls from '../../../../../app/components/Profile/Memory/Controls.vue'
+
+const mocks = vi.hoisted(() => ({
+  confirm: vi.fn(),
+  fetch: vi.fn(),
+  refreshNuxtData: vi.fn(),
+  info: vi.fn(),
+}))
+
+mockNuxtImport('useConfirm', () => mocks.confirm)
+mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('refreshNuxtData', () => mocks.refreshNuxtData)
+mockNuxtImport('useInfoMessage', () => mocks.info)
 
 enableAutoUnmount(afterEach)
 
@@ -42,6 +54,12 @@ describe('Profile/Memory/Controls', () => {
   beforeEach(() => {
     save.mockReset()
     save.mockResolvedValue({ ok: true, result: {} })
+    mocks.confirm.mockReset()
+    mocks.confirm.mockResolvedValue({ label: 'Keep entries', index: 0 })
+    mocks.fetch.mockReset()
+    mocks.fetch.mockResolvedValue({ deleted: 3 })
+    mocks.refreshNuxtData.mockReset()
+    mocks.info.mockReset()
   })
 
   afterEach(() => {
@@ -74,6 +92,121 @@ describe('Profile/Memory/Controls', () => {
 
     expect(save).toHaveBeenCalledOnce()
     expect(save).toHaveBeenCalledWith(payload)
+  })
+
+  describe('turning memory from chats off', () => {
+    const DELETE_URL = '/api/v1/memory/entries/delete-extracted'
+
+    async function turnOff() {
+      const wrapper = await mountControls({ memoryExtractionEnabled: true })
+
+      await toggle(wrapper, 'memory-generation-toggle').setValue(false)
+      await flushPromises()
+
+      return wrapper
+    }
+
+    it('asks in-page whether to keep or delete the generated entries',
+      async () => {
+        const nativeConfirm = vi.fn()
+
+        vi.stubGlobal('confirm', nativeConfirm)
+
+        await turnOff()
+
+        expect(mocks.confirm).toHaveBeenCalledWith({
+          text: 'Turn off memory from chats?',
+          subtitle: 'Keep the entries Besidka generated from your chats, or '
+            + 'delete them? Entries you wrote, edited or imported are always '
+            + 'kept.',
+          actions: ['Keep entries', 'Delete them'],
+          labelDecline: 'Cancel',
+        })
+        expect(nativeConfirm).not.toHaveBeenCalled()
+        vi.unstubAllGlobals()
+      })
+
+    it.each([
+      {
+        choice: 'Keep entries',
+        deleteCalls: 0,
+      },
+      {
+        choice: 'Delete them',
+        deleteCalls: 1,
+      },
+    ])('turns generation off and, for "$choice", deletes $deleteCalls times',
+      async ({ choice, deleteCalls }) => {
+        mocks.confirm.mockResolvedValue({ label: choice, index: 0 })
+
+        await turnOff()
+
+        expect(save).toHaveBeenCalledWith({ memoryExtractionEnabled: false })
+        expect(mocks.fetch.mock.calls.filter(([url]) => url === DELETE_URL))
+          .toEqual(Array.from({ length: deleteCalls }, () => {
+            return [DELETE_URL, { method: 'POST' }]
+          }))
+        expect(mocks.refreshNuxtData).toHaveBeenCalledTimes(deleteCalls)
+
+        if (deleteCalls) {
+          expect(mocks.refreshNuxtData)
+            .toHaveBeenCalledWith('memory-entries:all')
+          expect(mocks.info)
+            .toHaveBeenCalledWith('Deleted', '3 generated entries deleted.')
+        }
+      })
+
+    it('changes nothing when the question is dismissed', async () => {
+      mocks.confirm.mockResolvedValue(null)
+
+      const wrapper = await turnOff()
+
+      expect(save).not.toHaveBeenCalled()
+      expect(mocks.fetch).not.toHaveBeenCalled()
+      expect(toggle(wrapper, 'memory-generation-toggle').element.checked)
+        .toBe(true)
+    })
+
+    it('deletes nothing when turning generation off fails', async () => {
+      mocks.confirm.mockResolvedValue({ label: 'Delete them', index: 1 })
+      save.mockResolvedValue({
+        ok: false,
+        parsed: parseError(new Error('Request failed')),
+      })
+
+      await turnOff()
+
+      expect(mocks.fetch).not.toHaveBeenCalled()
+    })
+
+    it('shows the error and keeps the setting off when the delete fails',
+      async () => {
+        const useErrorMessage = vi.spyOn(
+          messagesComposable,
+          'useErrorMessage',
+        )
+
+        mocks.confirm.mockResolvedValue({ label: 'Delete them', index: 1 })
+        mocks.fetch.mockRejectedValue(Object.assign(
+          new Error('Request failed'),
+          {
+            data: {
+              statusCode: 500,
+              message: 'Could not delete',
+              data: { why: 'Database unavailable' },
+            },
+          },
+        ))
+
+        await turnOff()
+
+        expect(save).toHaveBeenCalledWith({ memoryExtractionEnabled: false })
+        expect(useErrorMessage).toHaveBeenCalledWith(
+          'Could not delete',
+          'Database unavailable',
+        )
+        expect(mocks.info).not.toHaveBeenCalled()
+      })
   })
 
   it('names each toggle by its title and describes it separately',

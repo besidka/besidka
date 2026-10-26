@@ -104,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+import { parseError } from 'evlog'
 import type { MemorySettingsFields } from '#shared/types/memory.d'
 import type { MemorySettingsSave } from '~/types/memory-settings.d'
 
@@ -111,6 +112,12 @@ const props = defineProps<{
   settings: MemorySettingsFields
   save: MemorySettingsSave
 }>()
+
+const KEEP_GENERATED_ACTION = 'Keep entries'
+
+const DELETE_GENERATED_ACTION = 'Delete them'
+
+const MEMORY_ENTRIES_DATA_KEY = 'memory-entries:all'
 
 const isSaving = shallowRef<boolean>(false)
 
@@ -130,7 +137,7 @@ async function saveToggle(
   patch: Partial<MemorySettingsFields>,
   input: HTMLInputElement,
   nextValue: boolean,
-) {
+): Promise<boolean> {
   input.checked = !nextValue
   isSaving.value = true
 
@@ -139,13 +146,42 @@ async function saveToggle(
   isSaving.value = false
 
   if (outcome.ok) {
-    return
+    return true
   }
 
   useErrorMessage(
     outcome.parsed.message || 'Failed to save memory settings.',
     outcome.parsed.why,
   )
+
+  return false
+}
+
+async function deleteGeneratedEntries() {
+  isSaving.value = true
+
+  try {
+    const { deleted } = await $fetch(
+      '/api/v1/memory/entries/delete-extracted',
+      { method: 'POST' },
+    )
+
+    await refreshNuxtData(MEMORY_ENTRIES_DATA_KEY)
+
+    useInfoMessage(
+      'Deleted',
+      `${deleted} generated ${deleted === 1 ? 'entry' : 'entries'} deleted.`,
+    )
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Failed to delete generated entries.',
+      parsedException.why,
+    )
+  } finally {
+    isSaving.value = false
+  }
 }
 
 async function onChatSearchChange(event: Event) {
@@ -163,10 +199,36 @@ async function onMemoryEnabledChange(event: Event) {
 async function onGenerationChange(event: Event) {
   const input = event.target as HTMLInputElement
 
-  await saveToggle(
-    { memoryExtractionEnabled: input.checked },
+  if (input.checked) {
+    await saveToggle({ memoryExtractionEnabled: true }, input, true)
+
+    return
+  }
+
+  input.checked = true
+
+  const choice = await useConfirm({
+    text: 'Turn off memory from chats?',
+    subtitle: 'Keep the entries Besidka generated from your chats, or '
+      + 'delete them? Entries you wrote, edited or imported are always kept.',
+    actions: [KEEP_GENERATED_ACTION, DELETE_GENERATED_ACTION],
+    labelDecline: 'Cancel',
+  })
+
+  if (!choice) {
+    return
+  }
+
+  const isTurnedOff = await saveToggle(
+    { memoryExtractionEnabled: false },
     input,
-    input.checked,
+    false,
   )
+
+  if (!isTurnedOff || choice.label !== DELETE_GENERATED_ACTION) {
+    return
+  }
+
+  await deleteGeneratedEntries()
 }
 </script>

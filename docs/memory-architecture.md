@@ -382,6 +382,14 @@ the reason the opt-in is out of v1 (section 7).
   ("Generate memory from chats", null = off) is the extraction opt-in. The
   sweep needs both. Consequence for W4: injection and tools are default-on for
   users who never touched the setting. See 3.12.
+- Turning "Generate memory from chats" **off** (legal research P1-11,
+  2026-10-26) asks in-page "Keep entries" or "Delete them" (Cancel changes
+  nothing). "Delete them" calls `POST /memory/entries/delete-extracted`
+  after the PATCH succeeds: it deletes the caller's entries with origin
+  `extraction` (chat passes, "Update memory now" and backfill) in every
+  scope. Entries the user or the assistant edited become `user`/`tool`, and
+  imported entries keep `import` even after extraction appended to them, so
+  an entry is deleted only when extraction is its sole author.
 - Chat search tool **on** by default (no new data processing — it reads the
   user's own chats on demand, nothing stored).
 - Existing project memory: harmonised with the above — existing projects keep

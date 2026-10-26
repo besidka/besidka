@@ -73,6 +73,9 @@ const handlers = {
   reset: () => loadHandler(
     '../../../server/api/v1/memory/entries/reset.post',
   ),
+  deleteExtracted: () => loadHandler(
+    '../../../server/api/v1/memory/entries/delete-extracted.post',
+  ),
   exportAll: () => loadHandler('../../../server/api/v1/memory/export.get'),
 }
 
@@ -1051,6 +1054,86 @@ describe('memory entries API', () => {
         projectId: encodePublicId(9),
       }))).rejects.toMatchObject({ status: 404 })
       expect(testDb.countEntries()).toBe(5)
+    })
+  })
+
+  describe('POST /entries/delete-extracted', () => {
+    function slugsOf(userId: number): string[] {
+      return testDb.sqlite
+        .prepare('select slug from memory_entries where user_id = ? '
+          + 'order by slug')
+        .all(userId)
+        .map(row => (row as { slug: string }).slug)
+    }
+
+    beforeEach(() => {
+      testDb.insertProject({ id: 7, userId: OWNER })
+      testDb.insertEntry({
+        userId: OWNER,
+        slug: 'extracted-account',
+        origin: 'extraction',
+        sourceChatIds: ['chat-1', 'chat-2'],
+      })
+      testDb.insertEntry({
+        userId: OWNER,
+        projectId: 7,
+        slug: 'extracted-project',
+        origin: 'extraction',
+        sourceChatIds: ['chat-3'],
+      })
+      testDb.insertEntry({
+        userId: OWNER,
+        slug: 'written-by-user',
+        origin: 'user',
+        sourceChatIds: ['chat-1'],
+      })
+      testDb.insertEntry({
+        userId: OWNER,
+        slug: 'saved-by-assistant',
+        origin: 'tool',
+      })
+      testDb.insertEntry({
+        userId: OWNER,
+        slug: 'imported-then-extended',
+        origin: 'import',
+        sourceChatIds: ['chat-2'],
+      })
+      testDb.insertEntry({
+        userId: STRANGER,
+        slug: 'stranger-extracted',
+        origin: 'extraction',
+      })
+    })
+
+    it('deletes only the caller\'s extraction-origin entries, in every scope',
+      async () => {
+        const handler = await handlers.deleteExtracted()
+
+        expect(await handler(bodyEvent(undefined))).toEqual({ deleted: 2 })
+        expect(slugsOf(OWNER)).toEqual([
+          'imported-then-extended',
+          'saved-by-assistant',
+          'written-by-user',
+        ])
+        expect(slugsOf(STRANGER)).toEqual(['stranger-extracted'])
+      })
+
+    it('deletes nothing for a cross-site request', async () => {
+      const handler = await handlers.deleteExtracted()
+
+      await expect(handler(bodyEvent(undefined, 'cross-site')))
+        .rejects.toThrow()
+      expect(testDb.countEntries()).toBe(6)
+    })
+
+    it('answers 401 without a session and deletes nothing', async () => {
+      sessionUserId = null
+
+      const handler = await handlers.deleteExtracted()
+
+      await expect(handler(bodyEvent(undefined)))
+        .rejects.toMatchObject({ status: 401 })
+      expect(testDb.countEntries()).toBe(6)
     })
   })
 

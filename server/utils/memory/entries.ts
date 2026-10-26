@@ -877,6 +877,28 @@ export async function resetMemoryEntries(options: {
   return deleted.length
 }
 
+/**
+ * Deletes every entry of the user that only automatic extraction wrote
+ * (chat passes, "Update memory now" and backfill all store `extraction`),
+ * in every scope. An entry the user or the assistant edited carries the
+ * `user` or `tool` origin, and an imported entry keeps `import` even after
+ * extraction appended to it, so none of those is touched.
+ */
+export async function deleteExtractedMemoryEntries(options: {
+  db: DbClient
+  userId: number
+}): Promise<number> {
+  const deleted = await options.db
+    .delete(schema.memoryEntries)
+    .where(and(
+      eq(schema.memoryEntries.userId, options.userId),
+      eq(schema.memoryEntries.origin, 'extraction'),
+    ))
+    .returning({ id: schema.memoryEntries.id })
+
+  return deleted.length
+}
+
 export async function buildMemoryExport(options: {
   db: DbClient
   userId: number

@@ -156,8 +156,12 @@ describe('profile memory page', () => {
     mocks.fetch.mockReset()
     mocks.fetch.mockImplementation(async (
       _url: string,
-      options: { method: string, body: Record<string, unknown> },
+      options?: { method?: string, body?: Record<string, unknown> },
     ) => {
+      if (options?.method !== 'PATCH') {
+        throw new Error('Only settings PATCH requests are mocked')
+      }
+
       mocks.patchRequests.push(options.body)
 
       if (mocks.patchError) {
