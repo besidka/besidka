@@ -366,11 +366,14 @@ removed.
   also behind OpenRouter's `~vendor/` aliases). Models a gateway runs itself
   (Cloudflare's `@cf/` ids) are exempt. Extended the same day (delta audit
   finding 5): gateway-only consents for Z.ai (`z-ai/`, `zai/`; Singapore),
-  MiniMax (`minimax/`; Singapore entity, US storage), Tencent (`tencent/`;
-  China) and ByteDance (`bytedance/`, `bytedance-seed/`; Malaysia or
-  Indonesia), and one generic `router` consent for OpenRouter meta-routers
-  (`openrouter/`) and `@preset/` model strings, which can send a request to
-  a provider in any country. See `docs/legal.md`.
+  MiniMax (`minimax/`; Singapore entity, US storage), ByteDance
+  (`bytedance/`, `bytedance-seed/`; Malaysia or Indonesia), and, mapped to
+  China defensively, Tencent (`tencent/`), Xiaomi (`xiaomi/`), Meituan
+  (`meituan/`), StepFun (`stepfun/`), inclusionAI (`inclusionai/`), TeleAI
+  (`xingchen-agi/`) and Dots Studio (`dots-studio/`); and one generic
+  `router` consent for OpenRouter meta-routers (`openrouter/`) and
+  `@preset/` model strings, which can send a request to a provider in any
+  country. See `docs/legal.md`.
 - **Receipt.** `provider_transfer_consents` (JSON) on `user_settings`: per
   provider `consentedAt` and `withdrawnAt`. Deleted with the account.
 - **Status.** **Built** in this release: `server/utils/legal/consent.ts`,

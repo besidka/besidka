@@ -46,6 +46,30 @@ export function createGrantedLegalConsentRecord(
         consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
         withdrawnAt: null,
       },
+      xiaomi: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      meituan: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      stepfun: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      inclusionai: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      teleai: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
+      dotsstudio: {
+        consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
+        withdrawnAt: null,
+      },
       router: {
         consentedAt: LEGAL_CONSENT_GRANTED_AT.getTime(),
         withdrawnAt: null,

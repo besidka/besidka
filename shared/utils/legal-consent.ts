@@ -10,6 +10,12 @@ export const transferConsentProviderIds = [
   'minimax',
   'tencent',
   'bytedance',
+  'xiaomi',
+  'meituan',
+  'stepfun',
+  'inclusionai',
+  'teleai',
+  'dotsstudio',
   'router',
 ] as const
 
@@ -71,6 +77,42 @@ export const transferConsentProviders: Record<
     country: 'Malaysia or Indonesia',
     route: 'gateway',
   },
+  xiaomi: {
+    id: 'xiaomi',
+    label: 'Xiaomi',
+    country: 'China',
+    route: 'gateway',
+  },
+  meituan: {
+    id: 'meituan',
+    label: 'Meituan',
+    country: 'China',
+    route: 'gateway',
+  },
+  stepfun: {
+    id: 'stepfun',
+    label: 'StepFun',
+    country: 'China',
+    route: 'gateway',
+  },
+  inclusionai: {
+    id: 'inclusionai',
+    label: 'inclusionAI',
+    country: 'China',
+    route: 'gateway',
+  },
+  teleai: {
+    id: 'teleai',
+    label: 'TeleAI (China Telecom)',
+    country: 'China',
+    route: 'gateway',
+  },
+  dotsstudio: {
+    id: 'dotsstudio',
+    label: 'Dots Studio',
+    country: 'China',
+    route: 'gateway',
+  },
   router: {
     id: 'router',
     label: 'Router and preset models',
@@ -100,6 +142,12 @@ const gatewayVendorTransferProviders: Record<
   'tencent': 'tencent',
   'bytedance': 'bytedance',
   'bytedance-seed': 'bytedance',
+  'xiaomi': 'xiaomi',
+  'meituan': 'meituan',
+  'stepfun': 'stepfun',
+  'inclusionai': 'inclusionai',
+  'xingchen-agi': 'teleai',
+  'dots-studio': 'dotsstudio',
   'openrouter': 'router',
 }
 
@@ -124,11 +172,14 @@ function readGatewayVendor(modelId: string): string {
  * The provider whose transfer consent a send needs: the direct provider, or
  * for a gateway the vendor named by the model id prefix (`deepseek/`,
  * `moonshotai/`, `alibaba/`, `qwen/`, `z-ai/`, `zai/`, `minimax/`,
- * `tencent/`, `bytedance/`, `bytedance-seed/`), also behind OpenRouter's
- * `~vendor/...-latest` aliases. A router id that can send the request to
- * any vendor (OpenRouter's `openrouter/` meta-routers and any
- * `@preset/` reference) needs the generic `router` consent. Models a
- * gateway hosts itself, such as Cloudflare's `@cf/` ids, need none.
+ * `tencent/`, `bytedance/`, `bytedance-seed/`, `xiaomi/`, `meituan/`,
+ * `stepfun/`, `inclusionai/`, `xingchen-agi/`, `dots-studio/`), also
+ * behind OpenRouter's `~vendor/...-latest` aliases. A router id that can
+ * send the request to any vendor (OpenRouter's `openrouter/` meta-routers
+ * and any `@preset/` reference) needs the generic `router` consent. Models
+ * a gateway hosts itself, such as Cloudflare's `@cf/` ids, need none.
+ * Provider ids never contain a hyphen: they are JSON path segments in
+ * `provider_transfer_consents`.
  */
 export function resolveTransferConsentProviderId(
   route: TransferConsentRoute,

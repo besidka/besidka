@@ -149,9 +149,13 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
     may be in mainland China) and `bytedance` (`bytedance/`,
     `bytedance-seed/`; BytePlus states processing in Malaysia, Indonesia
     and/or the EU, shown as "Malaysia or Indonesia"). `zhipuai/` and `baidu/`
-    were not in either catalog. Also present but left out pending an owner
-    call: `xiaomi/`, `meituan/`, `stepfun/`, `inclusionai/`, `xingchen-agi/`
-    (China Telecom), `dots-studio/`.
+    were not in either catalog. Follow-up owner decision the same day: the
+    other mainland-China vendors present are mapped defensively to China,
+    like `tencent`: `xiaomi` (`xiaomi/`), `meituan` (`meituan/`), `stepfun`
+    (`stepfun/`), `inclusionai` (`inclusionai/`), `teleai` (`xingchen-agi/`,
+    China Telecom's TeleAI) and `dotsstudio` (`dots-studio/`). Provider ids
+    never contain a hyphen, because they are JSON path segments in the
+    `json_set` writes to `provider_transfer_consents`.
   - OpenRouter's `~vendor/...-latest` aliases resolve to the vendor after the
     `~` (before this, `~deepseek/...` needed no consent at all).
   - Router ids that can reach any vendor need one generic `router` consent

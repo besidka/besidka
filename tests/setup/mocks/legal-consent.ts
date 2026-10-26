@@ -30,6 +30,12 @@ function grantedRecord(): LegalConsentRecord {
       minimax: transferConsent,
       tencent: transferConsent,
       bytedance: transferConsent,
+      xiaomi: transferConsent,
+      meituan: transferConsent,
+      stepfun: transferConsent,
+      inclusionai: transferConsent,
+      teleai: transferConsent,
+      dotsstudio: transferConsent,
       router: transferConsent,
     },
   }

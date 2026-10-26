@@ -44,6 +44,12 @@ describe('Legal transfer consent modal', () => {
     ['minimax', 'MiniMax', 'Singapore'],
     ['tencent', 'Tencent', 'China'],
     ['bytedance', 'ByteDance', 'Malaysia or Indonesia'],
+    ['xiaomi', 'Xiaomi', 'China'],
+    ['meituan', 'Meituan', 'China'],
+    ['stepfun', 'StepFun', 'China'],
+    ['inclusionai', 'inclusionAI', 'China'],
+    ['teleai', 'TeleAI (China Telecom)', 'China'],
+    ['dotsstudio', 'Dots Studio', 'China'],
   ])('names %s and its country', async (providerId, label, country) => {
     const wrapper = await mountModal(providerId, 'send')
 
