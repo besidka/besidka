@@ -13,9 +13,23 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   confirm: vi.fn(),
   error: vi.fn(),
+  typesafeKeyStatus: 'missing' as 'saved' | 'missing' | 'unknown',
+  prefilterRoleOn: true,
+  rolesLoaded: true,
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
+mockNuxtImport('useUserKeys', () => {
+  return () => ({
+    keyStatusForProvider: () => mocks.typesafeKeyStatus,
+  })
+})
+mockNuxtImport('useTypesafeRoles', () => {
+  return () => ({
+    isLoaded: { value: mocks.rolesLoaded },
+    isRoleOn: () => mocks.prefilterRoleOn,
+  })
+})
 mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useErrorMessage', () => mocks.error)
 
@@ -204,6 +218,9 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
     mocks.confirm.mockReset()
     mocks.confirm.mockResolvedValue({ label: 'Stop', index: 0 })
     mocks.error.mockReset()
+    mocks.typesafeKeyStatus = 'missing'
+    mocks.prefilterRoleOn = true
+    mocks.rolesLoaded = true
     clearNuxtState('memory-backfill-overview')
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
       .mockImplementation(function () {
@@ -487,6 +504,45 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       expect(isDisabled(wrapper, 'memory-backfill-start')).toBe(false)
       expect(hasTestId(wrapper, 'memory-backfill-last-run')).toBe(false)
     })
+
+    it('says nothing about TypeSafe AI without a saved key', async () => {
+      const wrapper = await mountSheet()
+
+      expect(hasTestId(wrapper, 'memory-backfill-prefilter-note')).toBe(false)
+    })
+
+    it('explains the lower real cost when the pre-filter is on', async () => {
+      mocks.typesafeKeyStatus = 'saved'
+
+      const wrapper = await mountSheet()
+
+      expect(textOf(wrapper, 'memory-backfill-prefilter-note')).toBe(
+        'With TypeSafe AI checks on, chats with nothing to remember are '
+        + 'skipped, so the real cost is usually lower.',
+      )
+      expect(textOf(wrapper, 'memory-backfill-estimate-cost'))
+        .toBe('Approximately $0.52')
+    })
+
+    it('waits for the role settings before showing the note', async () => {
+      mocks.typesafeKeyStatus = 'saved'
+      mocks.rolesLoaded = false
+
+      const wrapper = await mountSheet()
+
+      expect(hasTestId(wrapper, 'memory-backfill-prefilter-note')).toBe(false)
+    })
+
+    it('hides the lower-cost note when the pre-filter is switched off',
+      async () => {
+        mocks.typesafeKeyStatus = 'saved'
+        mocks.prefilterRoleOn = false
+
+        const wrapper = await mountSheet()
+
+        expect(hasTestId(wrapper, 'memory-backfill-prefilter-note'))
+          .toBe(false)
+      })
 
     it('describes a continuation as the next older chats', async () => {
       const wrapper = await mountSheet({

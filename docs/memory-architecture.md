@@ -2028,7 +2028,7 @@ path, 2,500 ms in the background.
 |---|---|---|
 | `memoryChecks` | The memory check above: entry text after never-store removal plus a short source excerpt, before an entry is saved. Add-only | Built-in gate alone |
 | `autoWebSearch` | Only in the Auto web search mode, each message: the message and the last 2-3 turns. Jev decides whether a search is needed | Search as usual |
-| `extractionPrefilter` | Before memory is generated from a chat (opt-in extraction, project Refresh, explicit extraction): chat text after never-store removal, in chunks of up to about 8,000 tokens. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | Unsure or unavailable: extract as usual |
+| `extractionPrefilter` | Before memory is generated from a chat (opt-in extraction, backfill from past chats, project Refresh; never extract-now or import): chat text after never-store removal, in chunks of up to about 8,000 tokens. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | Unsure or unavailable: extract as usual |
 | `injectionScreening` | Project knowledge files and notes, and Brave and Exa results fetched through Besidka. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | Text used unscreened |
 | `rerank` | Past-chat and project-knowledge search: the query and excerpts of about 300 tokens each, up to 30 per search | Original order |
 | `sharePiiCheck` | Before a public share link is published: the chat text being shared. Warning only, never blocks | Generic "check before sharing" reminder |
@@ -2162,6 +2162,54 @@ eval of 8 queries with passages of one or two sentences; re-tune them on the
 logged scores. The `search_chats` snippet is only 32 FTS5 tokens
 (`SEARCH_CHATS_SNIPPET_TOKEN_COUNT`), so the relevance judgement there sees
 less text than the eval did; widening it is a separate change.
+
+##### Extraction pre-filter (J2)
+
+`extractLeasedChatMemory` (`server/utils/memory/extract.ts`) asks Jev one
+question, `JEV_EXTRACTION_PREFILTER.question` (`e1_durable`), about the
+window's transcript right after the `too-short` branch and before
+`loadMemoryExtractionIndex` and `resolveExtractionModel`, so a skip pays for
+neither the index read nor the model call. The transcript is the one
+`loadMemoryExtractionWindow` already built, never-store redacted per message.
+The logic lives in `server/utils/memory/extract-prefilter.ts`.
+
+- **Chunking.** A transcript over `maxChunkTokens` (8,000, estimated with
+  `estimateMemoryTokens`, so Cyrillic splits into more pieces than Latin) is
+  split at line breaks into pieces under the cap and scored one piece per call,
+  sequentially. The chat is skipped only when every piece scores below
+  `skipBelow` (0.40); the first piece at or above it ends the check and the
+  extraction runs. Calls use the background timeout (2,500 ms) each.
+- **Skip.** Stamps the watermark through `memoryExtractionAdvance` with the
+  chat's own `advanceMode`, exactly as the `no-user-text` branch does, and
+  returns `status: 'skipped'`, `reason: 'nothing-durable'`. The failure
+  counters are not incremented. The chat leaves the due query until new
+  activity arrives.
+- **Never pre-filtered.** `explicit` (extract-now, "Update memory now"), the
+  import path (separate code), and a project pass that still carries the
+  legacy blob (the pass also migrates the blob, which a skip would leave
+  undone).
+- **Backfill.** Pre-filtered like the sweep: it is where the saving is
+  largest. The progress counters already treat `skipped` as processed, so a
+  `nothing-durable` skip raises `skippedChats` and `processedChats` and adds no
+  tokens. The cost estimate stays an upper bound, and the confirm step of the
+  backfill sheet says so when the key and the role are on.
+- **Fail-safe.** No key, role off, or any Jev failure (401, 403, 429, 529,
+  timeout, network, refusal, a missing answer, one failing piece after others
+  scored low) runs the extraction as today. The status is in the log only.
+- **Logging.** `attributes.extractionPrefilterJev`: `status`, `calls`,
+  `questions`, `inputTokens`, `latencyMs`, `scores` and `counts.skipped`. For
+  a chat that was extracted after being scored, the highest piece score picks
+  a tenth bucket and three counts are added, for example `chatsAtScore0.4`,
+  `proposedAtScore0.4` and `entriesAtScore0.4` (entries the model proposed and
+  entries that were saved). Extracted chats that produce nothing in the
+  lowest buckets mean `skipBelow` can go up; entries there mean it is right.
+  Chats that were skipped appear only as `counts.skipped` and a score, so
+  "skipped but would have extracted" needs a periodic shadow run (log the
+  score, extract anyway, compare).
+- **UI.** `nothing-durable` has a label in the toolbar's skip-reason map
+  ("Nothing new worth remembering in that chat."); extract-now is never
+  pre-filtered, so the toolbar does not show it today. The backfill sheet's
+  "Chats skipped" counter includes these skips.
 
 ## 4. Cost and performance
 

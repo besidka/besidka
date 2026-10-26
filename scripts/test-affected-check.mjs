@@ -255,6 +255,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/extract-runtime.spec.ts',
     'tests/unit/utils/memory/extract-sweep.spec.ts',
     'tests/unit/utils/memory/extract.spec.ts',
+    'tests/unit/utils/memory/extract-prefilter.spec.ts',
     'tests/unit/utils/projects/memory-entries.spec.ts',
     'tests/unit/utils/projects/memory-refresh.spec.ts',
     'tests/unit/utils/projects/memory-card.spec.ts',
