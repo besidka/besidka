@@ -52,6 +52,9 @@ describe('jev policy', () => {
       flagAtOrAbove: 0.3,
       maxChunkTokens: 2000,
       maxConcurrentCalls: 3,
+      maxCallsPerKnowledgeRequest: 24,
+      rescreenItemsPerSweep: 10,
+      rescreenQueueTtlSeconds: 1_209_600,
       timeoutMs: 2500,
       searchResultsTimeoutMs: 800,
     })

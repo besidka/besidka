@@ -94,6 +94,9 @@ export const JEV_INJECTION_SCREENING = {
   flagAtOrAbove: 0.3,
   maxChunkTokens: 2000,
   maxConcurrentCalls: 3,
+  maxCallsPerKnowledgeRequest: 24,
+  rescreenItemsPerSweep: 10,
+  rescreenQueueTtlSeconds: 14 * 24 * 60 * 60,
   timeoutMs: JEV_BACKGROUND_TIMEOUT_MS,
   searchResultsTimeoutMs: JEV_SEND_PATH_TIMEOUT_MS,
   question: {

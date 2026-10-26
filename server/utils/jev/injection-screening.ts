@@ -20,6 +20,7 @@ export interface InjectionScreeningInput {
   texts: string[]
   source: InjectionScreeningSource
   timeoutMs: number
+  maxCalls?: number
   abortSignal?: AbortSignal
   logger?: JevLogger
 }
@@ -166,9 +167,10 @@ function countVerdicts(
  * text is `flagged` as soon as one chunk scores at or above `flagAtOrAbove`
  * (its other chunks are not sent). Calls run in waves of at most
  * `maxConcurrentCalls`. The first failed call (401, 429, timeout, network,
- * refusal) stops screening: every text not yet decided is `unscreened`, which
- * callers treat as today's behaviour. It never throws and logs counts and
- * scores only, under `attributes.injectionScreeningJev`.
+ * refusal) stops screening, and so does reaching `maxCalls` (a per-request
+ * budget): every text not yet decided is `unscreened`, which callers treat
+ * as today's behaviour or queue for a later pass. It never throws and logs
+ * counts and scores only, under `attributes.injectionScreeningJev`.
  */
 export async function screenTextsForInjection(
   input: InjectionScreeningInput,
@@ -176,16 +178,21 @@ export async function screenTextsForInjection(
   const { tasks, progress } = buildTasks(input.texts)
   const { questionId, question, flagAtOrAbove, maxConcurrentCalls }
     = JEV_INJECTION_SCREENING
+  const maxCalls = input.maxCalls ?? Number.POSITIVE_INFINITY
   const startedAt = Date.now()
   let status: JevStatus = 'ok'
   let calls = 0
   let inputTokens = 0
   let cursor = 0
 
-  while (cursor < tasks.length && status === 'ok') {
+  while (cursor < tasks.length && status === 'ok' && calls < maxCalls) {
     const wave: ScreeningTask[] = []
 
-    while (cursor < tasks.length && wave.length < maxConcurrentCalls) {
+    while (
+      cursor < tasks.length
+      && wave.length < maxConcurrentCalls
+      && calls + wave.length < maxCalls
+    ) {
       const task = tasks[cursor]!
 
       cursor++

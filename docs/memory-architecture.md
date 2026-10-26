@@ -2113,10 +2113,13 @@ Besidka's behaviour without a key.
   threshold, and its remaining chunks are not sent.
 - **Failure.** The first failed call (401, 403, 429, 529, timeout, network,
   refusal, or a missing probability) stops screening for the request. Every
-  text not decided by then is `unscreened`, which callers treat as clean.
-  Work is bounded by the existing caps (1 MB of text per upload batch, 100k
-  characters per note, 8 or 10 results per search) plus the stop on the
-  first failure; no separate request deadline was added.
+  text not decided by then is `unscreened`. Search results treat it as
+  clean; project knowledge stores it `ready` and queues it (below).
+- **Budget.** `maxCalls` caps the calls one request may make. Project
+  knowledge requests use `maxCallsPerKnowledgeRequest` (24, 8 waves of 3, at
+  most about 20 s at the 2.5 s timeout), so a 1 MB batch (about 130 chunks)
+  no longer blocks an upload for minutes: what the budget does not reach is
+  `unscreened` and queued. Searches are bounded by their 8 or 10 results.
 - **Logging.** `attributes.injectionScreeningJev`: status, calls, input
   tokens, latency, the maximum score per text, and counts
   `knowledgeFlagged|Clean|Unscreened` or `searchFlagged|Clean|Unscreened`.
@@ -2153,6 +2156,26 @@ status `ready` and text are sent, and the key is read once per request.
   of a flagged note is not a repair (repair is `failed` or `no-text` only), so
   it cannot be used to skip the review.
 - Items added before this change are not screened retroactively.
+- **Unscreened queue** (delta audit finding 2, 2026-10-26). An item stored
+  `ready` with an `unscreened` verdict (upload, new note, changed note body)
+  gets a KV key `knowledge-unscreened:u<user>:p<project>:i<item>`
+  (`server/utils/knowledge/unscreened.ts`, TTL `rescreenQueueTtlSeconds`, 14
+  days), so no migration is needed. The hourly knowledge sweep
+  (`sweepProjectKnowledge`) first runs `rescreenUnscreenedKnowledgeItems`
+  within half of its runtime budget: one KV list page of at most
+  `rescreenItemsPerSweep` (10) keys, users one at a time, items one at a
+  time. A user without a current legal consent is deferred (no Jev call);
+  without a key or with the role off the keys are dropped (the behaviour
+  without a key); an item that is gone, foreign or no longer `ready` is
+  dropped; otherwise the current R2 text is screened with the background
+  timeout. `clean` drops the key, `flagged` sets the status (guarded on
+  `updated_at`, so a note edited meanwhile is not flagged for its old text)
+  and bumps `knowledge_version`, `unscreened` keeps the key and stops that
+  user's batch. The item counts as `ready` (and is sent) until the sweep
+  reaches it, usually within the hour. A failed queue write is logged as
+  `attributes.knowledge.unscreenedQueueFailed` and leaves the item as before.
+  The sweep result carries `rescreen` counts; a re-screen failure is logged
+  as `knowledgeRescreenFailure` and the R2 pass still runs.
 - UI: the row badge "needs review", and in the item sheet and the note editor
   the alert "Possible prompt injection, review it" with **Allow anyway**
   (`InjectionReview.vue`, `allowItem` in `useProjectKnowledge`). The upload

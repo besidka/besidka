@@ -966,4 +966,57 @@ describe('sweepProjectKnowledge', () => {
       expect(kv.values.has(CURSOR_KEY)).toBe(false)
     })
   })
+
+  describe('unscreened knowledge re-screening', () => {
+    it('runs the re-screen pass before the R2 pass and reports it',
+      async () => {
+        const queue = {
+          put: vi.fn(),
+          delete: vi.fn(),
+          list: vi.fn(async () => ({ keys: [] })),
+        }
+        const result = await sweep(createFakeBucket(), {
+          unscreenedQueue: queue,
+        })
+
+        expect(queue.list).toHaveBeenCalledWith({
+          prefix: 'knowledge-unscreened:',
+          limit: 10,
+        })
+        expect(result.rescreen).toEqual({
+          listed: 0,
+          clean: 0,
+          flagged: 0,
+          dropped: 0,
+          deferred: 0,
+        })
+      })
+
+    it('still collects R2 garbage when the re-screen pass fails',
+      async () => {
+        testDb.insertProject({ id: PROJECT, userId: OWNER })
+
+        const orphanKey = knowledgeItemTextKey(OWNER, PROJECT, 2)
+        const fake = createFakeBucket({ [orphanKey]: OLD })
+        const logger = { set: vi.fn() }
+        const result = await sweep(fake, {
+          logger,
+          unscreenedQueue: {
+            put: vi.fn(),
+            delete: vi.fn(),
+            list: vi.fn(async () => {
+              throw new Error('KV unavailable')
+            }),
+          },
+        })
+
+        expect(result.rescreen).toBeNull()
+        expect(result.orphanItemObjectsDeleted).toBe(1)
+        expect(logger.set).toHaveBeenCalledWith({
+          attributes: {
+            knowledgeRescreenFailure: { error: 'KV unavailable' },
+          },
+        })
+      })
+  })
 })
