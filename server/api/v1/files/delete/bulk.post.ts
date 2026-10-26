@@ -49,12 +49,10 @@ export default defineEventHandler(async (event) => {
     await bumpKnowledgeVersion(knowledgeProjectIds)
   } catch (exception) {
     logger.set({
-      knowledgeVersionBump: {
-        phase: 'before-delete',
-        fileCount: ids.length,
-      },
       attributes: {
         knowledgeVersionBump: {
+          phase: 'before-delete',
+          fileCount: ids.length,
           error: exceptionMessage(exception),
         },
       },
@@ -131,11 +129,11 @@ export default defineEventHandler(async (event) => {
       await bumpKnowledgeVersion(knowledgeProjectIds)
     } catch (exception) {
       logger.set({
-        knowledgeVersionBump: {
-          phase: 'after-delete',
-          fileCount: ids.length,
-        },
         attributes: {
+          knowledgeVersionBump: {
+            phase: 'after-delete',
+            fileCount: ids.length,
+          },
           knowledgeVersionBumpAfterDelete: {
             error: exceptionMessage(exception),
           },

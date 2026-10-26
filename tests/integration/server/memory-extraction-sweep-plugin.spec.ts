@@ -92,15 +92,17 @@ describe('memory extraction sweep plugin', () => {
       }),
     })
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-      memoryExtractionSweepJob: expect.objectContaining({
-        job: 'memory-extraction-sweep',
-        cron: '*/5 * * * *',
-        batchSize: 20,
-        maxRuntimeMs: 120000,
-      }),
+      attributes: {
+        memoryExtractionSweepJob: expect.objectContaining({
+          job: 'memory-extraction-sweep',
+          cron: '*/5 * * * *',
+          batchSize: 20,
+          maxRuntimeMs: 120000,
+        }),
+      },
     }))
     expect(loggerSet).toHaveBeenCalledWith({
-      memoryExtractionSweepResult: sweepResult,
+      attributes: { memoryExtractionSweepResult: sweepResult },
     })
     expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
   })
@@ -117,12 +119,14 @@ describe('memory extraction sweep plugin', () => {
       runSweep,
     })
 
-    expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-      memoryExtractionSweepError: { phase: 'sweep-run' },
+    expect(loggerSet).toHaveBeenCalledWith({
       attributes: {
-        memoryExtractionSweepError: { errorName: 'Error' },
+        memoryExtractionSweepError: {
+          phase: 'sweep-run',
+          errorName: 'Error',
+        },
       },
-    }))
+    })
     expect(loggerEmit).toHaveBeenCalledWith({ status: 500 })
   })
 

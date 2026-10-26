@@ -70,12 +70,14 @@ export async function runMemoryExtractionSweepJob(
   let status = 200
 
   logger.set({
-    memoryExtractionSweepJob: {
-      job: 'memory-extraction-sweep',
-      cron: input.controller.cron,
-      scheduledTime,
-      batchSize: input.config.memoryExtractionSweepBatchSize,
-      maxRuntimeMs: input.config.memoryExtractionSweepMaxRuntimeMs,
+    attributes: {
+      memoryExtractionSweepJob: {
+        job: 'memory-extraction-sweep',
+        cron: input.controller.cron,
+        scheduledTime,
+        batchSize: input.config.memoryExtractionSweepBatchSize,
+        maxRuntimeMs: input.config.memoryExtractionSweepMaxRuntimeMs,
+      },
     },
   })
 
@@ -87,27 +89,29 @@ export async function runMemoryExtractionSweepJob(
     })
 
     logger.set({
-      memoryExtractionSweepResult: {
-        selectedCount: result.selectedCount,
-        extractedCount: result.extractedCount,
-        skippedCount: result.skippedCount,
-        failedCount: result.failedCount,
-        erroredCount: result.erroredCount,
-        leasedCount: result.leasedCount,
-        runtimeMs: result.runtimeMs,
-        opsApplied: result.opsApplied,
-        opsDropped: result.opsDropped,
-        models: result.models,
+      attributes: {
+        memoryExtractionSweepResult: {
+          selectedCount: result.selectedCount,
+          extractedCount: result.extractedCount,
+          skippedCount: result.skippedCount,
+          failedCount: result.failedCount,
+          erroredCount: result.erroredCount,
+          leasedCount: result.leasedCount,
+          runtimeMs: result.runtimeMs,
+          opsApplied: result.opsApplied,
+          opsDropped: result.opsDropped,
+          models: result.models,
+        },
       },
     })
   } catch (exception) {
     status = 500
     logger.set({
-      memoryExtractionSweepError: {
-        phase: 'sweep-run',
-      },
       attributes: {
-        memoryExtractionSweepError: memoryExtractionErrorSummary(exception),
+        memoryExtractionSweepError: {
+          phase: 'sweep-run',
+          ...memoryExtractionErrorSummary(exception),
+        },
       },
     })
   }

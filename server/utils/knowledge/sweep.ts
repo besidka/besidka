@@ -411,11 +411,9 @@ export async function sweepProjectKnowledge(
       } catch (exception) {
         result.failedDeleteCount += batch.length
         logger?.set({
-          knowledgeSweepDeleteFailure: {
-            keyCount: batch.length,
-          },
           attributes: {
             knowledgeSweepDeleteFailure: {
+              keyCount: batch.length,
               error: exceptionMessage(exception),
             },
           },
@@ -433,7 +431,9 @@ export async function sweepProjectKnowledge(
   let isListingFinished = false
 
   if (cursor) {
-    logger?.set({ knowledgeSweepResumed: true })
+    logger?.set({
+      attributes: { knowledgeSweepResumed: { resumed: true } },
+    })
   }
 
   async function scanPage(page: {

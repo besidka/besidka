@@ -87,18 +87,18 @@ export default defineEventHandler(async (event) => {
     )
 
     logger.set({
-      knowledgePurge: {
-        objectsDeleted: purgeResult.objectsDeleted,
-        batches: purgeResult.batches,
+      attributes: {
+        knowledgePurge: {
+          objectsDeleted: purgeResult.objectsDeleted,
+          batches: purgeResult.batches,
+        },
       },
     })
   } catch (exception) {
     logger.set({
-      knowledgePurge: {
-        failed: true,
-      },
       attributes: {
         knowledgePurge: {
+          failed: true,
           error: exceptionMessage(exception),
         },
       },

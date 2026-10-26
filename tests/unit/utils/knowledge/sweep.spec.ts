@@ -643,7 +643,11 @@ describe('sweepProjectKnowledge', () => {
       expect(result.hasMore).toBe(true)
       expect(fake.keys()).toHaveLength(4)
       expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
-        knowledgeSweepDeleteFailure: { keyCount: 4 },
+        attributes: {
+          knowledgeSweepDeleteFailure: expect.objectContaining({
+            keyCount: 4,
+          }),
+        },
       }))
     })
 

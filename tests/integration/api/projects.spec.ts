@@ -588,7 +588,9 @@ describe('projects API', () => {
       expect(projectsWhere).toHaveBeenCalled()
       expect(mocks.invalidateStorageCache).toHaveBeenCalled()
       expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-        knowledgePurge: { failed: true },
+        attributes: {
+          knowledgePurge: expect.objectContaining({ failed: true }),
+        },
       }))
     })
 

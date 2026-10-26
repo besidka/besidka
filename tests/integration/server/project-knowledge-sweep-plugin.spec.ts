@@ -93,13 +93,15 @@ describe('project knowledge sweep plugin', () => {
       }),
     })
     expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      projectKnowledgeSweepJob: expect.objectContaining({
-        job: 'project-knowledge-sweep',
-        cron: '0 * * * *',
-      }),
+      attributes: {
+        projectKnowledgeSweepJob: expect.objectContaining({
+          job: 'project-knowledge-sweep',
+          cron: '0 * * * *',
+        }),
+      },
     }))
     expect(set).toHaveBeenCalledWith({
-      projectKnowledgeSweepResult: SWEEP_RESULT,
+      attributes: { projectKnowledgeSweepResult: SWEEP_RESULT },
     })
     expect(emit).toHaveBeenCalledWith({ status: 200 })
   })
@@ -123,11 +125,9 @@ describe('project knowledge sweep plugin', () => {
     })
 
     expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      projectKnowledgeSweepError: expect.objectContaining({
-        phase: 'sweep-run',
-      }),
       attributes: expect.objectContaining({
         projectKnowledgeSweepError: expect.objectContaining({
+          phase: 'sweep-run',
           message: 'sweep failed',
         }),
       }),
