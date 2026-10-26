@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   enabledGateways,
+  enabledMemoryCheckProviders,
   enabledSearchProviders,
   providerMeta,
   resolveProviderMetaByKeyProviderId,
@@ -38,8 +39,9 @@ describe('resolveProviderMetaByKeyProviderId', () => {
 })
 
 describe('providerMeta kind discriminator', () => {
-  it('gives every entry a kind of provider, search, or gateway', () => {
-    const allowedKinds = ['provider', 'search', 'gateway']
+  it('gives every entry a kind of provider, search, gateway, or '
+    + 'memory-check', () => {
+    const allowedKinds = ['provider', 'search', 'gateway', 'memory-check']
 
     for (const meta of Object.values(providerMeta)) {
       expect(allowedKinds).toContain(meta.kind)
@@ -95,6 +97,29 @@ describe('gateway providerMeta entries', () => {
 
       expect(meta.keyFields).toHaveLength(1)
       expect(meta.keyFields[0]?.name).toBe('apiKey')
+    }
+  })
+})
+
+describe('memory-check providerMeta entries', () => {
+  it('lists only TypeSafe AI as a memory-check provider', () => {
+    expect(enabledMemoryCheckProviders).toEqual(['typesafe'])
+  })
+
+  it('resolves the TypeSafe AI key with its vendor casing and console '
+    + 'link', () => {
+    const meta = resolveProviderMetaByKeyProviderId('typesafe')
+
+    expect(meta).toBe(providerMeta.typesafe)
+    expect(meta?.kind).toBe('memory-check')
+    expect(meta?.label).toBe('TypeSafe AI')
+    expect(meta?.dashboardUrl).toBe('https://console.typesafe.ai/keys')
+  })
+
+  it('keeps memory-check keys out of the search and gateway lists', () => {
+    for (const providerId of enabledMemoryCheckProviders) {
+      expect(enabledSearchProviders).not.toContain(providerId)
+      expect(enabledGateways as string[]).not.toContain(providerId)
     }
   })
 })

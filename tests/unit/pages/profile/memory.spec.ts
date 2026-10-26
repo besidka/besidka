@@ -52,6 +52,12 @@ const PanelStub = defineComponent({
   },
 })
 
+const ExtraChecksStub = defineComponent({
+  setup() {
+    return () => h('div', { 'data-testid': 'memory-extra-checks-stub' })
+  },
+})
+
 const CacheInfoStub = defineComponent({
   setup() {
     return () => h('div', { 'data-testid': 'memory-cache-info-stub' })
@@ -70,6 +76,7 @@ async function mountPage(
       stubs: {
         ChatInputModelsTriggerPanel: PanelStub,
         ProfileMemoryCacheInfo: CacheInfoStub,
+        ProfileMemoryExtraChecks: ExtraChecksStub,
       },
     },
   })
@@ -231,6 +238,24 @@ describe('profile memory page', () => {
       'memory-model-same-as-chat',
       'memory-cache-info-stub',
       'memory-entries-section',
+    ])
+  })
+
+  it('renders the extra memory checks card between models and the '
+    + 'prompt-cache info', async () => {
+    const wrapper = await mountPage()
+    const sections = wrapper.findAll(
+      '[data-testid="memory-model-same-as-chat"], '
+      + '[data-testid="memory-extra-checks-stub"], '
+      + '[data-testid="memory-cache-info-stub"]',
+    )
+    const testIds = sections.map(section => section.attributes('data-testid'))
+
+    expect(testIds).toEqual([
+      'memory-model-same-as-chat',
+      'memory-model-same-as-chat',
+      'memory-extra-checks-stub',
+      'memory-cache-info-stub',
     ])
   })
 

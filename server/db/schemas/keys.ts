@@ -25,6 +25,7 @@ export const keys = snakeCase.table(
         'vercel-gateway',
         'cloudflare-gateway',
         'openrouter',
+        'typesafe',
       ],
     }).notNull(),
     apiKey: text().notNull(),

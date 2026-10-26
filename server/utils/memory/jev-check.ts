@@ -28,6 +28,8 @@ export const MEMORY_JEV_SOURCE_WINDOW_CHARS = 300
 export const MEMORY_JEV_MAX_SOURCE_CHARS = 9000
 export const MEMORY_JEV_KEY_PROVIDER = 'typesafe'
 export const MEMORY_JEV_REJECTION_KIND = 'extra-check'
+export const MEMORY_JEV_MODELS_URL = 'https://api.typesafe.ai/v1/models'
+export const MEMORY_JEV_KEY_CHECK_TIMEOUT_MS = 5000
 
 const MAX_RETRIES = 0
 const UNAUTHORIZED_STATUSES = new Set([401, 403])
@@ -670,4 +672,31 @@ export async function assertMemoryJevAllowed(
       reason: verdict.kind,
     },
   })
+}
+
+export type MemoryJevKeyVerification = 'valid' | 'unauthorized' | 'unavailable'
+
+/**
+ * Checks a TypeSafe AI key before it is saved with one `GET /v1/models`
+ * call. Only a 401 or 403 is `unauthorized`; a network error, a timeout or
+ * any other status is `unavailable`, and the key is still saved, because
+ * memory checks fail open to the deterministic gate anyway.
+ */
+export async function verifyMemoryJevApiKey(
+  apiKey: string,
+): Promise<MemoryJevKeyVerification> {
+  try {
+    const response = await fetch(MEMORY_JEV_MODELS_URL, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(MEMORY_JEV_KEY_CHECK_TIMEOUT_MS),
+    })
+
+    if (UNAUTHORIZED_STATUSES.has(response.status)) {
+      return 'unauthorized'
+    }
+
+    return response.ok ? 'valid' : 'unavailable'
+  } catch {
+    return 'unavailable'
+  }
 }
