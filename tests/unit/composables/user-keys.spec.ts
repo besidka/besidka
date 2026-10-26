@@ -177,6 +177,18 @@ describe('useUserKeys', () => {
     expect(hasKey('google')).toBe(false)
   })
 
+  it('does not count a TypeSafe AI memory-check key as a chat key', () => {
+    useSummary([
+      { provider: 'google', hasKey: false },
+      { provider: 'typesafe', hasKey: true },
+    ])
+
+    const { hasAnyKey, keyStatusForProvider } = useUserKeys()
+
+    expect(hasAnyKey.value).toBe(false)
+    expect(keyStatusForProvider('typesafe')).toBe('saved')
+  })
+
   it('fails open for an id the summary does not mention', () => {
     useSummary([{ provider: 'google', hasKey: false }])
 

@@ -3,6 +3,7 @@ import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import type { MemoryEntryResponse } from '#shared/types/memory-api.d'
 import { memoryEntryPatchSchema } from '#shared/utils/memory-schemas'
 import { updateMemoryEntry } from '~~/server/utils/memory/entries'
+import { resolveMemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
@@ -62,8 +63,14 @@ export default defineEventHandler(async (event) => {
     },
   })
 
+  const db = useDb()
   const { entry } = await updateMemoryEntry(
-    { db: useDb(), userId, logger },
+    {
+      db,
+      userId,
+      logger,
+      jev: await resolveMemoryJevChecker({ db, userId, logger }),
+    },
     {
       id: params.data.id,
       patch: body.data,

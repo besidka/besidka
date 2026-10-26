@@ -110,10 +110,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory-schemas.spec.ts',
     'tests/unit/utils/memory/about-me-migration.spec.ts',
   ]
+  const memoryJevTests = [
+    'tests/unit/utils/memory/jev-check.spec.ts',
+    'tests/integration/api/memory-jev.spec.ts',
+  ]
   const memoryComplianceTests = [
     'tests/unit/utils/memory/compliance.spec.ts',
     'tests/unit/utils/memory/compliance-evasion.spec.ts',
     'tests/unit/utils/memory/sensitivity.spec.ts',
+    ...memoryJevTests,
   ]
   const memoryModelTests = [
     'tests/unit/utils/memory/resolve-model.spec.ts',
@@ -184,6 +189,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/memory-rate-limit.spec.ts',
     'tests/unit/utils/memory/instruct.spec.ts',
     'tests/integration/api/memory-instruct.spec.ts',
+    ...memoryJevTests,
   ]
   const memoryInstructTests = [
     'tests/unit/utils/memory/instruct.spec.ts',
@@ -193,6 +199,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Memory/Instruct/Preview.spec.ts',
     'tests/unit/components/Profile/Memory/Entries.spec.ts',
     'tests/unit/components/Projects/MemoryCard.spec.ts',
+    ...memoryJevTests,
   ]
   const memoryIndexTests = [
     'tests/unit/utils/memory-tokens.spec.ts',
@@ -213,6 +220,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/memory-tools.spec.ts',
     'tests/integration/api/chats-memory.spec.ts',
     ...memoryIndexTests,
+    ...memoryJevTests,
   ]
   const memoryStepTests = [
     'tests/unit/utils/memory-step.spec.ts',
@@ -245,6 +253,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/instruct.spec.ts',
     'tests/integration/api/memory-instruct.spec.ts',
     'tests/integration/api/chats-memory-exclusion.spec.ts',
+    ...memoryJevTests,
   ]
   const memoryChatExclusionTests = [
     'tests/integration/api/chats-memory-exclusion.spec.ts',
@@ -608,6 +617,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Memory/Entries/BackfillSheet.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/ImportSheet.spec.ts',
     'tests/unit/components/Profile/Memory/CacheInfo.spec.ts',
+    'tests/unit/components/Profile/Memory/ExtraChecks.spec.ts',
     'tests/unit/composables/memory-backfill.spec.ts',
     'tests/unit/utils/memory-backfill.spec.ts',
     'tests/unit/utils/memory-legacy-about-me.spec.ts',
@@ -771,6 +781,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-keys-qwen.spec.ts',
     'tests/integration/api/profile-keys-brave.spec.ts',
     'tests/integration/api/profile-keys-exa.spec.ts',
+    'tests/integration/api/profile-keys-typesafe.spec.ts',
     'tests/integration/api/profile-keys-summary.spec.ts',
     'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
@@ -781,6 +792,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
     'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
     'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
+    'tests/unit/components/Profile/Keys/MemoryChecksInfo.spec.ts',
     'tests/unit/components/Profile/Keys/GatewaysInfo.spec.ts',
     'tests/unit/components/Profile/Keys/Guide.spec.ts',
     'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
@@ -1548,6 +1560,13 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/utils\/memory\/tools\/.*\.ts|server\/utils\/ai\/(chat-search-tools|memory-tools)\.ts)$/,
       tests: chatSearchToolTests,
+    },
+    {
+      pattern: /^server\/utils\/memory\/jev-check\.ts$/,
+      tests: [
+        ...memoryJevTests,
+        'tests/integration/api/profile-keys-typesafe.spec.ts',
+      ],
     },
     {
       pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources|about-me-migration|rate-limit)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,

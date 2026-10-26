@@ -22,8 +22,16 @@ query-shaped and ends in `-api-key` (`gemini-api-key.md`,
 `provider` frontmatter ties the file to a card. Provider ids come from
 `shared/utils/provider-meta.ts`: `anthropic`, `google`, `openai`, `xai`,
 `deepseek`, `moonshotai`, `qwen`, `brave`, `exa`, `vercel`, `openrouter`,
-`cloudflare`. The collection is `keyGuides` in `content.config.ts`, type
-`page`, source `key-guides/*.md` with `prefix: '/guides'`.
+`cloudflare`, `typesafe`. The collection is `keyGuides` in
+`content.config.ts`, type `page`, source `key-guides/*.md` with
+`prefix: '/guides'`.
+
+`typesafe-ai-api-key.md` is the TypeSafe AI guide for the **Memory checks**
+tab (`kind: 'memory-check'`, see `docs/memory-architecture.md` 3.19). It has
+no `video` block yet, and its card, free-tier and sign-up facts were not
+verifiable from TypeSafe AI's public pages on 2026-10-26, so the guide states
+only what the official docs say. Re-check the console flow and button labels
+before recording the video.
 
 The field schema lives in `shared/utils/key-guide-schema.ts` together with
 the `httpsUrl` and `siteRelativeOrHttpsUrl` helpers. `content.config.ts`

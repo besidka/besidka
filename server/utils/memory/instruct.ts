@@ -45,6 +45,8 @@ import {
 } from '~~/server/utils/memory/instruct-verdict'
 import type { MemoryInstructComplianceTally } from '~~/server/utils/memory/instruct-verdict'
 import { resolveMemoryModel } from '~~/server/utils/memory/resolve-model'
+import { memoryJevRejection } from '~~/server/utils/memory/jev-check'
+import type { MemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import type { ResolvedMemoryModel } from '~~/server/utils/memory/resolve-model'
 
 type DbClient = ReturnType<typeof useDb>
@@ -83,6 +85,7 @@ export interface MemoryInstructPreviewInput {
   text: string
   logger?: ComplianceLogger
   selection?: ResolvedMemoryModel
+  jev?: MemoryJevChecker | null
 }
 
 export interface MemoryInstructUsage {
@@ -456,6 +459,68 @@ export function planMemoryInstructOperations(input: {
   )
 }
 
+function jevGroundingSource(
+  operation: MemoryInstructPreviewOperation,
+  instructionText: string,
+): string {
+  if (operation.before === null) {
+    return instructionText
+  }
+
+  const { title, description, body } = operation.before
+
+  return [instructionText, title, description, body].join('\n')
+}
+
+/**
+ * Sends every ready create and update of a preview to TypeSafe AI Jev and
+ * turns the ones it flags (sensitive, never-store, or not backed by the
+ * user's instruction plus the entry's saved text) into rejected rows marked
+ * `kind: 'extra-check'`. Without a checker, or when Jev is unavailable, the
+ * rows stay as the deterministic planning left them.
+ */
+async function rejectJevFlaggedOperations(
+  operations: MemoryInstructPreviewOperation[],
+  instructionText: string,
+  jev: MemoryJevChecker | null | undefined,
+): Promise<MemoryInstructPreviewOperation[]> {
+  if (!jev) {
+    return operations
+  }
+
+  const candidates = operations.filter((operation) => {
+    return operation.status === 'ready' && operation.after !== null
+  })
+
+  if (candidates.length === 0) {
+    return operations
+  }
+
+  const verdicts = await jev.check(candidates.map((operation) => {
+    return {
+      ...operation.after!,
+      source: jevGroundingSource(operation, instructionText),
+    }
+  }))
+  const verdictsByKey = new Map(candidates.map((operation, index) => {
+    return [operation.key, verdicts[index]]
+  }))
+
+  return operations.map((operation) => {
+    const verdict = verdictsByKey.get(operation.key)
+
+    if (!verdict || verdict.kind === 'clear') {
+      return operation
+    }
+
+    return {
+      ...operation,
+      status: 'rejected',
+      rejection: memoryJevRejection(verdict),
+    }
+  })
+}
+
 async function generateMemoryInstructOps(
   selection: ResolvedMemoryModel,
   scope: MemoryScope,
@@ -554,7 +619,7 @@ export async function previewMemoryInstruction(
     return { status: 'failed', reason: failureLabel(exception), model }
   }
 
-  const operations = planMemoryInstructOperations({
+  const plannedOperations = planMemoryInstructOperations({
     ops,
     entries,
     projectId,
@@ -563,6 +628,11 @@ export async function previewMemoryInstruction(
       .collapsed,
     tally,
   })
+  const operations = await rejectJevFlaggedOperations(
+    plannedOperations,
+    redactedText,
+    input.jev,
+  )
 
   if (input.logger) {
     recordMemoryInstructCompliance(tally, input.logger)

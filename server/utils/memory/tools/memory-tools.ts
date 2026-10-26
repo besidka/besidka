@@ -27,6 +27,7 @@ import {
   listMemoryEntries,
   updateMemoryEntry,
 } from '~~/server/utils/memory/entries'
+import { resolveMemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import { slugifyMemoryTitle } from '~~/server/utils/memory/entry-slug'
 import { consumeChatSearchCall } from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
@@ -514,6 +515,11 @@ async function writeMemoryEntry(
     db: context.db,
     userId: context.userId,
     logger: context.logger,
+    jev: await resolveMemoryJevChecker({
+      db: context.db,
+      userId: context.userId,
+      logger: context.logger,
+    }),
   }
   const scope = input.id === undefined
     ? resolveWriteScope(context, input.scope)

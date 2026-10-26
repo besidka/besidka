@@ -145,6 +145,17 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
 - The gate copy, the Privacy Policy section, `docs/legal/dpia.md` and
   `docs/legal/art30-record.md` must be edited together. If a change alters what
   the user agrees to, bump the version.
+- **Adding TypeSafe AI did not bump the version (2026-10-26).** The Art. 9
+  box names recipients by category, not by vendor: "the AI providers, AI
+  gateways and search providers whose keys I add (for my chats, project
+  memory and memory)", and it already names the automatic check before text
+  is saved to memory. TypeSafe AI is an AI provider whose key the user adds,
+  used only for memory checks, so the agreed wording covers it and the hash
+  is unchanged. A wording that listed vendors would have needed a bump. The
+  recipient is listed in the Privacy Policy (recipients table, Memory and
+  Transfers sections), in `docs/legal/art30-record.md` row 11a and in
+  `docs/legal/dpia.md` section 3.7a and risk row 20. Design:
+  `docs/memory-architecture.md` 3.19.
 
 ## How legal text reaches production
 
@@ -210,9 +221,9 @@ Consequences and hazards:
 
 The recipients table classifies a party as an **independent controller**
 whenever Besidka has no contract governing what that party does with the
-data — true for AI providers, search providers and AI gateways alike, since
-in every one of those three categories the user supplies their own key or
-account to the recipient directly. A party is a **processor** only when
+data — true for AI providers, search providers, AI gateways and the TypeSafe
+AI memory check alike, since in every one of those categories the user
+supplies their own key or account to the recipient directly. A party is a **processor** only when
 Besidka itself holds a data-processing agreement with it, which today is
 true solely for Cloudflare-as-host and Axiom. This is the same test applied
 across all three "new recipient" categories in `privacy-policy.md`, not a

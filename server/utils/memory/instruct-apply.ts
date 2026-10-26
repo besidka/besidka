@@ -30,6 +30,11 @@ import {
   recordMemoryInstructCompliance,
 } from '~~/server/utils/memory/instruct-verdict'
 import type { MemoryInstructComplianceTally } from '~~/server/utils/memory/instruct-verdict'
+import {
+  MEMORY_JEV_REJECTION_KIND,
+  memoryJevRejection,
+} from '~~/server/utils/memory/jev-check'
+import type { MemoryJevChecker } from '~~/server/utils/memory/jev-check'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -51,6 +56,7 @@ export interface MemoryInstructApplyInput {
   projectId: string | null
   operations: MemoryInstructApplyOperation[]
   logger?: ComplianceLogger
+  jev?: MemoryJevChecker | null
 }
 
 interface PlannedCreate {
@@ -163,6 +169,38 @@ function assertEntryChecked(
       ? 'Untick this change, or remove the flagged data and preview again.'
       : 'Preview the changes again.',
   })
+}
+
+async function assertJevAllowed(
+  plan: ApplyPlan,
+  jev: MemoryJevChecker | null | undefined,
+): Promise<void> {
+  const candidates = [
+    ...plan.updates.map(update => update.fields),
+    ...plan.creates.map(create => create.fields),
+  ]
+
+  if (!jev || candidates.length === 0) {
+    return
+  }
+
+  const verdicts = await jev.check(candidates)
+
+  for (const verdict of verdicts) {
+    if (verdict.kind === 'clear') {
+      continue
+    }
+
+    const rejection = memoryJevRejection(verdict)
+
+    throw createError({
+      message: rejection.message,
+      status: 422,
+      why: rejection.why,
+      fix: 'Untick this change, or remove the flagged data and preview again.',
+      data: { kind: MEMORY_JEV_REJECTION_KIND, reason: verdict.kind },
+    })
+  }
 }
 
 function findTargetRow(
@@ -455,6 +493,9 @@ export async function applyMemoryInstruction(
       projectCondition(projectId),
     ))
   const plan = buildApplyPlan(rows, input, logger)
+
+  await assertJevAllowed(plan, input.jev)
+
   const statements: PromiseLike<unknown>[] = [
     ...plan.deletes.map((row) => {
       return buildDeleteStatement(db, userId, projectId, row)

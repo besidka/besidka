@@ -316,19 +316,51 @@ describe('profile keys page', () => {
       })
     })
 
-  it('renders three tabs in the order providers, search, gateways',
+  it('renders four tabs in the order providers, search, gateways, memory '
+    + 'checks',
+  async () => {
+    const wrapper = await mountPage()
+
+    const tabIds = wrapper.findAll('[class~="tab"]').map((tab: any) => {
+      return tab.attributes('id')
+    })
+
+    expect(tabIds).toEqual([
+      'key-tab-providers',
+      'key-tab-search',
+      'key-tab-gateways',
+      'key-tab-memory-checks',
+    ])
+  })
+
+  it('renders the memory checks blurb and the TypeSafe AI card in its own '
+    + 'accordion group', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.get('[data-testid="key-tab-memory-checks"]').trigger('click')
+
+    const panel = wrapper.get('[data-testid="key-panel-memory-checks"]')
+    const info = panel.get('[data-testid="memory-checks-info"]')
+    const providerCards = panel.findAll('[data-testid="provider-card"]')
+
+    expect(info.text()).toContain('Used only for memory checks, never for '
+      + 'chat.')
+    expect(info.get('[data-testid="memory-checks-guide-link"]').text())
+      .toBe('How to get a TypeSafe AI API key')
+    expect(providerCards.map((card: any) => {
+      return card.attributes('data-provider')
+    })).toEqual(['typesafe'])
+    expect(providerCards[0]?.attributes('data-group'))
+      .toBe('profile-memory-check-keys')
+  })
+
+  it('never renders the TypeSafe AI card in the direct providers tab',
     async () => {
       const wrapper = await mountPage()
+      const providersPanel = wrapper.get('[data-testid="key-panel-providers"]')
 
-      const tabIds = wrapper.findAll('[class~="tab"]').map((tab: any) => {
-        return tab.attributes('id')
-      })
-
-      expect(tabIds).toEqual([
-        'key-tab-providers',
-        'key-tab-search',
-        'key-tab-gateways',
-      ])
+      expect(providersPanel.find('[data-provider="typesafe"]').exists())
+        .toBe(false)
     })
 
   it('renders the gateway blurb and one collapsed card per gateway, '
@@ -659,6 +691,17 @@ describe('profile keys page', () => {
       .not.toBe('none')
     expect(cardOpenState(wrapper, 'openrouter')).toBe('true')
     expect(cardOpenState(wrapper, 'vercel')).toBe('false')
+  })
+
+  it('opens the memory checks tab and expands the TypeSafe AI card for '
+    + 'provider=typesafe', async () => {
+    mockRoute.query = { provider: 'typesafe' }
+
+    const wrapper = await mountPage()
+
+    expect(wrapper.get('[data-testid="key-tab-memory-checks"]').classes())
+      .toContain('tab-active')
+    expect(cardOpenState(wrapper, 'typesafe')).toBe('true')
   })
 
   it('opens the search tab for a search provider deep link', async () => {

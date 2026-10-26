@@ -29,6 +29,7 @@ const ALL_PROVIDERS = [
   'vercel-gateway',
   'cloudflare-gateway',
   'openrouter',
+  'typesafe',
 ]
 
 function createFakeKv() {
@@ -112,7 +113,7 @@ describe('keys summary API', () => {
     expect(dbMock.spies.findMany).not.toHaveBeenCalled()
   })
 
-  it('reports all 12 providers with hasKey false when none are set',
+  it('reports all 13 key types with hasKey false when none are set',
     async () => {
       const dbMock = createDbMock([])
 
@@ -121,7 +122,7 @@ describe('keys summary API', () => {
       const handler = await getHandler()
       const response = await handler({} as any)
 
-      expect(response.keys).toHaveLength(12)
+      expect(response.keys).toHaveLength(13)
       expect(response.keys.map((entry: { provider: string }) => {
         return entry.provider
       }).sort()).toEqual([...ALL_PROVIDERS].sort())

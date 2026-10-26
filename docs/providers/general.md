@@ -343,7 +343,15 @@ tools), and an `anthropic/*` model routed through a gateway gets
 `toolChoice: 'none'` without `activeTools: []`. **Unverified live risk:**
 another provider may also reject function-call history with no tools
 declared; the forced step then errors, which the continuation below
-absorbs.
+absorbs. Since `ai@7.0.153` a tool call on a step with `toolChoice: 'none'`
+is no longer rejected as a `NoSuchToolError` tool part: the SDK withholds
+every tool chunk of that step and ends it with one `error` chunk carrying a
+`ToolChoiceViolationError` (never retried). `normalizeModelToolCallError()`
+maps that error to the same `unavailable-tool` kind and
+`withSearchAnswerGuarantee()` drops it as the expected forced-step rejection
+(`forcedStepToolCall` and `forcedStepRejectedToolCall` set, no held error, no
+`stage: 'stream'` log, no client error chunk), so the continuation still
+runs.
 
 **Search-answer continuation (the guarantee).** `withSearchAnswerGuarantee()`
 (`server/utils/ai/search-answer-continuation.ts`) wraps the loop's UI stream

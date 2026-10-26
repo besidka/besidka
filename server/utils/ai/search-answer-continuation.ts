@@ -1278,11 +1278,14 @@ function readHeldErrorText(
  *
  * A tool call the model still emits on the forced step while no tools are
  * declared is rejected by the SDK as unavailable (`tool-input-error` followed
- * by `tool-output-error`). That is an expected rejection, not a failed
- * search, so its chunks are dropped from the output; the call is only
- * recorded as `forcedStepRejectedToolCall`. Tool-input chunks on the forced
- * step are buffered per call until the call resolves, and tool errors on
- * earlier steps always pass through.
+ * by `tool-output-error`), or, since `ai@7.0.153` and only under
+ * `toolChoice: 'none'`, as a `ToolChoiceViolationError` step `error` with
+ * every tool chunk withheld. Either is an expected rejection, not a failed
+ * search, so its chunks are dropped from the output (the error is neither
+ * held nor treated as unrecoverable); the call is only recorded as
+ * `forcedStepToolCall` and `forcedStepRejectedToolCall`. Tool-input chunks on
+ * the forced step are buffered per call until the call resolves, and tool
+ * errors on earlier steps always pass through.
  */
 export function withSearchAnswerGuarantee(input: {
   stream: ReadableStream<UIMessageChunk>
@@ -1459,6 +1462,10 @@ export function withSearchAnswerGuarantee(input: {
 
   function isErrorAfterSuccessfulSearch(): boolean {
     return successfulFollowUpToolOutputCount > 0 && !hasAnswerAfterFollowUp
+  }
+
+  function isRejectedForcedStepToolCallError(chunk: ErrorChunk): boolean {
+    return isOnForcedStep() && isUnavailableToolError(chunk.errorText)
   }
 
   function shouldHoldError(chunk: ErrorChunk): boolean {
@@ -1700,6 +1707,13 @@ export function withSearchAnswerGuarantee(input: {
       }
 
       if (chunk.type === 'error') {
+        if (isRejectedForcedStepToolCallError(chunk)) {
+          outcome.forcedStepToolCall = true
+          outcome.forcedStepRejectedToolCall = true
+
+          return
+        }
+
         if (shouldHoldError(chunk)) {
           holdError(chunk)
 

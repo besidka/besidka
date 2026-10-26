@@ -7,6 +7,7 @@ import {
 } from '#shared/utils/memory-instruct'
 import { assertOwnedProject } from '~~/server/utils/memory/entries'
 import { previewMemoryInstruction } from '~~/server/utils/memory/instruct'
+import { resolveMemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
@@ -106,6 +107,7 @@ export default defineEventHandler(async (event) => {
     projectId,
     text: body.data.text,
     logger,
+    jev: await resolveMemoryJevChecker({ db, userId, logger }),
   })
 
   if (result.status === 'no-text') {

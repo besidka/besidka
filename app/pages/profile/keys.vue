@@ -136,12 +136,44 @@
       </li>
     </ul>
   </div>
+  <div
+    v-show="activeTab === memoryChecksTabId"
+    :id="`key-panel-${memoryChecksTabId}`"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${memoryChecksTabId}`"
+    :data-testid="`key-panel-${memoryChecksTabId}`"
+  >
+    <ProfileKeysMemoryChecksInfo />
+    <ul class="grid gap-4">
+      <li
+        v-for="providerId in enabledMemoryCheckProviders"
+        :key="providerId"
+        :ref="(element) => registerItem(providerId, element)"
+        :data-testid="
+          providerId === requestedProviderId
+            ? 'key-provider-target'
+            : undefined
+        "
+      >
+        <UiBubble>
+          <LazyProfileKeysProviderKeyCard
+            :provider-id="providerId"
+            :group="memoryChecksAccordionGroup"
+            :open="expandedProviderId === providerId"
+            :guide="guidesByProvider[providerId] ?? null"
+            @expanded-change="onExpandedChange(providerId, $event)"
+          />
+        </UiBubble>
+      </li>
+    </ul>
+  </div>
 </template>
 <script setup lang="ts">
 import type { KeyGuidesCollectionItem } from '@nuxt/content'
 import type { Providers, Provider } from '#shared/types/providers.d'
 import {
   enabledGateways,
+  enabledMemoryCheckProviders,
   enabledSearchProviders,
   providerMeta,
 } from '#shared/utils/provider-meta'
@@ -160,10 +192,12 @@ interface KeyTab {
 const providersTabId = 'providers'
 const searchTabId = 'search'
 const gatewaysTabId = 'gateways'
+const memoryChecksTabId = 'memory-checks'
 const defaultProviderId = 'google'
 const providersAccordionGroup = 'profile-provider-keys'
 const searchAccordionGroup = 'profile-search-provider-keys'
 const gatewaysAccordionGroup = 'profile-gateway-keys'
+const memoryChecksAccordionGroup = 'profile-memory-check-keys'
 const ALIGN_SETTLE_MS = 2000
 const ALIGN_TOLERANCE_PX = 2
 const USER_INPUT_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown']
@@ -185,7 +219,12 @@ const route = useRoute()
 
 resetKeyGuideTracking()
 
-const tabIds = [providersTabId, searchTabId, gatewaysTabId]
+const tabIds = [
+  providersTabId,
+  searchTabId,
+  gatewaysTabId,
+  memoryChecksTabId,
+]
 
 const providers = computed<Providers>(() => {
   return config?.providers as Providers ?? []
@@ -235,6 +274,10 @@ function resolveRequestedProviderTarget(): ProviderTarget | null {
 
   if (enabledSearchProviders.includes(providerParam)) {
     return { id: providerParam, tab: searchTabId }
+  }
+
+  if (enabledMemoryCheckProviders.includes(providerParam)) {
+    return { id: providerParam, tab: memoryChecksTabId }
   }
 
   return null
@@ -378,5 +421,10 @@ const tabs: KeyTab[] = [
   { id: providersTabId, label: 'Direct Providers', icon: 'lucide:key-round' },
   { id: searchTabId, label: 'Search Providers', icon: 'lucide:globe' },
   { id: gatewaysTabId, label: 'Gateways', icon: 'lucide:waypoints' },
+  {
+    id: memoryChecksTabId,
+    label: 'Memory checks',
+    icon: 'lucide:shield-check',
+  },
 ]
 </script>

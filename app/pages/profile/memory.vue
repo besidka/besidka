@@ -13,6 +13,7 @@
       :settings="values"
       :save="saveSettings"
     />
+    <ProfileMemoryExtraChecks />
     <ProfileMemoryCacheInfo />
     <ProfileMemoryEntries
       :settings="values"

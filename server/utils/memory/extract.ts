@@ -13,6 +13,7 @@ import {
 import { REDACTION_PLACEHOLDER } from '#shared/utils/memory-policy'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { applyMemoryExtractionOps } from '~~/server/utils/memory/extract-apply'
+import { resolveMemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import {
   buildMemoryExtractionInstructions,
   memoryExtractionChunkRanges,
@@ -583,6 +584,7 @@ async function extractLeasedChatMemory(
       groundingTexts: extractionWindow.userTexts,
       createGroundingTexts: legacyBlob ? [legacyBlob] : [],
       logger: input.logger,
+      jev: await resolveMemoryJevChecker({ db, userId, logger: input.logger }),
     })
 
     result.proposed = applied.proposed
@@ -932,6 +934,7 @@ export async function extractProjectLegacyBlob(
       groundingTexts: [],
       createGroundingTexts: [legacyBlob],
       logger: input.logger,
+      jev: await resolveMemoryJevChecker({ db, userId, logger: input.logger }),
     })
 
     result.proposed = applied.proposed + invalidOpsCount
@@ -1172,6 +1175,12 @@ async function extractLeasedMemoryFromText(
 
   result.truncated = allChunks.slice(chunks.length).some(hasContent)
 
+  const jev = await resolveMemoryJevChecker({
+    db,
+    userId,
+    logger: input.logger,
+  })
+
   try {
     for (const { range, text: chunk } of chunks) {
       const remainingMs = deadline - Date.now()
@@ -1249,6 +1258,7 @@ async function extractLeasedMemoryFromText(
         groundingTexts: [chunk],
         origin: input.origin,
         logger: input.logger,
+        jev,
       })
 
       result.chunks += 1

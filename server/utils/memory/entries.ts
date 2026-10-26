@@ -42,6 +42,8 @@ import {
   slugifyMemoryTitle,
   suffixMemorySlug,
 } from '~~/server/utils/memory/entry-slug'
+import { assertMemoryJevAllowed } from '~~/server/utils/memory/jev-check'
+import type { MemoryJevChecker } from '~~/server/utils/memory/jev-check'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -60,6 +62,7 @@ export interface MemoryWriteContext {
   db: DbClient
   userId: number
   logger?: MemoryWriteLogger
+  jev?: MemoryJevChecker | null
 }
 
 export interface CreateMemoryEntryOptions {
@@ -711,6 +714,8 @@ export async function createMemoryEntry(
     complianceOrigin: options.complianceOrigin,
   }, logger)
 
+  await assertMemoryJevAllowed(context.jev, input)
+
   const fixedSlug = isSingletonCategory(input.category)
     ? input.category
     : null
@@ -804,6 +809,8 @@ export async function updateMemoryEntry(
         sensitivity: 'none',
       }).allowed,
   }, logger)
+
+  await assertMemoryJevAllowed(context.jev, parsedMerged.data)
 
   const movesIntoSingleton = merged.category !== stored.category
     && isSingletonCategory(merged.category)

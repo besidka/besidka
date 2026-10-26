@@ -45,6 +45,18 @@ describe('resolveSafeNextPath', () => {
     ).toBe('/profile/keys?provider=openrouter&tab=gateways')
   })
 
+  it('keeps the TypeSafe AI memory-check id, the guide sign-up deep link',
+    () => {
+      expect(resolveSafeNextPath('/profile/keys?provider=typesafe'))
+        .toBe('/profile/keys?provider=typesafe')
+    })
+
+  it('keeps the memory checks tab', () => {
+    expect(
+      resolveSafeNextPath('/profile/keys?provider=typesafe&tab=memory-checks'),
+    ).toBe('/profile/keys?provider=typesafe&tab=memory-checks')
+  })
+
   it('strips a provider id that only looks like a gateway', () => {
     expect(resolveSafeNextPath('/profile/keys?provider=openrouter-evil'))
       .toBe('/profile/keys')

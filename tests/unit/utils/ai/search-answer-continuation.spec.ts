@@ -1836,6 +1836,87 @@ describe('withSearchAnswerGuarantee', () => {
         expect(guarantee.getOutcome().forcedStepRejectedToolCall).toBe(true)
       })
 
+    describe('as a tool-choice violation step error', () => {
+      const TOOL_CHOICE_VIOLATION_ERROR_TEXT = JSON.stringify({
+        code: 'invalid-provider-output',
+        kind: 'unavailable-tool',
+        message: 'The model sent an invalid tool call.',
+        why: `The model called an unavailable tool: ${SEARCH_TOOL_NAME}.`,
+      })
+
+      function createViolatingForcedStepChunks(): UIMessageChunk[] {
+        return [
+          { type: 'start-step' },
+          { type: 'error', errorText: TOOL_CHOICE_VIOLATION_ERROR_TEXT },
+          { type: 'finish-step' },
+        ]
+      }
+
+      it('drops the error, records the rejected call and still runs the '
+        + 'continuation', async () => {
+        const { guarantee, startContinuation } = createGuarantee({
+          chunks: [
+            ...createSearchStepChunks('call-1'),
+            ...createSearchStepChunks('call-2'),
+            ...createSearchStepChunks('call-3'),
+            ...createViolatingForcedStepChunks(),
+            { type: 'finish', finishReason: 'error' },
+          ],
+          continuationChunks: createTextChunks('Answer'),
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(chunks.map(chunk => chunk.type)).not.toContain('error')
+        expect(startContinuation).toHaveBeenCalledTimes(1)
+        expect(guarantee.getOutcome()).toEqual(expect.objectContaining({
+          forcedStepToolCall: true,
+          forcedStepRejectedToolCall: true,
+          forcedStepError: undefined,
+          heldStepError: undefined,
+          continuationRan: true,
+          continuationProducedText: true,
+        }))
+      })
+
+      it('releases no error when the continuation is empty too',
+        async () => {
+          const { guarantee } = createGuarantee({
+            chunks: [
+              ...createSearchStepChunks('call-1'),
+              ...createSearchStepChunks('call-2'),
+              ...createSearchStepChunks('call-3'),
+              ...createViolatingForcedStepChunks(),
+              { type: 'finish', finishReason: 'error' },
+            ],
+          })
+          const chunks = await readAll(guarantee.stream)
+
+          expect(chunks.map(chunk => chunk.type)).not.toContain('error')
+          expect(chunks.at(-1)?.type).toBe('finish')
+          expect(guarantee.getOutcome()).toEqual(expect.objectContaining({
+            forcedStepRejectedToolCall: true,
+            continuationRan: true,
+            continuationProducedText: false,
+          }))
+        })
+
+      it('keeps the error on a step before the forced step', async () => {
+        const { guarantee } = createGuarantee({
+          chunks: [
+            ...createSearchStepChunks('call-1'),
+            { type: 'start-step' },
+            { type: 'error', errorText: TOOL_CHOICE_VIOLATION_ERROR_TEXT },
+            { type: 'finish-step' },
+            { type: 'finish', finishReason: 'error' },
+          ],
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(chunks.map(chunk => chunk.type)).toContain('error')
+        expect(guarantee.getOutcome().forcedStepRejectedToolCall).toBe(false)
+      })
+    })
+
     it('keeps a forced-step call tagged with the invalid-tool-input kind',
       async () => {
         const { guarantee } = createGuarantee({
