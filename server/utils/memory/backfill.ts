@@ -19,13 +19,20 @@ import {
   sql,
 } from 'drizzle-orm'
 import { createError } from 'evlog'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 import { keyProviderIdForGateway } from '~~/server/utils/gateways/index'
 import {
   getBackfillEstimate,
   invalidateBackfillEstimate,
 } from '~~/server/utils/memory/backfill-estimate'
-import { backfillEligibleChats } from '~~/server/utils/memory/backfill-queue'
+import {
+  backfillAfterCursor,
+  backfillEligibleChats,
+  backfillWindowChats,
+  resolveBackfillWindow,
+} from '~~/server/utils/memory/backfill-queue'
+import type { BackfillWindow } from '~~/server/utils/memory/backfill-queue'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
@@ -304,14 +311,23 @@ async function isStoredModelKeyAvailable(
 async function countEligibleChats(
   db: DbClient,
   userId: number,
-  createdBefore: Date,
+  window: BackfillWindow,
 ): Promise<number> {
+  const capped = db
+    .select({ id: schema.chats.id })
+    .from(schema.chats)
+    .where(backfillWindowChats(userId, window))
+    .limit(MEMORY_LIMITS.backfillMaxChats)
+    .as('capped_eligible_chats')
   const [row] = await db
     .select({ total: sql<number>`count(*)` })
-    .from(schema.chats)
-    .where(backfillEligibleChats(userId, createdBefore))
+    .from(capped)
 
   return Number(row?.total ?? 0)
+}
+
+function remainingChatsUnderCap(job: MemoryBackfillJobRow): number {
+  return Math.max(0, MEMORY_LIMITS.backfillMaxChats - job.processedChats)
 }
 
 async function selectNextChats(
@@ -319,15 +335,11 @@ async function selectNextChats(
   job: MemoryBackfillJobRow,
   limit: number,
 ) {
-  const cursor = job.cursorActivityAt && job.cursorChatId
-    ? or(
-      lt(schema.chats.activityAt, job.cursorActivityAt),
-      and(
-        eq(schema.chats.activityAt, job.cursorActivityAt),
-        lt(schema.chats.id, job.cursorChatId),
-      ),
-    )
-    : undefined
+  const cursor = backfillAfterCursor(
+    job.cursorActivityAt && job.cursorChatId
+      ? { activityAt: job.cursorActivityAt, chatId: job.cursorChatId }
+      : null,
+  )
 
   return await db
     .select({ id: schema.chats.id, activityAt: schema.chats.activityAt })
@@ -361,10 +373,16 @@ async function pruneFinishedJobs(db: DbClient, userId: number) {
 }
 
 /**
- * Starts the one backfill a user may have running: a pass over every account
- * chat that existed at this moment, newest first, as `trigger: 'backfill'`
- * extraction. Needs memory on and the automatic-updates opt-in on, resolves
- * the model once (the job stores the choice, so a later settings change never
+ * Starts the one backfill a user may have running: a pass over at most
+ * `MEMORY_LIMITS.backfillMaxChats` account chats, newest first, as
+ * `trigger: 'backfill'` extraction. The window comes from
+ * `resolveBackfillWindow`: a first run reads the chats that exist now; when
+ * the latest finished job stopped before its queue ran out, the new job
+ * starts after that job's cursor with the same cutoff, so no chat is paid for
+ * twice and older history stays reachable; when the latest job read every
+ * past chat, starting is a 409 and no job is created. Needs memory on and the
+ * automatic-updates opt-in on, resolves the model once (the job stores the
+ * choice, so a later settings change never
  * switches models mid-run) and stores the approximate cost estimate, served
  * from the per-user cache when fresh. Chats created afterwards belong to the
  * normal sweep. A second start while one runs is a 409, enforced by the
@@ -403,15 +421,30 @@ export async function startBackfill(
     })
   }
 
-  const createdBefore = input.now ?? new Date()
-  const totalChats = await countEligibleChats(db, userId, createdBefore)
+  const window = await resolveBackfillWindow(
+    db,
+    userId,
+    input.now ?? new Date(),
+  )
+
+  if (!window) {
+    throw createError({
+      message: 'All past chats were already read',
+      status: 409,
+      why: 'The last backfill read every past account chat. Newer chats are added to memory automatically.',
+      fix: 'Nothing to do: memory keeps updating from new chats.',
+    })
+  }
+
+  const { createdBefore } = window
+  const totalChats = await countEligibleChats(db, userId, window)
   let estimate: MemoryBackfillEstimate | null = null
 
   try {
     estimate = await getBackfillEstimate({
       userId,
       selection,
-      createdBefore,
+      window,
       db,
     })
   } catch (exception) {
@@ -449,6 +482,12 @@ export async function startBackfill(
       modelId: selection.modelId,
       estimate: estimate as unknown as Record<string, unknown> | null,
       createdBefore,
+      ...(window.cursor
+        ? {
+          cursorActivityAt: window.cursor.activityAt,
+          cursorChatId: window.cursor.chatId,
+        }
+        : {}),
     }).returning()
 
     await invalidateBackfillEstimate(userId)
@@ -621,6 +660,12 @@ function addCounts(
 }
 
 function isSpendLimitExceeded(job: MemoryBackfillJobRow): boolean {
+  const usedTokens = job.inputTokens + job.outputTokens
+
+  if (usedTokens >= MEMORY_LIMITS.backfillMaxTokens) {
+    return true
+  }
+
   const estimate = job.estimate as MemoryBackfillEstimate | null
 
   if (!estimate) {
@@ -808,10 +853,20 @@ async function advanceLeasedBackfill(
     return await finishedStep(db, job, 0)
   }
 
-  const nextChats = await selectNextChats(db, job, input.chatsLimit + 1)
-  const batch = nextChats.slice(0, input.chatsLimit)
+  const remainingChats = remainingChatsUnderCap(job)
+
+  if (remainingChats === 0) {
+    await finishJob(db, job, 'completed')
+
+    return await finishedStep(db, job, 0)
+  }
+
+  const stepLimit = Math.min(input.chatsLimit, remainingChats)
+  const nextChats = await selectNextChats(db, job, stepLimit + 1)
+  const batch = nextChats.slice(0, stepLimit)
   const dropped: Record<string, number> = { ...(job.dropped ?? {}) }
-  let isExhausted = nextChats.length <= input.chatsLimit
+  let isExhausted = nextChats.length <= stepLimit
+    || stepLimit === remainingChats
   let isStopped = false
   let chatsProcessed = 0
   let attemptedChatId: string | null = job.retriedChatId
@@ -980,13 +1035,15 @@ async function releaseJobLease(
  * 30 s left; the cron path keeps the background timeout. The chat's attempt
  * is stamped before the model call, so a chat whose invocation died, or whose
  * own lease is held, is retried once and then skipped. The job ends
- * `completed` when the cursor runs out, `cancelled` when memory or automatic
- * updates were switched off, and `failed` (with a reason) when the stored
- * model's key is gone, five chats failed in a row, more than half of at least
- * five processed chats failed, or the actual tokens cost more than 1.5x the
- * estimate; the abort check runs after every chat, so it also precedes
- * completion. Counters move with atomic increments; the cursor advances only
- * after a chat is recorded.
+ * `completed` when the cursor runs out or `backfillMaxChats` chats were
+ * processed, `cancelled` when memory or automatic updates were switched off,
+ * and `failed` (with a reason) when the stored model's key is gone, five
+ * chats failed in a row, more than half of at least five processed chats
+ * failed, or the spend limit was hit: the actual tokens cost more than 1.5x
+ * the estimate, or reached `backfillMaxTokens`, a ceiling that applies even
+ * when no estimate was stored. The abort check runs after every chat, so it
+ * also precedes completion. Counters move with atomic increments; the
+ * cursor advances only after a chat is recorded.
  */
 export async function advanceBackfill(
   input: AdvanceBackfillInput,

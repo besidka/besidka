@@ -6,6 +6,7 @@ import {
   buildKnowledgeMeterCopy,
   computeKnowledgeMeter,
   describeKnowledgeExtractError,
+  describeKnowledgeFailureDetails,
   estimateKnowledgeItemTokens,
   formatKnowledgeBytes,
   getKnowledgeItemName,
@@ -92,6 +93,24 @@ function meterFor(
 }
 
 describe('project-knowledge-ui', () => {
+  describe('describeKnowledgeFailureDetails', () => {
+    it('joins the why and the fix', () => {
+      expect(describeKnowledgeFailureDetails({ why: 'Full', fix: 'Remove' }))
+        .toBe('Full Remove')
+    })
+
+    it('returns whichever detail exists', () => {
+      expect(describeKnowledgeFailureDetails({ why: 'Full' })).toBe('Full')
+      expect(describeKnowledgeFailureDetails({ fix: 'Remove' }))
+        .toBe('Remove')
+    })
+
+    it('returns undefined without details', () => {
+      expect(describeKnowledgeFailureDetails({ why: '', fix: undefined }))
+        .toBeUndefined()
+    })
+  })
+
   describe('item labels', () => {
     it('names an item by its relative path, then its title', () => {
       expect(getKnowledgeItemName(createItem({ relativePath: 'src/a.ts' })))

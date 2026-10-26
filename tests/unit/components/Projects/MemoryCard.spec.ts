@@ -74,6 +74,7 @@ function createCard(
     memoryModel: 'gemini-3.1-flash-lite',
     memoryError: null,
     usesEntries: true,
+    useAccountMemory: true,
     legacyMemory: null,
     total: 3,
     limits,
@@ -100,6 +101,7 @@ async function mountCard(
     isRefreshing?: boolean
     isToggling?: boolean
     automaticUpdates?: boolean
+    isSavingAccountMemory?: boolean
   } = {},
 ) {
   const wrapper = await mountSuspended(MemoryCard, {
@@ -678,6 +680,71 @@ describe('Projects/MemoryCard', () => {
         path: '/profile/memory',
         query: { scope: 'project', project: 'project-1' },
       })
+    })
+  })
+
+  describe('account memory', () => {
+    it('renders the toggle on by default with its description', async () => {
+      const wrapper = await mountCard(createCard())
+      const toggle = wrapper.get('[data-testid="project-memory-account-toggle"]')
+
+      expect((toggle.element as HTMLInputElement).checked).toBe(true)
+      expect(toggle.classes()).toContain('toggle')
+      expect(wrapper.get('[data-testid="project-memory-account"]').text())
+        .toContain('Use account memory')
+      expect(wrapper.get('[data-testid="project-memory-account"]').text())
+        .toContain('chats outside of projects')
+    })
+
+    it('reflects an isolated project', async () => {
+      const wrapper = await mountCard(createCard({ useAccountMemory: false }))
+      const toggle = wrapper.get('[data-testid="project-memory-account-toggle"]')
+
+      expect((toggle.element as HTMLInputElement).checked).toBe(false)
+    })
+
+    it('emits the new value when toggled', async () => {
+      const wrapper = await mountCard(createCard())
+
+      await wrapper.get('[data-testid="project-memory-account-toggle"]')
+        .setValue(false)
+
+      expect(wrapper.emitted('update-account-memory')).toEqual([[false]])
+    })
+
+    it('disables the toggle while saving', async () => {
+      const wrapper = await mountCard(createCard(), {
+        isSavingAccountMemory: true,
+      })
+
+      expect(wrapper.get('[data-testid="project-memory-account-toggle"]')
+        .attributes('disabled')).toBeDefined()
+    })
+
+    it('links to the account memory page', async () => {
+      const wrapper = await mountCard(createCard())
+      const link = wrapper.get('[data-testid="view-account-memory"]')
+
+      expect(link.text()).toBe('View account memory')
+      expect(JSON.parse(link.attributes('data-to')!)).toBe('/profile/memory')
+    })
+
+    it('stacks under sm and sits above the footer buttons', async () => {
+      const wrapper = await mountCard(createCard())
+      const account = wrapper.get('[data-testid="project-memory-account"]')
+      const refresh = wrapper.get('[data-testid="refresh-project-memory"]')
+
+      expect(account.classes()).toContain('flex-col')
+      expect(account.classes()).toContain('sm:flex-row')
+      expect(account.element.compareDocumentPosition(refresh.element)
+        & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('is absent while the card is loading', async () => {
+      const wrapper = await mountCard(null)
+
+      expect(wrapper.find('[data-testid="project-memory-account"]').exists())
+        .toBe(false)
     })
   })
 })

@@ -5,10 +5,43 @@ import type {
   MemoryBackfillUnavailableReason,
 } from '#shared/types/memory-backfill.d'
 import type { MemoryModelSource } from '#shared/types/memory.d'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 
 export const MEMORY_BACKFILL_COOLDOWN_MS = 10_000
 
 const TINY_COST_THRESHOLD_USD = 0.01
+
+const TOKENS_PER_MILLION = 1_000_000
+
+const BACKFILL_MAX_MILLION_TOKENS
+  = MEMORY_LIMITS.backfillMaxTokens / TOKENS_PER_MILLION
+
+const BACKFILL_TOKEN_LIMIT_SENTENCE = 'Stops after '
+  + `${BACKFILL_MAX_MILLION_TOKENS} million tokens in total, even if the `
+  + 'cost could not be estimated.'
+
+export function describeBackfillLimits(isContinuation: boolean): string {
+  const chatLimit = MEMORY_LIMITS.backfillMaxChats
+
+  if (isContinuation) {
+    return 'Continues where the last run stopped and reads at most the next '
+      + `${chatLimit} older account chats. ${BACKFILL_TOKEN_LIMIT_SENTENCE}`
+  }
+
+  return `Reads at most your ${chatLimit} most recent account chats. `
+    + BACKFILL_TOKEN_LIMIT_SENTENCE
+}
+
+export function describeBackfillChats(
+  chats: number,
+  isContinuation: boolean,
+): string {
+  const noun = chats === 1 ? 'chat' : 'chats'
+
+  return isContinuation
+    ? `next ${chats} older ${noun}`
+    : `${chats} ${noun}`
+}
 
 export const memoryBackfillModelSourceLabels: Record<
   MemoryModelSource,
@@ -24,7 +57,8 @@ export const memoryBackfillFailureLabels: Record<
   string
 > = {
   'model-unavailable': 'The model became unavailable.',
-  'spend-limit': 'Stopped: spend would exceed the estimate.',
+  'spend-limit': 'Stopped at the spend limit: 1.5 times the estimate or '
+    + `${BACKFILL_MAX_MILLION_TOKENS} million tokens.`,
   'too-many-failures': 'Too many chats failed.',
   'consecutive-failures': 'Several chats in a row failed.',
 }
@@ -36,6 +70,8 @@ export const memoryBackfillUnavailableCopy: Record<
   'memory-disabled': 'Turn on Use memory first.',
   'extraction-disabled': 'Turn on Generate memory from chats first.',
   'estimate-failed': 'Couldn\'t estimate the cost. Try again.',
+  'all-chats-read': 'The last run already read all your past chats. New '
+    + 'chats are added to memory automatically.',
 }
 
 export const memoryBackfillDroppedLabels: Record<string, string> = {

@@ -127,6 +127,17 @@ export function describeKnowledgeExtractError(
   return extractErrorMessages[code] ?? GENERIC_EXTRACT_ERROR
 }
 
+export function describeKnowledgeFailureDetails(failure: {
+  why?: string | undefined
+  fix?: string | undefined
+}): string | undefined {
+  const details = [failure.why, failure.fix].filter((detail) => {
+    return Boolean(detail)
+  })
+
+  return details.length > 0 ? details.join(' ') : undefined
+}
+
 export function groupKnowledgeItems(
   items: KnowledgeItem[],
   folderNames: KnowledgeFolderNames = {},

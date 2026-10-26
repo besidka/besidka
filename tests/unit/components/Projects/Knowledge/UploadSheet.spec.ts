@@ -51,7 +51,12 @@ interface SheetOptions {
     bytesDone: number
     bytesTotal: number
   }
-  error?: { message: string, why: string | undefined, status: number } | null
+  error?: {
+    message: string
+    why: string | undefined
+    fix?: string | undefined
+    status: number
+  } | null
   canRetryCommit?: boolean
   cleanupFailures?: number
 }
@@ -496,7 +501,12 @@ describe('Projects/Knowledge/UploadSheet', () => {
     it('offers to retry the commit when only the commit failed', async () => {
       const wrapper = await mountSheet({
         phase: 'error',
-        error: { message: 'Commit failed', why: undefined, status: 500 },
+        error: {
+          message: 'Commit failed',
+          why: undefined,
+          fix: undefined,
+          status: 500,
+        },
         entries: [entry('a', 'ready')],
         canRetryCommit: true,
       })
@@ -512,7 +522,12 @@ describe('Projects/Knowledge/UploadSheet', () => {
     it('does not offer a commit retry by default', async () => {
       const wrapper = await mountSheet({
         phase: 'error',
-        error: { message: 'Boom', why: undefined, status: 500 },
+        error: {
+          message: 'Boom',
+          why: undefined,
+          fix: undefined,
+          status: 500,
+        },
         entries: [entry('a', 'failed', 'too-large')],
       })
 
@@ -537,6 +552,42 @@ describe('Projects/Knowledge/UploadSheet', () => {
       expect(alert.attributes('role')).toBe('alert')
       expect(alert.text()).toContain('Not enough storage space')
       expect(alert.text()).toContain('You are over your quota')
+    })
+  })
+
+  describe('account limit failure', () => {
+    it('shows the message, why and fix of the item limit', async () => {
+      const wrapper = await mountSheet({
+        phase: 'error',
+        error: {
+          message: 'Knowledge item limit reached',
+          why: 'An account holds at most 500 knowledge items',
+          fix: 'Remove items from other projects before adding more',
+          status: 422,
+        },
+        entries: [entry('a', 'failed', 'Knowledge item limit reached')],
+      })
+      const alert = byTestId(wrapper, 'knowledge-upload-error')
+
+      expect(alert.text()).toContain('Knowledge item limit reached')
+      expect(alert.text()).toContain('An account holds at most 500')
+      expect(byTestId(wrapper, 'knowledge-upload-error-fix').text())
+        .toBe('Remove items from other projects before adding more')
+    })
+
+    it('omits the fix line when there is none', async () => {
+      const wrapper = await mountSheet({
+        phase: 'error',
+        error: {
+          message: 'Knowledge item limit reached',
+          why: 'Too many items',
+          fix: undefined,
+          status: 422,
+        },
+        entries: [entry('a', 'failed', 'Knowledge item limit reached')],
+      })
+
+      expect(missing(wrapper, 'knowledge-upload-error-fix')).toBe(true)
     })
   })
 

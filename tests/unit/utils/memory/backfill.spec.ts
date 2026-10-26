@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 import * as schema from '~~/server/db/schema'
 import {
   EXTRACTION_NOW,
@@ -245,7 +246,14 @@ describe('memory backfill', () => {
         estimate: ESTIMATE,
       })
       expect(mocks.getBackfillEstimate).toHaveBeenCalledWith(
-        expect.objectContaining({ userId, createdBefore: EXTRACTION_NOW }),
+        expect.objectContaining({
+          userId,
+          window: {
+            createdBefore: EXTRACTION_NOW,
+            cursor: null,
+            isContinuation: false,
+          },
+        }),
       )
     })
 
@@ -262,6 +270,14 @@ describe('memory backfill', () => {
       })
 
       expect((await start()).totalChats).toBe(1)
+    })
+
+    it('caps the total at the newest backfillMaxChats chats', async () => {
+      for (let index = 0; index <= MEMORY_LIMITS.backfillMaxChats; index++) {
+        await chat(10 + index)
+      }
+
+      expect((await start()).totalChats).toBe(MEMORY_LIMITS.backfillMaxChats)
     })
 
     it('answers a second start with a 409 while one is running', async () => {
@@ -927,15 +943,93 @@ describe('memory backfill', () => {
       })
     })
 
-    it('does not limit spend when no estimate was stored', async () => {
-      const job = await jobWithChats(2, { estimate: null })
+    it('stops at the hard token ceiling when no estimate was stored',
+      async () => {
+        const job = await jobWithChats(3, { estimate: null })
 
-      mocks.extractChatMemory.mockResolvedValue(extractionResult({
-        usage: { inputTokens: 9_000_000, outputTokens: 9_000_000 },
-      }))
+        mocks.extractChatMemory.mockResolvedValue(extractionResult({
+          usage: {
+            inputTokens: MEMORY_LIMITS.backfillMaxTokens,
+            outputTokens: 0,
+          },
+        }))
 
-      expect((await advance(job.id)).job?.status).toBe('completed')
-    })
+        const step = await advance(job.id, { chatsLimit: 3 })
+
+        expect(step.job).toMatchObject({
+          status: 'failed',
+          failureReason: 'spend-limit',
+          processedChats: 1,
+        })
+        expect(mocks.extractChatMemory).toHaveBeenCalledTimes(1)
+      })
+
+    it('stops at the hard token ceiling even under a generous estimate',
+      async () => {
+        const job = await jobWithChats(3, {
+          estimate: {
+            ...ESTIMATE,
+            inputTokens: MEMORY_LIMITS.backfillMaxTokens * 10,
+            costUsd: null,
+            pricePerMillion: null,
+          },
+        })
+
+        mocks.extractChatMemory.mockResolvedValue(extractionResult({
+          usage: {
+            inputTokens: MEMORY_LIMITS.backfillMaxTokens / 2,
+            outputTokens: 0,
+          },
+        }))
+
+        const step = await advance(job.id, { chatsLimit: 3 })
+
+        expect(step.job).toMatchObject({
+          status: 'failed',
+          failureReason: 'spend-limit',
+          processedChats: 2,
+        })
+      })
+
+    it('keeps going under the ceiling when no estimate was stored',
+      async () => {
+        const job = await jobWithChats(2, { estimate: null })
+
+        mocks.extractChatMemory.mockResolvedValue(extractionResult({
+          usage: { inputTokens: 1_000, outputTokens: 100 },
+        }))
+
+        expect((await advance(job.id)).job?.status).toBe('completed')
+      })
+
+    it('completes once the chat cap is reached, leaving older chats',
+      async () => {
+        const job = await jobWithChats(3, {
+          processedChats: MEMORY_LIMITS.backfillMaxChats - 1,
+        })
+
+        mocks.extractChatMemory.mockResolvedValue(extractionResult())
+
+        const step = await advance(job.id, { chatsLimit: 3 })
+
+        expect(step.job).toMatchObject({
+          status: 'completed',
+          processedChats: MEMORY_LIMITS.backfillMaxChats,
+        })
+        expect(mocks.extractChatMemory).toHaveBeenCalledTimes(1)
+      })
+
+    it('completes without a model call when the cap was already reached',
+      async () => {
+        const job = await jobWithChats(2, {
+          processedChats: MEMORY_LIMITS.backfillMaxChats,
+        })
+
+        const step = await advance(job.id)
+
+        expect(step.job?.status).toBe('completed')
+        expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+      })
 
     it('fails after five chats fail in a row', async () => {
       const job = await jobWithChats(8, {
@@ -1126,6 +1220,7 @@ describe('memory backfill', () => {
       for (let index = 0; index < 7; index++) {
         await seedBackfillJob(testDb.db, userId, {
           status: index % 2 ? 'cancelled' : 'completed',
+          processedChats: MEMORY_LIMITS.backfillMaxChats,
           createdAt: minutesBefore(1000 - index * 10),
         })
       }
@@ -1146,6 +1241,7 @@ describe('memory backfill', () => {
       for (let index = 0; index < 6; index++) {
         await seedBackfillJob(testDb.db, userId, {
           status: 'completed',
+          processedChats: MEMORY_LIMITS.backfillMaxChats,
           createdAt: minutesBefore(1000 - index * 10),
         })
       }
@@ -1167,6 +1263,156 @@ describe('memory backfill', () => {
         where: { userId, status: 'running' },
       })).toHaveLength(1)
     })
+  })
+
+  describe('continuing a capped run', () => {
+    const OLDER_CHATS = 3
+
+    async function seedHistory(count: number) {
+      const ids: string[] = []
+
+      for (let index = 0; index < count; index++) {
+        ids.push((await chat(10 + index)).id)
+      }
+
+      return ids
+    }
+
+    async function runToEnd(jobId: string) {
+      return await advance(jobId, {
+        chatsLimit: MEMORY_LIMITS.backfillMaxChats + 10,
+      })
+    }
+
+    beforeEach(() => {
+      mocks.getBackfillEstimate.mockResolvedValue(null)
+    })
+
+    it('starts the next job after the capped job\'s cursor and never '
+      + 'reprocesses its chats', async () => {
+      const chatIds = await seedHistory(
+        MEMORY_LIMITS.backfillMaxChats + OLDER_CHATS,
+      )
+      const first = await start()
+      const firstStep = await runToEnd(first.id)
+      const firstRunChats = processedChatIds()
+
+      expect(firstStep.job).toMatchObject({
+        status: 'completed',
+        processedChats: MEMORY_LIMITS.backfillMaxChats,
+      })
+      expect(firstRunChats)
+        .toEqual(chatIds.slice(0, MEMORY_LIMITS.backfillMaxChats))
+
+      mocks.extractChatMemory.mockClear()
+
+      const second = await start()
+      const secondRow = await readJob(second.id)
+      const firstRow = await readJob(first.id)
+
+      expect(second.totalChats).toBe(OLDER_CHATS)
+      expect(secondRow?.createdBefore).toEqual(firstRow?.createdBefore)
+      expect(secondRow?.cursorChatId).toBe(firstRow?.cursorChatId)
+
+      await runToEnd(second.id)
+
+      expect(processedChatIds())
+        .toEqual(chatIds.slice(MEMORY_LIMITS.backfillMaxChats))
+      expect(processedChatIds().some((chatId) => {
+        return firstRunChats.includes(chatId)
+      })).toBe(false)
+    })
+
+    it('hands the estimate the same window the job counts', async () => {
+      await seedHistory(MEMORY_LIMITS.backfillMaxChats + OLDER_CHATS)
+
+      const first = await start()
+
+      await runToEnd(first.id)
+
+      const second = await start()
+      const { window } = mocks.getBackfillEstimate.mock.calls.at(-1)![0] as {
+        window: Record<string, unknown>
+      }
+      const { estimateBackfill } = await vi.importActual<
+        typeof import('~~/server/utils/memory/backfill-estimate')
+      >('~~/server/utils/memory/backfill-estimate')
+      const estimate = await estimateBackfill({
+        userId,
+        selection: null,
+        window: window as never,
+        db: testDb.db,
+      })
+
+      expect(window).toMatchObject({ isContinuation: true })
+      expect(estimate.chats).toBe(second.totalChats)
+      expect(estimate.chats).toBe(OLDER_CHATS)
+      expect(estimate.continuesPreviousRun).toBe(true)
+    })
+
+    it('keeps the first run\'s cutoff, so newer chats stay with the sweep',
+      async () => {
+        await seedHistory(MEMORY_LIMITS.backfillMaxChats)
+
+        const first = await start()
+
+        await runToEnd(first.id)
+        await chat(5, userId, {
+          createdAt: new Date(EXTRACTION_NOW.getTime() + 60_000),
+        })
+
+        const { startBackfill } = await import(
+          '~~/server/utils/memory/backfill'
+        )
+        const second = await startBackfill({
+          userId,
+          db: testDb.db,
+          logger,
+          now: new Date(EXTRACTION_NOW.getTime() + 120_000),
+        })
+
+        expect(second.totalChats).toBe(0)
+        expect(second.status).toBe('completed')
+      })
+
+    it('answers 409 and creates no job once a run read every past chat',
+      async () => {
+        await seedHistory(OLDER_CHATS)
+
+        const first = await start()
+
+        await runToEnd(first.id)
+
+        await expect(start()).rejects.toMatchObject({
+          status: 409,
+          message: 'All past chats were already read',
+        })
+        expect(await testDb.db.query.memoryBackfillJobs.findMany({
+          where: { userId },
+        })).toHaveLength(1)
+      })
+
+    it('resumes a cancelled run after its cursor instead of starting over',
+      async () => {
+        const chatIds = await seedHistory(5)
+        const first = await start()
+
+        await advance(first.id, { chatsLimit: 2 })
+
+        const { cancelBackfill } = await import(
+          '~~/server/utils/memory/backfill'
+        )
+
+        await cancelBackfill({ userId, db: testDb.db })
+        mocks.extractChatMemory.mockClear()
+
+        const second = await start()
+
+        await runToEnd(second.id)
+
+        expect(second.totalChats).toBe(3)
+        expect(processedChatIds()).toEqual(chatIds.slice(2))
+      })
   })
 
   describe('getBackfillProgress and cancelBackfill', () => {

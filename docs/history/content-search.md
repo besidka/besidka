@@ -443,7 +443,7 @@ message across all six tools, and `resolveToolLoop` counts a memory tool like a
 chat tool (`isMemoryToolName`, deliberately outside `CHAT_SEARCH_TOOL_NAMES`
 so the continuation does not render them as chat history). Contracts, the
 code-enforced `userRequestQuote` gate for the two write tools, the shared-scope
-rules, the chip and its Undo are in `docs/memory-architecture.md` section 3.12.
+rules, the chip and its Undo are in `docs/memory-architecture.md` section 3.11.
 
 ### Logging
 
@@ -502,7 +502,7 @@ tool parts as well.
 - **Data crossing providers.** The tools send up to about 8k characters of an
   old chat to whichever provider or gateway the *current* chat uses. They are
   on by default; since W4 the user's `chatSearchEnabled` setting turns
-  them off (`docs/memory-architecture.md` 3.12), and a failed settings read
+  them off (`docs/memory-architecture.md` 3.11), and a failed settings read
   turns them off for that send.
 - **Persisted copies.** Tool outputs, including excerpts of other chats, are
   stored in the current chat's `messages.parts`. Deleting chat A does not

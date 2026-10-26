@@ -48,6 +48,18 @@
       </span>
       <span data-testid="knowledge-item-size">{{ sizeLabel }}</span>
       <span
+        v-if="isMounted"
+        data-testid="knowledge-item-updated"
+      >
+        {{ updatedLabel }}
+      </span>
+      <span
+        v-else
+        class="skeleton inline-block h-4 w-24"
+        aria-hidden="true"
+        data-testid="knowledge-item-updated-placeholder"
+      />
+      <span
         v-if="tokensLabel"
         data-testid="knowledge-item-tokens"
       >
@@ -123,6 +135,12 @@ const emit = defineEmits<{
   remove: [item: KnowledgeItem]
 }>()
 
+const isMounted = shallowRef<boolean>(false)
+
+onMounted(() => {
+  isMounted.value = true
+})
+
 const name = computed<string>(() => {
   return getKnowledgeItemName(props.item)
 })
@@ -141,6 +159,10 @@ const tokensLabel = computed<string | null>(() => {
 
 const typeLabel = computed<string>(() => {
   return getKnowledgeItemTypeLabel(props.item)
+})
+
+const updatedLabel = computed<string>(() => {
+  return `Updated ${formatMemoryUpdatedAge(new Date(props.item.updatedAt))}`
 })
 
 const sizeLabel = computed<string>(() => {

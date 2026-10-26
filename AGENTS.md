@@ -384,8 +384,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   existing FTS5, cron-sweep extraction), the code-enforced compliance gate
   (never-store list, deterministic sensitive-topic rejection on every write
   path; no GDPR Art. 9 opt-in in v1, see its decision log), project memory
-  swept automatically per project, token budgets incl. the Cyrillic
-  multiplier, owner-overridable defaults, and the parallel workstreams
+  swept only after the extraction opt-in, token budgets incl. the Cyrillic
+  multiplier, owner-overridable defaults, the parallel workstreams, and the
+  2026-10-26 security audit dispositions (3.17)
+- `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
+  folders): which model's window decides full injection versus the search
+  and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
+  per-send fit check), R2 text and packs, and the owner decisions
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,

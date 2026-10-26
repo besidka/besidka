@@ -696,6 +696,7 @@ describe('memory send-path wiring', () => {
       expect(readAttribute('memoryTools')).toEqual({
         registered: true,
         writesEnabled: true,
+        writesLocked: false,
         usedCalls: 0,
       })
     })
@@ -1164,6 +1165,48 @@ describe('memory send-path wiring', () => {
     })
   })
 
+  describe('web search locks memory writes up front', () => {
+    it.each([
+      ['native web_search on a direct provider', ['web_search'], undefined],
+      ['Brave search on a direct provider', ['web_search_brave'], undefined],
+      ['Exa search on a direct provider', ['web_search_exa'], undefined],
+      ['web_search on a gateway', ['web_search'], { toolCall: true }],
+    ])('locks the writes before the first step for %s',
+      async (_label, tools, gateway) => {
+        const { doStream } = await runSend({
+          tools,
+          gateway,
+          scenario: { settings: MEMORY_ON },
+          steps: [createTextChunks('Answer with sources.')],
+        })
+        const budget = mocks.memoryToolsInputs[0]?.budget
+
+        expect(budget?.untrustedResultSeen).toBe(true)
+        expect(readToolNames(doStream.mock.calls[0]?.[0])).toEqual(
+          expect.arrayContaining(['memory_list', 'memory_read']),
+        )
+        expect(readAttribute('memoryTools')).toMatchObject({
+          registered: true,
+          writesLocked: true,
+        })
+      })
+
+    it('leaves the writes unlocked when the send requests no web search',
+      async () => {
+        await runSend({
+          tools: [],
+          scenario: { settings: MEMORY_ON },
+          steps: [createTextChunks('Plain answer.')],
+        })
+
+        expect(mocks.memoryToolsInputs[0]?.budget?.untrustedResultSeen)
+          .toBe(false)
+        expect(readAttribute('memoryTools')).toMatchObject({
+          writesLocked: false,
+        })
+      })
+  })
+
   describe('memory tool calls inside the loop', () => {
     it('grants the lookup steps for memory tools alone and never bills '
       + 'them as web searches', async () => {
@@ -1201,6 +1244,7 @@ describe('memory send-path wiring', () => {
       expect(readAttribute('memoryTools')).toEqual({
         registered: true,
         writesEnabled: true,
+        writesLocked: false,
         usedCalls: 2,
       })
     })

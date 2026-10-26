@@ -99,6 +99,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
@@ -111,6 +112,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const memoryComplianceTests = [
     'tests/unit/utils/memory/compliance.spec.ts',
+    'tests/unit/utils/memory/compliance-evasion.spec.ts',
     'tests/unit/utils/memory/sensitivity.spec.ts',
   ]
   const memoryModelTests = [
@@ -194,6 +196,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const memoryToolTests = [
     'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
     'tests/unit/utils/memory/tools/enabled.spec.ts',
     'tests/unit/utils/ai/memory-tools.spec.ts',
     'tests/integration/api/chats-memory.spec.ts',
@@ -213,6 +216,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/projects/memory-entries.spec.ts',
     'tests/unit/utils/projects/memory-refresh.spec.ts',
     'tests/unit/utils/projects/memory-card.spec.ts',
+    'tests/unit/utils/projects/memory-account.spec.ts',
     'tests/unit/utils/memory/extract-manual.spec.ts',
     'tests/unit/utils/project-memory-refresh.spec.ts',
     'tests/unit/utils/memory/extract-grounding.spec.ts',
@@ -225,6 +229,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/memory-import.spec.ts',
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
+    'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
   ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
@@ -385,6 +390,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/pages/chats/history/index.spec.ts',
     'tests/unit/pages/projects-index.spec.ts',
+    'tests/unit/pages/chats/projects/[id].spec.ts',
     'tests/unit/utils/date-groups.spec.ts',
     'tests/unit/utils/project-activity.spec.ts',
     'tests/unit/utils/project-instructions.spec.ts',
@@ -2159,7 +2165,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules)\.ts$/,
+      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)\.ts$/,
       tests: [
         ...memoryComplianceTests,
         ...memoryModelTests,
@@ -2195,7 +2201,7 @@ export function getAffectedTests(changedFiles) {
       tests: memoryExtractionTests,
     },
     {
-      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|memory-refresh|memory-card|memory-limits|legacy-memory|instructions)\.ts$/,
+      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|memory-refresh|memory-card|memory-account|memory-limits|legacy-memory|instructions)\.ts$/,
       tests: [...memoryExtractionTests, ...memoryModelTests],
     },
     {

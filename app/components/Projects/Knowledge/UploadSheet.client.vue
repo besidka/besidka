@@ -151,6 +151,13 @@
                 >
                   {{ error.why }}
                 </p>
+                <p
+                  v-if="error.fix"
+                  class="break-words text-sm"
+                  data-testid="knowledge-upload-error-fix"
+                >
+                  {{ error.fix }}
+                </p>
               </div>
             </div>
             <p

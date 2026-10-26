@@ -174,7 +174,10 @@ import {
 import { buildKnowledgeExcerpts } from '~~/server/utils/knowledge/pre-retrieval'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { getChatSearchTools } from '~~/server/utils/memory/tools'
-import { createChatSearchBudget } from '~~/server/utils/memory/tools/chat-search-budget'
+import {
+  createChatSearchBudget,
+  presetMemoryWriteLock,
+} from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
 import {
   isChatSearchToolEnabled,
@@ -1331,12 +1334,12 @@ export default defineEventHandler(async (event) => {
   const knowledgeContext = knowledge?.context ?? null
   const knowledgeToolsRegistered = knowledgeContext?.registerTools === true
 
-  if (
-    chatSearchBudget
-    && knowledgeContext
-    && holdsUntrustedKnowledge(knowledgeContext)
-  ) {
-    chatSearchBudget.untrustedResultSeen = true
+  if (chatSearchBudget) {
+    presetMemoryWriteLock(chatSearchBudget, {
+      requestedTools,
+      holdsUntrustedKnowledge: !!knowledgeContext
+        && holdsUntrustedKnowledge(knowledgeContext),
+    })
   }
 
   if (knowledgeContext && knowledgeToolsRegistered) {
@@ -2014,6 +2017,7 @@ export default defineEventHandler(async (event) => {
               memoryTools: {
                 registered: true,
                 writesEnabled: userMessageText !== null,
+                writesLocked: chatSearchBudget.untrustedResultSeen,
                 usedCalls: chatSearchBudget.usedCalls,
               },
             },

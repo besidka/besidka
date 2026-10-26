@@ -494,7 +494,10 @@ function generateFolderId(): string {
 }
 
 function reportFailure(title: string, parsed: ProjectKnowledgeError) {
-  useErrorMessage(parsed.message || title, parsed.why)
+  useErrorMessage(
+    parsed.message || title,
+    describeKnowledgeFailureDetails(parsed),
+  )
 }
 
 async function startUpload(
@@ -938,7 +941,10 @@ watch(() => upload.phase.value, async (phase, previousPhase) => {
   }
 
   if (phase === 'error' && upload.error.value) {
-    useErrorMessage(upload.error.value.message, upload.error.value.why)
+    useErrorMessage(
+      upload.error.value.message,
+      describeKnowledgeFailureDetails(upload.error.value),
+    )
   } else {
     useInfoMessage('Knowledge updated', describeFinishedUpload())
   }

@@ -4,7 +4,7 @@ Date: 2026-10-25. Scope: Besidka (besidka.com), one natural person in Poland
 as controller, GDPR + UODO. This is risk research for an engineering decision,
 not legal advice. Companion drafts for counsel live in
 `docs/legal/memory-legal-changes-draft.md`. The memory design itself is in
-`docs/memory-architecture.md` (sections 3.5, 3.12, 3.15 and 7 cover
+`docs/memory-architecture.md` (sections 3.5, 3.11, 3.14 and 7 cover
 sensitivity).
 
 **Status, 2026-10-25: the owner chose option (c) for v1. There is no sensitive
@@ -395,13 +395,14 @@ never-store list applies even on request.
   Art. 9 data on third-party models **[I]**.
 - **(c)** do not offer it at all. **Chosen for v1.**
 
-What (c) means in the code (details in `docs/memory-architecture.md` 3.12,
-3.15 and the section 7 decision log):
+What (c) means in the code (details in `docs/memory-architecture.md` 3.11,
+3.14 and the section 7 decision log):
 
 - A deterministic English, Ukrainian and Polish classifier (the rule table also
   carries Russian patterns) rejects special-category text with a 422 on the
   entries API, the `memory_write` tool and `aboutMe`, and extraction drops it.
-  An import path must use the same gate when built. The classifier is a
+  The import from another assistant (`POST /api/v1/memory/import`) runs the
+  same extraction op pipeline, so it drops such text too. The classifier is a
   safeguard with known misses (names, slang, unusual phrasing), not a legal
   conclusion.
 - Every row written is `sensitivity = 'none'`. There is no runtime flag, no
@@ -448,7 +449,7 @@ is verified. The full launch list the research produced, if (b) is revisited:
   and Gemini statements.
 - Extractor rule: drop sensitive reasons ("vegetarian", not "vegetarian for
   religious reasons"). C-184/20 makes the inferred reason Art. 9 data. (Done
-  in code, `docs/memory-architecture.md` 3.15.)
+  in code, `docs/memory-architecture.md` 3.14.)
 - Do the DPIA and Art. 30 record anyway; chats alone trigger criterion 4.
 - Ask counsel about Art. 49 for chats and non-sensitive memory sent to
   DeepSeek, Moonshot and Qwen.

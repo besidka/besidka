@@ -170,6 +170,21 @@ describe('buildProjectMemoryCard', () => {
     })
   })
 
+  it('reports account memory as shared unless the project opted out',
+    async () => {
+      const unsetId = await seedProject(testDb.db, userId)
+      const sharedId = await seedProject(testDb.db, userId, {
+        useAccountMemory: true,
+      })
+      const isolatedId = await seedProject(testDb.db, userId, {
+        useAccountMemory: false,
+      })
+
+      expect((await buildCard(unsetId)).useAccountMemory).toBe(true)
+      expect((await buildCard(sharedId)).useAccountMemory).toBe(true)
+      expect((await buildCard(isolatedId)).useAccountMemory).toBe(false)
+    })
+
   it('reads another user project as not found', async () => {
     const otherUserId = await seedUser(testDb.db, {})
     const projectId = await seedProject(testDb.db, otherUserId)

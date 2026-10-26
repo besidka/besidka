@@ -288,6 +288,15 @@ describe('profile settings API', () => {
         return parser(event.body)
       },
     )
+
+    const kvStore = new Map<string, string>()
+
+    vi.stubGlobal('useKV', () => ({
+      get: vi.fn(async (key: string) => kvStore.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => {
+        kvStore.set(key, value)
+      }),
+    }))
   })
 
   it('returns 401 for unauthorized requests', async () => {
@@ -1263,8 +1272,10 @@ describe('profile settings API', () => {
           expect(stampValues.memoryExtractedAt).toBeInstanceOf(Date)
           expect(sql).toContain('"user_id" = ?')
           expect(sql).toContain('"memory_extracted_at" is null')
-          expect(sql).toContain('"memory_extracted_at" < ?')
-          expect(params).toHaveLength(2)
+          expect(sql).toContain(
+            '"memory_extracted_at" < "chats"."activity_at"',
+          )
+          expect(params).toHaveLength(1)
           expect(params[0]).toBe(1)
         })
 
@@ -1279,7 +1290,9 @@ describe('profile settings API', () => {
           const { sql } = await stampWhere(dbMock)
 
           expect(sql).toMatch(/is null\)+ or /)
-          expect(sql).toContain('"memory_extracted_at" < ?')
+          expect(sql).toContain(
+            '"memory_extracted_at" < "chats"."activity_at"',
+          )
         })
 
       it('stamps when memoryEnabled goes false to true with extraction on',
