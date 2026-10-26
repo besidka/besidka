@@ -2122,7 +2122,9 @@ generation) while **Search and reference chats** is on in the settings.
   the message with the guard phrases, stop words (`STOP_WORDS` from the
   knowledge search plus chat filler in EN/UK/PL/RU) and one-character tokens
   removed, so the eight-token cap is spent on distinctive words; an empty
-  query skips the search.
+  query skips the search. The call receives the route's memoized
+  `resolveRerankModel` (the J4 re-ranking), so with the `rerank` role on the
+  hits are ordered like the tool's; no other Jev call is added for it.
 - **Injection.** The top hits become a `<past_chats>` block (notice, then a
   `<past_chat>` entry per hit with title, date and the bracket-neutralized
   `<chat_excerpt>` snippet, never-store values removed) capped at
@@ -2168,6 +2170,77 @@ generation) while **Search and reference chats** is on in the settings.
   105 extra tokens, no measurable latency): hoist the call into the route,
   pass each role the probabilities, and keep each role's own log record.
   Until then each role makes its own call.
+
+#### Re-ranking (J4, `rerank` role)
+
+Re-ranking orders the candidates of two searches with Jev. It never adds a
+result the search did not find.
+
+**Where it runs.**
+
+- `search_chats` (`server/utils/memory/tools/search-chats.ts`): after the
+  best hit per chat is picked (one candidate per chat, BM25 order) and before
+  the final slice to `limit`. The snippet of each candidate is the passage.
+- `search_project_knowledge` (`server/utils/knowledge/tools/index.ts`) and
+  the pre-retrieval of models without tool calling
+  (`prepareKnowledgeExcerpts` in `server/api/v1/chats/[slug]/index.post.ts`):
+  on the MiniSearch results before the chunk and token caps. `search()` stays
+  synchronous. The searcher exposes `searchCandidates()` (the ranked list,
+  at most 30) and `capHits()` (the existing cap loop); `search()` is the two
+  composed. `searchKnowledgeWithRerank` in `server/utils/knowledge/rerank.ts`
+  is the async path both callers share, and without a resolver or a model it
+  is exactly `search()`.
+
+**Request.** One call to `rerankWithJev` (`server/utils/jev/rerank.ts`): the
+query is the shared state (`{ query }`) and every candidate is a boolean
+question whose `instructions` are `{ task, passage }` from `JEV_RERANK`, so
+no passage sees another and one distractor cannot colour the rest. At most 30
+candidates are judged (`maxCandidates`); passages and the query are cut to
+about 300 tokens (`maxPassageTokens`), which matters for pre-retrieval, where
+the query is the whole user message. The query and every passage go through
+`redactNeverStore` first and are truncated afterwards, so a cut can never
+leave half of a redacted value. The send-path timeout (800 ms) applies,
+including the pre-retrieval before the first token.
+
+**Order and the cut.** Candidates are sorted by descending probability, the
+BM25 position breaking ties. Candidates below `dropBelow` (0.5) are dropped
+only when at least `limit` candidates remain above it (`limit` is the tool
+limit, `searchMaxChunks` for knowledge tools and `preRetrievalMaxChunks` for
+pre-retrieval); otherwise the whole sorted list is returned. The result
+therefore never has fewer entries than the BM25 order would have had.
+
+**Model resolution.** `createJevRerankModelResolver` is created once per send
+and is lazy and memoized: the key and the role settings are read on the first
+search that has two or more candidates, so a send whose tools never search
+costs no D1 read. The route builds it after `requireLegalConsent`, and
+`resolveJevRoleModel` already honours the `rerank` toggle.
+
+**Safe direction.** Without a key, with the role off, with fewer than two
+candidates, on 401, 403, 429, 529, a timeout, a network error, a refusal, an
+answer that misses any candidate, or any exception while building the
+request, the original order comes back unchanged. No migration.
+
+**Logging.** `attributes.rerankJev`: `status`, `calls`, `questions`,
+`inputTokens`, `latencyMs`, `counts.candidates`, `counts.moved` (positions in
+the first `limit` slots that differ from the BM25 order), `counts.dropped`,
+`counts.redacted` (never-store values removed from the query and passages)
+and the rounded scores, highest first. Repeated searches in one request add
+up. No text is logged.
+
+**Known limit: cross-lingual retrieval.** Re-ranking cannot find what was not
+retrieved. `search_chats` retrieves with SQLite FTS5 and project knowledge
+with MiniSearch, both lexical, so a query in Ukrainian does not retrieve a
+chat or document written in English, and Jev never sees it. The eval's
+cross-lingual gain (NDCG@5 0.98 against 0.48 for BM25) applies only to
+candidates that already share a retrieved pool. Closing this needs another
+way to build the shortlist (translated queries, recent chats, or embeddings),
+which is not part of this role. The `/memory` guide FAQ says the same.
+
+**Fragile seams.** `JEV_RERANK` wording and `dropBelow` come from a synthetic
+eval of 8 queries with passages of one or two sentences; re-tune them on the
+logged scores. The `search_chats` snippet is only 32 FTS5 tokens
+(`SEARCH_CHATS_SNIPPET_TOKEN_COUNT`), so the relevance judgement there sees
+less text than the eval did; widening it is a separate change.
 
 #### Extraction pre-filter (J2)
 

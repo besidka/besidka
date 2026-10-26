@@ -15,6 +15,7 @@ import { jevDecide } from '~~/server/utils/jev/client'
 import type { JevStatus } from '~~/server/utils/jev/client'
 import { recordJevRoleLog } from '~~/server/utils/jev/logging'
 import type { JevLogger } from '~~/server/utils/jev/logging'
+import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
 import { resolveJevRoleModel } from '~~/server/utils/jev/roles'
 import { STOP_WORDS } from '~~/server/utils/knowledge/search'
 import { redactNeverStore } from '~~/server/utils/memory/compliance'
@@ -278,6 +279,7 @@ export async function resolvePastChatPreRetrieval(input: {
   message: string
   earlierMessages: readonly UIMessage[]
   userMessageId: string
+  resolveRerankModel?: JevRerankModelResolver
   tokenFamily: KnowledgeTokenFamily
   logger: JevLogger
 }): Promise<PastChatPreRetrieval | null> {
@@ -309,6 +311,7 @@ export async function resolvePastChatPreRetrieval(input: {
         limit: JEV_PAST_CHAT_RETRIEVAL.maxHits,
         currentChatId: input.currentChatId,
         projectId: input.projectId,
+        resolveRerankModel: input.resolveRerankModel,
         logger: input.logger,
       })
     const built = buildPastChatsBlock(results, input.tokenFamily)
