@@ -249,6 +249,28 @@ removed.
   it (Art. 9(2)(a)).
 - **Known limit.** It can miss unusual wording (section 6).
 
+### 3.7a TypeSafe AI Jev second opinion (optional, add-only)
+
+- **Purpose.** Catch special-category data and never-store values the rules
+  in 3.7 miss, and reject entries a model wrote that are not supported by the
+  user's own text.
+- **When.** Only for a user who saved a TypeSafe AI key (Profile → API Keys
+  → Memory checks). Saving the key is the opt-in; deleting it stops the
+  checks. Only on write paths already behind the consent gate.
+- **How.** `server/utils/memory/jev-check.ts`. The rules in 3.7 run first.
+  Only entries they allow are sent, with never-store values removed, plus,
+  for model-written entries, a short excerpt of the user's text (also
+  redacted, and dropped if the rules would refuse it). Jev can only add a
+  refusal. Model pinned to `jev-1.14.0`; threshold 0.5.
+- **Recipient.** TypeSafe AI, Inc., United States, independent controller
+  on the user's own account. Not on the EU-US Data Privacy Framework. Its DPA
+  relies on the SCCs (Module 2) and the UK Addendum, marks sensitive-data
+  safeguards "N/A", keeps data "as long as necessary" and has no SLA. Its
+  privacy policy says it does not train on input.
+- **Failure.** Fails open to the rules alone on a missing key, 401, 429,
+  529, a network error or a 2.5 s timeout.
+- **Data in logs.** Counts and category ids under `memoryJev`, never text.
+
 ### 3.8 Consent gate, version 2026-11-a
 
 - **What.** A modal shown before the next message to every signed-in user whose
@@ -359,6 +381,7 @@ removed.
 | 3 | Worker | Provider or gateway | Message, history, memory index, excerpts, knowledge | User's own key; transfer notice and consent where needed |
 | 4 | Worker | Search provider | Query the model writes | Only if the user turned search on, user's own key |
 | 5 | Worker | Memory model | New chat text (opt-in) | Never-store redaction, then gate on output |
+| 5a | Worker | TypeSafe AI (only with a TypeSafe AI key) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt | Gate first; flagged text never sent; add-only; fail-open |
 | 6 | Worker | Axiom | Counts and ids | No memory or chat text |
 
 ## 4. Necessity and proportionality
@@ -440,6 +463,7 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 17 | Storage abuse or runaway growth through uploads or knowledge | Low | Low | Per-user storage quota (20 MB default) counting files plus extracted knowledge text; per-project and per-user item caps; quota uses real body size, not the header | built | Low |
 | 18 | Memory text leaks through logs | Low | High | Wide events carry counts, outcome labels, category ids and model names only; audit and consent datasets separate | built | Low |
 | 19 | Account takeover exposes all chats and memory | Low | High | Better Auth, rate limits, Turnstile, optional TOTP and passkeys, encrypted API keys, sessions in KV | built | Low |
+| 20 | The optional TypeSafe AI memory check sends candidate entries, which can hold special-category data the rules missed, to a young US vendor: out of stealth about six weeks (2026-09-15), its DPA marks sensitive-data safeguards "N/A", retention "as long as necessary", no SLA, not on the DPF (SCCs Module 2 and UK Addendum only) | Low | Medium | Only with a key the user saves; only entries the deterministic gate already allowed, redacted for never-store values; source excerpts redacted and dropped when the gate flags them; add-only, so an outage or a wrong answer can never let sensitive text in; fails open to the gate on 401, 429, 529, network errors and a 2.5 s timeout; model pinned; counts only in logs; disclosed in the Privacy Policy and on the keys page | built | Medium (vendor maturity and contract terms are outside Besidka's control) |
 
 ## 6. Residual risks
 

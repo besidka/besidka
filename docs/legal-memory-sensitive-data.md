@@ -362,6 +362,17 @@ best-available mitigation, not a cure. Stronger alternatives were considered
 and **not** chosen: geoblocking these providers for EEA users, or removing
 them. Revisit if a supervisory authority or counsel objects.
 
+### TypeSafe AI memory checks, 2026-10-26
+
+TypeSafe AI, Inc. (US, not on the DPF, SCCs Module 2 and the UK Addendum in
+its DPA) receives candidate memory entries when a user saves a TypeSafe AI
+key. The recommendation above, that only adequacy-covered recipients should
+receive sensitive memory, is met as far as the design can: only entries the
+deterministic gate allowed are sent, redacted for never-store values, so the
+vendor sees special-category text only where the gate missed it, which is
+exactly what the check exists to catch. Gate-flagged text is never sent. This
+residual is DPIA risk row 20; design in `docs/memory-architecture.md` 3.19.
+
 ## 4. What Claude.ai and ChatGPT do
 
 - **Claude.** Sensitive topics are off by default. The toggle is "Include

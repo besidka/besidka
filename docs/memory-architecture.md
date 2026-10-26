@@ -303,6 +303,11 @@ extraction, import):
 priority over Art. 9, the count-only logging and the known limits are
 documented there.
 
+**Optional model second opinion (2026-10-26)**: a user who saves a TypeSafe
+AI key gets an extra, add-only check by the Jev decision model on top of this
+gate (3.19). The gate itself stays deterministic, runs first and is final for
+what it refuses.
+
 The categories and the never-store list are hardcoded in
 `shared/utils/memory-policy.ts` and quoted verbatim in the privacy policy
 (`docs/legal.md` flow). Not legal advice — counsel should confirm the Art. 9
@@ -1855,6 +1860,129 @@ the other memory write routes (3.17).
 counts, usage, model id, failure label). Compliance counts go under
 `memoryCompliance` with origin `memory-instruct`. The text is never logged,
 stored or echoed.
+
+### 3.19 TypeSafe AI Jev checks (2026-10-26)
+
+An optional second opinion on memory writes, on the user's own TypeSafe AI
+key. It is add-only: the deterministic gate (3.5) stays the gate, and Jev can
+only block an entry the gate allowed, never allow one the gate blocked.
+
+**Key type.** `providerMeta.typesafe` has its own kind, `memory-check`, and a
+fourth tab, **Memory checks**, on `/profile/keys` (`?provider=typesafe` and
+`?tab=memory-checks` deep links pass `resolveSafeNextPath`). The key is
+stored encrypted in `keys` like the others (`provider = 'typesafe'`; the
+column is a text enum, so `db:generate` produced no migration). It is not a
+chat provider: it is not in the model catalog, so it never appears in the
+chat or memory-model pickers, the memory-model resolver never considers it,
+it is never routed through a gateway, and `useUserKeys().hasAnyKey` ignores
+it. Saving it calls `GET https://api.typesafe.ai/v1/models` with the key
+(`verifyMemoryJevApiKey`, 5 s timeout): a 401 or 403 refuses the save with a
+why and a fix; a network error, a timeout or another status still saves,
+because memory checks fail open anyway. `/profile/memory` shows "Memory
+checks: TypeSafe AI Jev (on)" or a link to add the key. Saving the key is the
+user's opt-in to the spend and to the recipient; there is no separate toggle
+yet (delete the key to stop). The key guide is
+`content/key-guides/typesafe-ai-api-key.md`, without a video for now.
+
+**Code.** `server/utils/memory/jev-check.ts`, through `experimental_decide`
+from `ai` with `@ai-sdk/typesafe-ai`:
+
+- `resolveMemoryJevChecker({ db, userId, logger })` reads and decrypts the
+  saved key and returns a checker, or `null` without a key. A failed read or
+  decryption logs `key-error` and returns `null`.
+- `createMemoryJevChecker({ apiKey })` refuses an empty key, so the SDK can
+  never fall back to its `TYPESAFE_AI_API_KEY` environment variable. The
+  decrypted key is passed per checker; there is no operator key.
+- `check(candidates)` runs `evaluateMemoryEntry` on every candidate first and
+  sends only the ones it allows. Gate-refused text, including its never-store
+  values, never leaves Besidka. Extraction ops the extractor itself flagged
+  as never-store, and ops whose evidence fails the deterministic grounding
+  check, are not sent either.
+- Questions per candidate: one boolean per Art. 9 category (health, religion
+  or belief, political opinion, racial or ethnic origin, sex life or
+  orientation, trade union, genetic, biometric) and one never-store
+  question, each quoting the candidate text, with the criteria wording from
+  the research run. `legal-dispute` and `drugs` stay gate-only. The boolean
+  type is used because the SDK drops `confidence` on choice answers.
+- Grounding (one more boolean) only where there is a source text. The source
+  is redacted for never-store values, capped at 9,000 characters, and dropped
+  (no grounding question) when the gate would refuse it, so flagged source
+  text is never sent either.
+- Thresholds: `MEMORY_JEV_SENSITIVE_THRESHOLD = 0.5` (block at or above) and
+  `MEMORY_JEV_GROUNDING_THRESHOLD = 0.5` (reject below), the research's
+  working threshold. Model pinned to `jev-1.14.0`, not `jev-latest`, so a
+  model update cannot move the tuned thresholds silently.
+- Batching: all candidates of one write in one call, split only past 100
+  questions or 90,000 question characters. The calls share one
+  `MEMORY_JEV_TIMEOUT_MS` (2,500 ms) budget with `maxRetries: 0`.
+- Fail-open: a missing key, 401, 403, 429, 529, any other status, a network
+  error or the timeout leaves every unanswered candidate `clear`, so the
+  write proceeds on the gate alone.
+
+**Where it runs.** Every write path that reaches the gate behind the consent
+gate (`requireLegalConsent`, or `currentLegalConsentCondition` in the sweep
+and backfill queries):
+
+| Path | Checks | Source for grounding | Result on a Jev hit |
+|---|---|---|---|
+| Chat extraction (sweep, Update now), backfill, project refresh, legacy blob | (a) + (b) | A window of 300 characters around the op's evidence quote in the user's own text | Op dropped as `extra-check-sensitive` or `extra-check-ungrounded` |
+| Import | (a) + (b) | The same window in the pasted chunk | Same |
+| Instruct preview | (a) + (b) | The redacted instruction, plus the saved entry's text for an update | Row `rejected` with `rejection.kind = 'extra-check'` |
+| Instruct apply | (a) | None (no model text left to ground) | 422, `data.kind = 'extra-check'` |
+| Manual create and edit (`/api/v1/memory/entries`) | (a) | None (the user typed it) | 422, `data.kind = 'extra-check'` |
+| `memory_write` tool | (a) | None | 422 folded into the tool error |
+
+The extraction family resolves the checker in `extract.ts` and runs one
+batched pre-pass in `MemoryExtractionApplier.run()`, before any write; the
+verdict is applied in `evaluate()` after the gate allowed the exact persisted
+values. `createMemoryEntry` and `updateMemoryEntry` take an optional `jev`
+in their context and call `assertMemoryJevAllowed` after the gate. The
+About-me migration runs on `GET /api/v1/profiles/settings`, outside the
+consent gate, so it passes no checker and never calls Jev. Jev is not used
+for "worth remembering".
+
+**Logging.** One wide-event field per request,
+`attributes.memoryJev: { model, questions, blocked, groundingRejected,
+gateDisagreements, latencyMs, status }`, summed across calls in the request
+through `getContext()`. `gateDisagreements` maps each Art. 9 category id or
+`never-store` to how many candidates Jev flagged that the gate passed; it is
+the list to mine for new deterministic rules. No text is logged.
+
+**Fragile seams to re-check on every `ai` or `@ai-sdk/typesafe-ai` upgrade.**
+
+- `experimental_decide` is experimental in `ai@7`: its name, its options
+  (`state`, `questions`, `maxRetries`, `abortSignal`) and the answer shape
+  `{ type: 'boolean', probability }` can change in a patch release.
+- The provider package is about six weeks old and ships patches weekly. It
+  maps the SDK `boolean` question to the API's `noul`; a renamed or
+  remapped type breaks every check, which then fails open silently except for
+  `status: 'error'` in the logs.
+- `createTypeSafeAi` falls back to `TYPESAFE_AI_API_KEY` when `apiKey` is
+  empty. The empty-key guard in `createMemoryJevChecker` must stay.
+- The SDK's choice answer drops `confidence`; another reason the checks use
+  booleans only.
+- `@ai-sdk/provider` and `provider-utils` must stay at the versions the
+  provider pins (4.0.34 and 5.0.68 at the time of writing), so the whole
+  `@ai-sdk/*` train is bumped together. `pnpm why @ai-sdk/provider` should
+  list one 4.x copy; the 3.x copy belongs to `nuxt-studio` (`ai@6`).
+- Thresholds were tuned on `jev-1.14.0`. A model bump needs the research run
+  repeated before the pin moves.
+
+**Smoke test (2026-10-26, synthetic text, owner's key).** One batched call
+through the real module: 6 candidates in, the card-number candidate refused by
+the gate and not sent, 5 sent as 48 questions; 351 ms; 7,206 input tokens
+(about $0.0003). Jev flagged "half Nigerian" as racial or ethnic origin (the
+gate passed it), rejected "Uses React and Next.js" against a source saying
+"We use Vue 3 and Nuxt", and cleared the language preference, the job and the
+Criminal Minds line.
+
+**Legal.** TypeSafe AI, Inc. is a US recipient, not on the Data Privacy
+Framework, relying on the SCCs (Module 2) and the UK Addendum in its DPA, which
+marks sensitive-data safeguards "N/A". It is listed in the Privacy Policy, the
+Art. 30 record and the DPIA (risk row 20). The consent modal names recipients
+by category ("the AI providers ... whose keys I add (for ... memory)"), so the
+consent version stays `2026-11-a`. Research and test results:
+`typesafe-jev-findings.md` in the session scratchpad.
 
 ## 4. Cost and performance
 
