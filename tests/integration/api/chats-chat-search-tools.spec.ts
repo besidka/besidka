@@ -545,6 +545,8 @@ describe('chat search tools send-path wiring', () => {
       budget: { maxCalls: 3, usedCalls: 0, untrustedResultSeen: false },
     }))
     expect(mocks.chatSearchToolsInputs[0]?.projectId).toBeUndefined()
+    expect(mocks.chatSearchToolsInputs[0]?.resolveRerankModel)
+      .toBeTypeOf('function')
     expect(getChatSearchAttributes()).toEqual({
       registered: true,
       usedCalls: 0,
