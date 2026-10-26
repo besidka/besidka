@@ -22,7 +22,21 @@ import type {
   ImageGenerationProvider,
 } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import type { OmittedContextFilesData } from '#shared/types/model-context.d'
+import type {
+  KnowledgeNoticeData,
+  OmittedContextFilesData,
+} from '#shared/types/model-context.d'
+import type { KnowledgeTokenFamily } from '#shared/types/project-knowledge.d'
+import {
+  countKnowledgeChars,
+  estimateKnowledgeTextTokens,
+  measuredHistoryTokens,
+  resolveKnowledgeTokenFamily,
+} from '#shared/utils/project-knowledge-budget'
+import {
+  KNOWLEDGE_BUDGET,
+  KNOWLEDGE_LIMITS,
+} from '#shared/utils/project-knowledge-policy'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import {
   isExternalWebSearchTool,
@@ -66,6 +80,7 @@ import * as schema from '~~/server/db/schema'
 import {
   buildMessageUsage,
   addImageGenerationCostToUsage,
+  addKnowledgeContextUsage,
   addSearchUsage,
   sumLanguageModelUsages,
 } from '~~/server/utils/ai/message-usage'
@@ -87,7 +102,12 @@ import {
 } from '~~/server/utils/chats/filter-ui-message-stream'
 import { assertInputFilesSupported } from '~~/server/utils/chats/input-file-support'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
-import { buildMessagesForModel } from '~~/server/utils/chats/model-turns'
+import {
+  appendTextToLastUserTurn,
+  buildKnowledgeMediaTurns,
+  buildMessagesForModel,
+} from '~~/server/utils/chats/model-turns'
+import type { KnowledgeMediaFilePart } from '~~/server/utils/chats/model-turns'
 import {
   hasMeaningfulAssistantParts,
   persistUserMessage,
@@ -104,6 +124,7 @@ import { summarizeSdkWarnings } from '~~/server/utils/ai/sdk-warnings'
 import { createCarriedMediaTypePredicate } from '~~/server/utils/files/carried-media-types'
 import { assertGatewayImageInputSupported } from '~~/server/utils/gateways/image-input-support'
 import {
+  extractStorageKeyFromFileUrl,
   getOwnedFilesByStorageKeys,
   validateMessageFilePolicy,
 } from '~~/server/utils/files/file-governance'
@@ -130,6 +151,28 @@ import {
   toolRequiresFollowUpTurn,
 } from '~~/server/utils/ai/tool-loop'
 import { CHAT_SEARCH_INSTRUCTION } from '~~/server/utils/ai/chat-search-tools'
+import { loadKnowledgeSendData } from '~~/server/utils/knowledge/send-data'
+import type { KnowledgeSendData } from '~~/server/utils/knowledge/send-data'
+import {
+  commitKnowledgeChange,
+  ensureKnowledgePackFresh,
+} from '~~/server/utils/knowledge/pack'
+import {
+  estimateHistoryTokens,
+  holdsUntrustedKnowledge,
+  resolveProjectKnowledgeContext,
+} from '~~/server/utils/knowledge/context'
+import type {
+  KnowledgeSendModel,
+  ProjectKnowledgeContext,
+} from '~~/server/utils/knowledge/context'
+import {
+  createKnowledgeBudget,
+  getKnowledgeTools,
+  KNOWLEDGE_INSTRUCTION,
+} from '~~/server/utils/knowledge/tools'
+import { buildKnowledgeExcerpts } from '~~/server/utils/knowledge/pre-retrieval'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 import { getChatSearchTools } from '~~/server/utils/memory/tools'
 import { createChatSearchBudget } from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
@@ -166,7 +209,10 @@ import {
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { resolveLegacyProjectMemory } from '~~/server/utils/projects/legacy-memory'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
+import {
+  indexMessagesForSearch,
+  safeDecodePublicId,
+} from '~~/server/utils/search/index-writer'
 import { getBraveWebSearchTools } from '~~/server/utils/search/brave'
 import { getExaWebSearchTools } from '~~/server/utils/search/exa'
 import {
@@ -261,6 +307,7 @@ export default defineEventHandler(async (event) => {
           parts: true,
           tools: true,
           reasoning: true,
+          usage: true,
           createdAt: true,
         },
         // Persistence order is load-bearing: previousMessages is the model
@@ -757,6 +804,8 @@ export default defineEventHandler(async (event) => {
   } | undefined
   let vercelGatewayClient: GatewayProvider | undefined
   let gatewayMaxOutputTokens: number | undefined
+  let gatewayContextLength: number | undefined
+  let gatewayCatalogMaxOutputTokens: number | undefined
   let gatewayPricing: GatewayModel['pricing'] | undefined
   let gatewayToolCall: boolean | undefined
   let gatewaySupportsReasoning: boolean | undefined
@@ -778,6 +827,8 @@ export default defineEventHandler(async (event) => {
       reasoningEffort = gatewayResult.reasoning
       Object.assign(providerOptions, gatewayResult.providerOptions)
       gatewayMaxOutputTokens = gatewayResult.maxOutputTokens
+      gatewayContextLength = gatewayResult.contextLength
+      gatewayCatalogMaxOutputTokens = gatewayResult.catalogMaxOutputTokens
       gatewayPricing = gatewayResult.pricing
       gatewayToolCall = gatewayResult.toolCall
       gatewaySupportsReasoning = gatewayResult.supportsReasoning
@@ -1145,6 +1196,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const hasProviderToolGroup = Object.keys(parsedTools.tools ?? {}).length > 0
   const hasDeepSeekWebSearch = !gatewayId
     && telemetryProviderId === 'deepseek'
     && !!parsedTools.tools?.web_search
@@ -1225,9 +1277,87 @@ export default defineEventHandler(async (event) => {
     logger: aiLogger,
   })
 
+  const knowledgeSendModel: KnowledgeSendModel = gatewayId
+    ? {
+      providerId: telemetryProviderId,
+      modelId,
+      gateway: true,
+      contextWindow: gatewayContextLength,
+      maxOutputTokens: gatewayCatalogMaxOutputTokens,
+      inputModalities: null,
+    }
+    : {
+      providerId: telemetryProviderId,
+      modelId,
+      gateway: false,
+      contextWindow: model?.contextLength,
+      maxOutputTokens: model?.maxOutputTokens,
+      inputModalities: model ? getModelInputModalities(model) : null,
+    }
+  const knowledge = await resolveSendKnowledge({
+    userId,
+    projectId: chat.projectId,
+    model: knowledgeSendModel,
+    toolsAllowed: toolCallingAllowed,
+    newMessageParts: newMessage.parts as UIMessage['parts'],
+    chatMessages: chat.messages,
+    earlierMessages: messagesForAI.filter((message) => {
+      return message.id !== newMessage.id
+    }),
+    fileSizesByStorageKey,
+    baseInstructions: buildChatInstructions({
+      projectSystemPrompt,
+      requestedTools,
+      gatewayId,
+      shouldNudgeNativeSearch: shouldNudgeNativeWebSearch(
+        requestedTools,
+        parsedTools,
+      ),
+      hasDeepSeekWebSearch,
+      hasChatSearchTools: chatSearchToolsRegistered,
+      memoryInstructions,
+    }),
+    toolGroupCount: [
+      hasProviderToolGroup,
+      chatSearchToolsRegistered,
+      memoryToolsRegistered,
+      toolCallingAllowed,
+    ].filter(Boolean).length,
+    userMessageText,
+    newMessageId: newMessage.id,
+    scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
+    logger: aiLogger,
+  })
+  const knowledgeContext = knowledge?.context ?? null
+  const knowledgeToolsRegistered = knowledgeContext?.registerTools === true
+
+  if (
+    chatSearchBudget
+    && knowledgeContext
+    && holdsUntrustedKnowledge(knowledgeContext)
+  ) {
+    chatSearchBudget.untrustedResultSeen = true
+  }
+
+  if (knowledgeContext && knowledgeToolsRegistered) {
+    const { tools: knowledgeTools } = getKnowledgeTools({
+      getSearcher: knowledgeContext.getSearcher,
+      budget: createKnowledgeBudget(),
+      logger: aiLogger,
+    })
+
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...knowledgeTools },
+    }
+  }
+
   const toolLoop = resolveToolLoop(parsedTools.tools, {
     chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
+      : 0,
+    knowledgeSteps: knowledgeToolsRegistered
+      ? KNOWLEDGE_LIMITS.toolCallsPerSend
       : 0,
     guard: chatSearchBudget,
   })
@@ -1293,13 +1423,25 @@ export default defineEventHandler(async (event) => {
           })
         }
 
+        if (knowledgeContext?.notice) {
+          writer.write({
+            type: 'data-knowledge-notice',
+            data: {
+              modelName: model?.name ?? modelId,
+              notice: knowledgeContext.notice,
+            } satisfies KnowledgeNoticeData,
+          })
+        }
+
         let result: MultiConsumerStreamTextResult
         let modelMessages: ModelMessage[] = []
         let mainLoopSteps: SearchAnswerContinuationStep[] = []
-        const messagesForModel = buildMessagesForModel(
+        const messagesForModel = buildKnowledgeAwareMessagesForModel({
           messagesForAI,
           modelProviderId,
-        )
+          mediaTurns: knowledge?.mediaTurns ?? [],
+          excerpts: knowledge?.excerpts ?? null,
+        })
 
         function recordSdkWarnings(
           key: 'aiWarnings' | 'aiContinuationWarnings',
@@ -1428,15 +1570,20 @@ export default defineEventHandler(async (event) => {
           modelMessages = await convertToModelMessages(messagesForModel)
           result = streamText({
             model: instance,
-            instructions: buildChatInstructions(
+            instructions: buildChatInstructions({
               projectSystemPrompt,
               requestedTools,
               gatewayId,
-              shouldNudgeNativeWebSearch(requestedTools, parsedTools),
+              shouldNudgeNativeSearch: shouldNudgeNativeWebSearch(
+                requestedTools,
+                parsedTools,
+              ),
               hasDeepSeekWebSearch,
-              chatSearchToolsRegistered,
+              hasChatSearchTools: chatSearchToolsRegistered,
               memoryInstructions,
-            ),
+              knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
+              hasKnowledgeTools: knowledgeToolsRegistered,
+            }),
             reasoning: reasoningEffort,
             messages: modelMessages,
             experimental_transform: smoothStream(),
@@ -1543,9 +1690,15 @@ export default defineEventHandler(async (event) => {
             addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
             search,
           )
-          const usage = usageWithCosts && gatewayCost?.costEstimated
+          const usageWithEstimate = usageWithCosts && gatewayCost?.costEstimated
             ? { ...usageWithCosts, costEstimated: true }
             : usageWithCosts
+          const usage = knowledgeContext
+            ? addKnowledgeContextUsage(usageWithEstimate, {
+              steps,
+              knowledgeTokens: knowledgeContext.knowledgeTokens,
+            })
+            : usageWithEstimate
 
           return {
             createdAt: new Date().toISOString(),
@@ -1643,15 +1796,17 @@ export default defineEventHandler(async (event) => {
         ): SearchAnswerContinuationRun {
           const continuationResult = streamText({
             model: instance,
-            instructions: buildChatInstructions(
+            instructions: buildChatInstructions({
               projectSystemPrompt,
-              [],
+              requestedTools: [],
               gatewayId,
-              false,
-              false,
-              false,
+              shouldNudgeNativeSearch: false,
+              hasDeepSeekWebSearch: false,
+              hasChatSearchTools: false,
               memoryInstructions,
-            ),
+              knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
+              hasKnowledgeTools: false,
+            }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
               modelMessages,
@@ -1732,6 +1887,7 @@ export default defineEventHandler(async (event) => {
           vercelGatewayClient,
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
           followUpToolNames,
+          knowledgeTokens: knowledgeContext?.knowledgeTokens,
           getSearchAnswerContinuation: () => {
             return searchAnswerGuarantee?.getOutcome().continuation
           },
@@ -1924,6 +2080,478 @@ function countCarriedFileParts(modelContextMessages: UIMessage[]): number {
   return userMessages.slice(0, -1).reduce((total, message) => {
     return total + message.parts.filter(part => part.type === 'file').length
   }, 0)
+}
+
+const FILE_BYTES_PER_ESTIMATED_TOKEN = 4
+const BASE64_BYTES_PER_CHARACTER = 3 / 4
+
+interface StoredKnowledgeMessage {
+  role: string
+  publicId: string | null
+  parts: UIMessage['parts']
+  usage: MessageUsage | null
+}
+
+interface SendKnowledge {
+  context: ProjectKnowledgeContext
+  mediaTurns: UIMessage[]
+  excerpts: string | null
+}
+
+function estimateTextTokens(
+  text: string,
+  family: KnowledgeTokenFamily,
+): number {
+  return estimateKnowledgeTextTokens(countKnowledgeChars(text), family)
+}
+
+function readFilePartBytes(
+  url: string,
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  if (url.startsWith('data:')) {
+    const encodedStart = url.indexOf(',') + 1
+
+    return Math.floor((url.length - encodedStart) * BASE64_BYTES_PER_CHARACTER)
+  }
+
+  const storageKey = extractStorageKeyFromFileUrl(url)
+
+  return storageKey ? fileSizesByStorageKey.get(storageKey) ?? 0 : 0
+}
+
+function estimatePartTokens(
+  part: UIMessage['parts'][number],
+  family: KnowledgeTokenFamily,
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  if (part.type === 'text') {
+    return estimateTextTokens(part.text, family)
+  }
+
+  if (part.type !== 'file') {
+    return 0
+  }
+
+  if (part.mediaType.startsWith('image/')) {
+    return KNOWLEDGE_LIMITS.imageTokens
+  }
+
+  return Math.ceil(
+    readFilePartBytes(part.url, fileSizesByStorageKey)
+    / FILE_BYTES_PER_ESTIMATED_TOKEN,
+  )
+}
+
+function estimateNewMessageTokens(
+  parts: UIMessage['parts'],
+  family: KnowledgeTokenFamily,
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  return parts.reduce((total, part) => {
+    return total + estimatePartTokens(part, family, fileSizesByStorageKey)
+  }, 0)
+}
+
+function readMessageTexts(messages: UIMessage[]): string[] {
+  return messages.flatMap((message) => {
+    return message.parts.flatMap((part) => {
+      return part.type === 'text' ? [part.text] : []
+    })
+  })
+}
+
+function estimateFilePartTokens(
+  messages: ReadonlyArray<{ parts: UIMessage['parts'] }>,
+  family: KnowledgeTokenFamily,
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  return messages.reduce((total, message) => {
+    return total + message.parts.reduce((messageTotal, part) => {
+      return part.type === 'file'
+        ? messageTotal
+        + estimatePartTokens(part, family, fileSizesByStorageKey)
+        : messageTotal
+    }, 0)
+  }, 0)
+}
+
+function estimateEarlierMessagesTokens(
+  messages: UIMessage[],
+  family: KnowledgeTokenFamily,
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  return estimateHistoryTokens({
+    texts: readMessageTexts(messages),
+    family,
+  }) + estimateFilePartTokens(messages, family, fileSizesByStorageKey)
+}
+
+function resolveUsageTokenFamily(usage: MessageUsage): KnowledgeTokenFamily {
+  const gateway = gatewayIds.some((candidateGatewayId) => {
+    return keyProviderIdForGateway(candidateGatewayId) === usage.provider
+  })
+
+  return resolveKnowledgeTokenFamily({
+    providerId: usage.provider,
+    modelId: usage.model,
+    gateway,
+  })
+}
+
+/**
+ * The measured history of design 5.5, read from the newest assistant
+ * message only: an older one would under-count the turns after it. User
+ * turns stored after that message (unanswered or failed sends, other than
+ * the message being sent now) were not part of the measured input, so their
+ * estimate is added on top. Old messages without the per-step fields, and a
+ * previous send on another token family, take the estimated path (`null`).
+ */
+function readMeasuredHistoryTokens(input: {
+  chatMessages: ReadonlyArray<StoredKnowledgeMessage>
+  newMessageId: string
+  family: KnowledgeTokenFamily
+  fileSizesByStorageKey: ReadonlyMap<string, number>
+}): number | null {
+  const assistantIndex = input.chatMessages.findLastIndex((message) => {
+    return message.role === 'assistant'
+  })
+  const usage = input.chatMessages[assistantIndex]?.usage
+
+  if (
+    !usage
+    || usage.firstStepInputTokens === undefined
+    || usage.lastStepOutputTokens === undefined
+    || resolveUsageTokenFamily(usage) !== input.family
+  ) {
+    return null
+  }
+
+  const measuredTokens = measuredHistoryTokens({
+    inputTokens: usage.firstStepInputTokens,
+    outputTokens: usage.lastStepOutputTokens,
+    knowledgeTokens: usage.knowledgeTokens ?? 0,
+  })
+
+  if (measuredTokens === null) {
+    return null
+  }
+
+  const unmeasuredMessages = input.chatMessages
+    .slice(assistantIndex + 1)
+    .filter(message => message.publicId !== input.newMessageId)
+
+  return measuredTokens + unmeasuredMessages.reduce((total, message) => {
+    return total + estimateNewMessageTokens(
+      message.parts,
+      input.family,
+      input.fileSizesByStorageKey,
+    )
+  }, 0)
+}
+
+type ScheduleBackgroundWork = (promise: Promise<unknown>) => void
+
+const KNOWLEDGE_REPAIR_THROTTLE_SECONDS = 600
+
+function knowledgeRepairThrottleKey(projectId: number): string {
+  return `knowledge:repair:${projectId}`
+}
+
+async function takeKnowledgeRepairThrottle(
+  projectId: number,
+): Promise<boolean> {
+  const kv = useKV()
+  const key = knowledgeRepairThrottleKey(projectId)
+
+  if (await kv.get(key)) {
+    return false
+  }
+
+  await kv.put(key, '1', {
+    expirationTtl: KNOWLEDGE_REPAIR_THROTTLE_SECONDS,
+  })
+
+  return true
+}
+
+async function repairKnowledgePack(input: {
+  userId: number
+  projectId: number
+  logger: LoggerLike
+}): Promise<void> {
+  try {
+    const isAllowed = await takeKnowledgeRepairThrottle(input.projectId)
+
+    if (!isAllowed) {
+      input.logger.set({
+        attributes: { knowledge: { packRepair: { skipped: 'throttled' } } },
+      })
+
+      return
+    }
+
+    await commitKnowledgeChange(input)
+  } catch (exception) {
+    input.logger.set({
+      attributes: {
+        knowledge: { packRepair: { error: exceptionMessage(exception) } },
+      },
+    })
+  }
+}
+
+/**
+ * Keeps the project's knowledge pack healthy without ever delaying a send.
+ * A pack behind `knowledge_version` is rebuilt through `waitUntil`, while
+ * this send reads the previous pack. When the pointer says the pack is fresh
+ * but the object reads back as null (missing, corrupt or oversize), the
+ * returned `loadPack` schedules one repair: `ensureKnowledgePackFresh` would
+ * no-op on a fresh pointer, so the repair is a version bump plus a build
+ * under K1's lease, throttled to one per project per ten minutes through KV
+ * (a KV failure skips the repair). Without `waitUntil` nothing is scheduled.
+ */
+function scheduleKnowledgePackMaintenance(input: {
+  data: KnowledgeSendData
+  userId: number
+  projectId: number
+  scheduleBackgroundWork: ScheduleBackgroundWork | undefined
+  logger: LoggerLike
+}): KnowledgeSendData {
+  const { data, scheduleBackgroundWork } = input
+  const { version, packVersion } = data.state
+  const maintenanceInput = {
+    userId: input.userId,
+    projectId: input.projectId,
+    logger: input.logger,
+  }
+
+  if (!scheduleBackgroundWork || version <= 0) {
+    return data
+  }
+
+  if (packVersion === null || packVersion < version) {
+    scheduleBackgroundWork(ensureKnowledgePackFresh(maintenanceInput))
+
+    return data
+  }
+
+  let isRepairScheduled = false
+
+  return {
+    ...data,
+    loadPack: async () => {
+      const pack = await data.loadPack()
+
+      if (!pack && !isRepairScheduled) {
+        isRepairScheduled = true
+        scheduleBackgroundWork(repairKnowledgePack(maintenanceInput))
+      }
+
+      return pack
+    },
+  }
+}
+
+async function prepareKnowledgeMediaTurns(
+  parts: KnowledgeMediaFilePart[],
+  logger: LoggerLike,
+): Promise<UIMessage[]> {
+  const mediaTurns = buildKnowledgeMediaTurns(parts)
+
+  if (mediaTurns.length === 0) {
+    return []
+  }
+
+  try {
+    const { messages, missingFiles } = await convertFilesForAI(mediaTurns)
+    const [mediaTurn, replyTurn] = messages
+    const attachedCount = mediaTurn?.parts.filter((part) => {
+      return part.type === 'file'
+    }).length ?? 0
+
+    logger.set({
+      attributes: {
+        knowledge: {
+          mediaAttached: attachedCount,
+          mediaMissing: missingFiles.length,
+        },
+      },
+    })
+
+    if (!mediaTurn || !replyTurn || attachedCount === 0) {
+      return []
+    }
+
+    return [mediaTurn, replyTurn]
+  } catch (exception) {
+    logger.set({
+      attributes: { knowledge: { error: exceptionMessage(exception) } },
+    })
+
+    return []
+  }
+}
+
+async function prepareKnowledgeExcerpts(
+  context: ProjectKnowledgeContext,
+  userText: string,
+  logger: LoggerLike,
+): Promise<string | null> {
+  try {
+    const searcher = await context.getSearcher()
+
+    if (!searcher) {
+      return null
+    }
+
+    const excerpts = buildKnowledgeExcerpts({ searcher, userText })
+
+    logger.set({
+      attributes: { knowledge: { preRetrieval: excerpts !== null } },
+    })
+
+    return excerpts
+  } catch (exception) {
+    logger.set({
+      attributes: { knowledge: { error: exceptionMessage(exception) } },
+    })
+
+    return null
+  }
+}
+
+/**
+ * Everything project knowledge adds to one send: the resolved context, the
+ * converted media turns and the pre-retrieval excerpts. `null` for a chat
+ * outside a project, a project without knowledge, or any failure, which is
+ * logged as `attributes.knowledge.error` and never fails the send.
+ */
+async function resolveSendKnowledge(input: {
+  userId: number
+  projectId: string | null
+  model: KnowledgeSendModel
+  toolsAllowed: boolean
+  newMessageParts: UIMessage['parts']
+  chatMessages: ReadonlyArray<StoredKnowledgeMessage>
+  earlierMessages: UIMessage[]
+  fileSizesByStorageKey: ReadonlyMap<string, number>
+  baseInstructions: string | undefined
+  toolGroupCount: number
+  userMessageText: string | null
+  newMessageId: string
+  scheduleBackgroundWork: ScheduleBackgroundWork | undefined
+  logger: LoggerLike
+}): Promise<SendKnowledge | null> {
+  const projectId = input.projectId
+    ? safeDecodePublicId(input.projectId)
+    : null
+
+  if (projectId === null) {
+    return null
+  }
+
+  try {
+    const data = await loadKnowledgeSendData({
+      userId: input.userId,
+      projectId,
+      logger: input.logger,
+    })
+
+    if (!data) {
+      return null
+    }
+
+    input.logger.set({
+      attributes: {
+        knowledge: {
+          packStale: data.state.packVersion !== data.state.version,
+        },
+      },
+    })
+
+    const family = resolveKnowledgeTokenFamily(input.model)
+    const context = await resolveProjectKnowledgeContext({
+      data: scheduleKnowledgePackMaintenance({
+        data,
+        userId: input.userId,
+        projectId,
+        scheduleBackgroundWork: input.scheduleBackgroundWork,
+        logger: input.logger,
+      }),
+      model: input.model,
+      toolsAllowed: input.toolsAllowed,
+      messageTokens: estimateNewMessageTokens(
+        input.newMessageParts,
+        family,
+        input.fileSizesByStorageKey,
+      ),
+      measuredHistoryTokens: readMeasuredHistoryTokens({
+        chatMessages: input.chatMessages,
+        newMessageId: input.newMessageId,
+        family,
+        fileSizesByStorageKey: input.fileSizesByStorageKey,
+      }),
+      estimated: {
+        systemTokens: estimateTextTokens(input.baseInstructions ?? '', family),
+        historyTokens: estimateEarlierMessagesTokens(
+          input.earlierMessages,
+          family,
+          input.fileSizesByStorageKey,
+        ),
+        toolTokens: KNOWLEDGE_BUDGET.toolGroupTokens * input.toolGroupCount,
+      },
+      logger: input.logger,
+    })
+    const mediaTurns = await prepareKnowledgeMediaTurns(
+      context.mediaParts,
+      input.logger,
+    )
+    const excerpts = context.preRetrieval && input.userMessageText
+      ? await prepareKnowledgeExcerpts(
+        context,
+        input.userMessageText,
+        input.logger,
+      )
+      : null
+
+    return { context, mediaTurns, excerpts }
+  } catch (exception) {
+    input.logger.set({
+      attributes: { knowledge: { error: exceptionMessage(exception) } },
+    })
+
+    return null
+  }
+}
+
+/**
+ * The model-facing turns with project knowledge applied: the media turns
+ * lead the history, so `buildMessagesForModel` still enforces Google's
+ * leading-user rule and strict alternation over the combined array, and the
+ * pre-retrieval excerpts go into a copy of the current user turn. Neither
+ * ever reaches `messagesForAI`, which backs `originalMessages`, nor the
+ * persisted user message.
+ */
+function buildKnowledgeAwareMessagesForModel(input: {
+  messagesForAI: UIMessage[]
+  modelProviderId: string | undefined
+  mediaTurns: UIMessage[]
+  excerpts: string | null
+}): UIMessage[] {
+  const history = input.mediaTurns.length > 0
+    ? [...input.mediaTurns, ...input.messagesForAI]
+    : input.messagesForAI
+  const messagesForModel = buildMessagesForModel(
+    history,
+    input.modelProviderId,
+  )
+
+  if (!input.excerpts) {
+    return messagesForModel
+  }
+
+  return appendTextToLastUserTurn(messagesForModel, input.excerpts)
 }
 
 /**
@@ -2316,6 +2944,7 @@ async function persistAssistantMessageFromStream(input: {
   gatewayId?: GatewayId
   gatewayPricing?: GatewayModel['pricing']
   followUpToolNames: Set<string>
+  knowledgeTokens?: number
   getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
 }): Promise<PersistAssistantMessageResult> {
   try {
@@ -2486,9 +3115,16 @@ async function persistAssistantMessageFromStream(input: {
         search,
       )
 
-      usage = usageWithCosts && gatewayCost?.costEstimated
+      const usageWithEstimate = usageWithCosts && gatewayCost?.costEstimated
         ? { ...usageWithCosts, costEstimated: true }
         : usageWithCosts
+
+      usage = input.knowledgeTokens === undefined
+        ? usageWithEstimate
+        : addKnowledgeContextUsage(usageWithEstimate, {
+          steps: usageSteps,
+          knowledgeTokens: input.knowledgeTokens,
+        })
     } catch (exception) {
       input.logger.set({
         attributes: {
@@ -2759,22 +3395,45 @@ function generationInProgressKvKey(
  * below is gateway-agnostic: those tools are registered by this route after
  * the provider/gateway fork, so a gateway-routed model really does have them.
  *
- * The memory block comes first and the chat-search line is constant text
- * placed right after the project system prompt, both ahead of every
- * per-turn-varying clause (the current-date ones), so they stay inside the
- * stable prefix the provider caches.
+ * The memory block comes first, then the project system prompt, the project
+ * knowledge block (the full documents or the search file index), the
+ * knowledge tool line and the chat-search line, all constant per project and
+ * ahead of every per-turn-varying clause (the current-date ones), so they
+ * stay inside the stable prefix the provider caches.
  */
-function buildChatInstructions(
-  projectSystemPrompt: string | null,
-  requestedTools: ModelTool[],
-  gatewayId: GatewayId | undefined,
-  shouldNudgeNativeSearch: boolean,
-  hasDeepSeekWebSearch: boolean,
-  hasChatSearchTools: boolean,
-  memoryInstructions: string | null,
-  now: Date = new Date(),
-): string | undefined {
-  const instructions = [memoryInstructions, projectSystemPrompt]
+function buildChatInstructions(input: {
+  projectSystemPrompt: string | null
+  requestedTools: ModelTool[]
+  gatewayId: GatewayId | undefined
+  shouldNudgeNativeSearch: boolean
+  hasDeepSeekWebSearch: boolean
+  hasChatSearchTools: boolean
+  memoryInstructions: string | null
+  knowledgeSystemBlock?: string | null
+  hasKnowledgeTools?: boolean
+  now?: Date
+}): string | undefined {
+  const {
+    projectSystemPrompt,
+    requestedTools,
+    gatewayId,
+    shouldNudgeNativeSearch,
+    hasDeepSeekWebSearch,
+    hasChatSearchTools,
+    memoryInstructions,
+    knowledgeSystemBlock,
+    hasKnowledgeTools,
+    now = new Date(),
+  } = input
+  const instructions = [
+    memoryInstructions,
+    projectSystemPrompt,
+    knowledgeSystemBlock,
+  ]
+
+  if (hasKnowledgeTools) {
+    instructions.push(KNOWLEDGE_INSTRUCTION)
+  }
 
   if (hasChatSearchTools) {
     instructions.push(CHAT_SEARCH_INSTRUCTION)

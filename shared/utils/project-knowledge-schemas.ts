@@ -18,6 +18,7 @@ const MAX_FOLDER_ID_CHARS = 64
 const MAX_EXTRACT_ERROR_CHARS = 64
 const MAX_MEDIA_TYPE_CHARS = 100
 const MAX_SEARCH_ITEM_IDS = 20
+const MAX_TOOL_ITEM_ID_CHARS = 64
 const MAX_BATCH_ITEMS = 25
 
 export function knowledgeTextByteLength(text: string): number {
@@ -254,11 +255,13 @@ export const knowledgePackLineSchema = z.object({
 
 export const knowledgeSearchToolInputSchema = z.object({
   query: z.string().trim().min(1).max(KNOWLEDGE_LIMITS.searchQueryMaxChars),
-  itemIds: z.array(z.string()).max(MAX_SEARCH_ITEM_IDS).optional(),
+  itemIds: z.array(z.string().max(MAX_TOOL_ITEM_ID_CHARS))
+    .max(MAX_SEARCH_ITEM_IDS)
+    .optional(),
 })
 
 export const knowledgeReadToolInputSchema = z.object({
-  itemId: z.string(),
+  itemId: z.string().max(MAX_TOOL_ITEM_ID_CHARS),
   fromChunk: z.number().int().nonnegative().optional(),
   count: z.number().int().min(1).max(KNOWLEDGE_LIMITS.readMaxChunks).optional(),
 })

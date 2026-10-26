@@ -355,8 +355,9 @@ and code × 0.9, rounded down to 0.1. These are the values in
 ### 5.5 Measuring history instead of estimating it
 
 - **Measured** (the newest assistant message was on the same provider family
-  and has usage): `H* = last.inputTokens + last.outputTokens −
-  last.knowledgeTokens`. `H*` already contains `S`, `T`, the previous
+  and has the K2 usage fields): `H* = last.firstStepInputTokens +
+  last.lastStepOutputTokens − last.knowledgeTokens` (see 16.2 for why the
+  first step's input and not the loop total). `H*` already contains `S`, `T`, the previous
   messages and answer. Then `fits = H* + M + ceil(K × MARGIN) + R ≤ W`.
 - **Estimated** (first turn, family switch, no usage): the full formula in
   5.2.
@@ -804,7 +805,8 @@ D1 storage 5 GB included then $0.75 / GB-month, 10 GB hard cap per database
   the 3-call budget and uses the user's own key.
 - **Cross-tenant**: R2 keys are derived server-side from the session user and
   a verified project, never from client or model input. Model-supplied item
-  ids are looked up with `userId` and `projectId` in the `WHERE`.
+  ids resolve only inside the already user- and project-scoped loaded pack
+  (as built in K2).
 - **Client-extracted text** is the user's own content. The server validates
   shape (UTF-8, size), not truth.
 - **Incognito chats (when W8 adds them)** still receive project knowledge.
@@ -1237,7 +1239,7 @@ export async function buildKnowledgeExcerpts(input: { userId: number, projectId:
   - `server/utils/gateways/index.ts`: `contextLength` and `maxOutputTokens`
     on `GatewayChatResult`.
   - `shared/types/message-usage.d.ts`: optional `knowledgeTokens`,
-    `lastStepInputTokens`, `lastStepOutputTokens`.
+    `firstStepInputTokens`, `lastStepOutputTokens`.
   - `server/utils/ai/message-usage.ts`: writes those three fields.
 - **Measured history (verified in the K0 review)**: the persisted
   `MessageUsage.inputTokens` is a **sum across tool-loop steps**
@@ -1245,9 +1247,12 @@ export async function buildKnowledgeExcerpts(input: { userId: number, projectId:
   cache-inclusive. Feeding it to `measuredHistoryTokens` would over-count
   history by roughly the number of steps and flip sends to search too early.
   K2 persists three extra optional fields on the assistant message's usage:
-  `lastStepInputTokens`, `lastStepOutputTokens` and `knowledgeTokens` (the
-  **raw** estimate actually injected, without `MARGIN`, 0 in search mode),
-  and feeds only those to `measuredHistoryTokens`. Old messages without them
+  `firstStepInputTokens` (the prompt before any tool result, which the
+  sanitizer drops from later history anyway), `lastStepOutputTokens` (the
+  step that produced the final answer, the continuation's last step when
+  one ran) and `knowledgeTokens` (the **raw** estimate actually injected,
+  without `MARGIN`, 0 in search mode). `H* = firstStepInputTokens +
+  lastStepOutputTokens − knowledgeTokens`. Old messages without the fields
   take the estimated path.
 - **Logging**: `attributes.knowledge = { mode, reason, tokens, budget,
   items, searchCalls, packStale }`. Never text or queries.
@@ -1288,6 +1293,95 @@ develops against these shapes with mocked `$fetch`.
 - **Meter math** is the K0 functions only (`estimateKnowledgeTokens`,
   `computeKnowledgeBudget`, `resolveKnowledgeTokenFamily`,
   `estimatePromptCacheCost`), so client and server agree.
+
+### 16.5 K2 as built (branch `k2-knowledge-send`)
+
+- **Own pack reader instead of K1's.** K1 was not merged when K2 started,
+  so `server/utils/knowledge/send-data.ts` reads items and project state
+  from D1 and the pack from R2 with K0 primitives only (storage keys, pack
+  zod schemas). It loads the pack **lazily**: search mode reads nothing
+  from R2 unless a tool call or pre-retrieval needs it. Swapping to K1's
+  `readKnowledgePack` after K1 merges is a one-import change.
+  `ensureKnowledgePackFresh` is not called yet; a stale pack is logged as
+  `attributes.knowledge.packStale` and the previous pack is used.
+- **Files**: `server/utils/knowledge/{send-data,context,search,pre-retrieval}.ts`,
+  `server/utils/knowledge/tools/{index,excerpt}.ts`,
+  `server/utils/ai/knowledge-tools.ts` (tool names, kept outside
+  `knowledge/tools` to avoid an import cycle with `tool-loop.ts`), and edits
+  to the chat route, `tool-loop.ts`, `search-answer-continuation.ts`,
+  `model-turns.ts`, the three gateway builders, `message-usage.ts`,
+  `shared/types/message-usage.d.ts` and `shared/types/model-context.d.ts`.
+- **Route**: `resolveSendKnowledge` runs after the memory index is built and
+  before the tool loop is resolved. `buildChatInstructions` takes an options
+  object; the order is memory index, project prompt, knowledge block,
+  `KNOWLEDGE_INSTRUCTION` (only with the tools), `CHAT_SEARCH_INSTRUCTION`,
+  then the date-carrying clauses. The continuation call gets the same block.
+- **Loop cap**: web 3 + chat/memory lookup 3 + knowledge 3 + 1 forced
+  answer step = 10 at most. Knowledge results stay "untrusted", so they
+  trip the `memory_write` lock. The continuation renders them under
+  `Project knowledge search N` / `Project knowledge read N` headings inside
+  the untrusted tag, never as web sources.
+- **Media**: `buildKnowledgeMediaTurns` builds a leading user turn with the
+  files plus a `(no reply)` turn (fixed ids, so the prefix stays cacheable),
+  converted and ownership-checked by `convertFilesForAI`, prepended on a
+  copy of the history. Gateways get no media.
+- **Pre-retrieval** appends `<project_knowledge_excerpts>` to a copy of the
+  last user turn; nothing is persisted.
+- **Usage**: `knowledgeTokens`, `firstStepInputTokens` and
+  `lastStepOutputTokens` are written only on knowledge sends. The chat query
+  now also selects `messages.usage` so measured history needs no second
+  query.
+- **Notice**: `data-knowledge-notice` (`KnowledgeNoticeData` in
+  `shared/types/model-context.d.ts`) is written next to the omitted-files
+  notice. K3 must render it and filter it like `data-omitted-context-files`
+  in `app/composables/chat.ts`.
+- **Known gaps handed to K3**: chips for the two knowledge tools
+  (`app/utils/search-step.ts`, `SearchStep.vue`), and an existing bug shared
+  with chat search where a tool's own 429 budget error renders as
+  "provider is rate limiting" in the UI.
+
+**Security and review decisions (K2 audit, 2026-10-26)**:
+- **Memory writes are off while documents are in context.** Full-mode
+  knowledge lives in the system prompt, where the "untrusted tool result"
+  lock never sees it, and the `userRequestQuote` gate only proves the quote
+  is real, not that the saved body came from the user. A poisoned document
+  could steer a legitimate "remember …" into a poisoned entry that outlives
+  the document. So a send with document text or media in the prompt
+  presets the lock: `memory_write`/`memory_forget` refuse,
+  `memory_list`/`memory_read` still work, and the block tells the model the
+  user can save from the Memory page. Search mode exposes only neutralized
+  index lines and keeps writes. **Owner may revisit** (for example, allow
+  writes whose body is derivable from the user's message).
+- Pre-retrieval excerpts cannot satisfy the quote gate: the gate reads the
+  original user text, excerpts go onto a copy afterwards, and pre-retrieval
+  only runs on sends with no tools at all.
+- Pack reader caps match K1's: 10 MiB decompressed, 20,000 lines, 2 MiB per
+  line, header version must equal `knowledgePackVersion`.
+- Images in full mode share a 10 MiB byte budget; native PDFs keep 20 MiB.
+- `</document>`, `</project_knowledge>` and the excerpt tags are neutralized
+  inside document text; the search-mode index sits in `<project_files>`
+  with `<`/`>` replaced in labels.
+- `knowledgeTokens` counts only what was injected (pack ∩ ready items +
+  attached media), so a stale pack cannot under-count the next turn's
+  measured history.
+- Pre-retrieval drops English and Ukrainian stop words and tokens under 3
+  characters, searches AND, and falls back to OR only with 3+ terms and
+  hits matching at least half of them. A tool-less model gets excerpts for
+  real questions ("Коли запуск Аврори?") but not arbitrary ones on every
+  turn. The tools keep plain AND→OR.
+
+**After K1 merged (#525)**: `send-data.ts` now reads packs with K1's
+`readKnowledgePack` (stricter than K2's own reader, which was deleted:
+5 MiB compressed, 10 MiB decompressed mid-stream, 20,000 lines, 64 KiB per
+chunk line, header version and order checks). On send, a lagging pointer
+(`packVersion < version`) schedules `ensureKnowledgePackFresh` in
+`waitUntil`; a fresh pointer whose pack reads back null schedules
+`commitKnowledgeChange` (K1 exposes no same-version force rebuild), at most
+once per project per 10 minutes through a KV throttle, because each repair
+bumps the version and would otherwise bypass K1's per-version backoff. The
+send never waits and always uses whatever pack is readable. **Deferred design call**: mode hysteresis. `fits`
+includes the current message, so one very large paste can flip full →
+search → full and invalidate the prompt cache twice.
 
 ### 16.4 Shared files nobody else edits
 

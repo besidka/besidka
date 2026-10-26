@@ -101,6 +101,8 @@ export async function useVercelGateway(
     client,
     maxOutputTokens: catalogModel?.maxOutputTokens,
     toolCall: catalogModel?.toolCall,
+    contextLength: catalogModel?.contextLength,
+    catalogMaxOutputTokens: catalogModel?.maxOutputTokens,
     /**
      * Unlike OpenRouter, Vercel AI Gateway needs no per-provider
      * `providerOptions` mapping here at all. `@ai-sdk/gateway`'s

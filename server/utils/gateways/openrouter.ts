@@ -67,9 +67,10 @@ export async function useOpenRouterGateway(
    * `toolCall` gates more than Brave/Exa: it decides whether the cross-chat
    * `search_chats`/`read_chat` tools are registered. OpenRouter's builder
    * still caps nothing and prices nothing, so the catalog entry is read only
-   * for `toolCall`. The lookup is a KV cache hit in the common case and never
-   * throws, so a catalog outage leaves `toolCall` undefined instead of
-   * blocking the send.
+   * for `toolCall` and for the project knowledge budget (`contextLength`,
+   * `catalogMaxOutputTokens`). The lookup is a KV cache hit in the common
+   * case and never throws, so a catalog outage leaves `toolCall` undefined
+   * instead of blocking the send.
    */
   const catalogModel = await findGatewayCatalogModel(
     () => getCachedGatewayCatalog('openrouter', { logger }),
@@ -156,5 +157,7 @@ export async function useOpenRouterGateway(
       : {},
     toolCall: catalogModel?.toolCall,
     reasoning: reasoningEffort,
+    contextLength: catalogModel?.contextLength,
+    catalogMaxOutputTokens: catalogModel?.maxOutputTokens,
   }
 }

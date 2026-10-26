@@ -459,6 +459,8 @@ describe('useCloudflareGateway', () => {
       const result = await useCloudflareGateway('1', 'llama-3.3-70b')
 
       expect(result.maxOutputTokens).toBe(4096)
+      expect(result.contextLength).toBe(24000)
+      expect(result.catalogMaxOutputTokens).toBe(4096)
       expect(result.pricing).toEqual({
         input: '0.0000002',
         output: '0.0000009',
@@ -488,6 +490,8 @@ describe('useCloudflareGateway', () => {
     const result = await useCloudflareGateway('1', '@cf/openai/gpt-oss-120b')
 
     expect(result.maxOutputTokens).toBe(128000)
+    expect(result.contextLength).toBe(128000)
+    expect(result.catalogMaxOutputTokens).toBe(128000)
   })
 
   it('passes the unclamped catalog max_output_length to the chat title',
@@ -544,6 +548,8 @@ describe('useCloudflareGateway', () => {
     expect(result.maxOutputTokens).toBeUndefined()
     expect(result.pricing).toBeUndefined()
     expect(result.toolCall).toBeUndefined()
+    expect(result.contextLength).toBeUndefined()
+    expect(result.catalogMaxOutputTokens).toBeUndefined()
   })
 
   it('passes the catalog maxOutputTokens through to generateChatTitle',

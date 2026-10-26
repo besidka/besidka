@@ -970,6 +970,28 @@ describe('knowledgeSearchToolInputSchema', () => {
   })
 })
 
+describe('knowledge tool item id length', () => {
+  it('caps each filter item id at 64 characters', () => {
+    expect(knowledgeSearchToolInputSchema.safeParse({
+      query: 'x',
+      itemIds: ['a'.repeat(64)],
+    }).success).toBe(true)
+    expect(knowledgeSearchToolInputSchema.safeParse({
+      query: 'x',
+      itemIds: ['a', 'a'.repeat(65)],
+    }).success).toBe(false)
+  })
+
+  it('caps the read item id at 64 characters', () => {
+    expect(knowledgeReadToolInputSchema.safeParse({
+      itemId: 'a'.repeat(64),
+    }).success).toBe(true)
+    expect(knowledgeReadToolInputSchema.safeParse({
+      itemId: 'a'.repeat(65),
+    }).success).toBe(false)
+  })
+})
+
 describe('knowledgeReadToolInputSchema', () => {
   it('accepts an item id alone', () => {
     expect(knowledgeReadToolInputSchema.safeParse({ itemId: 'item-1' }).success)

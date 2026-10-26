@@ -4,8 +4,11 @@ import { convertToModelMessages } from 'ai'
 import { getPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-text'
 import { sanitizeMessagesForModelContext } from '../../../server/utils/files/assistant-files'
 import {
+  appendTextToLastUserTurn,
+  buildKnowledgeMediaTurns,
   buildMessagesForModel,
   DELETED_USER_MESSAGE_PLACEHOLDER_TEXT,
+  KNOWLEDGE_MEDIA_TURN_TEXT,
   MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT,
 } from '../../../server/utils/chats/model-turns'
 
@@ -281,4 +284,122 @@ describe('model-facing turn order', () => {
     expect(buildMessagesForModel(messages, 'google')).toBe(messages)
     expect(buildMessagesForModel(messages, 'openai')).toBe(messages)
   })
+})
+
+describe('project knowledge media turns', () => {
+  const mediaParts = [
+    {
+      type: 'file' as const,
+      mediaType: 'image/png',
+      url: '/files/user-1/diagram.png',
+      filename: 'diagram.png',
+    },
+    {
+      type: 'file' as const,
+      mediaType: 'application/pdf',
+      url: '/files/user-1/contract.pdf',
+      filename: 'contract.pdf',
+    },
+  ]
+
+  it('returns no turns without media parts', () => {
+    expect(buildKnowledgeMediaTurns([])).toEqual([])
+  })
+
+  it('builds a leading user turn with the files and an assistant '
+    + 'placeholder', () => {
+    const turns = buildKnowledgeMediaTurns(mediaParts)
+
+    expect(turns).toHaveLength(2)
+    expect(turns[0]).toMatchObject({
+      role: 'user',
+      parts: [
+        { type: 'text', text: KNOWLEDGE_MEDIA_TURN_TEXT },
+        ...mediaParts,
+      ],
+    })
+    expect(turns[1]).toMatchObject({
+      role: 'assistant',
+      parts: [{
+        type: 'text',
+        text: MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT,
+      }],
+    })
+    expect(turns[0]?.parts[1]).not.toBe(mediaParts[0])
+  })
+
+  it('keeps ids stable across calls so the cached prefix does not change',
+    () => {
+      const first = buildKnowledgeMediaTurns(mediaParts)
+      const second = buildKnowledgeMediaTurns(mediaParts)
+
+      expect(first.map(turn => turn.id)).toEqual(second.map(turn => turn.id))
+    })
+
+  it('keeps a Google history leading with a user turn and alternating when '
+    + 'it is prepended to a history that starts with an assistant turn',
+  () => {
+    const history = [
+      createAssistantMessage('assistant-1', [{ type: 'text', text: 'Hi.' }]),
+      createUserMessage('user-1', 'Summarize the contract.'),
+    ]
+    const messagesForModel = buildMessagesForModel(
+      [...buildKnowledgeMediaTurns(mediaParts), ...history],
+      'google',
+    )
+    const roles = messagesForModel.map(message => message.role)
+
+    expect(roles).toEqual(['user', 'assistant', 'user', 'assistant', 'user'])
+    expect(messagesForModel[0]?.parts[0]).toEqual({
+      type: 'text',
+      text: KNOWLEDGE_MEDIA_TURN_TEXT,
+    })
+    expect(messagesForModel[2]).toMatchObject({
+      parts: [{ type: 'text', text: DELETED_USER_MESSAGE_PLACEHOLDER_TEXT }],
+    })
+    expect(history).toHaveLength(2)
+  })
+
+  it('keeps a history that starts with a user turn alternating', () => {
+    const messagesForModel = buildMessagesForModel([
+      ...buildKnowledgeMediaTurns(mediaParts),
+      createUserMessage('user-1', 'What does the diagram show?'),
+    ], 'google')
+
+    expect(messagesForModel.map(message => message.role))
+      .toEqual(['user', 'assistant', 'user'])
+  })
+})
+
+describe('appendTextToLastUserTurn', () => {
+  it('appends a text part to a copy of the last user turn', () => {
+    const lastUserMessage = createUserMessage('user-2', 'What is the fee?')
+    const messages = [
+      createUserMessage('user-1', 'Hello'),
+      createAssistantMessage('assistant-1', [{ type: 'text', text: 'Hi.' }]),
+      lastUserMessage,
+    ]
+    const result = appendTextToLastUserTurn(messages, 'excerpts')
+
+    expect(result).not.toBe(messages)
+    expect(result[2]).not.toBe(lastUserMessage)
+    expect(result[2]?.parts).toEqual([
+      { type: 'text', text: 'What is the fee?' },
+      { type: 'text', text: 'excerpts' },
+    ])
+    expect(lastUserMessage.parts).toHaveLength(1)
+    expect(messages[2]).toBe(lastUserMessage)
+    expect(result[0]).toBe(messages[0])
+  })
+
+  it('returns the input unchanged when the last turn is not a user turn',
+    () => {
+      const messages = [
+        createUserMessage('user-1', 'Hello'),
+        createAssistantMessage('assistant-1', [{ type: 'text', text: 'Hi.' }]),
+      ]
+
+      expect(appendTextToLastUserTurn(messages, 'excerpts')).toBe(messages)
+      expect(appendTextToLastUserTurn([], 'excerpts')).toEqual([])
+    })
 })

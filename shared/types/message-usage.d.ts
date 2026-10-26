@@ -47,6 +47,9 @@ export type MessageUsage = {
   searchBillingUnit?: SearchBillingUnit
   searchCost?: number
   searchProvider?: SearchProvider
+  knowledgeTokens?: number
+  firstStepInputTokens?: number
+  lastStepOutputTokens?: number
 }
 
 export type ChatMessageMetadata = {
