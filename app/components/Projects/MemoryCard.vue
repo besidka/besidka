@@ -66,6 +66,11 @@
         project's chats.
       </p>
       <template v-else-if="card">
+        <ProfileMemoryInstructBox
+          :project-id="projectId"
+          :model-id="card.memoryModel"
+          @changed="emit('changed')"
+        />
         <div
           v-if="hasEntries"
           class="grid gap-4"
