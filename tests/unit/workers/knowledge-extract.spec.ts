@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { KNOWLEDGE_LIMITS } from '#shared/utils/project-knowledge-policy'
 import {
   extractKnowledgeBytes,
   handleKnowledgeWorkerRequest,
@@ -9,6 +10,8 @@ import {
   createMinimalDocx,
   createMinimalPdf,
   createMinimalXlsx,
+  createStoredZip,
+  createZipWithDeclaredSizes,
   toArrayBuffer,
 } from '../../setup/helpers/knowledge-fixtures'
 
@@ -366,5 +369,166 @@ describe('extractKnowledgeBytes XLSX', () => {
     })
 
     expect(result.extractStatus).toBe('no-text')
+  })
+})
+
+const MEGABYTE = 1024 * 1024
+
+function toForgedBuffer(
+  entries: Array<{ name: string, uncompressedSize: number }>,
+  options: { declaredEntries?: number, withZip64Locator?: boolean } = {},
+): ArrayBuffer {
+  return toArrayBuffer(createZipWithDeclaredSizes(entries, options))
+}
+
+describe.each([
+  { extension: 'docx', extractor: 'client-mammoth', unreadable: 'docx-failed' },
+  { extension: 'xlsx', extractor: 'client-xlsx', unreadable: 'xlsx-failed' },
+])('extractKnowledgeBytes $extension zip limits', (
+  { extension, extractor, unreadable },
+) => {
+  const name = `file.${extension}`
+
+  it('rejects a single entry declared above 50 MB', async () => {
+    const result = await extractKnowledgeBytes({
+      name,
+      bytes: toForgedBuffer([
+        { name: 'bomb.xml', uncompressedSize: 51 * MEGABYTE },
+      ]),
+    })
+
+    expect(result.extractor).toBe(extractor)
+    expect(result.extractStatus).toBe('failed')
+    expect(result.extractError).toBe('too-large')
+    expect(result.contentHash).toMatch(HASH_PATTERN)
+  })
+
+  it('rejects a total declared above 150 MB', async () => {
+    const entries = Array.from({ length: 4 }, (_entry, index) => {
+      return { name: `part-${index}.xml`, uncompressedSize: 40 * MEGABYTE }
+    })
+
+    const result = await extractKnowledgeBytes({
+      name,
+      bytes: toForgedBuffer(entries),
+    })
+
+    expect(result.extractError).toBe('too-large')
+  })
+
+  it('rejects more than 5000 entries', async () => {
+    const entries = Array.from({ length: 5001 }, (_entry, index) => {
+      return { name: `part-${index}.xml`, uncompressedSize: 1 }
+    })
+
+    const result = await extractKnowledgeBytes({
+      name,
+      bytes: toForgedBuffer(entries),
+    })
+
+    expect(result.extractError).toBe('too-large')
+  })
+
+  it('fails garbage and truncated archives with the format code', async () => {
+    const garbage = await extractKnowledgeBytes({
+      name,
+      bytes: toBuffer('this is not a zip archive'.repeat(10)),
+    })
+    const archive = createStoredZip({ 'a.xml': '<a/>' })
+    const truncated = await extractKnowledgeBytes({
+      name,
+      bytes: toArrayBuffer(archive.slice(0, archive.length - 5)),
+    })
+
+    expect(garbage.extractStatus).toBe('failed')
+    expect(garbage.extractError).toBe(unreadable)
+    expect(truncated.extractError).toBe(unreadable)
+  })
+
+  it('fails zip64 archives with the format code', async () => {
+    const marker = await extractKnowledgeBytes({
+      name,
+      bytes: toForgedBuffer(
+        [{ name: 'a.xml', uncompressedSize: 1 }],
+        { withZip64Locator: true },
+      ),
+    })
+    const oversizedEntry = await extractKnowledgeBytes({
+      name,
+      bytes: toForgedBuffer([
+        { name: 'a.xml', uncompressedSize: 0xFFFFFFFF },
+      ]),
+    })
+
+    expect(marker.extractError).toBe(unreadable)
+    expect(oversizedEntry.extractError).toBe(unreadable)
+  })
+})
+
+describe('extractKnowledgeBytes XLSX output bounds', () => {
+  it('reads at most 50 sheets and notes the rest', async () => {
+    const sheets = Array.from({ length: 55 }, (_sheet, index) => {
+      return { name: `Sheet ${index + 1}`, rows: [[`value ${index + 1}`]] }
+    })
+
+    const result = await extractKnowledgeBytes({
+      name: 'many.xlsx',
+      bytes: toArrayBuffer(createMinimalXlsx(sheets)),
+    })
+
+    expect(result.text).toContain('## Sheet 50')
+    expect(result.text).not.toContain('## Sheet 51')
+    expect(result.text.endsWith('(5 more sheets omitted)')).toBe(true)
+  })
+
+  it('truncates one long cell and keeps the table intact', async () => {
+    const result = await extractKnowledgeBytes({
+      name: 'cell.xlsx',
+      bytes: toArrayBuffer(createMinimalXlsx([
+        { name: 'Cells', rows: [['Header'], ['x'.repeat(5000)]] },
+      ])),
+    })
+    const lastLine = result.text.split('\n').at(-1) ?? ''
+
+    expect(lastLine).toBe(`| ${'x'.repeat(2000)}… |`)
+  })
+
+  it('caps columns and notes the ones that were dropped', async () => {
+    const wideRow = Array.from({ length: 230 }, (_cell, index) => {
+      return `c${index}`
+    })
+
+    const result = await extractKnowledgeBytes({
+      name: 'wide.xlsx',
+      bytes: toArrayBuffer(createMinimalXlsx([
+        { name: 'Wide', rows: [wideRow] },
+      ])),
+    })
+    const headerLine = result.text.split('\n')[2] ?? ''
+
+    expect(headerLine.split(' | ')).toHaveLength(200)
+    expect(headerLine).toContain('c199')
+    expect(headerLine).not.toContain('c200')
+    expect(result.text.endsWith('(columns beyond 200 omitted)')).toBe(true)
+  })
+
+  it('stops at the item text cap with a truncation line', async () => {
+    const longCell = 'y'.repeat(1900)
+    const rows = [['Header'], ...Array.from({ length: 800 }, () => [longCell])]
+    const sheets = Array.from({ length: 3 }, (_sheet, index) => {
+      return { name: `Big ${index + 1}`, rows }
+    })
+
+    const result = await extractKnowledgeBytes({
+      name: 'big.xlsx',
+      bytes: toArrayBuffer(createMinimalXlsx(sheets)),
+    })
+
+    expect(result.extractStatus).toBe('ready')
+    expect(new TextEncoder().encode(result.text).length)
+      .toBeLessThanOrEqual(KNOWLEDGE_LIMITS.maxItemTextBytes)
+    expect(result.text).toContain('(output truncated at the size limit)')
+    expect(result.text).toContain('## Big 1')
+    expect(result.text).not.toContain('## Big 3')
   })
 })

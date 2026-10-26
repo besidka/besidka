@@ -27,9 +27,11 @@
         <Icon
           name="lucide:chevron-right"
           class="
-            size-4 shrink-0 text-base-content/60 transition-transform
+            size-4 shrink-0 text-base-content/60 motion-reduce:transition-none
             group-open:rotate-90
           "
+          :class="{ 'transition-transform': isTransitionEnabled }"
+          data-testid="memory-cache-info-chevron"
         />
       </summary>
       <div class="mt-3 grid gap-2">
@@ -141,10 +143,12 @@ interface CacheModel {
 const props = withDefaults(defineProps<{
   knowledgeTokens?: number
   collapsedAfterFirstView?: boolean
+  storageKey?: string
   showMemoryIndex?: boolean
 }>(), {
   knowledgeTokens: undefined,
   collapsedAfterFirstView: false,
+  storageKey: undefined,
   showMemoryIndex: true,
 })
 
@@ -164,22 +168,28 @@ const { data: entriesData } = useNuxtData<MemoryEntriesResponse>(
 
 const isExpanded = shallowRef<boolean>(true)
 const isMounted = shallowRef<boolean>(false)
+const isTransitionEnabled = shallowRef<boolean>(false)
+
+const seenStorageKey = computed<string>(() => {
+  return props.storageKey
+    ? `${SEEN_STORAGE_KEY}:${props.storageKey}`
+    : SEEN_STORAGE_KEY
+})
 
 function readSeenFlag(): boolean {
   try {
-    return window.localStorage.getItem(SEEN_STORAGE_KEY) === SEEN_STORAGE_VALUE
-  } catch (exception) {
-    void exception
-
+    return window.localStorage.getItem(seenStorageKey.value)
+      === SEEN_STORAGE_VALUE
+  } catch {
     return false
   }
 }
 
 function writeSeenFlag() {
   try {
-    window.localStorage.setItem(SEEN_STORAGE_KEY, SEEN_STORAGE_VALUE)
-  } catch (exception) {
-    void exception
+    window.localStorage.setItem(seenStorageKey.value, SEEN_STORAGE_VALUE)
+  } catch {
+    return
   }
 }
 
@@ -197,9 +207,13 @@ function resolveInitialExpansion(): boolean {
   return !hasBeenSeen
 }
 
-onMounted(() => {
+onMounted(async () => {
   isExpanded.value = resolveInitialExpansion()
   isMounted.value = true
+
+  await nextTick()
+
+  isTransitionEnabled.value = true
 })
 
 watchPostEffect(() => {

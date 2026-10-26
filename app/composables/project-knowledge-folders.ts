@@ -6,6 +6,41 @@ interface StoredFolderMemory {
 }
 
 const STORAGE_KEY_PREFIX = 'knowledge-folders:'
+const FOLDER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+const MAX_FOLDER_NAME_CHARS = 255
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseNames(value: unknown): KnowledgeFolderNames {
+  if (!isPlainRecord(value)) {
+    return {}
+  }
+
+  const names: KnowledgeFolderNames = {}
+
+  for (const [folderId, name] of Object.entries(value)) {
+    if (
+      FOLDER_ID_PATTERN.test(folderId)
+      && typeof name === 'string'
+      && name.length > 0
+      && name.length <= MAX_FOLDER_NAME_CHARS
+    ) {
+      names[folderId] = name
+    }
+  }
+
+  return names
+}
+
+function parseSyncedFolderId(value: unknown): string | null {
+  if (typeof value === 'string' && FOLDER_ID_PATTERN.test(value)) {
+    return value
+  }
+
+  return null
+}
 
 function readStoredMemory(projectId: string): StoredFolderMemory {
   const emptyMemory: StoredFolderMemory = { names: {}, syncedFolderId: null }
@@ -19,19 +54,17 @@ function readStoredMemory(projectId: string): StoredFolderMemory {
       return emptyMemory
     }
 
-    const parsed = JSON.parse(raw) as Partial<StoredFolderMemory>
+    const parsed: unknown = JSON.parse(raw)
+
+    if (!isPlainRecord(parsed)) {
+      return emptyMemory
+    }
 
     return {
-      names: parsed.names && typeof parsed.names === 'object'
-        ? parsed.names
-        : {},
-      syncedFolderId: typeof parsed.syncedFolderId === 'string'
-        ? parsed.syncedFolderId
-        : null,
+      names: parseNames(parsed.names),
+      syncedFolderId: parseSyncedFolderId(parsed.syncedFolderId),
     }
-  } catch (exception) {
-    void exception
-
+  } catch {
     return emptyMemory
   }
 }
@@ -42,8 +75,8 @@ function writeStoredMemory(projectId: string, memory: StoredFolderMemory) {
       `${STORAGE_KEY_PREFIX}${projectId}`,
       JSON.stringify(memory),
     )
-  } catch (exception) {
-    void exception
+  } catch {
+    return
   }
 }
 
@@ -81,12 +114,14 @@ export function useKnowledgeFolderMemory(projectId: MaybeRefOrGetter<string>) {
     })
   }
 
-  function forgetSync() {
+  async function forgetSync() {
     syncedFolderId.value = null
     writeStoredMemory(toValue(projectId), {
       names: names.value,
       syncedFolderId: null,
     })
+
+    await removeKnowledgeDirectoryHandle(toValue(projectId))
   }
 
   onMounted(load)

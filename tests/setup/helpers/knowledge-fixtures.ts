@@ -107,6 +107,53 @@ export function createStoredZip(files: Record<string, string>): Uint8Array {
   ])
 }
 
+export interface ForgedZipEntry {
+  name: string
+  uncompressedSize: number
+  compressedSize?: number
+}
+
+export interface ForgedZipOptions {
+  declaredEntries?: number
+  withZip64Locator?: boolean
+}
+
+export function createZipWithDeclaredSizes(
+  entries: ForgedZipEntry[],
+  options: ForgedZipOptions = {},
+): Uint8Array {
+  const centralParts = entries.map((entry) => {
+    const nameBytes = textEncoder.encode(entry.name)
+    const centralHeader = new DataView(new ArrayBuffer(46))
+
+    centralHeader.setUint32(0, 0x02014B50, true)
+    centralHeader.setUint16(4, 20, true)
+    centralHeader.setUint16(6, 20, true)
+    centralHeader.setUint32(20, entry.compressedSize ?? 1, true)
+    centralHeader.setUint32(24, entry.uncompressedSize, true)
+    centralHeader.setUint16(28, nameBytes.length, true)
+
+    return concatBytes([new Uint8Array(centralHeader.buffer), nameBytes])
+  })
+  const centralDirectory = concatBytes(centralParts)
+  const locator = new DataView(new ArrayBuffer(20))
+  const endRecord = new DataView(new ArrayBuffer(22))
+  const declaredEntries = options.declaredEntries ?? entries.length
+
+  locator.setUint32(0, 0x07064B50, true)
+  endRecord.setUint32(0, 0x06054B50, true)
+  endRecord.setUint16(8, declaredEntries, true)
+  endRecord.setUint16(10, declaredEntries, true)
+  endRecord.setUint32(12, centralDirectory.length, true)
+  endRecord.setUint32(16, 0, true)
+
+  return concatBytes([
+    centralDirectory,
+    ...(options.withZip64Locator ? [new Uint8Array(locator.buffer)] : []),
+    new Uint8Array(endRecord.buffer),
+  ])
+}
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -184,7 +231,14 @@ export interface FixtureSheet {
 }
 
 function columnLetter(columnIndex: number): string {
-  return String.fromCharCode(65 + columnIndex)
+  const alphabetSize = 26
+  const lastLetter = String.fromCharCode(65 + (columnIndex % alphabetSize))
+
+  if (columnIndex < alphabetSize) {
+    return lastLetter
+  }
+
+  return `${columnLetter(Math.floor(columnIndex / alphabetSize) - 1)}${lastLetter}`
 }
 
 function buildSheetXml(rows: FixtureSheet['rows']): string {

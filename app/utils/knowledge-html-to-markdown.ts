@@ -5,7 +5,53 @@ import {
   taskListItems,
 } from '@joplin/turndown-plugin-gfm'
 
+const MAX_IMAGE_ALT_CHARS = 120
+const ALLOWED_LINK_SCHEMES: ReadonlySet<string> = new Set([
+  'http',
+  'https',
+  'mailto',
+  'tel',
+])
+const LINK_SCHEME_PATTERN = /^([a-z][a-z0-9+.-]*):/i
+const HIDDEN_URL_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}\s]/gu
+const CONTROL_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}]/gu
+const MARKDOWN_CHARACTERS = /[\\`*_~#>|[\]()!<{}]/g
+
 let turndownService: TurndownService | null = null
+
+function isAllowedLinkTarget(href: string): boolean {
+  const schemeMatch = LINK_SCHEME_PATTERN.exec(
+    href.replace(HIDDEN_URL_CHARACTERS, ''),
+  )
+
+  if (!schemeMatch) {
+    return true
+  }
+
+  return ALLOWED_LINK_SCHEMES.has(schemeMatch[1]!.toLowerCase())
+}
+
+function toSafeAltText(alt: string | null): string {
+  return (alt ?? '')
+    .replace(CONTROL_CHARACTERS, ' ')
+    .replace(MARKDOWN_CHARACTERS, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_IMAGE_ALT_CHARS)
+    .trim()
+}
+
+function toLinkMarkdown(content: string, element: HTMLElement): string {
+  const href = element.getAttribute('href')?.trim() ?? ''
+
+  if (!isAllowedLinkTarget(href)) {
+    return content
+  }
+
+  const target = href.replace(/\s/g, '%20').replace(/([()])/g, '\\$1')
+
+  return `[${content}](${target})`
+}
 
 function toTableCellMarkdown(
   service: TurndownService,
@@ -68,7 +114,15 @@ function createTurndownService(): TurndownService {
   service.addRule('knowledgeImageAltText', {
     filter: 'img',
     replacement: (_content, node) => {
-      return (node as HTMLElement).getAttribute('alt')?.trim() ?? ''
+      return toSafeAltText((node as HTMLElement).getAttribute('alt'))
+    },
+  })
+  service.addRule('knowledgeSafeLink', {
+    filter: (node) => {
+      return node.nodeName === 'A' && node.getAttribute('href') !== null
+    },
+    replacement: (content, node) => {
+      return toLinkMarkdown(content, node as HTMLElement)
     },
   })
 

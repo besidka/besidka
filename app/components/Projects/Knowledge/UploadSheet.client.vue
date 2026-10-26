@@ -60,6 +60,19 @@
               {{ describeSync(syncSummary) }}
             </p>
             <ul
+              v-if="syncSummary && syncSummary.notices.length > 0"
+              class="grid gap-1 text-sm text-base-content/70"
+              aria-label="Sync notices"
+              data-testid="knowledge-upload-sync-preview-notices"
+            >
+              <li
+                v-for="notice in syncSummary.notices"
+                :key="notice"
+              >
+                {{ notice }}
+              </li>
+            </ul>
+            <ul
               v-if="plan?.details?.length"
               class="grid gap-1 break-all text-sm text-base-content/70"
               aria-label="Skipped files"
@@ -171,6 +184,13 @@
                 {{ notice }}
               </li>
             </ul>
+            <p
+              v-if="cleanupFailures > 0"
+              class="text-sm text-base-content/70"
+              data-testid="knowledge-upload-cleanup-failures"
+            >
+              {{ describeCleanupFailures(cleanupFailures) }}
+            </p>
             <ul
               class="grid gap-1 text-sm"
               aria-label="Upload summary"
@@ -290,6 +310,16 @@
               @click="emit('retry')"
             />
             <UiButton
+              v-if="canRetryCommit"
+              mode="neutral"
+              outline
+              size="sm"
+              text="Retry commit"
+              normal-case
+              data-testid="knowledge-upload-retry-commit"
+              @click="emit('retry-commit')"
+            />
+            <UiButton
               size="sm"
               text="Done"
               normal-case
@@ -323,7 +353,7 @@ import type {
 const MAX_LISTED_ENTRIES = 100
 const MAX_LISTED_SKIP_DETAILS = 20
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   phase: KnowledgeUploadPhase
   plan: KnowledgePlanSummary | null
   syncSummary: KnowledgeSyncSummary | null
@@ -332,12 +362,19 @@ const props = defineProps<{
   entries: KnowledgeUploadEntry[]
   progress: KnowledgeUploadProgress
   error: KnowledgeUploadFailure | null
-}>()
+  canRetryCommit?: boolean
+  cleanupFailures?: number
+}>(), {
+  syncResult: null,
+  canRetryCommit: false,
+  cleanupFailures: 0,
+})
 
 const emit = defineEmits<{
-  start: []
-  cancel: []
-  retry: []
+  'start': []
+  'cancel': []
+  'retry': []
+  'retry-commit': []
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -444,6 +481,13 @@ function describeSync(syncSummary: KnowledgeSyncSummary | null): string {
 
   return `${syncSummary.added} new, ${syncSummary.replaced} to check, `
     + `${syncSummary.removed} missing, ${syncSummary.unchanged} unchanged.`
+}
+
+function describeCleanupFailures(count: number): string {
+  const files = count === 1 ? 'copy' : 'copies'
+
+  return `${count} uploaded ${files} could not be cleaned up. `
+    + 'You can remove them from your files.'
 }
 
 function describeSyncResult(syncResult: KnowledgeSyncResult): string {

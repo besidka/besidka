@@ -14,6 +14,7 @@ export const KNOWLEDGE_EXTRACTION_TIMEOUT_MS = 60_000
 export const KNOWLEDGE_WORKER_IDLE_MS = 30_000
 
 const MAX_MEDIA_TYPE_CHARS = 100
+const MAX_CONVERTIBLE_HTML_CHARS = 8 * 1024 * 1024
 
 const mediaTypesByExtension: Record<string, string> = {
   pdf: 'application/pdf',
@@ -83,18 +84,59 @@ function getUtf8ByteLength(text: string): number {
   return new TextEncoder().encode(text).length
 }
 
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw createAbortError()
+  }
+}
+
+function yieldToEventLoop(): Promise<void> {
+  const { scheduler } = globalThis as {
+    scheduler?: { yield?: () => Promise<void> }
+  }
+
+  if (typeof scheduler?.yield === 'function') {
+    return scheduler.yield()
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(resolve)
+  })
+}
+
 async function convertWorkerResultText(
   result: KnowledgeWorkerResult,
+  signal: AbortSignal,
 ): Promise<KnowledgeWorkerResult> {
   if (result.html === undefined) {
     return result
   }
 
+  const { html, ...resultWithoutHtml } = result
+
+  if (html.length > MAX_CONVERTIBLE_HTML_CHARS) {
+    return {
+      ...resultWithoutHtml,
+      extractStatus: 'failed',
+      extractError: 'too-large',
+      text: '',
+    }
+  }
+
+  throwIfAborted(signal)
+  await yieldToEventLoop()
+  throwIfAborted(signal)
+
   const { htmlToKnowledgeMarkdown } = await import(
     '~/utils/knowledge-html-to-markdown'
   )
-  const markdown = htmlToKnowledgeMarkdown(result.html)
-  const { html: _html, ...resultWithoutHtml } = result
+
+  throwIfAborted(signal)
+
+  const markdown = htmlToKnowledgeMarkdown(html)
+
+  await yieldToEventLoop()
+  throwIfAborted(signal)
 
   if (markdown.length === 0) {
     return { ...resultWithoutHtml, extractStatus: 'no-text', text: '' }
@@ -350,7 +392,10 @@ export function useKnowledgeExtraction() {
         { id: nextRequestId, name: file.name, bytes },
         controller.signal,
       )
-      const converted = await convertWorkerResultText(workerResult)
+      const converted = await convertWorkerResultText(
+        workerResult,
+        controller.signal,
+      )
 
       return toExtractionResult(file, enforceItemTextLimit(converted))
     } finally {

@@ -78,8 +78,8 @@ function upsertItems(
 async function settle(operation: Promise<unknown>): Promise<void> {
   try {
     await operation
-  } catch (exception) {
-    void exception
+  } catch {
+    return
   }
 }
 

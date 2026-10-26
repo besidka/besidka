@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   readDirectoryHandleEntries: vi.fn(),
   saveKnowledgeDirectoryHandle: vi.fn(),
   loadKnowledgeDirectoryHandle: vi.fn(),
+  removeKnowledgeDirectoryHandle: vi.fn(),
 }))
 
 mockNuxtImport('useProjectKnowledge', () => () => mocks.state.knowledge)
@@ -60,14 +61,32 @@ mockNuxtImport('saveKnowledgeDirectoryHandle', () => {
 mockNuxtImport('loadKnowledgeDirectoryHandle', () => {
   return mocks.loadKnowledgeDirectoryHandle
 })
+mockNuxtImport('removeKnowledgeDirectoryHandle', () => {
+  return mocks.removeKnowledgeDirectoryHandle
+})
 
 enableAutoUnmount(afterEach)
 
 function stubSheet(name: string, testId: string) {
   return defineComponent({
     name,
-    props: ['open', 'item'],
-    emits: ['update:open', 'select', 'remove', 'readd', 'start', 'cancel'],
+    props: [
+      'open',
+      'item',
+      'canRetryCommit',
+      'cleanupFailures',
+      'linkedFileIds',
+    ],
+    emits: [
+      'update:open',
+      'select',
+      'remove',
+      'readd',
+      'start',
+      'cancel',
+      'retry',
+      'retry-commit',
+    ],
     setup(props, { emit }) {
       return () => h('div', {
         'data-testid': testId,
@@ -87,6 +106,7 @@ const CacheInfoStub = defineComponent({
   name: 'CacheInfoStub',
   props: {
     knowledgeTokens: Number,
+    storageKey: String,
     collapsedAfterFirstView: Boolean,
     showMemoryIndex: Boolean,
   },
@@ -94,6 +114,7 @@ const CacheInfoStub = defineComponent({
     return () => h('div', {
       'data-testid': 'stub-cache-info',
       'data-tokens': String(props.knowledgeTokens),
+      'data-storage-key': props.storageKey,
       'data-collapsed': String(props.collapsedAfterFirstView),
       'data-memory-index': String(props.showMemoryIndex),
     })
@@ -184,6 +205,9 @@ function createState() {
     error: shallowRef<unknown>(null),
     wasCancelled: shallowRef<boolean>(false),
     isBusy: shallowRef<boolean>(false),
+    canRetryCommit: shallowRef<boolean>(false),
+    cleanupFailures: shallowRef<number>(0),
+    retryCommit: vi.fn().mockResolvedValue(undefined),
     prepare: vi.fn().mockResolvedValue(undefined),
     syncFolder: vi.fn().mockResolvedValue(undefined),
     start: vi.fn().mockResolvedValue(undefined),
@@ -212,6 +236,67 @@ function byTestId(wrapper: Wrapper, id: string) {
 
 function missing(wrapper: Wrapper, id: string): boolean {
   return !wrapper.find(`[data-testid="${id}"]`).exists()
+}
+
+function uploadEntry(
+  status: KnowledgeUploadEntry['status'],
+): KnowledgeUploadEntry {
+  return { key: `entry-${status}`, status } as KnowledgeUploadEntry
+}
+
+async function finishRun(
+  phase: 'done' | 'error',
+  statuses: Array<KnowledgeUploadEntry['status']> = [],
+  wasCancelled = false,
+) {
+  mocks.state.upload.phase.value = 'running'
+  await flushPromises()
+  mocks.state.upload.entries.value = statuses.map(uploadEntry)
+  mocks.state.upload.wasCancelled.value = wasCancelled
+  mocks.state.upload.phase.value = phase
+  await flushPromises()
+}
+
+async function discardRun() {
+  mocks.state.upload.phase.value = 'idle'
+  await flushPromises()
+}
+
+function pickerHandle(name = 'my-app') {
+  const handle = { name }
+
+  Object.defineProperty(window, 'showDirectoryPicker', {
+    value: vi.fn().mockResolvedValue(handle),
+    configurable: true,
+  })
+  mocks.supportsDirectoryPicker.mockReturnValue(true)
+
+  return handle
+}
+
+function directoryRead(
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    rootName: 'my-app',
+    entries: [{ file: new File(['x'], 'a.ts'), relativePath: 'a.ts' }],
+    gitignoreText: '',
+    truncated: false,
+    ...overrides,
+  }
+}
+
+function storedFolderMemory() {
+  return JSON.parse(
+    window.localStorage.getItem('knowledge-folders:project-1') ?? 'null',
+  )
+}
+
+function rememberSyncedFolder(folderId: string, name: string) {
+  window.localStorage.setItem('knowledge-folders:project-1', JSON.stringify({
+    names: { [folderId]: name },
+    syncedFolderId: folderId,
+  }))
 }
 
 async function chooseFiles(
@@ -250,10 +335,14 @@ describe('Projects/Knowledge/Panel', () => {
     mocks.saveKnowledgeDirectoryHandle.mockReset()
     mocks.saveKnowledgeDirectoryHandle.mockResolvedValue(true)
     mocks.loadKnowledgeDirectoryHandle.mockReset()
+    mocks.removeKnowledgeDirectoryHandle.mockReset()
+    mocks.removeKnowledgeDirectoryHandle.mockResolvedValue(true)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    Reflect.deleteProperty(window, 'showDirectoryPicker')
   })
 
   describe('states', () => {
@@ -371,6 +460,7 @@ describe('Projects/Knowledge/Panel', () => {
 
         expect(Number(cacheInfo.attributes('data-tokens'))).toBeGreaterThan(0)
         expect(cacheInfo.attributes('data-collapsed')).toBe('true')
+        expect(cacheInfo.attributes('data-storage-key')).toBe('project-1')
         expect(cacheInfo.attributes('data-memory-index')).toBe('false')
       })
 
@@ -532,6 +622,74 @@ describe('Projects/Knowledge/Panel', () => {
       expect(sources[0].file.type).toBe('application/pdf')
     })
 
+    it('tells the library picker which files are already linked', async () => {
+      setItems([scan, readme])
+
+      const wrapper = await mountPanel()
+
+      expect(wrapper.getComponent(LibraryStub).props('linkedFileIds'))
+        .toEqual(['file-1'])
+    })
+
+    it('skips linked and repeated library files before downloading', async () => {
+      setItems([scan])
+      mocks.fetch.mockResolvedValue(new Blob(['%PDF']))
+
+      const wrapper = await mountPanel()
+      const linked = {
+        id: 'file-1',
+        storageKey: 'key-1',
+        name: 'scan.pdf',
+        size: 4,
+        type: 'application/pdf',
+      }
+      const fresh = {
+        id: 'file-2',
+        storageKey: 'key-2',
+        name: 'fresh.pdf',
+        size: 4,
+        type: 'application/pdf',
+      }
+
+      wrapper.getComponent(LibraryStub).vm.$emit('select', [
+        linked,
+        fresh,
+        { ...fresh },
+      ])
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      expect(mocks.fetch).toHaveBeenCalledWith('/files/key-2', {
+        responseType: 'blob',
+      })
+
+      const [sources] = mocks.state.upload.prepare.mock.calls[0]!
+
+      expect(sources.map((source: any) => source.fileId)).toEqual(['file-2'])
+      expect(mocks.info).toHaveBeenCalledWith(
+        'Already in this project',
+        '2 selected files were already added, so they were skipped.',
+      )
+    })
+
+    it('does nothing when every selected library file is linked', async () => {
+      setItems([scan])
+
+      const wrapper = await mountPanel()
+
+      wrapper.getComponent(LibraryStub).vm.$emit('select', [{
+        id: 'file-1',
+        storageKey: 'key-1',
+        name: 'scan.pdf',
+        size: 4,
+        type: 'application/pdf',
+      }])
+      await flushPromises()
+
+      expect(mocks.fetch).not.toHaveBeenCalled()
+      expect(mocks.state.upload.prepare).not.toHaveBeenCalled()
+    })
+
     it('reports a library file that cannot be downloaded', async () => {
       mocks.fetch.mockRejectedValue(new Error('gone'))
 
@@ -581,58 +739,203 @@ describe('Projects/Knowledge/Panel', () => {
       expect(missing(wrapper, 'knowledge-sync-folder-menu')).toBe(true)
     })
 
-    it('offers it on Chromium and saves the directory handle', async () => {
-      mocks.supportsDirectoryPicker.mockReturnValue(true)
+    it('reads the folder but saves nothing before the upload succeeds', async () => {
+      const handle = pickerHandle()
 
-      const handle = { name: 'my-app' }
-
-      vi.stubGlobal('showDirectoryPicker', vi.fn().mockResolvedValue(handle))
-      Object.defineProperty(window, 'showDirectoryPicker', {
-        value: vi.fn().mockResolvedValue(handle),
-        configurable: true,
-      })
-      mocks.readDirectoryHandleEntries.mockResolvedValue({
-        rootName: 'my-app',
-        entries: [{ file: new File(['x'], 'a.ts'), relativePath: 'a.ts' }],
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead({
         gitignoreText: 'dist/',
-      })
+      }))
 
       const wrapper = await mountPanel()
 
       await byTestId(wrapper, 'knowledge-sync-folder').trigger('click')
       await flushPromises()
 
-      expect(mocks.saveKnowledgeDirectoryHandle)
-        .toHaveBeenCalledWith('project-1', handle)
-
       const [, options] = mocks.state.upload.prepare.mock.calls[0]!
-      const stored = JSON.parse(
-        window.localStorage.getItem('knowledge-folders:project-1')!,
-      )
 
       expect(options.gitignoreText).toBe('dist/')
-      expect(stored.syncedFolderId).toBe(options.folderId)
-      expect(stored.names[options.folderId]).toBe('my-app')
+      expect(mocks.saveKnowledgeDirectoryHandle).not.toHaveBeenCalled()
+      expect(storedFolderMemory()).toBeNull()
 
-      Reflect.deleteProperty(window, 'showDirectoryPicker')
+      await finishRun('done', ['ready'])
+
+      expect(mocks.saveKnowledgeDirectoryHandle)
+        .toHaveBeenCalledWith('project-1', handle)
+      expect(storedFolderMemory().syncedFolderId).toBe(options.folderId)
+      expect(storedFolderMemory().names[options.folderId]).toBe('my-app')
+    })
+
+    it('keeps the previous sync when the preview is cancelled', async () => {
+      rememberSyncedFolder('folder-1', 'old-app')
+      setItems([folderItem])
+      pickerHandle('other-app')
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead({
+        rootName: 'other-app',
+      }))
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-sync-folder').trigger('click')
+      await flushPromises()
+
+      mocks.state.upload.phase.value = 'preview'
+      await flushPromises()
+      wrapper.getComponent(UploadSheetStub).vm.$emit('cancel')
+      await discardRun()
+      await finishRun('done', ['ready'])
+
+      expect(mocks.saveKnowledgeDirectoryHandle).not.toHaveBeenCalled()
+      expect(storedFolderMemory()).toEqual({
+        names: { 'folder-1': 'old-app' },
+        syncedFolderId: 'folder-1',
+      })
+    })
+
+    it('keeps the previous sync when the upload is cancelled', async () => {
+      rememberSyncedFolder('folder-1', 'old-app')
+      pickerHandle('other-app')
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead({
+        rootName: 'other-app',
+      }))
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-sync-folder').trigger('click')
+      await flushPromises()
+      await finishRun('done', ['ready'], true)
+
+      expect(mocks.saveKnowledgeDirectoryHandle).not.toHaveBeenCalled()
+      expect(storedFolderMemory().syncedFolderId).toBe('folder-1')
+    })
+
+    it('keeps the previous sync when the upload fails', async () => {
+      rememberSyncedFolder('folder-1', 'old-app')
+      pickerHandle('other-app')
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead({
+        rootName: 'other-app',
+      }))
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-sync-folder').trigger('click')
+      await flushPromises()
+      await finishRun('error', ['failed'])
+      await discardRun()
+      await finishRun('done', ['ready'])
+
+      expect(mocks.saveKnowledgeDirectoryHandle).not.toHaveBeenCalled()
+      expect(storedFolderMemory().syncedFolderId).toBe('folder-1')
+    })
+
+    it('saves a retried sync once it finally succeeds', async () => {
+      const handle = pickerHandle()
+
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead())
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-sync-folder').trigger('click')
+      await flushPromises()
+      await finishRun('error', ['failed'])
+
+      expect(mocks.saveKnowledgeDirectoryHandle).not.toHaveBeenCalled()
+
+      await finishRun('done', ['ready'])
+
+      expect(mocks.saveKnowledgeDirectoryHandle)
+        .toHaveBeenCalledWith('project-1', handle)
+    })
+
+    it('does not save a new folder when nothing was added', async () => {
+      pickerHandle()
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead())
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-sync-folder').trigger('click')
+      await flushPromises()
+      await finishRun('done', ['failed'])
+
+      expect(mocks.saveKnowledgeDirectoryHandle).not.toHaveBeenCalled()
+      expect(storedFolderMemory()).toBeNull()
+    })
+
+    it('reuses the folder group when the same folder is picked again', async () => {
+      rememberSyncedFolder('folder-1', 'my-app')
+      setItems([folderItem, readme])
+
+      const handle = pickerHandle('my-app')
+      const entries = [
+        { file: new File(['x'], 'a.ts'), relativePath: 'src/a.ts' },
+        { file: new File(['x'], 'huge.bin'), relativePath: 'huge.bin' },
+        { file: new File(['x'], 'ignored.log'), relativePath: null },
+      ]
+
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead({
+        entries,
+        gitignoreText: 'dist/',
+        truncated: true,
+      }))
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-sync-folder').trigger('click')
+      await flushPromises()
+
+      expect(mocks.state.upload.prepare).not.toHaveBeenCalled()
+      expect(mocks.state.upload.syncFolder).toHaveBeenCalledWith({
+        folderId: 'folder-1',
+        incoming: entries,
+        existing: [{
+          id: 'folder-item',
+          relativePath: 'src/a.ts',
+          contentHash: '',
+          folderId: 'folder-1',
+        }],
+        walkedPaths: ['src/a.ts', 'huge.bin'],
+        truncated: true,
+        gitignoreText: 'dist/',
+      })
+      expect(byTestId(wrapper, 'stub-upload-sheet').attributes('data-open'))
+        .toBe('true')
+      expect(mocks.saveKnowledgeDirectoryHandle).not.toHaveBeenCalled()
+
+      await finishRun('done')
+
+      expect(mocks.saveKnowledgeDirectoryHandle)
+        .toHaveBeenCalledWith('project-1', handle)
+      expect(storedFolderMemory()).toEqual({
+        names: { 'folder-1': 'my-app' },
+        syncedFolderId: 'folder-1',
+      })
+    })
+
+    it('does not reuse a folder name that has no items any more', async () => {
+      rememberSyncedFolder('folder-1', 'my-app')
+      setItems([readme])
+      pickerHandle('my-app')
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead())
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-sync-folder').trigger('click')
+      await flushPromises()
+
+      expect(mocks.state.upload.syncFolder).not.toHaveBeenCalled()
+      expect(mocks.state.upload.prepare).toHaveBeenCalled()
     })
 
     it('syncs a linked folder from its saved handle', async () => {
       mocks.supportsDirectoryPicker.mockReturnValue(true)
-      window.localStorage.setItem('knowledge-folders:project-1', JSON.stringify({
-        names: { 'folder-1': 'my-app' },
-        syncedFolderId: 'folder-1',
-      }))
+      rememberSyncedFolder('folder-1', 'my-app')
       setItems([folderItem, readme])
 
       const incoming = [{ file: new File(['x'], 'a.ts'), relativePath: 'a.ts' }]
 
       mocks.loadKnowledgeDirectoryHandle.mockResolvedValue({ name: 'my-app' })
-      mocks.readDirectoryHandleEntries.mockResolvedValue({
-        rootName: 'my-app',
+      mocks.readDirectoryHandleEntries.mockResolvedValue(directoryRead({
         entries: incoming,
-        gitignoreText: '',
-      })
+      }))
 
       const wrapper = await mountPanel()
 
@@ -648,6 +951,8 @@ describe('Projects/Knowledge/Panel', () => {
           contentHash: '',
           folderId: 'folder-1',
         }],
+        walkedPaths: ['a.ts'],
+        truncated: false,
         gitignoreText: '',
       })
       expect(byTestId(wrapper, 'stub-upload-sheet').attributes('data-open'))
@@ -656,10 +961,7 @@ describe('Projects/Knowledge/Panel', () => {
 
     it('asks to choose the folder again when access is gone', async () => {
       mocks.supportsDirectoryPicker.mockReturnValue(true)
-      window.localStorage.setItem('knowledge-folders:project-1', JSON.stringify({
-        names: { 'folder-1': 'my-app' },
-        syncedFolderId: 'folder-1',
-      }))
+      rememberSyncedFolder('folder-1', 'my-app')
       setItems([folderItem])
       mocks.loadKnowledgeDirectoryHandle.mockResolvedValue(null)
 
@@ -673,7 +975,55 @@ describe('Projects/Knowledge/Panel', () => {
         expect.stringContaining('Sync with a folder'),
       )
       expect(mocks.state.upload.syncFolder).not.toHaveBeenCalled()
+      expect(mocks.removeKnowledgeDirectoryHandle)
+        .toHaveBeenCalledWith('project-1')
       expect(missing(wrapper, 'knowledge-group-sync')).toBe(true)
+    })
+
+    it.each([
+      'NotFoundError',
+      'NotAllowedError',
+      'SecurityError',
+    ])('forgets the sync when the folder fails with %s', async (name) => {
+      mocks.supportsDirectoryPicker.mockReturnValue(true)
+      rememberSyncedFolder('folder-1', 'my-app')
+      setItems([folderItem])
+      mocks.loadKnowledgeDirectoryHandle.mockResolvedValue({ name: 'my-app' })
+      mocks.readDirectoryHandleEntries.mockRejectedValue(
+        new DOMException('Gone', name),
+      )
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-group-sync').trigger('click')
+      await flushPromises()
+
+      expect(mocks.removeKnowledgeDirectoryHandle)
+        .toHaveBeenCalledWith('project-1')
+      expect(storedFolderMemory().syncedFolderId).toBeNull()
+      expect(mocks.info).toHaveBeenCalledWith(
+        'Choose the folder again',
+        expect.stringContaining('moved or been deleted'),
+      )
+      expect(mocks.error).not.toHaveBeenCalled()
+      expect(missing(wrapper, 'knowledge-group-sync')).toBe(true)
+    })
+
+    it('keeps the sync and reports an unexpected folder error', async () => {
+      mocks.supportsDirectoryPicker.mockReturnValue(true)
+      rememberSyncedFolder('folder-1', 'my-app')
+      setItems([folderItem])
+      mocks.loadKnowledgeDirectoryHandle.mockResolvedValue({ name: 'my-app' })
+      mocks.readDirectoryHandleEntries.mockRejectedValue(new Error('Boom'))
+
+      const wrapper = await mountPanel()
+
+      await byTestId(wrapper, 'knowledge-group-sync').trigger('click')
+      await flushPromises()
+
+      expect(mocks.error).toHaveBeenCalled()
+      expect(mocks.removeKnowledgeDirectoryHandle).not.toHaveBeenCalled()
+      expect(storedFolderMemory().syncedFolderId).toBe('folder-1')
     })
   })
 
@@ -756,34 +1106,171 @@ describe('Projects/Knowledge/Panel', () => {
       expect(mocks.info).not.toHaveBeenCalled()
     })
 
-    it('removes a failed file and reopens the picker to add it again',
-      async () => {
-        const failed = createKnowledgeItem({
-          id: 'failed',
-          title: 'broken.docx',
-          extractStatus: 'failed',
-          extractError: 'too-large',
-        })
+    describe('replacing a file', () => {
+      const failed = createKnowledgeItem({
+        id: 'failed',
+        title: 'broken.docx',
+        extractStatus: 'failed',
+        extractError: 'too-large',
+      })
 
+      async function startReplacement() {
         setItems([failed])
 
         const wrapper = await mountPanel()
-        const click = vi.spyOn(HTMLInputElement.prototype, 'click')
-          .mockImplementation(() => undefined)
 
+        vi.spyOn(HTMLInputElement.prototype, 'click')
+          .mockImplementation(() => undefined)
         wrapper.getComponent(ItemSheetStub).vm.$emit('readd', failed)
         await flushPromises()
-
-        expect(click).toHaveBeenCalled()
-        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
-
         await chooseFiles(wrapper, 'knowledge-file-input', [
           new File(['x'], 'broken.docx'),
         ])
 
+        return wrapper
+      }
+
+      it('reopens the picker and keeps the old file until the new one exists',
+        async () => {
+          await startReplacement()
+
+          expect(HTMLInputElement.prototype.click).toHaveBeenCalled()
+          expect(mocks.state.upload.prepare).toHaveBeenCalled()
+          expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+
+          await finishRun('done', ['ready'])
+
+          expect(mocks.state.knowledge.removeItem)
+            .toHaveBeenCalledOnce()
+          expect(mocks.state.knowledge.removeItem)
+            .toHaveBeenCalledWith('failed')
+        })
+
+      it('removes the old file when the new one has no text', async () => {
+        await startReplacement()
+        await finishRun('done', ['no-text'])
+
         expect(mocks.state.knowledge.removeItem).toHaveBeenCalledWith('failed')
-        expect(mocks.state.upload.prepare).toHaveBeenCalled()
       })
+
+      it('keeps the old file when the preview is cancelled', async () => {
+        const wrapper = await startReplacement()
+
+        mocks.state.upload.phase.value = 'preview'
+        await flushPromises()
+        wrapper.getComponent(UploadSheetStub).vm.$emit('cancel')
+        await discardRun()
+        await finishRun('done', ['ready'])
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+      })
+
+      it('keeps the old file when the plan skipped the new one', async () => {
+        await startReplacement()
+
+        mocks.state.upload.phase.value = 'preview'
+        await flushPromises()
+        await discardRun()
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+      })
+
+      it('keeps the old file when the upload fails', async () => {
+        await startReplacement()
+        await finishRun('error', ['failed'])
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+
+        await discardRun()
+        await finishRun('done', ['ready'])
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+      })
+
+      it('removes the old file when a retry creates the new one', async () => {
+        await startReplacement()
+        await finishRun('error', ['failed'])
+        await finishRun('done', ['ready'])
+
+        expect(mocks.state.knowledge.removeItem).toHaveBeenCalledWith('failed')
+      })
+
+      it('keeps the old file when the new one was already added', async () => {
+        await startReplacement()
+        await finishRun('done', ['skipped-duplicate'])
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+        expect(mocks.info).toHaveBeenCalledWith(
+          'Already added',
+          expect.stringContaining('previous one was kept'),
+        )
+      })
+
+      it('keeps the old file when the upload was cancelled early', async () => {
+        await startReplacement()
+        await finishRun('done', [], true)
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+      })
+
+      it('does not start while another upload is busy', async () => {
+        setItems([failed])
+        mocks.state.upload.isBusy.value = true
+
+        const wrapper = await mountPanel()
+
+        vi.spyOn(HTMLInputElement.prototype, 'click')
+          .mockImplementation(() => undefined)
+        wrapper.getComponent(ItemSheetStub).vm.$emit('readd', failed)
+        await flushPromises()
+        await chooseFiles(wrapper, 'knowledge-file-input', [
+          new File(['x'], 'broken.docx'),
+        ])
+
+        expect(mocks.state.upload.prepare).not.toHaveBeenCalled()
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+        expect(mocks.info).toHaveBeenCalledWith(
+          'Please wait',
+          expect.stringContaining('still running'),
+        )
+
+        mocks.state.upload.isBusy.value = false
+        await finishRun('done', ['ready'])
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+      })
+
+      it('reports a failed removal of the old file', async () => {
+        await startReplacement()
+        mocks.state.knowledge.removeItem.mockResolvedValue({
+          ok: false,
+          parsed: { message: 'Locked', why: 'Busy', status: 409 },
+        })
+        await finishRun('done', ['ready'])
+
+        expect(mocks.error).toHaveBeenCalledWith('Locked', 'Busy')
+      })
+
+      it('ignores an old file that is already gone', async () => {
+        await startReplacement()
+        setItems([])
+        await finishRun('done', ['ready'])
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+      })
+
+      it('does not tie a later plain upload to the replacement', async () => {
+        const wrapper = await startReplacement()
+
+        await discardRun()
+        await chooseFiles(wrapper, 'knowledge-file-input', [
+          new File(['x'], 'other.md'),
+        ])
+        await finishRun('done', ['ready'])
+
+        expect(mocks.state.knowledge.removeItem).not.toHaveBeenCalled()
+      })
+    })
   })
 
   describe('upload lifecycle', () => {
@@ -824,7 +1311,7 @@ describe('Projects/Knowledge/Panel', () => {
           .toBe('true')
       })
 
-    it('refreshes and toasts when a hidden upload finishes', async () => {
+    it('refreshes storage and toasts when a hidden upload finishes', async () => {
       mocks.state.upload.phase.value = 'running'
 
       const wrapper = await mountPanel()
@@ -836,7 +1323,7 @@ describe('Projects/Knowledge/Panel', () => {
       mocks.state.upload.phase.value = 'done'
       await flushPromises()
 
-      expect(mocks.state.knowledge.refresh).toHaveBeenCalled()
+      expect(mocks.state.knowledge.refresh).not.toHaveBeenCalled()
       expect(mocks.refreshStorage).toHaveBeenCalled()
       expect(mocks.info).toHaveBeenCalledWith(
         'Knowledge updated',
@@ -879,6 +1366,31 @@ describe('Projects/Knowledge/Panel', () => {
 
       expect(mocks.info).not.toHaveBeenCalled()
       expect(mocks.state.upload.reset).not.toHaveBeenCalled()
+    })
+
+    it('hands the commit state to the sheet and retries on request', async () => {
+      mocks.state.upload.canRetryCommit.value = true
+      mocks.state.upload.cleanupFailures.value = 2
+
+      const wrapper = await mountPanel()
+      const sheet = wrapper.getComponent(UploadSheetStub)
+
+      expect(sheet.props('canRetryCommit')).toBe(true)
+      expect(sheet.props('cleanupFailures')).toBe(2)
+
+      sheet.vm.$emit('retry-commit')
+      await flushPromises()
+
+      expect(mocks.state.upload.retryCommit).toHaveBeenCalledOnce()
+    })
+
+    it('retries failed files from the sheet', async () => {
+      const wrapper = await mountPanel()
+
+      wrapper.getComponent(UploadSheetStub).vm.$emit('retry')
+      await flushPromises()
+
+      expect(mocks.state.upload.retryFailed).toHaveBeenCalledOnce()
     })
 
     it('cancels a running upload, resets a preview', async () => {

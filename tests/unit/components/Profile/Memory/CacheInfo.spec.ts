@@ -797,6 +797,61 @@ describe('Profile/Memory/CacheInfo', () => {
       expect(wrapper.get('details').attributes('open')).toBeDefined()
     })
 
+    it('keeps the seen flag per project when a storage key is given',
+      async () => {
+        stubViewport(true)
+
+        await mountInfo({
+          collapsedAfterFirstView: true,
+          storageKey: 'project-1',
+        })
+
+        expect(window.localStorage.getItem(`${SEEN_KEY}:project-1`))
+          .toBe('1')
+        expect(window.localStorage.getItem(SEEN_KEY)).toBeNull()
+
+        const otherProject = await mountInfo({
+          collapsedAfterFirstView: true,
+          storageKey: 'project-2',
+        })
+
+        expect(otherProject.get('details').attributes('open')).toBeDefined()
+
+        const sameProject = await mountInfo({
+          collapsedAfterFirstView: true,
+          storageKey: 'project-1',
+        })
+
+        expect(sameProject.get('details').attributes('open')).toBeUndefined()
+      })
+
+    it('ignores the global seen flag when a storage key is given',
+      async () => {
+        stubViewport(false)
+        window.localStorage.setItem(SEEN_KEY, '1')
+
+        const wrapper = await mountInfo({
+          collapsedAfterFirstView: true,
+          storageKey: 'project-1',
+        })
+
+        expect(wrapper.get('details').attributes('open')).toBeDefined()
+      })
+
+    it('enables the chevron transition only after the initial state settles',
+      async () => {
+        stubViewport(false)
+
+        const wrapper = await mountInfo()
+        const chevron = wrapper.get(
+          '[data-testid="memory-cache-info-chevron"]',
+        )
+
+        expect(wrapper.get('details').attributes('open')).toBeUndefined()
+        expect(chevron.classes()).toContain('transition-transform')
+        expect(chevron.classes()).toContain('motion-reduce:transition-none')
+      })
+
     it('still renders when storage throws', async () => {
       const getItem = vi.spyOn(Storage.prototype, 'getItem')
         .mockImplementation(() => {

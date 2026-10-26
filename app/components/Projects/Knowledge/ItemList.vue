@@ -42,7 +42,11 @@
                 focus-visible:ring-inset focus-visible:ring-accent
               "
               :aria-expanded="isExpanded(group.folderId)"
-              :aria-controls="regionId(group.folderId)"
+              :aria-controls="
+                isExpanded(group.folderId)
+                  ? regionId(group.folderId)
+                  : undefined
+              "
               data-testid="knowledge-group-toggle"
               @click="toggle(group.folderId)"
             >

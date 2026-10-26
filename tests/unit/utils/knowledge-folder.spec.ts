@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  collectWalkedPaths,
   diffFolderSync,
   entriesFromFileList,
   loadKnowledgeDirectoryHandle,
@@ -197,6 +198,7 @@ describe('diffFolderSync', () => {
     { id: 'i2', relativePath: 'b.md', contentHash: 'h-b' },
     { id: 'i3', relativePath: 'gone.md', contentHash: 'h-gone' },
   ]
+  const walkedPaths = ['a.md', 'b.md', 'new.md']
 
   it('adds new, replaces changed, removes missing and counts unchanged', () => {
     const incoming = [
@@ -205,7 +207,7 @@ describe('diffFolderSync', () => {
       { relativePath: 'new.md', contentHash: 'h-new' },
     ]
 
-    expect(diffFolderSync({ existing, incoming })).toEqual({
+    expect(diffFolderSync({ existing, incoming, walkedPaths })).toEqual({
       add: [{ relativePath: 'new.md', contentHash: 'h-new' }],
       replace: [
         {
@@ -215,6 +217,7 @@ describe('diffFolderSync', () => {
         },
       ],
       remove: ['i3'],
+      kept: [],
       unchanged: 1,
     })
   })
@@ -230,6 +233,7 @@ describe('diffFolderSync', () => {
         { id: 'i2', relativePath: 'b.md', contentHash: '' },
       ],
       incoming,
+      walkedPaths: ['a.md', 'b.md'],
     })
 
     expect(diff.unchanged).toBe(0)
@@ -244,9 +248,16 @@ describe('diffFolderSync', () => {
     const diff = diffFolderSync({
       existing: [{ id: 'i1', relativePath: 'a.md', contentHash: 'h-a' }],
       incoming: [{ relativePath: 'a.md', contentHash: 'h-a' }],
+      walkedPaths: ['a.md'],
     })
 
-    expect(diff).toEqual({ add: [], replace: [], remove: [], unchanged: 1 })
+    expect(diff).toEqual({
+      add: [],
+      replace: [],
+      remove: [],
+      kept: [],
+      unchanged: 1,
+    })
   })
 
   it('keeps extra fields on incoming items', () => {
@@ -254,23 +265,88 @@ describe('diffFolderSync', () => {
     const diff = diffFolderSync({
       existing: [],
       incoming: [{ relativePath: 'new.md', contentHash: 'h', file }],
+      walkedPaths: ['new.md'],
     })
 
     expect(diff.add[0]?.file).toBe(file)
   })
 
   it('handles empty inputs', () => {
-    expect(diffFolderSync({ existing: [], incoming: [] })).toEqual({
+    expect(diffFolderSync({
+      existing: [],
+      incoming: [],
+      walkedPaths: [],
+    })).toEqual({
       add: [],
       replace: [],
       remove: [],
+      kept: [],
       unchanged: 0,
     })
-    expect(diffFolderSync({ existing, incoming: [] }).remove).toEqual([
-      'i1',
-      'i2',
-      'i3',
-    ])
+    expect(diffFolderSync({
+      existing,
+      incoming: [],
+      walkedPaths: [],
+    }).remove).toEqual(['i1', 'i2', 'i3'])
+  })
+
+  it('keeps items whose file is still on disk but was not planned', () => {
+    const diff = diffFolderSync({
+      existing,
+      incoming: [{ relativePath: 'a.md', contentHash: 'h-a' }],
+      walkedPaths: ['a.md', 'b.md', 'gone.md'],
+    })
+
+    expect(diff.remove).toEqual([])
+    expect(diff.kept).toEqual(['i2', 'i3'])
+  })
+
+  it('removes only the items whose path is absent from the walk', () => {
+    const diff = diffFolderSync({
+      existing,
+      incoming: [{ relativePath: 'a.md', contentHash: 'h-a' }],
+      walkedPaths: ['a.md', 'b.md'],
+    })
+
+    expect(diff.remove).toEqual(['i3'])
+    expect(diff.kept).toEqual(['i2'])
+  })
+
+  it('refuses every removal when the walk was truncated', () => {
+    const diff = diffFolderSync({
+      existing,
+      incoming: [{ relativePath: 'a.md', contentHash: 'h-a' }],
+      walkedPaths: ['a.md'],
+      truncated: true,
+    })
+
+    expect(diff.remove).toEqual([])
+    expect(diff.kept).toEqual([])
+  })
+
+  it('compares walked paths after NFC normalisation', () => {
+    const diff = diffFolderSync({
+      existing: [
+        { id: 'i1', relativePath: 'caf\u00E9.md', contentHash: 'h' },
+      ],
+      incoming: [],
+      walkedPaths: ['cafe\u0301.md'],
+    })
+
+    expect(diff.remove).toEqual([])
+    expect(diff.kept).toEqual(['i1'])
+  })
+})
+
+describe('collectWalkedPaths', () => {
+  it('lists every raw relative path and skips plain file picks', () => {
+    const file = new File(['x'], 'a.md')
+
+    expect(collectWalkedPaths([
+      { file, relativePath: 'src/a.md' },
+      { file, relativePath: null },
+      { file, relativePath: 'big.bin' },
+    ])).toEqual(['src/a.md', 'big.bin'])
   })
 })
 
@@ -318,6 +394,31 @@ describe('readDirectoryHandleEntries', () => {
       'src/lib/util.ts',
     ])
     expect(result.entries[1]?.file.name).toBe('README.md')
+    expect(result.truncated).toBe(false)
+  })
+
+  it('reports truncation when the file cap is reached with more files', async () => {
+    const files = Array.from({ length: 5001 }, (_, index) => {
+      return fakeFile(`file-${index}.md`)
+    })
+    const result = await readDirectoryHandleEntries(
+      fakeDirectory('big', files) as unknown as FileSystemDirectoryHandle,
+    )
+
+    expect(result.entries).toHaveLength(5000)
+    expect(result.truncated).toBe(true)
+  })
+
+  it('is not truncated when the folder holds exactly the cap', async () => {
+    const files = Array.from({ length: 5000 }, (_, index) => {
+      return fakeFile(`file-${index}.md`)
+    })
+    const result = await readDirectoryHandleEntries(
+      fakeDirectory('exact', files) as unknown as FileSystemDirectoryHandle,
+    )
+
+    expect(result.entries).toHaveLength(5000)
+    expect(result.truncated).toBe(false)
   })
 
   it('normalises walked paths to NFC', async () => {

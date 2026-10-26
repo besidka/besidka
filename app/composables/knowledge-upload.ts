@@ -28,6 +28,8 @@ interface UploadRecord {
   key: string
   accepted: KnowledgeAcceptedEntry
   fileId: string | null
+  uploadedFileId: string | null
+  isSending: boolean
 }
 
 interface PreparedItem {
@@ -52,6 +54,8 @@ interface SyncState {
   addKeys: Set<string>
   unchanged: number
   foreignFolderItems: number
+  keptIneligible: number
+  isTruncated: boolean
   removed: number
   couldNotRemove: number
 }
@@ -79,6 +83,18 @@ interface RunState {
   stopFailure: KnowledgeUploadFailure | null
 }
 
+interface SettledItem {
+  item: PreparedItem
+  outcome: 'created' | 'duplicate' | 'failed'
+  message: string | null
+}
+
+interface SendResult {
+  settled: SettledItem[]
+  failure: KnowledgeUploadFailure | null
+  hasCommitted: boolean
+}
+
 type PrepareOutcome
   = | { kind: 'item', item: PreparedItem }
     | { kind: 'settled' }
@@ -86,6 +102,8 @@ type PrepareOutcome
     | { kind: 'stop', failure: KnowledgeUploadFailure }
 
 const MAX_BATCH_ITEMS = 25
+
+const MAX_UNLINKED_UPLOAD_BYTES = 10 * 1024 * 1024
 
 const RUN_STOPPING_STATUSES: ReadonlySet<number> = new Set([402, 413, 422, 429])
 
@@ -99,6 +117,10 @@ const CREATED_STATUSES: readonly KnowledgeUploadEntryStatus[] = [
   'ready',
   'no-text',
 ]
+
+const CONFLICT_STATUS = 409
+
+const IOS_UPDATE_REQUIRED_ERROR = 'ios-update-required'
 
 const STATUS_FALLBACK_MESSAGES: Record<number, string> = {
   402: 'Not enough storage space for this upload.',
@@ -191,6 +213,16 @@ function isRunStopping(parsed: ProjectKnowledgeError): boolean {
   return parsed.status === 400 && STORAGE_MESSAGE_PATTERN.test(parsed.message)
 }
 
+function isNativePdfFallback(extracted: KnowledgeExtractionResult): boolean {
+  return extracted.extractStatus === 'failed'
+    && extracted.extractError === IOS_UPDATE_REQUIRED_ERROR
+    && extracted.needsOriginalUpload
+}
+
+function knowledgeCommitUrl(projectId: string): string {
+  return `/api/v1/projects/${encodeURIComponent(projectId)}/knowledge/commit`
+}
+
 function describeExtractFailure(extractError: string | null): string {
   return extractError
     ? `Couldn't extract text (${extractError}).`
@@ -268,6 +300,9 @@ export function useKnowledgeUpload(
   const progress = shallowRef<KnowledgeUploadProgress>(createEmptyProgress())
   const error = shallowRef<KnowledgeUploadFailure | null>(null)
   const wasCancelled = shallowRef<boolean>(false)
+  const cleanupFailures = shallowRef<number>(0)
+  const hasPendingCommit = shallowRef<boolean>(false)
+  const isRetryingCommit = shallowRef<boolean>(false)
 
   let records = new Map<string, UploadRecord>()
   let context: RunContext = {
@@ -275,7 +310,9 @@ export function useKnowledgeUpload(
     commitWithLastBatch: true,
     sync: null,
   }
-  let hasUncommittedBatches = false
+  let uncommittedProjectId: string | null = null
+  let wasLastRunComplete = false
+  let sessionToken = 0
   let activeRun: RunState | null = null
   let extraction: ReturnType<typeof useKnowledgeExtraction> | null = null
   let runToken = 0
@@ -285,8 +322,19 @@ export function useKnowledgeUpload(
     return entries.value.filter(entry => entry.status === 'failed').length
   })
 
+  const canRetryCommit = computed<boolean>(() => {
+    const isFinished = phase.value === 'error' || phase.value === 'done'
+
+    return isFinished
+      && hasPendingCommit.value
+      && failedCount.value === 0
+      && !isRetryingCommit.value
+  })
+
   const isBusy = computed<boolean>(() => {
-    return phase.value === 'planning' || phase.value === 'running'
+    return phase.value === 'planning'
+      || phase.value === 'running'
+      || isRetryingCommit.value
   })
 
   function getExtraction(): ReturnType<typeof useKnowledgeExtraction> {
@@ -308,7 +356,91 @@ export function useKnowledgeUpload(
     updateEntry(key, { status: 'failed', error: message })
   }
 
+  function markUncommitted(targetProjectId: string): void {
+    uncommittedProjectId = targetProjectId
+    hasPendingCommit.value = true
+  }
+
+  function markCommitted(): void {
+    uncommittedProjectId = null
+    hasPendingCommit.value = false
+  }
+
+  async function commitInBackground(targetProjectId: string): Promise<void> {
+    try {
+      await $fetch(knowledgeCommitUrl(targetProjectId), {
+        method: 'POST',
+        body: {},
+      })
+    } catch {
+      return
+    }
+  }
+
+  async function deleteUploadedFile(fileId: string): Promise<boolean> {
+    try {
+      await $fetch(`/api/v1/files/${encodeURIComponent(fileId)}`, {
+        method: 'DELETE',
+      })
+
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function deleteFilesInBackground(fileIds: string[]): Promise<void> {
+    for (const fileId of fileIds) {
+      await deleteUploadedFile(fileId)
+    }
+  }
+
+  async function removeUnlinkedUpload(
+    record: UploadRecord,
+    shouldCountFailure: boolean,
+  ): Promise<void> {
+    const { uploadedFileId } = record
+
+    if (!uploadedFileId) {
+      return
+    }
+
+    record.uploadedFileId = null
+    record.fileId = null
+
+    const isDeleted = await deleteUploadedFile(uploadedFileId)
+
+    if (!isDeleted && shouldCountFailure) {
+      cleanupFailures.value += 1
+    }
+  }
+
+  function releaseSession(): void {
+    const projectIdToCommit = uncommittedProjectId
+    const orphanedFileIds: string[] = []
+
+    for (const record of records.values()) {
+      if (record.uploadedFileId && !record.isSending) {
+        orphanedFileIds.push(record.uploadedFileId)
+        record.uploadedFileId = null
+      }
+    }
+
+    sessionToken += 1
+    markCommitted()
+
+    if (projectIdToCommit) {
+      commitInBackground(projectIdToCommit)
+    }
+
+    if (orphanedFileIds.length > 0) {
+      deleteFilesInBackground(orphanedFileIds)
+    }
+  }
+
   function clearSession(): void {
+    releaseSession()
+    cleanupFailures.value = 0
     records = new Map()
     context = {
       folderId: null,
@@ -340,6 +472,8 @@ export function useKnowledgeUpload(
         key,
         accepted: acceptedEntry,
         fileId: fileIds.get(acceptedEntry.file) ?? null,
+        uploadedFileId: null,
+        isSending: false,
       })
 
       return {
@@ -488,11 +622,14 @@ export function useKnowledgeUpload(
           return item.folderId !== undefined
             && item.folderId !== input.folderId
         })
+        const isTruncated = input.truncated === true
         const diff = diffFolderSync({
           existing: input.existing.filter((item) => {
             return !foreignFolderItems.includes(item)
           }),
           incoming: incomingWithPaths,
+          walkedPaths: input.walkedPaths,
+          truncated: isTruncated,
         })
         const queued = [
           ...diff.add,
@@ -514,19 +651,23 @@ export function useKnowledgeUpload(
           })
         }
 
+        const sync: SyncState = {
+          removals,
+          addKeys: new Set<string>(
+            diff.add.flatMap(entry => keyByAccepted.get(entry) ?? []),
+          ),
+          unchanged: diff.unchanged,
+          foreignFolderItems: foreignFolderItems.length,
+          keptIneligible: diff.kept.length,
+          isTruncated,
+          removed: 0,
+          couldNotRemove: 0,
+        }
+
         context = {
           folderId: input.folderId,
           commitWithLastBatch: false,
-          sync: {
-            removals,
-            addKeys: new Set<string>(
-              diff.add.flatMap(entry => keyByAccepted.get(entry) ?? []),
-            ),
-            unchanged: diff.unchanged,
-            foreignFolderItems: foreignFolderItems.length,
-            removed: 0,
-            couldNotRemove: 0,
-          },
+          sync,
         }
         plan.value = summarizeKnowledgePlan(knowledgePlan)
         syncSummary.value = {
@@ -534,6 +675,7 @@ export function useKnowledgeUpload(
           replaced: diff.replace.length,
           removed: diff.remove.length,
           unchanged: diff.unchanged,
+          notices: describePlanNotices(sync),
           plan: plan.value,
         }
       },
@@ -598,11 +740,28 @@ export function useKnowledgeUpload(
     return fileId
   }
 
+  function willExceedUnlinkedUploadBudget(
+    record: UploadRecord,
+    runState: RunState,
+  ): boolean {
+    const pendingBytes = runState.batch.items.reduce((total, item) => {
+      const pendingRecord = records.get(item.key)
+
+      return pendingRecord?.uploadedFileId
+        ? total + pendingRecord.accepted.file.size
+        : total
+    }, 0)
+
+    return pendingBytes > 0
+      && pendingBytes + record.accepted.file.size > MAX_UNLINKED_UPLOAD_BYTES
+  }
+
   async function prepareEntry(
     record: UploadRecord,
-    signal: AbortSignal,
+    runState: RunState,
   ): Promise<PrepareOutcome> {
     const { key, accepted } = record
+    const { signal } = runState.controller
 
     updateEntry(key, { status: 'extracting', error: null })
 
@@ -622,7 +781,7 @@ export function useKnowledgeUpload(
       return { kind: 'settled' }
     }
 
-    if (extracted.extractStatus === 'failed') {
+    if (extracted.extractStatus === 'failed' && !isNativePdfFallback(extracted)) {
       failEntry(key, describeExtractFailure(extracted.extractError))
 
       return { kind: 'settled' }
@@ -638,10 +797,27 @@ export function useKnowledgeUpload(
     }
 
     if (extracted.needsOriginalUpload && !record.fileId) {
+      if (willExceedUnlinkedUploadBudget(record, runState)) {
+        const flushFailure = await flushBatch(
+          runState.batch,
+          false,
+          runState.projectId,
+        )
+
+        if (flushFailure) {
+          updateEntry(key, { status: 'queued', error: null })
+
+          return { kind: 'stop', failure: flushFailure }
+        }
+      }
+
       updateEntry(key, { status: 'uploading-original' })
 
       try {
-        record.fileId = await uploadOriginal(record, extracted, signal)
+        const uploadedFileId = await uploadOriginal(record, extracted, signal)
+
+        record.fileId = uploadedFileId
+        record.uploadedFileId = uploadedFileId
       } catch (exception) {
         if (signal.aborted) {
           updateEntry(key, { status: 'queued' })
@@ -659,6 +835,12 @@ export function useKnowledgeUpload(
           : { kind: 'settled' }
       }
 
+      if (isSuperseded(runState)) {
+        await removeUnlinkedUpload(record, false)
+
+        return { kind: 'cancelled' }
+      }
+
       updateEntry(key, { status: 'extracting' })
     }
 
@@ -672,60 +854,192 @@ export function useKnowledgeUpload(
     }
   }
 
+  function settleBatchResult(
+    sentItems: PreparedItem[],
+    skippedIndexes: Set<number>,
+  ): SettledItem[] {
+    return sentItems.map((item, index) => {
+      return {
+        item,
+        outcome: skippedIndexes.has(index) ? 'duplicate' : 'created',
+        message: null,
+      }
+    })
+  }
+
+  function failSettled(
+    sentItems: PreparedItem[],
+    message: string,
+  ): SettledItem[] {
+    return sentItems.map((item) => {
+      return { item, outcome: 'failed', message }
+    })
+  }
+
+  async function sendItemsOneByOne(
+    sentItems: PreparedItem[],
+  ): Promise<SendResult> {
+    const settled: SettledItem[] = []
+
+    for (const [index, item] of sentItems.entries()) {
+      const outcome = await knowledge.addItems([item.payload], {
+        commit: false,
+      })
+
+      if (outcome.ok) {
+        settled.push(...settleBatchResult(
+          [item],
+          new Set<number>(outcome.result.skipped.map(skipped => skipped.index)),
+        ))
+
+        continue
+      }
+
+      const failure = toFailure(outcome.parsed)
+
+      if (outcome.parsed.status === CONFLICT_STATUS) {
+        settled.push(...failSettled([item], failure.message))
+
+        continue
+      }
+
+      settled.push(...failSettled(sentItems.slice(index), failure.message))
+
+      return { settled, failure, hasCommitted: false }
+    }
+
+    return { settled, failure: null, hasCommitted: false }
+  }
+
+  async function sendItems(
+    sentItems: PreparedItem[],
+    commit: boolean,
+  ): Promise<SendResult> {
+    const outcome = await knowledge.addItems(
+      sentItems.map(item => item.payload),
+      { commit },
+    )
+
+    if (outcome.ok) {
+      return {
+        settled: settleBatchResult(
+          sentItems,
+          new Set<number>(outcome.result.skipped.map(skipped => skipped.index)),
+        ),
+        failure: null,
+        hasCommitted: commit,
+      }
+    }
+
+    if (outcome.parsed.status === CONFLICT_STATUS && sentItems.length > 1) {
+      return sendItemsOneByOne(sentItems)
+    }
+
+    const failure = toFailure(outcome.parsed)
+
+    return {
+      settled: failSettled(sentItems, failure.message),
+      failure: outcome.parsed.status === CONFLICT_STATUS ? null : failure,
+      hasCommitted: false,
+    }
+  }
+
+  function applySettled(settled: SettledItem[]): void {
+    const settledByKey = new Map<string, SettledItem>(
+      settled.map(entry => [entry.item.key, entry]),
+    )
+
+    entries.value = entries.value.map((entry) => {
+      const settledItem = settledByKey.get(entry.key)
+
+      if (!settledItem) {
+        return entry
+      }
+
+      if (settledItem.outcome === 'failed') {
+        return { ...entry, status: 'failed', error: settledItem.message }
+      }
+
+      if (settledItem.outcome === 'duplicate') {
+        return { ...entry, status: 'skipped-duplicate', error: null }
+      }
+
+      const status: KnowledgeUploadEntryStatus
+        = settledItem.item.payload.extractStatus === 'no-text'
+          ? 'no-text'
+          : 'ready'
+
+      return { ...entry, status, error: null }
+    })
+  }
+
   async function flushBatch(
     batch: PendingBatch,
     commit: boolean,
+    targetProjectId: string,
   ): Promise<KnowledgeUploadFailure | null> {
     if (batch.items.length === 0) {
       return null
     }
 
     const sentItems = batch.items
+    const sentRecords = sentItems.flatMap((item) => {
+      return records.get(item.key) ?? []
+    })
+    const recordByKey = new Map<string, UploadRecord>(
+      sentRecords.map(record => [record.key, record]),
+    )
+    const sessionAtStart = sessionToken
 
     batch.items = []
     batch.bytes = 0
 
-    const outcome = await knowledge.addItems(
-      sentItems.map(item => item.payload),
-      { commit },
+    for (const record of sentRecords) {
+      record.isSending = true
+    }
+
+    const { settled, failure, hasCommitted } = await sendItems(
+      sentItems,
+      commit,
     )
+    const isSessionCurrent = sessionAtStart === sessionToken
+    const hasCreated = settled.some(entry => entry.outcome === 'created')
 
-    if (!outcome.ok) {
-      const failure = toFailure(outcome.parsed)
+    for (const record of sentRecords) {
+      record.isSending = false
+    }
 
-      for (const item of sentItems) {
-        failEntry(item.key, failure.message)
+    for (const entry of settled) {
+      const record = recordByKey.get(entry.item.key)
+
+      if (!record) {
+        continue
+      }
+
+      if (entry.outcome === 'created') {
+        record.uploadedFileId = null
+      } else if (entry.outcome === 'duplicate' || !isSessionCurrent) {
+        await removeUnlinkedUpload(record, isSessionCurrent)
+      }
+    }
+
+    if (!isSessionCurrent) {
+      if (hasCreated && !hasCommitted) {
+        commitInBackground(targetProjectId)
       }
 
       return failure
     }
 
-    const skippedIndexes = new Set<number>(
-      outcome.result.skipped.map(skipped => skipped.index),
-    )
+    applySettled(settled)
 
-    entries.value = entries.value.map((entry) => {
-      const index = sentItems.findIndex(item => item.key === entry.key)
-
-      if (index === -1) {
-        return entry
-      }
-
-      const sentItem = sentItems[index]
-      const status: KnowledgeUploadEntryStatus = skippedIndexes.has(index)
-        ? 'skipped-duplicate'
-        : sentItem?.payload.extractStatus === 'no-text' ? 'no-text' : 'ready'
-
-      return { ...entry, status, error: null }
-    })
-
-    if (commit) {
-      hasUncommittedBatches = false
-    } else if (outcome.result.items.length > 0) {
-      hasUncommittedBatches = true
+    if (hasCommitted) {
+      markCommitted()
+    } else if (hasCreated) {
+      markUncommitted(targetProjectId)
     }
 
-    return null
+    return failure
   }
 
   function getEntryStatus(key: string): KnowledgeUploadEntryStatus | null {
@@ -745,7 +1059,7 @@ export function useKnowledgeUpload(
 
     for (const removal of sync.removals) {
       if (removal.replacedByKey === null) {
-        if (!isRunComplete) {
+        if (!isRunComplete || sync.isTruncated) {
           continue
         }
 
@@ -774,11 +1088,32 @@ export function useKnowledgeUpload(
     return removalPlan
   }
 
+  function describePlanNotices(sync: SyncState): string[] {
+    const notices: string[] = []
+
+    if (sync.keptIneligible > 0) {
+      const count = sync.keptIneligible
+
+      notices.push(
+        `${count} ${pluralize(count, 'file is', 'files are')} no longer `
+        + `eligible and ${pluralize(count, 'was', 'were')} kept.`,
+      )
+    }
+
+    if (sync.isTruncated) {
+      notices.push(
+        'Your folder has more files than were read, so nothing was removed.',
+      )
+    }
+
+    return notices
+  }
+
   function describeSyncNotices(
     sync: SyncState,
     removalPlan: RemovalPlan,
   ): string[] {
-    const notices: string[] = []
+    const notices: string[] = describePlanNotices(sync)
 
     if (removalPlan.keptRenamed === 1) {
       notices.push(
@@ -831,12 +1166,14 @@ export function useKnowledgeUpload(
       unchanged: sync.unchanged,
       unchangedUnknown: removalPlan.unchangedUnknown,
       couldNotRemove: sync.couldNotRemove,
+      cleanupFailures: cleanupFailures.value,
       notices: describeSyncNotices(sync, removalPlan),
     }
   }
 
   async function finalizeFolderSync(
     isRunComplete: boolean,
+    targetProjectId: string,
   ): Promise<KnowledgeUploadFailure | null> {
     const sync = context.sync
 
@@ -848,7 +1185,7 @@ export function useKnowledgeUpload(
     const { removableIds } = removalPlan
     let failure: KnowledgeUploadFailure | null = null
 
-    if (hasUncommittedBatches || removableIds.length > 0) {
+    if (uncommittedProjectId !== null || removableIds.length > 0) {
       const body: KnowledgeCommitInput = removableIds.length > 0
         ? { folderId: context.folderId, remove: removableIds }
         : {}
@@ -865,15 +1202,34 @@ export function useKnowledgeUpload(
         sync.removals = sync.removals.filter((removal) => {
           return !removableIds.includes(removal.itemId)
         })
-        hasUncommittedBatches = false
+        markCommitted()
       } else {
         failure = toFailure(outcome.parsed)
+        markUncommitted(targetProjectId)
       }
     }
 
     publishSyncResult(sync, removalPlan)
 
     return failure
+  }
+
+  async function commitPendingBatches(): Promise<
+    KnowledgeUploadFailure | null
+  > {
+    if (uncommittedProjectId === null) {
+      return null
+    }
+
+    const commitOutcome = await knowledge.commit({})
+
+    if (commitOutcome.ok) {
+      markCommitted()
+
+      return null
+    }
+
+    return toFailure(commitOutcome.parsed)
   }
 
   async function finalizeRun(
@@ -883,29 +1239,23 @@ export function useKnowledgeUpload(
     const flushFailure = await flushBatch(
       runState.batch,
       context.commitWithLastBatch,
+      runState.projectId,
     )
+
+    wasLastRunComplete = isRunComplete && !flushFailure
 
     if (!context.commitWithLastBatch) {
       const syncFailure = await finalizeFolderSync(
-        isRunComplete && !flushFailure,
+        wasLastRunComplete,
+        runState.projectId,
       )
 
       return flushFailure ?? syncFailure
     }
 
-    if (!hasUncommittedBatches) {
-      return flushFailure
-    }
+    const commitFailure = await commitPendingBatches()
 
-    const commitOutcome = await knowledge.commit({})
-
-    if (commitOutcome.ok) {
-      hasUncommittedBatches = false
-
-      return flushFailure
-    }
-
-    return flushFailure ?? toFailure(commitOutcome.parsed)
+    return flushFailure ?? commitFailure
   }
 
   async function processQueue(runState: RunState): Promise<void> {
@@ -922,7 +1272,7 @@ export function useKnowledgeUpload(
 
       publishProgress(runState, record.accepted.name)
 
-      const outcome = await prepareEntry(record, runState.controller.signal)
+      const outcome = await prepareEntry(record, runState)
 
       if (outcome.kind === 'cancelled') {
         return
@@ -942,7 +1292,11 @@ export function useKnowledgeUpload(
       }
 
       if (isBatchFull(runState.batch, outcome.item)) {
-        const flushFailure = await flushBatch(runState.batch, false)
+        const flushFailure = await flushBatch(
+          runState.batch,
+          false,
+          runState.projectId,
+        )
 
         if (flushFailure) {
           runState.processed.delete(key)
@@ -1044,6 +1398,39 @@ export function useKnowledgeUpload(
     await runQueue()
   }
 
+  async function retryCommit(): Promise<void> {
+    const isFinished = phase.value === 'error' || phase.value === 'done'
+
+    const pendingProjectId = uncommittedProjectId
+
+    if (
+      !isFinished
+      || !pendingProjectId
+      || isRetryingCommit.value
+    ) {
+      return
+    }
+
+    const sessionAtStart = sessionToken
+
+    isRetryingCommit.value = true
+
+    const failure = context.sync
+      ? await finalizeFolderSync(wasLastRunComplete, pendingProjectId)
+      : await commitPendingBatches()
+
+    isRetryingCommit.value = false
+
+    if (sessionAtStart !== sessionToken) {
+      return
+    }
+
+    await knowledge.refresh()
+
+    error.value = failure
+    phase.value = failure ? 'error' : 'done'
+  }
+
   function cancel(): void {
     if (phase.value !== 'running' || !activeRun) {
       return
@@ -1058,7 +1445,6 @@ export function useKnowledgeUpload(
     preparationToken += 1
     activeRun?.controller.abort()
     activeRun = null
-    hasUncommittedBatches = false
     clearSession()
     phase.value = 'idle'
   }
@@ -1084,12 +1470,15 @@ export function useKnowledgeUpload(
     progress,
     error,
     wasCancelled,
+    cleanupFailures,
     failedCount,
+    canRetryCommit,
     isBusy,
     prepare,
     syncFolder,
     start,
     retryFailed,
+    retryCommit,
     cancel,
     reset,
     dispose,

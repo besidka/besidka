@@ -17,6 +17,7 @@ export interface KnowledgeFolderEntries {
 export interface KnowledgeDirectoryEntries extends KnowledgeFolderEntries {
   rootName: string
   gitignoreText: string
+  truncated: boolean
 }
 
 export interface KnowledgeFolderSyncItem {
@@ -40,6 +41,7 @@ export interface KnowledgeFolderDiff<
     hasKnownHash: boolean
   }>
   remove: string[]
+  kept: string[]
   unchanged: number
 }
 
@@ -120,6 +122,7 @@ export async function readDirectoryHandleEntries(
   const gitignoreText = await readRootGitignoreText(handle)
   const gitignoreRules = parseSimpleGitignore(gitignoreText)
   const entries: KnowledgePlanEntry[] = []
+  let isTruncated = false
 
   async function walk(
     directory: FileSystemDirectoryHandle,
@@ -129,6 +132,8 @@ export async function readDirectoryHandleEntries(
       throwIfAborted(signal)
 
       if (entries.length >= MAX_WALKED_FILES) {
+        isTruncated = true
+
         return
       }
 
@@ -157,7 +162,18 @@ export async function readDirectoryHandleEntries(
 
   await walk(handle, '')
 
-  return { rootName: handle.name, entries, gitignoreText }
+  return {
+    rootName: handle.name,
+    entries,
+    gitignoreText,
+    truncated: isTruncated,
+  }
+}
+
+export function collectWalkedPaths(entries: KnowledgePlanEntry[]): string[] {
+  return entries.flatMap((entry) => {
+    return entry.relativePath === null ? [] : [entry.relativePath]
+  })
 }
 
 function openDatabase(): Promise<IDBDatabase | null> {
@@ -275,9 +291,11 @@ function isKnownHash(contentHash: string): boolean {
 }
 
 export function diffFolderSync<Incoming extends KnowledgeFolderIncomingItem>(
-  { existing, incoming }: {
+  { existing, incoming, walkedPaths, truncated = false }: {
     existing: KnowledgeFolderSyncItem[]
     incoming: Incoming[]
+    walkedPaths: Iterable<string>
+    truncated?: boolean
   },
 ): KnowledgeFolderDiff<Incoming> {
   const existingByPath = new Map<string, KnowledgeFolderSyncItem>()
@@ -291,17 +309,24 @@ export function diffFolderSync<Incoming extends KnowledgeFolderIncomingItem>(
   }
 
   const incomingPaths = new Set<string>()
+  const onDiskPaths = new Set<string>()
   const diff: KnowledgeFolderDiff<Incoming> = {
     add: [],
     replace: [],
     remove: [],
+    kept: [],
     unchanged: 0,
+  }
+
+  for (const walkedPath of walkedPaths) {
+    onDiskPaths.add(normalizeKnowledgeRelativePath(walkedPath))
   }
 
   for (const item of incoming) {
     const incomingPath = normalizeKnowledgeRelativePath(item.relativePath)
 
     incomingPaths.add(incomingPath)
+    onDiskPaths.add(incomingPath)
 
     const match = existingByPath.get(incomingPath)
 
@@ -327,7 +352,15 @@ export function diffFolderSync<Incoming extends KnowledgeFolderIncomingItem>(
   }
 
   for (const item of existing) {
-    if (!incomingPaths.has(normalizeKnowledgeRelativePath(item.relativePath))) {
+    const path = normalizeKnowledgeRelativePath(item.relativePath)
+
+    if (incomingPaths.has(path)) {
+      continue
+    }
+
+    if (onDiskPaths.has(path)) {
+      diff.kept.push(item.id)
+    } else if (!truncated) {
       diff.remove.push(item.id)
     }
   }

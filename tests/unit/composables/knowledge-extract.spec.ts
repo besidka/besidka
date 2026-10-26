@@ -285,6 +285,87 @@ describe('useKnowledgeExtraction result shaping', () => {
     expect(result.text).toBe('')
   })
 
+  it('fails DOCX HTML over 8 MB with too-large before converting', async () => {
+    const result = await extractWith(new File(['x'], 'a.docx'), {
+      extractor: 'client-mammoth',
+      html: `<p>${'a'.repeat(8 * 1024 * 1024)}</p>`,
+      text: '',
+    })
+
+    expect(result.extractStatus).toBe('failed')
+    expect(result.extractError).toBe('too-large')
+    expect(result.text).toBe('')
+  })
+
+  it('yields to the event loop while converting DOCX HTML', async () => {
+    const yieldToLoop = vi.fn(() => Promise.resolve())
+
+    vi.stubGlobal('scheduler', { yield: yieldToLoop })
+
+    const result = await extractWith(new File(['x'], 'a.docx'), {
+      extractor: 'client-mammoth',
+      html: '<p>Hello</p>',
+      text: '',
+    })
+
+    expect(result.text).toBe('Hello')
+    expect(yieldToLoop).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not yield for results without HTML', async () => {
+    const yieldToLoop = vi.fn(() => Promise.resolve())
+
+    vi.stubGlobal('scheduler', { yield: yieldToLoop })
+    await extractWith(new File(['x'], 'a.md'), { text: 'plain' })
+
+    expect(yieldToLoop).not.toHaveBeenCalled()
+  })
+
+  it('falls back to a timer yield without scheduler.yield', async () => {
+    vi.stubGlobal('scheduler', undefined)
+
+    const result = await extractWith(new File(['x'], 'a.docx'), {
+      extractor: 'client-mammoth',
+      html: '<p>Hello</p>',
+      text: '',
+    })
+
+    expect(result.text).toBe('Hello')
+  })
+
+  it('rejects when aborted while the HTML is being converted', async () => {
+    const controller = new AbortController()
+
+    vi.stubGlobal('scheduler', {
+      yield: vi.fn(() => {
+        controller.abort()
+
+        return Promise.resolve()
+      }),
+    })
+
+    const { extractFile } = useKnowledgeExtraction()
+    const extraction = extractFile(new File(['x'], 'a.docx'), {
+      signal: controller.signal,
+    })
+    const rejection = expect(extraction).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+
+    await vi.waitFor(() => expect(FakeWorker.instances).toHaveLength(1))
+
+    const worker = FakeWorker.instances[0]!
+
+    await waitForPosts(worker, 1)
+    worker.reply(0, {
+      extractor: 'client-mammoth',
+      html: '<p>Hello</p>',
+      text: '',
+    })
+
+    await rejection
+  })
+
   it('fails text over the 2 MB item cap with too-large', async () => {
     const result = await extractWith(new File(['x'], 'a.xlsx'), {
       extractor: 'client-xlsx',

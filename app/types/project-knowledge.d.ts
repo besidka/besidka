@@ -122,6 +122,8 @@ export interface KnowledgeFolderSyncInput {
   folderId: string
   incoming: KnowledgeUploadSource[]
   existing: KnowledgeFolderExistingItem[]
+  walkedPaths: Iterable<string>
+  truncated?: boolean
   gitignoreText?: string
 }
 
@@ -130,6 +132,7 @@ export interface KnowledgeSyncSummary {
   replaced: number
   removed: number
   unchanged: number
+  notices: string[]
   plan: KnowledgePlanSummary
 }
 
@@ -141,5 +144,6 @@ export interface KnowledgeSyncResult {
   unchanged: number
   unchangedUnknown: number
   couldNotRemove: number
+  cleanupFailures: number
   notices: string[]
 }

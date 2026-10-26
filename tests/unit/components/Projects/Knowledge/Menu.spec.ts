@@ -30,6 +30,10 @@ describe('Projects/Knowledge/Menu', () => {
 
     expect(trigger.element.tagName).toBe('SUMMARY')
     expect(trigger.attributes('aria-expanded')).toBe('false')
+    expect(trigger.attributes('aria-haspopup')).toBeUndefined()
+    expect(trigger.attributes('aria-controls'))
+      .toBe(wrapper.get('ul').attributes('id'))
+    expect(wrapper.get('ul').attributes('id')).toBeTruthy()
     expect(wrapper.get('ul').attributes('aria-label'))
       .toBe('More knowledge actions')
 

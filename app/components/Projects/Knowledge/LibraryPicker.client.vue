@@ -76,11 +76,18 @@
             </div>
           </div>
           <p
-            v-else-if="files.length === 0"
+            v-else-if="files.length === 0 && !hasMore"
             class="rounded-box bg-base-200/60 px-4 py-3 text-sm opacity-70"
             data-testid="knowledge-library-empty"
           >
             No PDFs or images found in your library.
+          </p>
+          <p
+            v-else-if="files.length === 0"
+            class="rounded-box bg-base-200/60 px-4 py-3 text-sm opacity-70"
+            data-testid="knowledge-library-empty-so-far"
+          >
+            No PDFs or images in the files checked so far.
           </p>
           <ul
             v-else
@@ -92,20 +99,28 @@
               :key="file.id"
             >
               <label
-                class="
-                  rounded-box flex cursor-pointer items-center gap-3 p-3
-                  hover:bg-base-content/5
-                "
+                class="rounded-box flex items-center gap-3 p-3"
+                :class="isLinked(file.id)
+                  ? 'cursor-not-allowed opacity-60'
+                  : 'cursor-pointer hover:bg-base-content/5'"
               >
                 <input
                   type="checkbox"
                   class="checkbox checkbox-sm"
                   :checked="selectedIds.includes(file.id)"
+                  :disabled="isLinked(file.id)"
                   :data-testid="`knowledge-library-file-${file.id}`"
                   @change="toggle(file.id)"
                 >
                 <span class="min-w-0 flex-1 truncate font-medium">
                   {{ file.name }}
+                </span>
+                <span
+                  v-if="isLinked(file.id)"
+                  class="badge badge-ghost badge-sm shrink-0"
+                  :data-testid="`knowledge-library-linked-${file.id}`"
+                >
+                  Already added
                 </span>
                 <span class="shrink-0 text-xs text-base-content/60">
                   {{ formatKnowledgeBytes(file.size) }}
@@ -167,6 +182,12 @@ import { parseError } from 'evlog'
 import type { KnowledgeLibraryFile } from '~/types/knowledge-ui.d'
 import type { ProjectKnowledgeError } from '~/types/project-knowledge.d'
 
+const props = withDefaults(defineProps<{
+  linkedFileIds?: string[]
+}>(), {
+  linkedFileIds: () => [],
+})
+
 const emit = defineEmits<{
   select: [files: KnowledgeLibraryFile[]]
 }>()
@@ -174,6 +195,7 @@ const emit = defineEmits<{
 const open = defineModel<boolean>('open', { default: false })
 
 const PAGE_SIZE = 50
+const MAX_AUTO_PAGES = 5
 const SEARCH_DEBOUNCE_MS = 300
 const ALLOWED_TYPES = [
   'application/pdf',
@@ -210,6 +232,10 @@ const addLabel = computed<string>(() => {
   return count === 1 ? 'Add 1 file' : `Add ${count} files`
 })
 
+function isLinked(fileId: string): boolean {
+  return props.linkedFileIds.includes(fileId)
+}
+
 async function fetchPage(offset: number) {
   requestToken += 1
 
@@ -219,28 +245,42 @@ async function fetchPage(offset: number) {
   loadError.value = null
 
   try {
-    const response = await $fetch('/api/v1/files', {
-      query: {
-        offset,
-        limit: PAGE_SIZE,
-        source: 'upload',
-        ...(search.value.trim() ? { search: search.value.trim() } : {}),
-      },
-    })
+    let nextOffset = offset
+    let loadedFiles: KnowledgeLibraryFile[] = offset === 0 ? [] : files.value
+    let pagesFetched = 0
+    let hasMorePages = false
 
-    if (token !== requestToken) {
-      return
-    }
+    do {
+      const response = await $fetch('/api/v1/files', {
+        query: {
+          offset: nextOffset,
+          limit: PAGE_SIZE,
+          source: 'upload',
+          ...(search.value.trim() ? { search: search.value.trim() } : {}),
+        },
+      })
 
-    const allowedFiles = response.files.filter((file) => {
-      return ALLOWED_TYPES.includes(file.type)
-    })
+      if (token !== requestToken) {
+        return
+      }
 
-    files.value = offset === 0
-      ? allowedFiles
-      : [...files.value, ...allowedFiles]
-    serverOffset.value = offset + response.files.length
-    total.value = response.total
+      pagesFetched += 1
+      nextOffset += response.files.length
+      loadedFiles = [
+        ...loadedFiles,
+        ...response.files.filter((file) => {
+          return ALLOWED_TYPES.includes(file.type)
+        }),
+      ]
+      hasMorePages = response.files.length > 0 && nextOffset < response.total
+      files.value = loadedFiles
+      serverOffset.value = nextOffset
+      total.value = response.total
+    } while (
+      loadedFiles.length === 0
+      && hasMorePages
+      && pagesFetched < MAX_AUTO_PAGES
+    )
   } catch (exception) {
     if (token === requestToken) {
       loadError.value = parseError(exception)
@@ -257,6 +297,10 @@ function loadMore() {
 }
 
 function toggle(fileId: string) {
+  if (isLinked(fileId)) {
+    return
+  }
+
   selectedIds.value = selectedIds.value.includes(fileId)
     ? selectedIds.value.filter(id => id !== fileId)
     : [...selectedIds.value, fileId]
@@ -264,7 +308,7 @@ function toggle(fileId: string) {
 
 function confirm() {
   const chosenFiles = files.value.filter((file) => {
-    return selectedIds.value.includes(file.id)
+    return selectedIds.value.includes(file.id) && !isLinked(file.id)
   })
 
   open.value = false

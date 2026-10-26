@@ -52,6 +52,8 @@ interface SheetOptions {
     bytesTotal: number
   }
   error?: { message: string, why: string | undefined, status: number } | null
+  canRetryCommit?: boolean
+  cleanupFailures?: number
 }
 
 async function mountSheet(options: SheetOptions = {}) {
@@ -71,6 +73,8 @@ async function mountSheet(options: SheetOptions = {}) {
         bytesTotal: 0,
       },
       error: options.error ?? null,
+      canRetryCommit: options.canRetryCommit ?? false,
+      cleanupFailures: options.cleanupFailures ?? 0,
       open: false,
     },
     global: {
@@ -200,6 +204,7 @@ describe('Projects/Knowledge/UploadSheet', () => {
           replaced: 1,
           removed: 3,
           unchanged: 9,
+          notices: [],
           plan,
         },
       })
@@ -232,6 +237,7 @@ describe('Projects/Knowledge/UploadSheet', () => {
           replaced: 0,
           removed: 0,
           unchanged: 4,
+          notices: [],
           plan,
         },
       })
@@ -383,6 +389,7 @@ describe('Projects/Knowledge/UploadSheet', () => {
           replaced: 0,
           removed: 0,
           unchanged: 5,
+          notices: [],
           plan,
         },
         entries: [entry('a', 'ready')],
@@ -400,6 +407,7 @@ describe('Projects/Knowledge/UploadSheet', () => {
           replaced: 4,
           removed: 2,
           unchanged: 0,
+          notices: [],
           plan,
         },
         syncResult: {
@@ -410,6 +418,7 @@ describe('Projects/Knowledge/UploadSheet', () => {
           unchanged: 1,
           unchangedUnknown: 3,
           couldNotRemove: 0,
+          cleanupFailures: 0,
           notices: ['2 files kept under their old name — they look like '
             + 'renamed copies.'],
         },
@@ -420,6 +429,95 @@ describe('Projects/Knowledge/UploadSheet', () => {
         .toBe('Folder synced: 1 new, 4 unchanged, 0 removed.')
       expect(byTestId(wrapper, 'knowledge-upload-sync-notices').text())
         .toContain('2 files kept under their old name')
+    })
+
+    it('lists the sync notices in the preview', async () => {
+      const wrapper = await mountSheet({
+        phase: 'preview',
+        syncSummary: {
+          added: 1,
+          replaced: 0,
+          removed: 0,
+          unchanged: 2,
+          notices: [
+            '1 file is no longer eligible and was kept.',
+            'Your folder has more files than were read, so nothing was '
+            + 'removed.',
+          ],
+          plan,
+        },
+      })
+      const notices = byTestId(wrapper, 'knowledge-upload-sync-preview-notices')
+
+      expect(notices.text()).toContain('no longer eligible and was kept')
+      expect(notices.text()).toContain('nothing was removed')
+    })
+
+    it('hides the preview notices when there are none', async () => {
+      const wrapper = await mountSheet({
+        phase: 'preview',
+        syncSummary: {
+          added: 1,
+          replaced: 0,
+          removed: 0,
+          unchanged: 2,
+          notices: [],
+          plan,
+        },
+      })
+
+      expect(missing(wrapper, 'knowledge-upload-sync-preview-notices'))
+        .toBe(true)
+    })
+
+    it('tells how many uploaded copies could not be cleaned up', async () => {
+      const wrapper = await mountSheet({
+        phase: 'done',
+        entries: [entry('a', 'ready')],
+        cleanupFailures: 2,
+      })
+
+      expect(byTestId(wrapper, 'knowledge-upload-cleanup-failures').text())
+        .toBe(
+          '2 uploaded copies could not be cleaned up. '
+          + 'You can remove them from your files.',
+        )
+    })
+
+    it('hides the cleanup note when nothing failed to clean up', async () => {
+      const wrapper = await mountSheet({
+        phase: 'done',
+        entries: [entry('a', 'ready')],
+      })
+
+      expect(missing(wrapper, 'knowledge-upload-cleanup-failures')).toBe(true)
+    })
+
+    it('offers to retry the commit when only the commit failed', async () => {
+      const wrapper = await mountSheet({
+        phase: 'error',
+        error: { message: 'Commit failed', why: undefined, status: 500 },
+        entries: [entry('a', 'ready')],
+        canRetryCommit: true,
+      })
+
+      expect(missing(wrapper, 'knowledge-upload-retry')).toBe(true)
+
+      await byTestId(wrapper, 'knowledge-upload-retry-commit')
+        .trigger('click')
+
+      expect(wrapper.emitted('retry-commit')).toHaveLength(1)
+    })
+
+    it('does not offer a commit retry by default', async () => {
+      const wrapper = await mountSheet({
+        phase: 'error',
+        error: { message: 'Boom', why: undefined, status: 500 },
+        entries: [entry('a', 'failed', 'too-large')],
+      })
+
+      expect(missing(wrapper, 'knowledge-upload-retry-commit')).toBe(true)
+      expect(byTestId(wrapper, 'knowledge-upload-retry').exists()).toBe(true)
     })
 
     it('shows a run-stopping error as an alert', async () => {

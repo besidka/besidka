@@ -76,6 +76,7 @@
         />
         <ProfileMemoryCacheInfo
           :knowledge-tokens="cacheTokens"
+          :storage-key="projectId"
           :show-memory-index="false"
           collapsed-after-first-view
         />
@@ -278,9 +279,12 @@
       :entries="upload.entries.value"
       :progress="upload.progress.value"
       :error="upload.error.value"
+      :can-retry-commit="upload.canRetryCommit.value"
+      :cleanup-failures="upload.cleanupFailures.value"
       @start="upload.start()"
       @cancel="onUploadCancel"
       @retry="upload.retryFailed()"
+      @retry-commit="upload.retryCommit()"
     />
     <LazyProjectsKnowledgeNoteEditor
       v-model:open="isNoteEditorOpen"
@@ -301,6 +305,7 @@
     />
     <LazyProjectsKnowledgeLibraryPicker
       v-model:open="isLibraryOpen"
+      :linked-file-ids="linkedFileIds"
       @select="onLibrarySelect"
     />
   </UiBubble>
@@ -322,10 +327,19 @@ import type {
   KnowledgePreparingRow,
 } from '~/types/knowledge-ui.d'
 import type {
+  KnowledgeUploadPhase,
   KnowledgeUploadSource,
   ProjectKnowledgeError,
 } from '~/types/project-knowledge.d'
+import type { KnowledgeDirectoryEntries } from '~/utils/knowledge-folder'
 import type { KnowledgePlanEntry } from '~/utils/knowledge-upload-plan'
+
+interface PendingFolderSync {
+  folderId: string
+  name: string
+  handle: FileSystemDirectoryHandle
+  isNewFolder: boolean
+}
 
 interface DirectoryPickerWindow extends Window {
   showDirectoryPicker?: (
@@ -340,6 +354,12 @@ const props = defineProps<{
 const MAX_PREPARING_ROWS = 8
 const GITIGNORE_FILE_NAME = '.gitignore'
 const PREPARING_STATUSES = ['queued', 'extracting', 'uploading-original']
+const CREATED_STATUSES = ['ready', 'no-text']
+const UNAVAILABLE_FOLDER_ERRORS = [
+  'NotFoundError',
+  'NotAllowedError',
+  'SecurityError',
+]
 
 const headingId = useId()
 const acceptAttribute = [
@@ -354,7 +374,7 @@ const upload = useKnowledgeUpload(projectIdRef, knowledge)
 const folders = useKnowledgeFolderMemory(projectIdRef)
 const modelContext = useKnowledgeModelContext()
 const { selection } = useSelectedModelInfo()
-const { data: storageStats, refresh: refreshStorage } = useLazyFetch(
+const { data: storageStats, refresh: refreshStorage } = await useLazyFetch(
   '/api/v1/storage',
   { server: false },
 )
@@ -372,6 +392,8 @@ const selectedItemId = shallowRef<string | null>(null)
 const removingId = shallowRef<string | null>(null)
 const syncingFolderId = shallowRef<string | null>(null)
 const itemToReplace = shallowRef<KnowledgeItem | null>(null)
+const replacingItemId = shallowRef<string | null>(null)
+const pendingFolderSync = shallowRef<PendingFolderSync | null>(null)
 
 const isInitialLoading = computed<boolean>(() => {
   return knowledge.pending.value && !knowledge.summary.value
@@ -445,6 +467,12 @@ const preparingRows = computed<KnowledgePreparingRow[]>(() => {
 
 const isUploadRunningInBackground = computed<boolean>(() => {
   return upload.phase.value === 'running' && !isUploadSheetOpen.value
+})
+
+const linkedFileIds = computed<string[]>(() => {
+  return knowledge.items.value.flatMap((item) => {
+    return item.fileId ? [item.fileId] : []
+  })
 })
 
 const syncableFolderIds = computed<string[]>(() => {
@@ -524,15 +552,17 @@ async function onFilesChosen(event: Event) {
 
   itemToReplace.value = null
 
-  if (replacement) {
-    const outcome = await knowledge.removeItem(replacement.id)
+  if (replacement && upload.isBusy.value) {
+    useInfoMessage(
+      'Please wait',
+      'Another upload is still running. Try replacing the file again '
+      + 'when it finishes.',
+    )
 
-    if (!outcome.ok) {
-      reportFailure('Failed to remove the file', outcome.parsed)
-
-      return
-    }
+    return
   }
+
+  replacingItemId.value = replacement?.id ?? null
 
   await startUpload(files.map((file) => {
     return { file, relativePath: null }
@@ -570,6 +600,61 @@ async function onFolderChosen(event: Event) {
   })
 }
 
+function hasFolderItems(folderId: string): boolean {
+  return knowledge.items.value.some(item => item.folderId === folderId)
+}
+
+function findReusableFolderId(rootName: string): string | null {
+  const syncedFolderId = folders.syncedFolderId.value
+  const candidateIds = Object.keys(folders.names.value).filter((folderId) => {
+    return folders.names.value[folderId] === rootName
+      && hasFolderItems(folderId)
+  })
+
+  if (syncedFolderId && candidateIds.includes(syncedFolderId)) {
+    return syncedFolderId
+  }
+
+  return candidateIds[0] ?? null
+}
+
+function isFolderUnavailable(exception: unknown): boolean {
+  return exception instanceof DOMException
+    && UNAVAILABLE_FOLDER_ERRORS.includes(exception.name)
+}
+
+async function runFolderSync(
+  folderId: string,
+  folderRead: Pick<
+    KnowledgeDirectoryEntries,
+    'entries' | 'gitignoreText' | 'truncated'
+  >,
+) {
+  const existing = knowledge.items.value.flatMap((item) => {
+    if (item.folderId !== folderId || !item.relativePath) {
+      return []
+    }
+
+    return [{
+      id: item.id,
+      relativePath: item.relativePath,
+      contentHash: '',
+      folderId: item.folderId,
+    }]
+  })
+
+  isUploadSheetOpen.value = true
+
+  await upload.syncFolder({
+    folderId,
+    incoming: folderRead.entries,
+    existing,
+    walkedPaths: collectWalkedPaths(folderRead.entries),
+    truncated: folderRead.truncated,
+    gitignoreText: folderRead.gitignoreText,
+  })
+}
+
 async function pickSyncedFolder() {
   const directoryWindow = window as DirectoryPickerWindow
 
@@ -581,16 +666,37 @@ async function pickSyncedFolder() {
 
   try {
     const handle = await directoryWindow.showDirectoryPicker({ mode: 'read' })
-    const { rootName, entries, gitignoreText } = (
-      await readDirectoryHandleEntries(handle)
-    )
-    const folderId = generateFolderId()
+    const folderRead = await readDirectoryHandleEntries(handle)
+    const reusableFolderId = findReusableFolderId(folderRead.rootName)
 
-    await saveKnowledgeDirectoryHandle(props.projectId, handle)
-    folders.remember(folderId, rootName, { isSynced: true })
     isReadingFolder.value = false
 
-    await startUpload(entries, { folderId, gitignoreText })
+    if (reusableFolderId) {
+      pendingFolderSync.value = {
+        folderId: reusableFolderId,
+        name: folderRead.rootName,
+        handle,
+        isNewFolder: false,
+      }
+
+      await runFolderSync(reusableFolderId, folderRead)
+
+      return
+    }
+
+    const folderId = generateFolderId()
+
+    pendingFolderSync.value = {
+      folderId,
+      name: folderRead.rootName,
+      handle,
+      isNewFolder: true,
+    }
+
+    await startUpload(folderRead.entries, {
+      folderId,
+      gitignoreText: folderRead.gitignoreText,
+    })
   } catch (exception) {
     if (exception instanceof DOMException && exception.name === 'AbortError') {
       return
@@ -609,7 +715,7 @@ async function syncFolder(folderId: string) {
     const handle = await loadKnowledgeDirectoryHandle(props.projectId)
 
     if (!handle) {
-      folders.forgetSync()
+      await folders.forgetSync()
       useInfoMessage(
         'Choose the folder again',
         'Besidka no longer has access to it. Use "Sync with a folder".',
@@ -618,29 +724,19 @@ async function syncFolder(folderId: string) {
       return
     }
 
-    const { entries, gitignoreText } = await readDirectoryHandleEntries(handle)
-    const existing = knowledge.items.value.flatMap((item) => {
-      if (item.folderId !== folderId || !item.relativePath) {
-        return []
-      }
-
-      return [{
-        id: item.id,
-        relativePath: item.relativePath,
-        contentHash: '',
-        folderId: item.folderId,
-      }]
-    })
-
-    isUploadSheetOpen.value = true
-
-    await upload.syncFolder({
-      folderId,
-      incoming: entries,
-      existing,
-      gitignoreText,
-    })
+    await runFolderSync(folderId, await readDirectoryHandleEntries(handle))
   } catch (exception) {
+    if (isFolderUnavailable(exception)) {
+      await folders.forgetSync()
+      useInfoMessage(
+        'Choose the folder again',
+        'Besidka could not open it. It may have moved or been deleted. '
+        + 'Use "Sync with a folder".',
+      )
+
+      return
+    }
+
     reportFailure('Failed to sync the folder', parseError(exception))
   } finally {
     syncingFolderId.value = null
@@ -648,9 +744,25 @@ async function syncFolder(folderId: string) {
 }
 
 async function onLibrarySelect(files: KnowledgeLibraryFile[]) {
+  const selectableFiles = files.filter((file, index) => {
+    return files.findIndex(other => other.id === file.id) === index
+      && !linkedFileIds.value.includes(file.id)
+  })
+  const skippedCount = files.length - selectableFiles.length
+
+  if (skippedCount > 0) {
+    const isSingle = skippedCount === 1
+
+    useInfoMessage(
+      'Already in this project',
+      `${skippedCount} selected ${isSingle ? 'file was' : 'files were'} `
+      + `already added, so ${isSingle ? 'it was' : 'they were'} skipped.`,
+    )
+  }
+
   const sources: KnowledgeUploadSource[] = []
 
-  for (const file of files) {
+  for (const file of selectableFiles) {
     try {
       const blob = await $fetch<Blob>(
         `/files/${encodeURIComponent(file.storageKey)}`,
@@ -738,16 +850,87 @@ function describeFinishedUpload(): string {
   return failed > 0 ? `${addedText}, ${failed} failed.` : `${addedText}.`
 }
 
+async function settleReplacement(phase: KnowledgeUploadPhase) {
+  const previousItemId = replacingItemId.value
+
+  if (!previousItemId) {
+    return
+  }
+
+  const statuses = upload.entries.value.map(entry => entry.status)
+  const isReplacementCreated = statuses.some((status) => {
+    return CREATED_STATUSES.includes(status)
+  })
+
+  if (isReplacementCreated) {
+    replacingItemId.value = null
+
+    if (!knowledge.items.value.some(item => item.id === previousItemId)) {
+      return
+    }
+
+    const outcome = await knowledge.removeItem(previousItemId)
+
+    if (!outcome.ok) {
+      reportFailure('Failed to remove the previous file', outcome.parsed)
+    }
+
+    return
+  }
+
+  if (statuses.includes('skipped-duplicate')) {
+    replacingItemId.value = null
+    useInfoMessage(
+      'Already added',
+      'The new file is already in this project, so the previous one was kept.',
+    )
+
+    return
+  }
+
+  if (phase === 'done') {
+    replacingItemId.value = null
+  }
+}
+
+async function persistFolderSync(phase: KnowledgeUploadPhase) {
+  const pending = pendingFolderSync.value
+
+  if (!pending || phase !== 'done' || upload.wasCancelled.value) {
+    return
+  }
+
+  const hasCreatedEntries = upload.entries.value.some((entry) => {
+    return CREATED_STATUSES.includes(entry.status)
+  })
+
+  if (pending.isNewFolder && !hasCreatedEntries) {
+    return
+  }
+
+  pendingFolderSync.value = null
+
+  await saveKnowledgeDirectoryHandle(props.projectId, pending.handle)
+  folders.remember(pending.folderId, pending.name, { isSynced: true })
+}
+
 watch(() => upload.phase.value, async (phase, previousPhase) => {
-  if (previousPhase !== 'running') {
+  if (phase === 'idle') {
+    replacingItemId.value = null
+    pendingFolderSync.value = null
+
     return
   }
 
-  if (phase !== 'done' && phase !== 'error') {
+  const isFinishedRun = previousPhase === 'running'
+    || (previousPhase === 'error' && phase === 'done')
+
+  if (!isFinishedRun || (phase !== 'done' && phase !== 'error')) {
     return
   }
 
-  await knowledge.refresh()
+  await settleReplacement(phase)
+  await persistFolderSync(phase)
   refreshStorage()
 
   if (isUploadSheetOpen.value) {

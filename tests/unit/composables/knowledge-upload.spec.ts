@@ -68,12 +68,14 @@ const extractionOverrides = new Map<
   Partial<KnowledgeExtractionResult> | Error
 >()
 const hashesByName = new Map<string, string>()
+const failingFileDeletes = new Set<string>()
 
 let itemsResponder: (
   body: Record<string, any>,
   callIndex: number,
 ) => Promise<ItemsResponse> | ItemsResponse
 let commitExtras: Record<string, unknown> = {}
+let failingCommitCount = 0
 let itemsCallCount = 0
 let createdItemCount = 0
 let versionCounter = 0
@@ -242,6 +244,20 @@ function commitCalls(): RecordedCall[] {
   })
 }
 
+function fileDeleteCalls(): string[] {
+  return recordedCalls
+    .filter(call => call.method === 'DELETE' && call.url.includes('/files/'))
+    .map(call => call.url)
+}
+
+function walkedPathsOf(
+  sources: Array<{ file: File, relativePath: string | null }>,
+): string[] {
+  return sources.flatMap((source) => {
+    return source.relativePath === null ? [] : [source.relativePath]
+  })
+}
+
 function batchSizes(): number[] {
   return itemCalls().map(call => call.body?.items.length)
 }
@@ -282,7 +298,9 @@ describe('useKnowledgeUpload', () => {
     recordedCalls.length = 0
     extractionOverrides.clear()
     hashesByName.clear()
+    failingFileDeletes.clear()
     commitExtras = {}
+    failingCommitCount = 0
     itemsCallCount = 0
     createdItemCount = 0
     versionCounter = 0
@@ -315,7 +333,21 @@ describe('useKnowledgeUpload', () => {
         return itemsResponder(options.body ?? {}, itemsCallCount - 1)
       }
 
+      if (url.startsWith('/api/v1/files/') && options.method === 'DELETE') {
+        if (failingFileDeletes.has(url)) {
+          throw createFetchError(500, 'Could not delete the file')
+        }
+
+        return undefined
+      }
+
       if (url.endsWith('/commit')) {
+        if (failingCommitCount > 0) {
+          failingCommitCount -= 1
+
+          throw createFetchError(500, 'Commit failed')
+        }
+
         versionCounter += 1
 
         return {
@@ -1305,7 +1337,12 @@ describe('useKnowledgeUpload', () => {
       const incoming = createIncoming()
 
       planIncoming(incoming)
-      await upload.syncFolder({ folderId: 'folder1', incoming, existing })
+      await upload.syncFolder({
+        folderId: 'folder1',
+        incoming,
+        existing,
+        walkedPaths: walkedPathsOf(incoming),
+      })
 
       expect(upload.phase.value).toBe('preview')
       expect(upload.syncSummary.value).toMatchObject({
@@ -1326,7 +1363,12 @@ describe('useKnowledgeUpload', () => {
       const incoming = createIncoming()
 
       planIncoming(incoming)
-      await upload.syncFolder({ folderId: 'folder1', incoming, existing })
+      await upload.syncFolder({
+        folderId: 'folder1',
+        incoming,
+        existing,
+        walkedPaths: walkedPathsOf(incoming),
+      })
       await upload.start()
 
       expect(batchSizes()).toEqual([2])
@@ -1353,7 +1395,12 @@ describe('useKnowledgeUpload', () => {
 
       extractionOverrides.set('b.md', new Error('Worker crashed'))
       planIncoming(incoming)
-      await upload.syncFolder({ folderId: 'folder1', incoming, existing })
+      await upload.syncFolder({
+        folderId: 'folder1',
+        incoming,
+        existing,
+        walkedPaths: walkedPathsOf(incoming),
+      })
       await upload.start()
 
       expect(commitCalls()).toHaveLength(1)
@@ -1369,7 +1416,12 @@ describe('useKnowledgeUpload', () => {
       const incoming = [createSource('a.md', 'a.md')]
 
       planSources(incoming, { 'a.md': 'hash-a-1' })
-      await upload.syncFolder({ folderId: 'folder1', incoming, existing })
+      await upload.syncFolder({
+        folderId: 'folder1',
+        incoming,
+        existing,
+        walkedPaths: walkedPathsOf(incoming),
+      })
       await upload.start()
 
       expect(itemCalls()).toHaveLength(0)
@@ -1394,7 +1446,12 @@ describe('useKnowledgeUpload', () => {
         'b.md': 'hash-b-1',
         'c.md': 'hash-c-1',
       })
-      await upload.syncFolder({ folderId: 'folder1', incoming, existing })
+      await upload.syncFolder({
+        folderId: 'folder1',
+        incoming,
+        existing,
+        walkedPaths: walkedPathsOf(incoming),
+      })
       await upload.start()
 
       expect(upload.syncSummary.value).toMatchObject({ unchanged: 3 })
@@ -1410,7 +1467,12 @@ describe('useKnowledgeUpload', () => {
         throw createFetchError(413, 'Not enough storage space')
       }
       planIncoming(incoming)
-      await upload.syncFolder({ folderId: 'folder1', incoming, existing })
+      await upload.syncFolder({
+        folderId: 'folder1',
+        incoming,
+        existing,
+        walkedPaths: walkedPathsOf(incoming),
+      })
       await upload.start()
 
       expect(upload.phase.value).toBe('error')
@@ -1430,7 +1492,12 @@ describe('useKnowledgeUpload', () => {
         return defaultItemsResponder(body)
       }
       planIncoming(incoming)
-      await upload.syncFolder({ folderId: 'folder1', incoming, existing })
+      await upload.syncFolder({
+        folderId: 'folder1',
+        incoming,
+        existing,
+        walkedPaths: walkedPathsOf(incoming),
+      })
       await upload.start()
 
       shouldReject = false
@@ -1491,7 +1558,12 @@ describe('useKnowledgeUpload', () => {
         const { upload } = createUpload()
 
         planSources(incoming)
-        await upload.syncFolder({ folderId, incoming, existing: existingItems })
+        await upload.syncFolder({
+          folderId,
+          incoming,
+          existing: existingItems,
+          walkedPaths: walkedPathsOf(incoming),
+        })
         await upload.start()
 
         return upload
@@ -1744,12 +1816,783 @@ describe('useKnowledgeUpload', () => {
           folderId: 'bad id!',
           incoming,
           existing: [],
+          walkedPaths: walkedPathsOf(incoming),
         })
 
         expect(upload.phase.value).toBe('error')
         expect(upload.error.value?.status).toBe(400)
         expect(mocks.fetchMock).not.toHaveBeenCalled()
       })
+    })
+  })
+
+  describe('orphaned uploads', () => {
+    function skipFirstItem(body: Record<string, any>): ItemsResponse {
+      versionCounter += 1
+
+      return {
+        items: body.items.slice(1).map(createKnowledgeItem),
+        skipped: [{ index: 0, reason: 'duplicate' }],
+        version: versionCounter,
+        packVersion: body.commit ? versionCounter : null,
+      }
+    }
+
+    it('deletes the upload of an item the server skipped as a duplicate', async () => {
+      const { upload } = createUpload()
+
+      itemsResponder = skipFirstItem
+      await prepareAndStart(upload, [
+        createSource('a.pdf'),
+        createSource('b.pdf'),
+      ])
+
+      expect(fileDeleteCalls()).toEqual(['/api/v1/files/file-a.pdf'])
+      expect(upload.entries.value.map(entry => entry.status)).toEqual([
+        'skipped-duplicate',
+        'ready',
+      ])
+      expect(upload.cleanupFailures.value).toBe(0)
+    })
+
+    it('never deletes a library file that was skipped as a duplicate', async () => {
+      const { upload } = createUpload()
+      const source = { ...createSource('lib.pdf'), fileId: 'library-file' }
+
+      itemsResponder = skipFirstItem
+      await prepareAndStart(upload, [source, createSource('b.pdf')])
+
+      expect(upload.entries.value[0]?.status).toBe('skipped-duplicate')
+      expect(fileDeleteCalls()).toEqual([])
+    })
+
+    it('keeps the originals of created items', async () => {
+      const { upload } = createUpload()
+
+      await prepareAndStart(upload, [
+        createSource('a.pdf'),
+        createSource('b.png'),
+      ])
+      upload.reset()
+      await flushAsync()
+
+      expect(fileDeleteCalls()).toEqual([])
+    })
+
+    it('counts the uploads it could not delete', async () => {
+      const { upload } = createUpload()
+
+      failingFileDeletes.add('/api/v1/files/file-a.pdf')
+      itemsResponder = skipFirstItem
+      await prepareAndStart(upload, [
+        createSource('a.pdf'),
+        createSource('b.pdf'),
+      ])
+
+      expect(upload.cleanupFailures.value).toBe(1)
+      expect(upload.phase.value).toBe('done')
+    })
+
+    it('cleans up duplicate uploads of a folder sync and reports failures', async () => {
+      const { upload } = createUpload()
+      const incoming = [
+        createSource('a.pdf', 'a.pdf'),
+        createSource('b.pdf', 'b.pdf'),
+      ]
+
+      failingFileDeletes.add('/api/v1/files/file-b.pdf')
+      itemsResponder = (body) => {
+        versionCounter += 1
+
+        return {
+          items: [],
+          skipped: body.items.map((_: unknown, index: number) => {
+            return { index, reason: 'duplicate' }
+          }),
+          version: versionCounter,
+          packVersion: null,
+        }
+      }
+      planSources(incoming)
+      await upload.syncFolder({
+        folderId: 'folder1',
+        incoming,
+        existing: [
+          { id: 'old-a', relativePath: 'a.pdf', contentHash: '' },
+          { id: 'old-b', relativePath: 'b.pdf', contentHash: '' },
+        ],
+        walkedPaths: ['a.pdf', 'b.pdf'],
+      })
+      await upload.start()
+
+      expect(fileDeleteCalls()).toEqual([
+        '/api/v1/files/file-a.pdf',
+        '/api/v1/files/file-b.pdf',
+      ])
+      expect(upload.syncResult.value?.cleanupFailures).toBe(1)
+      expect(upload.cleanupFailures.value).toBe(1)
+    })
+
+    it('keeps uploads of failed entries for a retry, then deletes them on reset', async () => {
+      const { upload } = createUpload()
+
+      itemsResponder = () => {
+        throw createFetchError(413, 'Not enough storage space')
+      }
+      await prepareAndStart(upload, [
+        createSource('a.pdf'),
+        createSource('b.md'),
+      ])
+
+      expect(upload.phase.value).toBe('error')
+      expect(fileDeleteCalls()).toEqual([])
+
+      upload.reset()
+      await flushAsync()
+
+      expect(fileDeleteCalls()).toEqual(['/api/v1/files/file-a.pdf'])
+    })
+
+    it('deletes uploads that were never sent when the run is discarded', async () => {
+      const { upload } = createUpload()
+
+      mocks.extractFile.mockImplementation(async (file: File) => {
+        if (file.name === 'b.md') {
+          return new Promise(() => {})
+        }
+
+        return defaultExtraction(file)
+      })
+      planSources([createSource('a.pdf'), createSource('b.md')])
+      await upload.prepare([createSource('a.pdf'), createSource('b.md')])
+      upload.start()
+      await flushAsync()
+      upload.reset()
+      await flushAsync()
+
+      expect(itemCalls()).toHaveLength(0)
+      expect(fileDeleteCalls()).toEqual(['/api/v1/files/file-a.pdf'])
+    })
+
+    it('deletes an upload that finishes after the run was discarded', async () => {
+      const { upload } = createUpload()
+      let finishUpload: (() => void) | undefined
+
+      mocks.uploadWithProgress.mockImplementation((
+        options: { file: File },
+      ) => {
+        return new Promise((resolve) => {
+          finishUpload = () => {
+            resolve({ data: { id: `file-${options.file.name}` } })
+          }
+        })
+      })
+      planSources([createSource('a.pdf')])
+      await upload.prepare([createSource('a.pdf')])
+      upload.start()
+      await flushAsync()
+      upload.reset()
+      finishUpload?.()
+      await flushAsync()
+
+      expect(itemCalls()).toHaveLength(0)
+      expect(fileDeleteCalls()).toEqual(['/api/v1/files/file-a.pdf'])
+    })
+
+    it('keeps the originals of items created before a cancel', async () => {
+      const { upload } = createUpload()
+
+      mocks.extractFile.mockImplementation(async (
+        file: File,
+        options: UploadFileOptions,
+      ) => {
+        if (file.name === 'b.md') {
+          return new Promise((_resolve, reject) => {
+            options.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'))
+            })
+          })
+        }
+
+        return defaultExtraction(file)
+      })
+      planSources([createSource('a.pdf'), createSource('b.md')])
+      await upload.prepare([createSource('a.pdf'), createSource('b.md')])
+
+      const running = upload.start()
+
+      await flushAsync()
+      upload.cancel()
+      await running
+      upload.reset()
+      await flushAsync()
+
+      expect(itemCalls()).toHaveLength(1)
+      expect(fileDeleteCalls()).toEqual([])
+    })
+
+    it('deletes stranded uploads when a new run replaces a failed one', async () => {
+      const { upload } = createUpload()
+
+      itemsResponder = () => {
+        throw createFetchError(413, 'Not enough storage space')
+      }
+      await prepareAndStart(upload, [createSource('a.pdf')])
+
+      planSources([createSource('c.md')])
+      await upload.prepare([createSource('c.md')])
+      await flushAsync()
+
+      expect(fileDeleteCalls()).toEqual(['/api/v1/files/file-a.pdf'])
+    })
+  })
+
+  describe('uncommitted batches', () => {
+    function hangOn(name: string) {
+      mocks.extractFile.mockImplementation(async (file: File) => {
+        if (file.name === name) {
+          return new Promise(() => {})
+        }
+
+        return defaultExtraction(file)
+      })
+    }
+
+    async function startWithOneFlushedBatch(
+      upload: ReturnType<typeof createUpload>['upload'],
+    ) {
+      const sources = createTextSources(27)
+
+      hangOn('file-27.md')
+      planSources(sources)
+      await upload.prepare(sources)
+      upload.start()
+      await flushAsync()
+    }
+
+    function bareCommitUrls(): string[] {
+      return commitCalls().map(call => call.url)
+    }
+
+    it('commits the flushed batches when the run is reset', async () => {
+      const { upload, projectIdRef } = createUpload()
+
+      await startWithOneFlushedBatch(upload)
+
+      expect(batchSizes()).toEqual([25])
+      expect(commitCalls()).toHaveLength(0)
+
+      upload.reset()
+      await flushAsync()
+
+      expect(bareCommitUrls()).toEqual([
+        `/api/v1/projects/${projectIdRef.value}/knowledge/commit`,
+      ])
+      expect(commitCalls()[0]?.body).toEqual({})
+    })
+
+    it('commits the previous project when the project changes', async () => {
+      const { upload, projectIdRef } = createUpload()
+      const previousProjectId = projectIdRef.value
+
+      await startWithOneFlushedBatch(upload)
+      projectIdRef.value = 'another-project'
+      await flushAsync()
+
+      expect(bareCommitUrls()).toEqual([
+        `/api/v1/projects/${previousProjectId}/knowledge/commit`,
+      ])
+    })
+
+    it('commits the flushed batches on dispose', async () => {
+      const { upload } = createUpload()
+
+      await startWithOneFlushedBatch(upload)
+      upload.dispose()
+      await flushAsync()
+
+      expect(commitCalls()).toHaveLength(1)
+    })
+
+    it('sends no commit on reset when everything was committed', async () => {
+      const { upload } = createUpload()
+
+      await prepareAndStart(upload, createTextSources(3))
+      upload.reset()
+      await flushAsync()
+
+      expect(commitCalls()).toHaveLength(0)
+    })
+
+    it('swallows a failing background commit', async () => {
+      const { upload } = createUpload()
+
+      await startWithOneFlushedBatch(upload)
+      failingCommitCount = 1
+
+      expect(() => upload.reset()).not.toThrow()
+      await flushAsync()
+
+      expect(commitCalls()).toHaveLength(1)
+    })
+
+    describe('retrying a failed final commit', () => {
+      async function syncWithFailingCommit() {
+        const { upload } = createUpload()
+        const incoming = [createSource('d.md', 'd.md')]
+
+        failingCommitCount = 1
+        planSources(incoming)
+        await upload.syncFolder({
+          folderId: 'folder1',
+          incoming,
+          existing: [],
+          walkedPaths: ['d.md'],
+        })
+        await upload.start()
+
+        return upload
+      }
+
+      it('offers a retry when only the commit failed', async () => {
+        const upload = await syncWithFailingCommit()
+
+        expect(upload.phase.value).toBe('error')
+        expect(upload.failedCount.value).toBe(0)
+        expect(upload.canRetryCommit.value).toBe(true)
+      })
+
+      it('sends the commit again and finishes', async () => {
+        const upload = await syncWithFailingCommit()
+
+        await upload.retryCommit()
+
+        expect(commitCalls()).toHaveLength(2)
+        expect(upload.phase.value).toBe('done')
+        expect(upload.error.value).toBeNull()
+        expect(upload.canRetryCommit.value).toBe(false)
+        expect(refreshSummary).toHaveBeenCalledTimes(2)
+      })
+
+      it('keeps offering the retry while the commit keeps failing', async () => {
+        const upload = await syncWithFailingCommit()
+
+        failingCommitCount = 1
+        await upload.retryCommit()
+
+        expect(upload.phase.value).toBe('error')
+        expect(upload.canRetryCommit.value).toBe(true)
+      })
+
+      it('retries the removals of a folder sync', async () => {
+        const { upload } = createUpload()
+        const incoming = [createSource('d.md', 'd.md')]
+
+        failingCommitCount = 1
+        planSources(incoming)
+        await upload.syncFolder({
+          folderId: 'folder1',
+          incoming,
+          existing: [{ id: 'old-c', relativePath: 'c.md', contentHash: '' }],
+          walkedPaths: ['d.md'],
+        })
+        await upload.start()
+        await upload.retryCommit()
+
+        expect(commitCalls()[1]?.body).toEqual({
+          folderId: 'folder1',
+          remove: ['old-c'],
+        })
+        expect(upload.syncResult.value?.removed).toBe(1)
+      })
+
+      it('does not offer it while entries failed', async () => {
+        const { upload } = createUpload()
+
+        extractionOverrides.set('file-26.md', new Error('Worker crashed'))
+        await prepareAndStart(upload, createTextSources(26))
+
+        expect(upload.failedCount.value).toBe(1)
+        expect(upload.canRetryCommit.value).toBe(false)
+      })
+
+      it('ignores the retry when nothing is pending', async () => {
+        const { upload } = createUpload()
+
+        await prepareAndStart(upload, [createSource('a.md')])
+        await upload.retryCommit()
+
+        expect(commitCalls()).toHaveLength(0)
+        expect(upload.canRetryCommit.value).toBe(false)
+      })
+    })
+  })
+
+  describe('conflicting batches', () => {
+    function rejectConflicts(titles: string[]) {
+      itemsResponder = (body) => {
+        const hasConflict = body.items.some((item: Record<string, any>) => {
+          return titles.includes(item.title)
+        })
+
+        if (body.items.length > 1 && hasConflict) {
+          throw createFetchError(409, 'This file is already in the project')
+        }
+
+        const conflicting = body.items.find((item: Record<string, any>) => {
+          return titles.includes(item.title)
+        })
+
+        if (conflicting) {
+          throw createFetchError(409, `${conflicting.title} is already linked`)
+        }
+
+        return defaultItemsResponder(body)
+      }
+    }
+
+    it('retries a rejected batch one item at a time', async () => {
+      const { upload } = createUpload()
+
+      rejectConflicts(['b.md'])
+      await prepareAndStart(upload, [
+        createSource('a.md'),
+        createSource('b.md'),
+        createSource('c.md'),
+      ])
+
+      expect(batchSizes()).toEqual([3, 1, 1, 1])
+      expect(itemCalls().slice(1).every((call) => {
+        return call.body?.commit === undefined
+      })).toBe(true)
+      expect(upload.entries.value.map(entry => entry.status)).toEqual([
+        'ready',
+        'failed',
+        'ready',
+      ])
+      expect(upload.entries.value[1]?.error).toBe('b.md is already linked')
+      expect(upload.phase.value).toBe('done')
+      expect(upload.error.value).toBeNull()
+    })
+
+    it('commits the created items after the fallback', async () => {
+      const { upload } = createUpload()
+
+      rejectConflicts(['b.md'])
+      await prepareAndStart(upload, [
+        createSource('a.md'),
+        createSource('b.md'),
+      ])
+
+      expect(commitCalls()).toHaveLength(1)
+      expect(commitCalls()[0]?.body).toEqual({})
+    })
+
+    it('fails only the entry of a single rejected item and keeps going', async () => {
+      const { upload } = createUpload()
+
+      rejectConflicts(['a.md'])
+      await prepareAndStart(upload, [createSource('a.md')])
+
+      expect(upload.entries.value[0]).toMatchObject({
+        status: 'failed',
+        error: 'a.md is already linked',
+      })
+      expect(upload.phase.value).toBe('done')
+      expect(upload.failedCount.value).toBe(1)
+    })
+
+    it('stops on a non-conflict failure during the fallback', async () => {
+      const { upload } = createUpload()
+
+      itemsResponder = (body) => {
+        if (body.items.length > 1) {
+          throw createFetchError(409, 'Conflict')
+        }
+
+        if (body.items[0].title === 'b.md') {
+          throw createFetchError(413, 'Not enough storage space')
+        }
+
+        return defaultItemsResponder(body)
+      }
+      await prepareAndStart(upload, [
+        createSource('a.md'),
+        createSource('b.md'),
+        createSource('c.md'),
+      ])
+
+      expect(upload.entries.value.map(entry => entry.status)).toEqual([
+        'ready',
+        'failed',
+        'failed',
+      ])
+      expect(upload.phase.value).toBe('error')
+    })
+  })
+
+  describe('PDFs this device cannot read', () => {
+    function cannotReadPdf(overrides: Partial<KnowledgeExtractionResult> = {}) {
+      extractionOverrides.set('scan.pdf', {
+        extractStatus: 'failed',
+        extractError: 'ios-update-required',
+        extractor: 'client-unpdf',
+        text: '',
+        pageCount: null,
+        needsOriginalUpload: true,
+        ...overrides,
+      })
+    }
+
+    it('uploads the original and creates a native PDF item without text', async () => {
+      const { upload } = createUpload()
+
+      cannotReadPdf()
+      await prepareAndStart(upload, [createSource('scan.pdf')])
+
+      const [item] = itemCalls()[0]?.body?.items ?? []
+
+      expect(mocks.uploadWithProgress).toHaveBeenCalledTimes(1)
+      expect(item).toMatchObject({
+        fileId: 'file-scan.pdf',
+        extractStatus: 'no-text',
+        extractError: 'ios-update-required',
+        extractor: 'client-unpdf',
+        text: '',
+      })
+      expect(knowledgeItemsBatchCreateSchema.safeParse(
+        itemCalls()[0]?.body,
+      ).success).toBe(true)
+      expect(upload.entries.value[0]?.status).toBe('no-text')
+      expect(upload.phase.value).toBe('done')
+    })
+
+    it('links a library PDF without uploading it again', async () => {
+      const { upload } = createUpload()
+      const source = { ...createSource('scan.pdf'), fileId: 'library-file' }
+
+      cannotReadPdf()
+      await prepareAndStart(upload, [source])
+
+      expect(mocks.uploadWithProgress).not.toHaveBeenCalled()
+      expect(itemCalls()[0]?.body?.items[0]).toMatchObject({
+        fileId: 'library-file',
+        extractStatus: 'no-text',
+      })
+    })
+
+    it('still fails other extraction errors without uploading', async () => {
+      const { upload } = createUpload()
+
+      cannotReadPdf({ extractError: 'invalid-pdf', needsOriginalUpload: false })
+      await prepareAndStart(upload, [createSource('scan.pdf')])
+
+      expect(mocks.uploadWithProgress).not.toHaveBeenCalled()
+      expect(itemCalls()).toHaveLength(0)
+      expect(upload.entries.value[0]?.status).toBe('failed')
+    })
+
+    it('fails the entry when the PDF cannot be uploaded as an original', async () => {
+      const { upload } = createUpload()
+
+      cannotReadPdf({ needsOriginalUpload: false })
+      await prepareAndStart(upload, [createSource('scan.pdf')])
+
+      expect(itemCalls()).toHaveLength(0)
+      expect(upload.entries.value[0]?.status).toBe('failed')
+    })
+  })
+
+  describe('refreshing', () => {
+    it('refreshes the summary once when a run finishes', async () => {
+      const { upload } = createUpload()
+
+      await prepareAndStart(upload, createTextSources(3))
+
+      expect(refreshSummary).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('folder sync removals', () => {
+    function syncInput(
+      overrides: Partial<Parameters<
+        ReturnType<typeof createUpload>['upload']['syncFolder']
+      >[0]>,
+    ) {
+      const incoming = [createSource('a.md', 'a.md')]
+
+      return {
+        folderId: 'folder1',
+        incoming,
+        existing: [
+          { id: 'old-a', relativePath: 'a.md', contentHash: 'hash-a-1' },
+          { id: 'old-big', relativePath: 'big.bin', contentHash: '' },
+          { id: 'old-c', relativePath: 'c.md', contentHash: '' },
+        ],
+        walkedPaths: ['a.md', 'big.bin'],
+        ...overrides,
+      }
+    }
+
+    it('keeps items whose file is still on disk but was skipped by the plan', async () => {
+      const { upload } = createUpload()
+      const input = syncInput({})
+
+      planSources(input.incoming, { 'a.md': 'hash-a-1' })
+      await upload.syncFolder(input)
+
+      expect(upload.syncSummary.value).toMatchObject({
+        removed: 1,
+        unchanged: 1,
+        notices: ['1 file is no longer eligible and was kept.'],
+      })
+
+      await upload.start()
+
+      expect(commitCalls()).toHaveLength(1)
+      expect(commitCalls()[0]?.body).toEqual({
+        folderId: 'folder1',
+        remove: ['old-c'],
+      })
+      expect(upload.syncResult.value?.notices).toEqual([
+        '1 file is no longer eligible and was kept.',
+      ])
+    })
+
+    it('removes nothing when the folder walk was truncated', async () => {
+      const { upload } = createUpload()
+      const input = syncInput({ truncated: true })
+
+      planSources(input.incoming, { 'a.md': 'hash-a-1' })
+      await upload.syncFolder(input)
+
+      expect(upload.syncSummary.value).toMatchObject({ removed: 0 })
+      expect(upload.syncSummary.value?.notices).toEqual([
+        '1 file is no longer eligible and was kept.',
+        'Your folder has more files than were read, so nothing was removed.',
+      ])
+
+      await upload.start()
+
+      expect(commitCalls()).toHaveLength(0)
+      expect(upload.syncResult.value).toMatchObject({ removed: 0 })
+      expect(upload.syncResult.value?.notices).toContain(
+        'Your folder has more files than were read, so nothing was removed.',
+      )
+      expect(upload.phase.value).toBe('done')
+    })
+
+    it('still replaces changed files when the walk was truncated', async () => {
+      const { upload } = createUpload()
+      const input = syncInput({ truncated: true })
+
+      planSources(input.incoming, { 'a.md': 'hash-a-2' })
+      await upload.syncFolder(input)
+      await upload.start()
+
+      expect(batchSizes()).toEqual([1])
+      expect(commitCalls()[0]?.body).toEqual({
+        folderId: 'folder1',
+        remove: ['old-a'],
+      })
+    })
+
+    it('removes only what is absent from the walked paths', async () => {
+      const { upload } = createUpload()
+      const input = syncInput({ walkedPaths: ['a.md'] })
+
+      planSources(input.incoming, { 'a.md': 'hash-a-1' })
+      await upload.syncFolder(input)
+      await upload.start()
+
+      expect([...(commitCalls()[0]?.body?.remove ?? [])].sort()).toEqual([
+        'old-big',
+        'old-c',
+      ])
+    })
+  })
+
+  describe('unlinked upload budget', () => {
+    const megabyte = 1024 * 1024
+
+    function createSizedPdf(name: string, megabytes: number) {
+      const file = new File(['content'], name, { type: 'application/pdf' })
+
+      Object.defineProperty(file, 'size', { value: megabytes * megabyte })
+
+      return { file, relativePath: null }
+    }
+
+    it('flushes the pending batch before an upload would pass 10 MB', async () => {
+      const { upload } = createUpload()
+      const order: string[] = []
+
+      mocks.uploadWithProgress.mockImplementation(async (
+        options: { file: File },
+      ) => {
+        order.push(`upload:${options.file.name}`)
+
+        return { data: { id: `file-${options.file.name}` } }
+      })
+
+      const originalImplementation = mocks.fetchMock.getMockImplementation()!
+
+      mocks.fetchMock.mockImplementation(async (
+        url: string,
+        options: { method?: string } = {},
+      ) => {
+        if (url.endsWith('/items')) {
+          order.push('post:items')
+        }
+
+        return originalImplementation(url, options)
+      })
+      await prepareAndStart(upload, [
+        createSizedPdf('a.pdf', 6),
+        createSizedPdf('b.pdf', 6),
+        createSizedPdf('c.pdf', 3),
+      ])
+
+      expect(order).toEqual([
+        'upload:a.pdf',
+        'post:items',
+        'upload:b.pdf',
+        'upload:c.pdf',
+        'post:items',
+      ])
+      expect(batchSizes()).toEqual([1, 2])
+      expect(upload.phase.value).toBe('done')
+    })
+
+    it('does not flush while the unlinked uploads stay under the budget', async () => {
+      const { upload } = createUpload()
+
+      await prepareAndStart(upload, [
+        createSizedPdf('a.pdf', 4),
+        createSizedPdf('b.pdf', 4),
+        createSizedPdf('c.pdf', 2),
+      ])
+
+      expect(batchSizes()).toEqual([3])
+    })
+
+    it('stops the run when the early flush fails', async () => {
+      const { upload } = createUpload()
+
+      itemsResponder = () => {
+        throw createFetchError(413, 'Not enough storage space')
+      }
+      await prepareAndStart(upload, [
+        createSizedPdf('a.pdf', 6),
+        createSizedPdf('b.pdf', 6),
+      ])
+
+      expect(upload.phase.value).toBe('error')
+      expect(mocks.uploadWithProgress).toHaveBeenCalledTimes(1)
+      expect(upload.entries.value.map(entry => entry.status)).toEqual([
+        'failed',
+        'queued',
+      ])
     })
   })
 })

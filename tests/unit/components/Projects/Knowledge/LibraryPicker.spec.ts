@@ -33,9 +33,9 @@ const libraryFiles = [
   libraryFile('4', 'notes.txt', 'text/plain'),
 ]
 
-async function mountPicker() {
+async function mountPicker(props: Record<string, unknown> = {}) {
   const wrapper = await mountSuspended(LibraryPicker, {
-    props: { open: false },
+    props: { open: false, ...props },
     global: {
       stubs: { Teleport: true },
     },
@@ -198,5 +198,145 @@ describe('Projects/Knowledge/LibraryPicker', () => {
     })
     expect(wrapper.findAll('ul[aria-label="Library files"] li'))
       .toHaveLength(3)
+  })
+
+  describe('files that are already linked', () => {
+    it('disables them, labels them and keeps them unselectable', async () => {
+      const wrapper = await mountPicker({ linkedFileIds: ['1'] })
+      const linked = byTestId(wrapper, 'knowledge-library-file-1')
+
+      expect(linked.attributes('disabled')).toBeDefined()
+      expect(byTestId(wrapper, 'knowledge-library-linked-1').text())
+        .toBe('Already added')
+      expect(wrapper.find('[data-testid="knowledge-library-linked-2"]')
+        .exists()).toBe(false)
+      expect(byTestId(wrapper, 'knowledge-library-file-2')
+        .attributes('disabled')).toBeUndefined()
+
+      await linked.trigger('change')
+
+      expect(byTestId(wrapper, 'knowledge-library-add').classes())
+        .toContain('btn-disabled')
+
+      await byTestId(wrapper, 'knowledge-library-file-2').setValue(true)
+      await byTestId(wrapper, 'knowledge-library-add').trigger('click')
+
+      const emitted = wrapper.emitted('select')?.[0]?.[0] as Array<{
+        id: string
+      }>
+
+      expect(emitted.map(file => file.id)).toEqual(['2'])
+    })
+
+    it('treats every file as selectable by default', async () => {
+      const wrapper = await mountPicker()
+
+      expect(byTestId(wrapper, 'knowledge-library-file-1')
+        .attributes('disabled')).toBeUndefined()
+      expect(wrapper.find('[data-testid^="knowledge-library-linked-"]')
+        .exists()).toBe(false)
+    })
+  })
+
+  describe('pages without a supported type', () => {
+    const unsupportedPage = (offset: number) => ({
+      files: Array.from({ length: 50 }, (_file, index) => {
+        return libraryFile(
+          `n-${offset + index}`,
+          `note-${offset + index}.txt`,
+          'text/plain',
+        )
+      }),
+      total: 400,
+      offset,
+      limit: 50,
+    })
+
+    it('loads the next page instead of showing an empty state', async () => {
+      mocks.fetch
+        .mockResolvedValueOnce(unsupportedPage(0))
+        .mockResolvedValueOnce({
+          files: [libraryFile('9', 'late.pdf', 'application/pdf')],
+          total: 51,
+          offset: 50,
+          limit: 50,
+        })
+
+      const wrapper = await mountPicker()
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/files', {
+        query: { offset: 50, limit: 50, source: 'upload' },
+      })
+      expect(wrapper.find('[data-testid="knowledge-library-empty"]')
+        .exists()).toBe(false)
+      expect(wrapper.findAll('ul[aria-label="Library files"] li'))
+        .toHaveLength(1)
+    })
+
+    it('shows the empty state once the pages are exhausted', async () => {
+      mocks.fetch
+        .mockResolvedValueOnce(unsupportedPage(0))
+        .mockResolvedValueOnce({
+          files: Array.from({ length: 10 }, (_file, index) => {
+            return libraryFile(`t-${index}`, `t-${index}.txt`, 'text/plain')
+          }),
+          total: 60,
+          offset: 50,
+          limit: 50,
+        })
+
+      const wrapper = await mountPicker()
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      expect(byTestId(wrapper, 'knowledge-library-empty').text())
+        .toBe('No PDFs or images found in your library.')
+      expect(wrapper.find('[data-testid="knowledge-library-more"]')
+        .exists()).toBe(false)
+    })
+
+    it('stops after five pages and keeps Load more available', async () => {
+      mocks.fetch.mockImplementation((_url, options) => {
+        return Promise.resolve(unsupportedPage(options.query.offset))
+      })
+
+      const wrapper = await mountPicker()
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(5)
+      expect(wrapper.find('[data-testid="knowledge-library-empty"]')
+        .exists()).toBe(false)
+      expect(byTestId(wrapper, 'knowledge-library-empty-so-far').text())
+        .toBe('No PDFs or images in the files checked so far.')
+      expect(byTestId(wrapper, 'knowledge-library-more').exists()).toBe(true)
+
+      mocks.fetch.mockResolvedValueOnce({
+        files: [libraryFile('7', 'next.pdf', 'application/pdf')],
+        total: 251,
+        offset: 250,
+        limit: 50,
+      })
+      await byTestId(wrapper, 'knowledge-library-more').trigger('click')
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/files', {
+        query: { offset: 250, limit: 50, source: 'upload' },
+      })
+      expect(wrapper.findAll('ul[aria-label="Library files"] li'))
+        .toHaveLength(1)
+    })
+
+    it('does not auto-load when the first page already has files',
+      async () => {
+        mocks.fetch.mockResolvedValue({
+          files: libraryFiles,
+          total: 400,
+          offset: 0,
+          limit: 50,
+        })
+
+        await mountPicker()
+
+        expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      })
   })
 })

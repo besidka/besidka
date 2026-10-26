@@ -9,7 +9,7 @@
       class="btn btn-sm normal-case"
       :class="triggerClass"
       :aria-expanded="isOpen"
-      aria-haspopup="true"
+      :aria-controls="listId"
       :data-testid="triggerTestId"
     >
       <Icon
@@ -25,6 +25,7 @@
       />
     </summary>
     <ul
+      :id="listId"
       class="
         dropdown-content menu menu-sm z-50 mt-2 w-64 max-w-[calc(100vw-3rem)]
         rounded-box bg-base-100 p-1 shadow-lg
@@ -50,6 +51,7 @@ withDefaults(defineProps<{
   triggerClass: 'btn-ghost btn-ghost-legacy',
 })
 
+const listId = useId()
 const menu = useTemplateRef<HTMLDetailsElement>('menu')
 const isOpen = shallowRef<boolean>(false)
 

@@ -66,6 +66,7 @@ describe('Projects/Knowledge/ItemList', () => {
     const toggle = wrapper.get('[data-testid="knowledge-group-toggle"]')
 
     expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.attributes('aria-controls')).toBeUndefined()
     expect(toggle.classes()).toEqual(expect.arrayContaining([
       'rounded-box',
       'focus-visible:ring-2',
@@ -83,6 +84,9 @@ describe('Projects/Knowledge/ItemList', () => {
     await toggle.trigger('click')
 
     expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.attributes('aria-controls')).toBeUndefined()
+    expect(wrapper.find('[data-testid="knowledge-group-items"]').exists())
+      .toBe(false)
   })
 
   it('totals the group tokens for the current model', async () => {
