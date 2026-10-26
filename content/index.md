@@ -304,17 +304,17 @@ steps:
     title: 3. Start chatting
     body: Open a new chat, pick your model, and go. You pay your provider or gateway directly. Besidka adds nothing on top.
 video:
-  src: /videos/demo.mp4
-  poster: /promo/poster.webp
+  src: /videos/demo.mp4?v=2
+  poster: /promo/poster.webp?v=2
   caption: A 54-second tour of Besidka
   qualities:
-    - src: /videos/demo-1080.mp4
+    - src: /videos/demo-1080.mp4?v=2
       size: 1080
       label: 1080p
-    - src: /videos/demo.mp4
+    - src: /videos/demo.mp4?v=2
       size: 720
       label: 720p
-    - src: /videos/demo-360.mp4
+    - src: /videos/demo-360.mp4?v=2
       size: 360
       label: 360p
   captions:
