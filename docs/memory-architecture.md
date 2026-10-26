@@ -1,9 +1,9 @@
 # Memory architecture (profile, project, cross-chat, knowledge)
 
 Status: **proposal**, 2026-10-24, partly implemented: section 1 lists what
-exists today, the "As built" notes in 3.3, 3.10, 3.11, 3.12, 3.14, 3.15 and
-section 5 record W1-W6, and the decision log (section 7) records owner
-decisions after W6.
+exists today, the "As built" notes in 3.3 and 3.10 to 3.16 and section 5
+record W1-W6c, the decision log (section 7) records owner decisions after W6,
+and 3.17 records the 2026-10-26 security audit of the memory feature.
 Decisions marked **(owner)** are
 recommendations logged per the "minimize questions" preference; the owner can
 overturn any of them before the phase that depends on it starts.
@@ -24,7 +24,7 @@ code-enforced compliance rules for sensitive data.
 ## 1. Where we are (audit, HEAD ffaccd56)
 
 > Superseded for project memory: the blob pipeline described here was retired in
-> W6b, see 3.14.
+> W6b, see 3.13.
 
 Exists today:
 
@@ -128,15 +128,15 @@ New table `memory_entries`:
 | `userId` | owner; see 3.7 on FK |
 | `projectId` | null = account scope; set = project scope |
 | `category` | `profile` \| `preferences` \| `areas` \| `topics` \| `people` |
-| `slug`, `title` | unique per (user, project, category, slug) |
+| `slug`, `title` | unique per (user, project, category, slug); the slug is always derived on the server from the title (or is the category for `profile`/`preferences`), a client slug is ignored (3.17) |
 | `description` | **mandatory, single line, ≤ 100 chars** — the index line |
-| `body` | Markdown, **≤ 4 KB** hard cap (**≤ 1.5 KB** for the always-injected `profile` and `preferences`); raised from 2 KB / 1 KB in W6c (3.16) |
-| `sensitivity` | `none` \| `special`. Every row written since the opt-in removal is `none`; `special` survives only on legacy rows (3.12) |
+| `body` | Markdown, **≤ 4 KB** hard cap (**≤ 1.5 KB** for the always-injected `profile` and `preferences`); raised from 2 KB / 1 KB in W6c (3.15) |
+| `sensitivity` | `none` \| `special`. Every row written since the opt-in removal is `none`; `special` survives only on legacy rows (3.11) |
 | `sensitiveCategory` | the Art. 9 category of a legacy `special` row, otherwise null |
 | `origin` | `user` \| `tool` \| `extraction` \| `import` |
 | `sourceChatIds` | JSON array — provenance + deletion cascade (3.7) |
 | `sourceMessageId` | for tool writes / undo |
-| `createdAt`, `updatedAt`, `lastUsedAt` | `lastUsedAt` drives expiry |
+| `createdAt`, `updatedAt`, `lastUsedAt` | `lastUsedAt` is set by `memory_list`/`memory_read`; expiry by `lastUsedAt` is **not built** |
 
 Caps: ≤ 30 account entries, ≤ 15 per project (soft: the extractor must merge
 before creating); `profile` and `preferences` bodies ≤ 1.5 KB each since
@@ -168,12 +168,12 @@ project entry on first read; the column is left in place and writes stop
 - Inject **last-known-good** memory regardless of extraction status (fixes
   G1). Status only drives UI.
 - Budget: index ≤ **2.5k tokens** (2 × 1.5 KB bodies + 30 × 100-char lines, the
-  1 KB figure below predates W6c; measured numbers in 3.16; originally ≈
+  1 KB figure below predates W6c; measured numbers in 3.15; originally ≈
   1.5k English / 2.5k Ukrainian). Over budget → drop the `preferences` body
   first, then truncate descriptions; never silently drop entries from the
   index (the model must know they exist to call `memory_read`).
 - The free-text "About me" is now the account `profile` entry, so it travels
-  inside the memory index (its body is always injected, 1 KB cap). Only text
+  inside the memory index (its body is always injected, 1.5 KB cap). Only text
   that could not be converted (`about_me` still set: too long, a profile entry
   already exists, memory off, or rejected by the compliance gate) is still
   injected verbatim as a separate `aboutMe` block, independent of memory (see
@@ -197,7 +197,8 @@ project entry on first read; the column is left in place and writes stop
   (AND → drop rarest-missing tokens → OR, bm25-ranked). LLM text always goes
   through the `query.ts` sanitizer, never raw into `MATCH`.
 - Scope: in a project with `useAccountMemory = false`, search only that
-  project's chats; otherwise all of the user's non-incognito chats. The current
+  project's chats; otherwise all of the user's chats (incognito chats are not
+  built, 3.7). The current
   chat is excluded. `message_search` has only `owner`, so project scoping must
   join `rowid → messages.id → chats.projectId` **inside** the FTS query, not
   post-filter the 200-candidate list (a small project would get zero hits).
@@ -211,7 +212,7 @@ project entry on first read; the column is left in place and writes stop
   fallback is AND → OR only (no "drop rarest-missing tokens" step); the tools
   are skipped on sends with a forced `toolChoice` (image generation, Google
   native `web_search`); the gate `isChatSearchToolEnabled()` returned `true`
-  until W4 wired `chatSearchEnabled` (see 3.12); the route passes
+  until W4 wired `chatSearchEnabled` (see 3.11); the route passes
   no `projectId` until project isolation exists; and every send on a
   tool-calling model is now a tool-loop send. Giving the model the whole
   history also required blocking external markdown images at render time
@@ -239,8 +240,8 @@ project entry on first read; the column is left in place and writes stop
   model merges rather than duplicates (fixes G2).
 - **Structured output**: zod schema of ops `create | update | delete` on
   entries, each op carrying `category`, `description`, `body` and the
-  evidence quote (3.11). There are no sensitivity fields: the server
-  classifier decides (3.5, 3.12). Applied after the compliance gate.
+  evidence quote (3.12). There are no sensitivity fields: the server
+  classifier decides (3.5, 3.11). Applied after the compliance gate.
 - **Trust boundary**: user-role text is primary input; assistant text is
   lower-trust context only (it echoes web/tool/file content); tool, source,
   file and reasoning parts are never fed. The extractor prompt forbids
@@ -253,7 +254,8 @@ project entry on first read; the column is left in place and writes stop
   ~$0.001–0.004 per pass at 10k in / 0.5k out. Superseded by the owner's
   model-choice direction in 3.9: the cheapest flagged model is only the last
   step of the resolution chain.
-- Skip short chats (< ~300 chars of user text) and incognito chats.
+- Skip short chats (< ~300 chars of user text). Skipping incognito chats is
+  **not built**: there is no incognito flag (3.7).
 
 ### 3.5 Compliance gate (code-enforced, not prompt-only)
 
@@ -267,7 +269,11 @@ extraction, import):
    API keys, tokens, passwords, precise home address / live location.
    Deterministic detectors (regex + checksum: Luhn, IBAN mod-97, PESEL,
    key prefixes like `sk-`, `AIza`, JWT shape) **plus** the extractor's own
-   label. Blocked op → dropped, logged as a count only (never the content).
+   label. Since the 2026-10-26 audit (3.17) home address, immigration or
+   residence status and criminal history also have narrow deterministic
+   detectors in `evaluateMemoryEntry`, so they are refused on every write path,
+   not only through the extractor label. Blocked op → dropped, logged as a
+   count only (never the content).
 2. **GDPR Art. 9 special categories are rejected and never stored (owner,
    2026-10-25).** Health, religion/philosophical beliefs, political opinions,
    racial/ethnic origin, sex life/sexual orientation, trade-union membership,
@@ -277,8 +283,9 @@ extraction, import):
    table). It runs inside `evaluateMemoryEntry`, so every write path gets the
    same verdict: UI/API create and edit, the `memory_write` tool, extraction
    (the op is dropped as `sensitive-topic`) and the one-time About-me migration
-   (the text stays in `about_me`, outcome `rejected`).
-   An import path does not exist yet and must call the same gate when built.
+   (the text stays in `about_me`, outcome `rejected`). The import from
+   another assistant (`POST /api/v1/memory/import`, 3.15) runs the same
+   extraction op pipeline and therefore `evaluateMemoryEntry` on every op.
    A hit is a 422 on the interactive paths ("Sensitive topics (health,
    religion, politics…) are not saved to memory."), with the detected category
    ids in `why` and never the text. There is no opt-in, no setting, no
@@ -309,10 +316,14 @@ the reason the opt-in is out of v1 (section 7).
   text files created from the UI and linked the same way.
 - Text extraction on attach: text/MD/code directly; PDF via a Workers-safe
   extractor (to be evaluated) or the provider's native PDF input at send time.
-- **Budget**: total extracted text ≤ **8k tokens** → full inject (cached
-  prefix); above → chunk (≤ 512 tokens) into an FTS5 table and expose
-  `search_project_knowledge`. The 8k threshold is a documented knob. UI shows
-  "N% of project capacity" like Claude.
+- **Budget (as built in P3)**: the fixed 8k-token threshold sketched here was
+  replaced. Knowledge is injected in full only when it fits
+  `min(64k, 7% × context window)` tokens of the model the message is sent with
+  (`KNOWLEDGE_BUDGET.absoluteCapTokens` and `contextWindowShare` in
+  `shared/utils/project-knowledge-policy.ts`) **and** a per-send fit check
+  confirms the whole request still fits the window; otherwise the model gets
+  the knowledge search and read tools. Design, numbers and the owner decision:
+  `docs/project-knowledge-design.md`.
 - Vectorize + Workers AI embeddings (`@cf/qwen/qwen3-embedding-0.6b`, one
   index, `user_id`/`project_id` metadata filters, operator-paid, cost
   negligible) is **P4**, only if FTS recall proves insufficient. Not BYOK
@@ -327,10 +338,17 @@ the reason the opt-in is out of v1 (section 7).
 
 ### 3.7 Data rights and deletion
 
-- **Export** (Art. 15/20): `GET /api/v1/memory/export` (path changed in W4, see 3.12) → JSON of
+- **Export** (Art. 15/20): `GET /api/v1/memory/export` (path changed in W4, see 3.11) → JSON of
   entries + settings; plain-text import (paste from another assistant →
   extraction op path → compliance gate; built in W6c, `POST /api/v1/memory/import`,
-  see 3.16).
+  see 3.15). **Known gap (audit finding 15, 3.17)**: the export leaves out
+  the processing records (`memory_backfill_jobs`, the consent timestamp
+  `user_settings.memory_extraction_enabled_at`, the per-chat extraction
+  columns, the project memory lifecycle columns, `use_account_memory` of
+  projects without entries) and all project knowledge
+  (`project_knowledge_items`, including notes that exist only on the server).
+  Whether this export is the Art. 15/20 vehicle is an owner/counsel decision;
+  until then the narrower scope must be stated in the privacy policy.
 - **Chat deletion**: for `origin = extraction`, entries whose
   `sourceChatIds` contain only that chat are deleted; others drop the id. For
   `user | tool | import` entries the id is dropped and the entry kept — the
@@ -343,7 +361,10 @@ the reason the opt-in is out of v1 (section 7).
   cascade FK (consistent) **and** explicit purge (belt and braces), and list
   the table in CLAUDE.md's cascade-children list.
 - **Incognito chat** (per-chat flag, locked after first message): never
-  searched, never extracted.
+  searched, never extracted. **Not built**: there is no incognito flag on
+  `chats`, and the sweep, backfill, extract-now and Refresh paths read every
+  chat that otherwise qualifies. When it is built, all four selection paths
+  and `search_chats`/`read_chat` must filter it (audit finding 16, 3.17).
 - **Pause** keeps entries but stops injection and extraction; **Reset**
   deletes all entries.
 
@@ -360,7 +381,7 @@ the reason the opt-in is out of v1 (section 7).
   chat search work without extraction; `user_settings.memory_extraction_enabled`
   ("Generate memory from chats", null = off) is the extraction opt-in. The
   sweep needs both. Consequence for W4: injection and tools are default-on for
-  users who never touched the setting. See 3.11.
+  users who never touched the setting. See 3.12.
 - Chat search tool **on** by default (no new data processing — it reads the
   user's own chats on demand, nothing stored).
 - Existing project memory: harmonised with the above — existing projects keep
@@ -462,7 +483,7 @@ removal (section 7) changed a point, the passage says so.
 Branch `feat/w3-memory-contract-8bbac3`. W3 shipped the contract only: nothing
 outside the settings API read `memoryEnabled`, `chatSearchEnabled`,
 `memoryIncludeSensitive`, `aboutMe` or `useAccountMemory`, and no code
-created `memory_entries` rows (W4 changed that, see 3.12). The one behavioural change is project memory
+created `memory_entries` rows (W4 changed that, see 3.11). The one behavioural change is project memory
 (resolver and redaction, below).
 
 **Settings semantics decided in W3**
@@ -471,7 +492,7 @@ created `memory_entries` rows (W4 changed that, see 3.12). The one behavioural c
   tools, no extraction; entries are kept. W3 shipped it default `false`; **W6
   changed the default to `true`** and added the separate
   `memoryExtractionEnabled` (default `false`), which resolves the 3.8
-  deviation (see 3.11).
+  deviation (see 3.12).
 - `chatSearchEnabled`: default `true`.
 - `memoryIncludeSensitive`: shipped with default `false`. Since the opt-in
   removal (section 7) nothing reads it: PATCH ignores the key (the body schema
@@ -522,7 +543,7 @@ created `memory_entries` rows (W4 changed that, see 3.12). The one behavioural c
   resolver falls through when it is missing.
 - The settings write is a single statement, except when it turns extraction on:
   then the forward-only stamp on the user's chats runs in the same `db.batch`
-  (3.11). There is no purge step: the opt-out purge and its
+  (3.12). There is no purge step: the opt-out purge and its
   `sensitiveEntriesDeleted` response field were removed with the opt-in.
 
 **Schema** (`server/db/schemas/memory-entries.ts`, migration
@@ -566,7 +587,7 @@ Priority: never-store beats sensitive-topic. An entry with a detector hit is
 blocked as never-store; `sensitive-topic` is only reported when nothing
 matched. The title, description and body are each scanned, and an
 extractor-supplied `extractorNeverStoreKind` counts like a detector hit. The
-classifier itself is described in 3.12.
+classifier itself is described in 3.11.
 
 Detectors (overlapping spans merge into one, the longer kind wins):
 
@@ -618,23 +639,23 @@ prompts of the blob pipeline gained one sentence forbidding card, bank,
 government/tax ID, passport and credential data, and both outputs were redacted
 (a hit became `[redacted]`, the rest of the text was kept). The Art. 9 control
 on that blob was prompt-only: one instruction sentence, no classification of
-the output. W6b retired the blob pipeline (3.14), so nothing writes
+the output. W6b retired the blob pipeline (3.13), so nothing writes
 `projects.memory` any more. Project memory is now entries, and every entry goes
 through `evaluateMemoryEntry`, sensitive-topic classifier included. What is left
 of the old design is the dormant column: text that predates the gate may remain
 in it, it is never injected once entries are in use, and an unconverted blob
 (migration pass failed) is still injected as is until the migration succeeds
-(3.14).
+(3.13).
 
 **Open follow-ups**
 
 - Resolved: the blob migration runs every derived entry through
-  `evaluateMemoryEntry` (3.11, 3.14), so the Art. 9 handling of the old project
+  `evaluateMemoryEntry` (3.12, 3.13), so the Art. 9 handling of the old project
   blob is code-enforced for everything that becomes an entry.
 - `neverStoreKindIds` in `memory-policy.ts` is a hand-written tuple, kept
   equal to the ids of `neverStoreKinds` (same ids, same order) by a unit
   test in `tests/unit/utils/memory-policy.spec.ts`.
-- W4 now consumes the settings (injection, tools, see 3.12); W5 (UI) and W6
+- W4 now consumes the settings (injection, tools, see 3.11); W5 (UI) and W6
   (extraction) still own theirs.
 
 **Hand-over for W4/W5/W6**
@@ -651,15 +672,15 @@ in it, it is never injected once entries are in use, and an unconverted blob
 - Superseded by the opt-in removal (section 7): the original hand-over asked
   writers to guard inserts on the opt-in inside the same statement. There is
   no opt-in and no purge any more, so inserts guard only the cap and project
-  ownership (3.12).
+  ownership (3.11).
 - The fallback tries OpenAI first, a provider the user may not have chatted
   with; it only needs a saved key. A chosen or chat-derived model may be
   expensive (3.9); only the fallback optimises for cost.
 
-### 3.12 As built (W4, 2026-10-25)
+### 3.11 As built (W4, 2026-10-25)
 
 > Body caps quoted in this section (2 KB, and 1 KB for profile and preferences)
-> are the W4 values; W6c raised them to 4 KB and 1.5 KB, see 3.16.
+> are the W4 values; W6c raised them to 4 KB and 1.5 KB, see 3.15.
 
 Branch `feat/w4-memory-backend-aaf9e2`, umbrella child of `feat/memory-p2`. W4
 is the backend: the entries API, the index and its injection, the four memory
@@ -824,15 +845,24 @@ hidden. Anything else is a 404 tool error.
   send is a user message with text. They are also **locked for the rest of
   the message once any non-memory tool result or tool error has been seen**
   (`untrustedResultSeen` on the shared budget, set by `prepareStep` from the
-  previous steps, provider-executed results such as native web search
-  included; `memory_list`/`memory_read`/`memory_write`/`memory_forget`
-  results do not count). A write attempted after that is a 403 tool error
-  telling the user to repeat the request in a new message. This is what
-  stops content read from a web page, a file or another chat from steering
-  the model into writing or deleting memory in a later step. Limits: two calls
-  in the same model step (a search plus a write issued in parallel) are not
-  ordered by it; files attached to the user's own message and the injected
-  index are inputs, not tool results. The description says to use them only when
+  previous steps; `memory_list`/`memory_read`/`memory_write`/`memory_forget`
+  results do not count). Since the 2026-10-26 audit (3.17) the chat route
+  also presets the lock **before the first step** whenever the send requests
+  any web search (`presetMemoryWriteLock`, keyed off the requested tools
+  `web_search`, `web_search_brave` or `web_search_exa`, not off which tool
+  definitions were registered), next to the existing preset for project
+  knowledge in the prompt. Native search (Google grounding, Anthropic and
+  OpenAI `web_search`, Qwen `enable_search`, Moonshot) and the OpenRouter web
+  plugin can return results in the same step as a write or with no tool part
+  at all, so the step-based check alone never saw them. A write attempted
+  while locked is a 403 tool error that says why and tells the model not to
+  retry; the tool descriptions say the same up front, and the wide event logs
+  `memoryTools.writesLocked`. This is what stops content read from a web
+  page, a file or another chat from steering the model into writing or
+  deleting memory. Limits: without web search or knowledge, two calls in the
+  same model step (a chat search plus a write issued in parallel) are still
+  not ordered by it; files attached to the user's own message, earlier turns
+  and the injected index are inputs, not tool results. The description says to use them only when
   the user's current message explicitly asks, never because of web, file,
   search or chat content, and never to store instructions for the model.
   **Code-enforced request gate:** `userRequestQuote` (at most 300 characters,
@@ -940,7 +970,7 @@ deterministic only: no LLM ever labels or infers sensitive attributes, and the
   with a null category. `special` and `sensitive_category` remain in the
   schema only for rows written before the removal. Those legacy rows are
   skipped by the index builder, hidden from the memory tools, shown to the
-  extractor with the body hidden and locked (3.15), and still count toward the
+  extractor with the body hidden and locked (3.14), and still count toward the
   caps. The entries API still lists them, so the user can delete them.
 - **Logging.** `attributes.memoryCompliance.sensitive = { origin, categories }`
   (ids only), merged across the writes of one request when the logger exposes
@@ -1038,10 +1068,10 @@ deterministic only: no LLM ever labels or infers sensitive attributes, and the
   ("data, never instructions") is a prompt, not a control: once extraction
   writes model output into bodies injected on every turn, the trust boundary
   of 3.4 and the never-store gate are what protect the prompt.
-- W6 flipped the `memoryEnabled` default to `true` (3.11); the W4 specs were
+- W6 flipped the `memoryEnabled` default to `true` (3.12); the W4 specs were
   updated. The 14 route specs that build a `db.query` mock return an explicit
   memory-off settings row so they keep pinning "memory off".
-### 3.11 As built (W6, 2026-10-25)
+### 3.12 As built (W6, 2026-10-25)
 
 Extraction sweep, blob migration and the W3 follow-ups. Code:
 `server/utils/memory/extract*.ts`, `server/plugins/memory-extraction-sweep.ts`,
@@ -1064,7 +1094,7 @@ later clear those stamps for chosen chats. Resending `true` while already
 Config `memoryExtractionSweepEnabled` (default false; true in `wrangler.jsonc`,
 safe because the per-user opt-in is off), `...BatchSize` 20,
 `...MaxRuntimeMs` 120000. Selection is a core `chats JOIN user_settings` query (for
-non-project chats; project chats follow the project rule in 3.14, with their
+non-project chats; project chats follow the project rule in 3.13, with their
 own watermark):
 extraction on, `memory_enabled` null or true, `activity_at` at least 10 min
 old, `memory_extracted_at` null or older than `activity_at`, attempt backoff
@@ -1116,9 +1146,9 @@ what the prompt only requests:
 - Every op runs `memoryEntryInputSchema`/`memoryEntryPatchSchema` (and the
   merged row for updates) and `evaluateMemoryEntry` on the exact persisted
   text, with the extractor's `neverStore` label as `extractorNeverStoreKind`.
-  Extraction never writes special-category entries (3.15): the op schema has
+  Extraction never writes special-category entries (3.14): the op schema has
   no sensitivity fields, every row is persisted `none`, and
-  `evaluateMemoryEntry` (the server classifier, 3.12) drops flagged text as
+  `evaluateMemoryEntry` (the server classifier, 3.11) drops flagged text as
   `sensitive-topic`.
 - Caps (`maxAccountEntries`/`maxProjectEntries`), merge-before-create (a
   create colliding with an extraction-origin slug becomes an update, with any
@@ -1138,8 +1168,11 @@ error class name, never a message. Per-call 90 s abort timeout.
 
 **`POST /api/v1/memory/extract-now`.** For previews, where crons do not run.
 Session-authed, cross-site request guard, body `{ chatSlug }`. The chat is
-looked up by slug AND user, anything else is a 404. Needs the same two
-flags (409 otherwise), ignores the 10-minute idle rule, 60 s per-user KV
+looked up by slug AND user, anything else is a 404. It is an explicit
+action, so the API needs only `memoryEnabled` (409 otherwise) and runs even
+with the extraction toggle off (section 7); the UI additionally shows the
+button only while both memory and "Generate memory from chats" are on
+(`Toolbar.vue`). It ignores the 10-minute idle rule and has a 60 s per-user KV
 cooldown (429). Responds with counts and the model source/id only.
 
 **`GET /api/v1/memory/entries/[id]/sources`.** Resolves an entry's provenance
@@ -1166,7 +1199,7 @@ entry exists, and it is **the single function W4's index builder and prompt
 caller use**. `buildProjectSystemPrompt` takes `memoryEntriesActive` (default
 false = unchanged); W4's caller in `chats/[slug]/index.post.ts` must pass
 `await projectUsesMemoryEntries(project, userId)`. The W1 blob pipeline is
-retired in W6b (3.14), so nothing writes `projects.memory` any more. Known
+retired in W6b (3.13), so nothing writes `projects.memory` any more. Known
 limit: Art. 9 text that predates W3 may remain in the dormant blob column; it
 is never injected once entries are in use and extraction never reads it as
 anything but a grounding source for `create` ops.
@@ -1194,25 +1227,35 @@ model) and nothing is saved. `aboutMe` accepts only `null`.
   within 30 s of the chat's creation, and any message older than the chat is
   ignored (own-chat branches keep original timestamps). W4 may also stamp
   `memory_extracted_at` in the branch endpoints as defence in depth.
-- Turning extraction (or `memoryEnabled`) back on stamps every chat that is
-  not already up to date (and, for project chats, records the cut-over
-  `memory_extraction_enabled_at`), so the period it was off is never mined.
+- Turning extraction (or `memoryEnabled`) back on records the cut-over
+  `memory_extraction_enabled_at` and stamps the chats that may hold activity
+  from the off period (never stamped, or stamped before their last activity),
+  so that period is never mined. Since the 2026-10-26 audit (3.17) it no
+  longer rewrites every chat on every toggle, and turning it on is limited to
+  once per 10 s per user (KV timestamp, 429).
 - The KV lease and the `extract-now` cooldown are check-then-set, not atomic;
   a burst can run duplicate passes on the caller's own key. Results stay safe
   (unique slugs, origin rule); an owner-token or Durable Object lease is the
   upgrade if it matters.
-- Extraction entries are not yet removed when their source chat is deleted
-  (W8 data rights owns the cascade); `sourceChatIds` already records the link.
+- Chat deletion is wired: both delete routes (single and bulk) call
+  `detachChatsFromMemory` before the row delete, which deletes `extraction`
+  entries whose only source is the deleted chat and drops the id elsewhere
+  (3.7). A pass whose model call outlives the delete re-reads the chat
+  afterwards and is skipped as `chat-unavailable` (audit finding 9, 3.17). A
+  narrow window remains: a pass whose re-check lands between the detach and
+  the row delete can still write.
 - `generateObject` is deprecated in AI SDK 7 but still works (the research
   clarifier uses it too); move both to `generateText` with an `output`
   setting together.
-- The extractor is the only detector for the topical never-store classes (its
-  `neverStore` flag); Art. 9 data is classified by the server (3.12), not by
-  the extractor, and extraction drops flagged ops (3.15). User-pasted text that
+- The topical never-store classes are detected by the extractor's
+  `neverStore` flag and, for home address, immigration status and criminal
+  history, by narrow deterministic detectors (3.17); live location and
+  "other" stay extractor-only. Art. 9 data is classified by the server (3.11), not by
+  the extractor, and extraction drops flagged ops (3.14). User-pasted text that
   contains instructions is still user-role text (prompt-level defence only).
 - The extraction sweep is not run on Previews (no crons); use `extract-now`.
 
-### 3.14 Project memory as entries (W6b, 2026-10-26)
+### 3.13 Project memory as entries (W6b, 2026-10-26)
 
 Owner feedback on the pr-512 preview: the project card showed one capped blob
 (4000 chars) and its sections were glued together. Both are addressed.
@@ -1244,7 +1287,7 @@ explicit user action implemented by `refreshProjectMemoryFromChats`
   manual refresh; non-project chats keep `memory_extracted_at`. This also keeps
   the forward-only opt-in stamp on `memory_extracted_at` from hiding a project's
   history from the sweep or an explicit refresh, and one project message is
-  never processed twice. Too-short windows accumulate, as in 3.11;
+  never processed twice. Too-short windows accumulate, as in 3.12;
 - moving chats (single or bulk) no longer calls an LLM and the chat page no
   longer posts a refresh after every send; they only mark the project `stale`.
   Updating project memory is the explicit Refresh button, or the opt-in sweep
@@ -1259,7 +1302,7 @@ background model calls without an explicit opt-in"). With the toggle off the
 only project paths are the explicit Refresh button and `extract-now`. The model
 is the project memory model from `resolveMemoryModel` (scope `project`) on the
 user's own key. Selection, lease, caps, trust boundary and the compliance gate
-are the same as in 3.11.
+are the same as in 3.12.
 
 **Copy for the UI (W5).** Project card hint: "Press Refresh to update this
 project's memory. Turn on 'Generate memory from chats' in your memory settings
@@ -1319,7 +1362,7 @@ project are refused too.
 if "not that big" means more entries, raising it grows the project part of the
 index (budget 2.5k tokens shared with account memory, 3.2) roughly linearly.
 
-### 3.15 Special-category data is never stored (extraction and every other path)
+### 3.14 Special-category data is never stored (extraction and every other path)
 
 Decision from the legal research (GDPR Art. 9; CJEU C-184/20 and C-252/21 on
 data that indirectly reveals special categories; OpenAI's prohibition on
@@ -1336,10 +1379,10 @@ other path may store such data.
   side every extraction op (create, merged create and update, on the exact
   persisted text) goes through `evaluateMemoryEntry` with `sensitivity:
   'none'`, which runs the deterministic classifier (`classifySensitiveCategories`,
-  3.12). A hit is dropped and counted as `sensitive-topic`; the detected
+  3.11). A hit is dropped and counted as `sensitive-topic`; the detected
   category ids (never the text) are logged once per pass under
   `memoryCompliance.sensitive` with origin `memory-extraction`. The blob-only
-  pass (3.14) uses the same pipeline. Every persisted extraction row is
+  pass (3.13) uses the same pipeline. Every persisted extraction row is
   `sensitivity: 'none'`.
 - Legacy `special` rows (written before the removal) are loaded into the
   extraction index with their body hidden but are left out of the rendered
@@ -1347,12 +1390,12 @@ other path may store such data.
   update or delete is dropped as `locked` and a create with the same slug as
   `duplicate`. They still count toward the scope cap.
 - The other paths use the same gate: UI/API writes and `memory_write` get a 422
-  (3.12); the About-me migration (section 7) runs the same gate and keeps rejected text in `about_me`.
+  (3.11); the About-me migration (section 7) runs the same gate and keeps rejected text in `about_me`.
 - The classifier is merged and wired in, so there is no ship gate on it. Its
-  recall limits (names, slang, unusual phrasing; see 3.12) apply to extraction
+  recall limits (names, slang, unusual phrasing; see 3.11) apply to extraction
   as well; the prompt instruction remains the first line of defence.
 
-### 3.16 Rich memory, backfill and import (W6c, 2026-10-26)
+### 3.15 Rich memory, backfill and import (W6c, 2026-10-26)
 
 Owner request: entries were too thin (one or two bullets per topic) while
 Claude.ai keeps topics of 1.9-3.5 KB with ~15 detailed bullets. Server side
@@ -1367,9 +1410,10 @@ realistic bullet lines: 4 profile + 4 preferences + 22 others costs 3996
 `preferences-body` and `descriptions-60`, never touching the profile bodies.
 With profile-only bodies the profile body is first trimmed at 6 (Latin) / 7
 (Cyrillic) full-size profile entries; each extra full-size profile body costs
-~355 tokens. **Owner call, not implemented**: a per-category count cap of at
-most 4 profile and 4 preferences entries guarantees the profile body is never
-collapsed. The cap is in bytes, so Cyrillic (2 B/char) fits fewer characters
+~355 tokens. **Owner call, not built**: a per-category count cap of at
+most 4 profile and 4 preferences entries would guarantee the profile body is
+never collapsed; today only the 30-entry account cap and the per-scope
+singleton slug for `profile` and `preferences` exist. The cap is in bytes, so Cyrillic (2 B/char) fits fewer characters
 but costs the same or fewer tokens.
 
 **Extraction prompt aims for rich, merged topics.** The prompt states the hard
@@ -1427,7 +1471,7 @@ rules (not changed here).
 **Backfill: "Build memory from past chats"** (account chats only).
 Forward-only extraction is unchanged; this is an explicit, cancelable job.
 State lives in the new table `memory_backfill_jobs` (migration
-`20261025200010_memory_backfill_jobs`: `CREATE TABLE` plus two indexes, no
+`20261025204559_memory_backfill_jobs`: `CREATE TABLE` plus two indexes, no
 SQL default, cascade FK on `users`; a partial unique index on `user_id WHERE
 status = 'running'` allows one running job per user atomically; added to the
 cascade list in AGENTS.md and to `purgeUserData`). The queue is a keyset
@@ -1435,7 +1479,10 @@ cursor over the user's non-project chats (`activity_at desc, id desc`, created
 before the job started); counters are updated with atomic increments, so the
 cron sweep and the drive endpoint can both advance a job. The model is resolved
 once at job start (`resolveMemoryModel`, scope `profile`) and the same
-selection is used for every chat, so the estimate does not lie. Passes run with
+selection is used for every chat, so the estimate does not lie. A job reaches at most `MEMORY_LIMITS.backfillMaxChats` (200) of the newest
+chats; the start count and the estimate aggregate only that capped set. A
+second run starts again from the newest chats, it does not continue past the
+cap. Passes run with
 `trigger: 'backfill'`: gate `memoryEnabled !== false` and
 `memoryExtractionEnabled === true` (a job is cancelled when either is switched
 off, or when the user resets memory), project chats skipped, the chat's history
@@ -1485,8 +1532,11 @@ API (all session-scoped; POSTs have the cross-site guard):
   approximate. A job fails when >= 5 chats failed and failures exceed half of the
   processed chats, 5 chats fail in a row, the stored model's key is gone, or the
   actual token spend (accumulated on the job row as `inputTokens`/`outputTokens`)
-  exceeds 1.5x the consented estimate. Only the last 5 finished jobs per user are
-  kept.
+  exceeds 1.5x the consented estimate or reaches the hard ceiling
+  `MEMORY_LIMITS.backfillMaxTokens` (4M input plus output tokens), which
+  applies even when the estimate failed at start (`spend-limit` either way).
+  A job completes after `backfillMaxChats` chats. The backfill sheet states
+  both limits. Only the last 5 finished jobs per user are kept.
 - Cost lever, not built: batching several short chats into one backfill pass
   would cut the per-chat overhead.
 
@@ -1511,12 +1561,54 @@ is the prompt the UI shows for the user to run in the other assistant (list
 everything it remembers as topics with bullet details, concrete facts, the
 user's language, skip sensitive topics, plain text).
 
+### 3.16 As built (W5, Memory tab UI)
+
+Short note; the contracts it consumes are in 3.11, 3.12 and 3.15.
+
+- Page `app/pages/profile/memory.vue` (profile layout, signed-in only,
+  `noindex`). It stacks the components under `app/components/Profile/Memory/`:
+  `Controls.vue` (Use memory, Generate memory from chats, chat search),
+  `NeverKept.vue` (the never-store kinds from `shared/utils/memory-policy.ts`),
+  `Models.vue` with `ModelPicker.client.vue` (account and project memory
+  models, 3.9), `CacheInfo.vue` and `Entries.vue`.
+- `Entries/` holds the entry list (`Essentials.vue` for `profile` and
+  `preferences`, `Group.vue`, `Row.vue`, `DetailModal.client.vue`, `Empty.vue`),
+  the toolbar (`Toolbar.vue`: "Update now" calls `extract-now` and shows only
+  while both toggles are on, plus the backfill and import entry points), the
+  sheets (`BackfillSheet.client.vue`, `ImportSheet.client.vue`) and the project
+  memory list (`Projects.vue`, `Project.vue`).
+- State: `app/composables/memory-settings.ts` (optimistic PATCH with per-key
+  rollback on error), `memory-backfill.ts`, `memory-projects.ts`; copy and
+  helpers in `app/utils/memory-backfill.ts`.
+
+### 3.17 Security audit 2026-10-26
+
+Scoped source-only audit of the memory and project knowledge code on
+`feat/memory-p3` (no High or Critical finding; tenant isolation held). The
+memory-side findings and what was done; the knowledge findings 5-8 are
+handled separately.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | Medium: the memory-write lock missed web search in the same step or without a tool part | Fixed: the route presets the lock before the first step on any requested web search (3.11) |
+| 2 | Medium: every off-to-on extraction toggle rewrote all chat rows | Fixed: per-chat stamps stay (they floor the account sweep and cap backfill), restamp only chats with activity since their stamp, 10 s per-user enable cooldown (3.12) |
+| 3 | Low: a client `slug` skipped the compliance gate | Fixed: slug removed from the entry input, always derived from the gated title (3.1) |
+| 4 | Low: the backfill estimate scanned the full history with an easy-to-bypass cache | Fixed by bounding: the estimate aggregates only the newest `backfillMaxChats` chats (3.15); the cache is unchanged |
+| 9 | Low: extraction could attach entries to a chat deleted during the model call | Fixed: a missing chat ends the pass as `chat-unavailable`; a narrow detach-to-delete window remains (3.12) |
+| 10 | Low: never-store detectors missed non-ASCII digits, other separators, spaced PESEL, NIP keyword after the number, AWS secrets with `/`, Polish `hasło to X` | Fixed in `compliance.ts` with table-driven positive and negative specs |
+| 11 | Low: the sensitive-topic classifier missed hidden characters, unaccented Polish and Latin look-alikes in Cyrillic | Fixed in `sensitivity.ts`: format characters and stray marks stripped, look-alikes folded, a diacritic-folded Polish pass |
+| 12 | Low: home address, immigration and criminal history were enforced only by the extractor label | Fixed: narrow deterministic detectors in `evaluateMemoryEntry` (`topical-never-store.ts`), so every write path refuses them with the unchanged 422 |
+| 13 | Low: a backfill with a failed estimate had no spend cap | Fixed: hard per-job ceilings `backfillMaxChats` (200) and `backfillMaxTokens` (4M), stated in the backfill sheet (3.15) |
+| 14 | Low: each sweep tick read every idle chat of opted-in users | Fixed by bounding: the chats index range starts at the opt-in cut-over (section 7, "D1 cost of the sweep") |
+| 15 | Info: the export omits processing records and knowledge | Docs only: recorded as a known gap (3.7) |
+| 16 | Info: incognito chats are documented but not built | Docs only: marked not built (3.3, 3.4, 3.7) |
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |
 |---|---|---|
 | Memory index in prompt | ≤ 2.5k tokens, cached prefix on Anthropic/OpenAI | user |
-| Project knowledge full-inject | ≤ 8k tokens, cached prefix | user |
+| Project knowledge full-inject | ≤ min(64k, 7% × context window) tokens plus a per-send fit check, cached prefix (`docs/project-knowledge-design.md`) | user |
 | Tool calls (memory/search) | 0 unless the model decides; ≤ 3 calls, ≤ ~3k tokens each | user |
 | Extraction | ~$0.001–0.004 per idle chat, not per turn | user (cheap model) |
 | FTS5 queries/writes | already paid today | operator (D1) |
@@ -1573,15 +1665,15 @@ Ownership is by file set so parallel sessions never touch the same files.
   not work while it is off (deviation from 3.8); the chosen chat model may be
   expensive by design; the existing project blob is redacted, and its Art. 9
   control is prompt-only (no code enforcement, no retro-scrub). History: the
-  blob pipeline was retired in W6b (3.14) and Art. 9 is now code-enforced on
-  every path (3.12, 3.15).
+  blob pipeline was retired in W6b (3.13) and Art. 9 is now code-enforced on
+  every path (3.11, 3.14).
 - Then in parallel:
   - **W4 Memory backend** — CRUD API under `server/api/v1/memory/`, index
     builder + injection in `buildChatInstructions`, `memory_read/list/write/
     forget` tools.
 
     *Implemented* (branch `feat/w4-memory-backend-aaf9e2`, no schema change;
-    details and decisions in 3.12): entries service and CRUD/reset/export API,
+    details and decisions in 3.11): entries service and CRUD/reset/export API,
     index builder with the Cyrillic-aware budget and its injection first in
     both instruction call sites, the four memory tools with a request-quote
     gate and the Undo chip, `chatSearchEnabled`/`memoryEnabled` wired
@@ -1593,13 +1685,15 @@ Ownership is by file set so parallel sessions never touch the same files.
     `server/plugins/memory-extraction-sweep.ts`, lease, structured ops,
     project blob migration.
 
-    *Implemented* (branch `feat/w6-memory-extraction-b4d3e2`; see 3.11).
+    *Implemented* (branch `feat/w6-memory-extraction-b4d3e2`; see 3.12).
 
 **P3 — knowledge and rights**
-- **W7 Project knowledge** — `project_files`, notes, 8k budget, chunk FTS,
+- **W7 Project knowledge** — `project_files`, notes, dynamic budget
+  `min(64k, 7% × context window)` with a per-send fit check
+  (`docs/project-knowledge-design.md`), chunk FTS,
   `search_project_knowledge`, folder upload (Chromium link + webkitdirectory).
 - **W8 Data rights** — export/import, chat-deletion cascade, purge, incognito
-  flag, privacy-policy text (`content/` legal docs).
+  flag (not built, 3.7), privacy-policy text (`content/` legal docs).
 
 **P4 — only if needed**: Vectorize semantic recall; Queues for lower
 extraction latency; "Tell Claude what to change" NL editor (an extraction
@@ -1616,7 +1710,7 @@ decision log when a decision changes.
   `search_chats`. Mitigation: index lines tell the model *when* to read.
 - FTS recall for paraphrased questions is limited; this is the trigger for P4.
 - Extraction quality on the cheapest models (duplicates, stale facts) — merge
-  prompt includes the current index; `lastUsedAt` expiry.
+  prompt includes the current index; expiry by `lastUsedAt` is not built.
 - Memory poisoning via assistant echo of web/tool content — trust boundary in
   3.4 plus never-store gate; still worth a red-team pass before GA.
 
@@ -1635,8 +1729,8 @@ deferred behind a flag.
   has Russian patterns) rejects special-category text on every write path: the
   entries API (create and edit), the `memory_write` tool, extraction (the op is
   dropped as `sensitive-topic`) and the About-me migration. Interactive paths answer 422 with
-  one shared message, `SENSITIVE_TOPIC_REFUSAL_MESSAGE`. An import path does not
-  exist yet and must use the same gate. Details: 3.5, 3.12, 3.15.
+  one shared message, `SENSITIVE_TOPIC_REFUSAL_MESSAGE`. The import from
+  another assistant (3.15) uses the same gate. Details: 3.5, 3.11, 3.14.
 - The classifier categories are health, religion or belief, political opinion,
   racial or ethnic origin, sex life or orientation, trade union, genetic,
   biometric, plus ongoing legal disputes and drug use (owner extension).
@@ -1671,7 +1765,7 @@ deferred behind a flag.
   Art. 9 data (CJEU C-184/20).
 - Dropping the feature keeps memory shippable now without waiting for counsel.
   The classifier is a safeguard, not a legal conclusion; its misses are listed
-  in 3.12.
+  in 3.11.
 
 **Revisit when all of these hold**
 
@@ -1714,10 +1808,10 @@ in order; every skip leaves `about_me` untouched:
 
 1. Read the trimmed `about_me` and the resolved `memoryEnabled` (null counts as
    on). Empty → `empty`; memory off → `memory-off`.
-2. Size: the `profile` body cap is `maxAlwaysInjectedBodyBytes` (1024 **bytes**,
-   `memoryByteLength`) against `about_me`'s 4000 characters. Over the cap →
-   `too-long`. Text is never truncated. 512 Cyrillic characters is exactly
-   1024 bytes.
+2. Size: the `profile` body cap is `maxAlwaysInjectedBodyBytes` (1536
+   **bytes** since W6c, 3.15, `memoryByteLength`) against `about_me`'s 4000
+   characters. Over the cap → `too-long`. Text is never truncated. 768
+   Cyrillic characters is exactly 1536 bytes.
 3. `profile` is a singleton per account scope: an existing entry → `profile-exists`
    (never overwritten). The 409 "already exists" that `createMemoryEntry` throws
    when a concurrent call wins the race is mapped to the same outcome.
@@ -1784,7 +1878,7 @@ under `memoryCompliance` with origin `about-me-migration`, as everywhere else.
 
 **Owner decisions (overridable)**
 
-1. **No truncation.** Text over 1024 bytes stays in `about_me`, is shown as
+1. **No truncation.** Text over 1536 bytes stays in `about_me`, is shown as
    "Earlier about me (not converted)" and is still injected, until the user
    shortens or removes it. Truncating would silently drop what the user wrote.
    Alternative: raise the `profile` cap or split the text into several entries.
@@ -1857,7 +1951,7 @@ the generated SQL (asserted in `extract-sweep.spec.ts`, no `SCAN chats`):
 
 ```
 SCAN user_settings USING INDEX idx_user_settings_extraction_enabled
-SEARCH chats USING INDEX idx_chats_user_activity (user_id=? AND activity_at<?)
+SEARCH chats USING INDEX idx_chats_user_activity (user_id=? AND activity_at>? AND activity_at<?)
 SEARCH projects USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
 ```
 
@@ -1866,8 +1960,14 @@ empty partial index; no `chats` rows and no other `user_settings` rows). With K
 opted-in users: K index entries and K `user_settings` rows, plus each such
 user's idle chats through the composite index and one `projects` primary-key
 lookup per project-chat row; D1 billing counts index entries as reads, so
-roughly twice the row count for index-driven reads. Caveats: the `row_number`
-window still reads every idle chat of an opted-in user (the per-user cap and the
-pool apply after the window), already-extracted idle chats are read and then
-filtered because the dirty test is not an index condition, and the plan was
+roughly twice the row count for index-driven reads. Since the 2026-10-26 audit
+(3.17) the selection also requires
+`activity_at > coalesce(memory_extraction_enabled_at, 0)` at the top level, so
+the index range starts at the opt-in cut-over: chats idle since before the
+opt-in are never read (the enable restamps them, so they were never due).
+Caveats: within that range the `row_number` window still reads every idle chat
+of an opted-in user active since the opt-in (the per-user cap and the pool
+apply after the window), already-extracted idle chats in the range are read and
+then filtered because the dirty test is not an index condition, a legacy
+opt-in without a recorded cut-over keeps the unbounded range, and the plan was
 verified in the in-memory harness without `ANALYZE`, not measured on D1.
