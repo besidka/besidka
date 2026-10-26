@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import { isPastChatPreRetrievalCallId } from '#shared/utils/past-chat-retrieval'
 import { SEARCH_FRESHNESS_WINDOW_DAYS } from '#shared/utils/search-freshness'
 import type {
   SearchStepData,
@@ -58,6 +59,7 @@ const FAILED_STATES = new Set<string>(['output-error', 'output-denied'])
 
 interface SearchToolLikePart {
   type: string
+  toolCallId?: unknown
   state?: string
   input?: unknown
   output?: unknown
@@ -276,6 +278,9 @@ export function getSearchStepData(
     errorReason: state === 'failed'
       ? getSearchStepErrorReason(toolPart.errorText)
       : '',
+    ...(isPastChatPreRetrievalCallId(toolPart.toolCallId)
+      ? { preRetrieval: true }
+      : {}),
   }
 }
 

@@ -517,6 +517,38 @@ describe('getSearchStepData for chat tools', () => {
   })
 })
 
+describe('getSearchStepData past-chat pre-retrieval', () => {
+  it('flags a search_chats part from the pre-retrieval call id', () => {
+    const data = getSearchStepData(part({
+      type: 'tool-search_chats',
+      toolCallId: 'past-chat-pre-retrieval-user-1',
+      state: 'output-available',
+      input: { query: 'invoice' },
+      output: {
+        results: [{ title: 'Invoices', url: '/chats/abc1', date: '' }],
+      },
+    }))
+
+    expect(data).toMatchObject({
+      toolName: 'search_chats',
+      preRetrieval: true,
+      results: [{ title: 'Invoices', internalPath: '/chats/abc1' }],
+    })
+  })
+
+  it('leaves a model-called search_chats part unflagged', () => {
+    const data = getSearchStepData(part({
+      type: 'tool-search_chats',
+      toolCallId: 'call-1',
+      state: 'output-available',
+      input: { query: 'invoice' },
+      output: { results: [] },
+    }))
+
+    expect(data).not.toHaveProperty('preRetrieval')
+  })
+})
+
 describe('formatChatResultCount', () => {
   it('words the chat count', () => {
     expect(formatChatResultCount(0)).toBe('No chats')

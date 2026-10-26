@@ -29,7 +29,7 @@ const STRICT_OR_MIN_TERMS = 3
 const STRICT_OR_MIN_MATCH_SHARE = 0.5
 const SEARCH_CANDIDATE_LIMIT = JEV_RERANK.maxCandidates
 
-const STOP_WORDS = [
+export const STOP_WORDS = [
   'the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'when', 'where',
   'who', 'how', 'why', 'which', 'do', 'does', 'did', 'of', 'in', 'on',
   'for', 'to', 'and', 'or', 'with', 'about', 'please', 'can', 'could',
