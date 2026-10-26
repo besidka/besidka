@@ -19,6 +19,7 @@ export interface MemoryInstructEntryFields {
 export interface MemoryInstructRejection {
   message: string
   why: string
+  kind?: 'extra-check'
 }
 
 export interface MemoryInstructPreviewOperation {

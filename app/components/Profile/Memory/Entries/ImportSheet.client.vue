@@ -342,6 +342,8 @@ const droppedReasonLabels: Record<string, string> = {
   'never-store': 'Private data (never saved)',
   'duplicate': 'Already remembered',
   'ungrounded': 'No supporting detail',
+  'extra-check-sensitive': 'Sensitive data found by the TypeSafe AI check',
+  'extra-check-ungrounded': 'Not backed by the text, per the TypeSafe AI check',
 }
 
 const blockedKindLabels: Record<string, string> = Object.fromEntries(

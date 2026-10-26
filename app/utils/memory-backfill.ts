@@ -86,6 +86,8 @@ export const memoryBackfillDroppedLabels: Record<string, string> = {
   'never-store': 'Private data (never saved)',
   'duplicate': 'Already remembered',
   'ungrounded': 'No supporting quote',
+  'extra-check-sensitive': 'Sensitive data found by the TypeSafe AI check',
+  'extra-check-ungrounded': 'Not backed by the text, per the TypeSafe AI check',
   'chat-unavailable': 'Chat deleted while it was read',
 }
 

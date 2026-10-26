@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { memoryInstructApplyBodySchema } from '#shared/utils/memory-instruct'
 import { applyMemoryInstruction } from '~~/server/utils/memory/instruct-apply'
+import { resolveMemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
@@ -63,12 +64,14 @@ export default defineEventHandler(async (event) => {
 
   await enforceMemoryRateLimit('instruct-apply', userId, event)
 
+  const db = useDb()
   const response = await applyMemoryInstruction({
-    db: useDb(),
+    db,
     userId,
     projectId,
     operations: body.data.operations,
     logger,
+    jev: await resolveMemoryJevChecker({ db, userId, logger }),
   })
 
   logger.set({

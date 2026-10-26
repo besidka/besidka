@@ -37,6 +37,11 @@ import type {
 import {
   memoryExtractionNormalizeText,
 } from '~~/server/utils/memory/extract-input'
+import { buildMemoryJevGroundingExcerpt } from '~~/server/utils/memory/jev-check'
+import type {
+  MemoryJevChecker,
+  MemoryJevVerdict,
+} from '~~/server/utils/memory/jev-check'
 import type {
   MemoryExtractionIndexEntry,
 } from '~~/server/utils/memory/extract-input'
@@ -56,6 +61,8 @@ const CHAT_UNAVAILABLE_DROP_REASON = 'chat-unavailable'
 const FALLBACK_SLUG_PREFIX = 'entry'
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint'
 const SENSITIVE_TOPIC_DROP_REASON = 'sensitive-topic'
+const JEV_SENSITIVE_DROP_REASON = 'extra-check-sensitive'
+const JEV_UNGROUNDED_DROP_REASON = 'extra-check-ungrounded'
 const HASH_MULTIPLIER = 31
 const HASH_RADIX = 36
 const SLUG_SEPARATOR_PATTERN = /[^a-z0-9]+/gu
@@ -123,6 +130,7 @@ export interface MemoryExtractionApplyInput {
   createGroundingTexts?: string[]
   origin?: Extract<MemoryOrigin, 'extraction' | 'import'>
   logger?: ComplianceLogger
+  jev?: MemoryJevChecker | null
 }
 
 export interface MemoryExtractionApplyResult {
@@ -298,6 +306,7 @@ class MemoryExtractionApplier {
   private readonly createdOrigin: Extract<MemoryOrigin, 'extraction' | 'import'>
   private readonly mutableOrigins: MemoryOrigin[]
   private readonly detectedCategories = new Set<MemorySensitiveCategory>()
+  private readonly jevVerdicts = new Map<MemoryExtractionOp, MemoryJevVerdict>()
   private isSourceChatGone = false
 
   constructor(input: MemoryExtractionApplyInput) {
@@ -338,6 +347,8 @@ class MemoryExtractionApplier {
   }
 
   async run(): Promise<MemoryExtractionApplyResult> {
+    await this.runJevCheck()
+
     for (const [index, op] of this.input.ops.entries()) {
       if (index >= this.input.maxOps) {
         this.drop('over-limit')
@@ -351,6 +362,70 @@ class MemoryExtractionApplier {
     this.recordDetectedCategories()
 
     return this.result
+  }
+
+  private isJevCandidate(op: MemoryExtractionOp): boolean {
+    if (op.op === 'delete' || op.neverStore !== null) {
+      return false
+    }
+
+    const evidenceSources = op.op === 'create'
+      ? this.createGroundingSources
+      : this.groundingSources
+
+    return isMemoryExtractionEvidenceGrounded(
+      op.evidence,
+      evidenceSources,
+      this.groundingSavedText(op),
+    )
+  }
+
+  private async runJevCheck() {
+    if (!this.input.jev) {
+      return
+    }
+
+    const ops = this.input.ops
+      .slice(0, this.input.maxOps)
+      .filter(op => this.isJevCandidate(op))
+
+    if (ops.length === 0) {
+      return
+    }
+
+    const verdicts = await this.input.jev.check(ops.map((op) => {
+      return {
+        title: op.title ?? '',
+        description: op.description ?? '',
+        body: op.body ?? '',
+        source: buildMemoryJevGroundingExcerpt(
+          op.evidence,
+          op.op === 'create' ? this.createGroundingTexts : this.groundingTexts,
+        ),
+      }
+    }))
+
+    for (const [index, op] of ops.entries()) {
+      const verdict = verdicts[index]
+
+      if (verdict) {
+        this.jevVerdicts.set(op, verdict)
+      }
+    }
+  }
+
+  private jevOutcome(op: MemoryExtractionOp): DropOutcome | null {
+    const verdict = this.jevVerdicts.get(op)
+
+    if (!verdict || verdict.kind === 'clear') {
+      return null
+    }
+
+    return {
+      dropped: verdict.kind === 'ungrounded'
+        ? JEV_UNGROUNDED_DROP_REASON
+        : JEV_SENSITIVE_DROP_REASON,
+    }
   }
 
   private recordDetectedCategories() {
@@ -514,7 +589,7 @@ class MemoryExtractionApplier {
     })
 
     if (verdict.allowed) {
-      return null
+      return this.jevOutcome(op)
     }
 
     if (verdict.reason === 'never-store') {
@@ -1079,7 +1154,11 @@ class MemoryExtractionApplier {
  * `conflict`, so a user edit made during the model call is never overwritten.
  * Extraction never writes a special-category entry: every row it persists has
  * `sensitivity: 'none'`. Detected category ids (never the text) are logged
- * once per run. Returns counts only.
+ * once per run. With a `jev` checker, the ops that pass the evidence check
+ * and carry no extractor never-store flag are sent to TypeSafe AI Jev in one
+ * batched call before any write, each with a short excerpt around its
+ * evidence; an op the gate allowed but Jev flags is dropped as
+ * `extra-check-sensitive` or `extra-check-ungrounded`. Returns counts only.
  */
 export async function applyMemoryExtractionOps(
   input: MemoryExtractionApplyInput,
