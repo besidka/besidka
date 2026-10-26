@@ -1545,7 +1545,7 @@ API (all session-scoped; POSTs have the cross-site guard):
 
 - `GET /api/v1/memory/backfill` -> `{ job, estimate, reason }`. No running job:
   `estimate` is a dry-run for the resolved model (null with `reason`
-  `memory-disabled | extraction-disabled | all-chats-read | no-model | estimate-failed` when unavailable; the dry-run estimate covers the next job's window, carries `continuesPreviousRun`, and is cached per user for 10 minutes, keyed by model and window) and
+  `memory-disabled | extraction-disabled | all-chats-read | no-model | estimate-failed | estimate-cooldown` when unavailable; the dry-run estimate covers the next job's window, carries `continuesPreviousRun`, and is cached per user for 10 minutes, keyed by model and window; a failed estimate is cached as a failure marker for 60 s, and a cache miss computes at most once per 30 s per user (`lookupBackfillEstimate`), so flipping the memory model cannot force a recompute on every GET) and
   `job` is the latest finished job or null; a running job: its progress.
 - `POST /api/v1/memory/backfill` -> `{ job }`: START only (409 when a gate
   fails, no model, every past chat was already read, or one is already

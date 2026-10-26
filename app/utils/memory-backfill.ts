@@ -74,6 +74,8 @@ export const memoryBackfillUnavailableCopy: Record<
   'memory-disabled': 'Turn on Use memory first.',
   'extraction-disabled': 'Turn on Generate memory from chats first.',
   'estimate-failed': 'Couldn\'t estimate the cost. Try again.',
+  'estimate-cooldown': 'The cost was estimated moments ago. Try again in '
+    + 'half a minute.',
   'all-chats-read': 'The last run already read all your past chats. New '
     + 'chats are added to memory automatically. You can still read them all '
     + 'again from the newest.',

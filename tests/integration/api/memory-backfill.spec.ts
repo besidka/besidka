@@ -47,6 +47,16 @@ vi.mock('~~/server/utils/memory/extract', () => ({
 vi.mock('~~/server/utils/memory/backfill-estimate', () => ({
   getBackfillEstimate: mocks.getBackfillEstimate,
   invalidateBackfillEstimate: mocks.invalidateBackfillEstimate,
+  lookupBackfillEstimate: async (input: unknown) => {
+    try {
+      return {
+        status: 'ready',
+        estimate: await mocks.getBackfillEstimate(input),
+      }
+    } catch (exception) {
+      return { status: 'failed', exception }
+    }
+  },
 }))
 
 vi.mock('~~/server/utils/memory/resolve-model', async (importOriginal) => {

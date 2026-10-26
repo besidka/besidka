@@ -15,6 +15,7 @@ export type MemoryBackfillUnavailableReason
     | 'extraction-disabled'
     | 'no-model'
     | 'estimate-failed'
+    | 'estimate-cooldown'
     | 'all-chats-read'
 
 export type MemoryBackfillFailureReason

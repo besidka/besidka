@@ -3,7 +3,7 @@ import type {
   MemoryBackfillOverview,
   MemoryBackfillUnavailableReason,
 } from '#shared/types/memory-backfill.d'
-import { getBackfillEstimate } from '~~/server/utils/memory/backfill-estimate'
+import { lookupBackfillEstimate } from '~~/server/utils/memory/backfill-estimate'
 import {
   getBackfillProgress,
   readBackfillGate,
@@ -23,10 +23,12 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
  * its chat cap, see `resolveBackfillWindow`), computed with a dry-run model
  * resolution, or the reason none can be given: `all-chats-read` once the last
  * run read every past chat, `estimate-failed` when the estimate throws (never
- * an error). The estimate is cached per user for ten minutes. With
- * `?restart=true` the estimate is for a fresh window from the newest chat
- * (the "read all past chats again" offer), so `all-chats-read` never
- * applies. Counts only; never any chat text.
+ * an error; the failure is cached for a minute, so a repeated GET does not
+ * recompute), `estimate-cooldown` when a fresh estimate was computed less
+ * than 30 seconds ago (see `lookupBackfillEstimate`). The estimate is
+ * cached per user for ten minutes. With `?restart=true` the estimate is for a
+ * fresh window from the newest chat (the "read all past chats again" offer),
+ * so `all-chats-read` never applies. Counts only; never any chat text.
  */
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -84,27 +86,37 @@ export default defineEventHandler(async (event) => {
     return response
   }
 
-  try {
-    response.estimate = await getBackfillEstimate({
-      userId,
-      selection,
-      window,
-      db,
-    })
-  } catch (exception) {
+  const lookup = await lookupBackfillEstimate({
+    userId,
+    selection,
+    window,
+    db,
+  })
+
+  if (lookup.status === 'cooldown') {
+    response.reason = 'estimate-cooldown'
+
+    return response
+  }
+
+  if (lookup.status === 'failed') {
     response.reason = 'estimate-failed'
     logger.set({
       userId,
       attributes: {
         memoryBackfill: {
           phase: 'estimate',
-          error: memoryExtractionErrorSummary(exception),
+          error: lookup.exception
+            ? memoryExtractionErrorSummary(lookup.exception)
+            : 'cached-failure',
         },
       },
     })
 
     return response
   }
+
+  response.estimate = lookup.estimate
 
   logger.set({
     userId,

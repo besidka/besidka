@@ -306,6 +306,10 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
       ['extraction-disabled', 'Turn on Generate memory from chats first.'],
       ['estimate-failed', 'Couldn\'t estimate the cost. Try again.'],
       [
+        'estimate-cooldown',
+        'The cost was estimated moments ago. Try again in half a minute.',
+      ],
+      [
         'all-chats-read',
         'The last run already read all your past chats. New chats are added '
         + 'to memory automatically. You can still read them all again from '
@@ -427,10 +431,10 @@ describe('Profile/Memory/Entries/BackfillSheet', () => {
         expect(hasTestId(wrapper, 'memory-backfill-retry')).toBe(false)
       })
 
-    it('offers Try again only for a failed estimate and reloads',
-      async () => {
+    it.each(['estimate-failed', 'estimate-cooldown'] as const)(
+      'offers Try again for %s and reloads', async (reason) => {
         const wrapper = await mountSheet({
-          overview: { job: null, estimate: null, reason: 'estimate-failed' },
+          overview: { job: null, estimate: null, reason },
         })
 
         expect(hasTestId(wrapper, 'memory-backfill-retry')).toBe(true)

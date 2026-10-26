@@ -89,7 +89,7 @@
               />
             </div>
             <div
-              v-if="unavailableReason === 'estimate-failed'"
+              v-if="isRetryableReason"
               class="flex justify-start"
             >
               <UiButton
@@ -509,6 +509,11 @@ const unavailableReason = computed<MemoryBackfillUnavailableReason | null>(
     return overview.value ? null : 'estimate-failed'
   },
 )
+
+const isRetryableReason = computed<boolean>(() => {
+  return unavailableReason.value === 'estimate-failed'
+    || unavailableReason.value === 'estimate-cooldown'
+})
 
 const unavailableMessage = computed<string>(() => {
   const unavailable = unavailableReason.value

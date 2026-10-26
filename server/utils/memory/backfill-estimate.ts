@@ -37,6 +37,9 @@ const INSTRUCTIONS_TOKENS_PER_CHAT = 2500
 const OUTPUT_FRACTION_OF_TRANSCRIPT = 0.1
 const MIN_OUTPUT_TOKENS_PER_CHAT = 300
 const ESTIMATE_CACHE_TTL_SECONDS = 600
+const ESTIMATE_FAILURE_RETRY_MS = 60_000
+const ESTIMATE_COMPUTE_COOLDOWN_MS = 30_000
+const KV_MIN_EXPIRATION_SECONDS = 60
 
 interface ChatTotalsRow {
   chats: number
@@ -320,6 +323,20 @@ interface CachedBackfillEstimate {
   windowKey: string
 }
 
+interface CachedBackfillEstimateFailure {
+  failedAt: number
+  windowKey: string
+  selectionKey: string
+}
+
+type CachedBackfillEstimateEntry
+  = CachedBackfillEstimate | CachedBackfillEstimateFailure
+
+export type BackfillEstimateLookup
+  = | { status: 'ready', estimate: MemoryBackfillEstimate }
+    | { status: 'failed', exception: unknown }
+    | { status: 'cooldown' }
+
 function backfillWindowKey(window: BackfillWindow): string {
   if (!window.isContinuation) {
     return 'fresh'
@@ -332,8 +349,27 @@ function backfillWindowKey(window: BackfillWindow): string {
   ].join(':')
 }
 
+function backfillSelectionKey(
+  selection: ResolvedMemoryModelSelection | null,
+): string {
+  if (!selection) {
+    return 'none'
+  }
+
+  return [
+    selection.source,
+    selection.providerId ?? '',
+    selection.gatewayId ?? '',
+    selection.modelId,
+  ].join(':')
+}
+
 export function backfillEstimateCacheKey(userId: number): string {
   return `memory-backfill-estimate:${userId}`
+}
+
+export function backfillEstimateComputeKey(userId: number): string {
+  return `memory-backfill-estimate-compute:${userId}`
 }
 
 function isSameSelection(
@@ -350,11 +386,9 @@ function isSameSelection(
     && estimate.model.modelId === selection.modelId
 }
 
-async function readCachedEstimate(
+async function readCachedEntry(
   userId: number,
-  selection: ResolvedMemoryModelSelection | null,
-  windowKey: string,
-): Promise<MemoryBackfillEstimate | null> {
+): Promise<CachedBackfillEstimateEntry | null> {
   try {
     const raw = await useKV().get(backfillEstimateCacheKey(userId))
 
@@ -362,30 +396,88 @@ async function readCachedEstimate(
       return null
     }
 
-    const cached = JSON.parse(raw) as CachedBackfillEstimate
+    const parsed: unknown = JSON.parse(raw)
 
-    return cached.windowKey === windowKey
-      && isSameSelection(cached.estimate, selection)
-      ? cached.estimate
+    return parsed && typeof parsed === 'object'
+      ? parsed as CachedBackfillEstimateEntry
       : null
   } catch {
     return null
   }
 }
 
-async function writeCachedEstimate(
-  userId: number,
-  estimate: MemoryBackfillEstimate,
+function matchCachedEstimate(
+  entry: CachedBackfillEstimateEntry | null,
+  selection: ResolvedMemoryModelSelection | null,
   windowKey: string,
+): MemoryBackfillEstimate | null {
+  if (!entry || !('estimate' in entry) || entry.windowKey !== windowKey) {
+    return null
+  }
+
+  return isSameSelection(entry.estimate, selection) ? entry.estimate : null
+}
+
+function isRecentFailure(
+  entry: CachedBackfillEstimateEntry | null,
+  selectionKey: string,
+  windowKey: string,
+  now: number,
+): boolean {
+  if (!entry || !('failedAt' in entry)) {
+    return false
+  }
+
+  return entry.windowKey === windowKey
+    && entry.selectionKey === selectionKey
+    && now - entry.failedAt < ESTIMATE_FAILURE_RETRY_MS
+}
+
+async function writeCachedEntry(
+  userId: number,
+  entry: CachedBackfillEstimateEntry,
+  expirationTtl: number,
 ): Promise<void> {
   try {
     await useKV().put(
       backfillEstimateCacheKey(userId),
-      JSON.stringify({ estimate, windowKey } satisfies CachedBackfillEstimate),
-      { expirationTtl: ESTIMATE_CACHE_TTL_SECONDS },
+      JSON.stringify(entry),
+      { expirationTtl },
     )
   } catch {
     return
+  }
+}
+
+/**
+ * Claims the per-user slot for computing a fresh estimate. KV expiry has a
+ * 60 s floor, so the stamp is a timestamp compared against the cooldown.
+ * Answers `false` inside the cooldown. A KV failure lets the computation
+ * run, the same fail-open choice as the cache itself.
+ */
+async function claimEstimateComputeSlot(
+  userId: number,
+  now: number,
+): Promise<boolean> {
+  try {
+    const kv = useKV()
+    const key = backfillEstimateComputeKey(userId)
+    const lastAt = Number(await kv.get(key))
+
+    const isCoolingDown = Number.isFinite(lastAt)
+      && now - lastAt < ESTIMATE_COMPUTE_COOLDOWN_MS
+
+    if (isCoolingDown) {
+      return false
+    }
+
+    await kv.put(key, String(now), {
+      expirationTtl: KV_MIN_EXPIRATION_SECONDS,
+    })
+
+    return true
+  } catch {
+    return true
   }
 }
 
@@ -414,8 +506,8 @@ export async function getBackfillEstimate(
   input: EstimateBackfillInput,
 ): Promise<MemoryBackfillEstimate> {
   const windowKey = backfillWindowKey(resolveEstimateWindow(input))
-  const cached = await readCachedEstimate(
-    input.userId,
+  const cached = matchCachedEstimate(
+    await readCachedEntry(input.userId),
     input.selection,
     windowKey,
   )
@@ -426,7 +518,62 @@ export async function getBackfillEstimate(
 
   const estimate = await estimateBackfill(input)
 
-  await writeCachedEstimate(input.userId, estimate, windowKey)
+  await writeCachedEntry(
+    input.userId,
+    { estimate, windowKey },
+    ESTIMATE_CACHE_TTL_SECONDS,
+  )
 
   return estimate
+}
+
+/**
+ * The estimate the overview GET shows, bounded against repeated requests: a
+ * cached figure is served as is; a computation that failed for the same
+ * model and window within the last minute is answered from a cached failure
+ * marker without recomputing; any other miss computes only when the user's
+ * compute slot is free (one computation per 30 seconds), otherwise it
+ * answers `cooldown`. Never throws: a failed computation is returned with
+ * its exception so the caller can log it.
+ */
+export async function lookupBackfillEstimate(
+  input: EstimateBackfillInput,
+): Promise<BackfillEstimateLookup> {
+  const now = Date.now()
+  const windowKey = backfillWindowKey(resolveEstimateWindow(input))
+  const selectionKey = backfillSelectionKey(input.selection)
+  const entry = await readCachedEntry(input.userId)
+  const cached = matchCachedEstimate(entry, input.selection, windowKey)
+
+  if (cached) {
+    return { status: 'ready', estimate: cached }
+  }
+
+  if (isRecentFailure(entry, selectionKey, windowKey, now)) {
+    return { status: 'failed', exception: null }
+  }
+
+  if (!(await claimEstimateComputeSlot(input.userId, now))) {
+    return { status: 'cooldown' }
+  }
+
+  try {
+    const estimate = await estimateBackfill(input)
+
+    await writeCachedEntry(
+      input.userId,
+      { estimate, windowKey },
+      ESTIMATE_CACHE_TTL_SECONDS,
+    )
+
+    return { status: 'ready', estimate }
+  } catch (exception) {
+    await writeCachedEntry(
+      input.userId,
+      { failedAt: now, windowKey, selectionKey },
+      KV_MIN_EXPIRATION_SECONDS,
+    )
+
+    return { status: 'failed', exception }
+  }
 }
