@@ -202,6 +202,7 @@ function toFailure(parsed: ProjectKnowledgeError): KnowledgeUploadFailure {
       || STATUS_FALLBACK_MESSAGES[parsed.status]
       || 'Something went wrong. Try again.',
     why: parsed.why,
+    fix: parsed.fix,
     status: parsed.status,
   }
 }
@@ -533,6 +534,7 @@ export function useKnowledgeUpload(
       error.value = {
         message: 'Select a project first.',
         why: undefined,
+        fix: undefined,
         status: 400,
       }
       phase.value = 'error'
@@ -603,6 +605,7 @@ export function useKnowledgeUpload(
       error.value = {
         message: 'This folder can not be synced.',
         why: 'The folder id is not valid.',
+        fix: undefined,
         status: 400,
       }
       phase.value = 'error'

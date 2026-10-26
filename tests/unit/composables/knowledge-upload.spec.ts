@@ -148,10 +148,18 @@ function createFetchError(
   status: number,
   message: string,
   why?: string,
+  fix?: string,
 ): Record<string, unknown> {
   return {
     message: 'fetch failed',
-    data: { message, status, data: why ? { why } : {} },
+    data: {
+      message,
+      status,
+      data: {
+        ...(why ? { why } : {}),
+        ...(fix ? { fix } : {}),
+      },
+    },
   }
 }
 
@@ -1007,6 +1015,80 @@ describe('useKnowledgeUpload', () => {
       expect(upload.phase.value).toBe('error')
       expect(upload.error.value?.status).toBe(status)
       expect(upload.error.value?.message).toBe(message)
+    })
+
+    describe('the per-account item limit', () => {
+      const limitWhy = 'An account holds at most 500 knowledge items'
+        + ' across all projects and it has 499'
+      const limitFix = 'Remove items from other projects before adding more'
+
+      function rejectWithLimit(
+        callIndexToReject: number,
+      ): void {
+        itemsResponder = (body, callIndex) => {
+          if (callIndex === callIndexToReject) {
+            throw createFetchError(
+              422,
+              'Knowledge item limit reached',
+              limitWhy,
+              limitFix,
+            )
+          }
+
+          return defaultItemsResponder(body)
+        }
+      }
+
+      it('stops the run and keeps the message, why and fix', async () => {
+        const { upload } = createUpload()
+
+        rejectWithLimit(0)
+
+        await prepareAndStart(upload, createTextSources(30))
+
+        expect(upload.phase.value).toBe('error')
+        expect(upload.error.value).toEqual({
+          message: 'Knowledge item limit reached',
+          why: limitWhy,
+          fix: limitFix,
+          status: 422,
+        })
+        expect(upload.entries.value[0]?.status).toBe('failed')
+        expect(upload.entries.value[0]?.error)
+          .toBe('Knowledge item limit reached')
+        expect(upload.entries.value[29]?.status).toBe('queued')
+        expect(commitCalls()).toHaveLength(0)
+      })
+
+      it('keeps the created files when a later batch hits the limit', async () => {
+        const { upload } = createUpload()
+
+        rejectWithLimit(1)
+
+        await prepareAndStart(upload, createTextSources(26))
+
+        const statuses = upload.entries.value.map(entry => entry.status)
+
+        expect(upload.phase.value).toBe('error')
+        expect(upload.error.value?.status).toBe(422)
+        expect(upload.error.value?.fix).toBe(limitFix)
+        expect(statuses.slice(0, 25).every(status => status === 'ready'))
+          .toBe(true)
+        expect(statuses[25]).toBe('failed')
+      })
+
+      it('leaves the fix empty when the server sends none', async () => {
+        const { upload } = createUpload()
+
+        itemsResponder = () => {
+          throw createFetchError(422, 'Knowledge item limit reached', limitWhy)
+        }
+
+        await prepareAndStart(upload, [createSource('a.md')])
+
+        expect(upload.error.value?.why).toBe(limitWhy)
+        expect(upload.error.value?.fix).toBeUndefined()
+      })
     })
 
     it('stops the run when the original upload is out of storage', async () => {
