@@ -217,6 +217,34 @@ describe('Projects/Knowledge/ItemEditSheet', () => {
         .toBe('Transcribing scanned pages with a model is coming soon.')
     })
 
+    it('marks a PDF without text as not screened for prompt injection',
+      async () => {
+        const wrapper = await mountSheet({ item: scannedPdf })
+
+        expect(byTestId(wrapper, 'knowledge-item-sheet-native-pdf-unscreened')
+          .text()).toContain('Not screened for prompt injection')
+        expect(wrapper.find(
+          '[data-testid="knowledge-item-sheet-native-pdf-text-screened"]',
+        ).exists()).toBe(false)
+      })
+
+    it('says a PDF with text is screened on its text only', async () => {
+      const wrapper = await mountSheet({
+        item: {
+          ...scannedPdf,
+          extractStatus: 'ready',
+          textBytes: 1200,
+          latinChars: 1200,
+        },
+      })
+
+      expect(byTestId(wrapper, 'knowledge-item-sheet-native-pdf-text-screened')
+        .text()).toContain('extracted text only')
+      expect(wrapper.find(
+        '[data-testid="knowledge-item-sheet-native-pdf-unscreened"]',
+      ).exists()).toBe(false)
+    })
+
     it('saves the native PDF toggle', async () => {
       const wrapper = await mountSheet({ item: scannedPdf })
 

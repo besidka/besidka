@@ -2183,6 +2183,21 @@ provider and gateway search) reach the model with no server hook, so they
 cannot be screened. The Privacy Policy, the `/memory` guide and the key-guide
 FAQ say so. Images are not screened beyond their extracted text.
 
+Native PDFs (delta audit finding 1, 2026-10-26). Screening reads the text a
+PDF's extractor produced, never the attached pages, so:
+
+- A `ready` PDF sent as a PDF is screened on its text layer only; text that
+  lives in page images or overlays reaches a PDF-reading model unscreened.
+- A `no-text` or `failed` PDF (a scan, a broken file) has no text to screen,
+  yet "Send as PDF" stays available for it, because sending the pages is the
+  only way such a file reaches the model (transcription is not built).
+  Refusing it would change behaviour for users without a TypeSafe AI key.
+  Instead the item sheet marks it **"Not screened for prompt injection"**
+  (`knowledge-item-sheet-native-pdf-unscreened`), and a `ready` PDF's toggle
+  says screening reads the extracted text only. The `/memory` guide and the
+  TypeSafe AI key-guide FAQ say both. `isNativePdfCandidate` is unchanged:
+  a flagged PDF is still dropped by `loadKnowledgeSendData`.
+
 **Write lock unchanged.** A clean verdict never relaxes anything. The memory
 write lock is still preset for every requested web search and raised by any
 non-memory tool result (`presetMemoryWriteLock`, `createToolLoopPrepareStep`).
