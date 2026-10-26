@@ -366,6 +366,7 @@ describe('profile preferences page', () => {
       expect(wrapper.text()).toContain('Push notifications')
       expect(wrapper.text()).toContain('a response finishes')
       expect(wrapper.text()).toContain('a shared chat')
+      expect(wrapper.text()).toContain('a shared chat you branched')
       expect(wrapper.text()).toContain('never include your messages')
     })
 
