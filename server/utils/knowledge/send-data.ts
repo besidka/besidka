@@ -9,6 +9,7 @@ import * as schema from '~~/server/db/schema'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { toKnowledgeItemWire } from '~~/server/utils/knowledge/items'
 import { readKnowledgePack } from '~~/server/utils/knowledge/pack'
 
 export interface KnowledgeSendItem extends KnowledgeItem {
@@ -28,10 +29,6 @@ export interface KnowledgeSendData {
   }
   items: KnowledgeSendItem[]
   loadPack: () => Promise<KnowledgeSendPack | null>
-}
-
-function toIsoString(value: Date): string {
-  return value.toISOString()
 }
 
 function createPackLoader(input: {
@@ -66,41 +63,6 @@ function createPackLoader(input: {
     })
 
     return memoized
-  }
-}
-
-type ItemRow = typeof schema.projectKnowledgeItems.$inferSelect
-
-function toSendItem(row: {
-  item: ItemRow
-  storageKey: string | null
-}): KnowledgeSendItem {
-  const { item } = row
-
-  return {
-    id: item.id,
-    projectId: encodePublicId(item.projectId),
-    kind: item.kind,
-    fileId: item.fileId === null ? null : encodePublicId(item.fileId),
-    title: item.title,
-    description: item.description,
-    relativePath: item.relativePath,
-    folderId: item.folderId,
-    mediaType: item.mediaType,
-    sizeBytes: item.sizeBytes,
-    pageCount: item.pageCount,
-    textBytes: item.textBytes,
-    latinChars: item.latinChars,
-    cyrillicChars: item.cyrillicChars,
-    otherChars: item.otherChars,
-    extractStatus: item.extractStatus,
-    extractError: item.extractError,
-    extractor: item.extractor,
-    sendAsNativePdf: item.sendAsNativePdf ?? false,
-    pinned: item.pinned ?? false,
-    createdAt: toIsoString(item.createdAt),
-    updatedAt: toIsoString(item.updatedAt),
-    storageKey: row.storageKey,
   }
 }
 
@@ -156,7 +118,9 @@ async function queryKnowledgeSendData(input: {
       version: project.version ?? 0,
       packVersion: project.packVersion,
     },
-    items: rows.map(toSendItem),
+    items: rows.map((row) => {
+      return { ...toKnowledgeItemWire(row.item), storageKey: row.storageKey }
+    }),
     loadPack: createPackLoader({
       userId: input.userId,
       projectId: input.projectId,

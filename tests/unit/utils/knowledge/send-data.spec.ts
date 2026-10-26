@@ -168,6 +168,7 @@ describe('loadKnowledgeSendData', () => {
       expect(note).toMatchObject({
         projectId: encodePublicId(PROJECT_ID),
         fileId: null,
+        contentHash: null,
         storageKey: null,
         sendAsNativePdf: false,
         pinned: false,
