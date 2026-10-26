@@ -36,11 +36,24 @@ const LATIN_TO_CYRILLIC_LOOKALIKES: Record<string, string> = {
   ï: 'ї',
 }
 
+const CYRILLIC_TO_LATIN_LOOKALIKES: Record<string, string> = {
+  ...Object.fromEntries(
+    Object.entries(LATIN_TO_CYRILLIC_LOOKALIKES).map(([latin, cyrillic]) => {
+      return [cyrillic, latin]
+    }),
+  ),
+  ј: 'j',
+  ѕ: 's',
+}
+
 const POLISH_DIACRITIC_PATTERN = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/gu
+const POLISH_DIACRITIC_LETTER_PATTERN = /^[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]$/u
 const LETTER_RUN_PATTERN = /\p{L}+/gu
-const CYRILLIC_LETTER_PATTERN = /\p{Script=Cyrillic}/u
-const LATIN_LETTER_PATTERN = /\p{Script=Latin}/u
+const LATIN_LETTERS_PATTERN = /\p{Script=Latin}/gu
+const CYRILLIC_LETTERS_PATTERN = /\p{Script=Cyrillic}/gu
+const COMBINING_MARKS_PATTERN = /\p{M}/gu
 const LATIN_LOOKALIKE_PATTERN = /[abcehikmoptxyï]/gu
+const CYRILLIC_LOOKALIKE_PATTERN = /[авсенікмортхуїјѕ]/gu
 const DECIMAL_DIGIT_PATTERN = /^\p{Nd}$/u
 const ASCII_DIGIT_ZERO = 48
 const DIGITS_PER_BLOCK = 10
@@ -58,24 +71,50 @@ export function foldPolishDiacritics(text: string): string {
   })
 }
 
+function countMatches(text: string, pattern: RegExp): number {
+  return text.match(pattern)?.length ?? 0
+}
+
 /**
  * Inside a lowercase word that mixes Cyrillic and Latin letters, maps the
- * Latin look-alikes (`i`, `a`, `o`, …) to their Cyrillic twins, so
- * `дiабет` typed with a Latin `i` reads as `діабет`. Words in a single script
- * are left alone.
+ * look-alikes of the minority script to the majority script: `дiабет` with a
+ * Latin `i` reads as `діабет`, and `hіv` with a Cyrillic `і` reads as `hiv`
+ * (a tie goes to Cyrillic). Words in a single script are left alone.
  */
-export function foldCyrillicLookalikes(text: string): string {
+export function foldMixedScriptLookalikes(text: string): string {
   return text.replace(LETTER_RUN_PATTERN, (word) => {
-    if (
-      !CYRILLIC_LETTER_PATTERN.test(word)
-      || !LATIN_LETTER_PATTERN.test(word)
-    ) {
+    const latinCount = countMatches(word, LATIN_LETTERS_PATTERN)
+    const cyrillicCount = countMatches(word, CYRILLIC_LETTERS_PATTERN)
+
+    if (latinCount === 0 || cyrillicCount === 0) {
       return word
     }
 
-    return word.replace(LATIN_LOOKALIKE_PATTERN, (letter) => {
-      return LATIN_TO_CYRILLIC_LOOKALIKES[letter] ?? letter
+    if (cyrillicCount >= latinCount) {
+      return word.replace(LATIN_LOOKALIKE_PATTERN, (letter) => {
+        return LATIN_TO_CYRILLIC_LOOKALIKES[letter] ?? letter
+      })
+    }
+
+    return word.replace(CYRILLIC_LOOKALIKE_PATTERN, (letter) => {
+      return CYRILLIC_TO_LATIN_LOOKALIKES[letter] ?? letter
     })
+  })
+}
+
+/**
+ * Removes accents from Latin letters (`diabétes` reads as `diabetes`) by
+ * decomposing each one and dropping its combining marks. The Polish
+ * diacritic letters are kept, because the classifier matches them in both
+ * forms, and Cyrillic letters such as `й` and `ї` are never touched.
+ */
+export function stripLatinDiacritics(text: string): string {
+  return text.replace(LATIN_LETTERS_PATTERN, (letter) => {
+    if (POLISH_DIACRITIC_LETTER_PATTERN.test(letter)) {
+      return letter
+    }
+
+    return letter.normalize('NFD').replace(COMBINING_MARKS_PATTERN, '')
   })
 }
 

@@ -5,8 +5,9 @@ import {
   sensitiveWordStart,
 } from '~~/server/utils/memory/sensitivity-rules'
 import {
-  foldCyrillicLookalikes,
+  foldMixedScriptLookalikes,
   foldPolishDiacritics,
+  stripLatinDiacritics,
 } from '~~/server/utils/memory/text-folding'
 
 interface CompiledSensitiveTextRule {
@@ -47,21 +48,33 @@ export function compileSensitiveTextExpression(
 }
 
 /**
- * The form every rule source is written against: NFKC, hidden characters
- * removed (soft hyphen, zero-width and bidi marks, stray combining marks),
- * lowercased, apostrophe variants straightened, `ё` folded to `е`, and Latin
- * look-alikes inside a Cyrillic word mapped to Cyrillic.
+ * The form every rule source is written against: `normalizeSensitiveTextCase`
+ * (NFKC, hidden characters removed, Latin accents stripped), lowercased,
+ * apostrophe variants straightened, `ё` folded to `е`, and look-alike letters
+ * inside a mixed Latin and Cyrillic word mapped to the word's main script.
  */
 export function normalizeSensitiveText(text: string): string {
-  const lowercased = text
-    .normalize('NFKC')
-    .replace(FORMAT_CHARACTERS_PATTERN, '')
-    .replace(NONSPACING_MARKS_PATTERN, '')
+  const lowercased = normalizeSensitiveTextCase(text)
     .toLowerCase()
+    .replace(NONSPACING_MARKS_PATTERN, '')
     .replace(/[ʼ’‘`´]/g, '\'')
     .replace(/ё/g, 'е')
 
-  return foldCyrillicLookalikes(lowercased)
+  return foldMixedScriptLookalikes(lowercased)
+}
+
+/**
+ * The case-preserving part of `normalizeSensitiveText`: NFKC, hidden
+ * characters removed, accents stripped from Latin letters (Polish diacritics
+ * kept) and stray combining marks dropped. Rules that need capitalisation,
+ * such as a capitalised street name, match against it.
+ */
+export function normalizeSensitiveTextCase(text: string): string {
+  return stripLatinDiacritics(
+    text
+      .normalize('NFKC')
+      .replace(FORMAT_CHARACTERS_PATTERN, ''),
+  ).replace(NONSPACING_MARKS_PATTERN, '')
 }
 
 const compiledRules: readonly FoldedSensitiveTextRule[] = sensitiveTextRules

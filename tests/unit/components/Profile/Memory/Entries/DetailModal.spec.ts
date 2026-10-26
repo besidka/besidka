@@ -1190,6 +1190,39 @@ describe('Profile/Memory/Entries/DetailModal', () => {
         expect(mocks.info).not.toHaveBeenCalled()
       })
 
+    it('shows the saved-text 422 copy and leaves Delete one Cancel away',
+      async () => {
+        mocks.fetch.mockRejectedValue(Object.assign(new Error('Failed'), {
+          data: {
+            statusCode: 422,
+            message: 'This memory contains data that cannot be stored',
+            data: {
+              why: 'Detected: Precise home address. It is in the text '
+                + 'already saved in this entry.',
+              fix: 'Edit the saved title, description or body to remove it, '
+                + 'or cancel and delete the entry.',
+            },
+          },
+        }))
+
+        const wrapper = await mountModal()
+
+        await startEditing(wrapper)
+        await byTestId(wrapper, 'memory-entry-title-input').setValue('Place')
+        await byTestId(wrapper, 'memory-entry-save').trigger('click')
+        await flushPromises()
+
+        const alert = byTestId(wrapper, 'memory-entry-error')
+
+        expect(alert.text()).toContain('Precise home address')
+        expect(alert.text()).toContain('cancel and delete the entry')
+
+        await byTestId(wrapper, 'memory-entry-cancel').trigger('click')
+
+        expect(wrapper.find('[data-testid="memory-entry-delete"]').exists())
+          .toBe(true)
+      })
+
     it('discards the draft on Cancel', async () => {
       const wrapper = await mountModal()
 

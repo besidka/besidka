@@ -6,8 +6,9 @@ import {
 } from '~~/server/utils/memory/compliance'
 import { classifySensitiveCategories } from '~~/server/utils/memory/sensitivity'
 import {
-  foldCyrillicLookalikes,
+  foldMixedScriptLookalikes,
   foldPolishDiacritics,
+  stripLatinDiacritics,
   toAsciiDigit,
 } from '~~/server/utils/memory/text-folding'
 import { detectTopicalNeverStoreKinds } from '~~/server/utils/memory/topical-never-store'
@@ -52,9 +53,14 @@ describe('text folding', () => {
       .toBe('acelnoszz ACELNOSZZ їй ё')
   })
 
-  it('maps Latin look-alikes only inside a mixed-script word', () => {
-    expect(foldCyrillicLookalikes('у мене дiабет і cat'))
-      .toBe('у мене діабет і cat')
+  it('maps look-alikes to the main script of a mixed-script word', () => {
+    expect(foldMixedScriptLookalikes('у мене дiабет і cat hіv'))
+      .toBe('у мене діабет і cat hiv')
+  })
+
+  it('strips Latin accents but keeps Polish and Cyrillic letters', () => {
+    expect(stripLatinDiacritics('diabétes naïve ciąża йога ї'))
+      .toBe('diabetes naive ciąża йога ї')
   })
 })
 
@@ -64,7 +70,8 @@ describe('never-store format evasions (audit finding 10)', () => {
     ['Devanagari card digits', '४१११ ११११ ११११ ११११', 'payment-card'],
     ['a slash-separated card', '4111/1111/1111/1111', 'payment-card'],
     ['an underscore-separated card', '4111_1111_1111_1111', 'payment-card'],
-    ['a comma-separated card', '4111,1111,1111,1111', 'payment-card'],
+    ['a slash-separated Amex card', '3782/822463/10005', 'payment-card'],
+    ['an underscore-separated 19-digit card', '4111_1111_1111_1111_003', 'payment-card'],
     ['a dotted IBAN', 'PL61.1090.1014.0000.0712.1981.2874', 'iban'],
     ['a slash-separated IBAN', 'PL61/1090/1014/0000/0712/1981/2874', 'iban'],
     ['a dotted Polish NRB', '61.1090.1014.0000.0712.1981.2874', 'iban'],
@@ -126,8 +133,79 @@ describe('never-store format evasions (audit finding 10)', () => {
     ['a Polish security remark', 'Hasło to podstawa bezpieczeństwa'],
     ['an AWS how-to', 'Wrote the AWS secret rotation guide for the team'],
     ['a password-to sentence', 'The password to the wifi is on the fridge'],
+    ['a comma-joined digit list', 'Listing numbers 5, 3, 2, 8, 4, 9, 1, 6, 7, 2, 3, 4, 5, 6'],
+    ['a JSON digit array', '[4,3,2,8,4,9,1,6,7,2,3,4,5,6]'],
+    ['comma thousands', 'Order id 1,234,567,890,123,456'],
+    ['a slash date with a room number', 'Meeting 2025/10/26 14:30 room 4111'],
+    ['comma-joined 4-digit numbers', '4111,1111,1111,1111,4111,1111'],
+    ['a five-group slash run', '4111/1111/1111/1111/1111'],
+    ['a slash run glued to a longer path', 'ids 12/4111/1111/1111/1111'],
   ])('does not flag %s', (_label, text) => {
     expect(detectNeverStore(text)).toEqual([])
+  })
+})
+
+describe('never-store false positives on generated number lists (delta '
+  + 'verification NEW-3)', () => {
+  const TRIALS = 2000
+
+  function createRandom(seed: number) {
+    let state = seed
+
+    return (limit: number) => {
+      state = (state * 1_103_515_245 + 12_345) % 2_147_483_648
+
+      return state % limit
+    }
+  }
+
+  type NumberSource = (limit: number) => number
+
+  function countFlagged(generate: (random: NumberSource) => string) {
+    const random = createRandom(20261026)
+    let flagged = 0
+
+    for (let trial = 0; trial < TRIALS; trial++) {
+      if (detectNeverStore(generate(random)).length > 0) {
+        flagged += 1
+      }
+    }
+
+    return flagged
+  }
+
+  function padded(value: number) {
+    return String(value).padStart(2, '0')
+  }
+
+  it.each<[string, (random: NumberSource) => string]>([
+    ['six comma-joined numbers up to 9999', (random) => {
+      return Array.from({ length: 6 }, () => random(10_000)).join(',')
+    }],
+    ['six comma-joined 4-digit numbers', (random) => {
+      return Array.from({ length: 6 }, () => 1000 + random(9000)).join(',')
+    }],
+    ['six comma-and-space joined 4-digit numbers', (random) => {
+      return Array.from({ length: 6 }, () => 1000 + random(9000)).join(', ')
+    }],
+    ['16-digit numbers with comma thousands', (random) => {
+      const digits = String(1 + random(9))
+        + Array.from({ length: 15 }, () => random(10)).join('')
+
+      return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    }],
+    ['three y/m/d dates', (random) => {
+      return Array.from({ length: 3 }, () => {
+        return `${2000 + random(26)}/${1 + random(12)}/${1 + random(28)}`
+      }).join(' ')
+    }],
+    ['three zero-padded y/m/d dates', (random) => {
+      return Array.from({ length: 3 }, () => {
+        return `${2000 + random(26)}/${padded(1 + random(12))}/${padded(1 + random(28))}`
+      }).join(' ')
+    }],
+  ])('flags none of %s', (_label, generate) => {
+    expect(countFlagged(generate)).toBe(0)
   })
 })
 
@@ -162,6 +240,11 @@ describe('sensitive-topic classifier evasions (audit finding 11)', () => {
     ],
     ['a Latin i inside a Ukrainian word', 'У мене дiабет', 'health'],
     ['a Latin o and a inside a Ukrainian word', 'Я вагiтнa', 'health'],
+    ['a precomposed accent', 'I have diabétes', 'health'],
+    ['a decomposed accent', 'I have diabe\u0301tes', 'health'],
+    ['a Cyrillic і inside a Latin word', 'I have hіv', 'health'],
+    ['a Cyrillic а inside a Latin word', 'I am prеgnаnt', 'health'],
+    ['the kept diacritic of heroinę', 'Brał heroinę w młodości', 'drugs'],
   ])('flags %s', (_label, text, category) => {
     expect(classifySensitiveCategories(text)).toContain(category)
     expect(evaluate(text)).toMatchObject({
@@ -177,6 +260,7 @@ describe('sensitive-topic classifier evasions (audit finding 11)', () => {
     ['a Polish code review', 'Robie przeglad kodu w czwartek'],
     ['a mixed Ukrainian sentence', 'Пишу код на TypeScript і Go'],
     ['a soft hyphen in a plain word', `Likes long-distance cyc${SOFT_HYPHEN}ling`],
+    ['an accented plain word', 'Loves café crème and the Pokémon games'],
   ])('does not flag %s', (_label, text) => {
     expect(classifySensitiveCategories(text)).toEqual([])
   })
@@ -213,6 +297,11 @@ describe('topical never-store kinds on every write path (audit finding 12)', () 
     ['Siedział w więzieniu dwa lata', 'criminal-history'],
     ['Маю судимість', 'criminal-history'],
     ['Він відбував покарання у колонії', 'criminal-history'],
+    ['My work permit expires in March', 'immigration-status'],
+    ['I have temporary protection in Poland', 'immigration-status'],
+    ['Lives on 12 High Road, London', 'home-address'],
+    ['Mieszkam przy Długiej 4', 'home-address'],
+    ['Мешкаю за адресою Шевченка 5', 'home-address'],
   ])('rejects %j as %s with the unchanged never-store verdict',
     (text, kind) => {
       expect(detectTopicalNeverStoreKinds(text)).toContain(kind)
@@ -249,6 +338,19 @@ describe('topical never-store kinds on every write path (audit finding 12)', () 
     'Пише про засудження війни',
     'Займаюся документуванням депортації дітей',
     'На вулиці сьогодні 5 градусів',
+    'I walked 5 miles down main street',
+    '2 blocks from Wall Street',
+    'Wants a work permit template for building site',
+    'Reads a book about criminal records',
+    'temporary protection for the plant',
+    'visa status check app',
+    'Has 3 kids and likes Elm Street movies',
+    'Researches people seeking asylum in Europe',
+    'Helps clients fill in residence permit forms',
+    'Pomaga wypełniać wnioski o kartę pobytu',
+    'Перевіряє судимість кандидатів',
+    'Sprawdza karalność kandydatów',
+    'He has a record of 3 wins',
   ])('allows %j', (text) => {
     expect(detectTopicalNeverStoreKinds(text)).toEqual([])
   })

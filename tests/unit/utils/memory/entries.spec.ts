@@ -833,6 +833,92 @@ describe('memory entries service', () => {
         .toBeGreaterThan(new Date(previous.updatedAt).getTime())
     })
 
+    describe('an entry whose saved text a rule now rejects', () => {
+      it.each([
+        [
+          'a home address',
+          'Lives at 221B Baker Street, London.',
+          'Precise home address',
+          'This memory contains data that cannot be stored',
+        ],
+        [
+          'a health detail',
+          'Was diagnosed with type 1 diabetes.',
+          'health',
+          'Sensitive topics (health, religion, politics…) are not saved to memory.',
+        ],
+      ])('refuses a title-only edit of %s with copy that names the match '
+        + 'and offers delete', async (_label, body, detected, message) => {
+        testDb.insertEntry({
+          id: 5,
+          userId: OWNER,
+          slug: 'home',
+          title: 'Home',
+          body,
+        })
+
+        const exception = await update(encodePublicId(5), { title: 'Place' })
+          .catch((caught: unknown) => {
+            return caught as Record<'message' | 'why' | 'fix', string>
+          })
+
+        expect(exception).toMatchObject({ status: 422, message })
+        expect(exception.why).toContain(detected)
+        expect(exception.why).toContain('already saved in this entry')
+        expect(exception.fix).toContain('delete the entry')
+        expect(readStoredRow(5)?.title).toBe('Home')
+      })
+
+      it('accepts the edit that removes the flagged text', async () => {
+        testDb.insertEntry({
+          id: 5,
+          userId: OWNER,
+          slug: 'home',
+          title: 'Home',
+          body: 'Lives at 221B Baker Street, London.',
+        })
+
+        const { entry } = await update(encodePublicId(5), {
+          body: 'Lives in London.',
+        })
+
+        expect(entry.body).toBe('Lives in London.')
+      })
+
+      it('always lets the entry be deleted', async () => {
+        testDb.insertEntry({
+          id: 5,
+          userId: OWNER,
+          slug: 'home',
+          title: 'Home',
+          body: 'Lives at 221B Baker Street, London.',
+        })
+
+        const deleted = await deleteMemoryEntry({
+          db: testDb.db,
+          userId: OWNER,
+          id: encodePublicId(5),
+        })
+
+        expect(deleted?.id).toBe(encodePublicId(5))
+        expect(readStoredRow(5)).toBeUndefined()
+      })
+
+      it('keeps the plain copy when the edit itself adds the flagged text',
+        async () => {
+          const created = await create({ title: 'Home' })
+          const exception = await update(created.id, {
+            body: 'Lives at 221B Baker Street, London.',
+          }).catch((caught: unknown) => {
+            return caught as { why: string, fix: string }
+          })
+
+          expect(exception.why).not.toContain('already saved')
+          expect(exception.fix)
+            .toBe('Remove the flagged data from the memory and save again.')
+        })
+    })
+
     it('ignores a slug in the patch and keeps the stored one', async () => {
       const created = await create({ title: 'Travel' })
       const { entry } = await update(created.id, {
