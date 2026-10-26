@@ -2175,7 +2175,15 @@ pieces: `readSendPathTurns`, `buildSendPathJevState` and
 `decideSendPathJev({ model, state, questions })`, which takes any question
 map. `autoWebSearchJevQuestions()` and `readAutoWebSearchAnswer(result)` are
 exported separately, so past-chat retrieval can merge its question into the
-same call and read both answers from one result.
+same call and read both answers from one result. J6 shipped first with its
+own call (`decidePastChatSearch` in `server/utils/memory/tools/
+pre-retrieval.ts`, `recent_turns` as `User: …` strings capped by
+`JEV_PAST_CHAT_RETRIEVAL.maxTurnChars`), and the two roles run at different
+points of the send (Auto before tool validation, J6 only when tool calling is
+off), so they overlap only for a model without tool calling that uses its
+built-in search in Auto. Batching them means one shared state first: move J6
+to `buildSendPathJevState`, decide both before tool validation, and pass the
+merged question map to `decideSendPathJev` once.
 
 **Tests.** `tests/unit/utils/chats/auto-web-search.spec.ts`,
 `tests/integration/api/chats-auto-web-search.spec.ts` (no key identical to
