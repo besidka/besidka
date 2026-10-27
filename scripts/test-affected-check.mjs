@@ -104,6 +104,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Segmented.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ToggleRow.spec.ts',
+    'tests/unit/composables/reveal-guard.spec.ts',
     'tests/unit/components/ChatInput/SettingTile.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/utils/chat-input-tiles.spec.ts',
@@ -2509,7 +2511,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/scroll-edge-fade\.ts|app\/assets\/icons\/exa\.svg)$/,
+        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/(scroll-edge-fade|reveal-guard)\.ts|app\/assets\/icons\/exa\.svg)$/,
       tests: [
         ...chatInputToolsTests,
         'tests/unit/components/ProviderIcon.spec.ts',

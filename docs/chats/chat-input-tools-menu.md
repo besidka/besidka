@@ -141,12 +141,28 @@ Consequences handled in code:
   revealed rows scroll inside the scroll area instead of growing the panel.
 - **No height animation.** Rows jump.
 
-Known trade-off to weigh when picking this variant: the popover grows upward
-from "+". Picking a level that differs from the default mounts Save as default
-(and Show steps expanded when leaving Off) under the segmented control, which
-moves the control up and leaves the pointer over the new row. This is the
-double-click accident the always-rendered rows avoided, see "Default reasoning
-level".
+### Reveal guard
+
+The popover grows upward from "+", so a row that mounts under the segmented
+control moves the clicked control up and lands under the pointer. Without a
+guard a fast second click (double-click, impatient tap) would hit the new row,
+for example silently saving a new default reasoning level.
+
+`app/composables/reveal-guard.ts` closes that. `Content.vue` calls
+`provideRevealGuardRoot()`; `ToggleRow.vue` and `Segmented.vue` call
+`useRevealGuard()`. A control that mounts after the menu content first
+rendered (Save as default, Show steps expanded, Auto-hide, the Exa depth
+segments, the Auto row) ignores activation for `REVEAL_GUARD_DURATION_MS`
+(400 ms) after it mounts. Controls present in the first render, which is what
+opening the menu renders, are never guarded, and neither is a row rendered
+outside a guard root (the section specs mount rows alone).
+
+A guarded click is cancelled with `preventDefault()` on the input, so a
+checkbox or radio does not flip and no `change` follows, which also covers
+Space and arrow keys because browsers dispatch a click for them. A stray
+`change` is also ignored and the DOM state is put back to the model value.
+The menu content stays mounted after the first open, so rows present on a
+later open are not guarded either.
 
 ## Icons
 

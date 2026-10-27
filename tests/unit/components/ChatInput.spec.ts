@@ -6,6 +6,7 @@ import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { REVEAL_GUARD_DURATION_MS } from '../../../app/composables/reveal-guard'
 
 const mocks = vi.hoisted(() => ({
   useChatInput: vi.fn(),
@@ -75,6 +76,15 @@ const uiButtonStub = defineComponent({
 })
 
 enableAutoUnmount(afterEach)
+
+function fakeRevealGuardTimers() {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+}
+
+async function waitOutRevealGuard() {
+  vi.advanceTimersByTime(REVEAL_GUARD_DURATION_MS)
+  await flushPromises()
+}
 
 function mountChatInput(extraProps: Record<string, unknown> = {}) {
   return mountSuspended(ChatInput, {
@@ -257,6 +267,7 @@ describe('ChatInput.client', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     document
       .querySelectorAll('dialog.js-files-modal, dialog.js-search-modal')
       .forEach((dialog) => {
@@ -846,6 +857,7 @@ describe('ChatInput.client', () => {
       wrapperRef.current = wrapper
 
       await openToolsPanel(wrapper)
+      fakeRevealGuardTimers()
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
       expect(hasTestId(wrapper, 'reasoning-save-default-toggle'))
@@ -859,6 +871,11 @@ describe('ChatInput.client', () => {
       expect(isTestIdChecked(wrapper, 'reasoning-save-default-toggle'))
         .toBe(false)
 
+      await setToggle(wrapper, 'reasoning-save-default-toggle', true)
+
+      expect(mocks.setDefaultReasoningLevel).not.toHaveBeenCalled()
+
+      await waitOutRevealGuard()
       await setToggle(wrapper, 'reasoning-save-default-toggle', true)
 
       expect(mocks.setDefaultReasoningLevel).toHaveBeenCalledWith('high')
@@ -1205,7 +1222,9 @@ describe('ChatInput.client', () => {
       const wrapper = await mountChatInput()
 
       await openToolsPanel(wrapper)
+      fakeRevealGuardTimers()
       await pickTestId(wrapper, 'web-search-option-web_search_exa')
+      await waitOutRevealGuard()
 
       mocks.requestPersistence.mockClear()
       await pickTestId(wrapper, 'exa-search-level-deep')

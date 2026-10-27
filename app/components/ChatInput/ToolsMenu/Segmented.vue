@@ -28,7 +28,8 @@
         :disabled="disabled || option.disabled"
         :aria-label="option.title ?? option.label"
         :data-testid="option.testId"
-        @change="emit('update:modelValue', option.value)"
+        @click="onClick"
+        @change="onChange($event, option.value)"
       >
       <span
         class="pointer-events-none flex flex-col items-center justify-center gap-px min-h-8 max-md:min-h-10 px-1 py-0.5 text-xs font-medium whitespace-nowrap peer-[:hover:not(:checked):not(:disabled)]:bg-base-200 peer-checked:bg-accent peer-checked:text-accent-content peer-disabled:opacity-50 peer-disabled:bg-transparent peer-checked:peer-disabled:bg-base-content/15 peer-checked:peer-disabled:text-base-content peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-accent"
@@ -72,7 +73,7 @@
 <script setup lang="ts" generic="Value extends string">
 import type { SegmentedOption } from '~/types/chat-input-tools'
 
-defineProps<{
+const props = defineProps<{
   name: string
   legend: string
   options: SegmentedOption<Value>[]
@@ -84,4 +85,32 @@ defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: Value]
 }>()
+
+const { isGuarded } = useRevealGuard()
+
+function onClick(event: MouseEvent) {
+  if (isGuarded.value) {
+    event.preventDefault()
+  }
+}
+
+function restoreCheckedSegment(event: Event) {
+  const input = event.target as HTMLInputElement
+  const segments = input.closest('fieldset')
+    ?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? []
+
+  for (const segment of segments) {
+    segment.checked = segment.value === props.modelValue
+  }
+}
+
+function onChange(event: Event, value: Value) {
+  if (isGuarded.value) {
+    restoreCheckedSegment(event)
+
+    return
+  }
+
+  emit('update:modelValue', value)
+}
 </script>

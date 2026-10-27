@@ -1,6 +1,11 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
 import type { SegmentedOption } from '../../../../../app/types/chat-input-tools'
+import {
+  provideRevealGuardRoot,
+  REVEAL_GUARD_DURATION_MS,
+} from '../../../../../app/composables/reveal-guard'
 import Segmented from '../../../../../app/components/ChatInput/ToolsMenu/Segmented.vue'
 
 const options: SegmentedOption<string>[] = [
@@ -97,5 +102,100 @@ describe('ChatInput/ToolsMenu/Segmented', () => {
 
     expect(wrapper.find('[data-testid="icon-option-off"]').exists())
       .toBe(false)
+  })
+})
+
+const guardOptions = [
+  { value: 'lite', label: 'Lite', testId: 'late-lite' },
+  { value: 'auto', label: 'Auto', testId: 'late-auto' },
+]
+
+function mountGuardMenu() {
+  const picked: string[] = []
+
+  const Menu = defineComponent({
+    props: { isLateControlVisible: Boolean },
+    setup(props) {
+      provideRevealGuardRoot()
+
+      return () => h('div', [
+        h(Segmented, {
+          'name': 'early',
+          'legend': 'Early',
+          'options': guardOptions.map(option => ({
+            ...option,
+            testId: option.testId.replace('late', 'early'),
+          })),
+          'modelValue': 'lite',
+          'onUpdate:modelValue': (value: string) => picked.push(`early:${value}`),
+        }),
+        props.isLateControlVisible
+          ? h(Segmented, {
+            'name': 'late',
+            'legend': 'Late',
+            'options': guardOptions,
+            'modelValue': 'lite',
+            'onUpdate:modelValue': (value: string) => picked.push(`late:${value}`),
+          })
+          : null,
+      ])
+    },
+  })
+
+  return { picked, mounted: mountSuspended(Menu, { attachTo: document.body }) }
+}
+
+function guardInput(
+  wrapper: Awaited<ReturnType<typeof mountGuardMenu>['mounted']>,
+  testId: string,
+) {
+  return wrapper.get(`[data-testid="${testId}"]`).element as HTMLInputElement
+}
+
+describe('ChatInput/ToolsMenu/Segmented reveal guard', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('accepts an immediate pick on a control present when the menu opened',
+    async () => {
+      const { picked, mounted } = mountGuardMenu()
+      const wrapper = await mounted
+
+      guardInput(wrapper, 'early-auto').click()
+
+      expect(picked).toEqual(['early:auto'])
+    })
+
+  it('ignores a pick on a control revealed a moment ago and keeps the '
+    + 'checked segment', async () => {
+    const { picked, mounted } = mountGuardMenu()
+    const wrapper = await mounted
+
+    await wrapper.setProps({ isLateControlVisible: true })
+
+    guardInput(wrapper, 'late-auto').click()
+    await wrapper.get('[data-testid="late-auto"]').setValue(true)
+
+    expect(picked).toEqual([])
+    expect(guardInput(wrapper, 'late-auto').checked).toBe(false)
+    expect(guardInput(wrapper, 'late-lite').checked).toBe(true)
+  })
+
+  it('accepts a pick once the window has passed', async () => {
+    const { picked, mounted } = mountGuardMenu()
+    const wrapper = await mounted
+
+    await wrapper.setProps({ isLateControlVisible: true })
+
+    vi.advanceTimersByTime(REVEAL_GUARD_DURATION_MS)
+    await wrapper.vm.$nextTick()
+    guardInput(wrapper, 'late-auto').click()
+
+    expect(picked).toEqual(['late:auto'])
   })
 })

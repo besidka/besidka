@@ -42,6 +42,7 @@
       :aria-label="ariaLabel"
       :aria-describedby="describedBy"
       :data-testid="testId"
+      @click="onClick"
       @change="onChange"
     >
   </label>
@@ -66,6 +67,7 @@ const emit = defineEmits<{
 
 const row = useTemplateRef<HTMLLabelElement>('row')
 const hintId = useId()
+const { isGuarded } = useRevealGuard()
 
 const describedBy = computed<string | undefined>(() => {
   const ids = [
@@ -117,7 +119,21 @@ onBeforeUnmount(() => {
   restoreFocus(content)
 })
 
+function onClick(event: MouseEvent) {
+  if (isGuarded.value) {
+    event.preventDefault()
+  }
+}
+
 function onChange(event: Event) {
-  emit('update:modelValue', (event.target as HTMLInputElement).checked)
+  const input = event.target as HTMLInputElement
+
+  if (isGuarded.value) {
+    input.checked = props.modelValue
+
+    return
+  }
+
+  emit('update:modelValue', input.checked)
 }
 </script>

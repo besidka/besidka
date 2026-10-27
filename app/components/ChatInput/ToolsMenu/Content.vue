@@ -184,6 +184,8 @@ const emit = defineEmits<{
   'update:use-memory': [value: boolean]
 }>()
 
+provideRevealGuardRoot()
+
 const isReasoningSectionVisible = computed<boolean>(() => {
   return props.state.reasoning.visible
     && props.state.reasoning.mode !== 'none'
