@@ -11,7 +11,10 @@ import {
   redactNeverStore,
 } from '~~/server/utils/memory/compliance'
 import { REDACTION_PLACEHOLDER } from '#shared/utils/memory-policy'
-import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
+import {
+  isTransientMemoryExtractionError,
+  memoryExtractionErrorSummary,
+} from '~~/server/utils/memory/extract-error'
 import { applyMemoryExtractionOps } from '~~/server/utils/memory/extract-apply'
 import {
   memoryExtractionPrefilter,
@@ -106,6 +109,7 @@ export interface ExtractChatMemoryResult {
   userChars: number
   proposed: number
   usage: { inputTokens: number, outputTokens: number }
+  isTransientFailure?: boolean
 }
 
 interface ModelResolutionLog {
@@ -673,11 +677,14 @@ async function extractLeasedChatMemory(
 
     return result
   } catch (exception) {
+    const isTransientFailure = isTransientMemoryExtractionError(exception)
+
     if (hasNoSweepBookkeeping || isBackfill) {
       return {
         ...result,
         status: 'failed',
         reason: memoryExtractionErrorLabel(exception),
+        isTransientFailure,
       }
     }
 

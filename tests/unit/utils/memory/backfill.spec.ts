@@ -620,6 +620,163 @@ describe('memory backfill', () => {
       expect(processedChatIds()).toEqual([newest.id, newest.id])
     })
 
+    describe('transient provider failures', () => {
+      function transientFailure(overrides: Record<string, unknown> = {}) {
+        return extractionResult({
+          status: 'failed',
+          isTransientFailure: true,
+          applied: { created: 0, updated: 0, deleted: 0 },
+          usage: { inputTokens: 0, outputTokens: 0 },
+          ...overrides,
+        })
+      }
+
+      it('leaves the chat for the next step instead of counting a failure',
+        async () => {
+          const newest = await chat(10)
+
+          await chat(20)
+          mocks.extractChatMemory.mockResolvedValue(transientFailure())
+
+          const progress = await start()
+          const step = await advance(progress.id, { chatsLimit: 5 })
+          const stored = await readJob(progress.id)
+
+          expect(step.chatsProcessed).toBe(0)
+          expect(step.isRetryPending).toBe(true)
+          expect(step.job).toMatchObject({
+            status: 'running',
+            processedChats: 0,
+            failedChats: 0,
+          })
+          expect(stored).toMatchObject({
+            retriedChatId: newest.id,
+            chatAttempts: 1,
+            consecutiveFailures: 0,
+          })
+          expect(processedChatIds()).toEqual([newest.id])
+        })
+
+      it('stops at one transient chat instead of recording five failures',
+        async () => {
+          for (let index = 0; index < 6; index++) {
+            await chat(10 + index)
+          }
+
+          mocks.extractChatMemory
+            .mockResolvedValueOnce(transientFailure())
+            .mockResolvedValue(extractionResult())
+
+          const progress = await start()
+          const blip = await advance(progress.id, { chatsLimit: 5 })
+          const recovered = await advance(progress.id, { chatsLimit: 5 })
+
+          expect(blip.job?.status).toBe('running')
+          expect(recovered.isRetryPending).toBe(false)
+          expect(recovered.job).toMatchObject({
+            status: 'running',
+            processedChats: 5,
+            failedChats: 0,
+            createdEntries: 5,
+          })
+        })
+
+      it('records the chat as failed when its second attempt also fails',
+        async () => {
+          const newest = await chat(10)
+
+          mocks.extractChatMemory.mockResolvedValue(transientFailure())
+
+          const progress = await start()
+
+          await advance(progress.id)
+
+          const second = await advance(progress.id)
+
+          expect(second.isRetryPending).toBe(false)
+          expect(second.job).toMatchObject({
+            processedChats: 1,
+            failedChats: 1,
+            status: 'completed',
+          })
+          expect(processedChatIds()).toEqual([newest.id, newest.id])
+        })
+
+      it('records a permanent failure at once', async () => {
+        await chat(10)
+        await chat(20)
+        mocks.extractChatMemory.mockResolvedValue(
+          transientFailure({ isTransientFailure: false }),
+        )
+
+        const progress = await start()
+        const step = await advance(progress.id, { chatsLimit: 5 })
+
+        expect(step.isRetryPending).toBe(false)
+        expect(step.job).toMatchObject({
+          processedChats: 2,
+          failedChats: 2,
+        })
+        expect(mocks.extractChatMemory).toHaveBeenCalledTimes(2)
+      })
+
+      it('records a failure that already spent tokens', async () => {
+        await chat(10)
+        mocks.extractChatMemory.mockResolvedValue(
+          transientFailure({ usage: { inputTokens: 40, outputTokens: 5 } }),
+        )
+
+        const progress = await start()
+        const step = await advance(progress.id)
+
+        expect(step.isRetryPending).toBe(false)
+        expect(step.job).toMatchObject({
+          processedChats: 1,
+          failedChats: 1,
+          inputTokens: 40,
+          outputTokens: 5,
+        })
+      })
+
+      it('retries a chat whose extraction threw a provider outage',
+        async () => {
+          const newest = await chat(10)
+
+          mocks.extractChatMemory
+            .mockRejectedValueOnce(
+              Object.assign(new Error('overloaded'), { statusCode: 529 }),
+            )
+            .mockResolvedValueOnce(extractionResult())
+
+          const progress = await start()
+          const first = await advance(progress.id)
+          const second = await advance(progress.id)
+
+          expect(first.isRetryPending).toBe(true)
+          expect(first.job?.failedChats).toBe(0)
+          expect(second.job).toMatchObject({
+            processedChats: 1,
+            failedChats: 0,
+            createdEntries: 1,
+          })
+          expect(processedChatIds()).toEqual([newest.id, newest.id])
+        })
+
+      it('fails fast when an invalid key throws', async () => {
+        await chat(10)
+
+        mocks.extractChatMemory.mockRejectedValue(
+          Object.assign(new Error('bad key'), { statusCode: 401 }),
+        )
+
+        const progress = await start()
+        const step = await advance(progress.id)
+
+        expect(step.isRetryPending).toBe(false)
+        expect(step.job).toMatchObject({ processedChats: 1, failedChats: 1 })
+      })
+    })
+
     it('stops starting chats after the deadline', async () => {
       await chat(10)
       await chat(20)

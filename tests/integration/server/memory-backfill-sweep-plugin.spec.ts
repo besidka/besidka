@@ -157,4 +157,63 @@ describe('memory backfill sweep plugin', () => {
       expect.objectContaining({ maxRuntimeMs: 45000 }),
     )
   })
+
+  it('emits the event when the sweep did work', async () => {
+    const { createLogger, loggerEmit } = createLoggerMock()
+
+    mocks.sweepBackfillJobs.mockResolvedValue(sweepResult)
+
+    const { runMemoryBackfillSweepJob } = await loadModule()
+
+    await runMemoryBackfillSweepJob({ controller, config, createLogger })
+
+    expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
+  })
+
+  it('stays silent when there was nothing to do', async () => {
+    const { createLogger, loggerEmit } = createLoggerMock()
+
+    mocks.sweepBackfillJobs.mockResolvedValue({
+      jobs: 0,
+      chats: 0,
+      completed: 0,
+      failed: 0,
+    })
+
+    const { runMemoryBackfillSweepJob } = await loadModule()
+
+    await runMemoryBackfillSweepJob({ controller, config, createLogger })
+
+    expect(mocks.sweepBackfillJobs).toHaveBeenCalledTimes(1)
+    expect(loggerEmit).not.toHaveBeenCalled()
+  })
+
+  it('emits when jobs failed even if no chat was processed', async () => {
+    const { createLogger, loggerEmit } = createLoggerMock()
+
+    mocks.sweepBackfillJobs.mockResolvedValue({
+      jobs: 0,
+      chats: 0,
+      completed: 0,
+      failed: 1,
+    })
+
+    const { runMemoryBackfillSweepJob } = await loadModule()
+
+    await runMemoryBackfillSweepJob({ controller, config, createLogger })
+
+    expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
+  })
+
+  it('still emits a 500 event when the sweep throws', async () => {
+    const { createLogger, loggerEmit } = createLoggerMock()
+
+    mocks.sweepBackfillJobs.mockRejectedValue(new Error('sweep failed'))
+
+    const { runMemoryBackfillSweepJob } = await loadModule()
+
+    await runMemoryBackfillSweepJob({ controller, config, createLogger })
+
+    expect(loggerEmit).toHaveBeenCalledWith({ status: 500 })
+  })
 })

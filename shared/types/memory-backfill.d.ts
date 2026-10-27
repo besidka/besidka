@@ -83,6 +83,11 @@ export interface MemoryBackfillJobResponse {
   job: MemoryBackfillProgress
 }
 
+export interface MemoryBackfillStepResponse extends MemoryBackfillJobResponse {
+  isBusy: boolean
+  isRetryPending: boolean
+}
+
 export interface MemoryBackfillCancelResponse {
   job: MemoryBackfillProgress | null
 }

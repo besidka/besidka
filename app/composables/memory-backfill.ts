@@ -10,7 +10,13 @@ import type { MemoryBackfillErrorMessage } from '~/utils/memory-backfill'
 const COOLDOWN_SAFETY_MS = 250
 const MAX_CONSECUTIVE_STEP_FAILURES = 3
 
-type StepOutcome = 'advanced' | 'cooldown' | 'idle' | 'failed' | 'busy'
+type StepOutcome
+  = 'advanced'
+    | 'waiting'
+    | 'cooldown'
+    | 'idle'
+    | 'failed'
+    | 'busy'
 
 interface StepResult {
   outcome: StepOutcome
@@ -258,6 +264,13 @@ export function useMemoryBackfill() {
       if (hasStepError) {
         error.value = null
         hasStepError = false
+      }
+
+      if (response.isBusy || response.isRetryPending) {
+        return {
+          outcome: 'waiting',
+          retryAfterMs: MEMORY_BACKFILL_BUSY_BACKOFF_MS,
+        }
       }
 
       return { outcome: 'advanced', retryAfterMs: MEMORY_BACKFILL_COOLDOWN_MS }
