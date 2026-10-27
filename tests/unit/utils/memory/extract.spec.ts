@@ -1828,6 +1828,31 @@ describe('extractChatMemory', () => {
       expect(stamped?.memoryExtractionFailures).toBeNull()
     })
 
+    it('flags a rate limited failure as transient and a bad key as not',
+      async () => {
+        const chat = await seedBackfillChat([
+          { label: 'HISTORY', minutesAgo: 100 },
+        ])
+
+        mocks.generateText.mockRejectedValueOnce(
+          Object.assign(new Error('rate limited'), { statusCode: 429 }),
+        )
+
+        expect(await runBackfill(chat)).toMatchObject({
+          status: 'failed',
+          isTransientFailure: true,
+        })
+
+        mocks.generateText.mockRejectedValueOnce(
+          Object.assign(new Error('bad key'), { statusCode: 401 }),
+        )
+
+        expect(await runBackfill(chat)).toMatchObject({
+          status: 'failed',
+          isTransientFailure: false,
+        })
+      })
+
     it('needs memory and the extraction opt-in', async () => {
       const chat = await seedBackfillChat([
         { label: 'HISTORY', minutesAgo: 100 },

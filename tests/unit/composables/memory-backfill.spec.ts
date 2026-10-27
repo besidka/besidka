@@ -22,6 +22,7 @@ const BACKFILL_URL = '/api/v1/memory/backfill'
 const STEP_URL = '/api/v1/memory/backfill/step'
 const CANCEL_URL = '/api/v1/memory/backfill/cancel'
 const COOLDOWN_MS = 3_000
+const BUSY_BACKOFF_MS = 10_000
 
 const estimate: MemoryBackfillEstimate = {
   chats: 48,
@@ -332,6 +333,37 @@ describe('useMemoryBackfill', () => {
       expect(backfill.job.value?.processedChats).toBe(12)
     })
 
+    it('reports waiting when the cron holds the job', async () => {
+      mocks.fetch.mockResolvedValue({
+        job: createJob({ processedChats: 4 }),
+        isBusy: true,
+        isRetryPending: false,
+      })
+
+      const backfill = useMemoryBackfill()
+      const result = await backfill.step()
+
+      expect(result).toEqual({
+        outcome: 'waiting',
+        retryAfterMs: BUSY_BACKOFF_MS,
+      })
+      expect(backfill.job.value?.processedChats).toBe(4)
+    })
+
+    it('reports waiting when a chat is pending a retry', async () => {
+      mocks.fetch.mockResolvedValue({
+        job: createJob(),
+        isBusy: false,
+        isRetryPending: true,
+      })
+
+      const backfill = useMemoryBackfill()
+      const result = await backfill.step()
+
+      expect(result.outcome).toBe('waiting')
+      expect(result.retryAfterMs).toBe(BUSY_BACKOFF_MS)
+    })
+
     it('does not run two steps at once', async () => {
       const pending = deferred<unknown>()
 
@@ -544,6 +576,56 @@ describe('useMemoryBackfill', () => {
       expect(callsTo(STEP_URL)).toHaveLength(1)
 
       await vi.advanceTimersByTimeAsync(500)
+
+      expect(callsTo(STEP_URL)).toHaveLength(2)
+      backfill.stopPolling()
+    })
+
+    it('waits longer before the next drive when the job was busy',
+      async () => {
+        mockRunningOverview()
+
+        const backfill = useMemoryBackfill()
+
+        await backfill.load()
+
+        mocks.fetch.mockResolvedValue({
+          job: createJob(),
+          isBusy: true,
+          isRetryPending: false,
+        })
+
+        backfill.startPolling()
+        await flushPromises()
+
+        expect(callsTo(STEP_URL)).toHaveLength(1)
+
+        await vi.advanceTimersByTimeAsync(COOLDOWN_MS + 500)
+
+        expect(callsTo(STEP_URL)).toHaveLength(1)
+
+        await vi.advanceTimersByTimeAsync(BUSY_BACKOFF_MS)
+
+        expect(callsTo(STEP_URL)).toHaveLength(2)
+        backfill.stopPolling()
+      })
+
+    it('keeps the short cadence when the step advanced', async () => {
+      mockRunningOverview()
+
+      const backfill = useMemoryBackfill()
+
+      await backfill.load()
+
+      mocks.fetch.mockResolvedValue({
+        job: createJob({ processedChats: 6 }),
+        isBusy: false,
+        isRetryPending: false,
+      })
+
+      backfill.startPolling()
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS + 500)
 
       expect(callsTo(STEP_URL)).toHaveLength(2)
       backfill.stopPolling()

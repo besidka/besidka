@@ -13,6 +13,7 @@ interface MemoryExtractionSweepConfig {
   memoryExtractionSweepEnabled: boolean
   memoryExtractionSweepBatchSize: number
   memoryExtractionSweepMaxRuntimeMs: number
+  memoryBackfillSweepEnabled: boolean
 }
 
 interface RunMemoryExtractionSweepJobInput {
@@ -45,6 +46,8 @@ export default defineNitroPlugin((nitroApp) => {
             runtimeConfig.memoryExtractionSweepBatchSize,
           memoryExtractionSweepMaxRuntimeMs:
             runtimeConfig.memoryExtractionSweepMaxRuntimeMs,
+          memoryBackfillSweepEnabled:
+            runtimeConfig.memoryBackfillSweepEnabled,
         },
         waitUntil: context.waitUntil.bind(context),
       })
@@ -85,6 +88,7 @@ export async function runMemoryExtractionSweepJob(
     const result = await runSweep({
       batchSize: input.config.memoryExtractionSweepBatchSize,
       maxRuntimeMs: input.config.memoryExtractionSweepMaxRuntimeMs,
+      isBackfillEnabled: input.config.memoryBackfillSweepEnabled,
       logger,
     })
 

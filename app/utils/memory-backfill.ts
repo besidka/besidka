@@ -9,6 +9,8 @@ import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 
 export const MEMORY_BACKFILL_COOLDOWN_MS = MEMORY_LIMITS.backfillDriveCooldownMs
 
+export const MEMORY_BACKFILL_BUSY_BACKOFF_MS = 10_000
+
 const TINY_COST_THRESHOLD_USD = 0.01
 
 const TOKENS_PER_MILLION = 1_000_000

@@ -33,7 +33,10 @@ import {
   resolveBackfillWindow,
 } from '~~/server/utils/memory/backfill-queue'
 import type { BackfillWindow } from '~~/server/utils/memory/backfill-queue'
-import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
+import {
+  isTransientMemoryExtractionError,
+  memoryExtractionErrorSummary,
+} from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
 import { currentLegalConsentCondition } from '~~/server/utils/legal/consent'
 import { MEMORY_EXTRACTION_LIMITS } from '~~/server/utils/memory/extract-limits'
@@ -95,6 +98,7 @@ export interface AdvanceBackfillResult {
   job: MemoryBackfillProgress | null
   chatsProcessed: number
   isBusy: boolean
+  isRetryPending: boolean
 }
 
 export interface SweepBackfillJobsInput {
@@ -628,6 +632,7 @@ interface RecordedChat {
   outputTokens: number
   isSkipped: boolean
   isFailed: boolean
+  isTransientFailure: boolean
 }
 
 async function recordChat(
@@ -763,6 +768,7 @@ function skippedChat(): ExtractedChat {
     outputTokens: 0,
     isSkipped: true,
     isFailed: false,
+    isTransientFailure: false,
     dropped: {},
   }
 }
@@ -803,6 +809,9 @@ async function extractOneChat(
       outputTokens: outcome.usage.outputTokens,
       isSkipped: outcome.status === 'skipped',
       isFailed: outcome.status === 'failed',
+      isTransientFailure: outcome.status === 'failed'
+        && outcome.isTransientFailure === true
+        && outcome.usage.inputTokens + outcome.usage.outputTokens === 0,
       dropped: outcome.dropped,
     }
   } catch (exception) {
@@ -825,6 +834,7 @@ async function extractOneChat(
       outputTokens: 0,
       isSkipped: false,
       isFailed: true,
+      isTransientFailure: isTransientMemoryExtractionError(exception),
       dropped: {},
     }
   }
@@ -834,6 +844,7 @@ async function finishedStep(
   db: DbClient,
   job: JobRef,
   chatsProcessed: number,
+  isRetryPending = false,
 ): Promise<AdvanceBackfillResult> {
   const fresh = await readJob(db, job.id, job.userId)
 
@@ -841,6 +852,7 @@ async function finishedStep(
     job: fresh ? toProgress(fresh) : null,
     chatsProcessed,
     isBusy: false,
+    isRetryPending,
   }
 }
 
@@ -857,6 +869,7 @@ async function advanceLeasedBackfill(
       job: job ? toProgress(job) : null,
       chatsProcessed: 0,
       isBusy: false,
+      isRetryPending: false,
     }
   }
 
@@ -894,6 +907,7 @@ async function advanceLeasedBackfill(
   let isExhausted = nextChats.length <= stepLimit
     || stepLimit === remainingChats
   let isStopped = false
+  let isRetryPending = false
   let chatsProcessed = 0
   let attemptedChatId: string | null = job.retriedChatId
   let attempts = job.chatAttempts
@@ -964,8 +978,12 @@ async function advanceLeasedBackfill(
       break
     }
 
-    if (outcome.kind === 'leased' && attempts < limits.maxChatAttempts) {
+    const isRetryableOutcome = outcome.kind === 'leased'
+      || outcome.isTransientFailure
+
+    if (isRetryableOutcome && attempts < limits.maxChatAttempts) {
       isExhausted = false
+      isRetryPending = true
 
       break
     }
@@ -1005,7 +1023,7 @@ async function advanceLeasedBackfill(
     await finishJob(db, job, 'completed')
   }
 
-  return await finishedStep(db, job, chatsProcessed)
+  return await finishedStep(db, job, chatsProcessed, isRetryPending)
 }
 
 async function claimJobLease(
@@ -1098,6 +1116,7 @@ export async function advanceBackfill(
       job: job ? toProgress(job) : null,
       chatsProcessed: 0,
       isBusy: true,
+      isRetryPending: false,
     }
   }
 

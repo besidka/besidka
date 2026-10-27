@@ -736,7 +736,47 @@ describe('memory backfill API', () => {
           status: 'running',
           processedChats: 0,
         })
+        expect(driven.isBusy).toBe(true)
+        expect(driven.isRetryPending).toBe(false)
         expect(mocks.extractChatMemory).not.toHaveBeenCalled()
+      })
+
+    it('reports a step that advanced as neither busy nor retrying',
+      async () => {
+        await seedChats(2)
+        await post()
+
+        const driven = await step()
+
+        expect(driven.isBusy).toBe(false)
+        expect(driven.isRetryPending).toBe(false)
+      })
+
+    it('reports a pending retry after a transient provider failure',
+      async () => {
+        await seedChats(2)
+        await post()
+        mocks.extractChatMemory.mockResolvedValueOnce({
+          status: 'failed',
+          isTransientFailure: true,
+          applied: { created: 0, updated: 0, deleted: 0 },
+          dropped: {},
+          blocked: {},
+          model: null,
+          messages: 0,
+          userChars: 0,
+          proposed: 0,
+          usage: { inputTokens: 0, outputTokens: 0 },
+        })
+
+        const driven = await step()
+
+        expect(driven.isRetryPending).toBe(true)
+        expect(driven.job).toMatchObject({
+          processedChats: 0,
+          failedChats: 0,
+          status: 'running',
+        })
       })
 
     it('logs counts and ids, never chat text or titles', async () => {

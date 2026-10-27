@@ -58,6 +58,7 @@ export async function runMemoryBackfillSweepJob(
     requestId: `memory-backfill-sweep-${input.controller.scheduledTime}`,
   })
   let status = 200
+  let isIdleRun = false
 
   logger.set({
     attributes: {
@@ -77,6 +78,8 @@ export async function runMemoryBackfillSweepJob(
       logger,
     })
 
+    isIdleRun = result.jobs === 0 && result.chats === 0 && result.failed === 0
+
     logger.set({
       attributes: {
         memoryBackfillSweep: {
@@ -95,6 +98,10 @@ export async function runMemoryBackfillSweepJob(
         },
       },
     })
+  }
+
+  if (isIdleRun) {
+    return
   }
 
   logger.emit({ status })

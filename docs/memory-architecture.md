@@ -1652,6 +1652,39 @@ background path was the `*/5` sweep at 3 chats per tick, about 5.5 hours for
   starting none with less than 30 s of its 60 s budget left, behind a 3 s
   drive cooldown (`MEMORY_LIMITS.backfillDriveCooldownMs`, shared with the
   client loop); the start cooldown stays 10 s.
+- **Kill switch.** `NUXT_MEMORY_BACKFILL_SWEEP_ENABLED=false` stops every
+  cron path from touching backfill jobs: the dedicated minute cron returns at
+  once, and the `*/5` extraction sweep receives the flag as
+  `isBackfillEnabled` and skips its `sweepBackfillJobs` call (extraction of
+  new chats is unaffected; it has its own `NUXT_MEMORY_EXTRACTION_SWEEP_ENABLED`).
+  Running jobs stay `running` and resume when the flag is back. The
+  interactive drive (`POST /memory/backfill/step`) is user-driven and is not
+  gated: an open sheet still advances its own job, and `POST /memory/backfill`
+  still starts one, so the switch stops background spend, not user-initiated
+  work.
+- **Transient provider failures.** A chat whose model call fails with a rate
+  limit (429), an overload or server error (408, 425, 5xx, 529), a timeout or
+  a dropped connection, before any tokens were spent, is not recorded: the
+  step stops, `retried_chat_id` and `chat_attempts` stay stamped, and the job
+  leaves this tick's rotation, so the chat is retried at the next tick or step.
+  The retry reuses the existing attempt budget (`maxChatAttempts`, 2): the
+  second transient failure is recorded as a failed chat, as before. A permanent
+  error (invalid key, model not found, 400/401/403/404/422, a refusal or
+  malformed output) is recorded at once, as before. The classifier is
+  `isTransientMemoryExtractionError` (`extract-error.ts`); it walks `lastError`
+  and `cause`, because the AI SDK wraps retried failures in a `RetryError`, and
+  `extractChatMemory` reports it as `isTransientFailure` on a failed result.
+- **Client backoff.** The step response carries `isBusy` (the cron holds the
+  job's lease) and `isRetryPending` (a chat waits for a later step). The
+  client then waits 10 s (`MEMORY_BACKFILL_BUSY_BACKOFF_MS`) before the next
+  drive instead of 3.25 s, so on production, where the cron usually holds the
+  lease, the sheet polls about every 10 s, and a provider blip cannot burn
+  both attempts of a chat within seconds.
+- **Idle cron events.** evlog's `sampling.keep` (status >= 400, duration >=
+  1000 ms) only force-keeps; with no `sampling.rates` configured every event is
+  kept, so a no-op minute would be ingested 1,440 times a day. The backfill
+  cron therefore returns without `logger.emit` when it serviced no job,
+  processed no chat and failed none; any failure or real work still emits.
 
 Expected rates for one job (sequential chats): a chat that is too short or
 that the pre-filter skips costs about 0.5 to 2.5 s, a full extraction with a
@@ -1678,7 +1711,8 @@ API (all session-scoped; POSTs have the cross-site guard):
   running; 10 s start cooldown). It never
   drives, so a retry or a second tab can never begin a second full-history
   run.
-- `POST /api/v1/memory/backfill/step` -> `{ job }`: drives ONE bounded step of
+- `POST /api/v1/memory/backfill/step` -> `{ job, isBusy, isRetryPending }`:
+  drives ONE bounded step of
   the running job inline (up to 10 chats, 60 s step budget, no chat started
   with under 30 s left, model timeout min(90 s, remaining), 3 s per-user
   cooldown -> 429); 409 `No running backfill` when
@@ -3338,3 +3372,26 @@ the cost lever noted in 3.15).
 starts as a dot (`stroke-dasharray 0,150`, round caps) and next to the
 reserved-width label read as a stray dot; the stacked labels are left-aligned
 so the icon sits next to the text.
+
+### Transient failures cost delay, not the job (2026-10-28)
+
+**Decision.** A provider blip must cost a minute of delay, not the job. At
+the throughput-fix pace, five consecutive fast failures during a 429/5xx
+burst could end a job as `consecutive-failures` within seconds. A transient
+failure that spent no tokens now stops the step and retries the chat at the
+next tick or step (3.15); the abort rules (5 in a row, more than half of at
+least 5) are unchanged and only see recorded chats.
+
+**Why the second transient failure is recorded as failed, not skipped.** The
+attempt budget is the existing `maxChatAttempts` (2). Skipping on the second
+failure would walk a whole queue through an outage as `skipped` and end the
+job `completed` with nothing read. Recording it as failed keeps the honest
+count: a sustained outage needs two ticks per chat and five chats in a row,
+about 10 minutes, to fail a job, instead of a few seconds. A failure after
+tokens were spent (the call reached the model) is recorded at once so the
+usage is counted.
+
+**Accepted.** A chat-specific timeout (a very long chat) is also transient by
+class; it gets one retry and then counts as failed. The interactive drive
+shares the attempt budget with the cron, which is why the client backs off 10 s
+after a retry-pending step.

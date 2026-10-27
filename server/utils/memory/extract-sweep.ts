@@ -37,6 +37,7 @@ export interface SweepMemoryExtractionInput {
   logger?: { set: (fields: Record<string, unknown>) => void }
   db?: DbClient
   now?: Date
+  isBackfillEnabled?: boolean
 }
 
 export interface SweepMemoryExtractionModelCount {
@@ -241,8 +242,9 @@ function addCounts(
  * new activity, or failed outside the backoff and under the failure cap unless
  * new activity lifted it. At most `perUserCapPerTick` chats per user. A chat
  * that throws never stops the loop. Afterwards it services running backfill
- * jobs inside whatever runtime budget is left (see `sweepBackfillJobs`).
- * Reports counts only.
+ * jobs inside whatever runtime budget is left (see `sweepBackfillJobs`),
+ * unless `isBackfillEnabled` is false (the backfill kill switch). Reports
+ * counts only.
  */
 export async function sweepMemoryExtraction(
   input: SweepMemoryExtractionInput,
@@ -349,21 +351,23 @@ export async function sweepMemoryExtraction(
     }
   }
 
-  try {
-    result.backfill = await sweepBackfillJobs({
-      maxRuntimeMs: input.maxRuntimeMs - (Date.now() - startedAt),
-      db,
-      logger,
-    })
-  } catch (exception) {
-    logger?.set({
-      attributes: {
-        memoryExtractionSweep: {
-          phase: 'backfill',
-          ...memoryExtractionErrorSummary(exception),
+  if (input.isBackfillEnabled ?? true) {
+    try {
+      result.backfill = await sweepBackfillJobs({
+        maxRuntimeMs: input.maxRuntimeMs - (Date.now() - startedAt),
+        db,
+        logger,
+      })
+    } catch (exception) {
+      logger?.set({
+        attributes: {
+          memoryExtractionSweep: {
+            phase: 'backfill',
+            ...memoryExtractionErrorSummary(exception),
+          },
         },
-      },
-    })
+      })
+    }
   }
 
   result.models = [...modelCounts.values()]

@@ -9,6 +9,7 @@ const config = {
   memoryExtractionSweepEnabled: true,
   memoryExtractionSweepBatchSize: 20,
   memoryExtractionSweepMaxRuntimeMs: 120000,
+  memoryBackfillSweepEnabled: true,
 }
 
 const controller = { cron: '*/5 * * * *', scheduledTime: 1771426560000 }
@@ -86,6 +87,7 @@ describe('memory extraction sweep plugin', () => {
     expect(runSweep).toHaveBeenCalledWith({
       batchSize: 20,
       maxRuntimeMs: 120000,
+      isBackfillEnabled: true,
       logger: expect.objectContaining({
         set: expect.any(Function),
         emit: expect.any(Function),
@@ -129,6 +131,24 @@ describe('memory extraction sweep plugin', () => {
     })
     expect(loggerEmit).toHaveBeenCalledWith({ status: 500 })
   })
+
+  it('tells the sweep to skip backfill when the backfill switch is off',
+    async () => {
+      const { createLogger } = createLoggerMock()
+      const runSweep = vi.fn().mockResolvedValue(sweepResult)
+      const runMemoryExtractionSweepJob = await loadJob()
+
+      await runMemoryExtractionSweepJob({
+        controller,
+        config: { ...config, memoryBackfillSweepEnabled: false },
+        createLogger,
+        runSweep,
+      })
+
+      expect(runSweep).toHaveBeenCalledWith(
+        expect.objectContaining({ isBackfillEnabled: false }),
+      )
+    })
 
   it('logs the error class and status, never message or stack', async () => {
     const { loggerSet, createLogger } = createLoggerMock()

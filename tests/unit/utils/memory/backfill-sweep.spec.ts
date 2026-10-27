@@ -101,7 +101,10 @@ describe('sweepMemoryExtraction backfill servicing', () => {
     return { userId, jobId: job.id, chatIds }
   }
 
-  async function sweep(maxRuntimeMs = 60_000) {
+  async function sweep(
+    maxRuntimeMs = 60_000,
+    isBackfillEnabled?: boolean,
+  ) {
     const { sweepMemoryExtraction } = await import(
       '~~/server/utils/memory/extract-sweep'
     )
@@ -112,6 +115,7 @@ describe('sweepMemoryExtraction backfill servicing', () => {
       logger,
       db: testDb.db,
       now: EXTRACTION_NOW,
+      isBackfillEnabled,
     })
   }
 
@@ -163,6 +167,23 @@ describe('sweepMemoryExtraction backfill servicing', () => {
       expect.objectContaining({ trigger: 'backfill', ignoreIdle: true }),
     )
     expect((await readJob(jobId))?.processedChats).toBe(5)
+  })
+
+  it('leaves a running job alone when backfill is switched off', async () => {
+    const { jobId } = await userWithJob({ chats: 5 })
+    const result = await sweep(60_000, false)
+
+    expect(result.backfill).toEqual({
+      jobs: 0,
+      chats: 0,
+      completed: 0,
+      failed: 0,
+    })
+    expect(backfillCallCount()).toBe(0)
+    expect(await readJob(jobId)).toMatchObject({
+      status: 'running',
+      processedChats: 0,
+    })
   })
 
   it('processes many more than three chats of one job in a tick',

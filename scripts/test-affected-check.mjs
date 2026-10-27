@@ -323,6 +323,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/memory/backfill.spec.ts',
     'tests/unit/utils/memory/backfill-estimate.spec.ts',
     'tests/unit/utils/memory/backfill-sweep.spec.ts',
+    'tests/unit/utils/memory/extract-error.spec.ts',
     'tests/unit/utils/memory-import-prompt.spec.ts',
     'tests/integration/api/memory-backfill.spec.ts',
     'tests/integration/api/memory-import.spec.ts',

@@ -1,6 +1,6 @@
 import { createError } from 'evlog'
 import { defineEventHandler } from 'nuxt/server'
-import type { MemoryBackfillJobResponse } from '#shared/types/memory-backfill.d'
+import type { MemoryBackfillStepResponse } from '#shared/types/memory-backfill.d'
 import {
   advanceBackfill,
   claimBackfillCooldown,
@@ -16,7 +16,9 @@ import { requireLegalConsent } from '~~/server/utils/legal/consent'
  * Drives one bounded batch of the caller's running backfill inline, which is
  * how previews (no crons) make progress when the UI calls it repeatedly. It
  * never starts a job: with none running it answers 409. A per-user cooldown
- * answers 429 between steps. The step is request-bound, so each chat's model
+ * answers 429 between steps. The response carries `isBusy` (the cron holds the
+ * job) and `isRetryPending` (a chat is waiting for a later step), which the UI
+ * answers with a longer pause. The step is request-bound, so each chat's model
  * call gets a timeout shorter than the cron path's. Counts only.
  */
 export default defineEventHandler(async (event) => {
@@ -65,6 +67,7 @@ export default defineEventHandler(async (event) => {
         jobId: running.id,
         chatsProcessed: step.chatsProcessed,
         isBusy: step.isBusy,
+        isRetryPending: step.isRetryPending,
       },
     },
   })
@@ -76,7 +79,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const response: MemoryBackfillJobResponse = { job: step.job }
+  const response: MemoryBackfillStepResponse = {
+    job: step.job,
+    isBusy: step.isBusy,
+    isRetryPending: step.isRetryPending,
+  }
 
   return response
 })
