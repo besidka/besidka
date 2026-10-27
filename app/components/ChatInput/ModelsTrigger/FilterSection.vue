@@ -1,12 +1,12 @@
 <template>
   <div
     data-testid="models-picker-filter-section"
-    class="shrink-0 flex flex-col gap-1.5 px-2 pb-2 border-b border-base-content/10"
+    class="shrink-0 flex flex-wrap items-center gap-x-1.5 gap-y-2.5 px-2 py-2.5 border-b border-base-content/10"
   >
     <div
       role="group"
       aria-label="Filter models by category"
-      class="flex flex-wrap gap-1.5"
+      class="contents"
     >
       <button
         v-for="option in options"
@@ -19,7 +19,7 @@
       >
         <Icon
           :name="option.icon"
-          size="14"
+          size="12"
           class="shrink-0 opacity-70"
         />
         {{ option.label }}
@@ -28,7 +28,7 @@
     <div
       role="group"
       aria-label="Filter models by capability"
-      class="flex flex-wrap gap-1.5"
+      class="contents"
     >
       <button
         type="button"
@@ -39,7 +39,7 @@
       >
         <Icon
           name="lucide:eye"
-          size="14"
+          size="12"
           class="shrink-0 opacity-70"
         />
         Vision only
@@ -55,26 +55,26 @@
       >
         <Icon
           :name="option.icon"
-          size="14"
+          size="12"
           class="shrink-0 opacity-70"
         />
         {{ option.label }}
       </button>
-      <button
-        type="button"
-        data-testid="models-picker-filter-clear"
-        class="btn btn-ghost btn-sm shrink-0 gap-1.5 rounded-full px-3 text-error"
-        :disabled="hasActiveFilter ? undefined : true"
-        @click="clear"
-      >
-        <Icon
-          name="lucide:list-x"
-          size="14"
-          class="shrink-0"
-        />
-        Clear
-      </button>
     </div>
+    <button
+      type="button"
+      data-testid="models-picker-filter-clear"
+      class="btn btn-ghost btn-xs shrink-0 gap-1 rounded-full px-2.5 text-xs text-error hitslop before:h-11"
+      :disabled="hasActiveFilter ? undefined : true"
+      @click="clear"
+    >
+      <Icon
+        name="lucide:list-x"
+        size="12"
+        class="shrink-0"
+      />
+      Clear
+    </button>
   </div>
 </template>
 
@@ -111,7 +111,7 @@ const hasActiveFilter = computed<boolean>(() => {
 
 function getChipClass(isActive: boolean): string[] {
   return [
-    'btn btn-sm shrink-0 gap-1.5 rounded-full px-3 font-medium',
+    'btn btn-xs shrink-0 gap-1 rounded-full px-2.5 text-xs font-medium hitslop before:h-11',
     isActive
       ? 'btn-soft btn-accent'
       : 'btn-ghost bg-base-content/5',

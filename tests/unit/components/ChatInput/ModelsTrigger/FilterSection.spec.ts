@@ -44,7 +44,10 @@ describe('ChatInput/ModelsTrigger/FilterSection', () => {
         const chip = wrapper.get(`[data-testid="${testId}"]`)
 
         expect(chip.element.tagName).toBe('BUTTON')
-        expect(chip.classes()).toContain('btn-sm')
+        expect(chip.classes()).toEqual(expect.arrayContaining([
+          'btn-xs',
+          'hitslop',
+        ]))
       }
 
       expect(wrapper.get('[data-testid="models-picker-filter-clear"]')
