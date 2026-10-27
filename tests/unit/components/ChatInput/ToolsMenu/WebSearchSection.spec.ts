@@ -379,6 +379,52 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
         )
       })
 
+    it('names the badge by its purpose and price, keeping the disclosure '
+      + 'attributes', async () => {
+      mocks.rates = {
+        braveSearchCostPerThousandRequestsUsd: '5',
+        googleSearchCostPerThousandQueriesUsd: '14',
+      }
+
+      const wrapper = await mountDirect({ selected: 'web_search' })
+      const badge = wrapper.get(badgeSelector)
+
+      expect(badge.attributes('aria-label')).toBe(
+        'Web search price: $14 / 1k searches. Show details',
+      )
+      expect(badge.attributes('aria-expanded')).toBe('false')
+      expect(badge.attributes('aria-controls'))
+        .toBe(wrapper.get(noteSelector).attributes('id'))
+
+      await wrapper.setProps({ selected: 'web_search_brave' })
+
+      expect(wrapper.get(badgeSelector).attributes('aria-label')).toBe(
+        'Web search price: $5 / 1k searches. Show details',
+      )
+    })
+
+    it('keeps the note open through a switch to Off and back', async () => {
+      mocks.rates = { braveSearchCostPerThousandRequestsUsd: '5' }
+
+      const wrapper = await mountDirect({ selected: 'web_search_brave' })
+
+      await wrapper.get(badgeSelector).trigger('click')
+
+      expect(wrapper.get(badgeSelector).attributes('aria-expanded'))
+        .toBe('true')
+
+      await wrapper.setProps({ selected: 'off' })
+
+      expect(wrapper.find(badgeSelector).exists()).toBe(false)
+
+      await wrapper.setProps({ selected: 'web_search_brave' })
+
+      expect(wrapper.get(badgeSelector).attributes('aria-expanded'))
+        .toBe('true')
+      expect(wrapper.get(noteSelector).attributes('style') ?? '')
+        .not.toContain('none')
+    })
+
     it('hides the badge and the note again when switching to Off',
       async () => {
         const wrapper = await mountDirect({ selected: 'web_search_brave' })

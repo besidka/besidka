@@ -112,6 +112,16 @@ movement is the web search segments lifting when the Exa depth row or Auto
 reveals on desktop, because the popover grows upward from "+". It is
 mitigated by the 160 ms animation and the 400 ms reveal guard.
 
+#### Rejected mitigations
+
+- **Locking the panel height.** It leaves a large empty gap in the common Off
+  state and still scrolls on small screens.
+- **Anchoring the panel at the top instead of the bottom.** The popover opens
+  upward from "+", so a top anchor would detach it from the trigger or need
+  re-positioning on every reveal.
+- **Inserting revealed rows above the control.** It breaks the reading order
+  and the group's visual hierarchy.
+
 ### Hidden rows
 
 | Row | Revealed when |
@@ -159,8 +169,11 @@ absence.
 
 - **Focus.** `useToolsMenuFocusRescue` (`app/composables/tools-menu-focus-rescue.ts`)
   is the shared helper: when an element that holds focus is unmounted it moves
-  focus to the checked radio of `.js-reasoning-level-group` (any checked radio
-  as a fallback), only if focus was really lost. `ToggleRow` and the inline
+  focus to the nearest stable control, only if focus was really lost. That is
+  the first checked, non-inert radio of the `[data-section]` the vanishing
+  element sits in and outside it (the web search provider group when the Exa
+  depth row collapses), then the checked radio of `.js-reasoning-level-group`
+  (any checked radio as a last fallback). `ToggleRow` and the inline
   save button use it on unmount. `Reveal` calls `restoreToolsMenuFocus` with
   `force` when it closes around the focused control, because the control stays
   mounted but becomes inert.
@@ -187,10 +200,16 @@ in the first render, which is what opening the menu renders, are never
 guarded, and neither is anything rendered outside a guard root (the section
 specs mount rows alone). Closing a `Reveal` drops its guard at once.
 
-A guarded click is cancelled with `preventDefault()` on the input, so a
-checkbox or radio does not flip and no `change` follows, which also covers
-Space and arrow keys because browsers dispatch a click for them. A stray
-`change` is also ignored and the DOM state is put back to the model value.
+The guard exists for the pointer only, so keyboard activation is exempt: a
+keyboard user cannot hit a control that moved under the pointer, and Space or
+an arrow key on a just-revealed row must work at once. `useRevealGuard` returns
+`shouldIgnoreActivation`, true only while guarded and when the activation is a
+pointer one: a `pointerdown` was seen on the control's label since the last
+`keydown`, or the click carries `detail > 0`. A guarded pointer click is
+cancelled with `preventDefault()` on the input, so a checkbox or radio does
+not flip and no `change` follows. A stray pointer `change` is also ignored and
+the DOM state is put back to the model value. `InlineButton` has no guard (it
+only ignores clicks while pending), so nothing changed there.
 The menu content stays mounted after the first open, so rows present on a
 later open are not guarded either.
 

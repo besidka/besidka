@@ -5,6 +5,8 @@
     :class="disabled
       ? 'cursor-not-allowed'
       : 'cursor-pointer hover:bg-base-200'"
+    @pointerdown="onPointerDown"
+    @keydown="onKeyDown"
   >
     <slot name="icon">
       <Icon
@@ -67,7 +69,11 @@ const emit = defineEmits<{
 
 const row = useTemplateRef<HTMLLabelElement>('row')
 const hintId = useId()
-const { isGuarded } = useRevealGuard()
+const {
+  onPointerDown,
+  onKeyDown,
+  shouldIgnoreActivation,
+} = useRevealGuard()
 
 useToolsMenuFocusRescue(row)
 
@@ -81,7 +87,7 @@ const describedBy = computed<string | undefined>(() => {
 })
 
 function onClick(event: MouseEvent) {
-  if (isGuarded.value) {
+  if (shouldIgnoreActivation(event)) {
     event.preventDefault()
   }
 }
@@ -89,7 +95,7 @@ function onClick(event: MouseEvent) {
 function onChange(event: Event) {
   const input = event.target as HTMLInputElement
 
-  if (isGuarded.value) {
+  if (shouldIgnoreActivation()) {
     input.checked = props.modelValue
 
     return

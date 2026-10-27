@@ -90,7 +90,9 @@ const emit = defineEmits<{
 }>()
 
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
-const { fadeStyle: scrollerFadeStyle } = useScrollEdgeFade(scroller, 'x')
+const { fadeStyle: scrollerFadeStyle } = useScrollEdgeFade(() => {
+  return props.layout === 'sheet' ? scroller.value : null
+}, 'x')
 
 function getGatewayLabel(gateway: GatewayRailItem): string {
   if (gateway.hasKey === false) {

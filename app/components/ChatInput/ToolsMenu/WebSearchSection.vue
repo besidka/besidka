@@ -10,6 +10,7 @@
         v-if="priceBadgeText"
         type="button"
         class="badge badge-sm badge-soft badge-info gap-1 font-medium cursor-pointer"
+        :aria-label="priceBadgeLabel"
         :aria-expanded="isPriceNoteOpen"
         :aria-controls="priceNoteId"
         data-testid="web-search-price-badge"
@@ -323,6 +324,12 @@ const priceBadgeText = computed<string | undefined>(() => {
   }
 
   return undefined
+})
+
+const priceBadgeLabel = computed<string | undefined>(() => {
+  return priceBadgeText.value
+    ? `Web search price: ${priceBadgeText.value}. Show details`
+    : undefined
 })
 
 const providerSegments = computed<SegmentedOption<WebSearchSelection>[]>(

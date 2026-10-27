@@ -18,6 +18,8 @@
         disabled || option.disabled ? 'cursor-not-allowed' : 'cursor-pointer',
       ]"
       :title="option.tooltip ?? option.title"
+      @pointerdown="onPointerDown"
+      @keydown="onKeyDown"
     >
       <input
         type="radio"
@@ -86,10 +88,14 @@ const emit = defineEmits<{
   'update:modelValue': [value: Value]
 }>()
 
-const { isGuarded } = useRevealGuard()
+const {
+  onPointerDown,
+  onKeyDown,
+  shouldIgnoreActivation,
+} = useRevealGuard()
 
 function onClick(event: MouseEvent) {
-  if (isGuarded.value) {
+  if (shouldIgnoreActivation(event)) {
     event.preventDefault()
   }
 }
@@ -105,7 +111,7 @@ function restoreCheckedSegment(event: Event) {
 }
 
 function onChange(event: Event, value: Value) {
-  if (isGuarded.value) {
+  if (shouldIgnoreActivation()) {
     restoreCheckedSegment(event)
 
     return

@@ -47,6 +47,57 @@ function steps(wrapper: Awaited<ReturnType<typeof mountReveal>['mounted']>) {
   return wrapper.get('[data-testid="steps"]').element as HTMLInputElement
 }
 
+function pointerClick(target: HTMLInputElement) {
+  target.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  target.dispatchEvent(new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+    detail: 1,
+  }))
+}
+
+function mountSearchSection(isOpen: boolean) {
+  const Host = defineComponent({
+    props: { isOpen: Boolean },
+    setup(props) {
+      provideRevealGuardRoot()
+
+      return () => h('div', { class: 'js-tools-content' }, [
+        h('section', { 'data-section': 'search' }, [
+          h('fieldset', [
+            h('input', {
+              'type': 'radio',
+              'name': 'provider',
+              'checked': true,
+              'data-testid': 'provider',
+            }),
+          ]),
+          h(Reveal, { isOpen: props.isOpen }, () => h('fieldset', [
+            h('input', {
+              'type': 'radio',
+              'name': 'depth',
+              'checked': true,
+              'data-testid': 'depth',
+            }),
+          ])),
+        ]),
+        h('section', { 'data-section': 'reasoning' }, [
+          h('fieldset', { class: 'js-reasoning-level-group' }, [
+            h('input', {
+              'type': 'radio',
+              'name': 'level',
+              'checked': true,
+              'data-testid': 'level',
+            }),
+          ]),
+        ]),
+      ])
+    },
+  })
+
+  return mountSuspended(Host, { props: { isOpen }, attachTo: document.body })
+}
+
 describe('ChatInput/ToolsMenu/Reveal', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -111,20 +162,20 @@ describe('ChatInput/ToolsMenu/Reveal', () => {
 
     await wrapper.setProps({ isOpen: true })
 
-    steps(wrapper).click()
+    pointerClick(steps(wrapper))
     await wrapper.get('[data-testid="steps"]').setValue(true)
 
     expect(updates).toEqual([])
     expect(steps(wrapper).checked).toBe(false)
 
     vi.advanceTimersByTime(REVEAL_GUARD_DURATION_MS - 1)
-    steps(wrapper).click()
+    pointerClick(steps(wrapper))
 
     expect(updates).toEqual([])
 
     vi.advanceTimersByTime(1)
     await nextTick()
-    steps(wrapper).click()
+    pointerClick(steps(wrapper))
 
     expect(updates).toEqual([true])
   })
@@ -136,7 +187,7 @@ describe('ChatInput/ToolsMenu/Reveal', () => {
     await wrapper.setProps({ isOpen: false })
     await wrapper.setProps({ isOpen: true })
 
-    steps(wrapper).click()
+    pointerClick(steps(wrapper))
 
     expect(updates).toEqual([])
   })
@@ -167,6 +218,23 @@ describe('ChatInput/ToolsMenu/Reveal', () => {
     await nextTick()
 
     expect(document.activeElement).toBe(level)
+  })
+
+  it('moves focus to the section\'s own checked radio, not the reasoning '
+    + 'group, when a reveal collapses around the focused control',
+  async () => {
+    const wrapper = await mountSearchSection(true)
+    const depth = wrapper.get('[data-testid="depth"]').element as HTMLElement
+
+    depth.focus()
+
+    expect(document.activeElement).toBe(depth)
+
+    await wrapper.setProps({ isOpen: false })
+    await nextTick()
+
+    expect(document.activeElement)
+      .toBe(wrapper.get('[data-testid="provider"]').element)
   })
 
   it('clears its guard timer on unmount', async () => {

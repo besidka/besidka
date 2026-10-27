@@ -1,4 +1,5 @@
 const KEYBOARD_MIN_HEIGHT_PX = 120
+const PINCH_ZOOM_SCALE_EPSILON = 0.01
 
 function getVisualViewport(): VisualViewport | null {
   return import.meta.client ? window.visualViewport : null
@@ -9,7 +10,8 @@ function getVisualViewport(): VisualViewport | null {
  * `dvh` follows browser chrome but not the keyboard, so a bottom sheet needs
  * the visual viewport to stay above it while a field inside is focused.
  * Small differences (toolbar collapse, rounding) are ignored so the sheet
- * never twitches while the user scrolls.
+ * never twitches while the user scrolls. A pinch-zoomed page also shrinks the
+ * visual viewport, so while it is zoomed in nothing is treated as covered.
  */
 export function useVisualViewportInset() {
   const bottomInset = shallowRef<number>(0)
@@ -33,11 +35,14 @@ export function useVisualViewportInset() {
       return
     }
 
+    const isPinchZoomed = viewport.scale > 1 + PINCH_ZOOM_SCALE_EPSILON
     const coveredHeight = window.innerHeight
       - viewport.height
       - viewport.offsetTop
 
-    bottomInset.value = Math.max(0, Math.round(coveredHeight))
+    bottomInset.value = isPinchZoomed
+      ? 0
+      : Math.max(0, Math.round(coveredHeight))
     viewportHeight.value = Math.round(viewport.height)
   }
 

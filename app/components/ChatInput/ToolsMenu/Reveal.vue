@@ -36,6 +36,6 @@ watch(() => props.isOpen, (isOpenNow) => {
     return
   }
 
-  restoreToolsMenuFocus(content, { force: true })
+  restoreToolsMenuFocus(content, { force: true, near: element })
 }, { flush: 'pre' })
 </script>

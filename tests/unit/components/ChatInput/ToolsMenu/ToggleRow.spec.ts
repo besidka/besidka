@@ -44,6 +44,23 @@ function input(
   return wrapper.get(`[data-testid="${testId}"]`).element as HTMLInputElement
 }
 
+function pointerClick(target: HTMLInputElement) {
+  target.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  target.dispatchEvent(new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+    detail: 1,
+  }))
+}
+
+function keyboardToggle(target: HTMLInputElement) {
+  target.dispatchEvent(new KeyboardEvent('keydown', {
+    key: ' ',
+    bubbles: true,
+  }))
+  target.click()
+}
+
 describe('ChatInput/ToolsMenu/ToggleRow reveal guard', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -58,23 +75,51 @@ describe('ChatInput/ToolsMenu/ToggleRow reveal guard', () => {
       const { updates, mounted } = mountMenu()
       const wrapper = await mounted
 
-      input(wrapper, 'early').click()
+      pointerClick(input(wrapper, 'early'))
 
       expect(updates.early).toEqual([true])
     })
 
-  it('ignores clicks and changes on a row revealed a moment ago, without '
-    + 'flipping it', async () => {
+  it('ignores pointer clicks and changes on a row revealed a moment ago, '
+    + 'without flipping it', async () => {
     const { updates, mounted } = mountMenu()
     const wrapper = await mounted
 
     await wrapper.setProps({ isLateRowVisible: true })
 
-    input(wrapper, 'late').click()
+    pointerClick(input(wrapper, 'late'))
     await wrapper.get('[data-testid="late"]').setValue(true)
 
     expect(updates.late).toEqual([])
     expect(input(wrapper, 'late').checked).toBe(false)
+  })
+
+  it('accepts keyboard activation on a row revealed a moment ago',
+    async () => {
+      const { updates, mounted } = mountMenu()
+      const wrapper = await mounted
+
+      await wrapper.setProps({ isLateRowVisible: true })
+
+      keyboardToggle(input(wrapper, 'late'))
+
+      expect(updates.late).toEqual([true])
+    })
+
+  it('accepts a keyboard activation that follows an earlier pointer '
+    + 'click', async () => {
+    const { updates, mounted } = mountMenu()
+    const wrapper = await mounted
+
+    await wrapper.setProps({ isLateRowVisible: true })
+
+    pointerClick(input(wrapper, 'late'))
+
+    expect(updates.late).toEqual([])
+
+    keyboardToggle(input(wrapper, 'late'))
+
+    expect(updates.late).toEqual([true])
   })
 
   it('accepts a click once the window has passed', async () => {
@@ -84,13 +129,13 @@ describe('ChatInput/ToolsMenu/ToggleRow reveal guard', () => {
     await wrapper.setProps({ isLateRowVisible: true })
 
     vi.advanceTimersByTime(REVEAL_GUARD_DURATION_MS - 1)
-    input(wrapper, 'late').click()
+    pointerClick(input(wrapper, 'late'))
 
     expect(updates.late).toEqual([])
 
     vi.advanceTimersByTime(1)
     await wrapper.vm.$nextTick()
-    input(wrapper, 'late').click()
+    pointerClick(input(wrapper, 'late'))
 
     expect(updates.late).toEqual([true])
   })

@@ -464,8 +464,14 @@ const isLegacyExpanded = shallowRef<boolean>(false)
 const isFilterSectionOpen = shallowRef<boolean>(false)
 const isSearchFocused = shallowRef<boolean>(false)
 const search = useTemplateRef<{ focus: () => void }>('search')
+const isSheet = computed<boolean>(() => {
+  return props.layout === 'sheet'
+})
+
 const resultsContainer = useTemplateRef<HTMLDivElement>('resultsContainer')
-const { fadeStyle: resultsFadeStyle } = useScrollEdgeFade(resultsContainer)
+const { fadeStyle: resultsFadeStyle } = useScrollEdgeFade(() => {
+  return isSheet.value ? resultsContainer.value : null
+})
 const listboxId = useId()
 const filterSectionId = useId()
 const legacyListId = useId()
@@ -690,10 +696,6 @@ const isRailFilterApplied = computed<boolean>(() => {
   }
 
   return !!activeProviderId.value || isFavoritesOnly.value
-})
-
-const isSheet = computed<boolean>(() => {
-  return props.layout === 'sheet'
 })
 
 /**

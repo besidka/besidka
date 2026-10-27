@@ -61,6 +61,11 @@ window) closes it.
   The viewport meta was not changed to `interactive-widget=resizes-content`:
   it is global and `ChatInput.client.vue` already moves itself for the
   keyboard. This lift has not been tried on a real iOS device yet.
+- A pinch-zoomed page also shrinks the visual viewport, which would read as a
+  keyboard of the same height. `useVisualViewportInset` therefore reports no
+  inset while `visualViewport.scale` is above 1 (with a 0.01 tolerance), so
+  zooming in never lifts the sheet. The cost is that a keyboard opened while
+  the page is zoomed does not lift it either.
 
 ### Filters
 
@@ -78,6 +83,13 @@ The vertical rail with count badges becomes one horizontal, scrollable row of
 `btn-sm` chips (icon plus count, a dot for a missing key, a star for
 favorites), faded at the edge that hides chips. As on desktop, it hides while
 a search is active.
+
+The sheet's scroll fades (the results list, the provider rail and the gateway
+rails) are installed only for the sheet layout: each passes `useScrollEdgeFade`
+a getter that returns `null` in the popover, so the popover never gets the
+scroll listener, the per-child `ResizeObserver` or the subtree
+`MutationObserver` (the model list is large and churns on every search
+keystroke).
 
 ### What closes it
 

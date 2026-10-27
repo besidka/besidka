@@ -92,12 +92,13 @@ const emit = defineEmits<{
   toggleFavorites: []
 }>()
 
-const rail = useTemplateRef<HTMLDivElement>('rail')
-const { fadeStyle: railFadeStyle } = useScrollEdgeFade(rail, 'x')
-
 const isSheet = computed<boolean>(() => {
   return props.layout === 'sheet'
 })
+const rail = useTemplateRef<HTMLDivElement>('rail')
+const { fadeStyle: railFadeStyle } = useScrollEdgeFade(() => {
+  return isSheet.value ? rail.value : null
+}, 'x')
 
 const buttonClass = computed<string>(() => {
   return isSheet.value

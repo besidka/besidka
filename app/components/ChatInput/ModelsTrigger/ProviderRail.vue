@@ -110,12 +110,13 @@ const emit = defineEmits<{
 }>()
 
 const { isDesktop } = useDevice()
-const rail = useTemplateRef<HTMLDivElement>('rail')
-const { fadeStyle: railFadeStyle } = useScrollEdgeFade(rail, 'x')
-
 const isSheet = computed<boolean>(() => {
   return props.layout === 'sheet'
 })
+const rail = useTemplateRef<HTMLDivElement>('rail')
+const { fadeStyle: railFadeStyle } = useScrollEdgeFade(() => {
+  return isSheet.value ? rail.value : null
+}, 'x')
 
 const hasTooltip = computed<boolean>(() => {
   return isDesktop && !isSheet.value

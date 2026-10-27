@@ -206,6 +206,52 @@ describe('useScrollEdgeFade', () => {
         expect(hasHiddenBelow.value).toBe(true)
       })
 
+    it('installs no observer and no scroll listener for a null target',
+      async () => {
+        stubObservers()
+
+        const { element } = createResizableScroller()
+        const addEventListenerSpy = vi.spyOn(element, 'addEventListener')
+        const target = shallowRef<HTMLElement | null>(null)
+
+        useScrollEdgeFade(() => target.value)
+        await nextTick()
+
+        expect(resizeObservers.every(record => !record.observed.length))
+          .toBe(true)
+        expect(mutationObservers.every(record => !record.observed.length))
+          .toBe(true)
+        expect(addEventListenerSpy).not.toHaveBeenCalled()
+      })
+
+    it('starts observing when the target appears and cleans up when it '
+      + 'goes away', async () => {
+      stubObservers()
+
+      const { element, content } = createResizableScroller()
+      const target = shallowRef<HTMLElement | null>(null)
+      const { fadeStyle } = useScrollEdgeFade(() => target.value)
+
+      await nextTick()
+
+      target.value = element
+      await nextTick()
+      await nextTick()
+
+      expect(resizeObservers.flatMap(record => record.observed))
+        .toContain(content)
+      expect(mutationObservers.flatMap(record => record.observed))
+        .toContain(element)
+
+      target.value = null
+      await nextTick()
+      await nextTick()
+
+      expect(resizeObservers.flatMap(record => record.observed))
+        .not.toContain(content)
+      expect(fadeStyle.value).toEqual({})
+    })
+
     it('starts observing a content child added later', async () => {
       stubObservers()
 

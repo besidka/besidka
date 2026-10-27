@@ -71,18 +71,46 @@ export function provideRevealScope(isOpen: () => boolean) {
  * control mounts late or its enclosing reveal scope opens, and always false
  * for controls present when the menu first rendered or rendered outside a
  * guard root.
+ *
+ * Only pointer activation is ever ignored: a keyboard user cannot hit a
+ * control that moved under the pointer, so Space and arrow keys act at once.
+ * `shouldIgnoreActivation` tells the two apart, from a `pointerdown` seen
+ * since the last `keydown` or from the click's own `detail`. Bind
+ * `onPointerDown` and `onKeyDown` on the element that wraps the control.
  */
 export function useRevealGuard() {
   const root = inject(revealGuardRootKey, null)
   const scope = inject(revealScopeKey, null)
   const isMountGuarded = shallowRef<boolean>(false)
+  let isPointerActivation = false
 
   const isGuarded = computed<boolean>(() => {
     return isMountGuarded.value || scope?.isGuarded.value === true
   })
 
+  function onPointerDown() {
+    isPointerActivation = true
+  }
+
+  function onKeyDown() {
+    isPointerActivation = false
+  }
+
+  function shouldIgnoreActivation(event?: MouseEvent): boolean {
+    const isPointer = isPointerActivation || (event?.detail ?? 0) > 0
+
+    return isGuarded.value && isPointer
+  }
+
+  const guard = {
+    isGuarded,
+    onPointerDown,
+    onKeyDown,
+    shouldIgnoreActivation,
+  }
+
   if (!root || root.isInitialRender.value) {
-    return { isGuarded }
+    return guard
   }
 
   isMountGuarded.value = true
@@ -99,5 +127,5 @@ export function useRevealGuard() {
     clearTimeout(timer)
   })
 
-  return { isGuarded }
+  return guard
 }

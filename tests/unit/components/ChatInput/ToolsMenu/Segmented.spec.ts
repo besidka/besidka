@@ -145,6 +145,23 @@ function mountGuardMenu() {
   return { picked, mounted: mountSuspended(Menu, { attachTo: document.body }) }
 }
 
+function pointerClick(input: HTMLInputElement) {
+  input.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  input.dispatchEvent(new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+    detail: 1,
+  }))
+}
+
+function keyboardActivate(input: HTMLInputElement) {
+  input.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'ArrowRight',
+    bubbles: true,
+  }))
+  input.click()
+}
+
 function guardInput(
   wrapper: Awaited<ReturnType<typeof mountGuardMenu>['mounted']>,
   testId: string,
@@ -166,25 +183,70 @@ describe('ChatInput/ToolsMenu/Segmented reveal guard', () => {
       const { picked, mounted } = mountGuardMenu()
       const wrapper = await mounted
 
-      guardInput(wrapper, 'early-auto').click()
+      pointerClick(guardInput(wrapper, 'early-auto'))
 
       expect(picked).toEqual(['early:auto'])
     })
 
-  it('ignores a pick on a control revealed a moment ago and keeps the '
-    + 'checked segment', async () => {
+  it('ignores a pointer pick on a control revealed a moment ago and keeps '
+    + 'the checked segment', async () => {
     const { picked, mounted } = mountGuardMenu()
     const wrapper = await mounted
 
     await wrapper.setProps({ isLateControlVisible: true })
 
-    guardInput(wrapper, 'late-auto').click()
+    pointerClick(guardInput(wrapper, 'late-auto'))
     await wrapper.get('[data-testid="late-auto"]').setValue(true)
 
     expect(picked).toEqual([])
     expect(guardInput(wrapper, 'late-auto').checked).toBe(false)
     expect(guardInput(wrapper, 'late-lite').checked).toBe(true)
   })
+
+  it('accepts keyboard activation on a control revealed a moment ago',
+    async () => {
+      const { picked, mounted } = mountGuardMenu()
+      const wrapper = await mounted
+
+      await wrapper.setProps({ isLateControlVisible: true })
+
+      keyboardActivate(guardInput(wrapper, 'late-auto'))
+
+      expect(picked).toEqual(['late:auto'])
+    })
+
+  it('accepts an arrow-key change on a control revealed a moment ago',
+    async () => {
+      const { picked, mounted } = mountGuardMenu()
+      const wrapper = await mounted
+
+      await wrapper.setProps({ isLateControlVisible: true })
+
+      guardInput(wrapper, 'late-lite').dispatchEvent(new KeyboardEvent(
+        'keydown',
+        { key: 'ArrowRight', bubbles: true },
+      ))
+      await wrapper.get('[data-testid="late-auto"]').setValue(true)
+
+      expect(picked).toEqual(['late:auto'])
+    })
+
+  it('ignores a click carrying pointer detail even without a pointerdown',
+    async () => {
+      const { picked, mounted } = mountGuardMenu()
+      const wrapper = await mounted
+
+      await wrapper.setProps({ isLateControlVisible: true })
+
+      guardInput(wrapper, 'late-auto').dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        detail: 1,
+      }))
+
+      expect(picked).toEqual([])
+      expect(guardInput(wrapper, 'late-auto').checked).toBe(false)
+    })
 
   it('accepts a pick once the window has passed', async () => {
     const { picked, mounted } = mountGuardMenu()
@@ -194,7 +256,7 @@ describe('ChatInput/ToolsMenu/Segmented reveal guard', () => {
 
     vi.advanceTimersByTime(REVEAL_GUARD_DURATION_MS)
     await wrapper.vm.$nextTick()
-    guardInput(wrapper, 'late-auto').click()
+    pointerClick(guardInput(wrapper, 'late-auto'))
 
     expect(picked).toEqual(['late:auto'])
   })
