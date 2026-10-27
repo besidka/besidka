@@ -108,8 +108,11 @@ test.describe('desktop', () => {
       await highLevel.check()
 
       await expect(
-        page.locator('[data-testid="reasoning-save-default-toggle"]'),
+        page.locator('[data-testid="reasoning-save-default-button"]'),
       ).toBeEnabled()
+      await expect(
+        page.locator('[data-testid="reasoning-default-caption"]'),
+      ).toContainText('Save High as default')
 
       const panelTop = await page.locator(TOOLS_PANEL).evaluate((element) => {
         return element.getBoundingClientRect().top

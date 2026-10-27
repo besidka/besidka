@@ -128,6 +128,19 @@ function hasTestId(wrapper: ChatInputWrapper, testId: string): boolean {
   return wrapper.find(`[data-testid="${testId}"]`).exists()
 }
 
+function isTestIdRevealed(
+  wrapper: ChatInputWrapper,
+  testId: string,
+): boolean {
+  const element = wrapper.find(`[data-testid="${testId}"]`)
+
+  return element.exists() && !element.element.closest('[inert]')
+}
+
+function captionText(wrapper: ChatInputWrapper): string {
+  return wrapper.get('[data-testid="reasoning-default-caption"]').text()
+}
+
 function isTestIdChecked(
   wrapper: ChatInputWrapper,
   testId: string,
@@ -847,7 +860,7 @@ describe('ChatInput.client', () => {
         .toBeNull()
     })
 
-    it('shows a Reasoning tile and enables Save as default once the level '
+    it('shows a Reasoning tile and offers Save as default once the level '
       + 'differs from the default, and saves it on request', async () => {
       useLevelsModeSelection()
 
@@ -857,10 +870,10 @@ describe('ChatInput.client', () => {
       wrapperRef.current = wrapper
 
       await openToolsPanel(wrapper)
-      fakeRevealGuardTimers()
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
-      expect(hasTestId(wrapper, 'reasoning-save-default-toggle'))
+      expect(captionText(wrapper)).toBe('Off is your default')
+      expect(hasTestId(wrapper, 'reasoning-save-default-button'))
         .toBe(false)
 
       await pickTestId(wrapper, 'reasoning-level-high')
@@ -868,15 +881,11 @@ describe('ChatInput.client', () => {
 
       expect(tileTitle(wrapper, 'reasoning'))
         .toBe('Reasoning: High. Your default is Off.')
-      expect(isTestIdChecked(wrapper, 'reasoning-save-default-toggle'))
-        .toBe(false)
+      expect(captionText(wrapper))
+        .toBe('Your default is Off · Save High as default')
 
-      await setToggle(wrapper, 'reasoning-save-default-toggle', true)
-
-      expect(mocks.setDefaultReasoningLevel).not.toHaveBeenCalled()
-
-      await waitOutRevealGuard()
-      await setToggle(wrapper, 'reasoning-save-default-toggle', true)
+      await wrapper.get('[data-testid="reasoning-save-default-button"]')
+        .trigger('click')
 
       expect(mocks.setDefaultReasoningLevel).toHaveBeenCalledWith('high')
 
@@ -884,7 +893,8 @@ describe('ChatInput.client', () => {
       await flushPromises()
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
-      expect(hasTestId(wrapper, 'reasoning-save-default-toggle'))
+      expect(captionText(wrapper)).toBe('High is your default')
+      expect(hasTestId(wrapper, 'reasoning-save-default-button'))
         .toBe(false)
     })
 
@@ -1203,16 +1213,17 @@ describe('ChatInput.client', () => {
 
       await openToolsPanel(wrapper)
 
-      expect(hasTestId(wrapper, 'exa-search-level-auto')).toBe(false)
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(false)
 
       await pickTestId(wrapper, 'web-search-option-web_search_exa')
 
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(true)
       expect(isTestIdDisabled(wrapper, 'exa-search-level-lite')).toBe(false)
       expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(true)
 
       await pickTestId(wrapper, 'web-search-option-web_search_brave')
 
-      expect(hasTestId(wrapper, 'exa-search-level-auto')).toBe(false)
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(false)
     })
 
     it('persists a chosen Exa search level, updates the depth and the '
@@ -2017,13 +2028,16 @@ describe('ChatInput.client', () => {
 
       expect(hasTestId(wrapper, 'reasoning-level-low')).toBe(true)
       expect(hasTestId(wrapper, 'reasoning-always-on-menu-item')).toBe(false)
-      expect(hasTestId(wrapper, 'reasoning-expanded-toggle')).toBe(false)
-      expect(hasTestId(wrapper, 'reasoning-auto-hide-toggle')).toBe(false)
+      expect(isTestIdRevealed(wrapper, 'reasoning-expanded-toggle'))
+        .toBe(false)
+      expect(isTestIdRevealed(wrapper, 'reasoning-auto-hide-toggle'))
+        .toBe(false)
 
       await pickTestId(wrapper, 'reasoning-level-low')
       await flushPromises()
 
-      expect(hasTestId(wrapper, 'reasoning-expanded-toggle')).toBe(true)
+      expect(isTestIdRevealed(wrapper, 'reasoning-expanded-toggle'))
+        .toBe(true)
     })
 
     it('renders a checked and disabled reasoning row for an always-on '

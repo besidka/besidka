@@ -23,15 +23,26 @@
         @update:model-value="onSelectLevel"
       />
     </div>
-    <ChatInputToolsMenuToggleRow
-      v-if="!isSavedAsDefault"
-      label="Save as default"
-      icon="lucide:bookmark"
-      :hint="saveDefaultHint"
-      test-id="reasoning-save-default-toggle"
-      :model-value="isSavePending"
-      @update:model-value="onSaveDefault"
-    />
+    <div class="px-2 pb-1.5">
+      <p
+        class="min-h-4 text-xs leading-4 text-base-content/60"
+        data-testid="reasoning-default-caption"
+      >
+        <template v-if="isSavedAsDefault">
+          {{ defaultLabel }} is your default
+        </template>
+        <template v-else>
+          Your default is {{ defaultLabel }} &middot;
+          <ChatInputToolsMenuInlineButton
+            :is-pending="isSavePending"
+            data-testid="reasoning-save-default-button"
+            @click="onSaveDefault"
+          >
+            {{ isSavePending ? 'Saving…' : `Save ${levelLabel} as default` }}
+          </ChatInputToolsMenuInlineButton>
+        </template>
+      </p>
+    </div>
     <ChatInputToolsMenuToggleRow
       v-if="reasoning !== 'off'"
       label="Show steps expanded"
@@ -120,13 +131,12 @@ watch(() => [props.reasoning, props.defaultLevel], () => {
   isSavePending.value = false
 })
 
-const saveDefaultHint = computed<string>(() => {
-  const defaultLabel = getReasoningLevelLabel(
-    props.defaultLevel,
-    isToggleMode.value,
-  )
+const defaultLabel = computed<string>(() => {
+  return getReasoningLevelLabel(props.defaultLevel, isToggleMode.value)
+})
 
-  return `Your default is ${defaultLabel}`
+const levelLabel = computed<string>(() => {
+  return getReasoningLevelLabel(props.reasoning, isToggleMode.value)
 })
 
 function onSelectLevel(level: ReasoningLevel) {
@@ -137,8 +147,8 @@ function onSelectLevel(level: ReasoningLevel) {
   emit('select-level', level)
 }
 
-function onSaveDefault(isOn: boolean) {
-  if (!isOn || isSavedAsDefault.value) {
+function onSaveDefault() {
+  if (isSavedAsDefault.value || isSavePending.value) {
     return
   }
 

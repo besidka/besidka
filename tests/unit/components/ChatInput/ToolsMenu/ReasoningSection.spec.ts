@@ -78,7 +78,17 @@ function input(wrapper: SectionWrapper, testId: string) {
 }
 
 function hasRow(wrapper: SectionWrapper, testId: string): boolean {
-  return wrapper.find(`[data-testid="${testId}"]`).exists()
+  const element = wrapper.find(`[data-testid="${testId}"]`)
+
+  return element.exists() && !element.element.closest('[inert]')
+}
+
+function caption(wrapper: SectionWrapper): string {
+  return wrapper.get('[data-testid="reasoning-default-caption"]').text()
+}
+
+function saveButton(wrapper: SectionWrapper) {
+  return wrapper.find('[data-testid="reasoning-save-default-button"]')
 }
 
 describe('ChatInput/ToolsMenu/ReasoningSection', () => {
@@ -219,57 +229,117 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
       expect(hasRow(wrapper, 'reasoning-auto-hide-toggle')).toBe(false)
     })
 
-  describe('Save as default', () => {
-    it('is not rendered while the level is the default', async () => {
+  describe('default caption', () => {
+    it('is always rendered with a one-line minimum height', async () => {
       const { wrapper } = await mountSection({
         reasoning: 'medium',
         levels: ['low', 'medium', 'high'],
         defaultLevel: 'medium',
       })
 
-      expect(hasRow(wrapper, 'reasoning-save-default-toggle')).toBe(false)
-      expect(wrapper.text()).not.toContain('is your default')
+      expect(wrapper.get('[data-testid="reasoning-default-caption"]')
+        .classes()).toEqual(expect.arrayContaining(['min-h-4', 'text-xs']))
     })
 
-    it('appears off with the current default when the level differs, and '
-      + 'emits the level once turned on', async () => {
-      const { wrapper, savedLevels, state } = await mountSection({
-        reasoning: 'high',
+    it('says the level is the default and offers no button', async () => {
+      const { wrapper } = await mountSection({
+        reasoning: 'medium',
         levels: ['low', 'medium', 'high'],
-        defaultLevel: 'low',
+        defaultLevel: 'medium',
       })
 
-      expect(input(wrapper, 'reasoning-save-default-toggle').checked)
-        .toBe(false)
-      expect(wrapper.text()).toContain('Your default is Low')
+      expect(caption(wrapper)).toBe('Medium is your default')
+      expect(saveButton(wrapper).exists()).toBe(false)
+    })
 
-      await wrapper.get('[data-testid="reasoning-save-default-toggle"]')
-        .setValue(true)
+    it('names the default and offers to save the level when they differ',
+      async () => {
+        const { wrapper, savedLevels } = await mountSection({
+          reasoning: 'high',
+          levels: ['low', 'medium', 'high'],
+          defaultLevel: 'low',
+        })
 
-      expect(savedLevels).toEqual(['high'])
-      expect(input(wrapper, 'reasoning-save-default-toggle').checked)
-        .toBe(true)
+        expect(caption(wrapper))
+          .toBe('Your default is Low · Save High as default')
+        expect(saveButton(wrapper).element.tagName).toBe('BUTTON')
+        expect(saveButton(wrapper).attributes('type')).toBe('button')
+        expect(saveButton(wrapper).text()).toBe('Save High as default')
 
-      state.value = { ...state.value, defaultLevel: 'high' }
-      await wrapper.vm.$nextTick()
+        await saveButton(wrapper).trigger('click')
 
-      expect(hasRow(wrapper, 'reasoning-save-default-toggle')).toBe(false)
+        expect(savedLevels).toEqual(['high'])
+      })
 
-      state.value = { ...state.value, reasoning: 'medium' }
-      await wrapper.vm.$nextTick()
+    it('shows Saving… and ignores further clicks while the save is pending',
+      async () => {
+        const { wrapper, savedLevels, state } = await mountSection({
+          reasoning: 'high',
+          levels: ['low', 'medium', 'high'],
+          defaultLevel: 'low',
+        })
 
-      expect(input(wrapper, 'reasoning-save-default-toggle').checked)
-        .toBe(false)
-      expect(wrapper.text()).toContain('Your default is High')
+        await saveButton(wrapper).trigger('click')
+
+        expect(saveButton(wrapper).text()).toBe('Saving…')
+        expect(saveButton(wrapper).attributes('aria-disabled'))
+          .toBe('true')
+
+        await saveButton(wrapper).trigger('click')
+
+        expect(savedLevels).toEqual(['high'])
+
+        state.value = { ...state.value, defaultLevel: 'high' }
+        await nextTick()
+
+        expect(caption(wrapper)).toBe('High is your default')
+        expect(saveButton(wrapper).exists()).toBe(false)
+      })
+
+    it('goes back to the offer when the level changes again after a save',
+      async () => {
+        const { wrapper, state } = await mountSection({
+          reasoning: 'high',
+          levels: ['low', 'medium', 'high'],
+          defaultLevel: 'high',
+        })
+
+        state.value = { ...state.value, reasoning: 'medium' }
+        await nextTick()
+
+        expect(caption(wrapper))
+          .toBe('Your default is High · Save Medium as default')
+      })
+
+    it('uses On and Off labels for a toggle-mode model', async () => {
+      const { wrapper } = await mountSection({
+        reasoning: 'medium',
+        levels: ['medium'],
+        defaultLevel: 'off',
+      })
+
+      expect(caption(wrapper))
+        .toBe('Your default is Off · Save On as default')
+    })
+
+    it('is not rendered for an always-on model', async () => {
+      const { wrapper } = await mountSection({
+        mode: 'always-on',
+        reasoning: 'off',
+        levels: [],
+      })
+
+      expect(wrapper.find('[data-testid="reasoning-default-caption"]')
+        .exists()).toBe(false)
     })
   })
 
-  describe('focus when a row unmounts', () => {
+  describe('focus rescue', () => {
     afterEach(() => {
       document.body.innerHTML = ''
     })
 
-    it('moves focus from the Save as default row to the checked level '
+    it('moves focus from the inline save button to the checked level '
       + 'radio once the default catches up', async () => {
       const { wrapper, state } = await mountSection({
         reasoning: 'high',
@@ -277,22 +347,23 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
         defaultLevel: 'low',
       }, { attachTo: document.body })
 
-      input(wrapper, 'reasoning-save-default-toggle').focus()
+      const button = saveButton(wrapper).element as HTMLButtonElement
 
-      expect(document.activeElement)
-        .toBe(input(wrapper, 'reasoning-save-default-toggle'))
+      button.focus()
+
+      expect(document.activeElement).toBe(button)
 
       state.value = { ...state.value, defaultLevel: 'high' }
       await nextTick()
       await nextTick()
 
-      expect(hasRow(wrapper, 'reasoning-save-default-toggle')).toBe(false)
+      expect(saveButton(wrapper).exists()).toBe(false)
       expect(document.activeElement)
         .toBe(input(wrapper, 'reasoning-level-high'))
     })
 
-    it('moves focus to the checked level radio when the focused steps row '
-      + 'is hidden', async () => {
+    it('moves focus to the checked level radio when the focused steps '
+      + 'row collapses', async () => {
       setReasoningUserSetting(true, false)
 
       const { wrapper, state } = await mountSection({
@@ -311,21 +382,22 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
         .toBe(input(wrapper, 'reasoning-level-off'))
     })
 
-    it('leaves focus alone when an unfocused row unmounts', async () => {
-      const { wrapper, state } = await mountSection({
-        reasoning: 'high',
-        levels: ['low', 'medium', 'high'],
-        defaultLevel: 'low',
-      }, { attachTo: document.body })
+    it('leaves focus alone when an unfocused control goes away',
+      async () => {
+        const { wrapper, state } = await mountSection({
+          reasoning: 'high',
+          levels: ['low', 'medium', 'high'],
+          defaultLevel: 'low',
+        }, { attachTo: document.body })
 
-      input(wrapper, 'reasoning-level-low').focus()
-      state.value = { ...state.value, defaultLevel: 'high' }
-      await nextTick()
-      await nextTick()
+        input(wrapper, 'reasoning-level-low').focus()
+        state.value = { ...state.value, defaultLevel: 'high' }
+        await nextTick()
+        await nextTick()
 
-      expect(document.activeElement)
-        .toBe(input(wrapper, 'reasoning-level-low'))
-    })
+        expect(document.activeElement)
+          .toBe(input(wrapper, 'reasoning-level-low'))
+      })
   })
 
   it('renders a checked, disabled row and no levels for an always-on model',
