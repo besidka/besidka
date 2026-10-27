@@ -61,65 +61,71 @@
       class="shrink-0"
     />
   </NuxtLink>
-  <div
-    v-if="isExaSelected"
-    class="px-2 pb-1.5"
+  <ChatInputToolsMenuReveal
+    v-if="hasExaOption"
+    :is-open="isExaSelected"
+    data-testid="web-search-exa-depth-reveal"
   >
-    <div
-      class="flex items-baseline justify-between gap-2 mb-1 text-xs font-semibold text-base-content/60"
-    >
-      <span :id="`${groupId}-depth-label`">Exa depth</span>
-      <span class="font-normal">Price per 1,000 searches</span>
+    <div class="px-2 pb-1.5">
+      <div
+        class="flex items-baseline justify-between gap-2 mb-1 text-xs font-semibold text-base-content/60"
+      >
+        <span :id="`${groupId}-depth-label`">Exa depth</span>
+        <span class="font-normal">Price per 1,000 searches</span>
+      </div>
+      <ChatInputToolsMenuSegmented
+        :name="`${groupId}-exa-depth`"
+        legend="Exa depth"
+        :labelledby="`${groupId}-depth-label`"
+        :options="exaDepthSegments"
+        :model-value="exaSearchLevel"
+        @update:model-value="emit('select-exa-search-level', $event)"
+      />
     </div>
-    <ChatInputToolsMenuSegmented
-      :name="`${groupId}-exa-depth`"
-      legend="Exa depth"
-      :labelledby="`${groupId}-depth-label`"
-      :options="exaDepthSegments"
-      :model-value="exaSearchLevel"
-      @update:model-value="emit('select-exa-search-level', $event)"
-    />
-  </div>
-  <div
-    v-if="isAutoAvailable && isProviderSelected"
-    data-testid="web-search-auto-section"
+  </ChatInputToolsMenuReveal>
+  <ChatInputToolsMenuReveal
+    v-if="isAutoAvailable"
+    :is-open="isProviderSelected"
+    data-testid="web-search-auto-reveal"
   >
-    <ChatInputToolsMenuToggleRow
-      label="Auto"
-      icon="lucide:sparkles"
-      aria-label="Auto web search"
-      test-id="web-search-auto-toggle"
-      hint-test-id="web-search-auto-hint"
-      :hint="AUTO_WEB_SEARCH_HINT"
-      :model-value="isAutoPreferred"
-      :extra-described-by="isExplanationOpen ? explanationId : undefined"
-      @update:model-value="onToggleAuto"
-    >
-      <template #label-extra>
-        <button
-          type="button"
-          class="inline-grid place-items-center size-5 rounded-full text-base-content/60 hover:text-accent cursor-pointer"
-          aria-label="How Auto works"
-          :aria-expanded="isExplanationOpen"
-          :aria-controls="explanationId"
-          data-testid="web-search-auto-info"
-          @click.prevent="isExplanationOpen = !isExplanationOpen"
-        >
-          <Icon
-            name="lucide:info"
-            size="14"
-          />
-        </button>
-      </template>
-    </ChatInputToolsMenuToggleRow>
-    <p
-      v-show="isExplanationOpen"
-      :id="explanationId"
-      class="mx-2 mb-1.5 ml-8.5 px-2 py-1.5 rounded-box bg-base-200 text-xs"
-    >
-      {{ AUTO_WEB_SEARCH_EXPLANATION }}
-    </p>
-  </div>
+    <div data-testid="web-search-auto-section">
+      <ChatInputToolsMenuToggleRow
+        label="Auto"
+        icon="lucide:sparkles"
+        aria-label="Auto web search"
+        test-id="web-search-auto-toggle"
+        hint-test-id="web-search-auto-hint"
+        :hint="AUTO_WEB_SEARCH_HINT"
+        :model-value="isAutoPreferred"
+        :extra-described-by="isExplanationOpen ? explanationId : undefined"
+        @update:model-value="onToggleAuto"
+      >
+        <template #label-extra>
+          <button
+            type="button"
+            class="inline-grid place-items-center size-5 rounded-full text-base-content/60 hover:text-accent cursor-pointer"
+            aria-label="How Auto works"
+            :aria-expanded="isExplanationOpen"
+            :aria-controls="explanationId"
+            data-testid="web-search-auto-info"
+            @click.prevent="isExplanationOpen = !isExplanationOpen"
+          >
+            <Icon
+              name="lucide:info"
+              size="14"
+            />
+          </button>
+        </template>
+      </ChatInputToolsMenuToggleRow>
+      <p
+        v-show="isExplanationOpen"
+        :id="explanationId"
+        class="mx-2 mb-1.5 ml-8.5 px-2 py-1.5 rounded-box bg-base-200 text-xs"
+      >
+        {{ AUTO_WEB_SEARCH_EXPLANATION }}
+      </p>
+    </div>
+  </ChatInputToolsMenuReveal>
 </template>
 
 <script setup lang="ts">

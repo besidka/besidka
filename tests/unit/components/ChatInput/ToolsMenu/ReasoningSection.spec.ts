@@ -400,6 +400,23 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
       })
   })
 
+  describe('collapsing rows', () => {
+    it('keeps the steps rows mounted but inert while they are hidden',
+      async () => {
+        const { wrapper } = await mountSection({
+          reasoning: 'off',
+          levels: ['low', 'medium', 'high'],
+        })
+        const reveal = wrapper
+          .get('[data-testid="reasoning-expanded-toggle"]')
+          .element
+          .closest('[data-open]')
+
+        expect(reveal?.getAttribute('data-open')).toBe('false')
+        expect(reveal?.hasAttribute('inert')).toBe(true)
+      })
+  })
+
   it('renders a checked, disabled row and no levels for an always-on model',
     async () => {
       const { wrapper } = await mountSection({

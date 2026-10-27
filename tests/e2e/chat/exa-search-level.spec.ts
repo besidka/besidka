@@ -119,16 +119,16 @@ async ({ page }) => {
 
   await expect(
     panel.locator('[data-testid="exa-search-level-auto"]'),
-  ).toHaveCount(0)
+  ).toBeHidden()
 
   await panel.locator('[data-testid="web-search-option-off"]').click()
 
   await expect(
     panel.locator('[data-testid="exa-search-level-auto"]'),
-  ).toHaveCount(0)
+  ).toBeHidden()
   await expect(
     panel.locator('[data-testid="exa-search-level-deep"]'),
-  ).toHaveCount(0)
+  ).toBeHidden()
   await expect(
     page.locator('[data-testid="chat-input-tile-search"]'),
   ).toHaveCount(0)

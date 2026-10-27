@@ -118,6 +118,15 @@ function input(
     .element as HTMLInputElement
 }
 
+function isRevealed(
+  wrapper: Awaited<ReturnType<typeof mountSection>>['wrapper'],
+  testId: string,
+): boolean {
+  const element = wrapper.find(`[data-testid="${testId}"]`)
+
+  return element.exists() && !element.element.closest('[inert]')
+}
+
 function depthPrices(
   wrapper: Awaited<ReturnType<typeof mountSection>>['wrapper'],
 ) {
@@ -501,24 +510,36 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
   })
 
   describe('Exa depth', () => {
-    it('is not rendered while another provider is selected or search is '
-      + 'off', async () => {
+    it('is collapsed and inert while another provider is selected or '
+      + 'search is off', async () => {
       const { wrapper } = await mountSection({ selected: 'web_search_brave' })
+      const reveal = wrapper.get('[data-testid="web-search-exa-depth-reveal"]')
 
-      expect(wrapper.text()).not.toContain('Exa depth')
-      expect(wrapper.text()).not.toContain('Only for Exa')
-      expect(wrapper.find('[data-testid^="exa-search-level-"]').exists())
-        .toBe(false)
+      expect(reveal.attributes('data-open')).toBe('false')
+      expect(reveal.attributes('inert')).toBeDefined()
+      expect(isRevealed(wrapper, 'exa-search-level-auto')).toBe(false)
 
       const searchOff = await mountSection({ selected: 'off' })
 
-      expect(searchOff.wrapper.find('[data-testid^="exa-search-level-"]')
+      expect(isRevealed(searchOff.wrapper, 'exa-search-level-auto'))
+        .toBe(false)
+    })
+
+    it('is not rendered at all when Exa is not offered', async () => {
+      const { wrapper } = await mountSection({
+        selected: 'off',
+        isToolCallingSupported: false,
+      })
+
+      expect(wrapper.find('[data-testid="web-search-exa-depth-reveal"]')
         .exists()).toBe(false)
     })
 
-    it('appears once Exa is selected', async () => {
+    it('opens once Exa is selected', async () => {
       const { wrapper } = await mountSection({ selected: 'web_search_exa' })
 
+      expect(wrapper.get('[data-testid="web-search-exa-depth-reveal"]')
+        .attributes('data-open')).toBe('true')
       expect(wrapper.text()).toContain('Exa depth')
       expect(wrapper.findAll('[data-testid^="exa-search-level-"]'))
         .toHaveLength(3)
@@ -601,20 +622,19 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
       expect(autoToggles).toEqual([true])
     })
 
-    it('is hidden while search is off even when Auto is available',
-      async () => {
-        const { wrapper } = await mountSection({
-          selected: 'off',
-          isAutoAvailable: true,
-          isAutoPreferred: true,
-        })
-
-        expect(
-          wrapper.find('[data-testid="web-search-auto-section"]').exists(),
-        ).toBe(false)
-        expect(wrapper.find('[data-testid="web-search-auto-toggle"]').exists())
-          .toBe(false)
+    it('is collapsed and inert while search is off even when Auto is '
+      + 'available', async () => {
+      const { wrapper } = await mountSection({
+        selected: 'off',
+        isAutoAvailable: true,
+        isAutoPreferred: true,
       })
+      const reveal = wrapper.get('[data-testid="web-search-auto-reveal"]')
+
+      expect(reveal.attributes('data-open')).toBe('false')
+      expect(reveal.attributes('inert')).toBeDefined()
+      expect(isRevealed(wrapper, 'web-search-auto-toggle')).toBe(false)
+    })
 
     it('is shown for every selected provider when Auto is available',
       async () => {

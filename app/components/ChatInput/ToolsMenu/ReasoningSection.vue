@@ -43,22 +43,24 @@
         </template>
       </p>
     </div>
-    <ChatInputToolsMenuToggleRow
-      v-if="reasoning !== 'off'"
-      label="Show steps expanded"
-      icon="lucide:list-tree"
-      test-id="reasoning-expanded-toggle"
-      :model-value="reasoningExpanded"
-      @update:model-value="setReasoningExpanded"
-    />
-    <ChatInputToolsMenuToggleRow
-      v-if="isAutoHideAvailable"
-      label="Auto-hide when done"
-      icon="lucide:timer-reset"
-      test-id="reasoning-auto-hide-toggle"
-      :model-value="reasoningAutoHide"
-      @update:model-value="setReasoningAutoHide"
-    />
+    <ChatInputToolsMenuReveal :is-open="reasoning !== 'off'">
+      <ChatInputToolsMenuToggleRow
+        label="Show steps expanded"
+        icon="lucide:list-tree"
+        test-id="reasoning-expanded-toggle"
+        :model-value="reasoningExpanded"
+        @update:model-value="setReasoningExpanded"
+      />
+    </ChatInputToolsMenuReveal>
+    <ChatInputToolsMenuReveal :is-open="isAutoHideAvailable">
+      <ChatInputToolsMenuToggleRow
+        label="Auto-hide when done"
+        icon="lucide:timer-reset"
+        test-id="reasoning-auto-hide-toggle"
+        :model-value="reasoningAutoHide"
+        @update:model-value="setReasoningAutoHide"
+      />
+    </ChatInputToolsMenuReveal>
   </template>
 </template>
 

@@ -98,64 +98,89 @@ resolves to the product default, Off.
   the popover grows upward from "+": a row mounting under the reasoning
   segments moved the clicked level up by one row and left the pointer on the
   new toggle, so a second click would have saved the default by accident.
+  (The collapse variant below replaces this row with a fixed-height caption.)
 - "Show steps expanded" and "Auto-hide when done" show off and disabled
   while reasoning is Off, and Auto-hide also while steps are collapsed.
 
 ## Variant: rows that cannot act are hidden
 
 This branch (`feat/chat-input-tools-collapse-variant`) is a comparison variant.
-Its rule: a control renders only when it can act. Nothing in the menu is shown
-disabled to explain itself.
+Its rule: a control is revealed only when it can act. Nothing in the menu is
+shown disabled to explain itself, and nothing is inserted or removed instantly.
 
-| Row | Renders when |
+| Row | Revealed when |
 |---|---|
 | Exa depth | Exa is the selected provider |
 | Web search Auto | Auto is available and a provider is selected (search is not Off) |
-| Save as default | the level differs from the saved default |
 | Show steps expanded | reasoning is not Off |
 | Auto-hide when done | reasoning is not Off and steps are expanded |
 
-The Exa depth caption is always "Price per 1,000 searches", the Save as default
-hint is always "Your default is X", and `AUTO_WEB_SEARCH_PICK_PROVIDER_HINT` is
-gone because nothing can reach it. The always-on reasoning row is unchanged.
-While a save is in flight the Save as default row stays on and checked; it
-unmounts when `defaultLevel` catches up.
+The popover (above "+") and the mobile sheet are bottom-anchored, so any row
+that is inserted pushes everything above it, including the control just
+clicked, upward. The variant therefore keeps the layout still where it can and
+animates where it cannot.
 
-Consequences handled in code:
+### Stable reasoning caption (replaces the Save as default row)
 
-- **Focus.** A row that unmounts while it holds focus (Save as default after the
-  PATCH lands, or any row hidden while it is focused) would drop focus to
-  `body`. `ToggleRow.vue` checks in `onBeforeUnmount` whether it contains
-  `document.activeElement`; if so, after `nextTick` it focuses the checked radio
-  of `.js-reasoning-level-group` (falling back to any checked radio) inside the
-  closest `.js-tools-content`, only when focus is still lost. Both the popover
-  and the sheet render `Content.vue`, so the same path covers the `<dialog>`.
-  The popover's `focusout` handler ignores a null `relatedTarget`, so it stays
-  open.
+Under the reasoning segments one muted line is always rendered
+(`reasoning-default-caption`, `text-xs leading-4`, `min-h-4`):
+
+| State | Caption |
+|---|---|
+| level is the default | "High is your default" |
+| level differs | "Your default is High · " + an inline accent button "Save Medium as default" (`reasoning-save-default-button`) |
+| save in flight | "Your default is High · Saving…" (the button stays focusable but is `aria-disabled` and ignores clicks) |
+| after it lands | "Medium is your default" |
+
+Labels come from `getReasoningLevelLabel(level, isToggleMode)`, so a
+toggle-mode model reads "Save On as default". The button is a real `<button>`
+(`ToolsMenu/InlineButton.vue`). `setDefaultReasoningLevel` updates the server
+default optimistically, so "Saving…" normally lasts a tick; a failed save
+reverts the default and the offer comes back. The old always-on-height
+"Save as default" toggle row is gone, so picking a level never inserts a row
+under the pointer. The line is one line at `w-80`; a very long label in a
+narrow font could wrap, which would grow the caption by one line.
+
+### Animated reveals
+
+`ToolsMenu/Reveal.vue` wraps the rows that still come and go. It is a CSS grid
+whose single row animates `0fr` to `1fr` in 160 ms (`ease-out`, off under
+`motion-reduce`), with the content in a `min-h-0 overflow-hidden` child. While
+closed the wrapper is `inert` and `invisible` (`visibility` is transitioned
+with the rows, so it stays visible for the whole collapse and flips at the
+end), which removes the content from the tab order and the accessibility tree.
+The content stays mounted, so tests assert `data-open` / `inert` rather than
+absence.
+
+- **Focus.** `useToolsMenuFocusRescue` (`app/composables/tools-menu-focus-rescue.ts`)
+  is the shared helper: when an element that holds focus is unmounted it moves
+  focus to the checked radio of `.js-reasoning-level-group` (any checked radio
+  as a fallback), only if focus was really lost. `ToggleRow` and the inline
+  save button use it on unmount. `Reveal` calls `restoreToolsMenuFocus` with
+  `force` when it closes around the focused control, because the control stays
+  mounted but becomes inert.
 - **Scroll fades.** `useScrollEdgeFade` observes the scroll element and its
-  direct children with `ResizeObserver` (re-collected whenever descendants are
-  added or removed) besides the `scroll` and `MutationObserver` hooks, so a row
-  that appears or disappears, or a section that grows, updates the fades
-  without a scroll event.
+  direct children with `ResizeObserver`. The content root changes size on
+  every frame of a reveal, so the observer re-measures through the transition
+  and catches the final size; no `transitionend` handler is needed.
 - **Popover height.** The cap is still the space above "+" measured on open;
   revealed rows scroll inside the scroll area instead of growing the panel.
-- **No height animation.** Rows jump.
 
 ### Reveal guard
 
-The popover grows upward from "+", so a row that mounts under the segmented
-control moves the clicked control up and lands under the pointer. Without a
-guard a fast second click (double-click, impatient tap) would hit the new row,
-for example silently saving a new default reasoning level.
+The popover grows upward from "+", so a row that appears under the segmented
+control could still land under a fast second click (double-click, impatient
+tap) and, for example, flip the Auto toggle.
 
 `app/composables/reveal-guard.ts` closes that. `Content.vue` calls
 `provideRevealGuardRoot()`; `ToggleRow.vue` and `Segmented.vue` call
-`useRevealGuard()`. A control that mounts after the menu content first
-rendered (Save as default, Show steps expanded, Auto-hide, the Exa depth
-segments, the Auto row) ignores activation for `REVEAL_GUARD_DURATION_MS`
-(400 ms) after it mounts. Controls present in the first render, which is what
-opening the menu renders, are never guarded, and neither is a row rendered
-outside a guard root (the section specs mount rows alone).
+`useRevealGuard()`. A control is guarded for `REVEAL_GUARD_DURATION_MS`
+(400 ms) when either it mounts after the menu content first rendered, or the
+`Reveal` it sits in opens (`provideRevealScope`, a watcher on `isOpen`, so it
+keys off the reveal moment rather than the mount). Controls present and open
+in the first render, which is what opening the menu renders, are never
+guarded, and neither is anything rendered outside a guard root (the section
+specs mount rows alone). Closing a `Reveal` drops its guard at once.
 
 A guarded click is cancelled with `preventDefault()` on the input, so a
 checkbox or radio does not flip and no `change` follows, which also covers

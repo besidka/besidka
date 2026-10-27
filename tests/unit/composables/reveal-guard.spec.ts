@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import {
   provideRevealGuardRoot,
+  provideRevealScope,
   REVEAL_GUARD_DURATION_MS,
   useRevealGuard,
 } from '../../../app/composables/reveal-guard'
@@ -28,6 +29,24 @@ const GuardRoot = defineComponent({
       h(Probe, { testId: 'early' }),
       props.isLateProbeVisible ? h(Probe, { testId: 'late' }) : null,
     ])
+  },
+})
+
+const ScopeProbe = defineComponent({
+  props: { isOpen: Boolean },
+  setup(props) {
+    provideRevealScope(() => props.isOpen)
+
+    return () => h(Probe, { testId: 'scoped' })
+  },
+})
+
+const ScopedRoot = defineComponent({
+  props: { isOpen: Boolean },
+  setup(props) {
+    provideRevealGuardRoot()
+
+    return () => h(ScopeProbe, { isOpen: props.isOpen })
   },
 })
 
@@ -100,4 +119,45 @@ describe('useRevealGuard', () => {
 
       expect(vi.getTimerCount()).toBe(0)
     })
+
+  describe('reveal scope', () => {
+    it('does not guard controls in a scope that is open on the first '
+      + 'render', async () => {
+      const wrapper = await mountSuspended(ScopedRoot, {
+        props: { isOpen: true },
+      })
+
+      expect(guardedState(wrapper, 'scoped')).toBe('false')
+    })
+
+    it('guards controls already mounted in a scope for the window after it '
+      + 'opens', async () => {
+      const wrapper = await mountSuspended(ScopedRoot, {
+        props: { isOpen: false },
+      })
+
+      expect(guardedState(wrapper, 'scoped')).toBe('false')
+
+      await wrapper.setProps({ isOpen: true })
+
+      expect(guardedState(wrapper, 'scoped')).toBe('true')
+
+      vi.advanceTimersByTime(REVEAL_GUARD_DURATION_MS)
+      await wrapper.vm.$nextTick()
+
+      expect(guardedState(wrapper, 'scoped')).toBe('false')
+    })
+
+    it('drops the guard as soon as the scope closes again', async () => {
+      const wrapper = await mountSuspended(ScopedRoot, {
+        props: { isOpen: false },
+      })
+
+      await wrapper.setProps({ isOpen: true })
+      await wrapper.setProps({ isOpen: false })
+
+      expect(guardedState(wrapper, 'scoped')).toBe('false')
+      expect(vi.getTimerCount()).toBe(0)
+    })
+  })
 })
