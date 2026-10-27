@@ -174,9 +174,10 @@ export default defineI18nLocale(() => ({
       },
       'reasoning-level': {
         description:
-          'Saves your selected reasoning effort level '
-          + '(e.g. low, medium, high) for supported models.',
-        duration: 'Until deleted',
+          'Legacy: older versions saved your last reasoning effort level '
+          + 'here. After you sign in it is read once, saved to your account '
+          + 'as your default and then deleted.',
+        duration: 'Until moved to your account or sign-out',
       },
       'exa-search-level': {
         description:

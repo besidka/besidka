@@ -78,7 +78,7 @@ These only remember how you like the app set up. They are kept **only if you agr
 | `file-manager-view-mode` | localStorage | Besidka | Whether the file manager shows a grid or a list | Until removed |
 | `settings_reasoning_expanded` | localStorage | Besidka | Whether a model's reasoning block starts expanded | Until removed |
 | `settings_reasoning_auto_hide` | localStorage | Besidka | Whether reasoning collapses by itself once an answer is done | Until removed |
-| `settings_reasoning_level` | localStorage | Besidka | The reasoning effort level you last picked in the chat input. Until you save a default on the Preferences page (which is stored with your account, not in your browser), it also serves as your starting level | Until removed |
+| `settings_reasoning_level` | localStorage | Besidka | A legacy value. Older versions kept the reasoning effort level you last picked in the chat input here; Besidka no longer writes it. If it is still in your browser when you sign in and your account has no saved default, it is read once, saved with your account as your default reasoning effort, and then deleted. It is also deleted when you sign out | Until it is moved to your account or you sign out |
 | `settings_sidebar_pinned` | localStorage | Besidka | Whether the sidebar stays pinned open | Until removed |
 | `settings_favorite_models` | localStorage | Besidka | Your favorited models in the model picker, mirrored from your account settings | Until removed |
 | `settings_favorite_gateway_models` | localStorage | Besidka | Your favorited models for each AI gateway in the model picker, mirrored from your account settings | Until removed |
