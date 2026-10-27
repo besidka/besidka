@@ -24,6 +24,13 @@ describe('shouldNudgeNativeWebSearch', () => {
     )).toBe(false)
   })
 
+  it('does not nudge when the provider keeps native search exclusive', () => {
+    expect(shouldNudgeNativeWebSearch(
+      ['web_search'],
+      { tools: nativeTools, exclusiveNativeWebSearch: true },
+    )).toBe(false)
+  })
+
   it('does not nudge when web search was not requested', () => {
     expect(shouldNudgeNativeWebSearch(
       [],

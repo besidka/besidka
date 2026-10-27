@@ -1326,6 +1326,7 @@ export default defineEventHandler(async (event) => {
     aiLogger,
   )
   const toolCallingAllowed = !parsedTools.toolChoice
+    && !parsedTools.exclusiveNativeWebSearch
     && !requestedTools.includes('image_generation')
     && supportsChatSearchToolCalling
   const chatSearchToolsRegistered = isChatSearchToolEnabled(memorySettings)
@@ -1781,7 +1782,10 @@ export default defineEventHandler(async (event) => {
               })
               recordSdkWarnings('aiWarnings', steps)
             },
-            ...parsedTools,
+            tools: parsedTools.tools,
+            ...(parsedTools.toolChoice
+              ? { toolChoice: parsedTools.toolChoice }
+              : {}),
             ...(toolLoopOptions ?? {}),
             providerOptions,
           })

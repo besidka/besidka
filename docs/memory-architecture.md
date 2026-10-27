@@ -213,8 +213,9 @@ project entry on first read; the column is left in place and writes stop
 - **As built (W2, 2026-10-25)** — see "Model-facing tools" in
   `docs/history/content-search.md`. Deviations from the text above: the
   fallback is AND → OR only (no "drop rarest-missing tokens" step); the tools
-  are skipped on sends with a forced `toolChoice` (image generation, Google
-  native `web_search`); the gate `isChatSearchToolEnabled()` returned `true`
+  are skipped on sends with a forced `toolChoice` (image generation) or an
+  `exclusiveNativeWebSearch` provider tool set (Google native `web_search`,
+  xAI native `web_search` with reasoning off); the gate `isChatSearchToolEnabled()` returned `true`
   until W4 wired `chatSearchEnabled` (see 3.11); the route passes
   no `projectId` until project isolation exists; and every send on a
   tool-calling model is now a tool-loop send. Giving the model the whole
