@@ -77,7 +77,7 @@
       v-if="isReasoningSectionVisible"
       id="reasoning"
       title="Reasoning"
-      icon-component="SvgoThinkHigh"
+      :icon-component="REASONING_SECTION_ICON_COMPONENT"
       :is-highlighted="highlightedSection === 'reasoning'"
     >
       <ChatInputToolsMenuReasoningSection

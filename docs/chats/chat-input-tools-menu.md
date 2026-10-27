@@ -20,6 +20,7 @@ default shows as a tile at the start of the attachments row.
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
 | Types | `app/types/chat-input-tools.d.ts` |
+| Reasoning icon names, shared with `/profile/preferences` | `app/utils/reasoning-icons.ts` (`getReasoningLevelIconComponent`, `REASONING_SECTION_ICON_COMPONENT`, `REASONING_EXPANDED_ICON`, `REASONING_AUTO_HIDE_ICON`) |
 
 `ChatInput.client.vue` builds one `ChatInputToolsState` object. The menu and
 the tile builder only read it; every change goes back through ChatInput's

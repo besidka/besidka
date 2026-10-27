@@ -5,6 +5,15 @@
   </div>
   <div class="grid gap-6">
     <ProfileSecuritySectionCard heading="Notifications">
+      <template #icon>
+        <Icon
+          name="lucide:bell"
+          size="20"
+          class="shrink-0"
+          aria-hidden="true"
+          data-testid="preferences-notifications-icon"
+        />
+      </template>
       <div class="grid gap-2">
         <label
           class="flex items-start justify-between gap-4"
@@ -51,6 +60,13 @@
       </div>
     </ProfileSecuritySectionCard>
     <ProfileSecuritySectionCard heading="Reasoning">
+      <template #icon>
+        <SvgoThinkHigh
+          class="size-5 shrink-0"
+          aria-hidden="true"
+          data-testid="preferences-reasoning-icon"
+        />
+      </template>
       <div class="grid gap-5">
         <fieldset class="grid gap-2">
           <legend
@@ -79,18 +95,28 @@
             class="tabs tabs-box tabs-sm w-full"
             data-testid="default-reasoning-level"
           >
-            <input
+            <label
               v-for="level in levelOptions"
               :key="level.value"
-              type="radio"
-              name="default-reasoning-level"
-              class="tab grow basis-0"
-              :aria-label="level.label"
-              :value="level.value"
-              :checked="selectedLevel === level.value"
-              :data-testid="`default-reasoning-level-${level.value}`"
-              @click="onLevelClick(level.value)"
+              class="tab grow basis-0 flex-nowrap gap-1 px-1"
             >
+              <input
+                type="radio"
+                name="default-reasoning-level"
+                :aria-label="level.label"
+                :value="level.value"
+                :checked="selectedLevel === level.value"
+                :data-testid="`default-reasoning-level-${level.value}`"
+                @click="onLevelClick(level.value)"
+              >
+              <component
+                :is="level.iconComponent"
+                class="size-3.5 shrink-0"
+                aria-hidden="true"
+                :data-testid="`default-reasoning-level-icon-${level.value}`"
+              />
+              <span>{{ level.label }}</span>
+            </label>
           </div>
           <p
             class="min-h-4 text-xs text-base-content/60"
@@ -103,13 +129,22 @@
         </fieldset>
         <label class="flex items-start justify-between gap-4 cursor-pointer">
           <span class="grid gap-1">
-            <span
-              id="reasoning-expanded-title"
-              class="font-bold"
-            >Show reasoning steps expanded</span>
+            <span class="inline-flex items-center gap-2">
+              <Icon
+                :name="REASONING_EXPANDED_ICON"
+                size="16"
+                class="shrink-0 opacity-75"
+                aria-hidden="true"
+                data-testid="preferences-reasoning-expanded-icon"
+              />
+              <span
+                id="reasoning-expanded-title"
+                class="font-bold"
+              >Show reasoning steps expanded</span>
+            </span>
             <span
               id="reasoning-expanded-description"
-              class="text-sm text-base-content/70"
+              class="ps-6 text-sm text-base-content/70"
             >
               Opens the model's reasoning steps while it thinks.
             </span>
@@ -135,13 +170,22 @@
           :class="reasoningExpanded ? 'cursor-pointer' : 'opacity-60'"
         >
           <span class="grid gap-1">
-            <span
-              id="reasoning-auto-hide-title"
-              class="font-bold"
-            >Auto-hide when done</span>
+            <span class="inline-flex items-center gap-2">
+              <Icon
+                :name="REASONING_AUTO_HIDE_ICON"
+                size="16"
+                class="shrink-0 opacity-75"
+                aria-hidden="true"
+                data-testid="preferences-reasoning-auto-hide-icon"
+              />
+              <span
+                id="reasoning-auto-hide-title"
+                class="font-bold"
+              >Auto-hide when done</span>
+            </span>
             <span
               id="reasoning-auto-hide-description"
-              class="text-sm text-base-content/70"
+              class="ps-6 text-sm text-base-content/70"
             >
               Collapses the reasoning steps once the answer is ready.
             </span>
@@ -174,6 +218,7 @@ import type { ReasoningLevel } from '#shared/types/reasoning.d'
 interface LevelOption {
   value: ReasoningLevel
   label: string
+  iconComponent: string
 }
 
 definePageMeta({
@@ -188,12 +233,15 @@ useSeoMeta({
   robots: 'noindex, nofollow',
 })
 
-const levelOptions: LevelOption[] = [
-  { value: 'off', label: 'Off' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-]
+const levelOptions: LevelOption[] = (
+  ['off', 'low', 'medium', 'high'] as ReasoningLevel[]
+).map((level) => {
+  return {
+    value: level,
+    label: getReasoningLevelLabel(level, false),
+    iconComponent: getReasoningLevelIconComponent(level),
+  }
+})
 
 const {
   isSettingsLoaded,

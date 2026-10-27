@@ -46,7 +46,7 @@
     <ChatInputToolsMenuReveal :is-open="reasoning !== 'off'">
       <ChatInputToolsMenuToggleRow
         label="Show steps expanded"
-        icon="lucide:list-tree"
+        :icon="REASONING_EXPANDED_ICON"
         test-id="reasoning-expanded-toggle"
         :model-value="reasoningExpanded"
         @update:model-value="setReasoningExpanded"
@@ -55,7 +55,7 @@
     <ChatInputToolsMenuReveal :is-open="isAutoHideAvailable">
       <ChatInputToolsMenuToggleRow
         label="Auto-hide when done"
-        icon="lucide:timer-reset"
+        :icon="REASONING_AUTO_HIDE_ICON"
         test-id="reasoning-auto-hide-toggle"
         :model-value="reasoningAutoHide"
         @update:model-value="setReasoningAutoHide"
@@ -113,15 +113,11 @@ const levelSegments = computed<SegmentedOption<ReasoningLevel>[]>(() => {
     return {
       value: level,
       label: getReasoningLevelLabel(level, isToggleMode.value),
-      iconComponent: getThinkIconComponent(level),
+      iconComponent: getReasoningLevelIconComponent(level),
       testId: `reasoning-level-${level}`,
     }
   })
 })
-
-function getThinkIconComponent(level: ReasoningLevel): string {
-  return `SvgoThink${level.charAt(0).toUpperCase()}${level.slice(1)}`
-}
 
 const isSavedAsDefault = computed<boolean>(() => {
   return props.reasoning === props.defaultLevel

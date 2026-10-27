@@ -141,6 +141,78 @@ describe('profile preferences page', () => {
       .toBe('default-reasoning-title')
   })
 
+  describe('icons', () => {
+    it('puts a decorative icon before the Notifications and Reasoning '
+      + 'titles', async () => {
+      await loadSettings()
+
+      const wrapper = await mountPage()
+      const headings = wrapper.findAll('h2').filter((heading) => {
+        return ['Notifications', 'Reasoning'].includes(heading.text())
+      })
+
+      expect(headings.map(heading => heading.text()))
+        .toEqual(['Notifications', 'Reasoning'])
+
+      const bell = wrapper.get('[data-testid="preferences-notifications-icon"]')
+      const think = wrapper.get('[data-testid="preferences-reasoning-icon"]')
+
+      expect(headings[0]?.element.contains(bell.element)).toBe(true)
+      expect(headings[1]?.element.contains(think.element)).toBe(true)
+      expect(bell.attributes('aria-hidden')).toBe('true')
+      expect(think.attributes('aria-hidden')).toBe('true')
+      expect(think.element.tagName.toLowerCase()).toBe('svg')
+    })
+
+    it('shows the tools menu icon on every default level tab', async () => {
+      await loadSettings()
+
+      const wrapper = await mountPage()
+
+      for (const level of ['off', 'low', 'medium', 'high']) {
+        const input = wrapper.get(
+          `[data-testid="default-reasoning-level-${level}"]`,
+        )
+        const icon = wrapper.get(
+          `[data-testid="default-reasoning-level-icon-${level}"]`,
+        )
+
+        expect(input.element.closest('label')?.contains(icon.element))
+          .toBe(true)
+        expect(icon.attributes('aria-hidden')).toBe('true')
+        expect(icon.element.tagName.toLowerCase()).toBe('svg')
+      }
+    })
+
+    it('keeps a tab selectable by clicking its icon label', async () => {
+      await loadSettings()
+      mocks.fetch.mockResolvedValueOnce({})
+
+      const wrapper = await mountPage()
+
+      await wrapper.get('[data-testid="default-reasoning-level-icon-low"]')
+        .element.closest('label')?.click()
+      await flushPromises()
+
+      expect(patchBodies()).toEqual([{ defaultReasoningLevel: 'low' }])
+    })
+
+    it('uses the tools menu icons on the two toggle rows', async () => {
+      await loadSettings()
+
+      const wrapper = await mountPage()
+
+      for (const testId of [
+        'preferences-reasoning-expanded-icon',
+        'preferences-reasoning-auto-hide-icon',
+      ]) {
+        expect(wrapper.get(`[data-testid="${testId}"]`).attributes(
+          'aria-hidden',
+        )).toBe('true')
+      }
+    })
+  })
+
   it('shows skeletons instead of controls until settings load', async () => {
     const wrapper = await mountPage()
 

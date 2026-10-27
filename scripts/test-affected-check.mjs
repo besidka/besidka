@@ -114,6 +114,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/SettingTile.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/reasoning-icons.spec.ts',
     'tests/unit/utils/web-search-price.spec.ts',
     'tests/unit/composables/scroll-edge-fade.spec.ts',
   ]
@@ -2049,6 +2050,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/pages\/profile\/(preferences|settings)\.vue$/,
       tests: preferencesPageTests,
+    },
+    {
+      pattern: /^app\/(utils\/reasoning-icons\.ts|components\/Profile\/Security\/SectionCard\.vue)$/,
+      tests: [...preferencesPageTests, ...chatInputToolsTests],
     },
     {
       pattern: /^app\/components\/Sidebar\/AuthCta\.vue$/,
