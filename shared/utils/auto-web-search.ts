@@ -25,9 +25,6 @@ export const AUTO_WEB_SEARCH_EXPLANATION = 'TypeSafe AI decides per message '
   + 'whether a web search is needed. Searches with the provider you picked. '
   + 'If TypeSafe AI doesn\'t answer, Besidka searches.'
 
-export const AUTO_WEB_SEARCH_PICK_PROVIDER_HINT = 'Pick a provider above to '
-  + 'use Auto.'
-
 const SEARCHED_LABEL = 'Auto: searched the web'
 const SKIPPED_LABEL = 'Auto: no web search needed'
 

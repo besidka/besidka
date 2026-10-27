@@ -5,7 +5,6 @@ import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import {
   AUTO_WEB_SEARCH_EXPLANATION,
   AUTO_WEB_SEARCH_HINT,
-  AUTO_WEB_SEARCH_PICK_PROVIDER_HINT,
 } from '#shared/utils/auto-web-search'
 import type {
   WebSearchOption,
@@ -502,14 +501,27 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
   })
 
   describe('Exa depth', () => {
-    it('stays rendered but disabled while Exa is not selected', async () => {
+    it('is not rendered while another provider is selected or search is '
+      + 'off', async () => {
       const { wrapper } = await mountSection({ selected: 'web_search_brave' })
 
+      expect(wrapper.text()).not.toContain('Exa depth')
+      expect(wrapper.text()).not.toContain('Only for Exa')
+      expect(wrapper.find('[data-testid^="exa-search-level-"]').exists())
+        .toBe(false)
+
+      const searchOff = await mountSection({ selected: 'off' })
+
+      expect(searchOff.wrapper.find('[data-testid^="exa-search-level-"]')
+        .exists()).toBe(false)
+    })
+
+    it('appears once Exa is selected', async () => {
+      const { wrapper } = await mountSection({ selected: 'web_search_exa' })
+
       expect(wrapper.text()).toContain('Exa depth')
-      expect(wrapper.text()).toContain('Only for Exa')
-      expect(input(wrapper, 'exa-search-level-lite').disabled).toBe(true)
-      expect(input(wrapper, 'exa-search-level-auto').disabled).toBe(true)
-      expect(input(wrapper, 'exa-search-level-deep').disabled).toBe(true)
+      expect(wrapper.findAll('[data-testid^="exa-search-level-"]'))
+        .toHaveLength(3)
     })
 
     it('is enabled with Exa selected and defaults to Auto', async () => {
@@ -589,7 +601,7 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
       expect(autoToggles).toEqual([true])
     })
 
-    it('is disabled with a hint to pick a provider while search is off',
+    it('is hidden while search is off even when Auto is available',
       async () => {
         const { wrapper } = await mountSection({
           selected: 'off',
@@ -597,10 +609,23 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
           isAutoPreferred: true,
         })
 
-        expect(input(wrapper, 'web-search-auto-toggle').disabled).toBe(true)
-        expect(input(wrapper, 'web-search-auto-toggle').checked).toBe(false)
-        expect(wrapper.get('[data-testid="web-search-auto-hint"]').text())
-          .toBe(AUTO_WEB_SEARCH_PICK_PROVIDER_HINT)
+        expect(
+          wrapper.find('[data-testid="web-search-auto-section"]').exists(),
+        ).toBe(false)
+        expect(wrapper.find('[data-testid="web-search-auto-toggle"]').exists())
+          .toBe(false)
+      })
+
+    it('is shown for every selected provider when Auto is available',
+      async () => {
+        const { wrapper } = await mountSection({
+          selected: 'web_search_exa',
+          isAutoAvailable: true,
+          isAutoPreferred: true,
+        })
+
+        expect(input(wrapper, 'web-search-auto-toggle').disabled).toBe(false)
+        expect(input(wrapper, 'web-search-auto-toggle').checked).toBe(true)
       })
 
     it('reveals the explanation through a disclosure button', async () => {

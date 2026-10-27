@@ -101,6 +101,53 @@ resolves to the product default, Off.
 - "Show steps expanded" and "Auto-hide when done" show off and disabled
   while reasoning is Off, and Auto-hide also while steps are collapsed.
 
+## Variant: rows that cannot act are hidden
+
+This branch (`feat/chat-input-tools-collapse-variant`) is a comparison variant.
+Its rule: a control renders only when it can act. Nothing in the menu is shown
+disabled to explain itself.
+
+| Row | Renders when |
+|---|---|
+| Exa depth | Exa is the selected provider |
+| Web search Auto | Auto is available and a provider is selected (search is not Off) |
+| Save as default | the level differs from the saved default |
+| Show steps expanded | reasoning is not Off |
+| Auto-hide when done | reasoning is not Off and steps are expanded |
+
+The Exa depth caption is always "Price per 1,000 searches", the Save as default
+hint is always "Your default is X", and `AUTO_WEB_SEARCH_PICK_PROVIDER_HINT` is
+gone because nothing can reach it. The always-on reasoning row is unchanged.
+While a save is in flight the Save as default row stays on and checked; it
+unmounts when `defaultLevel` catches up.
+
+Consequences handled in code:
+
+- **Focus.** A row that unmounts while it holds focus (Save as default after the
+  PATCH lands, or any row hidden while it is focused) would drop focus to
+  `body`. `ToggleRow.vue` checks in `onBeforeUnmount` whether it contains
+  `document.activeElement`; if so, after `nextTick` it focuses the checked radio
+  of `.js-reasoning-level-group` (falling back to any checked radio) inside the
+  closest `.js-tools-content`, only when focus is still lost. Both the popover
+  and the sheet render `Content.vue`, so the same path covers the `<dialog>`.
+  The popover's `focusout` handler ignores a null `relatedTarget`, so it stays
+  open.
+- **Scroll fades.** `useScrollEdgeFade` observes the scroll element and its
+  direct children with `ResizeObserver` (re-collected whenever descendants are
+  added or removed) besides the `scroll` and `MutationObserver` hooks, so a row
+  that appears or disappears, or a section that grows, updates the fades
+  without a scroll event.
+- **Popover height.** The cap is still the space above "+" measured on open;
+  revealed rows scroll inside the scroll area instead of growing the panel.
+- **No height animation.** Rows jump.
+
+Known trade-off to weigh when picking this variant: the popover grows upward
+from "+". Picking a level that differs from the default mounts Save as default
+(and Show steps expanded when leaving Off) under the segmented control, which
+moves the control up and leaves the pointer over the new row. This is the
+double-click accident the always-rendered rows avoided, see "Default reasoning
+level".
+
 ## Icons
 
 - Memory uses `lucide:book-user` everywhere (`CHAT_MEMORY_ICON`) and

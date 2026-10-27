@@ -15,6 +15,7 @@
   <template v-else>
     <div class="px-2 pt-1 pb-1.5">
       <ChatInputToolsMenuSegmented
+        class="js-reasoning-level-group"
         :name="`${groupId}-level`"
         :legend="isToggleMode ? 'Reasoning' : 'Reasoning effort'"
         :options="levelSegments"
@@ -23,28 +24,28 @@
       />
     </div>
     <ChatInputToolsMenuToggleRow
+      v-if="!isSavedAsDefault"
       label="Save as default"
       icon="lucide:bookmark"
       :hint="saveDefaultHint"
       test-id="reasoning-save-default-toggle"
       :model-value="isSavePending"
-      :disabled="isSavedAsDefault"
       @update:model-value="onSaveDefault"
     />
     <ChatInputToolsMenuToggleRow
+      v-if="reasoning !== 'off'"
       label="Show steps expanded"
       icon="lucide:list-tree"
       test-id="reasoning-expanded-toggle"
-      :model-value="reasoningExpanded && reasoning !== 'off'"
-      :disabled="reasoning === 'off'"
+      :model-value="reasoningExpanded"
       @update:model-value="setReasoningExpanded"
     />
     <ChatInputToolsMenuToggleRow
+      v-if="isAutoHideAvailable"
       label="Auto-hide when done"
       icon="lucide:timer-reset"
       test-id="reasoning-auto-hide-toggle"
-      :model-value="reasoningAutoHide && isAutoHideAvailable"
-      :disabled="!isAutoHideAvailable"
+      :model-value="reasoningAutoHide"
       @update:model-value="setReasoningAutoHide"
     />
   </template>
@@ -124,10 +125,6 @@ const saveDefaultHint = computed<string>(() => {
     props.defaultLevel,
     isToggleMode.value,
   )
-
-  if (isSavedAsDefault.value) {
-    return `${defaultLabel} is your default`
-  }
 
   return `Your default is ${defaultLabel}`
 })

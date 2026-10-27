@@ -1,5 +1,6 @@
 <template>
   <label
+    ref="row"
     class="flex items-center gap-2.5 w-full min-h-9 max-md:min-h-11 px-2 py-1 rounded-box text-sm"
     :class="disabled
       ? 'cursor-not-allowed'
@@ -63,6 +64,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
 }>()
 
+const row = useTemplateRef<HTMLLabelElement>('row')
 const hintId = useId()
 
 const describedBy = computed<string | undefined>(() => {
@@ -72,6 +74,47 @@ const describedBy = computed<string | undefined>(() => {
   ].filter(Boolean)
 
   return ids.length ? ids.join(' ') : undefined
+})
+
+function isFocusLost(): boolean {
+  const activeElement = document.activeElement
+
+  return !activeElement
+    || !activeElement.isConnected
+    || activeElement === document.body
+    || activeElement instanceof HTMLDialogElement
+}
+
+/**
+ * A row that unmounts while it holds focus drops focus to the document body.
+ * The checked radio of the level group is the nearest stable control, so
+ * keyboard users keep their place in the menu.
+ */
+async function restoreFocus(content: Element) {
+  await nextTick()
+
+  if (!content.isConnected || !isFocusLost()) {
+    return
+  }
+
+  const target = content.querySelector<HTMLInputElement>(
+    '.js-reasoning-level-group input:checked:not(:disabled)',
+  ) ?? content.querySelector<HTMLInputElement>(
+    'input[type="radio"]:checked:not(:disabled)',
+  )
+
+  target?.focus({ preventScroll: true })
+}
+
+onBeforeUnmount(() => {
+  const element = row.value
+  const content = element?.closest('.js-tools-content')
+
+  if (!element || !content || !element.contains(document.activeElement)) {
+    return
+  }
+
+  restoreFocus(content)
 })
 
 function onChange(event: Event) {

@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col gap-0.5">
+  <div class="js-tools-content flex flex-col gap-0.5">
     <div
       v-if="state.isDeepResearchModel && state.research"
       class="flex items-center gap-2.5 px-2 py-1.5"

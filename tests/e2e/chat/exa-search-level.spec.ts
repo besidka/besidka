@@ -105,8 +105,8 @@ test('shows the Exa search level picker, keeps the panel '
   expect(storedLevel).toBe('deep')
 })
 
-test('keeps the Exa search level picker rendered but disabled when '
-  + 'another search provider is selected or search is off',
+test('hides the Exa search level picker when another search provider is '
+  + 'selected or search is off',
 async ({ page }) => {
   await seedWebSearchTool(page, 'web_search_brave')
 
@@ -119,16 +119,16 @@ async ({ page }) => {
 
   await expect(
     panel.locator('[data-testid="exa-search-level-auto"]'),
-  ).toBeDisabled()
+  ).toHaveCount(0)
 
   await panel.locator('[data-testid="web-search-option-off"]').click()
 
   await expect(
     panel.locator('[data-testid="exa-search-level-auto"]'),
-  ).toBeDisabled()
+  ).toHaveCount(0)
   await expect(
     panel.locator('[data-testid="exa-search-level-deep"]'),
-  ).toBeDisabled()
+  ).toHaveCount(0)
   await expect(
     page.locator('[data-testid="chat-input-tile-search"]'),
   ).toHaveCount(0)

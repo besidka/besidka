@@ -62,16 +62,14 @@
     />
   </NuxtLink>
   <div
-    v-if="hasExaOption"
+    v-if="isExaSelected"
     class="px-2 pb-1.5"
   >
     <div
       class="flex items-baseline justify-between gap-2 mb-1 text-xs font-semibold text-base-content/60"
     >
       <span :id="`${groupId}-depth-label`">Exa depth</span>
-      <span class="font-normal">
-        {{ isExaSelected ? 'Price per 1,000 searches' : 'Only for Exa' }}
-      </span>
+      <span class="font-normal">Price per 1,000 searches</span>
     </div>
     <ChatInputToolsMenuSegmented
       :name="`${groupId}-exa-depth`"
@@ -79,12 +77,11 @@
       :labelledby="`${groupId}-depth-label`"
       :options="exaDepthSegments"
       :model-value="exaSearchLevel"
-      :disabled="!isExaSelected"
       @update:model-value="emit('select-exa-search-level', $event)"
     />
   </div>
   <div
-    v-if="isAutoAvailable"
+    v-if="isAutoAvailable && isProviderSelected"
     data-testid="web-search-auto-section"
   >
     <ChatInputToolsMenuToggleRow
@@ -93,11 +90,8 @@
       aria-label="Auto web search"
       test-id="web-search-auto-toggle"
       hint-test-id="web-search-auto-hint"
-      :hint="canUseAuto
-        ? AUTO_WEB_SEARCH_HINT
-        : AUTO_WEB_SEARCH_PICK_PROVIDER_HINT"
-      :model-value="canUseAuto && isAutoPreferred"
-      :disabled="!canUseAuto"
+      :hint="AUTO_WEB_SEARCH_HINT"
+      :model-value="isAutoPreferred"
       :extra-described-by="isExplanationOpen ? explanationId : undefined"
       @update:model-value="onToggleAuto"
     >
@@ -136,7 +130,6 @@ import {
 import {
   AUTO_WEB_SEARCH_EXPLANATION,
   AUTO_WEB_SEARCH_HINT,
-  AUTO_WEB_SEARCH_PICK_PROVIDER_HINT,
 } from '#shared/utils/auto-web-search'
 import { providerMeta } from '#shared/utils/provider-meta'
 import type { SegmentedOption } from '~/types/chat-input-tools'
@@ -370,7 +363,7 @@ const exaDepthSegments = computed<SegmentedOption<ExaSearchLevel>[]>(() => {
   })
 })
 
-const canUseAuto = computed<boolean>(() => {
+const isProviderSelected = computed<boolean>(() => {
   return props.selected !== 'off'
 })
 
@@ -383,10 +376,6 @@ function onSelectProvider(value: WebSearchSelection) {
 }
 
 function onToggleAuto(isOn: boolean) {
-  if (!canUseAuto.value) {
-    return
-  }
-
   emit('toggle-auto', isOn)
 }
 </script>

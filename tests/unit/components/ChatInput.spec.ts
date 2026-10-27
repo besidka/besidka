@@ -848,8 +848,8 @@ describe('ChatInput.client', () => {
       await openToolsPanel(wrapper)
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
-      expect(isTestIdDisabled(wrapper, 'reasoning-save-default-toggle'))
-        .toBe(true)
+      expect(hasTestId(wrapper, 'reasoning-save-default-toggle'))
+        .toBe(false)
 
       await pickTestId(wrapper, 'reasoning-level-high')
       await flushPromises()
@@ -867,10 +867,8 @@ describe('ChatInput.client', () => {
       await flushPromises()
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
-      expect(isTestIdChecked(wrapper, 'reasoning-save-default-toggle'))
+      expect(hasTestId(wrapper, 'reasoning-save-default-toggle'))
         .toBe(false)
-      expect(isTestIdDisabled(wrapper, 'reasoning-save-default-toggle'))
-        .toBe(true)
     })
 
     it('compares against the saved server default', async () => {
@@ -1181,25 +1179,24 @@ describe('ChatInput.client', () => {
         .toBe('web_search_brave')
     })
 
-    it('keeps the Exa depth rendered but disabled unless Exa is selected',
-      async () => {
-        useWebSearchSelection()
+    it('renders the Exa depth only while Exa is selected', async () => {
+      useWebSearchSelection()
 
-        const wrapper = await mountChatInput()
+      const wrapper = await mountChatInput()
 
-        await openToolsPanel(wrapper)
+      await openToolsPanel(wrapper)
 
-        expect(isTestIdDisabled(wrapper, 'exa-search-level-auto')).toBe(true)
+      expect(hasTestId(wrapper, 'exa-search-level-auto')).toBe(false)
 
-        await pickTestId(wrapper, 'web-search-option-web_search_exa')
+      await pickTestId(wrapper, 'web-search-option-web_search_exa')
 
-        expect(isTestIdDisabled(wrapper, 'exa-search-level-lite')).toBe(false)
-        expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(true)
+      expect(isTestIdDisabled(wrapper, 'exa-search-level-lite')).toBe(false)
+      expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(true)
 
-        await pickTestId(wrapper, 'web-search-option-web_search_brave')
+      await pickTestId(wrapper, 'web-search-option-web_search_brave')
 
-        expect(isTestIdDisabled(wrapper, 'exa-search-level-auto')).toBe(true)
-      })
+      expect(hasTestId(wrapper, 'exa-search-level-auto')).toBe(false)
+    })
 
     it('persists a chosen Exa search level, updates the depth and the '
       + 'tile, and asks to remember preferences', async () => {
@@ -2001,11 +1998,13 @@ describe('ChatInput.client', () => {
 
       expect(hasTestId(wrapper, 'reasoning-level-low')).toBe(true)
       expect(hasTestId(wrapper, 'reasoning-always-on-menu-item')).toBe(false)
+      expect(hasTestId(wrapper, 'reasoning-expanded-toggle')).toBe(false)
+      expect(hasTestId(wrapper, 'reasoning-auto-hide-toggle')).toBe(false)
+
+      await pickTestId(wrapper, 'reasoning-level-low')
+      await flushPromises()
+
       expect(hasTestId(wrapper, 'reasoning-expanded-toggle')).toBe(true)
-      expect(isTestIdDisabled(wrapper, 'reasoning-expanded-toggle'))
-        .toBe(true)
-      expect(isTestIdDisabled(wrapper, 'reasoning-auto-hide-toggle'))
-        .toBe(true)
     })
 
     it('renders a checked and disabled reasoning row for an always-on '
