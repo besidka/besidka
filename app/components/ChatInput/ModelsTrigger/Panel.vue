@@ -1,10 +1,12 @@
 <template>
   <div
-    class="bubble-without-background flex flex-col max-h-[60dvh] bg-base-100 border border-base-content/10 shadow-xl"
+    class="flex flex-col"
+    :class="isSheet ? 'flex-1 min-h-0' : POPOVER_ROOT_CLASS"
   >
     <ChatInputModelsTriggerKeyPrompt
       v-if="keyBanner"
       compact
+      :layout="layout"
       :test-id="keyBanner.testId"
       :title="keyBanner.title"
       :description="keyBanner.description"
@@ -16,7 +18,7 @@
       v-if="activeGateway"
       data-testid="models-picker-gateway-banner"
       class="shrink-0 flex items-center gap-2 px-2.5 py-2 border-b border-accent/30 bg-accent/10"
-      :class="{ 'rounded-t-2xl': !keyBanner }"
+      :class="{ 'rounded-t-2xl': !keyBanner && !isSheet }"
     >
       <ProviderIcon
         :provider-id="activeGateway.id"
@@ -49,14 +51,40 @@
       <ChatInputModelsTriggerSearch
         ref="search"
         v-model="searchQuery"
-        :autofocus="isDesktop"
+        :autofocus="isDesktop && !isSheet"
         :controls="listboxId"
         :active-descendant="highlightedOptionId"
         class="grow min-w-0"
         @keydown="onSearchKeydown"
+        @focusin="isSearchFocused = true"
+        @focusout="isSearchFocused = false"
       />
+      <button
+        v-if="!recommendedFilter && isSheet"
+        type="button"
+        data-testid="models-picker-filter-trigger"
+        class="btn btn-ghost btn-sm btn-circle relative shrink-0"
+        :class="{
+          'text-accent': hasActiveMenuFilter,
+          'btn-active': isFilterSectionOpen
+        }"
+        aria-label="Filter models by category"
+        :aria-expanded="isFilterSectionOpen"
+        :aria-controls="isFilterSectionOpen ? filterSectionId : undefined"
+        @click="toggleFilterSection"
+      >
+        <Icon
+          name="lucide:list-filter"
+          size="16"
+        />
+        <span
+          v-if="hasActiveMenuFilter"
+          aria-hidden="true"
+          class="badge badge-xs badge-accent absolute -top-0.5 -right-0.5"
+        />
+      </button>
       <ChatInputModelsTriggerFilterDropdown
-        v-if="!recommendedFilter"
+        v-else-if="!recommendedFilter"
         v-model="activeCategory"
         v-model:vision-only="isVisionOnly"
         v-model:capabilities="activeCapabilityFilters"
@@ -92,9 +120,22 @@
         </button>
       </div>
     </div>
-    <div class="flex flex-1 min-h-0">
+    <ChatInputModelsTriggerFilterSection
+      v-if="isSheet && isFilterSectionOpen && !recommendedFilter"
+      :id="filterSectionId"
+      v-model="activeCategory"
+      v-model:vision-only="isVisionOnly"
+      v-model:capabilities="activeCapabilityFilters"
+      :options="filterCategoryOptions"
+      :capability-options="filterCapabilityOptions"
+    />
+    <div
+      class="flex flex-1 min-h-0"
+      :class="{ 'flex-col': isSheet }"
+    >
       <ChatInputModelsTriggerProviderRail
         v-if="isRailVisible"
+        :layout="layout"
         :providers="providers"
         :active-provider-id="activeProviderId"
         :is-favorites-only="isFavoritesOnly"
@@ -105,6 +146,7 @@
       />
       <ChatInputModelsTriggerGatewayProviderRail
         v-if="isGatewayProviderRailVisible"
+        :layout="layout"
         :providers="gatewayProviderGroups"
         :active-provider-prefix="activeGatewayProviderPrefix"
         :is-favorites-only="isFavoritesOnly"
@@ -114,8 +156,14 @@
       />
       <div
         ref="resultsContainer"
-        class="flex-1 min-h-[14rem] overflow-y-auto p-1.5"
-        :class="{ 'pb-9': !activeGateway && filteredModels.length }"
+        data-testid="models-picker-results"
+        class="flex-1 overflow-y-auto p-1.5"
+        :class="{
+          'pb-9': !activeGateway && filteredModels.length,
+          'min-h-[14rem]': !isSheet,
+          'min-h-0 overscroll-contain': isSheet
+        }"
+        :style="isSheet ? resultsFadeStyle : undefined"
       >
         <ChatInputModelsTriggerKeyPrompt
           v-if="isActiveGatewayKeyless"
@@ -139,6 +187,7 @@
           :selected-model-id="selectedGatewayModelId"
           :detail-model-id="detailModelId"
           :listbox-id="listboxId"
+          :is-highlight-visible="isHighlightVisible"
           :filter-model="filterGatewayModel"
           :recommended-direct-models="recommendedDirectModels"
           :recommended-only="isRecommendedOnly"
@@ -191,7 +240,8 @@
                       selectedProviderModelId === entry.model.id
                     "
                     :is-highlighted="
-                      highlightedModelId === entry.model.id
+                      isHighlightVisible
+                        && highlightedModelId === entry.model.id
                     "
                     :is-favorite="
                       favoriteModels.includes(entry.model.id)
@@ -311,6 +361,7 @@
       </div>
     </div>
     <ChatInputModelsTriggerGatewayRail
+      :layout="layout"
       :gateways="gatewayRailItems"
       :active-gateway-id="activeGateway?.id ?? null"
       :is-pending="isGatewayCatalogPending"
@@ -328,6 +379,7 @@ import type {
   GatewayProviderGroup,
   ModelCategory,
   ModelCategoryOption,
+  PickerLayout,
   PickerMode,
   PickerModel,
   PickerSection,
@@ -335,6 +387,8 @@ import type {
 import { isGatewayToolAllowed } from '#shared/utils/gateway-capabilities'
 import type { RecommendedDirectModel } from '#shared/utils/memory-recommended-models'
 import { enabledGateways, providerMeta } from '#shared/utils/provider-meta'
+
+const POPOVER_ROOT_CLASS = 'bubble-without-background max-h-[60dvh] bg-base-100 border border-base-content/10 shadow-xl'
 
 const GATEWAY_CAPABILITY_FILTER_TOOLS: Partial<
   Record<GatewayCapabilityFilter, ModelTool>
@@ -367,11 +421,13 @@ const props = withDefaults(defineProps<{
   filterGatewayModel?: (model: GatewayModel) => boolean
   recommendedModelIds?: string[]
   recommendedFilter?: boolean
+  layout?: PickerLayout
 }>(), {
   filterModel: undefined,
   filterGatewayModel: undefined,
   recommendedModelIds: () => [],
   recommendedFilter: false,
+  layout: 'popover',
 })
 
 const emit = defineEmits<{
@@ -405,9 +461,13 @@ const activeCapabilityFilters = shallowRef<GatewayCapabilityFilter[]>([])
 const detailModelId = shallowRef<string | null>(null)
 const highlightedModelId = shallowRef<string | null>(null)
 const isLegacyExpanded = shallowRef<boolean>(false)
+const isFilterSectionOpen = shallowRef<boolean>(false)
+const isSearchFocused = shallowRef<boolean>(false)
 const search = useTemplateRef<{ focus: () => void }>('search')
 const resultsContainer = useTemplateRef<HTMLDivElement>('resultsContainer')
+const { fadeStyle: resultsFadeStyle } = useScrollEdgeFade(resultsContainer)
 const listboxId = useId()
+const filterSectionId = useId()
 const legacyListId = useId()
 const legacyLabelId = useId()
 
@@ -632,6 +692,25 @@ const isRailFilterApplied = computed<boolean>(() => {
   return !!activeProviderId.value || isFavoritesOnly.value
 })
 
+const isSheet = computed<boolean>(() => {
+  return props.layout === 'sheet'
+})
+
+/**
+ * The keyboard highlight only means something while the search field can
+ * take arrow keys and Enter. On a touch sheet a gray row with no focus behind
+ * it reads as a second selection, so the sheet shows it only while searching.
+ */
+const isHighlightVisible = computed<boolean>(() => {
+  return !isSheet.value || isSearchFocused.value
+})
+
+const hasActiveMenuFilter = computed<boolean>(() => {
+  return activeCategory.value !== null
+    || isVisionOnly.value
+    || activeCapabilityFilters.value.length > 0
+})
+
 const hasActiveFilters = computed<boolean>(() => {
   return activeCategory.value !== null
     || isVisionOnly.value
@@ -830,8 +909,13 @@ function resetTransientState() {
   isRecommendedOnly.value = false
   activeCapabilityFilters.value = []
   isLegacyExpanded.value = false
+  isFilterSectionOpen.value = false
   highlightedModelId.value = null
   closeDetail()
+}
+
+function toggleFilterSection() {
+  isFilterSectionOpen.value = !isFilterSectionOpen.value
 }
 
 function setRecommendedOnly(value: boolean) {
@@ -881,10 +965,14 @@ async function prepareOpen() {
   focusSearch()
 }
 
+/**
+ * The sheet never takes focus into the search: the iOS keyboard would cover
+ * most of the list before the user has seen it.
+ */
 async function focusSearch() {
   await nextTick()
 
-  if (!isDesktop) {
+  if (!isDesktop || isSheet.value) {
     return
   }
 
@@ -1215,20 +1303,38 @@ watch([
   highlightedModelId.value = selectableModels.value[0]?.model.id ?? null
 })
 
-onKeyStroke('Escape', () => {
-  if (!props.isOpen) {
-    return
-  }
-
+/**
+ * Unwinds one layer of transient state, innermost first. Returns false when
+ * there is nothing left, so the caller closes the picker instead.
+ */
+function handleEscape(): boolean {
   if (detailModelId.value) {
     closeDetail()
 
-    return
+    return true
+  }
+
+  if (isFilterSectionOpen.value) {
+    isFilterSectionOpen.value = false
+
+    return true
   }
 
   if (searchQuery.value) {
     searchQuery.value = ''
 
+    return true
+  }
+
+  return false
+}
+
+onKeyStroke('Escape', () => {
+  if (!props.isOpen || isSheet.value) {
+    return
+  }
+
+  if (handleEscape()) {
     return
   }
 
@@ -1238,5 +1344,6 @@ onKeyStroke('Escape', () => {
 defineExpose({
   prepareOpen,
   resetTransientState,
+  handleEscape,
 })
 </script>

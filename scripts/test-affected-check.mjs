@@ -366,16 +366,18 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-message-id-stream.spec.ts',
   ]
   const modelsTriggerPattern
-    = /^(app\/components\/ChatInput\/ModelsTrigger(\.vue|\/.+\.vue)|app\/utils\/models-picker\.ts|app\/types\/models-picker\.d\.ts)$/
+    = /^(app\/components\/ChatInput\/ModelsTrigger(\.vue|\/.+\.vue)|app\/utils\/models-picker\.ts|app\/types\/models-picker\.d\.ts|app\/composables\/(visual-viewport-inset|scroll-edge-fade)\.ts)$/
   const modelsTriggerTests = [
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.keys.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.sheet.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/Search.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/FilterSection.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
@@ -383,6 +385,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelList.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/Panel.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
+    'tests/unit/composables/visual-viewport-inset.spec.ts',
+    'tests/e2e/chat/models-picker.spec.ts',
   ]
   const userKeysTests = [
     'tests/unit/composables/user-keys.spec.ts',

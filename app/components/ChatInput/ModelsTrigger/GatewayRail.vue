@@ -1,21 +1,32 @@
 <template>
   <div
     data-testid="models-picker-gateway-rail"
-    class="shrink-0 flex items-center gap-2 px-2 py-1.5 rounded-b-2xl border-t border-base-content/10 bg-base-200/40"
+    class="shrink-0 flex items-center gap-2 px-2 pt-1.5 border-t border-base-content/10 bg-base-200/40"
+    :class="layout === 'sheet'
+      ? 'pb-[var(--models-sheet-bottom-padding,0.375rem)]'
+      : 'pb-1.5 rounded-b-2xl'
+    "
   >
     <span
       class="shrink-0 px-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-50"
     >
       Gateways
     </span>
-    <div class="grow min-w-0 flex items-center gap-1 overflow-x-auto">
+    <div
+      ref="scroller"
+      data-testid="models-picker-gateway-rail-scroll"
+      class="grow min-w-0 flex items-center gap-1 overflow-x-auto"
+      :class="{ 'no-scrollbar': layout === 'sheet' }"
+      :style="layout === 'sheet' ? scrollerFadeStyle : undefined"
+    >
       <button
         v-for="gateway in gateways"
         :key="gateway.id"
         type="button"
         :data-testid="`models-picker-gateway-${gateway.id}`"
-        class="btn btn-xs shrink-0 gap-1.5 rounded-full"
+        class="btn shrink-0 gap-1.5 rounded-full"
         :class="[
+          layout === 'sheet' ? 'btn-sm' : 'btn-xs',
           activeGatewayId === gateway.id ? 'btn-accent' : 'btn-ghost',
           {
             'opacity-60': gateway.hasKey === false
@@ -57,6 +68,7 @@
 
 <script setup lang="ts">
 import type { GatewayId } from '#shared/types/gateways.d'
+import type { PickerLayout } from '~/types/models-picker'
 
 interface GatewayRailItem {
   id: GatewayId
@@ -64,15 +76,21 @@ interface GatewayRailItem {
   hasKey?: boolean
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   gateways: GatewayRailItem[]
   activeGatewayId: GatewayId | null
   isPending: boolean
-}>()
+  layout?: PickerLayout
+}>(), {
+  layout: 'popover',
+})
 
 const emit = defineEmits<{
   toggleGateway: [gatewayId: GatewayId]
 }>()
+
+const scroller = useTemplateRef<HTMLDivElement>('scroller')
+const { fadeStyle: scrollerFadeStyle } = useScrollEdgeFade(scroller, 'x')
 
 function getGatewayLabel(gateway: GatewayRailItem): string {
   if (gateway.hasKey === false) {
