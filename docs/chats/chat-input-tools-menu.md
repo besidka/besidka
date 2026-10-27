@@ -12,7 +12,9 @@ default shows as a tile at the start of the attachments row.
 | Shell, state and all mutation logic | `app/components/ChatInput.client.vue` |
 | "+" button, desktop popover, mobile bottom sheet | `app/components/ChatInput/ToolsMenu.client.vue` |
 | The one section list used by both shells | `app/components/ChatInput/ToolsMenu/Content.vue` |
-| Rows and controls | `ToolsMenu/Section.vue`, `ActionRow.vue`, `ToggleRow.vue`, `Segmented.vue`, `InfoNote.vue` |
+| Rows and controls | `ToolsMenu/Section.vue`, `ActionRow.vue`, `ToggleRow.vue`, `Segmented.vue`, `InfoNote.vue`, `InlineButton.vue` |
+| Animated show/hide wrapper | `ToolsMenu/Reveal.vue` |
+| Reveal guard and focus rescue | `app/composables/reveal-guard.ts`, `app/composables/tools-menu-focus-rescue.ts` |
 | Web search and reasoning sections | `ToolsMenu/WebSearchSection.vue` (renders its own `Section`, so the price badge can sit in the section header), `ToolsMenu/ReasoningSection.vue` |
 | A setting tile | `app/components/ChatInput/SettingTile.vue` |
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
@@ -75,8 +77,8 @@ guarantee in `tests/e2e/chat/gateway-image-generation.spec.ts`.
 
 ## Default reasoning level
 
-Picking a level in the menu changes only the current chat. It no longer
-writes `settings_reasoning_level`. The effective default is
+Picking a level in the menu changes only the current chat and does not
+write `settings_reasoning_level`. The effective default is
 `resolveInitialReasoningLevel(useUserSetting().defaultReasoningLevel,
 legacy localStorage value)`, the same helper `chats/new.vue`,
 `composables/chat.ts` and the Preferences page use. When nothing is saved it
@@ -90,23 +92,27 @@ resolves to the product default, Off.
 - Settings load asynchronously, so on a full page load the page seeds the
   level before the saved default is known. ChatInput follows the default
   when it arrives, until the user picks a level for this chat.
-- The Reasoning section always shows a "Save as default" row. When the
-  level differs from the default it is off and enabled ("Your default is
-  X"); turning it on calls `setDefaultReasoningLevel(level)` and the tile
-  disappears. When the level is the default it is off and disabled ("X is
-  your default"). The row is always rendered rather than revealed, because
-  the popover grows upward from "+": a row mounting under the reasoning
-  segments moved the clicked level up by one row and left the pointer on the
-  new toggle, so a second click would have saved the default by accident.
-  (The collapse variant below replaces this row with a fixed-height caption.)
-- "Show steps expanded" and "Auto-hide when done" show off and disabled
-  while reasoning is Off, and Auto-hide also while steps are collapsed.
+- The Reasoning section offers "Save X as default" as an inline link in a
+  fixed-height caption under the level segments (see "Reasoning caption").
+  Saving calls `setDefaultReasoningLevel(level)` and the tile disappears.
+- "Show steps expanded" and "Auto-hide when done" are hidden until they can
+  act (see "Hidden rows and animated reveals").
 
-## Variant: rows that cannot act are hidden
+## Design: controls appear only when they can act
 
-This branch (`feat/chat-input-tools-collapse-variant`) is a comparison variant.
-Its rule: a control is revealed only when it can act. Nothing in the menu is
-shown disabled to explain itself, and nothing is inserted or removed instantly.
+A control is revealed only when it can act. Nothing in the menu is shown
+disabled to explain itself, and nothing is inserted or removed instantly.
+
+### Decision (owner, 2026-10-27)
+
+Hiding what cannot act was chosen over showing every row at all times,
+because the always-visible design (disabled rows, an always-rendered "Save as
+default" toggle and web search caption) was oversaturated. The remaining known
+movement is the web search segments lifting when the Exa depth row or Auto
+reveals on desktop, because the popover grows upward from "+". It is
+mitigated by the 160 ms animation and the 400 ms reveal guard.
+
+### Hidden rows
 
 | Row | Revealed when |
 |---|---|
@@ -117,10 +123,10 @@ shown disabled to explain itself, and nothing is inserted or removed instantly.
 
 The popover (above "+") and the mobile sheet are bottom-anchored, so any row
 that is inserted pushes everything above it, including the control just
-clicked, upward. The variant therefore keeps the layout still where it can and
+clicked, upward. The design therefore keeps the layout still where it can and
 animates where it cannot.
 
-### Stable reasoning caption (replaces the Save as default row)
+### Reasoning caption
 
 Under the reasoning segments one muted line is always rendered
 (`reasoning-default-caption`, `text-xs leading-4`, `min-h-4`):
@@ -136,12 +142,11 @@ Labels come from `getReasoningLevelLabel(level, isToggleMode)`, so a
 toggle-mode model reads "Save On as default". The button is a real `<button>`
 (`ToolsMenu/InlineButton.vue`). `setDefaultReasoningLevel` updates the server
 default optimistically, so "Saving…" normally lasts a tick; a failed save
-reverts the default and the offer comes back. The old always-on-height
-"Save as default" toggle row is gone, so picking a level never inserts a row
-under the pointer. The line is one line at `w-80`; a very long label in a
+reverts the default and the offer comes back. Because the caption has a fixed height, picking
+a level never inserts a row under the pointer. The line is one line at `w-80`; a very long label in a
 narrow font could wrap, which would grow the caption by one line.
 
-### Animated reveals
+### Animated reveals (`Reveal`)
 
 `ToolsMenu/Reveal.vue` wraps the rows that still come and go. It is a CSS grid
 whose single row animates `0fr` to `1fr` in 160 ms (`ease-out`, off under
@@ -216,8 +221,7 @@ later open are not guarded either.
   `badge-sm` appearing in the slot never changes the row height or the menu
   height.
 - The provider segments show no price and carry only a plain `title` (the
-  full provider name, plus the reason when disabled); the custom per-segment
-  tooltip that held the description is gone. The price lives in a small
+  full provider name, plus the reason when disabled). The price lives in a small
   badge in the "Web search" header (`web-search-price-badge`, a
   `badge badge-sm badge-soft badge-info` `<button>` with a `lucide:info`
   icon at size 12), shown only while a provider is selected:
@@ -233,13 +237,11 @@ later open are not guarded either.
   A missing Brave or Exa rate shows "Price info". The badge toggles
   (`aria-expanded`, `aria-controls`) an explanation note
   (`web-search-price-note`) directly under the provider segments. The note
-  holds the long description that used to be the always-rendered caption
-  ("The model's own search from Google. Your Google key pays $14 per 1,000
+  holds the long description ("The model's own search from Google. Your Google key pays $14 per 1,000
   searches.", "Brave Search on your Brave key. $5 per 1,000 searches.", "Exa
   on your Exa key, Auto depth. $7 per 1,000 searches."; a missing rate drops
   the price sentence). The note only renders while a provider is selected,
-  and the open state survives switching between providers. The caption and
-  its two-line `min-h-8` reservation were removed because the badge costs no
+  and the open state survives switching between providers. The badge costs no
   height and the note only appears on request.
 - `InfoNote.vue` is the one gray note style (`rounded-box bg-base-200 text-xs
   px-2 py-1.5`), used by the Auto explanation and the web search price note.
@@ -255,7 +257,7 @@ later open are not guarded either.
   `useChatInput().selectedModelBillingProviderId`, which is the gateway id for
   a gateway send, not the vendor behind it.
 - The Exa depth segments (Lite, Auto, Deep) keep their price sub-line.
-- Reasoning level segments carry the per-level think icons the old menu had
+- Reasoning level segments carry the per-level think icons
   (`SvgoThinkOff|Low|Medium|High`; a toggle-mode model gets Off and the one
   level's icon on "On").
 - The groups are separated by one divider each (Add, Web search, Reasoning,
