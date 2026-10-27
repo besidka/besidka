@@ -1,6 +1,6 @@
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { Model } from '#shared/types/providers.d'
-import { computed, shallowRef } from 'vue'
+import { computed, nextTick, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Panel
@@ -82,6 +82,7 @@ function mountPanel(props: Partial<{
   filterModel: (model: Model) => boolean
   recommendedModelIds: string[]
   recommendedFilter: boolean
+  layout: 'popover' | 'sheet'
 }> = {}) {
   return mountSuspended(Panel, {
     attachTo: document.body,
@@ -497,5 +498,122 @@ describe('ChatInput/ModelsTrigger/Panel', () => {
       .attributes('aria-selected')).toBe('false')
 
     wrapper.unmount()
+  })
+
+  describe('sheet layout', () => {
+    it('drops the popover chrome and lets the sheet own the height',
+      async () => {
+        const wrapper = await mountPanel({ layout: 'sheet' })
+        const root = wrapper.get('div')
+
+        expect(root.classes()).toEqual(
+          expect.arrayContaining(['flex-1', 'min-h-0']),
+        )
+        expect(root.classes()).not.toContain('max-h-[60dvh]')
+        expect(root.classes()).not.toContain('shadow-xl')
+        expect(wrapper.get('[data-testid="models-picker-results"]').classes())
+          .toEqual(expect.arrayContaining(['overscroll-contain', 'min-h-0']))
+
+        wrapper.unmount()
+      })
+
+    it('keeps the popover chrome by default', async () => {
+      const wrapper = await mountPanel()
+
+      expect(wrapper.get('div').classes()).toEqual(
+        expect.arrayContaining(['max-h-[60dvh]', 'shadow-xl']),
+      )
+      expect(wrapper.find('details.dropdown').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="models-picker-filter-section"]')
+        .exists()).toBe(false)
+
+      wrapper.unmount()
+    })
+
+    it('swaps the filter dropdown for an inline section', async () => {
+      const wrapper = await mountPanel({ layout: 'sheet' })
+      const toggle = wrapper.get(
+        '[data-testid="models-picker-filter-trigger"]',
+      )
+
+      expect(wrapper.find('details.dropdown').exists()).toBe(false)
+      expect(toggle.element.tagName).toBe('BUTTON')
+
+      await toggle.trigger('click')
+      await wrapper.get('[data-testid="models-picker-filter-chat"]')
+        .trigger('click')
+
+      expect(toggle.attributes('aria-controls')).toBe(
+        wrapper.get('[data-testid="models-picker-filter-section"]')
+          .attributes('id'),
+      )
+      expect(toggle.classes()).toContain('text-accent')
+      expect(wrapper.find('[data-testid="models-picker-empty"]').exists())
+        .toBe(false)
+
+      wrapper.unmount()
+    })
+
+    it('keeps the memory picker Recommended toggle in place of filters',
+      async () => {
+        const wrapper = await mountPanel({
+          layout: 'sheet',
+          recommendedFilter: true,
+          recommendedModelIds: ['google-model'],
+        })
+
+        expect(wrapper.find('[data-testid="models-picker-filter-trigger"]')
+          .exists()).toBe(false)
+        expect(wrapper.find('[data-testid="memory-picker-filter-all"]')
+          .exists()).toBe(true)
+
+        wrapper.unmount()
+      })
+
+    it('leaves Escape to its host dialog', async () => {
+      const wrapper = await mountPanel({ layout: 'sheet' })
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+      expect(wrapper.emitted('close')).toBeUndefined()
+
+      wrapper.unmount()
+    })
+
+    it('unwinds the detail, filters and search one Escape at a time',
+      async () => {
+        const wrapper = await mountPanel({ layout: 'sheet' })
+        const panel = wrapper.vm as unknown as { handleEscape: () => boolean }
+
+        await wrapper.get('[data-testid="models-picker-search"]')
+          .setValue('google')
+        await wrapper.get('[data-testid="models-picker-filter-trigger"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="model-info-trigger"]')
+          .trigger('click')
+
+        expect(wrapper.find('[data-testid="model-detail-panel"]').exists())
+          .toBe(true)
+
+        expect(panel.handleEscape()).toBe(true)
+        await nextTick()
+        expect(wrapper.find('[data-testid="model-detail-panel"]').exists())
+          .toBe(false)
+
+        expect(panel.handleEscape()).toBe(true)
+        await nextTick()
+        expect(wrapper.find('[data-testid="models-picker-filter-section"]')
+          .exists()).toBe(false)
+
+        expect(panel.handleEscape()).toBe(true)
+        await nextTick()
+        expect(wrapper.get<HTMLInputElement>(
+          '[data-testid="models-picker-search"]',
+        ).element.value).toBe('')
+
+        expect(panel.handleEscape()).toBe(false)
+
+        wrapper.unmount()
+      })
   })
 })

@@ -30,6 +30,12 @@ mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 mockNuxtImport('useGatewayCatalog', () => mocks.useGatewayCatalog)
 mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
 
+mockNuxtImport('useMediaQuery', () => {
+  return () => isPopoverLayout
+})
+
+const isPopoverLayout = shallowRef<boolean>(true)
+
 /**
  * Mirrors the real composable's writable-computed bridge so assertions can
  * keep reading `userModel` as a plain string while the component writes

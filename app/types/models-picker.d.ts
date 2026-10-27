@@ -44,3 +44,5 @@ export interface GatewayCapabilityFilterOption {
   label: string
   icon: string
 }
+
+export type PickerLayout = 'popover' | 'sheet'

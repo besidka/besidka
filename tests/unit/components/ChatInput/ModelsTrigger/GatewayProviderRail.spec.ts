@@ -16,6 +16,7 @@ function mountRail(
     activeProviderPrefix: string | null
     isFavoritesOnly: boolean
     hasFavorites: boolean
+    layout: 'popover' | 'sheet'
   }> = {},
 ) {
   return mountSuspended(GatewayProviderRail, {
@@ -256,6 +257,35 @@ describe('ChatInput/ModelsTrigger/GatewayProviderRail', () => {
         .trigger('click')
 
       expect(wrapper.emitted('toggleFavorites')).toEqual([[]])
+    })
+  })
+
+  describe('sheet layout', () => {
+    it('lays the vendors out as a horizontal chip row', async () => {
+      const wrapper = await mountRail({ layout: 'sheet', hasFavorites: true })
+      const rail = wrapper.get(
+        '[data-testid="models-picker-gateway-provider-rail"]',
+      )
+
+      expect(rail.classes()).toEqual(
+        expect.arrayContaining(['overflow-x-auto', 'border-b']),
+      )
+      expect(rail.classes()).not.toContain('flex-col')
+      expect(rail.classes()).not.toContain('border-r')
+      expect(findButtons(wrapper)[0]?.classes()).toEqual(
+        expect.arrayContaining(['btn-sm', 'rounded-full']),
+      )
+      expect(wrapper.find('.divider').exists()).toBe(false)
+    })
+
+    it('shows each count inline', async () => {
+      const wrapper = await mountRail({ layout: 'sheet' })
+      const count = wrapper.get(
+        '[data-testid="models-picker-gateway-provider-openai-count"]',
+      )
+
+      expect(count.text()).toBe('95')
+      expect(count.classes()).not.toContain('indicator-item')
     })
   })
 })

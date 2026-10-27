@@ -2,7 +2,8 @@
   <div
     v-if="compact"
     :data-testid="testId"
-    class="shrink-0 flex items-center gap-2 px-2.5 py-2 rounded-t-2xl border-b border-warning/30 bg-warning/10"
+    class="shrink-0 flex items-center gap-2 px-2.5 py-2 border-b border-warning/30 bg-warning/10"
+    :class="{ 'rounded-t-2xl': layout === 'popover' }"
   >
     <Icon
       name="lucide:key-round"
@@ -59,6 +60,8 @@
 </template>
 
 <script setup lang="ts" vapor>
+import type { PickerLayout } from '~/types/models-picker'
+
 withDefaults(
   defineProps<{
     title: string
@@ -68,12 +71,14 @@ withDefaults(
     to?: string
     testId?: string
     hideAction?: boolean
+    layout?: PickerLayout
   }>(),
   {
     actionLabel: 'Add a key',
     to: '/profile/keys',
     testId: 'models-picker-key-banner',
     hideAction: false,
+    layout: 'popover',
   },
 )
 
