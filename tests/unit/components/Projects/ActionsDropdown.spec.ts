@@ -76,10 +76,11 @@ describe('ProjectsActionsDropdown', () => {
         bottom: triggerTop + TRIGGER_HEIGHT,
         height: TRIGGER_HEIGHT,
       } as DOMRect)
-      vi.spyOn(
+      Object.defineProperty(
         wrapper.get('[data-testid="history-project-actions-menu"]').element,
-        'getBoundingClientRect',
-      ).mockReturnValue({ height: MENU_HEIGHT } as DOMRect)
+        'offsetHeight',
+        { value: MENU_HEIGHT, configurable: true },
+      )
 
       const dropdown = wrapper.get('details')
 

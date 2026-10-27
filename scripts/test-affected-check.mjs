@@ -503,6 +503,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/History/ActionsDropdown.spec.ts',
     'tests/unit/components/History/ChatRow.spec.ts',
     'tests/unit/components/Projects/ActionsDropdown.spec.ts',
+    'tests/unit/composables/dropdown-placement.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/history-race.spec.ts',
     'tests/unit/composables/history-load-more-race.spec.ts',
