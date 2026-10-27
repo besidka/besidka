@@ -66,6 +66,59 @@ test.describe('desktop', () => {
     await expect(page.locator(SEARCH_TILE)).toHaveCount(0)
   })
 
+  test('section titles carry icons and a search pick shows a price badge '
+    + 'that toggles its note without moving the header', async ({ page }) => {
+    await openNewChat(page)
+    await page.locator(TOOLS_TRIGGER).click()
+
+    const panel = page.locator(TOOLS_PANEL)
+    const searchHeading = panel.locator('[data-section="search"] h3')
+
+    await expect(panel).toBeVisible()
+
+    for (const section of ['add', 'search', 'reasoning']) {
+      await expect(panel.locator(
+        `[data-section="${section}"] h3 [data-testid="tools-section-icon"]`,
+      )).toBeVisible()
+    }
+
+    await expect(panel.locator('[data-testid="web-search-caption"]'))
+      .toHaveCount(0)
+    await expect(panel.locator('[data-testid="web-search-price-badge"]'))
+      .toHaveCount(0)
+
+    const headerHeightBefore = await searchHeading.evaluate((element) => {
+      return element.parentElement?.offsetHeight
+    })
+
+    await panel.locator('[data-testid="web-search-option-web_search"]')
+      .check()
+
+    const badge = panel.locator('[data-testid="web-search-price-badge"]')
+    const note = panel.locator('[data-testid="web-search-price-note"]')
+
+    await expect(badge).toBeVisible()
+    await expect(badge).toHaveAttribute('aria-expanded', 'false')
+    await expect(note).toBeHidden()
+
+    const headerHeightAfter = await searchHeading.evaluate((element) => {
+      return element.parentElement?.offsetHeight
+    })
+
+    expect(headerHeightAfter).toBe(headerHeightBefore)
+
+    await badge.click()
+
+    await expect(badge).toHaveAttribute('aria-expanded', 'true')
+    await expect(note).toBeVisible()
+    await expect(note).toContainText('The model\'s own search')
+
+    await panel.locator('[data-testid="web-search-option-off"]').check()
+
+    await expect(badge).toHaveCount(0)
+    await expect(note).toHaveCount(0)
+  })
+
   test('a tile opens the menu at its section', async ({ page }) => {
     await openNewChat(page)
 

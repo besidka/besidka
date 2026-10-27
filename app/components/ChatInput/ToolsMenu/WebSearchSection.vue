@@ -1,131 +1,145 @@
 <template>
-  <div class="px-2 pt-1 pb-1.5">
-    <ChatInputToolsMenuSegmented
-      :name="`${groupId}-provider`"
-      legend="Web search"
-      :options="providerSegments"
-      :model-value="selected"
-      @update:model-value="onSelectProvider"
-    />
-  </div>
-  <div class="px-2 pb-1.5">
-    <p
-      class="flex items-start gap-2 min-h-8 text-xs leading-4 text-base-content/60"
-      data-testid="web-search-caption"
-    >
-      <ProviderIcon
-        v-if="captionProviderId"
-        :provider-id="captionProviderId"
-        class="shrink-0 mt-px !size-3.5"
-        aria-hidden="true"
+  <ChatInputToolsMenuSection
+    id="search"
+    title="Web search"
+    icon="lucide:search"
+    :is-highlighted="isHighlighted"
+  >
+    <template #title-end>
+      <button
+        v-if="priceBadgeText"
+        type="button"
+        class="badge badge-sm badge-soft badge-info gap-1 font-medium cursor-pointer"
+        :aria-expanded="isPriceNoteOpen"
+        :aria-controls="priceNoteId"
+        data-testid="web-search-price-badge"
+        @click="isPriceNoteOpen = !isPriceNoteOpen"
+      >
+        {{ priceBadgeText }}
+        <Icon
+          name="lucide:info"
+          size="12"
+          aria-hidden="true"
+        />
+      </button>
+    </template>
+    <div class="px-2 pt-1 pb-1.5">
+      <ChatInputToolsMenuSegmented
+        :name="`${groupId}-provider`"
+        legend="Web search"
+        :options="providerSegments"
+        :model-value="selected"
+        @update:model-value="onSelectProvider"
       />
+    </div>
+    <ChatInputToolsMenuInfoNote
+      v-if="isProviderSelected"
+      v-show="isPriceNoteOpen"
+      :id="priceNoteId"
+      class="mx-2 mb-2"
+      data-testid="web-search-price-note"
+    >
+      {{ noteText }}
+    </ChatInputToolsMenuInfoNote>
+    <p
+      v-if="!isToolCallingSupported"
+      class="flex items-start gap-2 px-2 pb-1.5 text-xs text-base-content/60"
+      data-testid="web-search-no-tool-calling"
+    >
       <Icon
-        v-else
-        :name="captionIcon"
+        name="lucide:circle-off"
         size="14"
         class="shrink-0 mt-px"
-        aria-hidden="true"
       />
-      <span data-testid="web-search-caption-text">{{ caption }}</span>
+      This model can't call tools, so Brave and Exa aren't available.
     </p>
-  </div>
-  <p
-    v-if="!isToolCallingSupported"
-    class="flex items-start gap-2 px-2 pb-1.5 text-xs text-base-content/60"
-    data-testid="web-search-no-tool-calling"
-  >
-    <Icon
-      name="lucide:circle-off"
-      size="14"
-      class="shrink-0 mt-px"
-    />
-    This model can't call tools, so Brave and Exa aren't available.
-  </p>
-  <NuxtLink
-    v-for="option in keylessOptions"
-    :key="option.value"
-    :to="option.addKeyHref"
-    class="flex items-center gap-2 px-2 pb-1.5 text-xs text-warning hover:underline"
-    :data-testid="`web-search-add-key-${option.providerId}`"
-  >
-    <ProviderIcon
-      :provider-id="option.providerId ?? ''"
-      class="!size-3.5"
-    />
-    <span class="grow">
-      Add {{ option.value === 'web_search_brave' ? 'a Brave' : 'an Exa' }} key
-    </span>
-    <Icon
-      name="lucide:arrow-right"
-      size="14"
-      class="shrink-0"
-    />
-  </NuxtLink>
-  <ChatInputToolsMenuReveal
-    v-if="hasExaOption"
-    :is-open="isExaSelected"
-    data-testid="web-search-exa-depth-reveal"
-  >
-    <div class="px-2 pb-1.5">
-      <div
-        class="flex items-baseline justify-between gap-2 mb-1 text-xs font-semibold text-base-content/60"
-      >
-        <span :id="`${groupId}-depth-label`">Exa depth</span>
-        <span class="font-normal">Price per 1,000 searches</span>
-      </div>
-      <ChatInputToolsMenuSegmented
-        :name="`${groupId}-exa-depth`"
-        legend="Exa depth"
-        :labelledby="`${groupId}-depth-label`"
-        :options="exaDepthSegments"
-        :model-value="exaSearchLevel"
-        @update:model-value="emit('select-exa-search-level', $event)"
+    <NuxtLink
+      v-for="option in keylessOptions"
+      :key="option.value"
+      :to="option.addKeyHref"
+      class="flex items-center gap-2 px-2 pb-1.5 text-xs text-warning hover:underline"
+      :data-testid="`web-search-add-key-${option.providerId}`"
+    >
+      <ProviderIcon
+        :provider-id="option.providerId ?? ''"
+        class="!size-3.5"
       />
-    </div>
-  </ChatInputToolsMenuReveal>
-  <ChatInputToolsMenuReveal
-    v-if="isAutoAvailable"
-    :is-open="isProviderSelected"
-    data-testid="web-search-auto-reveal"
-  >
-    <div data-testid="web-search-auto-section">
-      <ChatInputToolsMenuToggleRow
-        label="Auto"
-        icon="lucide:sparkles"
-        aria-label="Auto web search"
-        test-id="web-search-auto-toggle"
-        hint-test-id="web-search-auto-hint"
-        :hint="AUTO_WEB_SEARCH_HINT"
-        :model-value="isAutoPreferred"
-        :extra-described-by="isExplanationOpen ? explanationId : undefined"
-        @update:model-value="onToggleAuto"
-      >
-        <template #label-extra>
-          <button
-            type="button"
-            class="inline-grid place-items-center size-5 rounded-full text-base-content/60 hover:text-accent cursor-pointer"
-            aria-label="How Auto works"
-            :aria-expanded="isExplanationOpen"
-            :aria-controls="explanationId"
-            data-testid="web-search-auto-info"
-            @click.prevent="isExplanationOpen = !isExplanationOpen"
-          >
-            <Icon
-              name="lucide:info"
-              size="14"
-            />
-          </button>
-        </template>
-      </ChatInputToolsMenuToggleRow>
-      <p
-        v-show="isExplanationOpen"
-        :id="explanationId"
-        class="mx-2 mb-1.5 ml-8.5 px-2 py-1.5 rounded-box bg-base-200 text-xs"
-      >
-        {{ AUTO_WEB_SEARCH_EXPLANATION }}
-      </p>
-    </div>
-  </ChatInputToolsMenuReveal>
+      <span class="grow">
+        Add {{ option.value === 'web_search_brave' ? 'a Brave' : 'an Exa' }} key
+      </span>
+      <Icon
+        name="lucide:arrow-right"
+        size="14"
+        class="shrink-0"
+      />
+    </NuxtLink>
+    <ChatInputToolsMenuReveal
+      v-if="hasExaOption"
+      :is-open="isExaSelected"
+      data-testid="web-search-exa-depth-reveal"
+    >
+      <div class="px-2 pb-1.5">
+        <div
+          class="flex items-baseline justify-between gap-2 mb-1 text-xs font-semibold text-base-content/60"
+        >
+          <span :id="`${groupId}-depth-label`">Exa depth</span>
+          <span class="font-normal">Price per 1,000 searches</span>
+        </div>
+        <ChatInputToolsMenuSegmented
+          :name="`${groupId}-exa-depth`"
+          legend="Exa depth"
+          :labelledby="`${groupId}-depth-label`"
+          :options="exaDepthSegments"
+          :model-value="exaSearchLevel"
+          @update:model-value="emit('select-exa-search-level', $event)"
+        />
+      </div>
+    </ChatInputToolsMenuReveal>
+    <ChatInputToolsMenuReveal
+      v-if="isAutoAvailable"
+      :is-open="isProviderSelected"
+      data-testid="web-search-auto-reveal"
+    >
+      <div data-testid="web-search-auto-section">
+        <ChatInputToolsMenuToggleRow
+          label="Auto"
+          icon="lucide:sparkles"
+          aria-label="Auto web search"
+          test-id="web-search-auto-toggle"
+          hint-test-id="web-search-auto-hint"
+          :hint="AUTO_WEB_SEARCH_HINT"
+          :model-value="isAutoPreferred"
+          :extra-described-by="isExplanationOpen ? explanationId : undefined"
+          @update:model-value="onToggleAuto"
+        >
+          <template #label-extra>
+            <button
+              type="button"
+              class="inline-grid place-items-center size-5 rounded-full text-base-content/60 hover:text-accent cursor-pointer"
+              aria-label="How Auto works"
+              :aria-expanded="isExplanationOpen"
+              :aria-controls="explanationId"
+              data-testid="web-search-auto-info"
+              @click.prevent="isExplanationOpen = !isExplanationOpen"
+            >
+              <Icon
+                name="lucide:info"
+                size="14"
+              />
+            </button>
+          </template>
+        </ChatInputToolsMenuToggleRow>
+        <ChatInputToolsMenuInfoNote
+          v-show="isExplanationOpen"
+          :id="explanationId"
+          class="mx-2 mt-1 mb-2 ml-8.5"
+          data-testid="web-search-auto-explanation"
+        >
+          {{ AUTO_WEB_SEARCH_EXPLANATION }}
+        </ChatInputToolsMenuInfoNote>
+      </div>
+    </ChatInputToolsMenuReveal>
+  </ChatInputToolsMenuSection>
 </template>
 
 <script setup lang="ts">
@@ -152,9 +166,11 @@ const props = withDefaults(defineProps<{
   exaSearchLevel?: ExaSearchLevel
   isAutoAvailable?: boolean
   isAutoPreferred?: boolean
+  isHighlighted?: boolean
   modelId?: string
   billingProviderId?: string | null
 }>(), {
+  isHighlighted: false,
   exaSearchLevel: 'auto',
   isAutoAvailable: false,
   isAutoPreferred: false,
@@ -170,7 +186,9 @@ const emit = defineEmits<{
 
 const groupId = useId()
 const explanationId = useId()
+const priceNoteId = useId()
 const isExplanationOpen = shallowRef<boolean>(false)
+const isPriceNoteOpen = shallowRef<boolean>(false)
 const runtimeConfigPublic = useRuntimeConfig().public
 
 const exaSearchLevelHints: Record<ExaSearchLevel, string> = {
@@ -254,7 +272,7 @@ const exaDescription = computed<string>(() => {
   )}`
 })
 
-const caption = computed<string>(() => {
+const noteText = computed<string>(() => {
   if (props.selected === 'web_search') {
     return builtInDescription.value
   }
@@ -267,40 +285,45 @@ const caption = computed<string>(() => {
     return exaDescription.value
   }
 
-  return 'Pick a search to let the model look things up on the web.'
+  return ''
 })
 
-const captionProviderId = computed<string | undefined>(() => {
+const PRICE_BADGE_FALLBACK = 'Price info'
+
+function formatBadgePrice(
+  rate: number | undefined,
+  unit: string,
+): string {
+  return rate === undefined ? PRICE_BADGE_FALLBACK : `$${rate} / 1k ${unit}`
+}
+
+const builtInBadgeText = computed<string>(() => {
+  const price = builtInPrice.value
+
+  if (price) {
+    return formatBadgePrice(price.perThousandUsd, price.unit)
+  }
+
+  const name = builtInBillingName.value
+
+  return name ? `Billed by ${name}` : 'Model\'s own search'
+})
+
+const priceBadgeText = computed<string | undefined>(() => {
+  if (props.selected === 'web_search') {
+    return builtInBadgeText.value
+  }
+
   if (props.selected === 'web_search_brave') {
-    return 'brave'
+    return formatBadgePrice(braveRate.value, 'searches')
   }
 
   if (props.selected === 'web_search_exa') {
-    return 'exa'
+    return formatBadgePrice(exaRate.value, 'searches')
   }
 
   return undefined
 })
-
-const captionIcon = computed<string>(() => {
-  return props.selected === 'web_search' ? 'lucide:globe' : 'lucide:search'
-})
-
-function getSegmentTooltip(option: WebSearchOption): string | undefined {
-  if (!option.enabled) {
-    return undefined
-  }
-
-  if (option.value === 'web_search') {
-    return builtInDescription.value
-  }
-
-  if (option.value === 'web_search_brave') {
-    return braveDescription.value
-  }
-
-  return exaDescription.value
-}
 
 const providerSegments = computed<SegmentedOption<WebSearchSelection>[]>(
   () => {
@@ -322,7 +345,6 @@ const providerSegments = computed<SegmentedOption<WebSearchSelection>[]>(
           value: option.value,
           label: WEB_SEARCH_SHORT_LABELS[option.value],
           title,
-          tooltip: getSegmentTooltip(option),
           icon: isBuiltIn ? 'lucide:globe' : undefined,
           providerId: option.providerId,
           disabled: !option.enabled,

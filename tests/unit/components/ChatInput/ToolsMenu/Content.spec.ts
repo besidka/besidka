@@ -162,3 +162,23 @@ describe('ChatInput/ToolsMenu/Content dividers', () => {
       expect(layout(wrapper)).toEqual(['search'])
     })
 })
+
+describe('ChatInput/ToolsMenu/Content section titles', () => {
+  it('puts an icon left of every titled section header', async () => {
+    const wrapper = await mountContent(createState())
+
+    for (const section of ['add', 'search', 'reasoning']) {
+      const heading = wrapper.get(`[data-section="${section}"] h3`)
+
+      expect(heading.find('[data-testid="tools-section-icon"]').exists())
+        .toBe(true)
+    }
+  })
+
+  it('titles the sections Add, Web search and Reasoning', async () => {
+    const wrapper = await mountContent(createState())
+    const titles = wrapper.findAll('h3').map(heading => heading.text())
+
+    expect(titles).toEqual(['Add', 'Web search', 'Reasoning'])
+  })
+})

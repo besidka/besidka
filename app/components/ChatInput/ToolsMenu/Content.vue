@@ -21,6 +21,7 @@
       v-if="state.files.visible"
       id="add"
       title="Add"
+      icon="lucide:plus"
       :is-highlighted="highlightedSection === 'add'"
     >
       <ChatInputToolsMenuActionRow
@@ -52,26 +53,21 @@
       class="h-px mx-2 my-1 bg-base-content/10"
       data-testid="tools-menu-divider"
     />
-    <ChatInputToolsMenuSection
+    <ChatInputToolsMenuWebSearchSection
       v-if="state.webSearch.visible"
-      id="search"
-      title="Web search"
       :is-highlighted="highlightedSection === 'search'"
-    >
-      <ChatInputToolsMenuWebSearchSection
-        :selected="state.webSearch.selected"
-        :options="state.webSearch.options"
-        :is-tool-calling-supported="state.webSearch.isToolCallingSupported"
-        :exa-search-level="state.webSearch.exaSearchLevel"
-        :is-auto-available="state.webSearch.isAutoAvailable"
-        :is-auto-preferred="state.webSearch.isAutoPreferred"
-        :model-id="state.webSearch.modelId"
-        :billing-provider-id="state.webSearch.billingProviderId"
-        @select-provider="emit('select-web-search-provider', $event)"
-        @select-exa-search-level="emit('select-exa-search-level', $event)"
-        @toggle-auto="emit('toggle-auto-web-search', $event)"
-      />
-    </ChatInputToolsMenuSection>
+      :selected="state.webSearch.selected"
+      :options="state.webSearch.options"
+      :is-tool-calling-supported="state.webSearch.isToolCallingSupported"
+      :exa-search-level="state.webSearch.exaSearchLevel"
+      :is-auto-available="state.webSearch.isAutoAvailable"
+      :is-auto-preferred="state.webSearch.isAutoPreferred"
+      :model-id="state.webSearch.modelId"
+      :billing-provider-id="state.webSearch.billingProviderId"
+      @select-provider="emit('select-web-search-provider', $event)"
+      @select-exa-search-level="emit('select-exa-search-level', $event)"
+      @toggle-auto="emit('toggle-auto-web-search', $event)"
+    />
     <div
       v-if="hasDividerBeforeReasoning"
       class="h-px mx-2 my-1 bg-base-content/10"
@@ -81,6 +77,7 @@
       v-if="isReasoningSectionVisible"
       id="reasoning"
       title="Reasoning"
+      icon-component="SvgoThinkHigh"
       :is-highlighted="highlightedSection === 'reasoning'"
     >
       <ChatInputToolsMenuReasoningSection

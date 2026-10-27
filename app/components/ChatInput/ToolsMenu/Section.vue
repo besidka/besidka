@@ -6,13 +6,33 @@
     :aria-labelledby="title ? headingId : undefined"
     :aria-label="title ? undefined : label"
   >
-    <h3
+    <div
       v-if="title"
-      :id="headingId"
-      class="px-2 pt-2 pb-0.5 text-xs font-semibold text-base-content/60"
+      class="flex items-center justify-between gap-2 h-7 px-2 text-xs font-semibold text-base-content/60"
     >
-      {{ title }}
-    </h3>
+      <h3
+        :id="headingId"
+        class="inline-flex items-center gap-1.5 min-w-0"
+      >
+        <Icon
+          v-if="icon"
+          :name="icon"
+          size="14"
+          class="shrink-0"
+          aria-hidden="true"
+          data-testid="tools-section-icon"
+        />
+        <component
+          :is="iconComponent"
+          v-else-if="iconComponent"
+          class="size-3.5 shrink-0"
+          aria-hidden="true"
+          data-testid="tools-section-icon"
+        />
+        <span class="truncate">{{ title }}</span>
+      </h3>
+      <slot name="title-end" />
+    </div>
     <slot />
   </section>
 </template>
@@ -23,6 +43,8 @@ import type { ToolsSection } from '~/types/chat-input-tools'
 defineProps<{
   id?: ToolsSection
   title?: string
+  icon?: string
+  iconComponent?: string
   label?: string
   isHighlighted?: boolean
 }>()

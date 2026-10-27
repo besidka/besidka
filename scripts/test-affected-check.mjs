@@ -106,6 +106,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/Reveal.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/ToggleRow.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Section.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/InfoNote.spec.ts',
     'tests/unit/composables/reveal-guard.spec.ts',
     'tests/unit/components/ChatInput/SettingTile.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',

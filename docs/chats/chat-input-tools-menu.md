@@ -12,8 +12,8 @@ default shows as a tile at the start of the attachments row.
 | Shell, state and all mutation logic | `app/components/ChatInput.client.vue` |
 | "+" button, desktop popover, mobile bottom sheet | `app/components/ChatInput/ToolsMenu.client.vue` |
 | The one section list used by both shells | `app/components/ChatInput/ToolsMenu/Content.vue` |
-| Rows and controls | `ToolsMenu/Section.vue`, `ActionRow.vue`, `ToggleRow.vue`, `Segmented.vue` |
-| Web search and reasoning sections | `ToolsMenu/WebSearchSection.vue`, `ToolsMenu/ReasoningSection.vue` |
+| Rows and controls | `ToolsMenu/Section.vue`, `ActionRow.vue`, `ToggleRow.vue`, `Segmented.vue`, `InfoNote.vue` |
+| Web search and reasoning sections | `ToolsMenu/WebSearchSection.vue` (renders its own `Section`, so the price badge can sit in the section header), `ToolsMenu/ReasoningSection.vue` |
 | A setting tile | `app/components/ChatInput/SettingTile.vue` |
 | The row that holds tiles, files and Detach all | `app/components/ChatInput/Files/Attached/Preview.client.vue` |
 | Which tiles show, and their copy | `app/utils/chat-input-tiles.ts` (`buildChatInputTiles`) |
@@ -199,7 +199,7 @@ later open are not guarded either.
   it), so its mark ships as `app/assets/icons/exa.svg` (`SvgoExa`) and
   `ProviderIcon` renders it for `exa`.
 
-## Web search icons, the selected-search caption and segment hover
+## Section title icons, web search icons, the price badge and segment hover
 
 - The web search segments carry an icon before the label: `lucide:globe` for
   Built-in, the provider logo (`ProviderIcon`, Brave and Exa) for the two
@@ -207,22 +207,45 @@ later open are not guarded either.
   name), `providerId` or `iconComponent` (a component name such as
   `SvgoThinkLow`); the icon inherits the segment's text colour, so it follows
   the checked, hover and disabled states with no extra rules.
-- The provider segments show no price. Prices live in one caption that is
-  always rendered under the control (`web-search-caption`, `min-h-8`, two
-  `text-xs leading-4` lines) so selecting a provider never changes the height
-  of the menu:
+- Every titled section header has an icon left of the title: Add
+  `lucide:plus`, Web search `lucide:search`, Reasoning `SvgoThinkHigh` (the
+  icon the High level uses; it is an SVGO component, so `Section` takes both
+  `icon` for an Iconify name and `iconComponent`). Only the allowed icon
+  prefixes of `docs/nuxt-icon-collections.md` are used. The header is one
+  `h-7 items-center` row with a right-aligned `#title-end` slot, so a
+  `badge-sm` appearing in the slot never changes the row height or the menu
+  height.
+- The provider segments show no price and carry only a plain `title` (the
+  full provider name, plus the reason when disabled); the custom per-segment
+  tooltip that held the description is gone. The price lives in a small
+  badge in the "Web search" header (`web-search-price-badge`, a
+  `badge badge-sm badge-soft badge-info` `<button>` with a `lucide:info`
+  icon at size 12), shown only while a provider is selected:
 
-  | Selected | Caption |
+  | Selected | Badge text |
   |---|---|
-  | Off | "Pick a search to let the model look things up on the web." (`lucide:search`) |
-  | Built-in | "The model's own search from Google. Your Google key pays $14 per 1,000 searches." (globe; without a known rate "...from xAI, billed by xAI."; a gateway selection names the gateway; no provider "The model's own search.") |
-  | Brave | "Brave Search on your Brave key. $5 per 1,000 searches." (Brave logo) |
-  | Exa | "Exa on your Exa key, Auto depth. $7 per 1,000 searches." (Exa logo; depth and price follow the selected depth) |
+  | Off | no badge, no note |
+  | Built-in, known rate | "$14 / 1k searches" or "$35 / 1k prompts" (unit from `resolveBuiltInSearchPrice`) |
+  | Built-in, no rate | "Billed by xAI" (the billing provider, a gateway selection names the gateway); with no provider "Model's own search" |
+  | Brave | "$5 / 1k searches" |
+  | Exa | the rate of the selected depth, e.g. "$7 / 1k searches" |
 
-  A missing rate drops the price sentence and nothing else. The same text is
-  the segment's native `title` on desktop (no DaisyUI tooltips, they clip
-  inside the scrolling panel); a keyless or disabled provider keeps its plain
-  title.
+  A missing Brave or Exa rate shows "Price info". The badge toggles
+  (`aria-expanded`, `aria-controls`) an explanation note
+  (`web-search-price-note`) directly under the provider segments. The note
+  holds the long description that used to be the always-rendered caption
+  ("The model's own search from Google. Your Google key pays $14 per 1,000
+  searches.", "Brave Search on your Brave key. $5 per 1,000 searches.", "Exa
+  on your Exa key, Auto depth. $7 per 1,000 searches."; a missing rate drops
+  the price sentence). The note only renders while a provider is selected,
+  and the open state survives switching between providers. The caption and
+  its two-line `min-h-8` reservation were removed because the badge costs no
+  height and the note only appears on request.
+- `InfoNote.vue` is the one gray note style (`rounded-box bg-base-200 text-xs
+  px-2 py-1.5`), used by the Auto explanation and the web search price note.
+  The row hover background of the Auto toggle is gray too and used to merge
+  with the note and with the divider below, so both notes are spaced
+  (`mt-1` above the Auto note, `mb-2` below each note).
 - Built-in is priced for `google`, `anthropic`, `openai` and `deepseek` only
   (`resolveBuiltInSearchPrice` in `app/utils/web-search-price.ts`). Google
   picks its rate from the model id with the same helper the server bills with
