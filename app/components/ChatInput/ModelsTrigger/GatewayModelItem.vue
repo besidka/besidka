@@ -16,6 +16,7 @@
         type="button"
         :aria-label="`Choose ${model.name}`"
         class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left cursor-pointer"
+        :class="{ 'max-xs:gap-x-1': isRecommended }"
         @click="emit('select')"
       >
         <span class="w-full xs:w-auto min-w-0 flex items-center gap-1.5">
@@ -58,12 +59,20 @@
           </span>
         </span>
         <span
+          v-if="isRecommended"
+          data-testid="gateway-model-recommended"
+          class="badge badge-xs badge-soft badge-success shrink-0 font-semibold"
+          :class="{ 'max-xs:ml-5': !hasPriceBadge }"
+        >
+          Recommended
+        </span>
+        <span
           v-if="hasCapabilities"
           data-testid="gateway-model-capabilities"
           class="shrink-0 flex gap-1 items-center xs:ml-auto"
           :class="{
-            'max-xs:ml-5': !hasPriceBadge,
-            'max-xs:-ml-1': hasPriceBadge
+            'max-xs:ml-5': !hasPriceBadge && !isRecommended,
+            'max-xs:-ml-1': hasPriceBadge || !!isRecommended
           }"
         >
           <span
@@ -191,6 +200,7 @@ const props = defineProps<{
   isHighlighted: boolean
   isFavorite: boolean
   isDetailOpen: boolean
+  isRecommended?: boolean
 }>()
 
 const emit = defineEmits<{

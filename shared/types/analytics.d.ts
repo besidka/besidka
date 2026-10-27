@@ -10,6 +10,7 @@ export type LandingEventName
     | 'github_click'
     | 'key_guide_open'
     | 'key_guide_video_play'
+    | 'guide_video_play'
     | 'video_watch'
     | 'new_chat_created'
 
@@ -31,7 +32,13 @@ export type VideoWatchEndReason
     | 'offscreen'
     | 'unmount'
 
-export type AnalyticsSurface = 'home' | 'keys' | 'guide' | 'byok' | 'legal'
+export type AnalyticsSurface
+  = | 'home'
+    | 'keys'
+    | 'guide'
+    | 'byok'
+    | 'memory'
+    | 'legal'
 
 export interface LandingEventData {
   path?: string

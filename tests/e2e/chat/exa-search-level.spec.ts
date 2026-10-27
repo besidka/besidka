@@ -3,8 +3,7 @@ import { expect, test } from '@playwright/test'
 import { waitForHydration } from '../helpers/auth'
 
 const EXA_LEVEL_STORAGE_KEY = 'settings_exa_search_level'
-const WEB_SEARCH_DROPDOWN_SELECTOR
-  = 'details:has([data-testid="web-search-trigger"])'
+const TOOLS_PANEL_SELECTOR = '[data-testid="chat-input-tools-panel"]'
 
 test.describe.configure({
   mode: 'serial',
@@ -53,48 +52,51 @@ async function seedWebSearchTool(
   )
 }
 
-async function openWebSearchDropdown(page: Page): Promise<void> {
-  const trigger = page.locator('[data-testid="web-search-trigger"]')
+async function openToolsPanel(page: Page): Promise<void> {
+  const trigger = page.locator('[data-testid="chat-input-tools-trigger"]')
 
   await expect(trigger).toBeVisible({ timeout: 15_000 })
-  await trigger.hover()
+  await trigger.click()
 
-  await expect(
-    page.locator(WEB_SEARCH_DROPDOWN_SELECTOR),
-  ).toHaveJSProperty('open', true)
+  await expect(page.locator(TOOLS_PANEL_SELECTOR)).toBeVisible()
 }
 
-test('shows the Exa search level picker, keeps the dropdown '
+test('shows the Exa search level picker, keeps the panel '
   + 'open on select and persists the chosen level', async ({ page }) => {
   await seedWebSearchTool(page, 'web_search_exa')
 
   await page.goto('/chats/new')
   await waitForHydration(page)
 
-  await openWebSearchDropdown(page)
+  await expect(
+    page.locator('[data-testid="chat-input-tile-search"]'),
+  ).toContainText('Exa · Auto', { timeout: 15_000 })
 
-  const dropdown = page.locator(WEB_SEARCH_DROPDOWN_SELECTOR)
-  const liteButton = dropdown.locator('[data-testid="exa-search-level-lite"]')
-  const autoButton = dropdown.locator('[data-testid="exa-search-level-auto"]')
-  const deepButton = dropdown.locator('[data-testid="exa-search-level-deep"]')
+  await openToolsPanel(page)
 
-  await expect(liteButton).toBeVisible()
-  await expect(autoButton).toBeVisible()
-  await expect(deepButton).toBeVisible()
+  const panel = page.locator(TOOLS_PANEL_SELECTOR)
+  const liteButton = panel.locator('[data-testid="exa-search-level-lite"]')
+  const autoButton = panel.locator('[data-testid="exa-search-level-auto"]')
+  const deepButton = panel.locator('[data-testid="exa-search-level-deep"]')
 
-  await expect(autoButton).toHaveClass(/bg-accent/)
-  await expect(liteButton).not.toHaveClass(/bg-accent/)
-  await expect(deepButton).not.toHaveClass(/bg-accent/)
+  await expect(liteButton).toBeEnabled()
+  await expect(autoButton).toBeEnabled()
+  await expect(deepButton).toBeEnabled()
+
+  await expect(autoButton).toBeChecked()
+  await expect(liteButton).not.toBeChecked()
+  await expect(deepButton).not.toBeChecked()
 
   await deepButton.click()
 
-  await expect(deepButton).toHaveClass(/bg-accent/)
-  await expect(autoButton).not.toHaveClass(/bg-accent/)
+  await expect(deepButton).toBeChecked()
+  await expect(autoButton).not.toBeChecked()
 
+  await expect(panel).toBeVisible()
+  await expect(liteButton).toBeEnabled()
   await expect(
-    page.locator(WEB_SEARCH_DROPDOWN_SELECTOR),
-  ).toHaveJSProperty('open', true)
-  await expect(liteButton).toBeVisible()
+    page.locator('[data-testid="chat-input-tile-search"]'),
+  ).toContainText('Exa · Deep')
 
   const storedLevel = await page.evaluate((storageKey) => {
     return window.localStorage.getItem(storageKey)
@@ -103,29 +105,32 @@ test('shows the Exa search level picker, keeps the dropdown '
   expect(storedLevel).toBe('deep')
 })
 
-test('does not render the Exa search level picker when another search '
-  + 'provider is selected or search is off', async ({ page }) => {
+test('hides the Exa search level picker when another search provider is '
+  + 'selected or search is off',
+async ({ page }) => {
   await seedWebSearchTool(page, 'web_search_brave')
 
   await page.goto('/chats/new')
   await waitForHydration(page)
 
-  await openWebSearchDropdown(page)
+  await openToolsPanel(page)
+
+  const panel = page.locator(TOOLS_PANEL_SELECTOR)
 
   await expect(
-    page.locator('[data-testid="exa-search-level-auto"]'),
-  ).toHaveCount(0)
+    panel.locator('[data-testid="exa-search-level-auto"]'),
+  ).toBeHidden()
 
-  await page
-    .locator(`${WEB_SEARCH_DROPDOWN_SELECTOR} button`)
-    .filter({ hasText: 'Off' })
-    .click()
+  await panel.locator('[data-testid="web-search-option-off"]').click()
 
   await expect(
-    page.locator('[data-testid="exa-search-level-auto"]'),
-  ).toHaveCount(0)
+    panel.locator('[data-testid="exa-search-level-auto"]'),
+  ).toBeHidden()
   await expect(
-    page.locator('[data-testid="exa-search-level-deep"]'),
+    panel.locator('[data-testid="exa-search-level-deep"]'),
+  ).toBeHidden()
+  await expect(
+    page.locator('[data-testid="chat-input-tile-search"]'),
   ).toHaveCount(0)
 })
 
@@ -177,11 +182,12 @@ test('sends the chosen Exa search level with the chat request',
     await page.goto('/chats/new')
     await waitForHydration(page)
 
-    await openWebSearchDropdown(page)
+    await openToolsPanel(page)
     await page
-      .locator(WEB_SEARCH_DROPDOWN_SELECTOR)
+      .locator(TOOLS_PANEL_SELECTOR)
       .locator('[data-testid="exa-search-level-deep"]')
       .click()
+    await page.keyboard.press('Escape')
 
     const chatRequestPromise = page.waitForRequest((request) => {
       return request.method() === 'POST'

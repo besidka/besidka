@@ -130,6 +130,12 @@
                 :pending="step.pending"
                 :searched-at="searchedAt"
               />
+              <ChatReasoningMemoryStep
+                v-else-if="step.memory"
+                :data="step.memory"
+                :title="step.title"
+                :pending="step.pending"
+              />
               <details
                 v-else
                 :open="expandedStepId === step.id"
@@ -194,8 +200,10 @@
 <script setup lang="ts">
 import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { MemoryStepData } from '~/types/memory-step.d'
 import type { SearchStepData } from '~/types/search-step.d'
 import { formatTokenCount } from '#shared/utils/message-format'
+import { formatPastChatPreRetrievalTitle } from '#shared/utils/past-chat-retrieval'
 
 const HIDDEN_REASONING_TITLE = 'This model reasoned before answering, but '
   + 'the reasoning text is not available for this response. Reasoning '
@@ -221,6 +229,7 @@ interface ReasoningStep {
   pending: boolean
   failed: boolean
   search: SearchStepData | null
+  memory: MemoryStepData | null
 }
 
 const reasoningIcon = computed<string>(() => {
@@ -286,6 +295,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
           pending: false,
           failed: false,
           search: null,
+          memory: null,
         })
       }
 
@@ -301,15 +311,22 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
     const isPending = props.status === 'streaming' && isPendingToolPart(part)
     const isFailed = isFailedToolPart(part)
     const toolCallId = (part as { toolCallId?: string }).toolCallId
+    const searchData = getSearchStepData(part)
+    const isPreRetrievedStep = searchData?.preRetrieval === true
+      && !isPending
+      && !isFailed
 
     steps.push({
       id: `tool-${toolCallId || partIndex}`,
-      title: getToolStepTitle(getToolPartName(part), isPending, isFailed),
+      title: searchData && isPreRetrievedStep
+        ? formatPastChatPreRetrievalTitle(searchData.results.length)
+        : getToolStepTitle(getToolPartName(part), isPending, isFailed),
       body: '',
       kind: 'tool',
       pending: isPending,
       failed: isFailed,
-      search: getSearchStepData(part),
+      search: searchData,
+      memory: getMemoryStepData(part),
     })
   }
 

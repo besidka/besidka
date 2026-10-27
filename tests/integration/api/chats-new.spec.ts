@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   validateMessageFilePolicy: vi.fn(async () => undefined),
   loggerSet: vi.fn(),
@@ -199,6 +203,47 @@ describe('new chat API', () => {
       db,
     )
     expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
+  })
+
+  it('creates the chat excluded from memory when asked to', async () => {
+    const handler = await getNewChatHandler()
+    const chatsInsertValues = vi.fn((_values: Record<string, unknown>) => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(() => ({ id: 'chat-1', slug: 'chat-1' })),
+      })),
+    }))
+    const messagesInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(async () => ({
+          id: 'message-db-id',
+          publicId: 'message-public-id',
+        })),
+      })),
+    }))
+    const db = {
+      insert: vi.fn()
+        .mockReturnValueOnce({ values: chatsInsertValues })
+        .mockReturnValueOnce({ values: messagesInsertValues })
+        .mockReturnValueOnce({ values: chatsInsertValues })
+        .mockReturnValueOnce({ values: messagesInsertValues }),
+    }
+    const body = {
+      parts: [{ type: 'text', text: 'Hello' }],
+      tools: [],
+      reasoning: 'off',
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler({ body: { ...body, memoryExcluded: true } } as any)
+    await handler({ body } as any)
+
+    expect(chatsInsertValues.mock.calls[0]![0]).toMatchObject({
+      userId: 1,
+      memoryExcluded: true,
+    })
+    expect(chatsInsertValues.mock.calls[1]![0])
+      .not.toHaveProperty('memoryExcluded')
   })
 
   it('starts a research job when research is requested', async () => {

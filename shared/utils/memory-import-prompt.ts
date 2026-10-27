@@ -1,0 +1,15 @@
+export const MEMORY_IMPORT_PROMPT = [
+  'I am moving my notes about myself to another assistant. List everything you have remembered about me as plain text, organised by topic.',
+  '',
+  'Format:',
+  '- Start each topic on its own line with a short title (for example Career, Dev tools, Hobbies, Languages, Projects), followed by a bullet list of the details.',
+  '- One bullet per fact. Write concrete, durable facts with names, dates, numbers, versions and places: employers and roles with start and end dates, education, tools and versions, languages I speak, terms of work, ongoing projects, preferences about how you should help me.',
+  '- Give each person I regularly mention their own topic with what I told you about them.',
+  '- Write in the language I usually use with you.',
+  '',
+  'Rules:',
+  '- Skip health, religion or beliefs, political opinions, racial or ethnic origin, sex life or sexual orientation, trade-union membership, genetic or biometric data, legal disputes and drug use.',
+  '- Skip payment card and bank account numbers, government or tax IDs, passport numbers, passwords, API keys, credentials, a precise home address and my live location.',
+  '- Do not guess or infer anything that I did not tell you. Do not include one-off tasks or temporary status.',
+  '- Output only the list, as plain text. No introduction, no commentary and no closing remarks.',
+].join('\n')

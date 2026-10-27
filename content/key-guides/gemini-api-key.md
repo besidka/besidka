@@ -4,21 +4,21 @@ description: 'Get a free Gemini API key in Google AI Studio, no card needed. Fre
 provider: google
 keyUrl: https://aistudio.google.com/api-keys
 keyUrlLabel: Open Google AI Studio keys page
-updatedAt: '2026-10-24'
+updatedAt: '2026-10-27'
 checkedAt: '2026-10-20'
 summary: The free tier needs no card. You can start chatting with Gemini in about a minute.
 video:
-  src: /videos/key-guide-google.mp4
-  poster: /key-guides/google.webp
+  src: /videos/key-guide-google.mp4?v=2
+  poster: /key-guides/google.webp?v=2
   duration: PT34S
-  uploadDate: '2026-10-20'
+  uploadDate: '2026-10-26'
   alt: Screen recording of Google AI Studio. The API Keys page, the Create a new key dialog, the API key details dialog with a masked key, then the key pasted into Besidka and a first answer from Gemini.
   qualities:
-    - src: /videos/key-guide-google-1080.mp4
+    - src: /videos/key-guide-google-1080.mp4?v=2
       size: 1080
-    - src: /videos/key-guide-google.mp4
+    - src: /videos/key-guide-google.mp4?v=2
       size: 720
-    - src: /videos/key-guide-google-360.mp4
+    - src: /videos/key-guide-google-360.mp4?v=2
       size: 360
   markers:
     - time: "0:00"
@@ -67,4 +67,4 @@ faq:
 5. In Besidka, go to **Profile**, **API Keys**, then the **Google AI Studio** card, paste the key into **API Key**, and click **Save**.
 6. Start a new chat and pick a Gemini model.
 
-**Privacy on the free tier.** Google may use free-tier prompts and responses to improve its products, and human reviewers may read them. For private work, link a billing account in AI Studio. On the paid tier, Google does not use your prompts to improve its products.
+**Privacy on the free tier.** Outside the EEA, Switzerland and the UK, Google may use free-tier prompts and responses to improve its products, and human reviewers may read them. Inside those regions, Google's terms apply its paid-tier data terms to all use, including the free quota. For private work, link a billing account in AI Studio. On the paid tier, Google does not use your prompts to improve its products.

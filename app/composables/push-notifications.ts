@@ -39,6 +39,7 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer | null): string {
 }
 
 const PUSH_ENDPOINT_STORAGE_KEY = 'besidka:push-endpoint'
+const STATE_KNOWN_FALLBACK_MS = 5000
 
 function readStoredEndpoint(): string | null {
   try {
@@ -127,6 +128,11 @@ export function usePushNotifications() {
     () => false,
   )
 
+  const isStateKnown = useState<boolean>(
+    'push-notifications:is-state-known',
+    () => false,
+  )
+
   const isSupported = computed<boolean>(() => {
     if (!import.meta.client) {
       return false
@@ -139,6 +145,19 @@ export function usePushNotifications() {
   })
 
   async function refreshState(): Promise<void> {
+    const stateKnownFallback = setTimeout(() => {
+      isStateKnown.value = true
+    }, STATE_KNOWN_FALLBACK_MS)
+
+    try {
+      await readCurrentState()
+    } finally {
+      clearTimeout(stateKnownFallback)
+      isStateKnown.value = true
+    }
+  }
+
+  async function readCurrentState(): Promise<void> {
     if (!isSupported.value) {
       return
     }
@@ -178,6 +197,7 @@ export function usePushNotifications() {
       }
 
       isSubscribed.value = subscription !== null
+      isStateKnown.value = true
 
       if (subscription !== null && loggedIn.value) {
         try {
@@ -320,6 +340,7 @@ export function usePushNotifications() {
 
   return {
     isSupported,
+    isStateKnown,
     permission,
     isSubscribed,
     refreshState,

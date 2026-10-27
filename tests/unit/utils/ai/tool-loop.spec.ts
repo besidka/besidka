@@ -17,6 +17,10 @@ import {
   CHAT_SEARCH_INSTRUCTION,
   CHAT_SEARCH_TOOL_NAMES,
 } from '../../../../server/utils/ai/chat-search-tools'
+import {
+  isProjectKnowledgeToolName,
+  PROJECT_KNOWLEDGE_TOOL_NAMES,
+} from '../../../../server/utils/ai/knowledge-tools'
 import { createImageGenerationTool } from '../../../../server/utils/ai/image-generation'
 import { createFixtureFollowUpTool } from '../../../fixtures/follow-up-turn-tool'
 
@@ -427,5 +431,342 @@ describe('tool loop trigger', () => {
 
       expect(forcedStepNumbers).toEqual([TOOL_LOOP_MAX_STEPS - 1])
     })
+  })
+
+  describe('memory tools in the shared lookup budget', () => {
+    const LOOKUP_STEPS = 3
+    const LOOKUP_ONLY_CAP = LOOKUP_STEPS + 1
+    const WEB_AND_LOOKUP_CAP = TOOL_LOOP_MAX_TOOL_STEPS + LOOKUP_STEPS + 1
+
+    function createMemoryTools() {
+      return {
+        memory_list: createFixtureFollowUpTool(),
+        memory_read: createFixtureFollowUpTool(),
+        memory_write: createFixtureFollowUpTool(),
+        memory_forget: createFixtureFollowUpTool(),
+      }
+    }
+
+    it('grants only the lookup steps when memory tools are the only '
+      + 'follow-up tools', () => {
+      expect(getToolLoopMaxSteps(createMemoryTools(), {
+        chatSearchSteps: LOOKUP_STEPS,
+      })).toBe(LOOKUP_ONLY_CAP)
+    })
+
+    it('never counts a memory tool as another follow-up tool, so web '
+      + 'search keeps its own rounds on top', () => {
+      expect(getToolLoopMaxSteps({
+        web_search_brave: createFixtureFollowUpTool(),
+        ...createMemoryTools(),
+      }, { chatSearchSteps: LOOKUP_STEPS })).toBe(WEB_AND_LOOKUP_CAP)
+      expect(getToolLoopMaxSteps({
+        ...createMemoryTools(),
+      }, { chatSearchSteps: LOOKUP_STEPS })).not.toBe(WEB_AND_LOOKUP_CAP)
+    })
+
+    it('does not add steps twice when chat-search and memory tools are '
+      + 'registered together', () => {
+      expect(getToolLoopMaxSteps({
+        search_chats: createFixtureFollowUpTool(),
+        read_chat: createFixtureFollowUpTool(),
+        ...createMemoryTools(),
+      }, { chatSearchSteps: LOOKUP_STEPS })).toBe(LOOKUP_ONLY_CAP)
+    })
+
+    it('falls back to the default tool steps without a lookup budget, '
+      + 'never a single step', () => {
+      expect(getToolLoopMaxSteps(createMemoryTools())).toBe(TOOL_LOOP_MAX_STEPS)
+      expect(getToolLoopMaxSteps(createMemoryTools(), {
+        chatSearchSteps: 0,
+      })).toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('does not trigger the loop for unmarked memory tools', () => {
+      expect(getToolLoopMaxSteps({
+        memory_read: tool({
+          description: 'unmarked',
+          inputSchema: z.object({}),
+          async execute() {
+            return {}
+          },
+        }),
+      }, { chatSearchSteps: LOOKUP_STEPS })).toBeUndefined()
+    })
+  })
+
+  describe('untrusted content guard', () => {
+    const MODEL = { provider: 'openai.chat', modelId: 'gpt-5.5' }
+
+    function createGuardedPrepareStep() {
+      const guard = { untrustedResultSeen: false }
+      const options = resolveToolLoopOptions({
+        fixture_search: createFixtureFollowUpTool(),
+      }, { guard })
+
+      if (!options) {
+        throw new Error('expected tool loop options to be defined')
+      }
+
+      return { guard, prepareStep: options.prepareStep }
+    }
+
+    function createStep(toolName: string, type = 'tool-result') {
+      return {
+        content: [{ type, toolName, toolCallId: 'call-1' }],
+        toolResults: type === 'tool-result'
+          ? [{ type, toolName, toolCallId: 'call-1' }]
+          : [],
+      }
+    }
+
+    function prepare(
+      prepareStep: ReturnType<typeof createGuardedPrepareStep>['prepareStep'],
+      steps: unknown[],
+      stepNumber = steps.length,
+    ) {
+      return prepareStep({
+        steps,
+        stepNumber,
+        model: MODEL,
+        instructions: undefined,
+      } as any)
+    }
+
+    it('stays false with no previous steps', async () => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [], 0)
+
+      expect(guard.untrustedResultSeen).toBe(false)
+    })
+
+    it.each([
+      'web_search_brave',
+      'web_search',
+      'google_search',
+      'search_chats',
+      'read_chat',
+      'search_project_knowledge',
+      'read_project_knowledge',
+    ])('is set by a %s result in a previous step', async (toolName) => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [createStep(toolName)])
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+
+    it('is set by a provider-executed result found only in step content',
+      async () => {
+        const { guard, prepareStep } = createGuardedPrepareStep()
+
+        await prepare(prepareStep, [{
+          content: [{
+            type: 'tool-result',
+            toolName: 'web_search',
+            providerExecuted: true,
+          }],
+        }])
+
+        expect(guard.untrustedResultSeen).toBe(true)
+      })
+
+    it('is set by a failed non-memory tool call', async () => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [createStep('web_search_exa', 'tool-error')])
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+
+    it.each([
+      'memory_list',
+      'memory_read',
+      'memory_write',
+      'memory_forget',
+    ])('is not set by a %s result', async (toolName) => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [
+        createStep(toolName),
+        createStep(toolName, 'tool-error'),
+      ])
+
+      expect(guard.untrustedResultSeen).toBe(false)
+    })
+
+    it('ignores tool calls without results and plain text steps',
+      async () => {
+        const { guard, prepareStep } = createGuardedPrepareStep()
+
+        await prepare(prepareStep, [
+          {
+            content: [
+              { type: 'text', text: 'Hello' },
+              { type: 'tool-call', toolName: 'web_search' },
+            ],
+            toolResults: [],
+          },
+        ])
+
+        expect(guard.untrustedResultSeen).toBe(false)
+      })
+
+    it('is set when an untrusted result follows memory results and is '
+      + 'never reset afterwards', async () => {
+      const { guard, prepareStep } = createGuardedPrepareStep()
+
+      await prepare(prepareStep, [createStep('memory_list')])
+
+      expect(guard.untrustedResultSeen).toBe(false)
+
+      await prepare(prepareStep, [
+        createStep('memory_list'),
+        createStep('web_search_brave'),
+      ])
+
+      expect(guard.untrustedResultSeen).toBe(true)
+
+      await prepare(prepareStep, [createStep('memory_list')])
+
+      expect(guard.untrustedResultSeen).toBe(true)
+    })
+
+    it('changes nothing else: declarations and non-final steps stay as '
+      + 'they were', async () => {
+      const { prepareStep } = createGuardedPrepareStep()
+      const unguarded = resolveToolLoopOptions({
+        fixture_search: createFixtureFollowUpTool(),
+      })
+      const steps = [createStep('web_search_brave')]
+
+      expect(await prepare(prepareStep, steps, 1)).toBeUndefined()
+
+      const finalStepNumber = TOOL_LOOP_MAX_STEPS - 1
+      const guardedFinal = await prepare(prepareStep, steps, finalStepNumber)
+      const unguardedFinal = await unguarded?.prepareStep({
+        steps,
+        stepNumber: finalStepNumber,
+        model: MODEL,
+        instructions: undefined,
+      } as any)
+
+      expect(guardedFinal).toEqual(unguardedFinal)
+      expect(guardedFinal?.toolChoice).toBe('none')
+    })
+
+    it('works without a guard and without a steps argument', async () => {
+      const options = resolveToolLoopOptions({
+        fixture_search: createFixtureFollowUpTool(),
+      })
+
+      expect(await options?.prepareStep({ stepNumber: 0 } as any))
+        .toBeUndefined()
+    })
+  })
+
+  describe('separate project knowledge step budget', () => {
+    const LOOKUP_STEPS = 3
+    const KNOWLEDGE_STEPS = 3
+
+    function createWebTools() {
+      return { web_search_brave: createFixtureFollowUpTool() }
+    }
+
+    function createLookupTools() {
+      return {
+        search_chats: createFixtureFollowUpTool(),
+        memory_list: createFixtureFollowUpTool(),
+      }
+    }
+
+    function createKnowledgeTools() {
+      return {
+        search_project_knowledge: createFixtureFollowUpTool(),
+        read_project_knowledge: createFixtureFollowUpTool(),
+      }
+    }
+
+    const fullBudget = {
+      chatSearchSteps: LOOKUP_STEPS,
+      knowledgeSteps: KNOWLEDGE_STEPS,
+    }
+
+    it('names the knowledge tools the knowledge module registers', () => {
+      expect(PROJECT_KNOWLEDGE_TOOL_NAMES).toEqual([
+        'search_project_knowledge',
+        'read_project_knowledge',
+      ])
+      expect(isProjectKnowledgeToolName('read_project_knowledge')).toBe(true)
+      expect(isProjectKnowledgeToolName('search_chats')).toBe(false)
+    })
+
+    it('grants only the knowledge steps when knowledge tools are the only '
+      + 'follow-up tools', () => {
+      expect(getToolLoopMaxSteps(createKnowledgeTools(), fullBudget)).toBe(4)
+    })
+
+    it('never counts a knowledge tool as a web tool, so no web rounds are '
+      + 'granted without a web tool', () => {
+      expect(getToolLoopMaxSteps({
+        ...createLookupTools(),
+        ...createKnowledgeTools(),
+      }, fullBudget)).toBe(7)
+    })
+
+    it('adds the knowledge steps on top of web and lookup steps', () => {
+      expect(getToolLoopMaxSteps({
+        ...createWebTools(),
+        ...createLookupTools(),
+        ...createKnowledgeTools(),
+      }, fullBudget)).toBe(10)
+      expect(getToolLoopMaxSteps({
+        ...createWebTools(),
+        ...createKnowledgeTools(),
+      }, fullBudget)).toBe(7)
+    })
+
+    it('ignores the knowledge allowance when no knowledge tool is '
+      + 'registered', () => {
+      expect(getToolLoopMaxSteps(createWebTools(), fullBudget)).toBe(4)
+    })
+
+    it('falls back to the default tool steps when the knowledge budget is '
+      + 'missing or zero', () => {
+      expect(getToolLoopMaxSteps(createKnowledgeTools()))
+        .toBe(TOOL_LOOP_MAX_STEPS)
+      expect(getToolLoopMaxSteps(createKnowledgeTools(), {
+        knowledgeSteps: 0,
+      })).toBe(TOOL_LOOP_MAX_STEPS)
+      expect(getToolLoopMaxSteps(createKnowledgeTools(), {
+        knowledgeSteps: -2,
+      })).toBe(TOOL_LOOP_MAX_STEPS)
+    })
+
+    it('forces the answer only on the last step of the ten-step cap',
+      async () => {
+        const resolved = resolveToolLoop({
+          ...createWebTools(),
+          ...createLookupTools(),
+          ...createKnowledgeTools(),
+        }, fullBudget)
+        const forcedStepNumbers: number[] = []
+
+        for (let stepNumber = 0; stepNumber < 10; stepNumber++) {
+          const result = await resolved?.options.prepareStep({
+            stepNumber,
+            model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
+            instructions: undefined,
+          } as any)
+
+          if (result) {
+            forcedStepNumbers.push(stepNumber)
+          }
+        }
+
+        expect(resolved?.maxSteps).toBe(10)
+        expect(forcedStepNumbers).toEqual([9])
+      })
   })
 })

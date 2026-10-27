@@ -56,6 +56,22 @@
       @click="onShare"
     />
     <UiButton
+      v-if="isOwnedChatPage"
+      ghost
+      :icon-name="isRouteChatMemoryExcluded
+        ? CHAT_MEMORY_ICON
+        : CHAT_MEMORY_EXCLUSION_ICON"
+      :icon-only="true"
+      :title="isRouteChatMemoryExcluded
+        ? 'Use this chat for memory'
+        : CHAT_MEMORY_EXCLUSION_LABEL"
+      :disabled="memoryExclusionSavingSlug === routeSlug"
+      circle
+      tooltip-position="bottom"
+      data-testid="sidebar-memory-exclusion"
+      @click="onToggleMemoryExclusion"
+    />
+    <UiButton
       v-if="canBranchSharedChat"
       ghost
       icon-name="lucide:git-branch-plus"
@@ -82,6 +98,11 @@ const {
   branchSharedChat,
   sharedBranchTarget,
 } = useChatShare()
+const {
+  savingSlug: memoryExclusionSavingSlug,
+  isChatMemoryExcluded,
+  setChatMemoryExcluded,
+} = useChatMemoryExclusion()
 
 const showPinToggle = computed<boolean>(() => {
   return isDesktop && reducedMotion.value !== 'reduce'
@@ -95,6 +116,10 @@ const isOwnedChatPage = computed<boolean>(() => {
   return route.path.startsWith('/chats/')
     && !!routeSlug.value
     && route.path !== '/chats/new'
+})
+
+const isRouteChatMemoryExcluded = computed<boolean>(() => {
+  return isChatMemoryExcluded(routeSlug.value)
 })
 
 const isChatLayout = computed<boolean>(() => {
@@ -128,6 +153,11 @@ function openCookieSettings(event: MouseEvent): void {
 function onShare(event: MouseEvent): void {
   closeSubmenu(event)
   openShareModal(routeSlug.value)
+}
+
+async function onToggleMemoryExclusion(event: MouseEvent): Promise<void> {
+  closeSubmenu(event)
+  await setChatMemoryExcluded(routeSlug.value, !isRouteChatMemoryExcluded.value)
 }
 
 function onBranch(event: MouseEvent): void {

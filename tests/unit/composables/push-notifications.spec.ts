@@ -53,6 +53,10 @@ describe('usePushNotifications', () => {
       'push-notifications:has-auto-refreshed',
       () => false,
     ).value = false
+    useState<boolean>(
+      'push-notifications:is-state-known',
+      () => false,
+    ).value = false
 
     requestPermissionMock = vi.fn(async () => 'granted')
     getSubscriptionMock = vi.fn(async () => null)
@@ -178,6 +182,119 @@ describe('usePushNotifications', () => {
         }),
       }),
     )
+  })
+
+  describe('state known flag', () => {
+    it('stays unknown while the subscription lookup is pending', async () => {
+      getSubscriptionMock.mockReturnValue(new Promise(() => undefined))
+
+      const composable = usePushNotifications()
+
+      await flushPromises()
+
+      expect(composable.isStateKnown.value).toBe(false)
+    })
+
+    it('becomes known once the refresh resolves', async () => {
+      const composable = usePushNotifications()
+
+      expect(composable.isStateKnown.value).toBe(false)
+
+      await flushPromises()
+
+      expect(composable.isStateKnown.value).toBe(true)
+    })
+
+    it('becomes known after the permission and subscription are set',
+      async () => {
+        Notification.permission = 'granted'
+        getSubscriptionMock.mockResolvedValue({
+          endpoint: 'https://push.example.com/existing',
+          getKey: () => new TextEncoder().encode('bytes').buffer,
+        })
+
+        const composable = usePushNotifications()
+
+        await flushPromises()
+
+        expect(composable.isStateKnown.value).toBe(true)
+        expect(composable.permission.value).toBe('granted')
+        expect(composable.isSubscribed.value).toBe(true)
+      })
+
+    it('becomes known before the subscription re-upload finishes',
+      async () => {
+        Notification.permission = 'granted'
+        getSubscriptionMock.mockResolvedValue({
+          endpoint: 'https://push.example.com/existing',
+          getKey: () => new TextEncoder().encode('bytes').buffer,
+        })
+
+        let finishUpload: () => void = () => undefined
+
+        mocks.fetch.mockImplementationOnce(() => {
+          return new Promise<undefined>((resolve) => {
+            finishUpload = () => resolve(undefined)
+          })
+        })
+
+        const composable = usePushNotifications()
+
+        await flushPromises()
+
+        expect(mocks.fetch).toHaveBeenCalledTimes(1)
+        expect(composable.isStateKnown.value).toBe(true)
+        expect(composable.isSubscribed.value).toBe(true)
+
+        finishUpload()
+        await flushPromises()
+      })
+
+    it('becomes known when the subscription lookup fails', async () => {
+      getSubscriptionMock.mockRejectedValue(new Error('Lookup failed'))
+
+      const composable = usePushNotifications()
+
+      await flushPromises()
+
+      expect(composable.isStateKnown.value).toBe(true)
+      expect(composable.isSubscribed.value).toBe(false)
+    })
+
+    it('becomes known when push is unsupported', async () => {
+      mocks.vapidPublicKey = ''
+
+      const composable = usePushNotifications()
+
+      await flushPromises()
+
+      expect(composable.isSupported.value).toBe(false)
+      expect(composable.isStateKnown.value).toBe(true)
+    })
+
+    it('becomes known after the fallback delay when the service worker '
+      + 'never becomes ready', async () => {
+      vi.useFakeTimers()
+
+      try {
+        Object.defineProperty(navigator, 'serviceWorker', {
+          configurable: true,
+          value: { ready: new Promise(() => undefined) },
+        })
+
+        const composable = usePushNotifications()
+
+        await vi.advanceTimersByTimeAsync(4999)
+
+        expect(composable.isStateKnown.value).toBe(false)
+
+        await vi.advanceTimersByTimeAsync(1)
+
+        expect(composable.isStateKnown.value).toBe(true)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 
   it('re-posts an existing subscription found on load to the server', async () => {

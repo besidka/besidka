@@ -1,6 +1,10 @@
 <template>
+  <SvgoExa
+    v-if="resolvedProviderId === 'exa'"
+    class="text-current"
+  />
   <Icon
-    v-if="iconName"
+    v-else-if="iconName"
     :name="iconName"
   />
   <span

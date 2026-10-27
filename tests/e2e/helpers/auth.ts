@@ -240,6 +240,47 @@ export async function authenticateUserByApi(
       ...authResults,
     ].join('\n'))
   }
+
+  await recordLegalConsentByApi(page)
+}
+
+/**
+ * Gives the Terms, age and sensitive-information consent for the signed-in
+ * user, with the version the server reports, so chat specs are not stopped
+ * by the consent dialog before their first message.
+ */
+export async function recordLegalConsentByApi(page: Page): Promise<void> {
+  const origin = getAuthRequestOrigin()
+  const headers: Record<string, string> = origin ? { Origin: origin } : {}
+  const stateResponse = await page.request.get('/api/v1/profiles/consent', {
+    headers,
+  })
+
+  expect(stateResponse.ok()).toBe(true)
+
+  const state = await stateResponse.json() as {
+    currentVersion: string
+    status: string
+  }
+
+  if (state.status === 'current') {
+    return
+  }
+
+  const consentResponse = await page.request.post(
+    '/api/v1/profiles/consent',
+    {
+      headers,
+      data: {
+        version: state.currentVersion,
+        acceptTerms: true,
+        confirmAge: true,
+        sensitiveContentConsent: true,
+      },
+    },
+  )
+
+  expect(consentResponse.ok()).toBe(true)
 }
 
 export async function signIn(

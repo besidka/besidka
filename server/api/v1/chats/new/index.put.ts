@@ -17,6 +17,7 @@ import {
 } from '~~/server/utils/research/start'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 const rules = z.object({
   parts: userMessagePartsSchema,
@@ -24,6 +25,7 @@ const rules = z.object({
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
   projectId: z.string().nonempty().optional(),
   model: z.string().nonempty().optional(),
+  memoryExcluded: z.boolean().optional(),
   research: z.object({
     answers: z.array(z.object({
       id: z.string().max(200),
@@ -60,6 +62,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
 
   logger.set({
     userId,
@@ -107,6 +111,7 @@ export default defineEventHandler(async (event) => {
       userId,
       activityAt,
       ...(projectId ? { projectId } : {}),
+      ...(body.data.memoryExcluded ? { memoryExcluded: true } : {}),
     })
     .returning({
       id: schema.chats.id,

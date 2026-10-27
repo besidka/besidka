@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.stubGlobal('defineNuxtConfig', <Configuration>(configuration: Configuration) => {
@@ -124,6 +126,26 @@ describe('cookie consent manifest contract', () => {
         'settings_favorite_gateway_models',
         'settings_web_search_tool',
         'settings_exa_search_level',
+        'settings_web_search_auto',
+        'knowledge-folders:*',
       ]))
     })
+
+  it('lists every manifest entry in the Cookie Policy', () => {
+    const policy = readFileSync(
+      join(process.cwd(), 'content/legal/cookie-policy.md'),
+      'utf-8',
+    )
+    const unlisted = getManifestEntries().filter((entry) => {
+      const listedName = entry.name.endsWith('*')
+        ? entry.name.slice(0, -1)
+        : `${entry.name}\``
+
+      return !policy.includes(`\`${listedName}`)
+    }).map((entry) => {
+      return entry.name
+    })
+
+    expect(unlisted).toEqual([])
+  })
 })

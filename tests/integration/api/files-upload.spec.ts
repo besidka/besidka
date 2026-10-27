@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FilePolicy } from '#shared/types/files.d'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   getEffectiveUserFilePolicy: vi.fn(),

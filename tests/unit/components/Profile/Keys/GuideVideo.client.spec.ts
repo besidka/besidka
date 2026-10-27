@@ -18,6 +18,8 @@ interface ObserverInstance {
 const mocks = vi.hoisted(() => {
   return {
     trackGuideVideoPlay: vi.fn(),
+    trackExplainerVideoPlay: vi.fn(),
+    watchTargets: [] as string[],
     startWatch: vi.fn(),
     updateWatch: vi.fn(),
     upgradeWatchToUser: vi.fn(() => false),
@@ -32,12 +34,15 @@ mockNuxtImport('useKeyGuideAnalytics', () => {
     return {
       trackGuideOpen: vi.fn(),
       trackGuideVideoPlay: mocks.trackGuideVideoPlay,
+      trackExplainerVideoPlay: mocks.trackExplainerVideoPlay,
     }
   }
 })
 
 mockNuxtImport('useVideoWatchAnalytics', () => {
-  return () => {
+  return (getTarget: () => string) => {
+    mocks.watchTargets.push(getTarget())
+
     return {
       start: mocks.startWatch,
       update: mocks.updateWatch,
@@ -158,6 +163,8 @@ describe('Profile/Keys/GuideVideo.client', () => {
     media = environment.media
     media.duration = 60
     mocks.trackGuideVideoPlay.mockReset()
+    mocks.trackExplainerVideoPlay.mockReset()
+    mocks.watchTargets.length = 0
     mocks.startWatch.mockReset()
     mocks.updateWatch.mockReset()
     mocks.upgradeWatchToUser.mockReset().mockReturnValue(false)
@@ -1101,6 +1108,49 @@ describe('Profile/Keys/GuideVideo.client', () => {
     })
   })
 
+  describe('explainer analytics', () => {
+    async function mountExplainerVideo() {
+      return mountVideo({ provider: undefined, explainer: 'memory' })
+    }
+
+    it('reports a user-started play as the explainer event, never as a '
+      + 'key guide play', async () => {
+      stubMotionPreference(true)
+
+      const { video } = await mountExplainerVideo()
+
+      video.dispatchEvent(new Event('play'))
+      video.dispatchEvent(new Event('playing'))
+
+      expect(mocks.trackExplainerVideoPlay)
+        .toHaveBeenCalledExactlyOnceWith('memory', true)
+      expect(mocks.trackGuideVideoPlay).not.toHaveBeenCalled()
+    })
+
+    it('reports an autoplay start with isUserInitiated false', async () => {
+      await mountExplainerVideo()
+
+      setVisibility(true)
+      await flushPromises()
+
+      expect(mocks.trackExplainerVideoPlay)
+        .toHaveBeenCalledExactlyOnceWith('memory', false)
+      expect(mocks.trackGuideVideoPlay).not.toHaveBeenCalled()
+    })
+
+    it('watches the explainer target instead of a provider', async () => {
+      await mountExplainerVideo()
+
+      expect(mocks.watchTargets).toEqual(['memory'])
+    })
+
+    it('keeps the provider target when no explainer is set', async () => {
+      await mountVideo()
+
+      expect(mocks.watchTargets).toEqual(['google'])
+    })
+  })
+
   describe('failures', () => {
     it('falls back to native controls when the elements fail to load',
       async () => {
@@ -1132,5 +1182,95 @@ describe('Profile/Keys/GuideVideo.client', () => {
 
       expect(wrapper.emitted('failed')).toHaveLength(1)
     })
+  })
+
+  describe('startAt', () => {
+    it('preloads metadata only when a start offset is given', async () => {
+      const { video } = await mountVideo({ startAt: 7 })
+
+      expect(video.getAttribute('preload')).toBe('metadata')
+    }, PLAYER_TIMEOUT_MS)
+
+    it('seeks to startAt once the player is ready without playing',
+      async () => {
+        media.duration = 75
+        media.readyState = 4
+
+        const { video, play } = await mountVideo({
+          explainer: 'memory',
+          provider: undefined,
+          startAt: 7,
+        })
+
+        expect(video.currentTime).toBe(7)
+        expect(play).not.toHaveBeenCalled()
+        expect(mocks.trackExplainerVideoPlay).not.toHaveBeenCalled()
+      }, PLAYER_TIMEOUT_MS)
+
+    it('waits for loadedmetadata when the duration is not known at ready',
+      async () => {
+        media.duration = NaN
+        media.readyState = 0
+
+        const { video } = await mountVideo({ startAt: 12 })
+
+        expect(video.currentTime).toBe(0)
+
+        media.duration = 34
+        media.readyState = 1
+        video.dispatchEvent(new Event('loadedmetadata'))
+
+        expect(video.currentTime).toBe(12)
+      }, PLAYER_TIMEOUT_MS)
+
+    it('ignores a start offset at or beyond the duration', async () => {
+      media.duration = NaN
+      media.readyState = 0
+
+      const { video } = await mountVideo({ startAt: 50 })
+
+      media.duration = 34
+      media.readyState = 1
+      video.dispatchEvent(new Event('loadedmetadata'))
+
+      expect(video.currentTime).toBe(0)
+    }, PLAYER_TIMEOUT_MS)
+
+    it('applies startAt only once', async () => {
+      media.duration = 60
+      media.readyState = 4
+
+      const { video } = await mountVideo({ startAt: 7 })
+
+      video.currentTime = 20
+      video.dispatchEvent(new Event('loadedmetadata'))
+
+      expect(video.currentTime).toBe(20)
+    }, PLAYER_TIMEOUT_MS)
+
+    it('lands a quality switch before metadata on startAt', async () => {
+      media.duration = NaN
+      media.readyState = 0
+
+      const { wrapper, video } = await mountVideo({
+        qualities: QUALITIES,
+        startAt: 9,
+      })
+
+      wrapper.get('[data-testid="video-quality-options"]').element
+        .dispatchEvent(new CustomEvent('value-change', {
+          detail: { value: '360' },
+        }))
+      await flushPromises()
+
+      media.duration = 34
+      media.readyState = 1
+      video.dispatchEvent(new Event('loadedmetadata'))
+      await flushPromises()
+
+      expect(video.getAttribute('src'))
+        .toBe('/videos/key-guide-google-360.mp4')
+      expect(video.currentTime).toBe(9)
+    }, PLAYER_TIMEOUT_MS)
   })
 })

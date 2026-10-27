@@ -95,6 +95,13 @@ export default defineI18nLocale(() => ({
           + 'passkey (set by Better Auth).',
         duration: '5 minutes',
       },
+      'studio-session-check': {
+        description:
+          'Set only for the site owner while signed in to Nuxt Studio, the '
+          + 'content editor. It tells the page that an editing session may be '
+          + 'active. Visitors never receive it.',
+        duration: 'Until you close the browser',
+      },
       'chat-input-backup': {
         description:
           'Holds the text of a message you typed but have not '
@@ -108,6 +115,14 @@ export default defineI18nLocale(() => ({
           + 'browser so it can be refreshed or removed. Written only after you '
           + 'turn notifications on.',
         duration: 'Until deleted',
+      },
+      'knowledge-folders': {
+        description:
+          'Remembers, for each project, the name of a folder you linked '
+          + 'from your computer and which folder is synced. It stays in your '
+          + 'browser and is never sent to the server. Written only after you '
+          + 'link a folder.',
+        duration: 'Until the folder is removed',
       },
       'pwa-refresher-dismissed': {
         description:
@@ -123,8 +138,8 @@ export default defineI18nLocale(() => ({
       },
       'last-login-method': {
         description:
-          'Remembers which sign-in method (email, Google, GitHub) '
-          + 'you last used, to pre-select it on the next visit.',
+          'Remembers which sign-in method (email, Google, GitHub or '
+          + 'passkey) you last used, to pre-select it on the next visit.',
         duration: '30 days',
       },
       'color-mode': {
@@ -159,9 +174,10 @@ export default defineI18nLocale(() => ({
       },
       'reasoning-level': {
         description:
-          'Saves your selected reasoning effort level '
-          + '(e.g. low, medium, high) for supported models.',
-        duration: 'Until deleted',
+          'Legacy: older versions saved your last reasoning effort level '
+          + 'here. After you sign in it is read once, saved to your account '
+          + 'as your default and then deleted.',
+        duration: 'Until moved to your account or sign-out',
       },
       'exa-search-level': {
         description:
@@ -210,6 +226,18 @@ export default defineI18nLocale(() => ({
         description:
           'Remembers which web search tool you last chose for '
           + 'new chats.',
+        duration: 'Until deleted',
+      },
+      'web-search-auto': {
+        description:
+          'Remembers whether you switched Auto web search on in the chat '
+          + 'input, so it stays on for new chats.',
+        duration: 'Until deleted',
+      },
+      'knowledge-cache-info-seen': {
+        description:
+          'Remembers the projects where you have seen the note about '
+          + 'prompt caching, so it starts collapsed.',
         duration: 'Until deleted',
       },
     },

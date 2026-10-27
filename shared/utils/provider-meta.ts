@@ -9,7 +9,7 @@ export interface ProviderMetaKeyField {
 
 export interface ProviderMeta {
   id: string
-  kind: 'provider' | 'search' | 'gateway'
+  kind: 'provider' | 'search' | 'gateway' | 'memory-check'
   label: string
   // A shorter form of `label` for inline use next to a noun it's already
   // qualifying, e.g. "Web search (Brave)" rather than "Web search (Brave
@@ -152,9 +152,20 @@ export const providerMeta: Record<string, ProviderMeta> = {
       apiKeyField,
     ],
   },
+  typesafe: {
+    id: 'typesafe',
+    kind: 'memory-check',
+    label: 'TypeSafe AI',
+    keyProviderId: 'typesafe',
+    dashboardUrl: 'https://console.typesafe.ai/keys',
+    dashboardLabel: 'TypeSafe AI console → API Keys',
+    keyFields: [apiKeyField],
+  },
 }
 
 export const enabledSearchProviders: string[] = ['brave', 'exa']
+
+export const enabledMemoryCheckProviders: string[] = ['typesafe']
 
 /**
  * Resolves a persisted `MessageUsage.provider` value back to its

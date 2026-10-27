@@ -183,7 +183,7 @@ describe('Search/Modal.client', () => {
       .toBe('')
   })
 
-  it('renders the five documented command rows in order for an empty query', async () => {
+  it('renders the eight documented command rows in order for an empty query', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -195,10 +195,85 @@ describe('Search/Modal.client', () => {
     expect(ids).toEqual([
       'search-option-history',
       'search-option-attachments',
+      'search-option-projects',
       'search-option-theme',
       'search-option-security',
       'search-option-keys',
+      'search-option-memory',
+      'search-option-preferences',
     ])
+  })
+
+  it('groups Projects under Chat and Memory under Settings with icons', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const rows = wrapper.findAll('[data-testid="search-command-row"]')
+    const labelOf = (id: string) => {
+      return wrapper.get(`#${id}`).text()
+    }
+    const iconOf = (id: string) => {
+      return wrapper.get(`#${id} .iconify`).classes()
+    }
+
+    expect(rows).toHaveLength(8)
+    expect(labelOf('search-option-projects')).toBe('Projects')
+    expect(iconOf('search-option-projects')).toContain('i-lucide:folder')
+    expect(labelOf('search-option-memory')).toBe('Memory')
+    expect(iconOf('search-option-memory')).toContain('i-lucide:book-user')
+    expect(labelOf('search-option-preferences')).toBe('Preferences')
+    expect(iconOf('search-option-preferences'))
+      .toContain('i-lucide:sliders-horizontal')
+
+    const orderedIds = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+    const chatEnd = orderedIds.indexOf('search-option-projects')
+    const settingsStart = orderedIds.indexOf('search-option-theme')
+
+    expect(chatEnd).toBeLessThan(settingsStart)
+    expect(orderedIds.indexOf('search-option-memory'))
+      .toBeGreaterThan(settingsStart)
+    expect(orderedIds.indexOf('search-option-preferences'))
+      .toBeGreaterThan(orderedIds.indexOf('search-option-memory'))
+  })
+
+  it.each([
+    ['search-option-projects', '/chats/projects'],
+    ['search-option-memory', '/profile/memory'],
+    ['search-option-preferences', '/profile/preferences'],
+  ])('closes the modal and navigates from %s to %s', async (id, path) => {
+    useSearchModal().isModalOpen.value = true
+
+    let isModalOpenDuringNavigate: boolean | null = null
+
+    mocks.navigateToMock.mockImplementation(() => {
+      isModalOpenDuringNavigate = useSearchModal().isModalOpen.value
+
+      return Promise.resolve()
+    })
+
+    const wrapper = await mountModal()
+
+    await wrapper.find(`#${id}`).trigger('click')
+
+    expect(isModalOpenDuringNavigate).toBe(false)
+    expect(mocks.navigateToMock).toHaveBeenCalledWith(path)
+    expect(closeSpy).toHaveBeenCalled()
+  })
+
+  it('navigates to Preferences when it is the active row and Enter is pressed', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
+    await wrapper.find('input').trigger('keydown', { key: 'Enter' })
+
+    expect(mocks.navigateToMock)
+      .toHaveBeenCalledWith('/profile/preferences')
   })
 
   it('marks section headings as aria-hidden', async () => {
@@ -508,7 +583,7 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
 
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-keys')
+      .toBe('search-option-preferences')
   })
 
   it('opens the modal on Cmd+K when logged in and no dialog is open', async () => {

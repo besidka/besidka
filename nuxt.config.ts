@@ -281,10 +281,16 @@ export default defineNuxtConfig({
     researchSweepEnabled: false,
     researchSweepBatchSize: 20,
     researchSweepMaxRuntimeMs: 20000,
+    memoryExtractionSweepEnabled: false,
+    memoryExtractionSweepBatchSize: 20,
+    memoryExtractionSweepMaxRuntimeMs: 120000,
     researchMockEnabled: false,
     messageSearchSweepEnabled: false,
     messageSearchSweepBatchSize: 200,
     messageSearchSweepMaxRuntimeMs: 20000,
+    knowledgeSweepEnabled: false,
+    knowledgeSweepBatchSize: 1000,
+    knowledgeSweepMaxRuntimeMs: 20000,
     axiomDataset: '',
     axiomToken: '',
     axiomAuditDataset: '',
@@ -630,6 +636,11 @@ export default defineNuxtConfig({
             type: 'cookie',
           },
           {
+            id: 'studio-session-check',
+            name: 'studio-session-check',
+            type: 'cookie',
+          },
+          {
             id: 'chat-input-backup',
             name: 'chat_input_backup',
             type: 'localStorage',
@@ -637,6 +648,11 @@ export default defineNuxtConfig({
           {
             id: 'push-endpoint',
             name: 'besidka:push-endpoint',
+            type: 'localStorage',
+          },
+          {
+            id: 'knowledge-folders',
+            name: 'knowledge-folders:*',
             type: 'localStorage',
           },
           {
@@ -731,6 +747,16 @@ export default defineNuxtConfig({
           {
             id: 'web-search-tool',
             name: 'settings_web_search_tool',
+            type: 'localStorage',
+          },
+          {
+            id: 'web-search-auto',
+            name: 'settings_web_search_auto',
+            type: 'localStorage',
+          },
+          {
+            id: 'knowledge-cache-info-seen',
+            name: 'knowledge-cache-info-seen',
             type: 'localStorage',
           },
         ],

@@ -6,6 +6,7 @@ import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import { resolveServerLogger } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildSearchOwnerTag } from '~~/server/utils/search/query'
+import { purgeProjectKnowledge } from '~~/server/utils/knowledge/purge'
 
 const r2BatchDeleteLimit = 1000
 
@@ -25,9 +26,12 @@ export interface PurgeUserDataInput {
 }
 
 export interface PurgeUserDataResult {
+  memoryEntriesDeleted: number
+  memoryBackfillJobsDeleted: number
   filesFound: number
   storageKeysDeleted: number
   storageBatches: number
+  knowledgeObjectsDeleted: number
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
@@ -37,9 +41,14 @@ export interface PurgeUserDataResult {
 /**
  * Removes every trace of a user that deleting the `users` row cannot reach.
  *
- * The D1 cascade takes care of the user's own tables, but five classes of
- * data survive it and must be handled here:
+ * The D1 cascade takes care of the user's own tables, but six classes of
+ * data survive it and must be handled here. The user's `memory_entries` rows
+ * are also deleted explicitly, together with the user's
+ * `memory_backfill_jobs`, ahead of the R2 and KV work that may abort, as a
+ * safeguard next to their cascade foreign keys:
  *   - R2 objects behind `files.storageKey` (a D1 cascade never touches R2),
+ *   - R2 project-knowledge objects under `knowledge/u<userId>/` (extracted
+ *     text and packs, which no D1 row references by key),
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
@@ -66,6 +75,18 @@ export async function purgeUserData(
   const { userId } = input
   const logger = resolveServerLogger(input.logger)
   const db = useDb()
+  const memoryEntries = await db
+    .delete(schema.memoryEntries)
+    .where(eq(schema.memoryEntries.userId, userId))
+    .returning({
+      id: schema.memoryEntries.id,
+    })
+  const memoryBackfillJobs = await db
+    .delete(schema.memoryBackfillJobs)
+    .where(eq(schema.memoryBackfillJobs.userId, userId))
+    .returning({
+      id: schema.memoryBackfillJobs.id,
+    })
   const files = await db.query.files.findMany({
     where: { userId },
     columns: {
@@ -110,6 +131,26 @@ export async function purgeUserData(
 
       storageBatches++
     }
+  }
+
+  let knowledgePurge: Awaited<ReturnType<typeof purgeProjectKnowledge>>
+
+  try {
+    knowledgePurge = await purgeProjectKnowledge(userId)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'knowledge-r2-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
   }
 
   for (const storageKey of storageKeys) {
@@ -188,20 +229,37 @@ export async function purgeUserData(
   }
 
   const result: PurgeUserDataResult = {
+    memoryEntriesDeleted: memoryEntries.length,
+    memoryBackfillJobsDeleted: memoryBackfillJobs.length,
     filesFound: files.length,
     storageKeysDeleted: storageKeys.length,
     storageBatches,
+    knowledgeObjectsDeleted: knowledgePurge.objectsDeleted,
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
     sessionKeysDeleted: sessionStorageKeys.length,
   }
 
+  const {
+    memoryEntriesDeleted,
+    memoryBackfillJobsDeleted,
+    knowledgeObjectsDeleted,
+    ...existingResult
+  } = result
+
   logger.set({
     accountPurge: {
       phase: 'completed',
       userId,
-      ...result,
+      ...existingResult,
+    },
+    attributes: {
+      accountPurge: {
+        memoryEntriesDeleted,
+        memoryBackfillJobsDeleted,
+        knowledgeObjectsDeleted,
+      },
     },
   })
 

@@ -2,6 +2,8 @@ import type { LoggerLike } from '~~/server/utils/files/logger'
 import { sql } from 'drizzle-orm'
 import { SNIPPET_END, SNIPPET_START } from '#shared/utils/search'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { rerankWithJev } from '~~/server/utils/jev/rerank'
+import type { JevRerankModelResolver } from '~~/server/utils/jev/rerank'
 import {
   SEARCH_CHATS_CANDIDATE_LIMIT,
   SEARCH_CHATS_DEFAULT_LIMIT,
@@ -11,6 +13,8 @@ import {
 import {
   buildChatTitle,
   buildSnippetExcerpt,
+  collapseWhitespace,
+  neutralizeChatText,
 } from '~~/server/utils/memory/tools/excerpt'
 import { safeDecodePublicId } from '~~/server/utils/search/index-writer'
 import {
@@ -63,8 +67,21 @@ async function queryCandidateRows(input: {
   match: string
   currentChatRowId: number | null
   projectRowId: number | null
+  excludeForeignShareBranches: boolean
 }): Promise<SearchChatsCandidateRow[]> {
   const ownerTag = buildSearchOwnerTag(input.userId)
+  const excludeForeignShareBranches = input.excludeForeignShareBranches
+    ? sql`and (
+      c.branched_from_share_slug is null
+      or exists (
+        select 1
+        from chat_shares s
+        inner join chats source_chat on source_chat.id = s.chat_id
+        where s.slug = c.branched_from_share_slug
+          and source_chat.user_id = c.user_id
+      )
+    )`
+    : sql``
   const excludeCurrentChat = input.currentChatRowId === null
     ? sql``
     : sql`and m.chat_id != ${input.currentChatRowId}`
@@ -87,17 +104,18 @@ async function queryCandidateRows(input: {
     where message_search match ${input.match}
       and ms.owner = ${ownerTag}
       and c.user_id = ${input.userId}
+      and c.memory_excluded is not 1
       ${excludeCurrentChat}
       ${restrictToProject}
+      ${excludeForeignShareBranches}
     order by score asc, ms.rowid desc
     limit ${SEARCH_CHATS_CANDIDATE_LIMIT}
   `)
 }
 
-function pickBestHitPerChat(
+function pickBestRowPerChat(
   rows: SearchChatsCandidateRow[],
-  limit: number,
-): SearchChatsHit[] {
+): SearchChatsCandidateRow[] {
   const bestRowByChat = new Map<string, SearchChatsCandidateRow>()
 
   for (const row of rows) {
@@ -110,28 +128,63 @@ function pickBestHitPerChat(
 
   return [...bestRowByChat.values()]
     .sort((first, second) => first.score - second.score)
-    .slice(0, limit)
-    .map((row) => {
-      return {
-        chatId: row.chatSlug,
-        title: buildChatTitle(row.chatTitle),
-        url: `/chats/${row.chatSlug}`,
-        ...(row.messageId ? { messageId: row.messageId } : {}),
-        role: row.role,
-        date: buildHitDate(row.createdAt),
-        snippet: buildSnippetExcerpt(row.snippet),
-      }
-    })
+}
+
+function toHit(row: SearchChatsCandidateRow): SearchChatsHit {
+  return {
+    chatId: row.chatSlug,
+    title: buildChatTitle(row.chatTitle),
+    url: `/chats/${row.chatSlug}`,
+    ...(row.messageId ? { messageId: row.messageId } : {}),
+    role: row.role,
+    date: buildHitDate(row.createdAt),
+    snippet: buildSnippetExcerpt(row.snippet),
+  }
+}
+
+function buildRerankPassage(row: SearchChatsCandidateRow): string {
+  return collapseWhitespace(neutralizeChatText(row.snippet))
+}
+
+async function pickBestHitPerChat(input: {
+  rows: SearchChatsCandidateRow[]
+  query: string
+  limit: number
+  resolveRerankModel?: JevRerankModelResolver
+  logger?: Pick<LoggerLike, 'set'>
+}): Promise<SearchChatsHit[]> {
+  const rankedRows = pickBestRowPerChat(input.rows)
+  const model = input.resolveRerankModel && rankedRows.length > 1
+    ? await input.resolveRerankModel()
+    : null
+  const orderedRows = await rerankWithJev({
+    model,
+    query: input.query,
+    candidates: rankedRows,
+    passageOf: buildRerankPassage,
+    keepAtLeast: input.limit,
+    logger: input.logger,
+  })
+
+  return orderedRows.slice(0, input.limit).map(toHit)
 }
 
 /**
  * Searches the user's other chats over the `message_search` FTS5 table. The
  * strict AND expression runs first; only when it finds nothing is the same
- * query retried with OR, bm25-ranked. The current chat exclusion and the
- * optional project scope are joined inside the FTS query, before the
+ * query retried with OR, bm25-ranked. The current chat exclusion, chats
+ * excluded from memory and the optional project scope are joined inside the
+ * FTS query, before the
  * candidate LIMIT: filtering the candidates afterwards would give a small
  * project zero hits whenever other chats fill the candidate list. Never
- * throws: a failing query is logged and returns no results.
+ * throws: a failing query is logged and returns no results. With
+ * `resolveRerankModel`, the best hit of each chat is re-ranked by TypeSafe
+ * AI Jev before the final slice to `limit`; the relevance cut never leaves
+ * fewer than `limit` hits, and any Jev failure keeps the BM25 order. With
+ * `excludeForeignShareBranches` (past-chat pre-retrieval), chats branched
+ * from another user's share are left out: their copied turns were written
+ * by someone else and would be injected without the user asking. A branch
+ * whose share no longer exists counts as foreign.
  */
 export async function searchChats(input: {
   db: ReturnType<typeof useDb>
@@ -140,6 +193,8 @@ export async function searchChats(input: {
   limit?: number
   currentChatId: string
   projectId?: string
+  excludeForeignShareBranches?: boolean
+  resolveRerankModel?: JevRerankModelResolver
   logger?: Pick<LoggerLike, 'set'>
 }): Promise<SearchChatsResult> {
   const andExpression = buildSearchMatchExpression(input.query, input.userId)
@@ -187,10 +242,17 @@ export async function searchChats(input: {
         match,
         currentChatRowId,
         projectRowId,
+        excludeForeignShareBranches: input.excludeForeignShareBranches === true,
       })
 
       if (rows.length > 0) {
-        const results = pickBestHitPerChat(rows, limit)
+        const results = await pickBestHitPerChat({
+          rows,
+          query: input.query,
+          limit,
+          resolveRerankModel: input.resolveRerankModel,
+          logger: input.logger,
+        })
 
         input.logger?.set({
           attributes: {

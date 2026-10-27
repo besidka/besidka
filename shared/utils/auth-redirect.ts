@@ -1,12 +1,18 @@
 import {
   enabledGateways,
+  enabledMemoryCheckProviders,
   enabledSearchProviders,
   providerMeta,
 } from '#shared/utils/provider-meta'
 
 export const AUTH_NEXT_QUERY_KEY = 'next'
 
-export const KEYS_PAGE_TAB_IDS = ['providers', 'search', 'gateways'] as const
+export const KEYS_PAGE_TAB_IDS = [
+  'providers',
+  'search',
+  'gateways',
+  'memory-checks',
+] as const
 
 const KEYS_PAGE_PATHNAME = '/profile/keys'
 const NEW_CHAT_PATHNAME = '/chats/new'
@@ -53,6 +59,10 @@ function isKnownKeyTargetId(providerId: string): boolean {
 
   if (kind === 'gateway') {
     return (enabledGateways as string[]).includes(providerId)
+  }
+
+  if (kind === 'memory-check') {
+    return enabledMemoryCheckProviders.includes(providerId)
   }
 
   return kind === 'search' && enabledSearchProviders.includes(providerId)

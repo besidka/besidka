@@ -18,7 +18,10 @@
         :type="isDisabled ? undefined : 'button'"
         :aria-label="isDisabled ? undefined : selectLabel"
         class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left"
-        :class="isDisabled ? 'opacity-50' : 'cursor-pointer'"
+        :class="[
+          isDisabled ? 'opacity-50' : 'cursor-pointer',
+          { 'max-xs:gap-x-1': isRecommended }
+        ]"
         @click="onSelect"
       >
         <span
@@ -77,12 +80,22 @@
           </span>
         </span>
         <span
+          v-if="isRecommended"
+          data-testid="model-recommended"
+          class="badge badge-xs badge-soft badge-success shrink-0 font-semibold"
+          :class="{
+            'max-xs:ml-5': !isKeyMissing && !model.priceTier
+          }"
+        >
+          Recommended
+        </span>
+        <span
           v-if="hasCapabilities"
           data-testid="model-capabilities"
           class="shrink-0 flex gap-1 items-center xs:ml-auto"
           :class="{
-            'max-xs:ml-5': !model.priceTier,
-            'max-xs:-ml-1': !!model.priceTier
+            'max-xs:ml-5': !model.priceTier && !isRecommended,
+            'max-xs:-ml-1': !!model.priceTier || !!isRecommended
           }"
         >
           <span
@@ -225,6 +238,7 @@ const props = defineProps<{
   isLegacy?: boolean
   isKeyMissing?: boolean
   providerName?: string
+  isRecommended?: boolean
 }>()
 
 const emit = defineEmits<{

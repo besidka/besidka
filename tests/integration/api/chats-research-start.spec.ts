@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_USER_MESSAGE_TEXT_LENGTH } from '~~/server/utils/chats/request-schema'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   startResearchJobForChat: vi.fn(async () => ({
     job: {

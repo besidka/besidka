@@ -1385,6 +1385,50 @@ describe('Chat/Reasoning', () => {
     expect(wrapper.text()).not.toContain('Body')
   })
 
+  it('titles a past-chat pre-retrieval step by its count with links',
+    async () => {
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage([
+            {
+              type: 'tool-search_chats',
+              toolCallId: 'past-chat-pre-retrieval-user-1',
+              state: 'output-available',
+              input: { query: 'invoice' },
+              output: {
+                results: [
+                  { title: 'A', url: '/chats/a', date: '' },
+                  { title: 'B', url: '/chats/b', date: '' },
+                  { title: 'C', url: '/chats/c', date: '' },
+                ],
+              },
+            },
+          ] as UIMessage['parts']),
+          status: 'ready',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+      })
+      const stepTrigger = wrapper.get(
+        '[data-testid="reasoning-search-step-trigger"]',
+      )
+
+      expect(stepTrigger.text()).toContain('Used 3 earlier chats')
+      expect(stepTrigger.text()).not.toContain('Searched your chats')
+      expect(
+        wrapper.find('[data-testid="reasoning-search-step-count"]').exists(),
+      ).toBe(false)
+
+      await stepTrigger.trigger('click')
+
+      expect(
+        wrapper.findAll('[data-testid="reasoning-search-step-chat-link"]'),
+      ).toHaveLength(3)
+    })
+
   it('shows a streaming external search step with a partial input',
     async () => {
       const wrapper = await mountSuspended(Reasoning, {
@@ -1414,6 +1458,77 @@ describe('Chat/Reasoning', () => {
       ).toBe('“partial qu”')
       expect(wrapper.findAll('[data-testid="reasoning-step-title"]'))
         .toHaveLength(0)
+    })
+
+  it('renders memory tool parts as memory steps, not generic ones',
+    async () => {
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage([
+            {
+              type: 'tool-memory_write',
+              toolCallId: 'call-1',
+              state: 'output-available',
+              input: { category: 'people', title: 'Anna' },
+              output: {
+                notice: 'saved',
+                action: 'created',
+                entry: {
+                  id: 'entry-9',
+                  handle: 'people/anna',
+                  scope: 'account',
+                  category: 'people',
+                  title: 'Anna',
+                  description: 'Sister',
+                },
+              },
+            },
+            {
+              type: 'tool-memory_list',
+              toolCallId: 'call-2',
+              state: 'output-available',
+              input: {},
+              output: {
+                notice: 'data',
+                entries: [{
+                  id: 'a',
+                  handle: 'topics/gardening',
+                  scope: 'account',
+                  category: 'topics',
+                  title: 'Gardening',
+                  description: 'Tomatoes',
+                  body: 'Body',
+                }],
+              },
+            },
+          ] as UIMessage['parts']),
+          status: 'ready',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+      })
+
+      const titles = wrapper.findAll(
+        '[data-testid="reasoning-memory-step-title"]',
+      )
+
+      expect(titles.map(title => title.text())).toEqual([
+        'Saved to memory',
+        'Looked through your memory',
+      ])
+      expect(
+        wrapper.get('[data-testid="reasoning-memory-step-undo"]').text(),
+      ).toBe('Undo')
+      expect(
+        wrapper.get('[data-testid="reasoning-memory-step-count"]').text(),
+      ).toBe('1 entry')
+      expect(wrapper.findAll('[data-testid="reasoning-step-title"]'))
+        .toHaveLength(0)
+      expect(wrapper.find('[data-testid="reasoning-search-step"]').exists())
+        .toBe(false)
     })
 
   describe('hidden reasoning indicator', () => {

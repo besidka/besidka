@@ -13,6 +13,12 @@ const mocks = vi.hoisted(() => ({
 
 mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 
+mockNuxtImport('useMediaQuery', () => {
+  return () => isPopoverLayout
+})
+
+const isPopoverLayout = shallowRef<boolean>(true)
+
 async function openPicker() {
   const wrapper = await mountSuspended(ModelsTrigger, {
     props: {

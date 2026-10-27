@@ -6,6 +6,15 @@ export const DELETED_USER_MESSAGE_PLACEHOLDER_TEXT
 
 export const MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT = '(no reply)'
 
+export const KNOWLEDGE_MEDIA_TURN_TEXT = 'Project files attached for reference:'
+
+export interface KnowledgeMediaFilePart {
+  type: 'file'
+  mediaType: string
+  url: string
+  filename: string
+}
+
 /**
  * Shapes the model-facing turn order without touching persisted history.
  *
@@ -95,4 +104,67 @@ function buildMissingAssistantReplyPlaceholder(): UIMessage {
       text: MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT,
     }],
   }
+}
+
+/**
+ * The two synthetic turns that carry project knowledge media (images and
+ * native PDFs) to the model: a leading user turn with the files and an
+ * assistant placeholder, so the conversation that follows still starts on a
+ * user turn after them and the media sit in the cacheable prefix. Returns no
+ * turns when there are no parts. The ids are fixed so the prefix stays
+ * byte-stable across sends.
+ */
+export function buildKnowledgeMediaTurns(
+  parts: readonly KnowledgeMediaFilePart[],
+): UIMessage[] {
+  if (parts.length === 0) {
+    return []
+  }
+
+  return [
+    {
+      id: 'knowledge-media',
+      role: 'user',
+      parts: [
+        { type: 'text', text: KNOWLEDGE_MEDIA_TURN_TEXT },
+        ...parts.map((part) => {
+          return { ...part }
+        }),
+      ],
+    },
+    {
+      id: 'knowledge-media-reply',
+      role: 'assistant',
+      parts: [{
+        type: 'text',
+        text: MISSING_ASSISTANT_REPLY_PLACEHOLDER_TEXT,
+      }],
+    },
+  ]
+}
+
+/**
+ * Appends one text part to the last turn when it is a user turn, for
+ * model-facing context that must never be persisted. Returns a new array
+ * whose last element is a copy; neither the input array nor its messages
+ * are mutated, and the input is returned as is when the last turn is not a
+ * user turn.
+ */
+export function appendTextToLastUserTurn(
+  messages: UIMessage[],
+  text: string,
+): UIMessage[] {
+  const lastMessage = messages.at(-1)
+
+  if (!lastMessage || lastMessage.role !== 'user') {
+    return messages
+  }
+
+  return [
+    ...messages.slice(0, -1),
+    {
+      ...lastMessage,
+      parts: [...lastMessage.parts, { type: 'text', text }],
+    },
+  ]
 }

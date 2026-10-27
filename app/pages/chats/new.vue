@@ -50,6 +50,7 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
+    v-model:memory-excluded="memoryExcluded"
     display-project-picker
     :project-context="projectContext"
     :messages-length="0"
@@ -93,9 +94,11 @@ useSeoMeta({
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
+const { handleConsentError } = useLegalConsent()
 const prefStorage = usePreferenceStorage()
 const nuxtApp = useNuxtApp()
 const { userModel } = useUserModel()
+const { resolveWebSearchMode } = useAutoWebSearch()
 const message = customRef<string>((track, trigger) => ({
   get() {
     track()
@@ -169,9 +172,14 @@ if (import.meta.client) {
   )
 }
 
+const { defaultReasoningLevel } = useUserSetting()
 const reasoning = shallowRef<ReasoningLevel>(
-  normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
+  resolveInitialReasoningLevel(
+    defaultReasoningLevel.value,
+    prefStorage.getItem('settings_reasoning_level'),
+  ),
 )
+const memoryExcluded = shallowRef<boolean>(false)
 
 function parseRouteProjectId(projectId: unknown): string | null {
   return typeof projectId === 'string' && projectId.length > 0
@@ -449,12 +457,14 @@ async function createResearchChat(
           ),
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
+        webSearchMode: resolveWebSearchMode(tools.value),
         reasoning: reasoning.value,
         model: userModel.value,
         research: {
           answers,
         },
         ...(projectId.value ? { projectId: projectId.value } : {}),
+        ...(memoryExcluded.value ? { memoryExcluded: true } : {}),
       },
       cache: 'no-cache',
     })
@@ -615,8 +625,10 @@ async function onSubmit() {
           ),
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
+        webSearchMode: resolveWebSearchMode(tools.value),
         reasoning: reasoning.value,
         ...(projectId.value ? { projectId: projectId.value } : {}),
+        ...(memoryExcluded.value ? { memoryExcluded: true } : {}),
       },
       cache: 'no-cache',
     })
@@ -636,6 +648,10 @@ async function onSubmit() {
     draftBackup.save(draft)
     message.value = draft
     files.value = draftFiles
+
+    if (await handleConsentError(exception)) {
+      return
+    }
 
     const parsedException = parseError(exception)
 

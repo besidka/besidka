@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   streamTextOptions: [] as Array<Record<string, any>>,
   toUIMessageStreamOptions: [] as Array<Record<string, any>>,
@@ -150,6 +154,14 @@ function createDb(chatMessages: unknown[]) {
   return {
     db: {
       query: {
+        userSettings: {
+          findFirst: vi.fn(async () => ({
+            memoryEnabled: false,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          })),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',

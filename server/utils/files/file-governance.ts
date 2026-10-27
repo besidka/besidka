@@ -4,6 +4,10 @@ import type { FilePolicy } from '#shared/types/files.d'
 import { and, eq, lt, sql } from 'drizzle-orm'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
 import * as schema from '~~/server/db/schema'
+import {
+  isFileNotLinkedToKnowledgeSql,
+} from '~~/server/utils/knowledge/linked-files'
+import { userKnowledgeTextBytesSql } from '~~/server/utils/knowledge/quota'
 
 export function extractStorageKeyFromFileUrl(url: string): string | null {
   return extractLocalFileStorageKey(url)
@@ -188,7 +192,8 @@ export async function getUserStorageUsageBytes(
   const db = useDb()
   const result = await db
     .select({
-      used: sql<number>`coalesce(sum(${schema.files.size}), 0)`,
+      used: sql<number>`coalesce(sum(${schema.files.size}), 0)
+        + ${userKnowledgeTextBytesSql(userId)}`,
     })
     .from(schema.files)
     .where(eq(schema.files.userId, userId))
@@ -222,7 +227,10 @@ export async function recomputeUserFileExpiry(
   )
   const retentionDays = await getEffectiveRetentionDays(userId)
   const files = await db.query.files.findMany({
-    where: { userId },
+    where: {
+      userId,
+      RAW: table => isFileNotLinkedToKnowledgeSql(table.id),
+    },
     columns: {
       id: true,
       createdAt: true,
@@ -260,7 +268,10 @@ export async function recomputeUserFileExpiry(
       .set({
         expiresAt: null,
       })
-      .where(eq(schema.files.userId, userId))
+      .where(and(
+        eq(schema.files.userId, userId),
+        isFileNotLinkedToKnowledgeSql(schema.files.id),
+      ))
       .run()
 
     return {

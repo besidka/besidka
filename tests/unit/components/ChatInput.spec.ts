@@ -1,11 +1,12 @@
 import { computed, defineComponent, nextTick, reactive, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { enableAutoUnmount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { REVEAL_GUARD_DURATION_MS } from '../../../app/composables/reveal-guard'
 
 const mocks = vi.hoisted(() => ({
   useChatInput: vi.fn(),
@@ -14,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   uploadFiles: vi.fn(),
   useWarningMessage: vi.fn(),
   requestPersistence: vi.fn(),
+  ensureSendConsent: vi.fn(async () => true),
+  setDefaultReasoningLevel: vi.fn(async () => {}),
+  setReasoningExpanded: vi.fn(async () => {}),
+  setReasoningAutoHide: vi.fn(async () => {}),
 }))
 
 mockNuxtImport('useChatInput', () => mocks.useChatInput)
@@ -21,6 +26,27 @@ mockNuxtImport('useChatFiles', () => mocks.useChatFiles)
 mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
 mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: mocks.ensureSendConsent,
+}))
+
+mockNuxtImport('useMediaQuery', () => {
+  return () => isPopoverLayout
+})
+
+mockNuxtImport('useUserSetting', () => {
+  return () => ({
+    reasoningExpanded: computed(() => false),
+    reasoningAutoHide: computed(() => true),
+    defaultReasoningLevel: computed(() => defaultReasoningLevel.value),
+    setDefaultReasoningLevel: mocks.setDefaultReasoningLevel,
+    setReasoningExpanded: mocks.setReasoningExpanded,
+    setReasoningAutoHide: mocks.setReasoningAutoHide,
+  })
+})
+
+const isPopoverLayout = shallowRef<boolean>(true)
+const defaultReasoningLevel = shallowRef<string | null>(null)
 
 const mockRoute = reactive<{ path: string }>({ path: '/chats/abc123' })
 
@@ -51,6 +77,15 @@ const uiButtonStub = defineComponent({
 
 enableAutoUnmount(afterEach)
 
+function fakeRevealGuardTimers() {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+}
+
+async function waitOutRevealGuard() {
+  vi.advanceTimersByTime(REVEAL_GUARD_DURATION_MS)
+  await flushPromises()
+}
+
 function mountChatInput(extraProps: Record<string, unknown> = {}) {
   return mountSuspended(ChatInput, {
     props: {
@@ -79,6 +114,79 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
       },
     },
   })
+}
+
+type ChatInputWrapper = Awaited<ReturnType<typeof mountChatInput>>
+
+async function openToolsPanel(wrapper: ChatInputWrapper) {
+  await wrapper.get('[data-testid="chat-input-tools-trigger"]')
+    .trigger('click')
+  await flushPromises()
+}
+
+function hasTestId(wrapper: ChatInputWrapper, testId: string): boolean {
+  return wrapper.find(`[data-testid="${testId}"]`).exists()
+}
+
+function isTestIdRevealed(
+  wrapper: ChatInputWrapper,
+  testId: string,
+): boolean {
+  const element = wrapper.find(`[data-testid="${testId}"]`)
+
+  return element.exists() && !element.element.closest('[inert]')
+}
+
+function captionText(wrapper: ChatInputWrapper): string {
+  return wrapper.get('[data-testid="reasoning-default-caption"]').text()
+}
+
+function isTestIdChecked(
+  wrapper: ChatInputWrapper,
+  testId: string,
+): boolean {
+  return (wrapper.get(`[data-testid="${testId}"]`).element as HTMLInputElement)
+    .checked
+}
+
+function isTestIdDisabled(
+  wrapper: ChatInputWrapper,
+  testId: string,
+): boolean {
+  return (wrapper.get(`[data-testid="${testId}"]`).element as HTMLInputElement)
+    .disabled
+}
+
+async function pickTestId(wrapper: ChatInputWrapper, testId: string) {
+  await wrapper.get(`[data-testid="${testId}"]`).setValue(true)
+  await nextTick()
+}
+
+async function setToggle(
+  wrapper: ChatInputWrapper,
+  testId: string,
+  isOn: boolean,
+) {
+  await wrapper.get(`[data-testid="${testId}"]`).setValue(isOn)
+  await nextTick()
+}
+
+function ariaLabelsOf(
+  wrapper: ChatInputWrapper,
+  testIdPrefix: string,
+): string[] {
+  return wrapper.findAll(`[data-testid^="${testIdPrefix}"]`).map((item) => {
+    return item.attributes('aria-label') ?? ''
+  })
+}
+
+function tileOf(wrapper: ChatInputWrapper, id: string) {
+  return wrapper.find(`[data-testid="chat-input-tile-${id}"]`)
+}
+
+function tileTitle(wrapper: ChatInputWrapper, id: string): string {
+  return wrapper.get(`[data-testid="chat-input-tile-${id}-body"]`)
+    .attributes('aria-label') ?? ''
 }
 
 function createPasteEvent(files: File[]) {
@@ -111,6 +219,8 @@ function appendBlockingDialog(className: string) {
 describe('ChatInput.client', () => {
   beforeEach(() => {
     mockRoute.path = '/chats/abc123'
+    isPopoverLayout.value = true
+    defaultReasoningLevel.value = null
 
     mocks.useChatInput.mockReturnValue({
       isWebSearchSupported: shallowRef(false),
@@ -122,15 +232,19 @@ describe('ChatInput.client', () => {
       canAttachMediaType: shallowRef(() => true),
       isReasoningSupported: shallowRef(false),
       isReasoningAlwaysOn: shallowRef(false),
+      canDisableReasoningLevel: shallowRef(true),
       reasoningCapability: shallowRef(null),
       reasoningMode: shallowRef('none'),
       reasoningMenuLevels: shallowRef([]),
       isDeepResearchModel: shallowRef(false),
       researchConfig: shallowRef(null),
       isSelectedModelKeyless: shallowRef(false),
+      selectedTransferProviderId: shallowRef(null),
       selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
       isModelCapabilityResolved: shallowRef(true),
       isSelectedModelUnavailable: shallowRef(false),
+      selectedModelId: shallowRef('gemini-3.1-pro'),
+      selectedModelBillingProviderId: shallowRef<string | null>('google'),
     })
 
     mocks.useChatFiles.mockReturnValue({
@@ -153,6 +267,8 @@ describe('ChatInput.client', () => {
     filesModalOpenMock.mockReset()
     mocks.uploadFiles.mockReset()
     mocks.useWarningMessage.mockReset()
+    mocks.requestPersistence.mockReset()
+    mocks.setDefaultReasoningLevel.mockReset()
 
     useFilesModalHandoff().clearPendingOpen()
 
@@ -164,6 +280,7 @@ describe('ChatInput.client', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     document
       .querySelectorAll('dialog.js-files-modal, dialog.js-search-modal')
       .forEach((dialog) => {
@@ -269,15 +386,19 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(true),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('Anthropic'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -382,10 +503,27 @@ describe('ChatInput.client', () => {
         .attributes('disabled')).toBeUndefined()
 
       await textarea.trigger('keydown.enter')
+      await flushPromises()
 
       expect(mocks.useWarningMessage).not.toHaveBeenCalled()
       expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(mocks.ensureSendConsent).toHaveBeenCalledWith(null)
     })
+
+    it('keeps the draft and does not send when consent is refused',
+      async () => {
+        mocks.ensureSendConsent.mockResolvedValueOnce(false)
+
+        const wrapper = await mountChatInput()
+        const textarea = wrapper.get('textarea')
+
+        await textarea.setValue('hello')
+        await textarea.trigger('keydown.enter')
+        await flushPromises()
+
+        expect(wrapper.emitted('submit')).toBeUndefined()
+        expect((textarea.element as HTMLTextAreaElement).value).toBe('hello')
+      })
 
     it('leaves the regenerate title alone when a key is present', async () => {
       const wrapper = await mountSuspended(ChatInput, {
@@ -469,15 +607,19 @@ describe('ChatInput.client', () => {
         canAttachMediaType,
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return canAttachMediaType
@@ -567,36 +709,6 @@ describe('ChatInput.client', () => {
   })
 
   describe('toggle-mode reasoning', () => {
-    function reasoningLevelButtonTexts(
-      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
-    ): string[] {
-      const trigger = wrapper.get('[data-testid="reasoning-trigger"]')
-      const dropdown = trigger.element.closest('details')
-
-      return Array.from(
-        dropdown?.querySelectorAll('.menu li > button') ?? [],
-      ).map(button => button.textContent?.trim() ?? '')
-    }
-
-    function clickReasoningLevel(
-      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
-      label: string,
-    ) {
-      const trigger = wrapper.get('[data-testid="reasoning-trigger"]')
-      const dropdown = trigger.element.closest('details')
-      const button = Array.from(
-        dropdown?.querySelectorAll('.menu li > button') ?? [],
-      ).find((candidate) => {
-        return candidate.textContent?.trim() === label
-      })
-
-      if (!button) {
-        throw new Error(`No reasoning level button labelled "${label}"`)
-      }
-
-      button.dispatchEvent(new Event('click', { bubbles: true }))
-    }
-
     function useToggleModeSelection() {
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
@@ -608,19 +720,31 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability: shallowRef({ mode: 'toggle' }),
         reasoningMode: shallowRef('toggle'),
         reasoningMenuLevels: shallowRef(['medium']),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
     function useLevelsModeSelection() {
+      const reasoningCapability = shallowRef<{
+        mode: 'levels'
+        levels: string[]
+      }>({
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      })
+
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
         isToolCallingSupported: shallowRef(false),
@@ -631,19 +755,22 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
-        reasoningCapability: shallowRef({
-          mode: 'levels',
-          levels: ['low', 'medium', 'high'],
-        }),
+        canDisableReasoningLevel: shallowRef(true),
+        reasoningCapability,
         reasoningMode: shallowRef('levels'),
         reasoningMenuLevels: shallowRef(['low', 'medium', 'high']),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
+
+      return { reasoningCapability }
     }
 
     function useDeepResearchSelection() {
@@ -657,26 +784,47 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability: shallowRef({ mode: 'toggle' }),
         reasoningMode: shallowRef('toggle'),
         reasoningMenuLevels: shallowRef(['medium']),
         isDeepResearchModel: shallowRef(true),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
-    it('renders the reasoning trigger with an effective Off/On level '
-      + 'list for a toggle-mode model', async () => {
+    function bindReasoning(initial: string = 'off') {
+      const wrapperRef: { current: ChatInputWrapper | null } = {
+        current: null,
+      }
+
+      return {
+        wrapperRef,
+        props: {
+          'reasoning': initial,
+          'onUpdate:reasoning': (value: string) => {
+            wrapperRef.current?.setProps({ reasoning: value })
+          },
+        },
+      }
+    }
+
+    it('offers Off and On segments for a toggle-mode model', async () => {
       useToggleModeSelection()
 
       const wrapper = await mountChatInput()
-      const levelButtonTexts = reasoningLevelButtonTexts(wrapper)
 
-      expect(levelButtonTexts).toEqual(['off', 'On'])
+      await openToolsPanel(wrapper)
+
+      expect(ariaLabelsOf(wrapper, 'reasoning-level-'))
+        .toEqual(['Off', 'On'])
     })
 
     it('never renders a bare reasoning toggle button for a '
@@ -696,46 +844,229 @@ describe('ChatInput.client', () => {
       useLevelsModeSelection()
 
       const wrapper = await mountChatInput()
-      const levelButtonTexts = reasoningLevelButtonTexts(wrapper)
 
-      expect(levelButtonTexts).toEqual(['off', 'low', 'medium', 'high'])
+      await openToolsPanel(wrapper)
+
+      expect(ariaLabelsOf(wrapper, 'reasoning-level-'))
+        .toEqual(['Off', 'Low', 'Medium', 'High'])
     })
 
-    it('asks to remember preferences only on an explicit level pick',
-      async () => {
-        useLevelsModeSelection()
-
-        const wrapper = await mountChatInput()
-
-        expect(mocks.requestPersistence).not.toHaveBeenCalled()
-
-        clickReasoningLevel(wrapper, 'high')
-        await nextTick()
-
-        expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
-      })
-
-    it('persists an explicitly chosen reasoning level as the saved '
-      + 'default', async () => {
+    it('keeps a level pick for this chat only, without writing the default '
+      + 'or asking to remember preferences', async () => {
       useLevelsModeSelection()
 
       const wrapper = await mountChatInput()
 
-      clickReasoningLevel(wrapper, 'high')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'reasoning-level-high')
 
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['high'])
+      expect(mocks.requestPersistence).not.toHaveBeenCalled()
+      expect(mocks.setDefaultReasoningLevel).not.toHaveBeenCalled()
       expect(usePreferenceStorage().getItem('settings_reasoning_level'))
-        .toBe('high')
+        .toBeNull()
     })
 
-    it('never renders the reasoning trigger for a deep research model',
+    it('shows a Reasoning tile and offers Save as default once the level '
+      + 'differs from the default, and saves it on request', async () => {
+      useLevelsModeSelection()
+
+      const { wrapperRef, props } = bindReasoning('off')
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await openToolsPanel(wrapper)
+
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+      expect(captionText(wrapper)).toBe('Off is your default')
+      expect(hasTestId(wrapper, 'reasoning-save-default-button'))
+        .toBe(false)
+
+      await pickTestId(wrapper, 'reasoning-level-high')
+      await flushPromises()
+
+      expect(tileTitle(wrapper, 'reasoning'))
+        .toBe('Reasoning: High. Your default is Off.')
+      expect(captionText(wrapper))
+        .toBe('Your default is Off · Save High as default')
+
+      await wrapper.get('[data-testid="reasoning-save-default-button"]')
+        .trigger('click')
+
+      expect(mocks.setDefaultReasoningLevel).toHaveBeenCalledWith('high')
+
+      defaultReasoningLevel.value = 'high'
+      await flushPromises()
+
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+      expect(captionText(wrapper)).toBe('High is your default')
+      expect(hasTestId(wrapper, 'reasoning-save-default-button'))
+        .toBe(false)
+    })
+
+    it('compares against the saved server default', async () => {
+      useLevelsModeSelection()
+      defaultReasoningLevel.value = 'low'
+
+      const wrapper = await mountChatInput({ reasoning: 'low' })
+
+      await flushPromises()
+
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+
+      await wrapper.setProps({ reasoning: 'medium' })
+      await flushPromises()
+
+      expect(tileTitle(wrapper, 'reasoning'))
+        .toBe('Reasoning: Medium. Your default is Low.')
+    })
+
+    it('follows a default that loads after mount until the user picks a '
+      + 'level', async () => {
+      useLevelsModeSelection()
+
+      const { wrapperRef, props } = bindReasoning('off')
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      defaultReasoningLevel.value = 'high'
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['high'])
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'reasoning-level-low')
+
+      defaultReasoningLevel.value = 'medium'
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['low'])
+    })
+
+    it('follows a default that loads after mount in the same flush that '
+      + 'rebuilds an equal capability object', async () => {
+      const { reasoningCapability } = useLevelsModeSelection()
+
+      const { wrapperRef, props } = bindReasoning('off')
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      defaultReasoningLevel.value = 'high'
+      reasoningCapability.value = {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      }
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')?.map((args) => {
+        return args[0]
+      })).toEqual(['high'])
+      expect(wrapper.props('reasoning')).toBe('high')
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+    })
+
+    it('still re-clamps the level when the capability really changes',
+      async () => {
+        const { reasoningCapability } = useLevelsModeSelection()
+
+        const { wrapperRef, props } = bindReasoning('high')
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        reasoningCapability.value = {
+          mode: 'levels',
+          levels: ['low', 'medium'],
+        }
+        await flushPromises()
+
+        expect(wrapper.emitted('update:reasoning')?.at(-1))
+          .toEqual(['medium'])
+      })
+
+    it('follows a default that was already loaded before mount, until the '
+      + 'user picks a level', async () => {
+      useLevelsModeSelection()
+      defaultReasoningLevel.value = 'high'
+
+      const { wrapperRef, props } = bindReasoning('off')
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['high'])
+
+      await wrapper.setProps({ reasoning: 'high' })
+
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+
+      await openToolsPanel(wrapper)
+
+      expect(captionText(wrapper)).toBe('High is your default')
+
+      await pickTestId(wrapper, 'reasoning-level-low')
+
+      defaultReasoningLevel.value = 'medium'
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['low'])
+    })
+
+    it('keeps a level the page seeded on purpose when the default was '
+      + 'already loaded before mount', async () => {
+      useLevelsModeSelection()
+      defaultReasoningLevel.value = 'high'
+
+      const wrapper = await mountChatInput({ reasoning: 'medium' })
+
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')).toBeUndefined()
+
+      await openToolsPanel(wrapper)
+
+      expect(captionText(wrapper))
+        .toBe('Your default is High · Save Medium as default')
+    })
+
+    it('keeps the level of a chat that already has messages, even when the '
+      + 'default was loaded before mount or arrives later', async () => {
+      useLevelsModeSelection()
+      defaultReasoningLevel.value = 'high'
+
+      const wrapper = await mountChatInput({
+        reasoning: 'off',
+        messagesLength: 2,
+      })
+
+      await flushPromises()
+
+      defaultReasoningLevel.value = 'low'
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')).toBeUndefined()
+    })
+
+    it('never renders the reasoning section for a deep research model',
       async () => {
         useDeepResearchSelection()
 
         const wrapper = await mountChatInput()
 
+        await openToolsPanel(wrapper)
+
+        expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(false)
+        expect(hasTestId(wrapper, 'reasoning-level-medium')).toBe(false)
+        expect(tileOf(wrapper, 'deep-research').exists()).toBe(true)
         expect(
-          wrapper.find('[data-testid="reasoning-trigger"]').exists(),
+          wrapper.find('[data-testid="chat-input-tile-deep-research-remove"]')
+            .exists(),
         ).toBe(false)
       })
   })
@@ -804,69 +1135,36 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return { webSearchProviderOptionsRef, isToolCallingSupportedRef }
     }
 
-    function webSearchDropdown(
-      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
-    ) {
-      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
-
-      return trigger.element.closest('details')
-    }
-
-    function webSearchOptionButtons(
-      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
-    ) {
-      const dropdown = webSearchDropdown(wrapper)
-
-      return Array.from(
-        dropdown?.querySelectorAll('.menu li > button') ?? [],
-      ) as HTMLButtonElement[]
-    }
-
-    function webSearchOptionLabel(button: HTMLButtonElement): string {
-      return button.querySelector(':scope > span:last-child')
-        ?.textContent?.trim() ?? ''
-    }
-
-    function clickWebSearchOption(
-      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
-      label: string,
-    ) {
-      const button = webSearchOptionButtons(wrapper).find((candidate) => {
-        return webSearchOptionLabel(candidate) === label
-      })
-
-      if (!button) {
-        throw new Error(`No web search option button labelled "${label}"`)
-      }
-
-      button.dispatchEvent(new Event('click', { bubbles: true }))
-    }
-
-    it('renders a ghost circle globe when nothing is selected', async () => {
+    it('shows no search tile while nothing is selected', async () => {
       useWebSearchSelection()
 
       const wrapper = await mountChatInput()
-      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
 
-      expect(trigger.classes()).toContain('btn-circle')
-      expect(trigger.text()).toBe('')
+      await openToolsPanel(wrapper)
+
+      expect(tileOf(wrapper, 'search').exists()).toBe(false)
+      expect(isTestIdChecked(wrapper, 'web-search-option-off')).toBe(true)
     })
 
-    it('does not render the trigger when neither native search nor tool '
+    it('does not render the section when neither native search nor tool '
       + 'calling is supported', async () => {
       useWebSearchSelection({
         isWebSearchSupported: false,
@@ -876,18 +1174,19 @@ describe('ChatInput.client', () => {
 
       const wrapper = await mountChatInput()
 
-      expect(
-        wrapper.find('[data-testid="web-search-trigger"]').exists(),
-      ).toBe(false)
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'web-search-option-off')).toBe(false)
     })
 
     it('lists Off, native search, Brave and Exa in that order', async () => {
       useWebSearchSelection()
 
       const wrapper = await mountChatInput()
-      const labels = webSearchOptionButtons(wrapper).map(webSearchOptionLabel)
 
-      expect(labels).toEqual([
+      await openToolsPanel(wrapper)
+
+      expect(ariaLabelsOf(wrapper, 'web-search-option-')).toEqual([
         'Off',
         'Model\'s built-in search',
         'Brave Search',
@@ -895,8 +1194,8 @@ describe('ChatInput.client', () => {
       ])
     })
 
-    it('collapses Brave and Exa into one explanatory line when the model '
-      + 'cannot call tools', async () => {
+    it('removes Brave and Exa and explains why when the model cannot call '
+      + 'tools', async () => {
       useWebSearchSelection({
         isToolCallingSupported: false,
         webSearchProviderOptions: [
@@ -907,30 +1206,47 @@ describe('ChatInput.client', () => {
       })
 
       const wrapper = await mountChatInput()
-      const dropdown = webSearchDropdown(wrapper)
 
-      expect(dropdown?.textContent).toContain(
-        'does not support tool calling',
-      )
-      expect(
-        webSearchOptionButtons(wrapper).some((button) => {
-          return webSearchOptionLabel(button) === 'Brave Search'
-        }),
-      ).toBe(false)
+      await openToolsPanel(wrapper)
+
+      expect(wrapper.get('[data-testid="web-search-no-tool-calling"]').text())
+        .toContain('can\'t call tools')
+      expect(hasTestId(wrapper, 'web-search-option-web_search_brave'))
+        .toBe(false)
+      expect(hasTestId(wrapper, 'exa-search-level-auto')).toBe(false)
     })
 
-    it('selects native search and collapses to an active pill', async () => {
+    it('disables a keyless provider and links to adding its key',
+      async () => {
+        useWebSearchSelection({
+          webSearchProviderOptions: [
+            nativeOption(true),
+            { ...braveOption(false), addKeyHref: '/profile/keys' },
+            exaOption(true),
+          ],
+        })
+
+        const wrapper = await mountChatInput()
+
+        await openToolsPanel(wrapper)
+
+        expect(isTestIdDisabled(wrapper, 'web-search-option-web_search_brave'))
+          .toBe(true)
+        expect(wrapper.get('[data-testid="web-search-add-key-brave"]').text())
+          .toContain('Add a Brave key')
+      })
+
+    it('selects native search and shows a Built-in tile', async () => {
       useWebSearchSelection()
 
       const wrapper = await mountChatInput()
 
-      clickWebSearchOption(wrapper, 'Model\'s built-in search')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'web-search-option-web_search')
 
-      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
-
-      expect(trigger.text()).toContain('Search')
-      expect(trigger.classes()).not.toContain('btn-circle')
+      expect(tileTitle(wrapper, 'search')).toBe('Web search: Built-in')
+      expect(isTestIdChecked(wrapper, 'web-search-option-web_search'))
+        .toBe(true)
     })
 
     it('never keeps two search providers selected at once', async () => {
@@ -938,31 +1254,43 @@ describe('ChatInput.client', () => {
 
       const wrapper = await mountChatInput()
 
-      clickWebSearchOption(wrapper, 'Model\'s built-in search')
-      await nextTick()
-      clickWebSearchOption(wrapper, 'Brave Search')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'web-search-option-web_search')
+      await pickTestId(wrapper, 'web-search-option-web_search_brave')
 
-      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
-
-      expect(trigger.text()).toBe('Search')
-      expect(trigger.attributes('title')).toBe('Web search: Brave')
+      expect(tileTitle(wrapper, 'search')).toBe('Web search: Brave')
+      expect(wrapper.emitted('update:tools')?.at(-1))
+        .toEqual([['web_search_brave']])
     })
 
-    it('returns to a ghost circle globe when Off is selected', async () => {
+    it('drops the tile when Off is selected', async () => {
       useWebSearchSelection()
 
       const wrapper = await mountChatInput()
 
-      clickWebSearchOption(wrapper, 'Exa')
-      await nextTick()
-      clickWebSearchOption(wrapper, 'Off')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'web-search-option-web_search_exa')
+      await pickTestId(wrapper, 'web-search-option-off')
 
-      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
-
-      expect(trigger.classes()).toContain('btn-circle')
+      expect(tileOf(wrapper, 'search').exists()).toBe(false)
     })
+
+    it('turns search off from the tile and saves Off as the default',
+      async () => {
+        useWebSearchSelection()
+
+        const wrapper = await mountChatInput()
+
+        await openToolsPanel(wrapper)
+        await pickTestId(wrapper, 'web-search-option-web_search_brave')
+        await wrapper.get('[data-testid="chat-input-tile-search-remove"]')
+          .trigger('click')
+        await nextTick()
+
+        expect(tileOf(wrapper, 'search').exists()).toBe(false)
+        expect(usePreferenceStorage().getItem('settings_web_search_tool'))
+          .toBe('off')
+      })
 
     it('asks to remember preferences only on an explicit provider pick',
       async () => {
@@ -970,10 +1298,11 @@ describe('ChatInput.client', () => {
 
         const wrapper = await mountChatInput()
 
+        await openToolsPanel(wrapper)
+
         expect(mocks.requestPersistence).not.toHaveBeenCalled()
 
-        clickWebSearchOption(wrapper, 'Brave Search')
-        await nextTick()
+        await pickTestId(wrapper, 'web-search-option-web_search_brave')
 
         expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
       })
@@ -984,69 +1313,53 @@ describe('ChatInput.client', () => {
 
       const wrapper = await mountChatInput()
 
-      clickWebSearchOption(wrapper, 'Brave Search')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'web-search-option-web_search_brave')
 
       expect(usePreferenceStorage().getItem('settings_web_search_tool'))
         .toBe('web_search_brave')
     })
 
-    function exaLevelButton(
-      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
-      level: string,
-    ) {
-      return webSearchDropdown(wrapper)?.querySelector(
-        `[data-testid="exa-search-level-${level}"]`,
-      ) as HTMLButtonElement | null
-    }
-
-    it('shows the Exa search level menu only while Exa is selected',
-      async () => {
-        useWebSearchSelection()
-
-        const wrapper = await mountChatInput()
-
-        expect(exaLevelButton(wrapper, 'auto')).toBeNull()
-
-        clickWebSearchOption(wrapper, 'Exa')
-        await nextTick()
-
-        expect(exaLevelButton(wrapper, 'lite')).not.toBeNull()
-        expect(exaLevelButton(wrapper, 'auto')?.className)
-          .toContain('bg-accent')
-
-        clickWebSearchOption(wrapper, 'Brave Search')
-        await nextTick()
-
-        expect(exaLevelButton(wrapper, 'auto')).toBeNull()
-      })
-
-    it('persists a chosen Exa search level, updates the menu and the '
-      + 'trigger title, and asks to remember preferences', async () => {
+    it('renders the Exa depth only while Exa is selected', async () => {
       useWebSearchSelection()
 
       const wrapper = await mountChatInput()
 
-      clickWebSearchOption(wrapper, 'Exa')
-      await nextTick()
+      await openToolsPanel(wrapper)
+
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(false)
+
+      await pickTestId(wrapper, 'web-search-option-web_search_exa')
+
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(true)
+      expect(isTestIdDisabled(wrapper, 'exa-search-level-lite')).toBe(false)
+      expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(true)
+
+      await pickTestId(wrapper, 'web-search-option-web_search_brave')
+
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(false)
+    })
+
+    it('persists a chosen Exa search level, updates the depth and the '
+      + 'tile, and asks to remember preferences', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+      fakeRevealGuardTimers()
+      await pickTestId(wrapper, 'web-search-option-web_search_exa')
+      await waitOutRevealGuard()
 
       mocks.requestPersistence.mockClear()
-      exaLevelButton(wrapper, 'deep')?.dispatchEvent(
-        new Event('click', { bubbles: true }),
-      )
-      await nextTick()
+      await pickTestId(wrapper, 'exa-search-level-deep')
 
       expect(usePreferenceStorage().getItem('settings_exa_search_level'))
         .toBe('deep')
       expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
-      expect(exaLevelButton(wrapper, 'deep')?.className)
-        .toContain('bg-accent')
-      expect(exaLevelButton(wrapper, 'auto')?.className)
-        .not.toContain('bg-accent')
-      expect(
-        wrapper.get('[data-testid="web-search-trigger"]')
-          .attributes('title'),
-      ).toBe('Web search: Exa (Deep)')
+      expect(isTestIdChecked(wrapper, 'exa-search-level-deep')).toBe(true)
+      expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(false)
+      expect(tileTitle(wrapper, 'search')).toBe('Web search: Exa · Deep')
     })
 
     it('restores the saved Exa search level from storage', async () => {
@@ -1056,12 +1369,10 @@ describe('ChatInput.client', () => {
 
       const wrapper = await mountChatInput({ tools: ['web_search_exa'] })
 
-      await nextTick()
+      await openToolsPanel(wrapper)
 
-      expect(exaLevelButton(wrapper, 'lite')?.className)
-        .toContain('bg-accent')
-      expect(exaLevelButton(wrapper, 'auto')?.className)
-        .not.toContain('bg-accent')
+      expect(isTestIdChecked(wrapper, 'exa-search-level-lite')).toBe(true)
+      expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(false)
     })
 
     it('follows an Exa search level changed outside the component',
@@ -1070,19 +1381,16 @@ describe('ChatInput.client', () => {
 
         const wrapper = await mountChatInput({ tools: ['web_search_exa'] })
 
-        await nextTick()
+        await openToolsPanel(wrapper)
 
-        expect(exaLevelButton(wrapper, 'auto')?.className)
-          .toContain('bg-accent')
+        expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(true)
 
         usePreferenceStorage().setItem('settings_exa_search_level', 'deep')
 
         await nextTick()
 
-        expect(exaLevelButton(wrapper, 'deep')?.className)
-          .toContain('bg-accent')
-        expect(exaLevelButton(wrapper, 'auto')?.className)
-          .not.toContain('bg-accent')
+        expect(isTestIdChecked(wrapper, 'exa-search-level-deep')).toBe(true)
+        expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(false)
       })
 
     it('falls back to Auto when the saved Exa search level is invalid',
@@ -1096,10 +1404,9 @@ describe('ChatInput.client', () => {
 
         const wrapper = await mountChatInput({ tools: ['web_search_exa'] })
 
-        await nextTick()
+        await openToolsPanel(wrapper)
 
-        expect(exaLevelButton(wrapper, 'auto')?.className)
-          .toContain('bg-accent')
+        expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(true)
       })
 
     it('persists "off" as the new-chat default when the user explicitly '
@@ -1108,44 +1415,40 @@ describe('ChatInput.client', () => {
 
       const wrapper = await mountChatInput()
 
-      clickWebSearchOption(wrapper, 'Exa')
-      await nextTick()
-      clickWebSearchOption(wrapper, 'Off')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'web-search-option-web_search_exa')
+      await pickTestId(wrapper, 'web-search-option-off')
 
       expect(usePreferenceStorage().getItem('settings_web_search_tool'))
         .toBe('off')
     })
 
-    it('hides the web search trigger once image generation is enabled, '
+    it('hides the web search section once image generation is enabled, '
       + 'so a search provider can no longer be chosen alongside it',
     async () => {
       useWebSearchSelection()
 
       const wrapper = await mountChatInput()
 
-      await wrapper.get('[title="Create an image"]').trigger('click')
+      await openToolsPanel(wrapper)
+      await setToggle(wrapper, 'tools-image-toggle', true)
 
-      expect(
-        wrapper.find('[data-testid="web-search-trigger"]').exists(),
-      ).toBe(false)
+      expect(hasTestId(wrapper, 'web-search-option-off')).toBe(false)
+      expect(tileOf(wrapper, 'image').exists()).toBe(true)
     })
 
-    it('clears the search selection and hides the trigger once image '
+    it('clears the search selection and hides the section once image '
       + 'generation is enabled', async () => {
       useWebSearchSelection()
 
       const wrapper = await mountChatInput()
 
-      clickWebSearchOption(wrapper, 'Brave Search')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'web-search-option-web_search_brave')
+      await setToggle(wrapper, 'tools-image-toggle', true)
 
-      await wrapper.get('[title="Create an image"]').trigger('click')
-      await nextTick()
-
-      expect(
-        wrapper.find('[data-testid="web-search-trigger"]').exists(),
-      ).toBe(false)
+      expect(hasTestId(wrapper, 'web-search-option-off')).toBe(false)
+      expect(tileOf(wrapper, 'search').exists()).toBe(false)
     })
 
     it('prunes an external selection once the model loses tool calling '
@@ -1154,12 +1457,10 @@ describe('ChatInput.client', () => {
 
       const wrapper = await mountChatInput()
 
-      clickWebSearchOption(wrapper, 'Brave Search')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await pickTestId(wrapper, 'web-search-option-web_search_brave')
 
-      let trigger = wrapper.get('[data-testid="web-search-trigger"]')
-
-      expect(trigger.attributes('title')).toBe('Web search: Brave')
+      expect(tileTitle(wrapper, 'search')).toBe('Web search: Brave')
 
       webSearchProviderOptionsRef.value = [
         nativeOption(true),
@@ -1169,10 +1470,7 @@ describe('ChatInput.client', () => {
       await nextTick()
       await nextTick()
 
-      trigger = wrapper.get('[data-testid="web-search-trigger"]')
-
-      expect(trigger.classes()).toContain('btn-circle')
-      expect(trigger.text()).toBe('')
+      expect(tileOf(wrapper, 'search').exists()).toBe(false)
     })
 
     it('does not overwrite the saved new-chat default when a search '
@@ -1211,12 +1509,7 @@ describe('ChatInput.client', () => {
       await textarea.setValue('check this out https://example.com')
       await nextTick()
 
-      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
-
-      expect(trigger.text()).toContain('Search')
-      expect(trigger.attributes('title')).toBe(
-        'Web search: Model\'s built-in search',
-      )
+      expect(tileTitle(wrapper, 'search')).toBe('Web search: Built-in')
     })
   })
 
@@ -1255,15 +1548,19 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability,
         reasoningMode: shallowRef('levels'),
         reasoningMenuLevels,
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return { isImageGenerationRequired, reasoningCapability }
@@ -1350,57 +1647,81 @@ describe('ChatInput.client', () => {
       expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
     })
 
-    it('hides both the reasoning and web search triggers once image '
+    it('hides both the reasoning and web search sections once image '
       + 'generation is toggled on, and shows them again once it is '
       + 'toggled off', async () => {
       useMutualExclusionSelection()
 
       const wrapper = await mountChatInput()
 
-      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
-        .toBe(true)
-      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
-        .toBe(true)
+      await openToolsPanel(wrapper)
 
-      await wrapper.get('[title="Create an image"]').trigger('click')
+      expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(true)
+      expect(hasTestId(wrapper, 'web-search-option-off')).toBe(true)
 
-      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
-        .toBe(false)
-      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
-        .toBe(false)
+      await setToggle(wrapper, 'tools-image-toggle', true)
 
-      await wrapper.get('[title="Disable image creation"]').trigger('click')
+      expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(false)
+      expect(hasTestId(wrapper, 'web-search-option-off')).toBe(false)
+      expect(tileTitle(wrapper, 'image')).toBe('Image creation on')
 
-      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
-        .toBe(true)
-      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
-        .toBe(true)
+      await setToggle(wrapper, 'tools-image-toggle', false)
+
+      expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(true)
+      expect(hasTestId(wrapper, 'web-search-option-off')).toBe(true)
+      expect(tileOf(wrapper, 'image').exists()).toBe(false)
     })
 
-    it('hides both triggers for an image-only model where image '
-      + 'generation is required', async () => {
+    it('turns image creation off from the tile', async () => {
+      useMutualExclusionSelection()
+
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+      await setToggle(wrapper, 'tools-image-toggle', true)
+      await wrapper.get('[data-testid="chat-input-tile-image-remove"]')
+        .trigger('click')
+      await nextTick()
+
+      expect(tileOf(wrapper, 'image').exists()).toBe(false)
+      expect(wrapper.emitted('update:tools')?.at(-1)).toEqual([[]])
+    })
+
+    it('hides both sections for an image-only model where image '
+      + 'generation is required, with a non-removable image tile',
+    async () => {
       useMutualExclusionSelection({ isImageGenerationRequired: true })
 
       const wrapper = await mountChatInput({ tools: ['image_generation'] })
-      await nextTick()
 
-      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
-        .toBe(false)
-      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
-        .toBe(false)
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(false)
+      expect(hasTestId(wrapper, 'web-search-option-off')).toBe(false)
+      expect(tileTitle(wrapper, 'image'))
+        .toBe('Image creation is required for this model')
+      expect(hasTestId(wrapper, 'chat-input-tile-image-remove')).toBe(false)
+      expect(isTestIdDisabled(wrapper, 'tools-image-toggle')).toBe(true)
+      expect(isTestIdChecked(wrapper, 'tools-image-toggle')).toBe(true)
     })
 
-    it('hides both triggers as soon as image generation is required, '
-      + 'even before the tools-forcing watcher has removed the saved '
-      + 'search/reasoning tools', async () => {
+    it('hides both sections and tiles as soon as image generation is '
+      + 'required, even before the tools-forcing watcher has removed the '
+      + 'saved search/reasoning tools', async () => {
       useMutualExclusionSelection({ isImageGenerationRequired: true })
 
-      const wrapper = await mountChatInput({ tools: ['web_search'] })
+      const wrapper = await mountChatInput({
+        tools: ['web_search'],
+        reasoning: 'high',
+      })
 
-      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
-        .toBe(false)
-      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
-        .toBe(false)
+      expect(tileOf(wrapper, 'search').exists()).toBe(false)
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(false)
+      expect(hasTestId(wrapper, 'web-search-option-off')).toBe(false)
     })
 
     it('sets the live reasoning level off when image generation is '
@@ -1411,8 +1732,8 @@ describe('ChatInput.client', () => {
       const wrapper = await mountChatInput({ reasoning: 'medium' })
       await nextTick()
 
-      await wrapper.get('[title="Create an image"]').trigger('click')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await setToggle(wrapper, 'tools-image-toggle', true)
 
       expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
       expect(usePreferenceStorage().getItem('settings_reasoning_level'))
@@ -1428,16 +1749,35 @@ describe('ChatInput.client', () => {
       const wrapper = await mountChatInput({ reasoning: 'medium' })
       await nextTick()
 
-      await wrapper.get('[title="Create an image"]').trigger('click')
-      await nextTick()
-      await wrapper.get('[title="Disable image creation"]').trigger('click')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await setToggle(wrapper, 'tools-image-toggle', true)
+      await setToggle(wrapper, 'tools-image-toggle', false)
 
       expect(wrapper.emitted('update:reasoning')?.map((args) => {
         return args[0]
       })).toEqual(['off', 'medium'])
       expect(usePreferenceStorage().getItem('settings_reasoning_level'))
         .toBe('medium')
+    })
+
+    it('restores the level a reopened chat was on, not the saved default, '
+      + 'once image generation is disabled again', async () => {
+      useMutualExclusionSelection()
+      defaultReasoningLevel.value = 'high'
+
+      const wrapper = await mountChatInput({
+        reasoning: 'low',
+        messagesLength: 2,
+      })
+      await nextTick()
+
+      await openToolsPanel(wrapper)
+      await setToggle(wrapper, 'tools-image-toggle', true)
+      await setToggle(wrapper, 'tools-image-toggle', false)
+
+      expect(wrapper.emitted('update:reasoning')?.map((args) => {
+        return args[0]
+      })).toEqual(['off', 'low'])
     })
 
     it('clamps the restored reasoning level to off when the saved '
@@ -1449,16 +1789,15 @@ describe('ChatInput.client', () => {
       const wrapper = await mountChatInput({ reasoning: 'medium' })
       await nextTick()
 
-      await wrapper.get('[title="Create an image"]').trigger('click')
-      await nextTick()
+      await openToolsPanel(wrapper)
+      await setToggle(wrapper, 'tools-image-toggle', true)
 
       expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
 
       reasoningCapability.value = { mode: 'levels', levels: ['low'] }
       await nextTick()
 
-      await wrapper.get('[title="Disable image creation"]').trigger('click')
-      await nextTick()
+      await setToggle(wrapper, 'tools-image-toggle', false)
 
       const reasoningEmissions = wrapper.emitted('update:reasoning')?.map(
         (args) => {
@@ -1508,15 +1847,19 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported,
         isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability,
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
         isModelCapabilityResolved,
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return {
@@ -1715,15 +2058,21 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(false),
         isReasoningAlwaysOn: shallowRef(false),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(true),
+        selectedModelId: shallowRef('openai/gpt-5.4'),
+        selectedModelBillingProviderId: shallowRef<string | null>(
+          'openrouter',
+        ),
       })
     }
 
@@ -1783,6 +2132,7 @@ describe('ChatInput.client', () => {
         canAttachMediaType: shallowRef(() => true),
         isReasoningSupported: shallowRef(isConfigurable),
         isReasoningAlwaysOn: shallowRef(input.state === 'always-on'),
+        canDisableReasoningLevel: shallowRef(true),
         reasoningCapability: shallowRef(isConfigurable
           ? { mode: 'levels', levels: ['low', 'medium', 'high'] }
           : null),
@@ -1793,48 +2143,65 @@ describe('ChatInput.client', () => {
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
+        selectedTransferProviderId: shallowRef(null),
         selectedModelKeyOwnerLabel: shallowRef('xAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
-    it('renders the selectable effort trigger and no forced-on button '
-      + 'for a configurable model', async () => {
+    it('renders the selectable effort levels and no always-on row for a '
+      + 'configurable model', async () => {
       useReasoningSelection({ state: 'configurable' })
 
       const wrapper = await mountChatInput()
 
-      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
-        .toBe(true)
-      expect(wrapper.find('[data-testid="reasoning-always-on"]').exists())
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'reasoning-level-low')).toBe(true)
+      expect(hasTestId(wrapper, 'reasoning-always-on-menu-item')).toBe(false)
+      expect(isTestIdRevealed(wrapper, 'reasoning-expanded-toggle'))
         .toBe(false)
+      expect(isTestIdRevealed(wrapper, 'reasoning-auto-hide-toggle'))
+        .toBe(false)
+
+      await pickTestId(wrapper, 'reasoning-level-low')
+      await flushPromises()
+
+      expect(isTestIdRevealed(wrapper, 'reasoning-expanded-toggle'))
+        .toBe(true)
     })
 
-    it('renders a visible, active and disabled reasoning button for an '
-      + 'always-on model', async () => {
+    it('renders a checked and disabled reasoning row for an always-on '
+      + 'model', async () => {
       useReasoningSelection({ state: 'always-on' })
 
       const wrapper = await mountChatInput()
-      const button = wrapper.get('[data-testid="reasoning-always-on"]')
 
-      expect(button.isVisible()).toBe(true)
-      expect(button.classes()).toContain('btn-active')
-      expect(button.classes()).toContain('pointer-events-none')
-      expect(button.attributes('aria-disabled')).toBe('true')
-      expect(button.attributes('title'))
+      await openToolsPanel(wrapper)
+
+      const toggle = wrapper.get(
+        '[data-testid="reasoning-always-on-menu-item"]',
+      )
+
+      expect((toggle.element as HTMLInputElement).checked).toBe(true)
+      expect((toggle.element as HTMLInputElement).disabled).toBe(true)
+      expect(toggle.attributes('aria-label'))
         .toBe('Reasoning is always on for this model')
-      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
-        .toBe(false)
+      expect(hasTestId(wrapper, 'reasoning-level-low')).toBe(false)
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
     })
 
-    it('keeps the reasoning level unchanged when the always-on button '
+    it('keeps the reasoning level unchanged when the always-on row '
       + 'is clicked', async () => {
       useReasoningSelection({ state: 'always-on' })
 
       const wrapper = await mountChatInput({ reasoning: 'off' })
 
-      await wrapper.get('[data-testid="reasoning-always-on"]')
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="reasoning-always-on-menu-item"]')
         .trigger('click')
       await nextTick()
 
@@ -1857,13 +2224,13 @@ describe('ChatInput.client', () => {
 
       const wrapper = await mountChatInput()
 
-      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
-        .toBe(false)
-      expect(wrapper.find('[data-testid="reasoning-always-on"]').exists())
-        .toBe(false)
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(false)
+      expect(hasTestId(wrapper, 'reasoning-always-on-menu-item')).toBe(false)
     })
 
-    it('hides the always-on reasoning button while image generation is '
+    it('hides the always-on reasoning row while image generation is '
       + 'required', async () => {
       useReasoningSelection({
         state: 'always-on',
@@ -1871,10 +2238,205 @@ describe('ChatInput.client', () => {
       })
 
       const wrapper = await mountChatInput({ tools: ['image_generation'] })
-      await nextTick()
 
-      expect(wrapper.find('[data-testid="reasoning-always-on"]').exists())
-        .toBe(false)
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'reasoning-always-on-menu-item')).toBe(false)
+    })
+  })
+
+  describe('tools menu', () => {
+    it('opens as a popover and closes on Escape, returning focus to "+"',
+      async () => {
+        const wrapper = await mountChatInput()
+        const trigger = wrapper.get('[data-testid="chat-input-tools-trigger"]')
+
+        expect(trigger.attributes('aria-expanded')).toBe('false')
+
+        await openToolsPanel(wrapper)
+
+        const panel = wrapper.get('[data-testid="chat-input-tools-panel"]')
+
+        expect(trigger.attributes('aria-expanded')).toBe('true')
+        expect(panel.attributes('role')).toBe('dialog')
+        expect(panel.isVisible()).toBe(true)
+
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Escape',
+        }))
+        await flushPromises()
+
+        expect(trigger.attributes('aria-expanded')).toBe('false')
+        expect(document.activeElement).toBe(trigger.element)
+      })
+
+    it('closes after an action and opens the files modal', async () => {
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-action-attach"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(filesModalOpenMock).toHaveBeenCalledWith('upload', undefined)
+      expect(
+        wrapper.get('[data-testid="chat-input-tools-trigger"]')
+          .attributes('aria-expanded'),
+      ).toBe('false')
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-action-library"]')
+        .trigger('click')
+
+      expect(filesModalOpenMock).toHaveBeenLastCalledWith('select', undefined)
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="tools-action-generated"]')
+        .trigger('click')
+
+      expect(filesModalOpenMock)
+        .toHaveBeenLastCalledWith('select', 'assistant')
+    })
+
+    it('opens the project picker and labels the row by chat state',
+      async () => {
+        mockRoute.path = '/chats/new'
+
+        const wrapper = await mountChatInput({
+          displayProjectPicker: true,
+          projectContext: { id: 'p1', name: 'Roadmap' },
+        })
+
+        expect(tileTitle(wrapper, 'project')).toBe('Project: Roadmap')
+
+        await openToolsPanel(wrapper)
+
+        const row = wrapper.get('[data-testid="tools-project"]')
+
+        expect(row.text()).toContain('Project')
+        expect(row.text()).toContain('Roadmap')
+
+        await row.trigger('click')
+
+        expect(wrapper.emitted('open-project-picker')).toHaveLength(1)
+
+        await wrapper.get('[data-testid="chat-input-tile-project-remove"]')
+          .trigger('click')
+
+        expect(wrapper.emitted('clear-project-context')).toHaveLength(1)
+      })
+
+    it('offers Move to project on an existing chat', async () => {
+      const wrapper = await mountChatInput({ displayProjectPicker: true })
+
+      await openToolsPanel(wrapper)
+
+      expect(wrapper.get('[data-testid="tools-project"]').text())
+        .toContain('Move to project')
+    })
+
+    it('hides the Add section for a deep research model', async () => {
+      mocks.useChatInput.mockReturnValue({
+        ...mocks.useChatInput(),
+        isDeepResearchModel: shallowRef(true),
+        researchConfig: shallowRef({
+          tier: 'thorough',
+          assistModel: 'o4-mini',
+          costEstimate: '~$1',
+          timeEstimate: '5-30 min',
+        }),
+      })
+
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'tools-action-attach')).toBe(false)
+      expect(wrapper.get('[data-testid="tools-deep-research-note"]').text())
+        .toContain('~$1 · 5-30 min')
+    })
+
+    it('opens the menu at a section when a tile is clicked', async () => {
+      const wrapper = await mountChatInput({
+        memoryExcluded: true,
+      })
+
+      await wrapper.get('[data-testid="chat-input-tile-memory-body"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(
+        wrapper.get('[data-testid="chat-input-tools-trigger"]')
+          .attributes('aria-expanded'),
+      ).toBe('true')
+      expect(document.activeElement).toBe(
+        wrapper.get('[data-testid="new-chat-memory-toggle"]').element,
+      )
+    })
+
+    it('uses a bottom sheet below md', async () => {
+      isPopoverLayout.value = false
+
+      const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal')
+        .mockImplementation(function (this: HTMLDialogElement) {
+          this.setAttribute('open', '')
+        })
+      const wrapper = await mountChatInput({ memoryExcluded: true })
+
+      await openToolsPanel(wrapper)
+
+      const sheet = wrapper.get('[data-testid="chat-input-tools-panel"]')
+
+      expect(sheet.element.tagName).toBe('DIALOG')
+      expect(sheet.classes()).toContain('modal-bottom')
+      expect(showModal).toHaveBeenCalledOnce()
+      expect(wrapper.get('[data-testid="chat-input-tools-chip-memory"]')
+        .text()).toContain('Memory off')
+
+      await wrapper.get('[data-testid="chat-input-tools-chip-memory-remove"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('update:memoryExcluded')?.at(-1))
+        .toEqual([false])
+
+      showModal.mockRestore()
+    })
+  })
+
+  describe('memory exclusion for a new chat', () => {
+    it('is not offered when the page does not bind it', async () => {
+      const wrapper = await mountChatInput()
+
+      await openToolsPanel(wrapper)
+
+      expect(hasTestId(wrapper, 'new-chat-memory-toggle')).toBe(false)
+      expect(tileOf(wrapper, 'memory').exists()).toBe(false)
+    })
+
+    it('uses memory by default, shows a Memory off tile once unchecked, '
+      + 'and turns memory back on from the tile', async () => {
+      const wrapper = await mountChatInput({
+        'memoryExcluded': false,
+        'onUpdate:memoryExcluded': (value: boolean) => {
+          wrapper.setProps({ memoryExcluded: value })
+        },
+      })
+
+      await openToolsPanel(wrapper)
+
+      expect(isTestIdChecked(wrapper, 'new-chat-memory-toggle')).toBe(true)
+      expect(tileOf(wrapper, 'memory').exists()).toBe(false)
+
+      await setToggle(wrapper, 'new-chat-memory-toggle', false)
+
+      expect(wrapper.emitted('update:memoryExcluded')).toEqual([[true]])
+      expect(tileOf(wrapper, 'memory').text()).toContain('Off')
+
+      await wrapper.get('[data-testid="chat-input-tile-memory-remove"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('update:memoryExcluded')?.at(-1))
+        .toEqual([false])
     })
   })
 })

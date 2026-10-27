@@ -1,6 +1,7 @@
 export default defineNuxtPlugin(() => {
   const { user } = useAuth()
   const { syncForUser, clearUserContext } = useUserSetting()
+  const { bindUser: bindLegalConsentUser } = useLegalConsent()
 
   watch(() => {
     if (!user.value?.id) {
@@ -12,6 +13,8 @@ export default defineNuxtPlugin(() => {
     if (nextUserId === previousUserId) {
       return
     }
+
+    bindLegalConsentUser(nextUserId ?? null)
 
     if (!nextUserId) {
       clearUserContext()

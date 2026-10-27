@@ -35,7 +35,8 @@
  *
  * Optional assets: every `.files/key-guide-<provider id>.mp4` present, plus
  * its `-1080` and `-360` renditions, is uploaded too (uploads only; see
- * docs/key-guides.md). Absent ones are not an error.
+ * docs/key-guides.md), and so is `.files/memory.mp4` with its renditions (the
+ * /memory explainer, docs/seo.md). Absent ones are not an error.
  *
  * Hover-preview thumbnails are NOT generated here; the player builds them on
  * the client at runtime via mediabunny's CanvasSink.
@@ -111,7 +112,8 @@ const ASSETS = [
   },
 ]
 
-const KEY_GUIDE_VIDEO_PATTERN = /^key-guide-[a-z0-9]+(-1080|-360)?\.mp4$/
+const KEY_GUIDE_VIDEO_PATTERN
+  = /^(key-guide-[a-z0-9]+|memory)(-1080|-360)?\.mp4$/
 
 function discoverKeyGuideAssets() {
   if (!existsSync(FILES_DIR)) {

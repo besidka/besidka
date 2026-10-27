@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const mocks = vi.hoisted(() => ({
   usage: {
     inputTokens: 10,
@@ -156,6 +160,14 @@ function createDb() {
 
   return {
     query: {
+      userSettings: {
+        findFirst: vi.fn(async () => ({
+          memoryEnabled: false,
+          chatSearchEnabled: true,
+          memoryIncludeSensitive: false,
+          aboutMe: null,
+        })),
+      },
       chats: { findFirst: createChatsFindFirst() },
       keys: {
         findFirst: vi.fn(async () => ({ apiKey: 'encrypted-key' })),

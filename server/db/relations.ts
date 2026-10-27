@@ -48,6 +48,18 @@ export const relations = defineRelations(schema, r => ({
       to: r.userSettings.userId,
       optional: true,
     }),
+    memoryEntries: r.many.memoryEntries({
+      from: r.users.id,
+      to: r.memoryEntries.userId,
+    }),
+    memoryBackfillJobs: r.many.memoryBackfillJobs({
+      from: r.users.id,
+      to: r.memoryBackfillJobs.userId,
+    }),
+    projectKnowledgeItems: r.many.projectKnowledgeItems({
+      from: r.users.id,
+      to: r.projectKnowledgeItems.userId,
+    }),
   },
   accounts: {
     user: r.one.users({
@@ -139,6 +151,10 @@ export const relations = defineRelations(schema, r => ({
       from: r.files.id,
       to: r.chatShareFiles.fileId,
     }),
+    projectKnowledgeItems: r.many.projectKnowledgeItems({
+      from: r.files.id,
+      to: r.projectKnowledgeItems.fileId,
+    }),
   },
   storages: {
     user: r.one.users({
@@ -163,6 +179,50 @@ export const relations = defineRelations(schema, r => ({
     chats: r.many.chats({
       from: r.projects.id,
       to: r.chats.projectId,
+    }),
+    memoryEntries: r.many.memoryEntries({
+      from: r.projects.id,
+      to: r.memoryEntries.projectId,
+    }),
+    projectKnowledgeItems: r.many.projectKnowledgeItems({
+      from: r.projects.id,
+      to: r.projectKnowledgeItems.projectId,
+    }),
+  },
+  memoryEntries: {
+    user: r.one.users({
+      from: r.memoryEntries.userId,
+      to: r.users.id,
+      optional: false,
+    }),
+    project: r.one.projects({
+      from: r.memoryEntries.projectId,
+      to: r.projects.id,
+      optional: true,
+    }),
+  },
+  memoryBackfillJobs: {
+    user: r.one.users({
+      from: r.memoryBackfillJobs.userId,
+      to: r.users.id,
+      optional: false,
+    }),
+  },
+  projectKnowledgeItems: {
+    user: r.one.users({
+      from: r.projectKnowledgeItems.userId,
+      to: r.users.id,
+      optional: false,
+    }),
+    project: r.one.projects({
+      from: r.projectKnowledgeItems.projectId,
+      to: r.projects.id,
+      optional: false,
+    }),
+    file: r.one.files({
+      from: r.projectKnowledgeItems.fileId,
+      to: r.files.id,
+      optional: true,
     }),
   },
   userSettings: {

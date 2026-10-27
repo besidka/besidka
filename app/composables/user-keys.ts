@@ -1,4 +1,7 @@
-import { providerMeta } from '#shared/utils/provider-meta'
+import {
+  providerMeta,
+  resolveProviderMetaByKeyProviderId,
+} from '#shared/utils/provider-meta'
 
 interface UserKeysResponse {
   keys: Array<{ provider: string, hasKey: boolean }>
@@ -144,6 +147,8 @@ export function useUserKeys() {
 
     return rows.some((row) => {
       return row.hasKey
+        && resolveProviderMetaByKeyProviderId(row.provider)?.kind
+        !== 'memory-check'
     })
   })
 

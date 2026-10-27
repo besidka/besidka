@@ -8,6 +8,7 @@ import {
   findChatOriginFiles,
 } from '~~/server/utils/files/chat-deletion-cleanup'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
 import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
@@ -57,6 +58,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const originFiles = await findChatOriginFiles(chat.id, userId)
+
+  await detachChatsFromMemory({
+    db,
+    userId,
+    chatIds: [chat.id],
+    logger,
+  })
 
   await removeChatsFromSearchIndex({
     db,

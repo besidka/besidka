@@ -21,6 +21,10 @@ import {
   normalizeAssistantMessagePartsForPersistence,
 } from '../../../server/utils/files/assistant-files'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 /**
  * Characterization suite for every send shape that must stay single step now
  * that the multi-step tool loop exists. None of these sends carries a
@@ -226,6 +230,14 @@ function createDb() {
   return {
     db: {
       query: {
+        userSettings: {
+          findFirst: vi.fn(async () => ({
+            memoryEnabled: false,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          })),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',

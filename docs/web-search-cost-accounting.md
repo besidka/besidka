@@ -516,19 +516,40 @@ alone.
 
 ### Forced tool choice means the floor is one unit, not zero
 
-OpenAI and Google wire a forced tool choice
+Only OpenAI wires a forced tool choice
 (`toolChoice: { type: 'tool', toolName: 'web_search_preview' }`) when the
 user enables the tool. Anthropic never does: it rejects a forced tool choice
 alongside extended thinking, and the Claude 5.5 generation rejects it
 outright (see the JSDoc in `server/utils/providers/anthropic.ts`), so
 Anthropic runs on `auto` and the model decides whether to search. For OpenAI
-the forced search is documented behaviour; what Google does with a forced
-choice on `googleSearch` (which isn't a function declaration) is unverified.
+the forced search is documented behaviour, and `@ai-sdk/openai` maps the
+choice to `tool_choice: { type: 'web_search' }` and reports the resulting
+`web_search_call` as a `web_search_preview` tool call.
+
+Google and xAI (with reasoning off) mark the send with
+`exclusiveNativeWebSearch` instead. A forced choice there never reached the
+wire: `@ai-sdk/google` sends no `toolConfig` when only provider tools are
+declared, and `@ai-sdk/xai` drops the choice for its server-side
+`web_search` with a warning. By `ai@7.0.137` (absent in 7.0.56, the
+version before #442) the core enforces a named tool choice itself, at the
+end of the step: when no tool call carries that
+name it emits `ToolChoiceViolationError` ("Model response did not contain a
+call to the required tool 'web_search_preview'"). Gemini 2.x grounding emits
+no tool call at all (only sources and `groundingMetadata`), and Gemini 3
+names its server-side calls `server:<type>`, so every grounded Google answer
+streamed in full and then ended with that error (2026-10-27, latent on `main`
+since #442 bumped `ai` on 2026-10-13). xAI hit it whenever Grok chose not to
+search. The flag keeps what the forced choice was really used for: the chat
+route leaves out function tools (chat search, memory, project knowledge),
+because `@ai-sdk/google` drops function declarations next to a provider tool
+on models before Gemini 3, and the native-search nudge stays off.
 
 The consequence for any future native-vs-external routing design: **on
-OpenAI and Google each search-enabled turn carries a cost floor of one unit,
-not zero** — the toggle is the spend decision, not the model. Anthropic
-turns have a floor of zero.
+OpenAI each search-enabled turn carries a cost floor of one unit, not zero**
+— the toggle is the spend decision, not the model. Google, xAI and Anthropic
+turns have a floor of zero: the model decides whether to search. Google
+search cost is counted from `groundingMetadata.webSearchQueries`, so it does
+not depend on the tool choice.
 
 ### The free quota exists; PR #385 verified the rate, not its absence
 

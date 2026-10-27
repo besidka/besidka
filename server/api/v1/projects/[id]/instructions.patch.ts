@@ -7,6 +7,7 @@ import {
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { requireLegalConsent } from '~~/server/utils/legal/consent'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -43,6 +44,9 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+
+  await requireLegalConsent(userId)
+
   const instructions = body.data.instructions?.trim() || null
 
   logger.set({

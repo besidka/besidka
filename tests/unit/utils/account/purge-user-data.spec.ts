@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SQL } from 'drizzle-orm'
 import { SQLiteDialect } from 'drizzle-orm/sqlite-core'
+import * as schema from '../../../../server/db/schema'
 
 const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(),
@@ -19,8 +20,18 @@ async function importPurgeUserData() {
   return import('../../../../server/utils/account/purge-user-data')
 }
 
+function flattenQueryChunks(chunk: unknown): unknown[] {
+  if (chunk && typeof chunk === 'object' && 'queryChunks' in chunk) {
+    return (chunk.queryChunks as unknown[]).flatMap(flattenQueryChunks)
+  }
+
+  return [chunk]
+}
+
 function createDb(storageKeys: string[], sessionTokens: string[] = []) {
   const deleteReturning = vi.fn()
+    .mockResolvedValueOnce([{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }])
+    .mockResolvedValueOnce([{ id: 'j1' }])
     .mockResolvedValueOnce([{ userId: 1 }])
     .mockResolvedValueOnce([{ id: 10 }, { id: 11 }])
 
@@ -41,8 +52,8 @@ function createDb(storageKeys: string[], sessionTokens: string[] = []) {
         }),
       },
     },
-    delete: vi.fn(() => ({
-      where: vi.fn(() => ({
+    delete: vi.fn((_table: unknown) => ({
+      where: vi.fn((_condition: unknown) => ({
         returning: deleteReturning,
       })),
     })),
@@ -50,9 +61,17 @@ function createDb(storageKeys: string[], sessionTokens: string[] = []) {
   }
 }
 
-function createStorage() {
+function createStorage(knowledgeKeys: string[] = []) {
   return {
-    delete: vi.fn(async () => undefined),
+    delete: vi.fn(async (_keys: string[]) => undefined),
+    list: vi.fn(async (_options: { prefix: string }) => {
+      return {
+        objects: knowledgeKeys.map((key) => {
+          return { key }
+        }),
+        truncated: false,
+      }
+    }),
   }
 }
 
@@ -90,18 +109,208 @@ describe('purgeUserData', () => {
 
     expect(storage.delete).toHaveBeenCalledTimes(1)
     expect(storage.delete).toHaveBeenCalledWith(storageKeys)
+    expect(storage.list).toHaveBeenCalledTimes(1)
     expect(mocks.invalidateFileCache).toHaveBeenCalledTimes(3)
     expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(1, logger)
-    expect(db.delete).toHaveBeenCalledTimes(2)
+    expect(db.delete).toHaveBeenCalledTimes(4)
     expect(result).toEqual({
+      memoryEntriesDeleted: 3,
+      memoryBackfillJobsDeleted: 1,
       filesFound: 3,
       storageKeysDeleted: 3,
       storageBatches: 1,
+      knowledgeObjectsDeleted: 0,
       fileCacheKeysInvalidated: 3,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
       sessionKeysDeleted: 1,
     })
+  })
+
+  it('deletes the memory entries scoped to the user id', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const whereConditions: unknown[] = []
+    const deletedTables: unknown[] = []
+
+    db.delete.mockImplementation((table: unknown) => {
+      deletedTables.push(table)
+
+      return {
+        where: vi.fn((condition: unknown) => {
+          whereConditions.push(condition)
+
+          return {
+            returning: vi.fn(async () => [{ id: 'm1' }]),
+          }
+        }),
+      }
+    })
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 42, logger: { set: vi.fn() } })
+
+    expect(deletedTables[0]).toBe(schema.memoryEntries)
+
+    const chunks = flattenQueryChunks(whereConditions[0])
+    const referencesUserIdColumn = chunks.some((chunk) => {
+      return chunk === schema.memoryEntries.userId
+    })
+    const bindsUserId = chunks.some((chunk) => {
+      return !!chunk
+        && typeof chunk === 'object'
+        && 'value' in chunk
+        && chunk.value === 42
+    })
+
+    expect(referencesUserIdColumn).toBe(true)
+    expect(bindsUserId).toBe(true)
+  })
+
+  it('deletes the backfill jobs scoped to the user id', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const whereConditions: unknown[] = []
+    const deletedTables: unknown[] = []
+
+    db.delete.mockImplementation((table: unknown) => {
+      deletedTables.push(table)
+
+      return {
+        where: vi.fn((condition: unknown) => {
+          whereConditions.push(condition)
+
+          return {
+            returning: vi.fn(async () => [{ id: 'j1' }, { id: 'j2' }]),
+          }
+        }),
+      }
+    })
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({
+      userId: 42,
+      logger: { set: vi.fn() },
+    })
+    const backfillIndex = deletedTables.indexOf(schema.memoryBackfillJobs)
+    const chunks = flattenQueryChunks(whereConditions[backfillIndex])
+
+    expect(backfillIndex).toBe(1)
+    expect(chunks.some((chunk) => {
+      return chunk === schema.memoryBackfillJobs.userId
+    })).toBe(true)
+    expect(chunks.some((chunk) => {
+      return !!chunk
+        && typeof chunk === 'object'
+        && 'value' in chunk
+        && chunk.value === 42
+    })).toBe(true)
+    expect(result.memoryBackfillJobsDeleted).toBe(2)
+  })
+
+  it('deletes the memory entries before the R2 work that may abort', async () => {
+    const db = createDb(['users/1/a.png'])
+    const storage = createStorage()
+    const callOrder: string[] = []
+
+    db.delete.mockImplementationOnce(() => ({
+      where: vi.fn(() => ({
+        returning: vi.fn(async () => {
+          callOrder.push('memory-entries')
+
+          return [{ id: 'm1' }]
+        }),
+      })),
+    }))
+    storage.delete.mockImplementationOnce(async () => {
+      callOrder.push('r2')
+    })
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({
+      userId: 1,
+      logger: { set: vi.fn() },
+    })
+
+    expect(callOrder).toEqual(['memory-entries', 'r2'])
+    expect(result.memoryEntriesDeleted).toBe(1)
+  })
+
+  it('purges the knowledge prefix and reports the deleted objects', async () => {
+    const knowledgeKeys = [
+      'knowledge/u42/p1/items/1.md',
+      'knowledge/u42/p1/pack/v1.jsonl.gz',
+    ]
+    const db = createDb(['users/42/a.png'])
+    const storage = createStorage(knowledgeKeys)
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const set = vi.fn()
+    const result = await purgeUserData({
+      userId: 42,
+      logger: { set },
+    })
+
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: {
+        accountPurge: {
+          memoryEntriesDeleted: result.memoryEntriesDeleted,
+          memoryBackfillJobsDeleted: result.memoryBackfillJobsDeleted,
+          knowledgeObjectsDeleted: 2,
+        },
+      },
+    }))
+    expect(storage.list).toHaveBeenCalledWith(
+      expect.objectContaining({ prefix: 'knowledge/u42/' }),
+    )
+    expect(storage.delete).toHaveBeenCalledTimes(2)
+    expect(storage.delete).toHaveBeenLastCalledWith(knowledgeKeys)
+    expect(result.knowledgeObjectsDeleted).toBe(2)
+  })
+
+  it('purges knowledge objects even when the user has no files', async () => {
+    const db = createDb([])
+    const storage = createStorage(['knowledge/u7/p2/items/9.md'])
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({
+      userId: 7,
+      logger: { set: vi.fn() },
+    })
+
+    expect(result.filesFound).toBe(0)
+    expect(result.knowledgeObjectsDeleted).toBe(1)
+  })
+
+  it('rethrows a knowledge purge failure so the deletion aborts', async () => {
+    const db = createDb([])
+    const storage = createStorage(['knowledge/u1/p1/items/1.md'])
+    const kv = createKv()
+    const logger = { set: vi.fn() }
+
+    storage.delete.mockRejectedValueOnce(new Error('r2 unavailable'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 1, logger })).rejects.toThrow(
+      'r2 unavailable',
+    )
+    expect(kv.delete).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: expect.objectContaining({
+        phase: 'knowledge-r2-delete',
+        userId: 1,
+      }),
+    }))
   })
 
   it('deletes every KV session record and the active-sessions list', async () => {
@@ -200,9 +409,12 @@ describe('purgeUserData', () => {
     expect(mocks.invalidateFileCache).not.toHaveBeenCalled()
     expect(mocks.invalidateStorageCache).toHaveBeenCalledWith(7, logger)
     expect(result).toEqual({
+      memoryEntriesDeleted: 3,
+      memoryBackfillJobsDeleted: 1,
       filesFound: 0,
       storageKeysDeleted: 0,
       storageBatches: 0,
+      knowledgeObjectsDeleted: 0,
       fileCacheKeysInvalidated: 0,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
@@ -223,7 +435,7 @@ describe('purgeUserData', () => {
     await expect(purgeUserData({ userId: 1, logger })).rejects.toThrow(
       'r2 unavailable',
     )
-    expect(db.delete).not.toHaveBeenCalled()
+    expect(db.delete).toHaveBeenCalledTimes(2)
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
       accountPurge: expect.objectContaining({
         phase: 'r2-delete',

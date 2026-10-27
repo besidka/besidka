@@ -1,6 +1,7 @@
 import {
   snakeCase, text, integer, uniqueIndex, index,
 } from 'drizzle-orm/sqlite-core'
+import { knowledgeModes } from '#shared/utils/project-knowledge-policy'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
 
@@ -32,6 +33,11 @@ export const projects = snakeCase.table(
     memoryProvider: text(),
     memoryModel: text(),
     memoryError: text(),
+    useAccountMemory: integer({ mode: 'boolean' }),
+    memoryMigratedAt: integer({ mode: 'timestamp' }),
+    knowledgeMode: text({ enum: knowledgeModes }),
+    knowledgeVersion: integer({ mode: 'number' }),
+    knowledgePackVersion: integer({ mode: 'number' }),
     pinnedAt: integer({ mode: 'timestamp' }),
     archivedAt: integer({ mode: 'timestamp' }),
     activityAt: integer({ mode: 'timestamp' })

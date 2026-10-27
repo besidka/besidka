@@ -334,11 +334,11 @@ is already expecting to wait.
 - `app/components/ChatInput/ModelsTrigger.vue` — the model picker badges every
   deep research model with a telescope icon and shows `costEstimate ·
   timeEstimate` as its price tooltip instead of the regular per-token price.
-- `app/components/ChatInput/DeepResearchTrigger.vue` — once a research model
-  is selected there is no level menu to open; it renders as a static "Deep
-  research" pill (telescope icon, same cost/time estimate as a tooltip) —
-  the model choice already fixed the tier. `ChatInput.client.vue` hides the
-  web-search toggle, reasoning controls, and file-attachment trigger whenever
+- `app/components/ChatInput/SettingTile.vue` — once a research model
+  is selected there is no level menu to open; it shows as a non-removable
+  "Deep research" tile (telescope icon, same cost/time estimate in its label)
+  — the model choice already fixed the tier. The "+" menu hides the web
+  search and reasoning sections and the Add section whenever
   `isDeepResearchModel` is true (the agents browse on their own, and
   attachments aren't supported yet — see above); while a job is running, send
   and the cancel control are disabled/enabled accordingly.

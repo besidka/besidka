@@ -92,9 +92,9 @@ PRAGMA foreign_keys=ON;
 
 These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `users` without recovery plan:
 
-- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`
+- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`, `memory_entries`, `memory_backfill_jobs`, `project_knowledge_items`, `push_subscriptions`
 
-Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`; `projects` → `chats` (project-scoped).
+Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
 ### MANDATORY pre-apply checklist
 
@@ -198,6 +198,18 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   min; the 120s lease + heartbeat fix, the deterministic tab-close repro, the
   Axiom investigation runbook, and unresolved options (waitUntil,
   Queues/Workflows, Durable Objects) for surviving the disconnect itself
+- `docs/chats/chat-input-tools-menu.md` - The chat input "+" tools menu
+  (popover at md+, bottom sheet below) and the setting tiles in the
+  attachments row: component map, tile rules and order, capability gating
+  before resolution, the effective default reasoning level and the inline
+  "Save X as default" caption link, rows hidden until they can act (animated
+  reveal plus the reveal guard), section header icons, the web search price
+  badge with its InfoNote, memory icons, the inline Exa mark
+- `docs/chats/model-picker.md` - The chat input model picker: dropdown at
+  md+, bottom sheet below (same breakpoint and chrome as the tools sheet),
+  the `layout` prop on the shared Panel, inline filter chips, the
+  horizontal provider chip row, no search autofocus, the visual-viewport
+  keyboard lift, and the only events that close the sheet
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no
@@ -240,10 +252,39 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   Gateway pass-through question, and a non-decided sketch for a
   Brave/Exa-backed external search tool
 - `docs/legal.md` - Privacy Policy / Terms / Cookie Policy as Nuxt Content: why
-  three separate documents, the `{{ privacyEmail }}` config-not-content binding
-  (and its silent-empty failure mode), why no postal address is published
-  (UŚUDE Art. 2 pkt 6 `działalność zarobkową`), and why adding ANY donation
-  channel breaks that conclusion
+  three separate documents, the `:privacy-email-link{}` MDC component
+  config-not-content binding (and its silent-empty failure mode), why no postal
+  address is published (UŚUDE Art. 2 pkt 6 `działalność zarobkową`), why
+  adding ANY donation channel breaks that conclusion, the consent records on
+  `user_settings` (not `CONSENT_DB`) and the `CURRENT_CONSENT_VERSION`
+  re-prompt rule, and how a `content/legal/*.md` edit reaches the production
+  `CONTENT_DB` (build dump, checksum import, Studio, preview and re-import
+  hazards)
+- `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory
+  (opt-in removed from v1, owner 2026-10-25, option (c)): why explicit consent
+  is the only basis, why it was not shipped, option (b) with its launch
+  conditions as the path to revisit, the 2026-10-25 engineering decisions, the
+  2026-10-26 status (the chat consent gate shipped, refusal blocks sending, the
+  Art. 49(1)(a) transfer-consent decision for DeepSeek, Moonshot AI, Qwen and
+  the gateway vendors in China, Singapore and Malaysia/Indonesia, the TypeSafe
+  AI recipient, and the residual risk), and the remaining open owner/counsel questions
+- `docs/legal/dpia.md` - DPIA for chats, memory and the consent gate
+  (engineer-drafted, not lawyer-reviewed): UODO and WP248 criteria, systematic
+  description including the seven TypeSafe AI roles (3.7a), 24-row risk table
+  with built/planned status, residual risks, and
+  the DPF list check of 2026-10-26; read before changing a purpose, provider,
+  consent text or retention rule
+- `docs/legal/art30-record.md` - GDPR Art. 30 record of processing activities
+  (engineer-drafted, not lawyer-reviewed): why the Art. 30(5) exemption fails,
+  23 activities (rows 1 to 22 and 11a, the TypeSafe AI roles) with recipients,
+  transfers, retention and security codes, and
+  the third-country tables (providers, processors); keep it in step with the
+  Privacy Policy and the DPIA
+- `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
+  only, not legal text, superseded on 2026-10-26 by the published pages (its
+  anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA
+  skeleton (UODO M.P. 2019 poz. 666 + EDPB criteria) and an Art. 30 record
+  skeleton
 - `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
   auth routes are noindex-but-crawlable, the "besidka"/"бесідка" brand-entity
   collision the schema and copy are shaped around, deliberate non-actions
@@ -371,8 +412,26 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   audit of today's project-memory blob and its bugs, the target layers
   (memory entries, cached index, on-demand memory/search tools over the
   existing FTS5, cron-sweep extraction), the code-enforced compliance gate
-  (never-store list, GDPR Art. 9 opt-in), token budgets incl. the Cyrillic
-  multiplier, owner-overridable defaults, and the parallel workstreams
+  (never-store list, deterministic sensitive-topic rejection on every write
+  path; no GDPR Art. 9 opt-in in v1, see its decision log), project memory
+  swept only after the extraction opt-in, token budgets incl. the Cyrillic
+  multiplier, owner-overridable defaults, the parallel workstreams, the
+  2026-10-26 security audit dispositions (3.17), the "tell Besidka what to
+  remember" editor (3.18), the optional TypeSafe AI Jev checks (3.19: one role
+  table matching `shared/utils/jev-policy.ts`, the add-only memory check, the
+  `memory-check` key kind, the seven per-role toggles in
+  `user_settings.typesafe_roles`, the failure direction of each role, J1 to
+  J6, the delta audit fixes #560, and the `experimental_decide` seam to
+  re-check on SDK upgrades), the as-built phase map (section 5), and the
+  decision log (section 7: no expiry, singletons, entry caps, the write lock,
+  the pending Anthropic token factor, non-atomic leases, deferred issues
+  #537 to #540)
+- `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
+  folders): which model's window decides full injection versus the search
+  and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
+  per-send fit check), R2 text and packs, the owner decisions, and, now that
+  it is implemented, the K0 to K3 as-built sections (15, 16.5 to 16.7: DOCX
+  and XLSX ZIP-bomb limits, the send path, the spike results)
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,
@@ -430,14 +489,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   per-page `canonical` or `ogUrl`; the global one is already correct and a second
   tag risks a duplicate. `new URL()` normalises `/` to a trailing slash so the
   canonical matches the `<loc>` the sitemap emits.
-- Indexable: `/`, `/byok`, `/privacy-policy`, `/terms-of-use`,
+- Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
   `/cookie-policy`, `/guides/<slug>` (public key guides from
   `content/key-guides/*.md`, `keyGuides` collection with
   `source.prefix: '/guides'`, route `app/pages/guides/[slug].vue`), and
   `/shared/<publicId>` when that share's `indexable` flag is set. Everything
   else is `noindex, nofollow`. `/byok` is the first `guides` collection page
-  (`content/guides/`); new explainer routes go there and the two-or-three-route
-  cap in `docs/seo.md` still applies to them. Key guides are one templated page
+  (`content/guides/`) and `/memory` the second; new explainer routes go there
+  and the two-or-three-route cap in `docs/seo.md` still applies to them (one
+  slot left). Key guides are one templated page
   type the owner exempted from that cap on 2026-10-20 (see `docs/seo.md`).
   `/api/`, `/chats/`, `/files/`, `/profile/`, `/_studio`, `/__nuxt_studio` and
   `/__nuxt_content/` are also disallowed in robots.

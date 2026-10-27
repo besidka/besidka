@@ -9,6 +9,7 @@ import {
   buildChatErrorLines,
   buildChatErrorMessage,
   createReasoningSegmentTracker,
+  findLastUserMessageReasoning,
   findLastUserMessageTools,
   foldReasoningSegment,
   getRenderableChatMessages,
@@ -21,6 +22,7 @@ import {
   isReasoningActiveForTurn,
   normalizeChatClientError,
   REASONING_SEGMENT_GRACE_WINDOW_MS,
+  resolveInitialChatTools,
   shouldBlockGenerationRecovery,
   shouldDisplayRegenerate,
   shouldForceGenericLoadingIndicator,
@@ -1661,6 +1663,246 @@ describe('hasMeaningfulAssistantParts omitted context files notice', () => {
       id: 'assistant-1',
       role: 'assistant',
       parts: [noticePart, { type: 'text', text: 'An answer.' }],
+    } as unknown as UIMessage)).toBe(true)
+  })
+})
+
+describe('resolveInitialChatTools', () => {
+  function userMessage(tools: Message['tools']): Message {
+    return { role: 'user', tools, usage: null } as unknown as Message
+  }
+
+  function assistantMessage(autoWebSearch?: string): Message {
+    return {
+      role: 'assistant',
+      tools: [],
+      usage: autoWebSearch ? { autoWebSearch } : null,
+    } as unknown as Message
+  }
+
+  const autoBrave = {
+    isAutoWebSearchPreferred: true,
+    savedWebSearchTool: 'web_search_brave',
+  }
+
+  it('keeps the last user message\'s tools when they are set', () => {
+    expect(resolveInitialChatTools([
+      userMessage(['web_search_exa']),
+      assistantMessage('searched'),
+    ], autoBrave)).toEqual(['web_search_exa'])
+  })
+
+  it('restores the saved provider after an Auto skip, so the menu still '
+    + 'shows it', () => {
+    expect(resolveInitialChatTools([
+      userMessage([]),
+      assistantMessage('skipped'),
+    ], autoBrave)).toEqual(['web_search_brave'])
+  })
+
+  it('restores the saved provider for a new chat\'s unanswered first '
+    + 'message', () => {
+    expect(resolveInitialChatTools([userMessage([])], autoBrave))
+      .toEqual(['web_search_brave'])
+  })
+
+  it('keeps search off when the user turned it off in that chat', () => {
+    expect(resolveInitialChatTools([
+      userMessage([]),
+      assistantMessage(),
+    ], autoBrave)).toEqual([])
+  })
+
+  it('behaves like findLastUserMessageTools without the Auto preference',
+    () => {
+      const messages = [userMessage([]), assistantMessage('skipped')]
+
+      expect(resolveInitialChatTools(messages, {
+        isAutoWebSearchPreferred: false,
+        savedWebSearchTool: 'web_search_brave',
+      })).toEqual(findLastUserMessageTools(messages))
+    })
+
+  it('never restores a saved value that is not a web-search provider', () => {
+    expect(resolveInitialChatTools([userMessage([])], {
+      isAutoWebSearchPreferred: true,
+      savedWebSearchTool: 'off',
+    })).toEqual([])
+  })
+
+  it('keeps image generation instead of restoring search', () => {
+    expect(resolveInitialChatTools([
+      userMessage(['image_generation']),
+      assistantMessage(),
+    ], autoBrave)).toEqual(['image_generation'])
+  })
+})
+
+describe('findLastUserMessageReasoning', () => {
+  function message(
+    role: 'user' | 'assistant',
+    reasoning: Message['reasoning'],
+  ): Message {
+    return { role, reasoning } as unknown as Message
+  }
+
+  it('returns null for a chat with no user message', () => {
+    expect(findLastUserMessageReasoning([])).toBeNull()
+    expect(findLastUserMessageReasoning([message('assistant', 'high')]))
+      .toBeNull()
+  })
+
+  it('reads the level of the last user message, ignoring assistant '
+    + 'replies', () => {
+    const messages = [
+      message('user', 'low'),
+      message('assistant', 'low'),
+      message('user', 'high'),
+      message('assistant', 'off'),
+    ]
+
+    expect(findLastUserMessageReasoning(messages)).toBe('high')
+  })
+
+  it('keeps an explicit off from the last user message', () => {
+    expect(findLastUserMessageReasoning([message('user', 'off')]))
+      .toBe('off')
+  })
+})
+
+describe('useChat initial reasoning level', () => {
+  const prefStorage = usePreferenceStorage()
+
+  async function mountReasoning(messages: unknown[]) {
+    let reasoning: ReturnType<typeof useChat>['reasoning'] | null = null
+
+    const host = defineComponent({
+      setup() {
+        reasoning = useChat({ id: 'chat-1', messages } as never).reasoning
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return reasoning!
+  }
+
+  afterEach(() => {
+    prefStorage.removeItem('settings_reasoning_level')
+  })
+
+  it('keeps the level the new-chat page sent instead of jumping to the '
+    + 'saved default after the handoff', async () => {
+    prefStorage.setItem('settings_reasoning_level', 'high')
+
+    const reasoning = await mountReasoning([
+      { role: 'user', reasoning: 'off', tools: [], parts: [] },
+    ])
+
+    expect(reasoning.value).toBe('off')
+  })
+
+  it('continues a reopened chat with its last user message level',
+    async () => {
+      prefStorage.setItem('settings_reasoning_level', 'low')
+
+      const reasoning = await mountReasoning([
+        { role: 'user', reasoning: 'medium', tools: [], parts: [] },
+        { role: 'assistant', reasoning: 'medium', tools: [], parts: [] },
+        { role: 'user', reasoning: 'high', tools: [], parts: [] },
+        { role: 'assistant', reasoning: 'high', tools: [], parts: [] },
+      ])
+
+      expect(reasoning.value).toBe('high')
+    })
+
+  it('falls back to the effective default for a chat without a user '
+    + 'message', async () => {
+    prefStorage.setItem('settings_reasoning_level', 'high')
+
+    const reasoning = await mountReasoning([])
+
+    expect(reasoning.value).toBe('high')
+  })
+})
+
+describe('useChat request body webSearchMode', () => {
+  const prefStorage = usePreferenceStorage()
+
+  async function buildRequestBody(): Promise<Record<string, unknown>> {
+    sdkMocks.transportOptions.length = 0
+
+    const host = defineComponent({
+      setup() {
+        useChat({ id: 'chat-1', messages: [] } as never)
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return sdkMocks.transportOptions.at(-1)!.prepareSendMessagesRequest({
+      messages: [{
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      }],
+    }).body
+  }
+
+  afterEach(() => {
+    prefStorage.removeItem('settings_web_search_auto')
+  })
+
+  it('sends always when Auto is not preferred', async () => {
+    const body = await buildRequestBody()
+
+    expect(body.webSearchMode).toBe('always')
+  })
+
+  it('sends always when no web-search tool is sent', async () => {
+    prefStorage.setItem('settings_web_search_auto', 'on')
+
+    const body = await buildRequestBody()
+
+    expect(body.tools).toEqual([])
+    expect(body.webSearchMode).toBe('always')
+  })
+})
+
+describe('hasMeaningfulAssistantParts past-chat pre-retrieval chip', () => {
+  const chipPart = {
+    type: 'tool-search_chats',
+    toolCallId: 'past-chat-pre-retrieval-user-1',
+    state: 'output-available',
+    input: { query: 'invoice' },
+    output: { results: [] },
+  }
+
+  it('does not count a lone pre-retrieval chip as an answer', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [chipPart],
+    } as unknown as UIMessage)).toBe(false)
+  })
+
+  it('still counts a model-called search_chats part', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ ...chipPart, toolCallId: 'call-1' }],
+    } as unknown as UIMessage)).toBe(true)
+  })
+
+  it('still counts real content next to the chip', () => {
+    expect(hasMeaningfulAssistantParts({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [chipPart, { type: 'text', text: 'An answer.' }],
     } as unknown as UIMessage)).toBe(true)
   })
 })

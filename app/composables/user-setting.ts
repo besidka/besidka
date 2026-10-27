@@ -2,6 +2,8 @@ import type {
   GatewayId,
   GatewayFavoriteModels,
 } from '#shared/types/gateways.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { parseReasoningLevel } from '#shared/utils/reasoning'
 import { parseError } from 'evlog'
 
 function toGatewayFavoriteModels(parsed: unknown): GatewayFavoriteModels {
@@ -41,6 +43,10 @@ export function useUserSetting() {
     'user-settings:reasoning-auto-hide',
     () => null,
   )
+  const serverDefaultReasoningLevel = useState<ReasoningLevel | null>(
+    'user-settings:default-reasoning-level',
+    () => null,
+  )
   const serverAllowExternalLinks = useState<boolean | null>(
     'user-settings:allow-external-links',
     () => null,
@@ -75,6 +81,10 @@ export function useUserSetting() {
   )
   const lastSyncToken = useState<number>(
     'user-settings:sync-token',
+    () => 0,
+  )
+  const lastDefaultReasoningLevelRequestToken = useState<number>(
+    'user-settings:default-reasoning-level-request-token',
     () => 0,
   )
   const lastFavoriteModelsRequestToken = useState<number>(
@@ -199,6 +209,19 @@ export function useUserSetting() {
     return serverReasoningAutoHide.value
   })
 
+  const isSettingsLoaded = computed<boolean>(() => {
+    return Boolean(activeUserId.value)
+      && loadedUserId.value === activeUserId.value
+  })
+
+  const defaultReasoningLevel = computed<ReasoningLevel | null>(() => {
+    if (!isSettingsLoaded.value) {
+      return null
+    }
+
+    return serverDefaultReasoningLevel.value
+  })
+
   const allowExternalLinks = computed<boolean>(() => {
     if (
       !activeUserId.value
@@ -293,6 +316,32 @@ export function useUserSetting() {
     return favoriteGatewayModels.value[gatewayId] ?? []
   }
 
+  async function migrateLegacyDefaultReasoningLevel(
+    userId: string,
+    syncToken: number,
+    level: ReasoningLevel,
+  ) {
+    try {
+      await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          defaultReasoningLevel: level,
+        },
+      })
+    } catch {
+      if (
+        activeUserId.value === userId
+        && lastSyncToken.value === syncToken
+      ) {
+        serverDefaultReasoningLevel.value = null
+      }
+
+      return
+    }
+
+    prefStorage.removeItem('settings_reasoning_level')
+  }
+
   async function syncForUser(userId: string) {
     activeUserId.value = userId
     settingsError.value = null
@@ -334,6 +383,15 @@ export function useUserSetting() {
       fallbackReasoningExpanded.value = nextReasoningExpanded
       serverReasoningAutoHide.value = nextReasoningAutoHide
       fallbackReasoningAutoHide.value = nextReasoningAutoHide
+      const savedDefaultReasoningLevel = parseReasoningLevel(
+        response.defaultReasoningLevel,
+      )
+      const legacyDefaultReasoningLevel = savedDefaultReasoningLevel === null
+        ? parseReasoningLevel(prefStorage.getItem('settings_reasoning_level'))
+        : null
+
+      serverDefaultReasoningLevel.value = savedDefaultReasoningLevel
+        ?? legacyDefaultReasoningLevel
       serverAllowExternalLinks.value = response.allowExternalLinks ?? null
       serverNotificationPromptState.value
         = response.notificationPromptState ?? null
@@ -351,6 +409,14 @@ export function useUserSetting() {
       )
       serverFavoriteGatewayModels.value = nextFavoriteGatewayModels
       fallbackFavoriteGatewayModels.value = nextFavoriteGatewayModels
+
+      if (legacyDefaultReasoningLevel !== null) {
+        await migrateLegacyDefaultReasoningLevel(
+          userId,
+          syncToken,
+          legacyDefaultReasoningLevel,
+        )
+      }
     } catch (exception) {
       if (
         activeUserId.value !== userId
@@ -362,6 +428,7 @@ export function useUserSetting() {
       loadedUserId.value = null
       serverReasoningExpanded.value = null
       serverReasoningAutoHide.value = null
+      serverDefaultReasoningLevel.value = null
       serverAllowExternalLinks.value = null
       serverNotificationPromptState.value = null
       serverSidebarPinned.value = null
@@ -482,6 +549,65 @@ export function useUserSetting() {
         || 'Failed to save profile settings'
     } finally {
       isSavingSettings.value = false
+    }
+  }
+
+  async function setDefaultReasoningLevel(level: ReasoningLevel | null) {
+    settingsError.value = null
+
+    if (!activeUserId.value) {
+      return
+    }
+
+    const currentUserId = activeUserId.value as string
+    const previousValue = serverDefaultReasoningLevel.value
+
+    serverDefaultReasoningLevel.value = level
+    isSavingSettings.value = true
+
+    const requestToken = lastDefaultReasoningLevelRequestToken.value + 1
+    lastDefaultReasoningLevelRequestToken.value = requestToken
+
+    try {
+      await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          defaultReasoningLevel: level,
+        },
+      })
+
+      if (
+        activeUserId.value !== currentUserId
+        || lastDefaultReasoningLevelRequestToken.value !== requestToken
+      ) {
+        return
+      }
+
+      loadedUserId.value = currentUserId
+      serverDefaultReasoningLevel.value = level
+    } catch (exception) {
+      if (
+        activeUserId.value !== currentUserId
+        || lastDefaultReasoningLevelRequestToken.value !== requestToken
+      ) {
+        return
+      }
+
+      serverDefaultReasoningLevel.value = previousValue
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to save profile settings'
+
+      useErrorMessage(
+        parsedException.message || 'Failed to save default reasoning effort.',
+        parsedException.why,
+      )
+    } finally {
+      if (lastDefaultReasoningLevelRequestToken.value === requestToken) {
+        isSavingSettings.value = false
+      }
     }
   }
 
@@ -788,6 +914,7 @@ export function useUserSetting() {
     loadedUserId.value = null
     serverReasoningExpanded.value = null
     serverReasoningAutoHide.value = null
+    serverDefaultReasoningLevel.value = null
     serverAllowExternalLinks.value = null
     serverNotificationPromptState.value = null
     serverSidebarPinned.value = null
@@ -802,6 +929,8 @@ export function useUserSetting() {
     activeUserId,
     reasoningExpanded,
     reasoningAutoHide,
+    defaultReasoningLevel,
+    isSettingsLoaded,
     allowExternalLinks,
     notificationPromptState,
     sidebarPinned,
@@ -814,6 +943,7 @@ export function useUserSetting() {
     syncForUser,
     setReasoningExpanded,
     setReasoningAutoHide,
+    setDefaultReasoningLevel,
     setAllowExternalLinks,
     setNotificationPromptState,
     setSidebarPinned,

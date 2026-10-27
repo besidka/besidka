@@ -136,6 +136,10 @@ function open(tab: Tab, source?: FileSourceFilter): void {
     storageUsage.value?.fetch()
 
     setTimeout(() => {
+      if (!modal.value?.open) {
+        return
+      }
+
       closeBtn.value?.focus()
     }, 300)
   }

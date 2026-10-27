@@ -42,6 +42,9 @@ function stubs() {
     ProfileSecurityPasskeys: {
       template: '<div data-testid="passkeys-stub" />',
     },
+    ProfileSecurityPrivacyConsent: {
+      template: '<div data-testid="privacy-consent-stub" />',
+    },
   }
 }
 
@@ -54,7 +57,7 @@ describe('profile security page', () => {
     mocks.confirm.mockResolvedValue({ label: 'Delete account', index: 0 })
   })
 
-  it('renders all five sections in order', async () => {
+  it('renders all six sections in order', async () => {
     const wrapper = await mountSuspended(SecurityPage, {
       global: { stubs: stubs() },
     })
@@ -66,8 +69,11 @@ describe('profile security page', () => {
       'Two-factor authentication',
       'Passkeys',
       'Active sessions',
+      'Privacy & consent',
       'Account removal',
     ])
+    expect(wrapper.find('[data-testid="privacy-consent-stub"]').exists())
+      .toBe(true)
     expect(wrapper.find('[data-testid="linked-accounts-stub"]').exists())
       .toBe(true)
     expect(wrapper.find('[data-testid="sessions-stub"]').exists()).toBe(true)

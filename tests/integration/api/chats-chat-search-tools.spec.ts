@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
 import { z } from 'zod'
@@ -11,6 +12,10 @@ import {
   readVercelGatewayCost,
   readVercelGenerationId,
 } from '../../../server/utils/gateways/index'
+
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
 
 const CHAT_SEARCH_MODEL_ID = 'gpt-5-mini'
 const CHAT_SEARCH_PROVIDER_ID = 'openai'
@@ -106,6 +111,7 @@ vi.mock('~~/server/utils/projects/memory', () => ({
 
 vi.mock('~~/server/utils/memory/tools/enabled', () => ({
   isChatSearchToolEnabled: () => mocks.isChatSearchToolEnabled,
+  isMemoryToolsEnabled: () => false,
 }))
 
 vi.mock('~~/server/utils/memory/tools', async () => {
@@ -274,6 +280,14 @@ function createDb() {
   return {
     db: {
       query: {
+        userSettings: {
+          findFirst: vi.fn(async () => ({
+            memoryEnabled: false,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          })),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
@@ -529,9 +543,11 @@ describe('chat search tools send-path wiring', () => {
     expect(mocks.chatSearchToolsInputs[0]).toEqual(expect.objectContaining({
       userId: 1,
       currentChatId: 'chat-1',
-      budget: { maxCalls: 3, usedCalls: 0 },
+      budget: { maxCalls: 3, usedCalls: 0, untrustedResultSeen: false },
     }))
     expect(mocks.chatSearchToolsInputs[0]?.projectId).toBeUndefined()
+    expect(mocks.chatSearchToolsInputs[0]?.resolveRerankModel)
+      .toBeTypeOf('function')
     expect(getChatSearchAttributes()).toEqual({
       registered: true,
       usedCalls: 0,
@@ -765,6 +781,44 @@ describe('chat search tools send-path wiring', () => {
         CHAT_SEARCH_INSTRUCTION,
       )
     })
+
+  it('keeps an exclusive native web search send free of chat tools and '
+    + 'of a forced toolChoice, so the grounded answer streams without '
+    + 'an error', async () => {
+    const google = createGoogleGenerativeAI({ apiKey: 'test-key' })
+    const { doStream, assistantInsert, chunks } = await runSend({
+      tools: ['web_search'],
+      steps: [[
+        ...createTextChunks('EUR/PLN is 4.25.').slice(0, -1),
+        {
+          type: 'source',
+          sourceType: 'url',
+          id: 'source-1',
+          url: 'https://example.com/eur-pln',
+        },
+        ...createTextChunks('EUR/PLN is 4.25.').slice(-1),
+      ]],
+      providerTools: {
+        tools: { web_search_preview: google.tools.googleSearch({}) },
+        exclusiveNativeWebSearch: true,
+      },
+    })
+    const callOptions = doStream.mock.calls[0]?.[0] as any
+
+    expect(mocks.chatSearchToolsInputs).toHaveLength(0)
+    expect(readToolNames(callOptions)).toEqual(['web_search_preview'])
+    expect(callOptions?.toolChoice).toEqual({ type: 'auto' })
+    expect(readSystemPrompt(callOptions)).not.toContain(
+      CHAT_SEARCH_INSTRUCTION,
+    )
+    expect(readSystemPrompt(callOptions)).not.toContain(
+      'Search the web before answering',
+    )
+    expect(chunks.filter(chunk => chunk.type === 'error')).toEqual([])
+    expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'text', text: 'EUR/PLN is 4.25.' }),
+    ]))
+  })
 
   it('leaves the instruction out of the tool-less search-answer '
     + 'continuation', async () => {

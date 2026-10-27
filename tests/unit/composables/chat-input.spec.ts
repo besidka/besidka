@@ -84,6 +84,12 @@ function createHost() {
         h('span', { 'data-testid': 'is-selected-model-unavailable' }, [
           String(chatInput.isSelectedModelUnavailable.value),
         ]),
+        h('span', { 'data-testid': 'selected-model-id' }, [
+          chatInput.selectedModelId.value,
+        ]),
+        h('span', { 'data-testid': 'selected-model-billing-provider-id' }, [
+          String(chatInput.selectedModelBillingProviderId.value),
+        ]),
       ])
     },
   })
@@ -988,5 +994,43 @@ describe('useChatInput model capability resolution', () => {
     expect(
       wrapper.get('[data-testid="is-selected-model-unavailable"]').text(),
     ).toBe('false')
+  })
+})
+
+describe('useChatInput web search billing provider', () => {
+  it('names the curated provider of a direct model', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gpt-5.4'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('[data-testid="selected-model-id"]').text())
+      .toBe('gpt-5.4')
+    expect(
+      wrapper.get('[data-testid="selected-model-billing-provider-id"]')
+        .text(),
+    ).toBe('openai')
+  })
+
+  it('names the gateway, not the vendor behind it', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'google/gemini-3.1-pro',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('[data-testid="selected-model-id"]').text())
+      .toBe('google/gemini-3.1-pro')
+    expect(
+      wrapper.get('[data-testid="selected-model-billing-provider-id"]')
+        .text(),
+    ).toBe('openrouter')
   })
 })

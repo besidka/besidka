@@ -3,10 +3,12 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useUserSetting } from '../../../app/composables/user-setting'
 
 const {
+  errorMessageMock,
   fetchMock,
   getProvidersMock,
   requestPersistenceMock,
 } = vi.hoisted(() => ({
+  errorMessageMock: vi.fn(),
   fetchMock: vi.fn(),
   getProvidersMock: vi.fn(),
   requestPersistenceMock: vi.fn(),
@@ -15,6 +17,7 @@ const {
 mockNuxtImport('$fetch', () => fetchMock)
 mockNuxtImport('getProviders', () => getProvidersMock)
 mockNuxtImport('requestPersistence', () => requestPersistenceMock)
+mockNuxtImport('useErrorMessage', () => errorMessageMock)
 
 describe('useUserSetting', () => {
   beforeEach(() => {
@@ -1066,5 +1069,292 @@ describe('useUserSetting just-in-time consent request', () => {
     await useUserSetting().syncForUser('user-1')
 
     expect(requestPersistenceMock).not.toHaveBeenCalled()
+  })
+
+  describe('defaultReasoningLevel', () => {
+    const baseResponse = {
+      reasoningExpanded: false,
+      reasoningAutoHide: true,
+    }
+
+    function patchCalls() {
+      return fetchMock.mock.calls.filter(([, options]) => {
+        return options?.method === 'PATCH'
+      })
+    }
+
+    it('is null before settings are loaded', () => {
+      localStorage.setItem('settings_reasoning_level', 'high')
+
+      const { defaultReasoningLevel, isSettingsLoaded } = useUserSetting()
+
+      expect(defaultReasoningLevel.value).toBeNull()
+      expect(isSettingsLoaded.value).toBe(false)
+    })
+
+    it('exposes the server value after sync', async () => {
+      fetchMock.mockResolvedValue({
+        ...baseResponse,
+        defaultReasoningLevel: 'medium',
+      })
+      const {
+        defaultReasoningLevel,
+        isSettingsLoaded,
+        syncForUser,
+      } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      expect(defaultReasoningLevel.value).toBe('medium')
+      expect(isSettingsLoaded.value).toBe(true)
+      expect(patchCalls()).toHaveLength(0)
+    })
+
+    it('treats an unrecognised server value as not set', async () => {
+      fetchMock.mockResolvedValue({
+        ...baseResponse,
+        defaultReasoningLevel: 'extreme',
+      })
+      const { defaultReasoningLevel, syncForUser } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      expect(defaultReasoningLevel.value).toBeNull()
+      expect(patchCalls()).toHaveLength(0)
+    })
+
+    it('migrates a valid local level to the server once when none is saved',
+      async () => {
+        localStorage.setItem('settings_reasoning_level', 'high')
+        fetchMock.mockResolvedValue({
+          ...baseResponse,
+          defaultReasoningLevel: null,
+        })
+        const { defaultReasoningLevel, syncForUser } = useUserSetting()
+
+        await syncForUser('user-1')
+
+        expect(defaultReasoningLevel.value).toBe('high')
+        expect(patchCalls()).toEqual([[
+          '/api/v1/profiles/settings',
+          {
+            method: 'PATCH',
+            body: {
+              defaultReasoningLevel: 'high',
+            },
+          },
+        ]])
+
+        expect(localStorage.getItem('settings_reasoning_level')).toBeNull()
+
+        await syncForUser('user-1')
+
+        expect(patchCalls()).toHaveLength(1)
+      })
+
+    it('migrates a local off level as an explicit choice', async () => {
+      localStorage.setItem('settings_reasoning_level', 'off')
+      fetchMock.mockResolvedValue({
+        ...baseResponse,
+        defaultReasoningLevel: null,
+      })
+      const { defaultReasoningLevel, syncForUser } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      expect(defaultReasoningLevel.value).toBe('off')
+      expect(patchCalls()).toHaveLength(1)
+    })
+
+    it.each([
+      ['an empty key', null],
+      ['an unknown level', 'extreme'],
+      ['a legacy boolean', 'true'],
+    ])('does not migrate %s', async (_label, stored) => {
+      if (stored !== null) {
+        localStorage.setItem('settings_reasoning_level', stored)
+      }
+
+      fetchMock.mockResolvedValue({
+        ...baseResponse,
+        defaultReasoningLevel: null,
+      })
+      const { defaultReasoningLevel, syncForUser } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      expect(defaultReasoningLevel.value).toBeNull()
+      expect(patchCalls()).toHaveLength(0)
+    })
+
+    it('keeps the server value over a different local level', async () => {
+      localStorage.setItem('settings_reasoning_level', 'low')
+      fetchMock.mockResolvedValue({
+        ...baseResponse,
+        defaultReasoningLevel: 'off',
+      })
+      const { defaultReasoningLevel, syncForUser } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      expect(defaultReasoningLevel.value).toBe('off')
+      expect(patchCalls()).toHaveLength(0)
+    })
+
+    it('stays unset and retries on the next load when migration fails',
+      async () => {
+        localStorage.setItem('settings_reasoning_level', 'high')
+        fetchMock.mockReset()
+          .mockResolvedValueOnce({
+            ...baseResponse,
+            defaultReasoningLevel: null,
+          })
+          .mockRejectedValueOnce(new Error('Save failed'))
+        const {
+          defaultReasoningLevel,
+          isSettingsLoaded,
+          syncForUser,
+        } = useUserSetting()
+
+        await syncForUser('user-1')
+
+        expect(defaultReasoningLevel.value).toBeNull()
+        expect(isSettingsLoaded.value).toBe(true)
+        expect(errorMessageMock).not.toHaveBeenCalled()
+        expect(localStorage.getItem('settings_reasoning_level')).toBe('high')
+      })
+
+    it('persists a chosen level and updates optimistically', async () => {
+      fetchMock.mockReset()
+        .mockResolvedValueOnce({
+          ...baseResponse,
+          defaultReasoningLevel: 'low',
+        })
+        .mockResolvedValueOnce({ defaultReasoningLevel: 'high' })
+      const {
+        defaultReasoningLevel,
+        setDefaultReasoningLevel,
+        syncForUser,
+      } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      const savePromise = setDefaultReasoningLevel('high')
+
+      expect(defaultReasoningLevel.value).toBe('high')
+      await savePromise
+
+      expect(defaultReasoningLevel.value).toBe('high')
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/v1/profiles/settings',
+        {
+          method: 'PATCH',
+          body: {
+            defaultReasoningLevel: 'high',
+          },
+        },
+      )
+    })
+
+    it('clears the level when set to null', async () => {
+      fetchMock.mockReset()
+        .mockResolvedValueOnce({
+          ...baseResponse,
+          defaultReasoningLevel: 'high',
+        })
+        .mockResolvedValueOnce({ defaultReasoningLevel: null })
+      const {
+        defaultReasoningLevel,
+        setDefaultReasoningLevel,
+        syncForUser,
+      } = useUserSetting()
+
+      await syncForUser('user-1')
+      await setDefaultReasoningLevel(null)
+
+      expect(defaultReasoningLevel.value).toBeNull()
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/v1/profiles/settings',
+        {
+          method: 'PATCH',
+          body: {
+            defaultReasoningLevel: null,
+          },
+        },
+      )
+    })
+
+    it('rolls back and shows an error when the save fails', async () => {
+      fetchMock.mockReset()
+        .mockResolvedValueOnce({
+          ...baseResponse,
+          defaultReasoningLevel: 'low',
+        })
+        .mockRejectedValueOnce(new Error('Save failed'))
+      const {
+        defaultReasoningLevel,
+        setDefaultReasoningLevel,
+        settingsError,
+        syncForUser,
+      } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      const savePromise = setDefaultReasoningLevel('high')
+
+      expect(defaultReasoningLevel.value).toBe('high')
+      await savePromise
+
+      expect(defaultReasoningLevel.value).toBe('low')
+      expect(settingsError.value).not.toBeNull()
+      expect(errorMessageMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not call the API or touch local storage for guests', async () => {
+      fetchMock.mockReset()
+      const { defaultReasoningLevel, setDefaultReasoningLevel }
+        = useUserSetting()
+
+      await setDefaultReasoningLevel('high')
+
+      expect(defaultReasoningLevel.value).toBeNull()
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(localStorage.getItem('settings_reasoning_level')).toBeNull()
+      expect(requestPersistenceMock).not.toHaveBeenCalled()
+    })
+
+    it('never writes the default to local storage', async () => {
+      fetchMock.mockReset()
+        .mockResolvedValueOnce({
+          ...baseResponse,
+          defaultReasoningLevel: null,
+        })
+        .mockResolvedValueOnce({ defaultReasoningLevel: 'medium' })
+      const { setDefaultReasoningLevel, syncForUser } = useUserSetting()
+
+      await syncForUser('user-1')
+      await setDefaultReasoningLevel('medium')
+
+      expect(localStorage.getItem('settings_reasoning_level')).toBeNull()
+    })
+
+    it('resets when the user context is cleared', async () => {
+      fetchMock.mockResolvedValue({
+        ...baseResponse,
+        defaultReasoningLevel: 'high',
+      })
+      const {
+        clearUserContext,
+        defaultReasoningLevel,
+        isSettingsLoaded,
+        syncForUser,
+      } = useUserSetting()
+
+      await syncForUser('user-1')
+      clearUserContext()
+
+      expect(defaultReasoningLevel.value).toBeNull()
+      expect(isSettingsLoaded.value).toBe(false)
+    })
   })
 })

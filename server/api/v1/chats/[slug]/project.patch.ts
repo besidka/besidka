@@ -2,11 +2,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
-import {
-  markProjectsMemoryStale,
-  refreshProjectMemory,
-} from '~~/server/utils/projects/memory'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import {
   defineEventHandler,
   readValidatedBody,
@@ -16,27 +12,6 @@ import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
-  async function tryRefreshProjectMemory(projectId: string | null) {
-    if (!projectId) {
-      return
-    }
-
-    try {
-      await refreshProjectMemory(projectId, userId, db)
-    } catch (exception) {
-      logger.set({
-        projectMemoryRefreshError: {
-          projectId,
-        },
-        attributes: {
-          projectMemoryRefreshError: {
-            message: exceptionMessage(exception),
-          },
-        },
-      })
-    }
-  }
-
   const params = z.object({
     slug: z.ulid(),
   }).safeParse(getDecodedRouterParams(event))
@@ -131,9 +106,6 @@ export default defineEventHandler(async (event) => {
 
     await markProjectsMemoryStale([chat.projectId, project.id], userId, db)
 
-    await tryRefreshProjectMemory(chat.projectId)
-    await tryRefreshProjectMemory(project.id)
-
     return { projectId: project.id }
   }
 
@@ -151,7 +123,6 @@ export default defineEventHandler(async (event) => {
   }
 
   await markProjectsMemoryStale([chat.projectId], userId, db)
-  await tryRefreshProjectMemory(chat.projectId)
 
   return { projectId: null }
 })

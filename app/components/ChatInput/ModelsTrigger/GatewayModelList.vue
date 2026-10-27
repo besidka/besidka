@@ -85,9 +85,12 @@
               <ChatInputModelsTriggerGatewayModelItem
                 :model="model"
                 :is-selected="selectedModelId === model.id"
-                :is-highlighted="highlightedModelId === model.id"
+                :is-highlighted="
+                  isHighlightVisible && highlightedModelId === model.id
+                "
                 :is-favorite="favoriteModelIds.includes(model.id)"
                 :is-detail-open="detailModelId === model.id"
+                :is-recommended="isRecommendedModel(model)"
                 @select="emit('select', model.id)"
                 @toggle-favorite="emit('toggleFavorite', model.id)"
                 @toggle-detail="emit('toggleDetail', model.id)"
@@ -144,8 +147,10 @@ import type {
 } from '~/types/models-picker'
 import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
 import { isGatewayModelFree } from '#shared/utils/gateway-pricing'
+import type { RecommendedDirectModel } from '#shared/utils/memory-recommended-models'
+import { isRecommendedGatewayModel } from '#shared/utils/memory-recommended-models'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   gatewayId: GatewayId
   gatewayLabel: string
   searchTerm: string
@@ -158,7 +163,16 @@ const props = defineProps<{
   selectedModelId: string | null
   detailModelId: string | null
   listboxId: string
-}>()
+  filterModel?: (model: GatewayModel) => boolean
+  recommendedDirectModels?: RecommendedDirectModel[]
+  recommendedOnly?: boolean
+  isHighlightVisible?: boolean
+}>(), {
+  filterModel: undefined,
+  recommendedDirectModels: () => [],
+  recommendedOnly: false,
+  isHighlightVisible: true,
+})
 
 const emit = defineEmits<{
   select: [modelId: string]
@@ -183,6 +197,10 @@ const isPending = computed<boolean>(() => {
   return pending.value && !models.value.length
 })
 
+function isRecommendedModel(model: GatewayModel): boolean {
+  return isRecommendedGatewayModel(model.id, props.recommendedDirectModels)
+}
+
 const errorDetails = computed(() => {
   return error.value ? parseError(error.value) : null
 })
@@ -196,10 +214,19 @@ const errorDetails = computed(() => {
  * the parent reads as "this provider is gone" and answers by dropping the
  * filter the user set before they started typing. `capabilityFilters` AND
  * together the same way Free and Vision do, through
- * `matchesGatewayCapabilityFilters()`.
+ * `matchesGatewayCapabilityFilters()`. A caller's `filterModel` runs first,
+ * so a model it hides never reaches the groups, the counts or the search.
  */
 const groupableModels = computed<GatewayModel[]>(() => {
   return models.value.filter((model) => {
+    if (props.filterModel && !props.filterModel(model)) {
+      return false
+    }
+
+    if (props.recommendedOnly && !isRecommendedModel(model)) {
+      return false
+    }
+
     if (props.isFavoritesOnly && !props.favoriteModelIds.includes(model.id)) {
       return false
     }
@@ -248,6 +275,7 @@ const filteredModels = computed<GatewayModel[]>(() => {
 
 const hasActiveFilters = computed<boolean>(() => {
   return props.isFreeOnly
+    || props.recommendedOnly
     || props.isVisionOnly
     || props.capabilityFilters.length > 0
     || props.isFavoritesOnly

@@ -43,7 +43,7 @@
         <div
           class="p-1 pb-0 bg-transparent max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]"
           :class="{
-            'pt-0.5 px-1.5': files.length
+            'pt-0.5 px-1.5': files.length || tiles.length
           }"
         >
           <!-- Attached Files Preview with Upload Progress -->
@@ -51,6 +51,9 @@
             :files="files"
             :uploading-files="uploadingFiles"
             :uploading-count="uploadingCount"
+            :tiles="tiles"
+            @open-tile="openToolsMenu"
+            @remove-tile="removeTile"
             @remove="removeAttachedFile"
             @remove-all="removeAllFiles"
             @cancel="cancelUpload"
@@ -68,158 +71,26 @@
             @blur="onKeyboardBlur"
           />
           <div class="flex items-center justify-between gap-2 p-2 pb-0">
-            <div class="flex items-center gap-2 max-md:grow">
-              <div class="max-md:grow min-w-0">
-                <LazyChatInputModelsTrigger
-                  hydrate-on-idle
-                  :is-web-search-enabled="isWebSearchEnabled"
-                  :is-image-generation-enabled="isImageGenerationEnabled"
-                  :is-reasoning-enabled="isReasoningActive"
-                />
+            <div class="flex items-center gap-1 min-w-0">
+              <div class="min-w-0">
+                <LazyChatInputModelsTrigger hydrate-on-idle />
               </div>
-              <div class="hidden md:flex items-center gap-2 my-2 px-1">
-                <div
-                  v-if="shouldDisplayProjectPicker"
-                  class="join"
-                >
-                  <button
-                    type="button"
-                    class="btn btn-xs btn-accent join-item"
-                    :class="{
-                      'btn-ghost btn-ghost-legacy !px-1.5 rounded-full':
-                        !projectContext,
-                      'rounded-l-full': projectContext
-                    }"
-                    :aria-label="projectContext
-                      ? `Current project: ${projectContext.name}`
-                      : 'Select project'"
-                    @click="emit('open-project-picker')"
-                  >
-                    <Icon
-                      :name="projectContext
-                        ? 'lucide:folder-check'
-                        : 'lucide:folder'"
-                      size="14"
-                    />
-                    <span
-                      v-if="projectContext"
-                      class="truncate max-w-[100px]"
-                    >
-                      {{ projectContext.name }}
-                    </span>
-                  </button>
-                  <button
-                    v-if="projectContext"
-                    type="button"
-                    class="btn btn-accent btn-xs join-item rounded-r-full"
-                    aria-label="Remove project"
-                    @click="emit('clear-project-context')"
-                  >
-                    <Icon name="lucide:x" size="12" />
-                  </button>
-                </div>
-                <LazyChatInputFilesTrigger
-                  v-if="!isDeepResearchModel"
-                  hydrate-on-idle
-                  :files="files"
-                  :is-image-input-supported="isImageInputSupported"
-                  @detach-all="files = []"
-                  @open="openFilesModal"
-                />
-                <UiButton
-                  v-if="isImageGenerationSupported && !isDeepResearchModel"
-                  mode="accent"
-                  :ghost="isImageGenerationEnabled ? undefined : true"
-                  :circle="!isImageGenerationEnabled"
-                  icon-name="lucide:image-plus"
-                  :icon-size="16"
-                  :icon-only="!isImageGenerationEnabled"
-                  :title="isImageGenerationEnabled
-                    ? isImageGenerationRequired
-                      ? 'Image creation is required for this model'
-                      : 'Disable image creation'
-                    : 'Create an image'
-                  "
-                  text="Create image"
-                  tooltip-position="top"
-                  size="xs"
-                  class="rounded-full"
-                  :aria-disabled="isImageGenerationRequired"
-                  :class="{
-                    'pl-[5px] btn-active': isImageGenerationEnabled,
-                    'pointer-events-none': isImageGenerationRequired,
-                  }"
-                  @click="toggleImageGeneration"
-                />
-                <LazyChatInputWebSearchTrigger
-                  v-if="isWebSearchTriggerVisible"
-                  :selected="selectedWebSearchProvider"
-                  :options="webSearchProviderOptions"
-                  :is-tool-calling-supported="isToolCallingSupported"
-                  :exa-search-level="exaSearchLevel"
-                  :align="toolbarDropdownAlign"
-                  @select-provider="selectWebSearchProvider"
-                  @select-exa-search-level="selectExaSearchLevel"
-                />
-                <LazyChatInputReasoningTrigger
-                  v-if="isReasoningTriggerVisible"
-                  :reasoning="reasoning"
-                  :align="toolbarDropdownAlign"
-                  :levels="reasoningMenuLevels"
-                :can-disable-reasoning="canDisableReasoningLevel"
-                  :can-disable="canDisableReasoningLevel"
-                  @update:reasoning="selectReasoningLevel"
-                />
-                <UiButton
-                  v-if="isReasoningAlwaysOnButtonVisible"
-                  data-testid="reasoning-always-on"
-                  mode="accent"
-                  :title="REASONING_ALWAYS_ON_TITLE"
-                  text="On"
-                  tooltip-position="top"
-                  size="xs"
-                  class="rounded-full pl-[5px] btn-active pointer-events-none"
-                  aria-disabled="true"
-                >
-                  <template #icon>
-                    <SvgoThinkMedium class="size-4 text-current" />
-                  </template>
-                </UiButton>
-                <LazyChatInputDeepResearchTrigger
-                  v-if="isDeepResearchModel"
-                  :research="researchConfig"
-                  :disabled="researchJobActive"
-                />
-              </div>
-              <LazyChatInputToolbarMore
-                hydrate-on-idle
-                :is-web-search-supported="isWebSearchSupported"
-                :is-web-search-enabled="isWebSearchEnabled"
-                :is-tool-calling-supported="isToolCallingSupported"
-                :web-search-options="webSearchProviderOptions"
-                :selected-web-search-provider="selectedWebSearchProvider"
-                :exa-search-level="exaSearchLevel"
-                :is-image-generation-supported="isImageGenerationSupported"
-                :is-image-generation-enabled="isImageGenerationEnabled"
-                :is-image-generation-required="isImageGenerationRequired"
-                :is-reasoning-supported="isReasoningSupported"
-                :is-reasoning-always-on="isReasoningAlwaysOn"
-                :is-reasoning-active="isReasoningActive"
-                :reasoning="reasoning"
-                :levels="reasoningMenuLevels"
-                :is-deep-research-model="isDeepResearchModel"
-                :research="researchConfig"
-                :display-project-picker="shouldDisplayProjectPicker"
-                :project-context="projectContext"
-                :files-count="files.length"
+              <ChatInputToolsMenu
+                ref="toolsMenu"
+                :state="toolsState"
+                :tiles="tiles"
                 @select-web-search-provider="selectWebSearchProvider"
                 @select-exa-search-level="selectExaSearchLevel"
+                @toggle-auto-web-search="setAutoWebSearchPreferred"
                 @toggle-image-generation="toggleImageGeneration"
+                @select-reasoning-level="selectReasoningLevel"
+                @save-default-reasoning-level="saveDefaultReasoningLevel"
                 @open-project-picker="emit('open-project-picker')"
-                @clear-project-context="emit('clear-project-context')"
                 @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
-                @select-reasoning-level="selectReasoningLevel"
+                @open-files-generated="openFilesModal('select', 'assistant')"
+                @update:use-memory="setMemoryUsage"
+                @remove-tile="removeTile"
               />
             </div>
             <div class="flex items-center gap-2">
@@ -294,10 +165,16 @@ import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
-import { REASONING_ALWAYS_ON_TITLE } from '#shared/utils/reasoning'
 import type { FileSourceFilter } from '~/types/file-manager'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
+import type {
+  ChatInputTile,
+  ChatInputTileId,
+  ChatInputToolsState,
+  ReasoningMode,
+  ToolsSection,
+} from '~/types/chat-input-tools'
 import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
@@ -342,10 +219,23 @@ const {
   isDeepResearchModel,
   researchConfig,
   isSelectedModelKeyless,
+  selectedTransferProviderId,
   selectedModelKeyOwnerLabel,
   isModelCapabilityResolved,
   isSelectedModelUnavailable,
+  selectedModelId,
+  selectedModelBillingProviderId,
 } = useChatInput()
+const { ensureSendConsent } = useLegalConsent()
+const {
+  isAvailable: isAutoWebSearchAvailable,
+  isPreferred: isAutoWebSearchPreferred,
+  setPreferred: setAutoWebSearchPreferred,
+} = useAutoWebSearch()
+const {
+  defaultReasoningLevel,
+  setDefaultReasoningLevel,
+} = useUserSetting()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
@@ -359,6 +249,14 @@ const files = defineModel<FileMetadata[]>('files', {
   default: () => [],
 })
 
+const memoryExcluded = defineModel<boolean | null>('memoryExcluded', {
+  default: null,
+})
+
+function setMemoryUsage(isUsed: boolean) {
+  memoryExcluded.value = !isUsed
+}
+
 const tools = defineModel<Tools>('tools', {
   default: () => [],
 })
@@ -367,8 +265,11 @@ const reasoning = defineModel<ReasoningLevel>('reasoning', {
   default: 'off',
 })
 
-const isReasoningActive = computed<boolean>(() => {
-  return isReasoningEnabled(reasoning.value) || isReasoningAlwaysOn.value
+const effectiveDefaultReasoningLevel = computed<ReasoningLevel>(() => {
+  return resolveInitialReasoningLevel(
+    defaultReasoningLevel.value,
+    prefStorage.getItem('settings_reasoning_level'),
+  )
 })
 
 const missingKeyWarning = computed<string>(() => {
@@ -415,13 +316,17 @@ function warnAboutUnavailableModel() {
   )
 }
 
-function onRegenerate() {
+async function onRegenerate() {
   if (isSelectedModelUnavailable.value) {
     return warnAboutUnavailableModel()
   }
 
   if (isSelectedModelKeyless.value) {
     return warnAboutMissingKey()
+  }
+
+  if (!await ensureSendConsent(selectedTransferProviderId.value)) {
+    return
   }
 
   props.regenerate()
@@ -554,10 +459,30 @@ watch(canAttachMediaType, (canAttach) => {
  */
 const reasoningLevelBeforeClamp = shallowRef<ReasoningLevel | null>(null)
 
+/**
+ * Re-clamps the live level only when the model's capability really changed,
+ * never on a rebuilt but equal capability object (see "Default reasoning
+ * level" in docs/chats/chat-input-tools-menu.md).
+ */
 watch(
   [isReasoningSupported, reasoningCapability, isModelCapabilityResolved],
-  ([supported, capability, isResolved]) => {
+  (
+    [supported, capability, isResolved],
+    [
+      wasSupported,
+      previousCapability,
+      wasResolved,
+    ] = [undefined, undefined, undefined],
+  ) => {
     if (!isResolved) {
+      return
+    }
+
+    const isCapabilityUnchanged = supported === wasSupported
+      && isResolved === wasResolved
+      && isSameReasoningCapability(capability, previousCapability)
+
+    if (isCapabilityUnchanged) {
       return
     }
 
@@ -686,45 +611,35 @@ const isImageGenerationEnabled = computed<boolean>(() => {
 /**
  * Mirrors direct providers: while image generation is active (toggled by
  * the user or forced by `isImageGenerationRequired` for image-only models),
- * neither the reasoning nor the web-search trigger can produce a request
+ * neither the reasoning nor the web-search section can produce a request
  * the provider would accept alongside `image_generation`, so both are
  * hidden rather than shown disabled. `isImageGenerationRequired` is checked
  * directly (not only through `isImageGenerationEnabled`) so an image-only
- * model hides both triggers the same render its capability resolves,
+ * model hides both sections the same render its capability resolves,
  * rather than one flush later once the tools-forcing watcher catches up.
  */
-const isReasoningTriggerVisible = computed<boolean>(() => {
-  return isReasoningSupported.value
-    && !isDeepResearchModel.value
-    && !isImageGenerationEnabled.value
-    && !isImageGenerationRequired.value
+const isImageGenerationActive = computed<boolean>(() => {
+  return isImageGenerationEnabled.value || isImageGenerationRequired.value
 })
 
-const isReasoningAlwaysOnButtonVisible = computed<boolean>(() => {
-  return isReasoningAlwaysOn.value
+const isReasoningSectionVisible = computed<boolean>(() => {
+  return (isReasoningSupported.value || isReasoningAlwaysOn.value)
     && !isDeepResearchModel.value
-    && !isImageGenerationEnabled.value
-    && !isImageGenerationRequired.value
+    && !isImageGenerationActive.value
 })
 
-const isWebSearchTriggerVisible = computed<boolean>(() => {
+const isWebSearchSectionVisible = computed<boolean>(() => {
   return (isWebSearchSupported.value || isToolCallingSupported.value)
     && !isDeepResearchModel.value
-    && !isImageGenerationEnabled.value
-    && !isImageGenerationRequired.value
+    && !isImageGenerationActive.value
 })
 
-/**
- * The single alignment source both the web-search and reasoning dropdowns
- * read, replacing the old boolean that only the web-search toggle used to
- * set. It generalises the same "does a wider control sit before me"
- * signal (now web search OR image generation) to whichever pair of
- * dropdowns ends up adjacent in the toolbar.
- */
-const toolbarDropdownAlign = computed<'start' | 'end'>(() => {
-  return isImageGenerationEnabled.value || isWebSearchEnabled.value
-    ? 'end'
-    : 'start'
+const reasoningMode = computed<ReasoningMode>(() => {
+  if (isReasoningSupported.value) {
+    return 'configurable'
+  }
+
+  return isReasoningAlwaysOn.value ? 'always-on' : 'none'
 })
 
 const textareaPlaceholder = computed<string>(() => {
@@ -738,6 +653,101 @@ const textareaPlaceholder = computed<string>(() => {
 const shouldDisplayProjectPicker = computed<boolean>(() => {
   return !!(props.displayProjectPicker || props.projectContext)
 })
+
+const toolsState = computed<ChatInputToolsState>(() => {
+  return {
+    isNewChat: route.path === '/chats/new',
+    webSearch: {
+      visible: isWebSearchSectionVisible.value,
+      selected: selectedWebSearchProvider.value,
+      options: webSearchProviderOptions.value,
+      isToolCallingSupported: isToolCallingSupported.value,
+      exaSearchLevel: exaSearchLevel.value,
+      isAutoAvailable: isAutoWebSearchAvailable.value,
+      isAutoPreferred: isAutoWebSearchPreferred.value,
+      modelId: selectedModelId.value,
+      billingProviderId: selectedModelBillingProviderId.value,
+    },
+    reasoning: {
+      visible: isReasoningSectionVisible.value,
+      mode: reasoningMode.value,
+      level: reasoning.value,
+      levels: reasoningMenuLevels.value,
+      canDisable: canDisableReasoningLevel.value,
+      capability: reasoningCapability.value,
+      defaultLevel: effectiveDefaultReasoningLevel.value,
+    },
+    image: {
+      supported: isImageGenerationSupported.value,
+      enabled: isImageGenerationEnabled.value,
+      required: isImageGenerationRequired.value,
+    },
+    files: {
+      visible: !isDeepResearchModel.value,
+      count: files.value.length,
+      isImageInputSupported: isImageInputSupported.value,
+    },
+    project: {
+      visible: shouldDisplayProjectPicker.value,
+      context: props.projectContext ?? null,
+    },
+    memory: {
+      excluded: memoryExcluded.value,
+    },
+    research: researchConfig.value,
+    isDeepResearchModel: isDeepResearchModel.value,
+    isResearchJobActive: !!props.researchJobActive,
+    isCapabilityResolved: isModelCapabilityResolved.value,
+  }
+})
+
+const tiles = computed<ChatInputTile[]>(() => {
+  return buildChatInputTiles(toolsState.value)
+})
+
+const toolsMenu = useTemplateRef<{
+  open: (
+    section?: ToolsSection | null,
+    origin?: HTMLElement | null,
+  ) => Promise<void>
+}>('toolsMenu')
+
+function openToolsMenu(
+  section: ToolsSection | null,
+  origin: HTMLElement,
+) {
+  toolsMenu.value?.open(section, origin)
+}
+
+async function focusAfterTileRemoval() {
+  await nextTick()
+
+  const nextFocus = chatInputRef.value?.querySelector<HTMLElement>(
+    '.js-chat-input-tile, .js-chat-input-tools-trigger',
+  )
+
+  nextFocus?.focus()
+}
+
+function removeTile(id: ChatInputTileId) {
+  if (id === 'project') {
+    emit('clear-project-context')
+  } else if (id === 'memory') {
+    memoryExcluded.value = false
+  } else if (id === 'image') {
+    if (isImageGenerationEnabled.value) {
+      toggleImageGeneration()
+    }
+  } else if (id === 'search') {
+    selectWebSearchProvider('off')
+  }
+
+  focusAfterTileRemoval()
+}
+
+function saveDefaultReasoningLevel(level: ReasoningLevel) {
+  setDefaultReasoningLevel(level)
+}
 
 const isChatInputVisibleOnScroll = computed<boolean>(() => {
   if (props.anyMessagesSelected) {
@@ -804,38 +814,70 @@ function selectExaSearchLevel(level: ExaSearchLevel) {
   requestPersistence()
 }
 
+const hasPickedReasoningLevel = shallowRef<boolean>(false)
+const reasoningLevelBeforeImageGeneration = shallowRef<ReasoningLevel | null>(
+  null,
+)
+
 function selectReasoningLevel(level: ReasoningLevel) {
+  hasPickedReasoningLevel.value = true
   reasoning.value = level
   reasoningLevelBeforeClamp.value = null
-  prefStorage.setItem('settings_reasoning_level', level)
-  requestPersistence()
 }
 
 /**
  * Restores the live reasoning level after image generation turns off,
- * without touching `settings_reasoning_level` — only an explicit pick
- * through `selectReasoningLevel()` persists a new default. Validated
+ * without touching the saved default — only the explicit "Save as default"
+ * toggle persists a new one. Validated
  * against the current model's capability here rather than left to the
  * separate capability watcher above, since that watcher only reacts to its
  * own tracked sources and would not re-run just because `reasoning.value`
  * changed. When the saved level had to be substituted, it is remembered in
  * `reasoningLevelBeforeClamp` so a later model switch restores it.
  */
-function restoreLiveReasoningLevel() {
-  const savedLevel = normalizeReasoningLevel(
-    prefStorage.getItem('settings_reasoning_level'),
-  )
-
+function restoreLiveReasoningLevel(
+  targetLevel: ReasoningLevel = effectiveDefaultReasoningLevel.value,
+) {
   const resolvedLevel = resolveSupportedReasoningLevel(
-    savedLevel,
+    targetLevel,
     reasoningCapability.value,
   )
 
-  reasoningLevelBeforeClamp.value = resolvedLevel === savedLevel
+  reasoningLevelBeforeClamp.value = resolvedLevel === targetLevel
     ? null
-    : savedLevel
+    : targetLevel
   reasoning.value = resolvedLevel
 }
+
+/**
+ * Keeps the live level on the saved default for a new chat that has no
+ * level picked yet, whichever of settings and this component arrives first.
+ */
+watch(effectiveDefaultReasoningLevel, (_level, previousLevel) => {
+  if (
+    hasPickedReasoningLevel.value
+    || isImageGenerationActive.value
+    || toValue(props.messagesLength) > 0
+  ) {
+    return
+  }
+
+  const isFirstRun = previousLevel === undefined
+
+  if (isFirstRun) {
+    const unsettledSeedLevel = resolveInitialReasoningLevel(
+      null,
+      prefStorage.getItem('settings_reasoning_level'),
+    )
+    const requestedLevel = reasoningLevelBeforeClamp.value ?? reasoning.value
+
+    if (requestedLevel !== unsettledSeedLevel) {
+      return
+    }
+  }
+
+  restoreLiveReasoningLevel()
+}, { flush: 'post', immediate: true })
 
 /**
  * Mirrors `restoreLiveReasoningLevel()` for web search: safe to restore
@@ -879,6 +921,11 @@ watch(
   isImageGenerationEnabled,
   (enabled, wasEnabled) => {
     if (enabled) {
+      if (wasEnabled !== true) {
+        reasoningLevelBeforeImageGeneration.value
+          = reasoningLevelBeforeClamp.value ?? reasoning.value
+      }
+
       reasoning.value = 'off'
 
       return
@@ -888,7 +935,15 @@ watch(
       return
     }
 
-    restoreLiveReasoningLevel()
+    const levelBeforeImageGeneration = reasoningLevelBeforeImageGeneration.value
+    const keepsChatLevel = hasPickedReasoningLevel.value
+      || toValue(props.messagesLength) > 0
+
+    restoreLiveReasoningLevel(
+      keepsChatLevel
+        ? levelBeforeImageGeneration ?? undefined
+        : undefined,
+    )
     restoreLiveWebSearchSelection()
   },
   {
@@ -987,7 +1042,7 @@ function handleEnter(event: KeyboardEvent) {
   sendMessage()
 }
 
-function sendMessage() {
+async function sendMessage() {
   if (!message.value?.trim()) {
     return useWarningMessage('Please enter a message before sending.')
   }
@@ -1008,6 +1063,10 @@ function sendMessage() {
 
   if (props.researchJobActive) {
     return useWarningMessage('Research in progress — please wait.')
+  }
+
+  if (!await ensureSendConsent(selectedTransferProviderId.value)) {
+    return
   }
 
   const text = message.value
@@ -1064,6 +1123,20 @@ watch(chatInputHeight, (newHeight) => {
   isSentHeightOnMounted.value = true
 
   nuxtApp.callHook('chat-input:height', newHeight)
+}, { flush: 'post' })
+
+watch(() => tiles.value.length > 0, async () => {
+  if (!input.value) {
+    return
+  }
+
+  await nextTick()
+
+  const measuredHeight = chatInputRef.value?.offsetHeight
+
+  if (measuredHeight) {
+    nuxtApp.callHook('chat-input:height', measuredHeight)
+  }
 }, { flush: 'post' })
 
 onUnmounted(() => {

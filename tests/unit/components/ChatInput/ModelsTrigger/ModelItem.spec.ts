@@ -49,6 +49,7 @@ function mountModelItem(
     isLegacy: boolean
     isKeyMissing: boolean
     providerName: string
+    isRecommended: boolean
   }> = {},
 ) {
   return mountSuspended(ModelItem, {
@@ -630,5 +631,52 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
           : 'Always reasons')
       },
     )
+  })
+
+  describe('recommended badge', () => {
+    it('renders the badge right after the price tier when recommended', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isRecommended: true,
+      })
+      const badge = wrapper.get('[data-testid="model-recommended"]')
+
+      expect(badge.text()).toBe('Recommended')
+      expect(badge.classes()).toContain('badge-success')
+      expect(badge.classes()).not.toContain('max-xs:ml-5')
+      expect(
+        badge.element.previousElementSibling?.getAttribute('data-testid'),
+      ).toBe('model-price-tier')
+    })
+
+    it('indents the badge on mobile when it leads the second row', async () => {
+      const wrapper = await mountModelItem(
+        createModel({ priceTier: undefined }),
+        { isRecommended: true },
+      )
+
+      expect(wrapper.get('[data-testid="model-recommended"]').classes())
+        .toContain('max-xs:ml-5')
+      expect(wrapper.get('[data-testid="model-capabilities"]').classes())
+        .toContain('max-xs:-ml-1')
+    })
+
+    it('tightens the mobile badge gap only when recommended', async () => {
+      const recommended = await mountModelItem(createModel(), {
+        isRecommended: true,
+      })
+      const plain = await mountModelItem()
+
+      expect(recommended.get('button[aria-label^="Choose"]').classes())
+        .toContain('max-xs:gap-x-1')
+      expect(plain.get('button[aria-label^="Choose"]').classes())
+        .not.toContain('max-xs:gap-x-1')
+    })
+
+    it('renders no badge by default', async () => {
+      const wrapper = await mountModelItem()
+
+      expect(wrapper.find('[data-testid="model-recommended"]').exists())
+        .toBe(false)
+    })
   })
 })

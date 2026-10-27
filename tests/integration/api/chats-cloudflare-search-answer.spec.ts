@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-text'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 /**
  * Drives a Cloudflare AI Gateway + Brave search send through the real route,
  * the real Cloudflare gateway builder and catalog normalizer, and the real
@@ -115,6 +119,7 @@ vi.mock('~~/server/utils/projects/memory', () => ({
 
 vi.mock('~~/server/utils/memory/tools/enabled', () => ({
   isChatSearchToolEnabled: () => false,
+  isMemoryToolsEnabled: () => false,
 }))
 
 interface ChatCompletionRequest {
@@ -356,6 +361,14 @@ function createDb() {
   return {
     db: {
       query: {
+        userSettings: {
+          findFirst: vi.fn(async () => ({
+            memoryEnabled: false,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          })),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',

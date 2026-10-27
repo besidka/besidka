@@ -85,10 +85,7 @@ export async function useGoogle(
       }
 
       result.tools['web_search_preview'] = google.tools.googleSearch({})
-      result.toolChoice = {
-        type: 'tool',
-        toolName: 'web_search_preview',
-      }
+      result.exclusiveNativeWebSearch = true
     }
 
     return result

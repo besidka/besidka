@@ -4,6 +4,9 @@ import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  isFileNotLinkedToKnowledgeSql,
+} from '~~/server/utils/knowledge/linked-files'
 
 export interface CleanupExpiredFilesInput {
   now?: Date
@@ -34,6 +37,7 @@ export async function cleanupExpiredFiles(
         isNotNull: true,
         lte: now,
       },
+      RAW: table => isFileNotLinkedToKnowledgeSql(table.id),
     },
     orderBy: { expiresAt: 'asc' },
     limit: Math.max(input.batchSize, 1),

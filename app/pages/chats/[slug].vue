@@ -11,6 +11,15 @@
     "
   >
     <ChatContainer class="!gap-0">
+      <p
+        v-if="isMemoryExcluded"
+        data-testid="chat-memory-excluded-indicator"
+        class="flex items-center justify-center gap-1 text-xs opacity-60"
+        :title="CHAT_MEMORY_EXCLUSION_HELPER"
+      >
+        <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="12" />
+        {{ CHAT_MEMORY_EXCLUSION_INDICATOR }}
+      </p>
       <ChatProjectInstructions
         v-if="projectInstructionsText || projectMemoryText"
         :project-id="projectContext?.id || null"
@@ -159,6 +168,10 @@
           />
           <ChatUrlSources
             v-if="hasVisibleTextPart(m)"
+            :message="m"
+          />
+          <ChatAutoWebSearchChip
+            v-if="m.role === 'assistant'"
             :message="m"
           />
         </ChatMessage>
@@ -368,6 +381,17 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
+const {
+  isChatMemoryExcluded,
+  rememberChatMemoryExcluded,
+} = useChatMemoryExclusion()
+
+rememberChatMemoryExcluded(chat.value.slug, chat.value.memoryExcluded)
+
+const isMemoryExcluded = computed<boolean>(() => {
+  return !!chat.value && isChatMemoryExcluded(chat.value.slug)
+})
+
 const projectId = shallowRef<string | null>(chat.value.projectId ?? null)
 const projectContext = shallowRef<{ id: string, name: string } | null>(
   projectId.value
@@ -533,7 +557,6 @@ async function fetchProjectContext(nextProjectId: string) {
 async function syncProjectContext(
   nextProjectId: string | null,
   canApply: () => boolean = () => true,
-  forceRefresh = false,
 ) {
   if (!nextProjectId) {
     if (canApply()) {
@@ -547,8 +570,7 @@ async function syncProjectContext(
   }
 
   if (
-    !forceRefresh
-    && projectContext.value?.id === nextProjectId
+    projectContext.value?.id === nextProjectId
     && projectContext.value.name !== 'Project'
     && projectInstructions.value !== undefined
   ) {
@@ -628,28 +650,6 @@ onMounted(() => {
 
   nuxtApp.callHook('chat:rendered', scrollContainerRef)
 })
-
-if (import.meta.client) {
-  watch(() => chatSdk.status, async (nextStatus, previousStatus) => {
-    if (
-      !projectId.value
-      || nextStatus !== 'ready'
-      || !['submitted', 'streaming'].includes(previousStatus)
-    ) {
-      return
-    }
-
-    try {
-      await $fetch(`/api/v1/chats/${route.params.slug}/project-context/refresh`, {
-        method: 'POST',
-      })
-
-      await syncProjectContext(projectId.value, () => true, true)
-    } catch (exception) {
-      void exception
-    }
-  })
-}
 
 const {
   spacerHeight,
@@ -912,6 +912,7 @@ async function deleteMessage(messageId: string) {
 }
 
 const branchPending = shallowRef(false)
+const { handleConsentError } = useLegalConsent()
 
 async function branchFromMessage(messageId: string) {
   branchPending.value = true
@@ -927,6 +928,10 @@ async function branchFromMessage(messageId: string) {
 
     navigateTo(`/chats/${response.slug}`)
   } catch (exception: any) {
+    if (await handleConsentError(exception)) {
+      return
+    }
+
     useErrorMessage(
       exception.data?.statusMessage
       || exception.statusMessage

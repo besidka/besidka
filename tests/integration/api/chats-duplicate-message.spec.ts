@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { streamText } from 'ai'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 function createMockUIMessageStream(messageId: string) {
   return new ReadableStream({
     start(controller) {
@@ -204,6 +208,14 @@ function createDb(overrides: {
   return {
     db: {
       query: {
+        userSettings: {
+          findFirst: vi.fn(async () => ({
+            memoryEnabled: false,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          })),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',

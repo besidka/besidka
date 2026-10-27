@@ -4,6 +4,7 @@ import type { MessageUsage } from '../../../shared/types/message-usage.d'
 import type { SearchUsage } from '../../../server/utils/ai/search-usage'
 import {
   addImageGenerationCostToUsage,
+  addKnowledgeContextUsage,
   addSearchUsage,
   addResearchCostEstimateToUsage,
   buildMessageUsage,
@@ -746,5 +747,105 @@ describe('totalCost passthrough', () => {
     const result = addImageGenerationCostToUsage(usage, 0.067)
 
     expect(result?.totalCost).toBe(0.42)
+  })
+})
+
+describe('addKnowledgeContextUsage', () => {
+  const baseUsage: MessageUsage = {
+    model: PRICED_MODEL_ID,
+    provider: PRICED_PROVIDER_ID,
+    inputTokens: 5000,
+    outputTokens: 700,
+    totalTokens: 5700,
+  }
+
+  function step(inputTokens?: number, outputTokens?: number) {
+    return { usage: createUsage({ inputTokens, outputTokens }) }
+  }
+
+  it('records the first step input, the last step output and the knowledge '
+    + 'tokens without touching the billed totals', () => {
+    const result = addKnowledgeContextUsage(baseUsage, {
+      steps: [step(900, 15), step(1800, 60)],
+      knowledgeTokens: 4200,
+    })
+
+    expect(result).toEqual({
+      ...baseUsage,
+      knowledgeTokens: 4200,
+      firstStepInputTokens: 900,
+      lastStepOutputTokens: 60,
+    })
+  })
+
+  it('takes the last step output from the continuation call when one ran',
+    () => {
+      const loopSteps = [step(900, 15), step(1400, 20)]
+      const continuationSteps = [step(2100, 333)]
+
+      const result = addKnowledgeContextUsage(baseUsage, {
+        steps: [...loopSteps, ...continuationSteps],
+        knowledgeTokens: 0,
+      })
+
+      expect(result?.firstStepInputTokens).toBe(900)
+      expect(result?.lastStepOutputTokens).toBe(333)
+      expect(result?.inputTokens).toBe(5000)
+      expect(result?.outputTokens).toBe(700)
+    })
+
+  it('records a zero knowledge total as 0, not as absent', () => {
+    const result = addKnowledgeContextUsage(baseUsage, {
+      steps: [step(10, 5)],
+      knowledgeTokens: 0,
+    })
+
+    expect(result?.knowledgeTokens).toBe(0)
+  })
+
+  it('leaves a step field unset when the provider reported no count', () => {
+    const result = addKnowledgeContextUsage(baseUsage, {
+      steps: [step(undefined, 40), step(120, undefined)],
+      knowledgeTokens: 7,
+    })
+
+    expect(result).toEqual({ ...baseUsage, knowledgeTokens: 7 })
+    expect(result).not.toHaveProperty('firstStepInputTokens')
+    expect(result).not.toHaveProperty('lastStepOutputTokens')
+  })
+
+  it('records only the knowledge tokens when there are no steps', () => {
+    const result = addKnowledgeContextUsage(baseUsage, {
+      steps: [],
+      knowledgeTokens: 11,
+    })
+
+    expect(result).toEqual({ ...baseUsage, knowledgeTokens: 11 })
+  })
+
+  it('records the knowledge mode the send used when given', () => {
+    const result = addKnowledgeContextUsage(baseUsage, {
+      steps: [step(10, 5)],
+      knowledgeTokens: 0,
+      knowledgeMode: 'search',
+    })
+
+    expect(result?.knowledgeMode).toBe('search')
+  })
+
+  it('leaves the knowledge mode unset when none is given', () => {
+    const result = addKnowledgeContextUsage(baseUsage, {
+      steps: [step(10, 5)],
+      knowledgeTokens: 3,
+    })
+
+    expect(result).not.toHaveProperty('knowledgeMode')
+  })
+
+  it('returns undefined when there is no usage to extend', () => {
+    expect(addKnowledgeContextUsage(undefined, {
+      steps: [step(1, 1)],
+      knowledgeTokens: 1,
+    })).toBeUndefined()
   })
 })

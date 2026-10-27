@@ -4,6 +4,10 @@ import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  findKnowledgeProjectIdsForFiles,
+} from '~~/server/utils/knowledge/linked-files'
+import { bumpKnowledgeVersion } from '~~/server/utils/knowledge/version'
 import { defineEventHandler, setResponseStatus } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -47,6 +51,27 @@ export default defineEventHandler(async (event) => {
     throw createError({
       message: 'File not found',
       status: 404,
+    })
+  }
+
+  let knowledgeProjectIds: number[] = []
+
+  try {
+    knowledgeProjectIds = await findKnowledgeProjectIdsForFiles(
+      userId,
+      [id],
+    )
+
+    await bumpKnowledgeVersion(knowledgeProjectIds)
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        knowledgeVersionBump: {
+          phase: 'before-delete',
+          fileId: id,
+          error: exceptionMessage(exception),
+        },
+      },
     })
   }
 
@@ -95,6 +120,22 @@ export default defineEventHandler(async (event) => {
       eq(schema.files.id, id),
       eq(schema.files.userId, userId),
     ))
+
+  try {
+    await bumpKnowledgeVersion(knowledgeProjectIds)
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        knowledgeVersionBump: {
+          phase: 'after-delete',
+          fileId: id,
+        },
+        knowledgeVersionBumpAfterDelete: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 
   await invalidateStorageCache(userId)
 

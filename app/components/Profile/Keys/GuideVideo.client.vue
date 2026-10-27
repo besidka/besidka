@@ -20,7 +20,7 @@
         muted
         loop
         playsinline
-        preload="none"
+        :preload="startAt === undefined ? 'none' : 'metadata'"
         :src="currentSrc"
         :poster="poster || undefined"
         :aria-label="label"
@@ -60,14 +60,19 @@ import { canAutoplayGuideVideo } from '~/utils/key-guide-video'
 import { VIDEO_SPEED_OPTIONS } from '~/utils/video-speed'
 
 const props = withDefaults(defineProps<{
-  provider: string
+  provider?: string
+  explainer?: string
   src: string
   label: string
   poster?: string
   markers?: VideoMarker[]
   qualities?: VideoQuality[]
+  startAt?: number
 }>(), {
+  provider: undefined,
+  explainer: undefined,
   poster: undefined,
+  startAt: undefined,
   markers: () => [],
   qualities: () => [],
 })
@@ -79,14 +84,14 @@ const emit = defineEmits<{
 const VISIBILITY_THRESHOLD = 0.5
 const WEBKIT_PIP_MODE = 'picture-in-picture'
 
-const { trackGuideVideoPlay } = useKeyGuideAnalytics()
+const { trackGuideVideoPlay, trackExplainerVideoPlay } = useKeyGuideAnalytics()
 const {
   start: startWatch,
   update: updateWatch,
   upgradeToUser: upgradeWatchToUser,
   end: endWatch,
 } = useVideoWatchAnalytics(() => {
-  return props.provider
+  return props.explainer ?? props.provider ?? ''
 })
 
 const containerRef = shallowRef<HTMLElement | null>(null)
@@ -103,6 +108,7 @@ let isProgrammaticPause = false
 let hasUserPaused = false
 let isPlayPending = false
 let wasMuted = true
+let hasAppliedStartAt = false
 
 const {
   qualityOptions,
@@ -123,6 +129,11 @@ const {
   measureElement: () => {
     return containerRef.value
   },
+  getPendingStartAt: () => {
+    return !hasAppliedStartAt && isValidStartAt(props.startAt)
+      ? props.startAt
+      : undefined
+  },
   onRestored: syncSpeed,
   onSettled: syncPlayback,
 })
@@ -137,6 +148,41 @@ const {
   isThumbnailsEnabled: true,
   getThumbnailSource: thumbnailSource,
 })
+
+function trackVideoPlay(isUserInitiated: boolean) {
+  if (props.explainer) {
+    trackExplainerVideoPlay(props.explainer, isUserInitiated)
+
+    return
+  }
+
+  if (props.provider) {
+    trackGuideVideoPlay(props.provider, isUserInitiated)
+  }
+}
+
+function isValidStartAt(startAt: number | undefined): startAt is number {
+  return startAt !== undefined && Number.isFinite(startAt) && startAt >= 0
+}
+
+function applyStartAt() {
+  const video = videoRef.value
+
+  if (!video || hasAppliedStartAt || !isValidStartAt(props.startAt)) {
+    return
+  }
+
+  if (
+    video.readyState < HTMLMediaElement.HAVE_METADATA
+    || !Number.isFinite(video.duration)
+    || props.startAt >= video.duration
+  ) {
+    return
+  }
+
+  hasAppliedStartAt = true
+  video.currentTime = props.startAt
+}
 
 function isPictureInPicture(video: HTMLVideoElement): boolean {
   if (document.pictureInPictureElement === video) {
@@ -198,6 +244,8 @@ useIntersectionObserver(
   },
 )
 
+useEventListener(videoRef, 'loadedmetadata', applyStartAt)
+
 useEventListener(videoRef, 'error', () => {
   emit('failed')
 })
@@ -216,7 +264,7 @@ useEventListener(videoRef, 'playing', () => {
 
   const isUserInitiated = !isAutoplayRequested
 
-  trackGuideVideoPlay(props.provider, isUserInitiated)
+  trackVideoPlay(isUserInitiated)
   startWatch(
     isUserInitiated || !video.muted ? 'user' : 'autoplay',
     video.currentTime,
@@ -256,7 +304,7 @@ useEventListener(videoRef, 'volumechange', () => {
   wasMuted = video.muted
 
   if (isUnmuted && upgradeWatchToUser()) {
-    trackGuideVideoPlay(props.provider, true)
+    trackVideoPlay(true)
   }
 })
 
@@ -292,6 +340,7 @@ onMounted(() => {
 function onPlayerReady({ timeSlider }: VideoShellReadyPayload) {
   isPlayerReady = true
   attachTimeline(timeSlider)
+  applyStartAt()
   syncPlayback()
 }
 

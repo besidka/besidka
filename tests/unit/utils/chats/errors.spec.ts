@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { InvalidToolInputError, NoSuchToolError } from 'ai'
+import {
+  InvalidToolInputError,
+  NoSuchToolError,
+  ToolChoiceViolationError,
+} from 'ai'
 import {
   MODEL_TOOL_CALL_ERROR_STATUS,
   normalizeChatError,
@@ -136,6 +140,41 @@ describe('normalizeModelToolCallError', () => {
     expect(chatError?.kind).toBe('unavailable-tool')
     expect(chatError?.why)
       .toBe('The model called an unavailable tool: open_file.')
+  })
+
+  it('labels a tool call on a step whose tool choice is none', () => {
+    const chatError = normalizeModelToolCallError({
+      error: new ToolChoiceViolationError({
+        toolChoice: { type: 'none' },
+        finishReason: 'tool-calls',
+        provider: 'workers-ai',
+        modelId: '@cf/openai/gpt-oss-120b',
+        content: [{
+          type: 'tool-call',
+          toolCallId: 'call-4',
+          toolName: 'open_file',
+          input: '{"cursor":1}',
+        }],
+      }),
+    })
+
+    expect(chatError?.code).toBe('invalid-provider-output')
+    expect(chatError?.status).toBe(422)
+    expect(chatError?.kind).toBe('unavailable-tool')
+    expect(chatError?.why)
+      .toBe('The model called an unavailable tool: open_file.')
+  })
+
+  it('leaves a violated required tool choice to the normal handling', () => {
+    expect(normalizeModelToolCallError({
+      error: new ToolChoiceViolationError({
+        toolChoice: { type: 'required' },
+        finishReason: 'stop',
+        provider: 'openai',
+        modelId: 'gpt-5',
+        content: [{ type: 'text', text: 'No tool call.' }],
+      }),
+    })).toBeUndefined()
   })
 
   it('recognizes the message strings the SDK passes for tool-output-error',

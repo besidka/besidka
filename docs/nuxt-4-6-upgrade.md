@@ -335,6 +335,36 @@ Safari was not driven from this repository. If the toast reappears, the
   `NuxtLoadingIndicator` warnings). A production build has no such reload. The
   underlying design gap, the middleware redirecting on the client after a
   guest render, is out of scope for this upgrade.
+- **`/profile/preferences` reasoning tabs nested in the skeleton on a direct
+  load (fixed). Pre-existing, not caused by Vapor.** Loading the page directly
+  sometimes mounted the Off/Low/Medium/High inputs inside the
+  `preferences-reasoning-skeleton` `<div>`, unstyled and stacked. Client-side
+  navigation was fine. Vapor was suspected because the content sits in the
+  slot of the Vapor `Profile/Security/SectionCard`, but removing its `vapor`
+  attribute left the same mismatches. The cause is a hydration mismatch. The
+  server always renders the skeletons, because the settings load only in the
+  client plugin `10.user-settings-sync.client.ts`. The profile layout is a
+  lazy async component, so the page subtree hydrates only after the layout
+  chunk resolves. When the `/api/v1/profiles/settings` response arrived
+  first, `isSettingsLoaded` was already `true` at hydration, and the client
+  rendered the `v-else` tab list against the server's `v-if` skeleton. Both
+  are `<div>`s, so Vue reused the server element, appended the missing
+  children into it, and left its `class` and `data-testid` in place: a
+  production build never corrects attribute mismatches. `pnpm run dev`
+  shows it on most loads because the unbundled dev server resolves the
+  layout slowly; a production build shows it when the layout chunk loads
+  after the settings response (a slow or cold network). The push row had a
+  deterministic variant: `isSupported` is `false` on the server and `true`
+  in the browser, so the label kept the server's `opacity-60` while the
+  toggle was enabled. The page now gates every client-only value behind an
+  `isMounted` flag set in `onMounted`, so the hydration render matches the
+  server and the real state renders one tick later, like
+  `Profile/Memory/CacheInfo.vue`. `tests/e2e/profile/preferences.spec.ts`
+  forces the order by holding the profile layout chunk until the settings
+  response arrives. Hold the layout chunk, not the page chunk: the router
+  resolves the page chunk before the later plugins run, so holding it delays
+  the settings request too. Any template that reads `useState` written by a
+  client plugin, or a browser-only API, needs the same gate.
 - **`gateway-image-generation.spec.ts:202` fails first-attempt-only under
   `--retries=0`. Pre-existing, not caused by this upgrade.** Run alone with
   `--retries=0`, it fails 3 of 3 on the 4.5.2/Vue 3.5 base (`46e48246`) and 3

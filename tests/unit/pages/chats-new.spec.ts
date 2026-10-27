@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../app/composables/messages'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import { useUserModel } from '../../../app/composables/model'
+import { useUserSetting } from '../../../app/composables/user-setting'
 import { useGatewayCatalogCache } from '../../../app/composables/gateway-catalog'
 import ChatsNewPage from '../../../app/pages/chats/new.vue'
 import {
@@ -30,6 +31,17 @@ mockNuxtImport('$fetch', () => fetchMock)
 mockNuxtImport('useUserKeys', () => useUserKeysMock)
 mockNuxtImport('useChatFiles', () => useChatFilesMock)
 mockNuxtImport('useDevice', () => useDeviceMock)
+mockNuxtImport('useAutoWebSearch', () => () => ({
+  isAvailable: { value: false },
+  isPreferred: { value: false },
+  setPreferred: () => {},
+  resolveWebSearchMode: () => 'always',
+}))
+mockNuxtImport('useMediaQuery', () => () => computed(() => true))
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: async () => true,
+  handleConsentError: async () => false,
+}))
 
 async function flushPromises() {
   await Promise.resolve()
@@ -192,6 +204,68 @@ describe('chats new page', () => {
 
     prefStorage.removeItem('settings_web_search_tool')
     prefStorage.removeItem('settings_reasoning_level')
+  })
+
+  describe('initial reasoning level', () => {
+    function mountWithReasoningProbe() {
+      const { stubs } = createSendStubs()
+
+      return mountSuspended(ChatsNewPage, {
+        global: {
+          stubs: {
+            ...stubs,
+            ChatInput: {
+              props: ['reasoning'],
+              template: '<div data-testid="reasoning-probe">{{ reasoning }}</div>',
+            },
+          },
+        },
+      })
+    }
+
+    async function loadServerDefault(defaultReasoningLevel: string | null) {
+      fetchMock.mockResolvedValue({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        defaultReasoningLevel,
+      })
+
+      await useUserSetting().syncForUser('user-1')
+    }
+
+    afterEach(() => {
+      useUserSetting().clearUserContext()
+    })
+
+    it('starts from the server default instead of the saved local level', async () => {
+      usePreferenceStorage().setItem('settings_reasoning_level', 'low')
+      await loadServerDefault('high')
+
+      wrapper = await mountWithReasoningProbe()
+
+      expect(wrapper.get('[data-testid="reasoning-probe"]').text())
+        .toBe('high')
+    })
+
+    it('treats a server default of off as set and ignores the local level', async () => {
+      usePreferenceStorage().setItem('settings_reasoning_level', 'low')
+      await loadServerDefault('off')
+
+      wrapper = await mountWithReasoningProbe()
+
+      expect(wrapper.get('[data-testid="reasoning-probe"]').text())
+        .toBe('off')
+    })
+
+    it('falls back to the saved local level when no server default exists', async () => {
+      await loadServerDefault(null)
+      usePreferenceStorage().setItem('settings_reasoning_level', 'low')
+
+      wrapper = await mountWithReasoningProbe()
+
+      expect(wrapper.get('[data-testid="reasoning-probe"]').text())
+        .toBe('low')
+    })
   })
 
   it('ignores stale project lookups after the user selects another project', async () => {
@@ -1157,13 +1231,7 @@ describe('chats new page with a real ChatInput and a gateway image-only '
           ChatInputFilesModal: filesModalStub,
           LazyChatInputFilesDropZone: true,
           LazyChatScroll: true,
-          LazyChatInputFilesAttachedPreview: true,
           LazyChatInputModelsTrigger: true,
-          LazyChatInputFilesTrigger: true,
-          LazyChatInputWebSearchTrigger: true,
-          LazyChatInputReasoningTrigger: true,
-          LazyChatInputDeepResearchTrigger: true,
-          LazyChatInputToolbarMore: true,
           UiBubble: { template: '<div><slot /></div>' },
           UiButton: uiButtonStub,
         },
@@ -1191,14 +1259,19 @@ describe('chats new page with a real ChatInput and a gateway image-only '
     await nextTick()
     await flushPromises()
 
-    const createImageButton = wrapper.get(
-      '[title="Image creation is required for this model"]',
+    const imageTile = wrapper.get(
+      '[data-testid="chat-input-tile-image-body"]',
     )
 
-    expect(createImageButton.classes()).toContain('btn-active')
+    expect(imageTile.attributes('aria-label'))
+      .toBe('Image creation is required for this model')
     expect(wrapper.find(
-      '[title="Disable image creation"]',
+      '[data-testid="chat-input-tile-image-remove"]',
     ).exists()).toBe(false)
+    expect(wrapper.find('[data-testid="chat-input-tile-search"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="chat-input-tile-reasoning"]')
+      .exists()).toBe(false)
 
     await wrapper.get('textarea').setValue('draw me a cat')
     await wrapper.get('[data-testid="send-message"]').trigger('click')

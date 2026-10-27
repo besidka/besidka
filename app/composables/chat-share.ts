@@ -1,11 +1,16 @@
 import { parseError } from 'evlog'
 import type {
   ChatShare,
+  ChatShareCheckOptions,
+  ChatShareCheckState,
   ChatShareOptions,
 } from '~/types/chat-share.d'
 
+const IDLE_SHARE_CHECK: ChatShareCheckState = { status: 'idle', result: null }
+
 export function useChatShare() {
   const nuxtApp = useNuxtApp()
+  const { handleConsentError } = useLegalConsent()
 
   const isModalOpen = useState<boolean>(
     'chat-share:is-modal-open',
@@ -22,6 +27,10 @@ export function useChatShare() {
   const share = useState<ChatShare | null>(
     'chat-share:active-share',
     () => null,
+  )
+  const shareCheck = useState<ChatShareCheckState>(
+    'chat-share:check',
+    () => ({ ...IDLE_SHARE_CHECK }),
   )
   const isLoading = useState<boolean>('chat-share:is-loading', () => false)
   const isSaving = useState<boolean>('chat-share:is-saving', () => false)
@@ -82,6 +91,37 @@ export function useChatShare() {
     targetChatSlug.value = null
     targetHasFiles.value = false
     share.value = null
+    shareCheck.value = { ...IDLE_SHARE_CHECK }
+  }
+
+  async function runShareCheck(
+    slug: string,
+    options: ChatShareCheckOptions,
+    signal?: AbortSignal,
+  ) {
+    shareCheck.value = { ...shareCheck.value, status: 'pending' }
+
+    try {
+      const response = await $fetch(`/api/v1/chats/${slug}/share/check`, {
+        method: 'POST',
+        body: options,
+        signal,
+      })
+
+      if (signal?.aborted || targetChatSlug.value !== slug) {
+        return
+      }
+
+      shareCheck.value = Array.isArray(response?.warnings)
+        ? { status: 'done', result: response }
+        : { status: 'error', result: null }
+    } catch {
+      if (signal?.aborted || targetChatSlug.value !== slug) {
+        return
+      }
+
+      shareCheck.value = { status: 'error', result: null }
+    }
   }
 
   async function createOrUpdateShare(
@@ -179,6 +219,10 @@ export function useChatShare() {
 
       await navigateTo(`/chats/${response.slug}`)
     } catch (exception) {
+      if (await handleConsentError(exception)) {
+        return
+      }
+
       const parsedException = parseError(exception)
 
       nuxtApp.runWithContext(() => {
@@ -210,6 +254,10 @@ export function useChatShare() {
 
       await navigateTo(`/chats/${response.slug}`)
     } catch (exception) {
+      if (await handleConsentError(exception)) {
+        return
+      }
+
       const parsedException = parseError(exception)
 
       nuxtApp.runWithContext(() => {
@@ -290,6 +338,7 @@ export function useChatShare() {
     targetChatSlug,
     targetHasFiles,
     share,
+    shareCheck,
     isLoading,
     isSaving,
     isBranching,
@@ -297,6 +346,7 @@ export function useChatShare() {
     sharedBranchTarget,
     openShareModal,
     closeShareModal,
+    runShareCheck,
     loadShare,
     createOrUpdateShare,
     revokeShare,

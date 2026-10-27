@@ -1,0 +1,1 @@
+export const MEMORY_IMPORT_MAX_CHARS = 60000

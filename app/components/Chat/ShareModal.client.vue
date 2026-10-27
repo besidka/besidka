@@ -146,6 +146,81 @@
             </div>
 
             <div
+              data-testid="share-memory-warning"
+              role="note"
+              class="alert alert-info alert-soft text-sm"
+            >
+              <Icon name="lucide:book-user" size="16" />
+              <span>
+                Replies may restate your saved profile and preferences from
+                memory. Anyone with the link can read them.
+              </span>
+            </div>
+
+            <div
+              data-testid="share-pii-slot"
+              class="min-h-36 sm:min-h-28"
+            >
+              <div
+                v-if="piiView === 'skeleton'"
+                data-testid="share-pii-skeleton"
+                class="skeleton skeleton--default h-36 sm:h-28 w-full
+                  rounded-box"
+              />
+              <div
+                v-else-if="piiView === 'warning'"
+                data-testid="share-pii-warning"
+                role="alert"
+                class="alert alert-warning alert-soft min-h-36 sm:min-h-28
+                  text-sm"
+              >
+                <Icon name="lucide:triangle-alert" size="16" />
+                <span>
+                  This chat may contain personal data{{ piiKindsLabel }}.
+                  Anyone with the link can read it. Your own contact details
+                  count too.
+                  <strong
+                    v-if="indexable"
+                    data-testid="share-pii-indexable"
+                  >
+                    It can also appear in search engines.
+                  </strong>
+                </span>
+              </div>
+              <div
+                v-else-if="piiView === 'clear'"
+                data-testid="share-pii-clear"
+                role="note"
+                class="alert alert-success alert-soft min-h-36 sm:min-h-28
+                  text-sm"
+              >
+                <Icon name="lucide:shield-check" size="16" />
+                <span>
+                  No personal data found. The check can miss things, so
+                  read the chat once more before you share it.
+                </span>
+              </div>
+              <div
+                v-else
+                data-testid="share-pii-reminder"
+                role="note"
+                class="alert alert-info alert-soft min-h-36 sm:min-h-28
+                  text-sm"
+              >
+                <Icon name="lucide:info" size="16" />
+                <span>
+                  {{ SHARE_PII_GENERIC_REMINDER }}
+                  <strong
+                    v-if="indexable"
+                    data-testid="share-pii-indexable"
+                  >
+                    With search indexing on, it can appear in search engines.
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            <div
               v-if="share"
               class="pt-2 space-y-2"
             >
@@ -231,16 +306,23 @@
 
 <script setup lang="ts">
 import type { ChatShareDuration } from '~/types/chat-share.d'
+import { JEV_SHARE_CHECK_DEBOUNCE_MS } from '#shared/utils/jev-policy'
+import {
+  SHARE_PII_GENERIC_REMINDER,
+  describeSharePiiKinds,
+} from '#shared/utils/share-pii'
 
 const {
   isModalOpen,
   targetChatSlug,
   targetHasFiles,
   share,
+  shareCheck,
   isLoading,
   isSaving,
   closeShareModal,
   createOrUpdateShare,
+  runShareCheck,
   revokeShare,
 } = useChatShare()
 
@@ -255,6 +337,40 @@ const allowBranch = shallowRef<boolean>(true)
 const justCopied = shallowRef<boolean>(false)
 
 let copiedTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+const piiWarnings = computed(() => {
+  return shareCheck.value.result?.warnings ?? []
+})
+
+const piiKindsLabel = computed<string>(() => {
+  const { labels, hasMore } = describeSharePiiKinds(piiWarnings.value)
+
+  if (labels.length === 0) {
+    return ''
+  }
+
+  return ` (${labels.join(', ')}${hasMore ? '…' : ''})`
+})
+
+type PiiView = 'skeleton' | 'warning' | 'clear' | 'reminder'
+
+const piiView = computed<PiiView>(() => {
+  const { status, result } = shareCheck.value
+
+  if (status === 'error') {
+    return 'reminder'
+  }
+
+  if (!result) {
+    return 'skeleton'
+  }
+
+  if (result.warnings.length > 0) {
+    return 'warning'
+  }
+
+  return result.checked ? 'clear' : 'reminder'
+})
 
 function inferDurationFromExpiresAt(
   expiresAt: string | null,
@@ -328,6 +444,35 @@ watch(share, (nextShare) => {
   showAuthorAvatar.value = nextShare.showAuthorAvatar
   allowBranch.value = nextShare.allowBranch
 }, { immediate: true })
+
+watch(
+  [isModalOpen, targetChatSlug, isLoading, showFiles],
+  ([open, slug, loading, shouldShowFiles], _previous, onCleanup) => {
+    if (!open || !slug || loading) {
+      return
+    }
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      runShareCheck(
+        slug,
+        {
+          showFiles: shouldShowFiles,
+          showMetadata: showMetadata.value,
+        },
+        controller.signal,
+      )
+    }, JEV_SHARE_CHECK_DEBOUNCE_MS)
+
+    shareCheck.value = { ...shareCheck.value, status: 'pending' }
+
+    onCleanup(() => {
+      clearTimeout(timeoutId)
+      controller.abort()
+    })
+  },
+  { immediate: true, flush: 'post' },
+)
 
 watch(isModalOpen, (open) => {
   if (!modal.value) {

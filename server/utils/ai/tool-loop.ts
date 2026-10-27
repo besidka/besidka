@@ -3,6 +3,8 @@ import type { FormattedTools } from '~~/server/types/tools.d'
 import { stepCountIs } from 'ai'
 import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
 import { isChatSearchToolName } from '~~/server/utils/ai/chat-search-tools'
+import { isMemoryToolName } from '~~/server/utils/ai/memory-tools'
+import { isProjectKnowledgeToolName } from '~~/server/utils/ai/knowledge-tools'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
@@ -28,8 +30,14 @@ export interface ToolLoopOptions {
   prepareStep: PrepareStepFunction<ToolSet>
 }
 
+export interface UntrustedContentGuard {
+  untrustedResultSeen: boolean
+}
+
 export interface ToolLoopBudget {
   chatSearchSteps?: number
+  knowledgeSteps?: number
+  guard?: UntrustedContentGuard
 }
 
 export interface ResolvedToolLoop {
@@ -70,6 +78,42 @@ export function toolRequiresFollowUpTurn(tool: unknown): boolean {
   return (tool as Record<string, unknown>).requiresFollowUpTurn === true
 }
 
+function isBudgetedLookupToolName(toolName: string): boolean {
+  return isChatSearchToolName(toolName) || isMemoryToolName(toolName)
+}
+
+function isWebFollowUpToolName(toolName: string): boolean {
+  return !isBudgetedLookupToolName(toolName)
+    && !isProjectKnowledgeToolName(toolName)
+}
+
+function isUntrustedToolResultPart(part: unknown): boolean {
+  if (typeof part !== 'object' || part === null) {
+    return false
+  }
+
+  const { type, toolName } = part as { type?: unknown, toolName?: unknown }
+
+  return (type === 'tool-result' || type === 'tool-error')
+    && typeof toolName === 'string'
+    && !isMemoryToolName(toolName)
+}
+
+function stepHasUntrustedToolResult(step: unknown): boolean {
+  if (typeof step !== 'object' || step === null) {
+    return false
+  }
+
+  const { content, toolResults } = step as {
+    content?: unknown
+    toolResults?: unknown
+  }
+
+  return [content, toolResults].some((parts) => {
+    return Array.isArray(parts) && parts.some(isUntrustedToolResultPart)
+  })
+}
+
 function buildToolLoopFinalStepInstructions(
   instructions: Instructions | undefined,
 ): string {
@@ -105,11 +149,23 @@ function isAnthropicGatewayModelId(modelId: string): boolean {
  * routed through a gateway keeps the declarations with `toolChoice: 'none'`.
  * Either can still call a tool on this step; the search-answer continuation
  * in the chat route is what guarantees the turn still ends with an answer.
+ *
+ * On every step it also inspects the previous steps' tool results, including
+ * provider-executed ones such as native web search, and raises
+ * `guard.untrustedResultSeen` once any result belongs to a tool that is not a
+ * memory tool. The flag is never reset and the declared tools are left
+ * untouched, so the memory write tools can refuse the rest of the request
+ * without churning the provider's prompt cache.
  */
 function createToolLoopPrepareStep(
   maxSteps: number,
+  guard: UntrustedContentGuard | undefined,
 ): PrepareStepFunction<ToolSet> {
-  return ({ stepNumber, model, instructions }) => {
+  return ({ steps, stepNumber, model, instructions }) => {
+    if (guard && !guard.untrustedResultSeen && Array.isArray(steps)) {
+      guard.untrustedResultSeen = steps.some(stepHasUntrustedToolResult)
+    }
+
     if (stepNumber !== maxSteps - 1) {
       return undefined
     }
@@ -153,15 +209,17 @@ function createToolLoopPrepareStep(
  * The step cap is the tool steps plus one guaranteed final step that forces
  * an answer — see `createToolLoopPrepareStep()` above for how.
  * `TOOL_LOOP_MAX_TOOL_STEPS` search rounds are granted when at least one
- * registered follow-up tool is not a chat-search tool (web search), and
- * `chatSearchSteps` more when a chat-search tool is registered, so looking up
- * past chats never eats the web-search rounds. When the chat-search tools are
- * the only follow-up tools and `chatSearchSteps` is not positive, the cap
- * falls back to `TOOL_LOOP_MAX_TOOL_STEPS` so the loop never degenerates to a
- * single step. Each step is a full provider round-trip, and the KV
- * generation-in-progress guard this route sets is a short heartbeat-renewed
- * lease (see `generation-guard.ts`), so it stays alive for as long as the
- * loop runs without being sized from these timeouts.
+ * registered follow-up tool is neither a chat-search, a memory nor a
+ * project-knowledge tool (web search), `chatSearchSteps` more when a
+ * chat-search or memory tool is registered, and `knowledgeSteps` more when a
+ * project-knowledge tool is registered, so no lookup family ever eats another
+ * family's rounds. When the follow-up tools grant no steps at all (lookup
+ * tools with a non-positive allowance), the cap falls back to
+ * `TOOL_LOOP_MAX_TOOL_STEPS` so the loop never degenerates to a single step.
+ * Each step is a full provider round-trip, and the KV generation-in-progress
+ * guard this route sets is a short heartbeat-renewed lease (see
+ * `generation-guard.ts`), so it stays alive for as long as the loop runs
+ * without being sized from these timeouts.
  *
  * Returns the cap next to the options because `ToolLoopOptions` is spread
  * straight into `streamText()` and must not carry extra keys; the chat route
@@ -183,13 +241,14 @@ export function resolveToolLoop(
     return undefined
   }
 
-  const hasOtherFollowUpTool = followUpToolNames.some((toolName) => {
-    return !isChatSearchToolName(toolName)
-  })
-  const hasChatSearchTool = followUpToolNames.some(isChatSearchToolName)
+  const hasWebFollowUpTool = followUpToolNames.some(isWebFollowUpToolName)
+  const hasChatSearchTool = followUpToolNames.some(isBudgetedLookupToolName)
+  const hasKnowledgeTool = followUpToolNames.some(isProjectKnowledgeToolName)
   const chatSearchSteps = Math.max(0, budget?.chatSearchSteps ?? 0)
-  const toolSteps = (hasOtherFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
+  const knowledgeSteps = Math.max(0, budget?.knowledgeSteps ?? 0)
+  const toolSteps = (hasWebFollowUpTool ? TOOL_LOOP_MAX_TOOL_STEPS : 0)
     + (hasChatSearchTool ? chatSearchSteps : 0)
+    + (hasKnowledgeTool ? knowledgeSteps : 0)
   const maxSteps = (toolSteps || TOOL_LOOP_MAX_TOOL_STEPS) + 1
 
   return {
@@ -199,7 +258,7 @@ export function resolveToolLoop(
         totalMs: TOOL_LOOP_TOTAL_TIMEOUT_MS,
         toolMs: TOOL_LOOP_TOOL_TIMEOUT_MS,
       },
-      prepareStep: createToolLoopPrepareStep(maxSteps),
+      prepareStep: createToolLoopPrepareStep(maxSteps, budget?.guard),
     },
     maxSteps,
   }

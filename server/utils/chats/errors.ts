@@ -8,7 +8,11 @@ import type { SupportedProviderId } from '#shared/types/providers.d'
 import type { ResearchProviderId } from '#shared/types/research.d'
 import type { RequestEvent } from 'nuxt/server'
 import { getRequestHeader } from 'nuxt/server'
-import { InvalidToolInputError, NoSuchToolError } from 'ai'
+import {
+  InvalidToolInputError,
+  NoSuchToolError,
+  ToolChoiceViolationError,
+} from 'ai'
 import { ResearchAdapterError } from '~~/server/utils/research/adapter-error'
 
 const chatErrorCodes: ChatErrorCode[] = [
@@ -122,12 +126,25 @@ interface ModelToolCallErrorDetails {
   toolName: string
 }
 
+function readToolChoiceViolationToolName(
+  error: ToolChoiceViolationError,
+): string {
+  const toolNames = error.content.flatMap((part) => {
+    return part.type === 'tool-call' ? [part.toolName] : []
+  })
+
+  return toolNames.length > 0 ? toolNames.join(', ') : 'unknown'
+}
+
 /**
  * The SDK hands `onError` the error object for a `tool-input-error` chunk but
  * only that error's string form (`AI_<Name>: <message>`) for the
  * `tool-output-error` that follows it, so both shapes are recognized; the
  * patterns are the SDK's own `InvalidToolInputError` and `NoSuchToolError`
- * message formats.
+ * message formats. A tool call on a step whose `toolChoice` is `none` (the
+ * tool loop's forced final step) is a `ToolChoiceViolationError` since
+ * `ai@7.0.153` and maps to the same `unavailable-tool` kind; a violated
+ * `required` or named tool choice is left to the normal error handling.
  */
 function readModelToolCallError(
   error: unknown,
@@ -138,6 +155,16 @@ function readModelToolCallError(
 
   if (NoSuchToolError.isInstance(error)) {
     return { kind: UNAVAILABLE_TOOL_ERROR_KIND, toolName: error.toolName }
+  }
+
+  if (
+    ToolChoiceViolationError.isInstance(error)
+    && error.toolChoice.type === 'none'
+  ) {
+    return {
+      kind: UNAVAILABLE_TOOL_ERROR_KIND,
+      toolName: readToolChoiceViolationToolName(error),
+    }
   }
 
   if (typeof error !== 'string') {

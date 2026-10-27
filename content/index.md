@@ -33,8 +33,14 @@ carousel:
     alt: The web search menu with Exa selected and its three search levels, Lite $4/1k, Auto $7/1k and Deep $12/1k with Deep active, next to the message info cards for a Lite answer (~$0.004) and a Deep answer (~$0.012).
     caption: Pick Lite, Auto or Deep for Exa web search, and see what each answer cost
   - src: /carousel/projects.webp
-    alt: A project page with project instructions marked Active and project memory synthesized from the project's chats.
-    caption: Projects with shared instructions and memory
+    alt: A project page with a Project knowledge panel listing two notes, a text file and a PDF under a capacity meter, next to the Project memory card with entries grouped as Essentials, Areas and Topics.
+    caption: Projects with memory, files and notes
+  - src: /carousel/memory.webp
+    alt: The Memory page with Use memory on, Generate memory from chats off and Search and reference chats on, next to What Besidka remembers with a Tell Besidka what to remember or change box and entries grouped as You and Topics.
+    caption: Profile memory you can read, edit and delete
+  - src: /carousel/chat-search.webp
+    alt: A chat answer with a Searched your chats step listing two earlier chats with their dates, and the answer built from what they said.
+    caption: Search your past chats, with links to the sources
   - src: /carousel/code-and-diagrams.webp
     alt: A light-theme chat answer with a syntax-highlighted TypeScript snippet and a rendered sequence diagram of a Worker reading from KV and falling back to D1.
     caption: Highlighted code and rendered diagrams
@@ -172,6 +178,51 @@ comparison:
         - no
         - no
         - Not listed by T3
+    - label: Memory you can read, edit and delete
+      values:
+        - yes
+        - Yes, controls vary by plan
+        - Yes, controls vary by plan
+        - US only, Google AI plan needed
+        - US only, Google AI plan needed
+        - yes
+        - Not listed by T3
+    - label: Search your past chats from a new chat
+      values:
+        - yes
+        - yes
+        - yes
+        - yes
+        - yes
+        - yes
+        - Not listed by T3
+    - label: Projects with their own files and memory
+      values:
+        - yes
+        - yes
+        - yes
+        - Notebooks and Gems with files
+        - Notebooks and Gems with files
+        - yes
+        - Not listed by T3
+    - label: Keep one chat out of memory but in your history
+      values:
+        - yes
+        - Temporary Chat, left out of history
+        - Temporary Chat, left out of history
+        - Temporary chat, left out of history
+        - Temporary chat, left out of history
+        - yes
+        - Not listed by T3
+    - label: Optional extra checks on your own key (TypeSafe AI)
+      values:
+        - yes
+        - no
+        - no
+        - no
+        - no
+        - no
+        - Not listed by T3
   note: Besidka is free; you pay the AI provider for what you use. A casual user sending around 100 messages a month uses roughly 50 k input and 50 k output tokens. At Claude Sonnet 5.5's API rates ($2 input / $10 output per million tokens) that is about $0.60; on Claude Opus 5.5 ($4 / $20) about $1.20. Sending 1,000 messages a month lands near $6 on Sonnet 5.5 or $12 on Opus 5.5. Long chats resend earlier messages as input, so real input counts run higher, and prompt caching bills those repeated tokens at a discount. Web search, image generation and deep research are billed separately at the provider's published rates. There is no Besidka markup. Subscription prices are US list prices. The subscription apps bundle features and limits Besidka does not copy, and the free tiers of ChatGPT and Gemini cover plain text chat at no cost.
   priceDate: "2026-10-20"
   sources:
@@ -185,12 +236,28 @@ comparison:
       url: https://help.openai.com/en/articles/8555545-file-uploads-faq
     - label: ChatGPT sharing
       url: https://help.openai.com/en/articles/7925741-sharing-conversations-and-scheduled-tasks-in-chatgpt
+    - label: ChatGPT memory
+      url: https://help.openai.com/en/articles/8590148-memory-in-chatgpt
+    - label: ChatGPT projects
+      url: https://help.openai.com/en/articles/10169521-projects-in-chatgpt
+    - label: ChatGPT Temporary Chat
+      url: https://help.openai.com/en/articles/8914046-temporary-chat-in-chatgpt
     - label: Google AI plans
       url: https://gemini.google/us/subscriptions/
     - label: Gemini models by plan
       url: https://support.google.com/gemini/answer/18648722
     - label: Gemini shared links
       url: https://support.google.com/gemini/answer/13743730
+    - label: Gemini personal context
+      url: https://support.google.com/gemini/answer/16598625
+    - label: Gemini past chats
+      url: https://support.google.com/gemini/answer/16598469
+    - label: Gemini Gems
+      url: https://support.google.com/gemini/answer/15146780
+    - label: Gemini notebooks
+      url: https://support.google.com/gemini/answer/16972047
+    - label: Gemini temporary chats
+      url: https://support.google.com/gemini/answer/13275745
     - label: Claude pricing
       url: https://claude.com/pricing
     - label: Claude images
@@ -201,6 +268,8 @@ comparison:
       url: https://support.claude.com/en/articles/16762496-share-a-chat-with-specific-people
     - label: Claude Research
       url: https://support.claude.com/en/articles/11088861-use-research-on-claude
+    - label: Claude memory and chat search
+      url: https://support.claude.com/en/articles/11817273
     - label: T3 Chat FAQ
       url: https://t3.chat/faq
     - label: T3 Chat terms
@@ -216,7 +285,7 @@ faqs:
   - question: Can I use ChatGPT with my own API key?
     answer: The ChatGPT app itself does not accept an API key, and a ChatGPT subscription and OpenAI API billing are separate products. With an OpenAI API key you can use the same GPT models in a BYOK app such as Besidka and pay OpenAI per use. OpenAI sells API credit in advance, with a minimum purchase of $5 as of 20 October 2026. The ChatGPT app has features that an API key does not give you, such as its own apps and voice mode. The BYOK guide has the steps.
   - question: Can I start for free?
-    answer: Yes, with a Gemini API key from Google AI Studio. Creating one needs a Google account but no card or billing account, and Besidka itself is free. [How to get a free Gemini API key](/guides/gemini-api-key) has the steps and a short video. The free tier has rate limits, and Google may use your prompts and responses on the free tier to improve its products, so do not send anything sensitive. Moving to the paid tier (a billing account; new accounts start on prepaid credit) stops Google using your prompts to improve its products. Other providers need prepaid credit or a card before their API accepts requests.
+    answer: Yes, with a Gemini API key from Google AI Studio. Creating one needs a Google account but no card or billing account, and Besidka itself is free. [How to get a free Gemini API key](/guides/gemini-api-key) has the steps and a short video. The free tier has rate limits. Outside the EEA, Switzerland and the UK, Google may use your prompts and responses on the free tier to improve its products, so do not send anything sensitive; inside them, Google applies its paid-tier data terms to all use, including the free quota. Moving to the paid tier (a billing account; new accounts start on prepaid credit) stops Google using your prompts to improve its products. Other providers need prepaid credit or a card before their API accepts requests.
   - question: Which AI providers are supported?
     answer: "Besidka connects directly to seven AI providers: Anthropic (Claude Opus 5, Claude Sonnet 5 and Claude Haiku 4.5), OpenAI (GPT-5.6, GPT-5.5 and the wider GPT family), Google AI Studio (Gemini 3.8 Flash, Gemini 3.1 Pro Preview and other Gemini models), xAI (Grok 4.6 and other Grok models), DeepSeek (DeepSeek V4 Pro and DeepSeek V4.1 Flash), Moonshot AI (Kimi K3 and Kimi K2.6) and Qwen (Qwen3.8 Max, Qwen3.8 Flash and other Qwen models). Instead of per-provider keys, you can also route chats through your own AI gateway account (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), using the models that gateway makes available to your account. For web search, you can add your own Brave Search or Exa key and use it with any model that supports tool calling, whichever provider or gateway runs it. Check the GitHub repository for the full, current model list."
   - question: Can I choose how deep web search goes?
@@ -224,11 +293,17 @@ faqs:
   - question: Can Besidka generate images and documents?
     answer: Yes for images. Select Create image with a supported OpenAI, Google or xAI chat model, and Besidka generates one image per request. The image is stored privately in your file library, counts toward your storage quota, and remains available to download. Besidka does not generate PDF, PPTX, or XLSX files yet.
   - question: Do you store my API keys?
-    answer: Your keys are stored encrypted in Cloudflare D1, isolated per account behind Better Auth session guards. They are never logged or transmitted to third parties. You can delete them from your profile at any time.
+    answer: Your keys are stored encrypted in Cloudflare D1, isolated per account behind Better Auth session guards. They are never logged, and a key is sent to no one but the company that issued it, when Besidka calls it for you. You can delete them from your profile at any time.
   - question: Can I self-host this?
     answer: Yes. Besidka is MIT-licensed and designed to run on Cloudflare Workers. Clone the repository, configure your Cloudflare account per the README, and deploy with pnpm run deploy. You bring the Cloudflare account.
-  - question: Is my chat history private?
-    answer: On the hosted version at besidka.com, your chats are stored in Besidka's database and scoped to your account, so only you can read them through the app. If you self-host, they are stored in your own Cloudflare account and no third party has access. Messages are sent to the AI provider whose key you use, and that provider's own data terms apply to them.
+  - question: Is my chat history private, and what do I consent to?
+    answer: On the hosted version at besidka.com, your chats, memory and files are stored on Cloudflare and scoped to your account, so only you can read them through the app. If you self-host, they are stored in your own Cloudflare account and no third party has access. Messages go to the AI provider or gateway whose key you use, web searches to the search provider you pick, and, only if you add a TypeSafe AI key, the text its checks need goes to TypeSafe AI. Each of them applies its own data terms. Before your first message, Besidka asks for a separate consent to store any sensitive information you choose to include, to send it to the providers whose keys you add, and to check text automatically before it is saved to memory so that sensitive topics stay out. You can withdraw it in Profile, Security, Privacy & consent. The [Privacy Policy](/privacy-policy) lists every recipient.
+  - question: Does Besidka remember things about me?
+    answer: Only what you let it. Besidka keeps small memory entries about you and about each project. Open Profile, Memory to read, edit, export or delete them, or write what to change in plain words and approve a preview before anything is saved. You can also ask in a chat, for example "remember that I prefer short answers". Generating memory from your chats in the background is off until you switch it on, and then it runs on your own API key. Card numbers, passwords, health details and other sensitive data are refused, not stored. [How memory works](/memory) covers each part.
+  - question: Can Besidka use my past chats and project files?
+    answer: Yes, and you decide how. With Search and reference chats on, which is the default, the model can search your earlier chats, and every time it does, the answer shows a Searched your chats step with links to the chats it used. A project can hold files, notes and its own memory, which only that project's chats use. To keep one chat out of all of this, switch on Don't use this chat for memory. The chat stays in your history, but memory no longer reads it, the model cannot search it, and entries generated only from that chat are removed.
+  - question: What are smart checks with TypeSafe AI?
+    answer: Optional extra checks that run on a second key, from TypeSafe AI. Its Jev model is a decision model, not a chat model. It answers short yes/no questions, such as whether a message needs a web search, whether a memory entry holds sensitive data, or whether a project file hides instructions aimed at the AI. There are seven checks, each with its own switch, and a slow or failed check never blocks you. A check costs a fraction of a cent on your own TypeSafe AI account, and Besidka works fully without the key. [How to get a TypeSafe AI API key](/guides/typesafe-ai-api-key) explains each check, what it sends and how well it works.
   - question: Can I share a chat?
     answer: Yes. Any chat can be shared via a public, unguessable link. Recipients view a read-only copy without needing an account, and can branch it into their own chats. You control per-share options like link expiry, search-engine indexing, and whether images, file names, message details, or your avatar are visible, and you can revoke a share at any time. Shared files are served through short-lived, revocable tokens rather than a public bucket.
   - question: Does Besidka support deep research like ChatGPT?
@@ -257,7 +332,7 @@ features:
     body: Generate one image at a time with supported OpenAI, Google and xAI models. Besidka saves each result privately in your file library so you can preview and download it.
   - icon: lucide:paperclip
     title: File attachments
-    body: Send images and PDFs. Files are stored in your own R2 bucket and can be reused across different chats.
+    body: Send images and PDFs. Files are stored in Besidka's Cloudflare R2 storage under your account's quota, or in your own bucket if you self-host, and can be reused across different chats.
   - icon: lucide:git-branch
     title: Chat branching
     body: Fork any conversation mid-thread to explore a different direction without losing the original.
@@ -266,7 +341,7 @@ features:
     body: Share a chat with a public, unguessable link. Anyone can view it without an account and branch it into their own chats. You control expiry, indexing, and what's visible.
   - icon: lucide:folder-kanban
     title: Projects
-    body: Group related chats under a project with shared instructions and memory so every conversation has context.
+    body: Group related chats under a project with shared instructions, files, notes and memory so every conversation has context.
   - icon: lucide:telescope
     title: Deep research
     body: Kick off an autonomous agent that browses the web, cross-checks sources, and writes a cited report while you do something else. Runs on your own key for roughly $1 to $10 per task, with a push notification when it's done.
@@ -291,22 +366,22 @@ steps:
     body: Create a free account with email and password, or sign in with Google or GitHub. No credit card required.
   - icon: lucide:key
     title: 2. Add your API key
-    body: Paste an API key from Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen into your profile, or connect your own AI gateway instead. The easiest start is a free Gemini key from Google AI Studio, which needs no card. Keys are encrypted at rest and never shared.
+    body: Paste an API key from Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen into your profile, or connect your own AI gateway instead. The easiest start is a free Gemini key from Google AI Studio, which needs no card. Keys are encrypted at rest and never shared with anyone but the company that issued them.
   - icon: lucide:message-square
     title: 3. Start chatting
     body: Open a new chat, pick your model, and go. You pay your provider or gateway directly. Besidka adds nothing on top.
 video:
-  src: /videos/demo.mp4
-  poster: /promo/poster.webp
+  src: /videos/demo.mp4?v=2
+  poster: /promo/poster.webp?v=2
   caption: A 54-second tour of Besidka
   qualities:
-    - src: /videos/demo-1080.mp4
+    - src: /videos/demo-1080.mp4?v=2
       size: 1080
       label: 1080p
-    - src: /videos/demo.mp4
+    - src: /videos/demo.mp4?v=2
       size: 720
       label: 720p
-    - src: /videos/demo-360.mp4
+    - src: /videos/demo-360.mp4?v=2
       size: 360
       label: 360p
   captions:

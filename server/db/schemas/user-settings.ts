@@ -1,6 +1,12 @@
 import type { GatewayId } from '#shared/types/gateways.d'
+import type { ProviderTransferConsents } from '#shared/types/legal-consent.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { JevRoleSettings } from '#shared/utils/jev-policy'
+import { gatewayIds } from '#shared/utils/gateways'
+import { sql } from 'drizzle-orm'
 import {
   snakeCase,
+  index,
   integer,
   text,
   uniqueIndex,
@@ -22,14 +28,37 @@ export const userSettings = snakeCase.table(
     reasoningAutoHide: integer({ mode: 'boolean' })
       .notNull()
       .default(true),
+    defaultReasoningLevel: text().$type<ReasoningLevel>(),
     allowExternalLinks: integer({ mode: 'boolean' }),
     notificationPromptState: integer({ mode: 'boolean' }),
     sidebarPinned: integer({ mode: 'boolean' }),
     favoriteModels: text({ mode: 'json' }).$type<string[]>(),
     favoriteGatewayModels: text({ mode: 'json' })
       .$type<Partial<Record<GatewayId, string[]>>>(),
+    memoryEnabled: integer({ mode: 'boolean' }),
+    memoryExtractionEnabled: integer({ mode: 'boolean' }),
+    memoryExtractionEnabledAt: integer({ mode: 'timestamp' }),
+    chatSearchEnabled: integer({ mode: 'boolean' }),
+    memoryIncludeSensitive: integer({ mode: 'boolean' }),
+    aboutMe: text(),
+    profileMemoryModel: text(),
+    profileMemoryGateway: text({ enum: gatewayIds }),
+    projectMemoryModel: text(),
+    projectMemoryGateway: text({ enum: gatewayIds }),
+    termsAcceptedAt: integer({ mode: 'timestamp' }),
+    termsVersion: text(),
+    ageConfirmedAt: integer({ mode: 'timestamp' }),
+    sensitiveContentConsentAt: integer({ mode: 'timestamp' }),
+    sensitiveContentConsentVersion: text(),
+    sensitiveContentConsentWithdrawnAt: integer({ mode: 'timestamp' }),
+    providerTransferConsents: text({ mode: 'json' })
+      .$type<ProviderTransferConsents>(),
+    typesafeRoles: text({ mode: 'json' }).$type<JevRoleSettings>(),
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),
+    index('idx_user_settings_extraction_enabled')
+      .on(table.userId)
+      .where(sql`memory_extraction_enabled = 1`),
   ],
 )

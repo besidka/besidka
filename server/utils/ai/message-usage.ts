@@ -1,5 +1,7 @@
 import type { LanguageModelUsage } from 'ai'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import type { KnowledgeDecisionMode } from '#shared/types/project-knowledge.d'
+import type { AutoWebSearchOutcome } from '#shared/utils/auto-web-search'
 import { getModel } from '#shared/utils/model'
 import { getModelResearch } from '#shared/utils/research'
 import { hasUnknownTokenSplit } from '#shared/utils/message-metadata'
@@ -205,6 +207,53 @@ export function addSearchUsage(
       ? {}
       : { searchProvider: search.provider }),
   }
+}
+
+/**
+ * Records what the next send in a project with knowledge needs to measure
+ * its history (design 5.5, 16.2): the first step's prompt size, the output
+ * of the step that produced the final answer (the last step, which is the
+ * continuation's last step when one ran), the raw knowledge tokens
+ * injected and, when given, the knowledge mode the send used (the next
+ * send's auto-mode hysteresis reads it). `inputTokens` itself is a sum
+ * across tool-loop steps and would over-count. Billing totals are untouched;
+ * a step without a reported count leaves its field unset.
+ */
+export function addKnowledgeContextUsage(
+  usage: MessageUsage | undefined,
+  input: {
+    steps: readonly { usage: LanguageModelUsage }[]
+    knowledgeTokens: number
+    knowledgeMode?: KnowledgeDecisionMode
+  },
+): MessageUsage | undefined {
+  if (!usage) {
+    return usage
+  }
+
+  const firstStepInputTokens = input.steps[0]?.usage.inputTokens
+  const lastStepOutputTokens = input.steps.at(-1)?.usage.outputTokens
+
+  return {
+    ...usage,
+    knowledgeTokens: input.knowledgeTokens,
+    ...(input.knowledgeMode === undefined
+      ? {}
+      : { knowledgeMode: input.knowledgeMode }),
+    ...(firstStepInputTokens === undefined ? {} : { firstStepInputTokens }),
+    ...(lastStepOutputTokens === undefined ? {} : { lastStepOutputTokens }),
+  }
+}
+
+export function addAutoWebSearchUsage(
+  usage: MessageUsage | undefined,
+  outcome: AutoWebSearchOutcome | undefined,
+): MessageUsage | undefined {
+  if (!usage || outcome === undefined) {
+    return usage
+  }
+
+  return { ...usage, autoWebSearch: outcome }
 }
 
 function parseResearchCostEstimate(costEstimate: string): number | undefined {

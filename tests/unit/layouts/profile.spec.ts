@@ -34,7 +34,7 @@ async function mountLayout() {
 }
 
 describe('profile layout', () => {
-  it('lists Security and API Keys tabs in that order', async () => {
+  it('lists Security, API Keys, Memory and Preferences tabs in that order', async () => {
     mocks.routePath = '/profile/security'
 
     const wrapper = await mountLayout()
@@ -43,10 +43,14 @@ describe('profile layout', () => {
     expect(tabs.map(tab => tab.text())).toEqual([
       'Security',
       'API Keys',
+      'Memory',
+      'Preferences',
     ])
     expect(tabs.map(tab => tab.attributes('to'))).toEqual([
       '/profile/security',
       '/profile/keys',
+      '/profile/memory',
+      '/profile/preferences',
     ])
   })
 
@@ -70,6 +74,30 @@ describe('profile layout', () => {
     expect(tabs[1]?.classes()).toContain('tab-active')
   })
 
+  it('highlights the Memory tab when visiting /profile/memory', async () => {
+    mocks.routePath = '/profile/memory'
+
+    const wrapper = await mountLayout()
+    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+
+    expect(tabs[0]?.classes()).not.toContain('tab-active')
+    expect(tabs[1]?.classes()).not.toContain('tab-active')
+    expect(tabs[2]?.classes()).toContain('tab-active')
+  })
+
+  it('highlights the Preferences tab when visiting /profile/preferences', async () => {
+    mocks.routePath = '/profile/preferences'
+
+    const wrapper = await mountLayout()
+    const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
+
+    expect(tabs[0]?.classes()).not.toContain('tab-active')
+    expect(tabs[2]?.classes()).not.toContain('tab-active')
+    expect(tabs[3]?.classes()).toContain('tab-active')
+    expect(tabs[3]?.find('.iconify').classes())
+      .toContain('i-lucide:sliders-horizontal')
+  })
+
   it.each([
     '/profile/email',
     '/profile/password',
@@ -84,12 +112,13 @@ describe('profile layout', () => {
   })
 
   it('does not highlight any tab on an unrelated route', async () => {
-    mocks.routePath = '/profile/settings'
+    mocks.routePath = '/profile/unknown'
 
     const wrapper = await mountLayout()
     const tabs = wrapper.findAll('nav[aria-label="Account sections"] a')
 
-    expect(tabs[0]?.classes()).not.toContain('tab-active')
-    expect(tabs[1]?.classes()).not.toContain('tab-active')
+    for (const tab of tabs) {
+      expect(tab.classes()).not.toContain('tab-active')
+    }
   })
 })

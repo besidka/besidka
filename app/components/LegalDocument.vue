@@ -27,6 +27,8 @@
       </p>
     </aside>
 
+    <slot name="media" />
+
     <ContentRenderer
       v-if="doc"
       :value="doc"

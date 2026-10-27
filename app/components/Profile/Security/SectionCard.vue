@@ -4,9 +4,10 @@
     :class="{ 'bg-error/10 border-error/35': danger }"
   >
     <h2
-      class="text-lg font-bold"
+      class="inline-flex items-center gap-2 text-lg font-bold"
       :class="{ 'text-error': danger }"
     >
+      <slot name="icon" />
       {{ heading }}
     </h2>
     <p

@@ -91,7 +91,8 @@ test.describe('project pickers', () => {
 
     await page.goto('/chats/new')
     await waitForHydration(page)
-    await page.getByRole('button', { name: 'Select project' }).click()
+    await page.getByTestId('chat-input-tools-trigger').click()
+    await page.getByTestId('tools-project').click()
 
     const dialog = page.getByTestId('project-picker-dialog')
 

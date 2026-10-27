@@ -190,7 +190,8 @@ describe('useXai web search tool choice', () => {
     stubKeyLookup()
   })
 
-  it('forces the web search tool choice when reasoning is off', async () => {
+  it('keeps native web search exclusive without forcing the tool choice '
+    + 'when reasoning is off', async () => {
     stubModel(createModel({
       id: 'grok-4.5',
       reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
@@ -199,10 +200,8 @@ describe('useXai web search tool choice', () => {
     const useXai = await importUseXai()
     const result = await useXai('1', 'grok-4.5', ['web_search'], 'off')
 
-    expect(result.tools.toolChoice).toEqual({
-      type: 'tool',
-      toolName: 'web_search_preview',
-    })
+    expect(result.tools.toolChoice).toBeUndefined()
+    expect(result.tools.exclusiveNativeWebSearch).toBe(true)
   })
 
   it('leaves tool choice unset when reasoning is enabled', async () => {
@@ -215,6 +214,7 @@ describe('useXai web search tool choice', () => {
     const result = await useXai('1', 'grok-4.5', ['web_search'], 'medium')
 
     expect(result.tools.toolChoice).toBeUndefined()
+    expect(result.tools.exclusiveNativeWebSearch).toBeUndefined()
   })
 })
 

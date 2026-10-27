@@ -6,8 +6,10 @@ import {
 
 // Controllable getSession so each test drives the { data, error } shape the
 // better-auth client actually returns (200/null, network error, success).
-const { getSessionMock } = vi.hoisted(() => ({
+const { getSessionMock, signOutMock, deleteUserMock } = vi.hoisted(() => ({
   getSessionMock: vi.fn(),
+  signOutMock: vi.fn(),
+  deleteUserMock: vi.fn(),
 }))
 
 vi.mock('better-auth/vue', () => ({
@@ -19,7 +21,8 @@ vi.mock('better-auth/vue', () => ({
     $ERROR_CODES: {},
     signIn: {},
     signUp: {},
-    signOut: vi.fn(),
+    signOut: signOutMock,
+    deleteUser: deleteUserMock,
     requestPasswordReset: vi.fn(),
     resetPassword: vi.fn(),
   }),
@@ -219,4 +222,42 @@ describe('useAuth fetchSession', () => {
 
     expect(session.value).toBeNull()
   })
+})
+
+describe('useAuth shared-device cleanup', () => {
+  beforeEach(() => {
+    resetMockNuxtState()
+    installMockNuxtState()
+    signOutMock.mockReset()
+    deleteUserMock.mockReset()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    resetMockNuxtState()
+    localStorage.clear()
+  })
+
+  it('clears the legacy reasoning level on sign-out', async () => {
+    localStorage.setItem('settings_reasoning_level', 'high')
+    signOutMock.mockImplementation(async (options: {
+      fetchOptions: { onSuccess: () => Promise<void> }
+    }) => {
+      await options.fetchOptions.onSuccess()
+    })
+
+    await useAuth().signOut()
+
+    expect(localStorage.getItem('settings_reasoning_level')).toBeNull()
+  })
+
+  it('clears the legacy reasoning level when deletion is requested',
+    async () => {
+      localStorage.setItem('settings_reasoning_level', 'low')
+      deleteUserMock.mockResolvedValue({ error: null })
+
+      await useAuth().requestAccountDeletion()
+
+      expect(localStorage.getItem('settings_reasoning_level')).toBeNull()
+    })
 })

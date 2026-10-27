@@ -143,6 +143,7 @@ const {
   keyStatusForProvider,
   refresh: refreshUserKeys,
 } = useUserKeys()
+const { ensureTransferConsent } = useLegalConsent()
 
 const apiKey = shallowRef<string>('')
 const pending = shallowRef<boolean>(false)
@@ -187,6 +188,10 @@ async function pasteApiKey() {
 }
 
 async function updateKey() {
+  if (!await ensureTransferConsent(props.providerId, 'key')) {
+    return
+  }
+
   pending.value = true
 
   try {

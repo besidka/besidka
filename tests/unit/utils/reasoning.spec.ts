@@ -597,6 +597,66 @@ describe('getToolStepTitle', () => {
       .toBe('Reading the chat failed')
   })
 
+  it('titles the memory tools by pending, done, and failed state', () => {
+    const expected = [
+      ['memory_list', 'Looking through your memory',
+        'Looked through your memory', 'Memory lookup failed'],
+      ['memory_read', 'Reading a memory', 'Read a memory',
+        'Reading the memory failed'],
+      ['memory_write', 'Saving to memory', 'Saved to memory',
+        'Saving to memory failed'],
+      ['memory_forget', 'Removing from memory', 'Removed from memory',
+        'Removing from memory failed'],
+    ] as const
+
+    for (const [toolName, pending, done, failed] of expected) {
+      expect(getToolStepTitle(toolName, true, false)).toBe(pending)
+      expect(getToolStepTitle(toolName, false, false)).toBe(done)
+      expect(getToolStepTitle(toolName, false, true)).toBe(failed)
+    }
+  })
+
+  it('titles the project knowledge tools, never as a web search', () => {
+    const expected = [
+      ['search_project_knowledge', 'Searching project knowledge',
+        'Searched project knowledge', 'Project knowledge search failed'],
+      ['read_project_knowledge', 'Reading project knowledge',
+        'Read project knowledge', 'Reading project knowledge failed'],
+    ] as const
+
+    for (const [toolName, pending, done, failed] of expected) {
+      expect(getToolStepTitle(toolName, true, false)).toBe(pending)
+      expect(getToolStepTitle(toolName, false, false)).toBe(done)
+      expect(getToolStepTitle(toolName, false, true)).toBe(failed)
+    }
+  })
+
+  it('treats the project knowledge tools as thinking steps', () => {
+    for (const toolName of [
+      'search_project_knowledge',
+      'read_project_knowledge',
+    ]) {
+      expect(isThinkingToolPart(
+        { type: `tool-${toolName}`, state: 'output-available' } as
+          UIMessage['parts'][number],
+      )).toBe(true)
+    }
+  })
+
+  it('treats the memory tools as thinking steps', () => {
+    for (const toolName of [
+      'memory_list',
+      'memory_read',
+      'memory_write',
+      'memory_forget',
+    ]) {
+      expect(isThinkingToolPart(
+        { type: `tool-${toolName}`, state: 'output-available' } as
+          UIMessage['parts'][number],
+      )).toBe(true)
+    }
+  })
+
   it('keeps the web search fallback for other search-named tools', () => {
     expect(getToolStepTitle('web_search', true, false))
       .toBe('Searching the web')

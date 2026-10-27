@@ -69,7 +69,7 @@ export function getAffectedTests(changedFiles) {
   const affectedTests = new Set()
   const filesModuleTests = [
     'tests/unit/components/Chat/Files.spec.ts',
-    'tests/unit/components/ChatInput/Files/Trigger.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
@@ -97,11 +97,259 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
   ]
+  const chatInputToolsTests = [
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Segmented.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Reveal.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ToggleRow.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Section.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/InfoNote.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/InlineButton.spec.ts',
+    'tests/unit/composables/reveal-guard.spec.ts',
+    'tests/unit/composables/tools-menu-focus-rescue.spec.ts',
+    'tests/unit/components/ChatInput/SettingTile.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/reasoning-icons.spec.ts',
+    'tests/unit/utils/web-search-price.spec.ts',
+    'tests/unit/composables/scroll-edge-fade.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
+    'tests/unit/pages/profile/preferences.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
+    'tests/unit/db/default-reasoning-level-migration.spec.ts',
+  ]
+  const preferencesPageTests = [
+    'tests/unit/pages/profile/preferences.spec.ts',
+    'tests/unit/pages/profile/settings.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/composables/user-setting.spec.ts',
+    'tests/e2e/profile/preferences.spec.ts',
+  ]
+  const memoryContractTests = [
+    'tests/unit/utils/memory-policy.spec.ts',
+    'tests/unit/utils/memory-schemas.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
+  ]
+  const memoryJevTests = [
+    'tests/unit/utils/memory/jev-check.spec.ts',
+    'tests/integration/api/memory-jev.spec.ts',
+  ]
+  const jevInjectionScreeningTests = [
+    'tests/unit/utils/jev/injection-screening.spec.ts',
+    'tests/unit/utils/knowledge/unscreened.spec.ts',
+    'tests/unit/utils/knowledge/sweep.spec.ts',
+    'tests/integration/api/projects-knowledge-injection-screening.spec.ts',
+    'tests/integration/api/projects-knowledge-real-pack.spec.ts',
+    'tests/integration/api/chats-external-search.spec.ts',
+  ]
+  const jevRerankTests = [
+    'tests/unit/utils/jev/rerank.spec.ts',
+    'tests/unit/utils/memory/tools/search-chats-rerank.spec.ts',
+    'tests/unit/utils/knowledge/rerank.spec.ts',
+    'tests/integration/api/jev-rerank.spec.ts',
+  ]
+  const jevFoundationTests = [
+    'tests/unit/utils/jev/client.spec.ts',
+    'tests/unit/utils/jev/logging.spec.ts',
+    'tests/unit/utils/jev/roles.spec.ts',
+    ...jevRerankTests,
+    'tests/unit/utils/jev-policy.spec.ts',
+    'tests/integration/api/chats-share-check.spec.ts',
+    ...memoryJevTests,
+    ...jevInjectionScreeningTests,
+  ]
+  const autoWebSearchTests = [
+    'tests/unit/utils/chats/auto-web-search.spec.ts',
+    'tests/integration/api/chats-auto-web-search.spec.ts',
+    'tests/integration/api/chats-new-auto-web-search.spec.ts',
+    'tests/unit/composables/auto-web-search.spec.ts',
+    'tests/unit/components/Chat/AutoWebSearchChip.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/composables/chat.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
+  ]
+  const typesafeRolesUiTests = [
+    'tests/unit/components/Profile/Keys/TypesafeChecks.spec.ts',
+    'tests/unit/components/Profile/Keys/MemoryChecksInfo.spec.ts',
+    'tests/unit/components/Profile/Memory/ExtraChecks.spec.ts',
+    'tests/unit/composables/typesafe-roles.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+  ]
+  const memoryComplianceTests = [
+    'tests/unit/utils/memory/compliance.spec.ts',
+    'tests/unit/utils/memory/compliance-evasion.spec.ts',
+    'tests/unit/utils/memory/sensitivity.spec.ts',
+    'tests/unit/utils/chats/share-pii-check.spec.ts',
+    ...memoryJevTests,
+  ]
+  const memoryModelTests = [
+    'tests/unit/utils/memory/resolve-model.spec.ts',
+    'tests/unit/utils/memory/catalog-usability.spec.ts',
+    'tests/unit/utils/project-memory.spec.ts',
+  ]
+  const memoryPurgeTests = [
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+  ]
+  const projectKnowledgeContractTests = [
+    'tests/unit/utils/project-knowledge-policy.spec.ts',
+    'tests/unit/utils/project-knowledge-budget.spec.ts',
+    'tests/unit/utils/project-knowledge-schemas.spec.ts',
+    'tests/unit/utils/project-knowledge-path.spec.ts',
+    'tests/unit/utils/knowledge-hash.spec.ts',
+  ]
+  const projectKnowledgeServerTests = [
+    'tests/unit/utils/knowledge/storage-keys.spec.ts',
+    'tests/unit/utils/knowledge/purge.spec.ts',
+    'tests/unit/utils/knowledge/quota.spec.ts',
+  ]
+  const projectKnowledgeRetrievalTests = [
+    'tests/unit/utils/knowledge/search.spec.ts',
+    'tests/unit/utils/knowledge/tools.spec.ts',
+    'tests/unit/utils/knowledge/pre-retrieval.spec.ts',
+    'tests/unit/utils/knowledge/send-data.spec.ts',
+    'tests/unit/utils/knowledge/context.spec.ts',
+    'tests/unit/utils/knowledge/previous-mode.spec.ts',
+    'tests/integration/api/chats-project-knowledge.spec.ts',
+    ...jevRerankTests,
+  ]
+  const knowledgeCoreTests = [
+    'tests/unit/utils/knowledge/items.spec.ts',
+    'tests/unit/utils/knowledge/version.spec.ts',
+    'tests/unit/utils/knowledge/text-store.spec.ts',
+    'tests/unit/utils/knowledge/chunk.spec.ts',
+    'tests/unit/utils/knowledge/pack.spec.ts',
+    'tests/unit/utils/knowledge/pack-lease.spec.ts',
+  ]
+  const knowledgeIngestTests = [
+    'tests/unit/utils/knowledge/access.spec.ts',
+    'tests/unit/utils/knowledge/ingest.spec.ts',
+    'tests/integration/api/projects-knowledge-ownership.spec.ts',
+    'tests/integration/api/projects-knowledge-items.spec.ts',
+    'tests/integration/api/projects-knowledge-notes.spec.ts',
+    'tests/integration/api/projects-knowledge-injection-screening.spec.ts',
+    'tests/integration/api/projects-knowledge-commit.spec.ts',
+    'tests/integration/api/projects-knowledge-summary.spec.ts',
+    'tests/integration/api/projects-knowledge-real-pack.spec.ts',
+    'tests/integration/api/projects-knowledge-limits.spec.ts',
+    'tests/unit/utils/knowledge/body.spec.ts',
+    'tests/unit/utils/knowledge/rate-limit.spec.ts',
+  ]
+  const knowledgeRetentionTests = [
+    'tests/unit/utils/knowledge/linked-files.spec.ts',
+    'tests/unit/utils/knowledge/sweep.spec.ts',
+    'tests/unit/utils/knowledge/unscreened.spec.ts',
+    'tests/integration/server/knowledge-retention.spec.ts',
+    'tests/integration/server/project-knowledge-sweep-plugin.spec.ts',
+    'tests/integration/server/chat-deletion-cleanup.spec.ts',
+    'tests/integration/api/files-delete.spec.ts',
+    'tests/integration/api/projects.spec.ts',
+  ]
+  const memoryEntriesTests = [
+    'tests/unit/utils/memory/entries.spec.ts',
+    'tests/unit/utils/memory/entry-slug.spec.ts',
+    'tests/integration/api/memory-entries.spec.ts',
+    'tests/integration/api/memory-entries-sources.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
+    'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/memory-rate-limit.spec.ts',
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
+    ...memoryJevTests,
+  ]
+  const memoryInstructTests = [
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
+    'tests/unit/utils/memory-instruct-diff.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Box.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Preview.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries.spec.ts',
+    'tests/unit/components/Projects/MemoryCard.spec.ts',
+    ...memoryJevTests,
+  ]
+  const memoryIndexTests = [
+    'tests/unit/utils/memory-tokens.spec.ts',
+    'tests/unit/utils/memory/index-builder.spec.ts',
+    'tests/unit/utils/memory/runtime-settings.spec.ts',
+    'tests/unit/utils/memory/chat-context.spec.ts',
+    'tests/unit/utils/memory/about-me-migration.spec.ts',
+    'tests/unit/utils/memory/persist-redaction.spec.ts',
+  ]
+  const memoryChatDeletionTests = [
+    'tests/unit/utils/memory/chat-deletion.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+  ]
+  const memoryToolTests = [
+    'tests/unit/utils/memory/tools/memory-tools.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
+    'tests/unit/utils/memory/tools/enabled.spec.ts',
+    'tests/unit/utils/ai/memory-tools.spec.ts',
+    'tests/integration/api/chats-memory.spec.ts',
+    ...memoryIndexTests,
+    ...memoryJevTests,
+  ]
+  const memoryStepTests = [
+    'tests/unit/utils/memory-step.spec.ts',
+    'tests/unit/components/Chat/Reasoning/MemoryStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+  ]
+  const memoryExtractionTests = [
+    'tests/unit/utils/memory/extract-apply.spec.ts',
+    'tests/unit/utils/memory/extract-input.spec.ts',
+    'tests/unit/utils/memory/extract-runtime.spec.ts',
+    'tests/unit/utils/memory/extract-sweep.spec.ts',
+    'tests/unit/utils/memory/extract.spec.ts',
+    'tests/unit/utils/memory/extract-prefilter.spec.ts',
+    'tests/unit/utils/projects/memory-entries.spec.ts',
+    'tests/unit/utils/projects/memory-refresh.spec.ts',
+    'tests/unit/utils/projects/memory-card.spec.ts',
+    'tests/unit/utils/projects/memory-account.spec.ts',
+    'tests/unit/utils/memory/extract-manual.spec.ts',
+    'tests/unit/utils/project-memory-refresh.spec.ts',
+    'tests/unit/utils/memory/extract-grounding.spec.ts',
+    'tests/unit/utils/memory/extract-text.spec.ts',
+    'tests/unit/utils/memory/backfill.spec.ts',
+    'tests/unit/utils/memory/backfill-estimate.spec.ts',
+    'tests/unit/utils/memory/backfill-sweep.spec.ts',
+    'tests/unit/utils/memory-import-prompt.spec.ts',
+    'tests/integration/api/memory-backfill.spec.ts',
+    'tests/integration/api/memory-import.spec.ts',
+    'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
+    'tests/integration/api/memory-extract-now.spec.ts',
+    'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
+    'tests/unit/utils/memory/instruct.spec.ts',
+    'tests/integration/api/memory-instruct.spec.ts',
+    'tests/integration/api/chats-memory-exclusion.spec.ts',
+    ...memoryJevTests,
+  ]
+  const memoryChatExclusionTests = [
+    'tests/integration/api/chats-memory-exclusion.spec.ts',
+    'tests/integration/api/chats-new.spec.ts',
+    'tests/integration/api/chats-branch.spec.ts',
+    'tests/unit/utils/memory/extract-sweep.spec.ts',
+    'tests/unit/utils/memory/extract-manual.spec.ts',
+    'tests/unit/utils/memory/backfill.spec.ts',
+    'tests/unit/utils/projects/memory-refresh.spec.ts',
+    'tests/unit/utils/memory/tools/search-chats.spec.ts',
+    'tests/unit/utils/memory/tools/read-chat.spec.ts',
+    'tests/unit/composables/chat-memory-exclusion.spec.ts',
+    'tests/unit/components/History/ActionsDropdown.spec.ts',
+    'tests/unit/components/History/ChatRow.spec.ts',
+    'tests/unit/components/Sidebar/Development.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
   ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
@@ -113,10 +361,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/chat-image-preview-guard.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
-    'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
-    'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
-    'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
-    'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
     'tests/e2e/chat/exa-search-level.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/image-generation-lock.spec.ts',
@@ -124,22 +372,27 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-message-id-stream.spec.ts',
   ]
   const modelsTriggerPattern
-    = /^(app\/components\/ChatInput\/ModelsTrigger(\.vue|\/.+\.vue)|app\/utils\/models-picker\.ts|app\/types\/models-picker\.d\.ts)$/
+    = /^(app\/components\/ChatInput\/ModelsTrigger(\.vue|\/.+\.vue)|app\/utils\/models-picker\.ts|app\/types\/models-picker\.d\.ts|app\/composables\/(visual-viewport-inset|scroll-edge-fade)\.ts)$/
   const modelsTriggerTests = [
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.keys.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.sheet.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/Search.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/FilterSection.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelList.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/Panel.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
+    'tests/unit/composables/visual-viewport-inset.spec.ts',
+    'tests/e2e/chat/models-picker.spec.ts',
   ]
   const userKeysTests = [
     'tests/unit/composables/user-keys.spec.ts',
@@ -176,6 +429,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/deepseek.spec.ts',
     'tests/unit/utils/providers/moonshotai.spec.ts',
     'tests/unit/utils/providers/openai.spec.ts',
+    'tests/unit/utils/providers/google.spec.ts',
     'tests/unit/utils/providers/xai.spec.ts',
     'tests/unit/utils/providers/anthropic.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
@@ -261,6 +515,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/pages/chats/history/index.spec.ts',
     'tests/unit/pages/projects-index.spec.ts',
+    'tests/unit/pages/chats/projects/[id].spec.ts',
     'tests/unit/utils/date-groups.spec.ts',
     'tests/unit/utils/project-activity.spec.ts',
     'tests/unit/utils/project-instructions.spec.ts',
@@ -343,6 +598,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-shares-branch.spec.ts',
     'tests/integration/api/chats-shares-handoff.spec.ts',
     'tests/integration/api/chats-share-create.spec.ts',
+    'tests/integration/api/chats-share-check.spec.ts',
+    'tests/unit/utils/chats/share-pii-check.spec.ts',
+    'tests/unit/utils/share-pii.spec.ts',
     'tests/integration/api/chats-share-revoke.spec.ts',
     'tests/integration/api/chats-share-reshare-slug.spec.ts',
     'tests/integration/api/shared-chat-view.spec.ts',
@@ -408,6 +666,69 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Security/Sessions.spec.ts',
     'tests/unit/components/Profile/Security/LinkedAccounts.spec.ts',
     'tests/unit/components/Profile/Security/Passkeys.spec.ts',
+  ]
+
+  const projectKnowledgeClientTests = [
+    'tests/unit/workers/knowledge-extract.spec.ts',
+    'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
+    'tests/unit/utils/knowledge-upload-plan.spec.ts',
+    'tests/unit/utils/knowledge-folder.spec.ts',
+    'tests/unit/utils/knowledge-title.spec.ts',
+    'tests/unit/utils/knowledge-zip.spec.ts',
+    'tests/unit/utils/project-knowledge-ui.spec.ts',
+    'tests/unit/utils/reasoning.spec.ts',
+    'tests/unit/composables/knowledge-extract.spec.ts',
+    'tests/unit/composables/project-knowledge.spec.ts',
+    'tests/unit/composables/knowledge-upload.spec.ts',
+    'tests/unit/composables/project-knowledge-model.spec.ts',
+    'tests/unit/composables/project-knowledge-folders.spec.ts',
+    'tests/unit/components/Profile/Memory/CacheInfo.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Panel.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Item.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ItemList.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ItemEditSheet.spec.ts',
+    'tests/unit/components/Projects/Knowledge/NoteEditor.spec.ts',
+    'tests/unit/components/Projects/Knowledge/UploadSheet.spec.ts',
+    'tests/unit/components/Projects/Knowledge/LibraryPicker.spec.ts',
+    'tests/unit/components/Projects/Knowledge/ModeSelector.spec.ts',
+    'tests/unit/components/Projects/Knowledge/CapacityMeter.spec.ts',
+    'tests/unit/components/Projects/Knowledge/Menu.spec.ts',
+  ]
+
+  const memoryTabTests = [
+    'tests/unit/pages/profile/memory.spec.ts',
+    'tests/unit/components/Profile/Memory/ModelPicker.spec.ts',
+    'tests/unit/components/Profile/Memory/Controls.spec.ts',
+    'tests/unit/components/Profile/Memory/NeverKept.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Essentials.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/BackfillSheet.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/ImportSheet.spec.ts',
+    'tests/unit/components/Profile/Memory/CacheInfo.spec.ts',
+    'tests/unit/components/Profile/Memory/ExtraChecks.spec.ts',
+    'tests/unit/composables/memory-backfill.spec.ts',
+    'tests/unit/utils/memory-backfill.spec.ts',
+    'tests/unit/utils/memory-legacy-about-me.spec.ts',
+    'tests/unit/utils/memory-about-me.spec.ts',
+    'tests/unit/utils/prompt-cache-estimate.spec.ts',
+    'tests/unit/utils/memory-index-estimate.spec.ts',
+    'tests/unit/utils/memory-recommended-models.spec.ts',
+    'tests/unit/components/Profile/Memory/Models.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/DetailModal.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Empty.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Group.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Row.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Project.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Projects.spec.ts',
+    'tests/unit/components/Profile/Memory/Entries/Toolbar.spec.ts',
+    'tests/unit/composables/memory-settings.spec.ts',
+    'tests/unit/composables/memory-projects.spec.ts',
+    'tests/unit/utils/memory-entry-labels.spec.ts',
+    'tests/unit/utils/memory-model-filter.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Projects/MemoryCard.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Box.spec.ts',
+    'tests/unit/components/Profile/Memory/Instruct/Preview.spec.ts',
   ]
 
   const accountEmailPasswordTests = [
@@ -494,6 +815,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const keyGuideTests = [
+    'tests/unit/components/content/KeyGuideArticle.spec.ts',
     'tests/unit/utils/external-url.spec.ts',
     'tests/unit/utils/iso-datetime.spec.ts',
     'tests/unit/utils/video.spec.ts',
@@ -524,6 +846,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/layouts/chat.spec.ts',
     'tests/unit/components/Sidebar/PushToggle.spec.ts',
+    'tests/unit/components/Sidebar/AuthCta.spec.ts',
+    'tests/unit/composables/push-toggle.spec.ts',
+    'tests/unit/pages/profile/preferences.spec.ts',
     'tests/unit/components/ui/Alert.spec.ts',
   ]
 
@@ -547,6 +872,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-keys-qwen.spec.ts',
     'tests/integration/api/profile-keys-brave.spec.ts',
     'tests/integration/api/profile-keys-exa.spec.ts',
+    'tests/integration/api/profile-keys-typesafe.spec.ts',
     'tests/integration/api/profile-keys-summary.spec.ts',
     'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
@@ -557,9 +883,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
     'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
     'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
+    'tests/unit/components/Profile/Keys/MemoryChecksInfo.spec.ts',
     'tests/unit/components/Profile/Keys/GatewaysInfo.spec.ts',
     'tests/unit/components/Profile/Keys/Guide.spec.ts',
     'tests/unit/components/Profile/Keys/GuideVideo.client.spec.ts',
+    'tests/unit/components/content/KeyGuideArticle.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
     'tests/unit/components/ProviderIcon.spec.ts',
     'tests/unit/utils/provider-meta.spec.ts',
@@ -567,6 +895,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const profileKeyGuideTests = [
     'tests/unit/content/key-guides.spec.ts',
+    'tests/unit/components/content/KeyGuideArticle.spec.ts',
     'tests/unit/utils/iso-datetime.spec.ts',
     'tests/unit/config/content-frontmatter.spec.ts',
     'tests/unit/pages/guides/[slug].spec.ts',
@@ -650,18 +979,29 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-external-search.spec.ts',
   ]
 
+  const pastChatRetrievalTests = [
+    'tests/unit/utils/memory/tools/pre-retrieval.spec.ts',
+    'tests/unit/utils/past-chat-retrieval.spec.ts',
+    'tests/unit/utils/memory/tools/web-search-write-lock.spec.ts',
+    'tests/integration/api/chats-past-chat-pre-retrieval.spec.ts',
+  ]
+
   const searchStepTests = [
+    'tests/unit/utils/past-chat-retrieval.spec.ts',
     'tests/unit/utils/search-step.spec.ts',
     'tests/unit/components/Chat/Reasoning/SearchStep.spec.ts',
     'tests/unit/components/Chat/Reasoning.spec.ts',
   ]
 
   const chatSearchToolTests = [
+    ...memoryToolTests,
+    ...pastChatRetrievalTests,
     'tests/unit/utils/memory/tools/search-chats.spec.ts',
     'tests/unit/utils/memory/tools/read-chat.spec.ts',
     'tests/unit/utils/memory/tools/chat-search-budget.spec.ts',
     'tests/unit/utils/memory/tools/index.spec.ts',
     'tests/integration/api/chats-chat-search-tools.spec.ts',
+    ...jevRerankTests,
     'tests/integration/api/chats-single-step-characterization.spec.ts',
     'tests/integration/api/chats-tool-loop.spec.ts',
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
@@ -684,7 +1024,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/DeepResearchClarify.spec.ts',
     'tests/unit/components/Chat/DeepResearchMeta.spec.ts',
     'tests/unit/components/Chat/DeepResearchPending.spec.ts',
-    'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
+    'tests/unit/components/ChatInput/SettingTile.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
     'tests/unit/components/prose/A.spec.ts',
@@ -702,23 +1042,32 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(WebSearch(Trigger|MenuItems)|ToolbarMore\.client|ReasoningTrigger)\.vue)|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/Preview\.client)\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
     },
     {
       pattern: /^shared\/utils\/exa-search-level\.ts$/,
       tests: [
-        'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
-        'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
-        'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+        'tests/unit/utils/chat-input-tiles.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
         'tests/e2e/chat/exa-search-level.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(app\/utils\/web-search-price|shared\/utils\/google-search-billing-unit)\.ts$/,
+      tests: [
+        'tests/unit/utils/web-search-price.spec.ts',
+        'tests/unit/utils/google-search-cost.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
       ],
     },
     {
       pattern: /^app\/utils\/search-rate\.ts$/,
       tests: [
         'tests/unit/utils/search-rate.spec.ts',
-        'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
         'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
       ],
     },
@@ -779,6 +1128,15 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-single-step-characterization.spec.ts',
         'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
         'tests/unit/utils/providers/deepseek-web-search.spec.ts',
+        'tests/integration/api/chats-project-knowledge.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/ai\/knowledge-tools\.ts$/,
+      tests: [
+        ...projectKnowledgeRetrievalTests,
+        'tests/unit/utils/ai/tool-loop.spec.ts',
+        'tests/unit/utils/ai/search-answer-continuation.spec.ts',
       ],
     },
     {
@@ -804,6 +1162,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/unit/utils/gateways/cloudflare.spec.ts',
         'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
+        'tests/integration/api/chats-project-knowledge.spec.ts',
       ],
     },
     {
@@ -821,7 +1180,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/providers\/(openai|anthropic|deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
+        /^(server\/utils\/providers\/(openai|google|anthropic|deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
       tests: providerReasoningWiringTests,
     },
     {
@@ -830,8 +1189,8 @@ export function getAffectedTests(changedFiles) {
         ...providerReasoningWiringTests,
         'tests/unit/composables/chat-input.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
-        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
-        'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
         'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
         'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
         'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -920,7 +1279,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|server\/plugins\/push-subscription-sweep\.ts|app\/service-worker\/.*\.ts|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
+        /^(app\/components\/ChatInput\.client\.vue|app\/pages\/chats\/new\.vue|app\/composables\/(chat-input|user-setting|preference-storage|model)\.ts|app\/plugins\/10\.user-settings-sync\.client\.ts|shared\/utils\/reasoning\.ts|tests\/e2e\/chat\/reasoning-default\.spec\.ts)$/,
+      tests: ['tests/e2e/chat/reasoning-default.spec.ts'],
+    },
+    {
+      pattern:
+        /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt|push-toggle)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|server\/plugins\/push-subscription-sweep\.ts|app\/service-worker\/.*\.ts|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
       tests: pushNotificationTests,
     },
     {
@@ -939,6 +1303,10 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         'tests/integration/api/chats-title.spec.ts',
         'tests/integration/api/chats-chat-search-tools.spec.ts',
+        'tests/integration/api/chats-memory.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+        'tests/integration/api/chats-gateway-images.spec.ts',
+        ...projectKnowledgeRetrievalTests,
       ],
     },
     {
@@ -967,7 +1335,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/user-setting\.ts$/,
-      tests: [...profileSettingsTests, ...modelsTriggerTests],
+      tests: [
+        ...profileSettingsTests,
+        ...modelsTriggerTests,
+        'tests/e2e/profile/preferences.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/user-keys\.ts$/,
@@ -980,7 +1352,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/(key-guide-analytics|video-watch-analytics)\.ts|app\/utils\/key-guide-video\.ts|shared\/utils\/(key-guide-schema|iso-datetime)\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
+        /^(app\/composables\/(key-guide-analytics|video-watch-analytics)\.ts|app\/utils\/(key-guide-video|key-guide-surface)\.ts|app\/components\/content\/KeyGuideArticle\.vue|shared\/utils\/(key-guide-schema|iso-datetime)\.ts|content\.config\.ts|content\/key-guides\/.*|public\/key-guides\/.*)$/,
       tests: profileKeyGuideTests,
     },
     {
@@ -1040,7 +1412,42 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/config/content-frontmatter.spec.ts'],
     },
     {
-      pattern: /^(content\/guides\/.*\.md|app\/pages\/byok\.vue|content\.config\.ts|app\/components\/LegalDocument\.vue)$/,
+      pattern: /^content\/legal\/.*\.md$/,
+      tests: ['tests/unit/content/legal-pages.spec.ts'],
+    },
+    {
+      pattern: /^(server\/utils\/legal\/.*|server\/api\/v1\/profiles\/consent\/.*|server\/api\/v1\/profiles\/keys\/(deepseek|moonshotai|qwen)\/index\.delete|shared\/utils\/legal-consent|shared\/types\/legal-consent\.d|tests\/setup\/(fixtures|mocks)\/legal-consent)\.ts$/,
+      tests: [
+        'tests/unit/server/utils/legal/consent.spec.ts',
+        'tests/unit/server/utils/legal/consent-text-version.spec.ts',
+        'tests/integration/api/legal-consent.spec.ts',
+        'tests/unit/utils/memory/resolve-model.spec.ts',
+        'tests/unit/utils/projects/memory-refresh.spec.ts',
+        'tests/unit/utils/memory/extract-sweep.spec.ts',
+        'tests/unit/utils/memory/backfill-sweep.spec.ts',
+        'tests/unit/utils/memory/extract-text.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(app\/components\/Legal\/.*\.vue|app\/composables\/(legal-consent|account-deletion)\.ts|app\/components\/Profile\/Security\/PrivacyConsent\.vue)$/,
+      tests: [
+        'tests/unit/components/Legal/ConsentModal.spec.ts',
+        'tests/unit/server/utils/legal/consent-text-version.spec.ts',
+        'tests/unit/components/Legal/TransferConsentModal.spec.ts',
+        'tests/unit/components/Profile/Security/PrivacyConsent.spec.ts',
+        'tests/unit/composables/legal-consent.spec.ts',
+        'tests/unit/pages/profile/security.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/plugins/user-settings-sync.client.spec.ts',
+        'tests/unit/composables/auth.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/api\/v1\/(chats\/new\/index\.put|chats\/\[slug\]\/(index\.post|title\.patch)|chats\/branch\/index\.post|memory\/instruct\/preview\.post|memory\/entries\/index\.post|projects\/\[id\]\/instructions\.patch|files\/upload\.put)\.ts$/,
+      tests: ['tests/integration/api/legal-consent.spec.ts'],
+    },
+    {
+      pattern: /^(content\/guides\/.*\.md|app\/pages\/(byok|memory)\.vue|content\.config\.ts|app\/components\/LegalDocument\.vue)$/,
       tests: [
         'tests/unit/config/seo-pages.spec.ts',
         'tests/unit/utils/landing-jsonld.spec.ts',
@@ -1241,7 +1648,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue|shared\/utils\/og-description\.ts)$/,
+        /^(server\/utils\/chats\/share(-pii-check|-public-parts)?\.ts|shared\/utils\/share-pii\.ts|shared\/types\/share-pii\.d\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue|shared\/utils\/og-description\.ts)$/,
       tests: chatShareTests,
     },
     {
@@ -1272,8 +1679,76 @@ export function getAffectedTests(changedFiles) {
       tests: [...messageSearchTests, ...chatSearchToolTests],
     },
     {
-      pattern: /^(server\/utils\/memory\/tools\/.*\.ts|server\/utils\/ai\/chat-search-tools\.ts)$/,
+      pattern: /^(server\/utils\/memory\/tools\/.*\.ts|server\/utils\/ai\/(chat-search-tools|memory-tools)\.ts)$/,
       tests: chatSearchToolTests,
+    },
+    {
+      pattern: /^server\/utils\/(knowledge\/(injection-screening|unscreened)|search\/injection-screening)\.ts$/,
+      tests: jevInjectionScreeningTests,
+    },
+    {
+      pattern: /^shared\/utils\/past-chat-retrieval\.ts$/,
+      tests: [...pastChatRetrievalTests, ...searchStepTests],
+    },
+    {
+      pattern: /^(server\/utils\/jev\/.*|shared\/utils\/jev-(policy|schemas))\.ts$/,
+      tests: [
+        ...jevFoundationTests,
+        ...pastChatRetrievalTests,
+        ...profileSettingsTests,
+        ...typesafeRolesUiTests,
+      ],
+    },
+    {
+      pattern: /^(shared\/utils\/(auto-web-search|jev-policy)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/(chats\/auto-web-search|jev\/send-path|ai\/message-usage)\.ts|server\/api\/v1\/chats\/(new\/index\.put|\[slug\]\/index\.post)\.ts|app\/composables\/(auto-web-search|chat)\.ts|app\/components\/Chat\/AutoWebSearchChip\.vue|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile)\.vue)|app\/pages\/chats\/(new|\[slug\])\.vue)$/,
+      tests: autoWebSearchTests,
+    },
+    {
+      pattern: /^(app\/composables\/typesafe-roles\.ts|app\/utils\/typesafe-roles\.ts|app\/components\/Profile\/Keys\/(TypesafeChecks|MemoryChecksInfo)\.vue|app\/components\/Profile\/Memory\/ExtraChecks\.vue)$/,
+      tests: typesafeRolesUiTests,
+    },
+    {
+      pattern: /^server\/utils\/memory\/jev-check\.ts$/,
+      tests: [
+        ...memoryJevTests,
+        'tests/integration/api/profile-keys-typesafe.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(server\/utils\/memory\/(entries|entry-slug|entry-sources|about-me-migration|rate-limit)\.ts|server\/api\/v1\/memory\/.*\.ts|shared\/types\/memory-api\.d\.ts)$/,
+      tests: [
+        ...memoryEntriesTests,
+        ...memoryToolTests,
+        ...memoryChatDeletionTests,
+      ],
+    },
+    {
+      pattern: /^(shared\/utils\/memory-tokens|server\/utils\/memory\/(index-builder|runtime-settings|about-me-migration|chat-context|persist-redaction))\.ts$/,
+      tests: memoryToolTests,
+    },
+    {
+      pattern: /^(server\/utils\/memory\/chat-deletion\.ts|server\/api\/v1\/chats\/history\/delete\/bulk\.post\.ts)$/,
+      tests: memoryChatDeletionTests,
+    },
+    {
+      pattern: /^server\/utils\/projects\/legacy-memory\.ts$/,
+      tests: [
+        'tests/unit/utils/projects/legacy-memory.spec.ts',
+        'tests/integration/api/chats-project-instructions.spec.ts',
+        'tests/integration/api/chats-memory.spec.ts',
+      ],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/memory-db\.ts$/,
+      tests: [
+        ...memoryEntriesTests,
+        ...memoryToolTests,
+        ...memoryChatDeletionTests,
+      ],
+    },
+    {
+      pattern: /^app\/(utils\/memory-step|types\/memory-step\.d)\.ts$|^app\/components\/Chat\/Reasoning\/MemoryStep\.vue$/,
+      tests: memoryStepTests,
     },
     {
       pattern: /^tests\/setup\/helpers\/search-index-db\.ts$/,
@@ -1575,8 +2050,33 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern:
+        /^(app\/workers\/knowledge-extract\.ts|app\/components\/Projects\/Knowledge\/.*\.vue|app\/components\/Profile\/Memory\/CacheInfo\.vue|app\/composables\/(knowledge-extract|knowledge-upload|project-knowledge|project-knowledge-model|project-knowledge-folders)\.ts|app\/utils\/(knowledge-html-to-markdown|knowledge-upload-plan|knowledge-folder|knowledge-title|knowledge-zip|project-knowledge-ui|reasoning)\.ts|app\/types\/(knowledge-extract|knowledge-ui|project-knowledge)\.d\.ts|tests\/setup\/helpers\/knowledge-(fixtures|ui-fixtures)\.ts)$/,
+      tests: projectKnowledgeClientTests,
+    },
+    {
       pattern: /^app\/layouts\/profile\.vue$/,
-      tests: ['tests/unit/layouts/profile.spec.ts'],
+      tests: [
+        'tests/unit/layouts/profile.spec.ts',
+        'tests/e2e/profile/preferences.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/pages\/profile\/(preferences|settings)\.vue$/,
+      tests: preferencesPageTests,
+    },
+    {
+      pattern: /^app\/(utils\/reasoning-icons\.ts|components\/Profile\/Security\/SectionCard\.vue)$/,
+      tests: [...preferencesPageTests, ...chatInputToolsTests],
+    },
+    {
+      pattern: /^app\/components\/Sidebar\/AuthCta\.vue$/,
+      tests: ['tests/unit/components/Sidebar/AuthCta.spec.ts'],
+    },
+    {
+      pattern:
+        /^(app\/pages\/profile\/memory\.vue|app\/components\/Profile\/Memory\/.*\.vue|app\/components\/Projects\/MemoryCard\.vue|app\/composables\/(memory-settings|memory-projects|memory-backfill)\.ts|app\/utils\/(memory-backfill|memory-legacy-about-me|memory-model-filter)\.ts|shared\/utils\/(prompt-cache-estimate|memory-index-estimate|memory-recommended-models|memory-about-me|memory-import-limits)\.ts|app\/utils\/memory-entry-labels\.ts|app\/types\/(memory-settings|memory-entries)\.d\.ts|app\/utils\/memory-model-filter\.ts|shared\/utils\/memory-policy\.ts|shared\/types\/memory\.d\.ts)$/,
+      tests: memoryTabTests,
     },
     {
       pattern: /^app\/components\/ui\/Button\.vue$/,
@@ -1628,6 +2128,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...historyProjectsTests,
         ...filesModuleTests,
+        ...memoryChatDeletionTests,
         'tests/integration/api/chats-message-delete.spec.ts',
       ],
     },
@@ -1675,7 +2176,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/model-turns\.ts$/,
-      tests: modelTurnsTests,
+      tests: [
+        ...modelTurnsTests,
+        'tests/integration/api/chats-project-knowledge.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/files\/carried-media-types\.ts$/,
@@ -1746,6 +2250,8 @@ export function getAffectedTests(changedFiles) {
         ...historyProjectsTests,
         ...chatStreamBranchTests,
         ...chatShareTests,
+        ...memoryModelTests,
+        ...memoryExtractionTests,
       ],
     },
     {
@@ -1756,6 +2262,11 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         ...profileSettingsTests,
         ...pushNotificationTests,
+        ...memoryComplianceTests,
+        ...memoryModelTests,
+        ...memoryPurgeTests,
+        ...projectKnowledgeServerTests,
+        ...memoryExtractionTests,
       ],
     },
     {
@@ -1769,11 +2280,205 @@ export function getAffectedTests(changedFiles) {
       },
     },
     {
-      pattern: /^server\/api\/v1\/profiles\/settings\/index\.(get|patch)\.ts$/,
+      pattern: /^server\/api\/v1\/profiles\/settings\/.*\.ts$/,
       tests: profileSettingsTests,
     },
     {
       pattern: /^server\/db\/schemas\/user-settings\.ts$/,
+      tests: [
+        ...profileSettingsTests,
+        ...memoryModelTests,
+        ...memoryExtractionTests,
+      ],
+    },
+    {
+      pattern: /^shared\/(types\/project-knowledge\.d|utils\/(knowledge-hash|project-knowledge-(policy|budget|schemas|path)))\.ts$/,
+      tests: projectKnowledgeContractTests,
+    },
+    {
+      pattern: /^shared\/utils\/gateway-model-id\.ts$/,
+      tests: ['tests/unit/utils/project-knowledge-budget.spec.ts'],
+    },
+    {
+      pattern: /^(server\/utils\/knowledge\/(storage-keys|purge|quota)|server\/db\/schemas\/project-knowledge)\.ts$/,
+      tests: projectKnowledgeServerTests,
+    },
+    {
+      pattern: /^server\/utils\/files\/file-governance\.ts$/,
+      tests: [
+        'tests/unit/utils/knowledge/quota.spec.ts',
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/(items|version|text-store|chunk|pack|pack-lease)\.ts$/,
+      tests: [
+        ...knowledgeCoreTests,
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/pack\.ts$/,
+      tests: [
+        'tests/unit/utils/knowledge/send-data.spec.ts',
+        'tests/integration/api/chats-project-knowledge.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(server\/utils\/knowledge\/(access|ingest|body|rate-limit)\.ts|server\/api\/v1\/projects\/\[id\]\/knowledge\/.*\.ts)$/,
+      tests: knowledgeIngestTests,
+    },
+    {
+      pattern: /^(server\/utils\/knowledge\/(linked-files|sweep)\.ts|server\/plugins\/project-knowledge-sweep\.ts|server\/utils\/files\/(cleanup-expired-files|chat-deletion-cleanup)\.ts|server\/api\/v1\/files\/(\[id\]\/index\.delete|delete\/bulk\.post)\.ts|server\/api\/v1\/projects\/\[id\]\/index\.delete\.ts)$/,
+      tests: knowledgeRetentionTests,
+    },
+    {
+      pattern: /^server\/utils\/evlog-attributes\.ts$/,
+      tests: ['tests/unit/utils/evlog-attributes.spec.ts'],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/knowledge-(db|api)\.ts$/,
+      tests: [
+        ...knowledgeCoreTests,
+        ...knowledgeIngestTests,
+        ...knowledgeRetentionTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/(purge|storage-keys)\.ts$/,
+      tests: memoryPurgeTests,
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/(search|pre-retrieval|rerank|send-data|context|previous-mode)\.ts$/,
+      tests: projectKnowledgeRetrievalTests,
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/tools\/(index|excerpt)\.ts$/,
+      tests: projectKnowledgeRetrievalTests,
+    },
+    {
+      pattern: /^server\/utils\/knowledge\/.+\.ts$/,
+      tests: ['tests/integration/api/chats-project-knowledge.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/search\/(tokens|ukrainian-stemmer)\.ts$/,
+      tests: projectKnowledgeRetrievalTests,
+    },
+    {
+      pattern: /^shared\/utils\/project-knowledge-(policy|budget|schemas)\.ts$/,
+      tests: [
+        ...projectKnowledgeContractTests,
+        ...projectKnowledgeRetrievalTests,
+      ],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/knowledge-send-db\.ts$/,
+      tests: projectKnowledgeRetrievalTests,
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/knowledge-db\.ts$/,
+      tests: [
+        ...projectKnowledgeServerTests,
+        ...projectKnowledgeRetrievalTests,
+      ],
+    },
+    {
+      pattern: /^server\/db\/schemas\/memory-entries\.ts$/,
+      tests: [
+        ...memoryExtractionTests,
+        ...memoryComplianceTests,
+        ...memoryPurgeTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/db\/relations\.ts$/,
+      tests: [
+        ...memoryExtractionTests,
+        ...memoryComplianceTests,
+        ...memoryModelTests,
+        ...memoryPurgeTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^shared\/(types\/memory\.d|utils\/memory-(policy|schemas))\.ts$/,
+      tests: [
+        ...memoryContractTests,
+        ...memoryComplianceTests,
+        ...memoryModelTests,
+        ...memoryExtractionTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/memory\/(compliance|sensitivity|sensitivity-rules|text-folding|topical-never-store)\.ts$/,
+      tests: [
+        ...memoryComplianceTests,
+        ...memoryModelTests,
+        ...memoryExtractionTests,
+        ...memoryEntriesTests,
+        ...memoryToolTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/utils\/memory\/resolve-model\.ts$/,
+      tests: [
+        ...memoryModelTests,
+        ...memoryExtractionTests,
+        ...historyProjectsTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^shared\/utils\/memory-import-prompt\.ts$/,
+      tests: ['tests/unit/utils/memory-import-prompt.spec.ts'],
+    },
+    {
+      pattern: /^(server\/utils\/memory\/instruct[\w-]*\.ts|server\/api\/v1\/memory\/instruct\/.*\.ts|shared\/utils\/memory-instruct\.ts|shared\/types\/memory-instruct\.d\.ts|app\/utils\/memory-instruct-diff\.ts|app\/components\/Profile\/Memory\/Instruct\/.*\.vue)$/,
+      tests: memoryInstructTests,
+    },
+    {
+      pattern: /^(server\/db\/schemas\/memory-backfill-jobs|shared\/types\/memory-backfill\.d)\.ts$/,
+      tests: [
+        ...memoryExtractionTests,
+        ...memoryPurgeTests,
+        ...profileSettingsTests,
+      ],
+    },
+    {
+      pattern: /^server\/(utils\/memory\/(extract.*|backfill.*)|plugins\/memory-extraction-sweep|api\/v1\/memory\/(extract-now\.post|import\.post|backfill\/.*))\.ts$/,
+      tests: memoryExtractionTests,
+    },
+    {
+      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|memory-refresh|memory-card|memory-account|memory-limits|legacy-memory|instructions)\.ts$/,
+      tests: [...memoryExtractionTests, ...memoryModelTests],
+    },
+    {
+      pattern: /^(server\/(api\/v1\/chats\/\[slug\]\/memory\.patch|utils\/memory\/(chat-memory-filters|chat-deletion)|db\/schemas\/chats|api\/v1\/chats\/(new\/index\.put|branch\/index\.post))|app\/(composables|utils)\/chat-memory-exclusion|app\/composables\/history|shared\/types\/history\.d|tests\/setup\/helpers\/(search-index-db|history-fixtures))\.ts$|^app\/(components\/(History\/(ActionsDropdown|ChatRow)|Sidebar\/Development|ChatInput\.client|ChatInput\/ToolsMenu\.client|ChatInput\/ToolsMenu\/Content|ChatInput\/SettingTile)|pages\/chats\/(new|\[slug\]))\.vue$/,
+      tests: memoryChatExclusionTests,
+    },
+    {
+      pattern: /^app\/utils\/project-memory-refresh\.ts$/,
+      tests: ['tests/unit/utils/project-memory-refresh.spec.ts'],
+    },
+    {
+      pattern: /^tests\/setup\/helpers\/(memory-extraction-db|memory-backfill-db|memory-db|public-id-mock)\.ts$/,
+      tests: memoryExtractionTests,
+    },
+    {
+      pattern: /^server\/utils\/memory\/catalog-usability\.ts$/,
+      tests: [...memoryModelTests, ...profileSettingsTests],
+    },
+    {
+      pattern: /^server\/utils\/memory\/validate-model-choice\.ts$/,
+      tests: profileSettingsTests,
+    },
+    {
+      pattern: /^server\/utils\/gateways\/catalog-rate-limit\.ts$/,
       tests: profileSettingsTests,
     },
     {
@@ -1781,6 +2486,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...profileSettingsTests,
         ...searchStepTests,
+        ...memoryStepTests,
         'tests/unit/components/Chat/Reasoning.spec.ts',
         'tests/unit/components/Chat/UrlSources.spec.ts',
       ],
@@ -1818,22 +2524,30 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/utils\/reasoning\.ts$/,
       tests: [
         ...searchStepTests,
+        ...memoryStepTests,
         'tests/unit/utils/reasoning.spec.ts',
         'tests/unit/components/Chat/Reasoning.spec.ts',
       ],
     },
     {
-      pattern: /^app\/components\/ChatInput\/ReasoningTrigger\.vue$/,
+      pattern:
+        /^app\/components\/ChatInput\/ToolsMenu\/(ReasoningSection|Segmented|ToggleRow)\.vue$/,
       tests: [
         ...profileSettingsTests,
-        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+        ...chatInputToolsTests,
       ],
     },
     {
-      pattern: /^app\/components\/ChatInput\/ReasoningMenuItems\.vue$/,
+      pattern:
+        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/(scroll-edge-fade|reveal-guard|tools-menu-focus-rescue)\.ts|app\/assets\/icons\/exa\.svg)$/,
       tests: [
-        ...profileSettingsTests,
-        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+        ...chatInputToolsTests,
+        'tests/unit/components/ProviderIcon.spec.ts',
+        'tests/e2e/chat/exa-search-level.spec.ts',
+        'tests/e2e/chat/gateway-image-generation.spec.ts',
+        'tests/e2e/chat/files.spec.ts',
+        'tests/e2e/chat/files-carousel-scroll.spec.ts',
+        'tests/e2e/projects/picker.spec.ts',
       ],
     },
     {
@@ -1877,6 +2591,8 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/db/migrations-clean.spec.ts',
         'tests/unit/db/accounts-provider-account-id.spec.ts',
+        'tests/unit/db/typesafe-roles-migration.spec.ts',
+        'tests/unit/db/default-reasoning-level-migration.spec.ts',
       ],
     },
     {

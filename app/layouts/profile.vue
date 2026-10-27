@@ -87,7 +87,9 @@
                 :class="{ 'tab-active': isTabActive(tab) }"
               >
                 <Icon :name="tab.icon" size="16" />
-                {{ tab.label }}
+                <span :class="{ 'max-sm:sr-only': !isTabActive(tab) }">
+                  {{ tab.label }}
+                </span>
               </NuxtLink>
             </nav>
             <NuxtPage />
@@ -117,6 +119,18 @@ const tabs = [
     to: '/profile/keys',
     label: 'API Keys',
     icon: 'lucide:key-round',
+    childRoutes: [],
+  },
+  {
+    to: '/profile/memory',
+    label: 'Memory',
+    icon: 'lucide:book-user',
+    childRoutes: [],
+  },
+  {
+    to: '/profile/preferences',
+    label: 'Preferences',
+    icon: 'lucide:sliders-horizontal',
     childRoutes: [],
   },
 ]

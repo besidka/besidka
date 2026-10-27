@@ -1,14 +1,19 @@
 <template>
   <div
+    ref="rail"
     data-testid="models-picker-gateway-provider-rail"
-    class="shrink-0 flex flex-col items-center gap-1 p-1.5 min-h-0 overflow-y-auto no-scrollbar border-r border-base-content/10"
+    class="shrink-0 flex items-center no-scrollbar border-base-content/10"
+    :class="isSheet
+      ? 'gap-1.5 px-2 py-1.5 overflow-x-auto border-b'
+      : 'flex-col gap-1 p-1.5 min-h-0 overflow-y-auto border-r'
+    "
+    :style="isSheet ? railFadeStyle : undefined"
   >
     <template v-if="hasFavorites">
       <button
         type="button"
         data-testid="models-picker-rail-favorites"
-        class="btn btn-ghost btn-circle [--size:1.8rem]"
-        :class="{ 'btn-active text-warning': isFavoritesOnly }"
+        :class="[buttonClass, { 'btn-active text-warning': isFavoritesOnly }]"
         title="Favorites"
         aria-label="Show favorite models only"
         :aria-pressed="isFavoritesOnly"
@@ -22,6 +27,11 @@
         />
       </button>
       <div
+        v-if="isSheet"
+        class="shrink-0 w-px h-5 bg-base-content/10"
+      />
+      <div
+        v-else
         class="divider shrink-0 my-0.5 h-px w-full before:h-px after:h-px"
       />
     </template>
@@ -30,16 +40,17 @@
       :key="provider.prefix"
       type="button"
       :data-testid="`models-picker-gateway-provider-${provider.prefix}`"
-      class="btn btn-ghost btn-circle [--size:1.8rem]"
-      :class="{
+      :class="[buttonClass, {
         'btn-active text-accent': activeProviderPrefix === provider.prefix
-      }"
+      }]"
       :title="getProviderTitle(provider)"
       :aria-label="getProviderLabel(provider)"
       :aria-pressed="activeProviderPrefix === provider.prefix"
       @click="emit('toggleProvider', provider.prefix)"
     >
-      <span class="indicator">
+      <span
+        :class="isSheet ? 'inline-flex items-center gap-1.5' : 'indicator'"
+      >
         <ProviderIcon
           :provider-id="provider.prefix"
           :label="provider.prefix"
@@ -47,7 +58,8 @@
         />
         <span
           :data-testid="getCountTestId(provider)"
-          class="badge badge-xs indicator-item indicator-end indicator-bottom px-1 tabular-nums pointer-events-none scale-[0.8]"
+          class="tabular-nums pointer-events-none"
+          :class="isSheet ? SHEET_COUNT_CLASS : POPOVER_COUNT_CLASS"
         >
           {{ formatRailCount(provider.count) }}
         </span>
@@ -57,19 +69,42 @@
 </template>
 
 <script setup lang="ts">
-import type { GatewayProviderGroup } from '~/types/models-picker'
+import type {
+  GatewayProviderGroup,
+  PickerLayout,
+} from '~/types/models-picker'
 
-const props = defineProps<{
+const SHEET_COUNT_CLASS = 'text-xs font-semibold opacity-60'
+const POPOVER_COUNT_CLASS = 'badge badge-xs indicator-item indicator-end indicator-bottom px-1 scale-[0.8]'
+
+const props = withDefaults(defineProps<{
   providers: GatewayProviderGroup[]
   activeProviderPrefix: string | null
   isFavoritesOnly: boolean
   hasFavorites: boolean
-}>()
+  layout?: PickerLayout
+}>(), {
+  layout: 'popover',
+})
 
 const emit = defineEmits<{
   toggleProvider: [prefix: string]
   toggleFavorites: []
 }>()
+
+const isSheet = computed<boolean>(() => {
+  return props.layout === 'sheet'
+})
+const rail = useTemplateRef<HTMLDivElement>('rail')
+const { fadeStyle: railFadeStyle } = useScrollEdgeFade(() => {
+  return isSheet.value ? rail.value : null
+}, 'x')
+
+const buttonClass = computed<string>(() => {
+  return isSheet.value
+    ? 'btn btn-ghost btn-sm shrink-0 rounded-full px-2.5'
+    : 'btn btn-ghost btn-circle [--size:1.8rem]'
+})
 
 function getCountTestId(provider: GatewayProviderGroup): string {
   return `models-picker-gateway-provider-${provider.prefix}-count`

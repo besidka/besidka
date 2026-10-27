@@ -8,6 +8,10 @@ import {
 } from '../../fixtures/follow-up-turn-tool'
 import { getPersistedEmptyAnswerFailureText } from '../../../shared/utils/chat-failure-text'
 
+vi.mock('~~/server/utils/legal/consent', () => {
+  return import('../../setup/mocks/legal-consent')
+})
+
 const LOOP_MODEL_ID = 'kimi-k2.6'
 const LOOP_PROVIDER_ID = 'moonshotai'
 
@@ -352,6 +356,14 @@ function createDb(existingMessages: unknown[] = []) {
   return {
     db: {
       query: {
+        userSettings: {
+          findFirst: vi.fn(async () => ({
+            memoryEnabled: false,
+            chatSearchEnabled: true,
+            memoryIncludeSensitive: false,
+            aboutMe: null,
+          })),
+        },
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
