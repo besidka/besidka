@@ -52,6 +52,7 @@ export interface SegmentedOption<Value extends string = string> {
   tooltip?: string
   sub?: string
   icon?: string
+  iconComponent?: string
   providerId?: string
   disabled?: boolean
   testId?: string
