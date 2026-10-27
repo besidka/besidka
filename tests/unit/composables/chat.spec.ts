@@ -9,6 +9,7 @@ import {
   buildChatErrorLines,
   buildChatErrorMessage,
   createReasoningSegmentTracker,
+  findLastUserMessageReasoning,
   findLastUserMessageTools,
   foldReasoningSegment,
   getRenderableChatMessages,
@@ -1734,6 +1735,96 @@ describe('resolveInitialChatTools', () => {
       userMessage(['image_generation']),
       assistantMessage(),
     ], autoBrave)).toEqual(['image_generation'])
+  })
+})
+
+describe('findLastUserMessageReasoning', () => {
+  function message(
+    role: 'user' | 'assistant',
+    reasoning: Message['reasoning'],
+  ): Message {
+    return { role, reasoning } as unknown as Message
+  }
+
+  it('returns null for a chat with no user message', () => {
+    expect(findLastUserMessageReasoning([])).toBeNull()
+    expect(findLastUserMessageReasoning([message('assistant', 'high')]))
+      .toBeNull()
+  })
+
+  it('reads the level of the last user message, ignoring assistant '
+    + 'replies', () => {
+    const messages = [
+      message('user', 'low'),
+      message('assistant', 'low'),
+      message('user', 'high'),
+      message('assistant', 'off'),
+    ]
+
+    expect(findLastUserMessageReasoning(messages)).toBe('high')
+  })
+
+  it('keeps an explicit off from the last user message', () => {
+    expect(findLastUserMessageReasoning([message('user', 'off')]))
+      .toBe('off')
+  })
+})
+
+describe('useChat initial reasoning level', () => {
+  const prefStorage = usePreferenceStorage()
+
+  async function mountReasoning(messages: unknown[]) {
+    let reasoning: ReturnType<typeof useChat>['reasoning'] | null = null
+
+    const host = defineComponent({
+      setup() {
+        reasoning = useChat({ id: 'chat-1', messages } as never).reasoning
+
+        return () => null
+      },
+    })
+
+    await mountSuspended(host)
+
+    return reasoning!
+  }
+
+  afterEach(() => {
+    prefStorage.removeItem('settings_reasoning_level')
+  })
+
+  it('keeps the level the new-chat page sent instead of jumping to the '
+    + 'saved default after the handoff', async () => {
+    prefStorage.setItem('settings_reasoning_level', 'high')
+
+    const reasoning = await mountReasoning([
+      { role: 'user', reasoning: 'off', tools: [], parts: [] },
+    ])
+
+    expect(reasoning.value).toBe('off')
+  })
+
+  it('continues a reopened chat with its last user message level',
+    async () => {
+      prefStorage.setItem('settings_reasoning_level', 'low')
+
+      const reasoning = await mountReasoning([
+        { role: 'user', reasoning: 'medium', tools: [], parts: [] },
+        { role: 'assistant', reasoning: 'medium', tools: [], parts: [] },
+        { role: 'user', reasoning: 'high', tools: [], parts: [] },
+        { role: 'assistant', reasoning: 'high', tools: [], parts: [] },
+      ])
+
+      expect(reasoning.value).toBe('high')
+    })
+
+  it('falls back to the effective default for a chat without a user '
+    + 'message', async () => {
+    prefStorage.setItem('settings_reasoning_level', 'high')
+
+    const reasoning = await mountReasoning([])
+
+    expect(reasoning.value).toBe('high')
   })
 })
 

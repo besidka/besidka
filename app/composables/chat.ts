@@ -828,6 +828,24 @@ export function findLastUserMessageTools(messages: Message[]): Tools {
   return []
 }
 
+/**
+ * The reasoning level a reopened chat continues with: the last user
+ * message's, or `null` when the chat has no user message yet (a new chat).
+ */
+export function findLastUserMessageReasoning(
+  messages: Message[],
+): ReasoningLevel | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = messages[index]
+
+    if (candidate?.role === 'user') {
+      return normalizeReasoningLevel(candidate.reasoning)
+    }
+  }
+
+  return null
+}
+
 export interface InitialChatToolsPreferences {
   isAutoWebSearchPreferred: boolean
   savedWebSearchTool: string | null
@@ -914,7 +932,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }))
   const { defaultReasoningLevel } = useUserSetting()
   const reasoning = shallowRef<ReasoningLevel>(
-    resolveInitialReasoningLevel(
+    findLastUserMessageReasoning(chat.messages)
+    ?? resolveInitialReasoningLevel(
       defaultReasoningLevel.value,
       prefStorage.getItem('settings_reasoning_level'),
     ),

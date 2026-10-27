@@ -795,6 +795,9 @@ function selectExaSearchLevel(level: ExaSearchLevel) {
 }
 
 const hasPickedReasoningLevel = shallowRef<boolean>(false)
+const reasoningLevelBeforeImageGeneration = shallowRef<ReasoningLevel | null>(
+  null,
+)
 
 function selectReasoningLevel(level: ReasoningLevel) {
   hasPickedReasoningLevel.value = true
@@ -812,33 +815,49 @@ function selectReasoningLevel(level: ReasoningLevel) {
  * changed. When the saved level had to be substituted, it is remembered in
  * `reasoningLevelBeforeClamp` so a later model switch restores it.
  */
-function restoreLiveReasoningLevel() {
-  const savedLevel = effectiveDefaultReasoningLevel.value
-
+function restoreLiveReasoningLevel(
+  targetLevel: ReasoningLevel = effectiveDefaultReasoningLevel.value,
+) {
   const resolvedLevel = resolveSupportedReasoningLevel(
-    savedLevel,
+    targetLevel,
     reasoningCapability.value,
   )
 
-  reasoningLevelBeforeClamp.value = resolvedLevel === savedLevel
+  reasoningLevelBeforeClamp.value = resolvedLevel === targetLevel
     ? null
-    : savedLevel
+    : targetLevel
   reasoning.value = resolvedLevel
 }
 
 /**
- * The saved default arrives after the page has already seeded the level
- * (settings load asynchronously on a full page load), so the live level
- * follows it until the user picks one for this chat. While image creation
- * holds reasoning off, the default is picked up on the way back instead.
+ * Keeps the live level on the saved default for a new chat that has no
+ * level picked yet, whichever of settings and this component arrives first.
  */
-watch(effectiveDefaultReasoningLevel, () => {
-  if (hasPickedReasoningLevel.value || isImageGenerationActive.value) {
+watch(effectiveDefaultReasoningLevel, (_level, previousLevel) => {
+  if (
+    hasPickedReasoningLevel.value
+    || isImageGenerationActive.value
+    || toValue(props.messagesLength) > 0
+  ) {
     return
   }
 
+  const isFirstRun = previousLevel === undefined
+
+  if (isFirstRun) {
+    const unsettledSeedLevel = resolveInitialReasoningLevel(
+      null,
+      prefStorage.getItem('settings_reasoning_level'),
+    )
+    const requestedLevel = reasoningLevelBeforeClamp.value ?? reasoning.value
+
+    if (requestedLevel !== unsettledSeedLevel) {
+      return
+    }
+  }
+
   restoreLiveReasoningLevel()
-}, { flush: 'post' })
+}, { flush: 'post', immediate: true })
 
 /**
  * Mirrors `restoreLiveReasoningLevel()` for web search: safe to restore
@@ -882,6 +901,11 @@ watch(
   isImageGenerationEnabled,
   (enabled, wasEnabled) => {
     if (enabled) {
+      if (wasEnabled !== true) {
+        reasoningLevelBeforeImageGeneration.value
+          = reasoningLevelBeforeClamp.value ?? reasoning.value
+      }
+
       reasoning.value = 'off'
 
       return
@@ -891,7 +915,15 @@ watch(
       return
     }
 
-    restoreLiveReasoningLevel()
+    const levelBeforeImageGeneration = reasoningLevelBeforeImageGeneration.value
+    const keepsChatLevel = hasPickedReasoningLevel.value
+      || toValue(props.messagesLength) > 0
+
+    restoreLiveReasoningLevel(
+      keepsChatLevel
+        ? levelBeforeImageGeneration ?? undefined
+        : undefined,
+    )
     restoreLiveWebSearchSelection()
   },
   {
