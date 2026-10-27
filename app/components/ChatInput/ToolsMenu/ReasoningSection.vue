@@ -99,10 +99,15 @@ const levelSegments = computed<SegmentedOption<ReasoningLevel>[]>(() => {
     return {
       value: level,
       label: getReasoningLevelLabel(level, isToggleMode.value),
+      iconComponent: getThinkIconComponent(level),
       testId: `reasoning-level-${level}`,
     }
   })
 })
+
+function getThinkIconComponent(level: ReasoningLevel): string {
+  return `SvgoThink${level.charAt(0).toUpperCase()}${level.slice(1)}`
+}
 
 const isSavedAsDefault = computed<boolean>(() => {
   return props.reasoning === props.defaultLevel

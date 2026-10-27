@@ -89,6 +89,36 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
     expect(input(wrapper, 'reasoning-level-medium').checked).toBe(true)
   })
 
+  it('shows a think icon on every level segment, Off included', async () => {
+    const { wrapper } = await mountSection({
+      reasoning: 'medium',
+      levels: ['low', 'medium', 'high'],
+    })
+
+    for (const level of ['off', 'low', 'medium', 'high']) {
+      const icon = wrapper.get(
+        `[data-testid="icon-reasoning-level-${level}"]`,
+      )
+
+      expect(icon.attributes('aria-hidden')).toBe('true')
+      expect(icon.classes()).toContain('pointer-events-none')
+    }
+  })
+
+  it('shows the single think icon of a toggle-mode model on On', async () => {
+    const { wrapper } = await mountSection({
+      reasoning: 'off',
+      levels: ['medium'],
+    })
+
+    expect(wrapper.find('[data-testid="icon-reasoning-level-off"]').exists())
+      .toBe(true)
+    expect(wrapper.find('[data-testid="icon-reasoning-level-medium"]')
+      .exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid^="icon-reasoning-level-"]'))
+      .toHaveLength(2)
+  })
+
   it('omits Off for a model that cannot disable reasoning', async () => {
     const { wrapper } = await mountSection({
       reasoning: 'high',

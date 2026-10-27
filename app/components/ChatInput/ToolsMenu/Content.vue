@@ -47,6 +47,11 @@
         @click="emit('open-files-generated')"
       />
     </ChatInputToolsMenuSection>
+    <div
+      v-if="hasDividerBeforeSearch"
+      class="h-px mx-2 my-1 bg-base-content/10"
+      data-testid="tools-menu-divider"
+    />
     <ChatInputToolsMenuSection
       v-if="state.webSearch.visible"
       id="search"
@@ -67,6 +72,11 @@
         @toggle-auto="emit('toggle-auto-web-search', $event)"
       />
     </ChatInputToolsMenuSection>
+    <div
+      v-if="hasDividerBeforeReasoning"
+      class="h-px mx-2 my-1 bg-base-content/10"
+      data-testid="tools-menu-divider"
+    />
     <ChatInputToolsMenuSection
       v-if="isReasoningSectionVisible"
       id="reasoning"
@@ -88,6 +98,7 @@
     <div
       v-if="hasLowerSection && hasUpperSection"
       class="h-px mx-2 my-1 bg-base-content/10"
+      data-testid="tools-menu-divider"
     />
     <ChatInputToolsMenuSection
       v-if="isImageRowVisible"
@@ -176,6 +187,15 @@ const emit = defineEmits<{
 const isReasoningSectionVisible = computed<boolean>(() => {
   return props.state.reasoning.visible
     && props.state.reasoning.mode !== 'none'
+})
+
+const hasDividerBeforeSearch = computed<boolean>(() => {
+  return props.state.files.visible && props.state.webSearch.visible
+})
+
+const hasDividerBeforeReasoning = computed<boolean>(() => {
+  return (props.state.files.visible || props.state.webSearch.visible)
+    && isReasoningSectionVisible.value
 })
 
 const isImageRowVisible = computed<boolean>(() => {
