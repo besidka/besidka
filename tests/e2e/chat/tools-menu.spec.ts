@@ -76,9 +76,89 @@ test.describe('desktop', () => {
     await page.locator('[data-testid="chat-input-tile-memory-body"]').click()
 
     await expect(page.locator(TOOLS_PANEL)).toBeVisible()
+    await expect(page.locator(TOOLS_PANEL)).toBeFocused()
+
+    await page.keyboard.press('Escape')
+    await page.locator('[data-testid="chat-input-tile-memory-body"]').focus()
+    await page.keyboard.press('Enter')
+
     await expect(page.locator('[data-testid="new-chat-memory-toggle"]'))
       .toBeFocused()
   })
+
+  test('the panel fits the space above "+" without clipping a row',
+    async ({ page }) => {
+      await openNewChat(page)
+      await page.locator(TOOLS_TRIGGER).click()
+
+      const scroll = page.locator('[data-testid="chat-input-tools-scroll"]')
+
+      await expect(page.locator(TOOLS_PANEL)).toBeVisible()
+
+      const fitsWithoutScroll = await scroll.evaluate((element) => {
+        return element.scrollHeight <= element.clientHeight + 1
+      })
+
+      expect(fitsWithoutScroll).toBe(true)
+
+      await page.waitForTimeout(400)
+
+      const highLevel = page.locator('[data-testid="reasoning-level-high"]')
+      const topBefore = await highLevel.evaluate((element) => {
+        return element.getBoundingClientRect().top
+      })
+
+      await highLevel.check()
+
+      const topAfter = await highLevel.evaluate((element) => {
+        return element.getBoundingClientRect().top
+      })
+
+      expect(topAfter).toBe(topBefore)
+      await expect(
+        page.locator('[data-testid="reasoning-save-default-toggle"]'),
+      ).toBeEnabled()
+      expect(await scroll.evaluate((element) => {
+        return getComputedStyle(element).maskImage
+      })).toBe('none')
+    })
+})
+
+test.describe('short desktop window', () => {
+  test.use({ viewport: { width: 1280, height: 520 } })
+
+  test('the panel stays on screen and fades the rows it cannot show',
+    async ({ page }) => {
+      await openNewChat(page)
+      await page.locator(TOOLS_TRIGGER).click()
+
+      const panel = page.locator(TOOLS_PANEL)
+      const scroll = page.locator('[data-testid="chat-input-tools-scroll"]')
+
+      await expect(panel).toBeVisible()
+
+      const panelTop = await panel.evaluate((element) => {
+        return element.getBoundingClientRect().top
+      })
+
+      expect(panelTop).toBeGreaterThanOrEqual(0)
+
+      await expect.poll(async () => {
+        return scroll.evaluate((element) => {
+          return getComputedStyle(element).maskImage
+        })
+      }).toMatch(/rgba\(0, 0, 0, 0\) 100%\)$/)
+
+      await scroll.evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+
+      await expect.poll(async () => {
+        return scroll.evaluate((element) => {
+          return getComputedStyle(element).maskImage
+        })
+      }).toMatch(/^linear-gradient\(rgba\(0, 0, 0, 0\) 0px/)
+    })
 })
 
 test.describe('mobile', () => {
@@ -101,7 +181,15 @@ test.describe('mobile', () => {
 
       await expect(sheet).toBeVisible()
       await expect(sheet.locator('[data-testid="chat-input-tools-chips"]'))
-        .toContainText('Nothing changed from the defaults')
+        .toHaveCount(0)
+
+      const bottomPadding = await sheet
+        .locator('[data-testid="chat-input-tools-sheet-scroll"]')
+        .evaluate((element) => {
+          return Number.parseFloat(getComputedStyle(element).paddingBottom)
+        })
+
+      expect(bottomPadding).toBeGreaterThanOrEqual(16)
 
       await sheet.locator('[data-testid="web-search-option-web_search"]')
         .check()
@@ -120,6 +208,8 @@ test.describe('mobile', () => {
       await expect(page.locator(`dialog[open]${TOOLS_PANEL}`)).toBeVisible()
       await expect(
         page.locator('[data-testid="web-search-option-web_search"]'),
-      ).toBeFocused()
+      ).not.toBeFocused()
+      await expect(page.locator(`${TOOLS_PANEL} [data-section="search"]`))
+        .toHaveClass(/bg-accent\/10/)
     })
 })

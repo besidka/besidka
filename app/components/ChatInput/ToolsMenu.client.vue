@@ -37,8 +37,10 @@
         role="dialog"
         aria-modal="false"
         :aria-labelledby="headingId"
+        tabindex="-1"
         data-testid="chat-input-tools-panel"
-        class="absolute bottom-full left-0 z-50 mb-2 w-80 max-h-[min(70dvh,36rem)] overflow-y-auto overscroll-contain p-1.5 bg-base-100 rounded-box border border-base-content/10 shadow-xl"
+        class="absolute bottom-full left-0 z-50 mb-2 w-80 flex flex-col overflow-hidden bg-base-100 rounded-box border border-base-content/10 shadow-xl outline-none"
+        :style="{ maxHeight: `${popoverMaxHeight}px` }"
         @focusout="onPopoverFocusOut"
       >
         <h2
@@ -47,11 +49,18 @@
         >
           Tools
         </h2>
-        <ChatInputToolsMenuContent
-          :state="state"
-          :highlighted-section="highlightedSection"
-          v-bind="contentListeners"
-        />
+        <div
+          ref="popoverScroll"
+          class="min-h-0 overflow-y-auto overscroll-contain p-1.5"
+          :style="popoverFadeStyle"
+          data-testid="chat-input-tools-scroll"
+        >
+          <ChatInputToolsMenuContent
+            :state="state"
+            :highlighted-section="highlightedSection"
+            v-bind="contentListeners"
+          />
+        </div>
       </div>
     </Transition>
     <dialog
@@ -64,7 +73,10 @@
       @close="onSheetClose"
     >
       <div
-        class="modal-box flex flex-col max-h-[85dvh] p-0 pb-[calc(1rem+var(--sab,0px))] rounded-t-box rounded-b-none"
+        ref="sheetBox"
+        tabindex="-1"
+        autofocus
+        class="modal-box flex flex-col max-h-[85dvh] p-0 rounded-t-box rounded-b-none outline-none"
       >
         <div class="shrink-0 px-3 pt-2">
           <div class="w-9 h-1 mx-auto mb-2 rounded-full bg-base-300" />
@@ -89,7 +101,10 @@
             </button>
           </div>
           <div
+            v-if="tiles.length"
+            ref="chipRow"
             class="flex items-center gap-1 h-10 px-1 overflow-x-auto no-scrollbar"
+            :style="chipRowFadeStyle"
             role="group"
             aria-label="Active settings"
             data-testid="chat-input-tools-chips"
@@ -124,17 +139,13 @@
                 />
               </button>
             </span>
-            <span
-              v-if="!tiles.length"
-              class="text-xs text-base-content/60"
-            >
-              Nothing changed from the defaults
-            </span>
           </div>
         </div>
         <div
           ref="sheetScroll"
-          class="min-h-0 overflow-y-auto overscroll-contain px-2"
+          data-testid="chat-input-tools-sheet-scroll"
+          class="min-h-0 overflow-y-auto overscroll-contain px-2 pb-[max(calc(1rem+var(--sab,0px)),env(safe-area-inset-bottom))]"
+          :style="sheetFadeStyle"
         >
           <ChatInputToolsMenuContent
             v-if="hasOpened"
@@ -167,7 +178,7 @@ import type {
 } from '~/types/chat-input-tools'
 import type { WebSearchSelection } from '~/types/web-search'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   state: ChatInputToolsState
   tiles?: ChatInputTile[]
 }>(), {
@@ -197,11 +208,19 @@ const FOCUSABLE_SELECTOR = [
   'a[href]',
 ].join(', ')
 
+const POPOVER_GAP_PX = 8
+const POPOVER_VIEWPORT_MARGIN_PX = 12
+const POPOVER_MIN_HEIGHT_PX = 160
+const POPOVER_FALLBACK_HEIGHT_PX = 576
+
 const root = useTemplateRef<HTMLDivElement>('root')
 const trigger = useTemplateRef<HTMLButtonElement>('trigger')
 const popover = useTemplateRef<HTMLDivElement>('popover')
+const popoverScroll = useTemplateRef<HTMLDivElement>('popoverScroll')
 const sheet = useTemplateRef<HTMLDialogElement>('sheet')
+const sheetBox = useTemplateRef<HTMLDivElement>('sheetBox')
 const sheetScroll = useTemplateRef<HTMLDivElement>('sheetScroll')
+const chipRow = useTemplateRef<HTMLDivElement>('chipRow')
 const panelId = useId()
 const headingId = useId()
 
@@ -215,7 +234,47 @@ const hasOpened = shallowRef<boolean>(false)
 const isOpen = shallowRef<boolean>(false)
 const highlightedSection = shallowRef<ToolsSection | null>(null)
 const opener = shallowRef<HTMLElement | null>(null)
+const popoverMaxHeight = shallowRef<number>(POPOVER_FALLBACK_HEIGHT_PX)
+const lastInteraction = shallowRef<'keyboard' | 'pointer'>('keyboard')
 let highlightTimer: ReturnType<typeof setTimeout> | null = null
+
+const {
+  fadeStyle: popoverFadeStyle,
+  update: updatePopoverFade,
+} = useScrollEdgeFade(popoverScroll)
+const {
+  fadeStyle: sheetFadeStyle,
+  update: updateSheetFade,
+} = useScrollEdgeFade(sheetScroll)
+const { fadeStyle: chipRowFadeStyle } = useScrollEdgeFade(chipRow, 'x')
+
+useEventListener(document, 'pointerdown', () => {
+  lastInteraction.value = 'pointer'
+}, { capture: true, passive: true })
+useEventListener(document, 'keydown', () => {
+  lastInteraction.value = 'keyboard'
+}, { capture: true, passive: true })
+
+function updatePopoverMaxHeight() {
+  const triggerTop = trigger.value?.getBoundingClientRect().top
+
+  if (triggerTop === undefined) {
+    return
+  }
+
+  popoverMaxHeight.value = Math.max(
+    POPOVER_MIN_HEIGHT_PX,
+    Math.floor(triggerTop - POPOVER_GAP_PX - POPOVER_VIEWPORT_MARGIN_PX),
+  )
+}
+
+useEventListener(window, 'resize', () => {
+  if (!isOpen.value) {
+    return
+  }
+
+  updatePopoverMaxHeight()
+}, { passive: true })
 
 function closeAfter<Args extends unknown[]>(
   handler: (...args: Args) => void,
@@ -263,7 +322,11 @@ const contentListeners = {
 }
 
 function getContainer(): HTMLElement | null {
-  return isPopoverLayout.value ? popover.value : sheetScroll.value
+  return isPopoverLayout.value ? popoverScroll.value : sheetScroll.value
+}
+
+function getDialogElement(): HTMLElement | null {
+  return isPopoverLayout.value ? popover.value : sheetBox.value
 }
 
 function highlight(section: ToolsSection) {
@@ -298,6 +361,12 @@ function focusSection(section: ToolsSection | null | undefined) {
     highlight(section)
   }
 
+  if (lastInteraction.value === 'pointer') {
+    getDialogElement()?.focus({ preventScroll: true })
+
+    return
+  }
+
   focusable?.focus({ preventScroll: true })
 }
 
@@ -306,6 +375,7 @@ async function open(
   origin: HTMLElement | null = null,
 ) {
   opener.value = origin ?? trigger.value
+  updatePopoverMaxHeight()
   hasOpened.value = true
   isOpen.value = true
   openPopover.value = 'tools'
@@ -319,6 +389,8 @@ async function open(
   await nextTick()
 
   focusSection(section)
+  updatePopoverFade()
+  updateSheetFade()
 }
 
 function close(restoreFocus: boolean) {
@@ -394,6 +466,29 @@ watch(openPopover, (current) => {
 watch(isPopoverLayout, () => {
   close(false)
 })
+
+/**
+ * The chip row mounts above the sheet's scroll area when the first setting
+ * changes, so the scroll offset absorbs its height and the control the user
+ * just tapped stays under their finger.
+ */
+watch(() => props.tiles.length > 0, async () => {
+  const scrollArea = sheetScroll.value
+
+  if (!scrollArea || !sheet.value?.open) {
+    return
+  }
+
+  const topBefore = scrollArea.getBoundingClientRect().top
+
+  await nextTick()
+
+  const shift = scrollArea.getBoundingClientRect().top - topBefore
+
+  if (shift !== 0) {
+    scrollArea.scrollTop += shift
+  }
+}, { flush: 'pre' })
 
 onBeforeUnmount(() => {
   if (highlightTimer) {

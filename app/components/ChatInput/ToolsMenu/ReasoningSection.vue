@@ -22,26 +22,20 @@
         @update:model-value="onSelectLevel"
       />
     </div>
-    <Transition
-      enter-active-class="transition-opacity duration-150"
-      enter-from-class="opacity-0"
-    >
-      <ChatInputToolsMenuToggleRow
-        v-if="isSaveDefaultRowVisible"
-        label="Save as default"
-        icon="lucide:bookmark"
-        :hint="saveDefaultHint"
-        test-id="reasoning-save-default-toggle"
-        :model-value="isSavedAsDefault"
-        :disabled="isSavedAsDefault"
-        @update:model-value="onSaveDefault"
-      />
-    </Transition>
+    <ChatInputToolsMenuToggleRow
+      label="Save as default"
+      icon="lucide:bookmark"
+      :hint="saveDefaultHint"
+      test-id="reasoning-save-default-toggle"
+      :model-value="isSavedAsDefault"
+      :disabled="isSavedAsDefault"
+      @update:model-value="onSaveDefault"
+    />
     <ChatInputToolsMenuToggleRow
       label="Show steps expanded"
       icon="lucide:list-tree"
       test-id="reasoning-expanded-toggle"
-      :model-value="reasoningExpanded"
+      :model-value="reasoningExpanded && reasoning !== 'off'"
       :disabled="reasoning === 'off'"
       @update:model-value="setReasoningExpanded"
     />
@@ -49,8 +43,8 @@
       label="Auto-hide when done"
       icon="lucide:timer-reset"
       test-id="reasoning-auto-hide-toggle"
-      :model-value="reasoningAutoHide"
-      :disabled="reasoning === 'off' || !reasoningExpanded"
+      :model-value="reasoningAutoHide && isAutoHideAvailable"
+      :disabled="!isAutoHideAvailable"
       @update:model-value="setReasoningAutoHide"
     />
   </template>
@@ -87,7 +81,10 @@ const {
 } = useUserSetting()
 
 const groupId = useId()
-const savedLevel = shallowRef<ReasoningLevel | null>(null)
+
+const isAutoHideAvailable = computed<boolean>(() => {
+  return props.reasoning !== 'off' && reasoningExpanded.value
+})
 
 const isToggleMode = computed<boolean>(() => {
   return props.levels.length === 1
@@ -111,27 +108,17 @@ const isSavedAsDefault = computed<boolean>(() => {
   return props.reasoning === props.defaultLevel
 })
 
-const isSaveDefaultRowVisible = computed<boolean>(() => {
-  return !isSavedAsDefault.value || savedLevel.value === props.reasoning
-})
-
 const saveDefaultHint = computed<string>(() => {
-  if (isSavedAsDefault.value) {
-    return 'Saved as your default'
-  }
-
   const defaultLabel = getReasoningLevelLabel(
     props.defaultLevel,
     isToggleMode.value,
   )
 
-  return `Your default is ${defaultLabel}`
-})
-
-watch(() => props.reasoning, (level) => {
-  if (savedLevel.value !== level) {
-    savedLevel.value = null
+  if (isSavedAsDefault.value) {
+    return `${defaultLabel} is your default`
   }
+
+  return `Your default is ${defaultLabel}`
 })
 
 function onSelectLevel(level: ReasoningLevel) {
@@ -147,7 +134,6 @@ function onSaveDefault(isOn: boolean) {
     return
   }
 
-  savedLevel.value = props.reasoning
   emit('save-default', props.reasoning)
 }
 </script>

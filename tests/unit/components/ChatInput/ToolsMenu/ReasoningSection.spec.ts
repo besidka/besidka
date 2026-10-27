@@ -124,6 +124,36 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
       expect(input(wrapper, 'reasoning-expanded-toggle').disabled).toBe(true)
       expect(input(wrapper, 'reasoning-auto-hide-toggle').disabled)
         .toBe(true)
+      expect(input(wrapper, 'reasoning-auto-hide-toggle').checked)
+        .toBe(false)
+    })
+
+  it('shows saved step settings as off while reasoning is off', async () => {
+    setReasoningUserSetting(true, true)
+
+    const { wrapper } = await mountSection({
+      reasoning: 'off',
+      levels: ['low', 'medium', 'high'],
+    })
+
+    expect(input(wrapper, 'reasoning-expanded-toggle').checked).toBe(false)
+    expect(input(wrapper, 'reasoning-auto-hide-toggle').checked).toBe(false)
+  })
+
+  it('keeps Auto-hide off and disabled while steps are collapsed',
+    async () => {
+      setReasoningUserSetting(false, true)
+
+      const { wrapper } = await mountSection({
+        reasoning: 'low',
+        levels: ['low', 'medium', 'high'],
+        defaultLevel: 'low',
+      })
+
+      expect(input(wrapper, 'reasoning-auto-hide-toggle').checked)
+        .toBe(false)
+      expect(input(wrapper, 'reasoning-auto-hide-toggle').disabled)
+        .toBe(true)
     })
 
   it('enables Auto-hide only while steps are expanded', async () => {
@@ -145,17 +175,20 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
   })
 
   describe('Save as default', () => {
-    it('is hidden while the level equals the default', async () => {
-      const { wrapper } = await mountSection({
-        reasoning: 'medium',
-        levels: ['low', 'medium', 'high'],
-        defaultLevel: 'medium',
-      })
+    it('stays rendered, checked and locked while the level is the default',
+      async () => {
+        const { wrapper } = await mountSection({
+          reasoning: 'medium',
+          levels: ['low', 'medium', 'high'],
+          defaultLevel: 'medium',
+        })
 
-      expect(
-        wrapper.find('[data-testid="reasoning-save-default-toggle"]').exists(),
-      ).toBe(false)
-    })
+        expect(input(wrapper, 'reasoning-save-default-toggle').checked)
+          .toBe(true)
+        expect(input(wrapper, 'reasoning-save-default-toggle').disabled)
+          .toBe(true)
+        expect(wrapper.text()).toContain('Medium is your default')
+      })
 
     it('appears off with the current default when the level differs, and '
       + 'emits the level once turned on', async () => {
@@ -181,7 +214,7 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
         .toBe(true)
       expect(input(wrapper, 'reasoning-save-default-toggle').disabled)
         .toBe(true)
-      expect(wrapper.text()).toContain('Saved as your default')
+      expect(wrapper.text()).toContain('High is your default')
 
       state.value = { ...state.value, reasoning: 'medium' }
       await wrapper.vm.$nextTick()

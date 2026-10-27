@@ -312,6 +312,39 @@ describe('ChatInput/ToolsMenu', () => {
       expect(document.activeElement).toBe(trigger.element)
     })
 
+  it('focuses the panel itself, not the first item, when opened by pointer',
+    async () => {
+      const wrapper = await mountMenu()
+
+      document.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      await open(wrapper)
+
+      const panel = wrapper.get('[data-testid="chat-input-tools-panel"]')
+
+      expect(document.activeElement).toBe(panel.element)
+      expect(panel.attributes('tabindex')).toBe('-1')
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    })
+
+  it('sizes the panel to the space above "+"', async () => {
+    const wrapper = await mountMenu()
+    const trigger = wrapper.get('[data-testid="chat-input-tools-trigger"]')
+
+    vi.spyOn(trigger.element, 'getBoundingClientRect').mockReturnValue({
+      top: 600,
+    } as DOMRect)
+
+    await open(wrapper)
+
+    expect(
+      wrapper.get('[data-testid="chat-input-tools-panel"]')
+        .attributes('style'),
+    ).toContain('max-height: 580px')
+  })
+
   it('opens at a section and focuses its checked radio', async () => {
     const wrapper = await mountMenu()
     const vm = wrapper.vm as unknown as {
@@ -378,7 +411,7 @@ describe('ChatInput/ToolsMenu', () => {
         showModal.mockRestore()
       })
 
-    it('says nothing changed when no tile is active', async () => {
+    it('renders no chip row when no tile is active', async () => {
       const showModal = vi
         .spyOn(HTMLDialogElement.prototype, 'showModal')
         .mockImplementation(() => {})
@@ -386,8 +419,8 @@ describe('ChatInput/ToolsMenu', () => {
 
       await open(wrapper)
 
-      expect(wrapper.get('[data-testid="chat-input-tools-chips"]').text())
-        .toBe('Nothing changed from the defaults')
+      expect(wrapper.find('[data-testid="chat-input-tools-chips"]').exists())
+        .toBe(false)
 
       showModal.mockRestore()
     })

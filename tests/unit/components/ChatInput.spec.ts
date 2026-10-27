@@ -824,7 +824,7 @@ describe('ChatInput.client', () => {
         .toBeNull()
     })
 
-    it('shows a Reasoning tile and a Save as default row once the level '
+    it('shows a Reasoning tile and enables Save as default once the level '
       + 'differs from the default, and saves it on request', async () => {
       useLevelsModeSelection()
 
@@ -836,7 +836,8 @@ describe('ChatInput.client', () => {
       await openToolsPanel(wrapper)
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
-      expect(hasTestId(wrapper, 'reasoning-save-default-toggle')).toBe(false)
+      expect(isTestIdDisabled(wrapper, 'reasoning-save-default-toggle'))
+        .toBe(true)
 
       await pickTestId(wrapper, 'reasoning-level-high')
       await flushPromises()

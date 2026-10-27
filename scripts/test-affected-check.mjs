@@ -105,6 +105,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/SettingTile.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/composables/scroll-edge-fade.spec.ts',
   ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
@@ -2496,7 +2497,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/assets\/icons\/exa\.svg)$/,
+        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/scroll-edge-fade\.ts|app\/assets\/icons\/exa\.svg)$/,
       tests: [
         ...chatInputToolsTests,
         'tests/unit/components/ProviderIcon.spec.ts',

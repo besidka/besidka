@@ -29,16 +29,27 @@ clamp and restore watchers), so capability gating has one owner.
 - At `min-width: 48rem` (`useMediaQuery`, so a narrowed desktop window gets
   the sheet too) the menu is a popover above "+": `role="dialog"`,
   `aria-modal="false"`, Escape and an outside click close it, focus returns
-  to the element that opened it, and tabbing out closes it.
+  to the element that opened it, and tabbing out closes it. Its max height is
+  the space above "+" minus a 12 px margin, so the full menu fits a normal
+  window; when it cannot, the scroll area fades at whichever edge hides rows
+  (`useScrollEdgeFade`), so no row is ever cut without a fade.
 - Below that it is a `<dialog class="modal modal-bottom">` opened with
   `showModal()`, which traps focus and makes the page inert. Its header
-  repeats the active tiles as small chips with full text and a remove button.
+  repeats the active tiles as small chips with full text and a remove button,
+  on one line that fades at the right when it overflows; with no tiles the
+  chip row is not rendered, and when it appears or goes the scroll offset
+  absorbs its height so the tapped control stays put. The scroll area pads
+  its bottom by at least the iOS safe area.
 - Radios and toggles keep the menu open. Rows that open a modal (attach,
   library, generated images, project) close it first.
 - The menu and the model picker share `useState('chat-input:open-popover')`,
   so opening one closes the other.
 - Clicking a tile opens the menu at that tile's section, scrolls it into
-  view, highlights it briefly and focuses its checked radio or first control.
+  view and highlights it briefly.
+- Focus depends on how the menu was opened. From the keyboard it goes to the
+  first control, or to the section's checked radio. From a pointer or touch it
+  goes to the panel or sheet container (`tabindex="-1"`, no outline), so no
+  item looks focused after a tap.
 
 ## Tiles
 
@@ -79,10 +90,16 @@ resolves to the product default, Off.
 - Settings load asynchronously, so on a full page load the page seeds the
   level before the saved default is known. ChatInput follows the default
   when it arrives, until the user picks a level for this chat.
-- When the level differs, the Reasoning section reveals a "Save as default"
-  toggle, off. Turning it on calls `setDefaultReasoningLevel(level)`; the
-  toggle then shows "Saved as your default" until the level changes, and the
-  tile disappears.
+- The Reasoning section always shows a "Save as default" row. When the
+  level differs from the default it is off and enabled ("Your default is
+  X"); turning it on calls `setDefaultReasoningLevel(level)` and the tile
+  disappears. When the level is the default it is checked and disabled ("X is
+  your default"). The row is always rendered rather than revealed, because
+  the popover grows upward from "+": a row mounting under the reasoning
+  segments moved the clicked level up by one row and left the pointer on the
+  new toggle, so a second click would have saved the default by accident.
+- "Show steps expanded" and "Auto-hide when done" show off and disabled
+  while reasoning is Off, and Auto-hide also while steps are collapsed.
 
 ## Icons
 
