@@ -8,18 +8,27 @@
       @update:model-value="onSelectProvider"
     />
   </div>
-  <p
-    v-if="builtInHint"
-    class="flex items-start gap-2 px-2 pb-1.5 text-xs text-base-content/60"
-    data-testid="web-search-built-in-hint"
-  >
-    <Icon
-      name="lucide:globe"
-      size="14"
-      class="shrink-0 mt-px"
-    />
-    {{ builtInHint }}
-  </p>
+  <div class="px-2 pb-1.5">
+    <p
+      class="flex items-start gap-2 min-h-8 text-xs leading-4 text-base-content/60"
+      data-testid="web-search-caption"
+    >
+      <ProviderIcon
+        v-if="captionProviderId"
+        :provider-id="captionProviderId"
+        class="shrink-0 mt-px !size-3.5"
+        aria-hidden="true"
+      />
+      <Icon
+        v-else
+        :name="captionIcon"
+        size="14"
+        class="shrink-0 mt-px"
+        aria-hidden="true"
+      />
+      <span data-testid="web-search-caption-text">{{ caption }}</span>
+    </p>
+  </div>
   <p
     v-if="!isToolCallingSupported"
     class="flex items-start gap-2 px-2 pb-1.5 text-xs text-base-content/60"
@@ -216,38 +225,82 @@ const builtInDescription = computed<string>(() => {
     + `$${price.perThousandUsd} per 1,000 ${price.unit}.`
 })
 
-const builtInHint = computed<string | undefined>(() => {
-  return props.selected === 'web_search'
-    ? builtInDescription.value
-    : undefined
-})
-
-const braveSearchPrice = computed<string | undefined>(() => {
-  return formatPerThousandPrice(
+const braveRate = computed<number | undefined>(() => {
+  return parseRatePerThousandUsd(
     runtimeConfigPublic.braveSearchCostPerThousandRequestsUsd,
   )
 })
 
-const exaSearchPrice = computed<string | undefined>(() => {
-  return formatLevelPrice(props.exaSearchLevel)
+const exaRate = computed<number | undefined>(() => {
+  const configKey = EXA_SEARCH_LEVEL_RATE_CONFIG_KEYS[props.exaSearchLevel]
+
+  return parseRatePerThousandUsd(runtimeConfigPublic[configKey])
 })
 
-function getSegmentPrice(
-  option: WebSearchOption,
-): string | undefined {
-  if (option.value === 'web_search_brave') {
-    return braveSearchPrice.value
+function describePerThousand(rate: number | undefined): string {
+  return rate === undefined ? '' : ` $${rate} per 1,000 searches.`
+}
+
+const braveDescription = computed<string>(() => {
+  return `Brave Search on your Brave key.${describePerThousand(
+    braveRate.value,
+  )}`
+})
+
+const exaDescription = computed<string>(() => {
+  const depth = EXA_SEARCH_LEVEL_LABELS[props.exaSearchLevel]
+
+  return `Exa on your Exa key, ${depth} depth.${describePerThousand(
+    exaRate.value,
+  )}`
+})
+
+const caption = computed<string>(() => {
+  if (props.selected === 'web_search') {
+    return builtInDescription.value
   }
 
-  if (option.value === 'web_search_exa') {
-    return exaSearchPrice.value
+  if (props.selected === 'web_search_brave') {
+    return braveDescription.value
   }
 
-  if (!option.enabled || !builtInPrice.value) {
+  if (props.selected === 'web_search_exa') {
+    return exaDescription.value
+  }
+
+  return 'Pick a search to let the model look things up on the web.'
+})
+
+const captionProviderId = computed<string | undefined>(() => {
+  if (props.selected === 'web_search_brave') {
+    return 'brave'
+  }
+
+  if (props.selected === 'web_search_exa') {
+    return 'exa'
+  }
+
+  return undefined
+})
+
+const captionIcon = computed<string>(() => {
+  return props.selected === 'web_search' ? 'lucide:globe' : 'lucide:search'
+})
+
+function getSegmentTooltip(option: WebSearchOption): string | undefined {
+  if (!option.enabled) {
     return undefined
   }
 
-  return `$${builtInPrice.value.perThousandUsd}/1k`
+  if (option.value === 'web_search') {
+    return builtInDescription.value
+  }
+
+  if (option.value === 'web_search_brave') {
+    return braveDescription.value
+  }
+
+  return exaDescription.value
 }
 
 const providerSegments = computed<SegmentedOption<WebSearchSelection>[]>(
@@ -270,10 +323,7 @@ const providerSegments = computed<SegmentedOption<WebSearchSelection>[]>(
           value: option.value,
           label: WEB_SEARCH_SHORT_LABELS[option.value],
           title,
-          tooltip: isBuiltIn && option.enabled
-            ? builtInDescription.value
-            : undefined,
-          sub: getSegmentPrice(option),
+          tooltip: getSegmentTooltip(option),
           icon: isBuiltIn ? 'lucide:globe' : undefined,
           providerId: option.providerId,
           disabled: !option.enabled,
