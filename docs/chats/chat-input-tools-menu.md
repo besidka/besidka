@@ -97,6 +97,18 @@ resolves to the product default, Off.
   `immediate`; the first run only acts while the live level is still the
   unsettled seed, so a deliberate seed such as a test chat `?effort=` or an
   already-applied clamp is kept).
+- The capability clamp watcher acts only on a real capability change
+  (`isSameReasoningCapability`). `reasoningCapability` is rebuilt as a new
+  but equal object on every preference-storage write, because the model
+  selection re-reads `localStorage` through the shared `storageVersion`,
+  and the settings sync writes favourites to preference storage in the same
+  tick that delivers the saved default. A `defineModel` ref also reads its
+  old value until the parent re-renders, so a clamp that re-ran in that
+  flush clamped the stale Off and overwrote the default that had just been
+  applied. The unit tests missed it because their capability ref never
+  changed identity; `tests/e2e/chat/reasoning-default.spec.ts` covers the
+  full load against a real build, and the matching ChatInput unit case
+  swaps in an equal capability object in the same tick as the default.
 - A chat that already has messages never follows the default. `useChat()`
   seeds the level from the last user message's stored `reasoning`
   (`findLastUserMessageReasoning`), falling back to the effective default

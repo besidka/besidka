@@ -1279,6 +1279,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(app\/components\/ChatInput\.client\.vue|app\/pages\/chats\/new\.vue|app\/composables\/(chat-input|user-setting|preference-storage|model)\.ts|app\/plugins\/10\.user-settings-sync\.client\.ts|shared\/utils\/reasoning\.ts|tests\/e2e\/chat\/reasoning-default\.spec\.ts)$/,
+      tests: ['tests/e2e/chat/reasoning-default.spec.ts'],
+    },
+    {
+      pattern:
         /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt|push-toggle)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|server\/plugins\/push-subscription-sweep\.ts|app\/service-worker\/.*\.ts|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
       tests: pushNotificationTests,
     },

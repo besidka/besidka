@@ -12,6 +12,7 @@ import {
   getReasoningControlState,
   hasReasoningBadge,
   isReasoningLevelSupported,
+  isSameReasoningCapability,
   normalizeReasoningLevel,
   parseReasoningLevel,
   reasoningLevels,
@@ -286,6 +287,59 @@ describe('reasoning levels', () => {
     expect(canDisableReasoning(capability)).toBe(true)
     expect(getReasoningDropdownLevels(capability)[0]).toBe('off')
     expect(resolveSupportedReasoningLevel('off', capability)).toBe('off')
+  })
+
+  describe('isSameReasoningCapability', () => {
+    const model = {
+      reasoning: {
+        mode: 'levels' as const,
+        levels: ['low', 'medium', 'high'] as ('low' | 'medium' | 'high')[],
+      },
+    }
+
+    it('treats two builds of the same capability as equal', () => {
+      const capability = getReasoningCapability(model)
+      const rebuiltCapability = getReasoningCapability(model)
+
+      expect(rebuiltCapability).not.toBe(capability)
+      expect(isSameReasoningCapability(capability, rebuiltCapability))
+        .toBe(true)
+      expect(isSameReasoningCapability(
+        { mode: 'toggle' },
+        { mode: 'toggle' },
+      )).toBe(true)
+      expect(isSameReasoningCapability(null, null)).toBe(true)
+    })
+
+    it('tells apart capabilities that differ in any field', () => {
+      const capability = getReasoningCapability(model)
+
+      expect(isSameReasoningCapability(capability, null)).toBe(false)
+      expect(isSameReasoningCapability(null, undefined)).toBe(false)
+      expect(isSameReasoningCapability(capability, { mode: 'toggle' }))
+        .toBe(false)
+      expect(isSameReasoningCapability(capability, {
+        mode: 'levels',
+        levels: ['low', 'medium'],
+      })).toBe(false)
+      expect(isSameReasoningCapability(capability, {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
+      })).toBe(false)
+      expect(isSameReasoningCapability({
+        mode: 'levels',
+        levels: ['low', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'low',
+      }, {
+        mode: 'levels',
+        levels: ['low', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
+      })).toBe(false)
+    })
   })
 
   it('replays gateway reasoning by gateway, not by catalog', () => {
