@@ -856,6 +856,8 @@ describe('ChatInput.client', () => {
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
       expect(isTestIdChecked(wrapper, 'reasoning-save-default-toggle'))
+        .toBe(false)
+      expect(isTestIdDisabled(wrapper, 'reasoning-save-default-toggle'))
         .toBe(true)
     })
 

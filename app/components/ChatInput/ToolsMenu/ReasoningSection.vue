@@ -27,7 +27,7 @@
       icon="lucide:bookmark"
       :hint="saveDefaultHint"
       test-id="reasoning-save-default-toggle"
-      :model-value="isSavedAsDefault"
+      :model-value="isSavePending"
       :disabled="isSavedAsDefault"
       @update:model-value="onSaveDefault"
     />
@@ -108,6 +108,12 @@ const isSavedAsDefault = computed<boolean>(() => {
   return props.reasoning === props.defaultLevel
 })
 
+const isSavePending = shallowRef<boolean>(false)
+
+watch(() => [props.reasoning, props.defaultLevel], () => {
+  isSavePending.value = false
+})
+
 const saveDefaultHint = computed<string>(() => {
   const defaultLabel = getReasoningLevelLabel(
     props.defaultLevel,
@@ -134,6 +140,7 @@ function onSaveDefault(isOn: boolean) {
     return
   }
 
+  isSavePending.value = true
   emit('save-default', props.reasoning)
 }
 </script>

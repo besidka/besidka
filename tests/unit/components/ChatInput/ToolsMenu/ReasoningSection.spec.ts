@@ -175,7 +175,7 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
   })
 
   describe('Save as default', () => {
-    it('stays rendered, checked and locked while the level is the default',
+    it('stays rendered, unchecked and locked while the level is the default',
       async () => {
         const { wrapper } = await mountSection({
           reasoning: 'medium',
@@ -184,7 +184,7 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
         })
 
         expect(input(wrapper, 'reasoning-save-default-toggle').checked)
-          .toBe(true)
+          .toBe(false)
         expect(input(wrapper, 'reasoning-save-default-toggle').disabled)
           .toBe(true)
         expect(wrapper.text()).toContain('Medium is your default')
@@ -206,12 +206,14 @@ describe('ChatInput/ToolsMenu/ReasoningSection', () => {
         .setValue(true)
 
       expect(savedLevels).toEqual(['high'])
+      expect(input(wrapper, 'reasoning-save-default-toggle').checked)
+        .toBe(true)
 
       state.value = { ...state.value, defaultLevel: 'high' }
       await wrapper.vm.$nextTick()
 
       expect(input(wrapper, 'reasoning-save-default-toggle').checked)
-        .toBe(true)
+        .toBe(false)
       expect(input(wrapper, 'reasoning-save-default-toggle').disabled)
         .toBe(true)
       expect(wrapper.text()).toContain('High is your default')

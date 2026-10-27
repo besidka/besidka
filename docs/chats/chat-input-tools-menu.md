@@ -93,7 +93,7 @@ resolves to the product default, Off.
 - The Reasoning section always shows a "Save as default" row. When the
   level differs from the default it is off and enabled ("Your default is
   X"); turning it on calls `setDefaultReasoningLevel(level)` and the tile
-  disappears. When the level is the default it is checked and disabled ("X is
+  disappears. When the level is the default it is off and disabled ("X is
   your default"). The row is always rendered rather than revealed, because
   the popover grows upward from "+": a row mounting under the reasoning
   segments moved the clicked level up by one row and left the pointer on the
