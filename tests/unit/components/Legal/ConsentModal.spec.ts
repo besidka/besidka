@@ -148,6 +148,13 @@ describe('Legal consent modal', () => {
     expect(mocks.requestAccountDeletion).toHaveBeenCalledTimes(1)
   })
 
+  it('uses a title that fits sending a message and saving memory', async () => {
+    const wrapper = await mountModal()
+
+    expect(wrapper.get('#legal-consent-title').text())
+      .toBe('Before you continue')
+  })
+
   it('names the changed text when the consent is outdated', async () => {
     mocks.state = shallowRef({ status: 'outdated' })
 

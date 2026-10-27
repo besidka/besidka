@@ -1499,6 +1499,80 @@ describe('ChatInput.client', () => {
         .toBe('web_search_brave')
     })
 
+    function bindTools(initial: string[]) {
+      const wrapperRef: { current: ChatInputWrapper | null } = {
+        current: null,
+      }
+
+      return {
+        wrapperRef,
+        props: {
+          'tools': initial,
+          'onUpdate:tools': (value: string[]) => {
+            wrapperRef.current?.setProps({ tools: value })
+          },
+        },
+      }
+    }
+
+    it('keeps the saved search provider when preference storage is '
+      + 'written in the same flush that rebuilds equal provider options',
+    async () => {
+      const { webSearchProviderOptionsRef } = useWebSearchSelection()
+
+      usePreferenceStorage().setItem(
+        'settings_web_search_tool',
+        'web_search_brave',
+      )
+
+      const { wrapperRef, props } = bindTools(['web_search_brave'])
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await flushPromises()
+
+      usePreferenceStorage().setItem('settings_exa_search_level', 'deep')
+      webSearchProviderOptionsRef.value = [
+        nativeOption(true),
+        braveOption(true),
+        exaOption(true),
+      ]
+      await flushPromises()
+
+      const emittedTools = wrapper.emitted('update:tools') ?? []
+
+      expect(emittedTools.every((args) => {
+        return JSON.stringify(args[0]) === JSON.stringify(['web_search_brave'])
+      })).toBe(true)
+      expect(wrapper.props('tools')).toEqual(['web_search_brave'])
+      expect(usePreferenceStorage().getItem('settings_web_search_tool'))
+        .toBe('web_search_brave')
+    })
+
+    it('keeps a provider picked in the same flush that rebuilds equal '
+      + 'provider options', async () => {
+      const { webSearchProviderOptionsRef } = useWebSearchSelection()
+
+      const { wrapperRef, props } = bindTools([])
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await openToolsPanel(wrapper)
+      await wrapper.get('[data-testid="web-search-option-web_search_exa"]')
+        .setValue(true)
+
+      webSearchProviderOptionsRef.value = [
+        nativeOption(true),
+        braveOption(true),
+        exaOption(true),
+      ]
+      await flushPromises()
+
+      expect(wrapper.props('tools')).toEqual(['web_search_exa'])
+    })
+
     it('auto-enables only native search when a URL is pasted, never an '
       + 'external provider', async () => {
       useWebSearchSelection()

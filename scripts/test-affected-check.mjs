@@ -503,6 +503,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/History/ActionsDropdown.spec.ts',
     'tests/unit/components/History/ChatRow.spec.ts',
     'tests/unit/components/Projects/ActionsDropdown.spec.ts',
+    'tests/unit/composables/dropdown-placement.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/history-race.spec.ts',
     'tests/unit/composables/history-load-more-race.spec.ts',
@@ -1986,7 +1987,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/composables\/(history|projects|project-chats|project-picker)\.ts$/,
+      pattern: /^app\/composables\/(history|projects|project-chats|project-picker|dropdown-placement)\.ts$/,
       tests: historyProjectsTests,
     },
     {
@@ -1999,6 +2000,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/components\/History\/.*\.vue$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^app\/components\/Projects\/ActionsDropdown\.vue$/,
       tests: historyProjectsTests,
     },
     {

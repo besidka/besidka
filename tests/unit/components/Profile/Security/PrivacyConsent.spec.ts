@@ -126,7 +126,7 @@ describe('Privacy & consent block', () => {
     expect(wrapper.get('[data-testid="privacy-consent-transfer-qwen"]').text())
       .toContain('Asked when you add a Qwen key')
     expect(wrapper.get('[data-testid="privacy-consent-transfer-zai"]').text())
-      .toContain('Asked before your first message to a Z.ai (Zhipu AI) model '
+      .toContain('Asked before your first message to Z.ai (Zhipu AI) models '
         + 'through a gateway')
     expect(wrapper.get('[data-testid="privacy-consent-transfer-router"]')
       .text()).toContain('router or preset model')
