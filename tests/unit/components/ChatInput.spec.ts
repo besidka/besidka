@@ -939,6 +939,71 @@ describe('ChatInput.client', () => {
       expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['low'])
     })
 
+    it('follows a default that was already loaded before mount, until the '
+      + 'user picks a level', async () => {
+      useLevelsModeSelection()
+      defaultReasoningLevel.value = 'high'
+
+      const { wrapperRef, props } = bindReasoning('off')
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['high'])
+
+      await wrapper.setProps({ reasoning: 'high' })
+
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+
+      await openToolsPanel(wrapper)
+
+      expect(captionText(wrapper)).toBe('High is your default')
+
+      await pickTestId(wrapper, 'reasoning-level-low')
+
+      defaultReasoningLevel.value = 'medium'
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['low'])
+    })
+
+    it('keeps a level the page seeded on purpose when the default was '
+      + 'already loaded before mount', async () => {
+      useLevelsModeSelection()
+      defaultReasoningLevel.value = 'high'
+
+      const wrapper = await mountChatInput({ reasoning: 'medium' })
+
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')).toBeUndefined()
+
+      await openToolsPanel(wrapper)
+
+      expect(captionText(wrapper))
+        .toBe('Your default is High · Save Medium as default')
+    })
+
+    it('keeps the level of a chat that already has messages, even when the '
+      + 'default was loaded before mount or arrives later', async () => {
+      useLevelsModeSelection()
+      defaultReasoningLevel.value = 'high'
+
+      const wrapper = await mountChatInput({
+        reasoning: 'off',
+        messagesLength: 2,
+      })
+
+      await flushPromises()
+
+      defaultReasoningLevel.value = 'low'
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')).toBeUndefined()
+    })
+
     it('never renders the reasoning section for a deep research model',
       async () => {
         useDeepResearchSelection()
@@ -1644,6 +1709,26 @@ describe('ChatInput.client', () => {
       })).toEqual(['off', 'medium'])
       expect(usePreferenceStorage().getItem('settings_reasoning_level'))
         .toBe('medium')
+    })
+
+    it('restores the level a reopened chat was on, not the saved default, '
+      + 'once image generation is disabled again', async () => {
+      useMutualExclusionSelection()
+      defaultReasoningLevel.value = 'high'
+
+      const wrapper = await mountChatInput({
+        reasoning: 'low',
+        messagesLength: 2,
+      })
+      await nextTick()
+
+      await openToolsPanel(wrapper)
+      await setToggle(wrapper, 'tools-image-toggle', true)
+      await setToggle(wrapper, 'tools-image-toggle', false)
+
+      expect(wrapper.emitted('update:reasoning')?.map((args) => {
+        return args[0]
+      })).toEqual(['off', 'low'])
     })
 
     it('clamps the restored reasoning level to off when the saved '

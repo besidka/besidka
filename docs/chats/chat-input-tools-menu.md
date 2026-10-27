@@ -91,8 +91,24 @@ resolves to the product default, Off.
   shows the tile. That is intended: it is the case where the tile tells the
   user something.
 - Settings load asynchronously, so on a full page load the page seeds the
-  level before the saved default is known. ChatInput follows the default
-  when it arrives, until the user picks a level for this chat.
+  level before the saved default is known. A brand-new chat (no messages)
+  follows the default until the user picks a level for it, whether the
+  default arrives before or after ChatInput mounts (the watcher is
+  `immediate`; the first run only acts while the live level is still the
+  unsettled seed, so a deliberate seed such as a test chat `?effort=` or an
+  already-applied clamp is kept).
+- A chat that already has messages never follows the default. `useChat()`
+  seeds the level from the last user message's stored `reasoning`
+  (`findLastUserMessageReasoning`), falling back to the effective default
+  only when there is no user message. This keeps the new-chat handoff and a
+  reopened chat on the level that was actually used, since picking a level
+  no longer writes `settings_reasoning_level`. Turning image generation off
+  restores the level that was live when it was turned on for such a chat
+  (and for a new chat once the user picked a level); only a new chat with no
+  pick goes back to the default.
+- `messages.reasoning` is NOT NULL DEFAULT 'off', so a chat from before the
+  column existed, or one started on a model without reasoning, reopens at
+  Off.
 - The Reasoning section offers "Save X as default" as an inline link in a
   fixed-height caption under the level segments (see "Reasoning caption").
   Saving calls `setDefaultReasoningLevel(level)` and the tile disappears.
