@@ -89,6 +89,26 @@ export function useChatInput() {
     return model
   })
 
+  const selectedModelId = computed<string>(() => {
+    return selection.value.modelId
+  })
+
+  /**
+   * The party that bills the model's own web search: the gateway id for a
+   * gateway selection, otherwise the curated provider of the model. Not
+   * `selectedTransferProviderId`, which names the underlying vendor for
+   * consent and would attach a vendor's list price to a gateway send.
+   */
+  const selectedModelBillingProviderId = computed<string | null>(() => {
+    const current = selection.value
+
+    if (current.source === 'gateway') {
+      return current.gatewayId
+    }
+
+    return getModel(current.modelId).provider?.id ?? null
+  })
+
   const researchConfig = computed(() => {
     return getModelResearch(selectedModel.value)
   })
@@ -417,5 +437,7 @@ export function useChatInput() {
     selectedModelKeyOwnerLabel,
     isModelCapabilityResolved,
     isSelectedModelUnavailable,
+    selectedModelId,
+    selectedModelBillingProviderId,
   }
 }

@@ -220,6 +220,8 @@ describe('ChatInput.client', () => {
       selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
       isModelCapabilityResolved: shallowRef(true),
       isSelectedModelUnavailable: shallowRef(false),
+      selectedModelId: shallowRef('gemini-3.1-pro'),
+      selectedModelBillingProviderId: shallowRef<string | null>('google'),
     })
 
     mocks.useChatFiles.mockReturnValue({
@@ -371,6 +373,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('Anthropic'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -590,6 +594,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return canAttachMediaType
@@ -701,6 +707,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -729,6 +737,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -754,6 +764,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -995,6 +1007,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return { webSearchProviderOptionsRef, isToolCallingSupportedRef }
@@ -1404,6 +1418,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return { isImageGenerationRequired, reasoningCapability }
@@ -1681,6 +1697,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
         isModelCapabilityResolved,
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return {
@@ -1890,6 +1908,10 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(true),
+        selectedModelId: shallowRef('openai/gpt-5.4'),
+        selectedModelBillingProviderId: shallowRef<string | null>(
+          'openrouter',
+        ),
       })
     }
 
@@ -1964,6 +1986,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('xAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 

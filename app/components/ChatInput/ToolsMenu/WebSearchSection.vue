@@ -9,6 +9,18 @@
     />
   </div>
   <p
+    v-if="builtInHint"
+    class="flex items-start gap-2 px-2 pb-1.5 text-xs text-base-content/60"
+    data-testid="web-search-built-in-hint"
+  >
+    <Icon
+      name="lucide:globe"
+      size="14"
+      class="shrink-0 mt-px"
+    />
+    {{ builtInHint }}
+  </p>
+  <p
     v-if="!isToolCallingSupported"
     class="flex items-start gap-2 px-2 pb-1.5 text-xs text-base-content/60"
     data-testid="web-search-no-tool-calling"
@@ -117,7 +129,9 @@ import {
   AUTO_WEB_SEARCH_HINT,
   AUTO_WEB_SEARCH_PICK_PROVIDER_HINT,
 } from '#shared/utils/auto-web-search'
+import { providerMeta } from '#shared/utils/provider-meta'
 import type { SegmentedOption } from '~/types/chat-input-tools'
+import type { BuiltInSearchPrice } from '~/utils/web-search-price'
 import type {
   WebSearchOption,
   WebSearchSelection,
@@ -130,10 +144,14 @@ const props = withDefaults(defineProps<{
   exaSearchLevel?: ExaSearchLevel
   isAutoAvailable?: boolean
   isAutoPreferred?: boolean
+  modelId?: string
+  billingProviderId?: string | null
 }>(), {
   exaSearchLevel: 'auto',
   isAutoAvailable: false,
   isAutoPreferred: false,
+  modelId: '',
+  billingProviderId: null,
 })
 
 const emit = defineEmits<{
@@ -165,6 +183,73 @@ const keylessOptions = computed<WebSearchOption[]>(() => {
   })
 })
 
+const builtInPrice = computed<BuiltInSearchPrice | undefined>(() => {
+  return resolveBuiltInSearchPrice(
+    props.billingProviderId,
+    props.modelId,
+    runtimeConfigPublic,
+  )
+})
+
+const builtInBillingName = computed<string | undefined>(() => {
+  const meta = props.billingProviderId
+    ? providerMeta[props.billingProviderId]
+    : undefined
+
+  return meta ? meta.shortLabel ?? meta.label : undefined
+})
+
+const builtInDescription = computed<string>(() => {
+  const name = builtInBillingName.value
+
+  if (!name) {
+    return 'The model\'s own search.'
+  }
+
+  const price = builtInPrice.value
+
+  if (!price) {
+    return `The model's own search from ${name}, billed by ${name}.`
+  }
+
+  return `The model's own search from ${name}. Your ${name} key pays `
+    + `$${price.perThousandUsd} per 1,000 ${price.unit}.`
+})
+
+const builtInHint = computed<string | undefined>(() => {
+  return props.selected === 'web_search'
+    ? builtInDescription.value
+    : undefined
+})
+
+const braveSearchPrice = computed<string | undefined>(() => {
+  return formatPerThousandPrice(
+    runtimeConfigPublic.braveSearchCostPerThousandRequestsUsd,
+  )
+})
+
+const exaSearchPrice = computed<string | undefined>(() => {
+  return formatLevelPrice(props.exaSearchLevel)
+})
+
+function getSegmentPrice(
+  option: WebSearchOption,
+): string | undefined {
+  if (option.value === 'web_search_brave') {
+    return braveSearchPrice.value
+  }
+
+  if (option.value === 'web_search_exa') {
+    return exaSearchPrice.value
+  }
+
+  if (!option.enabled || !builtInPrice.value) {
+    return undefined
+  }
+
+  return `$${builtInPrice.value.perThousandUsd}/1k`
+}
+
 const providerSegments = computed<SegmentedOption<WebSearchSelection>[]>(
   () => {
     return [
@@ -175,13 +260,22 @@ const providerSegments = computed<SegmentedOption<WebSearchSelection>[]>(
         testId: 'web-search-option-off',
       },
       ...offeredOptions.value.map((option) => {
+        const isBuiltIn = option.value === 'web_search'
+        const title = option.disabledReason
+          ? `${WEB_SEARCH_FULL_LABELS[option.value]}: `
+          + option.disabledReason
+          : WEB_SEARCH_FULL_LABELS[option.value]
+
         return {
           value: option.value,
           label: WEB_SEARCH_SHORT_LABELS[option.value],
-          title: option.disabledReason
-            ? `${WEB_SEARCH_FULL_LABELS[option.value]}: `
-            + option.disabledReason
-            : WEB_SEARCH_FULL_LABELS[option.value],
+          title,
+          tooltip: isBuiltIn && option.enabled
+            ? builtInDescription.value
+            : undefined,
+          sub: getSegmentPrice(option),
+          icon: isBuiltIn ? 'lucide:globe' : undefined,
+          providerId: option.providerId,
           disabled: !option.enabled,
           testId: `web-search-option-${option.value}`,
         }
@@ -200,12 +294,18 @@ const isExaSelected = computed<boolean>(() => {
   return props.selected === 'web_search_exa' && hasExaOption.value
 })
 
-function formatLevelPrice(level: ExaSearchLevel): string | undefined {
-  const rate = parseRatePerThousandUsd(
-    runtimeConfigPublic[EXA_SEARCH_LEVEL_RATE_CONFIG_KEYS[level]],
-  )
+function formatPerThousandPrice(
+  value: string | number | undefined,
+): string | undefined {
+  const rate = parseRatePerThousandUsd(value)
 
   return rate === undefined ? undefined : `$${rate}/1k`
+}
+
+function formatLevelPrice(level: ExaSearchLevel): string | undefined {
+  return formatPerThousandPrice(
+    runtimeConfigPublic[EXA_SEARCH_LEVEL_RATE_CONFIG_KEYS[level]],
+  )
 }
 
 const exaDepthSegments = computed<SegmentedOption<ExaSearchLevel>[]>(() => {

@@ -49,7 +49,10 @@ export interface SegmentedOption<Value extends string = string> {
   value: Value
   label: string
   title?: string
+  tooltip?: string
   sub?: string
+  icon?: string
+  providerId?: string
   disabled?: boolean
   testId?: string
 }
@@ -66,6 +69,8 @@ export interface ChatInputToolsState {
     exaSearchLevel: ExaSearchLevel
     isAutoAvailable: boolean
     isAutoPreferred: boolean
+    modelId: string
+    billingProviderId: string | null
   }
   reasoning: {
     visible: boolean

@@ -60,6 +60,8 @@
         :exa-search-level="state.webSearch.exaSearchLevel"
         :is-auto-available="state.webSearch.isAutoAvailable"
         :is-auto-preferred="state.webSearch.isAutoPreferred"
+        :model-id="state.webSearch.modelId"
+        :billing-provider-id="state.webSearch.billingProviderId"
         @select-provider="emit('select-web-search-provider', $event)"
         @select-exa-search-level="emit('select-exa-search-level', $event)"
         @toggle-auto="emit('toggle-auto-web-search', $event)"

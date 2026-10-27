@@ -111,6 +111,30 @@ resolves to the product default, Off.
   it), so its mark ships as `app/assets/icons/exa.svg` (`SvgoExa`) and
   `ProviderIcon` renders it for `exa`.
 
+## Web search option icons, prices and the Built-in hint
+
+- The web search segments carry an icon before the label: `lucide:globe` for
+  Built-in, the provider logo (`ProviderIcon`, Brave and Exa) for the two
+  external providers, none for Off. `SegmentedOption` takes `icon` (an Iconify
+  name) or `providerId`; the icon inherits the segment's text colour, so it
+  follows the checked, hover and disabled states with no extra rules.
+- Each provider segment shows its list price on a second line (`sub`):
+  Brave from `braveSearchCostPerThousandRequestsUsd`, Exa from the rate of the
+  depth currently selected, Built-in from the model's own provider. Built-in is
+  priced for `google`, `anthropic`, `openai` and `deepseek` only
+  (`resolveBuiltInSearchPrice` in `app/utils/web-search-price.ts`). Google
+  picks its rate from the model id with the same helper the server bills with
+  (`shared/utils/google-search-billing-unit.ts`): Gemini 3 and later per query,
+  older Gemini per grounded prompt. Any other provider, any gateway, a blank
+  rate or a disabled Built-in segment shows no price; a price is never guessed.
+- With Built-in selected, one line under the control says whose search it is
+  and what it costs, for example "The model's own search from Google. Your
+  Google key pays $14 per 1,000 searches." Without a known rate it reads "The
+  model's own search from xAI, billed by xAI." (a gateway selection names the
+  gateway). The same text is the Built-in segment's hover title. The provider
+  comes from `useChatInput().selectedModelBillingProviderId`, which is the
+  gateway id for a gateway send, not the vendor behind it.
+
 ## Not done yet
 
 - Keyboard shortcuts (`/` to open the menu from an empty textarea, Cmd/Ctrl+U

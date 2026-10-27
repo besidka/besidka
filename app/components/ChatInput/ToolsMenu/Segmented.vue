@@ -14,7 +14,7 @@
       :key="option.value"
       class="relative block min-w-0"
       :class="{ 'border-l border-base-300': index > 0 }"
-      :title="option.title"
+      :title="option.tooltip ?? option.title"
     >
       <input
         type="radio"
@@ -30,7 +30,24 @@
       <span
         class="flex flex-col items-center justify-center gap-px min-h-8 max-md:min-h-10 px-1 py-0.5 text-xs font-medium whitespace-nowrap peer-[:hover:not(:checked):not(:disabled)]:bg-base-200 peer-checked:bg-accent peer-checked:text-accent-content peer-disabled:opacity-50 peer-disabled:bg-transparent peer-checked:peer-disabled:bg-base-content/15 peer-checked:peer-disabled:text-base-content peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-accent"
       >
-        <span class="truncate max-w-full">{{ option.label }}</span>
+        <span class="flex items-center justify-center gap-1 max-w-full">
+          <ProviderIcon
+            v-if="option.providerId"
+            :provider-id="option.providerId"
+            class="shrink-0 !size-3.5"
+            aria-hidden="true"
+            :data-testid="`icon-${option.testId}`"
+          />
+          <Icon
+            v-else-if="option.icon"
+            :name="option.icon"
+            size="14"
+            class="shrink-0"
+            aria-hidden="true"
+            :data-testid="`icon-${option.testId}`"
+          />
+          <span class="truncate">{{ option.label }}</span>
+        </span>
         <small
           v-if="option.sub"
           class="text-[10px] leading-none opacity-80"

@@ -105,6 +105,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/SettingTile.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/web-search-price.spec.ts',
     'tests/unit/composables/scroll-edge-fade.spec.ts',
   ]
   const profileSettingsTests = [
@@ -1035,6 +1036,15 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/utils/chat-input-tiles.spec.ts',
         'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
         'tests/e2e/chat/exa-search-level.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(app\/utils\/web-search-price|shared\/utils\/google-search-billing-unit)\.ts$/,
+      tests: [
+        'tests/unit/utils/web-search-price.spec.ts',
+        'tests/unit/utils/google-search-cost.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
       ],
     },
     {

@@ -14,13 +14,13 @@ import type {
 import WebSearchSection from '../../../../../app/components/ChatInput/ToolsMenu/WebSearchSection.vue'
 
 const mocks = vi.hoisted(() => ({
-  exaRates: {} as Record<string, string>,
+  rates: {} as Record<string, string>,
 }))
 
 mockNuxtImport('useRuntimeConfig', () => {
   return () => ({
     app: { baseURL: '/' },
-    public: { ...mocks.exaRates },
+    public: { ...mocks.rates },
   })
 })
 
@@ -76,6 +76,8 @@ interface SectionProps {
   exaSearchLevel?: ExaSearchLevel
   isAutoAvailable?: boolean
   isAutoPreferred?: boolean
+  modelId?: string
+  billingProviderId?: string | null
 }
 
 async function mountSection(props: SectionProps) {
@@ -88,6 +90,8 @@ async function mountSection(props: SectionProps) {
       return () => h('div', h(WebSearchSection, {
         'options': [nativeOption(), braveOption(), exaOption()],
         'isToolCallingSupported': true,
+        'modelId': 'gemini-3.1-pro',
+        'billingProviderId': 'google',
         ...props,
         'onSelect-provider': (value: WebSearchSelection) => {
           selectedProviders.push(value)
@@ -115,9 +119,21 @@ function input(
     .element as HTMLInputElement
 }
 
+function depthPrices(
+  wrapper: Awaited<ReturnType<typeof mountSection>>['wrapper'],
+) {
+  return wrapper
+    .findAll('[data-testid^="exa-search-level-"]')
+    .flatMap((levelInput) => {
+      const price = levelInput.element.closest('label')?.querySelector('small')
+
+      return price ? [price.textContent?.trim()] : []
+    })
+}
+
 describe('ChatInput/ToolsMenu/WebSearchSection', () => {
   beforeEach(() => {
-    mocks.exaRates = {}
+    mocks.rates = {}
   })
 
   it('renders Off, Built-in, Brave and Exa segments in that order, with '
@@ -129,6 +145,237 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
       .toEqual(['Off', 'Model\'s built-in search', 'Brave Search', 'Exa'])
     expect(wrapper.findAll('label').map(label => label.text()).slice(0, 4))
       .toEqual(['Off', 'Built-in', 'Brave', 'Exa'])
+  })
+
+  describe('segment icons', () => {
+    it('shows a globe for Built-in and the logos for Brave and Exa, none '
+      + 'for Off', async () => {
+      const { wrapper } = await mountSection({ selected: 'off' })
+
+      expect(wrapper.find('[data-testid="icon-web-search-option-off"]')
+        .exists()).toBe(false)
+      expect(wrapper.find('[data-testid="icon-web-search-option-web_search"]')
+        .exists()).toBe(true)
+      expect(wrapper.find(
+        '[data-testid="icon-web-search-option-web_search_brave"]',
+      ).exists()).toBe(true)
+      expect(wrapper.find(
+        '[data-testid="icon-web-search-option-web_search_exa"]',
+      ).exists()).toBe(true)
+    })
+
+    it('hides the icons from assistive technology', async () => {
+      const { wrapper } = await mountSection({ selected: 'off' })
+      const icon = wrapper.get(
+        '[data-testid="icon-web-search-option-web_search_brave"]',
+      )
+
+      expect(icon.attributes('aria-hidden')).toBe('true')
+    })
+  })
+
+  describe('prices', () => {
+    function segmentPrice(
+      wrapper: Awaited<ReturnType<typeof mountSection>>['wrapper'],
+      value: string,
+    ) {
+      const label = wrapper
+        .get(`[data-testid="web-search-option-${value}"]`)
+        .element
+        .closest('label')
+
+      return label?.querySelector('small')?.textContent?.trim()
+    }
+
+    it('shows Brave and the selected Exa depth rate on their segments',
+      async () => {
+        mocks.rates = {
+          braveSearchCostPerThousandRequestsUsd: '5',
+          exaLiteSearchCostPerThousandRequestsUsd: '2.5',
+          exaSearchCostPerThousandRequestsUsd: '7',
+          exaDeepSearchCostPerThousandRequestsUsd: '12',
+        }
+
+        const { wrapper } = await mountSection({
+          selected: 'web_search_exa',
+          exaSearchLevel: 'deep',
+        })
+
+        expect(segmentPrice(wrapper, 'web_search_brave')).toBe('$5/1k')
+        expect(segmentPrice(wrapper, 'web_search_exa')).toBe('$12/1k')
+      })
+
+    it('follows the Exa depth on the Exa segment', async () => {
+      mocks.rates = {
+        exaLiteSearchCostPerThousandRequestsUsd: '2.5',
+        exaSearchCostPerThousandRequestsUsd: '7',
+      }
+
+      const { wrapper } = await mountSection({
+        selected: 'web_search_exa',
+        exaSearchLevel: 'lite',
+      })
+
+      expect(segmentPrice(wrapper, 'web_search_exa')).toBe('$2.5/1k')
+    })
+
+    it('renders fractional rates such as $0.75/1k', async () => {
+      mocks.rates = { braveSearchCostPerThousandRequestsUsd: '0.75' }
+
+      const { wrapper } = await mountSection({ selected: 'off' })
+
+      expect(segmentPrice(wrapper, 'web_search_brave')).toBe('$0.75/1k')
+    })
+
+    it.each([
+      ['google', 'gemini-3.1-pro', '$14/1k'],
+      ['google', 'gemini-2.5-pro', '$35/1k'],
+      ['anthropic', 'claude-sonnet-5', '$10/1k'],
+      ['openai', 'gpt-5.4', '$11/1k'],
+      ['deepseek', 'deepseek-v4', '$0.5/1k'],
+    ])('prices Built-in for %s %s', async (providerId, modelId, price) => {
+      mocks.rates = {
+        googleSearchCostPerThousandQueriesUsd: '14',
+        googleSearchCostPerThousandGroundedPromptsUsd: '35',
+        anthropicWebSearchCostPerThousandSearchesUsd: '10',
+        openaiWebSearchCostPerThousandCallsUsd: '11',
+        deepseekSearchCostPerThousandRequestsUsd: '0.5',
+      }
+
+      const { wrapper } = await mountSection({
+        selected: 'off',
+        billingProviderId: providerId,
+        modelId,
+      })
+
+      expect(segmentPrice(wrapper, 'web_search')).toBe(price)
+    })
+
+    it.each([
+      ['xai', 'grok-4'],
+      ['openrouter', 'google/gemini-3.1-pro'],
+      [null, ''],
+    ])('shows no Built-in price for %s', async (providerId, modelId) => {
+      mocks.rates = {
+        googleSearchCostPerThousandQueriesUsd: '14',
+        anthropicWebSearchCostPerThousandSearchesUsd: '10',
+      }
+
+      const { wrapper } = await mountSection({
+        selected: 'off',
+        billingProviderId: providerId,
+        modelId,
+      })
+
+      expect(segmentPrice(wrapper, 'web_search')).toBeUndefined()
+    })
+
+    it('shows no Built-in price when the rate is not configured', async () => {
+      const { wrapper } = await mountSection({ selected: 'off' })
+
+      expect(segmentPrice(wrapper, 'web_search')).toBeUndefined()
+    })
+
+    it('shows no Built-in price when the model has no built-in search',
+      async () => {
+        mocks.rates = { googleSearchCostPerThousandQueriesUsd: '14' }
+
+        const { wrapper } = await mountSection({
+          selected: 'off',
+          options: [nativeOption(false), braveOption(), exaOption()],
+        })
+
+        expect(segmentPrice(wrapper, 'web_search')).toBeUndefined()
+      })
+  })
+
+  describe('Built-in hint', () => {
+    const hintSelector = '[data-testid="web-search-built-in-hint"]'
+
+    it.each(['off', 'web_search_brave', 'web_search_exa'] as const)(
+      'is hidden while %s is selected',
+      async (selected) => {
+        const { wrapper } = await mountSection({ selected })
+
+        expect(wrapper.find(hintSelector).exists()).toBe(false)
+      },
+    )
+
+    it('names the provider and its price when Built-in is selected',
+      async () => {
+        mocks.rates = { googleSearchCostPerThousandQueriesUsd: '14' }
+
+        const { wrapper } = await mountSection({ selected: 'web_search' })
+
+        expect(wrapper.get(hintSelector).text()).toBe(
+          'The model\'s own search from Google. Your Google key pays $14 '
+          + 'per 1,000 searches.',
+        )
+      })
+
+    it('counts older Gemini models per prompt', async () => {
+      mocks.rates = { googleSearchCostPerThousandGroundedPromptsUsd: '35' }
+
+      const { wrapper } = await mountSection({
+        selected: 'web_search',
+        modelId: 'gemini-2.5-pro',
+      })
+
+      expect(wrapper.get(hintSelector).text()).toContain(
+        '$35 per 1,000 prompts.',
+      )
+    })
+
+    it('drops the price sentence when no rate is known', async () => {
+      const { wrapper } = await mountSection({
+        selected: 'web_search',
+        billingProviderId: 'xai',
+        modelId: 'grok-4',
+      })
+
+      expect(wrapper.get(hintSelector).text()).toBe(
+        'The model\'s own search from xAI, billed by xAI.',
+      )
+    })
+
+    it('names the gateway for a gateway selection', async () => {
+      mocks.rates = { googleSearchCostPerThousandQueriesUsd: '14' }
+
+      const { wrapper } = await mountSection({
+        selected: 'web_search',
+        billingProviderId: 'openrouter',
+        modelId: 'google/gemini-3.1-pro',
+      })
+
+      expect(wrapper.get(hintSelector).text()).toBe(
+        'The model\'s own search from OpenRouter, billed by OpenRouter.',
+      )
+    })
+
+    it('falls back to a plain line without a known provider', async () => {
+      const { wrapper } = await mountSection({
+        selected: 'web_search',
+        billingProviderId: null,
+      })
+
+      expect(wrapper.get(hintSelector).text())
+        .toBe('The model\'s own search.')
+    })
+
+    it('is also the hover title of the Built-in segment', async () => {
+      mocks.rates = { googleSearchCostPerThousandQueriesUsd: '14' }
+
+      const { wrapper } = await mountSection({ selected: 'off' })
+      const label = wrapper
+        .get('[data-testid="web-search-option-web_search"]')
+        .element
+        .closest('label')
+
+      expect(label?.getAttribute('title')).toBe(
+        'The model\'s own search from Google. Your Google key pays $14 '
+        + 'per 1,000 searches.',
+      )
+    })
   })
 
   it('checks the selected provider', async () => {
@@ -231,14 +478,14 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
     })
 
     it('shows each price as the second line of its segment', async () => {
-      mocks.exaRates = {
+      mocks.rates = {
         exaLiteSearchCostPerThousandRequestsUsd: '5',
         exaSearchCostPerThousandRequestsUsd: '7',
         exaDeepSearchCostPerThousandRequestsUsd: '12',
       }
 
       const { wrapper } = await mountSection({ selected: 'web_search_exa' })
-      const prices = wrapper.findAll('small').map(small => small.text())
+      const prices = depthPrices(wrapper)
 
       expect(prices).toEqual(['$5/1k', '$7/1k', '$12/1k'])
     })
@@ -246,7 +493,7 @@ describe('ChatInput/ToolsMenu/WebSearchSection', () => {
     it('hides a price whose rate is missing', async () => {
       const { wrapper } = await mountSection({ selected: 'web_search_exa' })
 
-      expect(wrapper.findAll('small')).toHaveLength(0)
+      expect(depthPrices(wrapper)).toEqual([])
     })
 
     it('emits the chosen level and not a provider change', async () => {
