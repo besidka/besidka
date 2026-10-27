@@ -381,6 +381,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/Panel.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
     'tests/unit/composables/visual-viewport-inset.spec.ts',
+    'tests/e2e/chat/models-picker.spec.ts',
   ]
   const userKeysTests = [
     'tests/unit/composables/user-keys.spec.ts',

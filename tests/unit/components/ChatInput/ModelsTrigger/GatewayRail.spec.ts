@@ -206,5 +206,7 @@ describe('ChatInput/ModelsTrigger/GatewayRail', () => {
       expect(rail.classes()).not.toContain('rounded-b-2xl')
       expect(wrapper.get('[data-testid="models-picker-gateway-vercel"]')
         .classes()).toContain('btn-sm')
+      expect(wrapper.get('[data-testid="models-picker-gateway-rail-scroll"]')
+        .classes()).toContain('no-scrollbar')
     })
 })

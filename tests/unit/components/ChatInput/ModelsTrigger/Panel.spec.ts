@@ -570,6 +570,33 @@ describe('ChatInput/ModelsTrigger/Panel', () => {
         wrapper.unmount()
       })
 
+    it('shows the keyboard highlight only while the search has focus',
+      async () => {
+        const wrapper = await mountPanel({ layout: 'sheet' })
+        const search = wrapper.get('[data-testid="models-picker-search"]')
+
+        expect(wrapper.find('#model-option-image-model > div')
+          .classes()).not.toContain('bg-base-content/10')
+
+        search.element.dispatchEvent(new FocusEvent('focusin', {
+          bubbles: true,
+        }))
+        await search.setValue('image')
+
+        expect(wrapper.find('#model-option-image-model > div')
+          .classes()).toContain('bg-base-content/10')
+
+        search.element.dispatchEvent(new FocusEvent('focusout', {
+          bubbles: true,
+        }))
+        await nextTick()
+
+        expect(wrapper.find('#model-option-image-model > div')
+          .classes()).not.toContain('bg-base-content/10')
+
+        wrapper.unmount()
+      })
+
     it('leaves Escape to its host dialog', async () => {
       const wrapper = await mountPanel({ layout: 'sheet' })
 

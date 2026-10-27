@@ -56,6 +56,8 @@
         :active-descendant="highlightedOptionId"
         class="grow min-w-0"
         @keydown="onSearchKeydown"
+        @focusin="isSearchFocused = true"
+        @focusout="isSearchFocused = false"
       />
       <button
         v-if="!recommendedFilter && isSheet"
@@ -185,6 +187,7 @@
           :selected-model-id="selectedGatewayModelId"
           :detail-model-id="detailModelId"
           :listbox-id="listboxId"
+          :is-highlight-visible="isHighlightVisible"
           :filter-model="filterGatewayModel"
           :recommended-direct-models="recommendedDirectModels"
           :recommended-only="isRecommendedOnly"
@@ -237,7 +240,8 @@
                       selectedProviderModelId === entry.model.id
                     "
                     :is-highlighted="
-                      highlightedModelId === entry.model.id
+                      isHighlightVisible
+                        && highlightedModelId === entry.model.id
                     "
                     :is-favorite="
                       favoriteModels.includes(entry.model.id)
@@ -458,6 +462,7 @@ const detailModelId = shallowRef<string | null>(null)
 const highlightedModelId = shallowRef<string | null>(null)
 const isLegacyExpanded = shallowRef<boolean>(false)
 const isFilterSectionOpen = shallowRef<boolean>(false)
+const isSearchFocused = shallowRef<boolean>(false)
 const search = useTemplateRef<{ focus: () => void }>('search')
 const resultsContainer = useTemplateRef<HTMLDivElement>('resultsContainer')
 const { fadeStyle: resultsFadeStyle } = useScrollEdgeFade(resultsContainer)
@@ -689,6 +694,15 @@ const isRailFilterApplied = computed<boolean>(() => {
 
 const isSheet = computed<boolean>(() => {
   return props.layout === 'sheet'
+})
+
+/**
+ * The keyboard highlight only means something while the search field can
+ * take arrow keys and Enter. On a touch sheet a gray row with no focus behind
+ * it reads as a second selection, so the sheet shows it only while searching.
+ */
+const isHighlightVisible = computed<boolean>(() => {
+  return !isSheet.value || isSearchFocused.value
 })
 
 const hasActiveMenuFilter = computed<boolean>(() => {

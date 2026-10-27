@@ -85,7 +85,9 @@
               <ChatInputModelsTriggerGatewayModelItem
                 :model="model"
                 :is-selected="selectedModelId === model.id"
-                :is-highlighted="highlightedModelId === model.id"
+                :is-highlighted="
+                  isHighlightVisible && highlightedModelId === model.id
+                "
                 :is-favorite="favoriteModelIds.includes(model.id)"
                 :is-detail-open="detailModelId === model.id"
                 :is-recommended="isRecommendedModel(model)"
@@ -164,10 +166,12 @@ const props = withDefaults(defineProps<{
   filterModel?: (model: GatewayModel) => boolean
   recommendedDirectModels?: RecommendedDirectModel[]
   recommendedOnly?: boolean
+  isHighlightVisible?: boolean
 }>(), {
   filterModel: undefined,
   recommendedDirectModels: () => [],
   recommendedOnly: false,
+  isHighlightVisible: true,
 })
 
 const emit = defineEmits<{

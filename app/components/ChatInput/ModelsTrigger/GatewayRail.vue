@@ -12,7 +12,13 @@
     >
       Gateways
     </span>
-    <div class="grow min-w-0 flex items-center gap-1 overflow-x-auto">
+    <div
+      ref="scroller"
+      data-testid="models-picker-gateway-rail-scroll"
+      class="grow min-w-0 flex items-center gap-1 overflow-x-auto"
+      :class="{ 'no-scrollbar': layout === 'sheet' }"
+      :style="layout === 'sheet' ? scrollerFadeStyle : undefined"
+    >
       <button
         v-for="gateway in gateways"
         :key="gateway.id"
@@ -82,6 +88,9 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   toggleGateway: [gatewayId: GatewayId]
 }>()
+
+const scroller = useTemplateRef<HTMLDivElement>('scroller')
+const { fadeStyle: scrollerFadeStyle } = useScrollEdgeFade(scroller, 'x')
 
 function getGatewayLabel(gateway: GatewayRailItem): string {
   if (gateway.hasKey === false) {
