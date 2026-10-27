@@ -204,6 +204,16 @@ describe('memory backfill API', () => {
     return created
   }
 
+  async function seedChats(count: number) {
+    const created = []
+
+    for (let index = 0; index < count; index++) {
+      created.push(await chat(10 + index * 10))
+    }
+
+    return created
+  }
+
   async function get(query?: Record<string, string>) {
     return await (await loadHandler('index.get'))({ query })
   }
@@ -606,37 +616,57 @@ describe('memory backfill API', () => {
       expect(mocks.extractChatMemory).not.toHaveBeenCalled()
     })
 
-    it('drives one bounded interactive batch of the running job',
+    it('drives more than two chats in one interactive step', async () => {
+      const chats = await seedChats(12)
+      const started = await post()
+      const driven = await step()
+
+      expect(driven.job).toMatchObject({
+        id: started.job.id,
+        processedChats: 10,
+        createdEntries: 10,
+        status: 'running',
+      })
+      expect(mocks.extractChatMemory).toHaveBeenCalledTimes(10)
+      expect(mocks.extractChatMemory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chat: { id: chats[0]!.id },
+          trigger: 'backfill',
+          generationTimeoutMs: expect.any(Number),
+        }),
+      )
+    })
+
+    it('stops starting chats once under 30 s of the step deadline is left',
       async () => {
-        const newest = await chat(10)
+        await seedChats(12)
+        await post()
 
-        await chat(20)
-        await chat(30)
+        let now = Date.now()
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
 
-        const started = await post()
-        const driven = await step()
+        mocks.extractChatMemory.mockImplementation(async () => {
+          now += 10_000
 
-        expect(driven.job).toMatchObject({
-          id: started.job.id,
-          processedChats: 2,
-          createdEntries: 2,
-          status: 'running',
+          return extractionResult()
         })
-        expect(mocks.extractChatMemory).toHaveBeenCalledTimes(2)
-        expect(mocks.extractChatMemory).toHaveBeenCalledWith(
-          expect.objectContaining({
-            chat: { id: newest.id },
-            trigger: 'backfill',
-            generationTimeoutMs: expect.any(Number),
-          }),
-        )
+
+        try {
+          const driven = await step()
+
+          expect(mocks.extractChatMemory).toHaveBeenCalledTimes(4)
+          expect(driven.job).toMatchObject({
+            processedChats: 4,
+            status: 'running',
+          })
+        } finally {
+          clock.mockRestore()
+        }
       })
 
     it('answers 429 inside the drive cooldown and stores a timestamp',
       async () => {
-        await chat(10)
-        await chat(20)
-        await chat(30)
+        await seedChats(12)
         await post()
         await step()
 
@@ -654,20 +684,39 @@ describe('memory backfill API', () => {
         expect(mocks.extractChatMemory).not.toHaveBeenCalled()
       })
 
+    it('keeps the start cooldown at 10 s while the drive cooldown is 3 s',
+      async () => {
+        await seedChats(12)
+        await post()
+        await step()
+        kv.store.set(
+          `memory-backfill-drive:${userId}`,
+          String(Date.now() - 2_000),
+        )
+
+        await expect(step()).rejects.toMatchObject({ status: 429 })
+
+        await cancel()
+        kv.store.set(
+          `memory-backfill-start:${userId}`,
+          String(Date.now() - 4_000),
+        )
+
+        await expect(post()).rejects.toMatchObject({ status: 429 })
+      })
+
     it('steps again once the cooldown has elapsed', async () => {
-      await chat(10)
-      await chat(20)
-      await chat(30)
+      await seedChats(12)
       await post()
       await step()
       kv.store.set(
         `memory-backfill-drive:${userId}`,
-        String(Date.now() - 11_000),
+        String(Date.now() - 4_000),
       )
 
       const driven = await step()
 
-      expect(driven.job.processedChats).toBe(3)
+      expect(driven.job.processedChats).toBe(12)
       expect(driven.job.status).toBe('completed')
     })
 

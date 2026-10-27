@@ -871,6 +871,28 @@ describe('memory backfill', () => {
         expect((await readJob(second.id))?.leaseUntil).toBeNull()
       })
 
+    it('keeps a newer claim when the step outlived its own lease',
+      async () => {
+        await chat(10)
+
+        const progress = await start()
+        const newerLease = new Date(Math.ceil(Date.now() / 1000) * 1000
+          + 600_000)
+
+        mocks.extractChatMemory.mockImplementation(async () => {
+          await testDb.db.update(schema.memoryBackfillJobs)
+            .set({ leaseUntil: newerLease })
+            .where(eq(schema.memoryBackfillJobs.id, progress.id))
+
+          return extractionResult()
+        })
+
+        await advance(progress.id)
+
+        expect((await readJob(progress.id))?.leaseUntil?.getTime())
+          .toBe(newerLease.getTime())
+      })
+
     it('never processes another user\'s job or chats', async () => {
       const otherUser = await seedUser(testDb.db, { memoryEnabled: true })
 

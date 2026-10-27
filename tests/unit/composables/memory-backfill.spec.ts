@@ -21,7 +21,7 @@ mockNuxtImport('useLegalConsent', () => () => ({
 const BACKFILL_URL = '/api/v1/memory/backfill'
 const STEP_URL = '/api/v1/memory/backfill/step'
 const CANCEL_URL = '/api/v1/memory/backfill/cancel'
-const COOLDOWN_MS = 10_000
+const COOLDOWN_MS = 3_000
 
 const estimate: MemoryBackfillEstimate = {
   chats: 48,
@@ -349,7 +349,7 @@ describe('useMemoryBackfill', () => {
       expect(callsTo(STEP_URL)).toHaveLength(1)
     })
 
-    it('reports a cooldown with the default ten seconds', async () => {
+    it('reports a cooldown with the default three seconds', async () => {
       mocks.fetch.mockRejectedValue(
         createRejection(429, 'Backfill was requested moments ago', 'x'),
       )

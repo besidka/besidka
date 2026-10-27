@@ -115,6 +115,27 @@ describe('sweepMemoryExtraction backfill servicing', () => {
     })
   }
 
+  async function sweepJobs(maxRuntimeMs = 45_000) {
+    const { sweepBackfillJobs } = await import(
+      '~~/server/utils/memory/backfill'
+    )
+
+    return await sweepBackfillJobs({ maxRuntimeMs, logger, db: testDb.db })
+  }
+
+  function advanceClockPerChat(chatMs: number) {
+    let now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
+
+    mocks.extractChatMemory.mockImplementation(async () => {
+      now += chatMs
+
+      return extractionResult()
+    })
+
+    return clock
+  }
+
   function backfillCallCount(): number {
     return mocks.extractChatMemory.mock.calls.filter((call) => {
       return (call[0] as { trigger?: string }).trigger === 'backfill'
@@ -133,16 +154,114 @@ describe('sweepMemoryExtraction backfill servicing', () => {
 
     expect(result.backfill).toEqual({
       jobs: 1,
-      chats: 3,
-      completed: 0,
+      chats: 5,
+      completed: 1,
       failed: 0,
     })
-    expect(backfillCallCount()).toBe(3)
+    expect(backfillCallCount()).toBe(5)
     expect(mocks.extractChatMemory).toHaveBeenCalledWith(
       expect.objectContaining({ trigger: 'backfill', ignoreIdle: true }),
     )
-    expect((await readJob(jobId))?.processedChats).toBe(3)
+    expect((await readJob(jobId))?.processedChats).toBe(5)
   })
+
+  it('processes many more than three chats of one job in a tick',
+    async () => {
+      const { jobId } = await userWithJob({ chats: 23 })
+      const result = await sweepJobs()
+
+      expect(result).toEqual({ jobs: 1, chats: 23, completed: 1, failed: 0 })
+      expect(backfillCallCount()).toBe(23)
+      expect((await readJob(jobId))?.status).toBe('completed')
+      expect((await readJob(jobId))?.leaseUntil).toBeNull()
+    })
+
+  it('stops starting chats once the tick budget is spent', async () => {
+    const { jobId } = await userWithJob({ chats: 20 })
+    const clock = advanceClockPerChat(10_000)
+
+    try {
+      const result = await sweepJobs(25_000)
+
+      expect(result.chats).toBe(3)
+      expect(backfillCallCount()).toBe(3)
+      expect((await readJob(jobId))).toMatchObject({
+        status: 'running',
+        processedChats: 3,
+        leaseUntil: null,
+      })
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
+  it('stops at the per-tick chat cap and shares it between jobs',
+    async () => {
+      const first = await userWithJob({ chats: 40, updatedMinutesAgo: 30 })
+      const second = await userWithJob({ chats: 40, updatedMinutesAgo: 20 })
+      const result = await sweepJobs()
+
+      expect(result.chats).toBe(60)
+      expect((await readJob(first.jobId))?.processedChats).toBe(30)
+      expect((await readJob(second.jobId))?.processedChats).toBe(30)
+    })
+
+  it('serves two jobs round-robin in slices of five chats', async () => {
+    const first = await userWithJob({ chats: 12, updatedMinutesAgo: 30 })
+    const second = await userWithJob({ chats: 12, updatedMinutesAgo: 20 })
+    const result = await sweepJobs()
+    const owners = mocks.extractChatMemory.mock.calls.map((call) => {
+      return (call[0] as { userId: number }).userId
+    })
+    const firstBlock = Array<number>(5).fill(first.userId)
+    const secondBlock = Array<number>(5).fill(second.userId)
+
+    expect(result).toEqual({ jobs: 2, chats: 24, completed: 2, failed: 0 })
+    expect(owners).toEqual([
+      ...firstBlock,
+      ...secondBlock,
+      ...firstBlock,
+      ...secondBlock,
+      first.userId,
+      first.userId,
+      second.userId,
+      second.userId,
+    ])
+  })
+
+  it('gives each job a fair share when the budget runs out', async () => {
+    const first = await userWithJob({ chats: 20, updatedMinutesAgo: 30 })
+    const second = await userWithJob({ chats: 20, updatedMinutesAgo: 20 })
+    const clock = advanceClockPerChat(10_000)
+
+    try {
+      await sweepJobs(95_000)
+
+      const firstDone = (await readJob(first.jobId))?.processedChats ?? 0
+      const secondDone = (await readJob(second.jobId))?.processedChats ?? 0
+
+      expect(firstDone).toBe(5)
+      expect(secondDone).toBe(5)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
+  it('skips a job whose lease another tick holds and serves the rest',
+    async () => {
+      const busy = await userWithJob({ chats: 3, updatedMinutesAgo: 30 })
+      const free = await userWithJob({ chats: 3, updatedMinutesAgo: 20 })
+
+      await testDb.db.update(schema.memoryBackfillJobs)
+        .set({ leaseUntil: new Date(Date.now() + 120_000) })
+        .where(eq(schema.memoryBackfillJobs.id, busy.jobId))
+
+      const result = await sweepJobs()
+
+      expect(result).toMatchObject({ jobs: 1, chats: 3, completed: 1 })
+      expect((await readJob(busy.jobId))?.processedChats).toBe(0)
+      expect((await readJob(free.jobId))?.status).toBe('completed')
+    })
 
   it('leaves a running job alone when its user withdrew consent', async () => {
     const { jobId } = await userWithJob({
@@ -164,32 +283,34 @@ describe('sweepMemoryExtraction backfill servicing', () => {
     expect((await readJob(jobId))?.status).toBe('completed')
   })
 
-  it('services at most five jobs per tick, least recently progressed first',
-    async () => {
-      const jobs = []
+  it('services at most twenty jobs per tick, least recently progressed '
+    + 'first', async () => {
+    const jobs = []
 
-      for (let index = 0; index < 7; index++) {
-        jobs.push(await userWithJob({
-          chats: 1,
-          updatedMinutesAgo: 100 - index * 10,
-        }))
-      }
+    for (let index = 0; index < 22; index++) {
+      jobs.push(await userWithJob({
+        chats: 1,
+        updatedMinutesAgo: 300 - index * 10,
+      }))
+    }
 
-      const result = await sweep()
+    const result = await sweep()
 
-      expect(result.backfill.jobs).toBe(5)
-      expect(backfillCallCount()).toBe(5)
+    expect(result.backfill.jobs).toBe(20)
+    expect(backfillCallCount()).toBe(20)
 
-      const completed = []
+    const completed = []
 
-      for (const job of jobs) {
-        completed.push((await readJob(job.jobId))?.status === 'completed')
-      }
+    for (const job of jobs) {
+      completed.push((await readJob(job.jobId))?.status === 'completed')
+    }
 
-      expect(completed).toEqual([
-        true, true, true, true, true, false, false,
-      ])
-    })
+    expect(completed).toEqual([
+      ...Array<boolean>(20).fill(true),
+      false,
+      false,
+    ])
+  })
 
   it('ignores finished and cancelled jobs', async () => {
     const { userId } = await userWithJob({ chats: 1 })

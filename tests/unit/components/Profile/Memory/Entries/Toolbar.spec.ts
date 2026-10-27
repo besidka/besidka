@@ -104,9 +104,11 @@ function visibleLabel(wrapper: Wrapper, buttonTestId: string): string {
   return labels[0]!.text()
 }
 
-function expectSpinnerPinnedToIconSize(spinnerClasses: string[]) {
-  expect(spinnerClasses).toContain('size-4')
-  expect(spinnerClasses).not.toContain('loading-xs')
+function expectCssSpinner(spinnerClasses: string[]) {
+  expect(spinnerClasses).toContain('animate-spin')
+  expect(spinnerClasses).toContain('shrink-0')
+  expect(spinnerClasses).not.toContain('loading')
+  expect(spinnerClasses).not.toContain('loading-spinner')
 }
 
 function sheetOpen(wrapper: Wrapper, testId: string): string | undefined {
@@ -592,8 +594,8 @@ describe('Profile/Memory/Entries/Toolbar', () => {
 
       expect(runningButton.classes()).toContain('btn-disabled')
       expect(visibleLabel(wrapper, 'memory-update-now')).toBe('Updating...')
-      expect(runningButton.find('.loading').exists()).toBe(true)
-      expectSpinnerPinnedToIconSize(runningButton.get('.loading').classes())
+      expectCssSpinner(runningButton
+        .get('[data-testid="memory-update-now-spinner"]').classes())
 
       finishHistory({
         pinned: [],
@@ -775,7 +777,8 @@ describe('Profile/Memory/Entries/Toolbar', () => {
         .toBe('Build memory from past chats')
       expect(button.attributes('title')).toBeUndefined()
       expect(button.classes()).not.toContain('opacity-60')
-      expect(button.find('.loading').exists()).toBe(false)
+      expect(button.find('[data-testid="memory-backfill-spinner"]').exists())
+        .toBe(false)
     })
 
     it('stays clickable but looks secondary when generation is off',
@@ -820,14 +823,50 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       const wrapper = await mountToolbar()
       const button = wrapper.get('[data-testid="memory-backfill"]')
 
-      expect(visibleLabel(wrapper, 'memory-backfill')).toBe('Building… 12/48')
-      expect(button.find('.loading').exists()).toBe(true)
-      expectSpinnerPinnedToIconSize(button.get('.loading').classes())
-      expectSpinnerPinnedToIconSize(
-        wrapper.get('[data-testid="memory-backfill-menu"] .loading').classes(),
+      expect(visibleLabel(wrapper, 'memory-backfill'))
+        .toBe('Building memory… 12/48')
+      expectCssSpinner(
+        button.get('[data-testid="memory-backfill-spinner"]').classes(),
       )
+      expectCssSpinner(wrapper
+        .get('[data-testid="memory-backfill-menu-spinner"]').classes())
       expect(wrapper.get('[data-testid="memory-backfill-menu"]').text())
-        .toBe('Building… 12/48')
+        .toBe('Building memory… 12/48')
+    })
+
+    it('renders the running state without a layout jump', async () => {
+      useState('memory-backfill-overview').value = {
+        job: {
+          id: 'job-1',
+          status: 'running',
+          processedChats: 26,
+          totalChats: 200,
+        },
+        estimate: null,
+        reason: null,
+      }
+
+      const wrapper = await mountToolbar()
+      const button = wrapper.get('[data-testid="memory-backfill"]')
+      const cell = wrapper.get('[data-testid="memory-backfill-labels"]')
+      const busyLabel = wrapper.get(
+        '[data-testid="memory-backfill-busy-label"]',
+      )
+
+      expect(button.findAll('.loading')).toHaveLength(0)
+      expect(button.findAll('[data-testid="memory-backfill-spinner"]'))
+        .toHaveLength(1)
+      expect(cell.classes()).toEqual(expect.arrayContaining([
+        'grid',
+        'text-left',
+      ]))
+      expect(busyLabel.classes()).toContain('tabular-nums')
+      expect(busyLabel.text()).toBe('Building memory… 26/200')
+      expect(wrapper.get('[data-testid="memory-backfill-idle-label"]').text())
+        .toBe('Build memory from past chats')
+      expect(busyLabel.text().length).toBeLessThan(
+        'Build memory from past chats'.length,
+      )
     })
 
     it('loads the backfill overview once on mount, before any sheet opens',
@@ -858,9 +897,9 @@ describe('Profile/Memory/Entries/Toolbar', () => {
         await flushPromises()
 
         expect(visibleLabel(wrapper, 'memory-backfill'))
-          .toBe('Building… 12/48')
+          .toBe('Building memory… 12/48')
         expect(wrapper.get('[data-testid="memory-backfill-menu"]').text())
-          .toBe('Building… 12/48')
+          .toBe('Building memory… 12/48')
       })
 
     it('refreshes the progress in the background while a job runs',
@@ -1176,7 +1215,7 @@ describe('Profile/Memory/Entries/Toolbar', () => {
       {
         button: 'memory-backfill',
         idle: 'Build memory from past chats',
-        busy: 'Building…',
+        busy: 'Building memory…',
       },
     ])('stacks both $button labels in one grid cell so the width never '
       + 'changes', async ({ button, idle, busy }) => {

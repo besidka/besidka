@@ -284,6 +284,8 @@ export default defineNuxtConfig({
     memoryExtractionSweepEnabled: false,
     memoryExtractionSweepBatchSize: 20,
     memoryExtractionSweepMaxRuntimeMs: 120000,
+    memoryBackfillSweepEnabled: false,
+    memoryBackfillSweepMaxRuntimeMs: 45000,
     researchMockEnabled: false,
     messageSearchSweepEnabled: false,
     messageSearchSweepBatchSize: 200,
