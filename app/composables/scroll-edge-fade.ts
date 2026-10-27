@@ -19,7 +19,10 @@ function measureHiddenEdges(element: HTMLElement, axis: ScrollAxis) {
 /**
  * Fades the edges of a scroll container only while content is hidden past
  * that edge, so an item cut by the container's bounds always reads as "more
- * here" rather than as clipped.
+ * here" rather than as clipped. It re-measures on scroll, when the container
+ * or any of its direct children changes size, and when descendants are added
+ * or removed, so a row that appears or disappears updates the fade without a
+ * scroll event.
  */
 export function useScrollEdgeFade(
   target: MaybeRefOrGetter<HTMLElement | null | undefined>,
@@ -27,6 +30,27 @@ export function useScrollEdgeFade(
 ) {
   const hasHiddenAbove = shallowRef<boolean>(false)
   const hasHiddenBelow = shallowRef<boolean>(false)
+  const observedElements = shallowRef<HTMLElement[]>([])
+
+  function collectObservedElements() {
+    const element = toValue(target)
+    const nextElements: HTMLElement[] = element
+      ? [
+        element,
+        ...Array.from(element.children).filter((child) => {
+          return child instanceof HTMLElement
+        }),
+      ]
+      : []
+    const isUnchanged = nextElements.length === observedElements.value.length
+      && nextElements.every((nextElement, index) => {
+        return nextElement === observedElements.value[index]
+      })
+
+    if (!isUnchanged) {
+      observedElements.value = nextElements
+    }
+  }
 
   function update() {
     const element = toValue(target)
@@ -47,8 +71,15 @@ export function useScrollEdgeFade(
   useEventListener(() => toValue(target), 'scroll', update, {
     passive: true,
   })
-  useResizeObserver(() => toValue(target), update)
-  useMutationObserver(() => toValue(target), update, {
+  watch(() => toValue(target), collectObservedElements, {
+    immediate: true,
+    flush: 'post',
+  })
+  useResizeObserver(observedElements, update)
+  useMutationObserver(() => toValue(target), () => {
+    collectObservedElements()
+    update()
+  }, {
     childList: true,
     subtree: true,
   })

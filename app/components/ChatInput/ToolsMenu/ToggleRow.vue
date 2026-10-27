@@ -1,9 +1,12 @@
 <template>
   <label
+    ref="row"
     class="flex items-center gap-2.5 w-full min-h-9 max-md:min-h-11 px-2 py-1 rounded-box text-sm"
     :class="disabled
       ? 'cursor-not-allowed'
       : 'cursor-pointer hover:bg-base-200'"
+    @pointerdown="onPointerDown"
+    @keydown="onKeyDown"
   >
     <slot name="icon">
       <Icon
@@ -41,6 +44,7 @@
       :aria-label="ariaLabel"
       :aria-describedby="describedBy"
       :data-testid="testId"
+      @click="onClick"
       @change="onChange"
     >
   </label>
@@ -63,7 +67,15 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
 }>()
 
+const row = useTemplateRef<HTMLLabelElement>('row')
 const hintId = useId()
+const {
+  onPointerDown,
+  onKeyDown,
+  shouldIgnoreActivation,
+} = useRevealGuard()
+
+useToolsMenuFocusRescue(row)
 
 const describedBy = computed<string | undefined>(() => {
   const ids = [
@@ -74,7 +86,21 @@ const describedBy = computed<string | undefined>(() => {
   return ids.length ? ids.join(' ') : undefined
 })
 
+function onClick(event: MouseEvent) {
+  if (shouldIgnoreActivation(event)) {
+    event.preventDefault()
+  }
+}
+
 function onChange(event: Event) {
-  emit('update:modelValue', (event.target as HTMLInputElement).checked)
+  const input = event.target as HTMLInputElement
+
+  if (shouldIgnoreActivation()) {
+    input.checked = props.modelValue
+
+    return
+  }
+
+  emit('update:modelValue', input.checked)
 }
 </script>

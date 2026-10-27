@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { getGoogleSearchBillingUnit } from '#shared/utils/google-search-billing-unit'
 import {
   getGoogleSearchBillableUnits,
-  getGoogleSearchBillingUnit,
   getGoogleSearchCost,
   getGoogleSearchGrounding,
   resolveGoogleSearchRates,

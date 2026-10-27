@@ -201,8 +201,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/chats/chat-input-tools-menu.md` - The chat input "+" tools menu
   (popover at md+, bottom sheet below) and the setting tiles in the
   attachments row: component map, tile rules and order, capability gating
-  before resolution, the effective default reasoning level and the "Save as
-  default" toggle, memory icons, the inline Exa mark
+  before resolution, the effective default reasoning level and the inline
+  "Save X as default" caption link, rows hidden until they can act (animated
+  reveal plus the reveal guard), section header icons, the web search price
+  badge with its InfoNote, memory icons, the inline Exa mark
+- `docs/chats/model-picker.md` - The chat input model picker: dropdown at
+  md+, bottom sheet below (same breakpoint and chrome as the tools sheet),
+  the `layout` prop on the shared Panel, inline filter chips, the
+  horizontal provider chip row, no search autofocus, the visual-viewport
+  keyboard lift, and the only events that close the sheet
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no

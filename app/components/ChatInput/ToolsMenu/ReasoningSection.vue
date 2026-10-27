@@ -15,6 +15,7 @@
   <template v-else>
     <div class="px-2 pt-1 pb-1.5">
       <ChatInputToolsMenuSegmented
+        class="js-reasoning-level-group"
         :name="`${groupId}-level`"
         :legend="isToggleMode ? 'Reasoning' : 'Reasoning effort'"
         :options="levelSegments"
@@ -22,31 +23,44 @@
         @update:model-value="onSelectLevel"
       />
     </div>
-    <ChatInputToolsMenuToggleRow
-      label="Save as default"
-      icon="lucide:bookmark"
-      :hint="saveDefaultHint"
-      test-id="reasoning-save-default-toggle"
-      :model-value="isSavePending"
-      :disabled="isSavedAsDefault"
-      @update:model-value="onSaveDefault"
-    />
-    <ChatInputToolsMenuToggleRow
-      label="Show steps expanded"
-      icon="lucide:list-tree"
-      test-id="reasoning-expanded-toggle"
-      :model-value="reasoningExpanded && reasoning !== 'off'"
-      :disabled="reasoning === 'off'"
-      @update:model-value="setReasoningExpanded"
-    />
-    <ChatInputToolsMenuToggleRow
-      label="Auto-hide when done"
-      icon="lucide:timer-reset"
-      test-id="reasoning-auto-hide-toggle"
-      :model-value="reasoningAutoHide && isAutoHideAvailable"
-      :disabled="!isAutoHideAvailable"
-      @update:model-value="setReasoningAutoHide"
-    />
+    <div class="px-2 pb-1.5">
+      <p
+        class="min-h-4 text-xs leading-4 text-base-content/60"
+        data-testid="reasoning-default-caption"
+      >
+        <template v-if="isSavedAsDefault">
+          {{ defaultLabel }} is your default
+        </template>
+        <template v-else>
+          Your default is {{ defaultLabel }} &middot;
+          <ChatInputToolsMenuInlineButton
+            :is-pending="isSavePending"
+            data-testid="reasoning-save-default-button"
+            @click="onSaveDefault"
+          >
+            {{ isSavePending ? 'Saving…' : `Save ${levelLabel} as default` }}
+          </ChatInputToolsMenuInlineButton>
+        </template>
+      </p>
+    </div>
+    <ChatInputToolsMenuReveal :is-open="reasoning !== 'off'">
+      <ChatInputToolsMenuToggleRow
+        label="Show steps expanded"
+        :icon="REASONING_EXPANDED_ICON"
+        test-id="reasoning-expanded-toggle"
+        :model-value="reasoningExpanded"
+        @update:model-value="setReasoningExpanded"
+      />
+    </ChatInputToolsMenuReveal>
+    <ChatInputToolsMenuReveal :is-open="isAutoHideAvailable">
+      <ChatInputToolsMenuToggleRow
+        label="Auto-hide when done"
+        :icon="REASONING_AUTO_HIDE_ICON"
+        test-id="reasoning-auto-hide-toggle"
+        :model-value="reasoningAutoHide"
+        @update:model-value="setReasoningAutoHide"
+      />
+    </ChatInputToolsMenuReveal>
   </template>
 </template>
 
@@ -99,6 +113,7 @@ const levelSegments = computed<SegmentedOption<ReasoningLevel>[]>(() => {
     return {
       value: level,
       label: getReasoningLevelLabel(level, isToggleMode.value),
+      iconComponent: getReasoningLevelIconComponent(level),
       testId: `reasoning-level-${level}`,
     }
   })
@@ -114,17 +129,12 @@ watch(() => [props.reasoning, props.defaultLevel], () => {
   isSavePending.value = false
 })
 
-const saveDefaultHint = computed<string>(() => {
-  const defaultLabel = getReasoningLevelLabel(
-    props.defaultLevel,
-    isToggleMode.value,
-  )
+const defaultLabel = computed<string>(() => {
+  return getReasoningLevelLabel(props.defaultLevel, isToggleMode.value)
+})
 
-  if (isSavedAsDefault.value) {
-    return `${defaultLabel} is your default`
-  }
-
-  return `Your default is ${defaultLabel}`
+const levelLabel = computed<string>(() => {
+  return getReasoningLevelLabel(props.reasoning, isToggleMode.value)
 })
 
 function onSelectLevel(level: ReasoningLevel) {
@@ -135,8 +145,8 @@ function onSelectLevel(level: ReasoningLevel) {
   emit('select-level', level)
 }
 
-function onSaveDefault(isOn: boolean) {
-  if (!isOn || isSavedAsDefault.value) {
+function onSaveDefault() {
+  if (isSavedAsDefault.value || isSavePending.value) {
     return
   }
 

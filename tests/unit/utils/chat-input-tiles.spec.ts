@@ -25,6 +25,8 @@ function createState(overrides: StateOverrides = {}): ChatInputToolsState {
       exaSearchLevel: 'auto',
       isAutoAvailable: false,
       isAutoPreferred: false,
+      modelId: 'gemini-3.1-pro',
+      billingProviderId: 'google',
     },
     reasoning: {
       visible: true,

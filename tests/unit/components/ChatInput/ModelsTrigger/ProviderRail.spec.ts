@@ -22,6 +22,7 @@ function mountRail(
     isFavoritesOnly: boolean
     hasFavorites: boolean
     keylessProviderIds: string[]
+    layout: 'popover' | 'sheet'
   }> = {},
 ) {
   return mountSuspended(ProviderRail, {
@@ -312,6 +313,47 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
         .get('[data-testid="models-picker-rail-openai-count"]')
         .text(),
       ).toBe('99+')
+    })
+  })
+
+  describe('sheet layout', () => {
+    it('lays the providers out as a horizontal chip row', async () => {
+      const wrapper = await mountRail({ layout: 'sheet', hasFavorites: true })
+      const rail = wrapper.get('[data-testid="models-picker-rail"]')
+      const openai = wrapper.get('[data-testid="models-picker-rail-openai"]')
+
+      expect(rail.classes()).toEqual(
+        expect.arrayContaining(['overflow-x-auto', 'no-scrollbar', 'border-b']),
+      )
+      expect(rail.classes()).not.toContain('flex-col')
+      expect(openai.classes()).toEqual(
+        expect.arrayContaining(['btn-sm', 'rounded-full']),
+      )
+      expect(openai.classes()).not.toContain('tooltip')
+      expect(wrapper.find('.divider').exists()).toBe(false)
+    })
+
+    it('shows the count inline instead of an indicator badge', async () => {
+      const wrapper = await mountRail({ layout: 'sheet' })
+      const count = wrapper.get(
+        '[data-testid="models-picker-rail-openai-count"]',
+      )
+
+      expect(count.text()).toBe('3')
+      expect(count.classes()).not.toContain('indicator-item')
+    })
+
+    it('keeps the keyless dot and the accessible names', async () => {
+      const wrapper = await mountRail({
+        layout: 'sheet',
+        keylessProviderIds: ['google'],
+      })
+
+      expect(wrapper.find('[data-testid="models-picker-rail-google-keyless"]')
+        .exists()).toBe(true)
+      expect(wrapper.get('[data-testid="models-picker-rail-google"]')
+        .attributes('aria-label'))
+        .toBe('Show Google AI Studio models only — API key required')
     })
   })
 })

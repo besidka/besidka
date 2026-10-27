@@ -6,6 +6,7 @@ import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { REVEAL_GUARD_DURATION_MS } from '../../../app/composables/reveal-guard'
 
 const mocks = vi.hoisted(() => ({
   useChatInput: vi.fn(),
@@ -76,6 +77,15 @@ const uiButtonStub = defineComponent({
 
 enableAutoUnmount(afterEach)
 
+function fakeRevealGuardTimers() {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+}
+
+async function waitOutRevealGuard() {
+  vi.advanceTimersByTime(REVEAL_GUARD_DURATION_MS)
+  await flushPromises()
+}
+
 function mountChatInput(extraProps: Record<string, unknown> = {}) {
   return mountSuspended(ChatInput, {
     props: {
@@ -116,6 +126,19 @@ async function openToolsPanel(wrapper: ChatInputWrapper) {
 
 function hasTestId(wrapper: ChatInputWrapper, testId: string): boolean {
   return wrapper.find(`[data-testid="${testId}"]`).exists()
+}
+
+function isTestIdRevealed(
+  wrapper: ChatInputWrapper,
+  testId: string,
+): boolean {
+  const element = wrapper.find(`[data-testid="${testId}"]`)
+
+  return element.exists() && !element.element.closest('[inert]')
+}
+
+function captionText(wrapper: ChatInputWrapper): string {
+  return wrapper.get('[data-testid="reasoning-default-caption"]').text()
 }
 
 function isTestIdChecked(
@@ -220,6 +243,8 @@ describe('ChatInput.client', () => {
       selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
       isModelCapabilityResolved: shallowRef(true),
       isSelectedModelUnavailable: shallowRef(false),
+      selectedModelId: shallowRef('gemini-3.1-pro'),
+      selectedModelBillingProviderId: shallowRef<string | null>('google'),
     })
 
     mocks.useChatFiles.mockReturnValue({
@@ -255,6 +280,7 @@ describe('ChatInput.client', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     document
       .querySelectorAll('dialog.js-files-modal, dialog.js-search-modal')
       .forEach((dialog) => {
@@ -371,6 +397,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('Anthropic'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -590,6 +618,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return canAttachMediaType
@@ -701,6 +731,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -729,6 +761,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -754,6 +788,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -824,7 +860,7 @@ describe('ChatInput.client', () => {
         .toBeNull()
     })
 
-    it('shows a Reasoning tile and enables Save as default once the level '
+    it('shows a Reasoning tile and offers Save as default once the level '
       + 'differs from the default, and saves it on request', async () => {
       useLevelsModeSelection()
 
@@ -836,18 +872,20 @@ describe('ChatInput.client', () => {
       await openToolsPanel(wrapper)
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
-      expect(isTestIdDisabled(wrapper, 'reasoning-save-default-toggle'))
-        .toBe(true)
+      expect(captionText(wrapper)).toBe('Off is your default')
+      expect(hasTestId(wrapper, 'reasoning-save-default-button'))
+        .toBe(false)
 
       await pickTestId(wrapper, 'reasoning-level-high')
       await flushPromises()
 
       expect(tileTitle(wrapper, 'reasoning'))
         .toBe('Reasoning: High. Your default is Off.')
-      expect(isTestIdChecked(wrapper, 'reasoning-save-default-toggle'))
-        .toBe(false)
+      expect(captionText(wrapper))
+        .toBe('Your default is Off · Save High as default')
 
-      await setToggle(wrapper, 'reasoning-save-default-toggle', true)
+      await wrapper.get('[data-testid="reasoning-save-default-button"]')
+        .trigger('click')
 
       expect(mocks.setDefaultReasoningLevel).toHaveBeenCalledWith('high')
 
@@ -855,10 +893,9 @@ describe('ChatInput.client', () => {
       await flushPromises()
 
       expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
-      expect(isTestIdChecked(wrapper, 'reasoning-save-default-toggle'))
+      expect(captionText(wrapper)).toBe('High is your default')
+      expect(hasTestId(wrapper, 'reasoning-save-default-button'))
         .toBe(false)
-      expect(isTestIdDisabled(wrapper, 'reasoning-save-default-toggle'))
-        .toBe(true)
     })
 
     it('compares against the saved server default', async () => {
@@ -995,6 +1032,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return { webSearchProviderOptionsRef, isToolCallingSupportedRef }
@@ -1167,25 +1206,25 @@ describe('ChatInput.client', () => {
         .toBe('web_search_brave')
     })
 
-    it('keeps the Exa depth rendered but disabled unless Exa is selected',
-      async () => {
-        useWebSearchSelection()
+    it('renders the Exa depth only while Exa is selected', async () => {
+      useWebSearchSelection()
 
-        const wrapper = await mountChatInput()
+      const wrapper = await mountChatInput()
 
-        await openToolsPanel(wrapper)
+      await openToolsPanel(wrapper)
 
-        expect(isTestIdDisabled(wrapper, 'exa-search-level-auto')).toBe(true)
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(false)
 
-        await pickTestId(wrapper, 'web-search-option-web_search_exa')
+      await pickTestId(wrapper, 'web-search-option-web_search_exa')
 
-        expect(isTestIdDisabled(wrapper, 'exa-search-level-lite')).toBe(false)
-        expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(true)
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(true)
+      expect(isTestIdDisabled(wrapper, 'exa-search-level-lite')).toBe(false)
+      expect(isTestIdChecked(wrapper, 'exa-search-level-auto')).toBe(true)
 
-        await pickTestId(wrapper, 'web-search-option-web_search_brave')
+      await pickTestId(wrapper, 'web-search-option-web_search_brave')
 
-        expect(isTestIdDisabled(wrapper, 'exa-search-level-auto')).toBe(true)
-      })
+      expect(isTestIdRevealed(wrapper, 'exa-search-level-auto')).toBe(false)
+    })
 
     it('persists a chosen Exa search level, updates the depth and the '
       + 'tile, and asks to remember preferences', async () => {
@@ -1194,7 +1233,9 @@ describe('ChatInput.client', () => {
       const wrapper = await mountChatInput()
 
       await openToolsPanel(wrapper)
+      fakeRevealGuardTimers()
       await pickTestId(wrapper, 'web-search-option-web_search_exa')
+      await waitOutRevealGuard()
 
       mocks.requestPersistence.mockClear()
       await pickTestId(wrapper, 'exa-search-level-deep')
@@ -1404,6 +1445,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return { isImageGenerationRequired, reasoningCapability }
@@ -1681,6 +1724,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
         isModelCapabilityResolved,
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
 
       return {
@@ -1890,6 +1935,10 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(true),
+        selectedModelId: shallowRef('openai/gpt-5.4'),
+        selectedModelBillingProviderId: shallowRef<string | null>(
+          'openrouter',
+        ),
       })
     }
 
@@ -1964,6 +2013,8 @@ describe('ChatInput.client', () => {
         selectedModelKeyOwnerLabel: shallowRef('xAI'),
         isModelCapabilityResolved: shallowRef(true),
         isSelectedModelUnavailable: shallowRef(false),
+        selectedModelId: shallowRef('gemini-3.1-pro'),
+        selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
     }
 
@@ -1977,10 +2028,15 @@ describe('ChatInput.client', () => {
 
       expect(hasTestId(wrapper, 'reasoning-level-low')).toBe(true)
       expect(hasTestId(wrapper, 'reasoning-always-on-menu-item')).toBe(false)
-      expect(hasTestId(wrapper, 'reasoning-expanded-toggle')).toBe(true)
-      expect(isTestIdDisabled(wrapper, 'reasoning-expanded-toggle'))
-        .toBe(true)
-      expect(isTestIdDisabled(wrapper, 'reasoning-auto-hide-toggle'))
+      expect(isTestIdRevealed(wrapper, 'reasoning-expanded-toggle'))
+        .toBe(false)
+      expect(isTestIdRevealed(wrapper, 'reasoning-auto-hide-toggle'))
+        .toBe(false)
+
+      await pickTestId(wrapper, 'reasoning-level-low')
+      await flushPromises()
+
+      expect(isTestIdRevealed(wrapper, 'reasoning-expanded-toggle'))
         .toBe(true)
     })
 

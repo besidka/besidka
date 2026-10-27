@@ -31,6 +31,12 @@ mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 mockNuxtImport('useUserKeys', () => mocks.useUserKeys)
 mockNuxtImport('useGatewayCatalog', () => mocks.useGatewayCatalog)
 
+mockNuxtImport('useMediaQuery', () => {
+  return () => isPopoverLayout
+})
+
+const isPopoverLayout = shallowRef<boolean>(true)
+
 const keyedProviderIds = shallowRef<string[]>([])
 
 function createSelectionMock(modelId: string) {

@@ -102,9 +102,20 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Segmented.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Content.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Reveal.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ToggleRow.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/Section.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/InfoNote.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/InlineButton.spec.ts',
+    'tests/unit/composables/reveal-guard.spec.ts',
+    'tests/unit/composables/tools-menu-focus-rescue.spec.ts',
     'tests/unit/components/ChatInput/SettingTile.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/utils/reasoning-icons.spec.ts',
+    'tests/unit/utils/web-search-price.spec.ts',
     'tests/unit/composables/scroll-edge-fade.spec.ts',
   ]
   const profileSettingsTests = [
@@ -123,6 +134,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/settings.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
+    'tests/e2e/profile/preferences.spec.ts',
   ]
   const memoryContractTests = [
     'tests/unit/utils/memory-policy.spec.ts',
@@ -360,16 +372,18 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-message-id-stream.spec.ts',
   ]
   const modelsTriggerPattern
-    = /^(app\/components\/ChatInput\/ModelsTrigger(\.vue|\/.+\.vue)|app\/utils\/models-picker\.ts|app\/types\/models-picker\.d\.ts)$/
+    = /^(app\/components\/ChatInput\/ModelsTrigger(\.vue|\/.+\.vue)|app\/utils\/models-picker\.ts|app\/types\/models-picker\.d\.ts|app\/composables\/(visual-viewport-inset|scroll-edge-fade)\.ts)$/
   const modelsTriggerTests = [
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.keys.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.sheet.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/Search.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/FilterSection.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
@@ -377,6 +391,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelList.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/Panel.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
+    'tests/unit/composables/visual-viewport-inset.spec.ts',
+    'tests/e2e/chat/models-picker.spec.ts',
   ]
   const userKeysTests = [
     'tests/unit/composables/user-keys.spec.ts',
@@ -1038,6 +1054,15 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern:
+        /^(app\/utils\/web-search-price|shared\/utils\/google-search-billing-unit)\.ts$/,
+      tests: [
+        'tests/unit/utils/web-search-price.spec.ts',
+        'tests/unit/utils/google-search-cost.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+      ],
+    },
+    {
       pattern: /^app\/utils\/search-rate\.ts$/,
       tests: [
         'tests/unit/utils/search-rate.spec.ts',
@@ -1304,7 +1329,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/user-setting\.ts$/,
-      tests: [...profileSettingsTests, ...modelsTriggerTests],
+      tests: [
+        ...profileSettingsTests,
+        ...modelsTriggerTests,
+        'tests/e2e/profile/preferences.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/user-keys\.ts$/,
@@ -2021,11 +2050,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/layouts\/profile\.vue$/,
-      tests: ['tests/unit/layouts/profile.spec.ts'],
+      tests: [
+        'tests/unit/layouts/profile.spec.ts',
+        'tests/e2e/profile/preferences.spec.ts',
+      ],
     },
     {
       pattern: /^app\/pages\/profile\/(preferences|settings)\.vue$/,
       tests: preferencesPageTests,
+    },
+    {
+      pattern: /^app\/(utils\/reasoning-icons\.ts|components\/Profile\/Security\/SectionCard\.vue)$/,
+      tests: [...preferencesPageTests, ...chatInputToolsTests],
     },
     {
       pattern: /^app\/components\/Sidebar\/AuthCta\.vue$/,
@@ -2497,7 +2533,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/scroll-edge-fade\.ts|app\/assets\/icons\/exa\.svg)$/,
+        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/(scroll-edge-fade|reveal-guard|tools-menu-focus-rescue)\.ts|app\/assets\/icons\/exa\.svg)$/,
       tests: [
         ...chatInputToolsTests,
         'tests/unit/components/ProviderIcon.spec.ts',

@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col gap-0.5">
+  <div class="js-tools-content flex flex-col gap-0.5">
     <div
       v-if="state.isDeepResearchModel && state.research"
       class="flex items-center gap-2.5 px-2 py-1.5"
@@ -21,6 +21,7 @@
       v-if="state.files.visible"
       id="add"
       title="Add"
+      icon="lucide:plus"
       :is-highlighted="highlightedSection === 'add'"
     >
       <ChatInputToolsMenuActionRow
@@ -47,28 +48,36 @@
         @click="emit('open-files-generated')"
       />
     </ChatInputToolsMenuSection>
-    <ChatInputToolsMenuSection
+    <div
+      v-if="hasDividerBeforeSearch"
+      class="h-px mx-2 my-1 bg-base-content/10"
+      data-testid="tools-menu-divider"
+    />
+    <ChatInputToolsMenuWebSearchSection
       v-if="state.webSearch.visible"
-      id="search"
-      title="Web search"
       :is-highlighted="highlightedSection === 'search'"
-    >
-      <ChatInputToolsMenuWebSearchSection
-        :selected="state.webSearch.selected"
-        :options="state.webSearch.options"
-        :is-tool-calling-supported="state.webSearch.isToolCallingSupported"
-        :exa-search-level="state.webSearch.exaSearchLevel"
-        :is-auto-available="state.webSearch.isAutoAvailable"
-        :is-auto-preferred="state.webSearch.isAutoPreferred"
-        @select-provider="emit('select-web-search-provider', $event)"
-        @select-exa-search-level="emit('select-exa-search-level', $event)"
-        @toggle-auto="emit('toggle-auto-web-search', $event)"
-      />
-    </ChatInputToolsMenuSection>
+      :selected="state.webSearch.selected"
+      :options="state.webSearch.options"
+      :is-tool-calling-supported="state.webSearch.isToolCallingSupported"
+      :exa-search-level="state.webSearch.exaSearchLevel"
+      :is-auto-available="state.webSearch.isAutoAvailable"
+      :is-auto-preferred="state.webSearch.isAutoPreferred"
+      :model-id="state.webSearch.modelId"
+      :billing-provider-id="state.webSearch.billingProviderId"
+      @select-provider="emit('select-web-search-provider', $event)"
+      @select-exa-search-level="emit('select-exa-search-level', $event)"
+      @toggle-auto="emit('toggle-auto-web-search', $event)"
+    />
+    <div
+      v-if="hasDividerBeforeReasoning"
+      class="h-px mx-2 my-1 bg-base-content/10"
+      data-testid="tools-menu-divider"
+    />
     <ChatInputToolsMenuSection
       v-if="isReasoningSectionVisible"
       id="reasoning"
       title="Reasoning"
+      :icon-component="REASONING_SECTION_ICON_COMPONENT"
       :is-highlighted="highlightedSection === 'reasoning'"
     >
       <ChatInputToolsMenuReasoningSection
@@ -86,6 +95,7 @@
     <div
       v-if="hasLowerSection && hasUpperSection"
       class="h-px mx-2 my-1 bg-base-content/10"
+      data-testid="tools-menu-divider"
     />
     <ChatInputToolsMenuSection
       v-if="isImageRowVisible"
@@ -171,9 +181,20 @@ const emit = defineEmits<{
   'update:use-memory': [value: boolean]
 }>()
 
+provideRevealGuardRoot()
+
 const isReasoningSectionVisible = computed<boolean>(() => {
   return props.state.reasoning.visible
     && props.state.reasoning.mode !== 'none'
+})
+
+const hasDividerBeforeSearch = computed<boolean>(() => {
+  return props.state.files.visible && props.state.webSearch.visible
+})
+
+const hasDividerBeforeReasoning = computed<boolean>(() => {
+  return (props.state.files.visible || props.state.webSearch.visible)
+    && isReasoningSectionVisible.value
 })
 
 const isImageRowVisible = computed<boolean>(() => {

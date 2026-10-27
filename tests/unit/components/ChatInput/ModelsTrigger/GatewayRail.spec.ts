@@ -20,6 +20,7 @@ function mountRail(
     gateways: GatewayRailItem[]
     activeGatewayId: GatewayId | null
     isPending: boolean
+    layout: 'popover' | 'sheet'
   }> = {},
 ) {
   return mountSuspended(GatewayRail, {
@@ -182,4 +183,30 @@ describe('ChatInput/ModelsTrigger/GatewayRail', () => {
       ).toBe('Browse Vercel AI Gateway models')
     })
   })
+
+  it('rounds into the popover corners with compact buttons by default',
+    async () => {
+      const wrapper = await mountRail()
+      const rail = wrapper.get('[data-testid="models-picker-gateway-rail"]')
+
+      expect(rail.classes()).toEqual(
+        expect.arrayContaining(['rounded-b-2xl', 'pb-1.5']),
+      )
+      expect(wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .classes()).toContain('btn-xs')
+    })
+
+  it('pads the sheet footer for the safe area with touch-sized buttons',
+    async () => {
+      const wrapper = await mountRail({ layout: 'sheet' })
+      const rail = wrapper.get('[data-testid="models-picker-gateway-rail"]')
+
+      expect(rail.classes())
+        .toContain('pb-[var(--models-sheet-bottom-padding,0.375rem)]')
+      expect(rail.classes()).not.toContain('rounded-b-2xl')
+      expect(wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .classes()).toContain('btn-sm')
+      expect(wrapper.get('[data-testid="models-picker-gateway-rail-scroll"]')
+        .classes()).toContain('no-scrollbar')
+    })
 })

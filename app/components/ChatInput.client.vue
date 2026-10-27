@@ -223,6 +223,8 @@ const {
   selectedModelKeyOwnerLabel,
   isModelCapabilityResolved,
   isSelectedModelUnavailable,
+  selectedModelId,
+  selectedModelBillingProviderId,
 } = useChatInput()
 const { ensureSendConsent } = useLegalConsent()
 const {
@@ -643,6 +645,8 @@ const toolsState = computed<ChatInputToolsState>(() => {
       exaSearchLevel: exaSearchLevel.value,
       isAutoAvailable: isAutoWebSearchAvailable.value,
       isAutoPreferred: isAutoWebSearchPreferred.value,
+      modelId: selectedModelId.value,
+      billingProviderId: selectedModelBillingProviderId.value,
     },
     reasoning: {
       visible: isReasoningSectionVisible.value,
