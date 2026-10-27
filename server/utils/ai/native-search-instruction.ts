@@ -7,7 +7,8 @@ const NATIVE_SEARCH_TOOL_KEY = 'web_search_preview'
 /**
  * A provider-native search tool left on the default `auto` tool choice is
  * only a suggestion to the model, so the Search toggle needs a nudge to keep
- * meaning "search". Providers that force the tool choice never need one.
+ * meaning "search". Providers that force the tool choice, or that keep the
+ * native search tool exclusive on this send, never get one.
  */
 export function shouldNudgeNativeWebSearch(
   requestedTools: ModelTool[],
@@ -16,6 +17,7 @@ export function shouldNudgeNativeWebSearch(
   return requestedTools.includes('web_search')
     && !!parsedTools.tools?.[NATIVE_SEARCH_TOOL_KEY]
     && !parsedTools.toolChoice
+    && !parsedTools.exclusiveNativeWebSearch
 }
 
 export function buildNativeSearchInstruction(now: Date): string {

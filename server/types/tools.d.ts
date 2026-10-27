@@ -4,4 +4,5 @@ export interface FormattedTools {
     type: 'tool'
     toolName: string
   }
+  exclusiveNativeWebSearch?: true
 }

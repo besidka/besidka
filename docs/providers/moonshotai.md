@@ -176,9 +176,9 @@ real caller. Note: `platform.moonshot.ai` redirects (301) to
   backdoor. Rewiring Moonshot onto `@ai-sdk/anthropic` against that endpoint
   on an unverifiable hope would be a regression risk with no documented
   payoff. **Not a path** — recorded so it isn't re-investigated.
-- **No forced `toolChoice`.** Unlike this app's OpenAI/xAI wiring (which
-  forces `toolChoice` onto their provider-executed search tools, safe
-  because those never loop), the Moonshot tool is client-executed and
+- **No forced `toolChoice`.** Unlike this app's OpenAI wiring (which
+  forces `toolChoice` onto its provider-executed search tool, safe because
+  it never loops), the Moonshot tool is client-executed and
   marked with `withFollowUpTurn()` — forcing `toolChoice` here would
   re-select the same tool on every loop step and the model would never
   produce text. See `server/utils/ai/tool-loop.ts`'s doc comment.

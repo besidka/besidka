@@ -446,8 +446,8 @@ exclusions as W2):
 
 **Automatic pre-retrieval**: when in search mode **and the knowledge tools
 were not registered for this send** (tool-less model, gateway
-`toolCall: false`, forced `toolChoice` for image generation or Google
-native `web_search`). The user message goes through
+`toolCall: false`, forced `toolChoice` for image generation, or the
+`exclusiveNativeWebSearch` flag on Google native `web_search`). The user message goes through
 `server/utils/search/query.ts` (≤8 tokens, ≤128 chars). The top 4 chunks
 (≤2k tokens) are appended to the **current user turn** in
 `<project_knowledge_excerpts>`, not persisted, and the system prompt stays

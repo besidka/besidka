@@ -389,8 +389,9 @@ do not inherit "web search and image generation cannot combine"). A send gets
 them only when **all** hold:
 
 - `isChatSearchToolEnabled(settings)` (the user's `chatSearchEnabled`, default on; since W4 the settings row is read per send and fails closed);
-- no forced `toolChoice` on `parsedTools`: image generation and Google
-  native `web_search` force one, and a forced choice plus the follow-up
+- no forced `toolChoice` and no `exclusiveNativeWebSearch` on
+  `parsedTools`: image generation forces a choice and Google native
+  `web_search` sets the flag, and a forced choice plus the follow-up
   marker would re-select the same tool forever (see the `withFollowUpTurn`
   JSDoc). This is a deliberate deviation from "coexist with everything":
   those two sends never get chat search;
