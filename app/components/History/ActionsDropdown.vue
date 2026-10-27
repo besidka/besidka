@@ -8,10 +8,12 @@
     v-else
     ref="dropdownRef"
     class="
-      dropdown dropdown-bottom dropdown-end relative z-20 open:z-40
+      dropdown dropdown-end relative z-20 open:z-40
       transition-opacity
       sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100
     "
+    :class="isFlippedUp ? 'dropdown-top' : 'dropdown-bottom'"
+    @toggle="updatePlacement"
   >
     <summary
       data-testid="history-chat-actions-trigger"
@@ -20,7 +22,11 @@
     >
       <Icon name="lucide:ellipsis-vertical" size="16" />
     </summary>
-    <div class="dropdown-content z-50 w-64 pt-2">
+    <div
+      class="dropdown-content z-50 w-64"
+      :class="isFlippedUp ? 'pb-2' : 'pt-2'"
+      data-testid="history-chat-actions-menu"
+    >
       <ul
         tabindex="0"
         class="menu menu-sm bg-base-100 rounded-box shadow-lg w-64 p-1"
@@ -158,6 +164,7 @@ const emit = defineEmits<{
 }>()
 
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
+const { isFlippedUp, updatePlacement } = useDropdownPlacement(dropdownRef)
 const {
   savingSlug: memoryExclusionSavingSlug,
   isChatMemoryExcluded,

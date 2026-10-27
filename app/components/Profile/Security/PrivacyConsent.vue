@@ -132,8 +132,8 @@
                   preset model through a gateway.
                 </template>
                 <template v-else>
-                  Not given. Asked before your first message to a
-                  {{ transfer.label }} model through a gateway.
+                  Not given. Asked before your first message to
+                  {{ transfer.label }} models through a gateway.
                 </template>
               </p>
             </div>

@@ -176,7 +176,7 @@ const title = computed<string>(() => {
     return 'The consent text has changed'
   }
 
-  return 'Before you send a message'
+  return 'Before you continue'
 })
 
 const canContinue = computed<boolean>(() => {

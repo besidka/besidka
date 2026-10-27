@@ -126,6 +126,16 @@ resolves to the product default, Off.
   Saving calls `setDefaultReasoningLevel(level)` and the tile disappears.
 - "Show steps expanded" and "Auto-hide when done" are hidden until they can
   act (see "Hidden rows and animated reveals").
+- The web search selection does not need the same guard (checked
+  2026-10-27). `webSearchProviderOptions` is rebuilt as a new but equal array
+  on every preference-storage write, and the tools watcher re-filters
+  `tools` each time, but it only writes back an equal list, and no other
+  writer to `tools` runs ahead of it in the same post flush (the page seeds
+  the saved default synchronously, the restore after image generation runs
+  later, and the keys lookup fails open, so an unloaded key never prunes a
+  saved Brave or Exa choice). The ChatInput unit tests rebuild equal options
+  in the same flush as a preference write and as a provider pick, and both
+  keep the selection.
 
 ## Design: controls appear only when they can act
 

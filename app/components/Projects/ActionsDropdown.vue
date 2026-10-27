@@ -2,9 +2,11 @@
   <details
     ref="dropdownRef"
     class="
-      js-project-actions-dropdown dropdown dropdown-bottom dropdown-end
+      js-project-actions-dropdown dropdown dropdown-end
       relative z-20 open:z-40
     "
+    :class="isFlippedUp ? 'dropdown-top' : 'dropdown-bottom'"
+    @toggle="updatePlacement"
   >
     <slot>
       <summary
@@ -15,7 +17,11 @@
         <Icon name="lucide:ellipsis-vertical" size="16" />
       </summary>
     </slot>
-    <div class="dropdown-content z-50 w-52 pt-2">
+    <div
+      class="dropdown-content z-50 w-52"
+      :class="isFlippedUp ? 'pb-2' : 'pt-2'"
+      data-testid="history-project-actions-menu"
+    >
       <ul
         tabindex="0"
         class="menu menu-sm bg-base-100 rounded-box shadow-lg w-52 p-1"
@@ -85,6 +91,7 @@ const emit = defineEmits<{
 }>()
 
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
+const { isFlippedUp, updatePlacement } = useDropdownPlacement(dropdownRef)
 
 function closeDropdown() {
   if (dropdownRef.value) {

@@ -1986,7 +1986,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/composables\/(history|projects|project-chats|project-picker)\.ts$/,
+      pattern: /^app\/composables\/(history|projects|project-chats|project-picker|dropdown-placement)\.ts$/,
       tests: historyProjectsTests,
     },
     {
@@ -1999,6 +1999,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/components\/History\/.*\.vue$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^app\/components\/Projects\/ActionsDropdown\.vue$/,
       tests: historyProjectsTests,
     },
     {
