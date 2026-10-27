@@ -737,6 +737,14 @@ describe('ChatInput.client', () => {
     }
 
     function useLevelsModeSelection() {
+      const reasoningCapability = shallowRef<{
+        mode: 'levels'
+        levels: string[]
+      }>({
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      })
+
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
         isToolCallingSupported: shallowRef(false),
@@ -748,10 +756,7 @@ describe('ChatInput.client', () => {
         isReasoningSupported: shallowRef(true),
         isReasoningAlwaysOn: shallowRef(false),
         canDisableReasoningLevel: shallowRef(true),
-        reasoningCapability: shallowRef({
-          mode: 'levels',
-          levels: ['low', 'medium', 'high'],
-        }),
+        reasoningCapability,
         reasoningMode: shallowRef('levels'),
         reasoningMenuLevels: shallowRef(['low', 'medium', 'high']),
         isDeepResearchModel: shallowRef(false),
@@ -764,6 +769,8 @@ describe('ChatInput.client', () => {
         selectedModelId: shallowRef('gemini-3.1-pro'),
         selectedModelBillingProviderId: shallowRef<string | null>('google'),
       })
+
+      return { reasoningCapability }
     }
 
     function useDeepResearchSelection() {
@@ -938,6 +945,48 @@ describe('ChatInput.client', () => {
 
       expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['low'])
     })
+
+    it('follows a default that loads after mount in the same flush that '
+      + 'rebuilds an equal capability object', async () => {
+      const { reasoningCapability } = useLevelsModeSelection()
+
+      const { wrapperRef, props } = bindReasoning('off')
+      const wrapper = await mountChatInput(props)
+
+      wrapperRef.current = wrapper
+
+      defaultReasoningLevel.value = 'high'
+      reasoningCapability.value = {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      }
+      await flushPromises()
+
+      expect(wrapper.emitted('update:reasoning')?.map((args) => {
+        return args[0]
+      })).toEqual(['high'])
+      expect(wrapper.props('reasoning')).toBe('high')
+      expect(tileOf(wrapper, 'reasoning').exists()).toBe(false)
+    })
+
+    it('still re-clamps the level when the capability really changes',
+      async () => {
+        const { reasoningCapability } = useLevelsModeSelection()
+
+        const { wrapperRef, props } = bindReasoning('high')
+        const wrapper = await mountChatInput(props)
+
+        wrapperRef.current = wrapper
+
+        reasoningCapability.value = {
+          mode: 'levels',
+          levels: ['low', 'medium'],
+        }
+        await flushPromises()
+
+        expect(wrapper.emitted('update:reasoning')?.at(-1))
+          .toEqual(['medium'])
+      })
 
     it('follows a default that was already loaded before mount, until the '
       + 'user picks a level', async () => {

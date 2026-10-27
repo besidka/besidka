@@ -459,10 +459,30 @@ watch(canAttachMediaType, (canAttach) => {
  */
 const reasoningLevelBeforeClamp = shallowRef<ReasoningLevel | null>(null)
 
+/**
+ * Re-clamps the live level only when the model's capability really changed,
+ * never on a rebuilt but equal capability object (see "Default reasoning
+ * level" in docs/chats/chat-input-tools-menu.md).
+ */
 watch(
   [isReasoningSupported, reasoningCapability, isModelCapabilityResolved],
-  ([supported, capability, isResolved]) => {
+  (
+    [supported, capability, isResolved],
+    [
+      wasSupported,
+      previousCapability,
+      wasResolved,
+    ] = [undefined, undefined, undefined],
+  ) => {
     if (!isResolved) {
+      return
+    }
+
+    const isCapabilityUnchanged = supported === wasSupported
+      && isResolved === wasResolved
+      && isSameReasoningCapability(capability, previousCapability)
+
+    if (isCapabilityUnchanged) {
       return
     }
 

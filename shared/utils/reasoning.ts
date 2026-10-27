@@ -120,6 +120,35 @@ export function getReasoningCapability(
   }
 }
 
+/**
+ * Value equality for capabilities: `getReasoningCapability` builds a fresh
+ * object on every evaluation, so callers that react to a capability change
+ * must compare contents, not identity.
+ */
+export function isSameReasoningCapability(
+  capability: ReasoningCapability | null | undefined,
+  otherCapability: ReasoningCapability | null | undefined,
+): boolean {
+  if (capability === otherCapability) {
+    return true
+  }
+
+  if (!capability || !otherCapability) {
+    return false
+  }
+
+  if (capability.mode !== 'levels' || otherCapability.mode !== 'levels') {
+    return capability.mode === otherCapability.mode
+  }
+
+  return capability.cannotDisable === otherCapability.cannotDisable
+    && capability.defaultLevel === otherCapability.defaultLevel
+    && capability.levels.length === otherCapability.levels.length
+    && capability.levels.every((level, index) => {
+      return otherCapability.levels[index] === level
+    })
+}
+
 export function canDisableReasoning(
   capability: ReasoningCapability | null,
 ): boolean {
