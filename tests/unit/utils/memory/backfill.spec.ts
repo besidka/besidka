@@ -657,7 +657,7 @@ describe('memory backfill', () => {
           expect(processedChatIds()).toEqual([newest.id])
         })
 
-      it('survives a provider blip that outlasts five attempts in a step',
+      it('stops at one transient chat instead of recording five failures',
         async () => {
           for (let index = 0; index < 6; index++) {
             await chat(10 + index)

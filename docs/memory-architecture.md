@@ -1663,17 +1663,25 @@ background path was the `*/5` sweep at 3 chats per tick, about 5.5 hours for
   still starts one, so the switch stops background spend, not user-initiated
   work.
 - **Transient provider failures.** A chat whose model call fails with a rate
-  limit (429), an overload or server error (408, 425, 5xx, 529), a timeout or
-  a dropped connection, before any tokens were spent, is not recorded: the
-  step stops, `retried_chat_id` and `chat_attempts` stay stamped, and the job
-  leaves this tick's rotation, so the chat is retried at the next tick or step.
-  The retry reuses the existing attempt budget (`maxChatAttempts`, 2): the
-  second transient failure is recorded as a failed chat, as before. A permanent
-  error (invalid key, model not found, 400/401/403/404/422, a refusal or
-  malformed output) is recorded at once, as before. The classifier is
-  `isTransientMemoryExtractionError` (`extract-error.ts`); it walks `lastError`
-  and `cause`, because the AI SDK wraps retried failures in a `RetryError`, and
-  `extractChatMemory` reports it as `isTransientFailure` on a failed result.
+  limit (429), an overload or server error (408, 425, 5xx, 529, including a
+  provider-side 504) or a dropped connection ("fetch failed", "Network
+  connection lost", socket hang up, ECONNRESET), before any tokens were spent,
+  is not recorded: the step stops, `retried_chat_id` and `chat_attempts` stay
+  stamped, and the job leaves this tick's rotation, so the chat is retried at
+  the next tick or step. The retry reuses the existing attempt budget
+  (`maxChatAttempts`, 2): the second transient failure is recorded as a failed
+  chat, as before. Permanent, recorded at once: invalid key, model not found,
+  400/401/403/404/422, a refusal or malformed output, a 429 whose body says the
+  quota or billing is exhausted (`insufficient_quota`, "credit balance",
+  "exceeded your current quota"; an unknown 429 stays transient), and the
+  deadline this pass set itself (`AbortSignal.timeout`, 90 s interactive, 150 s
+  background: a `TimeoutError` or `AbortError`). A deadline abort means the chat
+  is too slow or long, and a retry would charge the user's key again for a
+  call whose usage was never recorded. The classifier is
+  `isTransientMemoryExtractionError` (`extract-error.ts`); the status wins over
+  `isRetryable`, it walks `lastError` and `cause` (the AI SDK wraps retried
+  failures in a `RetryError`), and `extractChatMemory` reports it as
+  `isTransientFailure` on a failed result.
 - **Client backoff.** The step response carries `isBusy` (the cron holds the
   job's lease) and `isRetryPending` (a chat waits for a later step). The
   client then waits 10 s (`MEMORY_BACKFILL_BUSY_BACKOFF_MS`) before the next
@@ -3391,7 +3399,8 @@ about 10 minutes, to fail a job, instead of a few seconds. A failure after
 tokens were spent (the call reached the model) is recorded at once so the
 usage is counted.
 
-**Accepted.** A chat-specific timeout (a very long chat) is also transient by
-class; it gets one retry and then counts as failed. The interactive drive
-shares the attempt budget with the cron, which is why the client backs off 10 s
-after a retry-pending step.
+**Accepted.** The interactive drive shares the attempt budget with the cron,
+which is why the client backs off 10 s after a retry-pending step. Our own
+deadline (`TimeoutError`) is not transient: a chat that hits it is recorded as
+failed at once rather than paid for twice with no usage recorded, so "before
+tokens were spent" stays true for every retried chat.

@@ -204,4 +204,16 @@ describe('memory backfill sweep plugin', () => {
 
     expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
   })
+
+  it('still emits a 500 event when the sweep throws', async () => {
+    const { createLogger, loggerEmit } = createLoggerMock()
+
+    mocks.sweepBackfillJobs.mockRejectedValue(new Error('sweep failed'))
+
+    const { runMemoryBackfillSweepJob } = await loadModule()
+
+    await runMemoryBackfillSweepJob({ controller, config, createLogger })
+
+    expect(loggerEmit).toHaveBeenCalledWith({ status: 500 })
+  })
 })

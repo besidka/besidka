@@ -40,16 +40,74 @@ describe('isTransientMemoryExtractionError', () => {
       .toBe(false)
   })
 
-  it('treats a timeout or abort anywhere in the cause chain as transient',
-    () => {
-      const timeout = Object.assign(new Error('timed out'), {
-        name: 'TimeoutError',
-      })
-      const wrapped = new Error('generation failed', { cause: timeout })
-
-      expect(isTransientMemoryExtractionError(timeout)).toBe(true)
-      expect(isTransientMemoryExtractionError(wrapped)).toBe(true)
+  it('treats the deadline this pass set itself as permanent', () => {
+    const timeout = Object.assign(new Error('timed out'), {
+      name: 'TimeoutError',
     })
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' })
+    const wrapped = new Error('generation failed', { cause: timeout })
+
+    expect(isTransientMemoryExtractionError(timeout)).toBe(false)
+    expect(isTransientMemoryExtractionError(abort)).toBe(false)
+    expect(isTransientMemoryExtractionError(wrapped)).toBe(false)
+  })
+
+  it('treats a provider side 504 or 408 as transient', () => {
+    expect(isTransientMemoryExtractionError(httpError(504))).toBe(true)
+    expect(isTransientMemoryExtractionError(httpError(408))).toBe(true)
+    expect(isTransientMemoryExtractionError(retryError(httpError(504))))
+      .toBe(true)
+  })
+
+  it('lets the status win over isRetryable', () => {
+    expect(
+      isTransientMemoryExtractionError(httpError(400, { isRetryable: true })),
+    ).toBe(false)
+  })
+
+  it('follows a cause chain to its verdict', () => {
+    const wrapped = new Error('outer', {
+      cause: new Error('middle', { cause: httpError(401) }),
+    })
+    const wrappedRateLimit = new Error('outer', { cause: httpError(429) })
+
+    expect(isTransientMemoryExtractionError(wrapped)).toBe(false)
+    expect(isTransientMemoryExtractionError(wrappedRateLimit)).toBe(true)
+  })
+
+  it.each([
+    ['OpenAI', '{"error":{"code":"insufficient_quota","type":"insufficient_quota"}}'],
+    ['Google', '{"error":{"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota, please check your plan and billing details."}}'],
+    ['Anthropic', '{"error":{"message":"Your credit balance is too low"}}'],
+  ])('treats a %s 429 for exhausted quota as permanent', (_provider, body) => {
+    expect(
+      isTransientMemoryExtractionError(httpError(429, { responseBody: body })),
+    ).toBe(false)
+    expect(
+      isTransientMemoryExtractionError(
+        retryError(httpError(429, { responseBody: body })),
+      ),
+    ).toBe(false)
+  })
+
+  it('reads a quota code from the parsed data too', () => {
+    expect(
+      isTransientMemoryExtractionError(
+        httpError(429, { data: { error: { code: 'insufficient_quota' } } }),
+      ),
+    ).toBe(false)
+  })
+
+  it('keeps a plain or unreadable 429 transient', () => {
+    expect(
+      isTransientMemoryExtractionError(
+        httpError(429, { responseBody: '{"error":{"code":"rate_limit_exceeded"}}' }),
+      ),
+    ).toBe(true)
+    expect(
+      isTransientMemoryExtractionError(httpError(429, { responseBody: '<html>' })),
+    ).toBe(true)
+  })
 
   it('treats a retryable call error without a status as transient', () => {
     const connection = Object.assign(new Error('Cannot connect to API'), {
@@ -60,14 +118,21 @@ describe('isTransientMemoryExtractionError', () => {
     expect(isTransientMemoryExtractionError(connection)).toBe(true)
   })
 
-  it('treats a network TypeError as transient but not a code bug', () => {
-    expect(isTransientMemoryExtractionError(new TypeError('fetch failed')))
-      .toBe(true)
-    expect(
-      isTransientMemoryExtractionError(
-        new TypeError('Cannot read properties of undefined'),
-      ),
-    ).toBe(false)
+  it.each([
+    'fetch failed',
+    'Network connection lost.',
+    'socket hang up',
+    'read ECONNRESET',
+  ])('treats the TypeError "%s" as transient', (message) => {
+    expect(isTransientMemoryExtractionError(new TypeError(message))).toBe(true)
+  })
+
+  it.each([
+    'Cannot read properties of undefined',
+    'networkSettings is not a function',
+    'socketId is undefined',
+  ])('does not treat the TypeError "%s" as a network failure', (message) => {
+    expect(isTransientMemoryExtractionError(new TypeError(message))).toBe(false)
   })
 
   it('treats refusals, malformed output and unknown values as permanent', () => {
