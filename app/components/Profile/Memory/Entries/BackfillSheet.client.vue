@@ -450,7 +450,7 @@
                 />
                 <Icon
                   v-else
-                  name="lucide:brain"
+                  name="lucide:book-user"
                   size="16"
                 />
               </template>

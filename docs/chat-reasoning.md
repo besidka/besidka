@@ -8,7 +8,7 @@ Scope:
 
 Main files:
 - `shared/utils/reasoning.ts`
-- `app/components/ChatInput/ReasoningTrigger.vue`
+- `app/components/ChatInput/ToolsMenu/ReasoningSection.vue`
 - `app/components/ChatInput.client.vue`
 - `app/components/Chat/Reasoning.vue`
 - `app/composables/chat.ts`
@@ -268,8 +268,12 @@ Note:
 ## Persistence and sync
 
 ### Reasoning effort (chat-level preference)
-- Key: `settings_reasoning_level` (local storage).
-- Saved in `useChat`.
+- The default comes from `useUserSetting().defaultReasoningLevel` (server
+  backed, with the legacy `settings_reasoning_level` local storage value as a
+  fallback), resolved by `resolveInitialReasoningLevel()`.
+- Picking a level in the chat input changes only the current chat. It is
+  saved as the default only through the menu's "Save as default" toggle or
+  the Preferences page (see `docs/chats/chat-input-tools-menu.md`).
 - Sent with each user message and persisted in `messages.reasoning`.
 
 ### Reasoning expanded (UI preference)

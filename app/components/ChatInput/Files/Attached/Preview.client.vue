@@ -1,9 +1,9 @@
 <template>
   <div
-    v-if="hasAnyFiles"
+    v-if="hasAnyItems"
     class="overflow-hidden attached-files mb-1.5"
     role="region"
-    :aria-label="`${totalFilesCount === 1 ? 'File' : 'Files'}`"
+    :aria-label="regionLabel"
   >
     <!-- Screen reader announcements -->
     <div
@@ -18,7 +18,15 @@
     <div
       ref="carouselRef"
       class="carousel flex gap-1.5 w-full py-1 px-0 rounded-box"
+      :class="{ [END_FADE_MASK_CLASS]: isEndFadeVisible }"
     >
+      <ChatInputSettingTile
+        v-for="tile in tiles"
+        :key="tile.id"
+        :tile="tile"
+        @open="(section, origin) => emit('open-tile', section, origin)"
+        @remove="emit('remove-tile', $event)"
+      />
       <!-- Completed/attached files -->
       <div
         v-for="file in files"
@@ -270,18 +278,30 @@
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
 import type { UploadingFile } from '~/composables/chat-files'
+import type {
+  ChatInputTile,
+  ChatInputTileId,
+  ToolsSection,
+} from '~/types/chat-input-tools'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   files: Pick<FileMetadata, 'storageKey' | 'name' | 'type' | 'size'>[]
   uploadingFiles?: Map<string, UploadingFile>
   uploadingCount?: number
-}>()
+  tiles?: ChatInputTile[]
+}>(), {
+  uploadingFiles: undefined,
+  uploadingCount: undefined,
+  tiles: () => [],
+})
 
 const emit = defineEmits<{
-  remove: [fileId: string]
-  removeAll: []
-  cancel: [fileId: string]
-  retry: [fileId: string]
+  'remove': [fileId: string]
+  'removeAll': []
+  'cancel': [fileId: string]
+  'retry': [fileId: string]
+  'open-tile': [section: ToolsSection | null, origin: HTMLElement]
+  'remove-tile': [id: ChatInputTileId]
 }>()
 
 const carouselRef = useTemplateRef<HTMLDivElement>('carouselRef')
@@ -302,6 +322,22 @@ const hasAnyFiles = computed<boolean>(() => {
     || uploadingFilesArray.value.length > 0
 })
 
+const hasAnyItems = computed<boolean>(() => {
+  return hasAnyFiles.value || props.tiles.length > 0
+})
+
+const regionLabel = computed<string>(() => {
+  const filesLabel = totalFilesCount.value === 1 ? 'File' : 'Files'
+
+  if (!props.tiles.length) {
+    return filesLabel
+  }
+
+  return hasAnyFiles.value
+    ? `Active settings and ${filesLabel.toLowerCase()}`
+    : 'Active settings'
+})
+
 const totalFilesCount = computed<number>(() => {
   return props.files.length + uploadingFilesArray.value.length
 })
@@ -309,6 +345,74 @@ const totalFilesCount = computed<number>(() => {
 const showRemoveAll = computed<boolean>(() => {
   return totalFilesCount.value > 1
 })
+
+const END_FADE_THRESHOLD_PX = 2
+const END_FADE_MASK_CLASS
+  = '[mask-image:linear-gradient(to_right,#000_calc(100%-1.75rem),transparent)]'
+const hasHiddenContentOnRight = shallowRef<boolean>(false)
+
+const isEndFadeVisible = computed<boolean>(() => {
+  return hasHiddenContentOnRight.value && !showRemoveAll.value
+})
+
+function updateHiddenContentOnRight() {
+  const carousel = carouselRef.value
+
+  if (!carousel) {
+    hasHiddenContentOnRight.value = false
+
+    return
+  }
+
+  const hiddenWidth = carousel.scrollWidth
+    - carousel.scrollLeft
+    - carousel.clientWidth
+
+  hasHiddenContentOnRight.value = hiddenWidth > END_FADE_THRESHOLD_PX
+}
+
+/**
+ * Lets a mouse wheel scroll the row sideways. Only a mostly vertical wheel
+ * on a row that can still move is captured, so the page keeps scrolling
+ * once the row reaches either end.
+ */
+function scrollCarouselWithWheel(event: WheelEvent) {
+  const carousel = carouselRef.value
+
+  if (!carousel || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) {
+    return
+  }
+
+  const maxScrollLeft = carousel.scrollWidth - carousel.clientWidth
+  const nextScrollLeft = Math.min(
+    maxScrollLeft,
+    Math.max(0, carousel.scrollLeft + event.deltaY),
+  )
+
+  if (maxScrollLeft <= 0 || nextScrollLeft === carousel.scrollLeft) {
+    return
+  }
+
+  event.preventDefault()
+  carousel.scrollLeft = nextScrollLeft
+}
+
+useEventListener(carouselRef, 'scroll', updateHiddenContentOnRight, {
+  passive: true,
+})
+useEventListener(carouselRef, 'wheel', scrollCarouselWithWheel, {
+  passive: false,
+})
+useResizeObserver(carouselRef, updateHiddenContentOnRight)
+
+watch(
+  [() => props.tiles.length, totalFilesCount, carouselRef],
+  async () => {
+    await nextTick()
+    updateHiddenContentOnRight()
+  },
+  { flush: 'post' },
+)
 
 const uploadStatusAnnouncement = computed<string>(() => {
   const uploadingCount = props.uploadingCount || 0

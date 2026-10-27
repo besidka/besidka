@@ -335,7 +335,11 @@ export function useUserSetting() {
       ) {
         serverDefaultReasoningLevel.value = null
       }
+
+      return
     }
+
+    prefStorage.removeItem('settings_reasoning_level')
   }
 
   async function syncForUser(userId: string) {

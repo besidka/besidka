@@ -136,8 +136,8 @@ async function installTriggerRaceSampler(page: Page): Promise<void> {
 
     function sample() {
       sampledWindow.__triggerRaceSamples?.push({
-        webSearchTrigger: isPaintedAndVisible('web-search-trigger'),
-        reasoningTrigger: isPaintedAndVisible('reasoning-trigger'),
+        webSearchTrigger: isPaintedAndVisible('chat-input-tile-search'),
+        reasoningTrigger: isPaintedAndVisible('chat-input-tile-reasoning'),
       })
       sampledWindow.__triggerRaceSamplerHandle
         = requestAnimationFrame(sample)
@@ -320,13 +320,15 @@ async ({ page, context }) => {
   })
 
   await expect(createImageButton).toBeVisible({ timeout: 15_000 })
-  await expect(createImageButton).toHaveClass(/btn-active/)
+  await expect(
+    page.locator('[data-testid="chat-input-tile-image-remove"]'),
+  ).toHaveCount(0)
 
   await expect(
-    page.locator('[data-testid="web-search-trigger"]'),
+    page.locator('[data-testid="chat-input-tile-search"]'),
   ).toHaveCount(0)
   await expect(
-    page.locator('[data-testid="reasoning-trigger"]'),
+    page.locator('[data-testid="chat-input-tile-reasoning"]'),
   ).toHaveCount(0)
 
   let capturedBody: Record<string, unknown> | null = null
@@ -508,7 +510,9 @@ async ({ page, context }) => {
   })
 
   await expect(createImageButton).toBeVisible({ timeout: 15_000 })
-  await expect(createImageButton).toHaveClass(/btn-active/)
+  await expect(
+    page.locator('[data-testid="chat-input-tile-image-remove"]'),
+  ).toHaveCount(0)
 
   const samples = await stopTriggerRaceSampler(page)
 
@@ -564,7 +568,9 @@ test('never paints the search/reasoning triggers reloading an existing '
   })
 
   await expect(createImageButton).toBeVisible({ timeout: 15_000 })
-  await expect(createImageButton).toHaveClass(/btn-active/)
+  await expect(
+    page.locator('[data-testid="chat-input-tile-image-remove"]'),
+  ).toHaveCount(0)
 
   const samples = await stopTriggerRaceSampler(page)
 

@@ -182,27 +182,19 @@ async function openFilesModal(
   page: Page,
   action: 'Upload new files' | 'Select existing files',
 ): Promise<void> {
-  const trigger = page.getByTestId('files-trigger')
   const actionTestId = action === 'Upload new files'
-    ? 'files-open-upload'
-    : 'files-open-select'
+    ? 'tools-action-attach'
+    : 'tools-action-library'
 
-  await trigger.hover()
-  await trigger.evaluate((element) => {
-    const details = element.closest('details') as HTMLDetailsElement | null
+  await expect(page.getByTestId('files-modal')).toBeAttached({ timeout: 10000 })
+  await page.getByTestId('chat-input-tools-trigger').click()
 
-    if (details) {
-      details.open = true
-    }
-  })
-
-  const actionButton = page.getByTestId(actionTestId)
+  const actionButton = page
+    .getByTestId('chat-input-tools-panel')
+    .getByTestId(actionTestId)
 
   await expect(actionButton).toBeVisible()
-  await expect(page.getByTestId('files-modal')).toBeAttached({ timeout: 10000 })
-  await actionButton.evaluate((element) => {
-    ;(element as HTMLButtonElement).click()
-  })
+  await actionButton.click()
   await expect(page.getByTestId('files-modal')).toBeVisible()
   await page.getByRole('radio', {
     name: action,
@@ -267,7 +259,8 @@ test.describe('Chat Files', () => {
     await setupFileApiMocks(page)
     await page.goto('/chats/new')
     await waitForHydration(page)
-    await expect(page.getByTestId('files-trigger')).toBeVisible()
+    await expect(page.getByTestId('chat-input-tools-trigger'))
+      .toBeVisible()
   })
 
   test('uploads a file and shows attached preview', async ({ page }) => {

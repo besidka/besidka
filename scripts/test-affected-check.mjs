@@ -69,7 +69,7 @@ export function getAffectedTests(changedFiles) {
   const affectedTests = new Set()
   const filesModuleTests = [
     'tests/unit/components/Chat/Files.spec.ts',
-    'tests/unit/components/ChatInput/Files/Trigger.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
@@ -96,6 +96,16 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
+  ]
+  const chatInputToolsTests = [
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+    'tests/unit/components/ChatInput/SettingTile.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/composables/scroll-edge-fade.spec.ts',
   ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
@@ -153,9 +163,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-new-auto-web-search.spec.ts',
     'tests/unit/composables/auto-web-search.spec.ts',
     'tests/unit/components/Chat/AutoWebSearchChip.spec.ts',
-    'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
-    'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
-    'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
   ]
@@ -327,7 +337,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/History/ChatRow.spec.ts',
     'tests/unit/components/Sidebar/Development.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
-    'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
   ]
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
@@ -339,10 +349,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/chat-image-preview-guard.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
-    'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
-    'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
-    'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
-    'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+    'tests/unit/utils/chat-input-tiles.spec.ts',
+    'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
     'tests/e2e/chat/exa-search-level.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/image-generation-lock.spec.ts',
@@ -997,7 +1007,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/DeepResearchClarify.spec.ts',
     'tests/unit/components/Chat/DeepResearchMeta.spec.ts',
     'tests/unit/components/Chat/DeepResearchPending.spec.ts',
-    'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
+    'tests/unit/components/ChatInput/SettingTile.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
     'tests/unit/components/prose/A.spec.ts',
@@ -1015,15 +1025,15 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(WebSearch(Trigger|MenuItems)|ToolbarMore\.client|ReasoningTrigger)\.vue)|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/Preview\.client)\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
     },
     {
       pattern: /^shared\/utils\/exa-search-level\.ts$/,
       tests: [
-        'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
-        'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
-        'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
+        'tests/unit/utils/chat-input-tiles.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
         'tests/e2e/chat/exa-search-level.spec.ts',
       ],
     },
@@ -1031,7 +1041,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/utils\/search-rate\.ts$/,
       tests: [
         'tests/unit/utils/search-rate.spec.ts',
-        'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
         'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
       ],
     },
@@ -1153,8 +1163,8 @@ export function getAffectedTests(changedFiles) {
         ...providerReasoningWiringTests,
         'tests/unit/composables/chat-input.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
-        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
-        'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu/ReasoningSection.spec.ts',
+        'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
         'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
         'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
         'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -1655,7 +1665,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(shared\/utils\/(auto-web-search|jev-policy)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/(chats\/auto-web-search|jev\/send-path|ai\/message-usage)\.ts|server\/api\/v1\/chats\/(new\/index\.put|\[slug\]\/index\.post)\.ts|app\/composables\/(auto-web-search|chat)\.ts|app\/components\/Chat\/AutoWebSearchChip\.vue|app\/components\/ChatInput(\.client\.vue|\/(WebSearch(Trigger|MenuItems)|ToolbarMore\.client)\.vue)|app\/pages\/chats\/(new|\[slug\])\.vue)$/,
+      pattern: /^(shared\/utils\/(auto-web-search|jev-policy)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/(chats\/auto-web-search|jev\/send-path|ai\/message-usage)\.ts|server\/api\/v1\/chats\/(new\/index\.put|\[slug\]\/index\.post)\.ts|app\/composables\/(auto-web-search|chat)\.ts|app\/components\/Chat\/AutoWebSearchChip\.vue|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile)\.vue)|app\/pages\/chats\/(new|\[slug\])\.vue)$/,
       tests: autoWebSearchTests,
     },
     {
@@ -2406,7 +2416,7 @@ export function getAffectedTests(changedFiles) {
       tests: [...memoryExtractionTests, ...memoryModelTests],
     },
     {
-      pattern: /^(server\/(api\/v1\/chats\/\[slug\]\/memory\.patch|utils\/memory\/(chat-memory-filters|chat-deletion)|db\/schemas\/chats|api\/v1\/chats\/(new\/index\.put|branch\/index\.post))|app\/(composables|utils)\/chat-memory-exclusion|app\/composables\/history|shared\/types\/history\.d|tests\/setup\/helpers\/(search-index-db|history-fixtures))\.ts$|^app\/(components\/(History\/(ActionsDropdown|ChatRow)|Sidebar\/Development|ChatInput\.client|ChatInput\/ToolbarMore\.client)|pages\/chats\/(new|\[slug\]))\.vue$/,
+      pattern: /^(server\/(api\/v1\/chats\/\[slug\]\/memory\.patch|utils\/memory\/(chat-memory-filters|chat-deletion)|db\/schemas\/chats|api\/v1\/chats\/(new\/index\.put|branch\/index\.post))|app\/(composables|utils)\/chat-memory-exclusion|app\/composables\/history|shared\/types\/history\.d|tests\/setup\/helpers\/(search-index-db|history-fixtures))\.ts$|^app\/(components\/(History\/(ActionsDropdown|ChatRow)|Sidebar\/Development|ChatInput\.client|ChatInput\/ToolsMenu\.client|ChatInput\/ToolsMenu\/Content|ChatInput\/SettingTile)|pages\/chats\/(new|\[slug\]))\.vue$/,
       tests: memoryChatExclusionTests,
     },
     {
@@ -2478,17 +2488,24 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/components\/ChatInput\/ReasoningTrigger\.vue$/,
+      pattern:
+        /^app\/components\/ChatInput\/ToolsMenu\/(ReasoningSection|Segmented|ToggleRow)\.vue$/,
       tests: [
         ...profileSettingsTests,
-        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+        ...chatInputToolsTests,
       ],
     },
     {
-      pattern: /^app\/components\/ChatInput\/ReasoningMenuItems\.vue$/,
+      pattern:
+        /^(app\/components\/ChatInput(\.client|\/ToolsMenu\.client|\/ToolsMenu\/.+|\/SettingTile|\/Files\/Attached\/Preview\.client)\.vue|app\/utils\/chat-input-tiles\.ts|app\/types\/chat-input-tools\.d\.ts|app\/composables\/scroll-edge-fade\.ts|app\/assets\/icons\/exa\.svg)$/,
       tests: [
-        ...profileSettingsTests,
-        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+        ...chatInputToolsTests,
+        'tests/unit/components/ProviderIcon.spec.ts',
+        'tests/e2e/chat/exa-search-level.spec.ts',
+        'tests/e2e/chat/gateway-image-generation.spec.ts',
+        'tests/e2e/chat/files.spec.ts',
+        'tests/e2e/chat/files-carousel-scroll.spec.ts',
+        'tests/e2e/projects/picker.spec.ts',
       ],
     },
     {

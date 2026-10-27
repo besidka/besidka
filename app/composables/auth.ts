@@ -183,6 +183,7 @@ export function useAuth() {
             // chat_input persists whenever 'preferences' consent is granted.
             draftBackup.clear()
             preferenceStorage.removeItem('chat_input')
+            preferenceStorage.removeItem('settings_reasoning_level')
             useLegalConsent().bindUser(null)
 
             if (!redirectTo) {
@@ -222,6 +223,7 @@ export function useAuth() {
       // an unsent draft belonging to a user who just asked to be erased.
       draftBackup.clear()
       preferenceStorage.removeItem('chat_input')
+      preferenceStorage.removeItem('settings_reasoning_level')
     },
     options,
     fetchSession,

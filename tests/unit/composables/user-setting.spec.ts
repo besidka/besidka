@@ -1145,10 +1145,11 @@ describe('useUserSetting just-in-time consent request', () => {
           },
         ]])
 
+        expect(localStorage.getItem('settings_reasoning_level')).toBeNull()
+
         await syncForUser('user-1')
 
         expect(patchCalls()).toHaveLength(1)
-        expect(localStorage.getItem('settings_reasoning_level')).toBe('high')
       })
 
     it('migrates a local off level as an explicit choice', async () => {
@@ -1220,6 +1221,7 @@ describe('useUserSetting just-in-time consent request', () => {
         expect(defaultReasoningLevel.value).toBeNull()
         expect(isSettingsLoaded.value).toBe(true)
         expect(errorMessageMock).not.toHaveBeenCalled()
+        expect(localStorage.getItem('settings_reasoning_level')).toBe('high')
       })
 
     it('persists a chosen level and updates optimistically', async () => {

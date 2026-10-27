@@ -133,8 +133,8 @@ describe('ProviderIcon', () => {
     expect(await getIconName('zai-org')).toBe('thesvg:zhipu')
   })
 
-  it('resolves a real icon for the brave search provider, and leaves exa '
-    + 'on the badge fallback since it has no verified brand icon yet',
+  it('resolves a real icon for the brave search provider, and renders the '
+    + 'inline Exa mark for exa',
   async () => {
     expect(await getIconName('brave')).toBe('simple-icons:brave')
 
@@ -143,6 +143,7 @@ describe('ProviderIcon', () => {
     })
 
     expect(wrapper.findComponent({ name: 'NuxtIcon' }).exists()).toBe(false)
-    expect(wrapper.get('span').text()).toBe('Ex')
+    expect(wrapper.find('svg').exists()).toBe(true)
+    expect(wrapper.find('span').exists()).toBe(false)
   })
 })

@@ -59,7 +59,7 @@
       v-if="isOwnedChatPage"
       ghost
       :icon-name="isRouteChatMemoryExcluded
-        ? 'lucide:eye'
+        ? CHAT_MEMORY_ICON
         : CHAT_MEMORY_EXCLUSION_ICON"
       :icon-only="true"
       :title="isRouteChatMemoryExcluded

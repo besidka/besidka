@@ -119,33 +119,17 @@ async function setupSlowUploadMocks(page: Page): Promise<void> {
 }
 
 async function openUploadModal(page: Page): Promise<void> {
-  const trigger = page.getByTestId('files-trigger')
-  const moreOptionsButton = page.getByLabel('More options')
+  await expect(page.getByTestId('files-modal')).toBeAttached({
+    timeout: 10_000,
+  })
+  await page.getByTestId('chat-input-tools-trigger').click()
 
-  if (await trigger.isVisible()) {
-    await trigger.hover()
-    await trigger.evaluate((element) => {
-      const details = element.closest('details') as HTMLDetailsElement | null
+  const actionButton = page
+    .getByTestId('chat-input-tools-panel')
+    .getByTestId('tools-action-attach')
 
-      if (details) {
-        details.open = true
-      }
-    })
-
-    const actionButton = page.getByTestId('files-open-upload')
-
-    await expect(actionButton).toBeVisible()
-    await expect(page.getByTestId('files-modal')).toBeAttached({
-      timeout: 10_000,
-    })
-    await actionButton.evaluate((element) => {
-      ;(element as HTMLButtonElement).click()
-    })
-  } else {
-    await expect(moreOptionsButton).toBeVisible()
-    await moreOptionsButton.click()
-    await page.getByRole('button', { name: 'Attach files' }).click()
-  }
+  await expect(actionButton).toBeVisible()
+  await actionButton.click()
 
   await expect(page.getByTestId('files-modal')).toBeVisible()
   await page.getByRole('radio', { name: 'Upload new files', exact: true }).check()
@@ -265,10 +249,8 @@ test.describe('Files carousel scroll during upload', () => {
     await setupSlowUploadMocks(page)
     await page.goto('/chats/new')
     await waitForHydration(page)
-    await expect.poll(async () => {
-      return await page.getByTestId('files-trigger').isVisible()
-        || await page.getByLabel('More options').isVisible()
-    }, { timeout: 5_000 }).toBe(true)
+    await expect(page.getByTestId('chat-input-tools-trigger'))
+      .toBeVisible({ timeout: 5_000 })
   })
 
   test('carousel stays at scrollLeft 0 on initial file add (all waiting)', async ({
