@@ -35,7 +35,7 @@
             </span>
           </span>
           <span
-            v-if="!isPushStateKnown"
+            v-if="!isPushReady"
             class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
             data-testid="preferences-push-skeleton"
           />
@@ -83,7 +83,7 @@
             closest one they support.
           </p>
           <div
-            v-if="!isSettingsLoaded"
+            v-if="!isReasoningReady"
             class="skeleton skeleton--default h-8 w-full rounded-box"
             data-testid="preferences-reasoning-skeleton"
           />
@@ -122,7 +122,7 @@
             class="min-h-4 text-xs text-base-content/60"
             data-testid="default-reasoning-product-default"
           >
-            <template v-if="isSettingsLoaded && defaultReasoningLevel === null">
+            <template v-if="isReasoningReady && defaultReasoningLevel === null">
               Product default
             </template>
           </p>
@@ -150,7 +150,7 @@
             </span>
           </span>
           <span
-            v-if="!isSettingsLoaded"
+            v-if="!isReasoningReady"
             class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
             data-testid="preferences-expanded-skeleton"
           />
@@ -167,7 +167,7 @@
         </label>
         <label
           class="ms-6 flex items-start justify-between gap-4 border-s ps-4"
-          :class="reasoningExpanded ? 'cursor-pointer' : 'opacity-60'"
+          :class="isAutoHideAvailable ? 'cursor-pointer' : 'opacity-60'"
         >
           <span class="grid gap-1">
             <span class="inline-flex items-center gap-2">
@@ -191,7 +191,7 @@
             </span>
           </span>
           <span
-            v-if="!isSettingsLoaded"
+            v-if="!isReasoningReady"
             class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
             data-testid="preferences-auto-hide-skeleton"
           />
@@ -262,12 +262,29 @@ const {
   toggle: togglePush,
 } = usePushToggle()
 
+const isMounted = shallowRef<boolean>(false)
+
+const isReasoningReady = computed<boolean>(() => {
+  return isMounted.value && isSettingsLoaded.value
+})
+
+const isAutoHideAvailable = computed<boolean>(() => {
+  return isReasoningReady.value && reasoningExpanded.value
+})
+
+const isPushReady = computed<boolean>(() => {
+  return isMounted.value && isPushStateKnown.value
+})
+
 const isPushToggleDisabled = computed<boolean>(() => {
-  return !isPushSupported.value || isPushBlocked.value || isPushPending.value
+  return !isPushReady.value
+    || !isPushSupported.value
+    || isPushBlocked.value
+    || isPushPending.value
 })
 
 const pushStatusNote = computed<string>(() => {
-  if (!isPushStateKnown.value) {
+  if (!isPushReady.value) {
     return ''
   }
 
@@ -311,4 +328,8 @@ async function onAutoHideChange(event: Event) {
 
   await setReasoningAutoHide(input.checked)
 }
+
+onMounted(() => {
+  isMounted.value = true
+})
 </script>

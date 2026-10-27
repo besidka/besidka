@@ -134,6 +134,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/settings.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
+    'tests/e2e/profile/preferences.spec.ts',
   ]
   const memoryContractTests = [
     'tests/unit/utils/memory-policy.spec.ts',
@@ -1328,7 +1329,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/user-setting\.ts$/,
-      tests: [...profileSettingsTests, ...modelsTriggerTests],
+      tests: [
+        ...profileSettingsTests,
+        ...modelsTriggerTests,
+        'tests/e2e/profile/preferences.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/user-keys\.ts$/,
@@ -2045,7 +2050,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/layouts\/profile\.vue$/,
-      tests: ['tests/unit/layouts/profile.spec.ts'],
+      tests: [
+        'tests/unit/layouts/profile.spec.ts',
+        'tests/e2e/profile/preferences.spec.ts',
+      ],
     },
     {
       pattern: /^app\/pages\/profile\/(preferences|settings)\.vue$/,

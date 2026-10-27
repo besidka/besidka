@@ -83,7 +83,11 @@ async function loadSettings(overrides: Partial<ServerSettings> = {}) {
 }
 
 async function mountPage() {
-  return await mountSuspended(PreferencesPage)
+  const wrapper = await mountSuspended(PreferencesPage)
+
+  await flushPromises()
+
+  return wrapper
 }
 
 function checkedLevels(wrapper: Awaited<ReturnType<typeof mountPage>>) {
