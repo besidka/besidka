@@ -327,6 +327,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/memory-backfill.spec.ts',
     'tests/integration/api/memory-import.spec.ts',
     'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
+    'tests/integration/server/memory-backfill-sweep-plugin.spec.ts',
     'tests/integration/api/memory-extract-now.spec.ts',
     'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
     'tests/unit/utils/memory/instruct.spec.ts',
@@ -2455,7 +2456,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^server\/(utils\/memory\/(extract.*|backfill.*)|plugins\/memory-extraction-sweep|api\/v1\/memory\/(extract-now\.post|import\.post|backfill\/.*))\.ts$/,
+      pattern: /^server\/(utils\/memory\/(extract.*|backfill.*)|plugins\/memory-(extraction|backfill)-sweep|api\/v1\/memory\/(extract-now\.post|import\.post|backfill\/.*))\.ts$/,
       tests: memoryExtractionTests,
     },
     {

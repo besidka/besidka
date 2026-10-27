@@ -94,10 +94,10 @@ describe('memory backfill utils', () => {
   })
 
   describe('getBackfillRetryAfterMs', () => {
-    it('defaults to the ten second cooldown', () => {
+    it('defaults to the three second drive cooldown', () => {
       expect(getBackfillRetryAfterMs(createRejection(429, 'Slow', 'x')))
         .toBe(MEMORY_BACKFILL_COOLDOWN_MS)
-      expect(MEMORY_BACKFILL_COOLDOWN_MS).toBe(10_000)
+      expect(MEMORY_BACKFILL_COOLDOWN_MS).toBe(3_000)
     })
 
     it('honours a Retry-After header in seconds', () => {

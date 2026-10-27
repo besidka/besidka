@@ -229,8 +229,9 @@ export async function claimBackfillCooldown(input: {
   const kv = useKV()
   const key = cooldownKey(input.userId, input.action)
   const lastAt = Number(await kv.get(key))
-  const cooldownMs = MEMORY_EXTRACTION_LIMITS.backfillDriveCooldownSeconds
-    * 1000
+  const cooldownMs = input.action === 'start'
+    ? MEMORY_EXTRACTION_LIMITS.backfillStartCooldownSeconds * 1000
+    : MEMORY_LIMITS.backfillDriveCooldownMs
 
   if (Number.isFinite(lastAt) && Date.now() - lastAt < cooldownMs) {
     throw createError({
@@ -1011,7 +1012,7 @@ async function claimJobLease(
   db: DbClient,
   job: JobRef,
   leaseMs: number,
-): Promise<boolean> {
+): Promise<Date | null> {
   const jobs = schema.memoryBackfillJobs
   const now = new Date()
   const rows = await db.update(jobs)
@@ -1020,20 +1021,26 @@ async function claimJobLease(
       ownRunningJob(job.id, job.userId),
       or(isNull(jobs.leaseUntil), lt(jobs.leaseUntil, now)),
     ))
-    .returning({ id: jobs.id })
+    .returning({ leaseUntil: jobs.leaseUntil })
 
-  return rows.length > 0
+  return rows[0]?.leaseUntil ?? null
 }
 
 async function releaseJobLease(
   db: DbClient,
   job: JobRef,
+  claimedUntil: Date,
   logger?: BackfillLogger,
 ): Promise<void> {
+  const jobs = schema.memoryBackfillJobs
+
   try {
-    await db.update(schema.memoryBackfillJobs)
+    await db.update(jobs)
       .set({ leaseUntil: null })
-      .where(ownJob(job.id, job.userId))
+      .where(and(
+        ownJob(job.id, job.userId),
+        eq(jobs.leaseUntil, claimedUntil),
+      ))
   } catch (exception) {
     logger?.set({
       attributes: {
@@ -1054,7 +1061,9 @@ async function releaseJobLease(
  * with one atomic conditional UPDATE of `lease_until` (step deadline plus the
  * model timeout plus a margin), so the cron tick and the interactive drive
  * can never step the same job at once; the loser returns `isBusy`, and a
- * dead invocation's claim simply expires. The lease is cleared in `finally`.
+ * dead invocation's claim simply expires. The lease is cleared in `finally`
+ * only while it still holds the value this step wrote, so a step that outlived
+ * its lease never clears the claim of the step that took the job over.
  * An interactive (request-bound) step gives each chat a model timeout of the
  * remaining step budget clamped to 30-90 s and starts no chat with less than
  * 30 s left; the cron path keeps the background timeout. The chat's attempt
@@ -1080,9 +1089,9 @@ export async function advanceBackfill(
     : MEMORY_EXTRACTION_LIMITS.generationTimeoutBackgroundMs
   const leaseMs = input.deadlineMs + modelTimeoutMs
     + MEMORY_BACKFILL_LIMITS.leaseMarginMs
-  const isClaimed = await claimJobLease(db, input.job, leaseMs)
+  const claimedUntil = await claimJobLease(db, input.job, leaseMs)
 
-  if (!isClaimed) {
+  if (!claimedUntil) {
     const job = await readJob(db, input.job.id, input.job.userId)
 
     return {
@@ -1102,16 +1111,69 @@ export async function advanceBackfill(
       logger: input.logger,
     })
   } finally {
-    await releaseJobLease(db, input.job, input.logger)
+    await releaseJobLease(db, input.job, claimedUntil, input.logger)
   }
 }
 
+interface BackfillJobSlice {
+  step: AdvanceBackfillResult | null
+  chatsRequested: number
+}
+
+async function advanceBackfillSlice(
+  db: DbClient,
+  job: JobRef,
+  chatsRequested: number,
+  deadlineMs: number,
+  logger?: BackfillLogger,
+): Promise<BackfillJobSlice> {
+  try {
+    const step = await advanceBackfill({
+      job,
+      chatsLimit: chatsRequested,
+      deadlineMs,
+      db,
+      logger,
+    })
+
+    return { step, chatsRequested }
+  } catch (exception) {
+    logger?.set({
+      attributes: {
+        memoryBackfill: {
+          phase: 'sweep',
+          jobId: job.id,
+          error: memoryExtractionErrorSummary(exception),
+        },
+      },
+    })
+
+    return { step: null, chatsRequested }
+  }
+}
+
+function isSliceContinuable(slice: BackfillJobSlice): boolean {
+  const { step } = slice
+
+  return !!step
+    && !step.isBusy
+    && step.job?.status === 'running'
+    && step.chatsProcessed >= slice.chatsRequested
+}
+
 /**
- * Services running backfill jobs for the cron tick: the least recently
- * progressed jobs first, up to `backfillJobsPerTick`, `backfillChatsPerTick`
- * chats each, inside the remaining runtime budget. A job that throws is
- * counted as failed for the tick and never stops the loop. Reports counts
- * only.
+ * Services running backfill jobs for a cron tick until the runtime budget or
+ * the per-tick chat cap is spent. Up to `backfillJobsPerTick` jobs are read,
+ * least recently progressed first, and served round-robin in slices of
+ * `backfillChatsPerJobSlice` chats, each slice its own leased step, so one
+ * long job never starves the others and every job keeps strictly sequential
+ * chats. A job leaves the rotation when its lease is held elsewhere, when it
+ * finished, or when a slice processed fewer chats than asked (deadline, a
+ * leased chat to retry next tick, or the end of its queue). Chats start only
+ * while budget is left; a started chat keeps the background model timeout,
+ * covered by its lease, so an overrunning tick can delay but never
+ * double-step a job. A job that throws is counted as failed for the tick and
+ * never stops the loop. Reports counts only.
  */
 export async function sweepBackfillJobs(
   input: SweepBackfillJobsInput,
@@ -1130,7 +1192,7 @@ export async function sweepBackfillJobs(
     return result
   }
 
-  const jobs = await db
+  let rotation: JobRef[] = await db
     .select({
       id: schema.memoryBackfillJobs.id,
       userId: schema.memoryBackfillJobs.userId,
@@ -1149,46 +1211,58 @@ export async function sweepBackfillJobs(
       asc(schema.memoryBackfillJobs.id),
     )
     .limit(limits.backfillJobsPerTick)
+  const servicedJobIds = new Set<string>()
 
-  for (const job of jobs) {
-    const remainingMs = input.maxRuntimeMs - (Date.now() - startedAt)
+  while (rotation.length > 0) {
+    const nextRotation: JobRef[] = []
 
-    if (remainingMs <= 0) {
-      break
-    }
+    for (const job of rotation) {
+      const remainingMs = input.maxRuntimeMs - (Date.now() - startedAt)
+      const remainingChats = limits.backfillChatsPerTick - result.chats
 
-    try {
-      const step = await advanceBackfill({
-        job,
-        chatsLimit: limits.backfillChatsPerTick,
-        deadlineMs: Math.min(limits.backfillStepDeadlineMs, remainingMs),
+      if (remainingMs <= 0 || remainingChats <= 0) {
+        result.jobs = servicedJobIds.size
+
+        return result
+      }
+
+      const slice = await advanceBackfillSlice(
         db,
-        logger: input.logger,
-      })
+        job,
+        Math.min(limits.backfillChatsPerJobSlice, remainingChats),
+        remainingMs,
+        input.logger,
+      )
 
-      result.jobs += 1
-      result.chats += step.chatsProcessed
+      if (!slice.step) {
+        result.failed += 1
 
-      if (step.job?.status === 'completed') {
+        continue
+      }
+
+      if (!slice.step.isBusy) {
+        servicedJobIds.add(job.id)
+      }
+
+      result.chats += slice.step.chatsProcessed
+
+      if (slice.step.job?.status === 'completed') {
         result.completed += 1
       }
 
-      if (step.job?.status === 'failed') {
+      if (slice.step.job?.status === 'failed') {
         result.failed += 1
       }
-    } catch (exception) {
-      result.failed += 1
-      input.logger?.set({
-        attributes: {
-          memoryBackfill: {
-            phase: 'sweep',
-            jobId: job.id,
-            error: memoryExtractionErrorSummary(exception),
-          },
-        },
-      })
+
+      if (isSliceContinuable(slice)) {
+        nextRotation.push(job)
+      }
     }
+
+    rotation = nextRotation
   }
+
+  result.jobs = servicedJobIds.size
 
   return result
 }

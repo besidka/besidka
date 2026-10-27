@@ -7,7 +7,7 @@ import type {
 import type { MemoryModelSource } from '#shared/types/memory.d'
 import { MEMORY_LIMITS } from '#shared/utils/memory-policy'
 
-export const MEMORY_BACKFILL_COOLDOWN_MS = 10_000
+export const MEMORY_BACKFILL_COOLDOWN_MS = MEMORY_LIMITS.backfillDriveCooldownMs
 
 const TINY_COST_THRESHOLD_USD = 0.01
 

@@ -41,17 +41,21 @@
           data-testid="memory-update-now"
           @click="updateMemoryNow"
         >
-          <span
+          <Icon
             v-if="isUpdating"
-            class="loading loading-spinner size-4"
+            name="lucide:loader-circle"
+            size="16"
+            class="shrink-0 animate-spin"
+            data-testid="memory-update-now-spinner"
           />
           <Icon
             v-else
             name="lucide:refresh-cw"
             size="16"
+            class="shrink-0"
           />
           <span
-            class="grid"
+            class="grid text-left"
             data-testid="memory-update-now-labels"
           >
             <span
@@ -82,17 +86,21 @@
             data-testid="memory-backfill"
             @click="openBackfill"
           >
-            <span
+            <Icon
               v-if="isBackfillRunning"
-              class="loading loading-spinner size-4"
+              name="lucide:loader-circle"
+              size="16"
+              class="shrink-0 animate-spin"
+              data-testid="memory-backfill-spinner"
             />
             <Icon
               v-else
               name="lucide:history"
               size="16"
+              class="shrink-0"
             />
             <span
-              class="grid"
+              class="grid text-left"
               data-testid="memory-backfill-labels"
             >
               <span
@@ -104,7 +112,7 @@
                 {{ BACKFILL_IDLE_LABEL }}
               </span>
               <span
-                class="col-start-1 row-start-1"
+                class="col-start-1 row-start-1 tabular-nums"
                 :class="{ invisible: !isBackfillBusy }"
                 :aria-hidden="!isBackfillBusy"
                 data-testid="memory-backfill-busy-label"
@@ -171,16 +179,20 @@
                 data-testid="memory-backfill-menu"
                 @click="chooseMenuAction(openBackfill)"
               >
-                <span
+                <Icon
                   v-if="isBackfillRunning"
-                  class="loading loading-spinner size-4"
+                  name="lucide:loader-circle"
+                  size="16"
+                  class="shrink-0 animate-spin"
+                  data-testid="memory-backfill-menu-spinner"
                 />
                 <Icon
                   v-else
                   name="lucide:history"
                   size="16"
+                  class="shrink-0"
                 />
-                {{ backfillLabel }}
+                <span class="tabular-nums">{{ backfillLabel }}</span>
               </button>
             </li>
             <li>
@@ -266,7 +278,7 @@ const BACKFILL_REFRESH_INTERVAL_MS = 20_000
 
 const BACKFILL_IDLE_LABEL = 'Build memory from past chats'
 
-const BACKFILL_BUSY_PLACEHOLDER = 'Building…'
+const BACKFILL_BUSY_PLACEHOLDER = 'Building memory…'
 
 const backfillHintId = useId()
 const moreMenu = useTemplateRef<HTMLDetailsElement>('moreMenu')
@@ -313,7 +325,7 @@ const backfillProgressLabel = computed<string>(() => {
     return BACKFILL_BUSY_PLACEHOLDER
   }
 
-  return `Building… ${job.processedChats}/${job.totalChats}`
+  return `${BACKFILL_BUSY_PLACEHOLDER} ${job.processedChats}/${job.totalChats}`
 })
 
 const backfillLabel = computed<string>(() => {

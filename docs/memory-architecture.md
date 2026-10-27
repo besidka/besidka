@@ -1621,11 +1621,51 @@ messages / 36000 chars of a chat, `memory_extracted_at` advanced only when it
 was NULL, no attempted/failures stamping. The cron path uses a 150 s model
 timeout, the request-bound drive endpoint at most 90 s (or the remaining step
 budget). A D1 step claim (`lease_until`, one atomic `UPDATE ... RETURNING`)
-serialises the cron tick and the drive endpoint. Memory read by the model is
-redacted of never-store data first (all chat passes, not only import). The sweep services up to 5 running jobs per
-tick, 3 chats each, from the budget left after the normal batch (a permanently
-full normal batch can starve cron-driven backfill; the drive endpoint always
-progresses).
+serialises the cron ticks and the drive endpoint; it is released only while
+it still holds the value that step wrote, so a step that outlived its lease
+never clears the claim of the step that took the job over. Memory read by the
+model is redacted of never-store data first (all chat passes, not only
+import).
+
+**Throughput (2026-10-27).** The first production run (200 chats, Claude
+Haiku, the TypeSafe AI pre-filter on) processed 29 chats in 12 minutes: the
+drive endpoint took 2 chats per step behind a 10 s cooldown, and the only
+background path was the `*/5` sweep at 3 chats per tick, about 5.5 hours for
+200 chats. Now:
+
+- A dedicated `* * * * *` cron (`server/plugins/memory-backfill-sweep.ts`,
+  `NUXT_MEMORY_BACKFILL_SWEEP_ENABLED`, `NUXT_MEMORY_BACKFILL_SWEEP_MAX_RUNTIME_MS`
+  = 45 s) runs `sweepBackfillJobs` every minute. The `*/5` sweep still
+  services backfill from the budget its normal batch leaves; at :00, :05 and
+  so on both fire and the job lease serialises them.
+- `sweepBackfillJobs` reads up to `backfillJobsPerTick` (20) running jobs,
+  least recently progressed first, and serves them round-robin in slices of
+  `backfillChatsPerJobSlice` (5) chats, each slice its own leased step, until
+  the tick budget or `backfillChatsPerTick` (60) is spent. A job leaves the
+  rotation when its lease is held elsewhere, when it finished, or when a slice
+  processed fewer chats than asked. Chats inside a job stay strictly
+  sequential (see the decision log). A chat starts only while budget is left
+  and keeps the 150 s background model timeout; the lease covers it, so a slow
+  last chat can delay the next tick's turn for that job but never double-step
+  it, and is far inside the 15-minute cron wall limit.
+- The drive endpoint runs up to `backfillChatsPerStep` (10) chats per step,
+  starting none with less than 30 s of its 60 s budget left, behind a 3 s
+  drive cooldown (`MEMORY_LIMITS.backfillDriveCooldownMs`, shared with the
+  client loop); the start cooldown stays 10 s.
+
+Expected rates for one job (sequential chats): a chat that is too short or
+that the pre-filter skips costs about 0.5 to 2.5 s, a full extraction with a
+fast model about 5 to 15 s. With the sheet open that is about 25 to 60 chats
+per minute for skip-heavy history and 5 to 10 for extraction-heavy history;
+in the background (45 s of starts per minute) about 20 to 60 and 4 to 8.
+The owner's run (28 of 29 chats skipped) finishes 200 chats in roughly 5 to
+10 minutes either way. Limits checked: cron CPU is 30 s per invocation for
+intervals under an hour (the 60-chat cap bounds it; per-chat CPU is estimated,
+not measured, at tens of ms, since waiting on D1, KV and the providers does
+not count), a
+paid Worker has 10,000 subrequests per invocation (a chat is about 30), and
+each chat holds at most one model stream plus sequential D1/KV calls, well
+under the 6 simultaneous connections.
 
 API (all session-scoped; POSTs have the cross-site guard):
 
@@ -1639,8 +1679,9 @@ API (all session-scoped; POSTs have the cross-site guard):
   drives, so a retry or a second tab can never begin a second full-history
   run.
 - `POST /api/v1/memory/backfill/step` -> `{ job }`: drives ONE bounded step of
-  the running job inline (2 chats, 60 s step budget, model timeout min(90 s,
-  remaining), 10 s per-user cooldown -> 429); 409 `No running backfill` when
+  the running job inline (up to 10 chats, 60 s step budget, no chat started
+  with under 30 s left, model timeout min(90 s, remaining), 3 s per-user
+  cooldown -> 429); 409 `No running backfill` when
   none runs (it never starts one). This is how previews (no crons) progress
   when the UI calls it repeatedly.
 - `POST /api/v1/memory/backfill/cancel` -> `{ job }`, idempotent.
@@ -3265,3 +3306,35 @@ issue is named.
   budget for chat history on 128k to 262k context models. #540: moving the
   deep-research clarifier from `generateObject` to `generateText` with
   `output`.
+
+### Backfill throughput without parallel chats (2026-10-27)
+
+**Decision.** A backfill job processes its chats strictly one after the
+other, also after the throughput fix (3.15). Speed comes from a dedicated
+minute cron, from using each tick's budget instead of a fixed 3 chats, from
+larger interactive steps (10 instead of 2) and from a 3 s drive cooldown.
+
+**Why not 2 or 3 chats of one job at once.** Each pass loads the user's memory
+index before the model call and applies its ops against that snapshot.
+`extract-apply.ts` drops an update whose base changed meanwhile as `conflict`
+and refuses a create whose slug a parallel pass just took, so two passes over
+neighbouring chats (often the same topic) would silently lose ops or write
+near-duplicates; sequential passes see each other's entries and merge. The
+cursor and the single `retried_chat_id` attempt marker also assume one chat in
+flight. Parallelism across different users' jobs is safe for memory but needs
+the explicit binding capture of the async-context rules and a connection
+budget (each chat holds a model stream, plus Jev calls with up to 3 in
+flight); it is not needed while jobs are few.
+
+**Revisit when** extraction-heavy jobs (most chats reach the model) must go
+faster than about 8 chats per minute. Options, cheapest first: run the Jev
+pre-filter for the next chats while the current chat's model call runs
+(checks overlap, writes stay sequential); serve different users' jobs
+concurrently within a tick; batch several short chats into one pass (also
+the cost lever noted in 3.15).
+
+**Spinner.** The toolbar's running states use a CSS-animated
+`lucide:loader-circle` instead of daisyUI's `loading-spinner`, whose SMIL mask
+starts as a dot (`stroke-dasharray 0,150`, round caps) and next to the
+reserved-width label read as a stray dot; the stacked labels are left-aligned
+so the icon sits next to the text.

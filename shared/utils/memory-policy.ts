@@ -45,6 +45,7 @@ export const MEMORY_LIMITS = {
   indexTokenBudget: 2500,
   backfillMaxChats: 200,
   backfillMaxTokens: 4_000_000,
+  backfillDriveCooldownMs: 3_000,
 } as const
 
 export const neverStoreKinds = [

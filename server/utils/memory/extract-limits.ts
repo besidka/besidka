@@ -31,11 +31,12 @@ export const MEMORY_EXTRACTION_LIMITS = {
   importMaxChars: MEMORY_IMPORT_MAX_CHARS,
   importCooldownSeconds: 60,
   importMinChunkBudgetMs: 10_000,
-  backfillChatsPerStep: 2,
-  backfillChatsPerTick: 3,
-  backfillJobsPerTick: 5,
+  backfillChatsPerStep: 10,
+  backfillChatsPerTick: 60,
+  backfillChatsPerJobSlice: 5,
+  backfillJobsPerTick: 20,
   backfillStepDeadlineMs: 60000,
-  backfillDriveCooldownSeconds: 10,
+  backfillStartCooldownSeconds: 10,
   extractionEnableCooldownSeconds: 10,
 } as const
 
