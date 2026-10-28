@@ -21,7 +21,7 @@
           </h2>
           <a
             :href="downloadUrl"
-            class="btn btn-sm btn-accent"
+            class="btn btn-sm btn-accent max-xs:btn-circle"
             :aria-label="`Download ${filename}`"
             data-testid="image-preview-download"
           >
@@ -41,15 +41,23 @@
         </header>
 
         <div
-          class="flex min-h-0 grow items-center justify-center overflow-hidden rounded-box bg-base-200"
+          class="relative min-h-0 grow overflow-hidden rounded-box bg-base-200"
+          data-testid="image-preview-body"
         >
-          <img
-            v-if="isDialogVisible"
-            :src="src"
-            :alt="alt"
-            class="max-h-full max-w-full object-contain"
-            data-testid="image-preview-image"
+          <div
+            ref="zoomSurfaceRef"
+            class="js-image-zoom-surface absolute inset-0 flex touch-none items-center justify-center"
+            data-testid="image-preview-surface"
           >
+            <img
+              v-if="isDialogVisible"
+              :src="src"
+              :alt="alt"
+              class="max-h-full max-w-full select-none object-contain"
+              draggable="false"
+              data-testid="image-preview-image"
+            >
+          </div>
         </div>
       </div>
 
@@ -61,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   src: string
   downloadUrl: string
   alt: string
@@ -71,9 +79,14 @@ defineProps<{
 const isOpen = defineModel<boolean>('open', { required: true })
 const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const closeButtonRef = useTemplateRef<HTMLButtonElement>('closeButtonRef')
+const zoomSurfaceRef = useTemplateRef<HTMLElement>('zoomSurfaceRef')
 const titleId = useId()
 const previouslyFocusedElement = shallowRef<HTMLElement | null>(null)
 const isDialogVisible = shallowRef<boolean>(false)
+const {
+  setup: setupZoom,
+  destroy: destroyZoom,
+} = useImageZoom(zoomSurfaceRef)
 
 function restoreFocus() {
   previouslyFocusedElement.value?.focus()
@@ -117,6 +130,7 @@ async function updateDialog(shouldOpen: boolean) {
 }
 
 function onClose() {
+  destroyZoom()
   isDialogVisible.value = false
   isOpen.value = false
   restoreFocus()
@@ -138,4 +152,18 @@ onMounted(async () => {
 watch(isOpen, updateDialog, {
   flush: 'post',
 })
+
+watch(
+  [isDialogVisible, () => props.src],
+  ([isVisible]) => {
+    if (!isVisible) {
+      destroyZoom()
+
+      return
+    }
+
+    setupZoom()
+  },
+  { flush: 'post' },
+)
 </script>

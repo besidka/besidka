@@ -1684,6 +1684,109 @@ describe('Chat/Reasoning', () => {
         .toBe(mediumWrapper.get('summary svg').html())
     })
 
+    describe('with a tool step and hidden reasoning tokens at level off', () => {
+      const preRetrievalParts = [
+        {
+          type: 'tool-search_chats',
+          toolCallId: 'past-chat-pre-retrieval-user-1',
+          state: 'output-available',
+          input: { query: 'invoice' },
+          output: {
+            results: [
+              { title: 'A', url: '/chats/a', date: '' },
+            ],
+          },
+        },
+        { type: 'step-start' },
+        { type: 'text', text: 'Answer', state: 'done' },
+      ] as UIMessage['parts']
+
+      async function mountWithStatus(
+        status: 'ready' | 'streaming',
+        isTurnThinkingHeld: boolean,
+      ) {
+        return await mountSuspended(Reasoning, {
+          props: {
+            message: createMessageWithUsage(preRetrievalParts, 1200),
+            status,
+            reasoningLevel: 'off',
+            turnStartedAt: Date.now(),
+            reasoningAccumulatedMs: 0,
+            reasoningSegmentStartedAt: isTurnThinkingHeld ? Date.now() : 0,
+            isTurnThinkingHeld,
+          },
+          global: {
+            stubs: {
+              MDCCached: true,
+            },
+          },
+        })
+      }
+
+      it('renders one summary row titled Reasoned with the medium icon',
+        async () => {
+          const wrapper = await mountWithStatus('ready', false)
+          const mediumWrapper = await mountSuspended(Reasoning, {
+            props: {
+              message: createMessageWithUsage(preRetrievalParts, 1200),
+              status: 'ready',
+              reasoningLevel: 'medium',
+              turnStartedAt: Date.now(),
+              reasoningAccumulatedMs: 0,
+              reasoningSegmentStartedAt: 0,
+              isTurnThinkingHeld: false,
+            },
+            global: {
+              stubs: {
+                MDCCached: true,
+              },
+            },
+          })
+
+          expect(wrapper.findAll('summary[id^="reasoning-"]')).toHaveLength(1)
+          expect(findIndicator(wrapper).exists()).toBe(false)
+          expect(headerSpan(wrapper).text())
+            .toContain('Reasoned · 1,200 tokens')
+          expect(headerSpan(wrapper).text()).not.toContain('Steps')
+          expect(wrapper.get('[data-testid="hidden-reasoning-summary"]')
+            .attributes('title')).toContain('reasoned before answering')
+          expect(wrapper.get('summary svg').html())
+            .toBe(mediumWrapper.get('summary svg').html())
+        })
+
+      it('keeps the Working title while the turn is still live', async () => {
+        const wrapper = await mountWithStatus('streaming', true)
+
+        expect(wrapper.findAll('summary[id^="reasoning-"]')).toHaveLength(1)
+        expect(findIndicator(wrapper).exists()).toBe(false)
+        expect(headerSpan(wrapper).text()).toContain('Working')
+        expect(headerSpan(wrapper).text()).not.toContain('Reasoned')
+      })
+
+      it('keeps the slashed icon when no tokens were reasoned', async () => {
+        const wrapper = await mountSuspended(Reasoning, {
+          props: {
+            message: createMessageWithUsage(preRetrievalParts, 0),
+            status: 'ready',
+            reasoningLevel: 'off',
+            turnStartedAt: Date.now(),
+            reasoningAccumulatedMs: 0,
+            reasoningSegmentStartedAt: 0,
+            isTurnThinkingHeld: false,
+          },
+          global: {
+            stubs: {
+              MDCCached: true,
+            },
+          },
+        })
+
+        expect(headerSpan(wrapper).text()).toContain('Steps')
+        expect(wrapper.find('[data-testid="hidden-reasoning-summary"]')
+          .exists()).toBe(false)
+      })
+    })
+
     it('never shows the indicator on a user message', async () => {
       const wrapper = await mountWithMessage(createMessageWithUsage(
         [{ type: 'text', text: 'Question', state: 'done' }],

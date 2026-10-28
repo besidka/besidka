@@ -58,7 +58,7 @@ describe('Profile/Memory/Entries/Row', () => {
       .toEqual(expect.arrayContaining([
         'line-clamp-2',
         'sm:line-clamp-1',
-        'text-base-content/70',
+        'text-base-content/80',
       ]))
   })
 
@@ -68,6 +68,7 @@ describe('Profile/Memory/Entries/Row', () => {
 
     expect(row.classes()).toEqual(expect.arrayContaining([
       'bubble',
+      'dark:bg-white/5',
       'rounded-box',
       'p-3',
     ]))
@@ -81,7 +82,10 @@ describe('Profile/Memory/Entries/Row', () => {
     const meta = wrapper.get('[data-testid="memory-entry-meta"]')
 
     expect(meta.text()).toBe('Updated just now')
-    expect(meta.classes()).toContain('whitespace-nowrap')
+    expect(meta.classes()).toEqual(expect.arrayContaining([
+      'whitespace-nowrap',
+      'text-base-content/80',
+    ]))
     expect(wrapper.text()).not.toContain('Saved in chat')
   })
 

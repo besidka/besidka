@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="hiddenReasoningTokens > 0"
+    v-if="hiddenReasoningTokens > 0 && reasoningSteps.length === 0"
     data-testid="hidden-reasoning-indicator"
     class="my-1 text-sm"
     :title="HIDDEN_REASONING_TITLE"
@@ -32,6 +32,10 @@
             class="size-4 text-base-content/80"
           />
         <span
+          :title="isHiddenReasoningSummary ? HIDDEN_REASONING_TITLE : undefined"
+          :data-testid="
+            isHiddenReasoningSummary ? 'hidden-reasoning-summary' : undefined
+          "
           class="flex min-w-0 items-baseline gap-1 font-medium text-xs"
           :class="[
             isThinkingStreaming
@@ -60,6 +64,12 @@
             class="shrink-0"
           >
             ({{ reasoningLabel }})
+          </span>
+          <span
+            v-if="isHiddenReasoningSummary"
+            class="sr-only"
+          >
+            {{ HIDDEN_REASONING_TITLE }}
           </span>
         </span>
         <Icon
@@ -235,7 +245,10 @@ interface ReasoningStep {
 const reasoningIcon = computed<string>(() => {
   const level = props.reasoningLevel
 
-  if (level === 'off' && hasReasoningKindStep.value) {
+  if (
+    level === 'off'
+    && (hasReasoningKindStep.value || hiddenReasoningTokens.value > 0)
+  ) {
     return 'SvgoThinkMedium'
   }
 
@@ -385,9 +398,17 @@ const latestStreamingTitleCandidate = computed<string>(() => {
   )
 })
 
+const isHiddenReasoningSummary = computed<boolean>(() => {
+  return !isThinkingStreaming.value && hiddenReasoningTokens.value > 0
+})
+
 const mainTitle = computed<string>(() => {
   if (hasReasoningKindStep.value) {
     return isThinkingStreaming.value ? 'Reasoning' : 'Reasoning process'
+  }
+
+  if (isHiddenReasoningSummary.value) {
+    return `Reasoned · ${formatTokenCount(hiddenReasoningTokens.value)} tokens`
   }
 
   return isThinkingStreaming.value ? 'Working' : 'Steps'

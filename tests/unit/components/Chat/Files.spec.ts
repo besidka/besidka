@@ -13,6 +13,20 @@ import { HIDDEN_FILE_MEDIA_TYPE } from '#shared/utils/files'
 import Files from '../../../../app/components/Chat/Files.vue'
 import ImagePreview from '../../../../app/components/Chat/ImagePreview.client.vue'
 
+vi.mock('@panzoom/panzoom', () => {
+  return {
+    default: vi.fn(() => {
+      return {
+        destroy: vi.fn(),
+        getScale: vi.fn(() => 1),
+        reset: vi.fn(),
+        resetStyle: vi.fn(),
+        zoomToPoint: vi.fn(),
+      }
+    }),
+  }
+})
+
 const LazyImagePreview = defineAsyncComponent(() => {
   return Promise.resolve(ImagePreview)
 })

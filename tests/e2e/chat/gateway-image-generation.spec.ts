@@ -316,7 +316,7 @@ async ({ page, context }) => {
   await waitForHydration(page)
 
   const createImageButton = page.getByRole('button', {
-    name: 'Image creation is required for this model',
+    name: 'Image generation is always on for this model',
   })
 
   await expect(createImageButton).toBeVisible({ timeout: 15_000 })
@@ -506,7 +506,7 @@ async ({ page, context }) => {
   await waitForHydration(page)
 
   const createImageButton = page.getByRole('button', {
-    name: 'Image creation is required for this model',
+    name: 'Image generation is always on for this model',
   })
 
   await expect(createImageButton).toBeVisible({ timeout: 15_000 })
@@ -564,7 +564,7 @@ test('never paints the search/reasoning triggers reloading an existing '
   await waitForHydration(page)
 
   const createImageButton = page.getByRole('button', {
-    name: 'Image creation is required for this model',
+    name: 'Image generation is always on for this model',
   })
 
   await expect(createImageButton).toBeVisible({ timeout: 15_000 })

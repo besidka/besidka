@@ -15,6 +15,7 @@ function createTile(overrides: Partial<ChatInputTile>): ChatInputTile {
     removeLabel: 'Turn off web search',
     isNeutral: false,
     isAuto: false,
+    isLocked: false,
     isDisabled: false,
     ...overrides,
   }
@@ -82,5 +83,75 @@ describe('ChatInput/Files/Attached/Preview', () => {
 
     expect(wrapper.emitted('open-tile')?.[0]?.[0]).toBe('search')
     expect(wrapper.emitted('remove-tile')).toEqual([['search']])
+  })
+
+  it('renders tiles as pills while there are no files', async () => {
+    const wrapper = await mountSuspended(Preview, {
+      props: { files: [], tiles: [createTile({})] },
+    })
+
+    expect(
+      wrapper.get('[data-testid="chat-input-tile-search-body"]')
+        .attributes('data-variant'),
+    ).toBe('pill')
+  })
+
+  it('renders tiles as pills when only a completed upload is listed',
+    async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [],
+          tiles: [createTile({})],
+          uploadingFiles: new Map([[
+            'u1',
+            {
+              id: 'u1',
+              file: new File(['x'], 'x.png', { type: 'image/png' }),
+              progress: 100,
+              status: 'completed',
+            },
+          ]]) as never,
+        },
+      })
+
+      expect(
+        wrapper.get('[data-testid="chat-input-tile-search-body"]')
+          .attributes('data-variant'),
+      ).toBe('pill')
+    })
+
+  it('switches every tile to the square size once a file is attached',
+    async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [files[0]!],
+          tiles: [
+            createTile({ id: 'project', section: 'project' }),
+            createTile({}),
+          ],
+        },
+      })
+
+      expect(
+        wrapper.get('[data-testid="chat-input-tile-project-body"]')
+          .attributes('data-variant'),
+      ).toBe('square')
+      expect(
+        wrapper.get('[data-testid="chat-input-tile-search-body"]')
+          .attributes('data-variant'),
+      ).toBe('square')
+    })
+
+  it('switches back to pills when the last file is removed', async () => {
+    const wrapper = await mountSuspended(Preview, {
+      props: { files: [files[0]!], tiles: [createTile({})] },
+    })
+
+    await wrapper.setProps({ files: [] })
+
+    expect(
+      wrapper.get('[data-testid="chat-input-tile-search-body"]')
+        .attributes('data-variant'),
+    ).toBe('pill')
   })
 })

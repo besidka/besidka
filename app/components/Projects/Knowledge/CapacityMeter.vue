@@ -21,7 +21,7 @@
       </p>
       <progress
         class="progress w-full"
-        :class="state.isOverBudget ? 'progress-warning' : 'progress-primary'"
+        :class="state.isOverBudget ? 'progress-warning' : 'progress-accent'"
         :value="state.fillPercentage"
         max="100"
         aria-valuemin="0"

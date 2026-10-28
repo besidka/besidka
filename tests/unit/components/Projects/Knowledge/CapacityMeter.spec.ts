@@ -79,7 +79,7 @@ describe('Projects/Knowledge/CapacityMeter', () => {
         .toContain('16% of Test Model')
       expect(bar.attributes('aria-label'))
         .toBe('Project knowledge · 10k tokens')
-      expect(bar.classes()).toContain('progress-primary')
+      expect(bar.classes()).toContain('progress-accent')
     })
 
     it('leaves the cached price out when caching is not available', async () => {

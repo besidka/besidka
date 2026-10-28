@@ -24,6 +24,7 @@
         v-for="tile in tiles"
         :key="tile.id"
         :tile="tile"
+        :variant="hasAnyFiles ? 'square' : 'pill'"
         @open="(section, origin) => emit('open-tile', section, origin)"
         @remove="emit('remove-tile', $event)"
       />

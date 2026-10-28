@@ -1264,7 +1264,7 @@ describe('chats new page with a real ChatInput and a gateway image-only '
     )
 
     expect(imageTile.attributes('aria-label'))
-      .toBe('Image creation is required for this model')
+      .toBe('Image generation is always on for this model')
     expect(wrapper.find(
       '[data-testid="chat-input-tile-image-remove"]',
     ).exists()).toBe(false)

@@ -36,7 +36,7 @@
     <div
       class="
         order-3 col-span-2 flex flex-wrap items-center gap-x-2 gap-y-1
-        text-xs text-base-content/60 sm:order-2 sm:col-span-1
+        text-xs text-base-content/70 sm:order-2 sm:col-span-1
         sm:justify-end
       "
     >

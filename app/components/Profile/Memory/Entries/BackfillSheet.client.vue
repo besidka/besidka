@@ -228,7 +228,7 @@
                 </span>
               </div>
               <progress
-                class="progress progress-primary w-full"
+                class="progress progress-accent w-full"
                 role="progressbar"
                 aria-label="Chats processed"
                 aria-valuemin="0"

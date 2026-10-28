@@ -44,6 +44,16 @@ window) closes it.
   the search field. Focusing the field would open the iOS keyboard over most
   of the list before the user has seen it. The dropdown keeps focusing search
   on desktop devices.
+- `autofocus` alone is not enough on iOS. iOS WebKit's `showModal()` ignores
+  the box's `autofocus` and focuses the first link or text field in the
+  dialog (buttons are skipped), which was the search field for any user with
+  keys and the "Add a key" link for a user without. Chromium and macOS
+  WebKit (Playwright) honour the box, so only a real iPhone or the iOS
+  Simulator shows it (reproduced on iOS 18.5 Safari, 2026-10-28). The panel
+  is therefore `inert` during the render before `showModal()`, the box is
+  focused explicitly right after it, and the panel is released in the same
+  call. The sheet spec emulates the iOS behaviour with a `showModal` stub that
+  focuses the first non-inert link or field.
 - Fixed header: search with the filter toggle, the inline filter chips when
   open, and the provider chip row. Only the model list scrolls
   (`overscroll-contain`, edge fades from `useScrollEdgeFade`). The gateway

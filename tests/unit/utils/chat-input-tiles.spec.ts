@@ -158,20 +158,25 @@ describe('buildChatInputTiles', () => {
     })
   })
 
-  it('makes the image tile non-removable when image creation is required',
-    () => {
-      const [tile] = buildChatInputTiles(createState({
-        image: { enabled: true, required: true },
-        webSearch: { visible: false },
-        reasoning: { visible: false },
-      }))
+  it('makes the image tile non-removable and locked when image generation '
+    + 'is required', () => {
+    const [tile] = buildChatInputTiles(createState({
+      image: { enabled: true, required: true },
+      webSearch: { visible: false },
+      reasoning: { visible: false },
+    }))
 
-      expect(tile).toMatchObject({
-        id: 'image',
-        ariaLabel: 'Image creation is required for this model',
-        removeLabel: null,
-      })
+    expect(tile).toMatchObject({
+      id: 'image',
+      caption: 'Mode',
+      value: 'Image generation',
+      chipLabel: 'Image generation',
+      ariaLabel: 'Image generation is always on for this model',
+      removeLabel: null,
+      isLocked: true,
     })
+    expect(tile?.value).not.toMatch(/required/i)
+  })
 
   it('lets the user remove an optional image tile', () => {
     const [tile] = buildChatInputTiles(createState({
@@ -181,8 +186,12 @@ describe('buildChatInputTiles', () => {
     }))
 
     expect(tile).toMatchObject({
-      ariaLabel: 'Image creation on',
-      removeLabel: 'Turn off image creation',
+      caption: 'Mode',
+      value: 'Image generation',
+      chipLabel: 'Image generation',
+      ariaLabel: 'Image generation is on',
+      removeLabel: 'Turn off image generation',
+      isLocked: false,
     })
   })
 
@@ -414,5 +423,12 @@ describe('chat input tile helpers', () => {
       .toContain('bg-base-content/7')
     expect(getChatInputTileToneClass({ isNeutral: false }))
       .toContain('bg-accent/10')
+  })
+
+  it('darkens both tones in the dark theme to keep the text legible', () => {
+    expect(getChatInputTileToneClass({ isNeutral: true }))
+      .toContain('dark:bg-base-300/40')
+    expect(getChatInputTileToneClass({ isNeutral: false }))
+      .toContain('dark:bg-(--color-accent-bg)/60')
   })
 })

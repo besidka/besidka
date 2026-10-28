@@ -9,6 +9,11 @@ import {
   toReasoningEffort,
 } from './reasoning'
 
+const IMAGE_CONTROLLERS_SUPPORTING_NO_REASONING = new Set<string>([
+  'gpt-6-sol',
+  'gpt-6-luna',
+])
+
 export async function useOpenAI(
   userId: string,
   model: string,
@@ -101,6 +106,12 @@ export async function useOpenAI(
     requestedReasoning,
   )
 
+  function shouldDisableImageControllerReasoning(): boolean {
+    return requestedTools.includes('image_generation')
+      && reasoningLevel === 'off'
+      && IMAGE_CONTROLLERS_SUPPORTING_NO_REASONING.has(controllerModelId)
+  }
+
   function getProviderOptions(): SharedV2ProviderOptions {
     const result: SharedV2ProviderOptions = {}
 
@@ -114,6 +125,12 @@ export async function useOpenAI(
        */
       Object.assign(result, {
         reasoningSummary: 'detailed',
+      })
+    }
+
+    if (shouldDisableImageControllerReasoning()) {
+      Object.assign(result, {
+        reasoningEffort: 'none',
       })
     }
 
