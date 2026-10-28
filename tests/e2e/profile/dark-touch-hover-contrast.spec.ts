@@ -25,6 +25,7 @@ const runningJob = {
 
 test.use({
   ...devices['iPhone 13'],
+  defaultBrowserType: undefined,
   colorScheme: 'dark',
   serviceWorkers: 'block',
 })
