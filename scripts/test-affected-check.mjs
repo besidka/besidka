@@ -706,6 +706,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Memory/NeverKept.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/Essentials.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/BackfillSheet.spec.ts',
+    'tests/e2e/profile/dark-touch-hover-contrast.spec.ts',
     'tests/unit/components/Profile/Memory/Entries/ImportSheet.spec.ts',
     'tests/unit/components/Profile/Memory/CacheInfo.spec.ts',
     'tests/unit/components/Profile/Memory/ExtraChecks.spec.ts',
@@ -1843,6 +1844,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/e2e/settings/theme.spec.ts',
         'tests/e2e/settings/theme-tokens.spec.ts',
+        'tests/e2e/profile/dark-touch-hover-contrast.spec.ts',
       ],
     },
     {
