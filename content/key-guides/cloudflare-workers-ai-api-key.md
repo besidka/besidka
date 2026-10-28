@@ -8,17 +8,17 @@ updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Besidka needs two values from Cloudflare, an Account ID and an API token. Both come from the Workers AI page.
 video:
-  src: /videos/key-guide-cloudflare.mp4?v=3
-  poster: /key-guides/cloudflare.webp?v=3
+  src: /videos/key-guide-cloudflare.mp4?v=4
+  poster: /key-guides/cloudflare.webp?v=4
   duration: PT45S
   uploadDate: '2026-10-26'
   alt: Screen recording of the Cloudflare dashboard. Workers AI, the REST API page, the Create a Workers AI API Token drawer, the new token shown once and masked and the Account ID copied, then the Account ID, gateway ID and token pasted into Besidka. In a new chat the model picker opens, Cloudflare AI Gateway is picked in the Gateways bar, a model is chosen and a first answer follows.
   qualities:
-    - src: /videos/key-guide-cloudflare-1080.mp4?v=3
+    - src: /videos/key-guide-cloudflare-1080.mp4?v=4
       size: 1080
-    - src: /videos/key-guide-cloudflare.mp4?v=3
+    - src: /videos/key-guide-cloudflare.mp4?v=4
       size: 720
-    - src: /videos/key-guide-cloudflare-360.mp4?v=3
+    - src: /videos/key-guide-cloudflare-360.mp4?v=4
       size: 360
   markers:
     - time: "0:00"

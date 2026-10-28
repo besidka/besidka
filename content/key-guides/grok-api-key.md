@@ -8,17 +8,17 @@ updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Add a small prepaid balance, create a key in the xAI console, and chat with Grok.
 video:
-  src: /videos/key-guide-xai.mp4?v=2
-  poster: /key-guides/xai.webp?v=2
+  src: /videos/key-guide-xai.mp4?v=3
+  poster: /key-guides/xai.webp?v=3
   duration: PT34S
   uploadDate: '2026-10-26'
   alt: Screen recording of the xAI console. The API Keys page, the Create API key dialog with a name, the new key shown once, then the key pasted into Besidka and a first answer from Grok.
   qualities:
-    - src: /videos/key-guide-xai-1080.mp4?v=2
+    - src: /videos/key-guide-xai-1080.mp4?v=3
       size: 1080
-    - src: /videos/key-guide-xai.mp4?v=2
+    - src: /videos/key-guide-xai.mp4?v=3
       size: 720
-    - src: /videos/key-guide-xai-360.mp4?v=2
+    - src: /videos/key-guide-xai-360.mp4?v=3
       size: 360
   markers:
     - time: "0:00"

@@ -8,17 +8,17 @@ updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: One key for models from many providers, with a monthly spend budget you set yourself.
 video:
-  src: /videos/key-guide-vercel.mp4?v=3
-  poster: /key-guides/vercel.webp?v=3
+  src: /videos/key-guide-vercel.mp4?v=4
+  poster: /key-guides/vercel.webp?v=4
   duration: PT44S
   uploadDate: '2026-10-26'
   alt: Screen recording of Vercel AI Gateway. The API Keys page, the Create API Key dialog with a name and a $5 monthly budget, the new key shown once and masked, then the key pasted into Besidka. In a new chat the model picker opens, Vercel AI Gateway is picked in the Gateways bar, a model is chosen and a first answer follows.
   qualities:
-    - src: /videos/key-guide-vercel-1080.mp4?v=3
+    - src: /videos/key-guide-vercel-1080.mp4?v=4
       size: 1080
-    - src: /videos/key-guide-vercel.mp4?v=3
+    - src: /videos/key-guide-vercel.mp4?v=4
       size: 720
-    - src: /videos/key-guide-vercel-360.mp4?v=3
+    - src: /videos/key-guide-vercel-360.mp4?v=4
       size: 360
   markers:
     - time: "0:00"

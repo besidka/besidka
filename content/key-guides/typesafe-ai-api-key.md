@@ -8,17 +8,17 @@ updatedAt: '2026-10-26'
 checkedAt: '2026-10-26'
 summary: A TypeSafe AI key adds optional smart checks to Besidka, such as memory checks. It adds no chat models, and chats keep using your own provider keys.
 video:
-  src: /videos/key-guide-typesafe.mp4
-  poster: /key-guides/typesafe.webp
+  src: /videos/key-guide-typesafe.mp4?v=2
+  poster: /key-guides/typesafe.webp?v=2
   duration: PT34S
   uploadDate: '2026-10-26'
   alt: Screen recording of the TypeSafe AI console. The API keys page, the Create API key dialog with a key name, the new key shown once and masked, then the key pasted into Besidka and saved (the recording shows the tab under its earlier name, Memory checks; it is now called Smart checks). The Memory page then shows Memory checks with TypeSafe AI Jev on.
   qualities:
-    - src: /videos/key-guide-typesafe-1080.mp4
+    - src: /videos/key-guide-typesafe-1080.mp4?v=2
       size: 1080
-    - src: /videos/key-guide-typesafe.mp4
+    - src: /videos/key-guide-typesafe.mp4?v=2
       size: 720
-    - src: /videos/key-guide-typesafe-360.mp4
+    - src: /videos/key-guide-typesafe-360.mp4?v=2
       size: 360
   markers:
     - time: "0:00"

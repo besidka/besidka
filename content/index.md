@@ -27,10 +27,10 @@ carousel:
     alt: Model picker switched to OpenRouter, listing Anthropic models available through the gateway, next to Cloudflare AI Gateway and Vercel AI Gateway.
     caption: "Optional gateways: OpenRouter, Vercel, Cloudflare"
   - src: /carousel/web-search-prices.webp
-    alt: Search provider settings with prices per 1,000 searches for Brave, Exa and the built-in search of Gemini, Anthropic, OpenAI and DeepSeek.
+    alt: Search provider settings with prices per 1,000 searches for Brave, Exa Lite, Auto and Deep, and the built-in search of Gemini, Anthropic, OpenAI and DeepSeek.
     caption: Web search providers and their prices
   - src: /carousel/exa-search-levels.webp
-    alt: The web search menu with Exa selected and its three search levels, Lite $4/1k, Auto $7/1k and Deep $12/1k with Deep active, next to the message info cards for a Lite answer (~$0.004) and a Deep answer (~$0.012).
+    alt: The chat tools menu with Web search set to Exa and its depth row, Lite $4/1k, Auto $7/1k and Deep $12/1k with Deep active, next to the message info cards for a Lite answer (~$0.004) and a Deep answer (~$0.012).
     caption: Pick Lite, Auto or Deep for Exa web search, and see what each answer cost
   - src: /carousel/projects.webp
     alt: A project page with a Project knowledge panel listing two notes, a text file and a PDF under a capacity meter, next to the Project memory card with entries grouped as Essentials, Areas and Topics.
@@ -45,10 +45,10 @@ carousel:
     alt: A light-theme chat answer with a syntax-highlighted TypeScript snippet and a rendered sequence diagram of a Worker reading from KV and falling back to D1.
     caption: Highlighted code and rendered diagrams
   - src: /carousel/reasoning.webp
-    alt: An answer with its reasoning steps expanded and the reasoning effort set to High in the chat input.
+    alt: An answer with its reasoning steps expanded and a Reasoning High tile in the chat input, next to the tools menu open on its Reasoning section with High selected.
     caption: Reasoning steps and effort
   - src: /carousel/image-generation.webp
-    alt: A chat where Nano Banana 2 generated a flat illustration of a sunset over pink mountains.
+    alt: A chat where Nano Banana 2 generated a flat illustration of a sunset over pink mountains, with an Image tile above the message box.
     caption: Image generation in the chat
   - src: /carousel/deep-research.webp
     alt: A deep research report from Gemini Deep Research with its trace of searches and pages read.
