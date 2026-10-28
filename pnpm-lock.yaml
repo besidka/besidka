@@ -402,6 +402,15 @@ importers:
       '@commitlint/types':
         specifier: ^21.2.3
         version: 21.2.3
+      '@fontsource/atkinson-hyperlegible-mono':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/nunito':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@iconify-json/thesvg':
+        specifier: ^1.2.11
+        version: 1.2.11
       '@nuxt/kit':
         specifier: ^4.6.2
         version: 4.6.2(@nuxt/schema@4.6.2)(confbox@0.2.4)(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(magic-string@1.4.3)(mlly@1.8.2)(oxc-parser@0.153.0)(rolldown@1.2.12)(unplugin@3.4.0(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.4)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.2)(yaml@2.9.0)))
@@ -1880,6 +1889,12 @@ packages:
   '@fingerprintjs/botd@2.0.0':
     resolution: {integrity: sha512-yhuz23NKEcBDTHmGz/ULrXlGnbHenO+xZmVwuBkuqHUkqvaZ5TAA0kAgcRy4Wyo5dIBdkIf57UXX8/c9UlMLJg==}
 
+  '@fontsource/atkinson-hyperlegible-mono@5.3.0':
+    resolution: {integrity: sha512-7Iha5azCRXJVk4NdxbVdKAE+4p/rMJoW6dslvhktugDFPSp7kxFRGAavBtwtSTrnyNhKXW8w1NHgMnrh/6OshA==}
+
+  '@fontsource/nunito@5.3.0':
+    resolution: {integrity: sha512-vw9TaTQJ/zpEpKrsODuPmOvaVjXgdda6B+xXA4YqjrdeJ62MLgVoDerdRXFQHyBnSCt2yQ2nHKCHPP/Pv7Xq4Q==}
+
   '@hexagon/base64@1.1.28':
     resolution: {integrity: sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw==}
 
@@ -1905,6 +1920,9 @@ packages:
 
   '@iconify-json/lucide@1.2.145':
     resolution: {integrity: sha512-eYBZipY6g4bbJNyKBAEq1wBy3mJ2jKtI4O2K30ArO2lMpVDOEuQfu5aDZhiimj1+Q/mIrn3ZxnDeX1BbILxkwQ==}
+
+  '@iconify-json/thesvg@1.2.11':
+    resolution: {integrity: sha512-8EzFRS5xPg23lVrdOXOIKdrkapaXF/E3SJLJZdba7WbywbDm/yRNInXdHPyuBJOLEoHM9hEIn1EFwKsxvzE1OA==}
 
   '@iconify/collections@1.0.750':
     resolution: {integrity: sha512-dsjsQLm/rHsAxxMg0AFHqqCBLoYPJhqclRmB0qzlfHG2ahnipentuPW/auVwIDtvHPL9lAYTDZ9HPRFS9wkgQg==}
@@ -11957,6 +11975,10 @@ snapshots:
 
   '@fingerprintjs/botd@2.0.0': {}
 
+  '@fontsource/atkinson-hyperlegible-mono@5.3.0': {}
+
+  '@fontsource/nunito@5.3.0': {}
+
   '@hexagon/base64@1.1.28': {}
 
   '@humanfs/core@0.19.2':
@@ -11976,6 +11998,10 @@ snapshots:
   '@humanwhocodes/retry@0.4.3': {}
 
   '@iconify-json/lucide@1.2.145':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify-json/thesvg@1.2.11':
     dependencies:
       '@iconify/types': 2.0.0
 

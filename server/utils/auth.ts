@@ -7,7 +7,7 @@ import {
   oAuthProxy,
   twoFactor,
 } from 'better-auth/plugins'
-import { createAuthMiddleware, isAPIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { passkey } from '@better-auth/passkey'
 import { jwtVerify } from 'jose'
 import type {
@@ -40,6 +40,8 @@ import {
 type ServerAuth = ReturnType<typeof createAuth>
 
 let _auth: ServerAuth | undefined
+
+const IMAGE_REJECTING_PATHS = new Set(['/update-user', '/sign-up/email'])
 
 export function useServerAuth(): ServerAuth {
   if (!_auth) {
@@ -380,6 +382,17 @@ function createAuth() {
       },
     },
     hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (!IMAGE_REJECTING_PATHS.has(ctx.path)) {
+          return
+        }
+
+        if (ctx.body && 'image' in ctx.body) {
+          throw new APIError('BAD_REQUEST', {
+            message: 'Profile image cannot be changed',
+          })
+        }
+      }),
       after: createAuthMiddleware(async (ctx) => {
         try {
           if (ctx.path === '/verify-email') {

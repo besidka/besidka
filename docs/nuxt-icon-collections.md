@@ -69,25 +69,39 @@ Add a prefix to `iconCollections` in `nuxt.config.ts` the moment a new Iconify
 collection is used directly (`name="<prefix>:...">`, or a vendor icon-name map
 like `ProviderIcon.vue`'s `providerIconNames`). Skipping this doesn't break
 anything — `serverBundle.remote` still serves collections it can reach from
-the Worker, and the browser falls back to `api.iconify.design` for the rest
-(`fallbackToApi` is client-only, see below) — but it silently reintroduces the
+the Worker, and an icon outside the pinned collections no longer renders at all in the browser
+(`fallbackToApi` is `false`, see below), and it silently reintroduces the
 per-icon latency above for whatever uses that collection.
 
 `thesvg` is deliberately **not** in the list. It backs exactly one icon
-(`ProviderIcon.vue`'s Zhipu vendor mark, `thesvg:zhipu`) and isn't part of
-`@iconify/collections`, so it already resolves through the browser's Iconify
-API fallback regardless of this setting. Adding it to
+(`ProviderIcon.vue`'s Zhipu vendor mark, `thesvg:zhipu`). Adding it to
 `serverBundle.collections` would bundle its entire ~3.7k-icon set into the
-Worker just to serve that one icon.
+Worker just to serve that one icon. Instead `@iconify-json/thesvg` is a
+dev-only dependency and `icon.clientBundle.icons` lists `thesvg:zhipu`, so that
+single icon (about 0.3 KB) ships in the client bundle and needs no request at
+all. Any other icon from a non-pinned collection must be added the same way
+(or its collection added to `iconCollections`).
 
-## `fallbackToApi` is `'client-only'`
+## `fallbackToApi` is `false`
 
-`icon.fallbackToApi` is pinned to `'client-only'`, so the Worker never fetches
-upstream on the `/api/_nuxt_icon` route. An attacker-chosen collection or icon
-name there would otherwise turn the route into an unauthenticated outbound
-fetch and KV key generator. Server-side rendering still resolves icons from the
-bundled collections and `serverBundle.remote`. See
-`docs/security-audit-2026-10.md`.
+`icon.fallbackToApi` is pinned to `false`. Two reasons:
+
+- The browser never requests `api.iconify.design`. That host is a third party
+  and would receive every visitor's IP address (and the icon names they load)
+  without consent. With the fallback off, the browser only ever asks the
+  same-origin `/api/_nuxt_icon` route, and anything the bundles cannot serve
+  simply does not render.
+- The Worker never fetches upstream on `/api/_nuxt_icon`. An attacker-chosen
+  collection or icon name there would otherwise turn the route into an
+  unauthenticated outbound fetch and KV key generator. Server-side rendering
+  still resolves icons from the bundled collections and
+  `serverBundle.remote`. See `docs/security-audit-2026-10.md`.
+
+It was `'client-only'` before; that value is what sent browsers to
+`api.iconify.design` whenever the same-origin route had no answer. All icons in
+source use the four pinned prefixes except `thesvg:zhipu`, which is in the
+client bundle (see above). The `logos:grok-icon` mention in
+`ProviderIcon.vue` is a comment, not a used icon.
 
 ## Revert criteria
 

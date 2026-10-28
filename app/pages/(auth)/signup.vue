@@ -34,6 +34,7 @@
         </UiButton>
       </li>
     </ul>
+    <AuthOAuthNotice />
     <LazyAuthInAppAlert
       v-if="displayEmbeddedBrowserWarning"
       page="sign-up"
@@ -207,7 +208,7 @@
           :disabled="pending"
           class="sm:-mt-3"
         >
-          Agree to the <NuxtLink to="/terms-of-use" class="underline hover:no-underline">Terms of Use</NuxtLink> and <NuxtLink to="/privacy-policy" class="underline hover:no-underline">Privacy Policy</NuxtLink>
+          I am 18 or over and agree to the <NuxtLink to="/terms-of-use" class="underline hover:no-underline">Terms of Use</NuxtLink> and <NuxtLink to="/privacy-policy" class="underline hover:no-underline">Privacy Policy</NuxtLink>
         </UiFormCheckbox>
       </UiFormFieldset>
       <AuthTurnstile ref="turnstile" action="auth" />

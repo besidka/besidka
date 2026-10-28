@@ -62,12 +62,26 @@ describe('Chat/ShareModal.client', () => {
     vi.unstubAllGlobals()
   })
 
+  it('hides the file warning while files stay hidden by default', async () => {
+    const { targetHasFiles } = useChatShare()
+
+    targetHasFiles.value = true
+
+    const wrapper = await mountSuspended(ShareModal)
+
+    expect(wrapper.find('[data-testid="share-files-warning"]').exists())
+      .toBe(false)
+  })
+
   it('shows the file warning when the chat has files and files are shown', async () => {
     const { targetHasFiles } = useChatShare()
 
     targetHasFiles.value = true
 
     const wrapper = await mountSuspended(ShareModal)
+
+    await wrapper.find('[data-testid="share-toggle-files"]')
+      .setValue(true)
 
     expect(wrapper.find('[data-testid="share-files-warning"]').exists())
       .toBe(true)
@@ -90,6 +104,9 @@ describe('Chat/ShareModal.client', () => {
     targetHasFiles.value = true
 
     const wrapper = await mountSuspended(ShareModal)
+
+    await wrapper.find('[data-testid="share-toggle-files"]')
+      .setValue(true)
 
     expect(wrapper.find('[data-testid="share-files-warning"]').exists())
       .toBe(true)
@@ -117,20 +134,36 @@ describe('Chat/ShareModal.client', () => {
     )
   })
 
-  it('defaults the author avatar toggle to on', async () => {
+  it('defaults the author avatar toggle to off', async () => {
     const wrapper = await mountSuspended(ShareModal)
 
     const authorToggle = wrapper.find('[data-testid="share-toggle-author"]')
 
-    expect((authorToggle.element as HTMLInputElement).checked).toBe(true)
+    expect((authorToggle.element as HTMLInputElement).checked).toBe(false)
   })
 
-  it('defaults the allow branch toggle to on', async () => {
+  it('defaults the search engine indexing toggle to off', async () => {
     const wrapper = await mountSuspended(ShareModal)
 
-    const branchToggle = wrapper.find('[data-testid="share-toggle-branch"]')
+    const indexableToggle = wrapper.find(
+      '[data-testid="share-toggle-indexable"]',
+    )
 
-    expect((branchToggle.element as HTMLInputElement).checked).toBe(true)
+    expect((indexableToggle.element as HTMLInputElement).checked).toBe(false)
+  })
+
+  it.each([
+    'share-toggle-indexable',
+    'share-toggle-files',
+    'share-toggle-metadata',
+    'share-toggle-author',
+    'share-toggle-branch',
+  ])('defaults the %s toggle to off for a new share', async (testId) => {
+    const wrapper = await mountSuspended(ShareModal)
+
+    const toggle = wrapper.find(`[data-testid="${testId}"]`)
+
+    expect((toggle.element as HTMLInputElement).checked).toBe(false)
   })
 
   it('labels the metadata toggle "Show message details"', async () => {
@@ -219,11 +252,11 @@ describe('Chat/ShareModal.client', () => {
       method: 'POST',
       body: {
         duration: 'never',
-        indexable: true,
-        showFiles: true,
-        showMetadata: true,
-        showAuthorAvatar: true,
-        allowBranch: true,
+        indexable: false,
+        showFiles: false,
+        showMetadata: false,
+        showAuthorAvatar: false,
+        allowBranch: false,
       },
     })
 
@@ -427,14 +460,14 @@ describe('Chat/ShareModal.client', () => {
     const wrapper = await mountSuspended(ShareModal)
 
     await wrapper.find('[data-testid="share-toggle-indexable"]')
-      .setValue(false)
+      .setValue(true)
 
     expect(
       (
         wrapper.find('[data-testid="share-toggle-indexable"]')
           .element as HTMLInputElement
       ).checked,
-    ).toBe(false)
+    ).toBe(true)
 
     const { targetChatSlug } = useChatShare()
 
@@ -446,7 +479,7 @@ describe('Chat/ShareModal.client', () => {
         wrapper.find('[data-testid="share-toggle-indexable"]')
           .element as HTMLInputElement
       ).checked,
-    ).toBe(true)
+    ).toBe(false)
   })
 
   describe('personal-data check', () => {
@@ -570,6 +603,12 @@ describe('Chat/ShareModal.client', () => {
 
       const wrapper = await mountSuspended(ShareModal)
 
+      expect(wrapper.find('[data-testid="share-pii-indexable"]').exists())
+        .toBe(false)
+
+      await wrapper.find('[data-testid="share-toggle-indexable"]')
+        .setValue(true)
+
       expect(wrapper.get('[data-testid="share-pii-indexable"]').text())
         .toBe('It can also appear in search engines.')
 
@@ -626,6 +665,9 @@ describe('Chat/ShareModal.client', () => {
       setCheck('error')
 
       const wrapper = await mountSuspended(ShareModal)
+
+      await wrapper.find('[data-testid="share-toggle-indexable"]')
+        .setValue(true)
 
       expect(wrapper.find('[data-testid="share-pii-indexable"]').exists())
         .toBe(true)
@@ -685,7 +727,7 @@ describe('Chat/ShareModal.client', () => {
         '/api/v1/chats/chat-1/share/check',
         expect.objectContaining({
           method: 'POST',
-          body: { showFiles: true, showMetadata: true },
+          body: { showFiles: false, showMetadata: false },
         }),
       )
       expect(shareCheck.value).toEqual({
@@ -732,23 +774,23 @@ describe('Chat/ShareModal.client', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
 
       await wrapper.find('[data-testid="share-toggle-files"]')
-        .setValue(false)
-      await wrapper.find('[data-testid="share-toggle-files"]')
         .setValue(true)
       await wrapper.find('[data-testid="share-toggle-files"]')
         .setValue(false)
+      await wrapper.find('[data-testid="share-toggle-files"]')
+        .setValue(true)
       await settleTimers()
 
       expect(fetchMock).toHaveBeenCalledTimes(2)
       expect(fetchMock).toHaveBeenLastCalledWith(
         '/api/v1/chats/chat-1/share/check',
         expect.objectContaining({
-          body: { showFiles: false, showMetadata: true },
+          body: { showFiles: true, showMetadata: false },
         }),
       )
 
       await wrapper.find('[data-testid="share-toggle-metadata"]')
-        .setValue(false)
+        .setValue(true)
       await settleTimers()
 
       expect(fetchMock).toHaveBeenCalledTimes(2)

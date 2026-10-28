@@ -329,11 +329,11 @@ const {
 const modal = useTemplateRef<HTMLDialogElement>('modal')
 
 const duration = shallowRef<ChatShareDuration>('never')
-const indexable = shallowRef<boolean>(true)
-const showFiles = shallowRef<boolean>(true)
-const showMetadata = shallowRef<boolean>(true)
-const showAuthorAvatar = shallowRef<boolean>(true)
-const allowBranch = shallowRef<boolean>(true)
+const indexable = shallowRef<boolean>(false)
+const showFiles = shallowRef<boolean>(false)
+const showMetadata = shallowRef<boolean>(false)
+const showAuthorAvatar = shallowRef<boolean>(false)
+const allowBranch = shallowRef<boolean>(false)
 const justCopied = shallowRef<boolean>(false)
 
 let copiedTimeoutId: ReturnType<typeof setTimeout> | null = null
@@ -414,11 +414,11 @@ function resetCopiedState() {
 
 function resetToDefaults() {
   duration.value = 'never'
-  indexable.value = true
-  showFiles.value = true
-  showMetadata.value = true
-  showAuthorAvatar.value = true
-  allowBranch.value = true
+  indexable.value = false
+  showFiles.value = false
+  showMetadata.value = false
+  showAuthorAvatar.value = false
+  allowBranch.value = false
   resetCopiedState()
 }
 
