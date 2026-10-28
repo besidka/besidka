@@ -21,6 +21,20 @@ import GeneratedImage from '../../../../app/components/Chat/GeneratedImage.vue'
 import ImagePreview from '../../../../app/components/Chat/ImagePreview.client.vue'
 import { getRenderableChatMessages } from '../../../../app/composables/chat'
 
+vi.mock('@panzoom/panzoom', () => {
+  return {
+    default: vi.fn(() => {
+      return {
+        destroy: vi.fn(),
+        getScale: vi.fn(() => 1),
+        reset: vi.fn(),
+        resetStyle: vi.fn(),
+        zoomToPoint: vi.fn(),
+      }
+    }),
+  }
+})
+
 const LazyImagePreview = defineAsyncComponent(() => {
   return Promise.resolve(ImagePreview)
 })
