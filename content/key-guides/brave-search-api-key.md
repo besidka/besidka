@@ -8,17 +8,17 @@ updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Activate the Search plan, create a key, and add web search to your chats.
 video:
-  src: /videos/key-guide-brave.mp4?v=3
-  poster: /key-guides/brave.webp?v=3
+  src: /videos/key-guide-brave.mp4?v=4
+  poster: /key-guides/brave.webp?v=4
   duration: PT43S
   uploadDate: '2026-10-26'
   alt: Screen recording of the Brave Search API dashboard. The API keys page with its monthly usage limit, the Add API key dialog with a name and the Search plan, the new key in the list, then the key pasted into Besidka. In a new chat the web search menu in the chat input is opened, Brave Search is chosen, and the answer is marked Searched with Brave.
   qualities:
-    - src: /videos/key-guide-brave-1080.mp4?v=3
+    - src: /videos/key-guide-brave-1080.mp4?v=4
       size: 1080
-    - src: /videos/key-guide-brave.mp4?v=3
+    - src: /videos/key-guide-brave.mp4?v=4
       size: 720
-    - src: /videos/key-guide-brave-360.mp4?v=3
+    - src: /videos/key-guide-brave-360.mp4?v=4
       size: 360
   markers:
     - time: "0:00"

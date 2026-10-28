@@ -8,17 +8,17 @@ updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Add payment details, create a key on QwenCloud, and chat with Qwen models. QwenCloud may ask you to verify your identity first.
 video:
-  src: /videos/key-guide-qwen.mp4?v=2
-  poster: /key-guides/qwen.webp?v=2
+  src: /videos/key-guide-qwen.mp4?v=3
+  poster: /key-guides/qwen.webp?v=3
   duration: PT33S
   uploadDate: '2026-10-26'
   alt: Recording of QwenCloud and Besidka. The API Keys page with Create API key, the identity verification notice, the remaining key creation steps shown as text rather than a recording, then the key pasted into Besidka and a first answer from Qwen.
   qualities:
-    - src: /videos/key-guide-qwen-1080.mp4?v=2
+    - src: /videos/key-guide-qwen-1080.mp4?v=3
       size: 1080
-    - src: /videos/key-guide-qwen.mp4?v=2
+    - src: /videos/key-guide-qwen.mp4?v=3
       size: 720
-    - src: /videos/key-guide-qwen-360.mp4?v=2
+    - src: /videos/key-guide-qwen-360.mp4?v=3
       size: 360
   markers:
     - time: "0:00"
@@ -55,7 +55,7 @@ requirements:
 4. QwenCloud may ask for identity verification (KYC) before your first key. If you see a **Security Notice**, follow the **KYC verification** link. Key creation unlocks after approval.
 5. Add a description such as `Besidka` and click **Generate Key**.
 6. Copy the key. QwenCloud shows it only once. A workspace can hold up to 20 keys.
-7. In Besidka, go to **Profile**, **API Keys**, then the **Qwen** card. Paste the key into **API Key** and click **Save**.
+7. In Besidka, go to **Profile**, **API Keys**, then the **Qwen** card. Paste the key into **API Key** and click **Save**. Besidka then asks you to confirm that your messages to Qwen are processed outside the EU, so tick **I explicitly consent** and select **Add key**.
 8. Start a new chat and pick a Qwen model.
 
 **Good to know.** The free quota is about 1M tokens per model and expires 90 days after activation. **Free Quota Only** mode is off by default, so calls past the quota are billed. Turn it on if you want to stay free.

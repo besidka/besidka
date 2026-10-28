@@ -8,17 +8,17 @@ updatedAt: '2026-10-27'
 checkedAt: '2026-10-20'
 summary: The free tier needs no card. You can start chatting with Gemini in about a minute.
 video:
-  src: /videos/key-guide-google.mp4?v=2
-  poster: /key-guides/google.webp?v=2
+  src: /videos/key-guide-google.mp4?v=3
+  poster: /key-guides/google.webp?v=3
   duration: PT34S
   uploadDate: '2026-10-26'
   alt: Screen recording of Google AI Studio. The API Keys page, the Create a new key dialog, the API key details dialog with a masked key, then the key pasted into Besidka and a first answer from Gemini.
   qualities:
-    - src: /videos/key-guide-google-1080.mp4?v=2
+    - src: /videos/key-guide-google-1080.mp4?v=3
       size: 1080
-    - src: /videos/key-guide-google.mp4?v=2
+    - src: /videos/key-guide-google.mp4?v=3
       size: 720
-    - src: /videos/key-guide-google-360.mp4?v=2
+    - src: /videos/key-guide-google-360.mp4?v=3
       size: 360
   markers:
     - time: "0:00"

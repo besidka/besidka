@@ -229,7 +229,7 @@ snyk code test
         <img src="public/carousel/code-and-diagrams.webp" width="100%" alt="A light-theme chat answer with a syntax-highlighted TypeScript snippet and a rendered sequence diagram of a Worker reading from KV and falling back to D1." />
       </td>
       <td>
-        <img src="public/carousel/web-search-prices.webp" width="100%" alt="Search provider settings with prices per 1,000 searches for Brave, Exa and the built-in search of Gemini, Anthropic, OpenAI and DeepSeek." />
+        <img src="public/carousel/web-search-prices.webp" width="100%" alt="Search provider settings with prices per 1,000 searches for Brave, Exa Lite, Auto and Deep, and the built-in search of Gemini, Anthropic, OpenAI and DeepSeek." />
       </td>
     </tr>
     <tr>
@@ -242,7 +242,7 @@ snyk code test
     </tr>
     <tr>
       <td colspan="2">
-        <img src="public/carousel/exa-search-levels.webp" width="100%" alt="The web search menu with Exa selected and its three search levels, Lite $4/1k, Auto $7/1k and Deep $12/1k with Deep active, next to the message info cards for a Lite answer (~$0.004) and a Deep answer (~$0.012)." />
+        <img src="public/carousel/exa-search-levels.webp" width="100%" alt="The chat tools menu with Web search set to Exa and its depth row, Lite $4/1k, Auto $7/1k and Deep $12/1k with Deep active, next to the message info cards for a Lite answer (~$0.004) and a Deep answer (~$0.012)." />
       </td>
     </tr>
   </tbody>

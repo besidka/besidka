@@ -8,17 +8,17 @@ updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Top up a small balance, create a key, and chat with DeepSeek models. Check the data note below first.
 video:
-  src: /videos/key-guide-deepseek.mp4?v=2
-  poster: /key-guides/deepseek.webp?v=2
+  src: /videos/key-guide-deepseek.mp4?v=3
+  poster: /key-guides/deepseek.webp?v=3
   duration: PT34S
   uploadDate: '2026-10-26'
   alt: Screen recording of DeepSeek Platform. The API keys page, the Create new API key dialog with a name, the new key shown once, then the key pasted into Besidka and a first answer from DeepSeek.
   qualities:
-    - src: /videos/key-guide-deepseek-1080.mp4?v=2
+    - src: /videos/key-guide-deepseek-1080.mp4?v=3
       size: 1080
-    - src: /videos/key-guide-deepseek.mp4?v=2
+    - src: /videos/key-guide-deepseek.mp4?v=3
       size: 720
-    - src: /videos/key-guide-deepseek-360.mp4?v=2
+    - src: /videos/key-guide-deepseek-360.mp4?v=3
       size: 360
   markers:
     - time: "0:00"
@@ -54,7 +54,7 @@ requirements:
 3. Back on the keys page, click **Create new API key**.
 4. Type a name such as `Besidka` and click **Create API key**.
 5. Click **Copy** to copy the key. DeepSeek shows it only once.
-6. In Besidka, go to **Profile**, **API Keys**, then the **DeepSeek** card. Paste the key into **API Key** and click **Save**.
+6. In Besidka, go to **Profile**, **API Keys**, then the **DeepSeek** card. Paste the key into **API Key** and click **Save**. Besidka then asks you to confirm that your messages to DeepSeek are processed outside the EU, so tick **I explicitly consent** and select **Add key**.
 7. Start a new chat and pick a DeepSeek model.
 
 **Privacy.** DeepSeek's privacy policy says your inputs and outputs may be used to train its models, and that data is stored in the People's Republic of China. To opt out, email privacy@deepseek.com. For private or work data, use another provider.

@@ -8,17 +8,17 @@ updatedAt: '2026-10-26'
 checkedAt: '2026-10-20'
 summary: Recharge a small balance, create a key on the Kimi platform, and chat with Kimi models.
 video:
-  src: /videos/key-guide-moonshotai.mp4?v=2
-  poster: /key-guides/moonshotai.webp?v=2
+  src: /videos/key-guide-moonshotai.mp4?v=3
+  poster: /key-guides/moonshotai.webp?v=3
   duration: PT34S
   uploadDate: '2026-10-26'
   alt: Screen recording of the Kimi platform. The API Keys page, the Create API Key dialog with a name and a project, the new key shown once and masked, then the key pasted into Besidka and a first answer from Kimi.
   qualities:
-    - src: /videos/key-guide-moonshotai-1080.mp4?v=2
+    - src: /videos/key-guide-moonshotai-1080.mp4?v=3
       size: 1080
-    - src: /videos/key-guide-moonshotai.mp4?v=2
+    - src: /videos/key-guide-moonshotai.mp4?v=3
       size: 720
-    - src: /videos/key-guide-moonshotai-360.mp4?v=2
+    - src: /videos/key-guide-moonshotai-360.mp4?v=3
       size: 360
   markers:
     - time: "0:00"
@@ -52,7 +52,7 @@ requirements:
 3. Back on the keys page, click **Create API Key**.
 4. In **Enter API Key name**, type a name such as `Besidka`. Leave **Project** on the default and click **OK**.
 5. In **Your API Key**, click the copy icon, then **OK**. The platform shows the key only once.
-6. In Besidka, go to **Profile**, **API Keys**, then the **Moonshot AI** card. Paste the key into **API Key** and click **Save**.
+6. In Besidka, go to **Profile**, **API Keys**, then the **Moonshot AI** card. Paste the key into **API Key** and click **Save**. Besidka then asks you to confirm that your messages to Moonshot AI are processed outside the EU, so tick **I explicitly consent** and select **Add key**.
 7. Start a new chat and pick a Kimi model.
 
 **Good to know.** Keys are tied to a region. Create the key on platform.kimi.ai, the international platform, because a key from another Moonshot platform will not work with it.
