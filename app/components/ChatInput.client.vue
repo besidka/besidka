@@ -63,14 +63,14 @@
           <textarea
             ref="textarea"
             v-model="input"
-            class="textarea p-0 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
+            class="textarea p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
             :placeholder="textareaPlaceholder"
             :disabled="displayStop"
             @keydown.enter.exact="handleEnter"
             @focus="onKeyboardFocus"
             @blur="onKeyboardBlur"
           />
-          <div class="flex items-center justify-between gap-2 p-2 pb-0">
+          <div class="flex items-center justify-between gap-2 p-2 pb-0 pl-0">
             <div class="flex items-center gap-1 min-w-0">
               <div class="min-w-0">
                 <LazyChatInputModelsTrigger hydrate-on-idle />

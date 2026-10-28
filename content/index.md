@@ -38,6 +38,9 @@ carousel:
   - src: /carousel/memory.webp
     alt: The Memory page with Use memory on, Generate memory from chats off and Search and reference chats on, next to What Besidka remembers with a Tell Besidka what to remember or change box and entries grouped as You and Topics.
     caption: Profile memory you can read, edit and delete
+  - src: /carousel/smart-checks.webp
+    alt: The Smart checks tab of the API keys page with a saved TypeSafe AI key and its TypeSafe AI checks list, Memory checks switched on, next to the chat tools menu with Web search set to Built-in and the Auto toggle on, explaining that TypeSafe AI decides per message whether a web search is needed.
+    caption: Optional smart checks on your own TypeSafe AI key
   - src: /carousel/chat-search.webp
     alt: A chat answer with a Searched your chats step listing two earlier chats with their dates, and the answer built from what they said.
     caption: Search your past chats, with links to the sources
