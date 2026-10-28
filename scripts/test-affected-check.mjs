@@ -475,6 +475,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/context-menu-image.spec.ts',
     'tests/e2e/chat/context-menu-image-desktop.spec.ts',
     'tests/e2e/chat/gateway-image-generation.spec.ts',
+    'tests/e2e/chat/image-generation-single-message.spec.ts',
     'tests/e2e/chat/mermaid-diagram.spec.ts',
   ]
   const mermaidDiagramTests = [
@@ -1234,7 +1235,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/components\/Chat\/ImagePreview\.client\.vue$/,
-      tests: ['tests/unit/components/Chat/ImagePreview.client.spec.ts'],
+      tests: [
+        'tests/unit/components/Chat/ImagePreview.client.spec.ts',
+        'tests/unit/composables/image-zoom.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/composables\/image-zoom\.ts$/,
+      tests: [
+        'tests/unit/composables/image-zoom.spec.ts',
+        'tests/unit/components/Chat/ImagePreview.client.spec.ts',
+      ],
     },
     {
       pattern:
@@ -1851,6 +1862,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/e2e/chat/scroll-spacer.spec.ts',
         'tests/e2e/chat/gateway-image-generation.spec.ts',
+        'tests/e2e/chat/image-generation-single-message.spec.ts',
       ],
     },
     {
@@ -1859,6 +1871,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/composables/chat-image-ui.spec.ts',
         'tests/e2e/chat/scroll-spacer.spec.ts',
         'tests/e2e/chat/gateway-image-generation.spec.ts',
+        'tests/e2e/chat/image-generation-single-message.spec.ts',
       ],
     },
     {

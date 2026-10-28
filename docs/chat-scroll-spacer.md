@@ -117,13 +117,29 @@ not need its own re-pin.
 
 ```ts
 shouldRenderPendingImageGeneration =
-  isImageGenerationTurnPending() && isTurnActive() && !hasPendingImageDismissingContent
+  isImageGenerationTurnPending() && isTurnActive()
+  && !hasPendingImageDismissingContent && !lastMessageIsAssistant
+shouldRenderPendingImageGenerationInline =
+  isImageGenerationTurnPending() && isTurnActive()
+  && !hasPendingImageDismissingContent && lastMessageIsAssistant
 ```
 
 `hasPendingImageDismissingContent` only becomes true for content that
 **visually replaces** the phantom skeleton: a renderable `generate_image`
-tool part (real skeleton, result, or error card), non-empty text, or a file
-part. Streamed reasoning does **not** count.
+tool part (real skeleton, result, or error card), non-empty text (direct
+sends only), or a file part. Streamed reasoning does **not** count.
+
+**Invariant: one assistant container per pending image turn.** The
+standalone `<ChatMessage>` card only covers the window before the SDK pushes
+the turn's assistant message; from then on the card renders inline at the
+end of that message (forced visible, `chat-message--fit-content`), where the
+real `tool-generate_image` skeleton later appears, for direct and gateway
+sends alike. Until #531 only gateway sends merged (#362), so direct sends
+relied on nothing visible reaching the message before the tool part. #531's
+past-chat pre-retrieval chip (`tool-search_chats`, written at stream start)
+broke that and showed two bubbles ("Working" plus "Preparing image
+generation..."). Do not fix such cases by hiding the early part; covered by
+`tests/e2e/chat/image-generation-single-message.spec.ts`.
 
 ### Root cause: the July 2026 reasoning-before-tool-call jump
 

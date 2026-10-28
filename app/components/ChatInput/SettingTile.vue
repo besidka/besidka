@@ -6,8 +6,9 @@
   >
     <button
       type="button"
-      class="js-chat-input-tile flex flex-col justify-between items-start size-16 p-1 pb-1.5 rounded-box border text-left cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+      class="js-chat-input-tile flex rounded-box border text-left cursor-pointer transition-[height] duration-150 motion-reduce:transition-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
       :class="[
+        bodyVariantClass,
         getChatInputTileToneClass(tile),
         { 'opacity-60': tile.isDisabled },
       ]"
@@ -15,6 +16,7 @@
       :title="tile.ariaLabel"
       :aria-disabled="tile.isDisabled || undefined"
       :data-testid="`chat-input-tile-${tile.id}-body`"
+      :data-variant="variant"
       @click="onOpen"
     >
       <span class="relative block size-4">
@@ -43,15 +45,27 @@
             size="7"
           />
         </span>
-      </span>
-      <span class="flex flex-col w-full min-w-0">
         <span
-          class="text-[9px] leading-[10px] font-semibold opacity-85 truncate"
+          v-else-if="tile.isLocked"
+          class="absolute -right-1.5 -bottom-1 grid place-items-center size-2.5 rounded-full bg-base-content/70 text-base-100"
+          data-testid="chat-input-tile-lock-badge"
+        >
+          <Icon
+            name="lucide:lock"
+            size="7"
+          />
+        </span>
+      </span>
+      <span class="flex flex-col min-w-0" :class="textVariantClass">
+        <span
+          class="font-semibold opacity-85 truncate"
+          :class="isPill ? 'text-[10px] leading-3' : 'text-[9px] leading-[10px]'"
         >
           {{ tile.caption }}
         </span>
         <span
-          class="text-[10.5px] leading-3 font-bold line-clamp-2 break-words"
+          class="font-bold"
+          :class="valueVariantClass"
         >
           {{ tile.value }}
         </span>
@@ -60,7 +74,8 @@
     <button
       v-if="tile.removeLabel"
       type="button"
-      class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
+      class="absolute right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
+      :class="isPill ? 'top-3' : 'top-1'"
       :aria-label="tile.removeLabel"
       :title="tile.removeLabel"
       :data-testid="`chat-input-tile-${tile.id}-remove`"
@@ -81,14 +96,41 @@ import type {
   ToolsSection,
 } from '~/types/chat-input-tools'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   tile: ChatInputTile
-}>()
+  variant?: 'pill' | 'square'
+}>(), {
+  variant: 'square',
+})
 
 const emit = defineEmits<{
   open: [section: ToolsSection | null, origin: HTMLElement]
   remove: [id: ChatInputTileId]
 }>()
+
+const isPill = computed<boolean>(() => {
+  return props.variant === 'pill'
+})
+
+const bodyVariantClass = computed<string>(() => {
+  if (!isPill.value) {
+    return 'flex-col justify-between items-start size-16 p-1 pb-1.5'
+  }
+
+  return props.tile.removeLabel
+    ? 'flex-row items-center gap-1.5 h-10 max-w-40 pl-2 pr-6'
+    : 'flex-row items-center gap-1.5 h-10 max-w-40 px-2'
+})
+
+const textVariantClass = computed<string>(() => {
+  return isPill.value ? 'flex-1' : 'w-full'
+})
+
+const valueVariantClass = computed<string>(() => {
+  return isPill.value
+    ? 'text-xs leading-4 truncate'
+    : 'text-[10.5px] leading-3 line-clamp-2 break-words'
+})
 
 const reasoningIconComponent = computed<string>(() => {
   if (props.tile.icon.kind !== 'reasoning') {

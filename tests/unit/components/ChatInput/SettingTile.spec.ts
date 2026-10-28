@@ -15,13 +15,14 @@ function createTile(overrides: Partial<ChatInputTile> = {}): ChatInputTile {
     removeLabel: 'Turn off web search',
     isNeutral: false,
     isAuto: false,
+    isLocked: false,
     isDisabled: false,
     ...overrides,
   }
 }
 
 describe('ChatInput/SettingTile', () => {
-  it('renders the caption and value at the file tile size', async () => {
+  it('renders the caption and value at the file tile size by default', async () => {
     const wrapper = await mountSuspended(SettingTile, {
       props: { tile: createTile() },
     })
@@ -125,5 +126,82 @@ describe('ChatInput/SettingTile', () => {
 
     expect(body.classes()).toContain('opacity-60')
     expect(body.attributes('aria-disabled')).toBe('true')
+  })
+
+  it('renders a compact pill with the remove button clear of the text',
+    async () => {
+      const wrapper = await mountSuspended(SettingTile, {
+        props: { tile: createTile(), variant: 'pill' },
+      })
+      const body = wrapper.get('[data-testid="chat-input-tile-search-body"]')
+      const remove = wrapper.get(
+        '[data-testid="chat-input-tile-search-remove"]',
+      )
+
+      expect(body.attributes('data-variant')).toBe('pill')
+      expect(body.classes()).toEqual(expect.arrayContaining([
+        'h-10',
+        'max-w-40',
+        'pr-6',
+        'rounded-box',
+        'bg-accent/10',
+      ]))
+      expect(body.classes()).not.toContain('size-16')
+      expect(body.text()).toContain('Web search')
+      expect(body.text()).toContain('Built-in')
+      expect(remove.classes()).toEqual(
+        expect.arrayContaining(['right-1', 'top-3', 'size-4']),
+      )
+    })
+
+  it('does not reserve remove space on a pill that cannot be removed',
+    async () => {
+      const wrapper = await mountSuspended(SettingTile, {
+        props: {
+          tile: createTile({ id: 'reasoning', removeLabel: null }),
+          variant: 'pill',
+        },
+      })
+      const body = wrapper.get(
+        '[data-testid="chat-input-tile-reasoning-body"]',
+      )
+
+      expect(body.classes()).toContain('px-2')
+      expect(body.classes()).not.toContain('pr-6')
+    })
+
+  it('shows a lock badge instead of the Auto badge on a locked tile',
+    async () => {
+      const wrapper = await mountSuspended(SettingTile, {
+        props: {
+          tile: createTile({
+            id: 'image',
+            icon: { kind: 'icon', name: 'lucide:image-plus' },
+            caption: 'Mode',
+            value: 'Image generation',
+            ariaLabel: 'Image generation is always on for this model',
+            removeLabel: null,
+            isLocked: true,
+          }),
+        },
+      })
+      const body = wrapper.get('[data-testid="chat-input-tile-image-body"]')
+
+      expect(wrapper.find('[data-testid="chat-input-tile-lock-badge"]')
+        .exists()).toBe(true)
+      expect(wrapper.find('[data-testid="chat-input-tile-auto-badge"]')
+        .exists()).toBe(false)
+      expect(body.attributes('title'))
+        .toBe('Image generation is always on for this model')
+      expect(body.text()).not.toMatch(/required/i)
+    })
+
+  it('shows no lock badge on an unlocked tile', async () => {
+    const wrapper = await mountSuspended(SettingTile, {
+      props: { tile: createTile() },
+    })
+
+    expect(wrapper.find('[data-testid="chat-input-tile-lock-badge"]')
+      .exists()).toBe(false)
   })
 })

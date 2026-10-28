@@ -1737,7 +1737,7 @@ describe('ChatInput.client', () => {
 
       expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(false)
       expect(hasTestId(wrapper, 'web-search-option-off')).toBe(false)
-      expect(tileTitle(wrapper, 'image')).toBe('Image creation on')
+      expect(tileTitle(wrapper, 'image')).toBe('Image generation is on')
 
       await setToggle(wrapper, 'tools-image-toggle', false)
 
@@ -1773,7 +1773,7 @@ describe('ChatInput.client', () => {
       expect(hasTestId(wrapper, 'reasoning-level-off')).toBe(false)
       expect(hasTestId(wrapper, 'web-search-option-off')).toBe(false)
       expect(tileTitle(wrapper, 'image'))
-        .toBe('Image creation is required for this model')
+        .toBe('Image generation is always on for this model')
       expect(hasTestId(wrapper, 'chat-input-tile-image-remove')).toBe(false)
       expect(isTestIdDisabled(wrapper, 'tools-image-toggle')).toBe(true)
       expect(isTestIdChecked(wrapper, 'tools-image-toggle')).toBe(true)

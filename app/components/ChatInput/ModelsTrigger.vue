@@ -66,6 +66,7 @@
         @close="onSheetClose"
       >
         <div
+          ref="sheetBox"
           tabindex="-1"
           autofocus
           data-testid="models-picker-sheet-box"
@@ -99,6 +100,7 @@
             v-if="hasOpened"
             ref="panel"
             layout="sheet"
+            :inert="isSheetPanelInert"
             :is-open="isOpen"
             :selected-model-id="selectedModelId"
             :selected-gateway-id="selectedGatewayId"
@@ -147,6 +149,8 @@ const root = useTemplateRef<HTMLDivElement>('root')
 const trigger = useTemplateRef<HTMLButtonElement>('trigger')
 const panel = useTemplateRef<PanelHandle>('panel')
 const sheet = useTemplateRef<HTMLDialogElement>('sheet')
+const sheetBox = useTemplateRef<HTMLDivElement>('sheetBox')
+const isSheetPanelInert = shallowRef<boolean>(false)
 const panelId = useId()
 const headingId = useId()
 const isPopoverLayout = useMediaQuery('(min-width: 48rem)')
@@ -213,6 +217,22 @@ function closeAndRestoreFocus() {
 }
 
 /**
+ * iOS WebKit ignores the box's `autofocus` when `showModal()` picks the
+ * initial focus and takes the first link or text field instead, which opens
+ * the keyboard over the list. The panel is therefore inert while the dialog
+ * opens (set before the render that precedes this call), and the box takes
+ * focus explicitly before the panel is released.
+ */
+function showSheet(dialog: HTMLDialogElement) {
+  try {
+    dialog.showModal()
+    sheetBox.value?.focus({ preventScroll: true })
+  } finally {
+    isSheetPanelInert.value = false
+  }
+}
+
+/**
  * A mounted panel is prepared in the same tick `isOpen` flips, so no frame
  * renders stale search or filter state. On the first open there is no panel
  * yet; it mounts already open and prepares itself from setup. The sheet is
@@ -236,13 +256,16 @@ async function toggle() {
     return
   }
 
+  isSheetPanelInert.value = true
   await nextTick()
 
   if (!isOpen.value || !sheet.value || sheet.value.open) {
+    isSheetPanelInert.value = false
+
     return
   }
 
-  sheet.value.showModal()
+  showSheet(sheet.value)
 }
 
 /**

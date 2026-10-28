@@ -60,6 +60,16 @@ test.describe('desktop', () => {
     await expect(panel).toBeHidden()
     await expect(page.locator(TOOLS_TRIGGER)).toBeFocused()
 
+    const tileBox = await page
+      .locator('[data-testid="chat-input-tile-search-body"]')
+      .boundingBox()
+
+    expect(tileBox?.height).toBeLessThan(48)
+    expect(tileBox?.width).toBeGreaterThan(tileBox?.height ?? 0)
+    await expect(page.locator(
+      '[data-testid="chat-input-tile-search-body"]',
+    )).toHaveAttribute('data-variant', 'pill')
+
     await page.locator('[data-testid="chat-input-tile-search-remove"]')
       .click()
 

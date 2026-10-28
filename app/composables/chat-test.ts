@@ -27,6 +27,7 @@ export function useChatTest(
         effort: undefined,
         error: undefined,
         imageReasoningFirst: undefined,
+        imagePreRetrievalFirst: undefined,
       }
     }
 
@@ -53,6 +54,7 @@ export function useChatTest(
       effort,
       error,
       imageReasoningFirst: 'imageReasoningFirst' in route.query,
+      imagePreRetrievalFirst: 'imagePreRetrievalFirst' in route.query,
     }
   })
 
@@ -76,6 +78,10 @@ export function useChatTest(
 
     if (query.value.imageReasoningFirst) {
       searchParams.set('imageReasoningFirst', 'true')
+    }
+
+    if (query.value.imagePreRetrievalFirst) {
+      searchParams.set('imagePreRetrievalFirst', 'true')
     }
 
     const paramsString = searchParams.toString()

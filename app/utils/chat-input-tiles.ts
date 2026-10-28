@@ -43,10 +43,11 @@ const WEB_SEARCH_PROVIDER_IDS: Partial<Record<WebSearchSelection, string>> = {
   web_search_exa: 'exa',
 }
 
-const NEUTRAL_TILE_TONE
-  = 'bg-base-content/7 border-base-content/15 text-base-content/75'
+const NEUTRAL_TILE_TONE = 'bg-base-content/7 dark:bg-base-300/40 '
+  + 'border-base-content/15 text-base-content/75'
 
-const ACCENT_TILE_TONE = 'bg-accent/10 border-accent/25 text-accent'
+const ACCENT_TILE_TONE
+  = 'bg-accent/10 dark:bg-(--color-accent-bg)/60 border-accent/25 text-accent'
 
 export function getChatInputTileToneClass(
   tile: Pick<ChatInputTile, 'isNeutral'>,
@@ -110,6 +111,7 @@ function buildProjectTile(
     removeLabel: 'Remove project',
     isNeutral: false,
     isAuto: false,
+    isLocked: false,
     isDisabled: false,
   }
 }
@@ -132,6 +134,7 @@ function buildMemoryTile(
     removeLabel: 'Use memory again',
     isNeutral: true,
     isAuto: false,
+    isLocked: false,
     isDisabled: false,
   }
 }
@@ -160,6 +163,7 @@ function buildDeepResearchTile(
     removeLabel: null,
     isNeutral: false,
     isAuto: false,
+    isLocked: false,
     isDisabled: state.isResearchJobActive,
   }
 }
@@ -171,33 +175,22 @@ function buildImageTile(
     return null
   }
 
-  if (state.image.required) {
-    return {
-      id: 'image',
-      section: 'image',
-      icon: { kind: 'icon', name: 'lucide:image-plus' },
-      caption: 'Image',
-      value: 'Required',
-      chipLabel: 'Image required',
-      ariaLabel: 'Image creation is required for this model',
-      removeLabel: null,
-      isNeutral: false,
-      isAuto: false,
-      isDisabled: false,
-    }
-  }
+  const isLocked = state.image.required
 
   return {
     id: 'image',
     section: 'image',
     icon: { kind: 'icon', name: 'lucide:image-plus' },
-    caption: 'Image',
-    value: 'On',
-    chipLabel: 'Image',
-    ariaLabel: 'Image creation on',
-    removeLabel: 'Turn off image creation',
+    caption: 'Mode',
+    value: 'Image generation',
+    chipLabel: 'Image generation',
+    ariaLabel: isLocked
+      ? 'Image generation is always on for this model'
+      : 'Image generation is on',
+    removeLabel: isLocked ? null : 'Turn off image generation',
     isNeutral: false,
     isAuto: false,
+    isLocked,
     isDisabled: false,
   }
 }
@@ -231,6 +224,7 @@ function buildSearchTile(
     removeLabel: 'Turn off web search',
     isNeutral: false,
     isAuto,
+    isLocked: false,
     isDisabled: false,
   }
 }
@@ -269,6 +263,7 @@ function buildReasoningTile(
     removeLabel: null,
     isNeutral: false,
     isAuto: false,
+    isLocked: false,
     isDisabled: false,
   }
 }

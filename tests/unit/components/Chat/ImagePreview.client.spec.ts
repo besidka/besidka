@@ -3,8 +3,39 @@ import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ImagePreview from '../../../../app/components/Chat/ImagePreview.client.vue'
 
+const mocks = vi.hoisted(() => {
+  const instance = {
+    destroy: vi.fn(),
+    reset: vi.fn(),
+    resetStyle: vi.fn(),
+    zoomToPoint: vi.fn(),
+    zoomWithWheel: vi.fn(),
+    getScale: vi.fn(() => 1),
+  }
+
+  return {
+    instance,
+    panzoom: vi.fn(() => instance),
+  }
+})
+
+vi.mock('@panzoom/panzoom', () => {
+  return { default: mocks.panzoom }
+})
+
+const defaultProps = {
+  src: '/files/generated.webp',
+  downloadUrl: '/files/generated.webp?download=1',
+  alt: 'Generated landscape',
+  filename: 'generated.webp',
+}
+
 describe('Chat/ImagePreview', () => {
   beforeEach(() => {
+    mocks.panzoom.mockClear()
+    mocks.instance.destroy.mockClear()
+    mocks.instance.reset.mockClear()
+    mocks.instance.resetStyle.mockClear()
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
       .mockImplementation(function () {
         this.setAttribute('open', '')
@@ -110,5 +141,99 @@ describe('Chat/ImagePreview', () => {
     expect(document.activeElement).toBe(trigger)
 
     trigger.remove()
+  })
+
+  it('makes the download button circular below the xs breakpoint', async () => {
+    const wrapper = await mountSuspended(ImagePreview, {
+      props: { open: true, ...defaultProps },
+      global: { stubs: { teleport: true } },
+    })
+
+    await flushPromises()
+
+    const download = wrapper.get('[data-testid="image-preview-download"]')
+
+    expect(download.classes()).toContain('max-xs:btn-circle')
+    expect(download.get('span:last-child').classes())
+      .toContain('max-xs:sr-only')
+    expect(download.text()).toContain('Download')
+  })
+
+  it('creates panzoom on the zoom surface with fit-bound options', async () => {
+    const wrapper = await mountSuspended(ImagePreview, {
+      props: { open: false, ...defaultProps },
+      global: { stubs: { teleport: true } },
+    })
+
+    expect(mocks.panzoom).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    expect(mocks.panzoom).toHaveBeenCalledTimes(1)
+
+    const [surface, options] = mocks.panzoom.mock.calls[0] as unknown as [
+      HTMLElement,
+      Record<string, unknown>,
+    ]
+
+    expect(surface)
+      .toBe(wrapper.get('[data-testid="image-preview-surface"]').element)
+    expect(surface.contains(
+      wrapper.get('[data-testid="image-preview-image"]').element,
+    )).toBe(true)
+    expect(options).toMatchObject({
+      contain: 'outside',
+      minScale: 1,
+      maxScale: 5,
+      startScale: 1,
+      panOnlyWhenZoomed: true,
+      touchAction: 'none',
+    })
+  })
+
+  it('destroys panzoom when the dialog closes', async () => {
+    const wrapper = await mountSuspended(ImagePreview, {
+      props: { open: true, ...defaultProps },
+      global: { stubs: { teleport: true } },
+    })
+
+    await flushPromises()
+
+    expect(mocks.panzoom).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ open: false })
+    await flushPromises()
+
+    expect(mocks.instance.reset).toHaveBeenCalledWith({ animate: false })
+    expect(mocks.instance.resetStyle).toHaveBeenCalledTimes(1)
+    expect(mocks.instance.destroy).toHaveBeenCalled()
+  })
+
+  it('recreates panzoom at fit scale when the src changes', async () => {
+    const wrapper = await mountSuspended(ImagePreview, {
+      props: { open: true, ...defaultProps },
+      global: { stubs: { teleport: true } },
+    })
+
+    await flushPromises()
+    await wrapper.setProps({ src: '/files/other.webp' })
+    await flushPromises()
+
+    expect(mocks.panzoom).toHaveBeenCalledTimes(2)
+    expect(mocks.instance.destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('destroys panzoom when unmounted while open', async () => {
+    const wrapper = await mountSuspended(ImagePreview, {
+      props: { open: true, ...defaultProps },
+      global: { stubs: { teleport: true } },
+    })
+
+    await flushPromises()
+    wrapper.unmount()
+
+    expect(mocks.instance.resetStyle).toHaveBeenCalledTimes(1)
+    expect(mocks.instance.destroy).toHaveBeenCalledTimes(1)
   })
 })

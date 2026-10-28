@@ -11,6 +11,26 @@ function createMessage(
   return { id, role, parts }
 }
 
+function createPastChatPreRetrievalChipPart(): UIMessage['parts'][number] {
+  return {
+    type: 'tool-search_chats',
+    toolCallId: 'past-chat-pre-retrieval-user-1',
+    state: 'output-available',
+    input: { query: 'cat' },
+    output: {
+      notice: 'The content below is quoted excerpts of the user\'s past '
+        + 'chats.',
+      results: [{
+        chatId: 'chat-1',
+        title: 'My cat',
+        url: '/chats/chat-1',
+        role: 'user',
+        date: '2026-10-01',
+      }],
+    },
+  }
+}
+
 describe('useChatImageUi', () => {
   it('suppresses the generic loader only for trailing image progress', () => {
     const userMessage = createMessage('user-1', 'user', [{
@@ -138,6 +158,8 @@ describe('useChatImageUi', () => {
     const {
       hasImageGenerationProgress,
       shouldRenderPendingImageGeneration,
+      shouldRenderPendingImageGenerationInline,
+      isImageGenerationSkeletonVisible,
     } = useChatImageUi(() => messages.value, {
       isImageGenerationTurnPending: () => true,
       isTurnActive: () => true,
@@ -153,7 +175,9 @@ describe('useChatImageUi', () => {
       }]),
     ]
 
-    expect(shouldRenderPendingImageGeneration.value).toBe(true)
+    expect(shouldRenderPendingImageGeneration.value).toBe(false)
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(true)
+    expect(isImageGenerationSkeletonVisible.value).toBe(true)
     expect(hasImageGenerationProgress.value).toBe(true)
 
     messages.value = [
@@ -171,6 +195,7 @@ describe('useChatImageUi', () => {
     ]
 
     expect(shouldRenderPendingImageGeneration.value).toBe(false)
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(false)
     expect(hasImageGenerationProgress.value).toBe(true)
   })
 
@@ -299,22 +324,17 @@ describe('useChatImageUi', () => {
     expect(isImageGenerationSkeletonVisible.value).toBe(false)
   })
 
-  it('never merges a direct-provider send into the real message, even '
-    + 'once it exists', () => {
+  it('merges a direct-provider send into the real message once it '
+    + 'exists, instead of a second bubble', () => {
     const userMessage = createMessage('user-1', 'user', [{
       type: 'text',
       text: 'Generate an image of a cat',
     }])
-    const messages = shallowRef<UIMessage[]>([
-      userMessage,
-      createMessage('assistant-1', 'assistant', [{
-        type: 'reasoning',
-        text: 'Choosing a scene and lighting for this request.',
-      }]),
-    ])
+    const messages = shallowRef<UIMessage[]>([userMessage])
     const {
       shouldRenderPendingImageGeneration,
       shouldRenderPendingImageGenerationInline,
+      isImageGenerationSkeletonVisible,
     } = useChatImageUi(() => messages.value, {
       isImageGenerationTurnPending: () => true,
       isTurnActive: () => true,
@@ -323,6 +343,88 @@ describe('useChatImageUi', () => {
 
     expect(shouldRenderPendingImageGeneration.value).toBe(true)
     expect(shouldRenderPendingImageGenerationInline.value).toBe(false)
+
+    messages.value = [
+      userMessage,
+      createMessage('assistant-1', 'assistant', [{
+        type: 'reasoning',
+        text: 'Choosing a scene and lighting for this request.',
+      }]),
+    ]
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(false)
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(true)
+    expect(isImageGenerationSkeletonVisible.value).toBe(true)
+  })
+
+  it('renders the pending card inline when a direct send starts with the '
+    + 'past-chat pre-retrieval chip', () => {
+    const messages = shallowRef<UIMessage[]>([
+      createMessage('user-1', 'user', [{
+        type: 'text',
+        text: 'Fill this room with everything you know about me',
+      }]),
+      createMessage('assistant-1', 'assistant', [
+        createPastChatPreRetrievalChipPart(),
+      ]),
+    ])
+    const {
+      shouldRenderPendingImageGeneration,
+      shouldRenderPendingImageGenerationInline,
+      isImageGenerationSkeletonVisible,
+    } = useChatImageUi(() => messages.value, {
+      isImageGenerationTurnPending: () => true,
+      isTurnActive: () => true,
+      isGatewaySendTurnPending: () => false,
+    })
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(false)
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(true)
+    expect(isImageGenerationSkeletonVisible.value).toBe(true)
+  })
+
+  it('never renders a second assistant container while the last message '
+    + 'is an assistant message, for direct and gateway sends', () => {
+    const reasoningPart: UIMessage['parts'][number] = {
+      type: 'reasoning',
+      text: 'Choosing a scene and lighting for this request.',
+    }
+    const earlyPartSequences: Record<string, UIMessage['parts']> = {
+      'empty': [],
+      'chip only': [createPastChatPreRetrievalChipPart()],
+      'reasoning only': [reasoningPart],
+      'chip and reasoning': [
+        createPastChatPreRetrievalChipPart(),
+        { type: 'step-start' },
+        reasoningPart,
+      ],
+    }
+
+    for (const isGatewaySend of [false, true]) {
+      for (const [label, parts] of Object.entries(earlyPartSequences)) {
+        const messages: UIMessage[] = [
+          createMessage('user-1', 'user', [{
+            type: 'text',
+            text: 'Generate an image of a cat',
+          }]),
+          createMessage('assistant-1', 'assistant', parts),
+        ]
+        const {
+          shouldRenderPendingImageGeneration,
+          shouldRenderPendingImageGenerationInline,
+        } = useChatImageUi(() => messages, {
+          isImageGenerationTurnPending: () => true,
+          isTurnActive: () => true,
+          isGatewaySendTurnPending: () => isGatewaySend,
+        })
+        const caseName = `${label}, gateway: ${isGatewaySend}`
+
+        expect(shouldRenderPendingImageGeneration.value, caseName)
+          .toBe(false)
+        expect(shouldRenderPendingImageGenerationInline.value, caseName)
+          .toBe(true)
+      }
+    }
   })
 
   it('shows the generic failure card when a gateway image turn ends in '

@@ -225,6 +225,54 @@ describe('ChatInput/ModelsTrigger below md', () => {
       )
     })
 
+  it('keeps focus off the search when showModal ignores autofocus (iOS)',
+    async () => {
+      dialog.showModal.mockImplementation(function (this: HTMLDialogElement) {
+        this.setAttribute('open', '')
+
+        const firstLinkOrField = Array.from(
+          this.querySelectorAll<HTMLElement>('a[href], input'),
+        ).find((element) => {
+          return !element.closest('[inert]')
+        })
+
+        firstLinkOrField?.focus()
+      })
+
+      const wrapper = await mountPicker()
+
+      await openSheet(wrapper)
+
+      const box = wrapper.get('[data-testid="models-picker-sheet-box"]')
+      const search = wrapper.get('[data-testid="models-picker-search"]')
+
+      expect(document.activeElement).toBe(box.element)
+
+      await nextTick()
+
+      expect(search.element.closest('[inert]')).toBeNull()
+      expect(document.activeElement).toBe(box.element)
+    })
+
+  it('releases the panel when the sheet closes before showModal runs',
+    async () => {
+      const wrapper = await mountPicker()
+      const trigger = wrapper.get('[data-testid="current-model-trigger"]')
+
+      trigger.element.click()
+      trigger.element.click()
+      await flushPromises()
+
+      expect(dialog.showModal).not.toHaveBeenCalled()
+      expect(wrapper.find('[inert]').exists()).toBe(false)
+
+      await trigger.trigger('click')
+      await flushPromises()
+
+      expect(dialog.showModal).toHaveBeenCalledOnce()
+      expect(wrapper.find('[inert]').exists()).toBe(false)
+    })
+
   it('lays the provider rail out as a horizontal chip row', async () => {
     const wrapper = await mountPicker()
 

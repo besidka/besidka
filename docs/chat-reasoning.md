@@ -162,6 +162,15 @@ but reason by default (`gpt-5.5`+, `gpt-6-*`, `grok-4.3`, Claude 5-family
 applies and the model may reason. The message menu's reasoning row and the
 hidden-reasoning indicator show the billed tokens in that case.
 
+Covered exception: the direct OpenAI image-generation path. When a send
+uses the `image_generation` tool and the resolved level is `off` (always the
+case for `gpt-image-*`, which has no reasoning capability), `useOpenAI()` in
+`server/utils/providers/openai.ts` puts `reasoningEffort: 'none'` in
+`providerOptions.openai`, so the `gpt-6-luna`/`gpt-6-sol` controller stops
+reasoning silently and billing hidden tokens. Gated by the small
+`IMAGE_CONTROLLERS_SUPPORTING_NO_REASONING` set (only those two gpt-6 ids
+accept `none`). Text sends and gateway paths are unchanged.
+
 ### Reasoning control states
 - One shared helper decides a model's reasoning state:
   `getReasoningControlState()` in `shared/utils/reasoning.ts`, or
@@ -212,6 +221,12 @@ hidden-reasoning indicator show the billed tokens in that case.
   same rule: its Reasoning row shows whenever `usage.reasoningTokens > 0`,
   whatever the level. At level `off` it reads "Model default" with the
   medium icon.
+- One row rule: a message never renders both the indicator and the steps
+  panel. When steps exist (for example the past-chat pre-retrieval step on an
+  image send) and there is no reasoning text, the indicator is folded into the
+  steps header: after the turn it reads `Reasoned · N tokens` (with the same
+  tooltip) instead of `Steps`, and at level `off` it uses the medium icon.
+  While live it stays `Working`. The standalone row only renders with no steps.
 - Usage arrives with the finish metadata, so the indicator appears when the
   turn ends, not during streaming. Duration is not persisted, which is why
   it shows tokens rather than "Thought for Xs".

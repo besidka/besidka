@@ -105,22 +105,18 @@ export function useChatImageUi(
     return getMessages().at(-1)?.role === 'assistant'
   })
 
-  const shouldMergePendingImageIntoRealMessage = computed<boolean>(() => {
-    return isGatewaySendTurnPending() && lastMessageIsAssistant.value
-  })
-
   const shouldRenderPendingImageGeneration = computed<boolean>(() => {
     return isImageGenerationTurnPending()
       && isTurnActive()
       && !hasPendingImageDismissingContent.value
-      && !shouldMergePendingImageIntoRealMessage.value
+      && !lastMessageIsAssistant.value
   })
 
   const shouldRenderPendingImageGenerationInline = computed<boolean>(() => {
     return isImageGenerationTurnPending()
       && isTurnActive()
       && !hasPendingImageDismissingContent.value
-      && shouldMergePendingImageIntoRealMessage.value
+      && lastMessageIsAssistant.value
   })
 
   const isImageGenerationSkeletonVisible = computed<boolean>(() => {

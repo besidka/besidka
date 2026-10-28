@@ -56,18 +56,35 @@ clamp and restore watchers), so capability gating has one owner.
 
 ## Tiles
 
-Tiles use the file tile geometry (`size-16 rounded-box`, `gap-1.5`, the 16 px
-remove button at `top-1 right-1`). With no tiles and no files the row is not
-rendered. The row scrolls sideways (a vertical mouse wheel scrolls it too),
-and when more is hidden on the right it fades out there, unless the sticky
-Detach all button already marks that edge. Order and rules:
+Tile geometry depends on what the row holds (`variant` prop on
+`ChatInput/SettingTile.vue`, computed in `Files/Attached/Preview.client.vue`
+from `hasAnyFiles`):
+
+- **Pill** (no completed and no uploading files): a compact horizontal tile,
+  `h-10 max-w-40`, icon on the left, the caption (small) and value (bold)
+  stacked to its right and truncated to one line each. A removable tile
+  reserves `pr-6` and the 16 px remove button sits at the right, vertically
+  centred (`right-1 top-3`), so it never covers the text.
+- **Square** (any file or image attachment, completed or uploading): the file
+  tile geometry (`size-16 rounded-box`, the 16 px remove button at
+  `top-1 right-1`), so every item in the row shares one size.
+
+Why: the 64 px square tiles made the chat input tall even with nothing
+attached. The switch happens only when a file is added or the last one is
+removed (never while typing), and the tile height animates briefly
+(`transition-[height] duration-150 motion-reduce:transition-none`). Detach
+all only shows with more than one file, so a pill never sits beside it. Both
+variants keep `gap-1.5`; with no tiles and no files the row is not rendered.
+The row scrolls sideways (a vertical mouse wheel scrolls it too), and when
+more is hidden on the right it fades out there, unless the sticky Detach all
+button already marks that edge. Order and rules:
 
 | Tile | Shown when | Remove (x) |
 |---|---|---|
 | Project | a project is attached | clears the project |
 | Memory off (neutral gray, `lucide:book-x`) | a new chat excludes memory | turns memory back on |
 | Deep research | the model is a deep research model | none |
-| Image | image creation is on or required | turns it off, none when required |
+| Image (caption "Mode", value "Image generation", like Deep research) | image generation is on or required | turns it off, none when required; a required tile (image-only models) shows a small lock badge (`isLocked`, `chat-input-tile-lock-badge`) on the icon and the title "Image generation is always on for this model", never the word "Required" |
 | Web search | a provider is selected; the icon is the provider, "Auto search" plus a sparkle badge while Auto is active | turns search off (and saves Off as the new-chat default, as before) |
 | Reasoning | the level differs from the effective default (below) | none, tapping opens the Reasoning section |
 

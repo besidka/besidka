@@ -133,3 +133,99 @@ describe('useOpenAI prompt cache routing', () => {
     expect(result.providerOptions).not.toHaveProperty('promptCacheOptions')
   })
 })
+
+describe('useOpenAI image controller reasoning', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  function stubImageModel(controllerModelId: string) {
+    stubModel(createModel({
+      id: 'gpt-image-2',
+      name: 'GPT Image 2',
+      tools: [],
+      toolCall: false,
+      reasoning: undefined,
+      imageGeneration: { controllerModel: controllerModelId },
+    }))
+    mocks.getControllerModelId.mockReturnValue(controllerModelId)
+    mocks.getImageGenerationModelId.mockReturnValue('gpt-image-2')
+  }
+
+  it('sends reasoning effort none to the controller at off', async () => {
+    stubImageModel('gpt-6-luna')
+
+    const useOpenAI = await importUseOpenAI()
+    const result = await useOpenAI(
+      '1',
+      'gpt-image-2',
+      ['image_generation'],
+      'off',
+    )
+
+    expect(result.providerOptions).toEqual({ reasoningEffort: 'none' })
+    expect(result.reasoning).toBeUndefined()
+  })
+
+  it('keeps promptCacheKey next to the none effort', async () => {
+    stubImageModel('gpt-6-luna')
+
+    const useOpenAI = await importUseOpenAI()
+    const result = await useOpenAI(
+      '1',
+      'gpt-image-2',
+      ['image_generation'],
+      'off',
+      '01JABCDEFGHJKMNPQRSTVWXYZ0',
+    )
+
+    expect(result.providerOptions).toEqual({
+      reasoningEffort: 'none',
+      promptCacheKey: '01JABCDEFGHJKMNPQRSTVWXYZ0',
+    })
+  })
+
+  it('does not send none to a controller that does not accept it',
+    async () => {
+      stubImageModel('gpt-5.4')
+
+      const useOpenAI = await importUseOpenAI()
+      const result = await useOpenAI(
+        '1',
+        'gpt-image-2',
+        ['image_generation'],
+        'off',
+      )
+
+      expect(result.providerOptions).not.toHaveProperty('reasoningEffort')
+    })
+
+  it('leaves a normal gpt-6 text send at off untouched', async () => {
+    mocks.getControllerModelId.mockImplementation((model: Model) => model.id)
+    stubModel(createModel({
+      id: 'gpt-6-luna',
+      name: 'GPT-6 Luna',
+      tools: ['web_search', 'image_generation'],
+    }))
+
+    const useOpenAI = await importUseOpenAI()
+    const result = await useOpenAI('1', 'gpt-6-luna', ['web_search'], 'off')
+
+    expect(result.providerOptions).toEqual({})
+    expect(result.reasoning).toBeUndefined()
+  })
+
+  it('keeps the requested effort for a gpt-6 text send with reasoning on',
+    async () => {
+      mocks.getControllerModelId.mockImplementation((model: Model) => model.id)
+      stubModel(createModel({ id: 'gpt-6-luna', name: 'GPT-6 Luna' }))
+
+      const useOpenAI = await importUseOpenAI()
+      const result = await useOpenAI('1', 'gpt-6-luna', [], 'high')
+
+      expect(result.providerOptions).toEqual({ reasoningSummary: 'detailed' })
+      expect(result.reasoning).toBe('high')
+    })
+})

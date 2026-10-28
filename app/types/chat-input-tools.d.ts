@@ -42,6 +42,7 @@ export interface ChatInputTile {
   removeLabel: string | null
   isNeutral: boolean
   isAuto: boolean
+  isLocked: boolean
   isDisabled: boolean
 }
 
