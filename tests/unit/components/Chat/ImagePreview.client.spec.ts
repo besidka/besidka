@@ -55,6 +55,31 @@ describe('Chat/ImagePreview', () => {
     expect(wrapper.get('[data-testid="image-preview-close"]')
       .attributes('aria-label')).toBe('Close image preview')
     expect(wrapper.findAll('form[method="dialog"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="image-preview-ai-badge"]').exists())
+      .toBe(false)
+  })
+
+  it('shows the AI-generated badge only when flagged', async () => {
+    const wrapper = await mountSuspended(ImagePreview, {
+      props: {
+        open: true,
+        src: '/files/generated.webp',
+        downloadUrl: '/files/generated.webp?download=1',
+        alt: 'Generated landscape',
+        filename: 'generated.webp',
+        isAiGenerated: true,
+      },
+      global: {
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="image-preview-ai-badge"]').text())
+      .toContain('AI-generated')
   })
 
   it('opens when a lazy parent first mounts it as active', async () => {

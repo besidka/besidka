@@ -104,7 +104,7 @@
                   justify-between gap-3"
               >
                 <span class="label-text flex-1 min-w-0 text-start">
-                  Show author's picture
+                  Show your name and picture
                 </span>
                 <input
                   v-model="showAuthorAvatar"
