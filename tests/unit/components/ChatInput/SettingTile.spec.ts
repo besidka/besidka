@@ -36,7 +36,7 @@ describe('ChatInput/SettingTile', () => {
     expect(body.text()).toContain('Built-in')
   })
 
-  it('uses the same remove button as the file tiles', async () => {
+  it('keeps the square remove button at right-1 top-1', async () => {
     const wrapper = await mountSuspended(SettingTile, {
       props: { tile: createTile() },
     })
@@ -51,6 +51,8 @@ describe('ChatInput/SettingTile', () => {
       'btn-soft',
       'size-4',
     ]))
+    expect(remove.classes()).not.toContain('right-2')
+    expect(remove.classes()).not.toContain('top-3')
     expect(remove.attributes('aria-label')).toBe('Turn off web search')
 
     await remove.trigger('click')
@@ -142,7 +144,7 @@ describe('ChatInput/SettingTile', () => {
       expect(body.classes()).toEqual(expect.arrayContaining([
         'h-10',
         'max-w-40',
-        'pr-6',
+        'pr-7',
         'rounded-box',
         'bg-accent/10',
       ]))
@@ -150,8 +152,10 @@ describe('ChatInput/SettingTile', () => {
       expect(body.text()).toContain('Web search')
       expect(body.text()).toContain('Built-in')
       expect(remove.classes()).toEqual(
-        expect.arrayContaining(['right-1', 'top-3', 'size-4']),
+        expect.arrayContaining(['right-2', 'top-3', 'size-4']),
       )
+      expect(remove.classes()).not.toContain('right-1')
+      expect(remove.classes()).not.toContain('top-1')
     })
 
   it('does not reserve remove space on a pill that cannot be removed',
@@ -167,7 +171,7 @@ describe('ChatInput/SettingTile', () => {
       )
 
       expect(body.classes()).toContain('px-2')
-      expect(body.classes()).not.toContain('pr-6')
+      expect(body.classes()).not.toContain('pr-7')
     })
 
   it('shows a lock badge instead of the Auto badge on a locked tile',

@@ -63,7 +63,7 @@
           <textarea
             ref="textarea"
             v-model="input"
-            class="textarea p-4 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
+            class="textarea p-0 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
             :placeholder="textareaPlaceholder"
             :disabled="displayStop"
             @keydown.enter.exact="handleEnter"
