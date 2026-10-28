@@ -49,7 +49,7 @@
       </p>
       <p
         v-if="copy.warning"
-        class="text-xs text-warning-content/80 dark:text-warning"
+        class="text-xs text-warning"
         data-testid="knowledge-meter-warning"
       >
         {{ copy.warning }}
@@ -71,7 +71,7 @@
         class="text-xs"
         :class="isAccountLimitReached
           ? 'text-error'
-          : 'text-warning-content/80 dark:text-warning'"
+          : 'text-warning'"
         role="status"
         data-testid="knowledge-meter-account-warning"
       >
