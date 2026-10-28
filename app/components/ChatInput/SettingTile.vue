@@ -118,8 +118,8 @@ const bodyVariantClass = computed<string>(() => {
   }
 
   return props.tile.removeLabel
-    ? 'flex-row items-center gap-1.5 h-10 max-w-40 pl-2 pr-6'
-    : 'flex-row items-center gap-1.5 h-10 max-w-40 px-2'
+    ? 'flex-row items-center gap-2.5 h-10 max-w-40 pl-2 pr-6'
+    : 'flex-row items-center gap-2.5 h-10 max-w-40 px-2'
 })
 
 const textVariantClass = computed<string>(() => {

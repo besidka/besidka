@@ -106,7 +106,7 @@
             data-testid="knowledge-upload-running"
           >
             <progress
-              class="progress progress-primary w-full"
+              class="progress progress-accent w-full"
               :value="progress.done"
               :max="Math.max(progress.total, 1)"
               aria-valuemin="0"
