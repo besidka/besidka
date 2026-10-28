@@ -12,7 +12,7 @@ video:
   poster: /key-guides/typesafe.webp?v=2
   duration: PT34S
   uploadDate: '2026-10-26'
-  alt: Screen recording of the TypeSafe AI console. The API keys page, the Create API key dialog with a key name, the new key shown once and masked, then the key pasted into Besidka and saved (the recording shows the tab under its earlier name, Memory checks; it is now called Smart checks). The Memory page then shows Memory checks with TypeSafe AI Jev on.
+  alt: Screen recording of the TypeSafe AI console. The API keys page, the Create API key dialog with a key name, the new key shown once and masked, then the key pasted into Besidka and saved on the Smart checks tab, which then lists the TypeSafe AI checks, each with its own toggle, such as Memory checks and Auto web search.
   qualities:
     - src: /videos/key-guide-typesafe-1080.mp4?v=2
       size: 1080
@@ -32,7 +32,7 @@ video:
     - time: "0:17"
       label: Paste into Besidka
     - time: "0:24"
-      label: Memory checks on
+      label: Choose smart checks
     - time: "0:30"
       label: Done
 requirements:
