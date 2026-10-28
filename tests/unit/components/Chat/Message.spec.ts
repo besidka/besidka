@@ -230,4 +230,39 @@ describe('Chat/Message', () => {
       expect(wrapper.emitted('select')).toBeUndefined()
     })
   })
+
+  describe('author avatar', () => {
+    const authorImage = '/api/v1/shared/slug/avatar'
+
+    it('renders the author image when one is provided', async () => {
+      const wrapper = await mountSuspended(Message, {
+        props: { role: 'user', authorName: 'Owner', authorImage },
+      })
+
+      expect(wrapper.find('img').attributes('src')).toBe(authorImage)
+    })
+
+    it('falls back to the placeholder when the image fails to load', async () => {
+      const wrapper = await mountSuspended(Message, {
+        props: { role: 'user', authorName: 'Owner', authorImage },
+      })
+
+      await wrapper.find('img').trigger('error')
+
+      expect(wrapper.find('img').exists()).toBe(false)
+      expect(wrapper.find('.avatar-placeholder').exists()).toBe(true)
+    })
+
+    it('tries again when the image source changes', async () => {
+      const wrapper = await mountSuspended(Message, {
+        props: { role: 'user', authorName: 'Owner', authorImage },
+      })
+
+      await wrapper.find('img').trigger('error')
+      await wrapper.setProps({ authorImage: '/api/v1/shared/other/avatar' })
+
+      expect(wrapper.find('img').attributes('src'))
+        .toBe('/api/v1/shared/other/avatar')
+    })
+  })
 })

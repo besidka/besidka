@@ -608,6 +608,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-share-revoke.spec.ts',
     'tests/integration/api/chats-share-reshare-slug.spec.ts',
     'tests/integration/api/shared-chat-view.spec.ts',
+    'tests/integration/api/shared-chat-avatar.spec.ts',
     'tests/unit/composables/chat-share.spec.ts',
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
     'tests/unit/composables/ios-in-app-browser.spec.ts',
@@ -925,6 +926,7 @@ export function getAffectedTests(changedFiles) {
   const turnstileTests = [
     'tests/unit/composables/turnstile.spec.ts',
     'tests/unit/components/Auth/Turnstile.client.spec.ts',
+    'tests/unit/components/Auth/OAuthNotice.spec.ts',
     'tests/unit/composables/captcha.spec.ts',
     'tests/unit/pages/(auth)/signin.spec.ts',
     'tests/unit/pages/(auth)/signup.spec.ts',
@@ -1394,6 +1396,10 @@ export function getAffectedTests(changedFiles) {
       tests: turnstileTests,
     },
     {
+      pattern: /^app\/components\/Auth\/OAuthNotice\.vue$/,
+      tests: turnstileTests,
+    },
+    {
       pattern: /^app\/types\/turnstile\.d\.ts$/,
       tests: turnstileTests,
     },
@@ -1663,7 +1669,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/chats\/share(-pii-check|-public-parts)?\.ts|shared\/utils\/share-pii\.ts|shared\/types\/share-pii\.d\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue|shared\/utils\/og-description\.ts)$/,
+        /^(server\/utils\/chats\/share(-pii-check|-public-parts)?\.ts|shared\/utils\/share-pii\.ts|shared\/types\/share-pii\.d\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|server\/utils\/shared\/author-avatar\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue|shared\/utils\/og-description\.ts)$/,
       tests: chatShareTests,
     },
     {

@@ -270,16 +270,37 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   AI recipient, and the residual risk), and the remaining open owner/counsel questions
 - `docs/legal/dpia.md` - DPIA for chats, memory and the consent gate
   (engineer-drafted, not lawyer-reviewed): UODO and WP248 criteria, systematic
-  description including the seven TypeSafe AI roles (3.7a), 24-row risk table
+  description including the seven TypeSafe AI roles (3.7a), 27-row risk table
   with built/planned status, residual risks, and
   the DPF list check of 2026-10-26; read before changing a purpose, provider,
   consent text or retention rule
 - `docs/legal/art30-record.md` - GDPR Art. 30 record of processing activities
   (engineer-drafted, not lawyer-reviewed): why the Art. 30(5) exemption fails,
-  23 activities (rows 1 to 22 and 11a, the TypeSafe AI roles) with recipients,
+  24 activities (rows 1 to 22, 11a, the TypeSafe AI roles, and 14a, report
+  and copyright-notice handling) with recipients,
   transfers, retention and security codes, and
   the third-country tables (providers, processors); keep it in step with the
   Privacy Policy and the DPIA
+- `docs/legal/compliance-review-2026-10.md` - The 2026-10-28 compliance review
+  (engineer-drafted, not lawyer-reviewed): six launch risks (age gate and
+  COPPA, external fonts and IP leaks, session replay and CIPA, marketing email
+  and CAN-SPAM, subscriptions and the California ARL, uploads and the DMCA)
+  with status, what changed, owner follow-ups and sources; plus the DSA
+  applicability argument and the Polish implementing act (Dz.U. 2026 poz.
+  1296), AI Act Art. 50, TCO Regulation 2021/784, the GDPR Art. 33 runbook gap,
+  and the DMCA designated-agent decision that conflicts with the
+  no-postal-address position
+- `docs/legal/monetisation-readiness.md` - Everything that must happen before
+  and when Besidka earns in any form (donations, ads, affiliate links, a paid
+  tier, credits, paid support; selling data excluded), engineer-drafted,
+  research date 2026-10-28: decision triggers (an unused tip link already
+  counts), the ordered before/at/ongoing checklist, JDG vs unregistered
+  activity (225% of minimum wage per quarter) and who may open a JDG, virtual
+  office address, PIT/ZUS/VAT 240k/OSS/KSeF/cash-register facts, merchant of
+  record vs own merchant, Polish consumer law and the unimplemented EU
+  withdrawal button, California ARL and the vacated FTC rule, CAN-SPAM and
+  RFC 8058, DSA and AI Act effects, the DMCA agent, open questions for counsel,
+  and the repo files to change; read before adding any payment or donation link
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
   only, not legal text, superseded on 2026-10-26 by the published pages (its
   anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA

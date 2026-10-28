@@ -42,6 +42,7 @@
                 v-if="resolvedUserImage"
                 :alt="resolvedUserName"
                 :src="resolvedUserImage"
+                @error="hasUserImageFailed = true"
               >
               <Icon v-else name="lucide:user-round" />
             </template>
@@ -82,12 +83,22 @@ const emit = defineEmits<{
 const { user } = useAuth()
 const element = useTemplateRef<HTMLDivElement>('element')
 
-const resolvedUserImage = computed<string | undefined>(() => {
+const hasUserImageFailed = shallowRef<boolean>(false)
+
+const sourceUserImage = computed<string | undefined>(() => {
   if (props.authorImage !== undefined) {
     return props.authorImage ?? undefined
   }
 
   return user.value?.image ?? undefined
+})
+
+const resolvedUserImage = computed<string | undefined>(() => {
+  return hasUserImageFailed.value ? undefined : sourceUserImage.value
+})
+
+watch(sourceUserImage, () => {
+  hasUserImageFailed.value = false
 })
 
 const resolvedUserName = computed<string | undefined>(() => {

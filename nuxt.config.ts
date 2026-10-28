@@ -5,8 +5,6 @@ import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers/index.ts'
 import rehypeStripDirectiveProps from './shared/utils/mdc/rehype-strip-directive-props.ts'
 
-const enableFonts = process.env.CI !== 'true'
-
 const stripDirectivePropsPlugin = {
   src: '~~/shared/utils/mdc/rehype-strip-directive-props',
   instance: rehypeStripDirectiveProps,
@@ -149,6 +147,7 @@ const videoJsElements = new Set([
 
 const modules = [
   '@nuxt/content',
+  '@nuxt/fonts',
   'nuxt-studio',
   '@nuxt/eslint',
   '@nuxt/icon',
@@ -168,10 +167,6 @@ const modules = [
   'nuxt-email-renderer',
   forceInlineVueI18nForEmailRenderer,
 ]
-
-if (enableFonts) {
-  modules.splice(1, 0, '@nuxt/fonts')
-}
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-28',
@@ -436,32 +431,28 @@ export default defineNuxtConfig({
       ],
     },
   },
-  ...(enableFonts
-    ? {
-      fonts: {
-        defaults: {
-          weights: [400, 700, 900],
-          styles: ['normal'],
-          subsets: [
-            'cyrillic-ext',
-            'cyrillic',
-            'latin-ext',
-            'latin',
-          ],
-        },
-        provider: 'google',
-      },
-    }
-    : {}),
+  fonts: {
+    defaults: {
+      weights: [400, 700, 900],
+      styles: ['normal'],
+      subsets: [
+        'cyrillic-ext',
+        'cyrillic',
+        'latin-ext',
+        'latin',
+      ],
+    },
+    provider: 'npm',
+  },
   icon: {
     collections: iconCollections,
-    fallbackToApi: 'client-only',
+    fallbackToApi: false,
     serverBundle: {
       remote: 'jsdelivr',
       collections: iconCollections,
     },
     clientBundle: {
-      icons: ['lucide:git-branch-plus'],
+      icons: ['lucide:git-branch-plus', 'thesvg:zhipu'],
     },
   },
   future: {

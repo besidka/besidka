@@ -46,6 +46,7 @@
         </AuthLastUsedContainer>
       </li>
     </ul>
+    <AuthOAuthNotice />
     <LazyAuthInAppAlert v-if="displayEmbeddedBrowserWarning" />
     <div class="divider max-sm:my-2">or continue with</div>
     <UiForm

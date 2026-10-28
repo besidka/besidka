@@ -6,6 +6,10 @@ import {
   hideFileParts,
   rewriteShareFileParts,
 } from '~~/server/utils/files/rewrite-share-file-urls'
+import {
+  buildSharedAvatarPath,
+  resolveAllowedAvatarUrl,
+} from '~~/server/utils/shared/author-avatar'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 
@@ -109,7 +113,12 @@ export default defineEventHandler(async (event) => {
   })
 
   const author = share.showAuthorAvatar
-    ? { name: chat.user.name, image: chat.user.image }
+    ? {
+      name: chat.user.name,
+      image: resolveAllowedAvatarUrl(chat.user.image)
+        ? buildSharedAvatarPath(params.data.slug)
+        : null,
+    }
     : null
 
   return {

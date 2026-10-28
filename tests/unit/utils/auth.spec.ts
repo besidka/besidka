@@ -367,6 +367,47 @@ describe('server/utils/auth.ts security notification wiring', () => {
     )
   })
 
+  describe('hooks.before — profile image', () => {
+    it.each([
+      ['/update-user', 'a URL', 'https://lh3.googleusercontent.com/proxy/abc'],
+      ['/update-user', 'null', null],
+      ['/sign-up/email', 'a URL', 'https://lh3.googleusercontent.com/a/abc'],
+    ])('rejects %s with image set to %s', async (path, _label, image) => {
+      const options = await importAuthOptions()
+      const before = options.hooks!.before!
+
+      await expect(before(createHookCtx({
+        path,
+        body: { name: 'Owner', image },
+        user: { email: 'user@example.com' },
+      }) as any)).rejects.toMatchObject({
+        status: 'BAD_REQUEST',
+        body: { message: 'Profile image cannot be changed' },
+      })
+    })
+
+    it('lets other profile fields through', async () => {
+      const options = await importAuthOptions()
+      const before = options.hooks!.before!
+
+      await expect(before(createHookCtx({
+        path: '/update-user',
+        body: { name: 'Owner' },
+        user: { email: 'user@example.com' },
+      }) as any)).resolves.toBeUndefined()
+    })
+
+    it('ignores an image field on any other path', async () => {
+      const options = await importAuthOptions()
+      const before = options.hooks!.before!
+
+      await expect(before(createHookCtx({
+        path: '/sign-in/social',
+        body: { image: 'https://example.com/a.png' },
+      }) as any)).resolves.toBeUndefined()
+    })
+  })
+
   describe('hooks.after', () => {
     it('skips notifying when the endpoint returned an API error', async () => {
       const options = await importAuthOptions()

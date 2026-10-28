@@ -1,7 +1,7 @@
 ---
 title: "Cookie Policy"
 description: "Every cookie and browser storage entry Besidka uses, what it is for, how long it lasts, and how to change or withdraw your consent."
-updatedAt: 2026-10-27
+updatedAt: 2026-10-28
 summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, hand a tapped push notification to the open app, and remember a folder you linked to a project. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree. There is also an optional Analytics category: if you allow it, Besidka loads Cloudflare Web Analytics, a script that measures page views and page-load speed and, according to Cloudflare, sets no cookie and stores nothing on your device. It is off until you allow it. The only other third-party script is a security check on the sign-in forms. There is no marketing category. My own page-view counting happens on the server with no cookie, no identifier and no stored IP address, and the campaign tags in a link you click are read from the web address, never stored on your device. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
 ---
 
@@ -139,6 +139,8 @@ I do not embed advertising scripts, so no advertiser sets a cookie through my pa
 
 - **Cloudflare Turnstile**, a security check that runs only on the sign-in, sign-up and reset-password pages. It is not consent-gated (see above).
 - **Cloudflare Web Analytics**, which loads only if you allow the Analytics category. According to Cloudflare it sets no cookie (see above).
+
+**Fonts and icons.** The fonts and icons Besidka uses are served from besidka.com. Your browser does not contact Google Fonts or an icon service to draw a page, so no one else sets a cookie or sees your IP address for that. If the person who shared a chat chose to show their avatar on the share page, the image is delivered through besidka.com too, so opening a share does not contact Google or GitHub.
 
 Some things happen off my site and are worth knowing about:
 

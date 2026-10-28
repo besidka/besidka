@@ -453,4 +453,73 @@ describe('public shared chat view API', () => {
     ])
     expect(response.messages[0]).toHaveProperty('createdAt')
   })
+
+  describe('author avatar', () => {
+    const rawGoogleImage = 'https://lh3.googleusercontent.com/a/abc=s96-c'
+
+    function createAuthorChat(image: string | null) {
+      return {
+        title: 'Chat title',
+        user: { name: 'Owner', image },
+        messages: [createMessageFixture()],
+      }
+    }
+
+    it('returns the same-origin proxy path instead of the raw OAuth URL', async () => {
+      const handler = await getHandler()
+      const { db } = createDb({
+        shares: [createShareFixture({ slug: 'avatar-on' })],
+        chat: createAuthorChat(rawGoogleImage),
+      })
+
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: 'avatar-on' },
+      } as never)
+
+      expect(response.author).toEqual({
+        name: 'Owner',
+        image: '/api/v1/shared/avatar-on/avatar',
+      })
+      expect(JSON.stringify(response)).not.toContain('googleusercontent')
+    })
+
+    it('returns no author and no image when showAuthorAvatar is false', async () => {
+      const handler = await getHandler()
+      const { db } = createDb({
+        shares: [createShareFixture({
+          slug: 'avatar-off',
+          showAuthorAvatar: false,
+        })],
+        chat: createAuthorChat(rawGoogleImage),
+      })
+
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: 'avatar-off' },
+      } as never)
+
+      expect(response.author).toBeNull()
+      expect(JSON.stringify(response)).not.toContain('googleusercontent')
+    })
+
+    it('returns a null image for a host outside the avatar allowlist', async () => {
+      const handler = await getHandler()
+      const { db } = createDb({
+        shares: [createShareFixture({ slug: 'avatar-foreign' })],
+        chat: createAuthorChat('https://tracker.example.com/pixel.png'),
+      })
+
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: 'avatar-foreign' },
+      } as never)
+
+      expect(response.author).toEqual({ name: 'Owner', image: null })
+      expect(JSON.stringify(response)).not.toContain('tracker.example.com')
+    })
+  })
 })

@@ -1,8 +1,8 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-10-27
-summary: "Besidka stores your account, chats, projects, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway you chose, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. The assistant can also look up your earlier chats and send short excerpts of them to the provider of the chat you are in, and memory, if you use it, can be written by an AI model on one of your own keys. If you add a TypeSafe AI key, TypeSafe AI in the United States can also answer short yes/no questions about your text for optional checks, such as memory entries, whether a web search is needed, files and search results screened for hidden instructions, and chats you are about to share, and each check has its own off switch. Each provider is a separate company with its own privacy terms, and some of them are outside the EU, in the United States, China or Singapore. Because you can type anything, your chats may contain sensitive information such as health details or beliefs; I ask for your explicit consent to store it and send it where you tell me to, and I never use it for anything else. If you use a free Google Gemini key outside the EEA, Switzerland and the UK, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
+updatedAt: 2026-10-28
+summary: "Besidka stores your account, chats, projects, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway you chose, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. The assistant can also look up your earlier chats and send short excerpts of them to the provider of the chat you are in, and memory, if you use it, can be written by an AI model on one of your own keys. If you add a TypeSafe AI key, TypeSafe AI in the United States can also answer short yes/no questions about your text for optional checks, such as memory entries, whether a web search is needed, files and search results screened for hidden instructions, and chats you are about to share, and each check has its own off switch. Each provider is a separate company with its own privacy terms, and some of them are outside the EU, in the United States, China or Singapore. Because you can type anything, your chats may contain sensitive information such as health details or beliefs; I ask for your explicit consent to store it and send it where you tell me to, and I never use it for anything else. If you use a free Google Gemini key outside the EEA, Switzerland and the UK, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. Public share links are off by default, and when you create one every extra on it (search indexing, files, your name and avatar) starts off, but anyone who has the link can read the chat. If someone sends me a report about content or a copyright notice, I process it by email as described in the policy. You can delete your account and all its data from your settings at any time."
 ---
 
 ## What this policy covers
@@ -68,7 +68,7 @@ The campaign tags travel in the web address and in the page's memory only. I do 
 
 ### Sharing and notifications
 
-- Share records, if you publish a chat with a share link
+- Share records, if you publish a chat with a share link, including the switches you chose for it (see [Public chat sharing](#public-chat-sharing))
 - Push notification subscriptions, if you turn push notifications on. A subscription contains the endpoint URL issued by your browser's push service and the public keys needed to encrypt a message to your browser.
 
 ### Operational logs
@@ -95,7 +95,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Send text to TypeSafe AI for the TypeSafe AI checks you leave on (see [TypeSafe AI checks](#typesafe-ai-checks)), only if you saved a TypeSafe AI key | Contract — Art. 6(1)(b), because you added the key and left the check on. For sensitive information, also your explicit consent — Art. 9(2)(a) |
 | Keep a record of your consents, of when you accepted the Terms of Use and of your age confirmation | Legal obligation to be able to prove consent — Art. 6(1)(c) with Art. 7(1) for the consents; legitimate interests — Art. 6(1)(f) for the Terms and age record |
 | Send your messages to DeepSeek, Moonshot AI, Qwen, one of the other gateway vendors listed under [Transfers outside the EU](#transfers-outside-the-eu) (in China, Singapore, Malaysia or Indonesia), or to a router or preset model that can pick any provider, outside the EU without an adequacy decision | Your explicit consent to the transfer — Art. 49(1)(a) |
-| Send the email verification and password reset emails | Contract — Art. 6(1)(b) |
+| Send the account emails listed under [Email I send you](#email-i-send-you) | Contract — Art. 6(1)(b) for verification, password reset and confirmation emails; legitimate interests — Art. 6(1)(f) for security notices that tell you something on your account changed |
 | Send you push notifications | Your consent — Art. 6(1)(a) |
 | Publish a chat behind a share link | Your consent — Art. 6(1)(a) |
 | Let search engines index a shared chat | A separate consent — Art. 6(1)(a) |
@@ -103,6 +103,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Measure page views and page-load speed with Cloudflare Web Analytics, only if you allow the Analytics category | Your consent — Art. 6(1)(a) and PKE Art. 399 |
 | Remember which campaign link brought you to Besidka, and count the milestones above, so I can tell which of my own campaigns work | Legitimate interests — Art. 6(1)(f) |
 | Count page views and interface events as aggregate counters | Legitimate interests — Art. 6(1)(f) |
+| Handle reports of illegal content, copyright notices and disputes of removals, and keep a record of them (see [Reports and notices about content](#reports-and-notices-about-content)) | Legal obligation — Art. 6(1)(c) where EU or Polish law requires me to act, for example an order from a court or authority; otherwise legitimate interests — Art. 6(1)(f): dealing with abuse, protecting rights holders and the people whose content is reported |
 | Error and operational logging | Legitimate interests — Art. 6(1)(f) |
 | Security, abuse prevention and rate limiting | Legitimate interests — Art. 6(1)(f) |
 
@@ -269,7 +270,7 @@ TypeSafe AI, in the United States, is an independent controller towards me, like
 
 | Recipient | What they receive | Where | Safeguard |
 | --- | --- | --- | --- |
-| Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing — plus Turnstile bot-protection signals on sign-in, sign-up and password reset forms, plus, only if you allow the Analytics category in the cookie banner, the page-view and page-load measurements sent by Cloudflare Web Analytics | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
+| Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing — plus Turnstile bot-protection signals on sign-in, sign-up and password reset forms, plus, only if you allow the Analytics category in the cookie banner, the page-view and page-load measurements sent by Cloudflare Web Analytics | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. For its own use of Turnstile signals, Cloudflare is an independent controller (see below). |
 | Axiom | Operational and error logs | US | Processor for me. Standard Contractual Clauses. |
 | Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen | Your prompts, message history and attachments, and, if you use memory, your memory index, the memory entries the assistant reads, excerpts of your earlier chats and project knowledge, sent with your own API key. When memory is written from your chats, the text of those chats goes to the provider of the model you chose for memory | Anthropic: Ireland for customers in the EEA under Anthropic's terms, otherwise United States. OpenAI: Ireland for customers in the EEA and Switzerland under OpenAI's terms, otherwise United States. Google, xAI: United States. DeepSeek: China. Moonshot AI and Qwen: Singapore, as Besidka calls them | Independent controller. Your own terms with them apply. See [Transfers outside the EU](#transfers-outside-the-eu). |
 | Vercel (AI Gateway) | Only if you route a chat through it: your prompts, message history and attachments, in transit to the model vendor you selected, sent with your own gateway key | Depends on your gateway account | Independent controller. Your own terms with them apply. Vercel Inc. is certified under the EU–US Data Privacy Framework. Vercel's DPA describes it as a processor for its own customers, but does not name AI Gateway; the zero-data-retention and no-training commitments are in Vercel's product documentation, not its contract. [Vercel Privacy Notice](https://vercel.com/legal/privacy-notice) |
@@ -282,9 +283,11 @@ TypeSafe AI, in the United States, is an independent controller towards me, like
 | Google or GitHub | Only if you use them to sign in. I request the scopes `email profile openid` from Google and `read:user user:email` from GitHub. | US | Independent controllers for your account with them. |
 | Search engines | A shared chat, and only if you turned on the separate indexing option for that share | Worldwide | Your consent. |
 
-Sign-in, sign-up and password reset forms are protected by **Cloudflare Turnstile**, a bot-detection check that runs as part of Cloudflare, the same infrastructure provider listed above. On most visits it runs without any action from you; if a visit looks automated, it may present a challenge before letting the form through. To do this, Turnstile looks at signals about your browser and device. See Cloudflare's [Turnstile Privacy Addendum](https://www.cloudflare.com/en-gb/turnstile-privacy-policy/) for what a Turnstile check itself collects from your visit.
+Sign-in, sign-up and password reset forms are protected by **Cloudflare Turnstile**, a bot-detection check that runs as part of Cloudflare, the same infrastructure provider listed above. On most visits it runs without any action from you; if a visit looks automated, it may present a challenge before letting the form through. To do this, Turnstile looks at signals about your browser and device. See Cloudflare's [Turnstile Privacy Addendum](https://www.cloudflare.com/en-gb/turnstile-privacy-policy/) for what a Turnstile check itself collects from your visit. That addendum says Cloudflare also uses the Turnstile signals for its own purposes, to run, secure and improve Turnstile, and that for this use it acts as a controller on the basis of its legitimate interests. So for that use Cloudflare is not only my processor, and its own privacy terms apply to it.
 
 Cloudflare Web Analytics, which loads only if you allow the Analytics category in the cookie banner, is run by Cloudflare as the same infrastructure provider listed above. See [Analytics](#analytics).
+
+The fonts and icons the app uses are served from besidka.com. Your browser does not contact Google Fonts or an icon service to draw a page. If the person who shared a chat chose to show their avatar, the image reaches you through besidka.com as well, so when you open a share your browser does not contact Google or GitHub, and the original address of the avatar is not sent to you. Inside the app, your own avatar is loaded by your browser from Google or GitHub, the account you signed in with, so that company sees your IP address when it loads.
 
 I do not sell your data. I do not share it with advertisers, data brokers or analytics networks. There are no advertising scripts on the site, and the only analytics script is Cloudflare Web Analytics, which stays off until you allow it.
 
@@ -354,6 +357,7 @@ My logs are deliberately narrow. Specifically:
 | Past-chat run records | The last 5 runs; deleted with your account |
 | Project knowledge | Until you remove it or delete the project. The original files then stay in your file library under its normal rules |
 | Your consent to store sensitive information, your acceptance of the Terms of Use and age confirmation, and your consent to transfers to DeepSeek, Moonshot AI, Qwen, the other gateway vendors or router and preset models | While your account exists. Withdrawing keeps the record of when you gave and withdrew it. Deleted with your account |
+| Reports of illegal content, copyright notices, disputes of removals and my decisions about them | Until the matter is closed, and then 12 months so I can answer a challenge, a complaint or an authority. A note that content was removed from an account on a copyright notice is kept 24 months, for the repeat-infringement rule. The emails are deleted on the same schedule. See [Reports and notices about content](#reports-and-notices-about-content) |
 | Cookie consent records | Stored in a separate database, pseudonymously — see [Cookie consent records](#cookie-consent-records) |
 
 ### Backups
@@ -370,10 +374,13 @@ When you make a cookie choice, I record it so I can prove the choice was made. T
 
 Sharing a chat is off unless you switch it on for that specific chat. It is based on your consent and you can revoke it. Please understand exactly what it does.
 
+When you create a share, everything extra on it starts **off**, so a share shows only what you switch on yourself. The link duration starts at "never", and you can pick a shorter expiry before you publish. Shares you created earlier keep the settings that were saved with them.
+
 - **Anyone with the link can open the chat. No account is needed.** An unlisted URL is not access control. Treat a share link like a public web page you have chosen not to advertise.
-- **Search-engine indexing is a separate switch.** A share is not indexable unless you also turn indexing on for it.
-- Per-share switches control whether **files** are included, whether **message metadata** (timestamps, token counts and cost figures) is shown, and whether **your name and avatar** are shown. Tool calls are always removed from a shared chat.
-- Another switch controls **branching**. If it is on, a signed-in visitor can copy the shared conversation into their own account and continue it there. Their copy is their own data from that point on, and revoking your share does not remove it.
+- **Search-engine indexing is a separate opt-in.** A share is not indexable unless you turn indexing on for it, and it starts off.
+- Per-share switches control whether **files and generated images** are included, whether **message metadata** (timestamps, token counts, cost figures and which tools were switched on) is shown, and whether **your name and avatar** are shown. Each starts off. Tool calls are always removed from a shared chat.
+- If you show your avatar, the image is delivered through besidka.com, and visitors' browsers do not contact Google or GitHub to load it. The original avatar address is never sent to visitors.
+- Another switch controls **branching** ("let others copy"). It starts off. If it is on, a signed-in visitor can copy the shared conversation into their own account and continue it there. Their copy is their own data from that point on, and revoking your share does not remove it.
 - Files in a shared chat are served through short-lived signed tokens that expire after **1 hour** and are re-checked against the live share every time. Sharing a chat does not make the file permanently public.
 
 ### Revoking a share
@@ -386,6 +393,15 @@ If you plan to share a chat, please re-read it first, and remember that it may c
 
 With a TypeSafe AI key and the share check on, the chat text being shared is sent to TypeSafe AI when you open the share window, before you publish, to look for personal data. Emails, phone numbers, card numbers and similar identifiers are removed from it first. It shows a warning only and never blocks sharing. See [TypeSafe AI checks](#typesafe-ai-checks).
 
+## Reports and notices about content
+
+Anyone can write to **:privacy-email-link{}** to report content they believe is illegal, to send a copyright notice, or, if their content was removed because of a copyright notice, to say the removal was a mistake. How that works is in the [Terms of Use](/terms-of-use#reporting-illegal-content) and in [Copyright complaints](/terms-of-use#copyright-complaints). This is what I do with the personal data in them:
+
+- **What I receive.** What the sender chooses to write: their name, email address and, for a copyright notice, the owner's name; the web address of the content; the explanation or statement they give. I may also open the reported content and look at the account that published it, to decide.
+- **What I do with it.** I read it, decide what to do, and tell the sender and the user who published the content. When I remove or disable content, I send that user a statement of reasons that says what was reported and why I acted. If you dispute a copyright removal, I give your name and contact details to the person who sent the notice only if you agree. Otherwise I share a report only where the law requires it, for example with an authority.
+- **Why I may.** Legal obligation under GDPR Art. 6(1)(c) where EU or Polish law requires me to act, for example an order from a court or authority, and otherwise legitimate interests under Art. 6(1)(f): dealing with abuse and protecting rights holders and users. See the table above.
+- **How long I keep it.** Until the matter is closed, and then for 12 months so I can answer a challenge, a complaint or an authority. A note that content was removed from an account on a copyright notice is kept for 24 months, for the rule on repeat infringement. The emails are deleted on the same schedule.
+
 ## Push notifications
 
 Push notifications are optional and based on your consent. You switch them on or off in **Profile → Preferences → Notifications**, in the user menu, or in the prompt Besidka shows you; each choice applies to the browser you make it in. Besidka sends one when a response finishes while you are away, when you open a shared chat in the installed app, and when a shared chat you branched is ready in your chats. The text is fixed and generic. It never contains your messages, a chat title or anything you wrote, only a link to the chat to open.
@@ -396,10 +412,11 @@ Turning notifications off in your settings, or in your browser, revokes the subs
 
 ## Email I send you
 
-I send exactly two kinds of email:
+I send only transactional email, which is email about your account and what you asked for:
 
-1. Email address verification
-2. Password reset
+1. **Address and password:** email address verification, password reset and confirmation of a new email address.
+2. **Account deletion:** a confirmation link when you ask to delete your account.
+3. **Security notices**, when something on your account changes: your password was changed, a sign-in method was connected or disconnected, two-factor authentication was turned on or off, backup codes were regenerated, your account email was changed, or a passkey was added or removed.
 
 That is all. **I never send marketing email**, newsletters or product announcements, and there is no mailing list to unsubscribe from. Email is sent through Cloudflare's email sending service.
 
@@ -472,7 +489,7 @@ Some advice, which is advice and not a rule:
 
 ## Age limit
 
-Besidka is for people aged **18 or over**. Using Besidka requires your own AI provider API key, and the providers set 18 as the minimum age for an API account — Google AI Studio requires you to be 18 or over — so there is no younger tier for me to support. Because the service is adults-only, the children's consent rules in GDPR Art. 8 do not arise. You confirm that you are 18 or over in the app before you send your first message. If you are under 18, please do not create an account. If you believe someone under 18 has an account, write to **:privacy-email-link{}** and I will delete it.
+Besidka is for people aged **18 or over**. Using Besidka requires your own AI provider API key, and the providers set 18 as the minimum age for an API account — Google AI Studio requires you to be 18 or over — so there is no younger tier for me to support. Because the service is adults-only, the children's consent rules in GDPR Art. 8 do not arise. I ask you to confirm that you are 18 or over at sign-up: in the box you tick when you sign up with email, and by continuing when you sign up or sign in with Google or GitHub. I ask again in the app before you send your first message, and the record I keep of your age confirmation is the one made there (see [What I store](#what-i-store)). I do not ask for your date of birth. If you are under 18, please do not create an account. If you believe someone under 18 has an account, write to **:privacy-email-link{}** and I will delete it.
 
 ## Your rights
 
