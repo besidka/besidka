@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.0, 2026-10-26 (consent gate and transfer consent built) |
+| Version | 1.1, 2026-10-28 (share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling; see risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -80,7 +80,8 @@ removed.
   AI gateway or a search provider. Besidka's server sends the request. Besidka
   does not train models and does not sell data.
 - **Processors.** Cloudflare (Workers, D1, KV, R2, Images, email sending, web
-  analytics, Turnstile) and Axiom (logs). Besidka has a data-processing
+  analytics, Turnstile; for its own use of Turnstile signals Cloudflare is an
+  independent controller under its Turnstile Privacy Addendum) and Axiom (logs). Besidka has a data-processing
   agreement with these two only.
 - **Independent controllers.** The AI providers, gateways and search providers
   the user picks, and TypeSafe AI when the user saves a TypeSafe AI key
@@ -88,7 +89,9 @@ removed.
   contract with them.
 - **Out of scope here.** Cookie consent records, push, email, campaign
   attribution and analytics. They have their own rows in the Art. 30 record and
-  carry no special-category content.
+  carry no special-category content. Handling of content reports, copyright
+  notices and counter-notices is row 14a of the Art. 30 record; its one risk
+  for people is row 27 below.
 
 ## 3. Systematic description of the processing
 
@@ -526,6 +529,9 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 22 | Auto web search and the share check send chat text (message and recent turns; the chat being shared) to the vendor | Medium | Medium | Auto web search sends only in the Auto mode; the share check only when the user starts a share; both only with a key and a toggle; a failure means a normal search or a generic reminder; the share check warns and never blocks; counts only in logs; disclosed in the Privacy Policy | built | Low to medium |
 | 23 | Injection screening sends project knowledge and third-party web text (Brave and Exa results) to the vendor | Medium | Medium | Only with a key and a toggle; project files are the user's own content already covered by the consent; web text is public; never-store values are removed before sending; results from a model's built-in search are never sent; Besidka stores no screened text for this check (the re-screening queue holds item ids only, 14 days); counts only in logs; whether this third-party text fits the consent wording is an open owner and counsel question (`docs/legal.md`) | built | Medium |
 | 24 | Attacker-crafted content makes screening withhold legitimate results or files (false positive), or evades it (false negative). This includes text written against Jev itself, to make it flag a legitimate document or result | Medium | Low | Screening is an add-only signal, never the only defence: the memory write lock (set for every Brave or Exa search whatever the verdict), the data-not-instructions wrapping and the memory gate in row 6 stay, and a clean verdict never relaxes any of them; a flag never deletes anything, so the worst a manipulated flag can do is ask the user to review a file (one "Allow anyway" click puts it back, and it is not screened again until its text changes) or leave one web result out of the model's context, with a note saying how many were withheld; a Jev failure keeps the file usable and the results in context; thresholds come from an eval and are re-tuned on real traffic; the toggle turns it off; results from a model's built-in search cannot be screened and rely on the other defences alone | built | Low |
+| 25 | A chat published by a share link exposes its content, third parties' data and the author's identity to anyone, and can be indexed or copied | Medium | High | Privacy by default (Art. 25(2); EDPB Guidelines 4/2019): every extra on a new share (search indexing, files and generated images, message metadata, author name and avatar, branching) starts **off**, the user switches on only what they want; indexing is its own opt-in; the link duration starts at "never" but the user can pick an expiry, and a share can be revoked; file access uses signed tokens that expire after 1 hour; tool calls are stripped; the optional TypeSafe AI share check and the built-in detector warn before publishing (row 22); the Terms and Privacy Policy say plainly that revoking cannot recall caches, archives or copies. The SQL column defaults stay `DEFAULT true` (changing them rebuilds `chat_shares` on D1 and cascades `chat_share_files`), which is harmless because the route writes every flag explicitly (`docs/d1-restore-reconciliation.md`). Shares created before 2026-10-28 keep their saved flags | built | Medium (a published link is public; copies cannot be recalled) |
+| 26 | A visitor's IP address and browser details reach Google or GitHub (avatar host) or font and icon services just by opening a share page, or by using the app | Medium | Low | Fonts (Nunito, Atkinson Hyperlegible Mono) and icons are served from besidka.com and the Iconify API fallback is disabled; the share author's avatar, when shown, is delivered through a same-origin proxy (`server/api/v1/shared/[slug]/avatar.get.ts`, allowlisted to real Google and GitHub avatar URLs, answers cached privately for 5 minutes), so visitors to a **share page** do not contact Google or GitHub and the raw avatar URL is never sent to them; third-party scripts stay at two, both Cloudflare (Turnstile on auth pages, Web Analytics only after consent). **Residual:** inside the app a signed-in user's own avatar (`Chat/Message.vue`) is still loaded by their own browser from Google or GitHub, which receive that user's IP address; it is their own account and their own data, and the host is the one they signed in with | built for share pages, fonts and icons | Low |
+| 27 | A user who sends a copyright counter-notice has their name and contact details forwarded to the complainant; a false or abusive notice takes down a user's content | Low | Medium | The counter-notice is voluntary and the procedure says up front that its content, including the user's name and contact details, is forwarded (Terms "Copyright complaints", Privacy Policy "Reports and notices about content"); forwarding is required by the procedure the text follows (17 U.S.C. §512(g)); a notice needs the statutory elements and a signed accuracy statement, a person decides, the user gets a statement of reasons and can challenge it, and the false-notice warning is stated; only a counter-notice is forwarded, never other data; retention is as long as needed. The retention period is an open owner decision (`docs/legal/compliance-review-2026-10.md`) | built (text and procedure) | Low |
 
 ## 6. Residual risks
 
@@ -597,6 +603,11 @@ the Privacy Policy or should be.
     (`docs/legal/memory-legal-changes-draft.md`). Decision: ship, keep every
     check switchable, revisit with counsel.
 
+11. **Published shares cannot be recalled.** Even with every extra off by
+    default (risk row 25), a share is readable by anyone with the link, and
+    copies, caches and archives outlive a revocation. Disclosed in the Terms
+    and the Privacy Policy. Nothing more can be done in code.
+
 **Overall.** With the consent gate, the transfer notice and consent, and the
 removal of the ungated background refresh in place (all built in this release),
 the residual risk is medium. It is not high enough for prior consultation under
@@ -623,7 +634,7 @@ changes.
 | Prepared by | Engineer draft, 2026-10-26 |
 | Approved by | [OWNER NAME], controller |
 | Date approved | [DATE] |
-| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 10] |
+| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 11] |
 | Counsel reviewed | No |
 
 **Review this DPIA when:**

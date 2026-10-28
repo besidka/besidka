@@ -342,6 +342,10 @@ tier, data monetisation):
    2019/770's data-as-consideration route can reach the same result.
 So: before adding any monetisation, revisit this file, the Privacy Policy and
 the Cookie Policy.
+3. The same Art. 2 pkt 6 test now also decides whether the Polish DSA
+   implementing act's fines can reach the operator (see "2026-10-28 compliance
+   review: decisions").
+
 ## Status of the underlying research
 
 The above rests on primary sources (Dz.U. 2024 poz. 1513 for UŚUDE; WP29 WP260
@@ -361,6 +365,113 @@ activity, not the operator). Paid freelance or B2B side work would reopen it.
 and Buy Me a Coffee under the `besidka` name. Gain *orientation* is the test, not
 gain received, so an open donation channel breaks the analysis even at zero
 lifetime income.
+
+## 2026-10-28 compliance review: decisions
+
+Engineer-drafted, not lawyer-reviewed. The full record of the review (six
+launch risks, extra findings, sources, owner follow-ups) is
+`docs/legal/compliance-review-2026-10.md`. The three pages were edited the same
+day and `updatedAt` is `2026-10-28`. No new purpose or recipient was added, so
+`CURRENT_CONSENT_VERSION` and the consent modal are unchanged and nobody is
+re-prompted.
+
+- **Share defaults are OFF (privacy by default, GDPR Art. 25(2), EDPB
+  Guidelines 4/2019 paras 56-58).** A new share starts with search indexing,
+  files and generated images, message metadata, author name and avatar, and
+  branching ("let others copy") all off. The link duration still starts at
+  "never"; the user can pick an expiry. This is a UI default only
+  (`ShareModal.client.vue`). Existing shares keep their saved settings. The
+  SQL column defaults stay `DEFAULT true` on purpose: changing them rebuilds
+  `chat_shares` on D1, and `DROP TABLE` there cascades to `chat_share_files`
+  (see the migration warning in `CLAUDE.md`). They are harmless because the
+  share route writes every flag explicitly. See "The visibility-flag
+  migrations (closed)" in `docs/d1-restore-reconciliation.md`. Do not "fix"
+  the SQL default without that plan.
+- **Share author avatar goes through besidka.com.** When the author shows their
+  avatar, `server/api/v1/shared/[slug]/avatar.get.ts` serves it as a
+  same-origin proxy, so a viewer's browser no longer contacts Google or GitHub
+  (no viewer IP or Referer reaches them) and the raw avatar URL is never sent
+  to viewers.
+- **Fonts and icons are self-hosted.** Nunito and Atkinson Hyperlegible Mono and
+  the icons are served from besidka.com. The Iconify API fallback is disabled
+  (`docs/nuxt-icon-collections.md`). The browser never contacts Google Fonts or
+  the Iconify API. After the avatar proxy, the only third-party loads are
+  Cloudflare Turnstile (auth pages, no consent, security) and Cloudflare Web
+  Analytics (only after consent). The Cookie Policy's "two third-party scripts,
+  both from Cloudflare" is accurate and must stay so.
+- **Cloudflare is named as an independent controller for Turnstile signals.**
+  Cloudflare's Turnstile Privacy Addendum says Cloudflare uses the signals for
+  its own purposes as a controller on legitimate interests. The Privacy Policy
+  now says so next to the (compulsory) addendum link. Keep both.
+- **Age is confirmed at sign-up, not only in the app.** The email sign-up
+  checkbox reads "I am 18 or over and agree to the Terms of Use and Privacy
+  Policy", and a notice next to the Google and GitHub buttons on sign-up and
+  sign-in says continuing confirms 18+ and accepts the Terms and Privacy
+  Policy. The in-app gate still records `age_confirmed_at`; the sign-up
+  confirmation is not stored separately. No date-of-birth field anywhere, on
+  purpose: it would be new data and would not prove age (COPPA is an
+  actual-knowledge standard, and a general-audience 18+ service is outside it).
+- **Email list corrected.** The Privacy Policy said "exactly two kinds of
+  email". The service sends: address verification, password reset, new-email
+  confirmation, account-deletion confirmation, and security notices (password
+  changed, sign-in method connected or disconnected, 2FA on or off, backup codes
+  regenerated, account email changed, passkey added or removed). All are
+  transactional or relationship messages, never marketing. The notices are
+  listed with a legitimate-interests basis (Art. 6(1)(f)). A new email kind
+  means editing that section, the legal-basis row and Art. 30 row 20.
+- **DSA: stop self-labelling as an "online platform".** The Terms said "I host
+  user content and treat myself as an online platform". It now says Besidka
+  hosts content users choose to publish and voluntarily follows the DSA
+  notice-and-action rules (Arts. 11, 12, 14, 16, 17, 18), with the existing
+  email process, the Art. 16(2) report elements and statements of reasons. The
+  sentence claiming micro-enterprise exemption was dropped from the public text
+  and the analysis is kept here instead (over-claiming in user-facing text is a
+  risk, under-claiming is not).
+  - *Is Besidka an information society service at all?* Directive 2015/1535
+    Art. 1(1)(b) covers services "normally provided for remuneration". A free,
+    non-commercial service run by a private individual with no revenue has a
+    strong but untested argument that it is not one (CJEU C-291/13 Papasavvas
+    and C-484/14 Mc Fadden on the remuneration element). Untested means untested.
+  - *The Polish act.* The implementing act is the ustawa of 4.9.2026 amending
+    the ustawa o świadczeniu usług drogą elektroniczną (Dz.U. 2026 poz. 1296,
+    in force about 6.11.2026). The President of UKE is the Digital Services
+    Coordinator. Its fines attach to a `usługodawca`, and UŚUDE Art. 2 pkt 6
+    defines that as someone acting in `działalność zarobkowa lub zawodowa`.
+    This is the **same Art. 2 pkt 6 test as in "Why no postal address is
+    published"**, so a non-gainful individual very likely falls outside the
+    fining regime. Worst case for a zero-turnover provider is capped at EUR
+    6,000 (art. 22zzo ust. 4). Not read: Polish commentary on the act, no case
+    law yet.
+  - *Even if the DSA applies.* A natural person is at most a micro enterprise,
+    exempt from Arts. 15 and 19 to 28 except Art. 24(3).
+  - Monetisation breaks all of this at once: the "no revenue" premise carries
+    the postal-address conclusion, the DSA fining conclusion and the
+    non-`przedsiębiorca` position. Revisit this file before adding any.
+- **DMCA / copyright.** The Terms now have a "Copyright complaints" section
+  (after illegal-content reporting): notice elements from 17 U.S.C.
+  §512(c)(3)(A), removal and notice to the user, counter-notice elements from
+  §512(g)(3) (forwarded to the complainant with the user's name and contact
+  details, restoration in 10 to 14 business days unless a court action is
+  filed), a repeat-infringer rule (two or more valid notices that no
+  counter-notice answered: account terminated, shares removable) and the
+  §512(f) warning. The Privacy Policy has a "Reports and notices about content"
+  section, a legal-basis row (Art. 6(1)(c)/(f)) and a retention row. The
+  retention is "as long as needed", with no fixed period: an owner decision is
+  open (compliance review, follow-ups).
+  - **Designated-agent registration is NOT done, on purpose, pending an owner
+    decision.** The §512(c)(2) safe harbour needs a registered designated agent.
+    Registration is at dmca.copyright.gov through Login.gov, $6 per designation,
+    renewed every 3 years. Under 37 CFR 201.38(b)(1)(ii) the **service
+    provider's own physical street address** must be on the public record (a
+    P.O. box only with a personal-safety waiver via poboxwaiver@copyright.gov),
+    while the **agent's** address may be a P.O. box or a third-party agent.
+    Registering therefore **breaks the no-postal-address position** above
+    unless the waiver is granted. The published section is written to be
+    complete without agent details; nothing in the text names an agent or a
+    registration. When the owner decides, add the agent to the Terms and
+    reconcile "Why no postal address is published".
+- **Not changed.** The consent gate, `CURRENT_CONSENT_VERSION`, the consent
+  modal, the cookie banner categories.
 
 ## Not legal advice
 

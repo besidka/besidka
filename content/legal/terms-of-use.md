@@ -1,8 +1,8 @@
 ---
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
-updatedAt: 2026-10-27
-summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
+updatedAt: 2026-10-28
+summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it, and rights holders can send a copyright notice to the same address. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
 ## Who I am
@@ -54,7 +54,9 @@ The absence of any revenue is not an accident, and it is part of what these term
 
 ## Who may use it
 
-You must be at least **18 years old**. Besidka only works if you bring your own AI provider API key, and the providers set their own minimum age for an API account — Google AI Studio requires you to be 18 or over. You cannot use Besidka without such an account, so 18 is the minimum here too. You confirm you are 18 or over in the app before your first message.
+You must be at least **18 years old**. Besidka only works if you bring your own AI provider API key, and the providers set their own minimum age for an API account — Google AI Studio requires you to be 18 or over. You cannot use Besidka without such an account, so 18 is the minimum here too.
+
+I ask you to confirm you are 18 or over when you sign up: in the box you tick when you sign up with email, and by continuing when you sign up or sign in with Google or GitHub. I ask again in the app before your first message. I do not ask for your date of birth. If you are under 18, do not create an account. If you find out that someone under 18 has one, tell me at **:privacy-email-link{}** and I will delete it.
 
 ## Your account
 
@@ -138,13 +140,13 @@ The rights of an AI provider, an AI gateway, a search provider or TypeSafe AI ov
 
 ## Share links
 
-Sharing a chat is optional, off by default, and you switch it on per chat. Before you do, be clear about what it means.
+Sharing a chat is optional, off by default, and you switch it on per chat. When you create a share, everything extra on it starts off: search indexing, files and generated images, message metadata, your name and avatar, and branching. You switch on only what you want to show. Shares created earlier keep the settings saved with them. Before you share, be clear about what it means.
 
 - **Anyone with the link can read the chat, without an account.** An unlisted URL is not access control. Publish nothing you would not put on a public page.
-- **Indexing by search engines is a separate switch.** A share is not indexable unless you turn that on too.
-- You choose an expiry (1 hour, 1 day, 1 week, 1 month, 1 year, or never) and you can revoke a share at any time.
-- Per-share switches control whether files, message metadata and your name and avatar are visible. Tool calls are always stripped out.
-- If you leave **branching** on, a signed-in visitor can copy the shared conversation into their own account and carry on from it. Their copy is theirs; revoking your share does not delete it.
+- **Indexing by search engines is a separate opt-in.** A share is not indexable unless you turn that on too.
+- You choose an expiry (1 hour, 1 day, 1 week, 1 month, 1 year, or never; it starts at never) and you can revoke a share at any time.
+- Per-share switches control whether files and generated images, message metadata and your name and avatar are visible. Each starts off. Tool calls are always stripped out. If you show your avatar, it is delivered through besidka.com.
+- If you turn **branching** on ("let others copy"), a signed-in visitor can copy the shared conversation into their own account and carry on from it. Their copy is theirs; revoking your share does not delete it.
 
 ### What you promise when you publish a chat
 
@@ -159,7 +161,7 @@ Revoking a share stops access through me immediately and deletes the share recor
 
 ## Reporting illegal content
 
-Anyone — user or not — can tell me about content on Besidka they believe is illegal. I host user content and treat myself as an online platform, because share links are public.
+Anyone — user or not — can tell me about content on Besidka they believe is illegal. Besidka hosts content that users choose to publish, mainly through share links. I voluntarily follow the notice-and-action rules of the Digital Services Act (Arts. 11, 12, 14, 16, 17 and 18): a single point of contact, reports by email, a decision by a person, and a statement of reasons when I act.
 
 **Send reports to :privacy-email-link{}.** There is no form to fill in, and the mailbox is read by a person — it is not a bot-only address.
 
@@ -193,7 +195,48 @@ If I remove or disable your content, restrict its visibility, suspend a share li
 
 I will not send it where the law forbids it, or where I have no way to contact you.
 
-I am a micro-enterprise and am therefore exempt from the Digital Services Act's transparency reporting and internal complaint-handling system requirements. I do not operate a formal internal appeals procedure — if you disagree with a decision, reply to the statement of reasons and a person will look at it again, and your right to go to court is unaffected.
+I do not publish transparency reports and I do not run a formal internal complaint-handling system. If you disagree with a decision, reply to the statement of reasons and a person will look at it again, and your right to go to court is unaffected.
+
+## Copyright complaints
+
+If you hold the rights in a work and believe something on Besidka infringes them, send a copyright notice to **:privacy-email-link{}**. It goes through the same process as a report of illegal content above, and I will tell the user who published the content what I did and why. For notices under United States law, this section follows 17 U.S.C. § 512.
+
+### What a copyright notice must contain
+
+A notice needs all of these, so I can act on it:
+
+1. Your physical or electronic signature, as the owner of the right or as a person authorised to act for the owner.
+2. Which copyrighted work you say is infringed.
+3. Which material you say infringes it, and its **exact URL on besidka.com**, with enough detail for me to find it. For a shared chat, that is the share link.
+4. Your contact details: name, address, phone number and email address.
+5. A statement that you believe in good faith that the use is not authorised by the copyright owner, its agent or the law.
+6. A statement that the information in the notice is accurate and, under penalty of perjury, that you are authorised to act for the owner of the right that is allegedly infringed.
+
+If a notice is missing something, I may ask you to complete it before I act.
+
+### What I do with a notice
+
+If a notice is valid, I remove the material or disable access to it promptly, and I tell the user who published it. I also send them a statement of reasons, as described above.
+
+### Counter-notice
+
+If your content was removed because of a copyright notice and you believe that was a mistake or that the material was misidentified, you can send a counter-notice to **:privacy-email-link{}**. It must contain:
+
+1. Your physical or electronic signature.
+2. The material that was removed and where it appeared before it was removed.
+3. A statement, under penalty of perjury, that you believe in good faith that the material was removed because of a mistake or misidentification.
+4. Your name, address and phone number.
+5. Your consent to the jurisdiction of the US federal district court for the district where your address is located or, if your address is outside the United States, of any district in which I may be found, and your statement that you will accept service of process from the person who sent the notice.
+
+I **forward the counter-notice, including your name and contact details, to the person who sent the copyright notice.** I restore the material no sooner than 10 and no later than 14 business days after I receive your counter-notice, unless that person tells me they have filed a court action against you. If you do not send a counter-notice, the material stays down. You can also reply to the statement of reasons, as described above.
+
+### Repeat infringers
+
+I terminate the account of a user who is the subject of two or more valid copyright notices that no counter-notice answered, and I may remove that user's shares. A notice that was withdrawn, or that turns out to have been mistaken, does not count.
+
+### False notices
+
+A notice or a counter-notice that you know contains false statements can make you liable for damages, including costs and attorneys' fees, under 17 U.S.C. § 512(f). Please do not send one.
 
 ## Content moderation
 
