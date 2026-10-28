@@ -25,7 +25,11 @@ All five were resolved on 2026-10-25:
   credential check" (`cf.waf.credential_check.password_leaked`, 5 per 10 s per
   IP, block). It now holds "API flood limit" instead:
   - Expression: `http.request.uri.path eq "/api/_evlog/ingest"`, or the path
-    starts with `/__nuxt_content/`, `/api/v1/chats/` or `/api/v1/files/`.
+    starts with `/__nuxt_content/`, `/api/v1/chats/`, `/api/v1/files/` or
+    `/api/v1/shared/` (the last clause,
+    `starts_with(http.request.uri.path, "/api/v1/shared/")`, was added on
+    2026-10-28 through the `cf` CLI, ruleset `http_ratelimit` rule version 3,
+    to cover the public avatar proxy `/api/v1/shared/[slug]/avatar`).
   - Limit: 100 requests per 10 s per IP, then block for 10 s.
 
   Sign-in no longer needs the old rule: Better Auth now enforces its own limits

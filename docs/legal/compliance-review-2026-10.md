@@ -17,13 +17,13 @@
 | # | Topic | Status | Changed in this branch | Owner follow-up |
 |---|---|---|---|---|
 | 1 | Age gate and COPPA | Mostly fine. 18+ general-audience service | Age confirmed at sign-up (email checkbox, notice by the Google and GitHub buttons), and still in the app | Optional: decide whether the sign-up confirmation should be stored |
-| 2 | External fonts and IP leaks | Fixed for fonts, icons and share pages. One low residual (see 2.2) | Fonts and icons self-hosted, Iconify fallback off, share-page avatar proxied | Extend the Cloudflare rate-limit rule to the avatar route (see 2.2). Keep the rest as it is |
+| 2 | External fonts and IP leaks | Fixed for fonts, icons and share pages. One low residual (see 2.2) | Fonts and icons self-hosted, Iconify fallback off, share-page avatar proxied | Done 2026-10-28 (see 2.2). Keep the rest as it is |
 | 3 | Session replay and CIPA | Not applicable today | Nothing | Do not add session replay or ad trackers without revisiting |
 | 4 | Marketing email and CAN-SPAM | Not applicable. All mail is transactional | Privacy Policy email list corrected | None |
 | 5 | Subscriptions and California ARL | Not applicable. Nothing is sold | Nothing | Revisit before any paid tier |
-| 6 | Uploads and the DMCA | Procedure published. Safe harbour not yet available | New Terms section "Copyright complaints", Privacy Policy "Reports and notices about content", share defaults off | **Decide on designated-agent registration (conflicts with the no-postal-address position)** and a retention period |
+| 6 | Uploads and the DMCA | Decided 2026-10-28: no agent; no safe harbour claimed; revisit only if a JDG is opened. Notice process published | New Terms section "Copyright complaints", Privacy Policy "Reports and notices about content", share defaults off, retention 12 and 24 months | None |
 | 7 | DSA | Untested argument that it does not apply. Followed voluntarily | Stopped self-labelling as an "online platform" | Counsel check |
-| 8 | AI Act Art. 50 | Open | Nothing | Keep upstream C2PA and SynthID metadata, label AI images on share pages |
+| 8 | AI Act Art. 50 | Visible badge shipped (not the art. 50(2) marking); provider metadata not stripped; provider status open, 2.12.2026 (see 3.2) | AI-generated badge on generated images in the chat UI, share pages and the image preview | None |
 | 9 | TCO Regulation 2021/784 | Watch | Nothing | Keep the contact address monitored |
 | 10 | GDPR Art. 33 breach procedure | Missing | Nothing | Write a short 72-hour procedure |
 | 11 | GDPR damages and fonts case law | Context | Nothing | None |
@@ -92,8 +92,9 @@
   (`docs/security-audit-2026-10.md`, item 4) with
   `or starts_with(http.request.uri.path, "/api/v1/shared/")`, because the avatar
   route makes an outbound fetch on a cache miss. The zone allows exactly one
-  rule, so edit the existing one. When adding any new embed (video, map,
-  social), check what it loads.
+  rule, so edit the existing one. **Done 2026-10-28** through the `cf` CLI
+  (ruleset `http_ratelimit`, rule version 3). When adding any new embed (video,
+  map, social), check what it loads.
 
 ### 2.3 Session replay and the California Invasion of Privacy Act (CIPA)
 
@@ -150,13 +151,14 @@
 - **What changed.**
   - **Terms.** A new "Copyright complaints" section, after illegal-content
     reporting. It lists the notice elements of 512(c)(3)(A), what I do on a
-    valid notice, the counter-notice elements of 512(g)(3), forwarding of the
-    counter-notice with the user's name and contact details to the complainant,
-    restoration no sooner than 10 and no later than 14 business days unless a
-    court action is filed, a repeat-infringer rule (two or more valid notices
-    that no counter-notice answered: account terminated, shares removable) and
-    the 512(f) warning against false notices. It names no agent and claims no
-    registration, so it is complete without one.
+    valid notice, a way to say a removal was a mistake (reply to the statement
+    of reasons or write to the contact address; the user's name and contact
+    details go to the complainant only with the user's consent), a
+    repeat-infringement rule (material repeatedly removed on copyright notices:
+    sharing restricted, account suspended or terminated, a statement of reasons
+    each time) and a false-notice warning. It names no agent, claims no
+    registration and no US safe harbour, and does not offer a 512(g)
+    counter-notice procedure.
   - **Privacy Policy.** A new section "Reports and notices about content", a
     legal-basis row (Art. 6(1)(c) where the law requires action, otherwise
     6(1)(f)) and a retention row. The existing text had no report-processing
@@ -167,22 +169,30 @@
     UI default. The SQL column defaults stay `DEFAULT true` because changing
     them rebuilds `chat_shares` on D1 and cascades `chat_share_files`
     (`docs/d1-restore-reconciliation.md`).
-- **The designated-agent decision (open).** Without a registered agent the
-  512(c) safe harbour is not available, so the procedure above is good practice
-  and a commitment, not a shield. Registering is done at dmca.copyright.gov
+- **The designated-agent decision (decided 2026-10-28: no agent; no safe
+  harbour claimed; revisit only if a JDG is opened).** Without a registered
+  agent the 512(c) safe harbour is not available, so the procedure above is good
+  practice and a commitment, not a shield. Registering is done at dmca.copyright.gov
   through Login.gov, costs $6 per designation and is renewed every 3 years. The
-  catch: 37 CFR 201.38(b)(1)(ii) requires the **service provider's own physical
+  catch: 37 CFR 201.38(b)(1)(i) requires the **service provider's own physical
   street address** to be on the public record. A P.O. box is accepted for the
-  service provider only with a personal-safety waiver
+  service provider under the exception in (b)(1)(ii), only with a personal-safety waiver
   (poboxwaiver@copyright.gov). The **agent's** address may be a P.O. box, or the
   agent may be a third-party agent. So registering breaks the
   no-postal-address position that `docs/legal.md` relies on, unless the waiver
-  is granted. That is the owner's call and it is not made here.
-- **Retention (open).** The Privacy Policy says reports and notices are kept "as
-  long as needed", with no fixed period. Pick a period if one is wanted.
-- **Owner.** Decide on registration and on retention. When an agent is
-  registered, add the agent's details to the Terms section and update
-  `docs/legal.md`.
+  is granted. The owner decided not to register and not to publish a home
+  address.
+- **Retention (decided).** Reports and notices are kept until the matter is
+  closed and then 12 months. A note that content was removed from an account on
+  a copyright notice is kept 24 months, for the repeat-infringement rule. The
+  emails are deleted on the same schedule.
+- **Owner.** Nothing open. If an agent is ever registered, add the agent's
+  details to the Terms section and update `docs/legal.md`.
+- **Shared pages and search (2026-10-28).** Search Console showed 0
+  impressions and 0 clicks for `/shared/` pages over 90 days, and no `/shared/`
+  URL among the 17 indexed pages. Production had 21 active indexable shares (20
+  by the owner, user id 1; 1 by another user). The owner decided not to change
+  existing shares.
 
 ## 3. Extra findings
 
@@ -218,18 +228,27 @@
 
 ### 3.2 AI Act Article 50
 
-- **Timing.** Art. 50 applies from 2 August 2026.
+- **Timing.** Art. 50 applies from 2 August 2026. Art. 50(2) (machine-readable
+  marking) applies from **2.8.2026**, and Regulation (EU) 2026/1744 gives
+  systems already on the market until **2.12.2026**.
 - **Open point.** Art. 50(2) obliges **providers** of AI systems that generate
   synthetic images, audio, video or text to mark the output in a machine-readable
   format. Whether a non-commercial operator who only forwards a user's request to
-  a provider with the user's own key is a "provider" is unsettled (Art. 3(9) to
-  (11) define provider, deployer and placing on the market). Deployer duties in
+  a provider with the user's own key (a BYOK relay) is a "provider" is
+  unsettled (Art. 3(9) to (11) define provider, deployer and placing on the
+  market). It stays an open item with the 2.12.2026 date. Deployer duties in
   Art. 50(4) (deep fakes) attach to those who use the system in the course of a
   professional activity, which a personal project is not.
-- **Practical step, not done.** Keep the C2PA and SynthID metadata the upstream
-  provider puts in generated images (do not strip it on upload or re-encode), and
-  label AI-generated images on share pages. Recorded here as an open follow-up.
-- **What changed.** Nothing.
+- **Practical step, done.** An AI-generated badge now ships on generated images
+  in the chat UI, on share pages and in the image preview. The badge is a
+  visible label; it is **not** the art. 50(2) machine-readable marking.
+  Generated images are stored and served without re-encoding
+  (`server/utils/ai/image-generation.ts`, `persist-file.ts`), so markings a
+  provider embeds (C2PA, SynthID) pass through Besidka intact. User uploads are
+  re-encoded through the IMAGES binding (`server/utils/images.ts`), but those
+  are not AI output. The Terms promise only the label, not that provider
+  metadata survives.
+- **What changed.** The AI-generated badge.
 
 ### 3.3 Terrorist Content Online Regulation (EU) 2021/784
 
@@ -272,20 +291,23 @@ publish. Watch the appeal.
 
 ## 4. Owner follow-ups, in one list
 
-1. Decide on the DMCA designated agent (2.6). Registering needs the provider's
-   physical street address on the record, which breaks the no-postal-address
-   position unless a P.O. box waiver is granted.
-2. Pick a retention period for reports and notices, or accept "as long as
-   needed" (2.6).
-3. Decide on AI image labelling and keeping C2PA and SynthID metadata (3.2).
+1. DMCA designated agent (2.6). Decided 2026-10-28: no agent; no safe harbour
+   claimed; revisit only if a JDG is opened.
+2. Retention for reports and notices (2.6). Decided: 12 months, 24 months for
+   the copyright-removal note.
+3. AI image labelling (3.2). Badge ships (visible label only, not the
+   art. 50(2) marking). Provider metadata is not stripped. Open: whether a BYOK
+   relay is an art. 50(2) "provider"; date 2.12.2026 for systems already on the
+   market (Regulation (EU) 2026/1744).
 4. Write a one-page Art. 33 breach runbook (3.4).
 5. Keep the contact mailbox monitored (3.3).
-6. Have a Polish `radca prawny` look at the DSA conclusion (3.1), the DMCA
-   counter-notice text for EU users, and the legal-basis choices for the new
+6. Have a Polish `radca prawny` look at the DSA conclusion (3.1), the copyright
+   notice text for EU users, and the legal-basis choices for the new
    report row and the security notices.
 7. Optional: store the sign-up age confirmation (2.1).
 8. Extend the Cloudflare "API flood limit" rule with
-   `or starts_with(http.request.uri.path, "/api/v1/shared/")` (2.2).
+   `or starts_with(http.request.uri.path, "/api/v1/shared/")` (2.2). Done
+   2026-10-28 via the `cf` CLI (ruleset `http_ratelimit`, rule version 3).
 
 ## 5. Deploying the legal text
 

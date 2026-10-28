@@ -88,6 +88,7 @@ You are using an **AI system**. The text, code, summaries, images and reports yo
 - **Deep research reports can be wrong in a specific way.** A deep research report may contain **fabricated or misattributed citations** — sources that do not exist, or real sources that do not say what the report claims. Open and read the sources yourself before citing them.
 - Output is not unique to you. Another user with a similar prompt may receive substantially the same answer.
 - Do not use output to make decisions about other people (hiring, credit, eligibility, discipline) without a human being who is competent to make that decision reviewing it.
+- Images the model generates are labelled as AI-generated in the app and on share pages. If you publish AI-generated content that could pass for real, label it where the law requires.
 
 ## Memory and project knowledge
 
@@ -165,7 +166,7 @@ Anyone — user or not — can tell me about content on Besidka they believe is 
 
 **Send reports to :privacy-email-link{}.** There is no form to fill in, and the mailbox is read by a person — it is not a bot-only address.
 
-For the purposes of the Digital Services Act, that same address is my published single point of contact:
+If the Digital Services Act applies to Besidka, that same address is my single point of contact under its Articles 11 and 12, and I use it that way in any case:
 
 - **for users, and for anyone else reporting content;** and
 - **for Member State authorities, the European Commission and the European Board for Digital Services.**
@@ -178,7 +179,7 @@ To let me act quickly, please include:
 
 1. A clear explanation of **why you believe the content is illegal**.
 2. The **exact URL** (or URLs) of the content. For a shared chat, that is the share link.
-3. Your **name and email address**, unless the report concerns child sexual abuse material or certain other offences against a person, where you may report anonymously.
+3. Your **name and email address**. You may leave them out only if the report concerns child sexual abuse material.
 4. A statement, made in good faith, that the information in your report is **accurate and complete**.
 
 ### What I do with a report
@@ -199,7 +200,7 @@ I do not publish transparency reports and I do not run a formal internal complai
 
 ## Copyright complaints
 
-If you hold the rights in a work and believe something on Besidka infringes them, send a copyright notice to **:privacy-email-link{}**. It goes through the same process as a report of illegal content above, and I will tell the user who published the content what I did and why. For notices under United States law, this section follows 17 U.S.C. § 512.
+If you hold the rights in a work and believe something on Besidka infringes them, send a copyright notice to **:privacy-email-link{}**. It goes through the same process as a report of illegal content above, and I will tell the user who published the content what I did and why. The elements below are modelled on United States law (17 U.S.C. § 512), so a notice written for it works here too. I have not designated an agent with the US Copyright Office and do not claim the US safe harbour; every notice is handled by the process described here.
 
 ### What a copyright notice must contain
 
@@ -208,9 +209,9 @@ A notice needs all of these, so I can act on it:
 1. Your physical or electronic signature, as the owner of the right or as a person authorised to act for the owner.
 2. Which copyrighted work you say is infringed.
 3. Which material you say infringes it, and its **exact URL on besidka.com**, with enough detail for me to find it. For a shared chat, that is the share link.
-4. Your contact details: name, address, phone number and email address.
+4. Your name and email address, and, if you act for the owner, the owner's name.
 5. A statement that you believe in good faith that the use is not authorised by the copyright owner, its agent or the law.
-6. A statement that the information in the notice is accurate and, under penalty of perjury, that you are authorised to act for the owner of the right that is allegedly infringed.
+6. A statement that the information in the notice is accurate and that you are the owner of the right or authorised to act for the owner.
 
 If a notice is missing something, I may ask you to complete it before I act.
 
@@ -218,25 +219,17 @@ If a notice is missing something, I may ask you to complete it before I act.
 
 If a notice is valid, I remove the material or disable access to it promptly, and I tell the user who published it. I also send them a statement of reasons, as described above.
 
-### Counter-notice
+### If you think a removal was a mistake
 
-If your content was removed because of a copyright notice and you believe that was a mistake or that the material was misidentified, you can send a counter-notice to **:privacy-email-link{}**. It must contain:
-
-1. Your physical or electronic signature.
-2. The material that was removed and where it appeared before it was removed.
-3. A statement, under penalty of perjury, that you believe in good faith that the material was removed because of a mistake or misidentification.
-4. Your name, address and phone number.
-5. Your consent to the jurisdiction of the US federal district court for the district where your address is located or, if your address is outside the United States, of any district in which I may be found, and your statement that you will accept service of process from the person who sent the notice.
-
-I **forward the counter-notice, including your name and contact details, to the person who sent the copyright notice.** I restore the material no sooner than 10 and no later than 14 business days after I receive your counter-notice, unless that person tells me they have filed a court action against you. If you do not send a counter-notice, the material stays down. You can also reply to the statement of reasons, as described above.
+If your content was removed because of a copyright notice and you believe that was a mistake or that the material was misidentified, reply to the statement of reasons, or write to **:privacy-email-link{}**, with the link to the material and your reasons. A person will look at it again. If I restore the material, I tell the person who sent the notice. I give them your name or contact details only if you agree.
 
 ### Repeat infringers
 
-I terminate the account of a user who is the subject of two or more valid copyright notices that no counter-notice answered, and I may remove that user's shares. A notice that was withdrawn, or that turns out to have been mistaken, does not count.
+If a user repeatedly publishes material that I have removed on copyright notices, I may restrict sharing for that account or suspend or terminate it. I send a statement of reasons each time. A notice that was withdrawn or that turned out to be mistaken does not count.
 
 ### False notices
 
-A notice or a counter-notice that you know contains false statements can make you liable for damages, including costs and attorneys' fees, under 17 U.S.C. § 512(f). Please do not send one.
+A notice that you know contains false statements can make you liable for the damage it causes, for example under 17 U.S.C. § 512(f) in the United States. Please do not send one.
 
 ## Content moderation
 
@@ -307,7 +300,7 @@ These terms are governed by **Polish law**.
 
 That choice of law is not a way to strip protections from you. To the extent the consumer rules apply to you as someone habitually resident in another EU or EEA country, Art. 6(2) of the Rome I Regulation applies: choosing Polish law cannot deprive you of the protection of the mandatory rules of the country where you habitually live, and those rules apply where they are more favourable to you.
 
-Wherever you live, you can raise a dispute with me in the courts of your own country, and I will not argue that you had to travel to Poland to do it.
+If you live in the EU or EEA, you can bring a dispute in the courts of your own country, and I will not argue that you had to go to Poland.
 
 I would much rather sort a problem out by email first. Write to **:privacy-email-link{}**.
 

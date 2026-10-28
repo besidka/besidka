@@ -36,8 +36,9 @@ Structural facts worth knowing before editing:
   frontmatter value breaks the YAML (`tests/unit/config/content-frontmatter.spec.ts`
   guards this).
 - `updatedAt` is a real editorial date. Bump it when the substance changes.
-- `server/api/v1/events/index.post.ts` has a `CLIENT_ALLOWED_PATHS` allowlist
-  that must track these slugs, or client analytics events from a legal page 400.
+- `SURFACE_BY_PATH` in `server/utils/landing/client-events.ts` maps page paths
+  to analytics surfaces and must track these slugs, or client analytics events
+  from a legal page are rejected.
 - **The Turnstile Privacy Addendum link is a compliance obligation, not
   a nice-to-have.** Enabling Cloudflare Turnstile (the `captcha` plugin —
   see `docs/auth-security.md`) requires this site's Privacy Policy to
@@ -340,11 +341,18 @@ tier, data monetisation):
    `konsument` counterparty (KC Art. 22-1) and pulls in the abusive-clause
    regime (KC Art. 385-1 to 385-3) and UOKiK's jurisdiction. Directive
    2019/770's data-as-consideration route can reach the same result.
-So: before adding any monetisation, revisit this file, the Privacy Policy and
-the Cookie Policy.
 3. The same Art. 2 pkt 6 test now also decides whether the Polish DSA
    implementing act's fines can reach the operator (see "2026-10-28 compliance
    review: decisions").
+
+So: before adding any monetisation, revisit this file, the Privacy Policy and
+the Cookie Policy.
+
+The ordered checklist for monetising (business form, virtual office address,
+tax, VAT and merchant of record, consumer and subscription law, DMCA agent,
+legal text, consent bump, and the repo files to change) is
+`docs/legal/monetisation-readiness.md`. Owner decision 2026-10-28: nothing of
+the kind is published for now.
 
 ## Status of the underlying research
 
@@ -447,29 +455,46 @@ re-prompted.
   - Monetisation breaks all of this at once: the "no revenue" premise carries
     the postal-address conclusion, the DSA fining conclusion and the
     non-`przedsiębiorca` position. Revisit this file before adding any.
-- **DMCA / copyright.** The Terms now have a "Copyright complaints" section
-  (after illegal-content reporting): notice elements from 17 U.S.C.
-  §512(c)(3)(A), removal and notice to the user, counter-notice elements from
-  §512(g)(3) (forwarded to the complainant with the user's name and contact
-  details, restoration in 10 to 14 business days unless a court action is
-  filed), a repeat-infringer rule (two or more valid notices that no
-  counter-notice answered: account terminated, shares removable) and the
-  §512(f) warning. The Privacy Policy has a "Reports and notices about content"
-  section, a legal-basis row (Art. 6(1)(c)/(f)) and a retention row. The
-  retention is "as long as needed", with no fixed period: an owner decision is
-  open (compliance review, follow-ups).
-  - **Designated-agent registration is NOT done, on purpose, pending an owner
-    decision.** The §512(c)(2) safe harbour needs a registered designated agent.
+- **DMCA / copyright.** The Terms have a "Copyright complaints" section (after
+  illegal-content reporting): notice elements from 17 U.S.C. §512(c)(3)(A),
+  removal and notice to the user, and a way to say a removal was a mistake
+  (reply to the statement of reasons or write to the contact address). The
+  §512(g)(3) counter-notice procedure is not offered and no US safe harbour is
+  claimed; the user's name and contact details go to the complainant only with
+  the user's consent. The Terms also have a repeat-infringement rule (material
+  repeatedly removed on copyright notices: sharing restricted, account
+  suspended or terminated, a statement of reasons each time) and a false-notice
+  warning. The Privacy Policy has a "Reports and notices about content"
+  section, a legal-basis row (Art. 6(1)(c)/(f)) and a retention row: 12 months,
+  24 months for the note on a copyright removal (compliance review, follow-ups).
+  - **Decided 2026-10-28 (owner): no DMCA designated agent, no US safe harbour
+    claimed; revisit only if a JDG is opened.** The §512(c)(2) safe harbour
+    needs a registered designated agent.
     Registration is at dmca.copyright.gov through Login.gov, $6 per designation,
-    renewed every 3 years. Under 37 CFR 201.38(b)(1)(ii) the **service
+    renewed every 3 years. Under 37 CFR 201.38(b)(1)(i) the **service
     provider's own physical street address** must be on the public record (a
-    P.O. box only with a personal-safety waiver via poboxwaiver@copyright.gov),
+    P.O. box only under the (b)(1)(ii) exception, with a personal-safety waiver via
+    poboxwaiver@copyright.gov),
     while the **agent's** address may be a P.O. box or a third-party agent.
-    Registering therefore **breaks the no-postal-address position** above
-    unless the waiver is granted. The published section is written to be
-    complete without agent details; nothing in the text names an agent or a
-    registration. When the owner decides, add the agent to the Terms and
-    reconcile "Why no postal address is published".
+    The owner will not publish a home address, so registering would break the
+    no-postal-address position above. The copyright notice procedure in the
+    Terms stays as published, written to be complete without agent details;
+    nothing in the text names an agent or a registration. DSA Art. 6
+    notice-and-takedown is the primary shield. Register when a business
+    address exists (`docs/legal/monetisation-readiness.md` section 4.7), then
+    add the agent to the Terms.
+- **Owner decision 2026-10-28: no monetisation, donations or earning
+  intentions are published.** Same reason as the DMCA decision: monetising
+  would require a published address (UŚUDE Art. 5) and a business form, and
+  the owner cannot open a JDG at present. What would have to happen first is
+  in `docs/legal/monetisation-readiness.md`.
+- **Owner decision 2026-10-28: existing shared chats keep their saved
+  settings.** There is no bulk change to their indexing or other flags; the
+  new OFF defaults apply to new shares only. Most existing shares were made
+  by the owner (user id 1).
+- **Cloudflare rate limit extended (2026-10-28).** The rate-limit rule "API
+  flood limit" now also covers `/api/v1/shared/`, which includes the share
+  avatar proxy (compliance review 2.2, follow-up 8).
 - **Not changed.** The consent gate, `CURRENT_CONSENT_VERSION`, the consent
   modal, the cookie banner categories.
 

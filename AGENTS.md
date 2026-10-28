@@ -290,6 +290,17 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   1296), AI Act Art. 50, TCO Regulation 2021/784, the GDPR Art. 33 runbook gap,
   and the DMCA designated-agent decision that conflicts with the
   no-postal-address position
+- `docs/legal/monetisation-readiness.md` - Everything that must happen before
+  and when Besidka earns in any form (donations, ads, affiliate links, a paid
+  tier, credits, paid support; selling data excluded), engineer-drafted,
+  research date 2026-10-28: decision triggers (an unused tip link already
+  counts), the ordered before/at/ongoing checklist, JDG vs unregistered
+  activity (225% of minimum wage per quarter) and who may open a JDG, virtual
+  office address, PIT/ZUS/VAT 240k/OSS/KSeF/cash-register facts, merchant of
+  record vs own merchant, Polish consumer law and the unimplemented EU
+  withdrawal button, California ARL and the vacated FTC rule, CAN-SPAM and
+  RFC 8058, DSA and AI Act effects, the DMCA agent, open questions for counsel,
+  and the repo files to change; read before adding any payment or donation link
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
   only, not legal text, superseded on 2026-10-26 by the published pages (its
   anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA

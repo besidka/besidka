@@ -103,7 +103,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Measure page views and page-load speed with Cloudflare Web Analytics, only if you allow the Analytics category | Your consent — Art. 6(1)(a) and PKE Art. 399 |
 | Remember which campaign link brought you to Besidka, and count the milestones above, so I can tell which of my own campaigns work | Legitimate interests — Art. 6(1)(f) |
 | Count page views and interface events as aggregate counters | Legitimate interests — Art. 6(1)(f) |
-| Handle reports of illegal content, copyright notices and counter-notices, and keep a record of them (see [Reports and notices about content](#reports-and-notices-about-content)) | Legal obligation — Art. 6(1)(c) where the law requires me to act on a report or notice; otherwise legitimate interests — Art. 6(1)(f): dealing with abuse, protecting rights holders and the people whose content is reported |
+| Handle reports of illegal content, copyright notices and disputes of removals, and keep a record of them (see [Reports and notices about content](#reports-and-notices-about-content)) | Legal obligation — Art. 6(1)(c) where EU or Polish law requires me to act, for example an order from a court or authority; otherwise legitimate interests — Art. 6(1)(f): dealing with abuse, protecting rights holders and the people whose content is reported |
 | Error and operational logging | Legitimate interests — Art. 6(1)(f) |
 | Security, abuse prevention and rate limiting | Legitimate interests — Art. 6(1)(f) |
 
@@ -287,7 +287,7 @@ Sign-in, sign-up and password reset forms are protected by **Cloudflare Turnstil
 
 Cloudflare Web Analytics, which loads only if you allow the Analytics category in the cookie banner, is run by Cloudflare as the same infrastructure provider listed above. See [Analytics](#analytics).
 
-The fonts and icons the app uses are served from besidka.com. Your browser does not contact Google Fonts or an icon service to draw a page. If the person who shared a chat chose to show their avatar, the image reaches you through besidka.com as well, so when you open a share your browser does not contact Google or GitHub, and the original address of the avatar is not sent to you.
+The fonts and icons the app uses are served from besidka.com. Your browser does not contact Google Fonts or an icon service to draw a page. If the person who shared a chat chose to show their avatar, the image reaches you through besidka.com as well, so when you open a share your browser does not contact Google or GitHub, and the original address of the avatar is not sent to you. Inside the app, your own avatar is loaded by your browser from Google or GitHub, the account you signed in with, so that company sees your IP address when it loads.
 
 I do not sell your data. I do not share it with advertisers, data brokers or analytics networks. There are no advertising scripts on the site, and the only analytics script is Cloudflare Web Analytics, which stays off until you allow it.
 
@@ -357,7 +357,7 @@ My logs are deliberately narrow. Specifically:
 | Past-chat run records | The last 5 runs; deleted with your account |
 | Project knowledge | Until you remove it or delete the project. The original files then stay in your file library under its normal rules |
 | Your consent to store sensitive information, your acceptance of the Terms of Use and age confirmation, and your consent to transfers to DeepSeek, Moonshot AI, Qwen, the other gateway vendors or router and preset models | While your account exists. Withdrawing keeps the record of when you gave and withdrew it. Deleted with your account |
-| Reports of illegal content, copyright notices, counter-notices and my decisions about them | As long as I need them to deal with the matter, to answer a challenge, a complaint or an authority, and, for copyright notices, to apply the repeat-infringer rule. Then deleted. See [Reports and notices about content](#reports-and-notices-about-content) |
+| Reports of illegal content, copyright notices, disputes of removals and my decisions about them | Until the matter is closed, and then 12 months so I can answer a challenge, a complaint or an authority. A note that content was removed from an account on a copyright notice is kept 24 months, for the repeat-infringement rule. The emails are deleted on the same schedule. See [Reports and notices about content](#reports-and-notices-about-content) |
 | Cookie consent records | Stored in a separate database, pseudonymously — see [Cookie consent records](#cookie-consent-records) |
 
 ### Backups
@@ -374,11 +374,11 @@ When you make a cookie choice, I record it so I can prove the choice was made. T
 
 Sharing a chat is off unless you switch it on for that specific chat. It is based on your consent and you can revoke it. Please understand exactly what it does.
 
-When you create a share, everything extra on it starts **off**, so a share shows only what you switch on yourself. The link duration starts at "never", and you can pick a shorter expiry before you publish. Shares I created earlier keep the settings that were saved with them.
+When you create a share, everything extra on it starts **off**, so a share shows only what you switch on yourself. The link duration starts at "never", and you can pick a shorter expiry before you publish. Shares you created earlier keep the settings that were saved with them.
 
 - **Anyone with the link can open the chat. No account is needed.** An unlisted URL is not access control. Treat a share link like a public web page you have chosen not to advertise.
 - **Search-engine indexing is a separate opt-in.** A share is not indexable unless you turn indexing on for it, and it starts off.
-- Per-share switches control whether **files and generated images** are included, whether **message metadata** (timestamps, token counts and cost figures) is shown, and whether **your name and avatar** are shown. Each starts off. Tool calls are always removed from a shared chat.
+- Per-share switches control whether **files and generated images** are included, whether **message metadata** (timestamps, token counts, cost figures and which tools were switched on) is shown, and whether **your name and avatar** are shown. Each starts off. Tool calls are always removed from a shared chat.
 - If you show your avatar, the image is delivered through besidka.com, and visitors' browsers do not contact Google or GitHub to load it. The original avatar address is never sent to visitors.
 - Another switch controls **branching** ("let others copy"). It starts off. If it is on, a signed-in visitor can copy the shared conversation into their own account and continue it there. Their copy is their own data from that point on, and revoking your share does not remove it.
 - Files in a shared chat are served through short-lived signed tokens that expire after **1 hour** and are re-checked against the live share every time. Sharing a chat does not make the file permanently public.
@@ -395,12 +395,12 @@ With a TypeSafe AI key and the share check on, the chat text being shared is sen
 
 ## Reports and notices about content
 
-Anyone can write to **:privacy-email-link{}** to report content they believe is illegal, to send a copyright notice, or, if their content was removed because of a copyright notice, to send a counter-notice. How that works is in the [Terms of Use](/terms-of-use#reporting-illegal-content) and in [Copyright complaints](/terms-of-use#copyright-complaints). This is what I do with the personal data in them:
+Anyone can write to **:privacy-email-link{}** to report content they believe is illegal, to send a copyright notice, or, if their content was removed because of a copyright notice, to say the removal was a mistake. How that works is in the [Terms of Use](/terms-of-use#reporting-illegal-content) and in [Copyright complaints](/terms-of-use#copyright-complaints). This is what I do with the personal data in them:
 
-- **What I receive.** What the sender chooses to write: their name, email address and, for a copyright notice or counter-notice, a postal address, a phone number and a signature; the web address of the content; the explanation or statement they give. I may also open the reported content and look at the account that published it, to decide.
-- **What I do with it.** I read it, decide what to do, and tell the sender and the user who published the content. When I remove or disable content, I send that user a statement of reasons that says what was reported and why I acted. A counter-notice, including the name and contact details in it, is **forwarded to the person who sent the copyright notice**, because the law that creates the procedure requires me to pass it on. Otherwise I share a report only where the law requires it, for example with an authority.
-- **Why I may.** Legal obligation under GDPR Art. 6(1)(c) where the law requires me to act on a report or notice, and otherwise legitimate interests under Art. 6(1)(f): dealing with abuse and protecting rights holders and users. See the table above.
-- **How long I keep it.** For as long as I need it to deal with the matter and to answer a challenge, a complaint or an authority, and then I delete it. A record of a copyright notice against an account is kept while I need it to apply the repeat-infringer rule described in the Terms. Email I receive stays in my mailbox until I delete it.
+- **What I receive.** What the sender chooses to write: their name, email address and, for a copyright notice, the owner's name; the web address of the content; the explanation or statement they give. I may also open the reported content and look at the account that published it, to decide.
+- **What I do with it.** I read it, decide what to do, and tell the sender and the user who published the content. When I remove or disable content, I send that user a statement of reasons that says what was reported and why I acted. If you dispute a copyright removal, I give your name and contact details to the person who sent the notice only if you agree. Otherwise I share a report only where the law requires it, for example with an authority.
+- **Why I may.** Legal obligation under GDPR Art. 6(1)(c) where EU or Polish law requires me to act, for example an order from a court or authority, and otherwise legitimate interests under Art. 6(1)(f): dealing with abuse and protecting rights holders and users. See the table above.
+- **How long I keep it.** Until the matter is closed, and then for 12 months so I can answer a challenge, a complaint or an authority. A note that content was removed from an account on a copyright notice is kept for 24 months, for the rule on repeat infringement. The emails are deleted on the same schedule.
 
 ## Push notifications
 
