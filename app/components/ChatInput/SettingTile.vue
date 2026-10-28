@@ -74,8 +74,8 @@
     <button
       v-if="tile.removeLabel"
       type="button"
-      class="absolute right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
-      :class="isPill ? 'top-3' : 'top-1'"
+      class="absolute btn btn-circle btn-xs btn-error btn-soft size-4"
+      :class="isPill ? 'right-2 top-3' : 'right-1 top-1'"
       :aria-label="tile.removeLabel"
       :title="tile.removeLabel"
       :data-testid="`chat-input-tile-${tile.id}-remove`"
@@ -118,7 +118,7 @@ const bodyVariantClass = computed<string>(() => {
   }
 
   return props.tile.removeLabel
-    ? 'flex-row items-center gap-2.5 h-10 max-w-40 pl-2 pr-6'
+    ? 'flex-row items-center gap-2.5 h-10 max-w-40 pl-2 pr-7'
     : 'flex-row items-center gap-2.5 h-10 max-w-40 px-2'
 })
 
