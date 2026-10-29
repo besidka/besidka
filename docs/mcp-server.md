@@ -420,6 +420,16 @@ many tool calls. `server/middleware/01.mcp-request-guard.ts` runs first, for
   exactly as `readRawBody` leaves it. `bounded-body.spec.ts` runs h3's real
   `readRawBody` and `readBody` after the bounded read; re-check it whenever
   h3 or Nitro is upgraded, because the symbol is an h3 internal.
+- The bounded reader must treat every source h3's `readRawBody` reads as a
+  prepared body: `event._requestBody`, `event.web.request.body`, the symbol,
+  `req.rawBody` and `req.body`. On Workers Nitro's `localFetch` runs a
+  `node-mock-http` `IncomingMessage` whose bytes sit on `req.body` and which
+  never emits `data` or `end`; a reader that waits on the stream there never
+  settles, and the runtime cancels the request with "your Worker's code had
+  hung". That is the bug commit 504326de shipped (it checked only the first
+  three sources) and `f9921c12` inherited. The unit tests run h3 on Node, so
+  the Workers case has its own mock-request tests; verify any change here
+  with `wrangler dev` and a `POST /mcp` `tools/list`, not only with vitest.
 - A body that is a JSON array gets `400`, signed in or not. MCP 2025-06-18
   dropped batching, so the server never needs it.
 - A non-empty body that is not a JSON object gets `400` with a JSON-RPC parse

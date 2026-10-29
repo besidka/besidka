@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
 import { readBody, readRawBody } from 'h3'
 import { describe, expect, it, vi } from 'vitest'
@@ -9,6 +10,21 @@ import {
 const H3_RAW_BODY = Symbol.for('h3RawBody')
 
 type BoundedBodyEvent = Parameters<typeof readBoundedRawBody>[0]
+
+function createWorkersEvent(body: Buffer) {
+  const mockRequest = Object.assign(new EventEmitter(), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'content-length': String(body.length),
+    },
+    readable: false,
+    readableEnded: true,
+    body,
+  })
+
+  return { node: { req: mockRequest, res: {} }, context: {}, method: 'POST' }
+}
 
 function createEvent(
   chunks: Array<Buffer | string>,
@@ -128,5 +144,48 @@ describe('readBoundedRawBody', () => {
       10,
       vi.fn(),
     )).rejects.toThrow('socket reset')
+  })
+
+  describe('on Workers, where Nitro hands over a mock request', () => {
+    const payload = Buffer.from('{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+
+    it('reads the prepared bytes instead of waiting on a stream that never emits',
+      async () => {
+        const event = createWorkersEvent(payload)
+
+        await expect(readBoundedRawBody(
+          event as unknown as BoundedBodyEvent,
+          100,
+          () => readRawBody(event as never, 'utf8'),
+        )).resolves.toBe(payload.toString())
+        await expect(readBody(event as never)).resolves.toEqual({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list',
+        })
+      })
+
+    it('enforces the cap on the prepared bytes', async () => {
+      const event = createWorkersEvent(payload)
+
+      await expect(readBoundedRawBody(
+        event as unknown as BoundedBodyEvent,
+        10,
+        () => readRawBody(event as never, 'utf8'),
+      )).rejects.toBeInstanceOf(McpBodyTooLargeError)
+    })
+
+    it('resolves an ended stream without a prepared body instead of hanging',
+      async () => {
+        const event = createWorkersEvent(payload)
+
+        delete (event.node.req as { body?: Buffer }).body
+
+        await expect(readBoundedRawBody(
+          event as unknown as BoundedBodyEvent,
+          100,
+          vi.fn(),
+        )).resolves.toBeUndefined()
+      })
   })
 })

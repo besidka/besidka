@@ -12,14 +12,28 @@ export class McpBodyTooLargeError extends Error {
 interface BoundedBodyEvent {
   _requestBody?: unknown
   web?: { request?: { body?: unknown } }
-  node: { req: Readable & { [H3_RAW_BODY]?: Promise<Buffer> } }
+  node: {
+    req: Readable & {
+      [H3_RAW_BODY]?: Promise<Buffer>
+      rawBody?: unknown
+      body?: unknown
+    }
+  }
 }
 
+/**
+ * Mirrors the sources h3's `readRawBody` reads before it falls back to the
+ * node stream. On Workers Nitro hands the handler a mock `IncomingMessage`
+ * whose bytes sit on `req.body` and which never emits `data` or `end`, so
+ * waiting on the stream there never settles.
+ */
 function hasPreparedBody(event: BoundedBodyEvent): boolean {
   return Boolean(
     event._requestBody
     || event.web?.request?.body
-    || event.node.req[H3_RAW_BODY],
+    || event.node.req[H3_RAW_BODY]
+    || event.node.req.rawBody
+    || event.node.req.body,
   )
 }
 
@@ -28,6 +42,12 @@ function collectBounded(
   maxBytes: number,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    if (request.readableEnded || request.destroyed) {
+      resolve(Buffer.alloc(0))
+
+      return
+    }
+
     const chunks: Buffer[] = []
     let receivedBytes = 0
     let isSettled = false
