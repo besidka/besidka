@@ -7,6 +7,7 @@ import { resolveServerLogger } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildSearchOwnerTag } from '~~/server/utils/search/query'
 import { purgeProjectKnowledge } from '~~/server/utils/knowledge/purge'
+import { buildOAuthGrantDeletes } from '~~/server/utils/account/revoke-user-oauth-grants'
 
 const r2BatchDeleteLimit = 1000
 
@@ -264,4 +265,61 @@ export async function purgeUserData(
   })
 
   return result
+}
+
+export interface PurgeUserOAuthDataInput {
+  userId: number
+  logger?: LoggerLike
+}
+
+/**
+ * Deletes every OAuth authorization-server row tied to a user, in one D1
+ * batch, ahead of the `users` row delete. None of these tables cascade from
+ * `users`, so a surviving row would block the delete on its foreign key.
+ * Rows of clients the user owns are removed for every user of that client,
+ * because tokens and consents reference `oauth_clients.client_id` without a
+ * cascade. Order follows the foreign keys: access tokens reference refresh
+ * tokens, and all three grant tables reference the client.
+ */
+export async function purgeUserOAuthData(
+  input: PurgeUserOAuthDataInput,
+): Promise<void> {
+  const { userId } = input
+  const logger = resolveServerLogger(input.logger)
+  const db = useDb()
+  const deletes = buildOAuthGrantDeletes(db, userId, {
+    includeOwnedClients: true,
+  })
+
+  try {
+    await db.batch([
+      deletes.accessTokens,
+      deletes.refreshTokens,
+      deletes.consents,
+      db.delete(schema.oauthClients)
+        .where(eq(schema.oauthClients.userId, userId)),
+    ])
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'oauth-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
+  logger.set({
+    attributes: {
+      accountPurge: {
+        oauthGrantsDeleted: true,
+      },
+    },
+  })
 }

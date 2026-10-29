@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.1, 2026-10-28 (share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling; see risk rows 25 to 27) |
+| Version | 1.2, 2026-10-29 (connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -20,6 +20,12 @@ and what is still `planned`. Where a measure is "planned", read the risk as
 **open** until it ships. The conclusions hold only while the consent gate and
 the transfer consent stay in place. Do not publish text that claims a consent
 the app does not collect.
+
+**Added 2026-10-29.** Section 3.11 and risk rows 28 to 35 assess connected AI
+apps (Besidka as an OAuth 2.1 authorization server for its MCP server at
+`https://besidka.com/mcp`). Everything in them is `planned` until that release
+ships. Read those risks as **open** until the Status column says `built`. The
+consent gate text and `CURRENT_CONSENT_VERSION` are unchanged.
 
 ## 1. Why a DPIA is required
 
@@ -86,7 +92,8 @@ removed.
 - **Independent controllers.** The AI providers, gateways and search providers
   the user picks, and TypeSafe AI when the user saves a TypeSafe AI key
   (section 3.7a). The user holds the account with them. Besidka has no
-  contract with them.
+  contract with them. Also the maker of every AI app a user connects over OAuth
+  (section 3.11), which Besidka does not choose either.
 - **Out of scope here.** Cookie consent records, push, email, campaign
   attribution and analytics. They have their own rows in the Art. 30 record and
   carry no special-category content. Handling of content reports, copyright
@@ -439,6 +446,72 @@ removed.
 | 5 | Worker | Memory model | New chat text (opt-in) | Never-store redaction, then gate on output |
 | 5a | Worker | TypeSafe AI (only with a TypeSafe AI key, per enabled check) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt; chat text for the pre-filter, the share check and Auto web search; project knowledge and Brave or Exa results for injection screening; query and excerpts for re-ranking; recent turns for past-chat retrieval | Per-role toggle; gate first for memory; flagged text never sent; add-only for memory; every role fails safe |
 | 6 | Worker | Axiom | Counts and ids | No memory or chat text |
+| 7 | AI client (pulls) | Worker (MCP server) | Token, then the chats, projects, knowledge and memory the user approved; for write scopes, instructions, notes and memory entries | OAuth 2.1 with PKCE, scopes ticked per client, 15-minute tokens, per-user ownership in SQL, consent gate, never-store and sensitive-topic gate on memory writes. The client is an independent controller the user chose |
+
+### 3.11 Connected AI apps (OAuth 2.1 and MCP) -- planned
+
+- **Purpose.** Let a user work with their own Besidka data from an AI client
+  they choose (a chat assistant, a coding tool) through the MCP server at
+  `https://besidka.com/mcp`. Besidka is the authorization server (Better Auth
+  `@better-auth/mcp`), the MCP server is the resource server. Sending chat
+  messages through MCP, and so spending the user's API keys, is **not** part
+  of this release.
+- **Flow.** The client registers itself (dynamic client registration, no
+  account needed), sends the user to a Besidka screen, and the signed-in user
+  approves a set of scopes. Authorization code with PKCE. Access tokens last
+  15 minutes (JWT); refresh tokens rotate on use.
+- **Scopes.** `chats:read` (list, search and read chats), `projects:read`
+  (projects, instructions, project knowledge items), `memory:read` (memory
+  entries), `projects:write` (edit project instructions, add notes or text to
+  project knowledge), `memory:write` (add, edit and delete memory entries).
+  The write scopes are unticked by default.
+- **Data subjects.** Users. Third parties named in the chats, projects and
+  memory that a client can read.
+- **Data stored.** `oauth_clients` (name, redirect URIs, and whatever metadata
+  the client sent when it registered; no user id for an unauthenticated
+  registration), `oauth_consents` (user id, client id, scopes, timestamps),
+  `oauth_access_tokens` and `oauth_refresh_tokens` (user id, client id, scopes,
+  expiry, revocation), and `jwks` (signing keys; the private key is encrypted
+  by Better Auth with the auth secret by default). Schema:
+  `server/db/schemas/oauth.ts`.
+- **Recipient.** The AI client and the company behind it, an independent
+  controller that Besidka does not choose and has no contract with. The user
+  chooses it and directs the disclosure. Whether the client runs in the EEA
+  is unknown to Besidka.
+- **Basis.** Contract, Art. 6(1)(b), at the user's request each time a client
+  is connected, as for the BYOK sends. For special-category content in what
+  the client reads: explicit consent, Art. 9(2)(a), given **on the approval
+  screen**, per client and per scope. The existing consent gate does not cover
+  it, because its text names the providers, gateways and search providers whose
+  keys the user adds (section 3.8). The `oauth_consents` row is the Art. 7(1)
+  record for the approval and is **not** a copy of the gate record in
+  `user_settings` (`docs/legal.md`, "Consent records"). Security, rate limiting
+  and disabling an abusive client: legitimate interests, Art. 6(1)(f). Judgment
+  calls: section 6, items 12 and 13.
+- **Gate integration (required).** A connected client reads or changes nothing
+  while the user's consent under section 3.8 is not `current`. Every MCP write
+  tool is gated like its in-app twin (project instructions, project knowledge
+  notes, memory entries: the list in `docs/legal.md`). Memory writes through
+  MCP run the same never-store and sensitive-topic gate as any other memory
+  write path (3.7).
+- **Retention.** Access tokens 15 minutes. Refresh tokens until they expire or
+  are revoked. Consents until the user disconnects the client or deletes the
+  account. Client registrations until removed. Whether expired token rows are
+  purged **[U]**.
+- **Revocation.** Profile → Connected apps. Revoking ends the consent and the
+  refresh token. A JWT access token already issued stays valid until it
+  expires, up to 15 minutes (risk row 33).
+- **Logs.** `attributes.mcp`: client id, tool name, scope, status, timing and
+  the user id; never chat, memory or project text (`docs/axiom-map-fields.md`).
+- **Cookies.** The OAuth flow rides on the existing Better Auth session cookie
+  and signed query parameters. The only cookie the OAuth provider adds is
+  `better-auth.session_token.oauth_logout_confirmation` (signed, `HttpOnly`,
+  300 seconds), set only when a client with end-session enabled asks to sign
+  the user out. Listed in the Cookie Policy.
+- **Status.** **Planned.** The baseline (`mcp` plugin, `server/db/schemas/oauth.ts`)
+  exists in the branch `feat/mcp-oauth`; the scopes, the approval screen, the
+  Connected apps page, the gate integration and the write tools are not
+  assessed as built.
 
 ## 4. Necessity and proportionality
 
@@ -458,6 +531,8 @@ removed.
 | Consent and opt-in records | Legal obligation to prove consent, Art. 6(1)(c) with Art. 7(1) (judgment call) |
 | Transfers to providers with no adequacy decision | Explicit consent to the transfer, Art. 49(1)(a) (built) |
 | Terms and age record | Legitimate interests, Art. 6(1)(f): proving the user agreed and is an adult |
+| Connecting an AI app and giving it the data the user approved | Contract, Art. 6(1)(b), at the user's request (judgment call, section 6, item 13); for special-category content, explicit consent, Art. 9(2)(a), on the approval screen |
+| Rate limiting, abuse handling and disabling a client | Legitimate interests, Art. 6(1)(f) |
 
 **Why this is necessary.** Besidka cannot store and forward a chat while leaving
 out the parts that happen to be health or belief. That would mean reading every
@@ -532,6 +607,14 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 25 | A chat published by a share link exposes its content, third parties' data and the author's identity to anyone, and can be indexed or copied | Medium | High | Privacy by default (Art. 25(2); EDPB Guidelines 4/2019): every extra on a new share (search indexing, files and generated images, message metadata, author name and avatar, branching) starts **off**, the user switches on only what they want; indexing is its own opt-in; the link duration starts at "never" but the user can pick an expiry, and a share can be revoked; file access uses signed tokens that expire after 1 hour; tool calls are stripped; the optional TypeSafe AI share check and the built-in detector warn before publishing (row 22); the Terms and Privacy Policy say plainly that revoking cannot recall caches, archives or copies. The SQL column defaults stay `DEFAULT true` (changing them rebuilds `chat_shares` on D1 and cascades `chat_share_files`), which is harmless because the route writes every flag explicitly (`docs/d1-restore-reconciliation.md`). Shares created before 2026-10-28 keep their saved flags | built | Medium (a published link is public; copies cannot be recalled) |
 | 26 | A visitor's IP address and browser details reach Google or GitHub (avatar host) or font and icon services just by opening a share page, or by using the app | Medium | Low | Fonts (Nunito, Atkinson Hyperlegible Mono) and icons are served from besidka.com and the Iconify API fallback is disabled; the share author's avatar, when shown, is delivered through a same-origin proxy (`server/api/v1/shared/[slug]/avatar.get.ts`, allowlisted to real Google and GitHub avatar URLs, answers cached privately for 5 minutes), so visitors to a **share page** do not contact Google or GitHub and the raw avatar URL is never sent to them; third-party scripts stay at two, both Cloudflare (Turnstile on auth pages, Web Analytics only after consent). **Residual:** inside the app a signed-in user's own avatar (`Chat/Message.vue`) is still loaded by their own browser from Google or GitHub, which receive that user's IP address; it is their own account and their own data, and the host is the one they signed in with | built for share pages, fonts and icons | Low |
 | 27 | A user who disputes a copyright removal could have their name and contact details passed to the complainant; a false or abusive notice takes down a user's content | Low | Medium | The user's name and contact details are passed to the complainant only with the user's consent (Terms "Copyright complaints", Privacy Policy "Reports and notices about content"); no US DMCA agent is designated (owner decision 2026-10-28) and no US safe harbour is claimed, so nothing in the procedure requires forwarding; a notice needs its elements and an accuracy statement, a person decides, the user gets a statement of reasons and can challenge it, and the false-notice warning is stated; retention is until the matter is closed plus 12 months, and 24 months for the note on a copyright removal | built (text and procedure) | Low |
+| 28 | An access or refresh token is stolen (leaky client, log, shared machine) and used to read chats, projects and memory | Medium | High | Access tokens last 15 minutes. Refresh tokens rotate on use and a replayed one is rejected (the library keeps a replay window). PKCE is required. Tokens are bound to the client and the scopes granted and carry only the MCP resource audience. The user can revoke in Profile → Connected apps. Tokens are never logged. Whether token values are stored hashed in `oauth_access_tokens` and `oauth_refresh_tokens` **[U]** | planned | Medium |
+| 29 | Over-broad consent: the user ticks every scope without understanding it, or a client later asks for more than the user expected | Medium | High | Five narrow scopes; write scopes unticked by default and shown apart from read scopes; the screen names the client, shows the redirect host and says in plain words that chats, projects and memory can hold sensitive and third-party data and that approving is explicit consent to send it to that app; a client cannot widen scopes without a new approval; no `skip_consent` for dynamically registered clients **[U]**; the approval is recorded with scopes and time | planned | Medium |
+| 30 | A malicious or impersonating client registers itself (dynamic registration is open, no account) under the name of a well-known app and phishes consent, or registers redirect URIs it should not | Medium | High | Registration is rate limited per IP and capped; redirect URIs validated (https or loopback only); the screen shows the name as unverified, the redirect host and the registration date, never a client-supplied logo or link as proof; the user must be signed in with Besidka's own session; PKCE; Besidka can disable a client (`oauth_clients.disabled`) and revoke its tokens; the Terms allow it. A registered client cannot set `skip_consent` or `enable_end_session` without owner action **[U]** | planned | Medium (a convincing name still works on a careless user) |
+| 31 | An agent is steered by text it reads (a chat, a note, a web page in its own context) into writing bad instructions, notes or memory entries, or deleting memory | Medium | Medium | Write scopes are separate and off by default; writes are gated by the consent gate; memory writes pass the never-store and sensitive-topic gate (3.7); entry and size caps (30 account entries, 15 per project, 4 KB); entries created over MCP carry an origin that names the client so the user can find and remove them; the user can see, edit and delete everything; logs record client, tool and status for each write; the Privacy Policy warns the user | planned | Medium |
+| 32 | Rate limiting by IP address breaks for connectors that call from shared egress ranges of the AI vendor: one noisy user locks out all others, or one abusive user hides in the crowd | Medium | Low | Limits keyed by client id plus user id from the token, not by IP; a separate per-IP limit only for the unauthenticated registration and authorization endpoints; counters in KV with the existing rate-limit helper; per-request result caps | planned | Low |
+| 33 | After the user revokes a client, its JWT access token still works for up to 15 minutes | Medium | Medium | The refresh token and consent end immediately; the access lifetime is short by design; the window is disclosed in the Privacy Policy and on the Connected apps page; checking the revocation state in the database on write tools is an open option, not decided | planned | Low to medium |
+| 34 | Sensitive and third-party data reaches an AI client run by a company outside the EEA with no adequacy decision and no safeguard Besidka can provide; the characterisation under Chapter V is unsettled | Medium | High | The user chooses the client and directs the disclosure; nothing reaches a client the user did not approve; the screen states that the app may be outside the EU and that Besidka has no contract with it, and the approval is meant to double as explicit Art. 49(1)(a) consent if the disclosure is a transfer; the Privacy Policy says the question is not settled; sending chat messages and API keys are out of scope for this release | planned | Medium to high, accepted and disclosed (section 6, item 12) |
+| 35 | OAuth records outlive the account: `oauth_consents`, `oauth_access_tokens` and `oauth_refresh_tokens` reference `users` with no `ON DELETE`, so they are not removed by the cascade | Medium | Medium | The account-deletion path must delete the user's OAuth rows explicitly before the user row, and the same for Time Travel restore reconciliation (`docs/d1-restore-reconciliation.md`). Must be verified before release **[U]** | planned | Low once verified |
 
 ## 6. Residual risks
 
@@ -608,11 +691,52 @@ the Privacy Policy or should be.
     copies, caches and archives outlive a revocation. Disclosed in the Terms
     and the Privacy Policy. Nothing more can be done in code.
 
+12. **Chapter V for connected AI apps is unsettled.** Under EDPB Guidelines
+    05/2021 a transfer needs an exporter that is subject to the GDPR and
+    discloses personal data to an importer in a third country. Here the
+    importer is a client the user chose. The client, not Besidka, initiates the
+    call, and Besidka cannot name the client's country, so it cannot name a
+    safeguard. Against that, Besidka's server does transmit the data, and the
+    Art. 30 record already treats Besidka as the exporter for provider sends
+    that the user directs. The Privacy Policy therefore does not claim that
+    no transfer rule applies. It says the user directs the disclosure, that
+    Besidka has no safeguard to offer, and that the approval, after the stated
+    warning, is also meant as explicit consent under Art. 49(1)(a). The EDPB
+    view on consent for ongoing transfers (item 4) applies here too, and the
+    country is not even known. Decision: accept and disclose; ask counsel.
+13. **Art. 6(1)(b) for an optional connection.** The connection is an optional
+    feature, and the EDPB reads "necessary for the contract" narrowly (EDPB
+    Guidelines 2/2019). The position taken is that connecting an app is
+    something the user asks for as part of the service Besidka offers, so the
+    disclosure is performance of that contract. A regulator could say the
+    safer basis is consent, Art. 6(1)(a). The approval screen is built to meet
+    the Art. 7 standard in any case: specific per client and per scope,
+    unticked write scopes, a clear record, and withdrawal by disconnecting.
+    Art. 9(2)(a) consent is given on that screen and is a separate record from
+    the gate (`docs/legal.md`). Decision: ship on 6(1)(b), keep the screen
+    consent-grade, ask counsel.
+14. **A client cannot be made to erase.** What a client already read stays with
+    the client and its maker, outside Besidka's reach. Disclosed in the
+    Privacy Policy. Nothing can be done in code.
+15. **Open dynamic client registration.** The interface accepts registrations
+    without an account, which is what the MCP clients in common use expect.
+    A name can be faked (risk row 30). Mitigation is a warning on the screen,
+    limits and the ability to disable a client, not verification of the client.
+    Decision: accept.
+
 **Overall.** With the consent gate, the transfer notice and consent, and the
 removal of the ungated background refresh in place (all built in this release),
 the residual risk is medium. It is not high enough for prior consultation under
 Art. 36. Without them it is high. Review this conclusion if any of them
 changes.
+
+**Connected AI apps (2026-10-29).** Rows 28 to 35 are `planned`. If the release
+ships with the measures named there, the overall conclusion stays medium, with
+row 34 (the Chapter V question) as the one that stays medium to high and is
+accepted and disclosed. If the gate integration (section 3.11) or the
+approval-screen consent wording is missing at release, row 34 and the Art. 9
+position are high and the release should not ship. Review before release, and
+again after the first month of real use.
 
 ## 7. Consultation
 
@@ -622,6 +746,12 @@ changes.
   `radca prawny`: is a required explicit-consent box for free-text storage
   acceptable to UODO, given that no alternative is offered? Next: is Art.
   49(1)(a) consent usable for repeated transfers to China and Singapore?
+  For connected AI apps (section 3.11): is a user-directed disclosure to an AI
+  client of the user's choice a transfer by Besidka under Chapter V at all, or
+  only a disclosure by the user; may it rest on Art. 6(1)(b) or does it need
+  consent under Art. 6(1)(a); and is an approval screen the right place for
+  the Art. 9(2)(a) consent when the existing gate wording names only the
+  providers whose keys the user adds.
 - **DPO.** None. Not required for one person with no systematic large-scale
   monitoring.
 - **Processors.** Cloudflare and Axiom DPAs. Keep dated copies in a private
@@ -634,7 +764,7 @@ changes.
 | Prepared by | Engineer draft, 2026-10-26 |
 | Approved by | [OWNER NAME], controller |
 | Date approved | [DATE] |
-| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 11] |
+| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 15] |
 | Counsel reviewed | No |
 
 **Review this DPIA when:**
@@ -695,6 +825,11 @@ Primary text and guidance:
   https://www.edpb.europa.eu/system/files/documents/files/file1/edpb_guidelines_202005_consent_en.pdf
 - EDPB, Report of the work undertaken by the ChatGPT Taskforce (23 May 2024):
   https://www.edpb.europa.eu/system/files/2024-05/edpb_20240523_report_chatgpt_taskforce_en.pdf
+- EDPB, Guidelines 2/2019 on the processing under Art. 6(1)(b) in the context of
+  the provision of online services (the narrow reading of "necessary for the
+  contract"; not re-read when this was drafted).
+- RFC 7591 (OAuth 2.0 Dynamic Client Registration) and the OAuth 2.1 draft
+  (PKCE, rotating refresh tokens); not re-read when this was drafted.
 - EDPB, Guidelines 05/2021 on the interplay between Art. 3 and Chapter V:
   https://edpb.europa.eu/system/files/2023-02/edpb_guidelines_05-2021_interplay_between_the_application_of_art3-chapter_v_of_the_gdpr_v2_en_0.pdf
 - Court of Justice, Meta Platforms and Others v Bundeskartellamt, C-252/21:
@@ -720,6 +855,9 @@ Repository documents:
 - `docs/memory-architecture.md`: sections 3.1 to 3.17 and the decision log.
 - `docs/project-knowledge-design.md`: sections 9 and 10.
 - `docs/legal-memory-sensitive-data.md`, `docs/legal/memory-legal-changes-draft.md`.
+- `docs/mcp-server.md`, `server/db/schemas/oauth.ts` and the Better Auth
+  `@better-auth/mcp` and `@better-auth/oauth-provider` packages (flow, token
+  lifetimes, the one cookie it sets), read 2026-10-29.
 - `docs/legal.md`, `docs/files.md`, `wrangler.jsonc`, `providers/*.ts`,
   `docs/providers/alibaba.md`, `docs/providers/moonshotai.md`,
   `docs/providers/deepseek.md`.

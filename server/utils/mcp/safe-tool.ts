@@ -1,4 +1,5 @@
 import { createError, log } from 'evlog'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export const MCP_TOOL_FAILURE_MESSAGE
@@ -29,26 +30,34 @@ export function isClientError(exception: unknown): boolean {
   return status >= 400 && status < 500
 }
 
-function logToolFailure(exception: unknown): void {
-  const failure = exception instanceof Error
-    ? exception
-    : new Error(String(exception))
+function logToolFailure(exception: unknown, toolName: string): void {
+  const details: Record<string, string> = {
+    toolName,
+    ...exceptionSummary(exception),
+  }
+  const sanitizedFailure = new Error(`The MCP tool ${toolName} failed`)
+
+  sanitizedFailure.name = details.errorName ?? 'Error'
 
   try {
     const logger = useRequestLogger(useEvent())
 
-    logger.set({ action: 'mcp-tool-failure' })
-    logger.error(failure)
+    logger.set({
+      action: 'mcp-tool-failure',
+      attributes: { mcpToolFailure: details },
+    })
+    logger.error(sanitizedFailure)
   } catch {
     log.error({
       action: 'mcp-tool-failure',
-      message: failure.message,
+      attributes: { mcpToolFailure: details },
     })
   }
 }
 
 export function withSafeToolErrors<Handler extends ToolHandler>(
   handler: Handler,
+  toolName: string,
 ): Handler {
   const safeHandler = async (...args: Parameters<Handler>) => {
     try {
@@ -58,7 +67,7 @@ export function withSafeToolErrors<Handler extends ToolHandler>(
         throw exception
       }
 
-      logToolFailure(exception)
+      logToolFailure(exception, toolName)
 
       throw createError({
         message: MCP_TOOL_FAILURE_MESSAGE,

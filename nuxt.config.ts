@@ -92,6 +92,17 @@ const forceStatelessMcpTransport = defineNuxtModule({
   },
 })
 
+const removeMcpToolkitOAuthStubs = defineNuxtModule({
+  meta: { name: 'remove-mcp-toolkit-oauth-stubs' },
+  setup(_options, nuxt) {
+    nuxt.hook('nitro:config', (nitroConfig) => {
+      nitroConfig.handlers = (nitroConfig.handlers || []).filter((handler) => {
+        return !handler?.handler?.includes('mcp/oauth-metadata')
+      })
+    })
+  },
+})
+
 const guardMdcSlotTransformForVapor = defineNuxtModule({
   meta: { name: 'guard-mdc-slot-transform-for-vapor' },
   setup(_options, nuxt) {
@@ -199,6 +210,7 @@ const modules = [
   guardMdcSlotTransformForVapor,
   '@nuxtjs/mcp-toolkit',
   forceStatelessMcpTransport,
+  removeMcpToolkitOAuthStubs,
   '@nuxtjs/robots',
   '@nuxtjs/sitemap',
   'nuxt-llms',
@@ -211,6 +223,11 @@ const modules = [
   'nuxt-email-renderer',
   forceInlineVueI18nForEmailRenderer,
 ]
+
+const frameProtectionHeaders = {
+  'Content-Security-Policy': 'frame-ancestors \'none\'',
+  'X-Frame-Options': 'DENY',
+}
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-28',
@@ -226,6 +243,19 @@ export default defineNuxtConfig({
     ...Object.fromEntries(
       MCP_DISABLED_TOOLKIT_ROUTES.map((route) => {
         return [route, { redirect: { to: '/', statusCode: 404 } }]
+      }),
+    ),
+    '/oauth/**': {
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'Content-Security-Policy': 'frame-ancestors \'none\'',
+        'X-Frame-Options': 'DENY',
+        'X-Robots-Tag': 'noindex, nofollow',
+      },
+    },
+    ...Object.fromEntries(
+      ['/signin', '/signup', '/2fa'].map((route) => {
+        return [route, { headers: frameProtectionHeaders }]
       }),
     ),
   },
@@ -411,6 +441,7 @@ export default defineNuxtConfig({
       '/profile/',
       '/new-password',
       '/2fa',
+      '/oauth/',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/',
@@ -425,7 +456,7 @@ export default defineNuxtConfig({
     notes: [
       'This llms.txt covers only the Besidka app and landing site.',
       'Product documentation and a blog are planned as separate apps at /docs and /blog, each with its own llms.txt. They are not published yet.',
-      'Besidka has no public application API: application endpoints require a signed-in session. The read-only MCP server at /mcp is public.',
+      'Besidka has no public application API: application endpoints require a signed-in session. The MCP server at /mcp has public read-only tools, and per-user tools behind OAuth.',
       'Content signals in robots.txt allow search and AI input and disallow AI training.',
     ],
     sections: [
@@ -487,7 +518,7 @@ export default defineNuxtConfig({
           },
           {
             title: 'MCP server card',
-            description: 'Server card of the public read-only MCP server at /mcp.',
+            description: 'Server card of the MCP server at /mcp: public read-only tools and OAuth-protected per-user tools.',
             href: `${siteUrl}${MCP_SERVER_CARD_PATH}`,
           },
         ],
@@ -556,6 +587,7 @@ export default defineNuxtConfig({
       '/new-password',
       '/reset-password',
       '/2fa',
+      '/oauth/**',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/**',

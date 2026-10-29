@@ -1,8 +1,8 @@
 ---
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
-updatedAt: 2026-10-28
-summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it, and rights holders can send a copyright notice to the same address. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
+updatedAt: 2026-10-29
+summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key and your own TypeSafe AI key for optional checks, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. You may connect an AI app of your choice to your account, and what it does with your data is between you and that app. Share links make a chat readable by anyone who has the link, every extra on a new share starts off, and you should only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it, and rights holders can send a copyright notice to the same address. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
 ## Who I am
@@ -98,6 +98,16 @@ Memory is optional and under your control. You can turn it off, turn off memory 
 - Memory does not keep sensitive topics or the items listed as never stored in the [Privacy Policy](/privacy-policy#memory), even if you ask.
 - Generating memory from chats, building it from past chats, refreshing project memory and importing all run on your own API key and are billed to it. The app shows an estimate before building from past chats.
 - Do not add files or notes to project knowledge that you have no right to use.
+
+## Connected apps
+
+You may connect an AI app made by someone else to your Besidka account, from its own settings, by approving it on a Besidka screen. The app then reads, and if you allowed it, changes, the chats, projects and memory you approved. How this works and what it means for your data is in the [Privacy Policy](/privacy-policy#connected-ai-apps).
+
+- **The app is yours to choose and yours to answer for.** I do not make, check or endorse any app. You decide whether to connect it and which permissions to give. What the app and its maker do with the data it receives, and what it does in your account with the permissions you gave, is between you and them, under their terms. Connect only apps you trust, and give write permission only where you need it.
+- **Your responsibilities do not change.** What an app reads or writes through your account is your content and your use of Besidka, so [Other people's data](#other-peoples-data) and [What you may not do](#what-you-may-not-do) apply to it as if you had done it yourself.
+- **You can disconnect at any time** in **Profile → Connected apps**. An access token that was already issued can keep working for up to 15 minutes. I cannot take back what the app already received.
+- **I may disable an app or refuse to register it**, and revoke what it holds, if it abuses the interface, tries to go beyond what you approved, impersonates another app, or puts the service or other users at risk. I do not have to tell the app's maker first.
+- **No guarantee.** Connected apps are provided as is, as everything else on the free service (see [Availability and changes to the service](#availability-and-changes-to-the-service)). I may change or remove the connection interface, its permissions and its limits, and an app can stop working because of it, because of a change by its maker, or because of a limit I set to protect the service.
 
 ## What you may not do
 

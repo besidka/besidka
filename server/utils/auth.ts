@@ -3,11 +3,13 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import {
   captcha,
+  jwt,
   lastLoginMethod,
   oAuthProxy,
   twoFactor,
 } from 'better-auth/plugins'
 import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
+import { mcp } from '@better-auth/mcp'
 import { passkey } from '@better-auth/passkey'
 import { jwtVerify } from 'jose'
 import type {
@@ -19,7 +21,14 @@ import {
   recordSignupActivation,
   resolveSignupUtm,
 } from '~~/server/utils/analytics/activation'
-import { purgeUserData } from './account/purge-user-data'
+import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
+import {
+  purgeUserData,
+  purgeUserOAuthData,
+} from './account/purge-user-data'
+import { notifyOAuthAppConnected } from './account/notify-oauth-app-connected'
+import { revokeUserOAuthGrants } from './account/revoke-user-oauth-grants'
+import { findClientRegistrationViolation } from './oauth/registration-limits'
 import {
   sendEmailChangedEmail,
   sendPasskeyAddedEmail,
@@ -42,6 +51,93 @@ type ServerAuth = ReturnType<typeof createAuth>
 let _auth: ServerAuth | undefined
 
 const IMAGE_REJECTING_PATHS = new Set(['/update-user', '/sign-up/email'])
+const DEFAULT_SITE_URL = 'https://besidka.com'
+const OAUTH_ACCESS_TOKEN_TTL_SECONDS = 15 * 60
+const OAUTH_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
+const OAUTH_CLIENT_REGISTRATION_PATH = '/oauth2/register'
+const OAUTH_CONSENT_PATH = '/oauth2/consent'
+const OAUTH_GRANT_TYPES = ['authorization_code', 'refresh_token'] as const
+
+export const DISABLED_AUTH_PATHS = [
+  '/token',
+  '/oauth2/get-client',
+  '/oauth2/get-clients',
+  '/oauth2/create-client',
+  '/oauth2/update-client',
+  '/oauth2/delete-client',
+  '/oauth2/client/rotate-secret',
+  '/oauth2/client/rotate-keys',
+  '/oauth2/get-consent',
+  '/oauth2/get-consents',
+  '/oauth2/update-consent',
+  '/oauth2/delete-consent',
+]
+
+export const PRIVILEGED_CLIENT_REGISTRATION_FIELDS = [
+  'skip_consent',
+  'skipConsent',
+  'enable_end_session',
+  'enableEndSession',
+] as const
+
+/**
+ * Removes the client fields that only an administrator may set from a
+ * dynamic client registration body, in place, so an unauthenticated client
+ * can never register itself as consent-free or as a logout initiator.
+ */
+export function stripPrivilegedClientRegistrationFields(
+  body: Record<string, unknown> | undefined,
+): void {
+  if (!body || typeof body !== 'object') {
+    return
+  }
+
+  for (const field of PRIVILEGED_CLIENT_REGISTRATION_FIELDS) {
+    Reflect.deleteProperty(body, field)
+  }
+}
+
+export function assertClientRegistrationWithinLimits(
+  body: Record<string, unknown> | undefined,
+  contentLengthHeader?: string | null,
+): void {
+  const violation = findClientRegistrationViolation(
+    body,
+    contentLengthHeader,
+  )
+
+  if (violation) {
+    throw new APIError('BAD_REQUEST', {
+      error: 'invalid_client_metadata',
+      error_description: violation,
+    })
+  }
+}
+
+interface OAuthConsentDecision {
+  action: 'oauth_granted' | 'oauth_denied'
+  clientId: string | null
+  scopes: string[]
+}
+
+export function resolveOAuthConsentDecision(
+  body: Record<string, unknown> | undefined,
+): OAuthConsentDecision {
+  const oauthQuery = typeof body?.oauth_query === 'string'
+    ? new URLSearchParams(body.oauth_query)
+    : new URLSearchParams()
+  const acceptedScope = typeof body?.scope === 'string'
+    ? body.scope
+    : oauthQuery.get('scope') ?? ''
+
+  return {
+    action: body?.accept === true ? 'oauth_granted' : 'oauth_denied',
+    clientId: oauthQuery.get('client_id'),
+    scopes: body?.accept === true
+      ? acceptedScope.split(' ').filter(Boolean)
+      : [],
+  }
+}
 
 export function useServerAuth(): ServerAuth {
   if (!_auth) {
@@ -81,6 +177,7 @@ function createAuth() {
     config.authAdditionalAllowedHosts,
   )
   const captchaOptions = getCaptchaOptions(config)
+  const siteUrl = config.public.baseUrl || DEFAULT_SITE_URL
 
   const plugins: BetterAuthPlugin[] = [
     oAuthProxy({ productionURL: config.public.baseUrl }),
@@ -113,6 +210,25 @@ function createAuth() {
         userVerification: 'preferred',
       },
     }),
+    jwt({
+      disableSettingJwtHeader: true,
+      jwt: {
+        issuer: siteUrl,
+      },
+    }),
+    mcp({
+      resource: `${siteUrl}/mcp`,
+      loginPage: '/signin',
+      consentPage: '/oauth/consent',
+      scopes: [...MCP_OAUTH_SCOPES],
+      clientRegistrationDefaultScopes: [...MCP_OAUTH_SCOPES],
+      clientRegistrationDefaultApplicationType: 'infer',
+      grantTypes: [...OAUTH_GRANT_TYPES],
+      accessTokenExpiresIn: OAUTH_ACCESS_TOKEN_TTL_SECONDS,
+      refreshTokenExpiresIn: OAUTH_REFRESH_TOKEN_TTL_SECONDS,
+      allowDynamicClientRegistration: true,
+      allowUnauthenticatedClientRegistration: true,
+    }),
   ]
 
   if (captchaOptions) {
@@ -126,6 +242,7 @@ function createAuth() {
       schema,
       usePlural: true,
     }),
+    disabledPaths: DISABLED_AUTH_PATHS,
     secondaryStorage: createAuthSecondaryStorage(kv, dataKey),
     baseURL: {
       allowedHosts,
@@ -191,6 +308,10 @@ function createAuth() {
       // Auth's own post-reset callback (resolved user, not just a token)
       // is the notification hook for this specific flow.
       async onPasswordReset({ user }) {
+        await revokeUserOAuthGrants({
+          userId: Number(user.id),
+          trigger: 'reset-password',
+        })
         await sendPasswordChangedEmail({ user })
       },
     },
@@ -299,6 +420,7 @@ function createAuth() {
           })
         },
         async beforeDelete(user) {
+          await purgeUserOAuthData({ userId: Number(user.id) })
           await purgeUserData({ userId: Number(user.id) })
         },
       },
@@ -383,6 +505,16 @@ function createAuth() {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === OAUTH_CLIENT_REGISTRATION_PATH) {
+          stripPrivilegedClientRegistrationFields(ctx.body)
+          assertClientRegistrationWithinLimits(
+            ctx.body,
+            ctx.request?.headers.get('content-length'),
+          )
+
+          return
+        }
+
         if (!IMAGE_REJECTING_PATHS.has(ctx.path)) {
           return
         }
@@ -457,8 +589,58 @@ function createAuth() {
             return
           }
 
+          if (ctx.path === OAUTH_CONSENT_PATH) {
+            const decision = resolveOAuthConsentDecision(ctx.body)
+
+            resolveServerLogger().set({
+              userId: Number(user.id),
+              attributes: {
+                legalConsent: {
+                  action: decision.action,
+                  oauthClientId: decision.clientId,
+                  scopes: decision.scopes,
+                },
+              },
+            })
+
+            if (decision.action === 'oauth_granted') {
+              await notifyOAuthAppConnected({
+                user,
+                clientId: decision.clientId,
+                scopes: decision.scopes,
+              })
+            }
+
+            return
+          }
+
           if (ctx.path === '/change-password') {
+            if (ctx.body?.revokeOtherSessions === true) {
+              await revokeUserOAuthGrants({
+                userId: Number(user.id),
+                trigger: 'change-password',
+              })
+            }
+
             await sendPasswordChangedEmail({ user })
+
+            return
+          }
+
+          if (ctx.path === '/revoke-sessions') {
+            await revokeUserOAuthGrants({
+              userId: Number(user.id),
+              trigger: 'revoke-sessions',
+            })
+
+            return
+          }
+
+          if (ctx.path === '/revoke-other-sessions') {
+            await revokeUserOAuthGrants({
+              userId: Number(user.id),
+              trigger: 'revoke-other-sessions',
+            })
 
             return
           }

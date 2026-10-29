@@ -30,6 +30,40 @@ export default defineNuxtRouteMiddleware(async (to) => {
     await fetchSession()
   }
 
+  const signedOAuthQuery = pickSignedOAuthQuery(to.query)
+
+  if (signedOAuthQuery && only) {
+    if (isSignedOAuthQueryExpired(signedOAuthQuery)) {
+      if (import.meta.client) {
+        useErrorMessage(
+          'This connection request has expired',
+          'Go back to the app you were connecting and start again.',
+        )
+      }
+
+      return navigateTo(
+        only === 'user' && !loggedIn.value ? redirectGuestTo : to.path,
+      )
+    }
+
+    if (only === 'guest' && loggedIn.value) {
+      if (signedOAuthQueryRequiresSignIn(signedOAuthQuery)) {
+        return
+      }
+
+      return navigateTo(buildOAuthAuthorizeResumePath(signedOAuthQuery), {
+        external: true,
+      })
+    }
+
+    if (only === 'user' && !loggedIn.value) {
+      return navigateTo({
+        path: typeof redirectGuestTo === 'string' ? redirectGuestTo : '/signin',
+        query: signedOAuthQuery,
+      })
+    }
+  }
+
   if (only === 'guest' && loggedIn.value) {
     if (to.path === redirectUserTo) {
       return

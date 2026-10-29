@@ -90,6 +90,7 @@ describe('GET /.well-known/ai-catalog.json', () => {
 
     expect(entry.identifier).toBe('urn:air:besidka.com:mcp:besidka')
     expect(entry.type).toBe('application/json')
+    expect(entry.displayName).toContain('OAuth-protected')
     expect(entry.representativeQueries).toContain(
       'Which models does Besidka support and what do they cost?',
     )

@@ -235,8 +235,14 @@ const route = useRoute()
 const safeNext = computed<string | null>(() => {
   return resolveSafeNextPath(route.query.next)
 })
+const signedOAuthQuery = computed<SignedOAuthQuery | null>(() => {
+  return pickSignedOAuthQuery(route.query)
+})
 const signupLink = computed<string>(() => {
-  return withUtm(appendNextToPath('/signup', safeNext.value))
+  return appendSignedOAuthQueryToPath(
+    withUtm(appendNextToPath('/signup', safeNext.value)),
+    signedOAuthQuery.value,
+  )
 })
 
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
@@ -279,7 +285,7 @@ async function runPasskeySignIn(
   { autoFill = false }: { autoFill?: boolean } = {},
 ) {
   const attemptId = ++latestPasskeySignInAttemptId
-  const { error } = await signIn.passkey({ autoFill })
+  const { data, error } = await signIn.passkey({ autoFill })
 
   if (error) {
     if (!autoFill) {
@@ -298,6 +304,10 @@ async function runPasskeySignIn(
   }
 
   useSuccessMessage('Successfully signed in')
+
+  if (readOAuthRedirectUrl(data)) {
+    return
+  }
 
   const path = typeof options.redirectUserTo === 'string'
     ? options.redirectUserTo
@@ -369,7 +379,10 @@ async function onSubmit() {
     }
 
     if (result && 'twoFactorRedirect' in result && result.twoFactorRedirect) {
-      await navigateTo(appendNextToPath('/2fa', safeNext.value))
+      await navigateTo(appendSignedOAuthQueryToPath(
+        appendNextToPath('/2fa', safeNext.value),
+        signedOAuthQuery.value,
+      ))
 
       return
     }

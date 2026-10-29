@@ -195,6 +195,17 @@ describe('agent discovery configuration contract', () => {
       }).not.toThrow()
     })
 
+  it('forbids framing the sign-in, sign-up, 2FA and consent pages', () => {
+    for (const path of ['/signin', '/signup', '/2fa', '/oauth/**']) {
+      expect(configuration.routeRules?.[path]).toEqual({
+        headers: expect.objectContaining({
+          'Content-Security-Policy': 'frame-ancestors \'none\'',
+          'X-Frame-Options': 'DENY',
+        }),
+      })
+    }
+  })
+
   it('caches the raw markdown twins like the landing page', () => {
     const productionRules = (configuration as unknown as {
       $production: { routeRules: Record<string, unknown> }

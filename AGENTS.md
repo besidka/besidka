@@ -453,26 +453,29 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   per-send fit check), R2 text and packs, the owner decisions, and, now that
   it is implemented, the K0 to K3 as-built sections (15, 16.5 to 16.7: DOCX
   and XLSX ZIP-bomb limits, the send path, the spike results)
-- `docs/mcp-server.md` - The public read-only `/mcp` server (`@nuxtjs/mcp-toolkit`
-  on Workers): the four tools and their sources, minimark-to-markdown instead
+- `docs/mcp-server.md` - The `/mcp` server (public read-only tools, plus the
+  per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): the four tools and their sources, minimark-to-markdown instead
   of a `rawbody` schema change, Worker size delta,
   the forced node transport that keeps `agents` out of the Worker, the
-  `attributes.mcp` Axiom move, the 404 OAuth stubs, and the 405 on `GET`
+  `attributes.mcp` Axiom move, the toolkit 404 OAuth stubs that the OAuth
+  metadata routes replace on `feat/mcp-oauth`, and the 405 on `GET`
 - `docs/agent-readiness.md` - How besidka.com answers AI agents
   (isitagentready.com: Level 1, score 20, before 2026-10-29; Level 4 in
   production since that day): the check-by-check
   table (robots, sitemap, Link headers, Content Signals, markdown negotiation
   and `/raw/*.md` twins, API catalog, MCP Server Card, Agent Skills v0.2.0
-  index, WebMCP, ARD catalog, Poppy), the checks deliberately not done (OAuth
-  and `auth.md` metadata: Besidka is an OAuth client, not an authorization
-  server, with the `@better-auth/mcp` path priced out; Web Bot Auth; commerce),
-  the level rules, how `nuxt-llms` and `nuxt-agent-discovery` are wired (the
+  index, WebMCP, ARD catalog, Poppy), the OAuth authorization server metadata,
+  protected resource metadata and `/auth.md` (why `agent_auth` is not
+  published and `/auth.md` says agentic registration is unsupported), the
+  checks deliberately not done (A2A, Web Bot Auth, commerce), the level rules,
+  how `nuxt-llms` and `nuxt-agent-discovery` are wired (the
   empty landing twin, the content-path 301s, the skills sha256 digest and its
   module-internal dependencies, the prerender guard), the ownership boundary
   for a future `/docs` and `/blog` split, and the owner runbook (the WAF
   `.well-known` allowlist and `/mcp` plus `/raw/` in the rate-limit rule, both
-  applied 2026-10-29; the optional WebMCP origin-trial token, DNSSEC and
-  DNS-AID)
+  applied 2026-10-29; step 1b, the OAuth discovery paths to add to the
+  allowlist; the Anthropic egress range against the per-IP limit; the optional
+  WebMCP origin-trial token; DNSSEC and the DNS-AID records per draft -02)
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,
@@ -561,11 +564,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `nuxt-schema-org`, `/uk`, sitemap `lastmod`) and the off-page
   checklist live in `docs/seo.md`. Read it before changing SEO behaviour.
 - `/llms.txt` ships (`nuxt-llms`, `prerender: false`). Agent discovery lives in
-  `docs/agent-readiness.md`: this app owns every `/.well-known/*` file. The
-  production WAF rule "URL attackers" still returns 403 for any `.well-known`
-  path outside its allowlist, so a new discovery file needs a rule change
-  (runbook step 1 in that doc). The public MCP server is `/mcp`; the repo's
-  `.mcp.json` connects Claude Code to it as `besidka`.
+  `docs/agent-readiness.md`: this app owns every `/.well-known/*` file and
+  `/auth.md`. The production WAF rule "URL attackers" allows only an explicit
+  list of `.well-known` paths (applied 2026-10-29), so a new discovery file
+  needs that list extended (runbook step 1; the OAuth metadata paths are
+  step 1b). The MCP server is `/mcp`: public read-only tools plus per-user
+  tools behind OAuth 2.1 (see the same doc); the repo's `.mcp.json` connects
+  Claude Code to it as `besidka`.
 
 ### Key Patterns
 

@@ -36,5 +36,5 @@ export default defineMcpTool({
       providerId: provider,
       includeDeprecated,
     }))
-  }),
+  }, 'list_models'),
 })

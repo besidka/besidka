@@ -231,4 +231,65 @@ describe('security-emails', () => {
       }),
     }))
   })
+
+  it('sends the app-connected email with the app, scopes, time and link',
+    async () => {
+      const { sendOAuthAppConnectedEmail } = await importSecurityEmails()
+
+      await sendOAuthAppConnectedEmail({
+        user: { email: 'user@example.com' },
+        appName: 'Claude',
+        scopes: ['openid', 'chats:read', 'memory:write'],
+        connectedAt: new Date('2026-10-29T12:00:00.000Z'),
+        connectedAppsUrl: 'https://besidka.com/profile/connected-apps',
+        logger: { set: vi.fn() },
+      })
+
+      expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@example.com',
+          subject: 'A new app was connected to your Besidka account',
+          template: 'ActionEmail',
+          props: expect.objectContaining({
+            url: 'https://besidka.com/profile/connected-apps',
+            intro: expect.stringContaining('Claude'),
+          }),
+        }),
+      )
+
+      const { props } = (mocks.sendTemplateEmail.mock.calls[0] as any)[0]
+
+      expect(props.intro).toContain('Thu, 29 Oct 2026 12:00:00 GMT')
+      expect(props.intro).toContain('read your chats')
+      expect(props.intro).toContain('change your memory')
+      expect(props.intro).toContain('not verified')
+    })
+
+  it('strips control characters and caps the app name', async () => {
+    const { sanitizeOAuthAppName } = await importSecurityEmails()
+
+    expect(sanitizeOAuthAppName('Evil\n\nApp\u202E\u0000')).toBe('Evil App')
+    expect(sanitizeOAuthAppName('x'.repeat(500))).toHaveLength(120)
+    expect(sanitizeOAuthAppName('   ')).toBe('An app')
+    expect(sanitizeOAuthAppName(null)).toBe('An app')
+  })
+
+  it('catches an app-connected send failure instead of throwing', async () => {
+    mocks.sendTemplateEmail.mockRejectedValueOnce(new Error('E_DELIVERY'))
+
+    const logger = { set: vi.fn() }
+    const { sendOAuthAppConnectedEmail } = await importSecurityEmails()
+
+    await expect(sendOAuthAppConnectedEmail({
+      user: { email: 'user@example.com' },
+      appName: 'Claude',
+      scopes: [],
+      connectedAt: new Date(),
+      connectedAppsUrl: 'https://besidka.com/profile/connected-apps',
+      logger,
+    })).resolves.toBeUndefined()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      securityEmail: expect.objectContaining({ error: 'E_DELIVERY' }),
+    }))
+  })
 })

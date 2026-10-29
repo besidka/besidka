@@ -518,7 +518,9 @@ describe('chat history content search', () => {
     }
 
     mocks.findChatsMatchingMessageContent.mockRejectedValue(
-      new Error('fts5 boom'),
+      Object.assign(new Error('fts5 boom with user text'), {
+        code: 'SQLITE_ERROR',
+      }),
     )
 
     vi.stubGlobal('useDb', () => db)
@@ -535,7 +537,15 @@ describe('chat history content search', () => {
       messageSearchContent: expect.objectContaining({
         action: 'content-leg-failed',
       }),
+      attributes: {
+        messageSearchContent: {
+          errorName: 'Error',
+          errorCode: 'SQLITE_ERROR',
+        },
+      },
     }))
+    expect(JSON.stringify(mocks.loggerSet.mock.calls))
+      .not.toContain('fts5 boom')
   })
 
   it('returns 401 for an unauthenticated request', async () => {

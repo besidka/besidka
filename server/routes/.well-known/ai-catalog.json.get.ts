@@ -43,7 +43,7 @@ export default defineEventHandler((event) => {
       },
       {
         identifier: `urn:air:${hostname}:mcp:besidka`,
-        displayName: 'Besidka MCP server',
+        displayName: 'Besidka MCP server (public and OAuth-protected tools)',
         type: 'application/json',
         url: `${origin}${MCP_SERVER_CARD_PATH}`,
         representativeQueries: [
@@ -51,6 +51,7 @@ export default defineEventHandler((event) => {
           'Which AI providers and gateways does Besidka connect to?',
           'How do I get an API key for Anthropic, OpenAI or Google?',
           'What does the Besidka privacy policy say about my data?',
+          'How do I sign in with OAuth to use my own chats through MCP?',
         ],
       },
     ],

@@ -24,5 +24,5 @@ export default defineMcpTool({
     return toJsonToolResult(
       listProviders(providerMeta, guides, resolveSiteOrigin(event)),
     )
-  }),
+  }, 'list_providers'),
 })

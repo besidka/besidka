@@ -38,6 +38,17 @@ const actionEmailVariants = [
     footnote: 'This permanently deletes your account and all associated '
       + 'data - chats, files, and settings - and cannot be undone.',
   },
+  {
+    preview: 'A new app was connected to your Besidka account',
+    heading: 'A new app was connected to your Besidka account',
+    intro: 'Example App was just connected to your Besidka account at '
+      + 'Thu, 29 Oct 2026 12:00:00 GMT. It chose its own name and Besidka '
+      + 'has not verified it. It can: read your chats, read your memory.',
+    ctaLabel: 'Review connected apps',
+    url: 'https://besidka.com/profile/connected-apps',
+    footnote: 'If this was not you, disconnect the app from Connected apps '
+      + 'and change your password.',
+  },
 ]
 
 const noticeEmailVariants = [
