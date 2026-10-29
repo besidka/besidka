@@ -22,9 +22,10 @@ The first scan, on 2026-10-29, scored 20 and placed the site at Level 1:
 | API, Auth, MCP and Skills | 0 of 8 |
 | Commerce | Not scored |
 
-This branch adds everything below except the owner steps in
-[Owner runbook](#owner-runbook). After the WAF change in step 1 the expected
-level is 4.
+PR #584 added everything below except the owner steps in
+[Owner runbook](#owner-runbook). Production reached Level 4,
+"Agent-Integrated", on 2026-10-29, after runbook steps 1 and 2 were applied.
+Steps 3 to 5 stay optional.
 
 ## Check by check
 
@@ -99,7 +100,7 @@ The scanner assigns a level from the checks that pass:
 | 4 | Level 3, plus any one of: MCP Server Card, A2A card, Agent Skills, API catalog |
 | 5 | Level 4, plus two of three: Web Bot Auth, all integrations, auth metadata |
 
-Besidka reaches Level 4 once the WAF rule is fixed. Level 5 needs auth
+Besidka has been at Level 4 since 2026-10-29. Level 5 needs auth
 metadata plus either Web Bot Auth or all integrations. None is planned. See
 [Auth metadata](#auth-metadata-not-done) for why, and the Web Bot Auth row
 for why that one does not apply.
@@ -234,44 +235,58 @@ deliberate. Change the note on the day each one ships, not before.
 
 These steps are manual. None can be done from this repository.
 
-### 1. Fix the WAF rule that blocks discovery files (blocks Level 4)
+### 1. Fix the WAF rule that blocks discovery files (done)
+
+Applied on 2026-10-29 with the `cf` CLI (rule version 16). Read the live rule
+with:
+
+```bash
+cf rulesets account-rulesets phases get http_request_firewall_custom -z besidka.com
+```
 
 The zone custom rule "URL attackers" (phase `http_request_firewall_custom`,
-rule id `2589606d444141329b90fe0d8a14778b`) contains this clause:
+rule id `2589606d444141329b90fe0d8a14778b`) contained this clause:
 
 ```
 (http.request.uri.path contains ".well-known")
 ```
 
-It returns 403 for every discovery file in production. Preview hosts are
-unaffected, so the preview looks fine while production fails. Replace the
-clause with:
+It returned 403 for every discovery file in production. Preview hosts are
+unaffected, so the preview looked fine while production failed. The clause is
+now:
 
 ```
 (http.request.uri.path contains ".well-known" and not (http.request.uri.path in {"/.well-known/api-catalog" "/.well-known/ai-catalog.json" "/.well-known/poppy.json"} or starts_with(http.request.uri.path, "/.well-known/mcp/") or starts_with(http.request.uri.path, "/.well-known/agent-skills/") or starts_with(http.request.uri.path, "/.well-known/skills/")))
 ```
 
-Test after saving:
+To re-check it:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://besidka.com/.well-known/ai-catalog.json
 curl -s -o /dev/null -w '%{http_code}\n' https://besidka.com/.well-known/zzz
 ```
 
-The first must print 200 and the second must still print 403.
+The first must print 200 and the second must still print 403. On
+2026-10-29 the allowlisted files returned 200, while `/.well-known/zzz`,
+`/.well-known/security.txt`, `/x/.well-known/ai-catalog.json` and `/wp-admin`
+still returned 403.
 
 The same rule has other clauses that can block future public paths, for
 example `contains "login"`, `contains ".key"`, `contains "debug"` and
 `contains "uploads"`. Check every new public path against them before you
 ship it.
 
-### 2. Cover `/mcp` and `/raw/` in the rate-limit rule
+### 2. Cover `/mcp` and `/raw/` in the rate-limit rule (done)
+
+Applied on 2026-10-29 with the `cf` CLI (rule version 4). Read the live rule
+with the same command as step 1, using the phase `http_ratelimit`.
 
 The zone is on the Free plan, which allows one rate-limiting rule. It is
-"API flood limit" (see `docs/security-audit-2026-10.md`). It does not match
-`/mcp` or `/raw/`. `/mcp` is public and unauthenticated, and `/raw/` serves
-the markdown twins from a content query on every cache miss. Append these
-clauses to its expression:
+"API flood limit" (rule id `80f1bc83826847c0bee7c09996b4af47`, see
+`docs/security-audit-2026-10.md`). It did not match `/mcp` or `/raw/`. `/mcp`
+is public and unauthenticated, and `/raw/` serves the markdown twins from a
+content query on every cache miss. These clauses are now part of its
+expression:
 
 ```
 or starts_with(http.request.uri.path, "/mcp") or starts_with(http.request.uri.path, "/raw/")
@@ -338,6 +353,19 @@ The Poppy check fails on preview hosts and passes in production. The
 `organization.domain` value in `poppy.json` comes from the runtime `baseUrl`,
 which on a preview is the long-lived preview host rather than the host being
 scanned.
+
+## Production scan (2026-10-29)
+
+The scan of `https://besidka.com`, run after the WAF change, reached Level 4,
+"Agent-Integrated".
+
+| Result | Checks |
+| --- | --- |
+| Passing | robots, sitemap, Link headers, markdown negotiation, AI bot rules, Content Signals, API catalog, MCP Server Card, Agent Skills, WebMCP, ARD, Poppy |
+| Failing by design | OAuth discovery, OAuth Protected Resource, `auth.md` (see [Auth metadata](#auth-metadata-not-done)), A2A (not applicable) |
+| Owner action | DNS-AID (needs DNSSEC, runbook step 4) |
+
+Poppy passes in production because the runtime `baseUrl` is the scanned host.
 
 ## Validation
 

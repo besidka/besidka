@@ -3,6 +3,10 @@
     "nuxt": {
       "type": "http",
       "url": "https://nuxt.com/mcp"
+    },
+    "besidka": {
+      "type": "http",
+      "url": "https://besidka.com/mcp"
     }
   }
 }
