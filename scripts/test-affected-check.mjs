@@ -947,6 +947,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/config/seo.spec.ts',
   ]
 
+  const agentDiscoveryTests = [
+    'tests/unit/config/seo.spec.ts',
+    'tests/unit/server/routes/well-known/ai-catalog.spec.ts',
+    'tests/unit/server/routes/well-known/poppy.spec.ts',
+    'tests/unit/server/utils/agent-discovery/skills.spec.ts',
+    'tests/unit/server/utils/agent-discovery/landing-markdown.spec.ts',
+  ]
+
   const searchModalTests = [
     'tests/unit/composables/search-modal.spec.ts',
     'tests/unit/composables/files-modal-handoff.spec.ts',
@@ -1418,7 +1426,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^nuxt\.config\.ts$/,
-      tests: [...seoTests, ...cookieConsentTests],
+      tests: [
+        ...seoTests,
+        ...agentDiscoveryTests,
+        ...cookieConsentTests,
+      ],
+    },
+    {
+      pattern:
+        /^(server\/routes\/\.well-known\/.*|server\/utils\/agent-discovery\/.*|server\/plugins\/agent-discovery-landing\.ts|config\/agent-discovery-routes\.ts|skills\/.*|content\/index\.md)$/,
+      tests: agentDiscoveryTests,
     },
     {
       pattern: /^app\/pages\/\((auth|legal)\)\/.*\.vue$/,

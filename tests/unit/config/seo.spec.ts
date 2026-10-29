@@ -71,3 +71,121 @@ describe('robots and sitemap configuration contract', () => {
     },
   )
 })
+
+describe('agent discovery configuration contract', () => {
+  const contentSignal = 'search=yes, ai-input=yes, ai-train=no'
+
+  it('emits one Content-Signal in the wildcard robots group', () => {
+    expect(configuration.robots?.groups).toEqual([
+      { userAgent: ['*'], contentSignal },
+    ])
+    expect(configuration.robots).not.toHaveProperty('blockAiBots')
+  })
+
+  it('keeps the agent discovery robots policy off and its signal in step',
+    () => {
+      expect(configuration.agentDiscovery?.robots).toEqual({
+        aiPolicy: false,
+        contentSignal,
+      })
+      expect(configuration.agentDiscovery?.sitemap).toEqual({
+        markdown: false,
+      })
+    })
+
+  it('serves llms.txt on demand from the site URL, never prerendered', () => {
+    expect(configuration.llms?.prerender).toBe(false)
+    expect(configuration.llms?.domain).toBe(configuration.site?.url)
+    expect(configuration.agentDiscovery?.siteUrl)
+      .toBe(configuration.site?.url)
+  })
+
+  it('describes docs and blog as planned rather than published', () => {
+    const notes = (configuration.llms?.notes ?? []).join(' ')
+
+    expect(notes).toContain('/docs')
+    expect(notes).toContain('/blog')
+    expect(notes).toContain('planned')
+  })
+
+  it('negotiates markdown only for the public content set', () => {
+    const paths = (configuration.agentDiscovery?.routes ?? []).map((route) => {
+      return typeof route === 'string' ? route : route.path
+    })
+
+    expect(paths).toEqual([
+      '/',
+      '/byok',
+      '/memory',
+      '/privacy-policy',
+      '/terms-of-use',
+      '/cookie-policy',
+      '/guides/**',
+    ])
+  })
+
+  it('maps each page route to the raw twin of its content path', () => {
+    const rawByPath = Object.fromEntries(
+      (configuration.agentDiscovery?.routes ?? [])
+        .filter((route) => {
+          return typeof route !== 'string'
+        })
+        .map((route) => {
+          return [route.path, route.raw]
+        }),
+    )
+
+    expect(rawByPath).toEqual({
+      '/byok': '/raw/guides/byok.md',
+      '/memory': '/raw/guides/memory.md',
+      '/privacy-policy': '/raw/legal/privacy-policy.md',
+      '/terms-of-use': '/raw/legal/terms-of-use.md',
+      '/cookie-policy': '/raw/legal/cookie-policy.md',
+    })
+  })
+
+  it('never answers an agent with markdown on private surfaces', () => {
+    const excluded = configuration.agentDiscovery?.excludePrefixes?.extend
+
+    expect(excluded).toEqual(
+      expect.arrayContaining(['/chats', '/profile', '/files']),
+    )
+  })
+
+  it('redirects content paths that are not pages to the real page', () => {
+    expect(configuration.routeRules?.['/guides/byok']).toEqual({
+      redirect: { to: '/byok', statusCode: 301 },
+    })
+    expect(configuration.routeRules?.['/legal/privacy-policy']).toEqual({
+      redirect: { to: '/privacy-policy', statusCode: 301 },
+    })
+  })
+
+  it('clears every route the build would prerender', () => {
+    const registered: Array<(routes: Set<string>) => void> = []
+    const nitro = {
+      hooks: {
+        hook: (name: string, handler: (routes: Set<string>) => void) => {
+          if (name === 'prerender:routes') {
+            registered.push(handler)
+          }
+        },
+      },
+    }
+    const hooks = configuration.hooks as unknown as Record<
+      string,
+      (nitro: unknown) => void
+    >
+
+    hooks['nitro:build:before']!(nitro)
+
+    const routes = new Set(['/raw/index.md', '/llms.txt', '/sitemap.md'])
+
+    registered.forEach((handler) => {
+      handler(routes)
+    })
+
+    expect(registered).toHaveLength(1)
+    expect(routes.size).toBe(0)
+  })
+})

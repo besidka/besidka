@@ -47,6 +47,7 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { defineLink } from '@unhead/vue'
 import { log } from 'evlog/client'
 
 // Nuxt Studio registers its own service worker at scope '/'
@@ -94,6 +95,7 @@ useSeoMeta({
 useHead({
   link: [
     { rel: 'canonical', href: () => canonicalUrl.value },
+    defineLink({ rel: 'ai-catalog', href: '/.well-known/ai-catalog.json' }),
   ],
 })
 

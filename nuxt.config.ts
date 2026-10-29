@@ -4,6 +4,20 @@ import { defineNuxtModule } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers/index.ts'
 import rehypeStripDirectiveProps from './shared/utils/mdc/rehype-strip-directive-props.ts'
+import {
+  agentDiscoveryRoutes,
+  contentPathRedirects,
+} from './config/agent-discovery-routes.ts'
+
+const siteUrl = process.env.NUXT_PUBLIC_BASE_URL || 'https://besidka.com'
+
+const contentSignal = 'search=yes, ai-input=yes, ai-train=no'
+
+const keyGuidesLlmsSection = {
+  title: 'API key guides',
+  description: 'Step-by-step guides for getting an API key from each provider.',
+  contentCollection: 'keyGuides',
+}
 
 const stripDirectivePropsPlugin = {
   src: '~~/shared/utils/mdc/rehype-strip-directive-props',
@@ -159,6 +173,8 @@ const modules = [
   guardMdcSlotTransformForVapor,
   '@nuxtjs/robots',
   '@nuxtjs/sitemap',
+  'nuxt-llms',
+  'nuxt-agent-discovery',
   'nuxt-svgo',
   '@vueuse/nuxt',
   '@vite-pwa/nuxt',
@@ -178,6 +194,7 @@ export default defineNuxtConfig({
   routeRules: {
     '/privacy': { redirect: { to: '/privacy-policy', statusCode: 301 } },
     '/terms': { redirect: { to: '/terms-of-use', statusCode: 301 } },
+    ...contentPathRedirects,
   },
   nitro: {
     preset: 'cloudflare_module',
@@ -336,7 +353,7 @@ export default defineNuxtConfig({
     // URLs must use the apex to match the post-redirect host. Override at
     // runtime with NUXT_PUBLIC_BASE_URL (set it to https://besidka.com in
     // prod).
-    url: process.env.NUXT_PUBLIC_BASE_URL || 'https://besidka.com',
+    url: siteUrl,
     name: 'Besidka',
   },
   // /signin, /signup and /reset-password are crawler-reachable and rely on a
@@ -346,6 +363,12 @@ export default defineNuxtConfig({
   // redirect after a password sign-in that requires a second factor. See
   // docs/seo.md.
   robots: {
+    groups: [
+      {
+        userAgent: ['*'],
+        contentSignal,
+      },
+    ],
     disallow: [
       '/api/',
       '/chats/',
@@ -357,6 +380,115 @@ export default defineNuxtConfig({
       '/__nuxt_studio',
       '/__nuxt_content/',
     ],
+  },
+  llms: {
+    domain: siteUrl,
+    title: 'Besidka',
+    description: 'Open-source bring-your-own-key AI chat app that runs on Cloudflare Workers. Users bring their own API keys for AI providers such as Anthropic, OpenAI and Google, and pay the providers directly.',
+    prerender: false,
+    notes: [
+      'This llms.txt covers only the Besidka app and landing site.',
+      'Product documentation and a blog are planned as separate apps at /docs and /blog, each with its own llms.txt. They are not published yet.',
+      'Besidka has no public API. Application endpoints require a signed-in session.',
+      'Content signals in robots.txt allow search and AI input and disallow AI training.',
+    ],
+    sections: [
+      {
+        title: 'Overview',
+        links: [
+          {
+            title: 'Besidka',
+            description: 'What Besidka is, its features and answers to common questions.',
+            href: `${siteUrl}/`,
+          },
+        ],
+      },
+      {
+        title: 'Guides',
+        links: [
+          {
+            title: 'BYOK: use GPT, Claude and Gemini with your own API key',
+            description: 'How bring-your-own-key works, what it costs and how keys are stored.',
+            href: `${siteUrl}/byok`,
+          },
+          {
+            title: 'How memory works in Besidka',
+            description: 'What Besidka remembers, and how to see, edit and delete it.',
+            href: `${siteUrl}/memory`,
+          },
+        ],
+      },
+      keyGuidesLlmsSection,
+      {
+        title: 'Legal',
+        links: [
+          {
+            title: 'Privacy Policy',
+            href: `${siteUrl}/privacy-policy`,
+          },
+          {
+            title: 'Terms of Use',
+            href: `${siteUrl}/terms-of-use`,
+          },
+          {
+            title: 'Cookie Policy',
+            href: `${siteUrl}/cookie-policy`,
+          },
+        ],
+      },
+      {
+        title: 'Agent resources',
+        links: [
+          {
+            title: 'Agent skills index',
+            description: 'Agent Skills Discovery index of the skills published by this site.',
+            href: `${siteUrl}/.well-known/agent-skills/index.json`,
+          },
+          {
+            title: 'AI catalog',
+            description: 'ARD catalog of the AI resources published by this site.',
+            href: `${siteUrl}/.well-known/ai-catalog.json`,
+          },
+        ],
+      },
+    ],
+  },
+  agentDiscovery: {
+    siteUrl,
+    siteName: 'Besidka',
+    routes: agentDiscoveryRoutes,
+    excludePrefixes: {
+      extend: ['/chats', '/profile', '/files', '/shared'],
+    },
+    discovery: {
+      link: true,
+      apiCatalog: true,
+      sitemapXml: true,
+      links: [
+        {
+          href: '/.well-known/ai-catalog.json',
+          rel: 'describedby',
+          type: 'application/ai-catalog+json',
+          title: 'AI catalog: AI resources published by this site',
+        },
+        {
+          href: '/.well-known/agent-skills/index.json',
+          rel: 'index',
+          type: 'application/json',
+          title: 'Agent skills index in the Agent Skills Discovery format',
+        },
+      ],
+    },
+    robots: {
+      aiPolicy: false,
+      contentSignal,
+    },
+    sitemap: {
+      markdown: false,
+    },
+    skills: {
+      dir: 'skills',
+    },
   },
   sitemap: {
     exclude: [
@@ -556,6 +688,11 @@ export default defineNuxtConfig({
           { code: 'en', file: 'cookie-consent.en.ts' },
           { code: 'uk', file: 'cookie-consent.uk.ts' },
         ],
+      })
+    },
+    'nitro:build:before': (nitro) => {
+      nitro.hooks.hook('prerender:routes', (routes) => {
+        routes.clear()
       })
     },
     // @nuxt/content marks /__nuxt_content/**/sql_dump.txt routes as
