@@ -1,11 +1,13 @@
 import { z } from 'zod'
-import { createError } from 'h3'
+import { createError } from 'evlog'
 import { queryCollection } from '@nuxt/content/server'
+import { getKeyGuideIndex } from '~~/server/utils/mcp/cached-content'
 import {
   findGuideEntry,
   formatKeyGuide,
 } from '~~/server/utils/mcp/key-guides'
 import { toJsonToolResult } from '~~/server/utils/mcp/result'
+import { withSafeToolErrors } from '~~/server/utils/mcp/safe-tool'
 import { resolveSiteOrigin } from '~~/server/utils/mcp/site-origin'
 
 export default defineMcpTool({
@@ -29,16 +31,14 @@ export default defineMcpTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  handler: async ({ provider }) => {
+  handler: withSafeToolErrors(async ({ provider }) => {
     const event = useEvent()
-    const guides = await queryCollection(event, 'keyGuides')
-      .select('path', 'provider', 'title')
-      .all()
+    const guides = await getKeyGuideIndex(event)
     const entry = findGuideEntry(guides, provider)
 
     if (!entry) {
       throw createError({
-        statusCode: 404,
+        status: 404,
         message: `No key guide for "${provider}". Call list_providers `
           + 'to see the providers that have one.',
       })
@@ -50,11 +50,11 @@ export default defineMcpTool({
 
     if (!guide) {
       throw createError({
-        statusCode: 404,
+        status: 404,
         message: `Key guide "${entry.path}" is not published.`,
       })
     }
 
     return toJsonToolResult(formatKeyGuide(guide, resolveSiteOrigin(event)))
-  },
+  }),
 })

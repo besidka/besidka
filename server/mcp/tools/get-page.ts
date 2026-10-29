@@ -1,13 +1,13 @@
 import { z } from 'zod'
-import { createError } from 'h3'
-import { queryCollection } from '@nuxt/content/server'
+import { createError } from 'evlog'
+import { getPublicPageRecord } from '~~/server/utils/mcp/cached-content'
 import {
   createPageComponentRenderers,
   formatPublicPage,
-  publicPages,
   publicPageSlugs,
 } from '~~/server/utils/mcp/pages'
 import { toJsonToolResult } from '~~/server/utils/mcp/result'
+import { withSafeToolErrors } from '~~/server/utils/mcp/safe-tool'
 import { resolveSiteOrigin } from '~~/server/utils/mcp/site-origin'
 
 export default defineMcpTool({
@@ -24,16 +24,13 @@ export default defineMcpTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  handler: async ({ page: slug }) => {
+  handler: withSafeToolErrors(async ({ page: slug }) => {
     const event = useEvent()
-    const { collection, contentPath } = publicPages[slug]
-    const page = collection === 'legal'
-      ? await queryCollection(event, 'legal').path(contentPath).first()
-      : await queryCollection(event, 'guides').path(contentPath).first()
+    const page = await getPublicPageRecord(event, slug)
 
     if (!page) {
       throw createError({
-        statusCode: 404,
+        status: 404,
         message: `Page "${slug}" is not published.`,
       })
     }
@@ -46,5 +43,5 @@ export default defineMcpTool({
       resolveSiteOrigin(event),
       createPageComponentRenderers(String(privacyEmail ?? '')),
     ))
-  },
+  }),
 })

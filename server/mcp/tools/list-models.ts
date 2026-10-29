@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { providers } from '~~/providers'
 import { listCatalog } from '~~/server/utils/mcp/catalog'
 import { toJsonToolResult } from '~~/server/utils/mcp/result'
+import { withSafeToolErrors } from '~~/server/utils/mcp/safe-tool'
 
 const providerIds = providers.map((provider) => {
   return provider.id
@@ -30,10 +31,10 @@ export default defineMcpTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  handler: ({ provider, includeDeprecated }) => {
+  handler: withSafeToolErrors(({ provider, includeDeprecated }) => {
     return toJsonToolResult(listCatalog(providers, {
       providerId: provider,
       includeDeprecated,
     }))
-  },
+  }),
 })

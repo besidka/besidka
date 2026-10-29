@@ -9,6 +9,7 @@ import {
   contentPathRedirects,
 } from './config/agent-discovery-routes.ts'
 import {
+  MCP_DISABLED_TOOLKIT_ROUTES,
   MCP_SERVER_CARD_PATH,
   MCP_SERVER_DESCRIPTION,
   MCP_SERVER_ROUTE,
@@ -222,6 +223,11 @@ export default defineNuxtConfig({
     '/privacy': { redirect: { to: '/privacy-policy', statusCode: 301 } },
     '/terms': { redirect: { to: '/terms-of-use', statusCode: 301 } },
     ...contentPathRedirects,
+    ...Object.fromEntries(
+      MCP_DISABLED_TOOLKIT_ROUTES.map((route) => {
+        return [route, { redirect: { to: '/', statusCode: 404 } }]
+      }),
+    ),
   },
   nitro: {
     preset: 'cloudflare_module',
@@ -282,11 +288,11 @@ export default defineNuxtConfig({
       // The landing page is runtime SSR on the cloudflare_module preset: each
       // request queries CONTENT_DB via Nuxt Content. Nitro caches the rendered
       // response in the KV-backed Nitro cache with a 1 hour KV TTL — so
-      // CONTENT_DB is queried at most once per hour per edge datacenter per
-      // distinct query string rather than on every hit. `swr` is off because
-      // Nitro writes swr entries to KV with no TTL, and the default cache key
-      // includes the query string, so attacker-chosen `?x=<random>` URLs would
-      // accumulate immortal KV entries.
+      // CONTENT_DB is queried at most once per hour per edge datacenter
+      // rather than on every hit. `swr` is off because Nitro writes swr
+      // entries to KV with no TTL. The cache key ignores the query string
+      // (`server/plugins/cache-key-without-query.ts`), so attacker-chosen
+      // `?x=<random>` URLs share one entry.
       //
       // `cache.name` is pinned to the per-build `buildId` so each deploy uses a
       // fresh cache key: a previous build's cached HTML (which inlines that

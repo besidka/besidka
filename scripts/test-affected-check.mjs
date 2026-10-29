@@ -2712,10 +2712,30 @@ export function getAffectedTests(changedFiles) {
       pattern: /^(server\/(mcp\/.*|utils\/mcp\/.*)|shared\/utils\/provider-meta|providers\/.*)\.ts$/,
       tests: [
         'tests/unit/server/utils/content/minimark.spec.ts',
+        'tests/unit/server/utils/mcp/cached-content.spec.ts',
         'tests/unit/server/utils/mcp/catalog.spec.ts',
         'tests/unit/server/utils/mcp/key-guides.spec.ts',
         'tests/unit/server/utils/mcp/pages.spec.ts',
+        'tests/unit/server/utils/mcp/safe-tool.spec.ts',
       ],
+    },
+    {
+      pattern: /^(server\/middleware\/01\.mcp-request-guard|config\/mcp-server)\.ts$/,
+      tests: ['tests/unit/server/middleware/mcp-request-guard.spec.ts'],
+    },
+    {
+      pattern: /^server\/plugins\/cache-key-without-query\.ts$/,
+      tests: ['tests/unit/server/plugins/cache-key-without-query.spec.ts'],
+    },
+    {
+      pattern: /^server\/plugins\/markdown-negotiation-cache-control\.ts$/,
+      tests: [
+        'tests/unit/server/plugins/markdown-negotiation-cache-control.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/plugins\/evlog-request-observability\.ts$/,
+      tests: ['tests/unit/server/plugins/evlog-request-observability.spec.ts'],
     },
   ]
 

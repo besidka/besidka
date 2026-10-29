@@ -1,7 +1,8 @@
-import { queryCollection } from '@nuxt/content/server'
 import { providerMeta } from '#shared/utils/provider-meta'
+import { getKeyGuideIndex } from '~~/server/utils/mcp/cached-content'
 import { listProviders } from '~~/server/utils/mcp/key-guides'
 import { toJsonToolResult } from '~~/server/utils/mcp/result'
+import { withSafeToolErrors } from '~~/server/utils/mcp/safe-tool'
 import { resolveSiteOrigin } from '~~/server/utils/mcp/site-origin'
 
 export default defineMcpTool({
@@ -16,15 +17,12 @@ export default defineMcpTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  cache: '1h',
-  handler: async () => {
+  handler: withSafeToolErrors(async () => {
     const event = useEvent()
-    const guides = await queryCollection(event, 'keyGuides')
-      .select('path', 'provider', 'title')
-      .all()
+    const guides = await getKeyGuideIndex(event)
 
     return toJsonToolResult(
       listProviders(providerMeta, guides, resolveSiteOrigin(event)),
     )
-  },
+  }),
 })
