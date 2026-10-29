@@ -147,6 +147,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/account/notify-oauth-app-connected.spec.ts',
     'tests/unit/utils/account/security-emails.spec.ts',
     'tests/unit/utils/oauth/registration-limits.spec.ts',
+    'tests/unit/utils/oauth/protected-resource-metadata.spec.ts',
+    'tests/unit/server/routes/well-known/oauth-protected-resource.spec.ts',
     'tests/integration/server/oauth-grant-sweep-plugin.spec.ts',
     'tests/unit/server/routes/auth.md.spec.ts',
     'tests/integration/api/profiles-connected-apps.spec.ts',
@@ -2812,6 +2814,19 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/oauth/registration-limits.spec.ts',
         'tests/unit/utils/auth-oauth.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/oauth\/protected-resource-metadata\.ts$/,
+      tests: [
+        'tests/unit/utils/oauth/protected-resource-metadata.spec.ts',
+        'tests/unit/server/routes/well-known/oauth-protected-resource.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/routes\/\.well-known\/oauth-protected-resource\/index\.get\.ts$/,
+      tests: [
+        'tests/unit/server/routes/well-known/oauth-protected-resource.spec.ts',
       ],
     },
     {
