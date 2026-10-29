@@ -459,7 +459,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the forced node transport that keeps `agents` out of the Worker, the
   `attributes.mcp` Axiom move, the 404 OAuth stubs, and the 405 on `GET`
 - `docs/agent-readiness.md` - How besidka.com answers AI agents
-  (isitagentready.com scan 2026-10-29: score 20, Level 1): the check-by-check
+  (isitagentready.com: Level 1, score 20, before 2026-10-29; Level 4 in
+  production since that day): the check-by-check
   table (robots, sitemap, Link headers, Content Signals, markdown negotiation
   and `/raw/*.md` twins, API catalog, MCP Server Card, Agent Skills v0.2.0
   index, WebMCP, ARD catalog, Poppy), the checks deliberately not done (OAuth
@@ -469,8 +470,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   empty landing twin, the content-path 301s, the skills sha256 digest and its
   module-internal dependencies, the prerender guard), the ownership boundary
   for a future `/docs` and `/blog` split, and the owner runbook (the WAF
-  `.well-known` clause that 403s discovery files in production, `/mcp` in the
-  rate-limit rule, the WebMCP origin-trial token, DNSSEC and DNS-AID)
+  `.well-known` allowlist and `/mcp` plus `/raw/` in the rate-limit rule, both
+  applied 2026-10-29; the optional WebMCP origin-trial token, DNSSEC and
+  DNS-AID)
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,
@@ -559,9 +561,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `nuxt-schema-org`, `/uk`, sitemap `lastmod`) and the off-page
   checklist live in `docs/seo.md`. Read it before changing SEO behaviour.
 - `/llms.txt` ships (`nuxt-llms`, `prerender: false`). Agent discovery lives in
-  `docs/agent-readiness.md`: this app owns every `/.well-known/*` file, and
-  the production WAF rule "URL attackers" blocks them (403) until the owner
-  applies the runbook in that doc.
+  `docs/agent-readiness.md`: this app owns every `/.well-known/*` file. The
+  production WAF rule "URL attackers" still returns 403 for any `.well-known`
+  path outside its allowlist, so a new discovery file needs a rule change
+  (runbook step 1 in that doc). The public MCP server is `/mcp`; the repo's
+  `.mcp.json` connects Claude Code to it as `besidka`.
 
 ### Key Patterns
 
