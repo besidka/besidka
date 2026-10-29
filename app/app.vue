@@ -47,6 +47,7 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { defineLink } from '@unhead/vue'
 import { log } from 'evlog/client'
 
 // Nuxt Studio registers its own service worker at scope '/'
@@ -68,7 +69,7 @@ useHead({
   },
 })
 
-const { baseUrl } = useRuntimeConfig().public
+const { baseUrl, webmcpOriginTrialToken } = useRuntimeConfig().public
 const route = useRoute()
 const hasSidebar = useHasSidebar()
 const { isConsentModalOpen, transferRequest } = useLegalConsent()
@@ -94,7 +95,14 @@ useSeoMeta({
 useHead({
   link: [
     { rel: 'canonical', href: () => canonicalUrl.value },
+    defineLink({ rel: 'ai-catalog', href: '/.well-known/ai-catalog.json' }),
   ],
+})
+
+useHead({
+  meta: webmcpOriginTrialToken
+    ? [{ 'http-equiv': 'origin-trial', 'content': webmcpOriginTrialToken }]
+    : [],
 })
 
 function reportException(exception: unknown, message: string): void {

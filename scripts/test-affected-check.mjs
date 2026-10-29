@@ -947,6 +947,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/config/seo.spec.ts',
   ]
 
+  const agentDiscoveryTests = [
+    'tests/unit/config/seo.spec.ts',
+    'tests/unit/server/routes/well-known/ai-catalog.spec.ts',
+    'tests/unit/config/site-url.spec.ts',
+    'tests/unit/server/routes/well-known/poppy.spec.ts',
+    'tests/unit/server/routes/well-known/agent-skills-skill.spec.ts',
+    'tests/unit/server/routes/well-known/mcp/server-card.spec.ts',
+    'tests/unit/server/plugins/agent-discovery-landing.spec.ts',
+    'tests/unit/server/utils/agent-discovery/skills.spec.ts',
+    'tests/unit/server/utils/agent-discovery/landing-markdown.spec.ts',
+    'tests/unit/server/utils/content/minimark.spec.ts',
+  ]
+
   const searchModalTests = [
     'tests/unit/composables/search-modal.spec.ts',
     'tests/unit/composables/files-modal-handoff.spec.ts',
@@ -1418,7 +1431,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^nuxt\.config\.ts$/,
-      tests: [...seoTests, ...cookieConsentTests],
+      tests: [
+        ...seoTests,
+        ...agentDiscoveryTests,
+        ...cookieConsentTests,
+      ],
+    },
+    {
+      pattern:
+        /^(server\/routes\/\.well-known\/.*|server\/utils\/(agent-discovery|content)\/.*|server\/plugins\/agent-discovery-landing\.ts|config\/(agent-discovery-routes|mcp-server|site-url)\.ts|skills\/.*|content\/index\.md)$/,
+      tests: agentDiscoveryTests,
     },
     {
       pattern: /^app\/pages\/\((auth|legal)\)\/.*\.vue$/,
@@ -1558,6 +1580,13 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/plugins\/01\.build-freshness\.client\.ts$/,
       tests: ['tests/unit/plugins/01.build-freshness.client.spec.ts'],
+    },
+    {
+      pattern: /^(app\/(plugins\/webmcp\.client|utils\/webmcp|types\/webmcp\.d)\.ts|config\/agent-discovery-routes\.ts)$/,
+      tests: [
+        'tests/unit/plugins/webmcp.client.spec.ts',
+        'tests/unit/utils/webmcp.spec.ts',
+      ],
     },
     {
       pattern: /^server\/middleware\/evlog-auth\.ts$/,
@@ -2678,6 +2707,35 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/plugins\/landing-cache-control\.ts$/,
       tests: ['tests/unit/server/plugins/landing-cache-control.spec.ts'],
+    },
+    {
+      pattern: /^(server\/(mcp\/.*|utils\/mcp\/.*)|shared\/utils\/provider-meta|providers\/.*)\.ts$/,
+      tests: [
+        'tests/unit/server/utils/content/minimark.spec.ts',
+        'tests/unit/server/utils/mcp/cached-content.spec.ts',
+        'tests/unit/server/utils/mcp/catalog.spec.ts',
+        'tests/unit/server/utils/mcp/key-guides.spec.ts',
+        'tests/unit/server/utils/mcp/pages.spec.ts',
+        'tests/unit/server/utils/mcp/safe-tool.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(server\/middleware\/01\.mcp-request-guard|config\/mcp-server)\.ts$/,
+      tests: ['tests/unit/server/middleware/mcp-request-guard.spec.ts'],
+    },
+    {
+      pattern: /^server\/plugins\/cache-key-without-query\.ts$/,
+      tests: ['tests/unit/server/plugins/cache-key-without-query.spec.ts'],
+    },
+    {
+      pattern: /^server\/plugins\/markdown-negotiation-cache-control\.ts$/,
+      tests: [
+        'tests/unit/server/plugins/markdown-negotiation-cache-control.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/plugins\/evlog-request-observability\.ts$/,
+      tests: ['tests/unit/server/plugins/evlog-request-observability.spec.ts'],
     },
   ]
 

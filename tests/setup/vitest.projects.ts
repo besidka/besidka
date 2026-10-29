@@ -38,6 +38,7 @@ export const nuxtSpecExceptions: readonly string[] = [
   'tests/unit/utils/evlog-drains.spec.ts',
   'tests/unit/utils/key-guide-video.spec.ts',
   'tests/unit/utils/mdc-vbind-policy.spec.ts',
+  'tests/unit/utils/webmcp.spec.ts',
   'tests/integration/api/chats-message-id-stream.spec.ts',
   'tests/integration/server/assistant-files.spec.ts',
   'tests/integration/server/email-templates.spec.ts',

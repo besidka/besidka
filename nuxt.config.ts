@@ -4,6 +4,29 @@ import { defineNuxtModule } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers/index.ts'
 import rehypeStripDirectiveProps from './shared/utils/mdc/rehype-strip-directive-props.ts'
+import {
+  agentDiscoveryRoutes,
+  contentPathRedirects,
+} from './config/agent-discovery-routes.ts'
+import {
+  MCP_DISABLED_TOOLKIT_ROUTES,
+  MCP_SERVER_CARD_PATH,
+  MCP_SERVER_DESCRIPTION,
+  MCP_SERVER_ROUTE,
+  MCP_SERVER_TITLE,
+  MCP_SERVER_VERSION,
+} from './config/mcp-server.ts'
+import { assertSecureSiteUrl, resolveSiteUrl } from './config/site-url.ts'
+
+const siteUrl = resolveSiteUrl(process.env)
+
+const contentSignal = 'search=yes, ai-input=yes, ai-train=no'
+
+const keyGuidesLlmsSection = {
+  title: 'API key guides',
+  description: 'Step-by-step guides for getting an API key from each provider.',
+  contentCollection: 'keyGuides',
+}
 
 const stripDirectivePropsPlugin = {
   src: '~~/shared/utils/mdc/rehype-strip-directive-props',
@@ -49,6 +72,23 @@ const forceInlineVueI18nForEmailRenderer = defineNuxtModule({
 
       nitroConfig.externals.inline = inline
     })
+  },
+})
+
+const forceStatelessMcpTransport = defineNuxtModule({
+  meta: { name: 'force-stateless-mcp-transport' },
+  setup(_options, nuxt) {
+    const nodeProviderPath = fileURLToPath(
+      new URL(
+        'runtime/server/mcp/providers/node.js',
+        import.meta.resolve('@nuxtjs/mcp-toolkit'),
+      ),
+    )
+
+    nuxt.options.nitro.virtual ||= {}
+    nuxt.options.nitro.virtual['#nuxt-mcp-toolkit/transport.mjs'] = () => {
+      return `export { default } from '${nodeProviderPath}'`
+    }
   },
 })
 
@@ -157,8 +197,12 @@ const modules = [
   '@nuxtjs/device',
   '@nuxtjs/mdc',
   guardMdcSlotTransformForVapor,
+  '@nuxtjs/mcp-toolkit',
+  forceStatelessMcpTransport,
   '@nuxtjs/robots',
   '@nuxtjs/sitemap',
+  'nuxt-llms',
+  'nuxt-agent-discovery',
   'nuxt-svgo',
   '@vueuse/nuxt',
   '@vite-pwa/nuxt',
@@ -178,6 +222,12 @@ export default defineNuxtConfig({
   routeRules: {
     '/privacy': { redirect: { to: '/privacy-policy', statusCode: 301 } },
     '/terms': { redirect: { to: '/terms-of-use', statusCode: 301 } },
+    ...contentPathRedirects,
+    ...Object.fromEntries(
+      MCP_DISABLED_TOOLKIT_ROUTES.map((route) => {
+        return [route, { redirect: { to: '/', statusCode: 404 } }]
+      }),
+    ),
   },
   nitro: {
     preset: 'cloudflare_module',
@@ -238,11 +288,11 @@ export default defineNuxtConfig({
       // The landing page is runtime SSR on the cloudflare_module preset: each
       // request queries CONTENT_DB via Nuxt Content. Nitro caches the rendered
       // response in the KV-backed Nitro cache with a 1 hour KV TTL — so
-      // CONTENT_DB is queried at most once per hour per edge datacenter per
-      // distinct query string rather than on every hit. `swr` is off because
-      // Nitro writes swr entries to KV with no TTL, and the default cache key
-      // includes the query string, so attacker-chosen `?x=<random>` URLs would
-      // accumulate immortal KV entries.
+      // CONTENT_DB is queried at most once per hour per edge datacenter
+      // rather than on every hit. `swr` is off because Nitro writes swr
+      // entries to KV with no TTL. The cache key ignores the query string
+      // (`server/plugins/cache-key-without-query.ts`), so attacker-chosen
+      // `?x=<random>` URLs share one entry.
       //
       // `cache.name` is pinned to the per-build `buildId` so each deploy uses a
       // fresh cache key: a previous build's cached HTML (which inlines that
@@ -250,6 +300,7 @@ export default defineNuxtConfig({
       // redeploy. This scopes the build-busting to '/' only — the stats and
       // github-stars caches keep their own keys and still survive deploys.
       '/': { cache: { swr: false, maxAge: 3600, name: buildId } },
+      '/raw/**': { cache: { swr: false, maxAge: 3600, name: buildId } },
     },
   },
   runtimeConfig: {
@@ -318,6 +369,7 @@ export default defineNuxtConfig({
       vapidPublicKey: '',
       turnstileSiteKey: '',
       cloudflareWebAnalyticsToken: '',
+      webmcpOriginTrialToken: '',
       e2eTestHooksEnabled: false,
       googleSearchCostPerThousandQueriesUsd: '',
       googleSearchCostPerThousandGroundedPromptsUsd: '',
@@ -336,7 +388,7 @@ export default defineNuxtConfig({
     // URLs must use the apex to match the post-redirect host. Override at
     // runtime with NUXT_PUBLIC_BASE_URL (set it to https://besidka.com in
     // prod).
-    url: process.env.NUXT_PUBLIC_BASE_URL || 'https://besidka.com',
+    url: siteUrl,
     name: 'Besidka',
   },
   // /signin, /signup and /reset-password are crawler-reachable and rely on a
@@ -346,6 +398,12 @@ export default defineNuxtConfig({
   // redirect after a password sign-in that requires a second factor. See
   // docs/seo.md.
   robots: {
+    groups: [
+      {
+        userAgent: ['*'],
+        contentSignal,
+      },
+    ],
     disallow: [
       '/api/',
       '/chats/',
@@ -356,7 +414,136 @@ export default defineNuxtConfig({
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/',
+      '/mcp',
     ],
+  },
+  llms: {
+    domain: siteUrl,
+    title: 'Besidka',
+    description: 'Open-source bring-your-own-key AI chat app that runs on Cloudflare Workers. Users bring their own API keys for AI providers such as Anthropic, OpenAI and Google, and pay the providers directly.',
+    prerender: false,
+    notes: [
+      'This llms.txt covers only the Besidka app and landing site.',
+      'Product documentation and a blog are planned as separate apps at /docs and /blog, each with its own llms.txt. They are not published yet.',
+      'Besidka has no public application API: application endpoints require a signed-in session. The read-only MCP server at /mcp is public.',
+      'Content signals in robots.txt allow search and AI input and disallow AI training.',
+    ],
+    sections: [
+      {
+        title: 'Overview',
+        links: [
+          {
+            title: 'Besidka',
+            description: 'What Besidka is, its features and answers to common questions.',
+            href: `${siteUrl}/`,
+          },
+        ],
+      },
+      {
+        title: 'Guides',
+        links: [
+          {
+            title: 'BYOK: use GPT, Claude and Gemini with your own API key',
+            description: 'How bring-your-own-key works, what it costs and how keys are stored.',
+            href: `${siteUrl}/byok`,
+          },
+          {
+            title: 'How memory works in Besidka',
+            description: 'What Besidka remembers, and how to see, edit and delete it.',
+            href: `${siteUrl}/memory`,
+          },
+        ],
+      },
+      keyGuidesLlmsSection,
+      {
+        title: 'Legal',
+        links: [
+          {
+            title: 'Privacy Policy',
+            href: `${siteUrl}/privacy-policy`,
+          },
+          {
+            title: 'Terms of Use',
+            href: `${siteUrl}/terms-of-use`,
+          },
+          {
+            title: 'Cookie Policy',
+            href: `${siteUrl}/cookie-policy`,
+          },
+        ],
+      },
+      {
+        title: 'Agent resources',
+        links: [
+          {
+            title: 'Agent skills index',
+            description: 'Agent Skills Discovery index of the skills published by this site.',
+            href: `${siteUrl}/.well-known/agent-skills/index.json`,
+          },
+          {
+            title: 'AI catalog',
+            description: 'ARD catalog of the AI resources published by this site.',
+            href: `${siteUrl}/.well-known/ai-catalog.json`,
+          },
+          {
+            title: 'MCP server card',
+            description: 'Server card of the public read-only MCP server at /mcp.',
+            href: `${siteUrl}${MCP_SERVER_CARD_PATH}`,
+          },
+        ],
+      },
+    ],
+  },
+  agentDiscovery: {
+    siteUrl,
+    siteName: 'Besidka',
+    routes: agentDiscoveryRoutes,
+    excludePrefixes: {
+      extend: ['/chats', '/profile', '/files', '/shared'],
+    },
+    discovery: {
+      link: true,
+      apiCatalog: true,
+      sitemapXml: true,
+      links: [
+        {
+          href: '/.well-known/ai-catalog.json',
+          rel: 'describedby',
+          type: 'application/ai-catalog+json',
+          title: 'AI catalog: AI resources published by this site',
+        },
+        {
+          href: MCP_SERVER_CARD_PATH,
+          rel: 'service-desc',
+          type: 'application/json',
+          anchor: MCP_SERVER_ROUTE,
+          header: false,
+        },
+        {
+          href: '/llms.txt',
+          rel: 'service-doc',
+          type: 'text/plain',
+          anchor: MCP_SERVER_ROUTE,
+          header: false,
+        },
+        {
+          href: '/.well-known/agent-skills/index.json',
+          rel: 'index',
+          type: 'application/json',
+          title: 'Agent skills index in the Agent Skills Discovery format',
+        },
+      ],
+    },
+    robots: {
+      aiPolicy: false,
+      contentSignal,
+    },
+    sitemap: {
+      markdown: false,
+    },
+    skills: {
+      dir: 'skills',
+    },
   },
   sitemap: {
     exclude: [
@@ -390,6 +577,14 @@ export default defineNuxtConfig({
       enabled: true,
       endpoint: '/api/_evlog/ingest',
     },
+  },
+  mcp: {
+    name: MCP_SERVER_TITLE,
+    version: MCP_SERVER_VERSION,
+    description: MCP_SERVER_DESCRIPTION,
+    route: MCP_SERVER_ROUTE,
+    browserRedirect: '/',
+    logging: false,
   },
   nuxtEmailRenderer: {
     emailsDir: 'app/emails',
@@ -546,6 +741,13 @@ export default defineNuxtConfig({
     entryImportMap: false,
   },
   hooks: {
+    'ready': (nuxt) => {
+      if (nuxt.options.dev || nuxt.options.test || nuxt.options._prepare) {
+        return
+      }
+
+      assertSecureSiteUrl(siteUrl)
+    },
     // App-level cookie texts must merge through the same lazy locale-file
     // pipeline as the module's own messages — config-file messages get
     // replaced when registered locale files load.
@@ -556,6 +758,11 @@ export default defineNuxtConfig({
           { code: 'en', file: 'cookie-consent.en.ts' },
           { code: 'uk', file: 'cookie-consent.uk.ts' },
         ],
+      })
+    },
+    'nitro:build:before': (nitro) => {
+      nitro.hooks.hook('prerender:routes', (routes) => {
+        routes.clear()
       })
     },
     // @nuxt/content marks /__nuxt_content/**/sql_dump.txt routes as
