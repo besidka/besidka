@@ -92,6 +92,17 @@ const forceStatelessMcpTransport = defineNuxtModule({
   },
 })
 
+const removeMcpToolkitOAuthStubs = defineNuxtModule({
+  meta: { name: 'remove-mcp-toolkit-oauth-stubs' },
+  setup(_options, nuxt) {
+    nuxt.hook('nitro:config', (nitroConfig) => {
+      nitroConfig.handlers = (nitroConfig.handlers || []).filter((handler) => {
+        return !handler?.handler?.includes('mcp/oauth-metadata')
+      })
+    })
+  },
+})
+
 const guardMdcSlotTransformForVapor = defineNuxtModule({
   meta: { name: 'guard-mdc-slot-transform-for-vapor' },
   setup(_options, nuxt) {
@@ -199,6 +210,7 @@ const modules = [
   guardMdcSlotTransformForVapor,
   '@nuxtjs/mcp-toolkit',
   forceStatelessMcpTransport,
+  removeMcpToolkitOAuthStubs,
   '@nuxtjs/robots',
   '@nuxtjs/sitemap',
   'nuxt-llms',

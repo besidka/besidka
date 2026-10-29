@@ -3,11 +3,13 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import {
   captcha,
+  jwt,
   lastLoginMethod,
   oAuthProxy,
   twoFactor,
 } from 'better-auth/plugins'
 import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
+import { mcp } from '@better-auth/mcp'
 import { passkey } from '@better-auth/passkey'
 import { jwtVerify } from 'jose'
 import type {
@@ -42,6 +44,7 @@ type ServerAuth = ReturnType<typeof createAuth>
 let _auth: ServerAuth | undefined
 
 const IMAGE_REJECTING_PATHS = new Set(['/update-user', '/sign-up/email'])
+const DEFAULT_SITE_URL = 'https://besidka.com'
 
 export function useServerAuth(): ServerAuth {
   if (!_auth) {
@@ -81,6 +84,7 @@ function createAuth() {
     config.authAdditionalAllowedHosts,
   )
   const captchaOptions = getCaptchaOptions(config)
+  const siteUrl = config.public.baseUrl || DEFAULT_SITE_URL
 
   const plugins: BetterAuthPlugin[] = [
     oAuthProxy({ productionURL: config.public.baseUrl }),
@@ -113,6 +117,19 @@ function createAuth() {
         userVerification: 'preferred',
       },
     }),
+    jwt({
+      jwt: {
+        issuer: siteUrl,
+      },
+    }),
+    mcp({
+      resource: `${siteUrl}/mcp`,
+      loginPage: '/signin',
+      consentPage: '/oauth/consent',
+      scopes: ['openid', 'profile', 'email', 'offline_access'],
+      allowDynamicClientRegistration: true,
+      allowUnauthenticatedClientRegistration: true,
+    }),
   ]
 
   if (captchaOptions) {
@@ -126,6 +143,7 @@ function createAuth() {
       schema,
       usePlural: true,
     }),
+    disabledPaths: ['/token'],
     secondaryStorage: createAuthSecondaryStorage(kv, dataKey),
     baseURL: {
       allowedHosts,
