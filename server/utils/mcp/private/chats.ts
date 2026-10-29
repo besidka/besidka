@@ -24,6 +24,7 @@ import {
 } from '~~/server/utils/chats/history/search-cursor'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import { toIsoTimestamp, truncateMcpText } from '~~/server/utils/mcp/private/text'
 
 type DbClient = ReturnType<typeof useDb>
@@ -105,6 +106,46 @@ const chatListColumns = {
   pinnedAt: schema.chats.pinnedAt,
   createdAt: schema.chats.createdAt,
   activityAt: schema.chats.activityAt,
+}
+
+export function createInvalidMcpCursorError() {
+  return createError({
+    status: 400,
+    message: 'The cursor is not valid. Omit it to start at the first page, '
+      + 'or pass nextCursor from the previous page unchanged.',
+  })
+}
+
+export function isValidMcpCursorId(id: string): boolean {
+  return decodeKnowledgeEntityId(id) !== null
+}
+
+export function parseMcpHistoryCursor(cursor: string | undefined) {
+  if (!cursor) {
+    return null
+  }
+
+  const parsed = parseHistoryCursor(cursor)
+
+  if (!parsed || !isValidMcpCursorId(parsed.id)) {
+    throw createInvalidMcpCursorError()
+  }
+
+  return parsed
+}
+
+export function parseMcpSearchCursor(cursor: string | undefined): number {
+  if (!cursor) {
+    return 0
+  }
+
+  const offset = parseSearchCursor(cursor)
+
+  if (offset === null) {
+    throw createInvalidMcpCursorError()
+  }
+
+  return offset
 }
 
 export function clampMcpLimit(
@@ -210,7 +251,7 @@ async function searchMcpChats(
   },
   logger: LoggerLike,
 ) {
-  const offset = parseSearchCursor(input.cursor) ?? 0
+  const offset = parseMcpSearchCursor(input.cursor)
   const titleMatches = input.searchIn === 'content'
     ? []
     : await db.select(chatListColumns)
@@ -284,7 +325,7 @@ export async function listMcpChats(
     }, logger)
   }
 
-  const cursor = parseHistoryCursor(input.cursor)
+  const cursor = parseMcpHistoryCursor(input.cursor)
   const rows = await db.select(chatListColumns)
     .from(schema.chats)
     .where(and(

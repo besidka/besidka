@@ -60,5 +60,5 @@ export function withMcpPrivateTool<Args>(
     })
 
     return toJsonToolResult(result)
-  })
+  }, toolName)
 }

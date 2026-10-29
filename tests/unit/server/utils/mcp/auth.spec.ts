@@ -1,11 +1,13 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { JWK, JWTPayload, KeyObject } from 'jose'
 import { SignJWT, exportJWK, generateKeyPair } from 'jose'
 import {
   MCP_JWKS_GRACE_PERIOD_MS,
   buildMcpBearerChallenge,
   evaluateMcpOpaqueAccessToken,
+  hasBearerScheme,
   hashMcpOpaqueAccessToken,
+  isMcpPrincipalActive,
   parseBearerToken,
   parseMcpScopes,
   parseMcpUserId,
@@ -42,7 +44,11 @@ function nowSeconds(): number {
 
 async function signToken(
   overrides: JWTPayload = {},
-  options: { kid?: string, key?: KeyObject | CryptoKey } = {},
+  options: {
+    kid?: string
+    key?: KeyObject | CryptoKey
+    typ?: string | null
+  } = {},
 ): Promise<string> {
   const payload: JWTPayload = {
     sub: '42',
@@ -59,7 +65,7 @@ async function signToken(
   return await new SignJWT(payload)
     .setProtectedHeader({
       alg: 'EdDSA',
-      typ: 'at+jwt',
+      ...(options.typ === null ? {} : { typ: options.typ ?? 'at+jwt' }),
       kid: options.kid ?? KEY_ID,
     })
     .sign(options.key ?? privateKey)
@@ -163,6 +169,31 @@ describe('verifyMcpAccessToken', () => {
 
   it('rejects a subject that is not a user id', async () => {
     const token = await signToken({ sub: 'client-abc' })
+
+    await expect(verify(token)).resolves.toEqual({
+      status: 'invalid',
+      reason: 'subject',
+    })
+  })
+
+  it('pins the token type to at+jwt', async () => {
+    for (const typ of ['JWT', 'id_token+jwt', 'logout+jwt']) {
+      await expect(verify(await signToken({}, { typ }))).resolves.toEqual({
+        status: 'invalid',
+        reason: 'ERR_JWT_CLAIM_VALIDATION_FAILED',
+      })
+    }
+
+    await expect(verify(await signToken({}, { typ: null }))).resolves
+      .toMatchObject({ status: 'invalid' })
+    await expect(verify(await signToken({}, { typ: 'AT+JWT' }))).resolves
+      .toMatchObject({ status: 'valid' })
+    await expect(verify(await signToken({}, { typ: 'application/at+jwt' })))
+      .resolves.toMatchObject({ status: 'valid' })
+  })
+
+  it('rejects a token whose subject is its own client', async () => {
+    const token = await signToken({ sub: '42', azp: '42', client_id: '42' })
 
     await expect(verify(token)).resolves.toEqual({
       status: 'invalid',
@@ -374,7 +405,140 @@ describe('toMcpJsonWebKeySet', () => {
   })
 })
 
+describe('toMcpJsonWebKeySet retired key grace', () => {
+  it('covers the access token lifetime and no more than a day', () => {
+    const accessTokenLifetimeMs = 15 * 60 * 1000
+
+    expect(MCP_JWKS_GRACE_PERIOD_MS).toBeGreaterThan(accessTokenLifetimeMs)
+    expect(MCP_JWKS_GRACE_PERIOD_MS).toBeLessThanOrEqual(24 * 60 * 60 * 1000)
+  })
+
+  it('drops a key retired more than a day ago', () => {
+    const now = Date.UTC(2026, 9, 29)
+    const keySet = toMcpJsonWebKeySet([{
+      id: 1,
+      publicKey: JSON.stringify({ kty: 'OKP', x: 'a' }),
+      alg: 'EdDSA',
+      crv: null,
+      expiresAt: new Date(now - 25 * 60 * 60 * 1000),
+    }, {
+      id: 2,
+      publicKey: JSON.stringify({ kty: 'OKP', x: 'b' }),
+      alg: 'EdDSA',
+      crv: null,
+      expiresAt: new Date(now - 20 * 60 * 1000),
+    }], now)
+
+    expect(keySet.keys.map(key => key.kid)).toEqual(['2'])
+  })
+})
+
+describe('isMcpPrincipalActive', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubDatabase(rows: {
+    users: unknown[]
+    clients: unknown[]
+    consents: unknown[]
+  }) {
+    const tables: unknown[] = []
+    const chain = {
+      from: (table: unknown) => {
+        tables.push(table)
+
+        return chain
+      },
+      where: () => chain,
+      limit: () => chain,
+    }
+    const batch = vi.fn(async (queries: unknown[]) => {
+      expect(queries).toHaveLength(3)
+
+      return [rows.users, rows.clients, rows.consents]
+    })
+
+    vi.stubGlobal('useDb', () => {
+      return { select: () => chain, batch }
+    })
+
+    return { batch, tables }
+  }
+
+  it('is active with a user, an enabled client and a live consent',
+    async () => {
+      const { batch, tables } = stubDatabase({
+        users: [{ id: 42 }],
+        clients: [{ disabled: false }],
+        consents: [{ id: 'consent-1' }],
+      })
+
+      await expect(isMcpPrincipalActive(42, 'client-abc')).resolves.toBe(true)
+      expect(batch).toHaveBeenCalledTimes(1)
+      expect(tables).toHaveLength(3)
+    })
+
+  it('is inactive once the consent is gone, even for a live token',
+    async () => {
+      stubDatabase({
+        users: [{ id: 42 }],
+        clients: [{ disabled: false }],
+        consents: [],
+      })
+
+      await expect(isMcpPrincipalActive(42, 'client-abc')).resolves.toBe(false)
+    })
+
+  it('is inactive for a missing user, a missing or disabled client',
+    async () => {
+      stubDatabase({
+        users: [],
+        clients: [{ disabled: false }],
+        consents: [{ id: 'consent-1' }],
+      })
+      await expect(isMcpPrincipalActive(42, 'client-abc')).resolves.toBe(false)
+
+      stubDatabase({
+        users: [{ id: 42 }],
+        clients: [],
+        consents: [{ id: 'consent-1' }],
+      })
+      await expect(isMcpPrincipalActive(42, 'client-abc')).resolves.toBe(false)
+
+      stubDatabase({
+        users: [{ id: 42 }],
+        clients: [{ disabled: true }],
+        consents: [{ id: 'consent-1' }],
+      })
+      await expect(isMcpPrincipalActive(42, 'client-abc')).resolves.toBe(false)
+    })
+
+  it('fails a token for a disconnected app through the verifier', async () => {
+    const result = await verify(await signToken(), {
+      isPrincipalActive: async () => {
+        return false
+      },
+    })
+
+    expect(result).toEqual({ status: 'invalid', reason: 'principal' })
+  })
+})
+
 describe('mcp auth helpers', () => {
+  it('recognises the Bearer scheme only', () => {
+    expect(hasBearerScheme('Bearer abc')).toBe(true)
+    expect(hasBearerScheme('bearer\tabc')).toBe(true)
+    expect(hasBearerScheme('Bearer')).toBe(true)
+    expect(hasBearerScheme('Bearer ')).toBe(true)
+    expect(hasBearerScheme('Basic abc')).toBe(false)
+    expect(hasBearerScheme('DPoP abc')).toBe(false)
+    expect(hasBearerScheme('Bearerabc')).toBe(false)
+    expect(hasBearerScheme('')).toBe(false)
+    expect(hasBearerScheme(undefined)).toBe(false)
+    expect(hasBearerScheme(null)).toBe(false)
+  })
+
   it('parses only Bearer tokens', () => {
     expect(parseBearerToken('Bearer abc.def.ghi')).toBe('abc.def.ghi')
     expect(parseBearerToken('bearer abc')).toBe('abc')

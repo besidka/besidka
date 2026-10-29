@@ -1,4 +1,13 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler } from 'nuxt/server'
 
@@ -31,39 +40,70 @@ export default defineEventHandler(async () => {
     .where(eq(schema.oauthRefreshTokens.userId, userId))
     .groupBy(schema.oauthRefreshTokens.clientId)
     .as('last_activity')
+  const liveGrants = db
+    .select({
+      clientId: schema.oauthRefreshTokens.clientId,
+      liveSince: sql<number>`max(${schema.oauthRefreshTokens.createdAt})`
+        .as('live_since'),
+      liveScopes: schema.oauthRefreshTokens.scopes,
+    })
+    .from(schema.oauthRefreshTokens)
+    .where(and(
+      eq(schema.oauthRefreshTokens.userId, userId),
+      isNull(schema.oauthRefreshTokens.revoked),
+      gt(schema.oauthRefreshTokens.expiresAt, new Date()),
+    ))
+    .groupBy(schema.oauthRefreshTokens.clientId)
+    .as('live_grants')
 
   const rows = await db
     .select({
-      consentId: schema.oauthConsents.id,
-      clientId: schema.oauthConsents.clientId,
-      scopes: schema.oauthConsents.scopes,
-      createdAt: schema.oauthConsents.createdAt,
-      updatedAt: schema.oauthConsents.updatedAt,
+      clientId: schema.oauthClients.clientId,
       name: schema.oauthClients.name,
       uri: schema.oauthClients.uri,
+      consentScopes: schema.oauthConsents.scopes,
+      consentCreatedAt: schema.oauthConsents.createdAt,
+      consentUpdatedAt: schema.oauthConsents.updatedAt,
+      liveSince: liveGrants.liveSince,
+      liveScopes: liveGrants.liveScopes,
       lastUsedAt: lastActivity.lastUsedAt,
     })
-    .from(schema.oauthConsents)
-    .innerJoin(
-      schema.oauthClients,
-      eq(schema.oauthClients.clientId, schema.oauthConsents.clientId),
+    .from(schema.oauthClients)
+    .leftJoin(
+      schema.oauthConsents,
+      and(
+        eq(schema.oauthConsents.clientId, schema.oauthClients.clientId),
+        eq(schema.oauthConsents.userId, userId),
+      ),
+    )
+    .leftJoin(
+      liveGrants,
+      eq(liveGrants.clientId, schema.oauthClients.clientId),
     )
     .leftJoin(
       lastActivity,
-      eq(lastActivity.clientId, schema.oauthConsents.clientId),
+      eq(lastActivity.clientId, schema.oauthClients.clientId),
     )
-    .where(eq(schema.oauthConsents.userId, userId))
-    .orderBy(desc(schema.oauthConsents.updatedAt))
+    .where(or(
+      isNotNull(schema.oauthConsents.id),
+      isNotNull(liveGrants.clientId),
+    ))
+    .orderBy(desc(
+      sql`coalesce(${schema.oauthConsents.updatedAt}, ${liveGrants.liveSince})`,
+    ))
     .limit(100)
 
   return rows.map((row) => {
+    const liveSince = toTimestampDate(row.liveSince)
+    const scopes = row.consentScopes ?? row.liveScopes
+
     return {
       clientId: row.clientId,
       name: row.name || 'Unnamed app',
       uri: row.uri,
-      scopes: Array.isArray(row.scopes) ? row.scopes as string[] : [],
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
+      scopes: Array.isArray(scopes) ? scopes as string[] : [],
+      createdAt: row.consentCreatedAt ?? liveSince,
+      updatedAt: row.consentUpdatedAt ?? liveSince,
       lastUsedAt: toTimestampDate(row.lastUsedAt),
     }
   })

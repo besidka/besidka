@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { SNIPPET_END, SNIPPET_START } from '#shared/utils/search'
 import { encodePublicId } from '~~/server/utils/custom-db-types'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import { buildSearchMatchExpression, buildSearchOwnerTag } from '~~/server/utils/search/query'
 
 export const SEARCH_CANDIDATE_MESSAGE_LIMIT = 200
@@ -93,9 +93,7 @@ export async function findChatsMatchingMessageContent(input: {
         userId: input.userId,
       },
       attributes: {
-        messageSearchContent: {
-          error: exceptionMessage(exception),
-        },
+        messageSearchContent: exceptionSummary(exception),
       },
     })
 

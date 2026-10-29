@@ -26,6 +26,9 @@ import {
   purgeUserData,
   purgeUserOAuthData,
 } from './account/purge-user-data'
+import { notifyOAuthAppConnected } from './account/notify-oauth-app-connected'
+import { revokeUserOAuthGrants } from './account/revoke-user-oauth-grants'
+import { findClientRegistrationViolation } from './oauth/registration-limits'
 import {
   sendEmailChangedEmail,
   sendPasskeyAddedEmail,
@@ -53,6 +56,21 @@ const OAUTH_ACCESS_TOKEN_TTL_SECONDS = 15 * 60
 const OAUTH_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
 const OAUTH_CLIENT_REGISTRATION_PATH = '/oauth2/register'
 const OAUTH_CONSENT_PATH = '/oauth2/consent'
+const OAUTH_GRANT_TYPES = ['authorization_code', 'refresh_token'] as const
+
+export const DISABLED_AUTH_PATHS = [
+  '/token',
+  '/oauth2/get-client',
+  '/oauth2/get-clients',
+  '/oauth2/create-client',
+  '/oauth2/update-client',
+  '/oauth2/delete-client',
+  '/oauth2/client/rotate-secret',
+  '/oauth2/get-consent',
+  '/oauth2/get-consents',
+  '/oauth2/update-consent',
+  '/oauth2/delete-consent',
+]
 
 export const PRIVILEGED_CLIENT_REGISTRATION_FIELDS = [
   'skip_consent',
@@ -75,6 +93,23 @@ export function stripPrivilegedClientRegistrationFields(
 
   for (const field of PRIVILEGED_CLIENT_REGISTRATION_FIELDS) {
     Reflect.deleteProperty(body, field)
+  }
+}
+
+export function assertClientRegistrationWithinLimits(
+  body: Record<string, unknown> | undefined,
+  contentLengthHeader?: string | null,
+): void {
+  const violation = findClientRegistrationViolation(
+    body,
+    contentLengthHeader,
+  )
+
+  if (violation) {
+    throw new APIError('BAD_REQUEST', {
+      error: 'invalid_client_metadata',
+      error_description: violation,
+    })
   }
 }
 
@@ -175,6 +210,7 @@ function createAuth() {
       },
     }),
     jwt({
+      disableSettingJwtHeader: true,
       jwt: {
         issuer: siteUrl,
       },
@@ -186,6 +222,7 @@ function createAuth() {
       scopes: [...MCP_OAUTH_SCOPES],
       clientRegistrationDefaultScopes: [...MCP_OAUTH_SCOPES],
       clientRegistrationDefaultApplicationType: 'infer',
+      grantTypes: [...OAUTH_GRANT_TYPES],
       accessTokenExpiresIn: OAUTH_ACCESS_TOKEN_TTL_SECONDS,
       refreshTokenExpiresIn: OAUTH_REFRESH_TOKEN_TTL_SECONDS,
       allowDynamicClientRegistration: true,
@@ -204,7 +241,7 @@ function createAuth() {
       schema,
       usePlural: true,
     }),
-    disabledPaths: ['/token'],
+    disabledPaths: DISABLED_AUTH_PATHS,
     secondaryStorage: createAuthSecondaryStorage(kv, dataKey),
     baseURL: {
       allowedHosts,
@@ -270,6 +307,10 @@ function createAuth() {
       // Auth's own post-reset callback (resolved user, not just a token)
       // is the notification hook for this specific flow.
       async onPasswordReset({ user }) {
+        await revokeUserOAuthGrants({
+          userId: Number(user.id),
+          trigger: 'reset-password',
+        })
         await sendPasswordChangedEmail({ user })
       },
     },
@@ -378,8 +419,8 @@ function createAuth() {
           })
         },
         async beforeDelete(user) {
-          await purgeUserData({ userId: Number(user.id) })
           await purgeUserOAuthData({ userId: Number(user.id) })
+          await purgeUserData({ userId: Number(user.id) })
         },
       },
     },
@@ -465,6 +506,10 @@ function createAuth() {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path === OAUTH_CLIENT_REGISTRATION_PATH) {
           stripPrivilegedClientRegistrationFields(ctx.body)
+          assertClientRegistrationWithinLimits(
+            ctx.body,
+            ctx.request?.headers.get('content-length'),
+          )
 
           return
         }
@@ -557,11 +602,35 @@ function createAuth() {
               },
             })
 
+            if (decision.action === 'oauth_granted') {
+              await notifyOAuthAppConnected({
+                user,
+                clientId: decision.clientId,
+                scopes: decision.scopes,
+              })
+            }
+
             return
           }
 
           if (ctx.path === '/change-password') {
+            if (ctx.body?.revokeOtherSessions === true) {
+              await revokeUserOAuthGrants({
+                userId: Number(user.id),
+                trigger: 'change-password',
+              })
+            }
+
             await sendPasswordChangedEmail({ user })
+
+            return
+          }
+
+          if (ctx.path === '/revoke-sessions') {
+            await revokeUserOAuthGrants({
+              userId: Number(user.id),
+              trigger: 'revoke-sessions',
+            })
 
             return
           }

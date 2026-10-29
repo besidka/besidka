@@ -56,5 +56,5 @@ export default defineMcpTool({
     }
 
     return toJsonToolResult(formatKeyGuide(guide, resolveSiteOrigin(event)))
-  }),
+  }, 'get_key_guide'),
 })

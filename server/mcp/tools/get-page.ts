@@ -43,5 +43,5 @@ export default defineMcpTool({
       resolveSiteOrigin(event),
       createPageComponentRenderers(String(privacyEmail ?? '')),
     ))
-  }),
+  }, 'get_page'),
 })

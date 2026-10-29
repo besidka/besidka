@@ -345,10 +345,13 @@ scope for this PR.
 ## Rate limiting is explicit; password reset revokes sessions
 
 `server/utils/auth.ts` sets `rateLimit.enabled` explicitly to
-`!import.meta.dev && !config.public.e2eTestHooksEnabled`. Better Auth's own
+`!import.meta.dev && !(CI && e2eTestHooksEnabled)`: the limiter stays on
+unless the build is a dev build or `process.env.CI === 'true'` and
+`config.public.e2eTestHooksEnabled` are both set, so enabling the e2e hooks
+alone does not switch it off. Better Auth's own
 default is `isProduction`, which reads `NODE_ENV`; that is not reliably set
 inside a Worker, so the limiter could be silently off in production. It stays
-off only in dev and in e2e runs that enable the test hooks.
+off only in dev and in CI e2e runs that enable the test hooks.
 
 `emailAndPassword.revokeSessionsOnPasswordReset` is `true`: completing a
 password reset signs out every other session. See
@@ -921,7 +924,7 @@ endpoint. `mcp()` from `@better-auth/mcp` (built on
 | --- | --- | --- |
 | `resource` | `${siteUrl}/mcp` | RFC 8707 resource; becomes the JWT `aud` |
 | `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `projects:write`, `memory:write` |
-| `accessTokenExpiresIn` | 900 (15 min) | access tokens are JWTs verified offline, so this is the revocation delay |
+| `accessTokenExpiresIn` | 900 (15 min) | access tokens are JWTs verified offline; disconnecting is still immediate because `/mcp` also checks the consent row |
 | `refreshTokenExpiresIn` | 2,592,000 (30 days) | library default, set explicitly; rotated on every refresh, 30s reuse overlap from `mcp()` |
 | PKCE | required, S256 only | library default |
 | `allowDynamicClientRegistration` + `allowUnauthenticatedClientRegistration` | on | MCP clients (claude.ai, Claude Code, Cursor) register themselves |
@@ -930,8 +933,27 @@ endpoint. `mcp()` from `@better-auth/mcp` (built on
 | `skipConsent` | never | consent is required for every client |
 | `loginPage` / `consentPage` | `/signin` / `/oauth/consent` | |
 
-`jwt({ jwt: { issuer: siteUrl } })` sets `iss`, and `disabledPaths:
-['/token']` keeps the JWT plugin's session-to-JWT endpoint off.
+`jwt({ disableSettingJwtHeader: true, jwt: { issuer: siteUrl } })` sets
+`iss` and stops the plugin from putting a session JWT in a `set-auth-jwt`
+header on every `get-session` response. `grantTypes` is
+`['authorization_code', 'refresh_token']`: `client_credentials` is not
+offered, so a dynamically registered client cannot mint a token without a
+user. The plugin's default also lists it in discovery metadata.
+
+**Disabled endpoints.** `DISABLED_AUTH_PATHS` in `server/utils/auth.ts`
+returns 404 at the router for `/token` and for the plugin's own client and
+consent management: `/oauth2/get-client`, `get-clients`, `create-client`,
+`update-client`, `delete-client`, `client/rotate-secret`, `get-consent`,
+`get-consents`, `update-consent` and `delete-consent`. Besidka reads
+clients and consents through its own routes. Left on, any signed-in user
+could create clients they own (ownership is what the account purge and the
+connected-apps list key on), delete a consent row without ending the
+tokens, or widen a consent's scopes. `disabledPaths` is router-only, so
+`auth.api.*` calls from server code keep working. Everything the consent
+page and clients need stays reachable: authorize, consent, continue,
+register, token, revoke, introspect, userinfo, end-session, public-client
+and public-client-prelogin. `get-client` is not in the original request but
+belongs to the same read family.
 
 **Audience caveat.** The JWT `aud` is `${siteUrl}/mcp` only when the client
 sends `resource=` on the authorize and token requests (the MCP spec
@@ -961,6 +983,19 @@ against a library change, a `hooks.before` on `/oauth2/register`
 (`stripPrivilegedClientRegistrationFields`) removes `skip_consent`,
 `skipConsent`, `enable_end_session` and `enableEndSession` from the body
 before validation.
+
+**Registration bounds.** The same `hooks.before` also rejects, with
+`400 invalid_client_metadata`, a registration whose body is over 16 KiB
+(the `content-length` header, or the serialised body when there is none),
+whose `client_name` is over 120 characters, whose `client_uri`, `logo_uri`,
+`tos_uri`, `policy_uri`, `jwks_uri` or `backchannel_logout_uri` is over
+2048 characters, with more than 10 `redirect_uris` or
+`post_logout_redirect_uris` (or one over 2048 characters), more than 5
+`contacts` (or one over 254), any `software_statement`, or a `software_id`
+or `software_version` over 128 characters. The limits are named constants
+in `server/utils/oauth/registration-limits.ts`. Registration is
+unauthenticated and the name is shown on the consent page, so unbounded
+metadata is both a storage and a spoofing lever.
 
 ### Sign-in and consent flow
 
@@ -1013,22 +1048,62 @@ client id and scopes only, never a token.
 
 ### Connected apps and revocation
 
-`/profile/connected-apps` lists the user's consents with the app name,
-scopes, connection date and last activity (the newest refresh token).
-**Disconnect** (`POST /api/v1/profiles/connected-apps/[clientId]/revoke`)
-deletes, in one D1 batch and in foreign-key order, the user's access token
-rows, refresh tokens and consent for that client. The plugin's own
-`/oauth2/delete-consent` is not used because it leaves tokens alive.
-Access tokens are JWTs checked against the JWKS without a database read,
-so one already issued keeps working until it expires, up to 15 minutes.
-The UI says so.
+`/profile/connected-apps` lists every client the user has a consent for
+or a live (not revoked, not expired) refresh token for, so a grant whose
+consent row is gone still shows up and can be revoked. Scopes come from
+the consent, or from the newest live refresh token when there is none (a
+bare `max()` aggregate in SQLite takes the other columns from the max
+row). **Disconnect**
+(`POST /api/v1/profiles/connected-apps/[clientId]/revoke`) deletes, in one
+D1 batch and in foreign-key order, the user's access tokens, refresh
+tokens and consents for that client, unconditionally, and answers 404 only
+when none of the three existed. The plugin's own `/oauth2/delete-consent`
+is disabled.
+
+The MCP server checks for a live consent row on every call, so
+disconnecting takes effect at once even though access tokens are JWTs
+verified without a database read. The UI no longer promises a delay.
+
+### Recovery ends every grant
+
+A refresh token outlives the browser sessions that account recovery
+revokes, so a stolen grant would keep minting access tokens for 30 days
+after the password changed. `revokeUserOAuthGrants`
+(`server/utils/account/revoke-user-oauth-grants.ts`) deletes the user's
+access tokens, refresh tokens and consents in one batch. It runs after a
+successful `/reset-password` (from `emailAndPassword.onPasswordReset`,
+because that flow has no session), after `/change-password` with
+`revokeOtherSessions: true`, and after `/revoke-sessions`. A failure is
+logged under `attributes.legalConsent` (`oauth_revoke_all_failed`) and not
+thrown, because the credential change already happened. Success logs
+`oauth_revoked_all` with the trigger path.
+
+### New-app email and sweep
+
+Approving an app sends "A new app was connected to your Besidka account"
+(`notifyOAuthAppConnected`): the app name (control characters stripped,
+capped at 120, labelled unverified), the scopes in plain words, the time
+and a link to `/profile/connected-apps`.
+
+`server/plugins/oauth-grant-sweep.ts` runs on the hourly cron
+(`0 * * * *`) and deletes, in batches of 100 (up to 10 batches per table
+per run, D1 has no `DELETE ... LIMIT`, so each delete selects its ids with
+a limited subquery): access tokens expired for a day; refresh tokens
+expired or revoked for a day, after the access tokens that reference them
+(`refresh_id` foreign key); and owner-less clients older than 7 days with
+no consent and no token. **Trade-off:** a client that cached its
+`client_id` and was never approved, or whose user revoked it and then
+waited 7 days, gets `invalid_client` at authorize and has to register
+again. Counts go under `attributes.oauthSweep`.
 
 ### Account deletion
 
 None of the OAuth tables cascade from `users`, so a leftover row blocks
 the user delete. `purgeUserOAuthData` runs in `deleteUser.beforeDelete`
-after `purgeUserData` and deletes, in one batch: access tokens, refresh
+before `purgeUserData`, so a failing OAuth batch aborts the deletion
+before any content is purged, and deletes, in one batch: access tokens, refresh
 tokens and consents of the user or of any client the user owns, then the
 clients the user owns (`oauth_client_resources` cascades from them).
-Clients registered without a session have no owner and are kept.
+Clients registered without a session have no owner; the sweep removes
+them when they are unused.
 

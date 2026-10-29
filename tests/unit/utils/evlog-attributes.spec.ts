@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionMessage, exceptionSummary } from '~~/server/utils/evlog-attributes'
 
 describe('exceptionMessage', () => {
   it('returns the message of an Error', () => {
@@ -68,5 +68,37 @@ describe('exceptionMessage', () => {
     }
 
     expect(exceptionMessage(exception)).toBe('Failed query: y')
+  })
+})
+
+describe('exceptionSummary', () => {
+  it('keeps the error name and the code and name of the cause only', () => {
+    const exception = Object.assign(
+      new Error('Failed query: select ?\nparams: SECRET'),
+      { name: 'DrizzleQueryError', params: ['SECRET'] },
+    )
+
+    exception.cause = Object.assign(new Error('SECRET'), {
+      code: 'SQLITE_ERROR',
+    })
+
+    const summary = exceptionSummary(exception)
+
+    expect(summary).toEqual({
+      errorName: 'DrizzleQueryError',
+      causeName: 'Error',
+      causeCode: 'SQLITE_ERROR',
+    })
+    expect(JSON.stringify(summary)).not.toContain('SECRET')
+  })
+
+  it('describes a thrown non-error by its type', () => {
+    expect(exceptionSummary('SECRET')).toEqual({ errorName: 'string' })
+    expect(exceptionSummary(null)).toEqual({ errorName: 'object' })
+  })
+
+  it('reads a string code from the error itself', () => {
+    expect(exceptionSummary(Object.assign(new Error('x'), { code: 'E_X' })))
+      .toEqual({ errorName: 'Error', errorCode: 'E_X' })
   })
 })

@@ -70,10 +70,11 @@ async function createGuard(
     status: 'valid',
     auth: VALID_AUTH,
   },
+  readBodyImplementation?: (maxBytes: number) => Promise<string | undefined>,
 ) {
   vi.resetModules()
 
-  const readBody = vi.fn(async () => body)
+  const readBody = vi.fn(readBodyImplementation ?? (async () => body))
   const verifyAccessToken = vi.fn(async () => verification)
   const { createMcpRequestGuard } = await import(
     '~~/server/middleware/01.mcp-request-guard'
@@ -436,6 +437,119 @@ describe('mcp request guard authentication', () => {
       error: { code: -32700 },
     })
     expect(mocks.setResponseStatus).toHaveBeenCalledWith(event, 400)
+  })
+
+  it('treats a non-Bearer Authorization scheme as anonymous', async () => {
+    for (const authorization of ['Basic dXNlcjpwYXNz', 'DPoP abc', 'Bearerx']) {
+      mocks.setResponseStatus.mockReset()
+
+      const publicBody = toolsCall('list_models')
+      const publicGuard = await createGuard(publicBody)
+      const publicEvent = createEvent('POST', '/mcp', {
+        'content-length': String(publicBody.length),
+        authorization,
+      })
+
+      await expect(publicGuard.guard(publicEvent)).resolves.toBeUndefined()
+      expect(publicGuard.verifyAccessToken).not.toHaveBeenCalled()
+      expect(publicEvent.context.mcpAuth).toBeUndefined()
+
+      const privateBody = toolsCall('list_chats')
+      const privateGuard = await createGuard(privateBody)
+      const privateEvent = createEvent('POST', '/mcp', {
+        'content-length': String(privateBody.length),
+        authorization,
+      })
+
+      await privateGuard.guard(privateEvent)
+
+      expect(mocks.setResponseStatus).toHaveBeenCalledWith(privateEvent, 401)
+      expect(privateEvent.res.headers.get('WWW-Authenticate'))
+        .not.toContain('invalid_token')
+    }
+  })
+
+  it('verifies every Bearer header and answers 401 when it is malformed',
+    async () => {
+      for (const authorization of ['Bearer', 'bearer', 'BEARER a b']) {
+        mocks.setResponseStatus.mockReset()
+
+        const { guard, verifyAccessToken } = await createGuard(
+          TOOLS_CALL,
+          { status: 'invalid', reason: 'scheme' },
+        )
+        const event = createEvent('POST', '/mcp', {
+          'content-length': String(TOOLS_CALL.length),
+          authorization,
+        })
+
+        await guard(event)
+
+        expect(verifyAccessToken).toHaveBeenCalledWith(authorization)
+        expect(mocks.setResponseStatus).toHaveBeenCalledWith(event, 401)
+        expect(event.res.headers.get('WWW-Authenticate'))
+          .toMatch(/^Bearer error="invalid_token"/)
+      }
+    })
+
+  it('reads the body at the effective cap of the caller', async () => {
+    const anonymous = await createGuard(TOOLS_CALL)
+
+    await anonymous.guard(createEvent('POST', '/mcp', {
+      'content-length': String(TOOLS_CALL.length),
+    }))
+
+    expect(anonymous.readBody).toHaveBeenCalledWith(MCP_MAX_REQUEST_BODY_BYTES)
+
+    const signedIn = await createGuard(TOOLS_CALL)
+
+    await signedIn.guard(createEvent('POST', '/mcp', {
+      'content-length': String(TOOLS_CALL.length),
+      'authorization': 'Bearer token',
+    }))
+
+    expect(signedIn.readBody).toHaveBeenCalledWith(
+      MCP_MAX_AUTHENTICATED_REQUEST_BODY_BYTES,
+    )
+  })
+
+  it('answers 413 when the bounded read finds more bytes than declared',
+    async () => {
+      const { guard } = await createGuard(
+        TOOLS_CALL,
+        undefined,
+        async (maxBytes) => {
+          const { McpBodyTooLargeError } = await import(
+            '~~/server/utils/mcp/bounded-body'
+          )
+
+          throw new McpBodyTooLargeError(maxBytes)
+        },
+      )
+      const event = createEvent('POST', '/mcp', {
+        'content-length': '10',
+      })
+
+      await expect(guard(event)).resolves.toMatchObject({
+        error: { message: expect.stringContaining(
+          String(MCP_MAX_REQUEST_BODY_BYTES),
+        ) },
+      })
+      expect(mocks.setResponseStatus).toHaveBeenCalledWith(event, 413)
+    })
+
+  it('rethrows a read failure that is not a size violation', async () => {
+    const { guard } = await createGuard(
+      TOOLS_CALL,
+      undefined,
+      async () => {
+        throw new Error('stream closed')
+      },
+    )
+
+    await expect(guard(createEvent('POST', '/mcp', {
+      'content-length': '10',
+    }))).rejects.toThrow('stream closed')
   })
 
   it('gates a private call behind a byte order mark', async () => {

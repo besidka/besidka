@@ -290,7 +290,7 @@ A connected app cannot send messages in your chats or use your API keys in this 
 
 ### What I process and keep for this
 
-- **The app's registration.** An app registers itself with Besidka before you see it, without an account. That record holds what the app sent: its name, its redirect web addresses and the other details the app chose to send about itself. It is the app's data, not yours, and it is kept until I remove it.
+- **The app's registration.** An app registers itself with Besidka before you see it, without an account. That record holds what the app sent: its name, its redirect web addresses and the other details the app chose to send about itself. It is the app's data, not yours. If nobody approves the app, I delete its registration automatically about 7 days after it registered. Once someone has approved it, I keep it until I remove it.
 - **Your approval.** Your user id, the app, the permissions you gave and when you gave them.
 - **Tokens.** An access token lets the app call the interface for **15 minutes**. A refresh token lets it ask for a new access token without asking you again, and is replaced each time the app uses it. Each token record holds your user id, the app, the permissions and its expiry.
 - **Signing keys.** The keys that sign access tokens. They hold no personal data and are stored encrypted by the sign-in library with the server secret.
@@ -419,9 +419,9 @@ My logs are deliberately narrow. Specifically:
 | Your consent to store sensitive information, your acceptance of the Terms of Use and age confirmation, and your consent to transfers to DeepSeek, Moonshot AI, Qwen, the other gateway vendors or router and preset models | While your account exists. Withdrawing keeps the record of when you gave and withdrew it. Deleted with your account |
 | Reports of illegal content, copyright notices, disputes of removals and my decisions about them | Until the matter is closed, and then 12 months so I can answer a challenge, a complaint or an authority. A note that content was removed from an account on a copyright notice is kept 24 months, for the repeat-infringement rule. The emails are deleted on the same schedule. See [Reports and notices about content](#reports-and-notices-about-content) |
 | Access tokens of connected AI apps | 15 minutes. They stop working then, or when you disconnect the app, whichever is first |
-| Refresh tokens of connected AI apps | Until you disconnect the app or they expire, and each is replaced every time the app uses it. Deleted with your account |
+| Refresh tokens of connected AI apps | Until you disconnect the app or they expire, and each is replaced every time the app uses it. Also ended when you reset your password, change it while signing out your other sessions, or sign out of all sessions. Expired or ended tokens are deleted about a day later. Deleted with your account |
 | Your approval of a connected AI app (the app, the permissions and when you gave them) | Until you disconnect the app. Deleted with your account |
-| The registration of a connected AI app (its name and the details it sent) | Until I remove it. It holds the app's data, not yours |
+| The registration of a connected AI app (its name and the details it sent) | Deleted automatically about 7 days after registering if nobody approved the app and no token exists; otherwise until I remove it. It holds the app's data, not yours |
 | Cookie consent records | Stored in a separate database, pseudonymously — see [Cookie consent records](#cookie-consent-records) |
 
 ### Backups

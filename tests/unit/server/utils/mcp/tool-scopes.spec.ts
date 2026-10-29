@@ -17,6 +17,11 @@ const TOOL_NAME = /name: '([a-z_]+)'/
 const PRIVATE_WRAPPER = /withMcpPrivateTool\(\s*'([a-z_]+)'/
 const READ_ONLY_HINT = /readOnlyHint: (true|false)/
 const DESTRUCTIVE_HINT = /destructiveHint: (true|false)/
+const DESTRUCTIVE_TOOLS = [
+  'delete_memory',
+  'update_memory',
+  'update_project_instructions',
+]
 
 function readToolSources() {
   return readdirSync(TOOLS_DIRECTORY)
@@ -82,7 +87,7 @@ describe('mcp tool scopes', () => {
         expect(tool.wrapperName, tool.file).toBe(tool.name)
         expect(tool.readOnly, tool.file).toBe(!isWrite)
         expect(tool.destructive, tool.file)
-          .toBe(tool.name === 'delete_memory')
+          .toBe(DESTRUCTIVE_TOOLS.includes(tool.name))
       }
 
       for (const tool of tools) {

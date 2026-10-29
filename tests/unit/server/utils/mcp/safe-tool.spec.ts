@@ -42,7 +42,7 @@ async function callToolResult(error: unknown) {
   const { withSafeToolErrors } = await loadModule()
   const handler = withSafeToolErrors(async () => {
     throw error
-  })
+  }, 'list_chats')
 
   try {
     await handler()
@@ -66,7 +66,7 @@ describe('withSafeToolErrors', () => {
     const { withSafeToolErrors } = await loadModule()
     const handler = withSafeToolErrors(async (value: number) => {
       return value * 2
-    })
+    }, 'list_chats')
 
     await expect(handler(21)).resolves.toBe(42)
   })
@@ -123,29 +123,72 @@ describe('withSafeToolErrors', () => {
     expect(result.content[0].text).toBe(MCP_TOOL_FAILURE_MESSAGE)
   })
 
-  it('logs the original error on the request logger', async () => {
-    const original = new Error(SECRET_MESSAGE)
+  it('logs the error name, code and tool name without the message',
+    async () => {
+      const failure = new Error(SECRET_MESSAGE)
 
-    await callToolResult(original)
+      failure.name = 'DrizzleQueryError'
+      failure.cause = Object.assign(new Error('constraint SECRET'), {
+        code: 'SQLITE_CONSTRAINT',
+      })
 
-    expect(mocks.logger.set).toHaveBeenCalledWith({
-      action: 'mcp-tool-failure',
+      await callToolResult(failure)
+
+      expect(mocks.logger.set).toHaveBeenCalledWith({
+        action: 'mcp-tool-failure',
+        attributes: {
+          mcpToolFailure: {
+            toolName: 'list_chats',
+            errorName: 'DrizzleQueryError',
+            causeName: 'Error',
+            causeCode: 'SQLITE_CONSTRAINT',
+          },
+        },
+      })
+      expect(mocks.logger.error).toHaveBeenCalledTimes(1)
+      expect(mocks.logger.error.mock.calls[0]?.[0]).not.toBe(failure)
     })
-    expect(mocks.logger.error).toHaveBeenCalledWith(original)
-  })
+
+  it('never lets a message, params or stack of the error reach the logger',
+    async () => {
+      const failure = Object.assign(
+        new Error('Failed query: select * from chats params: SECRET'),
+        { params: ['SECRET'], query: 'select SECRET' },
+      )
+
+      failure.cause = new Error('cause SECRET')
+
+      await callToolResult(failure)
+
+      const logged = JSON.stringify(
+        [mocks.logger.set.mock.calls, mocks.logger.error.mock.calls],
+        (_key, value) => {
+          return value instanceof Error
+            ? { name: value.name, message: value.message, stack: value.stack }
+            : value
+        },
+      )
+
+      expect(logged).not.toContain('SECRET')
+    })
 
   it('falls back to the standalone logger outside a request', async () => {
     mocks.useEvent.mockImplementation(() => {
       throw new Error('no event')
     })
 
-    const result = await callToolResult(new Error(SECRET_MESSAGE))
+    const result = await callToolResult(
+      Object.assign(new Error(SECRET_MESSAGE), { params: ['SECRET'] }),
+    )
 
     expect(result.content[0].text).not.toContain('SQLITE')
     expect(mocks.log.error).toHaveBeenCalledWith({
       action: 'mcp-tool-failure',
-      message: SECRET_MESSAGE,
+      attributes: {
+        mcpToolFailure: { toolName: 'list_chats', errorName: 'Error' },
+      },
     })
+    expect(JSON.stringify(mocks.log.error.mock.calls)).not.toContain('SECRET')
   })
 })
 

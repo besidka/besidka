@@ -1,5 +1,5 @@
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { eq, inArray, or, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
@@ -7,6 +7,7 @@ import { resolveServerLogger } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildSearchOwnerTag } from '~~/server/utils/search/query'
 import { purgeProjectKnowledge } from '~~/server/utils/knowledge/purge'
+import { buildOAuthGrantDeletes } from '~~/server/utils/account/revoke-user-oauth-grants'
 
 const r2BatchDeleteLimit = 1000
 
@@ -286,25 +287,15 @@ export async function purgeUserOAuthData(
   const { userId } = input
   const logger = resolveServerLogger(input.logger)
   const db = useDb()
-  const ownedClientIds = db
-    .select({ clientId: schema.oauthClients.clientId })
-    .from(schema.oauthClients)
-    .where(eq(schema.oauthClients.userId, userId))
+  const deletes = buildOAuthGrantDeletes(db, userId, {
+    includeOwnedClients: true,
+  })
 
   try {
     await db.batch([
-      db.delete(schema.oauthAccessTokens).where(or(
-        eq(schema.oauthAccessTokens.userId, userId),
-        inArray(schema.oauthAccessTokens.clientId, ownedClientIds),
-      )),
-      db.delete(schema.oauthRefreshTokens).where(or(
-        eq(schema.oauthRefreshTokens.userId, userId),
-        inArray(schema.oauthRefreshTokens.clientId, ownedClientIds),
-      )),
-      db.delete(schema.oauthConsents).where(or(
-        eq(schema.oauthConsents.userId, userId),
-        inArray(schema.oauthConsents.clientId, ownedClientIds),
-      )),
+      deletes.accessTokens,
+      deletes.refreshTokens,
+      deletes.consents,
       db.delete(schema.oauthClients)
         .where(eq(schema.oauthClients.userId, userId)),
     ])

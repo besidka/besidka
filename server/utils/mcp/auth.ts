@@ -1,7 +1,7 @@
 import type { JSONWebKeySet, JWK, JWTPayload } from 'jose'
 import { errors as joseErrors } from 'jose'
 import { verifyJwsAccessToken } from 'better-auth/oauth2'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
   MCP_PROTECTED_RESOURCE_METADATA_PATH,
@@ -10,7 +10,9 @@ import {
 
 export const DEFAULT_MCP_SITE_URL = 'https://besidka.com'
 
-export const MCP_JWKS_GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000
+export const MCP_JWKS_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000
+
+export const MCP_ACCESS_TOKEN_TYPE = 'at+jwt'
 
 export const MCP_ACCESS_TOKEN_ALGORITHMS = [
   'EdDSA',
@@ -22,6 +24,7 @@ export const MCP_ACCESS_TOKEN_ALGORITHMS = [
 
 const DEFAULT_JWK_ALGORITHM = 'EdDSA'
 const BEARER_AUTHORIZATION = /^Bearer[ \t]+([A-Za-z0-9\-._~+/]+=*)[ \t]*$/i
+const BEARER_SCHEME = /^Bearer(?:[ \t]|$)/i
 const POSITIVE_INTEGER = /^[1-9]\d{0,15}$/
 const OAUTH_SCOPE_TOKEN = /^[\x21\x23-\x5b\x5d-\x7e]+$/
 const MCP_JWKS_CACHE_KEY = {}
@@ -135,7 +138,7 @@ export async function isMcpPrincipalActive(
   clientId: string,
 ): Promise<boolean> {
   const db = useDb()
-  const [users, clients] = await db.batch([
+  const [users, clients, consents] = await db.batch([
     db.select({ id: schema.users.id })
       .from(schema.users)
       .where(eq(schema.users.id, userId))
@@ -144,10 +147,20 @@ export async function isMcpPrincipalActive(
       .from(schema.oauthClients)
       .where(eq(schema.oauthClients.clientId, clientId))
       .limit(1),
+    db.select({ id: schema.oauthConsents.id })
+      .from(schema.oauthConsents)
+      .where(and(
+        eq(schema.oauthConsents.userId, userId),
+        eq(schema.oauthConsents.clientId, clientId),
+      ))
+      .limit(1),
   ])
   const client = clients[0]
 
-  return users.length > 0 && Boolean(client) && client?.disabled !== true
+  return users.length > 0
+    && Boolean(client)
+    && client?.disabled !== true
+    && consents.length > 0
 }
 
 /**
@@ -209,6 +222,13 @@ export function createMcpTokenVerifierDependencies(
     findOpaqueAccessToken: findMcpOpaqueAccessToken,
     isPrincipalActive: isMcpPrincipalActive,
   }
+}
+
+export function hasBearerScheme(
+  authorization: string | null | undefined,
+): authorization is string {
+  return typeof authorization === 'string'
+    && BEARER_SCHEME.test(authorization)
 }
 
 export function parseBearerToken(
@@ -325,6 +345,7 @@ async function verifyJwtAccessToken(
         issuer: dependencies.issuer,
         audience: dependencies.audience,
         algorithms: MCP_ACCESS_TOKEN_ALGORITHMS,
+        typ: MCP_ACCESS_TOKEN_TYPE,
         requiredClaims: ['azp', 'sub', 'exp'],
         ...(dependencies.now
           ? { currentDate: new Date(dependencies.now()) }
@@ -341,6 +362,10 @@ async function verifyJwtAccessToken(
 
   if (isSenderConstrained(payload)) {
     return { status: 'invalid', reason: 'sender-constrained' }
+  }
+
+  if (payload.sub === payload.azp) {
+    return { status: 'invalid', reason: 'subject' }
   }
 
   const userId = parseMcpUserId(payload.sub)

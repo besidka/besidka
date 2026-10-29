@@ -19,3 +19,38 @@ export function exceptionMessage(exception: unknown): string {
 
   return withoutBoundParameters(message)
 }
+
+function readStringProperty(source: unknown, property: string): string | null {
+  if (!source || typeof source !== 'object') {
+    return null
+  }
+
+  const value = (source as Record<string, unknown>)[property]
+
+  return typeof value === 'string' ? value : null
+}
+
+function readErrorName(exception: unknown): string {
+  return exception instanceof Error ? exception.name : typeof exception
+}
+
+/**
+ * Message-free description of a caught value for log attributes that must
+ * not carry user text: the error name and the code and name of its cause.
+ * Neither the message, the bound parameters nor the stack is included.
+ */
+export function exceptionSummary(exception: unknown): Record<string, string> {
+  const cause = exception instanceof Error ? exception.cause : null
+  const details: Record<string, string | null> = {
+    errorName: readErrorName(exception),
+    errorCode: readStringProperty(exception, 'code'),
+    causeName: cause ? readErrorName(cause) : null,
+    causeCode: readStringProperty(cause, 'code'),
+  }
+
+  return Object.fromEntries(
+    Object.entries(details).filter((entry): entry is [string, string] => {
+      return entry[1] !== null
+    }),
+  )
+}

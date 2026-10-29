@@ -8,7 +8,7 @@ export const MCP_SERVER_ROUTE = '/mcp'
 
 export const MCP_MAX_REQUEST_BODY_BYTES = 32 * 1024
 
-export const MCP_MAX_AUTHENTICATED_REQUEST_BODY_BYTES = 256 * 1024
+export const MCP_MAX_AUTHENTICATED_REQUEST_BODY_BYTES = 512 * 1024
 
 export const MCP_PROTECTED_RESOURCE_METADATA_PATH
   = `/.well-known/oauth-protected-resource${MCP_SERVER_ROUTE}`

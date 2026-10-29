@@ -16,10 +16,15 @@ import type {
 import {
   buildMcpBearerChallenge,
   createMcpTokenVerifierDependencies,
+  hasBearerScheme,
   resolveMcpResourceMetadataUrl,
   resolveMcpSiteUrl,
   verifyMcpAccessToken,
 } from '~~/server/utils/mcp/auth'
+import {
+  McpBodyTooLargeError,
+  readBoundedRawBody,
+} from '~~/server/utils/mcp/bounded-body'
 import {
   findMissingMcpScopes,
   getMcpToolRequiredScopes,
@@ -42,7 +47,7 @@ interface JsonRpcSummary {
 }
 
 interface McpRequestGuardOptions {
-  readBody: () => Promise<string | undefined>
+  readBody: (maxBytes: number) => Promise<string | undefined>
   verifyAccessToken?: (authorization: string) => Promise<McpTokenVerification>
   resolveResourceMetadataUrl?: () => string
 }
@@ -186,7 +191,7 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
     const authorization = getRequestHeader(event, 'authorization')
     let auth: McpAuthContext | null = null
 
-    if (authorization) {
+    if (hasBearerScheme(authorization)) {
       const verification = await verifyAccessToken(authorization)
 
       if (verification.status === 'unavailable') {
@@ -243,7 +248,21 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
       )
     }
 
-    const body = await options.readBody()
+    let body: string | undefined
+
+    try {
+      body = await options.readBody(maxBodyBytes)
+    } catch (exception) {
+      if (!(exception instanceof McpBodyTooLargeError)) {
+        throw exception
+      }
+
+      return jsonRpcError(
+        event,
+        413,
+        `Send a body of at most ${maxBodyBytes} bytes.`,
+      )
+    }
 
     if (isJsonRpcBatch(body)) {
       return jsonRpcError(
@@ -313,7 +332,13 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
 }
 
 export default createMcpRequestGuard({
-  readBody: () => {
-    return readRawBody(useEvent(), 'utf8')
+  readBody: (maxBytes) => {
+    const event = useEvent()
+
+    return readBoundedRawBody(
+      event as unknown as Parameters<typeof readBoundedRawBody>[0],
+      maxBytes,
+      () => readRawBody(event, 'utf8'),
+    )
   },
 })

@@ -224,6 +224,11 @@ const modules = [
   forceInlineVueI18nForEmailRenderer,
 ]
 
+const frameProtectionHeaders = {
+  'Content-Security-Policy': 'frame-ancestors \'none\'',
+  'X-Frame-Options': 'DENY',
+}
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-28',
   buildId,
@@ -248,6 +253,11 @@ export default defineNuxtConfig({
         'X-Robots-Tag': 'noindex, nofollow',
       },
     },
+    ...Object.fromEntries(
+      ['/signin', '/signup', '/2fa'].map((route) => {
+        return [route, { headers: frameProtectionHeaders }]
+      }),
+    ),
   },
   nitro: {
     preset: 'cloudflare_module',

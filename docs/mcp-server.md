@@ -32,9 +32,14 @@ first calls a tool that needs it.
 - A valid token that lacks the tool's scope gets **HTTP 403** with
   `WWW-Authenticate: Bearer error="insufficient_scope", scope="<missing>", resource_metadata="...", error_description="..."`
   (RFC 6750 section 3.1), so the client can step up in one round trip.
-- An `Authorization` header with an invalid or expired token gets **HTTP 401**
-  with `error="invalid_token"` on any request, public tools included, so the
-  client refreshes instead of silently falling back to anonymous.
+- An `Authorization: Bearer` header with an invalid or expired token, or a
+  malformed one (`Bearer` with no token), gets **HTTP 401** with
+  `error="invalid_token"` on any request, public tools included, so the
+  client refreshes instead of silently falling back to anonymous. An
+  `Authorization` header with **any other scheme** (`Basic`, `DPoP`) is
+  ignored and the request is treated as anonymous: a gateway or proxy that
+  adds its own credentials must not break the public tools. The scheme
+  match is `hasBearerScheme` in `server/utils/mcp/auth.ts`.
 - If the key set or the user lookup fails (D1 down), the answer is **503**,
   not 401, so a database outage does not send every client through OAuth
   again.
@@ -70,8 +75,9 @@ never data.
 authorization server; no tool needs them. Every tool needs exactly one
 resource scope. A unit test (`tool-scopes.spec.ts`) fails when a tool file
 and the map disagree, or when the annotations do not match: reads set
-`readOnlyHint: true`, writes `readOnlyHint: false`, and only `delete_memory`
-sets `destructiveHint: true`.
+`readOnlyHint: true`, writes `readOnlyHint: false`, and `destructiveHint:
+true` is set exactly on the tools that overwrite or remove data with no
+history: `delete_memory`, `update_memory` and `update_project_instructions`.
 
 ### Token verification
 
@@ -86,7 +92,9 @@ other token the opaque path.
 
 - Keys come from the `jwks` table, shaped exactly like Better Auth's `/jwks`
   endpoint (`kid` is the row id as a string, `alg` defaults to `EdDSA`, keys
-  stay valid 30 days past `expiresAt`, the jwt plugin's default grace period).
+  stay valid 1 day past `expiresAt`, `MCP_JWKS_GRACE_PERIOD_MS`: long
+  enough to cover the 15-minute access token lifetime of a token signed just
+  before rotation, short enough that a retired key stops verifying quickly).
 - Verification is `verifyJwsAccessToken` from `better-auth/oauth2`, the same
   verifier `requireMcpAuth` uses, given a function key source. It caches the
   key set in memory for 5 minutes per isolate and refetches (30 s cooldown)
@@ -95,14 +103,37 @@ other token the opaque path.
   `jwt.issuer` value in `auth.ts`: `runtimeConfig.public.baseUrl` or
   `https://besidka.com`), `aud` contains `${siteUrl}/mcp`, `exp`, and a
   required `azp`. Algorithms are limited to asymmetric ones.
+- The `typ` header must be `at+jwt` (RFC 9068), the value
+  `createJwtAccessToken` in `@better-auth/oauth-provider` sets
+  (`MCP_ACCESS_TOKEN_TYPE`). `jose` compares it case-insensitively and
+  accepts the `application/at+jwt` form. An ID token or a logout token signed
+  by the same key (`typ` `JWT`, `id_token+jwt`, `logout+jwt` or none) is
+  refused even with a matching audience.
+- `sub` must differ from `azp`: a token whose subject is its own client is a
+  client-credentials style token, never a user grant.
 - `sub` must be a positive integer (a user id; client-credentials tokens,
   whose `sub` is the client id, are refused). `scope` is the space-separated
   claim. Tokens with a `cnf` claim (DPoP-bound) are refused: the server only
   supports Bearer.
-- One D1 batch then checks that the user still exists and the OAuth client
-  exists and is not disabled. A deleted account stops working at once, not
-  when the access token expires (its lifetime is `accessTokenExpiresIn` in
-  `auth.ts`).
+- One D1 batch (`isMcpPrincipalActive`, three indexed selects) then checks
+  that the user still exists, the OAuth client exists and is not disabled,
+  and **a live `oauth_consents` row exists for the user and the client**. A
+  deleted account, a disabled client, or a disconnected app (Disconnect on
+  `/profile/connected-apps` and account recovery delete the consent rows) gets
+  `401 invalid_token` on the next request, not when the access token expires
+  (its lifetime is `accessTokenExpiresIn` in `auth.ts`, 15 minutes). The
+  "up to 15 minutes" wording about a disconnected app no longer applies.
+
+**Key compromise runbook.** The `jwks` table is the only trust root for the
+JWT path. If a signing key is suspected leaked: delete its row from `jwks`
+(or all rows, to force the plugin to mint a new key on the next token
+issue), then wait at most 5 minutes, the in-memory key-set cache per isolate.
+Tokens signed with the deleted key stop verifying at once after that;
+signed-in clients refresh through OAuth. Do not rely on `expiresAt` for a
+compromise: a rotated key stays accepted for 1 day past it, and a deleted row
+is the only immediate revocation. Also revoke by consent: deleting
+`oauth_consents` rows invalidates every token of those users and clients
+without touching the keys.
 
 **Opaque path**: the token is hashed the way the provider stores it with
 the default `storeTokens: 'hashed'` (base64url SHA-256, no padding, no
@@ -153,6 +184,16 @@ overwritten by that move. Values must stay scalars: the move drops nested
 objects. Content (message text, notes, memory bodies, search terms) is never
 logged.
 
+A failed tool call never logs the thrown error's message, bound parameters or
+stack: a `DrizzleQueryError` carries the user's text in them. The request
+logger gets only `attributes.mcpToolFailure` with `toolName`, `errorName`,
+`errorCode`, and `causeName` and `causeCode` when the error has a cause
+(`exceptionSummary` in `server/utils/evlog-attributes.ts`), plus a fresh
+sanitized `Error` for the severity. `withSafeToolErrors(handler, toolName)`
+takes the tool name for this. The message-search leg behind `list_chats`
+(`findChatsMatchingMessageContent`) logs the same summary under
+`attributes.messageSearchContent` instead of the error message.
+
 ## Connecting a client
 
 - Endpoint: `https://besidka.com/mcp`. Streamable HTTP. Public tools need no
@@ -187,7 +228,7 @@ curl -s -X POST https://besidka.com/mcp \
 
 Two request rules affect clients. A cross-site browser `Origin` gets 403;
 server-side and CLI clients send none. A `POST` without `Content-Length`, or
-above 32 KiB (256 KiB with a valid token), gets 413 (see
+above 32 KiB (512 KiB with a valid token), gets 413 (see
 [Request limits](#request-limits)).
 
 **Claude Code caveat (unverified).** Claude Code connects to a project
@@ -257,7 +298,7 @@ text only and capped.
 | `read_project_knowledge_item` | Extracted text of one item, paged with `offset` and `nextOffset` | `getKnowledgeItemText` | 50,000 characters by default, 100,000 at most |
 | `update_project_instructions` | Replace or clear (`null`) the instructions | same rule as `PATCH /projects/[id]/instructions` | 10,000 characters |
 | `add_project_note` | Add a note | `createKnowledgeNote` (duplicate check, caps, quota, injection screening, commit) | `KNOWLEDGE_LIMITS.maxNoteChars` |
-| `add_project_text` | Add text or markdown as a `file` item (`extractor: text`, `.md` names get `text/markdown`) | `knowledgeItemsBatchCreateSchema`, `hashKnowledgeText`, `ingestKnowledgeItems` with `commit: true` | 200,000 characters, and the 256 KiB body cap |
+| `add_project_text` | Add text or markdown as a `file` item (`extractor: text`, `.md` names get `text/markdown`) | `knowledgeItemsBatchCreateSchema`, `hashKnowledgeText`, `ingestKnowledgeItems` with `commit: true` | 200,000 characters, and the 512 KiB body cap (200,000 Cyrillic characters are about 400 KB of UTF-8 plus JSON escaping) |
 | `list_memory` | Account memory, or one project's with `projectId` | `listMemoryEntries` | the entry caps (30 account, 15 per project, 4 KiB body) |
 | `add_memory` | Create an entry (`category`, `title`, `description`, `body`, optional `projectId`) | `createMemoryEntry` | `MEMORY_LIMITS` |
 | `update_memory` | Change category, title, description or body | `updateMemoryEntry` | `MEMORY_LIMITS` |
@@ -290,9 +331,18 @@ Notes:
   gate still runs on every write.
 - No ZIP, PDF, image or other binary upload goes through MCP. Model and tool
   selection and sending messages are out of scope for now.
-- `read_project_knowledge_item` returns flagged items (suspected prompt
-  injection) with `flagged: true`; the tool description tells the agent to
-  treat the text as data.
+- `read_project_knowledge_item` does not return the text of a flagged item
+  (suspected prompt injection) unless the caller passes `includeFlagged:
+  true`. The default answer is the metadata (`id`, `title`, `status`,
+  `flagged: true`), `textWithheld: true` and a `note` that explains why; the
+  text is not even read from R2. The tool description tells the agent to set
+  the flag only when the user asked to read that item and to treat the text as
+  data.
+- `list_chats` and `list_projects` validate `cursor` before querying: it must
+  parse, and its row id must decode with the canonical public-id decoder
+  (`decodeKnowledgeEntityId`); a search cursor must be a valid offset. A bad
+  cursor is a `400` tool error asking the caller to omit it, never a `500`
+  or a silent restart from the first page.
 
 ## Transport
 
@@ -349,9 +399,21 @@ many tool calls. `server/middleware/01.mcp-request-guard.ts` runs first, for
 - Anonymous requests may send at most 32 KiB
   (`MCP_MAX_REQUEST_BODY_BYTES` in `config/mcp-server.ts`); a `tools/call` is
   a few hundred bytes. Requests with a **verified** token may send up to
-  256 KiB (`MCP_MAX_AUTHENTICATED_REQUEST_BODY_BYTES`), so `add_project_text`
-  and `add_project_note` fit. Anything above 256 KiB gets `413` before the
-  token is even verified; between 32 and 256 KiB the token is verified first.
+  512 KiB (`MCP_MAX_AUTHENTICATED_REQUEST_BODY_BYTES`), so `add_project_text`
+  with 200,000 Cyrillic characters (about 400 KB) and `add_project_note` fit.
+  A declared length above 512 KiB gets `413` before the token is even
+  verified; between 32 and 512 KiB the token is verified first.
+- The declared length is not trusted. After authentication the body is read
+  with `readBoundedRawBody` (`server/utils/mcp/bounded-body.ts`), which
+  counts the bytes actually received and answers `413` as soon as they pass
+  the effective cap of the caller (32 KiB or 512 KiB), so a lying
+  `Content-Length` cannot make the Worker buffer more. The bytes are then
+  stored under the symbol h3's `readRawBody` caches them under
+  (`Symbol.for('h3RawBody')`), so the toolkit's own `readBody` and the SDK's
+  request stream still see the same body. An empty body is left uncached,
+  exactly as `readRawBody` leaves it. `bounded-body.spec.ts` runs h3's real
+  `readRawBody` and `readBody` after the bounded read; re-check it whenever
+  h3 or Nitro is upgraded, because the symbol is an h3 internal.
 - A body that is a JSON array gets `400`, signed in or not. MCP 2025-06-18
   dropped batching, so the server never needs it.
 - A non-empty body that is not a JSON object gets `400` with a JSON-RPC parse
@@ -359,9 +421,7 @@ many tool calls. `server/middleware/01.mcp-request-guard.ts` runs first, for
   so it must never pass on a body the SDK might read differently. A leading
   byte order mark is stripped first, as `Request.json()` does.
 
-These answer a JSON-RPC error with `id: null`. The batch check reads the body
-with h3's `readRawBody`, which caches the bytes on the request, so the
-toolkit's own `readBody` and the SDK's request stream still see the body.
+These answer a JSON-RPC error with `id: null`.
 
 ## Unused toolkit routes
 

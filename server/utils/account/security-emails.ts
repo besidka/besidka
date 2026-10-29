@@ -226,3 +226,90 @@ export async function sendPasskeyRemovedEmail({
     logger,
   })
 }
+
+const oauthScopePhrases: Record<string, string> = {
+  'chats:read': 'read your chats',
+  'projects:read': 'read your projects',
+  'memory:read': 'read your memory',
+  'projects:write': 'change your projects',
+  'memory:write': 'change your memory',
+  'openid': 'know who you are',
+  'profile': 'see your name',
+  'email': 'see your email address',
+  'offline_access': 'stay connected until you disconnect it',
+}
+
+const OAUTH_APP_NAME_MAX_LENGTH = 120
+const OAUTH_APP_NAME_FALLBACK = 'An app'
+const OAUTH_APP_NAME_UNSAFE_CHARACTERS
+  = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu
+
+export function sanitizeOAuthAppName(name: string | null | undefined): string {
+  const cleaned = (name ?? '')
+    .replace(OAUTH_APP_NAME_UNSAFE_CHARACTERS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, OAUTH_APP_NAME_MAX_LENGTH)
+
+  return cleaned || OAUTH_APP_NAME_FALLBACK
+}
+
+function describeOAuthScopes(scopes: string[]): string {
+  const phrases = scopes.map((scope) => {
+    return oauthScopePhrases[scope] ?? scope
+  })
+
+  return phrases.length ? phrases.join(', ') : 'no access'
+}
+
+export async function sendOAuthAppConnectedEmail({
+  user,
+  appName,
+  scopes,
+  connectedAt,
+  connectedAppsUrl,
+  logger,
+}: {
+  user: SecurityEmailUser
+  appName: string | null | undefined
+  scopes: string[]
+  connectedAt: Date
+  connectedAppsUrl: string
+  logger?: LoggerLike
+}): Promise<void> {
+  const subject = 'A new app was connected to your Besidka account'
+
+  try {
+    if (import.meta.dev) {
+      // eslint-disable-next-line no-console
+      console.log(`${subject} email for ${user.email}`)
+
+      return
+    }
+
+    await sendTemplateEmail({
+      to: user.email,
+      subject,
+      template: 'ActionEmail',
+      props: {
+        preview: subject,
+        heading: subject,
+        intro: `${sanitizeOAuthAppName(appName)} was just connected to your `
+          + `Besidka account at ${connectedAt.toUTCString()}. It chose its `
+          + 'own name and Besidka has not verified it. It can: '
+          + `${describeOAuthScopes(scopes)}.`,
+        ctaLabel: 'Review connected apps',
+        url: connectedAppsUrl,
+        footnote: 'If this was not you, disconnect the app from Connected '
+          + 'apps and change your password.',
+      },
+    })
+  } catch (exception) {
+    resolveServerLogger(logger).set({
+      securityEmail: {
+        subject,
+        error: exceptionMessage(exception),
+      },
+    })
+  }
+}

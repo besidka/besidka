@@ -37,15 +37,16 @@ function createDb(rows: Array<Record<string, unknown>>) {
   return { db, executed }
 }
 
-function consentRow(overrides: Record<string, unknown> = {}) {
+function grantRow(overrides: Record<string, unknown> = {}) {
   return {
-    consentId: 1,
     clientId: 'client-1',
-    scopes: ['openid', 'chats:read'],
-    createdAt: new Date('2026-10-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-10-02T00:00:00.000Z'),
     name: 'Claude',
     uri: 'https://claude.ai',
+    consentScopes: ['openid', 'chats:read'],
+    consentCreatedAt: new Date('2026-10-01T00:00:00.000Z'),
+    consentUpdatedAt: new Date('2026-10-02T00:00:00.000Z'),
+    liveSince: null,
+    liveScopes: null,
     lastUsedAt: 1761696000,
     ...overrides,
   }
@@ -82,31 +83,39 @@ describe('connected apps list API', () => {
     await expect(handler({} as any)).rejects.toMatchObject({ status: 401 })
   })
 
-  it('scopes the consents and the last activity to the user', async () => {
-    const { db, executed } = createDb([])
+  it('lists clients with a consent or a live refresh token of the user',
+    async () => {
+      const { db, executed } = createDb([])
 
-    vi.stubGlobal('useDb', () => db)
+      vi.stubGlobal('useDb', () => db)
 
-    const handler = await getHandler()
+      const handler = await getHandler()
 
-    await handler({} as any)
+      await handler({} as any)
 
-    const { sql, params } = executed[0]!.toSQL()
+      const { sql, params } = executed[0]!.toSQL()
 
-    expect(sql).toContain('from "oauth_consents"')
-    expect(sql).toContain('inner join "oauth_clients"')
-    expect(sql).toMatch(
-      /max\("created_at"\) as "last_used_at" from "oauth_refresh_tokens"/,
-    )
-    expect(sql).toContain('left join')
-    expect(sql).toMatch(/where "oauth_refresh_tokens"\."user_id" = \?/)
-    expect(sql).toMatch(/where "oauth_consents"\."user_id" = \?/)
-    expect(sql).not.toContain('"icon"')
-    expect(params).toEqual([5, 5, 100])
-  })
+      expect(sql).toContain('from "oauth_clients"')
+      expect(sql).toContain(
+        'left join "oauth_consents" on (("oauth_consents"."client_id" = "oauth_clients"."client_id") and ("oauth_consents"."user_id" = ?))',
+      )
+      expect(sql).toContain('"oauth_refresh_tokens"."revoked" is null')
+      expect(sql).toContain('"oauth_refresh_tokens"."expires_at" > ?')
+      expect(sql).toContain(
+        '(("oauth_consents"."id" is not null)) or (("live_grants"."client_id" is not null))',
+      )
+      expect(sql).toMatch(
+        /max\("created_at"\) as "last_used_at" from "oauth_refresh_tokens"/,
+      )
+      expect(sql).not.toContain('"icon"')
+      expect(params.filter((param) => {
+        return param === 5
+      })).toHaveLength(3)
+      expect(params.at(-1)).toBe(100)
+    })
 
   it('maps rows without exposing tokens or logos', async () => {
-    const { db } = createDb([consentRow()])
+    const { db } = createDb([grantRow()])
 
     vi.stubGlobal('useDb', () => db)
 
@@ -124,10 +133,33 @@ describe('connected apps list API', () => {
     }])
   })
 
+  it('shows a live grant whose consent row is gone with its token scopes',
+    async () => {
+      const { db } = createDb([grantRow({
+        consentScopes: null,
+        consentCreatedAt: null,
+        consentUpdatedAt: null,
+        liveSince: 1761696000,
+        liveScopes: ['openid', 'memory:read'],
+      })])
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+      const [row] = await handler({} as any) as Array<Record<string, unknown>>
+
+      expect(row).toMatchObject({
+        clientId: 'client-1',
+        scopes: ['openid', 'memory:read'],
+        createdAt: new Date(1761696000 * 1000),
+        updatedAt: new Date(1761696000 * 1000),
+      })
+    })
+
   it('handles a missing name, malformed scopes and no activity', async () => {
-    const { db } = createDb([consentRow({
+    const { db } = createDb([grantRow({
       name: null,
-      scopes: 'chats:read',
+      consentScopes: 'chats:read',
       lastUsedAt: null,
     })])
 

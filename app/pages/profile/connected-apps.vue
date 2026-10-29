@@ -7,9 +7,7 @@
     <ProfileSecuritySectionCard
       heading="Apps with access"
       description="Apps such as Claude connect through MCP and can only do
-        what you approved. Disconnecting an app stops it from getting new
-        access right away, but access it already has can keep working for up
-        to 15 minutes."
+        what you approved. Disconnecting an app ends its access right away."
     >
       <template #icon>
         <Icon
@@ -130,9 +128,8 @@ function visibleScopes(scopes: string[]): string[] {
 async function revoke(app: ConnectedApp) {
   const result = await useConfirm({
     text: `Disconnect ${app.name}?`,
-    subtitle: 'The app loses access to your account. Access it already has '
-      + 'can keep working for up to 15 minutes. To use it again, you have '
-      + 'to connect it again.',
+    subtitle: 'The app loses access to your account right away. To use it '
+      + 'again, you have to connect it again.',
     actions: ['Disconnect'],
     labelDecline: 'Cancel',
   })

@@ -23,18 +23,17 @@ interface BuiltQuery {
   toSQL: () => { sql: string, params: unknown[] }
 }
 
-function createDb(consents: Array<{ scopes: unknown }>) {
-  const db = drizzle({} as never)
-  const batch = vi.fn(async (_queries: BuiltQuery[]) => [])
-  const selectChain = {
-    from: vi.fn(() => selectChain),
-    where: vi.fn(async () => consents),
-  }
+type DeletedRows = [
+  Array<{ id: number }>,
+  Array<{ scopes: unknown }>,
+  Array<{ scopes: unknown }>,
+]
 
-  Object.assign(db, {
-    batch,
-    select: vi.fn(() => selectChain),
-  })
+function createDb(deletedRows: DeletedRows = [[], [], []]) {
+  const db = drizzle({} as never)
+  const batch = vi.fn(async (_queries: BuiltQuery[]) => deletedRows)
+
+  Object.assign(db, { batch })
 
   return { db, batch }
 }
@@ -80,7 +79,7 @@ describe('connected apps revoke API', () => {
 
   it('returns 401 without a session', async () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
-    vi.stubGlobal('useDb', () => createDb([]).db)
+    vi.stubGlobal('useDb', () => createDb().db)
 
     const handler = await getRevokeHandler()
 
@@ -88,22 +87,50 @@ describe('connected apps revoke API', () => {
       .rejects.toMatchObject({ status: 401 })
   })
 
-  it('returns 404 when the user never connected the app', async () => {
-    const { db, batch } = createDb([])
+  it('returns 404 when the user has no grant of any kind for the app',
+    async () => {
+      const { db } = createDb([[], [], []])
 
-    vi.stubGlobal('useDb', () => db)
+      vi.stubGlobal('useDb', () => db)
 
-    const handler = await getRevokeHandler()
+      const handler = await getRevokeHandler()
 
-    await expect(handler(revokeEvent('client-1')))
-      .rejects.toMatchObject({ status: 404 })
-    expect(batch).not.toHaveBeenCalled()
-  })
+      await expect(handler(revokeEvent('client-1')))
+        .rejects.toMatchObject({ status: 404 })
+    })
+
+  it('revokes a live grant whose consent row was already deleted',
+    async () => {
+      const { db } = createDb([
+        [{ id: 1 }],
+        [{ scopes: ['openid', 'chats:read'] }],
+        [],
+      ])
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getRevokeHandler()
+      const response = await handler(revokeEvent('client-1'))
+
+      expect(response).toEqual({ code: 204 })
+      expect(mocks.loggerSet).toHaveBeenCalledWith({
+        userId: 5,
+        attributes: {
+          legalConsent: {
+            action: 'oauth_revoked',
+            oauthClientId: 'client-1',
+            scopes: ['openid', 'chats:read'],
+          },
+        },
+      })
+    })
 
   it('deletes access tokens, refresh tokens and the consent for that app',
     async () => {
       const { db, batch } = createDb([
-        { scopes: ['openid', 'chats:read'] },
+        [{ id: 1 }],
+        [{ scopes: ['openid'] }],
+        [{ scopes: ['openid', 'chats:read'] }],
       ])
 
       vi.stubGlobal('useDb', () => db)
@@ -115,6 +142,7 @@ describe('connected apps revoke API', () => {
       })
 
       expect(response).toEqual({ code: 204 })
+      expect(batch).toHaveBeenCalledTimes(1)
       expect(statements.map((statement) => {
         return /delete from "(\w+)"/.exec(statement.sql)?.[1]
       })).toEqual([
@@ -126,13 +154,30 @@ describe('connected apps revoke API', () => {
       for (const statement of statements) {
         expect(statement.sql).toContain('"user_id" = ?')
         expect(statement.sql).toContain('"client_id" = ?')
+        expect(statement.sql).toContain('returning')
         expect(statement.params).toEqual([5, 'client-1'])
       }
     })
 
+  it('surfaces a failed delete as a 500', async () => {
+    const { db, batch } = createDb()
+
+    batch.mockRejectedValueOnce(new Error('d1 unavailable'))
+    vi.stubGlobal('useDb', () => db)
+
+    const handler = await getRevokeHandler()
+
+    await expect(handler(revokeEvent('client-1')))
+      .rejects.toMatchObject({ status: 500 })
+  })
+
   it('logs the revocation as a legal consent event without tokens',
     async () => {
-      const { db } = createDb([{ scopes: ['openid', 'memory:write'] }])
+      const { db } = createDb([
+        [],
+        [],
+        [{ scopes: ['openid', 'memory:write'] }],
+      ])
 
       vi.stubGlobal('useDb', () => db)
 

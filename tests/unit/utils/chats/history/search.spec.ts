@@ -231,4 +231,36 @@ describe('findChatsMatchingMessageContent', () => {
       }),
     }))
   })
+
+  it('logs only the error name and code, never its message or params',
+    async () => {
+      const { findChatsMatchingMessageContent } = await importSearch()
+      const failure = Object.assign(
+        new Error('Failed query: select ... params: SECRET'),
+        { name: 'DrizzleQueryError', params: ['SECRET'] },
+      )
+
+      failure.cause = Object.assign(new Error('SECRET'), { code: 'SQLITE_ERROR' })
+      vi.spyOn(testDb.db, 'all').mockRejectedValue(failure)
+
+      const logger = { set: vi.fn() }
+
+      await findChatsMatchingMessageContent({
+        db: testDb.db,
+        userId: 1,
+        search: 'книзі',
+        logger,
+      })
+
+      expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+        attributes: {
+          messageSearchContent: {
+            errorName: 'DrizzleQueryError',
+            causeName: 'Error',
+            causeCode: 'SQLITE_ERROR',
+          },
+        },
+      }))
+      expect(JSON.stringify(logger.set.mock.calls)).not.toContain('SECRET')
+    })
 })

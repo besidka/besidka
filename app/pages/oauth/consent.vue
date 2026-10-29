@@ -105,6 +105,13 @@
           You can disconnect the app at any time in Profile, Connected apps.
         </p>
       </div>
+      <p
+        v-if="!canApprove"
+        class="text-sm text-center opacity-80"
+        data-testid="oauth-consent-nothing-selected"
+      >
+        Choose at least one thing to share to approve, or deny the request.
+      </p>
       <div class="grid grid-cols-2 gap-3">
         <UiButton
           mode="default"
@@ -119,7 +126,7 @@
           mode="primary"
           block
           :text="isSubmitting ? 'Connecting...' : 'Approve'"
-          :disabled="isSubmitting"
+          :disabled="isSubmitting || !canApprove"
           data-testid="oauth-consent-approve"
           @click="submit(true)"
         />
@@ -167,6 +174,9 @@ const { data: request, error, status } = await useFetch(
 
 const selectedScopes = ref<string[]>([])
 const isSubmitting = shallowRef<boolean>(false)
+const shownUserId = shallowRef<string | null>(
+  user.value ? String(user.value.id) : null,
+)
 
 const invalidReason = computed<string>(() => {
   if (!oauthQuery.value) {
@@ -188,6 +198,16 @@ function buildApprovedScope(): string {
   return [...requestedIdentityScopes, ...selectedScopes.value].join(' ')
 }
 
+const canApprove = computed<boolean>(() => {
+  return buildApprovedScope().length > 0
+})
+
+async function isShownAccountStillSignedIn(): Promise<boolean> {
+  await $auth.fetchSession({ disableCookieCache: true })
+
+  return !!user.value && String(user.value.id) === shownUserId.value
+}
+
 function isRequestExpired(): boolean {
   const expiresAt = request.value?.expiresAt
 
@@ -195,7 +215,7 @@ function isRequestExpired(): boolean {
 }
 
 async function submit(accept: boolean) {
-  if (isSubmitting.value) {
+  if (isSubmitting.value || (accept && !canApprove.value)) {
     return
   }
 
@@ -211,6 +231,16 @@ async function submit(accept: boolean) {
   isSubmitting.value = true
 
   try {
+    if (!await isShownAccountStillSignedIn()) {
+      useErrorMessage(
+        'Your account changed in another tab',
+        'Reload this page to see which account you are connecting.',
+      )
+      isSubmitting.value = false
+
+      return
+    }
+
     const { data, error: consentError } = await $auth.client.oauth2.consent(
       accept
         ? { accept: true, scope: buildApprovedScope() }

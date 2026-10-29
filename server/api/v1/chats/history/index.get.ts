@@ -27,7 +27,7 @@ import {
   parseSearchCursor,
 } from '~~/server/utils/chats/history/search-cursor'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { exceptionSummary } from '~~/server/utils/evlog-attributes'
 import { parsePaginationLimit } from '~~/server/utils/pagination/limit'
 import { defineEventHandler, getQuery } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -181,9 +181,7 @@ export default defineEventHandler(async (event) => {
             action: 'content-leg-failed',
           },
           attributes: {
-            messageSearchContent: {
-              error: exceptionMessage(exception),
-            },
+            messageSearchContent: exceptionSummary(exception),
           },
         })
 

@@ -143,6 +143,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-oauth.spec.ts',
     'tests/unit/utils/auth-rate-limit-oauth.spec.ts',
     'tests/unit/utils/account/purge-user-oauth-data.spec.ts',
+    'tests/unit/utils/account/revoke-user-oauth-grants.spec.ts',
+    'tests/unit/utils/account/notify-oauth-app-connected.spec.ts',
+    'tests/unit/utils/account/security-emails.spec.ts',
+    'tests/unit/utils/oauth/registration-limits.spec.ts',
+    'tests/integration/server/oauth-grant-sweep-plugin.spec.ts',
     'tests/unit/server/routes/auth.md.spec.ts',
     'tests/integration/api/profiles-connected-apps.spec.ts',
     'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
@@ -2734,8 +2739,10 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/mcp/private-access.spec.ts',
         'tests/unit/server/utils/mcp/private-tool.spec.ts',
         'tests/unit/server/utils/mcp/private-chats.spec.ts',
+        'tests/unit/server/utils/mcp/private-chat-cursors.spec.ts',
         'tests/unit/server/utils/mcp/private-projects.spec.ts',
         'tests/unit/server/utils/mcp/private-memory.spec.ts',
+        'tests/unit/server/utils/mcp/bounded-body.spec.ts',
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
       ],
     },
@@ -2745,6 +2752,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
         'tests/unit/server/utils/mcp/auth.spec.ts',
         'tests/unit/server/utils/mcp/private-access.spec.ts',
+        'tests/unit/server/utils/mcp/bounded-body.spec.ts',
       ],
     },
     {
@@ -2753,6 +2761,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
         'tests/unit/server/utils/mcp/private-access.spec.ts',
         'tests/unit/server/utils/mcp/private-chats.spec.ts',
+        'tests/unit/server/utils/mcp/private-chat-cursors.spec.ts',
         'tests/unit/server/utils/mcp/private-projects.spec.ts',
         'tests/unit/server/utils/mcp/private-memory.spec.ts',
       ],
@@ -2785,8 +2794,29 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/utils/auth-rate-limit-oauth.spec.ts'],
     },
     {
-      pattern: /^server\/utils\/account\/purge-user-data\.ts$/,
-      tests: ['tests/unit/utils/account/purge-user-oauth-data.spec.ts'],
+      pattern: /^server\/utils\/account\/(purge-user-data|revoke-user-oauth-grants)\.ts$/,
+      tests: [
+        'tests/unit/utils/account/purge-user-oauth-data.spec.ts',
+        'tests/unit/utils/account/revoke-user-oauth-grants.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/account\/(notify-oauth-app-connected|security-emails)\.ts$/,
+      tests: [
+        'tests/unit/utils/account/notify-oauth-app-connected.spec.ts',
+        'tests/unit/utils/account/security-emails.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/oauth\/registration-limits\.ts$/,
+      tests: [
+        'tests/unit/utils/oauth/registration-limits.spec.ts',
+        'tests/unit/utils/auth-oauth.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/plugins\/oauth-grant-sweep\.ts$/,
+      tests: ['tests/integration/server/oauth-grant-sweep-plugin.spec.ts'],
     },
     {
       pattern: /^server\/api\/v1\/profiles\/connected-apps\/.*\.ts$/,
