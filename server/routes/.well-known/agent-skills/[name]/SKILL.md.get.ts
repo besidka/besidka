@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
     throw createError({
       message: 'Skill not found',
       status: 404,
-      why: `No agent skill is published under "${name}"`,
+      why: 'No agent skill is published under that name',
       fix: `List the published skills at ${AGENT_SKILLS_PATH}/index.json`,
     })
   }

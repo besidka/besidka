@@ -4,10 +4,8 @@ import {
   markdownToNodes,
   parseInlineMarkdown,
 } from '~~/server/utils/agent-discovery/landing-markdown'
-import type {
-  LandingPage,
-  MinimarkNode,
-} from '~~/server/utils/agent-discovery/landing-markdown'
+import type { LandingPage } from '~~/server/utils/agent-discovery/landing-markdown'
+import type { MinimarkNode } from '~~/server/utils/content/minimark'
 
 function createPage(body: MinimarkNode[]): LandingPage {
   return {
@@ -52,7 +50,53 @@ describe('parseInlineMarkdown', () => {
   })
 })
 
+describe('parseInlineMarkdown emphasis', () => {
+  it('keeps bold, italic and inline code as nodes', () => {
+    expect(parseInlineMarkdown('Use **Auto**, *fast* and `max_tokens`')).toEqual([
+      'Use ',
+      ['strong', {}, 'Auto'],
+      ', ',
+      ['em', {}, 'fast'],
+      ' and ',
+      ['code', {}, 'max_tokens'],
+    ])
+  })
+
+  it('keeps emphasis inside a link label', () => {
+    expect(parseInlineMarkdown('[**Go**](/byok)')).toEqual([
+      ['a', { href: '/byok' }, ['strong', {}, 'Go']],
+    ])
+  })
+
+  it('leaves text without markup untouched', () => {
+    expect(parseInlineMarkdown('2 * 3 and a_b')).toEqual(['2 * 3 and a_b'])
+  })
+})
+
 describe('markdownToNodes', () => {
+  it('keeps paragraphs and lists in their authored order', () => {
+    const nodes = markdownToNodes(
+      'First\n- one\n- two\nMiddle\n1. alpha\n2. beta\nLast',
+    )
+
+    expect(tags(nodes)).toEqual(['p', 'ul', 'p', 'ol', 'p'])
+    expect(nodes[1]).toEqual([
+      'ul',
+      {},
+      ['li', {}, 'one'],
+      ['li', {}, 'two'],
+    ])
+  })
+
+  it('keeps bold and code inside paragraphs and list items', () => {
+    const nodes = markdownToNodes('Set **max** now\n\n- run `pnpm dev`')
+
+    expect(nodes).toEqual([
+      ['p', {}, 'Set ', ['strong', {}, 'max'], ' now'],
+      ['ul', {}, ['li', {}, 'run ', ['code', {}, 'pnpm dev']]],
+    ])
+  })
+
   it('splits paragraphs and bullet lists', () => {
     const nodes = markdownToNodes('Intro line\n\n- first\n- second')
 

@@ -8,8 +8,16 @@ import {
   agentDiscoveryRoutes,
   contentPathRedirects,
 } from './config/agent-discovery-routes.ts'
+import {
+  MCP_SERVER_CARD_PATH,
+  MCP_SERVER_DESCRIPTION,
+  MCP_SERVER_ROUTE,
+  MCP_SERVER_TITLE,
+  MCP_SERVER_VERSION,
+} from './config/mcp-server.ts'
+import { assertSecureSiteUrl, resolveSiteUrl } from './config/site-url.ts'
 
-const siteUrl = process.env.NUXT_PUBLIC_BASE_URL || 'https://besidka.com'
+const siteUrl = resolveSiteUrl(process.env)
 
 const contentSignal = 'search=yes, ai-input=yes, ai-train=no'
 
@@ -286,6 +294,7 @@ export default defineNuxtConfig({
       // redeploy. This scopes the build-busting to '/' only — the stats and
       // github-stars caches keep their own keys and still survive deploys.
       '/': { cache: { swr: false, maxAge: 3600, name: buildId } },
+      '/raw/**': { cache: { swr: false, maxAge: 3600, name: buildId } },
     },
   },
   runtimeConfig: {
@@ -410,7 +419,7 @@ export default defineNuxtConfig({
     notes: [
       'This llms.txt covers only the Besidka app and landing site.',
       'Product documentation and a blog are planned as separate apps at /docs and /blog, each with its own llms.txt. They are not published yet.',
-      'Besidka has no public API. Application endpoints require a signed-in session.',
+      'Besidka has no public application API: application endpoints require a signed-in session. The read-only MCP server at /mcp is public.',
       'Content signals in robots.txt allow search and AI input and disallow AI training.',
     ],
     sections: [
@@ -470,6 +479,11 @@ export default defineNuxtConfig({
             description: 'ARD catalog of the AI resources published by this site.',
             href: `${siteUrl}/.well-known/ai-catalog.json`,
           },
+          {
+            title: 'MCP server card',
+            description: 'Server card of the public read-only MCP server at /mcp.',
+            href: `${siteUrl}${MCP_SERVER_CARD_PATH}`,
+          },
         ],
       },
     ],
@@ -491,6 +505,20 @@ export default defineNuxtConfig({
           rel: 'describedby',
           type: 'application/ai-catalog+json',
           title: 'AI catalog: AI resources published by this site',
+        },
+        {
+          href: MCP_SERVER_CARD_PATH,
+          rel: 'service-desc',
+          type: 'application/json',
+          anchor: MCP_SERVER_ROUTE,
+          header: false,
+        },
+        {
+          href: '/llms.txt',
+          rel: 'service-doc',
+          type: 'text/plain',
+          anchor: MCP_SERVER_ROUTE,
+          header: false,
         },
         {
           href: '/.well-known/agent-skills/index.json',
@@ -545,9 +573,10 @@ export default defineNuxtConfig({
     },
   },
   mcp: {
-    name: 'Besidka',
-    description: 'Read-only facts about Besidka: the model catalog with prices and capabilities, supported providers and gateways, and step-by-step API key guides.',
-    route: '/mcp',
+    name: MCP_SERVER_TITLE,
+    version: MCP_SERVER_VERSION,
+    description: MCP_SERVER_DESCRIPTION,
+    route: MCP_SERVER_ROUTE,
     browserRedirect: '/',
     logging: false,
   },
@@ -706,6 +735,13 @@ export default defineNuxtConfig({
     entryImportMap: false,
   },
   hooks: {
+    'ready': (nuxt) => {
+      if (nuxt.options.dev || nuxt.options.test || nuxt.options._prepare) {
+        return
+      }
+
+      assertSecureSiteUrl(siteUrl)
+    },
     // App-level cookie texts must merge through the same lazy locale-file
     // pipeline as the module's own messages — config-file messages get
     // replaced when registered locale files load.

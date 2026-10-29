@@ -950,9 +950,14 @@ export function getAffectedTests(changedFiles) {
   const agentDiscoveryTests = [
     'tests/unit/config/seo.spec.ts',
     'tests/unit/server/routes/well-known/ai-catalog.spec.ts',
+    'tests/unit/config/site-url.spec.ts',
     'tests/unit/server/routes/well-known/poppy.spec.ts',
+    'tests/unit/server/routes/well-known/agent-skills-skill.spec.ts',
+    'tests/unit/server/routes/well-known/mcp/server-card.spec.ts',
+    'tests/unit/server/plugins/agent-discovery-landing.spec.ts',
     'tests/unit/server/utils/agent-discovery/skills.spec.ts',
     'tests/unit/server/utils/agent-discovery/landing-markdown.spec.ts',
+    'tests/unit/server/utils/content/minimark.spec.ts',
   ]
 
   const searchModalTests = [
@@ -1434,7 +1439,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/routes\/\.well-known\/.*|server\/utils\/agent-discovery\/.*|server\/plugins\/agent-discovery-landing\.ts|config\/agent-discovery-routes\.ts|skills\/.*|content\/index\.md)$/,
+        /^(server\/routes\/\.well-known\/.*|server\/utils\/(agent-discovery|content)\/.*|server\/plugins\/agent-discovery-landing\.ts|config\/(agent-discovery-routes|mcp-server|site-url)\.ts|skills\/.*|content\/index\.md)$/,
       tests: agentDiscoveryTests,
     },
     {
@@ -2706,7 +2711,7 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/(mcp\/.*|utils\/mcp\/.*)|shared\/utils\/provider-meta|providers\/.*)\.ts$/,
       tests: [
-        'tests/unit/server/utils/mcp/minimark.spec.ts',
+        'tests/unit/server/utils/content/minimark.spec.ts',
         'tests/unit/server/utils/mcp/catalog.spec.ts',
         'tests/unit/server/utils/mcp/key-guides.spec.ts',
         'tests/unit/server/utils/mcp/pages.spec.ts',

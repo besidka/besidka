@@ -65,8 +65,9 @@ Still deferred, unchanged by this decision:
 
 - **No `/uk` locale.** The Ukrainian audience is a hypothesis. Revisit if
   Threads or Telegram traffic shows up as activations in the funnel.
-- No `llms.txt`, no dynamic OG images, no `/shared` URLs in the sitemap (see
-  [Deliberate non-actions](#deliberate-non-actions)).
+- No dynamic OG images and no `/shared` URLs in the sitemap (see
+  [Deliberate non-actions](#deliberate-non-actions)). `llms.txt` now ships;
+  see `docs/agent-readiness.md`.
 
 ## Canonical host
 
@@ -124,6 +125,12 @@ Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
 `noindex, nofollow`: all authenticated routes (`/chats/**`, `/profile/**`),
 `/signin`, `/signup`, `/reset-password`, `/new-password`, and shared chats with
 `indexable = false`.
+
+`robots.txt` also carries `Content-Signal: search=yes, ai-input=yes,
+ai-train=no` on the `*` group (`robots.groups` in `nuxt.config.ts`, the same
+value as `public/ai.txt`). It lets search engines and AI answers use the
+public pages and refuses model training. `/mcp` is in `robots.disallow`.
+See `docs/agent-readiness.md`.
 
 ### Why most auth routes are noindex but NOT robots-disallowed
 
@@ -245,12 +252,18 @@ by assuming it was overlooked.
   If ever revisited: substantive-length floor, a separate `sitemap-shared.xml`
   so it can be watched and withdrawn independently, and 12+ months of accrued
   authority first.
-- **`llms.txt` / `nuxt-llms`.** The module calls `addPrerenderRoutes('/llms.txt')`,
-  and Nitro runs its prerender crawl during a normal server-target build — the
-  handler would execute in the build environment where the `CONTENT_DB` D1
-  binding does not exist. This project deliberately does not prerender. The
-  payoff is also poor: Google has stated nothing reads `llms.txt`, and one study
-  found ~97% are never fetched.
+- **`llms.txt` / `nuxt-llms` (now shipped, was a non-action).** `/llms.txt` is
+  served by `nuxt-llms` with `prerender: false`. The earlier rationale blamed
+  a missing `CONTENT_DB` at build time. That was not the real failure: under
+  the prerender preset Nuxt Content switches to local SQLite. The real
+  constraint is that any `addPrerenderRoutes` call makes Nitro load the server
+  bundle in Node, and the bundle imports `cloudflare:` modules that Node
+  cannot load. `nuxt-llms` 0.3.1 can skip its prerender route, and a
+  `nitro:build:before` guard in `nuxt.config.ts` clears any remaining
+  prerender routes. Few crawlers fetch `llms.txt` (one study found about 97%
+  are never fetched, and Google has said it does not use it). It ships
+  because agents and the isitagentready.com scan do read it. Details,
+  markdown twins, skills and the owner runbook: `docs/agent-readiness.md`.
 - **`nuxt-og-image` (dynamic OG images).** On Workers the browser renderer is
   prerender-only, leaving Satori or Takumi — multi-MB non-tree-shakeable WASM
   (~8 MB unpacked for Satori + resvg) against a Worker script-size budget. Not

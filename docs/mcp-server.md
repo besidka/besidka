@@ -4,6 +4,19 @@
 stateless on Workers) built with `@nuxtjs/mcp-toolkit`. It exposes only public
 product facts. It has no session, no D1 user table, no key and no write path.
 
+## Scope
+
+This `/mcp` server serves public product information only. It is
+unauthenticated and read-only, and it never touches user data. How agents find
+it (MCP Server Card, API catalog, `llms.txt`) is in
+`docs/agent-readiness.md`.
+
+A future authenticated MCP server, for example one that reads a user's own
+chats, would need a real authorization server and the OAuth work described in
+`docs/agent-readiness.md` ("Auth metadata"). Do not add private tools to this
+server. The planned documentation app will have its own MCP server at
+`/docs/mcp`; this one does not serve documentation content.
+
 ## Tools
 
 Definitions live in `server/mcp/tools/*.ts` and stay thin. The logic is pure

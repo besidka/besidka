@@ -22,9 +22,9 @@ vi.mock('nuxt/server', () => {
   }
 })
 
-function createEvent() {
+function createEvent(origin = 'https://preview.besidka.dev') {
   return {
-    url: new URL('https://preview.besidka.dev/.well-known/poppy.json'),
+    url: new URL(`${origin}/.well-known/poppy.json`),
     res: { headers: new Headers() },
   }
 }
@@ -74,4 +74,13 @@ describe('GET /.well-known/poppy.json', () => {
 
     expect(poppy.organization.domain).toBe('preview.besidka.dev')
   })
+
+  it('keeps the bare hostname as the domain when the origin has a port',
+    async () => {
+      mocks.runtimeConfig = { public: { baseUrl: '' } }
+
+      const poppy = await callRoute(createEvent('http://localhost:3000'))
+
+      expect(poppy.organization.domain).toBe('localhost')
+    })
 })

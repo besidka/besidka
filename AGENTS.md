@@ -309,8 +309,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
   auth routes are noindex-but-crawlable, the "besidka"/"бесідка" brand-entity
   collision the schema and copy are shaped around, deliberate non-actions
-  (`llms.txt`, dynamic OG images, `nuxt-schema-org`, `/uk`, sitemap `lastmod`,
-  indexing shared chats), the off-page checklist, and the SWR/buildId
+  (dynamic OG images, `nuxt-schema-org`, `/uk`, sitemap `lastmod`,
+  indexing shared chats; `llms.txt` moved out, it now ships), the off-page checklist, and the SWR/buildId
   post-deploy verification trap
 - `docs/models-data-fetching.md` - Model catalog architecture: curated
   capabilities (`providers/*.ts`) merged at import time with objective
@@ -458,6 +458,19 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   of a `rawbody` schema change, Worker size delta,
   the forced node transport that keeps `agents` out of the Worker, the
   `attributes.mcp` Axiom move, the 404 OAuth stubs, and the 405 on `GET`
+- `docs/agent-readiness.md` - How besidka.com answers AI agents
+  (isitagentready.com scan 2026-10-29: score 20, Level 1): the check-by-check
+  table (robots, sitemap, Link headers, Content Signals, markdown negotiation
+  and `/raw/*.md` twins, API catalog, MCP Server Card, Agent Skills v0.2.0
+  index, WebMCP, ARD catalog, Poppy), the checks deliberately not done (OAuth
+  and `auth.md` metadata: Besidka is an OAuth client, not an authorization
+  server, with the `@better-auth/mcp` path priced out; Web Bot Auth; commerce),
+  the level rules, how `nuxt-llms` and `nuxt-agent-discovery` are wired (the
+  empty landing twin, the content-path 301s, the skills sha256 digest and its
+  module-internal dependencies, the prerender guard), the ownership boundary
+  for a future `/docs` and `/blog` split, and the owner runbook (the WAF
+  `.well-known` clause that 403s discovery files in production, `/mcp` in the
+  rate-limit rule, the WebMCP origin-trial token, DNSSEC and DNS-AID)
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,
@@ -542,9 +555,13 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `Бесідка`/`Besidka AI` to disambiguate the brand from unrelated entities that
   own the same word; keep it in sync with the `#about-the-name` landing section
   (deliberately a section and not an FAQ entry — see `docs/seo.md`).
-- Full audit, brand-entity strategy, the rejected options (`llms.txt`,
-  `nuxt-og-image`, `nuxt-schema-org`, `/uk`, sitemap `lastmod`) and the off-page
+- Full audit, brand-entity strategy, the rejected options (`nuxt-og-image`,
+  `nuxt-schema-org`, `/uk`, sitemap `lastmod`) and the off-page
   checklist live in `docs/seo.md`. Read it before changing SEO behaviour.
+- `/llms.txt` ships (`nuxt-llms`, `prerender: false`). Agent discovery lives in
+  `docs/agent-readiness.md`: this app owns every `/.well-known/*` file, and
+  the production WAF rule "URL attackers" blocks them (403) until the owner
+  applies the runbook in that doc.
 
 ### Key Patterns
 

@@ -47,9 +47,10 @@ Direct providers are the default routing path. Users can optionally add a gatewa
 - Step-by-step guides for getting an API key from each provider: https://besidka.com/guides/gemini-api-key and the other pages listed in the `besidka-byok-setup` skill.
 - Machine-readable index of the public pages: https://besidka.com/llms.txt
 - Every public page is also available as markdown: append `.md` to its URL or send `Accept: text/markdown`.
+- Public read-only MCP server (Streamable HTTP, no authentication): https://besidka.com/mcp. Its server card is https://besidka.com/.well-known/mcp/server-card.json. It has four tools: `list_models` (the model catalog with prices and capabilities), `list_providers` (the providers, gateways and web search services with their key dashboards), `get_key_guide` (the step-by-step API key guide for a provider) and `get_page` (a public page as markdown).
 
 Besidka's product documentation and blog are planned as separate sites with their own llms.txt files. They are not published yet, so do not cite them as existing pages.
 
 ## Limits of this skill
 
-This skill describes the public site. It does not expose an API: the application endpoints are authenticated and private to signed-in users. To act on a user's behalf an agent should guide the user through the steps in the application rather than calling private endpoints.
+This skill describes the public site. Besidka has no public API beyond the read-only MCP server above: the application endpoints are authenticated and private to signed-in users. To act on a user's behalf an agent should guide the user through the steps in the application rather than calling private endpoints.

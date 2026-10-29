@@ -1,6 +1,4 @@
-export type MinimarkNode
-  = | string
-    | [string, Record<string, unknown>, ...MinimarkNode[]]
+import type { MinimarkNode } from '~~/server/utils/content/minimark'
 
 interface LabeledLink {
   label: string
@@ -62,8 +60,10 @@ export interface GuideLink {
   path: string
 }
 
-const INLINE_LINK_PATTERN = /\[([^\]]+)\]\(([^)\s]+)\)/g
-const LIST_ITEM_PATTERN = /^[-*]\s+/
+const INLINE_PATTERN
+  = /\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\s][^*]*)\*/g
+const BULLET_ITEM_PATTERN = /^[-*]\s+(.*)$/
+const ORDERED_ITEM_PATTERN = /^\d+[.)]\s+(.*)$/
 const ELEMENT_TAG_INDEX = 0
 const ELEMENT_PROPS_INDEX = 1
 const ELEMENT_CHILDREN_START_INDEX = 2
@@ -87,24 +87,62 @@ const STATIC_LINKS: GuideLink[] = [
   { title: 'Cookie Policy', path: '/cookie-policy' },
 ]
 
+interface ListLine {
+  tag: 'ul' | 'ol'
+  text: string
+}
+
+function parseListLine(line: string): ListLine | null {
+  const bulletText = BULLET_ITEM_PATTERN.exec(line)?.[1]
+
+  if (bulletText !== undefined) {
+    return { tag: 'ul', text: bulletText }
+  }
+
+  const orderedText = ORDERED_ITEM_PATTERN.exec(line)?.[1]
+
+  if (orderedText !== undefined) {
+    return { tag: 'ol', text: orderedText }
+  }
+
+  return null
+}
+
+function inlineMatchToNode(match: RegExpExecArray): MinimarkNode {
+  const linkLabel = match[1]
+  const linkHref = match[2]
+  const strongText = match[3]
+  const codeText = match[4]
+  const emphasisText = match[5]
+
+  if (linkLabel !== undefined && linkHref !== undefined) {
+    return ['a', { href: linkHref }, ...parseInlineMarkdown(linkLabel)]
+  }
+
+  if (strongText !== undefined) {
+    return ['strong', {}, ...parseInlineMarkdown(strongText)]
+  }
+
+  if (codeText !== undefined) {
+    return ['code', {}, codeText]
+  }
+
+  return ['em', {}, ...parseInlineMarkdown(emphasisText ?? '')]
+}
+
 export function parseInlineMarkdown(text: string): MinimarkNode[] {
   const nodes: MinimarkNode[] = []
   let cursor = 0
 
-  for (const match of text.matchAll(INLINE_LINK_PATTERN)) {
-    const [fullMatch, label, href] = match as unknown as [
-      string,
-      string,
-      string,
-    ]
+  for (const match of text.matchAll(INLINE_PATTERN)) {
     const start = match.index ?? 0
 
     if (start > cursor) {
       nodes.push(text.slice(cursor, start))
     }
 
-    nodes.push(['a', { href }, label])
-    cursor = start + fullMatch.length
+    nodes.push(inlineMatchToNode(match))
+    cursor = start + match[0].length
   }
 
   if (cursor < text.length) {
@@ -114,49 +152,53 @@ export function parseInlineMarkdown(text: string): MinimarkNode[] {
   return nodes
 }
 
-export function markdownToNodes(markdown: string): MinimarkNode[] {
-  const nodes: MinimarkNode[] = []
+interface BlockRun {
+  tag: 'p' | 'ul' | 'ol'
+  lines: string[]
+}
 
-  for (const block of markdown.split(/\n{2,}/)) {
-    const lines = block.split('\n').map((line) => {
-      return line.trim()
-    }).filter(Boolean)
+function groupLinesIntoRuns(block: string): BlockRun[] {
+  const runs: BlockRun[] = []
+  const lines = block.split('\n').map((line) => {
+    return line.trim()
+  }).filter(Boolean)
 
-    if (!lines.length) {
+  for (const line of lines) {
+    const listLine = parseListLine(line)
+    const tag = listLine?.tag ?? 'p'
+    const text = listLine?.text ?? line
+    const lastRun = runs.at(-1)
+
+    if (lastRun?.tag === tag) {
+      lastRun.lines.push(text)
+
       continue
     }
 
-    const paragraphLines = lines.filter((line) => {
-      return !LIST_ITEM_PATTERN.test(line)
-    })
-    const itemLines = lines.filter((line) => {
-      return LIST_ITEM_PATTERN.test(line)
-    })
-
-    if (paragraphLines.length) {
-      nodes.push([
-        'p',
-        {},
-        ...parseInlineMarkdown(paragraphLines.join(' ')),
-      ])
-    }
-
-    if (itemLines.length) {
-      nodes.push([
-        'ul',
-        {},
-        ...itemLines.map((line): MinimarkNode => {
-          return [
-            'li',
-            {},
-            ...parseInlineMarkdown(line.replace(LIST_ITEM_PATTERN, '')),
-          ]
-        }),
-      ])
-    }
+    runs.push({ tag, lines: [text] })
   }
 
-  return nodes
+  return runs
+}
+
+function blockToNodes(block: string): MinimarkNode[] {
+  return groupLinesIntoRuns(block).map((run): MinimarkNode => {
+    if (run.tag === 'p') {
+      return ['p', {}, ...parseInlineMarkdown(run.lines.join(' '))]
+    }
+
+    return [
+      run.tag,
+      {},
+      ...run.lines.map((text): MinimarkNode => {
+        return ['li', {}, ...parseInlineMarkdown(text)]
+      }),
+    ]
+  })
+}
+
+export function markdownToNodes(markdown: string): MinimarkNode[] {
+  return markdown.split(/\n{2,}/).flatMap(blockToNodes)
 }
 
 function listOfTitledItems(

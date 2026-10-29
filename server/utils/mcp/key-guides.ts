@@ -1,6 +1,6 @@
 import type { ProviderMeta } from '#shared/utils/provider-meta'
-import { minimarkToMarkdown } from '~~/server/utils/mcp/minimark'
-import type { MinimarkBody } from '~~/server/utils/mcp/minimark'
+import { minimarkToMarkdown } from '~~/server/utils/content/minimark'
+import type { MinimarkBody } from '~~/server/utils/content/minimark'
 
 const GUIDES_PATH_PREFIX = '/guides/'
 

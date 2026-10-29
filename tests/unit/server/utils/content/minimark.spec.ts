@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { minimarkToMarkdown } from '~~/server/utils/mcp/minimark'
-import type { MinimarkBody } from '~~/server/utils/mcp/minimark'
+import { minimarkToMarkdown } from '~~/server/utils/content/minimark'
+import type { MinimarkBody } from '~~/server/utils/content/minimark'
 
 function body(...value: MinimarkBody['value']): MinimarkBody {
   return { type: 'minimark', value }

@@ -34,6 +34,7 @@ async function callRoute(event: ReturnType<typeof createEvent>) {
 
   vi.stubGlobal('getSiteOrigin', siteOrigin.getSiteOrigin)
   vi.stubGlobal('getSiteHostname', siteOrigin.getSiteHostname)
+  vi.stubGlobal('getSiteDidWebIdentifier', siteOrigin.getSiteDidWebIdentifier)
 
   const { default: handler } = await import(
     '~~/server/routes/.well-known/ai-catalog.json.get'
@@ -69,16 +70,29 @@ describe('GET /.well-known/ai-catalog.json', () => {
     })
   })
 
-  it('lists the skills index and llms.txt as absolute URLs', async () => {
-    const catalog = await callRoute(createEvent())
-    const urls = catalog.entries.map((entry: { url: string }) => {
-      return entry.url
+  it('lists the skills index, llms.txt and the MCP card as absolute URLs',
+    async () => {
+      const catalog = await callRoute(createEvent())
+      const urls = catalog.entries.map((entry: { url: string }) => {
+        return entry.url
+      })
+
+      expect(urls).toEqual([
+        'https://besidka.com/.well-known/agent-skills/index.json',
+        'https://besidka.com/llms.txt',
+        'https://besidka.com/.well-known/mcp/server-card.json',
+      ])
     })
 
-    expect(urls).toEqual([
-      'https://besidka.com/.well-known/agent-skills/index.json',
-      'https://besidka.com/llms.txt',
-    ])
+  it('describes the MCP server entry', async () => {
+    const catalog = await callRoute(createEvent())
+    const entry = catalog.entries[2]
+
+    expect(entry.identifier).toBe('urn:air:besidka.com:mcp:besidka')
+    expect(entry.type).toBe('application/json')
+    expect(entry.representativeQueries).toContain(
+      'Which models does Besidka support and what do they cost?',
+    )
   })
 
   it('gives every entry a urn:air identifier, a media type and 2 to 5 queries',
@@ -107,4 +121,14 @@ describe('GET /.well-known/ai-catalog.json', () => {
       expect(catalog.entries[1].url)
         .toBe('https://preview.besidka.dev/llms.txt')
     })
+
+  it('percent-encodes a port in the did:web identifier', async () => {
+    mocks.runtimeConfig = { public: { baseUrl: '' } }
+
+    const catalog = await callRoute(createEvent('http://localhost:3000'))
+
+    expect(catalog.host.identifier).toBe('did:web:localhost%3A3000')
+    expect(catalog.entries[0].identifier)
+      .toBe('urn:air:localhost:skills:index')
+  })
 })

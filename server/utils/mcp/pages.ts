@@ -1,8 +1,8 @@
-import { minimarkToMarkdown } from '~~/server/utils/mcp/minimark'
+import { minimarkToMarkdown } from '~~/server/utils/content/minimark'
 import type {
   ComponentRenderers,
   MinimarkBody,
-} from '~~/server/utils/mcp/minimark'
+} from '~~/server/utils/content/minimark'
 
 export type PublicPageCollection = 'guides' | 'legal'
 

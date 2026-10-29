@@ -15,6 +15,10 @@ export default defineNitroPlugin((nitroApp) => {
       return
     }
 
+    if (!Array.isArray(landingPage.body?.value)) {
+      return
+    }
+
     const keyGuidePages = await queryCollection(event, 'keyGuides')
       .select('path', 'title')
       .order('stem', 'ASC')
