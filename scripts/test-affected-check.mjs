@@ -2703,6 +2703,15 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/plugins\/landing-cache-control\.ts$/,
       tests: ['tests/unit/server/plugins/landing-cache-control.spec.ts'],
     },
+    {
+      pattern: /^(server\/(mcp\/.*|utils\/mcp\/.*)|shared\/utils\/provider-meta|providers\/.*)\.ts$/,
+      tests: [
+        'tests/unit/server/utils/mcp/minimark.spec.ts',
+        'tests/unit/server/utils/mcp/catalog.spec.ts',
+        'tests/unit/server/utils/mcp/key-guides.spec.ts',
+        'tests/unit/server/utils/mcp/pages.spec.ts',
+      ],
+    },
   ]
 
   for (const file of changedFiles) {

@@ -2,6 +2,21 @@ interface MutableLogger {
   set: (data: Record<string, unknown>) => void
 }
 
+function moveMcpContextToAttributes(event: Record<string, unknown>) {
+  const mcpContext = event.mcp
+
+  if (!mcpContext || typeof mcpContext !== 'object') {
+    return
+  }
+
+  event.attributes = {
+    ...(event.attributes as Record<string, unknown> | undefined),
+    mcp: mcpContext,
+  }
+
+  delete event.mcp
+}
+
 export default defineNitroPlugin((nitroApp) => {
   // Hook BOTH `request` (early, in case logger is already there) AND
   // `beforeResponse` (late, where logger is guaranteed to exist and the
@@ -40,5 +55,7 @@ export default defineNitroPlugin((nitroApp) => {
         cfRay,
       }
     }
+
+    moveMcpContextToAttributes(context.event)
   })
 })
