@@ -2,6 +2,7 @@
   "teamId": "00b4a0fa-046f-4eb4-bb1c-ea07428c0667",
   "indexDocumentId": "3e86842b-f707-423b-988a-257e925d810b",
   "documents": {
+    "agent-readiness.md": "51163c1c-a500-4674-84a9-dfcb18a41000",
     "analytics-utm.md": "72fee1a4-c50b-4466-a192-c58196bd14a2",
     "auth-security.md": "b116de8b-2506-4a8a-95e5-e784bf7c79c9",
     "axiom-map-fields.md": "af5d4c22-a3f8-4541-a30f-dbea7134d5a8",
@@ -51,6 +52,7 @@
     "legal/dpia.md": "1425171b-fc1f-4b36-a50d-c64faf1c5a13",
     "legal/memory-legal-changes-draft.md": "df04a263-e150-4afc-a786-9a5dd55030c4",
     "legal/monetisation-readiness.md": "ed78dd89-fe30-49c3-8917-db19a9134cc1",
+    "mcp-server.md": "e98cfc69-7829-403f-b303-68d7c99a8fb4",
     "memory-architecture.md": "b4bd81fe-1977-4b23-97c1-5c7ce2210bbe",
     "model-catalog-expansion-plan.md": "c4d8fefb-e93f-4335-972d-8f61553b400d",
     "models-data-fetching.md": "7b55a5b9-e701-47f0-9c51-562c5135d97d",
