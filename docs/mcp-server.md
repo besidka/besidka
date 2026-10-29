@@ -29,6 +29,9 @@ first calls a tool that needs it.
   `WWW-Authenticate: Bearer scope="<scopes the tool needs>", resource_metadata="<site>/.well-known/oauth-protected-resource/mcp"`.
   The client reads the protected-resource metadata, runs OAuth (dynamic
   client registration, PKCE, `/oauth/consent`) and retries with the token.
+  The root `/.well-known/oauth-protected-resource` describes the origin, the
+  `/mcp` one describes the MCP resource, and the 401 `resource_metadata`
+  points at the `/mcp` one.
 - A valid token that lacks the tool's scope gets **HTTP 403** with
   `WWW-Authenticate: Bearer error="insufficient_scope", scope="<missing>", resource_metadata="...", error_description="..."`
   (RFC 6750 section 3.1), so the client can step up in one round trip.

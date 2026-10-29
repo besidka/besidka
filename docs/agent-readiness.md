@@ -80,6 +80,13 @@ public tools never authenticates.
 | Consent page | `/oauth/consent` | The app |
 | Scopes | `shared/utils/mcp-oauth-scopes.ts` | Identity: `openid`, `profile`, `email`, `offline_access`. Read: `chats:read`, `projects:read`, `memory:read`. Write: `projects:write`, `memory:write` |
 
+The root protected resource document describes the origin
+(`resource: "https://besidka.com"`, rewritten from Better Auth's output in
+`server/routes/.well-known/oauth-protected-resource/index.get.ts`, because
+RFC 9728 section 3.3 requires `resource` to equal the identifier the well-known
+URL was built from), the `/mcp` document describes the MCP resource, and the
+`401` `resource_metadata` points at the `/mcp` one.
+
 The flow is authorization code with PKCE (S256). The issuer is
 `https://besidka.com`. The routes at `/.well-known/oauth-*` replace the
 `@nuxtjs/mcp-toolkit` 404 stubs, which `nuxt.config.ts` removes (the inline
