@@ -163,7 +163,16 @@ abuse containment instead of raw burst suppression.
 | `/revoke-session` | 300s | 20 |
 | `/revoke-sessions` | 900s | 5 |
 | `/revoke-other-sessions` | 900s | 5 |
+| `/oauth2/register` | 60s | 60 |
+| `/oauth2/token` | 60s | 300 |
+| `/oauth2/authorize` | 60s | 60 |
+| `/oauth2/consent` | 60s | 20 |
+| `/oauth2/revoke` | 60s | 120 |
+| `/oauth2/introspect` | 60s | 120 |
 | everything else (default) | 60s | 60 |
+
+The `/oauth2/*` rows are explained in
+[OAuth authorization server (MCP)](#oauth-authorization-server-mcp).
 
 `/two-factor/*` and `/passkey/*` rows are active now that both plugins
 are registered — keeping the entire policy in one file
@@ -748,6 +757,16 @@ any account has two-factor authentication enabled; it would need a
 forced disable-and-re-enroll for every 2FA user, not a transparent key
 swap.
 
+The same secret also encrypts the `jwks.private_key` column: the `jwt()`
+plugin that signs MCP access tokens stores its private signing key
+encrypted with `betterAuthSecret`. Rotating the secret makes that key
+undecryptable too: every token request fails with "Failed to decrypt
+private key" until the `jwks` rows are deleted and the plugin mints a new
+key pair, which invalidates every access token already issued to
+connected apps. The OAuth `sig` on pending
+authorization links is an HMAC with the same secret, so those links
+break as well.
+
 The Security page's TOTP setup QR is rendered by a from-scratch,
 dependency-free client-side QR encoder (`app/utils/qr-code.ts`): byte
 mode only (input is always UTF-8), error correction levels L and M
@@ -888,4 +907,128 @@ TwoFactor.vue`) is worded to match this: it states the code is required
 "when signing in with your password," not on every sign-in, so a user
 who has also added a passkey isn't told something that would be
 misleading for their account.
+
+## OAuth authorization server (MCP)
+
+Besidka is an OAuth 2.1 authorization server for its own `/mcp`
+endpoint. `mcp()` from `@better-auth/mcp` (built on
+`@better-auth/oauth-provider`) and `jwt()` are registered in
+`server/utils/auth.ts`; the tables live in `server/db/schemas/oauth.ts`.
+
+### Configuration
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| `resource` | `${siteUrl}/mcp` | RFC 8707 resource; becomes the JWT `aud` |
+| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `projects:write`, `memory:write` |
+| `accessTokenExpiresIn` | 900 (15 min) | access tokens are JWTs verified offline, so this is the revocation delay |
+| `refreshTokenExpiresIn` | 2,592,000 (30 days) | library default, set explicitly; rotated on every refresh, 30s reuse overlap from `mcp()` |
+| PKCE | required, S256 only | library default |
+| `allowDynamicClientRegistration` + `allowUnauthenticatedClientRegistration` | on | MCP clients (claude.ai, Claude Code, Cursor) register themselves |
+| `clientRegistrationDefaultScopes` | `MCP_OAUTH_SCOPES` | every DCR client may ask for every scope; the user decides on the consent page |
+| `clientRegistrationDefaultApplicationType` | `infer` | native clients with loopback or custom-scheme callbacks register without loosening web redirect rules |
+| `skipConsent` | never | consent is required for every client |
+| `loginPage` / `consentPage` | `/signin` / `/oauth/consent` | |
+
+`jwt({ jwt: { issuer: siteUrl } })` sets `iss`, and `disabledPaths:
+['/token']` keeps the JWT plugin's session-to-JWT endpoint off.
+
+**Audience caveat.** The JWT `aud` is `${siteUrl}/mcp` only when the client
+sends `resource=` on the authorize and token requests (the MCP spec
+requires it). A client that omits it gets an opaque access token with no
+audience, stored in `oauth_access_tokens`, which a JWT-verifying `/mcp`
+route rejects. There is no option to default the resource.
+
+### Dynamic client registration and its rate limits
+
+`POST /oauth2/register` is open, so the only cost to an attacker is the
+rate limit. Every claude.ai user registers and refreshes from Anthropic's
+shared egress range `160.79.104.0/21`, and Better Auth's limiter keys on
+IP plus path, so a per-IP limit is effectively a limit for all claude.ai
+users together. The plugin defaults (register 5/min, token 20/min) would
+lock out the second claude.ai user in a busy minute. The `customRules`
+override them (custom rules win over plugin rules in Better Auth's
+resolver): register 60/min and token 300/min leave room for many users
+behind one IP while still bounding a scripted flood from one address.
+`/oauth2/authorize` and `/oauth2/consent` come from the user's own
+browser, so they keep tighter per-user-IP limits. `/oauth2/revoke` and
+`/oauth2/introspect` require client authentication and get 120/min.
+
+Unauthenticated registration cannot set privileged client fields. The
+plugin's registration schema rejects `skip_consent` (`z.never()`) and
+strips unknown keys such as `enable_end_session`. As defence in depth
+against a library change, a `hooks.before` on `/oauth2/register`
+(`stripPrivilegedClientRegistrationFields`) removes `skip_consent`,
+`skipConsent`, `enable_end_session` and `enableEndSession` from the body
+before validation.
+
+### Sign-in and consent flow
+
+`/oauth2/authorize` redirects to `/signin` or `/oauth/consent` with a
+signed query (`sig`, `exp`, `ba_iat`, `ba_param` plus the authorize
+parameters). `oauthProviderClient()` in `app/composables/auth.ts` adds
+that query as `oauth_query` to every Better Auth `POST` made from such a
+page, and the provider's after hook turns any response that sets a
+session cookie into the next authorize step.
+
+- `/signin` to `/2fa` and `/signin` to `/signup` carry the signed query
+  (`pickSignedOAuthQuery`, `appendSignedOAuthQueryToPath`), so the
+  second-factor and sign-up requests still resume the flow.
+- When a response is an OAuth continuation (`{ redirect: true, url }`), the
+  passkey and 2FA handlers do not navigate themselves; Better Auth's
+  redirect fetch plugin does.
+- Social sign-in resumes through the provider's own server context, which
+  `/sign-in/social` stores with the OAuth state.
+- `00.auth.global.ts`: a signed-in user on `/signin` with a signed query is
+  sent back to `/api/auth/oauth2/authorize` instead of `/chats/new`, unless
+  the request has `prompt=login` or `max_age`, in which case the sign-in
+  form stays so the user can sign in again. A signed-out user on
+  `/oauth/consent` goes to `/signin` with the signed query, because `next`
+  only allows two paths. An expired query (`exp` is 10 minutes after the
+  redirect) is dropped with a toast, since the server rejects every request
+  that carries an expired `oauth_query`.
+
+`/oauth/consent` verifies the signed query server-side through
+`GET /api/v1/profiles/connected-apps/authorization-request`
+(`verifyOAuthQueryParams` with the live auth secret), then shows the app's
+name, homepage link and redirect host. The name comes from the app's own
+registration and is marked as unverified. The app's `logo_uri` is never
+loaded, on the consent page or on `/profile/connected-apps`: fetching it
+would send the user's IP address to whoever registered the client, before
+they approve anything, so both pages show a generic icon. Read scopes start
+checked; write scopes (`isMcpWriteScope`) start unchecked with a warning.
+Identity scopes are always sent. Approve posts only the chosen scopes to
+`/oauth2/consent`, which accepts any subset of the requested scopes. The
+page also states that chats, projects and memory can hold sensitive and
+third-party data, that approving is explicit consent to send it to the
+app, and that the app may be outside the EU without a contract with
+Besidka (`/privacy-policy#connected-ai-apps`). `/oauth/**` is disallowed
+in robots, excluded from the sitemap, `noindex`, `no-store`, and cannot be
+framed (`X-Frame-Options: DENY`, `frame-ancestors 'none'`). The page adds
+no cookies or browser storage.
+
+Grant and denial are logged by the `/oauth2/consent` after hook, and
+revocation by the revoke route, under `attributes.legalConsent` with the
+client id and scopes only, never a token.
+
+### Connected apps and revocation
+
+`/profile/connected-apps` lists the user's consents with the app name,
+scopes, connection date and last activity (the newest refresh token).
+**Disconnect** (`POST /api/v1/profiles/connected-apps/[clientId]/revoke`)
+deletes, in one D1 batch and in foreign-key order, the user's access token
+rows, refresh tokens and consent for that client. The plugin's own
+`/oauth2/delete-consent` is not used because it leaves tokens alive.
+Access tokens are JWTs checked against the JWKS without a database read,
+so one already issued keeps working until it expires, up to 15 minutes.
+The UI says so.
+
+### Account deletion
+
+None of the OAuth tables cascade from `users`, so a leftover row blocks
+the user delete. `purgeUserOAuthData` runs in `deleteUser.beforeDelete`
+after `purgeUserData` and deletes, in one batch: access tokens, refresh
+tokens and consents of the user or of any client the user owns, then the
+clients the user owns (`oauth_client_resources` cascades from them).
+Clients registered without a session have no owner and are kept.
 

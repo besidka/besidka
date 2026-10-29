@@ -36,6 +36,8 @@ Structural facts worth knowing before editing:
   frontmatter value breaks the YAML (`tests/unit/config/content-frontmatter.spec.ts`
   guards this).
 - `updatedAt` is a real editorial date. Bump it when the substance changes.
+  `tests/unit/content/legal-pages.spec.ts` pins the current date for all three
+  pages, so change it there in the same commit.
 - `SURFACE_BY_PATH` in `server/utils/landing/client-events.ts` maps page paths
   to analytics surfaces and must track these slugs, or client analytics events
   from a legal page are rejected.
@@ -225,6 +227,64 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   strictly "my chats, project memory and memory") and sending whole
   transcripts for the pre-filter still fit that wording, or need a wording
   change and a version bump. See `docs/legal/memory-legal-changes-draft.md`.
+- **Connected AI apps (OAuth) have their own consent record, 2026-10-29.**
+  Besidka is an OAuth 2.1 authorization server for its MCP server at
+  `https://besidka.com/mcp` (Better Auth `@better-auth/mcp`). The user's
+  approval of a client and its scopes (`chats:read`, `projects:read`,
+  `memory:read`, `projects:write`, `memory:write`) is a row in `oauth_consents`
+  (`server/db/schemas/oauth.ts`: user id, client id, scopes, timestamps). It is
+  **not** on `user_settings`, **not** in `CONSENT_DB`, and **not** a copy of the
+  gate record above. Two things it is, and it must not be read as anything
+  more:
+  - an **authorisation instruction** to Besidka to disclose the approved data
+    to that client (the Art. 6(1)(b) basis, a judgment call: `docs/legal/dpia.md`
+    section 6, item 13), and
+  - the carrier of the **Art. 9(2)(a) explicit consent** for sensitive data in
+    what the client reads, per client and per scope. The gate's wording names
+    "the AI providers, AI gateways and search providers whose keys I add", so
+    it does not reach a connected client. The `/oauth/consent` page text must
+    therefore say that chats, projects and memory can hold sensitive and
+    third-party data, that approving sends it to that app, that the app may be
+    outside the EU and that Besidka has no contract with it (the Art. 49(1)(a)
+    warning). Without that text the record proves nothing. The Privacy Policy
+    section `#connected-ai-apps` promises it.
+- **`CURRENT_CONSENT_VERSION` is not bumped for connected apps (2026-10-29).**
+  `CURRENT_CONSENT_TEXT_SHA256` covers only the two `data-consent-text` spans in
+  `app/components/Legal/ConsentModal.client.vue`, and that file is unchanged, so
+  the hash is unchanged and `consent-text-version.spec.ts` keeps passing. The
+  new consent is collected on the OAuth approval screen, not by widening the
+  gate, so nobody is re-prompted. The new Terms clause (`#connected-apps`) does
+  not need a new Terms acceptance either: the feature is opt-in, and its
+  approval screen is where the user meets it. The version would have to change
+  if the modal wording ever named connected apps or MCP, or if the gate were
+  made to cover them.
+- **Gate integration for connected clients (required, planned).** The MCP
+  server must treat a user whose gate status is not `current` like the in-app
+  routes do: read nothing and change nothing for a connected client until the
+  user consents again. Every MCP write tool is gated like its in-app twin
+  (project instructions, project knowledge notes, memory entries; the route
+  list above), and a memory write over MCP runs the never-store and
+  sensitive-topic gate. Reading is not left open for connected clients: for
+  the user, reading stays open because it only shows their own data; for an
+  app it is a disclosure to a third party.
+- **History of approvals.** `oauth_consents` shows the current approval only.
+  Whether revoking deletes the row or marks it decides whether the proof of an
+  earlier approval survives. Follow the convention above: log every grant and
+  revocation to Axiom under `attributes.legalConsent` (action `oauth-granted`
+  or `oauth-revoked`, with client id and scopes), so the history is
+  provable for as long as the Axiom retention lasts. Open until built.
+- **Account deletion and restore.** `oauth_consents`, `oauth_access_tokens`
+  and `oauth_refresh_tokens` reference `users` with no `ON DELETE`, so they are
+  not in the cascade list in `CLAUDE.md`. The account-deletion path must remove
+  them explicitly, or the Privacy Policy sentence "your approvals and tokens
+  for connected AI apps" under "Deleting your account" is false. After a D1
+  restore, revoked approvals and tokens come back like revoked sessions do
+  (`docs/d1-restore-reconciliation.md`): wipe `oauth_access_tokens`,
+  `oauth_refresh_tokens` and `oauth_consents` with the sessions.
+- **Where the connected-app text lives.** Privacy Policy `#connected-ai-apps`
+  (plus rows in the legal-basis, recipients, retention and deletion sections),
+  Terms of Use `#connected-apps`, one cookie row in the Cookie Policy, DPIA
+  3.11 and risk rows 28 to 35, Art. 30 row 10a. Edit them together.
 
 ## How legal text reaches production
 

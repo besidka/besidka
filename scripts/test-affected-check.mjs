@@ -136,6 +136,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/user-setting.spec.ts',
     'tests/e2e/profile/preferences.spec.ts',
   ]
+  const oauthAuthServerTests = [
+    'tests/unit/composables/auth-oauth-query.spec.ts',
+    'tests/unit/middleware/00.auth.global.oauth.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+    'tests/unit/utils/auth-oauth.spec.ts',
+    'tests/unit/utils/auth-rate-limit-oauth.spec.ts',
+    'tests/unit/utils/account/purge-user-oauth-data.spec.ts',
+    'tests/unit/server/routes/auth.md.spec.ts',
+    'tests/integration/api/profiles-connected-apps.spec.ts',
+    'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
+    'tests/integration/api/profiles-connected-apps-list.spec.ts',
+  ]
   const memoryContractTests = [
     'tests/unit/utils/memory-policy.spec.ts',
     'tests/unit/utils/memory-schemas.spec.ts',
@@ -2717,11 +2729,80 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/mcp/key-guides.spec.ts',
         'tests/unit/server/utils/mcp/pages.spec.ts',
         'tests/unit/server/utils/mcp/safe-tool.spec.ts',
+        'tests/unit/server/utils/mcp/auth.spec.ts',
+        'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+        'tests/unit/server/utils/mcp/private-access.spec.ts',
+        'tests/unit/server/utils/mcp/private-tool.spec.ts',
+        'tests/unit/server/utils/mcp/private-chats.spec.ts',
+        'tests/unit/server/utils/mcp/private-projects.spec.ts',
+        'tests/unit/server/utils/mcp/private-memory.spec.ts',
+        'tests/unit/server/middleware/mcp-request-guard.spec.ts',
       ],
     },
     {
-      pattern: /^(server\/middleware\/01\.mcp-request-guard|config\/mcp-server)\.ts$/,
-      tests: ['tests/unit/server/middleware/mcp-request-guard.spec.ts'],
+      pattern: /^(server\/middleware\/01\.mcp-request-guard|config\/mcp-server|server\/types\/h3-context\.d)\.ts$/,
+      tests: [
+        'tests/unit/server/middleware/mcp-request-guard.spec.ts',
+        'tests/unit/server/utils/mcp/auth.spec.ts',
+        'tests/unit/server/utils/mcp/private-access.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(shared\/utils\/(mcp-oauth-scopes|memory-policy|memory-schemas|project-knowledge-schemas|project-knowledge-policy)|server\/utils\/(legal\/consent|auth-rate-limit|chats\/history\/.*|knowledge\/(access|ingest|items|rate-limit|text-store)|memory\/(entries|jev-check|rate-limit)|projects\/cursor))\.ts$/,
+      tests: [
+        'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+        'tests/unit/server/utils/mcp/private-access.spec.ts',
+        'tests/unit/server/utils/mcp/private-chats.spec.ts',
+        'tests/unit/server/utils/mcp/private-projects.spec.ts',
+        'tests/unit/server/utils/mcp/private-memory.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/composables\/auth\.ts$/,
+      tests: [
+        'tests/unit/composables/auth-oauth-query.spec.ts',
+        'tests/unit/middleware/00.auth.global.oauth.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/middleware\/00\.auth\.global\.ts$/,
+      tests: ['tests/unit/middleware/00.auth.global.oauth.spec.ts'],
+    },
+    {
+      pattern: /^app\/(components\/OAuth|pages\/oauth)\/.*$/,
+      tests: ['tests/unit/components/OAuth/ScopePicker.spec.ts'],
+    },
+    {
+      pattern: /^(shared\/utils\/mcp-oauth-scopes|server\/utils\/auth|server\/routes\/\.well-known\/(oauth-.*|openid-configuration.*))\.ts$/,
+      tests: ['tests/unit/utils/auth-oauth.spec.ts'],
+    },
+    {
+      pattern: /^server\/db\/schemas\/oauth\.ts$/,
+      tests: oauthAuthServerTests,
+    },
+    {
+      pattern: /^server\/utils\/auth-rate-limit\.ts$/,
+      tests: ['tests/unit/utils/auth-rate-limit-oauth.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/account\/purge-user-data\.ts$/,
+      tests: ['tests/unit/utils/account/purge-user-oauth-data.spec.ts'],
+    },
+    {
+      pattern: /^server\/api\/v1\/profiles\/connected-apps\/.*\.ts$/,
+      tests: [
+        'tests/integration/api/profiles-connected-apps.spec.ts',
+        'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
+        'tests/integration/api/profiles-connected-apps-list.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/(routes\/auth\.md\.get|utils\/agent-discovery\/auth-md)\.ts$/,
+      tests: ['tests/unit/server/routes/auth.md.spec.ts'],
+    },
+    {
+      pattern: /^(app\/layouts\/profile\.vue|app\/pages\/profile\/connected-apps\.vue)$/,
+      tests: ['tests/unit/layouts/profile.spec.ts'],
     },
     {
       pattern: /^server\/plugins\/cache-key-without-query\.ts$/,

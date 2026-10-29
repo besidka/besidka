@@ -360,8 +360,14 @@ const route = useRoute()
 const safeNext = computed<string | null>(() => {
   return resolveSafeNextPath(route.query.next)
 })
+const signedOAuthQuery = computed<SignedOAuthQuery | null>(() => {
+  return pickSignedOAuthQuery(route.query)
+})
 const signinLink = computed<string>(() => {
-  return withUtm(appendNextToPath('/signin', safeNext.value))
+  return appendSignedOAuthQueryToPath(
+    withUtm(appendNextToPath('/signin', safeNext.value)),
+    signedOAuthQuery.value,
+  )
 })
 
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
@@ -409,9 +415,12 @@ async function onSubmit() {
       name: data.name,
       email: data.email,
       password: data.password,
-      callbackURL: appendUtmToPath(
-        appendNextToPath('/signin', safeNext.value),
-        resolveUtm(),
+      callbackURL: appendSignedOAuthQueryToPath(
+        appendUtmToPath(
+          appendNextToPath('/signin', safeNext.value),
+          resolveUtm(),
+        ),
+        signedOAuthQuery.value,
       ),
       fetchOptions: {
         headers: token ? { 'x-captcha-response': token } : {},

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
 import {
+  MCP_SERVER_DESCRIPTION,
   MCP_SERVER_NAME,
   MCP_SERVER_VERSION,
 } from '~~/config/mcp-server'
@@ -73,16 +75,39 @@ describe('GET /.well-known/mcp/server-card.json', () => {
       name: 'com.besidka/mcp',
       title: 'Besidka',
       version: MCP_SERVER_VERSION,
-      description: expect.stringContaining('Read-only facts about Besidka'),
+      description: MCP_SERVER_DESCRIPTION,
       websiteUrl: 'https://besidka.com',
       repository: { url: 'https://github.com/besidka/besidka', source: 'github' },
       remotes: [
         { type: 'streamable-http', url: 'https://besidka.com/mcp' },
       ],
+      _meta: {
+        'com.besidka/authorization': expect.any(Object),
+      },
     })
     expect(card.name).toBe(MCP_SERVER_NAME)
+    expect(card.description.length).toBeLessThanOrEqual(100)
     expect(card.name).toMatch(/^[a-z0-9.-]+\/[a-z0-9._-]+$/)
   })
+
+  it('declares optional OAuth for the per-user tools under a vendor key',
+    async () => {
+      const card = await callRoute(createEvent())
+      const authorization = card._meta['com.besidka/authorization']
+
+      expect(authorization).toMatchObject({
+        required: false,
+        type: 'oauth2',
+        flow: 'authorization_code',
+        pkce: 'S256',
+        protectedResourceMetadata:
+          'https://besidka.com/.well-known/oauth-protected-resource/mcp',
+        authorizationServerMetadata:
+          'https://besidka.com/.well-known/oauth-authorization-server',
+        scopesSupported: [...MCP_OAUTH_SCOPES],
+      })
+      expect(Object.keys(card._meta)).toEqual(['com.besidka/authorization'])
+    })
 
   it('falls back to the request origin when no base URL is configured',
     async () => {
@@ -92,5 +117,10 @@ describe('GET /.well-known/mcp/server-card.json', () => {
 
       expect(card.websiteUrl).toBe('https://preview.besidka.dev')
       expect(card.remotes[0].url).toBe('https://preview.besidka.dev/mcp')
+      expect(
+        card._meta['com.besidka/authorization'].protectedResourceMetadata,
+      ).toBe(
+        'https://preview.besidka.dev/.well-known/oauth-protected-resource/mcp',
+      )
     })
 })

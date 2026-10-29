@@ -67,7 +67,7 @@ describe.each(LEGAL_PAGES)('content/legal/%s.md', (slug) => {
       expect(typeof data.summary).toBe('string')
     }
 
-    expect(String(data.updatedAt)).toContain('2026-10-28')
+    expect(String(data.updatedAt)).toContain('2026-10-29')
   })
 
   it('keeps every heading the app links to', async () => {

@@ -64,6 +64,12 @@ export const authRateLimitRules: Record<string, AuthRateLimitRule> = {
   '/revoke-session': { window: 300, max: 20 },
   '/revoke-sessions': { window: 900, max: 5 },
   '/revoke-other-sessions': { window: 900, max: 5 },
+  '/oauth2/register': { window: 60, max: 60 },
+  '/oauth2/token': { window: 60, max: 300 },
+  '/oauth2/authorize': { window: 60, max: 60 },
+  '/oauth2/consent': { window: 60, max: 20 },
+  '/oauth2/revoke': { window: 60, max: 120 },
+  '/oauth2/introspect': { window: 60, max: 120 },
 }
 
 export const authRateLimitMaxWindow = Math.max(

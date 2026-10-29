@@ -21,7 +21,11 @@ import {
   recordSignupActivation,
   resolveSignupUtm,
 } from '~~/server/utils/analytics/activation'
-import { purgeUserData } from './account/purge-user-data'
+import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
+import {
+  purgeUserData,
+  purgeUserOAuthData,
+} from './account/purge-user-data'
 import {
   sendEmailChangedEmail,
   sendPasskeyAddedEmail,
@@ -45,6 +49,59 @@ let _auth: ServerAuth | undefined
 
 const IMAGE_REJECTING_PATHS = new Set(['/update-user', '/sign-up/email'])
 const DEFAULT_SITE_URL = 'https://besidka.com'
+const OAUTH_ACCESS_TOKEN_TTL_SECONDS = 15 * 60
+const OAUTH_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
+const OAUTH_CLIENT_REGISTRATION_PATH = '/oauth2/register'
+const OAUTH_CONSENT_PATH = '/oauth2/consent'
+
+export const PRIVILEGED_CLIENT_REGISTRATION_FIELDS = [
+  'skip_consent',
+  'skipConsent',
+  'enable_end_session',
+  'enableEndSession',
+] as const
+
+/**
+ * Removes the client fields that only an administrator may set from a
+ * dynamic client registration body, in place, so an unauthenticated client
+ * can never register itself as consent-free or as a logout initiator.
+ */
+export function stripPrivilegedClientRegistrationFields(
+  body: Record<string, unknown> | undefined,
+): void {
+  if (!body || typeof body !== 'object') {
+    return
+  }
+
+  for (const field of PRIVILEGED_CLIENT_REGISTRATION_FIELDS) {
+    Reflect.deleteProperty(body, field)
+  }
+}
+
+interface OAuthConsentDecision {
+  action: 'oauth_granted' | 'oauth_denied'
+  clientId: string | null
+  scopes: string[]
+}
+
+export function resolveOAuthConsentDecision(
+  body: Record<string, unknown> | undefined,
+): OAuthConsentDecision {
+  const oauthQuery = typeof body?.oauth_query === 'string'
+    ? new URLSearchParams(body.oauth_query)
+    : new URLSearchParams()
+  const acceptedScope = typeof body?.scope === 'string'
+    ? body.scope
+    : oauthQuery.get('scope') ?? ''
+
+  return {
+    action: body?.accept === true ? 'oauth_granted' : 'oauth_denied',
+    clientId: oauthQuery.get('client_id'),
+    scopes: body?.accept === true
+      ? acceptedScope.split(' ').filter(Boolean)
+      : [],
+  }
+}
 
 export function useServerAuth(): ServerAuth {
   if (!_auth) {
@@ -126,7 +183,11 @@ function createAuth() {
       resource: `${siteUrl}/mcp`,
       loginPage: '/signin',
       consentPage: '/oauth/consent',
-      scopes: ['openid', 'profile', 'email', 'offline_access'],
+      scopes: [...MCP_OAUTH_SCOPES],
+      clientRegistrationDefaultScopes: [...MCP_OAUTH_SCOPES],
+      clientRegistrationDefaultApplicationType: 'infer',
+      accessTokenExpiresIn: OAUTH_ACCESS_TOKEN_TTL_SECONDS,
+      refreshTokenExpiresIn: OAUTH_REFRESH_TOKEN_TTL_SECONDS,
       allowDynamicClientRegistration: true,
       allowUnauthenticatedClientRegistration: true,
     }),
@@ -318,6 +379,7 @@ function createAuth() {
         },
         async beforeDelete(user) {
           await purgeUserData({ userId: Number(user.id) })
+          await purgeUserOAuthData({ userId: Number(user.id) })
         },
       },
     },
@@ -401,6 +463,12 @@ function createAuth() {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === OAUTH_CLIENT_REGISTRATION_PATH) {
+          stripPrivilegedClientRegistrationFields(ctx.body)
+
+          return
+        }
+
         if (!IMAGE_REJECTING_PATHS.has(ctx.path)) {
           return
         }
@@ -472,6 +540,23 @@ function createAuth() {
           const user = ctx.context.session?.user
 
           if (!user) {
+            return
+          }
+
+          if (ctx.path === OAUTH_CONSENT_PATH) {
+            const decision = resolveOAuthConsentDecision(ctx.body)
+
+            resolveServerLogger().set({
+              userId: Number(user.id),
+              attributes: {
+                legalConsent: {
+                  action: decision.action,
+                  oauthClientId: decision.clientId,
+                  scopes: decision.scopes,
+                },
+              },
+            })
+
             return
           }
 

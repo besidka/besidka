@@ -34,7 +34,7 @@ async function mountLayout() {
 }
 
 describe('profile layout', () => {
-  it('lists Security, API Keys, Memory and Preferences tabs in that order', async () => {
+  it('lists Security, API Keys, Memory, Preferences and Connected apps tabs in that order', async () => {
     mocks.routePath = '/profile/security'
 
     const wrapper = await mountLayout()
@@ -45,12 +45,14 @@ describe('profile layout', () => {
       'API Keys',
       'Memory',
       'Preferences',
+      'Connected apps',
     ])
     expect(tabs.map(tab => tab.attributes('to'))).toEqual([
       '/profile/security',
       '/profile/keys',
       '/profile/memory',
       '/profile/preferences',
+      '/profile/connected-apps',
     ])
   })
 

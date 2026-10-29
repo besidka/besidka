@@ -1,8 +1,8 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-10-28
-summary: "Besidka stores your account, chats, projects, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway you chose, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. The assistant can also look up your earlier chats and send short excerpts of them to the provider of the chat you are in, and memory, if you use it, can be written by an AI model on one of your own keys. If you add a TypeSafe AI key, TypeSafe AI in the United States can also answer short yes/no questions about your text for optional checks, such as memory entries, whether a web search is needed, files and search results screened for hidden instructions, and chats you are about to share, and each check has its own off switch. Each provider is a separate company with its own privacy terms, and some of them are outside the EU, in the United States, China or Singapore. Because you can type anything, your chats may contain sensitive information such as health details or beliefs; I ask for your explicit consent to store it and send it where you tell me to, and I never use it for anything else. If you use a free Google Gemini key outside the EEA, Switzerland and the UK, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. Public share links are off by default, and when you create one every extra on it (search indexing, files, your name and avatar) starts off, but anyone who has the link can read the chat. If someone sends me a report about content or a copyright notice, I process it by email as described in the policy. You can delete your account and all its data from your settings at any time."
+updatedAt: 2026-10-29
+summary: "Besidka stores your account, chats, projects, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway you chose, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. The assistant can also look up your earlier chats and send short excerpts of them to the provider of the chat you are in, and memory, if you use it, can be written by an AI model on one of your own keys. If you add a TypeSafe AI key, TypeSafe AI in the United States can also answer short yes/no questions about your text for optional checks, such as memory entries, whether a web search is needed, files and search results screened for hidden instructions, and chats you are about to share, and each check has its own off switch. Each provider is a separate company with its own privacy terms, and some of them are outside the EU, in the United States, China or Singapore. Because you can type anything, your chats may contain sensitive information such as health details or beliefs; I ask for your explicit consent to store it and send it where you tell me to, and I never use it for anything else. If you use a free Google Gemini key outside the EEA, Switzerland and the UK, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. You can also connect an AI app of your choice to your account so that it can read, and only if you allow it, change, the parts of your account you approve; that app and its maker are separate companies with their own privacy terms, and you can disconnect it at any time. Public share links are off by default, and when you create one every extra on it (search indexing, files, your name and avatar) starts off, but anyone who has the link can read the chat. If someone sends me a report about content or a copyright notice, I process it by email as described in the policy. You can delete your account and all its data from your settings at any time."
 ---
 
 ## What this policy covers
@@ -27,7 +27,7 @@ Besidka does not process personal data on the scale that requires a data protect
 
 ## How Besidka works, in one paragraph
 
-Besidka is a free AI chat app. You bring your own API key from an AI provider (Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen), and you pay that provider directly for the usage. Instead of a provider key, you can route a chat through your own account with an AI gateway (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), and you pay that gateway directly. You can also add your own Brave Search or Exa API key to use as a web search tool, and you pay that search provider directly. If you want the optional [TypeSafe AI checks](#typesafe-ai-checks), you add your own TypeSafe AI key and TypeSafe AI bills you directly for them. **There is no payment relationship between you and me at all** — no subscription, no ads, no donations, no payment processor, and therefore no billing or card data anywhere in this policy. What I store is what is needed to run the chat app for you.
+Besidka is a free AI chat app. You bring your own API key from an AI provider (Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen), and you pay that provider directly for the usage. Instead of a provider key, you can route a chat through your own account with an AI gateway (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), and you pay that gateway directly. You can also add your own Brave Search or Exa API key to use as a web search tool, and you pay that search provider directly. If you want the optional [TypeSafe AI checks](#typesafe-ai-checks), you add your own TypeSafe AI key and TypeSafe AI bills you directly for them. If you want an AI app of your choice to reach your chats, projects or memory, you can [connect it](#connected-ai-apps) and approve exactly what it may do. **There is no payment relationship between you and me at all** — no subscription, no ads, no donations, no payment processor, and therefore no billing or card data anywhere in this policy. What I store is what is needed to run the chat app for you.
 
 ## What I store
 
@@ -66,6 +66,10 @@ If your account is created after this feature started (accounts that already exi
 
 The campaign tags travel in the web address and in the page's memory only. I do not set a cookie or write to your browser storage for this. See the [Cookie Policy](/cookie-policy).
 
+### Connected AI apps
+
+- The records that let an AI app you connected reach your account: your approval of that app and the permissions you gave it, the access and refresh tokens issued to it, and the details the app gave when it registered itself. What each one holds is under [Connected AI apps](#connected-ai-apps).
+
 ### Sharing and notifications
 
 - Share records, if you publish a chat with a share link, including the switches you chose for it (see [Public chat sharing](#public-chat-sharing))
@@ -88,6 +92,8 @@ I record structured logs of requests and errors so I can keep the service workin
 | Store the sensitive information you choose to include in your chats, projects and files, and send it to the AI provider, AI gateway or search provider you chose | Your explicit consent — GDPR Art. 9(2)(a), in addition to the contract basis above |
 | Keep the memory entries you write or ask the assistant to save, and add your memory to your messages | Contract — Art. 6(1)(b) |
 | Let the assistant search your earlier chats and send short excerpts to the provider of the chat you are in | Contract — Art. 6(1)(b) |
+| Let an AI app you chose sign in to your Besidka account through the approval screen, and keep the records that needs (see [Connected AI apps](#connected-ai-apps)) | Contract — Art. 6(1)(b), at your request each time you connect an app |
+| Give a connected AI app the chats, projects and memory you approved when it asks with its token, and, if you allowed it, apply the changes it makes to project instructions, project notes and memory | Contract — Art. 6(1)(b), on your instruction. For sensitive information in what it receives, also your explicit consent — Art. 9(2)(a), which the approval screen asks for separately for that app and those permissions |
 | Store project knowledge and add it to messages in that project | Contract — Art. 6(1)(b) |
 | Generate memory from your chats in the background ("Generate memory from chats") | Your consent — Art. 6(1)(a). Turning it off withdraws it |
 | Update memory when you ask: Refresh, Update now, Build memory from past chats, Import, or telling Besidka what to remember | Contract — Art. 6(1)(b), at your request each time |
@@ -105,7 +111,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Count page views and interface events as aggregate counters | Legitimate interests — Art. 6(1)(f) |
 | Handle reports of illegal content, copyright notices and disputes of removals, and keep a record of them (see [Reports and notices about content](#reports-and-notices-about-content)) | Legal obligation — Art. 6(1)(c) where EU or Polish law requires me to act, for example an order from a court or authority; otherwise legitimate interests — Art. 6(1)(f): dealing with abuse, protecting rights holders and the people whose content is reported |
 | Error and operational logging | Legitimate interests — Art. 6(1)(f) |
-| Security, abuse prevention and rate limiting | Legitimate interests — Art. 6(1)(f) |
+| Security, abuse prevention and rate limiting, including for connected AI apps | Legitimate interests — Art. 6(1)(f) |
 
 Where I rely on legitimate interests, my interest is keeping a free service running, debuggable and not abused. I only log what I need for that, and I never log the content of your messages. For campaign measurement my interest is knowing whether my own campaigns lead anyone to use the app, and I keep that to a few short tags and a handful of milestones. For the memory check, my interest is keeping card numbers, keys, sensitive topics and similar items out of memory; the check stores nothing but counts. You can object to this processing — see [Your rights](#your-rights).
 
@@ -266,6 +272,56 @@ The text can contain whatever your chats, projects and memory contain, including
 
 TypeSafe AI, in the United States, is an independent controller towards me, like the AI providers whose keys you add: I have no contract with it about your data, and your own terms with it apply, and the recipient details are in [Who else receives your data](#who-else-receives-your-data) and [Transfers outside the EU](#transfers-outside-the-eu). The calls are billed to your own TypeSafe AI account. My logs keep only counts, scores, statuses and timing for these checks, never the text.
 
+## Connected AI apps
+
+Besidka has a read-and-write interface for AI apps, a server at `https://besidka.com/mcp` that speaks the Model Context Protocol. An AI app you choose, such as a chat assistant or a coding tool from another company, can connect to it so that it can work with your Besidka data. To make sure only you decide who connects, Besidka also runs the sign-in step for that interface (OAuth 2.1). Nothing is connected unless you start it from the app and then approve it on a Besidka screen while you are signed in.
+
+### What a connected app can reach
+
+On the approval screen you choose what the app may do. These are the permissions:
+
+- **Read your chats**: list and search your chats and read their messages.
+- **Read your projects**: your projects, their instructions and their knowledge items.
+- **Read your memory**: your memory entries.
+- **Change your projects** (off until you tick it): edit a project's instructions and add notes or text to its project knowledge.
+- **Change your memory** (off until you tick it): add, edit and delete memory entries. Everything it writes goes through the same never-stored and sensitive-topic checks as any other memory (see [What memory never keeps](#what-memory-never-keeps)).
+
+A connected app cannot send messages in your chats or use your API keys in this version, and your API keys are never among the data it can read. What it can read is whatever your chats, projects and memory contain: sensitive information, other people's personal data, and things you wrote or the model produced.
+
+### What I process and keep for this
+
+- **The app's registration.** An app registers itself with Besidka before you see it, without an account. That record holds what the app sent: its name, its redirect web addresses and the other details the app chose to send about itself. It is the app's data, not yours, and it is kept until I remove it.
+- **Your approval.** Your user id, the app, the permissions you gave and when you gave them.
+- **Tokens.** An access token lets the app call the interface for **15 minutes**. A refresh token lets it ask for a new access token without asking you again, and is replaced each time the app uses it. Each token record holds your user id, the app, the permissions and its expiry.
+- **Signing keys.** The keys that sign access tokens. They hold no personal data and are stored encrypted by the sign-in library with the server secret.
+- **Logs.** My request logs show that a connected app called the interface, which app, which action and how long it took, with your pseudonymous user id. They never hold the content that was read or written.
+
+### Why I may, and what your approval means
+
+I do this because you ask me to. Connecting an app is part of the service you use, and the approval screen is your instruction to me to hand that app, and only that app, the data you ticked (GDPR Art. 6(1)(b)). It is a separate instruction for each app. It is not me deciding to share your data, and I do not share it with an app you did not approve.
+
+Your chats, projects and memory may contain sensitive information, so the approval screen also asks for your **explicit consent** (GDPR Art. 9(2)(a)) to send it to that app, for the permissions you ticked. That is separate from the consent described under [Sensitive information in your chats](#sensitive-information-in-your-chats), which covers the providers, gateways and search providers whose keys you add and does not cover apps you connect. I record it with your approval. If your consent under [Sensitive information in your chats](#sensitive-information-in-your-chats) is missing or withdrawn, a connected app cannot read or change anything until you consent again, in the same way that you cannot send messages without it.
+
+### The app and its maker receive the data under their own terms
+
+Whatever an app receives from Besidka is handled by that app and the company behind it. They are **independent controllers**, not my processors. I do not choose them, I have no contract with them about your data, and I cannot see or control what they do with it. Whether the app keeps it, uses it to train a model, shows it to staff or sends it elsewhere is set by their privacy terms and your account with them, not by this policy. Read them before you connect. Some apps run on their maker's servers; some run on your own computer and send what they read on to a model provider you configured there.
+
+The app may be run outside the EU or EEA. I do not know where, because I do not choose or contract with it, and I cannot offer a safeguard of my own for it. I treat what I send as sent on your instruction, and I tell you this on the approval screen. If you approve after that warning, it is also your explicit consent to a transfer to a country without an adequacy decision, in case the law treats it as a transfer by me (GDPR Art. 49(1)(a)). If that is not acceptable to you, do not connect the app. I would rather say plainly that this question is not settled than claim that no transfer rule applies to it.
+
+### Disconnecting an app
+
+Go to **Profile → Connected apps** and disconnect the app. That ends its approval and its refresh token, so it cannot get new access tokens. An access token it already holds can keep working for up to **15 minutes** after you disconnect, because it is checked without asking my database each time. You can also remove the connection inside the app, but only disconnecting on Besidka ends it on my side.
+
+Disconnecting does not erase what the app already read or saved. I cannot delete that, because it is in the app's hands. Use the app maker's own controls and privacy requests.
+
+### Changes made through an app
+
+If you allowed an app to change things, its changes are saved as if you made them: project instructions, project notes and memory entries. You can see, edit and delete them in Besidka as usual. An app can be led astray by text it reads, for example a web page or a document that contains instructions meant for the AI. Allow changes only for apps you trust, and check what they write.
+
+### Limits
+
+I limit how many requests an app can make, and I may disable an app, or refuse to register one, if it abuses the interface, tries to reach more than you approved or looks like it is impersonating another app. That does not affect your data in Besidka.
+
 ## Who else receives your data
 
 | Recipient | What they receive | Where | Safeguard |
@@ -279,6 +335,7 @@ TypeSafe AI, in the United States, is an independent controller towards me, like
 | Brave Search | Only if you turn Brave search on for a message: the search query your model writes from your prompt, sent with your own Brave API key | US | Independent controller. Your own terms with them apply. [Brave Search API privacy notice](https://api-dashboard.search.brave.com/documentation/resources/privacy-notice) |
 | Exa | Only if you turn Exa search on for a message: the search query your model writes from your prompt, sent with your own Exa API key | US | Independent controller. Your own terms with them apply. [Exa Privacy Policy](https://exa.ai/privacy-policy) |
 | TypeSafe AI, Inc. | Only if you save a TypeSafe AI key, and only for the checks you leave on: memory entries about to be saved and a short excerpt of their source; chat text before memory is generated from it; your message and the last few turns for Auto web search and past-chat retrieval; project files, notes and Brave or Exa results for prompt-injection screening; a search query and short result excerpts for re-ranking; and the chat text you are about to share. It answers short yes/no questions and adds no chat models. See [TypeSafe AI checks](#typesafe-ai-checks) | US | Independent controller. Your own terms with them apply. TypeSafe AI's data processing agreement is its contract with its own account holders, you for the key you add, not with me; under it TypeSafe AI acts as a processor for the account holder, and it relies on the Standard Contractual Clauses (Module 2, controller to processor) and the UK Addendum for the transfer to the US. TypeSafe AI is not certified under the EU–US Data Privacy Framework. Its agreement keeps data "as long as necessary", with no fixed period, and its privacy policy says it does not train models on your input. [TypeSafe AI Privacy Policy](https://typesafe.ai/legal/privacy-policy), [data processing agreement](https://typesafe.ai/legal/data-processing) |
+| An AI app you connect, and the company behind it | Only if you connect it, and only what you approved: your chats, projects, project knowledge and memory, as permitted by the permissions you ticked, when the app asks with its token. If you allowed changes, the app also sends me project instructions, notes and memory entries | Wherever the app and its maker run, which I do not choose and cannot know | Independent controller. Your own terms with them apply. I have no contract with them about your data. See [Connected AI apps](#connected-ai-apps) |
 | Google FCM, Apple APNs, Mozilla autopush | The push endpoint your browser issued, plus the encrypted notification | Depends on your browser vendor | Necessary to deliver a push notification you asked for. |
 | Google or GitHub | Only if you use them to sign in. I request the scopes `email profile openid` from Google and `read:user user:email` from GitHub. | US | Independent controllers for your account with them. |
 | Search engines | A shared chat, and only if you turned on the separate indexing option for that share | Worldwide | Your consent. |
@@ -323,6 +380,8 @@ If you turn on Brave Search or Exa for a message, the search query goes to that 
 
 If you save a TypeSafe AI key, the [TypeSafe AI checks](#typesafe-ai-checks) you leave on go to **TypeSafe AI, Inc.** in the United States. It is not certified under the EU–US Data Privacy Framework. As with the AI providers above, I have no contract of my own with it: its data processing agreement, made with you as its account holder, makes it your processor and relies on the Standard Contractual Clauses (Commission Implementing Decision (EU) 2021/914, Module 2, controller to processor) and the UK Addendum. Delete the key, or switch a check off, to stop it.
 
+If you connect an AI app, **you** choose the recipient and tell me, on the approval screen, to hand it the data you approved. The app asks for the data itself, so I do not pick where it goes, and I do not know in which country the app or its maker processes it. I have no contract with them and no safeguard of my own to offer. How I treat that, and what the approval screen tells you, is under [Connected AI apps](#connected-ai-apps).
+
 ## Operational logging
 
 My logs are deliberately narrow. Specifically:
@@ -333,6 +392,7 @@ My logs are deliberately narrow. Specifically:
 - Search queries sent to Brave Search or Exa are not logged either, only how many results came back.
 - Push endpoints and push keys are never logged.
 - For memory and chat search, logs hold counts (what was saved, refused or skipped, how many chats matched a search), the category of a refused item, which model and provider were used, and technical error labels. They never hold the text of your memory, your chats, your search terms or anything you import.
+- For connected AI apps, the log line records which app called the interface, which action it used and its timing, with your pseudonymous user id. It never holds the content that was read or written.
 - When you give or withdraw a consent, the log line for that request records the action, the version of the text and, for a transfer consent, the provider's name, together with your pseudonymous user id.
 - When you create an account, save your first key or send your first message, the log line for that event can carry the campaign tags from your first-touch record and, for a key or message, the provider's name. Those log lines already carry a pseudonymous user id, so the campaign tags are linked to that id for as long as the logs are kept.
 
@@ -358,6 +418,10 @@ My logs are deliberately narrow. Specifically:
 | Project knowledge | Until you remove it or delete the project. The original files then stay in your file library under its normal rules |
 | Your consent to store sensitive information, your acceptance of the Terms of Use and age confirmation, and your consent to transfers to DeepSeek, Moonshot AI, Qwen, the other gateway vendors or router and preset models | While your account exists. Withdrawing keeps the record of when you gave and withdrew it. Deleted with your account |
 | Reports of illegal content, copyright notices, disputes of removals and my decisions about them | Until the matter is closed, and then 12 months so I can answer a challenge, a complaint or an authority. A note that content was removed from an account on a copyright notice is kept 24 months, for the repeat-infringement rule. The emails are deleted on the same schedule. See [Reports and notices about content](#reports-and-notices-about-content) |
+| Access tokens of connected AI apps | 15 minutes. They stop working then, or when you disconnect the app, whichever is first |
+| Refresh tokens of connected AI apps | Until you disconnect the app or they expire, and each is replaced every time the app uses it. Deleted with your account |
+| Your approval of a connected AI app (the app, the permissions and when you gave them) | Until you disconnect the app. Deleted with your account |
+| The registration of a connected AI app (its name and the details it sent) | Until I remove it. It holds the app's data, not yours |
 | Cookie consent records | Stored in a separate database, pseudonymously — see [Cookie consent records](#cookie-consent-records) |
 
 ### Backups
@@ -450,6 +514,7 @@ The full list, with names and durations, is in the [Cookie Policy](/cookie-polic
 - Session cookies are `HttpOnly`.
 - Your AI provider, AI gateway, search provider and TypeSafe AI API keys are encrypted as described above.
 - Access to production data is limited to the controller.
+- Connected AI apps get short-lived access tokens (15 minutes), refresh tokens that are replaced each time they are used, and only the permissions you ticked. Writing is off until you tick it.
 
 No service is perfectly secure. If you find a security problem, please write to **:privacy-email-link{}** and give me a chance to fix it before disclosing it.
 
@@ -506,7 +571,7 @@ Under the GDPR you have the right to:
 
 ### How to use them
 
-Most things you can do yourself in the app: edit your profile, delete a chat, delete a file, revoke a share, turn notifications off, change your cookie choices, see, edit, export or reset your memory, withdraw your consent to store sensitive information or to a transfer to DeepSeek, Moonshot AI, Qwen, another vendor or a router or preset model (in **Profile → Security → Privacy & consent**), or delete your whole account.
+Most things you can do yourself in the app: edit your profile, delete a chat, delete a file, revoke a share, turn notifications off, change your cookie choices, see, edit, export or reset your memory, withdraw your consent to store sensitive information or to a transfer to DeepSeek, Moonshot AI, Qwen, another vendor or a router or preset model (in **Profile → Security → Privacy & consent**), disconnect a connected AI app (in **Profile → Connected apps**), or delete your whole account.
 
 For anything else, email **:privacy-email-link{}**. I answer within **one month**. If a request is complex I may extend that by up to **two further months**, and if I do, I will tell you within the first month and explain why.
 
@@ -520,17 +585,19 @@ For everything else, including your account data, chats, projects, project knowl
 
 ### Deleting your account
 
-You can delete your account from your settings. I email you a confirmation link, and opening it removes your account and all data associated with it, including your chats, projects, settings, memory entries and memory settings, past-chat run records, project knowledge, your consent records, stored provider, gateway, search and TypeSafe AI API keys, share records, push subscriptions, your campaign attribution and milestone records and your stored files.
+You can delete your account from your settings. I email you a confirmation link, and opening it removes your account and all data associated with it, including your chats, projects, settings, memory entries and memory settings, past-chat run records, project knowledge, your consent records, stored provider, gateway, search and TypeSafe AI API keys, share records, push subscriptions, your campaign attribution and milestone records, your approvals and tokens for connected AI apps, and your stored files.
 
 Open that link in the same browser you are signed in to. The link is tied to your signed-in session, so opening it on a different device will not work.
 
-Five honest limits:
+Six honest limits:
 
 1. **Backups.** As described under [Backups](#backups), Cloudflare D1 keeps point-in-time backups for up to 30 days. Deleted data can persist there for that window before rolling off. Those backups exist only for disaster recovery.
 2. **Your AI provider.** I **cannot** erase anything from Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI or Qwen. That processing happened under **your** provider account, with your key, and they are independent controllers. To delete data there, use their own controls and privacy requests — Anthropic automatically deletes API data within 30 days, OpenAI at [privacy.openai.com](https://privacy.openai.com/) and Google through your Google account's privacy settings. For xAI, DeepSeek, Moonshot AI and Qwen, use their own controls and privacy requests.
 3. **Your AI gateway.** If you routed a chat through Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter, I **cannot** erase anything the gateway kept, such as its own logs of your requests, or anything the model vendor behind it received. That happened under **your** gateway account, and they are independent controllers. Use the gateway's own controls and privacy requests.
 4. **Your search provider.** I **cannot** erase a search query from Brave's or Exa's own records. The query was sent under **your** Brave or Exa account, with your key, and they are independent controllers. Brave states that it keeps a record of API queries for up to 90 days; for anything else, use their own controls and privacy requests.
 5. **TypeSafe AI.** If you used the [TypeSafe AI checks](#typesafe-ai-checks), I **cannot** erase the text those checks sent from TypeSafe AI's records. It was sent under **your** TypeSafe AI account, with your key. TypeSafe AI keeps it "as long as necessary" under its data processing agreement, with no fixed period, so use its own controls and privacy requests.
+
+6. **Connected AI apps.** I **cannot** erase anything an AI app you connected already read or saved, or anything its maker holds. That happened under **your** account with them, and they are independent controllers. Use their own controls and privacy requests.
 
 ### Complaining
 

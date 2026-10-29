@@ -4,7 +4,7 @@ import type {
   BetterAuthClientOptions,
   InferSessionFromClient,
 } from 'better-auth/client'
-import type { RouteLocationRaw } from 'vue-router'
+import type { LocationQuery, RouteLocationRaw } from 'vue-router'
 import type { User } from '#shared/types/auth.d'
 import { createAuthClient } from 'better-auth/vue'
 import {
@@ -12,6 +12,7 @@ import {
   twoFactorClient,
 } from 'better-auth/client/plugins'
 import { passkeyClient } from '@better-auth/passkey/client'
+import { oauthProviderClient } from '@better-auth/oauth-provider/client'
 import { defu } from 'defu'
 
 interface RuntimeAuthConfig {
@@ -25,6 +26,162 @@ interface RuntimeAuthConfig {
 // cannot resurrect a session the bypass call just found dead.
 let latestSessionFetchId = 0
 
+const SIGNED_OAUTH_SIGNATURE_PARAM = 'sig'
+const SIGNED_OAUTH_PARAMETER_NAMES_PARAM = 'ba_param'
+const SIGNED_OAUTH_EXPIRY_PARAM = 'exp'
+const SIGNED_OAUTH_INTERNAL_PARAMS = new Set([
+  SIGNED_OAUTH_SIGNATURE_PARAM,
+  SIGNED_OAUTH_PARAMETER_NAMES_PARAM,
+  SIGNED_OAUTH_EXPIRY_PARAM,
+  'ba_iat',
+  'ba_pl',
+])
+const OAUTH_AUTHORIZE_PATH = '/api/auth/oauth2/authorize'
+
+export type SignedOAuthQuery = Record<string, string | string[]>
+
+function queryValues(value: LocationQuery[string] | undefined): string[] {
+  if (value === undefined || value === null) {
+    return []
+  }
+
+  const values = Array.isArray(value) ? value : [value]
+
+  return values.filter((item): item is string => {
+    return typeof item === 'string'
+  })
+}
+
+function toQueryValue(values: string[]): string | string[] {
+  return values.length === 1 ? values[0]! : values
+}
+
+/**
+ * Picks the authorization-server signed OAuth query (`sig`, `ba_param` and
+ * every parameter `ba_param` names) out of a route query, mirroring
+ * `buildSignedOAuthQuery` in `@better-auth/oauth-provider`. Returns `null`
+ * when the route does not carry a signed OAuth request.
+ */
+export function pickSignedOAuthQuery(
+  query: LocationQuery,
+): SignedOAuthQuery | null {
+  const signatures = queryValues(query[SIGNED_OAUTH_SIGNATURE_PARAM])
+  const signedNames = queryValues(query[SIGNED_OAUTH_PARAMETER_NAMES_PARAM])
+
+  if (signatures.length !== 1 || !signedNames.length) {
+    return null
+  }
+
+  const picked: SignedOAuthQuery = {
+    [SIGNED_OAUTH_SIGNATURE_PARAM]: signatures[0]!,
+    [SIGNED_OAUTH_PARAMETER_NAMES_PARAM]: toQueryValue(signedNames),
+  }
+
+  for (const name of new Set(signedNames)) {
+    const values = queryValues(query[name])
+
+    if (values.length) {
+      picked[name] = toQueryValue(values)
+    }
+  }
+
+  return picked
+}
+
+export function signedOAuthQueryToString(query: SignedOAuthQuery): string {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(query)) {
+    for (const item of Array.isArray(value) ? value : [value]) {
+      params.append(key, item)
+    }
+  }
+
+  return params.toString()
+}
+
+export function appendSignedOAuthQueryToPath(
+  path: string,
+  query: SignedOAuthQuery | null,
+): string {
+  if (!query) {
+    return path
+  }
+
+  const parsedUrl = new URL(path, 'http://localhost')
+
+  for (const [key, value] of Object.entries(query)) {
+    parsedUrl.searchParams.delete(key)
+
+    for (const item of Array.isArray(value) ? value : [value]) {
+      parsedUrl.searchParams.append(key, item)
+    }
+  }
+
+  return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
+}
+
+export function isSignedOAuthQueryExpired(
+  query: SignedOAuthQuery,
+  now: Date = new Date(),
+): boolean {
+  const expiresAtSeconds = Number(
+    queryValues(query[SIGNED_OAUTH_EXPIRY_PARAM])[0],
+  )
+
+  if (!Number.isFinite(expiresAtSeconds)) {
+    return true
+  }
+
+  return expiresAtSeconds * 1000 < now.getTime()
+}
+
+export function signedOAuthQueryRequiresSignIn(
+  query: SignedOAuthQuery,
+): boolean {
+  const prompts = queryValues(query.prompt).join(' ').split(' ')
+
+  return prompts.includes('login') || query.max_age !== undefined
+}
+
+/**
+ * Builds the `/oauth2/authorize` URL that restarts an authorization request
+ * from its signed query, without the signature fields the authorize
+ * endpoint does not accept. Used when a signed-in user lands on the sign-in
+ * page with a request that does not ask for a fresh sign-in.
+ */
+export function buildOAuthAuthorizeResumePath(
+  query: SignedOAuthQuery,
+): string {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(query)) {
+    if (SIGNED_OAUTH_INTERNAL_PARAMS.has(key)) {
+      continue
+    }
+
+    for (const item of Array.isArray(value) ? value : [value]) {
+      params.append(key, item)
+    }
+  }
+
+  return `${OAUTH_AUTHORIZE_PATH}?${params.toString()}`
+}
+
+export function readOAuthRedirectUrl(data: unknown): string | null {
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+
+  const { redirect, url } = data as { redirect?: unknown, url?: unknown }
+
+  if (redirect !== true || typeof url !== 'string' || !url) {
+    return null
+  }
+
+  return url
+}
+
 export function useAuth() {
   const headers = import.meta.server ? useRequestHeaders() : undefined
 
@@ -37,6 +194,7 @@ export function useAuth() {
       lastLoginMethodClient(),
       twoFactorClient(),
       passkeyClient(),
+      oauthProviderClient(),
     ],
   })
 

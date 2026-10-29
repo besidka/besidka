@@ -133,6 +133,12 @@ const tabs = [
     icon: 'lucide:sliders-horizontal',
     childRoutes: [],
   },
+  {
+    to: '/profile/connected-apps',
+    label: 'Connected apps',
+    icon: 'lucide:plug',
+    childRoutes: [],
+  },
 ]
 
 function isTabActive(tab: typeof tabs[number]) {

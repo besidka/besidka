@@ -1,5 +1,5 @@
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { eq, sql } from 'drizzle-orm'
+import { eq, inArray, or, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
@@ -264,4 +264,71 @@ export async function purgeUserData(
   })
 
   return result
+}
+
+export interface PurgeUserOAuthDataInput {
+  userId: number
+  logger?: LoggerLike
+}
+
+/**
+ * Deletes every OAuth authorization-server row tied to a user, in one D1
+ * batch, ahead of the `users` row delete. None of these tables cascade from
+ * `users`, so a surviving row would block the delete on its foreign key.
+ * Rows of clients the user owns are removed for every user of that client,
+ * because tokens and consents reference `oauth_clients.client_id` without a
+ * cascade. Order follows the foreign keys: access tokens reference refresh
+ * tokens, and all three grant tables reference the client.
+ */
+export async function purgeUserOAuthData(
+  input: PurgeUserOAuthDataInput,
+): Promise<void> {
+  const { userId } = input
+  const logger = resolveServerLogger(input.logger)
+  const db = useDb()
+  const ownedClientIds = db
+    .select({ clientId: schema.oauthClients.clientId })
+    .from(schema.oauthClients)
+    .where(eq(schema.oauthClients.userId, userId))
+
+  try {
+    await db.batch([
+      db.delete(schema.oauthAccessTokens).where(or(
+        eq(schema.oauthAccessTokens.userId, userId),
+        inArray(schema.oauthAccessTokens.clientId, ownedClientIds),
+      )),
+      db.delete(schema.oauthRefreshTokens).where(or(
+        eq(schema.oauthRefreshTokens.userId, userId),
+        inArray(schema.oauthRefreshTokens.clientId, ownedClientIds),
+      )),
+      db.delete(schema.oauthConsents).where(or(
+        eq(schema.oauthConsents.userId, userId),
+        inArray(schema.oauthConsents.clientId, ownedClientIds),
+      )),
+      db.delete(schema.oauthClients)
+        .where(eq(schema.oauthClients.userId, userId)),
+    ])
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'oauth-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
+  logger.set({
+    attributes: {
+      accountPurge: {
+        oauthGrantsDeleted: true,
+      },
+    },
+  })
 }

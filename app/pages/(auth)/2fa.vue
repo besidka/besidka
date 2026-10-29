@@ -81,6 +81,9 @@ const route = useRoute()
 const safeNext = computed<string | null>(() => {
   return resolveSafeNextPath(route.query.next)
 })
+const signedOAuthQuery = computed<SignedOAuthQuery | null>(() => {
+  return pickSignedOAuthQuery(route.query)
+})
 
 const otpField = ref<InstanceType<typeof UiFormOtp> | null>(null)
 
@@ -147,7 +150,10 @@ async function handleVerifyError(error: { code?: string, message?: string }) {
       'Sign-in attempt timed out',
       'Please sign in again to start a new verification.',
     )
-    await navigateTo(appendNextToPath('/signin', safeNext.value))
+    await navigateTo(appendSignedOAuthQueryToPath(
+      appendNextToPath('/signin', safeNext.value),
+      signedOAuthQuery.value,
+    ))
 
     return
   }
@@ -167,7 +173,7 @@ async function verify() {
     ? client.twoFactor.verifyBackupCode
     : client.twoFactor.verifyTotp
 
-  const { error } = await verifyMethod({
+  const { data, error } = await verifyMethod({
     code: code.value,
     trustDevice: trustDevice.value,
   })
@@ -176,6 +182,10 @@ async function verify() {
     await handleVerifyError(error)
     pending.value = false
 
+    return
+  }
+
+  if (readOAuthRedirectUrl(data)) {
     return
   }
 
