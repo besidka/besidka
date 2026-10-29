@@ -157,6 +157,7 @@ const modules = [
   '@nuxtjs/device',
   '@nuxtjs/mdc',
   guardMdcSlotTransformForVapor,
+  '@nuxtjs/mcp-toolkit',
   '@nuxtjs/robots',
   '@nuxtjs/sitemap',
   'nuxt-svgo',
@@ -356,6 +357,7 @@ export default defineNuxtConfig({
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/',
+      '/mcp',
     ],
   },
   sitemap: {
@@ -390,6 +392,13 @@ export default defineNuxtConfig({
       enabled: true,
       endpoint: '/api/_evlog/ingest',
     },
+  },
+  mcp: {
+    name: 'Besidka',
+    description: 'Read-only facts about Besidka: the model catalog with prices and capabilities, supported providers and gateways, and step-by-step API key guides.',
+    route: '/mcp',
+    browserRedirect: '/',
+    logging: false,
   },
   nuxtEmailRenderer: {
     emailsDir: 'app/emails',
