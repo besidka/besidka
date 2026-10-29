@@ -69,7 +69,7 @@ useHead({
   },
 })
 
-const { baseUrl } = useRuntimeConfig().public
+const { baseUrl, webmcpOriginTrialToken } = useRuntimeConfig().public
 const route = useRoute()
 const hasSidebar = useHasSidebar()
 const { isConsentModalOpen, transferRequest } = useLegalConsent()
@@ -97,6 +97,12 @@ useHead({
     { rel: 'canonical', href: () => canonicalUrl.value },
     defineLink({ rel: 'ai-catalog', href: '/.well-known/ai-catalog.json' }),
   ],
+})
+
+useHead({
+  meta: webmcpOriginTrialToken
+    ? [{ 'http-equiv': 'origin-trial', 'content': webmcpOriginTrialToken }]
+    : [],
 })
 
 function reportException(exception: unknown, message: string): void {

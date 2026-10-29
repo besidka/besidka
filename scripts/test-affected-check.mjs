@@ -1577,6 +1577,13 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/plugins/01.build-freshness.client.spec.ts'],
     },
     {
+      pattern: /^(app\/(plugins\/webmcp\.client|utils\/webmcp|types\/webmcp\.d)\.ts|config\/agent-discovery-routes\.ts)$/,
+      tests: [
+        'tests/unit/plugins/webmcp.client.spec.ts',
+        'tests/unit/utils/webmcp.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/middleware\/evlog-auth\.ts$/,
       tests: ['tests/integration/api/stats.spec.ts'],
     },

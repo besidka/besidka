@@ -335,6 +335,7 @@ export default defineNuxtConfig({
       vapidPublicKey: '',
       turnstileSiteKey: '',
       cloudflareWebAnalyticsToken: '',
+      webmcpOriginTrialToken: '',
       e2eTestHooksEnabled: false,
       googleSearchCostPerThousandQueriesUsd: '',
       googleSearchCostPerThousandGroundedPromptsUsd: '',
