@@ -17,6 +17,40 @@ chats, would need a real authorization server and the OAuth work described in
 server. The planned documentation app will have its own MCP server at
 `/docs/mcp`; this one does not serve documentation content.
 
+## Connecting a client
+
+- Endpoint: `https://besidka.com/mcp`. Streamable HTTP, no auth, read-only.
+- **Claude Code**: the repo's `.mcp.json` already lists it as `besidka`
+  (project scope; Claude Code asks once to approve project servers). In other
+  projects run:
+
+  ```bash
+  claude mcp add --transport http besidka https://besidka.com/mcp
+  ```
+
+  Add `--scope user` to make it available in all projects.
+- **Claude Desktop, claude.ai and the mobile apps**: Settings, Connectors,
+  Add custom connector. Name it `Besidka`, use the URL
+  `https://besidka.com/mcp` and leave the OAuth client id empty. A connector
+  added on claude.ai syncs to Desktop and mobile. These requests come from
+  Anthropic's servers, not from the user's machine.
+- **Cursor, VS Code and other clients**: any client that supports remote
+  Streamable HTTP servers takes the same URL. A stdio-only client needs a
+  bridge such as `mcp-remote`.
+
+A quick manual check:
+
+```bash
+curl -s -X POST https://besidka.com/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Two request rules affect clients. A cross-site browser `Origin` gets 403;
+server-side and CLI clients send none. A `POST` without `Content-Length`, or
+above 32 KiB, gets 413 (see [Request limits](#request-limits)).
+
 ## Tools
 
 Definitions live in `server/mcp/tools/*.ts` and stay thin. The logic is pure
@@ -53,9 +87,10 @@ never from the caller. `cached-content.spec.ts` asserts the keys stay constant.
 
 Nuxt Content stores a page body as a minimark tree, not markdown. Adding a
 `rawbody` column to a collection would change the `CONTENT_DB` schema (see
-`content.config.ts`), so `server/utils/mcp/minimark.ts` renders the tree back
-to markdown instead. `:privacy-email-link{}` is resolved from
-`runtimeConfig.public.privacyEmail`, the same source as the page component.
+`content.config.ts`), so `server/utils/content/minimark.ts` renders the tree
+back to markdown instead. The landing markdown twin shares it.
+`:privacy-email-link{}` is resolved from `runtimeConfig.public.privacyEmail`,
+the same source as the page component.
 
 ## Transport
 
@@ -137,7 +172,6 @@ throw evlog's `createError`, not h3's, so the toolkit shows the message
 without a `[404]` prefix.
 
 ## Operational notes
-
 
 - `server/middleware/evlog-auth.ts` excludes `/mcp` and `/.well-known/**`, so
   an MCP request does no session lookup.
