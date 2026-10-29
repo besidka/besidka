@@ -248,7 +248,7 @@ unaffected, so the preview looks fine while production fails. Replace the
 clause with:
 
 ```
-(http.request.uri.path contains ".well-known" and not (http.request.uri.path in {"/.well-known/api-catalog" "/.well-known/ai-catalog.json" "/.well-known/poppy.json" "/.well-known/mcp/server-card.json"} or starts_with(http.request.uri.path, "/.well-known/agent-skills/") or starts_with(http.request.uri.path, "/.well-known/skills/")))
+(http.request.uri.path contains ".well-known" and not (http.request.uri.path in {"/.well-known/api-catalog" "/.well-known/ai-catalog.json" "/.well-known/poppy.json"} or starts_with(http.request.uri.path, "/.well-known/mcp/") or starts_with(http.request.uri.path, "/.well-known/agent-skills/") or starts_with(http.request.uri.path, "/.well-known/skills/")))
 ```
 
 Test after saving:
