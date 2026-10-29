@@ -1,3 +1,4 @@
+import { log } from 'evlog'
 import { eq, inArray, or } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
@@ -8,10 +9,13 @@ export type OAuthGrantRevocationTrigger
   = | 'reset-password'
     | 'change-password'
     | 'revoke-sessions'
+    | 'revoke-other-sessions'
 
 interface BuildOAuthGrantDeletesOptions {
   includeOwnedClients?: boolean
 }
+
+const REVOKE_BATCH_ATTEMPTS = 2
 
 export interface RevokeUserOAuthGrantsInput {
   userId: number
@@ -68,8 +72,9 @@ export function buildOAuthGrantDeletes(
  * batch. Account recovery must call this: a refresh token outlives the
  * browser sessions that account recovery revokes, so without it a stolen
  * grant keeps minting access tokens for 30 days after the password changed.
- * Failures are logged and reported as `false` instead of thrown, because the
- * credential change that triggered the revocation has already happened.
+ * The batch is retried once; a second failure is logged as an alert and
+ * reported as `false` instead of thrown, because the credential change that
+ * triggered the revocation has already happened.
  */
 export async function revokeUserOAuthGrants(
   input: RevokeUserOAuthGrantsInput,
@@ -79,22 +84,37 @@ export async function revokeUserOAuthGrants(
   const db = useDb()
   const deletes = buildOAuthGrantDeletes(db, userId)
 
-  try {
-    await db.batch([
-      deletes.accessTokens,
-      deletes.refreshTokens,
-      deletes.consents,
-    ])
-  } catch (exception) {
-    logger.set({
+  let failure: unknown = null
+
+  for (let attempt = 0; attempt < REVOKE_BATCH_ATTEMPTS; attempt++) {
+    try {
+      await db.batch([
+        deletes.accessTokens,
+        deletes.refreshTokens,
+        deletes.consents,
+      ])
+      failure = null
+
+      break
+    } catch (exception) {
+      failure = exception
+    }
+  }
+
+  if (failure) {
+    const legalConsent = {
+      action: 'oauth_revoke_all_failed',
+      trigger,
+      attempts: REVOKE_BATCH_ATTEMPTS,
+      error: exceptionMessage(failure),
+    }
+
+    logger.set({ userId, attributes: { legalConsent } })
+    log.error({
+      action: 'oauth_revoke_all_failed',
+      alert: true,
       userId,
-      attributes: {
-        legalConsent: {
-          action: 'oauth_revoke_all_failed',
-          trigger,
-          error: exceptionMessage(exception),
-        },
-      },
+      attributes: { legalConsent },
     })
 
     return false

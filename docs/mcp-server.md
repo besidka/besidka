@@ -403,11 +403,17 @@ many tool calls. `server/middleware/01.mcp-request-guard.ts` runs first, for
   with 200,000 Cyrillic characters (about 400 KB) and `add_project_note` fit.
   A declared length above 512 KiB gets `413` before the token is even
   verified; between 32 and 512 KiB the token is verified first.
-- The declared length is not trusted. After authentication the body is read
+- On Workers, Nitro pre-buffers the request body (`request.arrayBuffer()` in
+  the module handler) before any middleware runs, so the effective cap there
+  is the `Content-Length` check above: a missing or oversized
+  `Content-Length` is rejected with `413`, and Cloudflare's HTTP layer
+  enforces the declared length, so the Worker cannot be made to buffer more
+  than it declared. The streaming cap applies on the Node/dev path, where
+  the body is still unread at that point: after authentication it is read
   with `readBoundedRawBody` (`server/utils/mcp/bounded-body.ts`), which
   counts the bytes actually received and answers `413` as soon as they pass
   the effective cap of the caller (32 KiB or 512 KiB), so a lying
-  `Content-Length` cannot make the Worker buffer more. The bytes are then
+  `Content-Length` cannot make the process buffer more. The bytes are then
   stored under the symbol h3's `readRawBody` caches them under
   (`Symbol.for('h3RawBody')`), so the toolkit's own `readBody` and the SDK's
   request stream still see the same body. An empty body is left uncached,

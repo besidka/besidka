@@ -19,6 +19,13 @@ export const OAUTH_OWNERLESS_CLIENT_RETENTION_DAYS = 7
 export const OAUTH_SWEEP_BATCH_SIZE = 100
 export const OAUTH_SWEEP_MAX_BATCHES = 10
 
+/**
+ * Owner-less client deletes bind one parameter per id, and D1 allows about
+ * 100 bound parameters per statement, so this stays well below the shared
+ * batch size.
+ */
+export const OAUTH_SWEEP_CLIENT_BATCH_SIZE = 50
+
 const OAUTH_GRANT_SWEEP_CRON = '0 * * * *'
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 
@@ -162,7 +169,7 @@ async function sweepOwnerlessClients(
         ),
       ))
       .orderBy(asc(schema.oauthClients.id))
-      .limit(OAUTH_SWEEP_BATCH_SIZE)
+      .limit(OAUTH_SWEEP_CLIENT_BATCH_SIZE)
 
     if (!staleClients.length) {
       break
@@ -179,7 +186,7 @@ async function sweepOwnerlessClients(
 
     deleted += rows.length
 
-    if (staleClients.length < OAUTH_SWEEP_BATCH_SIZE) {
+    if (staleClients.length < OAUTH_SWEEP_CLIENT_BATCH_SIZE) {
       break
     }
   }
@@ -231,12 +238,13 @@ export async function runOAuthGrantSweepJob(
     },
   })
 
+  let db: ReturnType<typeof useDb> | null = null
+
   try {
-    const db = input.db || useDb()
+    db = input.db || useDb()
 
     counts.accessTokens = await sweepExpiredAccessTokens(db, grantCutoff)
     counts.refreshTokens = await sweepStaleRefreshTokens(db, grantCutoff)
-    counts.clients = await sweepOwnerlessClients(db, clientCutoff)
   } catch (exception) {
     status = 500
     logger.set({
@@ -246,6 +254,20 @@ export async function runOAuthGrantSweepJob(
         },
       },
     })
+  }
+
+  if (db) {
+    try {
+      counts.clients = await sweepOwnerlessClients(db, clientCutoff)
+    } catch (exception) {
+      logger.set({
+        attributes: {
+          oauthSweep: {
+            clientsError: exceptionMessage(exception),
+          },
+        },
+      })
+    }
   }
 
   logger.set({

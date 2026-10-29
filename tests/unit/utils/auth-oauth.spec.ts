@@ -238,6 +238,7 @@ describe('auth hardening for the OAuth authorization server', () => {
       '/oauth2/update-client',
       '/oauth2/delete-client',
       '/oauth2/client/rotate-secret',
+      '/oauth2/client/rotate-keys',
       '/oauth2/get-consent',
       '/oauth2/get-consents',
       '/oauth2/update-consent',
@@ -330,6 +331,39 @@ describe('auth hardening for the OAuth authorization server', () => {
       userId: 9,
       trigger: 'revoke-sessions',
     })
+  })
+
+  it('revokes every grant after revoking the other sessions', async () => {
+    const options = await importAuthOptions()
+
+    await options.hooks!.after!({
+      path: '/revoke-other-sessions',
+      body: {},
+      context: {
+        returned: { status: true },
+        session: { user: { id: '9', email: 'user@example.com' } },
+      },
+    } as any)
+
+    expect(mocks.revokeUserOAuthGrants).toHaveBeenCalledWith({
+      userId: 9,
+      trigger: 'revoke-other-sessions',
+    })
+  })
+
+  it('keeps grants when a single session is revoked', async () => {
+    const options = await importAuthOptions()
+
+    await options.hooks!.after!({
+      path: '/revoke-session',
+      body: { token: 'session-token' },
+      context: {
+        returned: { status: true },
+        session: { user: { id: '9', email: 'user@example.com' } },
+      },
+    } as any)
+
+    expect(mocks.revokeUserOAuthGrants).not.toHaveBeenCalled()
   })
 
   it('does not revoke grants when the endpoint failed', async () => {

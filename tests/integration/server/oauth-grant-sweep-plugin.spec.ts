@@ -32,6 +32,7 @@ function createSweepDb(options: {
   accessTokenBatches?: number[]
   refreshTokenBatches?: number[]
   clientBatches?: number[]
+  clientDeleteError?: Error
 } = {}) {
   const db = drizzle({} as never)
   const accessTokenBatches = [...(options.accessTokenBatches ?? [0])]
@@ -66,6 +67,13 @@ function createSweepDb(options: {
 
               return makeThenable(returning, () => {
                 executed.push(returning as unknown as BuiltQuery)
+
+                if (
+                  tableName === 'oauth_clients'
+                  && options.clientDeleteError
+                ) {
+                  throw options.clientDeleteError
+                }
 
                 return rowsOf(tableName === 'oauth_clients'
                   ? clientBatches.shift() ?? 0
@@ -297,4 +305,61 @@ describe('oauth grant sweep plugin', () => {
     })
     expect(emit).toHaveBeenCalledWith({ status: 500 })
   })
+
+  it('caps the owner-less client select at 50 ids for the D1 limit',
+    async () => {
+      const { db, executed } = createSweepDb()
+      const { createLogger } = createLoggerDouble()
+      const { runOAuthGrantSweepJob, OAUTH_SWEEP_CLIENT_BATCH_SIZE }
+        = await importSweep()
+
+      await runOAuthGrantSweepJob({
+        controller: { cron: '0 * * * *', scheduledTime: SCHEDULED_TIME },
+        createLogger,
+        db: db as never,
+      })
+
+      const clientSelect = executed.map((query) => {
+        return query.toSQL()
+      }).find((statement) => {
+        return statement.sql.startsWith('select')
+          && statement.sql.includes('from "oauth_clients"')
+      })
+
+      expect(OAUTH_SWEEP_CLIENT_BATCH_SIZE).toBe(50)
+      expect(clientSelect!.params).toContain(OAUTH_SWEEP_CLIENT_BATCH_SIZE)
+    })
+
+  it('keeps the run successful when the clients step hits a FK error',
+    async () => {
+      const { db } = createSweepDb({
+        accessTokenBatches: [4],
+        clientBatches: [2],
+        clientDeleteError: new Error('FOREIGN KEY constraint failed'),
+      })
+      const { set, emit, createLogger } = createLoggerDouble()
+      const { runOAuthGrantSweepJob } = await importSweep()
+
+      await runOAuthGrantSweepJob({
+        controller: { cron: '0 * * * *', scheduledTime: SCHEDULED_TIME },
+        createLogger,
+        db: db as never,
+      })
+
+      expect(set).toHaveBeenCalledWith({
+        attributes: {
+          oauthSweep: { clientsError: 'FOREIGN KEY constraint failed' },
+        },
+      })
+      expect(set).toHaveBeenCalledWith({
+        attributes: {
+          oauthSweep: {
+            deletedAccessTokens: 4,
+            deletedRefreshTokens: 0,
+            deletedClients: 0,
+          },
+        },
+      })
+      expect(emit).toHaveBeenCalledWith({ status: 200 })
+    })
 })

@@ -1,6 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { drizzle } from 'drizzle-orm/d1'
 
+const mocks = vi.hoisted(() => {
+  return { logError: vi.fn() }
+})
+
+vi.mock('evlog', async (importOriginal) => {
+  const original = await importOriginal<typeof import('evlog')>()
+
+  return {
+    ...original,
+    log: { ...original.log, error: mocks.logError },
+  }
+})
+
 interface BuiltQuery {
   toSQL: () => { sql: string, params: unknown[] }
 }
@@ -81,7 +94,7 @@ describe('revokeUserOAuthGrants', () => {
     })
   })
 
-  it('logs a failure and reports false instead of throwing', async () => {
+  it('retries the batch once and succeeds without an alert', async () => {
     const { db, batch } = createDb()
     const logger = { set: vi.fn() }
 
@@ -95,16 +108,51 @@ describe('revokeUserOAuthGrants', () => {
       logger,
     })
 
-    expect(result).toBe(false)
+    expect(result).toBe(true)
+    expect(batch).toHaveBeenCalledTimes(2)
+    expect(mocks.logError).not.toHaveBeenCalled()
     expect(logger.set).toHaveBeenCalledWith({
       userId: 42,
       attributes: {
         legalConsent: {
-          action: 'oauth_revoke_all_failed',
+          action: 'oauth_revoked_all',
           trigger: 'revoke-sessions',
-          error: 'd1 unavailable',
         },
       },
+    })
+  })
+
+  it('alerts and reports false after the retry also fails', async () => {
+    const { db, batch } = createDb()
+    const logger = { set: vi.fn() }
+    const legalConsent = {
+      action: 'oauth_revoke_all_failed',
+      trigger: 'revoke-sessions',
+      attempts: 2,
+      error: 'd1 unavailable',
+    }
+
+    batch.mockRejectedValue(new Error('d1 unavailable'))
+    vi.stubGlobal('useDb', () => db)
+
+    const { revokeUserOAuthGrants } = await importRevoke()
+    const result = await revokeUserOAuthGrants({
+      userId: 42,
+      trigger: 'revoke-sessions',
+      logger,
+    })
+
+    expect(result).toBe(false)
+    expect(batch).toHaveBeenCalledTimes(2)
+    expect(logger.set).toHaveBeenCalledWith({
+      userId: 42,
+      attributes: { legalConsent },
+    })
+    expect(mocks.logError).toHaveBeenCalledWith({
+      action: 'oauth_revoke_all_failed',
+      alert: true,
+      userId: 42,
+      attributes: { legalConsent },
     })
   })
 

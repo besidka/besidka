@@ -1070,13 +1070,23 @@ A refresh token outlives the browser sessions that account recovery
 revokes, so a stolen grant would keep minting access tokens for 30 days
 after the password changed. `revokeUserOAuthGrants`
 (`server/utils/account/revoke-user-oauth-grants.ts`) deletes the user's
-access tokens, refresh tokens and consents in one batch. It runs after a
-successful `/reset-password` (from `emailAndPassword.onPasswordReset`,
-because that flow has no session), after `/change-password` with
-`revokeOtherSessions: true`, and after `/revoke-sessions`. A failure is
-logged under `attributes.legalConsent` (`oauth_revoke_all_failed`) and not
-thrown, because the credential change already happened. Success logs
-`oauth_revoked_all` with the trigger path.
+access tokens, refresh tokens and consents in one batch, retried once if the
+batch fails. These session-ending actions revoke every grant (the trigger tag
+is logged with the revocation):
+
+- `/reset-password`, from `emailAndPassword.onPasswordReset`, because that
+  flow has no session (`reset-password`);
+- `/change-password` with `revokeOtherSessions: true` (`change-password`);
+- `/revoke-sessions` (`revoke-sessions`);
+- `/revoke-other-sessions` (`revoke-other-sessions`).
+
+`/revoke-session` (a single session) does **not** revoke grants: ending one
+browser session is not a sign of compromise, and the grants belong to the
+account, not to that session. A failure of both attempts is logged under
+`attributes.legalConsent` (`oauth_revoke_all_failed`) and as an error event
+with `alert: true`, and not thrown, because the credential change already
+happened. Success logs `oauth_revoked_all` with the trigger path. The plugin's
+`/oauth2/client/rotate-keys` is disabled alongside `rotate-secret`.
 
 ### New-app email and sweep
 
@@ -1094,7 +1104,12 @@ expired or revoked for a day, after the access tokens that reference them
 no consent and no token. **Trade-off:** a client that cached its
 `client_id` and was never approved, or whose user revoked it and then
 waited 7 days, gets `invalid_client` at authorize and has to register
-again. Counts go under `attributes.oauthSweep`.
+again. The owner-less client delete binds one parameter per id, so it uses
+a smaller batch of 50 (`OAUTH_SWEEP_CLIENT_BATCH_SIZE`) to stay under D1's
+~100 bound-parameter limit. A foreign-key error in that step (a consent or
+token created between the select and the delete) is caught and logged as
+`attributes.oauthSweep.clientsError`; the run keeps the status of the earlier
+steps. Counts go under `attributes.oauthSweep`.
 
 ### Account deletion
 

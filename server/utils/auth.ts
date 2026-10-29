@@ -66,6 +66,7 @@ export const DISABLED_AUTH_PATHS = [
   '/oauth2/update-client',
   '/oauth2/delete-client',
   '/oauth2/client/rotate-secret',
+  '/oauth2/client/rotate-keys',
   '/oauth2/get-consent',
   '/oauth2/get-consents',
   '/oauth2/update-consent',
@@ -630,6 +631,15 @@ function createAuth() {
             await revokeUserOAuthGrants({
               userId: Number(user.id),
               trigger: 'revoke-sessions',
+            })
+
+            return
+          }
+
+          if (ctx.path === '/revoke-other-sessions') {
+            await revokeUserOAuthGrants({
+              userId: Number(user.id),
+              trigger: 'revoke-other-sessions',
             })
 
             return
