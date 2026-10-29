@@ -52,6 +52,23 @@ const forceInlineVueI18nForEmailRenderer = defineNuxtModule({
   },
 })
 
+const forceStatelessMcpTransport = defineNuxtModule({
+  meta: { name: 'force-stateless-mcp-transport' },
+  setup(_options, nuxt) {
+    const nodeProviderPath = fileURLToPath(
+      new URL(
+        'runtime/server/mcp/providers/node.js',
+        import.meta.resolve('@nuxtjs/mcp-toolkit'),
+      ),
+    )
+
+    nuxt.options.nitro.virtual ||= {}
+    nuxt.options.nitro.virtual['#nuxt-mcp-toolkit/transport.mjs'] = () => {
+      return `export { default } from '${nodeProviderPath}'`
+    }
+  },
+})
+
 const guardMdcSlotTransformForVapor = defineNuxtModule({
   meta: { name: 'guard-mdc-slot-transform-for-vapor' },
   setup(_options, nuxt) {
@@ -158,6 +175,7 @@ const modules = [
   '@nuxtjs/mdc',
   guardMdcSlotTransformForVapor,
   '@nuxtjs/mcp-toolkit',
+  forceStatelessMcpTransport,
   '@nuxtjs/robots',
   '@nuxtjs/sitemap',
   'nuxt-svgo',

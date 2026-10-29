@@ -455,9 +455,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   and XLSX ZIP-bomb limits, the send path, the spike results)
 - `docs/mcp-server.md` - The public read-only `/mcp` server (`@nuxtjs/mcp-toolkit`
   on Workers): the four tools and their sources, minimark-to-markdown instead
-  of a `rawbody` schema change, Worker size delta, the 6144 MB build heap, why
-  `agents` needs the MCP v2 client/server packages, the `attributes.mcp`
-  Axiom move, the 404 OAuth stubs, and the open SSE `GET` caveat
+  of a `rawbody` schema change, Worker size delta,
+  the forced node transport that keeps `agents` out of the Worker, the
+  `attributes.mcp` Axiom move, the 404 OAuth stubs, and the 405 on `GET`
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
   tool runs on Node under both package managers; warm Bun install ~= pnpm,

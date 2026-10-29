@@ -31,6 +31,27 @@ Nuxt Content stores a page body as a minimark tree, not markdown. Adding a
 to markdown instead. `:privacy-email-link{}` is resolved from
 `runtimeConfig.public.privacyEmail`, the same source as the page component.
 
+## Transport
+
+On a Cloudflare preset the toolkit picks `providers/cloudflare`, which imports
+`agents/mcp`: the Agent and McpAgent classes, a `DurableObject` import, the
+MCP v2 client and server, and `mimetext`. That alone cost about 395 KiB gzip
+and pushed `nuxt build` past the default 4 GB heap.
+
+`nuxt.config.ts` registers `forceStatelessMcpTransport` right after the
+toolkit module. It overwrites the `#nuxt-mcp-toolkit/transport.mjs` Nitro
+virtual module so it re-exports `providers/node.js` instead. That provider is
+built on the SDK's `WebStandardStreamableHTTPServerTransport` (fetch `Request`
+and `Response`), runs on Workers, and with `sessions` off is stateless: each
+`POST` builds a server and answers with JSON, and any `GET` returns 405.
+Nothing else in the toolkit imports `agents`; the code mode executor already
+has a Workers stub.
+
+The override is a `nitro.virtual` assignment, not a hook, so module order does
+not matter: the toolkit only registers a lazy template function. If a toolkit
+upgrade renames the virtual module or its provider path, `agents` comes back
+silently, so re-check the bundle (see below) after bumping it.
+
 ## Worker size
 
 Measured with `wrangler deploy --dry-run` (the figure CI prints):
@@ -38,29 +59,20 @@ Measured with `wrangler deploy --dry-run` (the figure CI prints):
 | | Total upload | gzip |
 | --- | --- | --- |
 | `main` before | 16807 KiB | 3347 KiB |
-| with MCP | 18697 KiB | 3742 KiB |
+| `agents` transport | 18698 KiB | 3742 KiB |
+| node transport (current) | 17313 KiB | 3461 KiB |
 
-The delta is about 395 KiB gzip. What is attributable to the new code is the
-`agents/mcp` entry (the Agent and McpAgent classes, the `DurableObject`
-import, and the MCP v2 client and server it imports) and `mimetext`, pulled
-in by `agents` for its email support. The rest of the delta is the toolkit
-and the MCP SDK v1; per-chunk size diffs between builds are not reliable
-because Rollup re-partitions chunks. There is one copy of
-`@modelcontextprotocol/sdk` (1.32.2) in `node_modules`. The deployed Worker
-was already above the Free plan 3 MB limit, so this is a Workers Paid
-deployment.
-
-Build memory: `nuxt build` runs out of the default 4 GB heap with the MCP
-dependencies. CI already sets `NODE_OPTIONS=--max-old-space-size=6144`, which
-is enough; a local `pnpm run build` needs the same.
+The deployed Worker was already above the Free plan 3 MB limit, so this is a
+Workers Paid deployment. With the node transport `nuxt build` fits the default
+heap again. To confirm `agents` is not bundled, search `.output/server` for
+`mimetext`, `McpAgent` and `createLegacyMcpHandler`; there should be no match.
 
 ## Dependencies
 
-`agents` is the toolkit's optional peer on Cloudflare presets. `agents/mcp`
-imports `@modelcontextprotocol/server` and `@modelcontextprotocol/client` (v2)
-statically, so both are direct dependencies; without them the Nitro build
-fails with "Cannot resolve @modelcontextprotocol/server". `core-js-pure`
-(reached through `agents` > `mimetext`) is `false` in `allowBuilds`.
+`@nuxtjs/mcp-toolkit` is the only added dependency. pnpm still auto-installs
+its optional peer `agents` into `node_modules`, which is why `core-js-pure`
+(reached through `agents` > `mimetext`) is `false` in `allowBuilds`; it is
+never bundled.
 
 ## Operational notes
 
@@ -78,6 +90,6 @@ fails with "Cannot resolve @modelcontextprotocol/server". `core-js-pure`
   `Cache-Control: no-store`).
 - Requests with a cross-site `Origin` get 403; requests without `Origin`
   (CLI clients) pass.
-- A `GET /mcp` with `Accept: text/event-stream` opens an idle SSE stream that
-  stays open. Stateless clients do not need it. Rate-limit or reject it
-  before relying on this endpoint under load.
+- `GET /mcp` (including `Accept: text/event-stream`) returns 405 with a
+  JSON-RPC error, so no stream is held open. `DELETE /mcp` returns an empty
+  200.
