@@ -87,7 +87,7 @@
                 :class="{ 'tab-active': isTabActive(tab) }"
               >
                 <Icon :name="tab.icon" size="16" />
-                <span :class="{ 'max-sm:sr-only': !isTabActive(tab) }">
+                <span :class="{ 'max-lg:sr-only': !isTabActive(tab) }">
                   {{ tab.label }}
                 </span>
               </NuxtLink>

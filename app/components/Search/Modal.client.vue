@@ -285,6 +285,12 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Preferences',
           run: () => goTo('/profile/preferences'),
         },
+        {
+          id: 'search-option-connected-apps',
+          iconName: 'lucide:plug',
+          label: 'Connected apps',
+          run: () => goTo('/profile/connected-apps'),
+        },
       ],
     },
   )

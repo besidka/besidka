@@ -632,6 +632,20 @@ subdirectory. Pick the directory form as soon as a second route appears.
 
 **Composables**: Frontend state/logic in `app/composables/`. The `useChat()` composable manages chat state with AI SDK.
 
+**Profile pages navigation**: every new top-level page under
+`app/pages/profile/` gets three entries:
+- a tab in the `tabs` array of `app/layouts/profile.vue`;
+- a quick-access row in the Settings group of the search popup
+  (`app/components/Search/Modal.client.vue`), with the same icon and label as
+  the tab, and its id added to `tests/unit/components/Search/Modal.spec.ts`;
+- nothing in the sidebar user dropdown (`app/components/Sidebar/AuthCta.vue`)
+  by default. That dropdown holds only the most important pages (Security and
+  API Keys); add to it only when the owner asks.
+
+The profile tabs show every label only from `lg`. Below that, only the active
+tab shows its label and the rest show icons, so a sixth tab still fits.
+Re-check the tab row at 768 to 1024px when you add one.
+
 **Environment**: Runtime config in `nuxt.config.ts`. Secrets go in `.dev.vars` (gitignored), with example in `.dev.vars.example`.
 
 ### Cloudflare Bindings
