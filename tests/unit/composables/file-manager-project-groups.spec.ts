@@ -90,6 +90,13 @@ function createDeferred<T>() {
   }
 }
 
+async function fetchGroupsWithFirstOpen(
+  manager: ReturnType<typeof useFileManagerProjectGroups>,
+) {
+  await manager.fetchGroups()
+  await manager.toggleGroup('project-a')
+}
+
 function getFilesCalls() {
   return fetchMock.mock.calls.filter(([url]) => url === '/api/v1/files')
 }
@@ -112,7 +119,7 @@ describe('useFileManagerProjectGroups', () => {
   it('loads the group list and only the first group page', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
 
     expect(manager.groups.value.map(group => group.id)).toEqual([
       'project-a',
@@ -141,10 +148,111 @@ describe('useFileManagerProjectGroups', () => {
     expect(manager.isLoading.value).toBe(false)
   })
 
-  it('lazy-loads a group on first open and keeps it on collapse', async () => {
+  it('collapses every group by default when there are several projects', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
     await manager.fetchGroups()
+
+    expect(manager.groups.value.map(group => group.id)).toEqual([
+      'project-a',
+      'project-b',
+      'project-c',
+    ])
+    expect(manager.groups.value.map(group => group.isOpen)).toEqual([
+      false,
+      false,
+      false,
+    ])
+    expect(manager.groups.value.some(group => group.hasLoaded)).toBe(false)
+    expect(getFilesCalls()).toHaveLength(0)
+    expect(manager.isLoading.value).toBe(false)
+  })
+
+  it('opens and loads the only project by default', async () => {
+    projects.splice(0, projects.length, baseProjects[0]!)
+
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups()
+
+    expect(manager.groups.value).toHaveLength(1)
+    expect(manager.groups.value[0]?.isOpen).toBe(true)
+    expect(manager.groups.value[0]?.hasLoaded).toBe(true)
+    expect(manager.groups.value[0]?.files).toHaveLength(20)
+    expect(getFilesCalls()).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/files', {
+      query: {
+        source: 'project',
+        projectId: 'project-a',
+        offset: 0,
+        limit: 20,
+      },
+    })
+  })
+
+  it('auto-opens at most five matching groups while searching', async () => {
+    const manyProjects = Array.from({ length: 7 }, (_, index) => {
+      return {
+        id: `project-${index}`,
+        name: `Project ${index}`,
+        pinned: false,
+        archived: false,
+      }
+    })
+
+    projects.splice(0, projects.length, ...manyProjects)
+    filesByProject = Object.fromEntries(manyProjects.map((project) => {
+      return [project.id, createFiles(project.id, 2)]
+    }))
+    search.value = 'report'
+
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups(false, true)
+
+    expect(manager.groups.value.map(group => group.isOpen)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+    ])
+    expect(getFilesCalls()).toHaveLength(5)
+  })
+
+  it('opens the only matching group while searching', async () => {
+    search.value = 'report 25'
+
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups(false, true)
+
+    expect(manager.groups.value.map(group => group.id)).toEqual([
+      'project-a',
+    ])
+    expect(manager.groups.value[0]?.isOpen).toBe(true)
+  })
+
+  it('keeps sync from opening a group the user has not opened', async () => {
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups()
+    await manager.syncGroups()
+
+    expect(manager.groups.value.map(group => group.isOpen)).toEqual([
+      false,
+      false,
+      false,
+    ])
+    expect(getFilesCalls()).toHaveLength(0)
+  })
+
+  it('lazy-loads a group on first open and keeps it on collapse', async () => {
+    const manager = useFileManagerProjectGroups({ search })
+
+    await fetchGroupsWithFirstOpen(manager)
     await manager.toggleGroup('project-b')
 
     expect(manager.findGroup('project-b')?.isOpen).toBe(true)
@@ -161,7 +269,7 @@ describe('useFileManagerProjectGroups', () => {
   it('loads more files for one group from its own offset', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     await manager.toggleGroup('project-b')
     await manager.loadMoreGroup('project-a')
 
@@ -189,7 +297,7 @@ describe('useFileManagerProjectGroups', () => {
 
     const staleRequest = manager.fetchGroups()
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     stale.resolve({
       projects: [
         {
@@ -211,7 +319,7 @@ describe('useFileManagerProjectGroups', () => {
   it('ignores a stale group page after the list is refetched', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
 
     const stalePage = createDeferred<unknown>()
 
@@ -220,7 +328,7 @@ describe('useFileManagerProjectGroups', () => {
     const loadMoreRequest = manager.loadMoreGroup('project-a')
 
     fetchMock.mockImplementation(createFetchImplementation())
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     stalePage.resolve({
       files: [createFile('ghost')],
       total: 99,
@@ -238,7 +346,7 @@ describe('useFileManagerProjectGroups', () => {
   it('keeps group requests independent of each other', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
 
     const slowGroupA = createDeferred<unknown>()
 
@@ -289,7 +397,7 @@ describe('useFileManagerProjectGroups', () => {
   it('drops groups without matches and resets open state on new search', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     await manager.toggleGroup('project-c')
 
     search.value = 'report 25'
@@ -301,7 +409,7 @@ describe('useFileManagerProjectGroups', () => {
     expect(manager.findGroup('project-a')?.files).toHaveLength(1)
 
     search.value = ''
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
 
     expect(manager.groups.value.map(group => group.isOpen)).toEqual([
       true,
@@ -313,7 +421,7 @@ describe('useFileManagerProjectGroups', () => {
   it('preserves open groups when asked to', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     await manager.toggleGroup('project-b')
     await manager.toggleGroup('project-a')
     await manager.fetchGroups(true)
@@ -334,7 +442,7 @@ describe('useFileManagerProjectGroups', () => {
 
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     await manager.toggleGroup('project-b')
     manager.renameFile('shared', 'Renamed.pdf')
 
@@ -354,7 +462,7 @@ describe('useFileManagerProjectGroups', () => {
 
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     await manager.toggleGroup('project-b')
     manager.removeFiles(['shared'])
 
@@ -374,7 +482,7 @@ describe('useFileManagerProjectGroups', () => {
 
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     await manager.toggleGroup('project-b')
 
     expect(manager.loadedFiles.value.map(file => file.id)).toEqual([
@@ -386,7 +494,7 @@ describe('useFileManagerProjectGroups', () => {
   it('reports a failed group page and allows a retry', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     fetchMock.mockRejectedValueOnce(new Error('boom'))
 
     expect(await manager.toggleGroup('project-b')).toBeUndefined()
@@ -405,7 +513,7 @@ describe('useFileManagerProjectGroups', () => {
   it('clears every group when invalidated and cleared', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     manager.clear()
 
     expect(manager.groups.value).toEqual([])
@@ -415,7 +523,7 @@ describe('useFileManagerProjectGroups', () => {
   it('flags a failed first page and clears the flag on retry', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     fetchMock.mockRejectedValueOnce(new Error('boom'))
     await manager.toggleGroup('project-b')
 
@@ -438,6 +546,8 @@ describe('useFileManagerProjectGroups', () => {
 
       return createFetchImplementation()(url, options)
     })
+
+    projects.splice(0, projects.length, baseProjects[0]!)
 
     const pending = manager.fetchGroups()
 
@@ -530,7 +640,7 @@ describe('useFileManagerProjectGroups', () => {
   it('syncs open groups to their loaded depth and keeps collapsed state', async () => {
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     await manager.loadMoreGroup('project-a')
     await manager.toggleGroup('project-b')
     await manager.toggleGroup('project-b')
@@ -562,7 +672,7 @@ describe('useFileManagerProjectGroups', () => {
 
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
 
     const loadedIds = manager.findGroup('project-a')!.files.map(file => file.id)
 
@@ -584,7 +694,7 @@ describe('useFileManagerProjectGroups', () => {
 
     const manager = useFileManagerProjectGroups({ search })
 
-    await manager.fetchGroups()
+    await fetchGroupsWithFirstOpen(manager)
     await manager.toggleGroup('project-b')
     await manager.toggleGroup('project-b')
 

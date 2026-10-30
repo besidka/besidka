@@ -1,5 +1,6 @@
+import { nextTick } from 'vue'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectGroups from '../../../../../../../app/components/ChatInput/Files/Modal/Select/ProjectGroups.vue'
 import type {
   FileManagerFile,
@@ -70,6 +71,10 @@ async function mountGroups(
 }
 
 describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('renders one section per project with name and count', async () => {
     const wrapper = await mountGroups([
       createGroup({
@@ -149,6 +154,92 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
     expect(
       wrapper.get('[data-testid="files-project-group"]').attributes('open'),
     ).toBeUndefined()
+  })
+
+  it('pins the section header to the top of the scroll area', async () => {
+    const wrapper = await mountGroups([
+      createGroup({ files: [createFile('file-1')] }),
+      createGroup({ id: 'project-b', name: 'Beta', isOpen: false }),
+    ])
+
+    for (const toggle of wrapper.findAll(
+      '[data-testid="files-project-group-toggle"]',
+    )) {
+      const classes = toggle.classes()
+
+      expect(classes).toContain('sticky')
+      expect(classes).toContain('top-0')
+      expect(classes).toContain('z-20')
+      expect(classes).toContain('h-11')
+      expect(classes).toContain('bg-base-100')
+    }
+  })
+
+  it('offsets the table header below the section header in list mode', async () => {
+    const wrapper = await mountGroups([
+      createGroup({ files: [createFile('file-1')] }),
+    ], { viewMode: 'list' })
+
+    const thead = wrapper.get('[data-testid="files-list-table"] thead')
+
+    expect(thead.classes()).toContain('top-11')
+  })
+
+  function mockStuckGeometry(
+    wrapper: Awaited<ReturnType<typeof mountGroups>>,
+    isStuck: boolean,
+  ) {
+    const details = wrapper.get('[data-testid="files-project-group"]')
+    const summary = wrapper.get('[data-testid="files-project-group-toggle"]')
+    const scrollIntoView = vi.fn()
+
+    vi.spyOn(details.element, 'getBoundingClientRect').mockReturnValue({
+      top: -200,
+    } as DOMRect)
+    vi.spyOn(summary.element, 'getBoundingClientRect').mockReturnValue({
+      top: isStuck ? 0 : -200,
+    } as DOMRect)
+    details.element.scrollIntoView = scrollIntoView
+
+    return { summary, scrollIntoView }
+  }
+
+  it('scrolls a collapsed section header to the top when it was stuck', async () => {
+    const wrapper = await mountGroups([
+      createGroup({ files: [createFile('file-1')] }),
+    ])
+    const { summary, scrollIntoView } = mockStuckGeometry(wrapper, true)
+
+    await summary.trigger('click')
+    await nextTick()
+
+    expect(wrapper.emitted('toggle')?.[0]).toEqual(['project-a'])
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+  })
+
+  it('does not scroll when the section header is not stuck', async () => {
+    const wrapper = await mountGroups([
+      createGroup({ files: [createFile('file-1')] }),
+    ])
+    const { summary, scrollIntoView } = mockStuckGeometry(wrapper, false)
+
+    await summary.trigger('click')
+    await nextTick()
+
+    expect(wrapper.emitted('toggle')?.[0]).toEqual(['project-a'])
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('does not scroll when expanding a section', async () => {
+    const wrapper = await mountGroups([
+      createGroup({ isOpen: false }),
+    ])
+    const { summary, scrollIntoView } = mockStuckGeometry(wrapper, true)
+
+    await summary.trigger('click')
+    await nextTick()
+
+    expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
   it('shows a skeleton while the first page loads', async () => {

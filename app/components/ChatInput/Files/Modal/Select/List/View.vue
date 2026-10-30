@@ -2,8 +2,9 @@
   <table
     ref="containerRef"
     class="table table-xs table-pin-rows select-none"
+    data-testid="files-list-table"
   >
-    <thead>
+    <thead :class="{ 'top-11': stickyOffset }">
       <tr>
         <th class="w-8 pb-2">
           <label class="cursor-pointer flex items-center justify-center">
@@ -154,14 +155,17 @@
 import type { FileManagerFile } from '~/types/file-manager'
 import { formatMessageCost } from '#shared/utils/message-format'
 
-defineProps<{
+withDefaults(defineProps<{
   files: FileManagerFile[]
   selectedIds: Set<string>
   isTouchSelecting: boolean
   touchedIndices: Set<number>
   allSelected: boolean
   hasSelection: boolean
-}>()
+  stickyOffset?: boolean
+}>(), {
+  stickyOffset: false,
+})
 
 defineEmits<{
   'file-click': [event: MouseEvent, file: FileManagerFile, index: number]

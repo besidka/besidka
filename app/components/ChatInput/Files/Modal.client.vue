@@ -129,7 +129,7 @@ async function refreshSelectTabIfNeeded() {
 
 function open(tab: Tab, source?: FileSourceFilter): void {
   activeTab.value = tab
-  selectSource.value = tab === 'select' ? source ?? 'all' : undefined
+  selectSource.value = tab === 'select' ? source ?? 'upload' : undefined
 
   if (modal.value && !modal.value?.open) {
     modal.value.showModal()

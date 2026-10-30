@@ -260,10 +260,11 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
 
       const hasPreservedOpenGroup = preserveOpen
         && response.projects.some(project => previousOpenIds.has(project.id))
+      const isSingleProject = response.projects.length === 1
 
       groupGenerations.clear()
       groups.value = response.projects.map((project, index) => {
-        let isOpen = index === 0
+        let isOpen = isSingleProject
 
         if (search) {
           isOpen = index < PROJECT_GROUP_SEARCH_AUTO_OPEN_LIMIT
@@ -388,13 +389,15 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
       return false
     }
 
-    const nextGroups = response.projects.map((project, index) => {
+    const nextGroups = response.projects.map((project) => {
       const previous = previousGroups.get(project.id)
 
       return {
         project,
         previous,
-        isOpen: previous ? previous.isOpen : !hadGroups && index === 0,
+        isOpen: previous
+          ? previous.isOpen
+          : !hadGroups && response.projects.length === 1,
       }
     })
     const syncedGroupFiles = new Map<

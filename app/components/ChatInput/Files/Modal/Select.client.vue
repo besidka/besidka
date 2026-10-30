@@ -20,15 +20,6 @@
         type="radio"
         name="file_source_tabs"
         class="tab grow min-h-11 sm:min-h-8"
-        aria-label="All"
-        :checked="source === 'all'"
-        data-testid="files-source-all"
-        @change="source = 'all'"
-      >
-      <input
-        type="radio"
-        name="file_source_tabs"
-        class="tab grow min-h-11 sm:min-h-8"
         aria-label="Uploaded"
         :checked="source === 'upload'"
         data-testid="files-source-upload"
@@ -241,7 +232,7 @@ watch(() => props.initialSource, (newSource) => {
   }
 
   source.value = newSource === 'assistant' && !props.isImageInputSupported
-    ? 'all'
+    ? 'upload'
     : newSource
 }, { immediate: true })
 
@@ -250,7 +241,7 @@ watch(() => props.isImageInputSupported, (supported) => {
     return
   }
 
-  source.value = 'all'
+  source.value = 'upload'
 })
 
 const isProjectSource = computed<boolean>(() => source.value === 'project')
@@ -278,15 +269,11 @@ const emptyStateIcon = computed<string>(() => {
     return 'lucide:image-plus'
   }
 
-  if (source.value === 'upload') {
-    return 'lucide:upload'
-  }
-
   if (source.value === 'project') {
     return 'lucide:folder-open'
   }
 
-  return 'lucide:file-x'
+  return 'lucide:upload'
 })
 
 const emptyStateTitle = computed<string>(() => {
@@ -302,15 +289,11 @@ const emptyStateTitle = computed<string>(() => {
     return 'No AI-generated files yet'
   }
 
-  if (source.value === 'upload') {
-    return 'No uploaded files yet'
-  }
-
   if (source.value === 'project') {
     return 'No project files yet'
   }
 
-  return 'No files yet'
+  return 'No uploaded files yet'
 })
 
 const emptyStateDescription = computed<string>(() => {
@@ -322,15 +305,11 @@ const emptyStateDescription = computed<string>(() => {
     return 'Images created in chat will appear here'
   }
 
-  if (source.value === 'upload') {
-    return 'Upload files to add them to your library'
-  }
-
   if (source.value === 'project') {
     return 'Files added to project knowledge will appear here'
   }
 
-  return 'Upload a file or create an image in chat to get started'
+  return 'Upload files to add them to your library'
 })
 
 const gridViewRef = shallowRef<{

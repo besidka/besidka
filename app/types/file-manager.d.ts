@@ -15,7 +15,7 @@ export type FileManagerFile = Pick<
 >
 
 export type ViewMode = 'grid' | 'list'
-export type FileSourceFilter = 'all' | FileMetadata['source'] | 'project'
+export type FileSourceFilter = FileMetadata['source'] | 'project'
 
 export interface FetchFilesResponse {
   files: FileManagerFile[]

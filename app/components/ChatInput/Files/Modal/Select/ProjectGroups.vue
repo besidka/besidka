@@ -14,12 +14,13 @@
     >
       <summary
         class="
-          collapse-title flex min-h-11 items-center gap-2 rounded-box
-          px-2 py-0 text-sm font-medium hover:bg-base-200
+          collapse-title sticky top-0 z-20 flex h-11 items-center gap-2
+          rounded-box bg-base-100 px-2 py-0 text-sm font-medium
+          hover:bg-base-200
         "
         :aria-expanded="group.isOpen"
         data-testid="files-project-group-toggle"
-        @click.prevent="emit('toggle', group.id)"
+        @click.prevent="onToggle($event, group)"
       >
         <Icon
           name="lucide:chevron-right"
@@ -89,6 +90,7 @@
             :selected-ids="selectedIds"
             :is-touch-selecting="isTouchSelecting && touchGroupId === group.id"
             :touched-indices="getTouchedIndices(group.id)"
+            :sticky-offset="true"
             :all-selected="isGroupAllSelected(group)"
             :has-selection="hasGroupSelection(group)"
             @file-click="(
@@ -174,6 +176,28 @@ const emit = defineEmits<{
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 const noTouchedIndices = new Set<number>()
+
+function isSummaryStuck(summary: HTMLElement, details: HTMLElement): boolean {
+  return summary.getBoundingClientRect().top
+    > details.getBoundingClientRect().top
+}
+
+async function onToggle(event: MouseEvent, group: ProjectFileGroup) {
+  const summary = event.currentTarget as HTMLElement
+  const details = summary.closest('details')
+  const shouldRealign = group.isOpen
+    && !!details
+    && isSummaryStuck(summary, details)
+
+  emit('toggle', group.id)
+
+  if (!shouldRealign || !details) {
+    return
+  }
+
+  await nextTick()
+  details.scrollIntoView({ block: 'start' })
+}
 
 function getCountLabel(group: ProjectFileGroup): string {
   if (!group.hasLoaded) {

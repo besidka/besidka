@@ -15,11 +15,11 @@ describe('useFilesModalHandoff', () => {
   it('requests opening the select tab with a source filter', () => {
     const { pendingOpen, requestOpen } = useFilesModalHandoff()
 
-    requestOpen('select', '/chats/new', 'all')
+    requestOpen('select', '/chats/new', 'upload')
 
     expect(pendingOpen.value).toEqual({
       tab: 'select',
-      source: 'all',
+      source: 'upload',
       targetPath: '/chats/new',
     })
   })
@@ -67,11 +67,11 @@ describe('useFilesModalHandoff', () => {
     const chatInputInstance = useFilesModalHandoff()
     const searchModalInstance = useFilesModalHandoff()
 
-    searchModalInstance.requestOpen('select', '/chats/new', 'all')
+    searchModalInstance.requestOpen('select', '/chats/new', 'upload')
 
     expect(chatInputInstance.pendingOpen.value).toEqual({
       tab: 'select',
-      source: 'all',
+      source: 'upload',
       targetPath: '/chats/new',
     })
 
