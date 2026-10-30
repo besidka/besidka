@@ -20,6 +20,10 @@ import {
 } from '~~/server/utils/projects/memory-lease'
 import type { ProjectMemoryLogger } from '~~/server/utils/projects/memory-lease'
 import { PROJECT_MEMORY_LIMITS } from '~~/server/utils/projects/memory-limits'
+import {
+  applyProjectMemoryEnabled,
+  projectHasMemoryEntries,
+} from '~~/server/utils/projects/memory-toggle'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -121,19 +125,6 @@ async function readUserMemoryEnabled(db: DbClient, userId: number) {
   })
 
   return settings?.memoryEnabled !== false
-}
-
-async function projectHasEntries(
-  db: DbClient,
-  projectId: string,
-  userId: number,
-) {
-  const entry = await db.query.memoryEntries.findFirst({
-    where: { userId, projectId },
-    columns: { id: true },
-  })
-
-  return !!entry
 }
 
 function isDirtiedDuringPass(
@@ -514,7 +505,7 @@ async function writeFinalRefreshState(
   const isPending = outcome.leftoverCount > 0
     || hasMessageArrivedDuringPass
     || hasFailedChats
-  const hasEntries = await projectHasEntries(db, project.id, userId)
+  const hasEntries = await projectHasMemoryEntries(db, project.id, userId)
   let memoryDirtyAt: Date | null = null
 
   if (outcome.leftoverCount > 0 || hasFailedChats) {
@@ -555,63 +546,27 @@ export async function toggleProjectMemory(
   db: DbClient = useDb(),
   logger: ProjectMemoryLogger = noopProjectMemoryLogger,
 ) {
-  const project = await db.query.projects.findFirst({
-    where: { id: projectId, userId },
-    columns: { id: true, memoryStatus: true },
-  })
+  const outcome = await applyProjectMemoryEnabled(
+    projectId,
+    userId,
+    enabled,
+    db,
+  )
 
-  if (!project) {
-    throw createError({
-      message: 'Project not found',
-      status: 404,
-    })
+  if (outcome !== 'enabled') {
+    return await buildProjectMemoryCard(projectId, userId, db, logger)
   }
-
-  if (!enabled) {
-    await db.update(schema.projects)
-      .set({
-        memoryStatus: 'disabled',
-        memoryUpdatedAt: null,
-        memoryDirtyAt: null,
-        memoryProvider: null,
-        memoryModel: null,
-        memoryError: null,
-      })
-      .where(and(
-        eq(schema.projects.id, project.id),
-        eq(schema.projects.userId, userId),
-      ))
-
-    return await buildProjectMemoryCard(project.id, userId, db, logger)
-  }
-
-  if (project.memoryStatus !== 'disabled') {
-    return await buildProjectMemoryCard(project.id, userId, db, logger)
-  }
-
-  const hasEntries = await projectHasEntries(db, project.id, userId)
-
-  await db.update(schema.projects)
-    .set({
-      memoryStatus: hasEntries ? 'ready' : 'idle',
-      memoryDirtyAt: null,
-      memoryError: null,
-    })
-    .where(and(
-      eq(schema.projects.id, project.id),
-      eq(schema.projects.userId, userId),
-    ))
 
   const canRefresh = await readUserMemoryEnabled(db, userId)
     && await hasUserLegalConsent(userId, db)
-    && !await isRefreshCoolingDown(project.id, logger)
+    && !await isRefreshCoolingDown(projectId, logger)
 
   if (!canRefresh) {
-    return await buildProjectMemoryCard(project.id, userId, db, logger)
+    return await buildProjectMemoryCard(projectId, userId, db, logger)
   }
 
   return await refreshProjectMemoryFromChats({
-    projectId: project.id,
+    projectId,
     userId,
     db,
     logger,

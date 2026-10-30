@@ -1,8 +1,5 @@
 import { createError } from 'evlog'
-import { and, eq } from 'drizzle-orm'
-import * as schema from '~~/server/db/schema'
-import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
-import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { setChatMemoryExclusion } from '~~/server/utils/chats/lifecycle'
 import {
   defineEventHandler,
   readValidatedBody,
@@ -69,34 +66,13 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  const chat = await db.update(schema.chats)
-    .set({ memoryExcluded: isExcluded })
-    .where(and(
-      eq(schema.chats.slug, params.data.slug),
-      eq(schema.chats.userId, userId),
-    ))
-    .returning({
-      id: schema.chats.id,
-      projectId: schema.chats.projectId,
-    })
-    .get()
-
-  if (!chat) {
-    throw createError({
-      message: 'Chat not found',
-      status: 404,
-    })
-  }
-
-  if (isExcluded) {
-    await detachChatsFromMemory({
-      db,
-      userId,
-      chatIds: [chat.id],
-      logger,
-    })
-    await markProjectsMemoryStale([chat.projectId], userId, db)
-  }
+  await setChatMemoryExclusion(
+    db,
+    userId,
+    params.data.slug,
+    isExcluded,
+    logger,
+  )
 
   return { memoryExcluded: isExcluded }
 })

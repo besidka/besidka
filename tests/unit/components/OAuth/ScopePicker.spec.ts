@@ -10,8 +10,14 @@ const ALL_SCOPES = [
   'chats:read',
   'projects:read',
   'memory:read',
+  'files:read',
+  'settings:read',
   'projects:write',
   'memory:write',
+  'chats:write',
+  'files:write',
+  'settings:write',
+  'data:delete',
 ]
 
 function lastSelection(wrapper: any): string[] {
@@ -30,6 +36,8 @@ describe('OAuth scope picker', () => {
       'chats:read',
       'projects:read',
       'memory:read',
+      'files:read',
+      'settings:read',
     ])
   })
 
@@ -65,6 +73,34 @@ describe('OAuth scope picker', () => {
       expect(readOnly.find('[data-testid="oauth-write-warning"]').exists())
         .toBe(false)
     })
+
+  it('renders the delete scope unchecked with the warning style', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: { scopes: ALL_SCOPES, modelValue: [] },
+    })
+
+    await wrapper.setProps({ modelValue: lastSelection(wrapper) })
+
+    const dataDelete = wrapper.find('[data-testid="oauth-scope-data:delete"]')
+
+    expect((dataDelete.element as HTMLInputElement).checked).toBe(false)
+    expect(dataDelete.classes()).toContain('checkbox-warning')
+    expect(lastSelection(wrapper)).not.toContain('data:delete')
+    expect(wrapper.find('[data-testid="oauth-write-warning"]').text())
+      .toContain('permanently delete')
+  })
+
+  it('adds the delete scope only when the user ticks it', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: { scopes: ALL_SCOPES, modelValue: [] },
+    })
+
+    await wrapper.setProps({ modelValue: lastSelection(wrapper) })
+    await wrapper.find('[data-testid="oauth-scope-data:delete"]')
+      .trigger('change')
+
+    expect(lastSelection(wrapper)).toContain('data:delete')
+  })
 
   it('lists identity scopes as implicit, without checkboxes', async () => {
     const wrapper = await mountSuspended(ScopePicker, {

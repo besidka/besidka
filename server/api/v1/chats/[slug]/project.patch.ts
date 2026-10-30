@@ -1,8 +1,5 @@
-import { and, eq, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
-import * as schema from '~~/server/db/schema'
-import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
-import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { moveChatsToProject } from '~~/server/utils/chats/lifecycle'
 import {
   defineEventHandler,
   readValidatedBody,
@@ -87,42 +84,12 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const activityAt = new Date()
-
-    await db.update(schema.chats)
-      .set({ projectId: project.id, activityAt })
-      .where(and(
-        eq(schema.chats.id, chat.id),
-        eq(schema.chats.userId, userId),
-      ))
-
-    await db.update(schema.projects)
-      .set({ activityAt })
-      .where(eq(schema.projects.id, project.id))
-
-    if (chat.projectId && chat.projectId !== project.id) {
-      await refreshProjectActivityAt([chat.projectId], userId, db)
-    }
-
-    await markProjectsMemoryStale([chat.projectId, project.id], userId, db)
+    await moveChatsToProject(db, userId, [chat], project)
 
     return { projectId: project.id }
   }
 
-  const activityAt = new Date()
-
-  await db.update(schema.chats)
-    .set({ projectId: sql`NULL`, activityAt })
-    .where(and(
-      eq(schema.chats.id, chat.id),
-      eq(schema.chats.userId, userId),
-    ))
-
-  if (chat.projectId) {
-    await refreshProjectActivityAt([chat.projectId], userId, db)
-  }
-
-  await markProjectsMemoryStale([chat.projectId], userId, db)
+  await moveChatsToProject(db, userId, [chat], null)
 
   return { projectId: null }
 })

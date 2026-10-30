@@ -45,6 +45,24 @@ export type PersistedFile = Pick<
   | 'expiresAt'
 >
 
+const MAX_LOGGED_EXTENSION_LENGTH = 16
+
+/**
+ * File names are user text, so the logs get only the extension and the name
+ * length.
+ */
+export function describeFileNameForLog(fileName: string) {
+  const dotIndex = fileName.lastIndexOf('.')
+  const extension = dotIndex > 0 ? fileName.slice(dotIndex + 1) : ''
+  const isLoggableExtension = extension.length > 0
+    && extension.length <= MAX_LOGGED_EXTENSION_LENGTH
+
+  return {
+    fileExtension: isLoggableExtension ? extension.toLowerCase() : null,
+    fileNameLength: fileName.length,
+  }
+}
+
 export async function persistFile(
   input: PersistFileInput,
 ): Promise<PersistedFile> {
@@ -101,7 +119,7 @@ export async function persistFile(
       },
       attributes: {
         filePersistence: {
-          fileName: input.fileName,
+          ...describeFileNameForLog(input.fileName),
           mediaType: input.mediaType,
           error: exceptionMessage(exception),
         },
@@ -158,7 +176,7 @@ export async function persistFile(
       },
       attributes: {
         filePersistence: {
-          fileName: input.fileName,
+          ...describeFileNameForLog(input.fileName),
           mediaType: input.mediaType,
           error: exceptionMessage(exception),
         },
@@ -177,7 +195,7 @@ export async function persistFile(
         },
         attributes: {
           filePersistence: {
-            fileName: input.fileName,
+            ...describeFileNameForLog(input.fileName),
             mediaType: input.mediaType,
             error: exceptionMessage(rollbackException),
           },
@@ -259,7 +277,7 @@ async function rollbackPersistedFile(
       },
       attributes: {
         filePersistence: {
-          fileName: input.fileName,
+          ...describeFileNameForLog(input.fileName),
           mediaType: input.mediaType,
           error: exceptionMessage(exception),
         },
@@ -284,7 +302,7 @@ async function rollbackPersistedFile(
       },
       attributes: {
         filePersistence: {
-          fileName: input.fileName,
+          ...describeFileNameForLog(input.fileName),
           mediaType: input.mediaType,
           error: exceptionMessage(exception),
         },

@@ -923,12 +923,12 @@ endpoint. `mcp()` from `@better-auth/mcp` (built on
 | Setting | Value | Why |
 | --- | --- | --- |
 | `resource` | `${siteUrl}/mcp` | RFC 8707 resource; becomes the JWT `aud` |
-| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `projects:write`, `memory:write` |
+| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `data:delete` |
 | `accessTokenExpiresIn` | 900 (15 min) | access tokens are JWTs verified offline; disconnecting is still immediate because `/mcp` also checks the consent row |
 | `refreshTokenExpiresIn` | 2,592,000 (30 days) | library default, set explicitly; rotated on every refresh, 30s reuse overlap from `mcp()` |
 | PKCE | required, S256 only | library default |
 | `allowDynamicClientRegistration` + `allowUnauthenticatedClientRegistration` | on | MCP clients (claude.ai, Claude Code, Cursor) register themselves |
-| `clientRegistrationDefaultScopes` | `MCP_OAUTH_SCOPES` | every DCR client may ask for every scope; the user decides on the consent page |
+| `clientRegistrationDefaultScopes` | `MCP_OAUTH_SCOPES` | every DCR client may ask for every scope; the user decides on the consent page. The list is snapshotted into `oauth_clients.scopes` at registration, so clients registered earlier are upgraded on `/oauth2/authorize` (`docs/mcp-server.md`, Scope upgrades for existing clients) |
 | `clientRegistrationDefaultApplicationType` | `infer` | native clients with loopback or custom-scheme callbacks register without loosening web redirect rules |
 | `skipConsent` | never | consent is required for every client |
 | `loginPage` / `consentPage` | `/signin` / `/oauth/consent` | |
@@ -997,6 +997,13 @@ in `server/utils/oauth/registration-limits.ts`. Registration is
 unauthenticated and the name is shown on the consent page, so unbounded
 metadata is both a storage and a spoofing lever.
 
+**Scope snapshot upgrade.** The same `hooks.before` also handles
+`/oauth2/authorize`: a client whose stored `oauth_clients.scopes` is a
+strict subset of `MCP_OAUTH_SCOPES` is rewritten to the full list, so
+clients registered before a scope was added can ask for it
+(`refreshStaleClientScopes`, `server/utils/oauth/client-scope-upgrade.ts`;
+details in `docs/mcp-server.md`). Consent stays per user and per scope.
+
 ### Sign-in and consent flow
 
 `/oauth2/authorize` redirects to `/signin` or `/oauth/consent` with a
@@ -1034,7 +1041,7 @@ they approve anything, so both pages show a generic icon. Read scopes start
 checked; write scopes (`isMcpWriteScope`) start unchecked with a warning.
 Identity scopes are always sent. Approve posts only the chosen scopes to
 `/oauth2/consent`, which accepts any subset of the requested scopes. The
-page also states that chats, projects and memory can hold sensitive and
+page also states that chats, projects, files and memory can hold sensitive and
 third-party data, that approving is explicit consent to send it to the
 app, and that the app may be outside the EU without a contract with
 Besidka (`/privacy-policy#connected-ai-apps`). `/oauth/**` is disallowed

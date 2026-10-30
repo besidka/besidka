@@ -545,8 +545,15 @@ describe('projects API', () => {
     const PROJECT_PUBLIC_ID = encodePublicId(7)
 
     function createDeleteDb(callOrder: string[] = []) {
-      const chatsWhere = vi.fn(async () => {
+      const chatsWhere = vi.fn(() => {
         callOrder.push('detach-chats')
+
+        return {
+          returning: vi.fn(async () => [
+            { id: 'chat-1' },
+            { id: 'chat-2' },
+          ]),
+        }
       })
       const projectsWhere = vi.fn(async () => {
         callOrder.push('delete-project')

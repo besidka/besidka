@@ -78,7 +78,7 @@ public tools never authenticates.
 | Protected resource metadata | `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` | Better Auth through `server/routes/.well-known/oauth-protected-resource/` |
 | Dynamic client registration | `/api/auth/oauth2/register` | Better Auth, RFC 7591, no user session needed |
 | Consent page | `/oauth/consent` | The app |
-| Scopes | `shared/utils/mcp-oauth-scopes.ts` | Identity: `openid`, `profile`, `email`, `offline_access`. Read: `chats:read`, `projects:read`, `memory:read`. Write: `projects:write`, `memory:write` |
+| Scopes | `shared/utils/mcp-oauth-scopes.ts` | Identity: `openid`, `profile`, `email`, `offline_access`. Read: `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`. Write: `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `data:delete` |
 
 The root protected resource document describes the origin
 (`resource: "https://besidka.com"`, rewritten from Better Auth's output in

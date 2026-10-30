@@ -265,8 +265,10 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
 - **Connected AI apps (OAuth) have their own consent record, 2026-10-29.**
   Besidka is an OAuth 2.1 authorization server for its MCP server at
   `https://besidka.com/mcp` (Better Auth `@better-auth/mcp`). The user's
-  approval of a client and its scopes (`chats:read`, `projects:read`,
-  `memory:read`, `projects:write`, `memory:write`) is a row in `oauth_consents`
+  approval of a client and its scopes (read: `chats:read`, `projects:read`,
+  `memory:read`, `files:read`, `settings:read`; write: `projects:write`,
+  `memory:write`, `chats:write`, `files:write`, `settings:write`, see
+  `shared/utils/mcp-oauth-scopes.ts`) is a row in `oauth_consents`
   (`server/db/schemas/oauth.ts`: user id, client id, scopes, timestamps). It is
   **not** on `user_settings`, **not** in `CONSENT_DB`, and **not** a copy of the
   gate record above. Two things it is, and it must not be read as anything
@@ -278,7 +280,7 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
     what the client reads, per client and per scope. The gate's wording names
     "the AI providers, AI gateways and search providers whose keys I add", so
     it does not reach a connected client. The `/oauth/consent` page text must
-    therefore say that chats, projects and memory can hold sensitive and
+    therefore say that chats, projects, files and memory can hold sensitive and
     third-party data, that approving sends it to that app, that the app may be
     outside the EU and that Besidka has no contract with it (the Art. 49(1)(a)
     warning). Without that text the record proves nothing. The Privacy Policy
@@ -293,12 +295,36 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   approval screen is where the user meets it. The version would have to change
   if the modal wording ever named connected apps or MCP, or if the gate were
   made to cover them.
-- **Gate integration for connected clients (required, planned).** The MCP
+- **Six new scopes, still no consent version bump (2026-10-30).** UI parity
+  added `files:read`, `settings:read`, `chats:write`, `files:write`,
+  `settings:write` and `data:delete` (all permanent deletion, 11 resource
+  scopes in all; `docs/mcp-server.md`). The gate record and
+  its text are unchanged; the approval screen (`ScopePicker`, `ScopeLabel`,
+  the legal paragraph naming files) and the Privacy Policy and Terms carry the
+  new wording, including that deletions are permanent. Any client whose stored
+  scope list is a strict subset of the current one gets the new scopes only as
+  something it may *ask for* (the `/oauth2/authorize` upgrade,
+  `server/utils/oauth/client-scope-upgrade.ts`); a user's consent row is not
+  widened, so the consent page asks again for each new scope, and no existing
+  approval includes `data:delete`. **Known limit:** consent is stored per scope
+  name, so a tool added behind a scope the user already granted reaches the
+  existing approval with no new prompt. That is why every deletion sits behind
+  `data:delete` (a "Change" scope still has side effects: `update_chat`
+  `memoryExcluded` removes extraction-only memory entries learned only from
+  that chat, `revoke_chat_shares` removes share links, and edits replace old
+  text), and why extensions of an existing scope must involve no deletion or
+  spend, though overwrites are possible (so far `update_project` and
+  `update_project_knowledge_item` under `projects:write`, and
+  `list_shared_chats` and the share status under `chats:read`, whose share URL
+  needs `chats:write` too). The Privacy Policy says this ("When a permission
+  grows"). A future scope must keep the first rule: never extend a stored
+  `oauth_consents` row without the user ticking the scope.
+- **Gate integration for connected clients (required, built).** The MCP
   server must treat a user whose gate status is not `current` like the in-app
   routes do: read nothing and change nothing for a connected client until the
   user consents again. Every MCP write tool is gated like its in-app twin
-  (project instructions, project knowledge notes, memory entries; the route
-  list above), and a memory write over MCP runs the never-store and
+  (chats, projects, project instructions, knowledge notes, files, memory
+  entries and settings; the route list above), and a memory write over MCP runs the never-store and
   sensitive-topic gate. Reading is not left open for connected clients: for
   the user, reading stays open because it only shows their own data; for an
   app it is a disclosure to a third party.
@@ -319,7 +345,7 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
 - **Where the connected-app text lives.** Privacy Policy `#connected-ai-apps`
   (plus rows in the legal-basis, recipients, retention and deletion sections),
   Terms of Use `#connected-apps`, one cookie row in the Cookie Policy, DPIA
-  3.11 and risk rows 28 to 35, Art. 30 row 10a. Edit them together.
+  3.11 and risk rows 28 to 37, Art. 30 row 10a. Edit them together.
 
 ## How legal text reaches production
 

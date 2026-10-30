@@ -373,6 +373,15 @@ Common failure statuses:
 - If an individual R2 delete fails, that file is not removed from DB.
 - Returns partial failure as `409` after processing successful deletions.
 
+Both routes and the MCP `delete_files` tool call
+`server/utils/files/delete-files.ts`. When a deleted file was linked as project
+knowledge, the row delete cascades the knowledge item rows away, so the helper
+first collects `(projectId, itemId)` of the linked items and, after the row is
+deleted, removes their `knowledge/u<userId>/p<projectId>/items/<itemId>.md` R2
+text objects (one batch call per project; a failure is logged and does not fail
+the delete). Before this, those text objects were left in R2 with no row and no
+quota accounting.
+
 ### Storage/Policy (`GET /api/v1/storage`, `GET /api/v1/files/policy`)
 
 - Require auth.

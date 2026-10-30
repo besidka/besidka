@@ -2,6 +2,7 @@ import type { KVNamespace } from '@cloudflare/workers-types'
 import type { LegalConsentStatus } from '#shared/types/legal-consent.d'
 import { createError } from 'evlog'
 import {
+  MCP_PRIVATE_DELETE_RATE_LIMIT,
   MCP_PRIVATE_TOOL_RATE_LIMIT,
   MCP_PRIVATE_WRITE_RATE_LIMIT,
 } from '~~/config/mcp-server'
@@ -14,6 +15,7 @@ import type { McpAuthContext } from '~~/server/utils/mcp/auth'
 import type { McpPrivateToolName } from '~~/server/utils/mcp/tool-scopes'
 import {
   MCP_PRIVATE_TOOL_SCOPES,
+  isMcpDeleteTool,
   isMcpWriteTool,
 } from '~~/server/utils/mcp/tool-scopes'
 
@@ -132,5 +134,22 @@ export async function enforceMcpToolRateLimit(
 
   if (!writeResult.allowed) {
     throw createRateLimitError(writeResult.retryAfter)
+  }
+
+  if (!isMcpDeleteTool(toolName)) {
+    return
+  }
+
+  const deleteTools = createAuthRateLimitStorage(
+    kv,
+    `${MCP_RATE_LIMIT_KEY_PREFIX}:delete`,
+  )
+  const deleteResult = await deleteTools.consume(
+    String(userId),
+    MCP_PRIVATE_DELETE_RATE_LIMIT,
+  )
+
+  if (!deleteResult.allowed) {
+    throw createRateLimitError(deleteResult.retryAfter)
   }
 }

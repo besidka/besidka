@@ -1,15 +1,5 @@
 import { createError } from 'evlog'
-import { and, eq } from 'drizzle-orm'
-import * as schema from '~~/server/db/schema'
-import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
-import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
-import {
-  cleanupFilesOrphanedByChatDeletion,
-  findChatOriginFiles,
-} from '~~/server/utils/files/chat-deletion-cleanup'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
-import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
+import { deleteChat } from '~~/server/utils/chats/lifecycle'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -57,47 +47,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const originFiles = await findChatOriginFiles(chat.id, userId)
-
-  await detachChatsFromMemory({
-    db,
-    userId,
-    chatIds: [chat.id],
-    logger,
-  })
-
-  await removeChatsFromSearchIndex({
-    db,
-    userId,
-    chatIds: [chat.id],
-    logger,
-    stage: 'chat-delete',
-  })
-
-  await db.delete(schema.chats)
-    .where(and(
-      eq(schema.chats.id, chat.id),
-      eq(schema.chats.userId, userId),
-    ))
-
-  await refreshProjectActivityAt([chat.projectId], userId, db)
-  await markProjectsMemoryStale([chat.projectId], userId, db)
-
-  try {
-    await cleanupFilesOrphanedByChatDeletion(originFiles, userId, logger)
-  } catch (exception) {
-    logger.set({
-      orphanedFileCleanup: {
-        phase: 'cleanup',
-        candidateCount: originFiles.length,
-      },
-      attributes: {
-        orphanedFileCleanup: {
-          error: exceptionMessage(exception),
-        },
-      },
-    })
-  }
+  await deleteChat(db, userId, chat, logger)
 
   return { success: true }
 })

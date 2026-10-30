@@ -17,7 +17,7 @@ export default defineMcpTool({
   name: 'delete_memory',
   title: 'Forget a memory entry',
   description: 'Permanently delete one of your memory entries. Requires '
-    + 'signing in (memory:write).',
+    + 'signing in (data:delete).',
   inputSchema,
   annotations: {
     readOnlyHint: false,

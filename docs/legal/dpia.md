@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.2, 2026-10-29 (connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
+| Version | 1.3, 2026-10-30 (connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -23,9 +23,23 @@ the app does not collect.
 
 **Added 2026-10-29.** Section 3.11 and risk rows 28 to 35 assess connected AI
 apps (Besidka as an OAuth 2.1 authorization server for its MCP server at
-`https://besidka.com/mcp`). Everything in them is `planned` until that release
-ships. Read those risks as **open** until the Status column says `built`. The
-consent gate text and `CURRENT_CONSENT_VERSION` are unchanged.
+`https://besidka.com/mcp`). That release has been in production since
+2026-10-29 (#588), so rows 28 to 34 are `built` (their `[U]` items stay open)
+and row 35 stays `planned` until it is verified. Rows 36 and 37 (2026-10-30)
+are `built` on `feat/mcp-ui-parity` and count as shipped only when that branch
+is deployed. The consent gate text and `CURRENT_CONSENT_VERSION` are
+unchanged.
+
+**Added 2026-10-30.** Connected apps can now also read files and settings and,
+with separate write scopes, rename, move and branch chats, update projects and
+knowledge, create and rename text files and change a short list of settings,
+and with the separate `data:delete` scope delete chats, messages, projects,
+knowledge, files and memory and reset memory (section 3.11, risk rows 36 and
+37). No new recipient or purpose, and nothing that spends the user's API keys.
+The step that matters for the risk is that deletions are permanent. Corrected the
+same day: section 3.11 and rows 28 to 34 are `built` (in production since
+2026-10-29), and row 33 no longer holds, because disconnecting stops an app on
+its next call.
 
 ## 1. Why a DPIA is required
 
@@ -446,9 +460,9 @@ removed.
 | 5 | Worker | Memory model | New chat text (opt-in) | Never-store redaction, then gate on output |
 | 5a | Worker | TypeSafe AI (only with a TypeSafe AI key, per enabled check) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt; chat text for the pre-filter, the share check and Auto web search; project knowledge and Brave or Exa results for injection screening; query and excerpts for re-ranking; recent turns for past-chat retrieval | Per-role toggle; gate first for memory; flagged text never sent; add-only for memory; every role fails safe |
 | 6 | Worker | Axiom | Counts and ids | No memory or chat text |
-| 7 | AI client (pulls) | Worker (MCP server) | Token, then the chats, projects, knowledge and memory the user approved; for write scopes, instructions, notes and memory entries | OAuth 2.1 with PKCE, scopes ticked per client, 15-minute tokens, per-user ownership in SQL, consent gate, never-store and sensitive-topic gate on memory writes. The client is an independent controller the user chose |
+| 7 | AI client (pulls) | Worker (MCP server) | Token, then the chats, projects, knowledge, files, memory and settings the user approved; for write scopes, new values (names, instructions, notes, text files, memory entries, settings) and which items to move or delete | OAuth 2.1 with PKCE, scopes ticked per client, 15-minute tokens, per-user ownership in SQL, consent gate, never-store and sensitive-topic gate on memory writes. The client is an independent controller the user chose |
 
-### 3.11 Connected AI apps (OAuth 2.1 and MCP) -- planned
+### 3.11 Connected AI apps (OAuth 2.1 and MCP) -- built
 
 - **Purpose.** Let a user work with their own Besidka data from an AI client
   they choose (a chat assistant, a coding tool) through the MCP server at
@@ -459,13 +473,46 @@ removed.
 - **Flow.** The client registers itself (dynamic client registration, no
   account needed), sends the user to a Besidka screen, and the signed-in user
   approves a set of scopes. Authorization code with PKCE. Access tokens last
-  15 minutes (JWT); refresh tokens rotate on use.
-- **Scopes.** `chats:read` (list, search and read chats), `projects:read`
-  (projects, instructions, project knowledge items), `memory:read` (memory
-  entries), `projects:write` (create projects, edit project instructions,
-  add notes or text to project knowledge), `memory:write` (add, edit and
-  delete memory entries).
-  The write scopes are unticked by default.
+  15 minutes (JWT); refresh tokens rotate on use and last 30 days at most.
+- **Scopes.** Read: `chats:read` (list, search and read chats, list shared
+  chats), `projects:read` (projects, instructions, project knowledge items),
+  `memory:read` (memory entries), `files:read` (the file list, storage use and
+  the text of text files), `settings:read` (display preferences and memory
+  switches, and which models memory uses and whether automatic extraction is
+  on). Write: `chats:write` (rename, pin, move and branch chats, exclude a chat
+  from memory, stop a share), `projects:write` (create, update and archive
+  projects, edit instructions, add and edit knowledge items), `memory:write`
+  (add and edit memory entries), `files:write` (create text files, rename
+  files), `settings:write` (display preferences, favourite models, sidebar
+  pinning, the memory and chat search switches), and `data:delete` (all
+  permanent deletion: chats, messages, projects, knowledge items, files, memory
+  entries, memory reset). 11 resource scopes, each write scope its own tick and
+  unticked by default. The share URL of a chat is returned only to a token that
+  also has `chats:write`; `chats:read` shows whether a chat is shared, its
+  expiry and what it shows. 32 private tools in all (`docs/mcp-server.md`).
+  `create_file` text is stored as a file without the prompt-injection screening
+  that project notes get; an agent can read it back with `read_file`, so treat
+  it like any text an agent reads (risk row 31).
+- **Left out on purpose.** Anything that spends the user's keys (sending,
+  memory import and extraction, backfill, project memory refresh, title
+  generation, the share personal-data check, deep research), creating or
+  updating a public chat share, "Allow anyway" on a flagged knowledge item,
+  settings that authorise spend or change the data recipient (automatic
+  memory extraction, memory models, TypeSafe AI roles), and API keys,
+  sessions, consents, push, email, password, 2FA, passkeys and account
+  deletion. Reasons and revisit criteria: `docs/mcp-server.md`, "What MCP does
+  not do (and why)".
+- **Deletion.** The delete tools are permanent, as in the app: no trash, no
+  per-user undo. Guard rails: destructive tools carry `destructiveHint` so
+  a client asks the user first; `delete_project` needs the exact project name
+  (`confirmName`) and `reset_memory` needs `confirm: true`; batches are capped
+  (25 chats per call, 100 files or knowledge items, 90 share revocations);
+  deleting a chat or message and branching are skipped or refused for a chat
+  that is generating a reply (best effort, not a lock); every deletion needs the
+  separate `data:delete` scope; deletes are limited to 20 calls an hour and
+  writes to 30 a minute. D1
+  Time Travel (30 days) exists for disaster recovery of the whole database and
+  is not used to undo one user's deletions.
 - **Data subjects.** Users. Third parties named in the chats, projects and
   memory that a client can read.
 - **Data stored.** `oauth_clients` (name, redirect URIs, and whatever metadata
@@ -491,17 +538,20 @@ removed.
   calls: section 6, items 12 and 13.
 - **Gate integration (required).** A connected client reads or changes nothing
   while the user's consent under section 3.8 is not `current`. Every MCP write
-  tool is gated like its in-app twin (project instructions, project knowledge
-  notes, memory entries: the list in `docs/legal.md`). Memory writes through
+  tool is gated like its in-app twin (chats, projects, project instructions,
+  project knowledge notes, files, memory entries, settings: the list in
+  `docs/legal.md`). Memory writes through
   MCP run the same never-store and sensitive-topic gate as any other memory
   write path (3.7).
-- **Retention.** Access tokens 15 minutes. Refresh tokens until they expire or
-  are revoked. Consents until the user disconnects the client or deletes the
+- **Retention.** Access tokens 15 minutes. Refresh tokens until they expire (30
+  days at most) or are revoked. Consents until the user disconnects the client or deletes the
   account. Client registrations until removed. Whether expired token rows are
   purged **[U]**.
-- **Revocation.** Profile → Connected apps. Revoking ends the consent and the
-  refresh token. A JWT access token already issued stays valid until it
-  expires, up to 15 minutes (risk row 33).
+- **Revocation.** Profile → Connected apps. Disconnecting deletes the consent
+  and the tokens, and the app stops on its next call: every `/mcp` call checks
+  that the user exists, the client is enabled and a live `oauth_consents` row
+  exists (`isMcpPrincipalActive`, `server/utils/mcp/auth.ts`), so a JWT access
+  token that is still unexpired is refused at once (risk row 33).
 - **Logs.** `attributes.mcp`: client id, tool name, scope, status, timing and
   the user id; never chat, memory or project text (`docs/axiom-map-fields.md`).
 - **Cookies.** The OAuth flow rides on the existing Better Auth session cookie
@@ -509,10 +559,12 @@ removed.
   `better-auth.session_token.oauth_logout_confirmation` (signed, `HttpOnly`,
   300 seconds), set only when a client with end-session enabled asks to sign
   the user out. Listed in the Cookie Policy.
-- **Status.** **Planned.** The baseline (`mcp` plugin, `server/db/schemas/oauth.ts`)
-  exists in the branch `feat/mcp-oauth`; the scopes, the approval screen, the
-  Connected apps page, the gate integration and the write tools are not
-  assessed as built.
+- **Status.** **Built** and in production since 2026-10-29 (#588): the OAuth
+  provider, the scopes, the approval screen, the Connected apps page, the gate
+  integration and the write tools. The 2026-10-30 additions (files, settings,
+  deletion tools, a separate `data:delete` scope, 11 scopes) are built on `feat/mcp-ui-parity`. The items
+  marked `[U]` (token hashing at rest, expired token purge, account-deletion
+  cleanup of OAuth rows) are still to be verified.
 
 ## 4. Necessity and proportionality
 
@@ -608,14 +660,16 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 25 | A chat published by a share link exposes its content, third parties' data and the author's identity to anyone, and can be indexed or copied | Medium | High | Privacy by default (Art. 25(2); EDPB Guidelines 4/2019): every extra on a new share (search indexing, files and generated images, message metadata, author name and avatar, branching) starts **off**, the user switches on only what they want; indexing is its own opt-in; the link duration starts at "never" but the user can pick an expiry, and a share can be revoked; file access uses signed tokens that expire after 1 hour; tool calls are stripped; the optional TypeSafe AI share check and the built-in detector warn before publishing (row 22); the Terms and Privacy Policy say plainly that revoking cannot recall caches, archives or copies. The SQL column defaults stay `DEFAULT true` (changing them rebuilds `chat_shares` on D1 and cascades `chat_share_files`), which is harmless because the route writes every flag explicitly (`docs/d1-restore-reconciliation.md`). Shares created before 2026-10-28 keep their saved flags | built | Medium (a published link is public; copies cannot be recalled) |
 | 26 | A visitor's IP address and browser details reach Google or GitHub (avatar host) or font and icon services just by opening a share page, or by using the app | Medium | Low | Fonts (Nunito, Atkinson Hyperlegible Mono) and icons are served from besidka.com and the Iconify API fallback is disabled; the share author's avatar, when shown, is delivered through a same-origin proxy (`server/api/v1/shared/[slug]/avatar.get.ts`, allowlisted to real Google and GitHub avatar URLs, answers cached privately for 5 minutes), so visitors to a **share page** do not contact Google or GitHub and the raw avatar URL is never sent to them; third-party scripts stay at two, both Cloudflare (Turnstile on auth pages, Web Analytics only after consent). **Residual:** inside the app a signed-in user's own avatar (`Chat/Message.vue`) is still loaded by their own browser from Google or GitHub, which receive that user's IP address; it is their own account and their own data, and the host is the one they signed in with | built for share pages, fonts and icons | Low |
 | 27 | A user who disputes a copyright removal could have their name and contact details passed to the complainant; a false or abusive notice takes down a user's content | Low | Medium | The user's name and contact details are passed to the complainant only with the user's consent (Terms "Copyright complaints", Privacy Policy "Reports and notices about content"); no US DMCA agent is designated (owner decision 2026-10-28) and no US safe harbour is claimed, so nothing in the procedure requires forwarding; a notice needs its elements and an accuracy statement, a person decides, the user gets a statement of reasons and can challenge it, and the false-notice warning is stated; retention is until the matter is closed plus 12 months, and 24 months for the note on a copyright removal | built (text and procedure) | Low |
-| 28 | An access or refresh token is stolen (leaky client, log, shared machine) and used to read chats, projects and memory | Medium | High | Access tokens last 15 minutes. Refresh tokens rotate on use and a replayed one is rejected (the library keeps a replay window). PKCE is required. Tokens are bound to the client and the scopes granted and carry only the MCP resource audience. The user can revoke in Profile → Connected apps. Tokens are never logged. Whether token values are stored hashed in `oauth_access_tokens` and `oauth_refresh_tokens` **[U]** | planned | Medium |
-| 29 | Over-broad consent: the user ticks every scope without understanding it, or a client later asks for more than the user expected | Medium | High | Five narrow scopes; write scopes unticked by default and shown apart from read scopes; the screen names the client, shows the redirect host and says in plain words that chats, projects and memory can hold sensitive and third-party data and that approving is explicit consent to send it to that app; a client cannot widen scopes without a new approval; no `skip_consent` for dynamically registered clients **[U]**; the approval is recorded with scopes and time | planned | Medium |
-| 30 | A malicious or impersonating client registers itself (dynamic registration is open, no account) under the name of a well-known app and phishes consent, or registers redirect URIs it should not | Medium | High | Registration is rate limited per IP and capped; redirect URIs validated (https or loopback only); the screen shows the name as unverified, the redirect host and the registration date, never a client-supplied logo or link as proof; the user must be signed in with Besidka's own session; PKCE; Besidka can disable a client (`oauth_clients.disabled`) and revoke its tokens; the Terms allow it. A registered client cannot set `skip_consent` or `enable_end_session` without owner action **[U]** | planned | Medium (a convincing name still works on a careless user) |
-| 31 | An agent is steered by text it reads (a chat, a note, a web page in its own context) into writing bad instructions, notes or memory entries, or deleting memory | Medium | Medium | Write scopes are separate and off by default; writes are gated by the consent gate; memory writes pass the never-store and sensitive-topic gate (3.7); entry and size caps (30 account entries, 15 per project, 4 KB); entries created over MCP carry an origin that names the client so the user can find and remove them; the user can see, edit and delete everything; logs record client, tool and status for each write; the Privacy Policy warns the user | planned | Medium |
-| 32 | Rate limiting by IP address breaks for connectors that call from shared egress ranges of the AI vendor: one noisy user locks out all others, or one abusive user hides in the crowd | Medium | Low | Limits keyed by client id plus user id from the token, not by IP; a separate per-IP limit only for the unauthenticated registration and authorization endpoints; counters in KV with the existing rate-limit helper; per-request result caps | planned | Low |
-| 33 | After the user revokes a client, its JWT access token still works for up to 15 minutes | Medium | Medium | The refresh token and consent end immediately; the access lifetime is short by design; the window is disclosed in the Privacy Policy and on the Connected apps page; checking the revocation state in the database on write tools is an open option, not decided | planned | Low to medium |
-| 34 | Sensitive and third-party data reaches an AI client run by a company outside the EEA with no adequacy decision and no safeguard Besidka can provide; the characterisation under Chapter V is unsettled | Medium | High | The user chooses the client and directs the disclosure; nothing reaches a client the user did not approve; the screen states that the app may be outside the EU and that Besidka has no contract with it, and the approval is meant to double as explicit Art. 49(1)(a) consent if the disclosure is a transfer; the Privacy Policy says the question is not settled; sending chat messages and API keys are out of scope for this release | planned | Medium to high, accepted and disclosed (section 6, item 12) |
+| 28 | An access or refresh token is stolen (leaky client, log, shared machine) and used to read chats, projects and memory | Medium | High | Access tokens last 15 minutes. Refresh tokens rotate on use and a replayed one is rejected (the library keeps a replay window). PKCE is required. Tokens are bound to the client and the scopes granted and carry only the MCP resource audience. The user can revoke in Profile → Connected apps. Tokens are never logged. Whether token values are stored hashed in `oauth_access_tokens` and `oauth_refresh_tokens` **[U]** | built (the `[U]` items stay open) | Medium |
+| 29 | Over-broad consent: the user ticks every scope without understanding it, or a client later asks for more than the user expected | Medium | High | Eleven narrow scopes (five read, six write); write scopes unticked by default, each its own tick, and shown apart from read scopes, with the screen saying that write access can change or delete chats, projects, files, memory and settings; the screen names the client, shows the redirect host and says in plain words that chats, projects and memory can hold sensitive and third-party data and that approving is explicit consent to send it to that app; a client cannot widen scopes without a new approval; no `skip_consent` for dynamically registered clients **[U]**; the approval is recorded with scopes and time | built (the `[U]` items stay open) | Medium |
+| 30 | A malicious or impersonating client registers itself (dynamic registration is open, no account) under the name of a well-known app and phishes consent, or registers redirect URIs it should not | Medium | High | Registration is rate limited per IP and capped; redirect URIs validated (https or loopback only); the screen shows the name as unverified, the redirect host and the registration date, never a client-supplied logo or link as proof; the user must be signed in with Besidka's own session; PKCE; Besidka can disable a client (`oauth_clients.disabled`) and revoke its tokens; the Terms allow it. A registered client cannot set `skip_consent` or `enable_end_session` without owner action **[U]** | built (the `[U]` items stay open) | Medium (a convincing name still works on a careless user) |
+| 31 | An agent is steered by text it reads (a chat, a note, a web page in its own context) into writing bad instructions, notes or memory entries, or into deleting memory (rows 36 and 37 cover deletion and scope growth) | Medium | Medium | Write scopes are separate and off by default; writes are gated by the consent gate; memory writes pass the never-store and sensitive-topic gate (3.7); entry and size caps (30 account entries, 15 per project, 4 KB); entries created over MCP carry an origin that names the client so the user can find and remove them; the user can see, edit and delete everything; logs record client, tool and status for each write; the Privacy Policy warns the user | built | Medium |
+| 32 | Rate limiting by IP address breaks for connectors that call from shared egress ranges of the AI vendor: one noisy user locks out all others, or one abusive user hides in the crowd | Medium | Low | Limits keyed by the user id from the token (120 private calls and 30 write calls a minute), not by IP; a separate per-IP limit only for the unauthenticated registration and authorization endpoints; counters in KV with the existing rate-limit helper; per-request result caps | built | Low |
+| 33 | After the user revokes a client, its JWT access token keeps working until it expires | Medium | Medium | Closed by design: every `/mcp` call, reads and writes, checks in one D1 batch that the user exists, the client is enabled and a live `oauth_consents` row exists, so disconnecting (which deletes the consent and the tokens) stops the app on its next call. The 15-minute access lifetime only bounds a token whose consent row somehow survived, for example a failed delete; a lookup failure answers 503, not data. The Privacy Policy and Terms say the app stops at once | built | Low |
+| 34 | Sensitive and third-party data reaches an AI client run by a company outside the EEA with no adequacy decision and no safeguard Besidka can provide; the characterisation under Chapter V is unsettled | Medium | High | The user chooses the client and directs the disclosure; nothing reaches a client the user did not approve; the screen states that the app may be outside the EU and that Besidka has no contract with it, and the approval is meant to double as explicit Art. 49(1)(a) consent if the disclosure is a transfer; the Privacy Policy says the question is not settled; sending chat messages and API keys are out of scope for this release | built | Medium to high, accepted and disclosed (section 6, item 12) |
 | 35 | OAuth records outlive the account: `oauth_consents`, `oauth_access_tokens` and `oauth_refresh_tokens` reference `users` with no `ON DELETE`, so they are not removed by the cascade | Medium | Medium | The account-deletion path must delete the user's OAuth rows explicitly before the user row, and the same for Time Travel restore reconciliation (`docs/d1-restore-reconciliation.md`). Must be verified before release **[U]** | planned | Low once verified |
+| 36 | A connected app, or an agent steered by text it reads, deletes or overwrites the user's data (chats, messages, projects with their knowledge and project memory, files, memory entries) or changes settings, and the user cannot get it back | Medium | High | Every write scope is off by default and a separate tick; all permanent deletion sits behind its own scope, `data:delete`, which no existing approval holds and which a "Change" scope does not include, so an app that only needs to read, add notes or rename never holds a delete power; the consent screen says in words that write access can change or delete; every destructive tool carries `destructiveHint: true` so a client asks the user first (a unit test fails when the annotations and the tool map disagree); `delete_project` needs the exact project name as `confirmName` and `reset_memory` needs `confirm: true`; batches are capped (25 chats per call, 100 files, 100 knowledge items, 90 share revocations); deleting or branching a chat that is generating a reply is skipped or refused, on a best-effort basis (a check of the generation lease, not a lock); deleting a project keeps its chats; deletes are limited to 20 calls an hour and writes to 30 a minute per user, which slows a runaway agent but does not stop it from deleting within those limits; settings that spend the user's keys or change the data recipient cannot be changed (`docs/mcp-server.md`, "What MCP does not do (and why)"); the user can disconnect an app in Profile → Connected apps and the next call fails at once. **Residual:** deletion is permanent, as in the app. A "Change" scope cannot delete those records directly but has side effects: excluding a chat from memory removes extraction-only memory entries learned only from it, stopping a share removes its link, editing replaces the old text (instructions, knowledge items, memory entries, file names, favourites) and switching project memory off resets its state. D1 Time Travel is disaster recovery for the whole database, not a per-user undo, and restoring it for one user would roll back every other user (`docs/d1-restore-reconciliation.md`). A client that does not ask before a call can still delete what its scope allows, within the caps. The Privacy Policy and Terms say deletions through an app are permanent | built on `feat/mcp-ui-parity`, not yet deployed | Medium, accepted and disclosed |
+| 37 | Scope growth: a client registered before the write scopes existed may ask for them, and a stored approval could be read as covering them, so an app gains delete power the user never ticked | Low | High | Any client whose stored scope list is a strict subset of the current one may *ask for* the new scopes (the `hooks.before` upgrade on `/oauth2/authorize`, `server/utils/oauth/client-scope-upgrade.ts`: a stored list that is a strict subset of the current scopes is rewritten, anything else is left alone, a failure never blocks sign-in). The user's `oauth_consents` row is not widened: authorize sends the user to the consent page whenever a requested scope is not in their row, so the user ticks each new scope on the screen. A tool behind a scope the user did not grant answers `403 insufficient_scope`. An existing connection that never asks for the new scopes keeps working with what it had. **Residual:** consent is stored per scope name, so when a tool is added behind a scope the user already granted, the existing approval gets it with no new prompt. Deletion is closed off by `data:delete` (`delete_memory` moved there from `memory:write`, so existing connections lose it until the user ticks the new scope). What did reach existing approvals involves no deletion or spend, though overwrites are possible: under `projects:write`, `update_project` (rename, pin, archive, knowledge mode, project memory switch) and `update_project_knowledge_item`; under `chats:read`, `list_shared_chats` and share status (the URL needs `chats:write`). The Privacy Policy says this and tells the user to check Profile → Connected apps after such a change. Future extensions of an existing scope must involve no deletion or spend, though overwrites are possible | built on `feat/mcp-ui-parity`, not yet deployed | Low to medium, accepted and disclosed |
 
 ## 6. Residual risks
 
@@ -731,12 +785,15 @@ the residual risk is medium. It is not high enough for prior consultation under
 Art. 36. Without them it is high. Review this conclusion if any of them
 changes.
 
-**Connected AI apps (2026-10-29).** Rows 28 to 35 are `planned`. If the release
-ships with the measures named there, the overall conclusion stays medium, with
+**Connected AI apps (2026-10-29, extended 2026-10-30).** Rows 28 to 34 are `built` and in production, row 35 is `planned`, and rows 36 and 37 are `built` on `feat/mcp-ui-parity`. With the measures named there, the overall conclusion stays medium, with
 row 34 (the Chapter V question) as the one that stays medium to high and is
 accepted and disclosed. If the gate integration (section 3.11) or the
 approval-screen consent wording is missing at release, row 34 and the Art. 9
-position are high and the release should not ship. Review before release, and
+position are high and the release should not ship. Row 36 stays medium
+because deletion cannot be undone; it is accepted because every delete power is
+a separate, unticked scope and the app asks the user first. If a write scope
+ever becomes default-on or a delete tool loses its cap or confirmation, treat
+row 36 as high. Review before release, and
 again after the first month of real use.
 
 ## 7. Consultation

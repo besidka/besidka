@@ -26,6 +26,7 @@ function createDb() {
   const query = vi.fn()
   const chain = {
     from: () => chain,
+    leftJoin: () => chain,
     where: () => chain,
     orderBy: () => chain,
     limit: async () => {

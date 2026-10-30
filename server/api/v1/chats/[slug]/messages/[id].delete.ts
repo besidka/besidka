@@ -1,17 +1,5 @@
 import { createError } from 'evlog'
-import {
-  and, eq, inArray, sql,
-} from 'drizzle-orm'
-import * as schema from '~~/server/db/schema'
-import {
-  cleanupFilesOrphanedByChatDeletion,
-  findMessageOriginFiles,
-} from '~~/server/utils/files/chat-deletion-cleanup'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import {
-  removeMessageRowsFromSearchIndex,
-  safeDecodePublicId,
-} from '~~/server/utils/search/index-writer'
+import { deleteChatMessage } from '~~/server/utils/chats/lifecycle'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -63,74 +51,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const message = await db.query.messages.findFirst({
-    where: {
-      chatId: chat.id,
-      OR: [
-        { publicId: params.data.id },
-        { id: params.data.id },
-      ],
-    },
-    columns: {
-      id: true,
-    },
-  })
-
-  if (!message) {
-    throw createError({
-      message: 'Message not found',
-      status: 404,
-    })
-  }
-
-  const messageRowId = safeDecodePublicId(message.id)
-  const originFiles = messageRowId === null
-    ? []
-    : await findMessageOriginFiles(messageRowId, userId)
-
-  const deleteResult = await db.delete(schema.messages)
-    .where(and(
-      eq(schema.messages.id, message.id),
-      eq(schema.messages.chatId, chat.id),
-      inArray(
-        schema.messages.chatId,
-        db.select({ chatId: schema.messages.chatId })
-          .from(schema.messages)
-          .where(eq(schema.messages.chatId, chat.id))
-          .groupBy(schema.messages.chatId)
-          .having(sql`count(*) > 1`),
-      ),
-    ))
-
-  if (deleteResult.meta.changes < 1) {
-    throw createError({
-      message: 'Cannot delete the only message in a chat',
-      status: 400,
-      fix: 'Delete the chat instead',
-    })
-  }
-
-  await removeMessageRowsFromSearchIndex({
-    db,
-    messageRowIds: messageRowId === null ? [] : [messageRowId],
-    logger,
-  })
-
-  try {
-    await cleanupFilesOrphanedByChatDeletion(originFiles, userId, logger)
-  } catch (exception) {
-    logger.set({
-      orphanedFileCleanup: {
-        phase: 'cleanup',
-        candidateCount: originFiles.length,
-      },
-      attributes: {
-        orphanedFileCleanup: {
-          error: exceptionMessage(exception),
-        },
-      },
-    })
-  }
+  await deleteChatMessage(db, userId, chat.id, params.data.id, logger)
 
   return { success: true }
 })

@@ -356,7 +356,7 @@ describe('mcp request guard authentication', () => {
       const header = event.res.headers.get('WWW-Authenticate') ?? ''
 
       expect(header).toMatch(/^Bearer error="insufficient_scope"/)
-      expect(header).toContain('scope="memory:write"')
+      expect(header).toContain('scope="data:delete"')
       expect(header).toContain(`resource_metadata="${RESOURCE_METADATA_URL}"`)
       expect(mocks.logger.set).toHaveBeenCalledWith({
         mcp: {

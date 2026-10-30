@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { KVNamespace } from '@cloudflare/workers-types'
 import {
+  MCP_PRIVATE_DELETE_RATE_LIMIT,
   MCP_PRIVATE_TOOL_RATE_LIMIT,
   MCP_PRIVATE_WRITE_RATE_LIMIT,
 } from '~~/config/mcp-server'
@@ -68,6 +69,37 @@ describe('assertMcpToolAuthorized', () => {
       status: 403,
       message: expect.stringContaining('memory:write'),
     }))
+  })
+
+  it('refuses a delete tool when only the write scope was granted', () => {
+    const writeOnly = {
+      userId: 1,
+      clientId: 'client',
+      scopes: ['projects:write', 'memory:write', 'chats:write', 'files:write'],
+    }
+
+    for (const tool of [
+      'delete_chats',
+      'delete_chat_message',
+      'delete_project',
+      'delete_project_knowledge_items',
+      'delete_files',
+      'delete_memory',
+      'reset_memory',
+    ] as const) {
+      expect(() => {
+        assertMcpToolAuthorized(writeOnly, tool)
+      }, tool).toThrow(expect.objectContaining({
+        status: 403,
+        message: expect.stringContaining('data:delete'),
+      }))
+    }
+  })
+
+  it('allows a delete tool with the delete scope', () => {
+    const auth = { userId: 1, clientId: 'client', scopes: ['data:delete'] }
+
+    expect(assertMcpToolAuthorized(auth, 'delete_chats')).toBe(auth)
   })
 })
 
@@ -153,5 +185,55 @@ describe('enforceMcpToolRateLimit', () => {
 
     await expect(enforceMcpToolRateLimit(8, 'add_memory', kv)).resolves
       .toBeUndefined()
+  })
+
+  it('applies the hourly delete budget to delete tools only', async () => {
+    const kv = createKv()
+
+    expect(MCP_PRIVATE_DELETE_RATE_LIMIT).toEqual({ window: 3600, max: 20 })
+
+    for (let call = 0; call < MCP_PRIVATE_DELETE_RATE_LIMIT.max; call++) {
+      await enforceMcpToolRateLimit(7, 'delete_chats', kv)
+    }
+
+    const error = await readError(
+      enforceMcpToolRateLimit(7, 'delete_chats', kv),
+    )
+
+    expect(error.status).toBe(429)
+    expect(error.message).toContain('Too many Besidka tool calls')
+    await expect(enforceMcpToolRateLimit(7, 'delete_memory', kv)).rejects
+      .toMatchObject({ status: 429 })
+    await expect(enforceMcpToolRateLimit(7, 'add_memory', kv)).resolves
+      .toBeUndefined()
+    await expect(enforceMcpToolRateLimit(7, 'list_chats', kv)).resolves
+      .toBeUndefined()
+    await expect(enforceMcpToolRateLimit(8, 'delete_chats', kv)).resolves
+      .toBeUndefined()
+  })
+
+  it('keeps the delete counter for the whole window', async () => {
+    const kv = createKv()
+
+    await enforceMcpToolRateLimit(7, 'delete_files', kv)
+
+    const deleteCall = vi.mocked(kv.put).mock.calls.find(([key]) => {
+      return key === 'mcp:rate-limit:delete:7'
+    })
+
+    expect(deleteCall?.[2]).toEqual({
+      expirationTtl: MCP_PRIVATE_DELETE_RATE_LIMIT.window,
+    })
+  })
+
+  it('still counts delete calls against the write budget', async () => {
+    const kv = createKv()
+
+    for (let call = 0; call < MCP_PRIVATE_DELETE_RATE_LIMIT.max; call++) {
+      await enforceMcpToolRateLimit(7, 'reset_memory', kv)
+    }
+
+    expect(kv.get).toHaveBeenCalledWith('mcp:rate-limit:write:7')
+    expect(kv.get).toHaveBeenCalledWith('mcp:rate-limit:delete:7')
   })
 })

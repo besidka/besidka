@@ -1,4 +1,13 @@
-import { and, desc, eq, inArray, lt, or } from 'drizzle-orm'
+import type { SQL } from 'drizzle-orm'
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  lt,
+  or,
+} from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
   MIN_SEARCH_LENGTH,
@@ -8,6 +17,8 @@ import {
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import * as schema from '~~/server/db/schema'
+import { buildChatSharedColumn } from '~~/server/utils/chats/share'
+import { buildActiveShareFilter } from '~~/server/utils/chats/share-management'
 import {
   createHistoryCursor,
   parseHistoryCursor,
@@ -25,6 +36,10 @@ import {
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
+import {
+  toMcpShareSummary,
+} from '~~/server/utils/mcp/private/chat-share-summary'
+import { resolveMcpChatProject } from '~~/server/utils/mcp/private/chat-project'
 import { toIsoTimestamp, truncateMcpText } from '~~/server/utils/mcp/private/text'
 
 type DbClient = ReturnType<typeof useDb>
@@ -47,13 +62,18 @@ export interface McpChatListInput {
   limit?: number
   search?: string
   searchIn?: McpChatSearchTarget
+  projectId?: string
+  pinnedOnly?: boolean
 }
 
 export interface McpChatSummary {
   slug: string
   title: string
   projectId: string | null
+  projectName: string | null
   pinned: boolean
+  shared: boolean
+  memoryExcluded: boolean
   createdAt: string | null
   activityAt: string | null
   matchedIn?: 'title' | 'content' | 'both'
@@ -65,7 +85,10 @@ interface ChatListRow {
   slug: string
   title: string | null
   projectId: string | null
+  projectName: string | null
   pinnedAt: Date | null
+  shared: boolean
+  memoryExcluded: boolean | null
   createdAt: Date
   activityAt: Date
 }
@@ -98,14 +121,19 @@ export interface McpChatTranscript {
   truncated: boolean
 }
 
-const chatListColumns = {
-  id: schema.chats.id,
-  slug: schema.chats.slug,
-  title: schema.chats.title,
-  projectId: schema.chats.projectId,
-  pinnedAt: schema.chats.pinnedAt,
-  createdAt: schema.chats.createdAt,
-  activityAt: schema.chats.activityAt,
+function buildChatListColumns() {
+  return {
+    id: schema.chats.id,
+    slug: schema.chats.slug,
+    title: schema.chats.title,
+    projectId: schema.chats.projectId,
+    projectName: schema.projects.name,
+    pinnedAt: schema.chats.pinnedAt,
+    shared: buildChatSharedColumn(),
+    memoryExcluded: schema.chats.memoryExcluded,
+    createdAt: schema.chats.createdAt,
+    activityAt: schema.chats.activityAt,
+  }
 }
 
 export function createInvalidMcpCursorError() {
@@ -169,7 +197,10 @@ function toChatSummary(row: ChatListRow): McpChatSummary {
     slug: row.slug,
     title: row.title ?? '',
     projectId: row.projectId,
+    projectName: row.projectName,
     pinned: row.pinnedAt !== null,
+    shared: row.shared,
+    memoryExcluded: row.memoryExcluded === true,
     createdAt: toIsoTimestamp(row.createdAt),
     activityAt: toIsoTimestamp(row.activityAt),
   }
@@ -213,10 +244,31 @@ export function mergeChatSearchResults(
   return merged
 }
 
+async function buildChatFilterConditions(
+  db: DbClient,
+  userId: number,
+  filters: Pick<McpChatListInput, 'projectId' | 'pinnedOnly'>,
+): Promise<SQL[]> {
+  const conditions: SQL[] = []
+
+  if (filters.projectId !== undefined) {
+    const project = await resolveMcpChatProject(db, userId, filters.projectId)
+
+    conditions.push(eq(schema.chats.projectId, project.id))
+  }
+
+  if (filters.pinnedOnly) {
+    conditions.push(isNotNull(schema.chats.pinnedAt))
+  }
+
+  return conditions
+}
+
 async function loadChatsById(
   db: DbClient,
   userId: number,
   chatIds: string[],
+  filterConditions: SQL[],
 ): Promise<Map<string, ChatListRow>> {
   const chats = new Map<string, ChatListRow>()
 
@@ -226,11 +278,16 @@ async function loadChatsById(
     offset += MAX_BATCH_QUERY_PARAMS
   ) {
     const chunk = chatIds.slice(offset, offset + MAX_BATCH_QUERY_PARAMS)
-    const rows = await db.select(chatListColumns)
+    const rows = await db.select(buildChatListColumns())
       .from(schema.chats)
+      .leftJoin(
+        schema.projects,
+        eq(schema.projects.id, schema.chats.projectId),
+      )
       .where(and(
         eq(schema.chats.userId, userId),
         inArray(schema.chats.id, chunk),
+        ...filterConditions,
       ))
       .limit(chunk.length)
 
@@ -249,16 +306,22 @@ async function searchMcpChats(
     cursor?: string
     limit: number
   },
+  filterConditions: SQL[],
   logger: LoggerLike,
 ) {
   const offset = parseMcpSearchCursor(input.cursor)
   const titleMatches = input.searchIn === 'content'
     ? []
-    : await db.select(chatListColumns)
+    : await db.select(buildChatListColumns())
       .from(schema.chats)
+      .leftJoin(
+        schema.projects,
+        eq(schema.projects.id, schema.chats.projectId),
+      )
       .where(and(
         eq(schema.chats.userId, userId),
         containsLikeEscaped(schema.chats.title, input.search),
+        ...filterConditions,
       ))
       .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
       .limit(MAX_SEARCH_RESULTS)
@@ -284,6 +347,7 @@ async function searchMcpChats(
       .filter((chatId) => {
         return !titleIds.has(chatId)
       }),
+    filterConditions,
   )
   const merged = mergeChatSearchResults(
     titleMatches,
@@ -322,14 +386,20 @@ export async function listMcpChats(
       searchIn: input.searchIn ?? 'all',
       cursor: input.cursor,
       limit,
-    }, logger)
+    }, await buildChatFilterConditions(db, userId, input), logger)
   }
 
   const cursor = parseMcpHistoryCursor(input.cursor)
-  const rows = await db.select(chatListColumns)
+  const filterConditions = await buildChatFilterConditions(db, userId, input)
+  const rows = await db.select(buildChatListColumns())
     .from(schema.chats)
+    .leftJoin(
+      schema.projects,
+      eq(schema.projects.id, schema.chats.projectId),
+    )
     .where(and(
       eq(schema.chats.userId, userId),
+      ...filterConditions,
       cursor
         ? or(
           lt(schema.chats.activityAt, cursor.activityAt),
@@ -434,17 +504,29 @@ export function collectChatModels(rows: McpChatMessageRow[]): string[] {
 export async function getMcpChat(
   db: DbClient,
   userId: number,
-  input: { slug: string, maxMessages?: number },
+  input: {
+    slug: string
+    maxMessages?: number
+    siteUrl: string
+    includeShareUrl?: boolean
+  },
 ) {
   const chat = await db.select({
     id: schema.chats.id,
     slug: schema.chats.slug,
     title: schema.chats.title,
     projectId: schema.chats.projectId,
+    projectName: schema.projects.name,
+    pinnedAt: schema.chats.pinnedAt,
+    memoryExcluded: schema.chats.memoryExcluded,
     createdAt: schema.chats.createdAt,
     activityAt: schema.chats.activityAt,
   })
     .from(schema.chats)
+    .leftJoin(
+      schema.projects,
+      eq(schema.projects.id, schema.chats.projectId),
+    )
     .where(and(
       eq(schema.chats.slug, input.slug),
       eq(schema.chats.userId, userId),
@@ -459,6 +541,20 @@ export async function getMcpChat(
     })
   }
 
+  const share = await db.select({
+    slug: schema.chatShares.slug,
+    expiresAt: schema.chatShares.expiresAt,
+    indexable: schema.chatShares.indexable,
+    showFiles: schema.chatShares.showFiles,
+    allowBranch: schema.chatShares.allowBranch,
+  })
+    .from(schema.chatShares)
+    .where(and(
+      eq(schema.chatShares.chatId, chat.id),
+      buildActiveShareFilter(),
+    ))
+    .limit(1)
+    .get()
   const maxMessages = clampMcpLimit(
     input.maxMessages,
     MCP_CHAT_DEFAULT_MESSAGES,
@@ -486,6 +582,16 @@ export async function getMcpChat(
     slug: chat.slug,
     title: chat.title ?? '',
     projectId: chat.projectId,
+    projectName: chat.projectName,
+    pinned: chat.pinnedAt !== null,
+    memoryExcluded: chat.memoryExcluded === true,
+    share: share
+      ? toMcpShareSummary(
+        input.siteUrl,
+        share,
+        input.includeShareUrl === true,
+      )
+      : null,
     createdAt: toIsoTimestamp(chat.createdAt),
     activityAt: toIsoTimestamp(chat.activityAt),
     models: collectChatModels(window),

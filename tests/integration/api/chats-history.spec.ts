@@ -20,6 +20,12 @@ const mocks = vi.hoisted(() => ({
   refreshProjectMemoryFromChats: vi.fn(async () => ({
     memoryStatus: 'ready',
   })),
+  cleanupFilesOrphanedByChatDeletion: vi.fn(async (..._args: unknown[]) => ({
+    candidateCount: 0,
+    stillReferencedCount: 0,
+    deletedCount: 0,
+    failedCount: 0,
+  })),
 }))
 
 vi.mock('evlog', () => ({
@@ -60,6 +66,20 @@ vi.mock('~~/server/utils/memory/chat-deletion', () => ({
 vi.mock('~~/server/utils/search/index-writer', () => ({
   removeChatsFromSearchIndex: mocks.removeChatsFromSearchIndex,
 }))
+
+vi.mock('~~/server/utils/files/chat-deletion-cleanup', async (
+  importOriginal,
+) => {
+  const original = await importOriginal<
+    typeof import('~~/server/utils/files/chat-deletion-cleanup')
+  >()
+
+  return {
+    ...original,
+    cleanupFilesOrphanedByChatDeletion:
+      mocks.cleanupFilesOrphanedByChatDeletion,
+  }
+})
 
 vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: mocks.markProjectsMemoryStale,
@@ -481,7 +501,11 @@ describe('chat history API', () => {
   })
 
   describe('memory cascade on chat deletion', () => {
-    function createDeleteDb(callOrder: string[], ownedChats: unknown[]) {
+    function createDeleteDb(
+      callOrder: string[],
+      ownedChats: unknown[],
+      originFiles: unknown[] = [],
+    ) {
       return {
         query: {
           chats: {
@@ -495,7 +519,7 @@ describe('chat history API', () => {
         select: vi.fn(() => ({
           from: vi.fn(() => ({
             innerJoin: vi.fn(() => ({
-              where: vi.fn(async () => []),
+              where: vi.fn(async () => originFiles),
             })),
           })),
         })),
@@ -602,6 +626,66 @@ describe('chat history API', () => {
           columns: expect.objectContaining({ id: true }),
         }),
       )
+    })
+
+    it('cleans up the origin files of every owned chat once, after the bulk delete', async () => {
+      const handler = await getBulkDeleteHandler()
+      const callOrder: string[] = []
+      const originFiles = [
+        { id: 'file-1', storageKey: 'key-1' },
+        { id: 'file-2', storageKey: 'key-2' },
+      ]
+      const db = createDeleteDb(callOrder, [
+        { id: 'chat-1', slug: 'slug-1', projectId: null },
+        { id: 'chat-3', slug: 'slug-3', projectId: null },
+      ], originFiles)
+
+      mocks.cleanupFilesOrphanedByChatDeletion.mockImplementationOnce(
+        async () => {
+          callOrder.push('file-cleanup')
+
+          return {
+            candidateCount: 2,
+            stillReferencedCount: 0,
+            deletedCount: 2,
+            failedCount: 0,
+          }
+        },
+      )
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        body: { chatIds: ['chat-1', 'chat-2', 'chat-3'] },
+      } as any)
+
+      expect(response).toEqual({ success: true })
+      expect(db.select).toHaveBeenCalledTimes(1)
+      expect(callOrder).toEqual(['delete-chats', 'file-cleanup'])
+      expect(mocks.cleanupFilesOrphanedByChatDeletion).toHaveBeenCalledTimes(1)
+      expect(mocks.cleanupFilesOrphanedByChatDeletion).toHaveBeenCalledWith(
+        originFiles,
+        1,
+        expect.anything(),
+      )
+    })
+
+    it('still succeeds when the orphaned file cleanup fails', async () => {
+      const handler = await getBulkDeleteHandler()
+      const db = createDeleteDb([], [
+        { id: 'chat-1', slug: 'slug-1', projectId: null },
+      ], [{ id: 'file-1', storageKey: 'key-1' }])
+
+      mocks.cleanupFilesOrphanedByChatDeletion.mockRejectedValueOnce(
+        new Error('R2 unavailable'),
+      )
+      vi.stubGlobal('useDb', () => db)
+
+      await expect(handler({
+        body: { chatIds: ['chat-1'] },
+      } as any)).resolves.toEqual({ success: true })
+      expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+        orphanedFileCleanup: { phase: 'cleanup', candidateCount: 1 },
+      }))
     })
 
     it('aborts a bulk delete when the memory cascade fails', async () => {

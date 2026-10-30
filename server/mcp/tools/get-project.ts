@@ -17,7 +17,9 @@ export default defineMcpTool({
   name: 'get_project',
   title: 'Read a project',
   description: 'Read one of your Besidka projects: name, instructions, '
-    + 'knowledge mode and the knowledge items (id, kind, title, size, '
+    + 'pinned and archived state, knowledge mode, project memory state '
+    + '(enabled, status, account memory, entry count), knowledge totals '
+    + 'against the limits and the knowledge items (id, kind, title, size, '
     + 'status, flagged, pinned). Use read_project_knowledge_item to read '
     + 'an item. Requires signing in (projects:read).',
   inputSchema,

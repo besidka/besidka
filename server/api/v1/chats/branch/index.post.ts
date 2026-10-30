@@ -1,12 +1,5 @@
 import { createError } from 'evlog'
-import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import * as schema from '~~/server/db/schema'
-import {
-  buildBranchTitle,
-  insertBranchedMessages,
-} from '~~/server/utils/chats/branch'
-import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
-import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { branchChat } from '~~/server/utils/chats/branch'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import { requireLegalConsent } from '~~/server/utils/legal/consent'
@@ -40,98 +33,13 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
 
-  const chat = await db.query.chats.findFirst({
-    where: {
-      slug: body.data.chatSlug,
-      userId,
-    },
-    columns: {
-      id: true,
-      title: true,
-      projectId: true,
-      memoryExcluded: true,
-    },
-    with: {
-      messages: {
-        columns: {
-          id: true,
-          publicId: true,
-          role: true,
-          parts: true,
-          tools: true,
-          reasoning: true,
-          usage: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'asc' },
-      },
-    },
-  })
-
-  if (!chat) {
-    throw createError({
-      message: 'Chat not found.',
-      status: 404,
-    })
-  }
-
-  const persistedMessages = chat.messages.filter((message) => {
-    return isPersistedMessageRole(message.role)
-  })
-
-  let messagesToCopy = persistedMessages
-
-  if (body.data.messageId) {
-    const branchIndex = persistedMessages.findIndex((message) => {
-      return message.publicId === body.data.messageId
-        || message.id === body.data.messageId
-    })
-
-    if (branchIndex === -1) {
-      throw createError({
-        message: 'Message not found in this chat.',
-        status: 400,
-      })
-    }
-
-    messagesToCopy = persistedMessages.slice(0, branchIndex + 1)
-  }
-
-  const title = buildBranchTitle(chat.title)
-
-  const newChat = await db
-    .insert(schema.chats)
-    .values({
-      userId,
-      title,
-      ...(chat.projectId ? { projectId: chat.projectId } : {}),
-      ...(chat.memoryExcluded ? { memoryExcluded: true } : {}),
-    })
-    .returning({
-      id: schema.chats.id,
-      slug: schema.chats.slug,
-    })
-    .get()
-
-  await insertBranchedMessages(
+  const newChat = await branchChat(
     db,
-    newChat.id,
-    messagesToCopy.map((message) => {
-      return {
-        role: message.role,
-        parts: message.parts,
-        tools: message.tools,
-        reasoning: message.reasoning,
-        usage: message.usage,
-        createdAt: message.createdAt,
-      }
-    }),
     userId,
+    body.data.chatSlug,
+    body.data.messageId,
     logger,
   )
-
-  await refreshProjectActivityAt([chat.projectId], userId, db)
-  await markProjectsMemoryStale([chat.projectId], userId, db)
 
   return {
     slug: newChat.slug,

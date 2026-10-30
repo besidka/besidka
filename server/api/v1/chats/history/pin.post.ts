@@ -1,7 +1,5 @@
 import { createError } from 'evlog'
-import { eq } from 'drizzle-orm'
-import * as schema from '~~/server/db/schema'
-import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
+import { setChatPinnedAt } from '~~/server/utils/chats/lifecycle'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -51,13 +49,7 @@ export default defineEventHandler(async (event) => {
 
   const newPinnedAt = chat.pinnedAt ? null : new Date()
 
-  await db.update(schema.chats)
-    .set({ pinnedAt: newPinnedAt, activityAt: new Date() })
-    .where(eq(schema.chats.id, chat.id))
-
-  if (chat.projectId) {
-    await refreshProjectActivityAt([chat.projectId], userId, db)
-  }
+  await setChatPinnedAt(db, userId, chat, newPinnedAt)
 
   return { pinnedAt: newPinnedAt }
 })

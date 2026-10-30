@@ -456,8 +456,16 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   per-send fit check), R2 text and packs, the owner decisions, and, now that
   it is implemented, the K0 to K3 as-built sections (15, 16.5 to 16.7: DOCX
   and XLSX ZIP-bomb limits, the send path, the spike results)
-- `docs/mcp-server.md` - The `/mcp` server (public read-only tools, plus the
-  per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): the four tools and their sources, minimark-to-markdown instead
+- `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
+  32 per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): UI parity
+  (everything the web UI does except chatting: the eleven scopes, the tool table
+  with scope and destructive flag, permanent deletes and their guard rails
+  `confirmName`/`confirm`/caps, existing-client scope upgrade), the
+  "What MCP does not do (and why)" list (no spend on the user's keys, no
+  public share create/update, no injection "Allow anyway", no spend or
+  recipient settings, no keys/sessions/security, and what is impossible: chat
+  archive, folders, binary upload) with revisit criteria,
+  minimark-to-markdown instead
   of a `rawbody` schema change, Worker size delta,
   the forced node transport that keeps `agents` out of the Worker, the
   `attributes.mcp` Axiom move, the toolkit 404 OAuth stubs that the OAuth

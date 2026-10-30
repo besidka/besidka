@@ -40,8 +40,9 @@
         aria-hidden="true"
       />
       <span>
-        Write access lets this app change your projects or memory. It is
-        off unless you turn it on.
+        Write access lets this app change your chats, projects, files, memory
+        and settings, and Delete your data lets it permanently delete them.
+        Each one is off unless you turn it on.
       </span>
     </p>
     <div

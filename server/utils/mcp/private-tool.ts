@@ -16,6 +16,7 @@ export type McpLogValue = string | number | boolean
 export interface McpPrivateToolContext {
   userId: number
   clientId: string
+  scopes: readonly string[]
   db: ReturnType<typeof useDb>
   logger: LoggerLike
   log: (fields: Record<string, McpLogValue>) => void
@@ -54,6 +55,7 @@ export function withMcpPrivateTool<Args>(
     const result = await handler(args, {
       userId: auth.userId,
       clientId: auth.clientId,
+      scopes: auth.scopes,
       db,
       logger,
       log,

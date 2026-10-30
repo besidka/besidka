@@ -1,12 +1,11 @@
-import { and, eq } from 'drizzle-orm'
 import { createError } from 'evlog'
-import * as schema from '~~/server/db/schema'
 import {
   defineEventHandler,
   readValidatedBody,
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { renameProject } from '~~/server/utils/projects/lifecycle'
 import { assertProjectNameCharacters } from '~~/server/utils/projects/name'
 
 export default defineEventHandler(async (event) => {
@@ -53,24 +52,5 @@ export default defineEventHandler(async (event) => {
     nameLength: body.data.name.length,
   })
 
-  const project = await db.query.projects.findFirst({
-    where: { id: params.data.id, userId },
-    columns: { id: true },
-  })
-
-  if (!project) {
-    throw createError({
-      message: 'Project not found',
-      status: 404,
-    })
-  }
-
-  await db.update(schema.projects)
-    .set({ name: body.data.name, updatedAt: new Date() })
-    .where(and(
-      eq(schema.projects.id, project.id),
-      eq(schema.projects.userId, userId),
-    ))
-
-  return { name: body.data.name }
+  return await renameProject(db, userId, params.data.id, body.data.name)
 })
