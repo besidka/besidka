@@ -392,8 +392,8 @@ const statusExplanation = computed<string | null>(() => {
   }
 
   if (props.automaticUpdates) {
-    return 'It will update after your next chat in this project, or use '
-      + 'Refresh memory.'
+    return 'Updates automatically about 10 minutes after the last message '
+      + 'in a chat, or use Refresh memory.'
   }
 
   return 'Not updated automatically. Use Refresh memory to update it.'

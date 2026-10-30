@@ -379,6 +379,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/projects/memory-refresh.spec.ts',
     'tests/unit/utils/projects/memory-card.spec.ts',
     'tests/unit/utils/projects/memory-account.spec.ts',
+    'tests/unit/utils/projects/memory-sweep-settle.spec.ts',
     'tests/unit/utils/memory/extract-manual.spec.ts',
     'tests/unit/utils/project-memory-refresh.spec.ts',
     'tests/unit/utils/memory/extract-grounding.spec.ts',
@@ -2581,7 +2582,7 @@ export function getAffectedTests(changedFiles) {
       tests: memoryExtractionTests,
     },
     {
-      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|memory-refresh|memory-card|memory-account|memory-limits|legacy-memory|instructions)\.ts$/,
+      pattern: /^server\/utils\/projects\/(memory-entries|memory-lease|memory|memory-refresh|memory-card|memory-account|memory-limits|memory-sweep-settle|memory-toggle|legacy-memory|instructions)\.ts$/,
       tests: [...memoryExtractionTests, ...memoryModelTests],
     },
     {

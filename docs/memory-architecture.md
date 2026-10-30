@@ -1387,6 +1387,31 @@ is the project memory model from `resolveMemoryModel` (scope `project`) on the
 user's own key. Selection, lease, caps, trust boundary and the compliance gate
 are the same as in 3.12.
 
+**The sweep settles the project card (2026-10-30).** Every project chat
+message, create, move, delete and branch marks the project `stale` and sets
+`memory_dirty_at`, but a sweep pass used to bump the metadata only when it
+applied ops and never cleared the mark, so a project whose chats were all
+swept read "Out of date" until the manual Refresh. After a sweep pass that
+extracted, or skipped as `no-user-text`, `nothing-durable` or `too-short`,
+`settleProjectMemoryAfterSweepPass` (`server/utils/projects/memory-sweep-settle.ts`)
+re-evaluates the project in one guarded `UPDATE`: it sets `ready`, or `idle`
+without entries (the same `projectMemorySettledStatus` the manual Refresh
+uses), and `memory_dirty_at` to null, only when the row is `stale` (never
+`disabled` or `refreshing`), the dirty mark is strictly older than the pass
+start (a message or move that arrived mid-pass keeps it `stale`), and no chat
+is left for the sweep. A chat is left when it is in the project, memory-included,
+newer than its project watermark, newer than the user's
+`memory_extraction_enabled_at`, and not parked. Parked means it is waiting for
+more user text (`memory_extraction_failures` 0) or is capped on failures
+without activity since the last attempt: the sweep never selects it again
+until a new message, so it cannot keep the card stale (a too-short chat settles
+the card, as the manual Refresh does). Decision: chats from before the cut-over
+never count, because the forward-only rule means the sweep will never read
+them; a project with only those chats left is up to date for automatic
+purposes, and Refresh still reads them on request. No model call is added and
+what is extracted is unchanged; failed passes do not settle, so a chat that
+will be retried keeps the project `stale`.
+
 **Copy for the UI (W5).** Project card hint: "Press Refresh to update this
 project's memory. Turn on 'Generate memory from chats' in your memory settings
 to keep it up to date automatically." Memory tab note next to "Generate memory

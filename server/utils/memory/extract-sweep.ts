@@ -28,6 +28,10 @@ import {
   MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES,
 } from '~~/server/utils/memory/extract-limits'
 import type { ResolvedMemoryModel } from '~~/server/utils/memory/resolve-model'
+import {
+  isSweepPassSettling,
+  settleProjectMemoryAfterSweepPass,
+} from '~~/server/utils/projects/memory-sweep-settle'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -216,6 +220,32 @@ async function memoryExtractionMarkAttemptFailed(
   }
 }
 
+async function settleProjectMemory(
+  db: DbClient,
+  chat: SelectedChat,
+  passStartedAt: Date,
+  logger: SweepMemoryExtractionInput['logger'],
+) {
+  try {
+    await settleProjectMemoryAfterSweepPass({
+      chatId: chat.id,
+      userId: chat.userId,
+      passStartedAt,
+      db,
+    })
+  } catch (exception) {
+    logger?.set({
+      attributes: {
+        memoryExtractionSweep: {
+          phase: 'settle',
+          chatId: chat.id,
+          ...memoryExtractionErrorSummary(exception),
+        },
+      },
+    })
+  }
+}
+
 function addCounts(
   target: Record<string, number>,
   source: Record<string, number | undefined>,
@@ -282,6 +312,8 @@ export async function sweepMemoryExtraction(
       break
     }
 
+    const passStartedAt = input.now ?? new Date()
+
     try {
       const outcome = await extractChatMemory({
         chat,
@@ -316,6 +348,10 @@ export async function sweepMemoryExtraction(
         result.skippedCount += 1
       } else {
         result.failedCount += 1
+      }
+
+      if (isSweepPassSettling(outcome)) {
+        await settleProjectMemory(db, chat, passStartedAt, logger)
       }
 
       if (outcome.model?.modelId) {
