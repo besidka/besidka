@@ -8,6 +8,7 @@ import type {
   KnowledgeItem,
   KnowledgeMode,
 } from '#shared/types/project-knowledge.d'
+import { hasFormatCharacters } from '#shared/utils/invisible-characters'
 import { sha256Hex } from '#shared/utils/knowledge-hash'
 import { countKnowledgeChars } from '#shared/utils/project-knowledge-budget'
 import {
@@ -65,7 +66,6 @@ const MAX_IDS_PER_STATEMENT = 90
 const UNIQUE_VIOLATION_MARKER = 'UNIQUE constraint failed'
 const MAX_ERROR_CAUSE_DEPTH = 5
 const CONTROL_OR_SEPARATOR_GLOBAL_PATTERN = /[\p{Cc}\u2028\u2029]/gu
-const FORMAT_CHARACTER_PATTERN = /\p{Cf}/u
 const FORMAT_CHARACTER_GLOBAL_PATTERN = /\p{Cf}/gu
 const MEDIA_TYPE_PATTERN = /^[A-Za-z0-9][\w.+-]*\/[A-Za-z0-9][\w.+-]*$/
 const MAX_MEDIA_TYPE_CHARS = 100
@@ -260,7 +260,7 @@ export function normalizeKnowledgeString(value: string): string {
 }
 
 function assertNoFormatCharacters(value: string, label: string): void {
-  if (FORMAT_CHARACTER_PATTERN.test(value)) {
+  if (hasFormatCharacters(value)) {
     throw createInvalidInputError(
       `${label} contains invisible formatting characters`,
       `Remove the invisible characters from the ${label.toLowerCase()}`,

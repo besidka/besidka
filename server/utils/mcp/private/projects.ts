@@ -23,6 +23,7 @@ import {
   isValidMcpCursorId,
 } from '~~/server/utils/mcp/private/chats'
 import { toIsoTimestamp } from '~~/server/utils/mcp/private/text'
+import { assertProjectNameCharacters } from '~~/server/utils/projects/name'
 import {
   createProjectsCursor,
   parseProjectsCursor,
@@ -36,6 +37,10 @@ export const MCP_PROJECT_INSTRUCTIONS_MAX_CHARS = 10_000
 export const MCP_KNOWLEDGE_READ_DEFAULT_CHARS = 50_000
 export const MCP_KNOWLEDGE_READ_MAX_CHARS = 100_000
 export const MCP_KNOWLEDGE_TEXT_MAX_CHARS = 200_000
+export const MCP_KNOWLEDGE_BATCH_MAX_ITEMS = 10
+export const MCP_KNOWLEDGE_BATCH_TEXT_MAX_CHARS
+  = MCP_KNOWLEDGE_TEXT_MAX_CHARS
+export const MCP_PROJECT_NAME_MAX_CHARS = 100
 
 export const MCP_FLAGGED_ITEM_NOTE
   = 'This item was flagged as possibly containing instructions aimed at AI '
@@ -50,6 +55,21 @@ const MARKDOWN_EXTENSION = /\.(md|markdown)$/i
 export interface McpOwnedProject {
   projectId: number
   projectPublicId: string
+}
+
+export interface McpTextItemInput {
+  name: string
+  text: string
+}
+
+export interface McpProjectSummaryRow {
+  id: string
+  name: string
+  instructions: string | null
+  knowledgeMode: 'auto' | 'full' | 'search' | null
+  pinnedAt: Date | null
+  archivedAt: Date | null
+  activityAt: Date | null
 }
 
 export interface McpKnowledgeItemSummary {
@@ -132,6 +152,53 @@ export function toMcpKnowledgeItemSummary(
   }
 }
 
+export function toMcpProjectSummary(row: McpProjectSummaryRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    hasInstructions: Boolean(row.instructions),
+    knowledgeMode: row.knowledgeMode ?? 'auto',
+    pinned: row.pinnedAt !== null,
+    archived: row.archivedAt !== null,
+    activityAt: toIsoTimestamp(row.activityAt),
+  }
+}
+
+export async function createMcpProject(
+  db: DbClient,
+  userId: number,
+  name: string,
+) {
+  const trimmedName = name.trim()
+
+  if (
+    trimmedName.length === 0
+    || trimmedName.length > MCP_PROJECT_NAME_MAX_CHARS
+  ) {
+    throw createInvalidInputError(
+      'The project name must be 1 to '
+      + `${MCP_PROJECT_NAME_MAX_CHARS} characters.`,
+    )
+  }
+
+  assertProjectNameCharacters(trimmedName)
+
+  const project = await db.insert(schema.projects)
+    .values({ userId, name: trimmedName })
+    .returning({
+      id: schema.projects.id,
+      name: schema.projects.name,
+      instructions: schema.projects.instructions,
+      knowledgeMode: schema.projects.knowledgeMode,
+      pinnedAt: schema.projects.pinnedAt,
+      archivedAt: schema.projects.archivedAt,
+      activityAt: schema.projects.activityAt,
+    })
+    .get()
+
+  return toMcpProjectSummary(project)
+}
+
 export async function listMcpProjects(
   db: DbClient,
   userId: number,
@@ -186,17 +253,7 @@ export async function listMcpProjects(
   const lastRow = rows[rows.length - 1]
 
   return {
-    projects: rows.map((row) => {
-      return {
-        id: row.id,
-        name: row.name,
-        hasInstructions: Boolean(row.instructions),
-        knowledgeMode: row.knowledgeMode ?? 'auto',
-        pinned: row.pinnedAt !== null,
-        archived: row.archivedAt !== null,
-        activityAt: toIsoTimestamp(row.activityAt),
-      }
-    }),
+    projects: rows.map(toMcpProjectSummary),
     nextCursor: rows.length === limit && lastRow
       ? createProjectsCursor(lastRow, 'activity')
       : null,
@@ -400,6 +457,17 @@ export function resolveMcpTextMediaType(name: string): string {
     : TEXT_MEDIA_TYPE
 }
 
+async function buildMcpTextItem(item: McpTextItemInput) {
+  return {
+    title: item.name,
+    mediaType: resolveMcpTextMediaType(item.name),
+    extractor: 'text' as const,
+    extractStatus: 'ready' as const,
+    contentHash: await hashKnowledgeText(item.text),
+    text: item.text,
+  }
+}
+
 export async function addMcpProjectText(
   db: DbClient,
   userId: number,
@@ -417,14 +485,7 @@ export async function addMcpProjectText(
   }
 
   const parsed = knowledgeItemsBatchCreateSchema.safeParse({
-    items: [{
-      title: input.name,
-      mediaType: resolveMcpTextMediaType(input.name),
-      extractor: 'text',
-      extractStatus: 'ready',
-      contentHash: await hashKnowledgeText(input.text),
-      text: input.text,
-    }],
+    items: [await buildMcpTextItem(input)],
     commit: true,
   })
 
@@ -450,4 +511,125 @@ export async function addMcpProjectText(
   }
 
   return toMcpKnowledgeItemSummary(item)
+}
+
+export async function addMcpProjectTexts(
+  db: DbClient,
+  userId: number,
+  input: { projectId: string, items: McpTextItemInput[] },
+  logger: LoggerLike,
+) {
+  if (
+    input.items.length === 0
+    || input.items.length > MCP_KNOWLEDGE_BATCH_MAX_ITEMS
+  ) {
+    throw createInvalidInputError(
+      `Send 1 to ${MCP_KNOWLEDGE_BATCH_MAX_ITEMS} items per call.`,
+    )
+  }
+
+  const totalChars = input.items.reduce((total, item) => {
+    return total + item.text.length
+  }, 0)
+
+  if (totalChars > MCP_KNOWLEDGE_BATCH_TEXT_MAX_CHARS) {
+    throw createInvalidInputError(
+      'The items hold too much text in one call. The total is limited to '
+      + `${MCP_KNOWLEDGE_BATCH_TEXT_MAX_CHARS} characters; send fewer items `
+      + 'per call.',
+    )
+  }
+
+  const emptyItemIndex = input.items.findIndex((item) => {
+    return item.text.trim().length === 0
+  })
+
+  if (emptyItemIndex !== -1) {
+    throw createInvalidInputError(
+      `Item ${emptyItemIndex + 1} has empty text.`,
+    )
+  }
+
+  const { projectId } = await resolveMcpOwnedProject(
+    db,
+    userId,
+    input.projectId,
+  )
+  const items = await Promise.all(input.items.map(buildMcpTextItem))
+  const parsed = knowledgeItemsBatchCreateSchema.safeParse({
+    items,
+    commit: true,
+  })
+
+  if (!parsed.success) {
+    throw createInvalidInputError(
+      `Invalid text item: ${parsed.error.issues[0]?.message ?? 'check the fields'}`,
+    )
+  }
+
+  await enforceKnowledgeWriteRateLimit(userId)
+
+  const result = await ingestKnowledgeItems(
+    { userId, projectId, logger },
+    parsed.data,
+  )
+
+  if (result.items.length === 0) {
+    throw createError({
+      status: 409,
+      message: 'This project already has items with the same text.',
+    })
+  }
+
+  return {
+    items: result.items.map(toMcpKnowledgeItemSummary),
+    skipped: result.skipped.map((entry) => {
+      return {
+        index: entry.index,
+        name: input.items[entry.index]?.name ?? '',
+        reason: entry.reason,
+      }
+    }),
+  }
+}
+
+export async function addMcpProjectTextInput(
+  db: DbClient,
+  userId: number,
+  input: {
+    projectId: string
+    name?: string
+    text?: string
+    items?: McpTextItemInput[]
+  },
+  logger: LoggerLike,
+) {
+  const hasSingleForm = input.name !== undefined || input.text !== undefined
+  const hasBatchForm = input.items !== undefined
+
+  if (hasSingleForm === hasBatchForm) {
+    throw createInvalidInputError(
+      'Send either name and text, or items, not both and not neither.',
+    )
+  }
+
+  if (input.items !== undefined) {
+    return addMcpProjectTexts(
+      db,
+      userId,
+      { projectId: input.projectId, items: input.items },
+      logger,
+    )
+  }
+
+  if (input.name === undefined || input.text === undefined) {
+    throw createInvalidInputError('Send both name and text.')
+  }
+
+  return addMcpProjectText(
+    db,
+    userId,
+    { projectId: input.projectId, name: input.name, text: input.text },
+    logger,
+  )
 }

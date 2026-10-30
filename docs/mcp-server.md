@@ -70,7 +70,7 @@ never data.
 | --- | --- |
 | `chats:read` | `list_chats`, `get_chat` |
 | `projects:read` | `list_projects`, `get_project`, `read_project_knowledge_item` |
-| `projects:write` | `update_project_instructions`, `add_project_note`, `add_project_text` |
+| `projects:write` | `create_project`, `update_project_instructions`, `add_project_note`, `add_project_text` |
 | `memory:read` | `list_memory` |
 | `memory:write` | `add_memory`, `update_memory`, `delete_memory` |
 
@@ -314,9 +314,10 @@ text only and capped.
 | `list_projects` | Projects by recent activity, optional `search` and `archived` | `projects/cursor` | `limit` up to 50 |
 | `get_project` | Name, instructions, knowledge mode, knowledge items (id, kind, title, path, media type, sizes, status, `flagged`, `pinned`) | `listKnowledgeItems` | at most 500 items (`KNOWLEDGE_LIMITS.maxItemsPerProject`) |
 | `read_project_knowledge_item` | Extracted text of one item, paged with `offset` and `nextOffset` | `getKnowledgeItemText` | 50,000 characters by default, 100,000 at most |
+| `create_project` | Create a project (`name`, 1 to 100 characters) and return the same row shape as `list_projects`, with the public id | the insert of `PUT /projects` (`createMcpProject`) | 100 characters; no per-user project cap exists, so none is added |
 | `update_project_instructions` | Replace or clear (`null`) the instructions | same rule as `PATCH /projects/[id]/instructions` | 10,000 characters |
 | `add_project_note` | Add a note | `createKnowledgeNote` (duplicate check, caps, quota, injection screening, commit) | `KNOWLEDGE_LIMITS.maxNoteChars` |
-| `add_project_text` | Add text or markdown as a `file` item (`extractor: text`, `.md` names get `text/markdown`) | `knowledgeItemsBatchCreateSchema`, `hashKnowledgeText`, `ingestKnowledgeItems` with `commit: true` | 200,000 characters, and the 512 KiB body cap (200,000 Cyrillic characters are about 400 KB of UTF-8 plus JSON escaping) |
+| `add_project_text` | Add text or markdown as a `file` item (`extractor: text`, `.md` names get `text/markdown`). Either `name` and `text`, or `items: [{ name, text }]` (exactly one form) | `knowledgeItemsBatchCreateSchema`, `hashKnowledgeText`, `ingestKnowledgeItems` with `commit: true` (one call for a whole batch) | single: 200,000 characters; batch: 10 items and 200,000 characters in total; the 512 KiB body cap holds for Cyrillic (see Request limits) |
 | `list_memory` | Account memory, or one project's with `projectId` | `listMemoryEntries` | the entry caps (30 account, 15 per project, 4 KiB body) |
 | `add_memory` | Create an entry (`category`, `title`, `description`, `body`, optional `projectId`) | `createMemoryEntry` | `MEMORY_LIMITS` |
 | `update_memory` | Change category, title, description or body | `updateMemoryEntry` | `MEMORY_LIMITS` |
@@ -347,9 +348,21 @@ Notes:
   chat model after a web search. It does not apply here: the external agent
   writes with the user's explicit `memory:write` grant, and the compliance
   gate still runs on every write.
-- No ZIP, PDF, image or other binary upload goes through MCP. Model and tool
-  selection are out of scope for now. Sending messages is deliberately not
-  built, see [Sending messages](#sending-messages-not-built).
+- Model and tool selection are out of scope for now. Sending messages is
+  deliberately not built, see
+  [Sending messages](#sending-messages-not-built). Documents arrive as text,
+  see [Files and documents](#files-and-documents-text-route).
+- `create_project` needs no extra gate: `withMcpPrivateTool` already applies
+  the consent check and both MCP call limits (`MCP_PRIVATE_TOOL_RATE_LIMIT`,
+  `MCP_PRIVATE_WRITE_RATE_LIMIT`). `PUT /projects` has no consent check of its
+  own, no extra limiter and no project cap, so the tool has none either. The
+  agent should call `list_projects` first; the tool does not look for a
+  same-name project, and two projects with one name are allowed in the app.
+- `add_project_text` with `items` runs one `ingestKnowledgeItems` call, so
+  the batch is one commit and one knowledge write limit hit. Duplicates inside
+  the batch or of existing items come back under `skipped` (`index`, `name`,
+  `reason`); the call fails with `409` only when nothing was added, like the
+  single form.
 - `read_project_knowledge_item` does not return the text of a flagged item
   (suspected prompt injection) unless the caller passes `includeFlagged:
   true`. The default answer is the metadata (`id`, `title`, `status`,
@@ -362,6 +375,48 @@ Notes:
   (`decodeKnowledgeEntityId`); a search cursor must be a valid offset. A bad
   cursor is a `400` tool error asking the caller to omit it, never a `500`
   or a silent restart from the first page.
+
+### Files and documents (text route)
+
+There is no binary upload through MCP: no ZIP, PDF, image, XLSX or PPTX. An
+agent adds a document as the text it extracted, with `add_project_text`:
+a spreadsheet as CSV or a markdown table, one item per sheet or per file,
+named after the source (`timesheet-2026-09.csv`); slides as markdown with one
+heading per slide; a PDF or Word document as markdown. The `items` form puts
+up to 10 of them into a project in one call. A project is created first with
+`create_project` when it does not exist (check `list_projects`).
+
+Why text and not bytes:
+
+- MCP clients such as claude.ai read Google Drive files and chat attachments
+  as text through their own connectors. The model never holds the bytes, so
+  it cannot pass a file on. A base64 argument would also cost output tokens
+  for every byte and would exceed the 512 KiB request body limit for any file
+  of a realistic size.
+- Besidka's own extraction (PDF, DOCX, XLSX and the text formats) runs in the
+  browser, see `docs/project-knowledge-design.md` 7.1. Extraction inside the
+  Worker is K4, not built. PPTX is not supported even in the web UI (K4,
+  `officeparser`), so slides can only come as markdown text.
+- The text then takes the normal knowledge path: caps, quota, duplicate check
+  and injection screening of `ingestKnowledgeItems`.
+
+Body budget: `MCP_MAX_AUTHENTICATED_REQUEST_BODY_BYTES` is 524,288 bytes.
+`JSON.stringify` leaves Cyrillic raw (2 bytes per character in UTF-8) and
+turns `\n`, `"` and `\` into 2 bytes, so the worst case is 2 bytes per
+character: 200,000 characters are at most 400,000 bytes, which leaves about
+124 KB for the JSON-RPC envelope, the project id and the names (10 names of
+200 Cyrillic characters are 4 KB). The batch total is therefore the same
+200,000 characters as the single limit. `project-text-body-size.spec.ts`
+builds the real `tools/call` body and fails if the limits stop fitting. Not
+covered: scripts with 3 bytes per character (CJK) or a client that escapes
+non-ASCII as `\uXXXX`; such a body can pass 512 KiB and the guard answers
+`413` before the tool runs.
+
+If it is ever needed: an upload-session tool that returns a one-time `PUT`
+URL, never a base64 argument. It needs extraction inside the Worker, within
+the CPU time and 128 MB memory limits and with the existing ZIP-bomb caps. A
+new upload route must read the body with h3 `readRawBody`: Workers pre-buffers
+request bodies, and a custom stream reader hangs (see Request limits).
 
 ### Sending messages (not built)
 
@@ -453,7 +508,8 @@ many tool calls. `server/middleware/01.mcp-request-guard.ts` runs first, for
   (`MCP_MAX_REQUEST_BODY_BYTES` in `config/mcp-server.ts`); a `tools/call` is
   a few hundred bytes. Requests with a **verified** token may send up to
   512 KiB (`MCP_MAX_AUTHENTICATED_REQUEST_BODY_BYTES`), so `add_project_text`
-  with 200,000 Cyrillic characters (about 400 KB) and `add_project_note` fit.
+  with 200,000 Cyrillic characters (about 400 KB), also as a batch of up to
+  10 items with 200,000 characters in total, and `add_project_note` fit.
   A declared length above 512 KiB gets `413` before the token is even
   verified; between 32 and 512 KiB the token is verified first.
 - On Workers, Nitro pre-buffers the request body (`request.arrayBuffer()` in
