@@ -63,11 +63,12 @@
       :card="memoryCard ?? null"
       :is-refreshing="isRefreshingProjectMemory"
       :is-toggling="isTogglingProjectMemory"
-      :automatic-updates="hasAutomaticMemoryUpdates"
       :is-saving-account-memory="isSavingAccountMemory"
+      :is-saving-auto-update="isSavingAutoUpdate"
       @refresh="refreshProjectMemory"
       @toggle="toggleProjectMemory"
       @update-account-memory="saveAccountMemory"
+      @update-auto-update="saveAutoUpdate"
       @changed="onMemoryEntriesChanged"
     />
 
@@ -121,6 +122,7 @@
 import { parseError } from 'evlog'
 import type { Project } from '#shared/types/projects.d'
 import type { HistoryChat } from '#shared/types/history.d'
+import type { ProjectAutoUpdate } from '#shared/utils/project-memory-auto-update'
 
 definePageMeta({
   auth: {
@@ -158,15 +160,6 @@ const {
   data: memoryCard,
   refresh: refreshMemoryCard,
 } = await useFetch(() => `/api/v1/projects/${projectId.value}/memory`)
-
-const { data: memorySettings } = await useFetch('/api/v1/profiles/settings', {
-  key: 'profile-memory-settings',
-})
-
-const hasAutomaticMemoryUpdates = computed<boolean>(() => {
-  return memorySettings.value?.memoryEnabled !== false
-    && memorySettings.value?.memoryExtractionEnabled === true
-})
 
 if (import.meta.client && !nuxtApp.isHydrating) {
   groupedAt.value = new Date().toISOString()
@@ -220,6 +213,7 @@ const isRefreshingProjectMemory = shallowRef<boolean>(false)
 const initialProjectDetails = project.value
 const isTogglingProjectMemory = shallowRef<boolean>(false)
 const isSavingAccountMemory = shallowRef<boolean>(false)
+const isSavingAutoUpdate = shallowRef<boolean>(false)
 const projectInstructions = shallowRef<string | null>(
   initialProjectDetails?.instructions ?? null,
 )
@@ -529,6 +523,39 @@ async function saveAccountMemory(useAccountMemory: boolean) {
     })
   } finally {
     isSavingAccountMemory.value = false
+  }
+}
+
+async function saveAutoUpdate(autoUpdate: ProjectAutoUpdate) {
+  if (!project.value || !memoryCard.value || isSavingAutoUpdate.value) {
+    return
+  }
+
+  isSavingAutoUpdate.value = true
+
+  const requestId = ++memoryCardRequestId
+  const requestedProjectId = projectId.value
+
+  try {
+    const response = await $fetch(`/api/v1/projects/${project.value.id}/memory`, {
+      method: 'PATCH',
+      body: { autoUpdate },
+    })
+
+    if (isMemoryCardRequestCurrent(requestId, requestedProjectId)) {
+      memoryCard.value = response
+    }
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    nuxtApp.runWithContext(() => {
+      useErrorMessage(
+        parsedException.message || 'Failed to update automatic updates',
+        parsedException.why,
+      )
+    })
+  } finally {
+    isSavingAutoUpdate.value = false
   }
 }
 

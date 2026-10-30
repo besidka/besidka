@@ -131,6 +131,8 @@ export function createMemoryTestDb(): MemoryTestDb {
       memory_model text,
       memory_error text,
       use_account_memory integer,
+      memory_auto_update text,
+      memory_auto_update_enabled_at integer,
       memory_migrated_at integer,
       pinned_at integer,
       archived_at integer,

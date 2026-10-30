@@ -230,4 +230,135 @@ describe('project memory toggle helpers', () => {
     await applyProjectUseAccountMemory(projectId, userId, true, testDb.db)
     expect((await readState(projectId)).useAccountMemory).toBe(true)
   })
+
+  describe('applyProjectMemoryAutoUpdate', () => {
+    const LATER = new Date('2026-10-30T12:00:00.000Z')
+    const EARLIER = new Date('2026-10-30T08:00:00.000Z')
+
+    async function readAutoUpdate(projectId: string) {
+      const [project] = await testDb.db
+        .select({
+          memoryAutoUpdate: schema.projects.memoryAutoUpdate,
+          memoryAutoUpdateEnabledAt:
+            schema.projects.memoryAutoUpdateEnabledAt,
+        })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, projectId))
+
+      return project!
+    }
+
+    async function apply(
+      projectId: string,
+      autoUpdate: 'inherit' | 'on' | 'off',
+      now: Date,
+    ) {
+      const { applyProjectMemoryAutoUpdate } = await import(
+        '~~/server/utils/projects/memory-toggle'
+      )
+
+      await applyProjectMemoryAutoUpdate(
+        projectId,
+        userId,
+        autoUpdate,
+        testDb.db,
+        now,
+      )
+    }
+
+    it('stamps the cut-over when the project turns on', async () => {
+      const projectId = await seedProject(testDb.db, userId)
+
+      await apply(projectId, 'on', EARLIER)
+
+      expect(await readAutoUpdate(projectId)).toEqual({
+        memoryAutoUpdate: 'on',
+        memoryAutoUpdateEnabledAt: EARLIER,
+      })
+    })
+
+    it('keeps the stamp when on is saved again', async () => {
+      const projectId = await seedProject(testDb.db, userId)
+
+      await apply(projectId, 'on', EARLIER)
+      await apply(projectId, 'on', LATER)
+
+      expect((await readAutoUpdate(projectId)).memoryAutoUpdateEnabledAt)
+        .toEqual(EARLIER)
+    })
+
+    it('clears the stamp on off and restamps a later on', async () => {
+      const projectId = await seedProject(testDb.db, userId)
+
+      await apply(projectId, 'on', EARLIER)
+      await apply(projectId, 'off', EARLIER)
+
+      expect(await readAutoUpdate(projectId)).toEqual({
+        memoryAutoUpdate: 'off',
+        memoryAutoUpdateEnabledAt: null,
+      })
+
+      await apply(projectId, 'on', LATER)
+
+      expect(await readAutoUpdate(projectId)).toEqual({
+        memoryAutoUpdate: 'on',
+        memoryAutoUpdateEnabledAt: LATER,
+      })
+    })
+
+    it('stores inherit as null and keeps a plain inherit unstamped',
+      async () => {
+        const projectId = await seedProject(testDb.db, userId)
+
+        await apply(projectId, 'inherit', LATER)
+
+        expect(await readAutoUpdate(projectId)).toEqual({
+          memoryAutoUpdate: null,
+          memoryAutoUpdateEnabledAt: null,
+        })
+      })
+
+    it('stamps when a project returns to inherit from off, so messages '
+      + 'written while it was off are never read', async () => {
+      const projectId = await seedProject(testDb.db, userId)
+
+      await apply(projectId, 'off', EARLIER)
+      await apply(projectId, 'inherit', LATER)
+
+      expect(await readAutoUpdate(projectId)).toEqual({
+        memoryAutoUpdate: null,
+        memoryAutoUpdateEnabledAt: LATER,
+      })
+
+      await apply(projectId, 'inherit', new Date('2026-10-31T00:00:00.000Z'))
+
+      expect((await readAutoUpdate(projectId)).memoryAutoUpdateEnabledAt)
+        .toEqual(LATER)
+    })
+
+    it('keeps the stamp when on goes back to inherit', async () => {
+      const projectId = await seedProject(testDb.db, userId)
+
+      await apply(projectId, 'on', EARLIER)
+      await apply(projectId, 'inherit', LATER)
+
+      expect(await readAutoUpdate(projectId)).toEqual({
+        memoryAutoUpdate: null,
+        memoryAutoUpdateEnabledAt: EARLIER,
+      })
+    })
+
+    it('reads another user project as not found and writes nothing',
+      async () => {
+        const otherUserId = await seedUser(testDb.db, {})
+        const projectId = await seedProject(testDb.db, otherUserId)
+
+        await expect(apply(projectId, 'on', LATER))
+          .rejects.toMatchObject({ status: 404 })
+        expect(await readAutoUpdate(projectId)).toEqual({
+          memoryAutoUpdate: null,
+          memoryAutoUpdateEnabledAt: null,
+        })
+      })
+  })
 })

@@ -10,16 +10,24 @@
           class="mt-1 text-sm opacity-70"
           data-testid="project-memory-hint"
         >
-          Updates automatically after chats in this project; turn it off per
-          project.
+          Updates automatically after chats in this project. Change it with
+          Automatic updates below.
+        </p>
+        <p
+          v-else-if="autoUpdateSource === 'project'"
+          class="mt-1 text-sm opacity-70"
+          data-testid="project-memory-hint"
+        >
+          Automatic updates are off for this project. Use Refresh memory, or
+          change Automatic updates below.
         </p>
         <p
           v-else
           class="mt-1 text-sm opacity-70"
           data-testid="project-memory-hint"
         >
-          Automatic updates are off. Use Refresh memory, or turn on Generate
-          memory from chats in
+          Automatic updates are off. Use Refresh memory, turn on Automatic
+          updates below, or turn on Generate memory from chats in
           <NuxtLink
             to="/profile/memory"
             class="link"
@@ -152,6 +160,48 @@
 
     <div
       v-if="card"
+      class="mt-4 grid gap-2 border-t border-base-200/80 pt-4"
+      data-testid="project-memory-auto-update"
+    >
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div class="grid min-w-0 gap-1">
+          <span
+            :id="`${idPrefix}-auto-update-title`"
+            class="text-sm font-bold"
+          >Automatic updates</span>
+          <span
+            class="text-sm text-base-content/70"
+            data-testid="project-memory-auto-update-state"
+          >{{ autoUpdateCaption }}</span>
+        </div>
+        <div
+          ref="autoUpdateControl"
+          class="join shrink-0"
+          role="radiogroup"
+          :aria-labelledby="`${idPrefix}-auto-update-title`"
+          :aria-busy="isSavingAutoUpdate"
+          data-testid="project-memory-auto-update-control"
+        >
+          <input
+            v-for="option in autoUpdateOptions"
+            :key="option.value"
+            type="radio"
+            class="btn btn-sm join-item"
+            :class="{ 'btn-active btn-primary': card.autoUpdate === option.value }"
+            :name="`${idPrefix}-auto-update`"
+            :value="option.value"
+            :aria-label="option.label"
+            :checked="card.autoUpdate === option.value"
+            :disabled="isDisabled"
+            :data-testid="`project-memory-auto-update-${option.value}`"
+            @change="selectAutoUpdate(option.value)"
+          >
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="card"
       class="
         mt-4 flex flex-col gap-3 border-t border-base-200/80 pt-4
         sm:flex-row sm:items-start sm:justify-between sm:gap-4
@@ -267,17 +317,18 @@ import type { MemoryCategory, MemoryEntry } from '#shared/types/memory.d'
 import type { MemoryEntryGroup } from '#shared/types/memory-api.d'
 import type { ProjectMemoryCardResponse } from '#shared/types/project-memory.d'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
+import type { ProjectAutoUpdate } from '#shared/utils/project-memory-auto-update'
 
 const props = withDefaults(defineProps<{
   projectId: string
   card: ProjectMemoryCardResponse | null
   isRefreshing: boolean
   isToggling: boolean
-  automaticUpdates?: boolean
   isSavingAccountMemory?: boolean
+  isSavingAutoUpdate?: boolean
 }>(), {
-  automaticUpdates: false,
   isSavingAccountMemory: false,
+  isSavingAutoUpdate: false,
 })
 
 const emit = defineEmits<{
@@ -285,14 +336,45 @@ const emit = defineEmits<{
   'toggle': []
   'changed': []
   'update-account-memory': [useAccountMemory: boolean]
+  'update-auto-update': [autoUpdate: ProjectAutoUpdate]
 }>()
 
 const idPrefix = useId()
 
 const { messageComponents } = useChatFormat()
 
+const autoUpdateControl = useTemplateRef<HTMLElement>('autoUpdateControl')
 const selectedEntry = shallowRef<MemoryEntry | null>(null)
 const isDetailOpen = shallowRef<boolean>(false)
+
+const autoUpdateOptions: { value: ProjectAutoUpdate, label: string }[] = [
+  { value: 'inherit', label: 'Account setting' },
+  { value: 'on', label: 'On' },
+  { value: 'off', label: 'Off' },
+]
+
+const automaticUpdates = computed<boolean>(() => {
+  return props.card?.effectiveAutoUpdate ?? false
+})
+
+const autoUpdateSource = computed(() => {
+  return props.card?.autoUpdateSource ?? 'account'
+})
+
+const autoUpdateCaption = computed<string>(() => {
+  const state = automaticUpdates.value ? 'on' : 'off'
+
+  if (autoUpdateSource.value === 'account') {
+    return `Automatic updates: ${state} (from your account setting)`
+  }
+
+  if (!automaticUpdates.value && props.card?.autoUpdate === 'on') {
+    return 'Automatic updates: off (memory is turned off in your account '
+      + 'settings)'
+  }
+
+  return `Automatic updates: ${state} (set for this project)`
+})
 
 const memoryStatus = computed<ProjectMemoryStatus>(() => {
   return props.card?.memoryStatus ?? 'idle'
@@ -391,7 +473,7 @@ const statusExplanation = computed<string | null>(() => {
     return null
   }
 
-  if (props.automaticUpdates) {
+  if (automaticUpdates.value) {
     return 'Updates automatically about 10 minutes after the last message '
       + 'in a chat, or use Refresh memory.'
   }
@@ -400,7 +482,7 @@ const statusExplanation = computed<string | null>(() => {
 })
 
 const emptyStateGuidance = computed<string>(() => {
-  if (props.automaticUpdates) {
+  if (automaticUpdates.value) {
     return 'It will build up from chats in this project.'
   }
 
@@ -447,6 +529,49 @@ const metaLines = computed<string[]>(() => {
 
   return lines
 })
+
+function syncAutoUpdateRadios() {
+  const radios = autoUpdateControl.value
+    ?.querySelectorAll<HTMLInputElement>('input[type="radio"]')
+
+  radios?.forEach((radio) => {
+    radio.checked = radio.value === props.card?.autoUpdate
+  })
+}
+
+watch(() => props.isSavingAutoUpdate, (isSaving) => {
+  if (!isSaving) {
+    syncAutoUpdateRadios()
+  }
+}, { flush: 'post' })
+
+async function selectAutoUpdate(autoUpdate: ProjectAutoUpdate) {
+  if (props.card?.autoUpdate === autoUpdate || props.isSavingAutoUpdate) {
+    syncAutoUpdateRadios()
+
+    return
+  }
+
+  if (autoUpdate === 'on') {
+    const result = await useConfirm({
+      text: 'Turn on automatic updates for this project?',
+      subtitle: 'Besidka will update this project\'s memory in the '
+        + 'background on your own API key, about 10 minutes after the last '
+        + 'message in a chat. Only messages written from now on are read. '
+        + 'Use Refresh memory to include earlier chats.',
+      actions: ['Turn on'],
+      labelDecline: 'Cancel',
+    })
+
+    if (!result) {
+      syncAutoUpdateRadios()
+
+      return
+    }
+  }
+
+  emit('update-auto-update', autoUpdate)
+}
 
 function onAccountMemoryChange(event: Event) {
   const input = event.target as HTMLInputElement

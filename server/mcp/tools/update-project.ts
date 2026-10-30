@@ -35,11 +35,22 @@ const inputSchema = {
   memoryEnabled: z
     .boolean()
     .optional()
-    .describe('true turns project memory on, false turns it off'),
+    .describe('true turns project memory on (refused while it is off and '
+      + 'automatic updates are on for the project, which can only be '
+      + 'resumed in the Besidka app), false turns it off'),
   useAccountMemory: z
     .boolean()
     .optional()
     .describe('Whether chats in the project also use your account memory'),
+  memoryAutoUpdate: z
+    .enum(['inherit', 'off'])
+    .optional()
+    .describe('inherit follows your account setting for automatic memory '
+      + 'updates (refused while the project is set to off, which can only '
+      + 'be changed in the Besidka app), off stops automatic updates for '
+      + 'this project. on is not available here: it makes Besidka spend '
+      + 'your own API key in the background, so it can only be turned on '
+      + 'in the Besidka app'),
 }
 
 type UpdateProjectInput = z.infer<z.ZodObject<typeof inputSchema>>
@@ -49,13 +60,20 @@ export default defineMcpTool({
   title: 'Update a project',
   description: 'Change settings of one of your Besidka projects: rename it, '
     + 'pin or archive it, set the knowledge mode, turn project memory on or '
-    + 'off, or choose whether it also uses account memory. Each field is '
-    + 'set to the value you send, never toggled. Turning memory on again '
+    + 'off, choose whether it also uses account memory, or set automatic '
+    + 'memory updates to inherit (follow your account setting, not allowed '
+    + 'while they are off for the project) or off. Automatic updates '
+    + 'cannot be turned on, or back from off, here, only in the app, and '
+    + 'project memory cannot be turned back on here while its automatic '
+    + 'updates are on. Each '
+    + 'field is set to the value you send, never toggled. Turning memory on '
+    + 'again '
     + 'restores its state and covers messages written from now on; it does '
     + 'not read earlier chats or call a model (use Refresh in the app to '
     + 'include earlier chats). If a call fails partway, the fields before '
     + 'the failing one are already applied, in the order name, pinned, '
-    + 'archived, knowledgeMode, useAccountMemory, memoryEnabled. Send at '
+    + 'archived, knowledgeMode, useAccountMemory, memoryAutoUpdate, '
+    + 'memoryEnabled. Send at '
     + 'least one field besides projectId. Requires signing in '
     + '(projects:write).',
   inputSchema,

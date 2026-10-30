@@ -1,6 +1,7 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull, ne, or } from 'drizzle-orm'
 import { createError } from 'evlog'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
+import type { ProjectAutoUpdate } from '#shared/utils/project-memory-auto-update'
 import * as schema from '~~/server/db/schema'
 
 type DbClient = ReturnType<typeof useDb>
@@ -40,10 +41,11 @@ export async function projectMemorySettledStatus(
  * clears the lifecycle fields. Turning it on restores `ready` or `idle`
  * from the existing entries. `enabled` means the project was disabled before,
  * the only case where the web action goes on to refresh; `unchanged` means
- * it was already on. With `forwardOnly`, turning it on first stamps the
- * project's chats as already summarized, so the background sweep reads only
- * what is written from now on and never spends the user's key on messages
- * written while memory was off.
+ * it was already on. Turning it on also moves the project's automatic-update
+ * cut-over to now unless the setting is `off`, so the background sweep never
+ * reads messages written while project memory was off. With `forwardOnly`,
+ * turning it on first stamps the project's chats as already summarized as
+ * well, for callers that do not go on to refresh.
  */
 export async function applyProjectMemoryEnabled(
   projectId: string,
@@ -111,6 +113,16 @@ export async function applyProjectMemoryEnabled(
       eq(schema.projects.id, project.id),
       eq(schema.projects.userId, userId),
     ))
+  await db.update(schema.projects)
+    .set({ memoryAutoUpdateEnabledAt: new Date() })
+    .where(and(
+      eq(schema.projects.id, project.id),
+      eq(schema.projects.userId, userId),
+      or(
+        isNull(schema.projects.memoryAutoUpdate),
+        eq(schema.projects.memoryAutoUpdate, 'on'),
+      ),
+    ))
 
   return 'enabled'
 }
@@ -141,4 +153,70 @@ export async function applyProjectUseAccountMemory(
       status: 404,
     })
   }
+}
+
+/**
+ * Stores the per-project automatic-update choice: `on` or `off` override the
+ * account "Generate memory from chats" switch, `inherit` (stored as NULL)
+ * follows it. `memory_auto_update_enabled_at` is the project's forward-only
+ * cut-over: the sweep never reads project chats at or before it. It is
+ * stamped when the project becomes `on` from another state and when it
+ * returns to `inherit` from `off`, so the background sweep never reads
+ * messages written while automatic updates were off. Re-saving `on` or
+ * `inherit` keeps the stamp, `inherit` from `on` keeps it, and `off` clears
+ * it. Each stamping write is one guarded statement, so concurrent saves
+ * cannot restamp. Ownership is part of the WHERE clause, so another user's
+ * project reads as not found. Never reads chats and never calls a model.
+ */
+export async function applyProjectMemoryAutoUpdate(
+  projectId: string,
+  userId: number,
+  autoUpdate: ProjectAutoUpdate,
+  db: DbClient,
+  now: Date = new Date(),
+) {
+  const owned = and(
+    eq(schema.projects.id, projectId),
+    eq(schema.projects.userId, userId),
+  )
+  const project = await db.query.projects.findFirst({
+    where: { id: projectId, userId },
+    columns: { id: true },
+  })
+
+  if (!project) {
+    throw createError({
+      message: 'Project not found',
+      status: 404,
+    })
+  }
+
+  if (autoUpdate === 'on') {
+    await db.update(schema.projects)
+      .set({ memoryAutoUpdate: 'on', memoryAutoUpdateEnabledAt: now })
+      .where(and(
+        owned,
+        or(
+          isNull(schema.projects.memoryAutoUpdate),
+          ne(schema.projects.memoryAutoUpdate, 'on'),
+        ),
+      ))
+
+    return
+  }
+
+  if (autoUpdate === 'off') {
+    await db.update(schema.projects)
+      .set({ memoryAutoUpdate: 'off', memoryAutoUpdateEnabledAt: null })
+      .where(owned)
+
+    return
+  }
+
+  await db.update(schema.projects)
+    .set({ memoryAutoUpdate: null, memoryAutoUpdateEnabledAt: now })
+    .where(and(owned, eq(schema.projects.memoryAutoUpdate, 'off')))
+  await db.update(schema.projects)
+    .set({ memoryAutoUpdate: null })
+    .where(and(owned, eq(schema.projects.memoryAutoUpdate, 'on')))
 }

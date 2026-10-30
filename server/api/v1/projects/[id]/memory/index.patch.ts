@@ -1,5 +1,9 @@
 import { createError } from 'evlog'
-import { setProjectUseAccountMemory } from '~~/server/utils/projects/memory-account'
+import { PROJECT_AUTO_UPDATE_VALUES } from '#shared/utils/project-memory-auto-update'
+import {
+  setProjectMemoryAutoUpdate,
+  setProjectUseAccountMemory,
+} from '~~/server/utils/projects/memory-account'
 import { toggleProjectMemory } from '~~/server/utils/projects/memory-refresh'
 import {
   defineEventHandler,
@@ -26,12 +30,15 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedBody(event, z.union([
-    z.object({
+    z.strictObject({
       enabled: z.boolean(),
       useAccountMemory: z.boolean().optional(),
     }),
     z.strictObject({
       useAccountMemory: z.boolean(),
+    }),
+    z.strictObject({
+      autoUpdate: z.enum(PROJECT_AUTO_UPDATE_VALUES),
     }),
   ]).safeParse)
 
@@ -58,9 +65,24 @@ export default defineEventHandler(async (event) => {
     projectId: params.data.id,
     enabled: 'enabled' in data ? data.enabled : undefined,
     attributes: {
-      projectMemory: { useAccountMemory: data.useAccountMemory },
+      projectMemory: {
+        useAccountMemory: 'useAccountMemory' in data
+          ? data.useAccountMemory
+          : undefined,
+        autoUpdate: 'autoUpdate' in data ? data.autoUpdate : undefined,
+      },
     },
   })
+
+  if ('autoUpdate' in data) {
+    return await setProjectMemoryAutoUpdate(
+      params.data.id,
+      userId,
+      data.autoUpdate,
+      undefined,
+      logger,
+    )
+  }
 
   if (!('enabled' in data)) {
     return await setProjectUseAccountMemory(

@@ -122,6 +122,21 @@ describe('update_project tool', () => {
     expect(schema.safeParse({ name: 'New' }).success).toBe(false)
   })
 
+  it('accepts memoryAutoUpdate inherit and off but never on', async () => {
+    const tool = await loadTool({ mcpAuth: AUTH })
+    const schema = z.object(tool.inputSchema)
+
+    expect(schema.safeParse({ projectId: 'p', memoryAutoUpdate: 'inherit' })
+      .success).toBe(true)
+    expect(schema.safeParse({ projectId: 'p', memoryAutoUpdate: 'off' })
+      .success).toBe(true)
+    expect(schema.safeParse({ projectId: 'p', memoryAutoUpdate: 'on' })
+      .success).toBe(false)
+    expect(schema.safeParse({ projectId: 'p', memoryAutoUpdate: true })
+      .success).toBe(false)
+    expect(tool.description).toContain('cannot be turned on')
+  })
+
   it('runs the domain function for the token user and logs ids only',
     async () => {
       const tool = await loadTool({ mcpAuth: AUTH })

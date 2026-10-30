@@ -105,3 +105,74 @@ describe('setProjectUseAccountMemory', () => {
     })
   })
 })
+
+describe('setProjectMemoryAutoUpdate', () => {
+  let testDb: MemoryExtractionTestDb
+  let userId: number
+
+  beforeEach(async () => {
+    testDb = createMemoryExtractionTestDb()
+    userId = await seedUser(testDb.db, {})
+    vi.stubGlobal('useKV', () => ({
+      get: vi.fn(async () => null),
+    }))
+  })
+
+  afterEach(() => {
+    testDb.close()
+    vi.unstubAllGlobals()
+  })
+
+  async function setValue(
+    projectId: string,
+    value: 'inherit' | 'on' | 'off',
+  ) {
+    const { setProjectMemoryAutoUpdate } = await import(
+      '~~/server/utils/projects/memory-account'
+    )
+
+    return await setProjectMemoryAutoUpdate(
+      projectId,
+      userId,
+      value,
+      testDb.db,
+      { set: vi.fn() },
+    )
+  }
+
+  it('returns the card with the effective state after each choice',
+    async () => {
+      const projectId = await seedProject(testDb.db, userId)
+
+      expect(await setValue(projectId, 'on')).toMatchObject({
+        autoUpdate: 'on',
+        effectiveAutoUpdate: true,
+        autoUpdateSource: 'project',
+      })
+      expect(await setValue(projectId, 'off')).toMatchObject({
+        autoUpdate: 'off',
+        effectiveAutoUpdate: false,
+        autoUpdateSource: 'project',
+      })
+      expect(await setValue(projectId, 'inherit')).toMatchObject({
+        autoUpdate: 'inherit',
+        autoUpdateSource: 'account',
+      })
+    })
+
+  it('answers 404 for another user project and writes nothing', async () => {
+    const otherUserId = await seedUser(testDb.db, {})
+    const projectId = await seedProject(testDb.db, otherUserId)
+
+    await expect(setValue(projectId, 'on')).rejects.toMatchObject({
+      status: 404,
+    })
+
+    const [project] = await testDb.db
+      .select({ memoryAutoUpdate: schema.projects.memoryAutoUpdate })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, projectId))
+
+    expect(project?.memoryAutoUpdate).toBeNull()
+  })
+})

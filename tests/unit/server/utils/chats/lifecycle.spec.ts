@@ -63,6 +63,7 @@ interface FakeDbOptions {
   returnedChat?: { id: string, projectId: string | null }
   message?: { id: string } | undefined
   deletedMessageRows?: number
+  targetProject?: { memoryAutoUpdate: 'on' | 'off' | null }
 }
 
 function createDb(options: FakeDbOptions = {}) {
@@ -107,6 +108,9 @@ function createDb(options: FakeDbOptions = {}) {
     query: {
       messages: {
         findFirst: vi.fn(async () => options.message),
+      },
+      projects: {
+        findFirst: vi.fn(async () => options.targetProject),
       },
     },
   }
@@ -211,6 +215,59 @@ describe('chat lifecycle', () => {
           db,
         )
       })
+
+    it('stamps the moved chats as summarized when the target project is on',
+      async () => {
+        const { db, updates } = createDb({
+          targetProject: { memoryAutoUpdate: 'on' },
+        })
+
+        await moveChatsToProject(
+          db,
+          USER_ID,
+          [{ id: 'c1', projectId: null }],
+          { id: 'p-target' },
+        )
+
+        expect(updates[0]!.values).toMatchObject({
+          projectId: 'p-target',
+          projectMemorySummaryUpdatedAt: updates[0]!.values.activityAt,
+        })
+      })
+
+    it('leaves the summary stamp alone for a project that follows the '
+      + 'account or is off, and when taking chats out of a project',
+    async () => {
+      for (const memoryAutoUpdate of ['off', null] as const) {
+        const { db, updates } = createDb({
+          targetProject: { memoryAutoUpdate },
+        })
+
+        await moveChatsToProject(
+          db,
+          USER_ID,
+          [{ id: 'c1', projectId: null }],
+          { id: 'p-target' },
+        )
+
+        expect(updates[0]!.values)
+          .not.toHaveProperty('projectMemorySummaryUpdatedAt')
+      }
+
+      const { db, updates } = createDb({
+        targetProject: { memoryAutoUpdate: 'on' },
+      })
+
+      await moveChatsToProject(
+        db,
+        USER_ID,
+        [{ id: 'c1', projectId: 'p-source' }],
+        null,
+      )
+
+      expect(updates[0]!.values)
+        .not.toHaveProperty('projectMemorySummaryUpdatedAt')
+    })
 
     it('takes chats out of a project without touching a target project',
       async () => {

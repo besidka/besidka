@@ -528,13 +528,13 @@ text only and capped.
 | `revoke_chat_shares` | `chats:write` | yes | Revoke the public share links of chats; the chats stay | `revokeChatShares`. Up to 90 slugs (a D1 bound-parameter limit) |
 | `branch_chat` | `chats:write` | no | Copy a chat, or its start up to a message, into a new chat in the same project; a generating chat is refused | `branchChat` (`chats/branch`). The original is unchanged |
 | `list_projects` | `projects:read` | no | Projects by recent activity, optional `search` and `archived`; pinned, archived and memory state | `projects/cursor`. `limit` up to 50 |
-| `get_project` | `projects:read` | no | Name, instructions, pinned and archived state, knowledge mode, project memory state, knowledge totals against the limits, knowledge items (id, kind, title, path, media type, sizes, status, `flagged`, `pinned`) | `listKnowledgeItems`. At most 500 items (`KNOWLEDGE_LIMITS.maxItemsPerProject`) |
+| `get_project` | `projects:read` | no | Name, instructions, pinned and archived state, knowledge mode, project memory state (enabled, status, `useAccountMemory`, entry count, and `autoUpdate` `inherit`/`on`/`off`, `effectiveAutoUpdate` and `autoUpdateSource` `project`/`account`), knowledge totals against the limits, knowledge items (id, kind, title, path, media type, sizes, status, `flagged`, `pinned`) | `listKnowledgeItems`. At most 500 items (`KNOWLEDGE_LIMITS.maxItemsPerProject`) |
 | `read_project_knowledge_item` | `projects:read` | no | Extracted text of one item, paged with `offset` and `nextOffset` | `getKnowledgeItemText`. 50,000 characters by default, 100,000 at most |
 | `create_project` | `projects:write` | no | Create a project (`name`, 1 to 100 characters) and return the same row shape as `list_projects`, with the public id | the insert of `PUT /projects` (`createMcpProject`). No per-user project cap exists, so none is added |
 | `update_project_instructions` | `projects:write` | yes | Replace or clear (`null`) the instructions | same rule as `PATCH /projects/[id]/instructions`. 10,000 characters |
 | `add_project_note` | `projects:write` | no | Add a note | `createKnowledgeNote` (duplicate check, caps, quota, injection screening, commit). `KNOWLEDGE_LIMITS.maxNoteChars` |
 | `add_project_text` | `projects:write` | no | Add text or markdown as a `file` item (`extractor: text`, `.md` names get `text/markdown`). Either `name` and `text`, or `items: [{ name, text }]` (exactly one form) | `knowledgeItemsBatchCreateSchema`, `hashKnowledgeText`, `ingestKnowledgeItems` with `commit: true`. Single: 200,000 characters; batch: 10 items and 200,000 characters in total; the 512 KiB body cap holds for Cyrillic (see Request limits) |
-| `update_project` | `projects:write` | yes | Set `name`, `pinned`, `archived`, `knowledgeMode`, `memoryEnabled` and `useAccountMemory` (at least one). Turning project memory on restores its state only: it never starts a refresh or calls a model, and it is forward-only (`applyProjectMemoryEnabled` with `forwardOnly`): the project's chats are stamped as already summarized, so the sweep reads only messages written from now on. Earlier chats need Refresh in the app. Fields are applied in order and a later failure leaves the earlier ones written | `renameProject`, `setProjectPinned`, `setProjectArchived`, `applyProjectMemoryEnabled`, `applyProjectUseAccountMemory` |
+| `update_project` | `projects:write` | yes | Set `name`, `pinned`, `archived`, `knowledgeMode`, `memoryEnabled`, `useAccountMemory` and `memoryAutoUpdate` (at least one). `memoryAutoUpdate` is `inherit` (follow the account switch) or `off` only: `on` makes the background sweep spend the user's key for that project, so it is rejected by the schema and settable only in the app. `inherit` is also refused (400) over a project that is currently `off`, because returning from `off` restamps the cut-over and resumes background spend the user stopped in the app; `inherit` over `on` and `off` over anything are allowed. `memoryEnabled: true` is refused (400) while the project is disabled and its `memoryAutoUpdate` is `on` (unless the same call sends `memoryAutoUpdate: off`), because the restamp would resume the sweep and its background spend; the user turns memory back on in the app. Turning project memory on otherwise restores its state only: it never starts a refresh or calls a model, and it is forward-only (`applyProjectMemoryEnabled` with `forwardOnly`): the project's chats are stamped as already summarized, so the sweep reads only messages written from now on. Earlier chats need Refresh in the app. Fields are applied in order and a later failure leaves the earlier ones written | `renameProject`, `setProjectPinned`, `setProjectArchived`, `applyProjectMemoryEnabled`, `applyProjectUseAccountMemory`, `applyProjectMemoryAutoUpdate` |
 | `delete_project` | `data:delete` | yes | Delete a project with its instructions, knowledge items and project memory; its chats are kept and detached. Needs `confirmName`, the exact current project name | `deleteProject` (`projects/lifecycle`). `confirmName` up to 100 characters |
 | `update_project_knowledge_item` | `projects:write` | yes | Notes: `title`, `body` and `description`. Any item: `description`, `pinned`, and for PDFs `sendAsNativePdf`. The old text of a note is not kept | the knowledge note update path (caps, injection screening when a TypeSafe AI key is set). Title and note limits of `KNOWLEDGE_LIMITS` |
 | `delete_project_knowledge_items` | `data:delete` | yes | Delete knowledge items of one project; unknown ids are skipped and reported | Up to 100 ids (`MCP_KNOWLEDGE_DELETE_MAX_ITEMS`) |
@@ -549,7 +549,7 @@ text only and capped.
 | `delete_memory` | `data:delete` | yes | Delete one entry | `deleteMemoryEntry` |
 | `reset_memory` | `data:delete` | yes | Delete many entries: `scope` `account`, `project` (needs `projectId`) or `all`; `onlyGenerated` (with `all`) keeps what the user or an app wrote. Needs `confirm: true` | `resetMemoryEntries`, `deleteExtractedMemoryEntries`, `clearBackfillWindow`, the memory write limiter |
 | `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
-| `update_settings` | `settings:write` | yes | Set `reasoningExpanded`, `reasoningAutoHide`, `defaultReasoningLevel` (`null` clears it), `favoriteModels`, `favoriteGatewayModels`, `sidebarPinned`, `memoryEnabled`, `chatSearchEnabled`. Keys that are not listed are dropped by the tool input schema before the handler runs, not refused (the strict schema in `updateMcpSettings` is a second guard for direct callers). `favoriteModels` and `favoriteGatewayModels` are replaced as a whole, so a client reads `get_settings` first and sends the full list or map. `memoryEnabled: true` is refused while it is off and automatic extraction is on, because turning it on would resume that extraction | `applyUserSettingsUpdate`, the same schemas as `PATCH /profiles/settings` (`shared/utils/user-settings-schemas.ts`) |
+| `update_settings` | `settings:write` | yes | Set `reasoningExpanded`, `reasoningAutoHide`, `defaultReasoningLevel` (`null` clears it), `favoriteModels`, `favoriteGatewayModels`, `sidebarPinned`, `memoryEnabled`, `chatSearchEnabled`. Keys that are not listed are dropped by the tool input schema before the handler runs, not refused (the strict schema in `updateMcpSettings` is a second guard for direct callers). `favoriteModels` and `favoriteGatewayModels` are replaced as a whole, so a client reads `get_settings` first and sends the full list or map. `memoryEnabled: true` is refused while it is off and automatic extraction is on, or any of the user's projects has automatic updates set to `on`, because turning it on would resume that background extraction | `applyUserSettingsUpdate`, the same schemas as `PATCH /profiles/settings` (`shared/utils/user-settings-schemas.ts`) |
 
 Notes:
 
@@ -746,7 +746,11 @@ add one of these tools without reading its entry first.
    prove that a human approved it, an injected prompt could drain the user's
    key, and spending on a key needs the user's explicit consent in Besidka.
    For the same reason `update_project` and `update_settings` only restore
-   state and never trigger a refresh or an LLM call. **Revisit when** the
+   state and never trigger a refresh or an LLM call, and why
+   `update_project`'s `memoryAutoUpdate` takes only `inherit` and `off`, and
+   `inherit` only over a project that is not `off`: those can only reduce what
+   the background sweep reads, while `on` and leaving `off` (the explicit
+   per-project opt-in to background spend) are set in the app. **Revisit when** the
    `create_chat_draft` idea in the section above is built, or the dashboard
    shows other users on these tools and a concrete workflow needs one.
 2. **Creating or updating a public chat share.** `list_shared_chats` and
@@ -769,8 +773,13 @@ add one of these tools without reading its entry first.
    roles (and the about-me text and consents). Why: each lets background work
    run on the user's key or sends the user's text to another provider, which
    needs the consent flows of the app. `update_settings` also refuses
-   `memoryEnabled: true` while memory is off and automatic extraction is on,
-   because the switch would resume extraction. **Revisit when** an unattended
+   `memoryEnabled: true` while memory is off and automatic extraction is on
+   or any project has automatic updates set to `on`, because the switch would
+   resume background extraction. `update_project` likewise refuses
+   `memoryEnabled: true` over a disabled project whose automatic updates are
+   `on`. (Turning memory back on in the app moves the
+   cut-over of every `on` project to that moment, so the period memory was off
+   is never read.) **Revisit when** an unattended
    change is made harmless, for example a spend cap the server enforces.
 5. **Keys, sessions, connected apps, consents, push, email, password, 2FA,
    passkeys and account deletion.** Why: they are security and legal acts that

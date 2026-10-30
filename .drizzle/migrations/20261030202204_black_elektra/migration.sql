@@ -1,0 +1,1 @@
+CREATE INDEX `idx_projects_auto_update_on` ON `projects` (`user_id`) WHERE memory_auto_update = 'on';

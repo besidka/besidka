@@ -167,6 +167,12 @@ function createDbMock() {
   const chatStampSet = vi.fn(() => ({
     where: chatStampWhere,
   }))
+  const projectRestampWhere = vi.fn().mockImplementation(() => {
+    return createStatement('project-restamp', () => [])
+  })
+  const projectRestampSet = vi.fn(() => ({
+    where: projectRestampWhere,
+  }))
   const backfillCancelWhere = vi.fn().mockImplementation(() => {
     return createStatement('backfill-cancel', () => [])
   })
@@ -176,6 +182,10 @@ function createDbMock() {
   const update = vi.fn((table: unknown) => {
     if (getTableName(table as never) === 'chats') {
       return { set: chatStampSet }
+    }
+
+    if (getTableName(table as never) === 'projects') {
+      return { set: projectRestampSet }
     }
 
     if (getTableName(table as never) === 'memory_backfill_jobs') {
@@ -1440,7 +1450,33 @@ describe('profile settings API', () => {
           expect(response).toEqual({ memoryEnabled: true })
           expect(statements.map((statement: FakeStatement) => {
             return statement.kind
-          })).toEqual(['update', 'chat-stamp'])
+          })).toEqual(['update', 'chat-stamp', 'project-restamp'])
+        })
+
+      it('restamps the projects that are on when memoryEnabled goes false '
+        + 'to true with extraction off', async () => {
+        const patchHandler = await patchSettingsHandler()
+        const dbMock = setup()
+
+        dbMock.seed({ memoryEnabled: false, memoryExtractionEnabled: false })
+        await patchHandler(patchEvent({ memoryEnabled: true }))
+
+        const [statements] = dbMock.spies.batch.mock.calls[0]!
+
+        expect(statements.map((statement: FakeStatement) => {
+          return statement.kind
+        })).toEqual(['update', 'project-restamp'])
+      })
+
+      it('does not restamp projects when memoryEnabled goes on to off',
+        async () => {
+          const patchHandler = await patchSettingsHandler()
+          const dbMock = setup()
+
+          dbMock.seed({ memoryEnabled: true, memoryExtractionEnabled: false })
+          await patchHandler(patchEvent({ memoryEnabled: false }))
+
+          expect(dbMock.spies.batch).not.toHaveBeenCalled()
         })
 
       it('stamps once when both flags are switched on together', async () => {

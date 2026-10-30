@@ -11,6 +11,7 @@ import {
   redactNeverStore,
 } from '~~/server/utils/memory/compliance'
 import { REDACTION_PLACEHOLDER } from '#shared/utils/memory-policy'
+import { resolveProjectAutoUpdate } from '#shared/utils/project-memory-auto-update'
 import {
   isTransientMemoryExtractionError,
   memoryExtractionErrorSummary,
@@ -166,11 +167,44 @@ async function memoryExtractionReadSettings(db: DbClient, userId: number) {
   })
 }
 
+type MemoryExtractionProjectOverride = Pick<
+  typeof schema.projects.$inferSelect,
+  'memoryAutoUpdate' | 'memoryAutoUpdateEnabledAt'
+>
+
 interface MemoryExtractionGate {
   trigger: MemoryExtractionTrigger
   isProjectChat: boolean
   activityAt: Date | null
   isExplicit: boolean
+  project?: MemoryExtractionProjectOverride | null
+}
+
+async function memoryExtractionReadProjectOverride(
+  db: DbClient,
+  projectId: string | null,
+  userId: number,
+): Promise<MemoryExtractionProjectOverride | null> {
+  if (!projectId) {
+    return null
+  }
+
+  const project = await db.query.projects.findFirst({
+    where: { id: projectId, userId },
+    columns: { memoryAutoUpdate: true, memoryAutoUpdateEnabledAt: true },
+  })
+
+  return project ?? null
+}
+
+function memoryExtractionProjectAutoUpdate(
+  settings: Awaited<ReturnType<typeof memoryExtractionReadSettings>>,
+  project: MemoryExtractionProjectOverride | null | undefined,
+) {
+  return resolveProjectAutoUpdate(
+    project ?? { memoryAutoUpdate: null, memoryAutoUpdateEnabledAt: null },
+    settings,
+  )
 }
 
 function memoryExtractionIsAllowed(
@@ -185,17 +219,19 @@ function memoryExtractionIsAllowed(
     return true
   }
 
-  if (settings?.memoryExtractionEnabled !== true) {
-    return false
-  }
-
   if (gate.trigger === 'backfill' || !gate.isProjectChat) {
-    return true
+    return settings?.memoryExtractionEnabled === true
   }
 
-  const enabledAt = settings.memoryExtractionEnabledAt
+  const { isEffective, cutOver } = memoryExtractionProjectAutoUpdate(
+    settings,
+    gate.project,
+  )
 
-  return !!enabledAt && !!gate.activityAt && gate.activityAt > enabledAt
+  return isEffective
+    && !!cutOver
+    && !!gate.activityAt
+    && gate.activityAt > cutOver
 }
 
 function memoryExtractionOwnChat(chatId: string, userId: number) {
@@ -283,12 +319,14 @@ async function memoryExtractionBumpProjectMetadata(
  * dirty/idle) is re-read inside the lease, and the settings gate is checked
  * again after the model call. Never throws for a pass failure: the failure
  * counter on the chat is bumped and `failed` is returned. Memory must be on for
- * every trigger. The `sweep` trigger also needs the extraction opt-in for
- * account and project chats alike, and a project chat additionally needs
- * `memory_extraction_enabled_at` set and activity after it; its window floor is
- * the later of the project watermark and that cut-over, so messages from before
- * the opt-in are never read. The window floor and the advanced stamp are the
- * project watermark (`projectMemorySummaryUpdatedAt`) for a project chat and
+ * every trigger. The `sweep` trigger needs the extraction opt-in for an
+ * account chat. A project chat follows the project's automatic-update setting
+ * (`resolveProjectAutoUpdate`): `on` or `off` on the project beat the account
+ * opt-in, `inherit` follows it, and activity must be after the applicable
+ * cut-over. Its window floor is the later of the project watermark and that
+ * cut-over, so messages from before the opt-in are never read. The window
+ * floor and the advanced stamp are the project watermark
+ * (`projectMemorySummaryUpdatedAt`) for a project chat and
  * `memoryExtractedAt` otherwise. The `no-user-text` and `project-unavailable`
  * skip paths advance the watermark so the chat is not selected again until new
  * activity. `too-short` never advances it: the user text stays in the next
@@ -407,11 +445,26 @@ async function extractLeasedChatMemory(
     return memoryExtractionEmptyResult('skipped', 'project-changed')
   }
 
+  const project = chat.projectId
+    ? await db.query.projects.findFirst({
+      where: { id: chat.projectId, userId },
+      columns: {
+        id: true,
+        memory: true,
+        memoryStatus: true,
+        memoryMigratedAt: true,
+        memoryAutoUpdate: true,
+        memoryAutoUpdateEnabledAt: true,
+      },
+    })
+    : null
+
   const gate: MemoryExtractionGate = {
     trigger,
     isProjectChat,
     activityAt: chat.activityAt,
     isExplicit,
+    project,
   }
 
   if (!memoryExtractionIsAllowed(settings, gate)) {
@@ -421,7 +474,9 @@ async function extractLeasedChatMemory(
   const watermark = chat.projectId
     ? chat.projectMemorySummaryUpdatedAt
     : chat.memoryExtractedAt
-  const cutOver = settings?.memoryExtractionEnabledAt ?? null
+  const cutOver = isProjectChat
+    ? memoryExtractionProjectAutoUpdate(settings, project).cutOver
+    : null
   const isFlooredAtCutOver = trigger === 'sweep'
     && !isExplicit
     && isProjectChat
@@ -438,18 +493,6 @@ async function extractLeasedChatMemory(
       return memoryExtractionEmptyResult('skipped', 'not-due')
     }
   }
-
-  const project = chat.projectId
-    ? await db.query.projects.findFirst({
-      where: { id: chat.projectId, userId },
-      columns: {
-        id: true,
-        memory: true,
-        memoryStatus: true,
-        memoryMigratedAt: true,
-      },
-    })
-    : null
 
   if (chat.projectId && (!project || project.memoryStatus === 'disabled')) {
     await memoryExtractionAdvance(
@@ -593,8 +636,15 @@ async function extractLeasedChatMemory(
     }
 
     const freshSettings = await memoryExtractionReadSettings(db, userId)
+    const freshProject = await memoryExtractionReadProjectOverride(
+      db,
+      chat.projectId,
+      userId,
+    )
 
-    if (!memoryExtractionIsAllowed(freshSettings, gate)) {
+    const freshGate = { ...gate, project: freshProject }
+
+    if (!memoryExtractionIsAllowed(freshSettings, freshGate)) {
       return { ...result, status: 'skipped', reason: 'disabled' }
     }
 
