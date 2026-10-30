@@ -197,45 +197,264 @@ describe('useFileManager', () => {
     })
   })
 
-  it('requests project files when the Projects source is selected', async () => {
-    const projectFile = {
-      id: 'file-project-1',
-      storageKey: 'file-project-1.pdf',
-      name: 'Pesel.pdf',
+  describe('Projects source', () => {
+    const sharedFile = {
+      id: 'file-shared',
+      storageKey: 'file-shared.pdf',
+      name: 'Shared.pdf',
       size: 2048,
       type: 'application/pdf',
       source: 'upload' as const,
       createdAt: new Date('2024-01-04').toISOString(),
     }
-    const manager = useFileManager()
+    let projectFiles: Record<string, typeof smallFileSet>
 
-    await manager.fetchFiles(true)
-
-    fetchMock.mockImplementation(async (_url: string, options?: any) => {
-      const isProject = options?.query?.source === 'project'
-
-      return {
-        files: isProject ? [projectFile] : [],
-        total: isProject ? 1 : 0,
-        offset: 0,
-        limit: 20,
+    beforeEach(() => {
+      projectFiles = {
+        'project-a': [
+          { ...sharedFile },
+          { ...smallFileSet[0]!, id: 'a-1', name: 'A one.png' },
+          { ...smallFileSet[0]!, id: 'a-2', name: 'A two.png' },
+          { ...smallFileSet[0]!, id: 'a-3', name: 'A three.png' },
+        ],
+        'project-b': [
+          { ...sharedFile },
+          { ...smallFileSet[0]!, id: 'b-1', name: 'B one.png' },
+        ],
       }
+      fetchMock.mockImplementation(async (url: string, options?: any) => {
+        if (url === '/api/v1/files/projects') {
+          return {
+            projects: [
+              {
+                id: 'project-a',
+                name: 'Alpha',
+                fileCount: projectFiles['project-a']!.length,
+                pinned: true,
+                archived: false,
+              },
+              {
+                id: 'project-b',
+                name: 'Beta',
+                fileCount: projectFiles['project-b']!.length,
+                pinned: false,
+                archived: false,
+              },
+            ].filter(project => project.fileCount > 0),
+          }
+        }
+
+        if (url === '/api/v1/files') {
+          const groupFiles = projectFiles[options.query.projectId] ?? []
+
+          return {
+            files: groupFiles.slice(
+              options.query.offset,
+              options.query.offset + options.query.limit,
+            ),
+            total: groupFiles.length,
+            offset: options.query.offset,
+            limit: options.query.limit,
+          }
+        }
+
+        if (url === '/api/v1/files/file-shared/name') {
+          return { id: 'file-shared', name: options.body.name }
+        }
+
+        if (
+          url === '/api/v1/files/delete/bulk'
+          || options?.method === 'DELETE'
+        ) {
+          const ids: string[] = options.body?.ids
+            ?? [url.replace('/api/v1/files/', '')]
+
+          for (const key of Object.keys(projectFiles)) {
+            projectFiles[key] = projectFiles[key]!.filter((file) => {
+              return !ids.includes(file.id)
+            })
+          }
+
+          return { success: true }
+        }
+
+        throw new Error(`Unhandled $fetch call: ${url}`)
+      })
     })
 
-    manager.source.value = 'project'
+    async function openProjectsSource() {
+      const manager = useFileManager()
 
-    await vi.waitFor(() => {
-      expect(manager.files.value).toHaveLength(1)
+      manager.source.value = 'project'
+
+      await vi.waitFor(() => {
+        expect(manager.projectGroups.value[0]?.hasLoaded).toBe(true)
+      })
+
+      return manager
+    }
+
+    it('loads project groups instead of a flat list', async () => {
+      const manager = await openProjectsSource()
+
+      expect(manager.files.value).toEqual([])
+      expect(manager.projectGroups.value.map(group => group.id)).toEqual([
+        'project-a',
+        'project-b',
+      ])
+      expect(manager.projectGroups.value[0]?.files).toHaveLength(4)
+      expect(manager.projectGroups.value[1]?.hasLoaded).toBe(false)
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/files', {
+        query: {
+          source: 'project',
+          projectId: 'project-a',
+          offset: 0,
+          limit: 20,
+        },
+      })
     })
 
-    expect(manager.files.value[0]?.id).toBe('file-project-1')
-    expect(manager.pagination.total).toBe(1)
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/files', {
-      query: {
-        offset: 0,
-        limit: 20,
-        source: 'project',
-      },
+    it('debounces search into a group refetch', async () => {
+      const manager = await openProjectsSource()
+
+      vi.useFakeTimers()
+      manager.search.value = 'one'
+      await vi.advanceTimersByTimeAsync(300)
+      vi.useRealTimers()
+
+      await vi.waitFor(() => {
+        expect(manager.projectGroups.value.every(group => group.isOpen))
+          .toBe(true)
+      })
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/files/projects', {
+        query: { search: 'one' },
+      })
+    })
+
+    it('shows a file selected in every project that holds it', async () => {
+      const manager = await openProjectsSource()
+
+      await manager.toggleProjectGroup('project-b')
+      manager.handleProjectGroupSelect('project-a', 'file-shared', 0, false)
+
+      expect(manager.selectedIds.value.has('file-shared')).toBe(true)
+      expect(manager.projectGroups.value[1]?.files[0]?.id).toBe(
+        'file-shared',
+      )
+      expect(manager.selectedCount.value).toBe(1)
+    })
+
+    it('attaches each selected file once', async () => {
+      const manager = await openProjectsSource()
+
+      await manager.toggleProjectGroup('project-b')
+      manager.handleProjectGroupSelect('project-a', 'file-shared', 0, false)
+      manager.handleProjectGroupSelect('project-b', 'b-1', 1, false)
+
+      const attached = manager.getSelectedForAttach()
+
+      expect(attached.map(file => file.id).sort()).toEqual([
+        'b-1',
+        'file-shared',
+      ])
+      expect(manager.selectedCount.value).toBe(0)
+    })
+
+    it('selects a shift range only inside one group', async () => {
+      const manager = await openProjectsSource()
+
+      await manager.toggleProjectGroup('project-b')
+      manager.handleProjectGroupSelect('project-a', 'file-shared', 0, false)
+      manager.handleProjectGroupSelect('project-a', 'a-2', 2, true)
+
+      expect(Array.from(manager.selectedIds.value).sort()).toEqual([
+        'a-1',
+        'a-2',
+        'file-shared',
+      ])
+
+      manager.handleProjectGroupSelect('project-b', 'b-1', 1, true)
+
+      expect(manager.selectedIds.value.has('b-1')).toBe(true)
+      expect(manager.selectedCount.value).toBe(4)
+    })
+
+    it('selects and clears one group with select all', async () => {
+      const manager = await openProjectsSource()
+
+      manager.toggleProjectGroupSelectAll('project-a')
+
+      expect(manager.selectedCount.value).toBe(4)
+
+      manager.toggleProjectGroupSelectAll('project-a')
+
+      expect(manager.selectedCount.value).toBe(0)
+    })
+
+    it('renames every copy of a file', async () => {
+      const manager = await openProjectsSource()
+
+      await manager.toggleProjectGroup('project-b')
+      await manager.renameFile('file-shared', 'Renamed.pdf')
+
+      expect(manager.projectGroups.value[0]?.files[0]?.name).toBe(
+        'Renamed.pdf',
+      )
+      expect(manager.projectGroups.value[1]?.files[0]?.name).toBe(
+        'Renamed.pdf',
+      )
+    })
+
+    it('prunes a deleted file from every group and keeps totals right', async () => {
+      const manager = await openProjectsSource()
+
+      await manager.toggleProjectGroup('project-b')
+      manager.selectedIds.value = new Set(['file-shared'])
+
+      expect(await manager.deleteFile('file-shared')).toBe(true)
+
+      expect(manager.projectGroups.value[0]?.files).toHaveLength(3)
+      expect(manager.projectGroups.value[0]?.total).toBe(3)
+      expect(manager.projectGroups.value[1]?.files.map(file => file.id))
+        .toEqual(['b-1'])
+      expect(manager.projectGroups.value[1]?.total).toBe(1)
+      expect(manager.selectedIds.value.size).toBe(0)
+    })
+
+    it('bulk deletes across groups and drops emptied groups', async () => {
+      projectFiles['project-b'] = [{ ...sharedFile }]
+
+      const manager = await openProjectsSource()
+
+      await manager.toggleProjectGroup('project-b')
+      manager.selectedIds.value = new Set(['file-shared'])
+
+      expect(await manager.deleteSelected()).toBe(true)
+      expect(manager.projectGroups.value.map(group => group.id)).toEqual([
+        'project-a',
+      ])
+    })
+
+    it('clears groups when switching back to a flat source', async () => {
+      const manager = await openProjectsSource()
+
+      manager.source.value = 'all'
+      await vi.waitFor(() => {
+        expect(manager.projectGroups.value).toEqual([])
+      })
+    })
+
+    it('refetches the groups on a files refresh', async () => {
+      const manager = await openProjectsSource()
+
+      fetchMock.mockClear()
+      await manager.fetchFiles(true)
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/files/projects', {
+        query: {},
+      })
+      expect(manager.projectGroups.value[0]?.hasLoaded).toBe(true)
     })
   })
 

@@ -1,16 +1,10 @@
 import { parseError } from 'evlog'
 import type {
+  FetchFilesResponse,
   FileManagerFile,
   FileSourceFilter,
   ViewMode,
 } from '~/types/file-manager'
-
-interface FetchFilesResponse {
-  files: FileManagerFile[]
-  total: number
-  offset: number
-  limit: number
-}
 
 interface FileRequestContext {
   generation: number
@@ -22,8 +16,9 @@ export function useFileManager() {
   const files = ref<FileManagerFile[]>([])
   const selectedIds = ref<Set<string>>(new Set())
   const lastSelectedIndex = shallowRef<number | null>(null)
+  const lastSelectedGroupId = shallowRef<string | null>(null)
   const isLoading = shallowRef<boolean>(false)
-  const isSearching = shallowRef<boolean>(false)
+  const isFlatSearching = shallowRef<boolean>(false)
   const isDeletingSelected = shallowRef<boolean>(false)
   const searchLoadingTimeout = shallowRef<
     ReturnType<typeof setTimeout> | null
@@ -33,6 +28,8 @@ export function useFileManager() {
   >(null)
   const search = shallowRef<string>('')
   const source = shallowRef<FileSourceFilter>('all')
+  const projectGroupsManager = useFileManagerProjectGroups({ search })
+  const projectGroups = projectGroupsManager.groups
   const prefStorage = usePreferenceStorage()
   const viewMode = customRef<ViewMode>((track, trigger) => ({
     get() {
@@ -67,8 +64,25 @@ export function useFileManager() {
 
   const selectedCount = computed(() => selectedIds.value.size)
 
+  const loadedFiles = computed<FileManagerFile[]>(() => {
+    const uniqueFiles = new Map<string, FileManagerFile>()
+
+    for (const file of [
+      ...files.value,
+      ...projectGroupsManager.loadedFiles.value,
+    ]) {
+      if (!uniqueFiles.has(file.id)) {
+        uniqueFiles.set(file.id, file)
+      }
+    }
+
+    return Array.from(uniqueFiles.values())
+  })
+
   const selectedFiles = computed(() => {
-    return files.value.filter(file => selectedIds.value.has(file.id))
+    return loadedFiles.value.filter((file) => {
+      return selectedIds.value.has(file.id)
+    })
   })
 
   const hasSelection = computed(() => selectedIds.value.size > 0)
@@ -83,7 +97,7 @@ export function useFileManager() {
       clearTimeout(searchLoadingTimeout.value)
       searchLoadingTimeout.value = null
     }
-    isSearching.value = false
+    isFlatSearching.value = false
   }
 
   function clearSearchDebounce() {
@@ -99,6 +113,7 @@ export function useFileManager() {
     fileRequestGeneration++
     isLoading.value = false
     clearSearchTimeout()
+    projectGroupsManager.invalidate()
   }
 
   function createFileRequestContext(): FileRequestContext {
@@ -113,8 +128,29 @@ export function useFileManager() {
     return context.generation === fileRequestGeneration
   }
 
+  async function fetchProjectGroups(reset: boolean, isSearch: boolean) {
+    if (!reset) {
+      return false
+    }
+
+    pagination.offset = 0
+    pagination.total = 0
+    serverOffset.value = 0
+    files.value = []
+    selectedIds.value = new Set()
+    lastSelectedIndex.value = null
+    lastSelectedGroupId.value = null
+
+    return projectGroupsManager.fetchGroups(false, isSearch)
+  }
+
   async function fetchFiles(reset = false, isSearch = false) {
     isFileManagerActive = true
+
+    if (source.value === 'project') {
+      return fetchProjectGroups(reset, isSearch)
+    }
+
     const requestContext = createFileRequestContext()
     const requestOffset = reset ? 0 : pagination.offset
     let isSuccess = false
@@ -123,9 +159,11 @@ export function useFileManager() {
       pagination.offset = 0
       serverOffset.value = 0
       files.value = []
+      projectGroupsManager.clear()
       selectedIds.value.clear()
       selectedIds.value = new Set()
       lastSelectedIndex.value = null
+      lastSelectedGroupId.value = null
     }
 
     isLoading.value = true
@@ -137,7 +175,7 @@ export function useFileManager() {
           return
         }
 
-        isSearching.value = true
+        isFlatSearching.value = true
       }, 300)
     }
 
@@ -195,8 +233,32 @@ export function useFileManager() {
     await fetchFiles(false)
   }
 
+  function pruneSelectionToLoadedFiles() {
+    const loadedIds = new Set(loadedFiles.value.map(file => file.id))
+
+    selectedIds.value = new Set(
+      Array.from(selectedIds.value).filter((id) => {
+        return loadedIds.has(id)
+      }),
+    )
+
+    if (selectedIds.value.size === 0) {
+      lastSelectedIndex.value = null
+      lastSelectedGroupId.value = null
+    }
+  }
+
   async function syncLoadedFiles() {
     invalidateFileRequests()
+
+    if (source.value === 'project') {
+      const isSynced = await projectGroupsManager.fetchGroups(true)
+
+      pruneSelectionToLoadedFiles()
+
+      return isSynced
+    }
+
     const requestContext = createFileRequestContext()
     const loadedCount = Math.max(files.value.length, pagination.limit)
     const syncedFiles: FileManagerFile[] = []
@@ -267,7 +329,7 @@ export function useFileManager() {
     return true
   }
 
-  function toggleSelect(id: string, index?: number) {
+  function toggleSelect(id: string, index?: number, groupId?: string) {
     if (selectedIds.value.has(id)) {
       selectedIds.value.delete(id)
     } else {
@@ -276,6 +338,7 @@ export function useFileManager() {
 
     if (index !== undefined) {
       lastSelectedIndex.value = index
+      lastSelectedGroupId.value = groupId ?? null
     }
 
     selectedIds.value = new Set(selectedIds.value)
@@ -293,6 +356,7 @@ export function useFileManager() {
     }
 
     lastSelectedIndex.value = toIndex
+    lastSelectedGroupId.value = null
 
     selectedIds.value = new Set(selectedIds.value)
   }
@@ -305,6 +369,73 @@ export function useFileManager() {
     }
   }
 
+  function getProjectGroupFiles(groupId: string): FileManagerFile[] {
+    return projectGroupsManager.findGroup(groupId)?.files ?? []
+  }
+
+  function selectProjectGroupRange(
+    groupId: string,
+    fromIndex: number,
+    toIndex: number,
+  ) {
+    const groupFiles = getProjectGroupFiles(groupId)
+    const start = Math.min(fromIndex, toIndex)
+    const end = Math.max(fromIndex, toIndex)
+
+    for (let index = start; index <= end; index++) {
+      const file = groupFiles[index]
+
+      if (file) {
+        selectedIds.value.add(file.id)
+      }
+    }
+
+    lastSelectedIndex.value = toIndex
+    lastSelectedGroupId.value = groupId
+    selectedIds.value = new Set(selectedIds.value)
+  }
+
+  function handleProjectGroupSelect(
+    groupId: string,
+    id: string,
+    index: number,
+    shiftKey: boolean,
+  ) {
+    if (
+      shiftKey
+      && lastSelectedIndex.value !== null
+      && lastSelectedGroupId.value === groupId
+      && hasSelection.value
+    ) {
+      selectProjectGroupRange(groupId, lastSelectedIndex.value, index)
+
+      return
+    }
+
+    toggleSelect(id, index, groupId)
+  }
+
+  function toggleProjectGroupSelectAll(groupId: string) {
+    const groupFiles = getProjectGroupFiles(groupId)
+    const isGroupAllSelected = groupFiles.length > 0
+      && groupFiles.every(file => selectedIds.value.has(file.id))
+
+    for (const file of groupFiles) {
+      if (isGroupAllSelected) {
+        selectedIds.value.delete(file.id)
+      } else {
+        selectedIds.value.add(file.id)
+      }
+    }
+
+    selectedIds.value = new Set(selectedIds.value)
+
+    if (selectedIds.value.size === 0) {
+      lastSelectedIndex.value = null
+      lastSelectedGroupId.value = null
+    }
+  }
+
   function selectAll() {
     selectedIds.value = new Set(files.value.map(file => file.id))
   }
@@ -313,6 +444,7 @@ export function useFileManager() {
     selectedIds.value.clear()
     selectedIds.value = new Set()
     lastSelectedIndex.value = null
+    lastSelectedGroupId.value = null
   }
 
   function toggleSelectAll() {
@@ -334,6 +466,8 @@ export function useFileManager() {
       if (matchingFile) {
         matchingFile.name = result.name
       }
+
+      projectGroupsManager.renameFile(id, result.name)
 
       useSuccessMessage('File renamed successfully')
 
@@ -361,6 +495,7 @@ export function useFileManager() {
     const removedFileCount = previousFileCount - files.value.length
 
     pagination.total = Math.max(0, pagination.total - removedFileCount)
+    projectGroupsManager.removeFiles(ids)
     selectedIds.value = new Set(
       Array.from(selectedIds.value).filter((selectedId) => {
         return !deletedIds.has(selectedId)
@@ -369,6 +504,7 @@ export function useFileManager() {
 
     if (selectedIds.value.size === 0) {
       lastSelectedIndex.value = null
+      lastSelectedGroupId.value = null
     }
   }
 
@@ -488,9 +624,11 @@ export function useFileManager() {
     invalidateFileRequests()
     clearSearchDebounce()
     files.value = []
+    projectGroupsManager.clear()
     selectedIds.value.clear()
     selectedIds.value = new Set()
     lastSelectedIndex.value = null
+    lastSelectedGroupId.value = null
     search.value = ''
     pagination.offset = 0
     pagination.total = 0
@@ -518,13 +656,19 @@ export function useFileManager() {
     selectedIds,
     lastSelectedIndex,
     isLoading,
-    isSearching,
+    isSearching: computed(() => {
+      return isFlatSearching.value || projectGroupsManager.isSearching.value
+    }),
     search,
     source,
     viewMode,
     pagination,
+    projectGroups,
+    isProjectGroupsLoading: projectGroupsManager.isLoading,
+    projectLoadedFiles: projectGroupsManager.loadedFiles,
 
     hasMore,
+    loadedFiles,
     selectedCount,
     selectedFiles,
     hasSelection,
@@ -532,6 +676,11 @@ export function useFileManager() {
 
     fetchFiles,
     loadMore,
+    toggleProjectGroup: projectGroupsManager.toggleGroup,
+    loadMoreProjectGroup: projectGroupsManager.loadMoreGroup,
+    selectProjectGroupRange,
+    handleProjectGroupSelect,
+    toggleProjectGroupSelectAll,
     isDeletingSelected,
     toggleSelect,
     selectRange,

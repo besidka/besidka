@@ -32,6 +32,23 @@ export function isFileLinkedToKnowledgeSql(fileIdColumn: AnyColumn): SQL {
   )`
 }
 
+/**
+ * SQL predicate: a knowledge item of the given project and user references
+ * the file in `fileIdColumn`.
+ */
+export function isFileLinkedToProjectSql(
+  fileIdColumn: AnyColumn,
+  projectId: number,
+  userId: number,
+): SQL {
+  return sql`exists (
+    select 1 from project_knowledge_items as project_link
+    where project_link.file_id = ${fileIdColumn}
+      and project_link.project_id = ${projectId}
+      and project_link.user_id = ${userId}
+  )`
+}
+
 export function isFileNotLinkedToKnowledgeSql(
   fileIdColumn: AnyColumn,
 ): SQL {

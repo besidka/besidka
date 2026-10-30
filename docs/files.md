@@ -321,7 +321,10 @@ under `attributes` per `docs/axiom-map-fields.md`. The serializer is
 
 ## API Surface
 
-- `GET /api/v1/files` list files with pagination and search.
+- `GET /api/v1/files` list files with pagination and search. `source` is
+  `all | upload | assistant | project | library`; with `source=project`, an
+  optional `projectId` (public id) narrows the page to one project.
+- `GET /api/v1/files/projects` the Projects tab groups (see below).
 - `PUT /api/v1/files/upload` upload one file.
 - `PATCH /api/v1/files/[id]/name` rename one file.
 - `DELETE /api/v1/files/[id]` delete one file.
@@ -331,6 +334,28 @@ under `attributes` per `docs/axiom-map-fields.md`. The serializer is
 - `GET /files/[key]` stream file bytes by storage key (owner/share access check).
 - `POST /api/v1/internal/files/recompute-expiry` maintenance endpoint to
   recompute one user retention expiry timestamps.
+
+## Projects Tab
+
+The file manager's Projects tab lists only files linked to project knowledge.
+Those files are excluded from the All, Uploaded and Generated tabs.
+
+- `GET /api/v1/files/projects` returns the groups:
+  `{ projects: [{ id, name, fileCount, pinned, archived }] }`. `id` is the
+  project public id and `fileCount` counts distinct linked files. Notes (no
+  file) are ignored, and `search` (name match, `%` and `_` literal) counts only
+  matching files and omits projects with none. Order: pinned first, then
+  active by recent activity, archived last. Archived projects are included so
+  their files stay reachable. The list is capped at 200 projects.
+- Each group loads its own pages lazily with
+  `GET /api/v1/files?source=project&projectId=<id>&offset=&limit=`. A malformed
+  or foreign `projectId` returns an empty page, not an error. Pages are ordered
+  by `createdAt` then `id`, both descending, so equal timestamps do not shuffle
+  between pages.
+- A file linked to several projects shows under each of them, and its count is
+  included in each group.
+- `search` on `/api/v1/files` uses the shared escaped, case-insensitive
+  contains match, so group counts and per-project pages agree.
 
 ## Endpoint Semantics and Failure Modes
 

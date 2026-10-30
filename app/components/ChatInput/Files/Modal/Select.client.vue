@@ -58,15 +58,15 @@
     <!-- Scrollable Files Area -->
     <div class="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
       <LazyChatInputFilesModalSelectGridSkeleton
-        v-if="isLoading && !files.length && viewMode === 'grid'"
+        v-if="isInitialLoading && viewMode === 'grid'"
       />
       <LazyChatInputFilesModalSelectListSkeleton
-        v-else-if="isLoading && !files.length && viewMode === 'list'"
+        v-else-if="isInitialLoading && viewMode === 'list'"
       />
 
       <!-- Empty State -->
       <div
-        v-else-if="!isLoading && !files.length"
+        v-else-if="isEmpty"
         class="h-full flex flex-col items-center justify-center text-center p-8"
       >
         <Icon
@@ -74,13 +74,30 @@
           size="48"
           class="text-base-content/30 mb-3"
         />
-        <h4 class="text-lg font-medium mb-2">
+        <h4 class="text-lg font-medium mb-2 max-w-full break-words">
           {{ emptyStateTitle }}
         </h4>
         <p class="text-base-content/60 text-sm">
           {{ emptyStateDescription }}
         </p>
       </div>
+
+      <ChatInputFilesModalSelectProjectGroups
+        v-else-if="isProjectSource"
+        ref="projectGroupsRef"
+        :groups="projectGroups"
+        :selected-ids="selectedIds"
+        :view-mode="viewMode"
+        :is-touch-selecting="isTouchSelecting"
+        :touched-indices="touchedIndices"
+        :touch-group-id="touchGroupId"
+        @toggle="toggleProjectGroup"
+        @load-more="loadMoreProjectGroup"
+        @file-click="onFileClick"
+        @rename="openRenameModal"
+        @delete="confirmDelete"
+        @toggle-select-all="handleToggleProjectGroupSelectAll"
+      />
 
       <template v-else>
         <KeepAlive>
@@ -114,7 +131,7 @@
 
       <!-- Load More -->
       <div
-        v-if="hasMore"
+        v-if="!isProjectSource && hasMore"
         class="flex flex-col items-center gap-1 mt-3"
       >
         <span class="text-xs text-base-content/60">
@@ -192,14 +209,23 @@ const {
   source,
   viewMode,
   pagination,
+  projectGroups,
+  isProjectGroupsLoading,
+  projectLoadedFiles,
   hasMore,
+  loadedFiles,
   selectedCount,
   hasSelection,
   allSelected,
   fetchFiles,
   loadMore,
+  toggleProjectGroup,
+  loadMoreProjectGroup,
   selectRange,
+  selectProjectGroupRange,
   handleSelect,
+  handleProjectGroupSelect,
+  toggleProjectGroupSelectAll,
   toggleSelectAll,
   deselectAll,
   renameFile,
@@ -227,6 +253,26 @@ watch(() => props.isImageInputSupported, (supported) => {
   source.value = 'all'
 })
 
+const isProjectSource = computed<boolean>(() => source.value === 'project')
+
+const isListLoading = computed<boolean>(() => {
+  return isProjectSource.value ? isProjectGroupsLoading.value : isLoading.value
+})
+
+const hasNoVisibleFiles = computed<boolean>(() => {
+  return isProjectSource.value
+    ? projectGroups.value.length === 0
+    : files.value.length === 0
+})
+
+const isInitialLoading = computed<boolean>(() => {
+  return isListLoading.value && hasNoVisibleFiles.value
+})
+
+const isEmpty = computed<boolean>(() => {
+  return !isListLoading.value && hasNoVisibleFiles.value
+})
+
 const emptyStateIcon = computed<string>(() => {
   if (source.value === 'assistant') {
     return 'lucide:image-plus'
@@ -244,6 +290,10 @@ const emptyStateIcon = computed<string>(() => {
 })
 
 const emptyStateTitle = computed<string>(() => {
+  if (search.value && source.value === 'project') {
+    return `No project files match "${search.value}"`
+  }
+
   if (search.value) {
     return 'No files found'
   }
@@ -290,12 +340,17 @@ const listViewRef = shallowRef<{
   containerRef: HTMLTableElement | null
 } | null>(null)
 
+const projectGroupsRef = shallowRef<{
+  containerRef: HTMLDivElement | null
+} | null>(null)
+
 const searchInputRef = shallowRef<{ inputRef: HTMLInputElement } | null>(null)
 const activeElement = useActiveElement()
 
 const isTouchSelecting = shallowRef<boolean>(false)
 const touchStartIndex = shallowRef<number | null>(null)
 const touchedIndices = ref<Set<number>>(new Set())
+const touchGroupId = shallowRef<string | null>(null)
 const touchSwipeHandled = shallowRef<boolean>(false)
 const autoSelectedIds = ref<Set<string>>(new Set())
 const isComponentActive = shallowRef<boolean>(false)
@@ -309,6 +364,14 @@ function getFileIndexFromElement(element: Element | null): number | null {
   return index !== null ? parseInt(index, 10) : null
 }
 
+function getProjectGroupIdFromElement(element: Element | null): string | null {
+  if (!element) return null
+
+  const groupElement = element.closest('.js-project-group')
+
+  return groupElement?.getAttribute('data-project-group-id') ?? null
+}
+
 function handleTouchStart(event: TouchEvent) {
   const touch = event.touches[0]
   if (!touch) return
@@ -319,6 +382,7 @@ function handleTouchStart(event: TouchEvent) {
   if (index !== null) {
     isTouchSelecting.value = true
     touchStartIndex.value = index
+    touchGroupId.value = getProjectGroupIdFromElement(element)
     touchedIndices.value = new Set([index])
   }
 }
@@ -331,6 +395,8 @@ function handleTouchMove(event: TouchEvent) {
 
   const element = document.elementFromPoint(touch.clientX, touch.clientY)
   const index = getFileIndexFromElement(element)
+
+  if (getProjectGroupIdFromElement(element) !== touchGroupId.value) return
 
   if (index !== null && !touchedIndices.value.has(index)) {
     touchedIndices.value.add(index)
@@ -346,7 +412,11 @@ function handleTouchEnd() {
     const startIndex = indices[0]!
     const endIndex = indices[indices.length - 1]!
 
-    selectRange(startIndex, endIndex)
+    if (touchGroupId.value) {
+      selectProjectGroupRange(touchGroupId.value, startIndex, endIndex)
+    } else {
+      selectRange(startIndex, endIndex)
+    }
 
     touchSwipeHandled.value = true
     setTimeout(() => {
@@ -356,6 +426,7 @@ function handleTouchEnd() {
 
   isTouchSelecting.value = false
   touchStartIndex.value = null
+  touchGroupId.value = null
   touchedIndices.value = new Set()
 }
 
@@ -375,14 +446,16 @@ function detachTouchListeners(element: HTMLElement | null) {
   element.removeEventListener('touchend', handleTouchEnd)
 }
 
-function getViewContainers() {
-  const gridContainer = gridViewRef.value?.containerRef ?? null
-  const listContainer = listViewRef.value?.containerRef ?? null
+function getViewContainers(): HTMLElement[] {
+  const containers: Array<HTMLElement | null | undefined> = [
+    gridViewRef.value?.containerRef,
+    listViewRef.value?.containerRef,
+    projectGroupsRef.value?.containerRef,
+  ]
 
-  return {
-    gridContainer,
-    listContainer,
-  }
+  return containers.filter((container): container is HTMLElement => {
+    return !!container
+  })
 }
 
 function attachInteractionListeners() {
@@ -393,21 +466,18 @@ function attachInteractionListeners() {
   document.removeEventListener('keydown', onSearchShortcut)
   document.addEventListener('keydown', onSearchShortcut)
 
-  const { gridContainer, listContainer } = getViewContainers()
-
-  detachTouchListeners(gridContainer)
-  detachTouchListeners(listContainer)
-  attachTouchListeners(gridContainer)
-  attachTouchListeners(listContainer)
+  for (const container of getViewContainers()) {
+    detachTouchListeners(container)
+    attachTouchListeners(container)
+  }
 }
 
 function detachInteractionListeners() {
   document.removeEventListener('keydown', onSearchShortcut)
 
-  const { gridContainer, listContainer } = getViewContainers()
-
-  detachTouchListeners(gridContainer)
-  detachTouchListeners(listContainer)
+  for (const container of getViewContainers()) {
+    detachTouchListeners(container)
+  }
 }
 
 async function rebindInteractionListeners() {
@@ -419,7 +489,7 @@ async function rebindInteractionListeners() {
   attachInteractionListeners()
 }
 
-watch(viewMode, async (_, __, onCleanup) => {
+watch([viewMode, source], async (_, __, onCleanup) => {
   await rebindInteractionListeners()
 
   onCleanup(() => {
@@ -449,6 +519,7 @@ function onFileClick(
   event: MouseEvent,
   file: FileManagerFile,
   index: number,
+  groupId?: string,
 ) {
   if (touchSwipeHandled.value) {
     return
@@ -460,6 +531,12 @@ function onFileClick(
 
   if (!isShiftClick && isCurrentlySelected && isAttached) {
     emit('detach', [file.id])
+  }
+
+  if (groupId) {
+    handleProjectGroupSelect(groupId, file.id, index, event.shiftKey)
+
+    return
   }
 
   handleSelect(file.id, index, event.shiftKey)
@@ -557,6 +634,26 @@ function handleToggleSelectAll() {
   toggleSelectAll()
 }
 
+function handleToggleProjectGroupSelectAll(groupId: string) {
+  const groupFiles = projectGroups.value.find((group) => {
+    return group.id === groupId
+  })?.files ?? []
+  const isGroupAllSelected = groupFiles.length > 0
+    && groupFiles.every(file => selectedIds.value.has(file.id))
+
+  if (isGroupAllSelected) {
+    const attachedGroupIds = groupFiles
+      .map(file => file.id)
+      .filter(id => props.attachedIds.has(id))
+
+    if (attachedGroupIds.length > 0) {
+      emit('detach', attachedGroupIds)
+    }
+  }
+
+  toggleProjectGroupSelectAll(groupId)
+}
+
 function syncAttachedSelection() {
   let changed: boolean = false
 
@@ -568,7 +665,7 @@ function syncAttachedSelection() {
     }
   }
 
-  for (const file of files.value) {
+  for (const file of loadedFiles.value) {
     const fileId = file.id
 
     if (!fileId) {
@@ -588,7 +685,7 @@ function syncAttachedSelection() {
   }
 }
 
-watch(files, async () => {
+watch([files, projectLoadedFiles], async () => {
   syncAttachedSelection()
   await rebindInteractionListeners()
 }, { flush: 'post' })

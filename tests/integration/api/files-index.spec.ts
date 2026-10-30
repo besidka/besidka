@@ -2,8 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   eq: vi.fn(),
-  like: vi.fn(),
+  containsLikeEscaped: vi.fn(),
   and: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/db/like', () => ({
+  containsLikeEscaped: mocks.containsLikeEscaped,
 }))
 
 vi.mock('drizzle-orm', async (importOriginal) => {
@@ -12,7 +16,6 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   return {
     ...actual,
     eq: mocks.eq,
-    like: mocks.like,
     and: mocks.and,
   }
 })
@@ -60,8 +63,8 @@ describe('files index API', () => {
       return exception
     })
     mocks.eq.mockImplementation((_column, value) => ({ operation: 'eq', value }))
-    mocks.like.mockImplementation((_column, value) => ({
-      operation: 'like',
+    mocks.containsLikeEscaped.mockImplementation((_column, value) => ({
+      operation: 'contains',
       value,
     }))
     mocks.and.mockImplementation((...conditions) => ({
@@ -94,7 +97,10 @@ describe('files index API', () => {
     })
     expect(mocks.eq).toHaveBeenCalledWith(expect.anything(), 1)
     expect(mocks.eq).toHaveBeenCalledWith(expect.anything(), 'assistant')
-    expect(mocks.like).toHaveBeenCalledWith(expect.anything(), '%chart%')
+    expect(mocks.containsLikeEscaped).toHaveBeenCalledWith(
+      expect.anything(),
+      'chart',
+    )
     expect(filesChain.where).toHaveBeenCalledWith(expect.objectContaining({
       operation: 'and',
     }))

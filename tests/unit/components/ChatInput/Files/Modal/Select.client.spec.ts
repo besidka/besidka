@@ -1,6 +1,7 @@
 import { computed, reactive, ref, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ProjectFileGroup } from '../../../../../../app/types/file-manager'
 import Select from '../../../../../../app/components/ChatInput/Files/Modal/Select.client.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -17,10 +18,43 @@ mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 const source = shallowRef<'all' | 'upload' | 'assistant' | 'project'>(
   'all',
 )
+const search = shallowRef<string>('')
+const projectGroups = ref<ProjectFileGroup[]>([])
+const isProjectGroupsLoading = shallowRef<boolean>(false)
+const handleProjectGroupSelect = vi.fn()
+const toggleProjectGroup = vi.fn()
+const loadMoreProjectGroup = vi.fn()
+const toggleProjectGroupSelectAll = vi.fn()
+
+function createProjectGroup(
+  overrides: Partial<ProjectFileGroup> = {},
+): ProjectFileGroup {
+  return {
+    id: 'project-a',
+    name: 'Alpha',
+    fileCount: 1,
+    pinned: false,
+    archived: false,
+    files: [],
+    total: 1,
+    serverOffset: 0,
+    isLoading: false,
+    isOpen: true,
+    hasLoaded: false,
+    ...overrides,
+  }
+}
 
 describe('ChatInput/Files/Modal/Select', () => {
   beforeEach(() => {
     source.value = 'all'
+    search.value = ''
+    projectGroups.value = []
+    isProjectGroupsLoading.value = false
+    handleProjectGroupSelect.mockReset()
+    toggleProjectGroup.mockReset()
+    loadMoreProjectGroup.mockReset()
+    toggleProjectGroupSelectAll.mockReset()
     mocks.fetchFiles.mockReset()
     mocks.fetchFiles.mockResolvedValue(true)
     mocks.useActiveElement.mockReturnValue(shallowRef<HTMLElement | null>(null))
@@ -33,18 +67,27 @@ describe('ChatInput/Files/Modal/Select', () => {
       isLoading: shallowRef(false),
       isSearching: shallowRef(false),
       isDeletingSelected: shallowRef(false),
-      search: shallowRef(''),
+      search,
       source,
       viewMode: shallowRef<'grid' | 'list'>('grid'),
       pagination: reactive({ offset: 0, limit: 20, total: 0 }),
+      projectGroups,
+      isProjectGroupsLoading,
+      projectLoadedFiles: computed(() => []),
+      loadedFiles: computed(() => []),
       hasMore: computed(() => false),
       selectedCount: computed(() => 0),
       hasSelection: computed(() => false),
       allSelected: computed(() => false),
       fetchFiles: mocks.fetchFiles,
       loadMore: vi.fn(),
+      toggleProjectGroup,
+      loadMoreProjectGroup,
       selectRange: vi.fn(),
+      selectProjectGroupRange: vi.fn(),
       handleSelect: vi.fn(),
+      handleProjectGroupSelect,
+      toggleProjectGroupSelectAll,
       toggleSelectAll: vi.fn(),
       deselectAll: vi.fn(),
       renameFile: vi.fn(),
@@ -224,5 +267,80 @@ describe('ChatInput/Files/Modal/Select', () => {
     })
 
     expect(wrapper.text()).toContain('No project files yet')
+  })
+
+  it('shows the search variant of the project empty state', async () => {
+    source.value = 'project'
+    search.value = 'budget'
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+
+    expect(wrapper.text()).toContain('No project files match "budget"')
+  })
+
+  it('renders the grouped component instead of the flat views on the Projects tab', async () => {
+    source.value = 'project'
+    projectGroups.value = [createProjectGroup()]
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+
+    expect(
+      wrapper.findComponent({ name: 'ChatInputFilesModalSelectProjectGroups' })
+        .exists(),
+    ).toBe(true)
+    expect(wrapper.text()).not.toContain('No project files yet')
+    expect(wrapper.find('[data-testid="files-source-project"]').exists())
+      .toBe(true)
+  })
+
+  it('routes grouped file clicks and group toggles to the manager', async () => {
+    source.value = 'project'
+    projectGroups.value = [createProjectGroup()]
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+    const groups = wrapper.findComponent({
+      name: 'ChatInputFilesModalSelectProjectGroups',
+    })
+    const file = {
+      id: 'file-1',
+      storageKey: 'file-1.pdf',
+      name: 'File.pdf',
+      size: 1,
+      type: 'application/pdf',
+      source: 'upload' as const,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }
+
+    groups.vm.$emit('file-click', new MouseEvent('click', {
+      shiftKey: true,
+    }), file, 2, 'project-a')
+    groups.vm.$emit('toggle', 'project-a')
+    groups.vm.$emit('load-more', 'project-a')
+    groups.vm.$emit('toggle-select-all', 'project-a')
+
+    expect(handleProjectGroupSelect).toHaveBeenCalledWith(
+      'project-a',
+      'file-1',
+      2,
+      true,
+    )
+    expect(toggleProjectGroup).toHaveBeenCalledWith('project-a')
+    expect(loadMoreProjectGroup).toHaveBeenCalledWith('project-a')
+    expect(toggleProjectGroupSelectAll).toHaveBeenCalledWith('project-a')
   })
 })

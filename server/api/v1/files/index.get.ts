@@ -1,11 +1,16 @@
 import { createError } from 'evlog'
 import { z } from 'zod'
-import { and, desc, eq, like, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { containsLikeEscaped } from '~~/server/utils/db/like'
 import {
   filesSourceFilters,
   getFilesSourceCondition,
 } from '~~/server/utils/files/source-filter'
+import {
+  decodeKnowledgeProjectId,
+  isFileLinkedToProjectSql,
+} from '~~/server/utils/knowledge/linked-files'
 import { defineEventHandler, getQuery } from 'nuxt/server'
 
 const querySchema = z.object({
@@ -13,6 +18,7 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   source: z.enum(filesSourceFilters).default('all'),
+  projectId: z.string().optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -33,14 +39,33 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { offset, limit, search, source } = query.data
+  const { offset, limit, search, source, projectId } = query.data
   const userId = parseInt(session.user.id)
   const db = useDb()
+  const trimmedSearch = search?.trim() ?? ''
+  const isProjectScoped = source === 'project' && !!projectId
+  const decodedProjectId = isProjectScoped
+    ? decodeKnowledgeProjectId(projectId)
+    : null
+
+  if (isProjectScoped && decodedProjectId === null) {
+    return {
+      files: [],
+      total: 0,
+      offset,
+      limit,
+    }
+  }
 
   const whereConditions = and(
     eq(schema.files.userId, userId),
     getFilesSourceCondition(source),
-    search ? like(schema.files.name, `%${search}%`) : undefined,
+    decodedProjectId === null
+      ? undefined
+      : isFileLinkedToProjectSql(schema.files.id, decodedProjectId, userId),
+    trimmedSearch
+      ? containsLikeEscaped(schema.files.name, trimmedSearch)
+      : undefined,
   )
 
   const [files, countResult] = await Promise.all([
@@ -59,7 +84,7 @@ export default defineEventHandler(async (event) => {
       })
       .from(schema.files)
       .where(whereConditions)
-      .orderBy(desc(schema.files.createdAt))
+      .orderBy(desc(schema.files.createdAt), desc(schema.files.id))
       .offset(offset)
       .limit(limit),
     db
