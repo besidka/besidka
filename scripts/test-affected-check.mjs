@@ -2810,8 +2810,23 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(server\/utils\/account\/security-emails\.ts|content\/legal\/privacy-policy\.md|docs\/legal\/art30-record\.md)$/,
+      pattern: /^(server\/utils\/account\/security-emails\.ts|shared\/utils\/account-emails\.ts|content\/legal\/privacy-policy\.md)$/,
       tests: ['tests/unit/content/account-email-list.spec.ts'],
+    },
+    {
+      pattern: /^shared\/utils\/account-emails\.ts$/,
+      tests: ['tests/unit/server/utils/mcp/pages.spec.ts'],
+    },
+    {
+      pattern: /^(app\/components\/content\/AccountEmailList\.vue|shared\/utils\/account-emails\.ts)$/,
+      tests: ['tests/unit/components/content/AccountEmailList.spec.ts'],
+    },
+    {
+      pattern: /^(config\/legal-updated-at\.ts|nuxt\.config\.ts|content\/legal\/.*\.md|shared\/utils\/account-emails\.ts)$/,
+      tests: [
+        'tests/unit/config/legal-updated-at.spec.ts',
+        'tests/unit/content/legal-pages.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/oauth\/registration-limits\.ts$/,

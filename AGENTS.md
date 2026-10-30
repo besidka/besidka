@@ -257,9 +257,12 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   address is published (UŚUDE Art. 2 pkt 6 `działalność zarobkową`), why
   adding ANY donation channel breaks that conclusion, the consent records on
   `user_settings` (not `CONSENT_DB`) and the `CURRENT_CONSENT_VERSION`
-  re-prompt rule, and how a `content/legal/*.md` edit reaches the production
+  re-prompt rule, how a `content/legal/*.md` edit reaches the production
   `CONTENT_DB` (build dump, checksum import, Studio, preview and re-import
-  hazards)
+  hazards), and the automatic "Last updated" date (derived from git at build
+  time, so CI build jobs need full history) and the account-email registry
+  (`shared/utils/account-emails.ts`) behind the generated "Email I send you"
+  list
 - `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory
   (opt-in removed from v1, owner 2026-10-25, option (c)): why explicit consent
   is the only basis, why it was not shipped, option (b) with its launch

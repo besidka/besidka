@@ -1,3 +1,4 @@
+import { buildAccountEmailListMarkdown } from '#shared/utils/account-emails'
 import { minimarkToMarkdown } from '~~/server/utils/content/minimark'
 import type {
   ComponentRenderers,
@@ -61,6 +62,9 @@ export function createPageComponentRenderers(
   return {
     'privacy-email-link': () => {
       return privacyEmail
+    },
+    'account-email-list': () => {
+      return buildAccountEmailListMarkdown()
     },
   }
 }

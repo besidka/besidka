@@ -35,9 +35,38 @@ Structural facts worth knowing before editing:
   `description` double-quoted without inner double quotes: an unquoted `: ` in a
   frontmatter value breaks the YAML (`tests/unit/config/content-frontmatter.spec.ts`
   guards this).
-- `updatedAt` is a real editorial date. Bump it when the substance changes.
-  `tests/unit/content/legal-pages.spec.ts` pins the current date for all three
-  pages, so change it there in the same commit.
+- **The list of account emails is generated, not typed.** The Privacy Policy
+  "Email I send you" list is the block component `::account-email-list` (closed
+  with `::`), `app/components/content/AccountEmailList.vue`. It imports
+  `shared/utils/account-emails.ts` directly, like `PrivacyEmailLink.vue`, and
+  renders the same three-item ordered list the policy used to have by hand. The
+  registry has one entry per email with its `category` and the exact
+  `policyText`; identical texts collapse and first-seen order is kept. The MCP
+  `get_page` markdown renders the component through `createPageComponentRenderers`.
+  **Failure mode: the list vanishes silently.** A mistyped tag
+  (`::account-emails`) renders nothing and nothing errors, so verification must
+  assert the rendered text (`tests/unit/content/account-email-list.spec.ts`
+  and `tests/unit/components/content/AccountEmailList.spec.ts` do).
+- **A new email still needs its `policyText` reviewed in the PR.** The list
+  and the date update on their own, but GDPR Art. 13 asks for notice of a new
+  purpose or recipient, not only a new date. Read the wording, decide whether
+  the email is a new purpose, and update `docs/legal/art30-record.md` if it is.
+- **`updatedAt` is derived at build time, and the frontmatter value is the
+  floor.** `nuxt.config.ts` hooks `content:file:afterParse` for the `legal`
+  collection and sets `updatedAt` to the latest of the frontmatter date, the
+  last git commit date of the page file and, for pages that use
+  `::account-email-list`, the last git commit date of
+  `shared/utils/account-emails.ts` (`config/legal-updated-at.ts`). Any commit to
+  a page, typo fixes included, moves its date, so the date means "last
+  committed change", not "last substantive change". Raise the frontmatter value
+  only to pin a later date than git reports. In a shallow clone git is ignored
+  and the frontmatter value is used, because every file would report HEAD's
+  date. The CI jobs that run `pnpm run build` (`build` in `production.yml` and
+  `preview-build.yml`) therefore check out with `fetch-depth: 0`; a new job that
+  builds needs the same. Nuxt Content caches parsed files in `.data/content`
+  keyed on the file text, so a local build can keep a stale date after a
+  registry-only change; remove `.data/content` to refresh. The legal pages spec
+  asserts valid ISO dates, not fixed values.
 - `SURFACE_BY_PATH` in `server/utils/landing/client-events.ts` maps page paths
   to analytics surfaces and must track these slugs, or client analytics events
   from a legal page are rejected.

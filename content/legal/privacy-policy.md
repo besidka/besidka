@@ -478,9 +478,8 @@ Turning notifications off in your settings, or in your browser, revokes the subs
 
 I send only transactional email, which is email about your account and what you asked for:
 
-1. **Address and password:** email address verification, password reset and confirmation of a new email address.
-2. **Account deletion:** a confirmation link when you ask to delete your account.
-3. **Security notices**, when something on your account changes: your password was changed, a sign-in method was connected or disconnected, two-factor authentication was turned on or off, backup codes were regenerated, your account email was changed, a passkey was added or removed, or an app was connected to your account.
+::account-email-list
+::
 
 That is all. **I never send marketing email**, newsletters or product announcements, and there is no mailing list to unsubscribe from. Email is sent through Cloudflare's email sending service.
 

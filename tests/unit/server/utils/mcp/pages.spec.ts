@@ -47,4 +47,28 @@ describe('formatPublicPage', () => {
       markdown: 'Email privacy@besidka.com.',
     })
   })
+
+  it('renders the account email list component as a markdown list', () => {
+    const formatted = formatPublicPage(
+      'privacy-policy',
+      {
+        ...page,
+        body: { type: 'minimark', value: [['account-email-list', {}]] },
+      },
+      'https://besidka.com',
+      createPageComponentRenderers('privacy@besidka.com'),
+    )
+
+    expect(formatted.markdown).toContain(
+      '1. **Address and password:** email address verification, password '
+      + 'reset and confirmation of a new email address.',
+    )
+    expect(formatted.markdown).toContain(
+      '2. **Account deletion:** a confirmation link when you ask to delete '
+      + 'your account.',
+    )
+    expect(formatted.markdown).toContain(
+      '3. **Security notices**, when something on your account changes: ',
+    )
+  })
 })

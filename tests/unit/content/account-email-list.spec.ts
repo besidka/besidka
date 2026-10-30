@@ -1,37 +1,28 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import {
+  ACCOUNT_EMAILS,
+  buildAccountEmailListItems,
+  buildAccountEmailListMarkdown,
+} from '#shared/utils/account-emails'
+import type { AccountEmailId } from '#shared/utils/account-emails'
 import * as securityEmails from '~~/server/utils/account/security-emails'
 
-const POLICY_PHRASE_BY_SENDER: Record<string, string> = {
-  sendPasswordChangedEmail: 'password was changed',
-  sendSignInMethodConnectedEmail: 'sign-in method was connected',
-  sendSignInMethodDisconnectedEmail: 'connected or disconnected',
-  sendTwoFactorEnabledEmail: 'two-factor authentication was turned on or off',
-  sendTwoFactorDisabledEmail: 'turned on or off',
-  sendEmailChangedEmail: 'account email was changed',
-  sendTwoFactorBackupCodesRegeneratedEmail: 'backup codes were regenerated',
-  sendPasskeyAddedEmail: 'passkey was added or removed',
-  sendPasskeyRemovedEmail: 'added or removed',
-  sendOAuthAppConnectedEmail: 'app was connected',
+const SECURITY_NOTICE_ID_BY_SENDER: Record<string, AccountEmailId> = {
+  sendPasswordChangedEmail: 'password-changed',
+  sendSignInMethodConnectedEmail: 'sign-in-method-connected',
+  sendSignInMethodDisconnectedEmail: 'sign-in-method-disconnected',
+  sendTwoFactorEnabledEmail: 'two-factor-enabled',
+  sendTwoFactorDisabledEmail: 'two-factor-disabled',
+  sendTwoFactorBackupCodesRegeneratedEmail: 'backup-codes-regenerated',
+  sendEmailChangedEmail: 'account-email-changed',
+  sendPasskeyAddedEmail: 'passkey-added',
+  sendPasskeyRemovedEmail: 'passkey-removed',
+  sendOAuthAppConnectedEmail: 'oauth-app-connected',
 }
 
-const ART30_KEYWORD_BY_SENDER: Record<string, string> = {
-  sendPasswordChangedEmail: 'password changed',
-  sendSignInMethodConnectedEmail: 'sign-in method connected',
-  sendSignInMethodDisconnectedEmail: 'connected or disconnected',
-  sendTwoFactorEnabledEmail: '2FA on or off',
-  sendTwoFactorDisabledEmail: 'on or off',
-  sendEmailChangedEmail: 'account email changed',
-  sendTwoFactorBackupCodesRegeneratedEmail: 'backup codes regenerated',
-  sendPasskeyAddedEmail: 'passkey added or removed',
-  sendPasskeyRemovedEmail: 'added or removed',
-  sendOAuthAppConnectedEmail: 'app connected (oauth)',
-}
-
-const NEW_EMAIL_HINT = 'add the new email to the Privacy Policy '
-  + '(\'Email I send you\'), docs/legal/art30-record.md row 20 and '
-  + 'docs/email.md, then add it here'
+const NEW_EMAIL_HINT = 'add an entry to shared/utils/account-emails.ts'
 
 function readRepositoryFile(path: string): string {
   return readFileSync(join(process.cwd(), path), 'utf-8')
@@ -45,16 +36,6 @@ function readPolicyEmailSection(): string {
   return source.slice(start, end === -1 ? undefined : end)
 }
 
-function readArt30Row20(): string {
-  const row = readRepositoryFile('docs/legal/art30-record.md')
-    .split('\n')
-    .find((line) => {
-      return line.startsWith('| 20 |')
-    })
-
-  return row ?? ''
-}
-
 function listSenders(): string[] {
   return Object.keys(securityEmails)
     .filter((name) => {
@@ -63,40 +44,104 @@ function listSenders(): string[] {
     .sort()
 }
 
-describe('account email lists stay in step with the senders', () => {
-  it('registers every security-email sender in this spec', () => {
+function listSecurityNoticeIds(): string[] {
+  return ACCOUNT_EMAILS
+    .filter((email) => {
+      return email.category === 'security-notice'
+    })
+    .map((email) => {
+      return email.id
+    })
+    .sort()
+}
+
+describe('account email registry stays in step with the senders', () => {
+  it('maps every security-email sender to a registry entry', () => {
     expect(listSenders(), NEW_EMAIL_HINT).toEqual(
-      Object.keys(POLICY_PHRASE_BY_SENDER).sort(),
+      Object.keys(SECURITY_NOTICE_ID_BY_SENDER).sort(),
     )
-    expect(Object.keys(ART30_KEYWORD_BY_SENDER).sort(), NEW_EMAIL_HINT)
-      .toEqual(listSenders())
+
+    for (const [sender, id] of Object.entries(SECURITY_NOTICE_ID_BY_SENDER)) {
+      expect(listSecurityNoticeIds(), `${sender}: ${NEW_EMAIL_HINT}`)
+        .toContain(id)
+    }
   })
 
-  it('finds the Privacy Policy email section', () => {
-    expect(readPolicyEmailSection()).toContain('Security notices')
+  it('has no security-notice entry without a sender', () => {
+    expect(listSecurityNoticeIds(), NEW_EMAIL_HINT).toEqual(
+      Object.values(SECURITY_NOTICE_ID_BY_SENDER).sort(),
+    )
   })
 
-  it.each(Object.entries(POLICY_PHRASE_BY_SENDER))(
-    'lists %s in the Privacy Policy email section',
-    (sender, phrase) => {
-      expect(
-        readPolicyEmailSection().toLowerCase(),
-        `${sender}: ${NEW_EMAIL_HINT}`,
-      ).toContain(phrase.toLowerCase())
-    },
-  )
+  it('uses unique ids', () => {
+    const ids = ACCOUNT_EMAILS.map((email) => {
+      return email.id
+    })
 
-  it('finds row 20 in the Art. 30 record', () => {
-    expect(readArt30Row20()).toContain('Transactional email')
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('buildAccountEmailListItems', () => {
+  it('produces exactly the three items the policy publishes', () => {
+    expect(buildAccountEmailListItems().map((item) => {
+      return item.text
+    })).toEqual([
+      'Address and password: email address verification, password reset '
+      + 'and confirmation of a new email address.',
+      'Account deletion: a confirmation link when you ask to delete your '
+      + 'account.',
+      'Security notices, when something on your account changes: your '
+      + 'password was changed, a sign-in method was connected or '
+      + 'disconnected, two-factor authentication was turned on or off, '
+      + 'backup codes were regenerated, your account email was changed, a '
+      + 'passkey was added or removed, or an app was connected to your '
+      + 'account.',
+    ])
   })
 
-  it.each(Object.entries(ART30_KEYWORD_BY_SENDER))(
-    'lists %s in Art. 30 row 20',
-    (sender, keyword) => {
-      expect(
-        readArt30Row20().toLowerCase(),
-        `${sender}: ${NEW_EMAIL_HINT}`,
-      ).toContain(keyword.toLowerCase())
-    },
-  )
+  it('collapses identical policy texts and keeps first-seen order', () => {
+    const items = buildAccountEmailListItems([
+      { id: 'one', category: 'security-notice', policyText: 'a was changed' },
+      { id: 'two', category: 'security-notice', policyText: 'b was changed' },
+      { id: 'three', category: 'security-notice', policyText: 'a was changed' },
+    ])
+
+    expect(items).toHaveLength(1)
+    expect(items[0]?.body).toBe('a was changed or b was changed.')
+  })
+
+  it('skips categories that have no entries', () => {
+    expect(buildAccountEmailListItems([])).toEqual([])
+  })
+
+  it('renders the same items as a markdown list', () => {
+    expect(buildAccountEmailListMarkdown().split('\n')).toEqual([
+      '1. **Address and password:** email address verification, password '
+      + 'reset and confirmation of a new email address.',
+      '2. **Account deletion:** a confirmation link when you ask to delete '
+      + 'your account.',
+      expect.stringMatching(
+        /^3\. \*\*Security notices\*\*, when something on your account /,
+      ),
+    ])
+  })
+})
+
+describe('Privacy Policy email section', () => {
+  it('uses the block component instead of a hand-written list', () => {
+    const section = readPolicyEmailSection()
+
+    expect(section).toContain('## Email I send you')
+    expect(section).toContain('::account-email-list')
+    expect(section).not.toContain('Security notices')
+    expect(section).not.toContain('Address and password')
+  })
+
+  it('keeps the transactional-only and no-marketing sentences', () => {
+    const section = readPolicyEmailSection()
+
+    expect(section).toContain('I send only transactional email')
+    expect(section).toContain('**I never send marketing email**')
+  })
 })
