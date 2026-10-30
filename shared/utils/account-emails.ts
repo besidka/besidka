@@ -2,6 +2,7 @@ export type AccountEmailCategory
   = | 'address-and-password'
     | 'account-deletion'
     | 'security-notice'
+    | 'legal-notice'
 
 export interface AccountEmail {
   id: string
@@ -41,6 +42,11 @@ const CATEGORY_PRESENTATION: Record<
     label: 'Security notices',
     lead: ', when something on your account changes:',
     conjunction: 'or',
+  },
+  'legal-notice': {
+    label: 'Legal notices:',
+    lead: '',
+    conjunction: 'and',
   },
 }
 
@@ -114,6 +120,14 @@ export const ACCOUNT_EMAILS = [
     id: 'oauth-app-connected',
     category: 'security-notice',
     policyText: 'an app was connected to your account',
+  },
+  {
+    id: 'legal-change-notice',
+    category: 'legal-notice',
+    policyText: 'a notice of a significant change to the Privacy Policy, '
+      + 'the Terms of Use or the Cookie Policy, sent at least 30 days '
+      + 'before it takes effect (14 days if the law or security requires '
+      + 'it)',
   },
 ] as const satisfies readonly AccountEmail[]
 

@@ -47,6 +47,33 @@ function htmlToText(html: string): string {
     .trim()
 }
 
+/**
+ * The Cloudflare Email Sending binding reports a failure as an error whose
+ * `code` is an `E_` constant, for example `E_RATE_LIMIT_EXCEEDED`. `useEmail`
+ * copies it to the error it throws, so callers can tell a quota stop from a
+ * rejected recipient without parsing messages.
+ */
+export function getEmailErrorCode(exception: unknown): string | null {
+  const candidates = [
+    exception,
+    exception instanceof Error ? exception.cause : undefined,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue
+    }
+
+    const code = (candidate as { code?: unknown }).code
+
+    if (typeof code === 'string' && code) {
+      return code
+    }
+  }
+
+  return null
+}
+
 export const useEmail = (
   runtimeConfig: EmailRuntimeConfig = useRuntimeConfig(),
   emailBinding: SendEmail | undefined = env.EMAIL,
@@ -106,6 +133,7 @@ export const useEmail = (
       throw createError({
         message: exception.message,
         status: 500,
+        code: getEmailErrorCode(exception) ?? undefined,
         cause: exception,
       })
     }

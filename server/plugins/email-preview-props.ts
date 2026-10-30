@@ -119,9 +119,59 @@ const noticeEmailVariants = [
   },
 ]
 
+const legalNoticeEmailVariants = [
+  {
+    preview: 'Changes to Besidka\'s Privacy Policy and Terms of Use take '
+      + 'effect on 1 December 2026',
+    heading: 'Changes to Besidka\'s Privacy Policy and Terms of Use',
+    intro: 'I\'m changing how Besidka handles your data and the rules for '
+      + 'using it. Here\'s what changes:',
+    summary: [
+      'I now tell you about significant changes to the policies by email '
+      + 'and with a notice in the app, at least 30 days before they take '
+      + 'effect.',
+      'You can remove single permissions from a connected app, or '
+      + 'disconnect it, at any time in Profile → Connected apps.',
+    ],
+    effectiveDate: '1 December 2026',
+    documents: [
+      {
+        label: 'Privacy Policy',
+        url: 'https://besidka.com/privacy-policy#change-history',
+      },
+      {
+        label: 'Terms of Use',
+        url: 'https://besidka.com/terms-of-use#change-history',
+      },
+    ],
+    contactEmail: 'privacy@besidka.com',
+  },
+  {
+    preview: 'Changes to Besidka\'s Privacy Policy take effect on '
+      + '15 January 2027',
+    heading: 'Changes to Besidka\'s Privacy Policy',
+    intro: 'I\'m changing how Besidka handles your data. Here\'s what '
+      + 'changes:',
+    summary: [
+      'A new provider receives your messages only if you add its key.',
+    ],
+    effectiveDate: '15 January 2027',
+    shortNoticeReason: 'This change is required by law, so the notice '
+      + 'period is 14 days.',
+    documents: [
+      {
+        label: 'Privacy Policy',
+        url: 'https://besidka.com/privacy-policy#change-history',
+      },
+    ],
+    contactEmail: 'privacy@besidka.com',
+  },
+]
+
 const previewVariantsByTemplate: Record<string, unknown[]> = {
   ActionEmail: actionEmailVariants,
   NoticeEmail: noticeEmailVariants,
+  LegalNoticeEmail: legalNoticeEmailVariants,
 }
 
 const cursorByTemplate: Record<string, number> = {}

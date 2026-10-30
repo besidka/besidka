@@ -196,4 +196,64 @@ describe('useEmail', () => {
     })).rejects.toThrow('E_DELIVERY_FAILED')
     expect(fakeBinding.send).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps the binding error code on the error it throws', async () => {
+    const { useEmail, getEmailErrorCode } = await import(
+      '../../../server/utils/email'
+    )
+    const bindingError = Object.assign(new Error('Too many emails'), {
+      code: 'E_RATE_LIMIT_EXCEEDED',
+    })
+    const fakeBinding = {
+      send: vi.fn().mockRejectedValue(bindingError),
+    }
+    const email = useEmail(createRuntimeConfig({
+      emailSenderNoreply: 'noreply@example.com',
+    }), fakeBinding)
+
+    const exception = await email.send({
+      to: 'test@example.com',
+      subject: 'Subject',
+      html: '<p>Hello</p>',
+    }).catch((caught: unknown) => caught)
+
+    expect(exception).toMatchObject({
+      message: 'Too many emails',
+      status: 500,
+      code: 'E_RATE_LIMIT_EXCEEDED',
+      cause: bindingError,
+    })
+    expect(getEmailErrorCode(exception)).toBe('E_RATE_LIMIT_EXCEEDED')
+  })
+
+  it('throws without a code when the binding error has none', async () => {
+    const { useEmail, getEmailErrorCode } = await import(
+      '../../../server/utils/email'
+    )
+    const fakeBinding = {
+      send: vi.fn().mockRejectedValue(new Error('plain failure')),
+    }
+    const email = useEmail(createRuntimeConfig({
+      emailSenderNoreply: 'noreply@example.com',
+    }), fakeBinding)
+
+    const exception = await email.send({
+      to: 'test@example.com',
+      subject: 'Subject',
+      html: '<p>Hello</p>',
+    }).catch((caught: unknown) => caught)
+
+    expect(getEmailErrorCode(exception)).toBeNull()
+  })
+
+  it('reads an error code from a cause and ignores non-string codes', async () => {
+    const { getEmailErrorCode } = await import('../../../server/utils/email')
+
+    expect(getEmailErrorCode(new Error('x', {
+      cause: { code: 'E_DAILY_LIMIT_EXCEEDED' },
+    }))).toBe('E_DAILY_LIMIT_EXCEEDED')
+    expect(getEmailErrorCode({ code: 429 })).toBeNull()
+    expect(getEmailErrorCode(undefined)).toBeNull()
+    expect(getEmailErrorCode('E_RATE_LIMIT_EXCEEDED')).toBeNull()
+  })
 })

@@ -1,7 +1,7 @@
 interface SendTemplateEmailOptions {
   to: string
   subject: string
-  template: 'ActionEmail' | 'NoticeEmail'
+  template: 'ActionEmail' | 'NoticeEmail' | 'LegalNoticeEmail'
   props: Record<string, unknown>
   from?: 'noreply' | 'personalized'
 }
@@ -19,7 +19,7 @@ export async function sendTemplateEmail({
   template,
   props,
   from,
-}: SendTemplateEmailOptions): Promise<void> {
+}: SendTemplateEmailOptions): Promise<{ messageId: string }> {
   const htmlResult = await renderEmailComponent(template, props)
   const textResult = await renderEmailComponent(template, props, {
     plainText: true,
@@ -30,11 +30,13 @@ export async function sendTemplateEmail({
 
   const { send: sendEmail } = useEmail()
 
-  await sendEmail({
+  const result = await sendEmail({
     to,
     subject,
     html,
     text,
     from,
   })
+
+  return { messageId: result.messageId }
 }

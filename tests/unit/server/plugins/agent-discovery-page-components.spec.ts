@@ -60,7 +60,7 @@ describe('agent-discovery-page-components nitro plugin', () => {
     ])
   })
 
-  it('renders the account email list as three numbered items', async () => {
+  it('renders the account email list as four numbered items', async () => {
     const hook = await registerDocumentHook()
     const page = { body: { value: [['account-email-list', {}]] } }
 
@@ -70,10 +70,11 @@ describe('agent-discovery-page-components nitro plugin', () => {
     const items = paragraph[2].split('\n')
 
     expect(paragraph[0]).toBe('p')
-    expect(items).toHaveLength(3)
+    expect(items).toHaveLength(4)
     expect(items[0]).toMatch(/^1\. \*\*Address and password:\*\* /)
     expect(items[1]).toMatch(/^2\. \*\*Account deletion:\*\* /)
     expect(items[2]).toMatch(/^3\. \*\*Security notices\*\*, /)
+    expect(items[3]).toMatch(/^4\. \*\*Legal notices:\*\* /)
     expect(JSON.stringify(page.body.value)).not.toContain('account-email-list')
   })
 

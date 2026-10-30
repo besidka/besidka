@@ -943,6 +943,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/email-template.spec.ts',
   ]
 
+  const legalNoticeEmailTests = [
+    'tests/unit/utils/legal/notice-sweep.spec.ts',
+    'tests/unit/utils/legal/notice-email.spec.ts',
+    'tests/integration/server/legal-notice-sweep-plugin.spec.ts',
+    'tests/integration/server/email-templates.spec.ts',
+    'tests/integration/server/email.spec.ts',
+    'tests/unit/utils/email-template.spec.ts',
+    'tests/unit/content/account-email-list.spec.ts',
+  ]
+
   const authSecurityTests = [
     'tests/unit/utils/auth-rate-limit.spec.ts',
     'tests/unit/utils/auth-captcha.spec.ts',
@@ -1566,6 +1576,14 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^(app\/components\/Legal\/ChangeNotice\.client\.vue|app\/composables\/legal-notice-banner\.ts|app\/layouts\/chat\.vue|app\/pages\/chats\/\[slug\]\.vue|shared\/utils\/(legal-notices|legal-change-history)\.ts)$/,
+      tests: [
+        'tests/unit/components/Legal/ChangeNotice.spec.ts',
+        'tests/unit/composables/legal-notice-banner.spec.ts',
+        'tests/unit/layouts/chat.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/api\/v1\/(chats\/new\/index\.put|chats\/\[slug\]\/(index\.post|title\.patch)|chats\/branch\/index\.post|memory\/instruct\/preview\.post|memory\/entries\/index\.post|projects\/\[id\]\/instructions\.patch|files\/upload\.put)\.ts$/,
       tests: ['tests/integration/api/legal-consent.spec.ts'],
     },
@@ -1901,6 +1919,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/config/wrangler-search-rates.spec.ts',
         'tests/unit/config/wrangler-previews.spec.ts',
+        'tests/unit/config/wrangler-legal-notice-sweep.spec.ts',
         'tests/unit/utils/consents-rate-limit.spec.ts',
       ],
     },
@@ -2927,8 +2946,12 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(server\/utils\/account\/security-emails\.ts|shared\/utils\/account-emails\.ts|content\/legal\/privacy-policy\.md)$/,
+      pattern: /^(server\/utils\/account\/security-emails\.ts|server\/utils\/legal\/notice-sender\.ts|shared\/utils\/account-emails\.ts|content\/legal\/privacy-policy\.md)$/,
       tests: ['tests/unit/content/account-email-list.spec.ts'],
+    },
+    {
+      pattern: /^(server\/utils\/legal\/(notice-sweep|notice-email|notice-sender)\.ts|server\/plugins\/legal-notice-sweep\.ts|server\/db\/schemas\/legal-notice-deliveries\.ts|server\/utils\/email(-template)?\.ts|app\/emails\/LegalNoticeEmail\.vue|shared\/utils\/legal-notices\.ts)$/,
+      tests: legalNoticeEmailTests,
     },
     {
       pattern: /^shared\/utils\/account-emails\.ts$/,

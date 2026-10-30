@@ -63,6 +63,12 @@ NUXT_MEMORY_EXTRACTION_SWEEP_BATCH_SIZE=20
 NUXT_MEMORY_EXTRACTION_SWEEP_MAX_RUNTIME_MS=120000
 NUXT_MEMORY_BACKFILL_SWEEP_ENABLED=false
 NUXT_MEMORY_BACKFILL_SWEEP_MAX_RUNTIME_MS=45000
+# Legal change notice emails (cron sweep). Real mail goes out only with
+# NUXT_EMAIL_NOOP_ENABLED=false and a sender configured; keep false locally.
+NUXT_LEGAL_NOTICE_SWEEP_ENABLED=false
+NUXT_LEGAL_NOTICE_SWEEP_BATCH_SIZE=25
+NUXT_LEGAL_NOTICE_SWEEP_MAX_RUNTIME_MS=60000
+NUXT_LEGAL_NOTICE_DAILY_CAP=300
 
 # Deep research mock/dry-run mode. When true, a topic prefixed with "mock:"
 # skips the real provider call and returns a canned report at zero cost.

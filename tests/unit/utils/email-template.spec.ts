@@ -118,4 +118,23 @@ describe('sendTemplateEmail', () => {
       from: 'personalized',
     })
   })
+
+  it('returns the message id of the sent email', async () => {
+    mocks.renderEmailComponent
+      .mockResolvedValueOnce('<p>Hello</p>')
+      .mockResolvedValueOnce('Hello')
+
+    const { sendTemplateEmail } = await importEmailTemplate()
+
+    await expect(sendTemplateEmail({
+      to: 'user@example.com',
+      subject: 'Subject',
+      template: 'LegalNoticeEmail',
+      props: { heading: 'Hi' },
+    })).resolves.toEqual({ messageId: 'm1' })
+    expect(mocks.renderEmailComponent).toHaveBeenCalledWith(
+      'LegalNoticeEmail',
+      { heading: 'Hi' },
+    )
+  })
 })

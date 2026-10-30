@@ -422,6 +422,24 @@ Minor, so record the new hash as `minor` with a note:
 When unsure, treat it as material: an unneeded notice costs one email, a missed
 one costs trust and may breach the duty below.
 
+### How the email is delivered
+
+The email half is sent by the `legal-notice-sweep` cron job
+(`server/utils/legal/notice-sweep.ts`, `server/plugins/legal-notice-sweep.ts`),
+which is off by default and on only in the production Worker. It mails every
+verified account created before `publishedAt`, from `sendFrom` until
+`effectiveAt`, 25 a tick and 300 a day at most, and records each delivery in
+`legal_notice_deliveries` (one row per user and notice; kept until the account
+is deleted, as proof of notice; see `docs/legal/art30-record.md`, row 20).
+`docs/email.md` ("Legal change notices") has the claim, retry and error-code
+rules. Two consequences for whoever publishes a notice:
+
+- The daily cap means the last recipient is mailed about `users / 300` days
+  after `sendFrom`, and the notice period that user actually gets is shorter by
+  that much. Check the user count before choosing `sendFrom` and `effectiveAt`.
+- An account created after `publishedAt` is not mailed: it signed up to the new
+  text.
+
 ### Why, and how long
 
 - **GDPR Art. 12 to 14 and WP260 rev.01 paras 29 to 31.** Changes to a privacy

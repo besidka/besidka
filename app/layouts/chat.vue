@@ -1,5 +1,8 @@
 <template>
-  <NuxtPage/>
+  <div class="contents">
+    <LazyLegalChangeNotice />
+    <NuxtPage/>
+  </div>
 </template>
 
 <script setup lang="ts">

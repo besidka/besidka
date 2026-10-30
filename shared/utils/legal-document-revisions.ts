@@ -11,11 +11,11 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '481db37e660361ad7d9ed82427672a17d2e8f159cd32cf56a1602125f810df05',
+    hash: '1dacf74296fc82a6041a57cd643d845c802c290bb492b382d0a65f12542fa7fd',
     classification: 'material',
     noticeId: '2026-11-legal-notices',
-    note: 'Change notice clause, connected-app permissions and per-project '
-      + 'memory updates.',
+    note: 'Change notice clause and its email, connected-app permissions '
+      + 'and per-project memory updates.',
   },
   'terms-of-use': {
     hash: '7e5cf76de1bed9fef15a739e962d50b9075c170009c3da45d522433ff5e0de5f',

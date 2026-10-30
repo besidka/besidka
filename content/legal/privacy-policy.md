@@ -101,7 +101,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Send text to TypeSafe AI for the TypeSafe AI checks you leave on (see [TypeSafe AI checks](#typesafe-ai-checks)), only if you saved a TypeSafe AI key | Contract — Art. 6(1)(b), because you added the key and left the check on. For sensitive information, also your explicit consent — Art. 9(2)(a) |
 | Keep a record of your consents, of when you accepted the Terms of Use and of your age confirmation | Legal obligation to be able to prove consent — Art. 6(1)(c) with Art. 7(1) for the consents; legitimate interests — Art. 6(1)(f) for the Terms and age record |
 | Send your messages to DeepSeek, Moonshot AI, Qwen, one of the other gateway vendors listed under [Transfers outside the EU](#transfers-outside-the-eu) (in China, Singapore, Malaysia or Indonesia), or to a router or preset model that can pick any provider, outside the EU without an adequacy decision | Your explicit consent to the transfer — Art. 49(1)(a) |
-| Send the account emails listed under [Email I send you](#email-i-send-you) | Contract — Art. 6(1)(b) for verification, password reset and confirmation emails; legitimate interests — Art. 6(1)(f) for security notices that tell you something on your account changed |
+| Send the account emails listed under [Email I send you](#email-i-send-you) | Contract — Art. 6(1)(b) for verification, password reset and confirmation emails; legitimate interests — Art. 6(1)(f) for security notices that tell you something on your account changed; legal obligation — Art. 6(1)(c), my duty to inform you under Art. 12 to 14, and contract — Art. 6(1)(b), because the Terms are the contract and a change to them has to reach you, for notices of changes to the Privacy Policy, the Terms of Use or the Cookie Policy |
 | Send you push notifications | Your consent — Art. 6(1)(a) |
 | Publish a chat behind a share link | Your consent — Art. 6(1)(a) |
 | Let search engines index a shared chat | A separate consent — Art. 6(1)(a) |
@@ -416,6 +416,7 @@ My logs are deliberately narrow. Specifically:
 | Account, chats, messages, projects, settings, API keys | Until you delete them, or until you delete your account |
 | Files | **30 days by default.** You can change this in your settings, including setting files never to expire. Files linked to a project as knowledge do not expire while they are linked. An hourly job deletes the expired file from R2 and then its database row. |
 | Share links | Until you revoke the share, or until the expiry you chose (1 hour, 1 day, 1 week, 1 month, 1 year, or never). Revoking deletes the share record. |
+| The record that a legal change notice was sent to you (which notice, when, whether it was delivered, and an error code if it failed) | Until you delete your account. It is deleted with it. It is my proof that I told you |
 | Push subscriptions | Until you turn notifications off, until your browser's push service reports the endpoint as invalid, or until you have not opened Besidka in that browser for 60 days, whichever comes first |
 | Sessions | Until they expire or you sign out |
 | Campaign attribution and milestone records | Until you delete your account. They are deleted together with it. |
@@ -489,12 +490,12 @@ Turning notifications off in your settings, or in your browser, revokes the subs
 
 ## Email I send you
 
-I send only transactional email, which is email about your account and what you asked for:
+I send only transactional email, which is email about your account and what you asked for, plus notices about changes to the documents that govern the service:
 
 ::account-email-list
 ::
 
-That is all. **I never send marketing email**, newsletters or product announcements, and there is no mailing list to unsubscribe from. Email is sent through Cloudflare's email sending service.
+That is all. **I never send marketing email**, newsletters or product announcements, and there is no mailing list to unsubscribe from. A legal notice is a notice about the service that the law asks me to give you, so it carries no promotion and no unsubscribe link. The only way to stop receiving them is to delete your account. I keep a record that a legal notice was sent to you, as described under [How long I keep things](#how-long-i-keep-things). Email is sent through Cloudflare's email sending service.
 
 ## Analytics
 
