@@ -334,6 +334,73 @@ describe('projects API', () => {
     expect(updateSet).toHaveBeenCalled()
   })
 
+  it.each([
+    ['a right-to-left override', 'Invoice\u202Efdp.txt'],
+    ['a zero-width space', 'Pro\u200Bject'],
+    ['a bell control character', 'Pro\u0007ject'],
+  ])('refuses to create or rename a project with %s', async (_label, name) => {
+    const createHandler = await getCreateProjectHandler()
+    const renameHandler = await getRenameProjectHandler()
+    const insert = vi.fn()
+    const update = vi.fn()
+
+    vi.stubGlobal('useDb', () => ({ insert, update, query: {} }))
+
+    await expect(createHandler({ body: { name } } as any))
+      .rejects.toMatchObject({ status: 400 })
+    await expect(renameHandler({
+      params: { id: 'project-1' },
+      body: { name },
+    } as any)).rejects.toMatchObject({ status: 400 })
+
+    expect(insert).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('names the invisible formatting characters when refusing', async () => {
+    const createHandler = await getCreateProjectHandler()
+
+    await expect(createHandler({ body: { name: 'Pro\u200Bject' } } as any))
+      .rejects.toMatchObject({
+        message: 'Project name contains invisible formatting characters',
+      })
+  })
+
+  it('accepts a Cyrillic project name with an emoji', async () => {
+    const createHandler = await getCreateProjectHandler()
+    const renameHandler = await getRenameProjectHandler()
+    const name = 'Бесідка 🚀'
+    const project = createProject({ id: 'project-1', name })
+    const db = {
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          returning: vi.fn(() => ({
+            get: vi.fn(() => project),
+          })),
+        })),
+      })),
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => ({ id: 'project-1' })),
+        },
+      },
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(createHandler({ body: { name } } as any))
+      .resolves.toEqual(project)
+    await expect(renameHandler({
+      params: { id: 'project-1' },
+      body: { name },
+    } as any)).resolves.toEqual({ name })
+  })
+
   it('returns a project with instructions and updates them', async () => {
     const getHandler = await getProjectHandler()
     const updateInstructionsHandler

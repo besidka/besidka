@@ -255,7 +255,7 @@ async function fetchPage(offset: number) {
         query: {
           offset: nextOffset,
           limit: PAGE_SIZE,
-          source: 'upload',
+          source: 'library',
           ...(search.value.trim() ? { search: search.value.trim() } : {}),
         },
       })

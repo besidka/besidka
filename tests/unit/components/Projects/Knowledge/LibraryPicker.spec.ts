@@ -86,7 +86,7 @@ describe('Projects/Knowledge/LibraryPicker', () => {
         .toBe(wrapper.get('h3').attributes('id'))
       expect(wrapper.get('h3').text()).toBe('Add from my library')
       expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/files', {
-        query: { offset: 0, limit: 50, source: 'upload' },
+        query: { offset: 0, limit: 50, source: 'library' },
       })
     })
 
@@ -117,7 +117,7 @@ describe('Projects/Knowledge/LibraryPicker', () => {
     await flushPromises()
 
     expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/files', {
-      query: { offset: 0, limit: 50, source: 'upload', search: 'spec' },
+      query: { offset: 0, limit: 50, source: 'library', search: 'spec' },
     })
   })
 
@@ -194,7 +194,7 @@ describe('Projects/Knowledge/LibraryPicker', () => {
     await flushPromises()
 
     expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/files', {
-      query: { offset: 4, limit: 50, source: 'upload' },
+      query: { offset: 4, limit: 50, source: 'library' },
     })
     expect(wrapper.findAll('ul[aria-label="Library files"] li'))
       .toHaveLength(3)
@@ -266,7 +266,7 @@ describe('Projects/Knowledge/LibraryPicker', () => {
 
       expect(mocks.fetch).toHaveBeenCalledTimes(2)
       expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/files', {
-        query: { offset: 50, limit: 50, source: 'upload' },
+        query: { offset: 50, limit: 50, source: 'library' },
       })
       expect(wrapper.find('[data-testid="knowledge-library-empty"]')
         .exists()).toBe(false)
@@ -319,7 +319,7 @@ describe('Projects/Knowledge/LibraryPicker', () => {
       await flushPromises()
 
       expect(mocks.fetch).toHaveBeenLastCalledWith('/api/v1/files', {
-        query: { offset: 250, limit: 50, source: 'upload' },
+        query: { offset: 250, limit: 50, source: 'library' },
       })
       expect(wrapper.findAll('ul[aria-label="Library files"] li'))
         .toHaveLength(1)

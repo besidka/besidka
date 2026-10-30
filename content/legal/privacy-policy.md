@@ -283,7 +283,7 @@ On the approval screen you choose what the app may do. These are the permissions
 - **Read your chats**: list and search your chats and read their messages.
 - **Read your projects**: your projects, their instructions and their knowledge items.
 - **Read your memory**: your memory entries.
-- **Change your projects** (off until you tick it): edit a project's instructions and add notes or text to its project knowledge.
+- **Change your projects** (off until you tick it): create a project, edit a project's instructions and add notes or text to its project knowledge.
 - **Change your memory** (off until you tick it): add, edit and delete memory entries. Everything it writes goes through the same never-stored and sensitive-topic checks as any other memory (see [What memory never keeps](#what-memory-never-keeps)).
 
 A connected app cannot send messages in your chats or use your API keys in this version, and your API keys are never among the data it can read. What it can read is whatever your chats, projects and memory contain: sensitive information, other people's personal data, and things you wrote or the model produced.

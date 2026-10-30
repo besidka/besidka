@@ -462,8 +462,9 @@ removed.
   15 minutes (JWT); refresh tokens rotate on use.
 - **Scopes.** `chats:read` (list, search and read chats), `projects:read`
   (projects, instructions, project knowledge items), `memory:read` (memory
-  entries), `projects:write` (edit project instructions, add notes or text to
-  project knowledge), `memory:write` (add, edit and delete memory entries).
+  entries), `projects:write` (create projects, edit project instructions,
+  add notes or text to project knowledge), `memory:write` (add, edit and
+  delete memory entries).
   The write scopes are unticked by default.
 - **Data subjects.** Users. Third parties named in the chats, projects and
   memory that a client can read.
