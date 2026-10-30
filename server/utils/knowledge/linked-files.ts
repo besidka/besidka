@@ -129,6 +129,40 @@ export async function findKnowledgeProjectIdsForFiles(
   return [...projectIds]
 }
 
+export interface KnowledgeTextTarget {
+  projectId: number
+  itemId: number
+}
+
+/**
+ * The internal project and item ids of every knowledge item that links the
+ * user's file (a public id), so the callers that delete the file can also
+ * delete the items' R2 text objects, which the foreign-key cascade leaves
+ * behind when it removes the rows.
+ */
+export async function findKnowledgeTextTargetsForFile(
+  userId: number,
+  fileId: string,
+): Promise<KnowledgeTextTarget[]> {
+  const items = schema.projectKnowledgeItems
+  const rows = await useDb()
+    .select({
+      projectId: items.projectId,
+      itemId: sql<number>`${items.id}`,
+    })
+    .from(items)
+    .innerJoin(schema.files, eq(schema.files.id, items.fileId))
+    .where(and(
+      eq(items.userId, userId),
+      eq(schema.files.userId, userId),
+      eq(schema.files.id, fileId),
+    ))
+
+  return rows.map((row) => {
+    return { projectId: row.projectId, itemId: Number(row.itemId) }
+  })
+}
+
 /**
  * The expiry a library file gets when it stops being linked: `null` for a
  * tier without retention (vip), otherwise now plus the retention days, the

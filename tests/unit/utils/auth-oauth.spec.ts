@@ -191,6 +191,76 @@ describe('auth hooks for the OAuth authorization server', () => {
       })
     })
 
+  it('upgrades a stale client scope snapshot before /oauth2/authorize',
+    async () => {
+      const loggerSet = vi.fn()
+      const options = await importAuthOptions(loggerSet)
+      const adapter = {
+        findOne: vi.fn(async () => ({ scopes: ['openid', 'chats:read'] })),
+        update: vi.fn(async () => ({})),
+      }
+
+      await options.hooks!.before!({
+        path: '/oauth2/authorize',
+        query: { client_id: 'client-1', scope: 'openid files:read' },
+        context: { adapter },
+      } as any)
+
+      expect(adapter.findOne).toHaveBeenCalledTimes(1)
+      expect(adapter.update).toHaveBeenCalledTimes(1)
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          oauth_client_scope_upgrade: true,
+          oauth_client_scope_upgrade_added: expect.any(Number),
+        },
+      })
+    })
+
+  it('does not touch the database for other paths or a missing client id',
+    async () => {
+      const options = await importAuthOptions()
+      const adapter = { findOne: vi.fn(), update: vi.fn() }
+
+      await options.hooks!.before!({
+        path: '/oauth2/token',
+        query: { client_id: 'client-1' },
+        context: { adapter },
+      } as any)
+      await options.hooks!.before!({
+        path: '/oauth2/authorize',
+        query: {},
+        context: { adapter },
+      } as any)
+      await options.hooks!.before!({
+        path: '/oauth2/authorize',
+        context: { adapter },
+      } as any)
+
+      expect(adapter.findOne).not.toHaveBeenCalled()
+      expect(adapter.update).not.toHaveBeenCalled()
+    })
+
+  it('never blocks /oauth2/authorize when the upgrade fails', async () => {
+    const loggerSet = vi.fn()
+    const options = await importAuthOptions(loggerSet)
+    const adapter = {
+      findOne: vi.fn(async () => {
+        throw new Error('D1 unavailable')
+      }),
+      update: vi.fn(),
+    }
+
+    await expect(options.hooks!.before!({
+      path: '/oauth2/authorize',
+      query: { client_id: 'client-1' },
+      context: { adapter },
+    } as any)).resolves.toBeUndefined()
+
+    expect(loggerSet).toHaveBeenCalledWith({
+      attributes: { oauth_client_scope_upgrade_error: 'D1 unavailable' },
+    })
+  })
+
   it('logs a consent grant under attributes.legalConsent', async () => {
     const loggerSet = vi.fn()
     const options = await importAuthOptions(loggerSet)

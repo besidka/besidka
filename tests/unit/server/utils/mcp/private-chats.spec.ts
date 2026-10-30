@@ -45,7 +45,10 @@ function chatRow(id: string, title: string) {
     slug: `slug-${id}`,
     title,
     projectId: null,
+    projectName: null,
     pinnedAt: null,
+    shared: false,
+    memoryExcluded: null,
     createdAt: new Date(Date.UTC(2026, 9, 1)),
     activityAt: new Date(Date.UTC(2026, 9, 2)),
   }

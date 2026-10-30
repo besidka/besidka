@@ -1,20 +1,46 @@
-import { and, desc, eq, isNotNull, isNull, lt, or } from 'drizzle-orm'
-import { createError } from 'evlog'
-import type { KnowledgeItem } from '#shared/types/project-knowledge.d'
 import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+  sql,
+} from 'drizzle-orm'
+import { createError } from 'evlog'
+import type {
+  KnowledgeItem,
+  KnowledgeMode,
+} from '#shared/types/project-knowledge.d'
+import type { ProjectMemoryStatus } from '#shared/types/projects.d'
+import { MEMORY_SETTING_DEFAULTS } from '#shared/utils/memory-policy'
+import { KNOWLEDGE_LIMITS } from '#shared/utils/project-knowledge-policy'
+import {
+  knowledgeItemPatchSchema,
   knowledgeItemsBatchCreateSchema,
   knowledgeNoteCreateSchema,
+  knowledgeNoteUpdateSchema,
 } from '#shared/utils/project-knowledge-schemas'
 import * as schema from '~~/server/db/schema'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { decodeKnowledgeEntityId } from '~~/server/utils/knowledge/access'
 import {
+  commitKnowledgeRequest,
   createKnowledgeNote,
   hashKnowledgeText,
   ingestKnowledgeItems,
+  updateKnowledgeItemMetadata,
+  updateKnowledgeMode,
+  updateKnowledgeNote,
 } from '~~/server/utils/knowledge/ingest'
-import { listKnowledgeItems } from '~~/server/utils/knowledge/items'
+import {
+  listKnowledgeItems,
+  toKnowledgeItemWire,
+} from '~~/server/utils/knowledge/items'
 import { enforceKnowledgeWriteRateLimit } from '~~/server/utils/knowledge/rate-limit'
 import { getKnowledgeItemText } from '~~/server/utils/knowledge/text-store'
 import {
@@ -23,11 +49,21 @@ import {
   isValidMcpCursorId,
 } from '~~/server/utils/mcp/private/chats'
 import { toIsoTimestamp } from '~~/server/utils/mcp/private/text'
-import { assertProjectNameCharacters } from '~~/server/utils/projects/name'
 import {
   createProjectsCursor,
   parseProjectsCursor,
 } from '~~/server/utils/projects/cursor'
+import {
+  deleteProject,
+  renameProject,
+  setProjectArchived,
+  setProjectPinned,
+} from '~~/server/utils/projects/lifecycle'
+import {
+  applyProjectMemoryEnabled,
+  applyProjectUseAccountMemory,
+} from '~~/server/utils/projects/memory-toggle'
+import { assertProjectNameCharacters } from '~~/server/utils/projects/name'
 
 type DbClient = ReturnType<typeof useDb>
 
@@ -41,6 +77,7 @@ export const MCP_KNOWLEDGE_BATCH_MAX_ITEMS = 10
 export const MCP_KNOWLEDGE_BATCH_TEXT_MAX_CHARS
   = MCP_KNOWLEDGE_TEXT_MAX_CHARS
 export const MCP_PROJECT_NAME_MAX_CHARS = 100
+export const MCP_KNOWLEDGE_DELETE_MAX_ITEMS = 100
 
 export const MCP_FLAGGED_ITEM_NOTE
   = 'This item was flagged as possibly containing instructions aimed at AI '
@@ -60,6 +97,12 @@ export interface McpOwnedProject {
 export interface McpTextItemInput {
   name: string
   text: string
+}
+
+export interface McpProjectMemoryRow {
+  memoryStatus: ProjectMemoryStatus
+  memoryUpdatedAt: Date | null
+  useAccountMemory: boolean | null
 }
 
 export interface McpProjectSummaryRow {
@@ -164,6 +207,36 @@ export function toMcpProjectSummary(row: McpProjectSummaryRow) {
   }
 }
 
+export function toMcpProjectMemory(
+  row: McpProjectMemoryRow,
+  entryCount: number,
+) {
+  return {
+    enabled: row.memoryStatus !== 'disabled',
+    status: row.memoryStatus,
+    useAccountMemory: row.useAccountMemory
+      ?? MEMORY_SETTING_DEFAULTS.useAccountMemory,
+    updatedAt: toIsoTimestamp(row.memoryUpdatedAt),
+    entryCount,
+  }
+}
+
+async function countMcpProjectMemoryEntries(
+  db: DbClient,
+  userId: number,
+  projectPublicId: string,
+): Promise<number> {
+  const counted = await db.select({ total: sql<number>`count(*)` })
+    .from(schema.memoryEntries)
+    .where(and(
+      eq(schema.memoryEntries.userId, userId),
+      eq(schema.memoryEntries.projectId, projectPublicId),
+    ))
+    .get()
+
+  return Number(counted?.total ?? 0)
+}
+
 export async function createMcpProject(
   db: DbClient,
   userId: number,
@@ -199,6 +272,32 @@ export async function createMcpProject(
   return toMcpProjectSummary(project)
 }
 
+function buildMcpProjectsCursorFilter(
+  cursor: ReturnType<typeof parseProjectsCursor>,
+) {
+  if (cursor?.sortBy === 'activity') {
+    return or(
+      lt(schema.projects.activityAt, cursor.activityAt),
+      and(
+        eq(schema.projects.activityAt, cursor.activityAt),
+        lt(schema.projects.id, cursor.id),
+      ),
+    )
+  }
+
+  if (cursor?.sortBy === 'name') {
+    return or(
+      gt(schema.projects.name, cursor.name),
+      and(
+        eq(schema.projects.name, cursor.name),
+        gt(schema.projects.id, cursor.id),
+      ),
+    )
+  }
+
+  return undefined
+}
+
 export async function listMcpProjects(
   db: DbClient,
   userId: number,
@@ -207,6 +306,8 @@ export async function listMcpProjects(
     limit?: number
     search?: string
     archived?: boolean
+    sortBy?: 'activity' | 'name'
+    pinnedOnly?: boolean
   },
 ) {
   const limit = clampMcpLimit(
@@ -215,21 +316,17 @@ export async function listMcpProjects(
     MCP_PROJECT_LIST_MAX_LIMIT,
   )
   const search = input.search?.trim() ?? ''
-  const cursor = parseProjectsCursor(input.cursor, 'activity')
+  const sortBy = input.sortBy ?? 'activity'
+  const cursor = parseProjectsCursor(input.cursor, sortBy)
 
   if (input.cursor && (!cursor || !isValidMcpCursorId(cursor.id))) {
     throw createInvalidMcpCursorError()
   }
 
-  const cursorFilter = cursor?.sortBy === 'activity'
-    ? or(
-      lt(schema.projects.activityAt, cursor.activityAt),
-      and(
-        eq(schema.projects.activityAt, cursor.activityAt),
-        lt(schema.projects.id, cursor.id),
-      ),
-    )
-    : undefined
+  const cursorFilter = buildMcpProjectsCursorFilter(cursor)
+  const orderByColumns = sortBy === 'name'
+    ? [asc(schema.projects.name), asc(schema.projects.id)]
+    : [desc(schema.projects.activityAt), desc(schema.projects.id)]
   const rows = await db.select({
     id: schema.projects.id,
     name: schema.projects.name,
@@ -245,17 +342,18 @@ export async function listMcpProjects(
       input.archived
         ? isNotNull(schema.projects.archivedAt)
         : isNull(schema.projects.archivedAt),
+      input.pinnedOnly ? isNotNull(schema.projects.pinnedAt) : undefined,
       search ? containsLikeEscaped(schema.projects.name, search) : undefined,
       cursorFilter,
     ))
-    .orderBy(desc(schema.projects.activityAt), desc(schema.projects.id))
+    .orderBy(...orderByColumns)
     .limit(limit)
   const lastRow = rows[rows.length - 1]
 
   return {
     projects: rows.map(toMcpProjectSummary),
     nextCursor: rows.length === limit && lastRow
-      ? createProjectsCursor(lastRow, 'activity')
+      ? createProjectsCursor(lastRow, sortBy)
       : null,
   }
 }
@@ -275,8 +373,13 @@ export async function getMcpProject(
     name: schema.projects.name,
     instructions: schema.projects.instructions,
     knowledgeMode: schema.projects.knowledgeMode,
+    pinnedAt: schema.projects.pinnedAt,
     archivedAt: schema.projects.archivedAt,
     activityAt: schema.projects.activityAt,
+    createdAt: schema.projects.createdAt,
+    memoryStatus: schema.projects.memoryStatus,
+    memoryUpdatedAt: schema.projects.memoryUpdatedAt,
+    useAccountMemory: schema.projects.useAccountMemory,
   })
     .from(schema.projects)
     .where(and(
@@ -290,14 +393,32 @@ export async function getMcpProject(
   }
 
   const items = await listKnowledgeItems({ userId, projectId })
+  const memoryEntryCount = await countMcpProjectMemoryEntries(
+    db,
+    userId,
+    projectPublicId,
+  )
 
   return {
     id: project.id,
     name: project.name,
     instructions: project.instructions ?? null,
     knowledgeMode: project.knowledgeMode ?? 'auto',
+    pinned: project.pinnedAt !== null,
     archived: project.archivedAt !== null,
     activityAt: toIsoTimestamp(project.activityAt),
+    createdAt: toIsoTimestamp(project.createdAt),
+    memory: toMcpProjectMemory(project, memoryEntryCount),
+    knowledgeTotals: {
+      items: items.length,
+      textBytes: items.reduce((total, item) => {
+        return total + item.textBytes
+      }, 0),
+      limits: {
+        maxItems: KNOWLEDGE_LIMITS.maxItemsPerProject,
+        maxTextBytes: KNOWLEDGE_LIMITS.maxProjectTextBytes,
+      },
+    },
     knowledge: items.map(toMcpKnowledgeItemSummary),
   }
 }
@@ -632,4 +753,367 @@ export async function addMcpProjectTextInput(
     { projectId: input.projectId, name: input.name, text: input.text },
     logger,
   )
+}
+
+export interface McpProjectUpdateInput {
+  projectId: string
+  name?: string
+  pinned?: boolean
+  archived?: boolean
+  knowledgeMode?: KnowledgeMode
+  memoryEnabled?: boolean
+  useAccountMemory?: boolean
+}
+
+function hasMcpProjectUpdate(input: McpProjectUpdateInput): boolean {
+  return input.name !== undefined
+    || input.pinned !== undefined
+    || input.archived !== undefined
+    || input.knowledgeMode !== undefined
+    || input.memoryEnabled !== undefined
+    || input.useAccountMemory !== undefined
+}
+
+function normalizeMcpProjectName(name: string): string {
+  const trimmedName = name.trim()
+
+  if (
+    trimmedName.length === 0
+    || trimmedName.length > MCP_PROJECT_NAME_MAX_CHARS
+  ) {
+    throw createInvalidInputError(
+      'The project name must be 1 to '
+      + `${MCP_PROJECT_NAME_MAX_CHARS} characters.`,
+    )
+  }
+
+  assertProjectNameCharacters(trimmedName)
+
+  return trimmedName
+}
+
+async function readMcpProjectState(
+  db: DbClient,
+  userId: number,
+  projectPublicId: string,
+) {
+  const project = await db.select({
+    id: schema.projects.id,
+    name: schema.projects.name,
+    knowledgeMode: schema.projects.knowledgeMode,
+    pinnedAt: schema.projects.pinnedAt,
+    archivedAt: schema.projects.archivedAt,
+    memoryStatus: schema.projects.memoryStatus,
+    memoryUpdatedAt: schema.projects.memoryUpdatedAt,
+    useAccountMemory: schema.projects.useAccountMemory,
+  })
+    .from(schema.projects)
+    .where(and(
+      eq(schema.projects.id, projectPublicId),
+      eq(schema.projects.userId, userId),
+    ))
+    .get()
+
+  if (!project) {
+    throw createProjectNotFoundError(projectPublicId)
+  }
+
+  const memoryEntryCount = await countMcpProjectMemoryEntries(
+    db,
+    userId,
+    projectPublicId,
+  )
+
+  return {
+    id: project.id,
+    name: project.name,
+    pinned: project.pinnedAt !== null,
+    archived: project.archivedAt !== null,
+    knowledgeMode: project.knowledgeMode ?? 'auto',
+    memory: toMcpProjectMemory(project, memoryEntryCount),
+  }
+}
+
+/**
+ * Applies the given fields with set semantics, so repeating a call changes
+ * nothing. Turning project memory on only restores its lifecycle state: it
+ * never reads chats and never calls a model, so it cannot spend the user's
+ * key. Returns the resulting state.
+ */
+export async function updateMcpProject(
+  db: DbClient,
+  userId: number,
+  input: McpProjectUpdateInput,
+  logger: LoggerLike,
+) {
+  const { projectId } = await resolveMcpOwnedProject(
+    db,
+    userId,
+    input.projectId,
+  )
+
+  if (!hasMcpProjectUpdate(input)) {
+    throw createInvalidInputError(
+      'Send at least one of name, pinned, archived, knowledgeMode, '
+      + 'memoryEnabled or useAccountMemory.',
+    )
+  }
+
+  const name = input.name === undefined
+    ? undefined
+    : normalizeMcpProjectName(input.name)
+
+  if (input.knowledgeMode !== undefined) {
+    await enforceKnowledgeWriteRateLimit(userId)
+  }
+
+  if (name !== undefined) {
+    await renameProject(db, userId, input.projectId, name)
+  }
+
+  if (input.pinned !== undefined) {
+    await setProjectPinned(db, userId, input.projectId, input.pinned)
+  }
+
+  if (input.archived !== undefined) {
+    await setProjectArchived(db, userId, input.projectId, input.archived)
+  }
+
+  if (input.knowledgeMode !== undefined) {
+    await updateKnowledgeMode(
+      { userId, projectId, logger },
+      input.knowledgeMode,
+    )
+  }
+
+  if (input.useAccountMemory !== undefined) {
+    await applyProjectUseAccountMemory(
+      input.projectId,
+      userId,
+      input.useAccountMemory,
+      db,
+    )
+  }
+
+  if (input.memoryEnabled !== undefined) {
+    await applyProjectMemoryEnabled(
+      input.projectId,
+      userId,
+      input.memoryEnabled,
+      db,
+      { forwardOnly: true },
+    )
+  }
+
+  return await readMcpProjectState(db, userId, input.projectId)
+}
+
+export async function deleteMcpProject(
+  db: DbClient,
+  userId: number,
+  input: { projectId: string, confirmName: string },
+  logger: LoggerLike,
+) {
+  await resolveMcpOwnedProject(db, userId, input.projectId)
+
+  const project = await db.select({ name: schema.projects.name })
+    .from(schema.projects)
+    .where(and(
+      eq(schema.projects.id, input.projectId),
+      eq(schema.projects.userId, userId),
+    ))
+    .get()
+
+  if (!project) {
+    throw createProjectNotFoundError(input.projectId)
+  }
+
+  if (input.confirmName !== project.name) {
+    throw createInvalidInputError(
+      'confirmName does not match. Ask the user to type the exact project '
+      + 'name.',
+    )
+  }
+
+  const { chatsDetached } = await deleteProject(
+    db,
+    userId,
+    input.projectId,
+    logger,
+  )
+
+  return { id: input.projectId, deleted: true, chatsDetached }
+}
+
+async function resolveMcpKnowledgeItemRow(
+  db: DbClient,
+  userId: number,
+  projectId: number,
+  itemPublicId: string,
+) {
+  if (decodeKnowledgeEntityId(itemPublicId) === null) {
+    throw createItemNotFoundError(itemPublicId)
+  }
+
+  const item = await db.select()
+    .from(schema.projectKnowledgeItems)
+    .where(and(
+      eq(schema.projectKnowledgeItems.id, itemPublicId),
+      eq(schema.projectKnowledgeItems.userId, userId),
+      eq(schema.projectKnowledgeItems.projectId, projectId),
+    ))
+    .get()
+
+  if (!item) {
+    throw createItemNotFoundError(itemPublicId)
+  }
+
+  return item
+}
+
+function definedFields<Fields extends Record<string, unknown>>(
+  fields: Fields,
+): Partial<Fields> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => {
+      return value !== undefined
+    }),
+  ) as Partial<Fields>
+}
+
+function createInvalidKnowledgeFieldsError(
+  issue: { message: string } | undefined,
+) {
+  return createInvalidInputError(
+    `Invalid fields: ${issue?.message ?? 'check the fields'}`,
+  )
+}
+
+export interface McpKnowledgeItemUpdateInput {
+  projectId: string
+  itemId: string
+  title?: string
+  body?: string
+  description?: string | null
+  pinned?: boolean
+  sendAsNativePdf?: boolean
+}
+
+/**
+ * Edits one knowledge item. Title and text belong to notes only. A note's
+ * description goes through the note update, like the web editor; every
+ * other item takes its description, pinned and send-as-PDF values through
+ * the metadata update. A changed note text is screened for prompt injection
+ * by the same check as add_project_note.
+ */
+export async function updateMcpKnowledgeItem(
+  db: DbClient,
+  userId: number,
+  input: McpKnowledgeItemUpdateInput,
+  logger: LoggerLike,
+) {
+  const { projectId } = await resolveMcpOwnedProject(
+    db,
+    userId,
+    input.projectId,
+  )
+  const item = await resolveMcpKnowledgeItemRow(
+    db,
+    userId,
+    projectId,
+    input.itemId,
+  )
+  const isNote = item.kind === 'note'
+  const isTextEdit = input.title !== undefined || input.body !== undefined
+
+  if (isTextEdit && !isNote) {
+    throw createInvalidInputError('Only notes can change title or text.')
+  }
+
+  const noteFields = definedFields(isNote
+    ? {
+      title: input.title,
+      body: input.body,
+      description: input.description,
+    }
+    : {})
+  const metadataFields = definedFields(isNote
+    ? { pinned: input.pinned, sendAsNativePdf: input.sendAsNativePdf }
+    : {
+      description: input.description,
+      pinned: input.pinned,
+      sendAsNativePdf: input.sendAsNativePdf,
+    })
+  const hasNoteFields = Object.keys(noteFields).length > 0
+  const hasMetadataFields = Object.keys(metadataFields).length > 0
+
+  if (!hasNoteFields && !hasMetadataFields) {
+    throw createInvalidInputError(
+      'Send at least one of title, body, description, pinned or '
+      + 'sendAsNativePdf.',
+    )
+  }
+
+  const noteUpdate = knowledgeNoteUpdateSchema.safeParse(noteFields)
+  const metadataUpdate = knowledgeItemPatchSchema.safeParse(metadataFields)
+
+  if (hasNoteFields && !noteUpdate.success) {
+    throw createInvalidKnowledgeFieldsError(noteUpdate.error.issues[0])
+  }
+
+  if (hasMetadataFields && !metadataUpdate.success) {
+    throw createInvalidKnowledgeFieldsError(metadataUpdate.error.issues[0])
+  }
+
+  await enforceKnowledgeWriteRateLimit(userId)
+
+  const context = { userId, projectId, logger }
+
+  if (hasMetadataFields && metadataUpdate.success) {
+    await updateKnowledgeItemMetadata(context, item, metadataUpdate.data)
+  }
+
+  if (hasNoteFields && noteUpdate.success) {
+    await updateKnowledgeNote(context, item, noteUpdate.data)
+  }
+
+  const freshItem = await resolveMcpKnowledgeItemRow(
+    db,
+    userId,
+    projectId,
+    input.itemId,
+  )
+
+  return toMcpKnowledgeItemSummary(toKnowledgeItemWire(freshItem))
+}
+
+export async function deleteMcpKnowledgeItems(
+  db: DbClient,
+  userId: number,
+  input: { projectId: string, itemIds: string[] },
+  logger: LoggerLike,
+) {
+  if (
+    input.itemIds.length === 0
+    || input.itemIds.length > MCP_KNOWLEDGE_DELETE_MAX_ITEMS
+  ) {
+    throw createInvalidInputError(
+      `Send 1 to ${MCP_KNOWLEDGE_DELETE_MAX_ITEMS} item ids per call.`,
+    )
+  }
+
+  const { projectId } = await resolveMcpOwnedProject(
+    db,
+    userId,
+    input.projectId,
+  )
+
+  await enforceKnowledgeWriteRateLimit(userId)
+
+  const result = await commitKnowledgeRequest(
+    { userId, projectId, logger },
+    { remove: input.itemIds, folderId: null },
+  )
+
+  return { deleted: result.removed, skipped: result.skipped }
 }

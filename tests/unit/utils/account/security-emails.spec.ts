@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
 
 const mocks = vi.hoisted(() => ({
   sendTemplateEmail: vi.fn(async () => undefined),
@@ -264,6 +265,32 @@ describe('security-emails', () => {
       expect(props.intro).toContain('change your memory')
       expect(props.intro).toContain('not verified')
     })
+
+  it('describes every OAuth scope in words, never by its raw id', async () => {
+    const { sendOAuthAppConnectedEmail } = await importSecurityEmails()
+
+    await sendOAuthAppConnectedEmail({
+      user: { email: 'user@example.com' },
+      appName: 'Claude',
+      scopes: [...MCP_OAUTH_SCOPES],
+      connectedAt: new Date('2026-10-29T12:00:00.000Z'),
+      connectedAppsUrl: 'https://besidka.com/profile/connected-apps',
+      logger: { set: vi.fn() },
+    })
+
+    const { props } = (mocks.sendTemplateEmail.mock.calls[0] as any)[0]
+
+    for (const scope of MCP_OAUTH_SCOPES) {
+      if (scope.includes(':')) {
+        expect(props.intro, scope).not.toContain(scope)
+      }
+    }
+
+    expect(props.intro).toContain('read your files')
+    expect(props.intro).toContain('change your chats')
+    expect(props.intro).toContain('change your settings')
+    expect(props.intro).toContain('permanently delete your data')
+  })
 
   it('strips control characters and caps the app name', async () => {
     const { sanitizeOAuthAppName } = await importSecurityEmails()

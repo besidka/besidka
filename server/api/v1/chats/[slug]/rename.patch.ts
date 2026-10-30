@@ -1,7 +1,5 @@
 import { createError } from 'evlog'
-import { and, eq } from 'drizzle-orm'
-import * as schema from '~~/server/db/schema'
-import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
+import { renameChat } from '~~/server/utils/chats/lifecycle'
 import {
   defineEventHandler,
   readValidatedBody,
@@ -68,21 +66,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const activityAt = new Date()
-
-  await db.update(schema.chats)
-    .set({
-      title: body.data.title,
-      activityAt,
-    })
-    .where(and(
-      eq(schema.chats.id, chat.id),
-      eq(schema.chats.userId, userId),
-    ))
-
-  if (chat.projectId) {
-    await refreshProjectActivityAt([chat.projectId], userId, db)
-  }
+  await renameChat(db, userId, chat, body.data.title)
 
   return { title: body.data.title }
 })

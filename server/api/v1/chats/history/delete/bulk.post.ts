@@ -3,6 +3,11 @@ import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import {
+  cleanupFilesOrphanedByChatDeletion,
+  findChatsOriginFiles,
+} from '~~/server/utils/files/chat-deletion-cleanup'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { detachChatsFromMemory } from '~~/server/utils/memory/chat-deletion'
 import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
@@ -55,6 +60,11 @@ export default defineEventHandler(async (event) => {
     },
   })
 
+  const originFiles = await findChatsOriginFiles(
+    chats.map(chat => chat.id),
+    userId,
+  )
+
   await detachChatsFromMemory({
     db,
     userId,
@@ -86,6 +96,22 @@ export default defineEventHandler(async (event) => {
     userId,
     db,
   )
+
+  try {
+    await cleanupFilesOrphanedByChatDeletion(originFiles, userId, logger)
+  } catch (exception) {
+    logger.set({
+      orphanedFileCleanup: {
+        phase: 'cleanup',
+        candidateCount: originFiles.length,
+      },
+      attributes: {
+        orphanedFileCleanup: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 
   return { success: true }
 })

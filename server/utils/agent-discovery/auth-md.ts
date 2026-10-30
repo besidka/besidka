@@ -56,6 +56,8 @@ Besidka supports dynamic client registration (RFC 7591) at ${origin}${REGISTRATI
 - Read: ${formatScopes(MCP_READ_SCOPES)}
 - Write: ${formatScopes(MCP_WRITE_SCOPES)}
 
+\`data:delete\` is the only scope that permits permanent deletion of chats, messages, projects, knowledge, files and memory. Ask for it only when the task deletes data.
+
 Ask for the fewest scopes the task needs. A token covers only the scopes the user approved.
 
 ## Use the token

@@ -1,8 +1,5 @@
-import { and, eq, inArray, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
-import * as schema from '~~/server/db/schema'
-import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
-import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { moveChatsToProject } from '~~/server/utils/chats/lifecycle'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -55,9 +52,6 @@ export default defineEventHandler(async (event) => {
     return { success: true }
   }
 
-  const movedChatIds = chatsToMove.map(chat => chat.id)
-  const sourceProjectIds = chatsToMove.map(chat => chat.projectId)
-
   if (body.data.projectId !== null) {
     const project = await db.query.projects.findFirst({
       where: {
@@ -75,40 +69,12 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const activityAt = new Date()
-
-    await db.update(schema.chats)
-      .set({ projectId: project.id, activityAt })
-      .where(and(
-        eq(schema.chats.userId, userId),
-        inArray(schema.chats.id, movedChatIds),
-      ))
-
-    await db.update(schema.projects)
-      .set({ activityAt })
-      .where(eq(schema.projects.id, project.id))
-
-    await refreshProjectActivityAt(sourceProjectIds, userId, db)
-    await markProjectsMemoryStale(
-      [...sourceProjectIds, project.id],
-      userId,
-      db,
-    )
+    await moveChatsToProject(db, userId, chatsToMove, project)
 
     return { success: true }
   }
 
-  const activityAt = new Date()
-
-  await db.update(schema.chats)
-    .set({ projectId: sql`NULL`, activityAt })
-    .where(and(
-      eq(schema.chats.userId, userId),
-      inArray(schema.chats.id, movedChatIds),
-    ))
-
-  await refreshProjectActivityAt(sourceProjectIds, userId, db)
-  await markProjectsMemoryStale(sourceProjectIds, userId, db)
+  await moveChatsToProject(db, userId, chatsToMove, null)
 
   return { success: true }
 })

@@ -9,12 +9,20 @@ export const MCP_READ_SCOPES = [
   'chats:read',
   'projects:read',
   'memory:read',
+  'files:read',
+  'settings:read',
 ] as const
 
 export const MCP_WRITE_SCOPES = [
   'projects:write',
   'memory:write',
+  'chats:write',
+  'files:write',
+  'settings:write',
+  'data:delete',
 ] as const
+
+export const MCP_DELETE_SCOPES = ['data:delete'] as const
 
 export const MCP_RESOURCE_SCOPES = [
   ...MCP_READ_SCOPES,
@@ -32,4 +40,8 @@ export type McpOAuthScope = typeof MCP_OAUTH_SCOPES[number]
 
 export function isMcpWriteScope(scope: string): boolean {
   return (MCP_WRITE_SCOPES as readonly string[]).includes(scope)
+}
+
+export function isMcpDeleteScope(scope: string): boolean {
+  return (MCP_DELETE_SCOPES as readonly string[]).includes(scope)
 }

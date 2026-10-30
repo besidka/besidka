@@ -1,9 +1,8 @@
-import { and, eq } from 'drizzle-orm'
 import { createError } from 'evlog'
-import * as schema from '~~/server/db/schema'
 import { defineEventHandler } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { setProjectArchived } from '~~/server/utils/projects/lifecycle'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -31,26 +30,5 @@ export default defineEventHandler(async (event) => {
 
   logger.set({ userId, projectId: params.data.id })
 
-  const project = await db.query.projects.findFirst({
-    where: { id: params.data.id, userId },
-    columns: { id: true, archivedAt: true },
-  })
-
-  if (!project) {
-    throw createError({
-      message: 'Project not found',
-      status: 404,
-    })
-  }
-
-  const newArchivedAt = project.archivedAt ? null : new Date()
-
-  await db.update(schema.projects)
-    .set({ archivedAt: newArchivedAt, updatedAt: new Date() })
-    .where(and(
-      eq(schema.projects.id, project.id),
-      eq(schema.projects.userId, userId),
-    ))
-
-  return { archivedAt: newArchivedAt }
+  return await setProjectArchived(db, userId, params.data.id)
 })

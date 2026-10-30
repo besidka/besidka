@@ -87,8 +87,8 @@
         data-testid="oauth-consent-legal"
       >
         <p>
-          Your chats, projects and memory can contain sensitive information,
-          including information about other people.
+          Your chats, projects, files and memory can contain sensitive
+          information, including information about other people.
         </p>
         <p>
           By approving, you explicitly consent to Besidka sending the data

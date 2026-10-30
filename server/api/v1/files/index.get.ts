@@ -3,36 +3,17 @@ import { z } from 'zod'
 import { and, desc, eq, like, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
-  isFileLinkedToKnowledgeSql,
-  isFileNotLinkedToKnowledgeSql,
-} from '~~/server/utils/knowledge/linked-files'
+  filesSourceFilters,
+  getFilesSourceCondition,
+} from '~~/server/utils/files/source-filter'
 import { defineEventHandler, getQuery } from 'nuxt/server'
 
 const querySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
-  source: z.enum(['all', 'upload', 'assistant', 'project', 'library'])
-    .default('all'),
+  source: z.enum(filesSourceFilters).default('all'),
 })
-
-type FilesSourceFilter = z.infer<typeof querySchema>['source']
-
-function getSourceCondition(source: FilesSourceFilter) {
-  const isNotLinked = isFileNotLinkedToKnowledgeSql(schema.files.id)
-
-  switch (source) {
-    case 'project':
-      return isFileLinkedToKnowledgeSql(schema.files.id)
-    case 'library':
-      return eq(schema.files.source, 'upload')
-    case 'upload':
-    case 'assistant':
-      return and(eq(schema.files.source, source), isNotLinked)
-    default:
-      return isNotLinked
-  }
-}
 
 export default defineEventHandler(async (event) => {
   const session = await useUserSession()
@@ -58,7 +39,7 @@ export default defineEventHandler(async (event) => {
 
   const whereConditions = and(
     eq(schema.files.userId, userId),
-    getSourceCondition(source),
+    getFilesSourceCondition(source),
     search ? like(schema.files.name, `%${search}%`) : undefined,
   )
 

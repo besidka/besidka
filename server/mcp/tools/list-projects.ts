@@ -28,6 +28,14 @@ const inputSchema = {
     .boolean()
     .optional()
     .describe('List archived projects instead. Defaults to false'),
+  sortBy: z
+    .enum(['activity', 'name'])
+    .optional()
+    .describe('activity (most recent first, default) or name (A to Z)'),
+  pinnedOnly: z
+    .boolean()
+    .optional()
+    .describe('List only pinned projects. Defaults to false'),
 }
 
 type ListProjectsInput = z.infer<z.ZodObject<typeof inputSchema>>
@@ -35,8 +43,9 @@ type ListProjectsInput = z.infer<z.ZodObject<typeof inputSchema>>
 export default defineMcpTool({
   name: 'list_projects',
   title: 'List my projects',
-  description: 'List your Besidka projects, most recent activity first, '
-    + 'with id and name. Use get_project to read instructions and the '
+  description: 'List your Besidka projects, most recent activity first '
+    + 'unless sorted by name, with id, name and pinned state. Use '
+    + 'get_project to read instructions and the '
     + 'knowledge item list. Requires signing in (projects:read).',
   inputSchema,
   annotations: {

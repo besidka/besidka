@@ -6,7 +6,9 @@
 - **Public tools** (product facts: models, providers, key guides, public
   pages). They work without a token, read only public content and never
   touch user data.
-- **Private tools** (the signed-in user's chats, projects and memory). They
+- **Private tools** (the signed-in user's chats, projects, files, memory and
+  settings: 32 tools that cover what the web UI does except chatting, see
+  [What MCP does not do (and why)](#what-mcp-does-not-do-and-why)). They
   need an OAuth access token issued by Besidka's own authorization server
   (Better Auth `@better-auth/mcp`, see `server/utils/auth.ts`).
 
@@ -68,11 +70,25 @@ never data.
 
 | Scope | Tools |
 | --- | --- |
-| `chats:read` | `list_chats`, `get_chat` |
+| `chats:read` | `list_chats`, `get_chat`, `list_shared_chats` |
+| `chats:write` | `update_chat`, `move_chats_to_project`, `revoke_chat_shares`, `branch_chat` |
 | `projects:read` | `list_projects`, `get_project`, `read_project_knowledge_item` |
-| `projects:write` | `create_project`, `update_project_instructions`, `add_project_note`, `add_project_text` |
+| `projects:write` | `create_project`, `update_project_instructions`, `add_project_note`, `add_project_text`, `update_project`, `update_project_knowledge_item` |
 | `memory:read` | `list_memory` |
-| `memory:write` | `add_memory`, `update_memory`, `delete_memory` |
+| `memory:write` | `add_memory`, `update_memory` |
+| `files:read` | `list_files`, `read_file` |
+| `files:write` | `create_file`, `rename_file` |
+| `settings:read` | `get_settings` |
+| `settings:write` | `update_settings` |
+| `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
+
+The per-user surface has 32 tools: the original thirteen plus 19 added for
+UI parity (the five new scopes `files:read`, `settings:read`, `chats:write`,
+`files:write` and `settings:write`, and more tools behind `projects:write` and
+`memory:write`), plus the sixth scope `data:delete`. Write scopes are off by
+default on the consent page and each is ticked separately. A new scope has to be added in three places that stay in
+step: `shared/utils/mcp-oauth-scopes.ts`, the map above, and the consent
+labels in `app/components/OAuth/ScopeLabel.vue`.
 
 `openid`, `profile`, `email` and `offline_access` are identity scopes of the
 authorization server; no tool needs them. Every tool needs exactly one
@@ -80,7 +96,81 @@ resource scope. A unit test (`tool-scopes.spec.ts`) fails when a tool file
 and the map disagree, or when the annotations do not match: reads set
 `readOnlyHint: true`, writes `readOnlyHint: false`, and `destructiveHint:
 true` is set exactly on the tools that overwrite or remove data with no
-history: `delete_memory`, `update_memory` and `update_project_instructions`.
+history (the `DESTRUCTIVE_TOOLS` list in the spec): `delete_memory`,
+`update_memory`, `update_project_instructions`, `update_chat`,
+`delete_chats`, `delete_chat_message`, `revoke_chat_shares`,
+`update_project`, `delete_project`, `update_project_knowledge_item`,
+`delete_project_knowledge_items`, `rename_file`, `delete_files`,
+`reset_memory` and `update_settings`.
+
+#### The `data:delete` scope
+
+Better Auth stores a user's consent as scope names only, so an app approved
+for `projects:write` or `memory:write` earlier would silently gain deletion
+if the delete tools stayed behind those scopes. Every deletion therefore sits
+behind its own scope, `data:delete` ("Delete your data" on the consent page):
+`delete_chats`, `delete_chat_message`, `delete_project`,
+`delete_project_knowledge_items`, `delete_files`, `delete_memory` and
+`reset_memory`. `revoke_chat_shares` stays on `chats:write` because the
+chats survive it. `data:delete` is a write scope (`MCP_WRITE_SCOPES`,
+`isMcpWriteScope`), so it is unticked by default, shows the warning style, and
+`readOnlyHint` is `false` on its tools; `isMcpDeleteScope` and
+`isMcpDeleteTool` pick the delete tools out for the stricter limiter below.
+Each of those tool descriptions ends with `Requires signing in
+(data:delete).`, and the tool-scopes spec checks that only they say so.
+
+`delete_memory` moved from `memory:write` to `data:delete`. Existing
+connections keep every other tool but lose `delete_memory` (and the other six)
+until the user reconnects, answers the `403 insufficient_scope` step-up and
+ticks "Delete your data". No consent row is rewritten.
+
+#### Scope upgrades for existing clients
+
+Dynamic client registration copies `clientRegistrationDefaultScopes` into
+the client's `oauth_clients.scopes` row once, at registration. The provider
+then validates every `/oauth2/authorize` request against that stored list
+(`client.scopes ?? opts.scopes`), and the token and refresh endpoints call
+`validateClientScopes` against it too. A client registered before a scope
+existed (such as an existing claude.ai connector) would therefore get
+`invalid_scope` for the new scopes forever, even after the user disconnects
+and reconnects, because reconnecting reuses the same client row.
+
+The fix is the `hooks.before` branch for `/oauth2/authorize` in
+`server/utils/auth.ts`, which calls `refreshStaleClientScopes`
+(`server/utils/oauth/client-scope-upgrade.ts`). It runs one lookup by
+`client_id` through the Better Auth adapter (the provider's own
+`oauthClient` model, so the JSON column keeps its format). When the stored
+list is a strict subset of the current `MCP_OAUTH_SCOPES` it rewrites it to
+the full list. A list that holds any scope outside `MCP_OAUTH_SCOPES`, a
+null or unreadable list, an empty list and an already-current list are left
+alone. The column is never nulled: the authorization-request route falls
+back to `client.scopes` for display. A failure is swallowed and recorded on
+the request log (`attributes.oauth_client_scope_upgrade_error`), and a
+rewrite sets `attributes.oauth_client_scope_upgrade`, so authorize is never
+blocked. It is a Better Auth hook, not a Nitro middleware, because the
+provider has no option to transform a loaded client and the hook already
+runs inside the auth handler with the adapter, on the GET authorize request
+only (never the token POST and its body pre-buffer trap).
+
+The upgrade only widens what a client may *ask for*. Users are not granted
+anything: consent is per user and per scope, and `/oauth2/authorize` sends
+the user to the consent page whenever the requested scopes are not all in
+their `oauth_consents` row, so an existing connection that never asked for
+the new scopes keeps working untouched. To use a tool behind a new write
+scope, the user still reconnects once (the tool answers `403
+insufficient_scope`, the client re-runs authorize with the missing scope,
+and the consent page asks) and ticks it.
+
+Consent is stored as scope names only, so the reverse also holds: a tool
+added behind a scope the user already granted reaches existing approvals with
+no new prompt. That is why every deletion has its own scope (`data:delete`),
+and why extending an existing scope must stay non-destructive. Under this
+rule `projects:write` gained `update_project` and
+`update_project_knowledge_item`, and `chats:read` gained `list_shared_chats`
+and the share status (the share URL is returned only when the token also has
+`chats:write`). The Privacy Policy says so ("When a permission grows"). A
+tool that deletes, spends the user's keys or publishes something must get a
+new scope.
 
 ### Token verification
 
@@ -163,11 +253,15 @@ host), every token fails the `iss` and `aud` checks.
 Every private tool, reads included, runs these checks in order before its
 handler:
 
-1. **Per-user call limits** (`MCP_PRIVATE_TOOL_RATE_LIMIT` and
-   `MCP_PRIVATE_WRITE_RATE_LIMIT` in `config/mcp-server.ts`): 120 private
-   tool calls per minute, and 30 of them per minute for write tools, on the
+1. **Per-user call limits** (`MCP_PRIVATE_TOOL_RATE_LIMIT`,
+   `MCP_PRIVATE_WRITE_RATE_LIMIT` and `MCP_PRIVATE_DELETE_RATE_LIMIT` in
+   `config/mcp-server.ts`): 120 private tool calls per minute, 30 of them per
+   minute for write tools, and 20 per hour for the `data:delete` tools, on the
    same KV limiter as the auth routes (`createAuthRateLimitStorage`, keys
-   `mcp:rate-limit:all:<userId>` and `mcp:rate-limit:write:<userId>`). The
+   `mcp:rate-limit:all:<userId>`, `mcp:rate-limit:write:<userId>` and
+   `mcp:rate-limit:delete:<userId>`). A delete call is counted in all three
+   buckets. The KV entry lives for the longer of the rule window and the auth
+   default, so the hourly bucket is not forgotten after 15 minutes. The
    memory and knowledge write limiters of the HTTP routes apply on top.
    A limit is a JSON-RPC tool error (`isError: true`), not an HTTP 429 or
    401, so the client does not start OAuth again.
@@ -307,21 +401,40 @@ All private tools are wrapped by `withMcpPrivateTool` (token and scope check,
 call limits, consent, id-only logging, `withSafeToolErrors`). Results are
 text only and capped.
 
-| Tool | What it does | Reuses | Output cap |
-| --- | --- | --- | --- |
-| `list_chats` | Chats by recent activity; `search` (2+ characters) with `searchIn` `all`, `title` or `content` | `chats/history/cursor`, `search-cursor`, `findChatsMatchingMessageContent` (FTS5 `message_search`), `containsLikeEscaped` | `limit` up to 50; search results up to 200 |
-| `get_chat` | Title, project id, models used, messages oldest to newest, text parts only | `messages.parts`, `usage.model` | `maxMessages` up to 200, 8,000 characters per message, 100,000 in total (the oldest are dropped first) |
-| `list_projects` | Projects by recent activity, optional `search` and `archived` | `projects/cursor` | `limit` up to 50 |
-| `get_project` | Name, instructions, knowledge mode, knowledge items (id, kind, title, path, media type, sizes, status, `flagged`, `pinned`) | `listKnowledgeItems` | at most 500 items (`KNOWLEDGE_LIMITS.maxItemsPerProject`) |
-| `read_project_knowledge_item` | Extracted text of one item, paged with `offset` and `nextOffset` | `getKnowledgeItemText` | 50,000 characters by default, 100,000 at most |
-| `create_project` | Create a project (`name`, 1 to 100 characters) and return the same row shape as `list_projects`, with the public id | the insert of `PUT /projects` (`createMcpProject`) | 100 characters; no per-user project cap exists, so none is added |
-| `update_project_instructions` | Replace or clear (`null`) the instructions | same rule as `PATCH /projects/[id]/instructions` | 10,000 characters |
-| `add_project_note` | Add a note | `createKnowledgeNote` (duplicate check, caps, quota, injection screening, commit) | `KNOWLEDGE_LIMITS.maxNoteChars` |
-| `add_project_text` | Add text or markdown as a `file` item (`extractor: text`, `.md` names get `text/markdown`). Either `name` and `text`, or `items: [{ name, text }]` (exactly one form) | `knowledgeItemsBatchCreateSchema`, `hashKnowledgeText`, `ingestKnowledgeItems` with `commit: true` (one call for a whole batch) | single: 200,000 characters; batch: 10 items and 200,000 characters in total; the 512 KiB body cap holds for Cyrillic (see Request limits) |
-| `list_memory` | Account memory, or one project's with `projectId` | `listMemoryEntries` | the entry caps (30 account, 15 per project, 4 KiB body) |
-| `add_memory` | Create an entry (`category`, `title`, `description`, `body`, optional `projectId`) | `createMemoryEntry` | `MEMORY_LIMITS` |
-| `update_memory` | Change category, title, description or body | `updateMemoryEntry` | `MEMORY_LIMITS` |
-| `delete_memory` | Delete an entry | `deleteMemoryEntry` | |
+| Tool | Scope | Destructive | What it does | Reuses and limits |
+| --- | --- | --- | --- | --- |
+| `list_chats` | `chats:read` | no | Chats by recent activity with `pinned`, `shared` and `memoryExcluded` flags; `search` (2+ characters) with `searchIn` `all`, `title` or `content`; `projectId` for one project, `pinnedOnly` | `chats/history/cursor`, `search-cursor`, `findChatsMatchingMessageContent` (FTS5 `message_search`), `containsLikeEscaped`. `limit` up to 50; search results up to 200 |
+| `get_chat` | `chats:read` | no | Title, project id and name, pinned and memory-excluded state, share settings (the link only with `chats:write`), models used, messages oldest to newest, text parts only | `messages.parts`, `usage.model`. `maxMessages` up to 200, 8,000 characters per message, 100,000 in total (the oldest are dropped first) |
+| `list_shared_chats` | `chats:read` | no | Chats with a live public share link: expiry, what the link shows, and the link itself (`shareUrl`) only when the token also has `chats:write` | `listMcpSharedChats`, the active-share filter of `chats/share-management`. `limit` up to 50. The link is a capability, so `McpPrivateToolContext.scopes` decides whether `includeShareUrl` is set (`get_chat` does the same for `share.url`) |
+| `update_chat` | `chats:write` | yes | Set `title`, `pinned`, `memoryExcluded` and `projectId` (at least one; each field sets the value, never toggles) | `renameChat`, `setChatPinnedAt`, `setChatMemoryExclusion`, `moveChatsToProject` in `chats/lifecycle`. Title up to 200 characters |
+| `move_chats_to_project` | `chats:write` | no | Move chats into a project, or out with a null `projectId`; reports moved, already there and not found | `moveChatsToProject`. Up to 100 slugs |
+| `delete_chats` | `data:delete` | yes | Hard delete chats with their messages, the memory learned only from them and the files only they produced; chats that are generating a reply are skipped and reported (best effort, see Generation guard below); a chat whose delete throws is skipped with the reason `error` and the rest go on | `deleteChat` (same cleanup as the app), `isChatGenerating`, one chat at a time. Up to 25 slugs (`MCP_DELETE_CHATS_MAX`) |
+| `delete_chat_message` | `data:delete` | yes | Delete one message and the files only it produced; the only message of a chat and a chat that is generating are refused | `deleteChatMessage`, `isChatGenerating` |
+| `revoke_chat_shares` | `chats:write` | yes | Revoke the public share links of chats; the chats stay | `revokeChatShares`. Up to 90 slugs (a D1 bound-parameter limit) |
+| `branch_chat` | `chats:write` | no | Copy a chat, or its start up to a message, into a new chat in the same project; a generating chat is refused | `branchChat` (`chats/branch`). The original is unchanged |
+| `list_projects` | `projects:read` | no | Projects by recent activity, optional `search` and `archived`; pinned, archived and memory state | `projects/cursor`. `limit` up to 50 |
+| `get_project` | `projects:read` | no | Name, instructions, pinned and archived state, knowledge mode, project memory state, knowledge totals against the limits, knowledge items (id, kind, title, path, media type, sizes, status, `flagged`, `pinned`) | `listKnowledgeItems`. At most 500 items (`KNOWLEDGE_LIMITS.maxItemsPerProject`) |
+| `read_project_knowledge_item` | `projects:read` | no | Extracted text of one item, paged with `offset` and `nextOffset` | `getKnowledgeItemText`. 50,000 characters by default, 100,000 at most |
+| `create_project` | `projects:write` | no | Create a project (`name`, 1 to 100 characters) and return the same row shape as `list_projects`, with the public id | the insert of `PUT /projects` (`createMcpProject`). No per-user project cap exists, so none is added |
+| `update_project_instructions` | `projects:write` | yes | Replace or clear (`null`) the instructions | same rule as `PATCH /projects/[id]/instructions`. 10,000 characters |
+| `add_project_note` | `projects:write` | no | Add a note | `createKnowledgeNote` (duplicate check, caps, quota, injection screening, commit). `KNOWLEDGE_LIMITS.maxNoteChars` |
+| `add_project_text` | `projects:write` | no | Add text or markdown as a `file` item (`extractor: text`, `.md` names get `text/markdown`). Either `name` and `text`, or `items: [{ name, text }]` (exactly one form) | `knowledgeItemsBatchCreateSchema`, `hashKnowledgeText`, `ingestKnowledgeItems` with `commit: true`. Single: 200,000 characters; batch: 10 items and 200,000 characters in total; the 512 KiB body cap holds for Cyrillic (see Request limits) |
+| `update_project` | `projects:write` | yes | Set `name`, `pinned`, `archived`, `knowledgeMode`, `memoryEnabled` and `useAccountMemory` (at least one). Turning project memory on restores its state only: it never starts a refresh or calls a model, and it is forward-only (`applyProjectMemoryEnabled` with `forwardOnly`): the project's chats are stamped as already summarized, so the sweep reads only messages written from now on. Earlier chats need Refresh in the app. Fields are applied in order and a later failure leaves the earlier ones written | `renameProject`, `setProjectPinned`, `setProjectArchived`, `applyProjectMemoryEnabled`, `applyProjectUseAccountMemory` |
+| `delete_project` | `data:delete` | yes | Delete a project with its instructions, knowledge items and project memory; its chats are kept and detached. Needs `confirmName`, the exact current project name | `deleteProject` (`projects/lifecycle`). `confirmName` up to 100 characters |
+| `update_project_knowledge_item` | `projects:write` | yes | Notes: `title`, `body` and `description`. Any item: `description`, `pinned`, and for PDFs `sendAsNativePdf`. The old text of a note is not kept | the knowledge note update path (caps, injection screening when a TypeSafe AI key is set). Title and note limits of `KNOWLEDGE_LIMITS` |
+| `delete_project_knowledge_items` | `data:delete` | yes | Delete knowledge items of one project; unknown ids are skipped and reported | Up to 100 ids (`MCP_KNOWLEDGE_DELETE_MAX_ITEMS`) |
+| `list_files` | `files:read` | no | Library files, newest first, with `search` and a `source` filter (`all`, `upload`, `assistant`, `project`), plus the user's storage usage | `getFilesSourceCondition`, `containsLikeEscaped`. `limit` up to 50 |
+| `read_file` | `files:read` | no | Text of one file, paged with `offset` and `nextOffset`. Text types only (plain text, markdown, CSV); PDFs and images are refused | 50,000 characters by default, 100,000 at most; files above 2 MiB are refused (`MCP_FILE_READ_MAX_BYTES`) |
+| `create_file` | `files:write` | no | Save text as a new file in the library (stored as `text/plain`, keeps its name) and return its id | `persistFile`, `assertUploadContentLength`, quota checks like an upload. Name up to 255 characters, text up to 200,000 |
+| `rename_file` | `files:write` | yes | Change a file's name; the old name is not kept | `assertFileNameCharacters`. 255 characters |
+| `delete_files` | `data:delete` | yes | Hard delete files; the extracted text of files that are project knowledge is removed with them. Skipped ids are reported with a reason (`not_found`, `storage_error`, `error`) | `deleteOwnedFiles` (per file, not a batched R2 delete: each file is removed and caught on its own, so a failure keeps what was already deleted), `isFileLinkedToKnowledgeSql`. Up to 100 ids |
+| `list_memory` | `memory:read` | no | Account memory, one project's with `projectId`, or both with `scope: all` | `listMemoryEntries`. The entry caps (30 account, 15 per project, 4 KiB body) |
+| `add_memory` | `memory:write` | no | Create an entry (`category`, `title`, `description`, `body`, optional `projectId`) | `createMemoryEntry`. `MEMORY_LIMITS` |
+| `update_memory` | `memory:write` | yes | Change category, title, description or body | `updateMemoryEntry`. `MEMORY_LIMITS` |
+| `delete_memory` | `data:delete` | yes | Delete one entry | `deleteMemoryEntry` |
+| `reset_memory` | `data:delete` | yes | Delete many entries: `scope` `account`, `project` (needs `projectId`) or `all`; `onlyGenerated` (with `all`) keeps what the user or an app wrote. Needs `confirm: true` | `resetMemoryEntries`, `deleteExtractedMemoryEntries`, `clearBackfillWindow`, the memory write limiter |
+| `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
+| `update_settings` | `settings:write` | yes | Set `reasoningExpanded`, `reasoningAutoHide`, `defaultReasoningLevel` (`null` clears it), `favoriteModels`, `favoriteGatewayModels`, `sidebarPinned`, `memoryEnabled`, `chatSearchEnabled`. Keys that are not listed are dropped by the tool input schema before the handler runs, not refused (the strict schema in `updateMcpSettings` is a second guard for direct callers). `favoriteModels` and `favoriteGatewayModels` are replaced as a whole, so a client reads `get_settings` first and sends the full list or map. `memoryEnabled: true` is refused while it is off and automatic extraction is on, because turning it on would resume that extraction | `applyUserSettingsUpdate`, the same schemas as `PATCH /profiles/settings` (`shared/utils/user-settings-schemas.ts`) |
 
 Notes:
 
@@ -348,10 +461,55 @@ Notes:
   chat model after a web search. It does not apply here: the external agent
   writes with the user's explicit `memory:write` grant, and the compliance
   gate still runs on every write.
-- Model and tool selection are out of scope for now. Sending messages is
-  deliberately not built, see
-  [Sending messages](#sending-messages-not-built). Documents arrive as text,
-  see [Files and documents](#files-and-documents-text-route).
+- Model and tool selection are out of scope for now. Sending messages and
+  the other exclusions are deliberate, see
+  [What MCP does not do (and why)](#what-mcp-does-not-do-and-why). Documents
+  arrive as text, see [Files and documents](#files-and-documents-text-route).
+- Every write goes through the same lifecycle functions as its HTTP route
+  (`server/utils/chats/lifecycle.ts`, `projects/lifecycle.ts`,
+  `files/delete-files.ts`, `settings/apply-user-settings.ts`), which the
+  routes were changed to share. The tools do not reimplement the SQL.
+- **Deletes are permanent, like in the app.** There is no trash and no undo.
+  D1 Time Travel is a disaster-recovery tool for the whole database
+  (`docs/d1-restore-reconciliation.md`), not a per-user undo. The guard rails
+  are in the contract: every destructive tool sets `destructiveHint: true`
+  so a client asks the user first; `delete_project` needs the exact project
+  name as `confirmName`; `reset_memory` needs `confirm: true`; the batch tools
+  have caps; a chat that is generating a reply is skipped or refused for
+  delete, branch and message delete (`isChatGenerating`, a best-effort check
+  of the generation lease, not a lock: a reply that starts between the check
+  and the write is not stopped); `delete_chats` takes at most 25 slugs; all
+  writes share the 30 per minute write limit; and the deletion tools need the
+  separate `data:delete` scope and share a 20 per hour limit. A client that does not ask the user before a destructive call still
+  cannot get past these caps, but it can delete what the user connected it to
+  delete, which is why the write scopes are off by default.
+- `update_chat` and `update_project` set values, never toggle. Fields are
+  applied one after another, so a failure part way leaves the earlier fields
+  written (the tool descriptions say so and name the order); retrying the
+  call finishes the rest. `update_project` never starts a project memory refresh and
+  never calls a model: turning project memory on only restores its state, as
+  the toggle in the app does before a refresh is requested. Re-enabling is
+  forward-only: the chats of the project are stamped as already summarized
+  (`projectMemorySummaryUpdatedAt`), so the background sweep does not read
+  messages written while memory was off and cannot spend the user's key on
+  them. The web toggle is unchanged. `update_chat` with `memoryExcluded:
+  false` does the same for that chat (`memoryExtractedAt` and
+  `projectMemorySummaryUpdatedAt`).
+- `delete_project` keeps the project's chats and detaches them
+  (`project_id` becomes null), as the app does. It deletes the project's
+  instructions, knowledge items and project memory.
+- `list_files`, `read_file` and `create_file` act on the file library
+  (`list_files` filters by `search` and by `source`: `all`, `upload`,
+  `assistant` or `project`). `read_file` reads text
+  types only and caps the object at 2 MiB before reading it. `create_file`
+  stores the text as `text/plain`, counts it against the storage quota and
+  gives it the normal upload expiry; unlike project notes the text is not
+  screened for prompt injection (the tool description says so); to make text project knowledge use
+  `add_project_text`. `delete_files` also removes the knowledge text of a
+  linked file, so a file cannot be deleted while its text stays searchable.
+- `get_settings` returns `memoryExtractionEnabled`, the memory models and
+  nothing about keys, so a client can explain why extraction is off, but
+  `update_settings` cannot change them (see the exclusions below).
 - `create_project` needs no extra gate: `withMcpPrivateTool` already applies
   the consent check and both MCP call limits (`MCP_PRIVATE_TOOL_RATE_LIMIT`,
   `MCP_PRIVATE_WRITE_RATE_LIMIT`). `PUT /projects` has no consent check of its
@@ -442,6 +600,9 @@ that spends the user's provider keys. That boundary is kept on purpose:
   (`docs/chats/stuck-generation-guard.md`), a returned result instead of a
   stream, and cost and web-search accounting would all need an MCP path.
 
+The wider list of things MCP deliberately does not do is in
+[What MCP does not do (and why)](#what-mcp-does-not-do-and-why).
+
 **Revisit when** the [MCP tool calls dashboard](https://app.axiom.co/besidka-tnqd/dashboards/uid/besidka-mcp-tool-calls)
 shows the private tools used by people other than the owner, or a user names
 a concrete workflow that needs it.
@@ -451,6 +612,67 @@ a concrete workflow that needs it.
 URL. The user presses send in the app, so consent, spend, the lease and
 streaming all run on the normal path and the MCP call costs nothing. No tool
 creates chats today, so this is a new tool, not a change to an existing one.
+
+## What MCP does not do (and why)
+
+The per-user tools cover what a person can do in the web UI except chatting.
+Some things are left out on purpose, and some are impossible, not omitted.
+Each exclusion has a reason and a point at which to look at it again. Do not
+add one of these tools without reading its entry first.
+
+### Left out on purpose
+
+1. **Anything that spends the user's provider keys.** No `send_message`
+   (the decision and its reasons are in
+   [Sending messages](#sending-messages-not-built)), and the same boundary
+   covers memory import, "Update memory now" (extract now), the instruct
+   preview, memory backfill, project memory refresh, chat title generation,
+   the share personal-data check and deep research. Why: a tool call cannot
+   prove that a human approved it, an injected prompt could drain the user's
+   key, and spending on a key needs the user's explicit consent in Besidka.
+   For the same reason `update_project` and `update_settings` only restore
+   state and never trigger a refresh or an LLM call. **Revisit when** the
+   `create_chat_draft` idea in the section above is built, or the dashboard
+   shows other users on these tools and a concrete workflow needs one.
+2. **Creating or updating a public chat share.** `list_shared_chats` and
+   `revoke_chat_shares` exist (they only reduce exposure); publishing does not.
+   Why: a public link is outward-facing and cannot be recalled from caches
+   and copies, a prompt-injected call could publish a private chat, and the
+   in-app flow shows the personal-data check and the share options first.
+   **Revisit when** there is a way to make the user confirm the publication
+   outside the agent's reach, for example a draft share the user activates in
+   the app.
+3. **"Allow anyway" on a knowledge item flagged as a possible prompt
+   injection.** Why: it is the override of the injection screen. An agent
+   that reads the flagged text could un-flag itself, which defeats the screen
+   (`read_project_knowledge_item` already withholds flagged text unless the
+   user asked for it). `update_project_knowledge_item` cannot touch the
+   flag. **Revisit when** the screen has a signal that a human, not the
+   reading agent, decided.
+4. **Settings that authorise spend or change the data recipient:**
+   `memoryExtractionEnabled`, the memory models and gateways, the TypeSafe AI
+   roles (and the about-me text and consents). Why: each lets background work
+   run on the user's key or sends the user's text to another provider, which
+   needs the consent flows of the app. `update_settings` also refuses
+   `memoryEnabled: true` while memory is off and automatic extraction is on,
+   because the switch would resume extraction. **Revisit when** an unattended
+   change is made harmless, for example a spend cap the server enforces.
+5. **Keys, sessions, connected apps, consents, push, email, password, 2FA,
+   passkeys and account deletion.** Why: they are security and legal acts that
+   must stay human. An app that could add a key or end a session could widen
+   its own reach or lock the user out. **Revisit when:** not planned.
+
+### Not possible, not omitted
+
+6. **Chat archive and restore.** Besidka has no chat archive (only
+   project archive, which `update_project` has). **Knowledge folders** are a
+   client-only idea: a `folderId` plus browser-local names, with no server
+   entity to call. **Binary, PDF and image upload, and project file
+   extraction:** the authenticated body cap is 512 KiB, extraction runs in the
+   browser, and claude.ai cannot `PUT` bytes, so text arrives through
+   `add_project_text` and `create_file`, see
+   [Files and documents](#files-and-documents-text-route). **Revisit when** a
+   server entity for folders exists, or extraction runs in the Worker.
 
 ## Transport
 

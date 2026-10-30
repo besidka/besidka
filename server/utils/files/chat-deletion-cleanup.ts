@@ -53,6 +53,40 @@ export async function findChatOriginFiles(
     ))
 }
 
+/**
+ * Origin files of several owned chats in as few queries as the bound
+ * parameter limit allows. Must run before the chats are deleted, because the
+ * cascade removes the messages the files point at.
+ */
+export async function findChatsOriginFiles(
+  chatIds: string[],
+  userId: number,
+): Promise<ChatOriginFile[]> {
+  const db = useDb()
+  const originFiles: ChatOriginFile[] = []
+
+  for (const chunk of chunkArray(chatIds, MAX_BATCH_QUERY_PARAMS)) {
+    const rows = await db
+      .select({
+        id: schema.files.id,
+        storageKey: schema.files.storageKey,
+      })
+      .from(schema.files)
+      .innerJoin(
+        schema.messages,
+        eq(schema.files.originMessageId, schema.messages.id),
+      )
+      .where(and(
+        inArray(schema.messages.chatId, chunk),
+        eq(schema.files.userId, userId),
+      ))
+
+    originFiles.push(...rows)
+  }
+
+  return originFiles
+}
+
 export async function findMessageOriginFiles(
   messageId: number,
   userId: number,

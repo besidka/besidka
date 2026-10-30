@@ -1,18 +1,26 @@
 import { createError } from 'evlog'
 import type { MemoryCategory, MemoryEntry } from '#shared/types/memory.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { clearBackfillWindow } from '~~/server/utils/memory/backfill'
 import {
   createMemoryEntry,
+  deleteExtractedMemoryEntries,
   deleteMemoryEntry,
   listMemoryEntries,
+  resetMemoryEntries,
   updateMemoryEntry,
 } from '~~/server/utils/memory/entries'
+import type { MemoryScopeFilter } from '~~/server/utils/memory/entries'
 import { resolveMemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import { enforceMemoryRateLimit } from '~~/server/utils/memory/rate-limit'
 
 type DbClient = ReturnType<typeof useDb>
 
 export const MCP_MEMORY_COMPLIANCE_ORIGIN = 'mcp'
+
+export const mcpMemoryScopes = ['account', 'project', 'all'] as const
+
+export type McpMemoryScope = typeof mcpMemoryScopes[number]
 
 export interface McpMemoryEntry {
   id: string
@@ -45,21 +53,49 @@ export function toMcpMemoryEntry(entry: MemoryEntry): McpMemoryEntry {
   }
 }
 
+function createInvalidMemoryInputError(message: string) {
+  return createError({ status: 400, message })
+}
+
+function resolveMcpMemoryScope(input: {
+  scope?: McpMemoryScope
+  projectId?: string
+}): { scope: McpMemoryScope, filter: MemoryScopeFilter } {
+  const scope = input.scope ?? (input.projectId ? 'project' : 'account')
+
+  if (scope === 'project') {
+    if (!input.projectId) {
+      throw createInvalidMemoryInputError(
+        'The project scope needs a projectId.',
+      )
+    }
+
+    return {
+      scope,
+      filter: { kind: 'project', projectId: input.projectId },
+    }
+  }
+
+  if (input.projectId) {
+    throw createInvalidMemoryInputError(
+      `The ${scope} scope does not take a projectId. Use the project scope `
+      + 'for one project.',
+    )
+  }
+
+  return { scope, filter: { kind: scope } }
+}
+
 export async function listMcpMemory(
   db: DbClient,
   userId: number,
-  input: { projectId?: string },
+  input: { scope?: McpMemoryScope, projectId?: string },
 ) {
-  const entries = await listMemoryEntries({
-    db,
-    userId,
-    scope: input.projectId
-      ? { kind: 'project', projectId: input.projectId }
-      : { kind: 'account' },
-  })
+  const { scope, filter } = resolveMcpMemoryScope(input)
+  const entries = await listMemoryEntries({ db, userId, scope: filter })
 
   return {
-    scope: input.projectId ? 'project' : 'account',
+    scope,
     projectId: input.projectId ?? null,
     entries: entries.map(toMcpMemoryEntry),
   }
@@ -160,4 +196,52 @@ export async function deleteMcpMemory(
   }
 
   return { id: deleted.id, deleted: true }
+}
+
+/**
+ * Deletes memory entries like the web "Reset" and "Delete generated
+ * entries" actions: `onlyGenerated` removes just what automatic extraction
+ * wrote (every scope), the other scopes remove everything in that scope and
+ * clear the backfill window when it can hold their entries.
+ */
+export async function resetMcpMemory(
+  db: DbClient,
+  userId: number,
+  input: {
+    scope: McpMemoryScope
+    projectId?: string
+    onlyGenerated?: boolean
+    confirm: boolean
+  },
+) {
+  if (input.confirm !== true) {
+    throw createInvalidMemoryInputError(
+      'Set confirm to true to delete memory entries.',
+    )
+  }
+
+  if (input.onlyGenerated && input.scope !== 'all') {
+    throw createInvalidMemoryInputError(
+      'onlyGenerated is only valid with the all scope.',
+    )
+  }
+
+  const { filter } = resolveMcpMemoryScope({
+    scope: input.scope,
+    projectId: input.projectId,
+  })
+
+  await enforceMemoryRateLimit('write', userId)
+
+  if (input.onlyGenerated) {
+    return { deleted: await deleteExtractedMemoryEntries({ db, userId }) }
+  }
+
+  if (input.scope !== 'project') {
+    await clearBackfillWindow({ userId, db })
+  }
+
+  return {
+    deleted: await resetMemoryEntries({ db, userId, scope: filter }),
+  }
 }

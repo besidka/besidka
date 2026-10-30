@@ -461,7 +461,11 @@ describe('knowledge retention and cascade handling', () => {
       expect(knowledgeVersion(12)).toBe(4)
       expect(knowledgeVersion(20)).toBeNull()
       expect(fileExists(1)).toBe(false)
-      expect(bucket.deleteCalls).toEqual(['file-key-1'])
+      expect(bucket.deleteCalls).toEqual([
+        'file-key-1',
+        ['knowledge/u1/p10/items/1.md'],
+        ['knowledge/u1/p11/items/2.md'],
+      ])
     })
 
     it('leaves versions alone when the file has no knowledge items', async () => {

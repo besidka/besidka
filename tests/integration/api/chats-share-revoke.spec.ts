@@ -82,7 +82,14 @@ function createDb(
   const updateWhere = vi.fn(async () => undefined)
   const updateSet = vi.fn(() => ({ where: updateWhere }))
 
+  const ownedChatsQuery: Record<string, unknown> = {}
+
+  for (const method of ['from', 'where']) {
+    ownedChatsQuery[method] = () => ownedChatsQuery
+  }
+
   const db = {
+    select: vi.fn(() => ownedChatsQuery),
     query: {
       chats: {
         findFirst: chatsFindFirst,

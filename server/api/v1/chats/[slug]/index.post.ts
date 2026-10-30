@@ -146,6 +146,7 @@ import {
   putGenerationGuard,
   startGenerationGuardHeartbeat,
 } from '~~/server/utils/ai/generation-guard'
+import { generationInProgressKvKey } from '~~/server/utils/chats/generation-in-progress'
 import {
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
@@ -3585,13 +3586,6 @@ function findPersistedAssistantReply(
   }
 
   return undefined
-}
-
-function generationInProgressKvKey(
-  chatId: string,
-  userMessageId: string,
-): string {
-  return `chat-generating:${chatId}:${userMessageId}`
 }
 
 /**

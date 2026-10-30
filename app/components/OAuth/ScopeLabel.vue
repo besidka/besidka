@@ -35,14 +35,43 @@ const scopeDetails: Record<string, ScopeDetails> = {
     title: 'Read your memory',
     description: 'See what Besidka remembers about you.',
   },
+  'files:read': {
+    title: 'Read your files',
+    description: 'See your file list and storage use, and read text files.',
+  },
+  'settings:read': {
+    title: 'Read your settings',
+    description: 'See your preferences and memory switches.',
+  },
   'projects:write': {
     title: 'Change your projects',
-    description: 'Create and edit projects, their instructions and '
-      + 'knowledge.',
+    description: 'Create, rename, pin, archive and edit projects, their '
+      + 'instructions and knowledge.',
   },
   'memory:write': {
     title: 'Change your memory',
-    description: 'Add, edit and delete what Besidka remembers about you.',
+    description: 'Add and edit what Besidka remembers about you.',
+  },
+  'chats:write': {
+    title: 'Change your chats',
+    description: 'Rename, pin, move and branch chats, exclude them from '
+      + 'memory and stop sharing. It cannot send messages.',
+  },
+  'files:write': {
+    title: 'Change your files',
+    description: 'Create text files and rename files.',
+  },
+  'settings:write': {
+    title: 'Change your settings',
+    description: 'Change your preferences, favourite models and the memory '
+      + 'and chat search switches. It cannot add keys, turn on automatic '
+      + 'memory updates or change the models memory uses.',
+  },
+  'data:delete': {
+    title: 'Delete your data',
+    description: 'Permanently delete chats, messages, projects, knowledge, '
+      + 'files and memory, and reset memory. Deleted data cannot be '
+      + 'restored.',
   },
   'openid': {
     title: 'Know who you are',

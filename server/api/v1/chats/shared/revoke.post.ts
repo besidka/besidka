@@ -1,6 +1,5 @@
-import { and, eq, inArray } from 'drizzle-orm'
 import { createError } from 'evlog'
-import * as schema from '~~/server/db/schema'
+import { revokeChatShares } from '~~/server/utils/chats/share-management'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -60,18 +59,9 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  const deletedShares = await db.delete(schema.chatShares)
-    .where(inArray(schema.chatShares.chatId, ownedChatIds))
-    .returning({ id: schema.chatShares.id })
+  const { deletedCount } = await revokeChatShares(db, userId, ownedChatIds)
 
-  await db.update(schema.chats)
-    .set({ shared: false })
-    .where(and(
-      eq(schema.chats.userId, userId),
-      inArray(schema.chats.id, ownedChatIds),
-    ))
+  logger.set({ revokedCount: deletedCount })
 
-  logger.set({ revokedCount: deletedShares.length })
-
-  return { count: deletedShares.length }
+  return { count: deletedCount }
 })

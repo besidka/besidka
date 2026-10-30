@@ -5,11 +5,13 @@ const mocks = vi.hoisted(() => ({
   invalidateStorageCache: vi.fn(),
   invalidateFileCache: vi.fn(),
   findKnowledgeProjectIdsForFiles: vi.fn(),
+  findKnowledgeTextTargetsForFile: vi.fn(),
   bumpKnowledgeVersion: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/knowledge/linked-files', () => ({
   findKnowledgeProjectIdsForFiles: mocks.findKnowledgeProjectIdsForFiles,
+  findKnowledgeTextTargetsForFile: mocks.findKnowledgeTextTargetsForFile,
 }))
 
 vi.mock('~~/server/utils/knowledge/version', () => ({
@@ -84,6 +86,7 @@ describe('files delete API', () => {
     vi.stubGlobal('invalidateFileCache', mocks.invalidateFileCache)
     vi.stubGlobal('readBody', async (event: { body: unknown }) => event.body)
     mocks.findKnowledgeProjectIdsForFiles.mockResolvedValue([])
+    mocks.findKnowledgeTextTargetsForFile.mockResolvedValue([])
     mocks.bumpKnowledgeVersion.mockResolvedValue(undefined)
     mocks.invalidateFileCache.mockResolvedValue(undefined)
     mocks.invalidateStorageCache.mockResolvedValue(undefined)

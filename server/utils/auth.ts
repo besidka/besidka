@@ -28,6 +28,10 @@ import {
 } from './account/purge-user-data'
 import { notifyOAuthAppConnected } from './account/notify-oauth-app-connected'
 import { revokeUserOAuthGrants } from './account/revoke-user-oauth-grants'
+import {
+  OAUTH_AUTHORIZE_PATH,
+  refreshStaleClientScopes,
+} from './oauth/client-scope-upgrade'
 import { findClientRegistrationViolation } from './oauth/registration-limits'
 import {
   sendEmailChangedEmail,
@@ -511,6 +515,20 @@ function createAuth() {
             ctx.body,
             ctx.request?.headers.get('content-length'),
           )
+
+          return
+        }
+
+        if (ctx.path === OAUTH_AUTHORIZE_PATH) {
+          const clientId = ctx.query?.client_id
+
+          if (typeof clientId === 'string' && clientId.length > 0) {
+            await refreshStaleClientScopes(
+              clientId,
+              ctx.context.adapter,
+              resolveServerLogger(),
+            )
+          }
 
           return
         }

@@ -100,9 +100,13 @@ export function createAuthRateLimitStorage(
     }
   }
 
-  async function set(key: string, value: AuthRateLimitValue): Promise<void> {
+  async function set(
+    key: string,
+    value: AuthRateLimitValue,
+    windowInSeconds: number = 0,
+  ): Promise<void> {
     await kv.put(storageKey(key), JSON.stringify(value), {
-      expirationTtl: ttl,
+      expirationTtl: Math.max(ttl, windowInSeconds),
     })
   }
 
@@ -115,7 +119,7 @@ export function createAuthRateLimitStorage(
     const data = await get(key)
 
     if (!data || now - data.lastRequest > windowInMs) {
-      await set(key, { key, count: 1, lastRequest: now })
+      await set(key, { key, count: 1, lastRequest: now }, rule.window)
 
       return { allowed: true, retryAfter: null }
     }
@@ -128,11 +132,15 @@ export function createAuthRateLimitStorage(
       return { allowed: false, retryAfter }
     }
 
-    await set(key, {
+    await set(
       key,
-      count: data.count + 1,
-      lastRequest: now,
-    })
+      {
+        key,
+        count: data.count + 1,
+        lastRequest: now,
+      },
+      rule.window,
+    )
 
     return { allowed: true, retryAfter: null }
   }

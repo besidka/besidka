@@ -1,13 +1,6 @@
 import { createError } from 'evlog'
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
-import * as schema from '~~/server/db/schema'
-import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
-import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import {
-  findKnowledgeProjectIdsForFiles,
-} from '~~/server/utils/knowledge/linked-files'
-import { bumpKnowledgeVersion } from '~~/server/utils/knowledge/version'
+import { deleteOwnedFiles } from '~~/server/utils/files/delete-files'
 import { defineEventHandler, readBody, setResponseStatus } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -34,128 +27,26 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { ids } = body.data
-  const userId = parseInt(session.user.id)
-  const db = useDb()
+  const result = await deleteOwnedFiles({
+    userId: parseInt(session.user.id),
+    fileIds: body.data.ids,
+    logger,
+  })
+  const { deleted } = result
+  const failed = [...result.failed, ...result.errored]
 
-  let knowledgeProjectIds: number[] = []
-
-  try {
-    knowledgeProjectIds = await findKnowledgeProjectIdsForFiles(
-      userId,
-      ids,
-    )
-
-    await bumpKnowledgeVersion(knowledgeProjectIds)
-  } catch (exception) {
-    logger.set({
-      attributes: {
-        knowledgeVersionBump: {
-          phase: 'before-delete',
-          fileCount: ids.length,
-          error: exceptionMessage(exception),
-        },
-      },
-    })
-  }
-
-  let deletedCount = 0
-  let failedCount = 0
-
-  for (const id of ids) {
-    const file = await db.query.files.findFirst({
-      where: {
-        id,
-        userId,
-      },
-      columns: {
-        storageKey: true,
-      },
-    })
-
-    if (!file) {
-      continue
-    }
-
-    try {
-      await useFileStorage().delete(file.storageKey)
-    } catch (exception) {
-      logger.set({
-        storage: {
-          operation: 'delete',
-          fileId: id,
-          key: file.storageKey,
-        },
-        attributes: {
-          storage: {
-            error: exceptionMessage(exception),
-          },
-        },
-      })
-
-      failedCount++
-      continue
-    }
-
-    try {
-      await invalidateFileCache(file.storageKey)
-    } catch (exception) {
-      logger.set({
-        cache: {
-          operation: 'invalidate',
-          fileId: id,
-          key: file.storageKey,
-        },
-        attributes: {
-          cache: {
-            error: exceptionMessage(exception),
-          },
-        },
-      })
-    }
-
-    await db
-      .delete(schema.files)
-      .where(and(
-        eq(schema.files.id, id),
-        eq(schema.files.userId, userId),
-      ))
-
-    deletedCount++
-  }
-
-  if (deletedCount > 0) {
-    try {
-      await bumpKnowledgeVersion(knowledgeProjectIds)
-    } catch (exception) {
-      logger.set({
-        attributes: {
-          knowledgeVersionBump: {
-            phase: 'after-delete',
-            fileCount: ids.length,
-          },
-          knowledgeVersionBumpAfterDelete: {
-            error: exceptionMessage(exception),
-          },
-        },
-      })
-    }
-  }
-
-  if (deletedCount === 0) {
+  if (deleted.length === 0) {
     throw createError({
-      message: failedCount > 0
+      message: failed.length > 0
         ? 'Failed to delete files from storage. Please try again.'
         : 'No files found',
-      status: failedCount > 0 ? 409 : 404,
+      status: failed.length > 0 ? 409 : 404,
     })
   }
 
-  await invalidateStorageCache(userId)
-
-  if (failedCount > 0) {
+  if (failed.length > 0) {
     throw createError({
-      message: `Failed to delete ${failedCount} file(s) from storage`,
+      message: `Failed to delete ${failed.length} file(s) from storage`,
       status: 409,
     })
   }

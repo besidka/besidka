@@ -29,6 +29,17 @@ const inputSchema = {
     .enum(mcpChatSearchTargets)
     .optional()
     .describe('Search titles, message content or both. Defaults to all'),
+  projectId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(32)
+    .optional()
+    .describe('Only the chats of this project, from list_projects'),
+  pinnedOnly: z
+    .boolean()
+    .optional()
+    .describe('true returns only pinned chats'),
 }
 
 type ListChatsInput = z.infer<z.ZodObject<typeof inputSchema>>
@@ -37,9 +48,11 @@ export default defineMcpTool({
   name: 'list_chats',
   title: 'List my chats',
   description: 'List your Besidka chats, most recent activity first, with '
-    + 'slug, title and project id. Pass search to find chats by title or '
-    + 'message content. Use get_chat with a slug to read one. Requires '
-    + 'signing in (chats:read).',
+    + 'slug, title, project, and whether each is pinned, shared or excluded '
+    + 'from memory. Pass search to find chats by title or message content, '
+    + 'projectId for the chats of one project, pinnedOnly for pinned chats. '
+    + 'Use get_chat with a slug to read one. Requires signing in '
+    + '(chats:read).',
   inputSchema,
   annotations: {
     readOnlyHint: true,
@@ -59,6 +72,8 @@ export default defineMcpTool({
       context.log({
         result_count: result.chats.length,
         has_search: Boolean(input.search),
+        has_project_filter: input.projectId !== undefined,
+        pinned_only: input.pinnedOnly === true,
       })
 
       return result

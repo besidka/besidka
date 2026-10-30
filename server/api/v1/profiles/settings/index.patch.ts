@@ -1,12 +1,11 @@
 import { createError } from 'evlog'
 import type { GatewayId } from '#shared/types/gateways.d'
-import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import type { JevRoleSettings } from '#shared/utils/jev-policy'
 import { jevRoleSettingsPatchSchema } from '#shared/utils/jev-schemas'
-import { reasoningLevels } from '#shared/utils/reasoning'
-import { and, eq, isNull, lt, or } from 'drizzle-orm'
-import type { BatchItem } from 'drizzle-orm/batch'
-import * as schema from '~~/server/db/schema'
+import {
+  defaultReasoningLevelSchema,
+  favoriteGatewayModelsSchema,
+  favoriteModelIdsSchema,
+} from '#shared/utils/user-settings-schemas'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import {
   memorySettingsPatchShape,
@@ -14,11 +13,14 @@ import {
 } from '#shared/utils/memory-schemas'
 import { enforceGatewayModelsRateLimit } from '~~/server/utils/gateways/catalog-rate-limit'
 import { assertMemoryModelChoice } from '~~/server/utils/memory/validate-model-choice'
-import { claimExtractionEnableCooldown } from '~~/server/utils/memory/extraction-enable-cooldown'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
-import { jevRoleSettingsUpdateValue } from '~~/server/utils/jev/roles'
-
-const favoriteGatewayModelIds = z.array(z.string().max(100)).max(50)
+import {
+  applyUserSettingsUpdate,
+  dedupeFavoriteGatewayModels,
+} from '~~/server/utils/settings/apply-user-settings'
+import type {
+  UserSettingsFieldUpdates,
+} from '~~/server/utils/settings/apply-user-settings'
 
 const memoryModelScopes = [
   {
@@ -46,16 +48,12 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
     reasoningExpanded: z.boolean().optional(),
     reasoningAutoHide: z.boolean().optional(),
-    defaultReasoningLevel: z.enum(reasoningLevels).nullable().optional(),
+    defaultReasoningLevel: defaultReasoningLevelSchema.optional(),
     allowExternalLinks: z.boolean().nullable().optional(),
     notificationPromptState: z.boolean().nullable().optional(),
     sidebarPinned: z.boolean().optional(),
-    favoriteModels: z.array(z.string().max(100)).max(50).optional(),
-    favoriteGatewayModels: z.object({
-      vercel: favoriteGatewayModelIds.optional(),
-      cloudflare: favoriteGatewayModelIds.optional(),
-      openrouter: favoriteGatewayModelIds.optional(),
-    }).optional(),
+    favoriteModels: favoriteModelIdsSchema.optional(),
+    favoriteGatewayModels: favoriteGatewayModelsSchema.optional(),
     typesafeRoles: jevRoleSettingsPatchSchema.nullable().optional(),
     ...memorySettingsPatchShape,
   }).superRefine(refineMemorySettingsPatch).safeParse)
@@ -72,25 +70,7 @@ export default defineEventHandler(async (event) => {
   const userId = parseInt(session.user.id)
   const logger = useRequestLogger(event)
 
-  const fieldUpdates: {
-    reasoningExpanded?: boolean
-    reasoningAutoHide?: boolean
-    defaultReasoningLevel?: ReasoningLevel | null
-    allowExternalLinks?: boolean | null
-    notificationPromptState?: boolean | null
-    sidebarPinned?: boolean
-    favoriteModels?: string[]
-    favoriteGatewayModels?: Partial<Record<GatewayId, string[]>>
-    memoryEnabled?: boolean
-    memoryExtractionEnabled?: boolean
-    chatSearchEnabled?: boolean
-    aboutMe?: null
-    profileMemoryModel?: string | null
-    profileMemoryGateway?: GatewayId | null
-    projectMemoryModel?: string | null
-    projectMemoryGateway?: GatewayId | null
-    typesafeRoles?: JevRoleSettings | null
-  } = {}
+  const fieldUpdates: UserSettingsFieldUpdates = {}
 
   if (body.data.reasoningExpanded !== undefined) {
     fieldUpdates.reasoningExpanded = body.data.reasoningExpanded
@@ -123,19 +103,9 @@ export default defineEventHandler(async (event) => {
   }
 
   if (body.data.favoriteGatewayModels !== undefined) {
-    const deduped: Partial<Record<GatewayId, string[]>> = {}
-
-    for (const [gatewayId, modelIds] of Object.entries(
+    fieldUpdates.favoriteGatewayModels = dedupeFavoriteGatewayModels(
       body.data.favoriteGatewayModels,
-    )) {
-      if (!modelIds) {
-        continue
-      }
-
-      deduped[gatewayId as GatewayId] = [...new Set(modelIds)]
-    }
-
-    fieldUpdates.favoriteGatewayModels = deduped
+    )
   }
 
   if (body.data.memoryEnabled !== undefined) {
@@ -203,83 +173,7 @@ export default defineEventHandler(async (event) => {
     await assertMemoryModelChoice({ userId, model, gateway, logger })
   }
 
-  const existingSettings = await db.query.userSettings.findFirst({
-    where: {
-      userId,
-    },
-    columns: {
-      id: true,
-      memoryEnabled: true,
-      memoryExtractionEnabled: true,
-    },
-  })
-  const isExtractionEffectiveBefore = (existingSettings?.memoryEnabled ?? true)
-    && existingSettings?.memoryExtractionEnabled === true
-  const isExtractionEffectiveAfter
-    = (fieldUpdates.memoryEnabled ?? existingSettings?.memoryEnabled ?? true)
-      && (fieldUpdates.memoryExtractionEnabled
-        ?? existingSettings?.memoryExtractionEnabled) === true
-  const isEnablingExtraction = !isExtractionEffectiveBefore
-    && isExtractionEffectiveAfter
-
-  if (isEnablingExtraction) {
-    await claimExtractionEnableCooldown(userId)
-  }
-
-  const stampedAt = new Date()
-  const settingsValues = isEnablingExtraction
-    ? { ...fieldUpdates, memoryExtractionEnabledAt: stampedAt }
-    : fieldUpdates
-  const settingsStatement = existingSettings
-    ? db.update(schema.userSettings).set(
-      fieldUpdates.typesafeRoles === undefined
-        ? settingsValues
-        : {
-          ...settingsValues,
-          typesafeRoles: jevRoleSettingsUpdateValue(
-            fieldUpdates.typesafeRoles,
-          ),
-        },
-    )
-      .where(eq(schema.userSettings.userId, userId))
-    : db.insert(schema.userSettings).values({
-      userId,
-      ...settingsValues,
-    })
-  const isDisablingBackfillSource = fieldUpdates.memoryEnabled === false
-    || fieldUpdates.memoryExtractionEnabled === false
-  const statements: [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] = [
-    settingsStatement,
-  ]
-
-  if (isEnablingExtraction) {
-    statements.push(
-      db.update(schema.chats)
-        .set({ memoryExtractedAt: stampedAt })
-        .where(and(
-          eq(schema.chats.userId, userId),
-          or(
-            isNull(schema.chats.memoryExtractedAt),
-            lt(schema.chats.memoryExtractedAt, schema.chats.activityAt),
-          ),
-        )),
-    )
-  }
-
-  if (statements.length === 1) {
-    await settingsStatement
-  } else {
-    await db.batch(statements)
-  }
-
-  if (isDisablingBackfillSource) {
-    await db.update(schema.memoryBackfillJobs)
-      .set({ status: 'cancelled', finishedAt: new Date() })
-      .where(and(
-        eq(schema.memoryBackfillJobs.userId, userId),
-        eq(schema.memoryBackfillJobs.status, 'running'),
-      ))
-  }
+  await applyUserSettingsUpdate({ db, userId, fieldUpdates })
 
   return fieldUpdates
 })

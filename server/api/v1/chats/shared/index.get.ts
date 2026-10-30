@@ -1,5 +1,6 @@
-import { and, desc, eq, gt, isNull, lt, or } from 'drizzle-orm'
+import { and, desc, eq, lt, or } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { buildActiveShareFilter } from '~~/server/utils/chats/share-management'
 import {
   createHistoryCursor,
   parseHistoryCursor,
@@ -70,11 +71,7 @@ export default defineEventHandler(async (event) => {
     )
     .where(and(
       eq(schema.chats.userId, userId),
-      eq(schema.chatShares.revoked, false),
-      or(
-        isNull(schema.chatShares.expiresAt),
-        gt(schema.chatShares.expiresAt, now),
-      ),
+      buildActiveShareFilter(now),
       cursorFilter,
     ))
     .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
