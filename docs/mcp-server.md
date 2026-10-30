@@ -206,7 +206,11 @@ toolkit turns a thrown error into an `isError` result and still answers HTTP
 from its `mcp:tool:called` hook. `outcome` is written for tools that run only
 (`success` or `error`). The guard writes `method`, `tool` and `outcome` for the
 401 and 403 answers, which never reach the toolkit. Rows from before this
-change carry only the HTTP status. Dashboard: MCP tool calls (Axiom).
+change carry only the HTTP status; the dashboard
+[Besidka · MCP tool calls](https://app.axiom.co/besidka-tnqd/dashboards/uid/besidka-mcp-tool-calls)
+(Axiom uid `besidka-mcp-tool-calls`) shows them as `http_200` rather than as
+successes, and keeps protocol rows (`initialize`, `tools/list`, 406 and 415
+answers) out of the tool-call totals.
 
 ## Connecting a client
 
