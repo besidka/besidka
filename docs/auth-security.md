@@ -1057,9 +1057,9 @@ client id and scopes only, never a token.
 
 `/profile/connected-apps` lists every client the user can still act
 through: one with a live (not revoked, not expired) refresh token or access
-token. A consent row with no live token is hidden, because it is dead weight
+token. A consent row with no live token and no use for 30 days is hidden, because it is dead weight
 and a later authorization would skip the approval screen while it still
-covers the requested scopes; a live grant whose consent row is gone still
+covers the requested scopes. A consent used within 30 days is still listed, because an app without `offline_access` leaves no token rows; a live grant whose consent row is gone still
 shows up and can be revoked. Scopes come from the consent, or from the
 newest live refresh token when there is none (a bare `max()` aggregate in
 SQLite takes the other columns from the max row), read through
