@@ -293,17 +293,65 @@ describe('settleProjectMemoryAfterSweepPass', () => {
     expect(project?.memoryDirtyAt).toEqual(minutesBefore(65))
   })
 
-  it.each<ProjectMemoryStatus>(['failed', 'unavailable', 'ready'])(
-    'leaves a %s project as it is',
+  it.each<ProjectMemoryStatus>(['failed', 'unavailable'])(
+    'recovers a %s project to idle and clears its error',
     async (memoryStatus) => {
-      const chat = await projectChat()
+      const chat = await projectChat({
+        projectMemorySummaryUpdatedAt: minutesBefore(30),
+      })
 
-      await testDb.db.update(schema.projects).set({ memoryStatus })
+      await testDb.db.update(schema.projects)
+        .set({ memoryStatus, memoryError: 'Some error' })
       await settle(chat.id)
 
-      expect((await readProject())?.memoryStatus).toBe(memoryStatus)
+      const project = await readProject()
+
+      expect(project?.memoryStatus).toBe('idle')
+      expect(project?.memoryError).toBeNull()
+      expect(project?.memoryDirtyAt).toBeNull()
     },
   )
+
+  it.each<ProjectMemoryStatus>(['failed', 'unavailable'])(
+    'recovers a %s project to ready when entries exist',
+    async (memoryStatus) => {
+      const chat = await projectChat({
+        projectMemorySummaryUpdatedAt: minutesBefore(30),
+      })
+
+      await seedEntry(testDb.db, userId, { projectId })
+      await testDb.db.update(schema.projects)
+        .set({ memoryStatus, memoryError: 'Some error' })
+      await settle(chat.id)
+
+      expect((await readProject())?.memoryStatus).toBe('ready')
+    },
+  )
+
+  it('keeps a failed project failed while a chat is still left', async () => {
+    const chat = await projectChat({
+      projectMemorySummaryUpdatedAt: minutesBefore(30),
+    })
+
+    await projectChat({ activityAt: minutesBefore(2) })
+    await testDb.db.update(schema.projects)
+      .set({ memoryStatus: 'failed', memoryError: 'Some error' })
+    await settle(chat.id)
+
+    const project = await readProject()
+
+    expect(project?.memoryStatus).toBe('failed')
+    expect(project?.memoryError).toBe('Some error')
+  })
+
+  it('leaves a ready project as it is', async () => {
+    const chat = await projectChat()
+
+    await testDb.db.update(schema.projects).set({ memoryStatus: 'ready' })
+    await settle(chat.id)
+
+    expect((await readProject())?.memoryStatus).toBe('ready')
+  })
 
   it('settles when only chats from before the extraction cut-over are dirty',
     async () => {

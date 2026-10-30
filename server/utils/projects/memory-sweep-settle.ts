@@ -3,6 +3,7 @@ import {
   eq,
   gt,
   gte,
+  inArray,
   isNotNull,
   isNull,
   lt,
@@ -11,6 +12,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm'
+import type { ProjectMemoryStatus } from '#shared/types/projects.d'
 import * as schema from '~~/server/db/schema'
 import { chatIsMemoryIncluded } from '~~/server/utils/memory/chat-memory-filters'
 import {
@@ -22,6 +24,12 @@ import type { ExtractChatMemoryResult } from '~~/server/utils/memory/extract'
 import { projectMemorySettledStatus } from '~~/server/utils/projects/memory-toggle'
 
 type DbClient = ReturnType<typeof useDb>
+
+const SETTLEABLE_STATUSES: ProjectMemoryStatus[] = [
+  'stale',
+  'failed',
+  'unavailable',
+]
 
 const SETTLING_SKIP_REASONS: ReadonlySet<string> = new Set([
   'no-user-text',
@@ -94,12 +102,16 @@ export interface SettleProjectMemoryAfterSweepPassInput {
 /**
  * Bookkeeping after the sweep finished a project chat: clears the project's
  * `stale` mark once the background sweep has nothing left to read in it. A
+ * `failed` or `unavailable` card left by an earlier manual Refresh recovers
+ * the same way and loses its error, since a successful pass proves the key
+ * works. A
  * project chat counts as left when it is memory-included, newer than its
  * project watermark, newer than the extraction cut-over, and not parked
  * (waiting for more user text, or capped on failures, without new activity),
  * so history from before the opt-in never keeps a project stale; the manual
  * Refresh still reads it. The write is one guarded statement: it only touches
- * a `stale` row (never `disabled` or `refreshing`), only when no dirty mark
+ * a `stale`, `failed` or `unavailable` row (never `disabled` or
+ * `refreshing`), only when no dirty mark
  * at or after the pass start raced in, and only when no chat is left, so a
  * message or move that arrives mid-pass keeps the project stale. The settled
  * status is `ready`, or `idle` without entries, as in the manual Refresh. No
@@ -123,11 +135,11 @@ export async function settleProjectMemoryAfterSweepPass(
   const memoryStatus = await projectMemorySettledStatus(db, projectId, userId)
 
   await db.update(schema.projects)
-    .set({ memoryStatus, memoryDirtyAt: null })
+    .set({ memoryStatus, memoryDirtyAt: null, memoryError: null })
     .where(and(
       eq(schema.projects.id, projectId),
       eq(schema.projects.userId, userId),
-      eq(schema.projects.memoryStatus, 'stale'),
+      inArray(schema.projects.memoryStatus, SETTLEABLE_STATUSES),
       or(
         isNull(schema.projects.memoryDirtyAt),
         lt(schema.projects.memoryDirtyAt, passStartedAt),

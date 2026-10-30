@@ -1396,8 +1396,10 @@ extracted, or skipped as `no-user-text`, `nothing-durable` or `too-short`,
 `settleProjectMemoryAfterSweepPass` (`server/utils/projects/memory-sweep-settle.ts`)
 re-evaluates the project in one guarded `UPDATE`: it sets `ready`, or `idle`
 without entries (the same `projectMemorySettledStatus` the manual Refresh
-uses), and `memory_dirty_at` to null, only when the row is `stale` (never
-`disabled` or `refreshing`), the dirty mark is strictly older than the pass
+uses), and `memory_dirty_at` and `memory_error` to null, only when the row is
+`stale`, `failed` or `unavailable` (never `disabled` or `refreshing`; a
+successful pass proves the key works, so a card left failed or unavailable by
+an earlier manual Refresh recovers), the dirty mark is strictly older than the pass
 start (a message or move that arrived mid-pass keeps it `stale`), and no chat
 is left for the sweep. A chat is left when it is in the project, memory-included,
 newer than its project watermark, newer than the user's
