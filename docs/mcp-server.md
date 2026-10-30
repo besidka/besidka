@@ -241,10 +241,11 @@ text. `parseStoredOAuthScopes` (`server/utils/oauth/stored-scopes.ts`) reads
 every shape and is the only reader of `oauth_consents.scopes`,
 `oauth_refresh_tokens.scopes`, `oauth_access_tokens.scopes` and
 `oauth_clients.scopes`. A consent whose list parses to nothing (a legacy or
-corrupt row) does not narrow: the token's scopes stand and the request logs
-`mcp.scope_source: token_fallback`; a narrowing that removed something logs
-`consent`. The editor never writes an empty list (it answers 400 and points
-to Disconnect), so the fallback cannot undo a deliberate narrowing. An
+corrupt row) fails closed: the effective scopes are empty, so the app keeps
+only the tools that need no scope until the user approves it again, and the
+request logs `mcp.scope_source: consent_unreadable`; a narrowing that removed
+something logs `consent`. The editor never writes an empty list (it answers
+400 and points to Disconnect), so only a damaged row lands there. An
 unreadable list on an opaque access token row, which the verifier used to
 reject, is now read like the others.
 
@@ -254,8 +255,19 @@ claude.ai registers a new OAuth client (dynamic client registration) every
 time the user reconnects and never calls `/oauth2/revoke`, so the old client
 keeps a live consent and refresh token and the page used to show several
 "Claude" rows. `GET /api/v1/profiles/connected-apps` lists an app only when
-it is **live**: the user has an unrevoked, unexpired refresh token or access
-token for it. A consent with no live token is dead weight: nothing lists it
+it is **live**: the user has an unrevoked, unexpired refresh token or opaque
+access token for it, or its consent was touched within the last 30 days
+(`OAUTH_REFRESH_TOKEN_TTL_SECONDS`). The last rule matters because JWT access
+tokens (issued when the client sends RFC 8707 `resource`) are never stored in
+`oauth_access_tokens`: an app that did not ask for `offline_access` leaves no
+token rows at all. `oauth_consents.updated_at` therefore doubles as the
+last-used signal: `resolveMcpPrincipal` (`server/utils/mcp/auth.ts`) runs on
+every verified `/mcp` call and bumps it with an awaited conditional update
+(`WHERE id = ? AND updated_at < now - 15 minutes`, so at most one write per
+15 minutes per approval; a failure is swallowed and logged as
+`mcp.consent_touch_error`, never failing the call). "Last active" in the list
+is the later of the newest refresh token and that update. A consent that is
+older than 30 days and holds no live token is dead weight: nothing lists it
 and a later authorization would skip the approval screen while the consent
 still covers the requested scopes. The page groups live apps by name (case
 insensitive); a group of two or more shows a note and **Disconnect older**,
@@ -263,11 +275,12 @@ which keeps the most recently used connection (`lastUsedAt`, falling back to
 `createdAt`) and calls `POST /api/v1/profiles/connected-apps/revoke/bulk`
 (`clientIds`, 1 to 20, revoked one by one, each in its own D1 batch; the page
 sends 20 at a time). The hourly `oauth-grant-sweep` cron deletes dead
-consents too (no live refresh or access token for that user and client, and
-`updated_at` older than a day, so it cannot race an in-flight authorization,
-whose consent is written before its tokens), before it sweeps owner-less
+consents too (no live refresh or opaque access token for that user and
+client, and `updated_at` older than 30 days), before it sweeps owner-less
 clients because a consent keeps its client alive. Counts go under
-`attributes.oauthSweep.deletedConsents`.
+`attributes.oauthSweep.deletedConsents`. Narrowing writes
+(`PATCH .../scopes`) are conditional on the `updated_at` they read and answer
+409 when the approval changed in the meantime.
 
 ### Token verification
 

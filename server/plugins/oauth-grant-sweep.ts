@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { OAUTH_REFRESH_TOKEN_TTL_SECONDS } from '~~/server/utils/oauth/token-ttl'
 
 export const OAUTH_GRANT_RETENTION_DAYS = 1
 export const OAUTH_OWNERLESS_CLIENT_RETENTION_DAYS = 7
@@ -29,6 +30,7 @@ export const OAUTH_SWEEP_CLIENT_BATCH_SIZE = 50
 
 const OAUTH_GRANT_SWEEP_CRON = '0 * * * *'
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
+const MILLISECONDS_PER_SECOND = 1000
 
 interface ScheduledControllerLike {
   cron: string
@@ -134,7 +136,7 @@ async function sweepStaleRefreshTokens(
 
 async function sweepDeadConsents(
   db: ReturnType<typeof useDb>,
-  cutoff: Date,
+  consentCutoff: Date,
   now: Date,
 ): Promise<number> {
   let deleted = 0
@@ -147,7 +149,7 @@ async function sweepDeadConsents(
           .from(schema.oauthConsents)
           .where(and(
             isNotNull(schema.oauthConsents.userId),
-            lt(schema.oauthConsents.updatedAt, cutoff),
+            lt(schema.oauthConsents.updatedAt, consentCutoff),
             notExists(
               db.select({ one: sql`1` })
                 .from(schema.oauthRefreshTokens)
@@ -266,15 +268,19 @@ async function sweepOwnerlessClients(
  * owner-less dynamically registered clients older than a week with no
  * consent and no token. Access tokens that reference a stale refresh token
  * go first, in the same batch, because of the `refresh_id` foreign key.
- * Consents with no live refresh or access token for their user and client,
- * untouched for a day, are dead weight too: nothing lists them, and a later
- * authorization would skip the approval screen while they still cover the
- * requested scopes. The day of grace keeps the sweep from racing an
- * in-flight authorization, whose consent is written before its tokens, and
- * the sweep runs before the owner-less clients one because a consent keeps
- * its client alive. Every statement is bounded by a batch size and a batch
- * count so one run stays inside the D1 limits; a backlog drains over the
- * following hours.
+ * Consents go once the user has no live refresh token and no live opaque
+ * access token for that client and the consent's `updated_at` is older than
+ * the refresh token lifetime (`OAUTH_REFRESH_TOKEN_TTL_SECONDS`, 30 days).
+ * The `updated_at` test is what keeps an app that never asked for
+ * `offline_access` alive: its JWT access tokens are not stored, so
+ * `resolveMcpPrincipal` bumps `updated_at` on every verified `/mcp` call
+ * (throttled to once per 15 minutes) and a connection in use never ages out.
+ * A consent that old with no live token is dead weight: nothing lists it, and
+ * a later authorization would skip the approval screen while it still covers
+ * the requested scopes. The sweep runs the consent step before the owner-less
+ * clients one because a consent keeps its client alive. Every statement is
+ * bounded by a batch size and a batch count so one run stays inside the D1
+ * limits; a backlog drains over the following hours.
  */
 export async function runOAuthGrantSweepJob(
   input: RunOAuthGrantSweepJobInput,
@@ -288,6 +294,10 @@ export async function runOAuthGrantSweepJob(
   const grantCutoff = new Date(
     input.controller.scheduledTime
     - OAUTH_GRANT_RETENTION_DAYS * MILLISECONDS_PER_DAY,
+  )
+  const consentCutoff = new Date(
+    input.controller.scheduledTime
+    - OAUTH_REFRESH_TOKEN_TTL_SECONDS * MILLISECONDS_PER_SECOND,
   )
   const clientCutoff = new Date(
     input.controller.scheduledTime
@@ -307,6 +317,7 @@ export async function runOAuthGrantSweepJob(
         cron: input.controller.cron,
         scheduledTime: new Date(input.controller.scheduledTime).toISOString(),
         grantCutoff: grantCutoff.toISOString(),
+        consentCutoff: consentCutoff.toISOString(),
         clientCutoff: clientCutoff.toISOString(),
       },
     },
@@ -334,7 +345,7 @@ export async function runOAuthGrantSweepJob(
     try {
       counts.consents = await sweepDeadConsents(
         db,
-        grantCutoff,
+        consentCutoff,
         new Date(input.controller.scheduledTime),
       )
     } catch (exception) {

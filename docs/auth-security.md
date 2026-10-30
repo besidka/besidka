@@ -1080,7 +1080,9 @@ limited by the `legal-consent` rate bucket) removes resource scopes from the
 consent and nothing else: tokens are untouched and the MCP server intersects
 a token's scopes with the consent's on every call, so a removed permission
 stops working at once. It can never add a scope (400, "reconnect it from the
-app"), keeps identity scopes, never writes an empty list and logs
+app"), keeps identity scopes, never writes an empty list, answers 409 when
+the approval changed after it was read (the write is conditional on the
+`updated_at` it read) and logs
 `attributes.legalConsent` with `action: oauth_scopes_narrowed`, the kept and
 the removed scopes. See "Consent is the effective scope" in
 `docs/mcp-server.md`. After a D1 restore, replay `oauth_scopes_narrowed` and
@@ -1088,7 +1090,11 @@ the removed scopes. See "Consent is the effective scope" in
 
 The MCP server checks for a live consent row on every call, so
 disconnecting takes effect at once even though access tokens are JWTs
-verified without a database read. The UI no longer promises a delay.
+verified without a database read. The UI no longer promises a delay. A
+consent row whose scope list cannot be read (a legacy or damaged row) fails
+closed: the effective scopes are empty and the call logs
+`mcp.scope_source: consent_unreadable`, so the app keeps only the tools that
+need no scope until the user approves it again.
 
 ### Recovery ends every grant
 
@@ -1126,8 +1132,11 @@ and a link to `/profile/connected-apps`.
 per run, D1 has no `DELETE ... LIMIT`, so each delete selects its ids with
 a limited subquery): access tokens expired for a day; refresh tokens
 expired or revoked for a day, after the access tokens that reference them
-(`refresh_id` foreign key); dead consents (no live refresh or access token
-for that user and client, untouched for a day); and, after those because a
+(`refresh_id` foreign key); dead consents (no live refresh or opaque access
+token for that user and client, `updated_at` older than 30 days, the
+refresh token lifetime; `resolveMcpPrincipal` bumps `updated_at` on `/mcp`
+calls so an app that never asked for `offline_access`, whose JWT access
+tokens are not stored, stays alive while it is used); and, after those because a
 consent keeps its client alive, owner-less clients older than 7 days with no
 consent and no token. **Trade-off:** a client that cached its `client_id`
 and was never approved, or whose user revoked it and then waited 7 days, gets

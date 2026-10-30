@@ -470,7 +470,7 @@ describe('mcp request guard authentication', () => {
       })
     })
 
-    it('keeps the token scopes for a legacy consent and logs the fallback',
+    it('answers 403 for an unreadable consent and logs the source',
       async () => {
         const body = toolsCall('delete_memory', 9)
         const { guard, event } = await createNarrowedGuard(
@@ -479,13 +479,18 @@ describe('mcp request guard authentication', () => {
           ['openid', 'data:delete'],
         )
 
-        await expect(guard(event)).resolves.toBeUndefined()
+        await expect(guard(event)).resolves.toMatchObject({ id: 9 })
+        expect(mocks.setResponseStatus).toHaveBeenCalledWith(event, 403)
+        expect(event.res.headers.get('WWW-Authenticate'))
+          .toContain('error="insufficient_scope"')
         expect(event.context.mcpAuth).toMatchObject({
-          scopes: ['openid', 'data:delete'],
-          scopeSource: 'token_fallback',
+          scopes: [],
+          scopeSource: 'consent_unreadable',
         })
         expect(mocks.logger.set).toHaveBeenCalledWith({
-          mcp: expect.objectContaining({ scope_source: 'token_fallback' }),
+          mcp: expect.objectContaining({
+            scope_source: 'consent_unreadable',
+          }),
         })
       })
   })

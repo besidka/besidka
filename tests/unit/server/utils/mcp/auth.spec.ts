@@ -1,6 +1,15 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import type { JWK, JWTPayload, KeyObject } from 'jose'
 import { SignJWT, exportJWK, generateKeyPair } from 'jose'
+import { drizzle } from 'drizzle-orm/d1'
 import {
   MCP_JWKS_GRACE_PERIOD_MS,
   buildMcpBearerChallenge,
@@ -179,7 +188,7 @@ describe('verifyMcpAccessToken', () => {
     })
   })
 
-  it('keeps the token scopes when the consent holds no readable scope',
+  it('grants no scope when the consent holds no readable scope',
     async () => {
       const result = await verify(await signToken(), {
         resolvePrincipal: async () => {
@@ -189,10 +198,7 @@ describe('verifyMcpAccessToken', () => {
 
       expect(result).toMatchObject({
         status: 'valid',
-        auth: {
-          scopes: ['openid', 'chats:read', 'memory:read'],
-          scopeSource: 'token_fallback',
-        },
+        auth: { scopes: [], scopeSource: 'consent_unreadable' },
       })
     })
 
@@ -529,12 +535,9 @@ describe('resolveEffectiveMcpScopes', () => {
       )).toEqual({ scopes: ['openid'], source: 'consent' })
     })
 
-  it('falls back to the token scopes for an empty consent', () => {
+  it('fails closed for an empty consent', () => {
     expect(resolveEffectiveMcpScopes(['openid', 'chats:read'], []))
-      .toEqual({
-        scopes: ['openid', 'chats:read'],
-        source: 'token_fallback',
-      })
+      .toEqual({ scopes: [], source: 'consent_unreadable' })
   })
 })
 
@@ -617,6 +620,155 @@ describe('resolveMcpPrincipal', () => {
     await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
       isActive: false,
       consentScopes: [],
+    })
+  })
+})
+
+describe('resolveMcpPrincipal consent touch', () => {
+  const NOW = Date.UTC(2026, 9, 30, 12, 0, 0)
+  const FIFTEEN_MINUTES = 15 * 60 * 1000
+
+  interface TouchedUpdate {
+    values: Record<string, unknown>
+    sql: string
+    params: unknown[]
+  }
+
+  function stubTouchDatabase(options: {
+    updatedAt: unknown
+    updateError?: Error
+    clientDisabled?: boolean
+  }) {
+    const db = drizzle({} as never)
+    const updates: TouchedUpdate[] = []
+    const realUpdate = db.update.bind(db)
+
+    Object.assign(db, {
+      batch: async () => {
+        return [
+          [{ id: 42 }],
+          [{ disabled: options.clientDisabled ?? false }],
+          [{
+            id: 9,
+            scopes: JSON.stringify(['openid', 'chats:read']),
+            updatedAt: options.updatedAt,
+          }],
+        ]
+      },
+      update: (table: Parameters<typeof realUpdate>[0]) => {
+        const builder = realUpdate(table)
+        const realSet = builder.set.bind(builder)
+
+        return {
+          set: (values: Parameters<typeof realSet>[0]) => {
+            const setBuilder = realSet(values)
+            const realWhere = setBuilder.where.bind(setBuilder)
+
+            return {
+              where: async (condition: Parameters<typeof realWhere>[0]) => {
+                if (options.updateError) {
+                  throw options.updateError
+                }
+
+                const { sql, params } = realWhere(condition).toSQL()
+
+                updates.push({
+                  values: values as Record<string, unknown>,
+                  sql,
+                  params,
+                })
+              },
+            }
+          },
+        }
+      },
+    })
+    vi.stubGlobal('useDb', () => db)
+
+    return { updates }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('touches a consent last updated more than 15 minutes ago', async () => {
+    const staleUpdatedAt = new Date(NOW - FIFTEEN_MINUTES - 60_000)
+    const { updates } = stubTouchDatabase({ updatedAt: staleUpdatedAt })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+      isActive: true,
+      consentScopes: ['openid', 'chats:read'],
+    })
+    expect(updates).toHaveLength(1)
+    expect(updates[0]!.values).toEqual({ updatedAt: new Date(NOW) })
+    expect(updates[0]!.sql).toContain('update "oauth_consents"')
+    expect(updates[0]!.sql).toContain('"id" = ?')
+    expect(updates[0]!.sql).toContain('"updated_at" < ?')
+    expect(updates[0]!.params).toContain(9)
+    expect(updates[0]!.params).toContain(
+      Math.floor((NOW - FIFTEEN_MINUTES) / 1000),
+    )
+  })
+
+  it('does not write for a consent updated within 15 minutes', async () => {
+    const { updates } = stubTouchDatabase({
+      updatedAt: new Date(NOW - FIFTEEN_MINUTES + 60_000),
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toMatchObject({
+      isActive: true,
+    })
+    expect(updates).toHaveLength(0)
+  })
+
+  it('does not write for an inactive principal', async () => {
+    const { updates } = stubTouchDatabase({
+      updatedAt: new Date(0),
+      clientDisabled: true,
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+      isActive: false,
+      consentScopes: [],
+    })
+    expect(updates).toHaveLength(0)
+  })
+
+  it('swallows a failed touch, logs it and still answers', async () => {
+    const set = vi.fn()
+
+    vi.stubGlobal('useEvent', () => {
+      return { context: { log: { set } } }
+    })
+    stubTouchDatabase({
+      updatedAt: new Date(0),
+      updateError: new Error('d1 unavailable'),
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+      isActive: true,
+      consentScopes: ['openid', 'chats:read'],
+    })
+    expect(set).toHaveBeenCalledWith({
+      mcp: { consent_touch_error: 'd1 unavailable' },
+    })
+  })
+
+  it('answers even when the failure cannot be logged', async () => {
+    stubTouchDatabase({
+      updatedAt: new Date(0),
+      updateError: new Error('d1 unavailable'),
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toMatchObject({
+      isActive: true,
     })
   })
 })

@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/d1'
 
 const SCHEDULED_TIME = Date.UTC(2026, 9, 29, 12, 0, 0)
 const ONE_DAY_SECONDS = 24 * 60 * 60
+const THIRTY_DAYS_SECONDS = 30 * ONE_DAY_SECONDS
 
 interface BuiltQuery {
   toSQL: () => { sql: string, params: unknown[] }
@@ -295,7 +296,7 @@ describe('oauth grant sweep plugin', () => {
         .toContain('not exists (select 1 from "oauth_access_tokens"')
     })
 
-  it('only deletes consents with no live token, idle for a day', async () => {
+  it('only deletes consents with no live token, idle for 30 days', async () => {
     const { db, executed } = createSweepDb()
     const { createLogger } = createLoggerDouble()
     const { runOAuthGrantSweepJob } = await importSweep()
@@ -328,9 +329,37 @@ describe('oauth grant sweep plugin', () => {
     expect(consentDelete!.sql).toContain('"expires_at" > ?')
     expect(consentDelete!.sql).toContain('limit')
     expect(consentDelete!.params).toContain(SCHEDULED_TIME / 1000
+      - THIRTY_DAYS_SECONDS)
+    expect(consentDelete!.params).not.toContain(SCHEDULED_TIME / 1000
       - ONE_DAY_SECONDS)
     expect(consentDelete!.params).toContain(SCHEDULED_TIME / 1000)
   })
+
+  it('logs the 30-day consent cutoff next to the one-day token cutoff',
+    async () => {
+      const { db } = createSweepDb()
+      const { set, createLogger } = createLoggerDouble()
+      const { runOAuthGrantSweepJob } = await importSweep()
+
+      await runOAuthGrantSweepJob({
+        controller: { cron: '0 * * * *', scheduledTime: SCHEDULED_TIME },
+        createLogger,
+        db: db as never,
+      })
+
+      expect(set).toHaveBeenCalledWith({
+        attributes: {
+          oauthSweep: expect.objectContaining({
+            grantCutoff: new Date(
+              SCHEDULED_TIME - ONE_DAY_SECONDS * 1000,
+            ).toISOString(),
+            consentCutoff: new Date(
+              SCHEDULED_TIME - THIRTY_DAYS_SECONDS * 1000,
+            ).toISOString(),
+          }),
+        },
+      })
+    })
 
   it('counts deleted consents and keeps going over full batches', async () => {
     const { db } = createSweepDb({ consentBatches: [100, 7] })

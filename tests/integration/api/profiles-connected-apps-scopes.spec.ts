@@ -44,7 +44,13 @@ const FULL_CONSENT = [
   'data:delete',
 ]
 
-function createDb(consents: Array<{ id: number, scopes: unknown }>) {
+const READ_UPDATED_AT = new Date('2026-10-30T10:00:00.000Z')
+
+function createDb(
+  consents: Array<{ id: number, scopes: unknown, updatedAt?: Date }>,
+  options: { updatedRows?: Array<Array<{ id: number }>> } = {},
+) {
+  const updatedRows = [...(options.updatedRows ?? [])]
   const db = drizzle({} as never)
   const updates: ExecutedUpdate[] = []
   const realUpdate = db.update.bind(db)
@@ -52,7 +58,9 @@ function createDb(consents: Array<{ id: number, scopes: unknown }>) {
   Object.assign(db, {
     select: () => ({
       from: () => ({
-        where: async () => consents,
+        where: async () => consents.map((consent) => {
+          return { updatedAt: READ_UPDATED_AT, ...consent }
+        }),
       }),
     }),
     update: (table: Parameters<typeof realUpdate>[0]) => {
@@ -65,13 +73,19 @@ function createDb(consents: Array<{ id: number, scopes: unknown }>) {
           const realWhere = setBuilder.where.bind(setBuilder)
 
           return {
-            where: async (condition: Parameters<typeof realWhere>[0]) => {
+            where: (condition: Parameters<typeof realWhere>[0]) => {
               const query = realWhere(condition)
 
               updates.push({
                 values: values as Record<string, unknown>,
                 query: query as unknown as BuiltQuery,
               })
+
+              return {
+                returning: async () => {
+                  return updatedRows.shift() ?? [{ id: 9 }]
+                },
+              }
             },
           }
         },
@@ -201,8 +215,10 @@ describe('connected apps scopes API', () => {
       expect(sql).toContain('update "oauth_consents"')
       expect(sql).toContain('"id" = ?')
       expect(sql).toContain('"user_id" = ?')
+      expect(sql).toContain('"updated_at" = ?')
       expect(params).toContain(9)
       expect(params).toContain(5)
+      expect(params).toContain(READ_UPDATED_AT.getTime() / 1000)
       expect(mocks.loggerSet).toHaveBeenCalledWith({
         userId: 5,
         attributes: {
@@ -321,15 +337,56 @@ describe('connected apps scopes API', () => {
     expect(mocks.loggerSet).not.toHaveBeenCalled()
   })
 
+  it('answers 409 and logs nothing when the approval changed after the read',
+    async () => {
+      const { db, updates } = createDb(
+        [{ id: 9, scopes: FULL_CONSENT }],
+        { updatedRows: [[]] },
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler(patchEvent('client-1', { scopes: [] })))
+        .rejects.toMatchObject({
+          status: 409,
+          message:
+            'These permissions changed in the meantime. Reload and try again.',
+        })
+      expect(updates).toHaveLength(1)
+      expect(mocks.loggerSet).not.toHaveBeenCalled()
+    })
+
+  it('stops at the first approval that changed in the meantime', async () => {
+    const { db, updates } = createDb(
+      [
+        { id: 9, scopes: FULL_CONSENT },
+        { id: 10, scopes: FULL_CONSENT },
+      ],
+      { updatedRows: [[]] },
+    )
+
+    vi.stubGlobal('useDb', () => db)
+
+    const handler = await getHandler()
+
+    await expect(handler(patchEvent('client-1', { scopes: [] })))
+      .rejects.toMatchObject({ status: 409 })
+    expect(updates).toHaveLength(1)
+  })
+
   it('surfaces a failed write as a 500', async () => {
     const { db } = createDb([{ id: 9, scopes: FULL_CONSENT }])
 
     Object.assign(db, {
       update: () => ({
         set: () => ({
-          where: async () => {
-            throw new Error('d1 unavailable')
-          },
+          where: () => ({
+            returning: async () => {
+              throw new Error('d1 unavailable')
+            },
+          }),
         }),
       }),
     })

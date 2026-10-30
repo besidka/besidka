@@ -105,9 +105,8 @@ describe('connected apps list API', () => {
       expect(sql).toContain('"oauth_access_tokens"."revoked" is null')
       expect(sql).toContain('"oauth_access_tokens"."expires_at" > ?')
       expect(sql).toContain(
-        '(("live_grants"."client_id" is not null)) or (("live_access_tokens"."client_id" is not null))',
+        '(("live_grants"."client_id" is not null)) or (("live_access_tokens"."client_id" is not null)) or (((("oauth_consents"."id" is not null)) and ("oauth_consents"."updated_at" > ?)))',
       )
-      expect(sql).not.toContain('"oauth_consents"."id" is not null')
       expect(sql).toMatch(
         /max\("created_at"\) as "last_used_at" from "oauth_refresh_tokens"/,
       )
@@ -116,6 +115,58 @@ describe('connected apps list API', () => {
         return param === 5
       })).toHaveLength(4)
       expect(params.at(-1)).toBe(100)
+    })
+
+  it('also lists a consent touched within the refresh token lifetime',
+    async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-10-30T12:00:00.000Z'))
+
+      try {
+        const { db, executed } = createDb([])
+
+        vi.stubGlobal('useDb', () => db)
+
+        const handler = await getHandler()
+
+        await handler({} as any)
+
+        const { params } = executed[0]!.toSQL()
+        const thirtyDaysAgoSeconds = Date.UTC(2026, 9, 30, 12, 0, 0) / 1000
+          - 30 * 24 * 60 * 60
+
+        expect(params).toContain(thirtyDaysAgoSeconds)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+  it('reports the later of the newest refresh token and the consent update',
+    async () => {
+      const consentUpdatedAt = new Date('2026-10-20T00:00:00.000Z')
+      const olderRefresh = Date.parse('2026-10-10T00:00:00.000Z') / 1000
+      const newerRefresh = Date.parse('2026-10-25T00:00:00.000Z') / 1000
+
+      for (const [lastUsedAt, expected] of [
+        [olderRefresh, consentUpdatedAt],
+        [newerRefresh, new Date(newerRefresh * 1000)],
+        [null, consentUpdatedAt],
+      ] as const) {
+        const { db } = createDb([grantRow({
+          consentUpdatedAt,
+          lastUsedAt,
+        })])
+
+        vi.stubGlobal('useDb', () => db)
+        vi.resetModules()
+
+        const handler = await getHandler()
+        const [row] = await handler({} as any) as Array<
+          Record<string, unknown>
+        >
+
+        expect(row).toMatchObject({ lastUsedAt: expected })
+      }
     })
 
   it('maps rows without exposing tokens or logos', async () => {
@@ -134,7 +185,7 @@ describe('connected apps list API', () => {
       canEditScopes: true,
       createdAt: new Date('2026-10-01T00:00:00.000Z'),
       updatedAt: new Date('2026-10-02T00:00:00.000Z'),
-      lastUsedAt: new Date(1761696000 * 1000),
+      lastUsedAt: new Date('2026-10-02T00:00:00.000Z'),
     }])
   })
 
@@ -206,6 +257,7 @@ describe('connected apps list API', () => {
       name: null,
       consentScopes: null,
       consentId: null,
+      consentUpdatedAt: null,
       liveScopes: null,
       lastUsedAt: null,
     })])

@@ -62,6 +62,7 @@ export default defineEventHandler(async (event) => {
     .select({
       id: schema.oauthConsents.id,
       scopes: schema.oauthConsents.scopes,
+      updatedAt: schema.oauthConsents.updatedAt,
     })
     .from(schema.oauthConsents)
     .where(and(
@@ -78,7 +79,11 @@ export default defineEventHandler(async (event) => {
 
   const removedScopes = new Set<string>()
   const keptScopes = new Set<string>()
-  const pendingUpdates: Array<{ id: number, scopes: string[] }> = []
+  const pendingUpdates: Array<{
+    id: number
+    scopes: string[]
+    readUpdatedAt: Date
+  }> = []
 
   for (const consent of consents) {
     const narrowed = narrowConsentScopes(
@@ -114,24 +119,47 @@ export default defineEventHandler(async (event) => {
     })
 
     if (narrowed.removedScopes.length > 0) {
-      pendingUpdates.push({ id: consent.id, scopes: narrowed.scopes })
+      pendingUpdates.push({
+        id: consent.id,
+        scopes: narrowed.scopes,
+        readUpdatedAt: consent.updatedAt,
+      })
     }
   }
 
+  let hasConcurrentChange = false
+
   try {
     for (const update of pendingUpdates) {
-      await db.update(schema.oauthConsents)
+      const updated = await db.update(schema.oauthConsents)
         .set({ scopes: update.scopes })
         .where(and(
           eq(schema.oauthConsents.id, update.id),
           eq(schema.oauthConsents.userId, userId),
+          eq(schema.oauthConsents.updatedAt, update.readUpdatedAt),
         ))
+        .returning({ id: schema.oauthConsents.id })
+
+      if (updated.length === 0) {
+        hasConcurrentChange = true
+
+        break
+      }
     }
   } catch (exception) {
     throw createError({
       message: 'Failed to update the app permissions',
       status: 500,
       why: exceptionMessage(exception),
+    })
+  }
+
+  if (hasConcurrentChange) {
+    throw createError({
+      message: 'These permissions changed in the meantime. Reload and try again.',
+      status: 409,
+      why: 'The approval was changed after it was read',
+      fix: 'Reload the page and try again.',
     })
   }
 
