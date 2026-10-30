@@ -17,6 +17,11 @@ import type {
 } from '#shared/types/project-knowledge.d'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
 import { MEMORY_SETTING_DEFAULTS } from '#shared/utils/memory-policy'
+import type {
+  ProjectAutoUpdateSettingsFields,
+  StoredProjectAutoUpdate,
+} from '#shared/utils/project-memory-auto-update'
+import { resolveProjectAutoUpdate } from '#shared/utils/project-memory-auto-update'
 import { KNOWLEDGE_LIMITS } from '#shared/utils/project-knowledge-policy'
 import {
   knowledgeItemPatchSchema,
@@ -60,6 +65,7 @@ import {
   setProjectPinned,
 } from '~~/server/utils/projects/lifecycle'
 import {
+  applyProjectMemoryAutoUpdate,
   applyProjectMemoryEnabled,
   applyProjectUseAccountMemory,
 } from '~~/server/utils/projects/memory-toggle'
@@ -103,7 +109,11 @@ export interface McpProjectMemoryRow {
   memoryStatus: ProjectMemoryStatus
   memoryUpdatedAt: Date | null
   useAccountMemory: boolean | null
+  memoryAutoUpdate: StoredProjectAutoUpdate
+  memoryAutoUpdateEnabledAt: Date | null
 }
+
+export type McpProjectMemorySettings = ProjectAutoUpdateSettingsFields | null
 
 export interface McpProjectSummaryRow {
   id: string
@@ -210,7 +220,10 @@ export function toMcpProjectSummary(row: McpProjectSummaryRow) {
 export function toMcpProjectMemory(
   row: McpProjectMemoryRow,
   entryCount: number,
+  settings: McpProjectMemorySettings,
 ) {
+  const autoUpdate = resolveProjectAutoUpdate(row, settings)
+
   return {
     enabled: row.memoryStatus !== 'disabled',
     status: row.memoryStatus,
@@ -218,7 +231,26 @@ export function toMcpProjectMemory(
       ?? MEMORY_SETTING_DEFAULTS.useAccountMemory,
     updatedAt: toIsoTimestamp(row.memoryUpdatedAt),
     entryCount,
+    autoUpdate: autoUpdate.autoUpdate,
+    effectiveAutoUpdate: autoUpdate.isEffective,
+    autoUpdateSource: autoUpdate.source,
   }
+}
+
+async function readMcpProjectMemorySettings(
+  db: DbClient,
+  userId: number,
+): Promise<McpProjectMemorySettings> {
+  const settings = await db.query.userSettings.findFirst({
+    where: { userId },
+    columns: {
+      memoryEnabled: true,
+      memoryExtractionEnabled: true,
+      memoryExtractionEnabledAt: true,
+    },
+  })
+
+  return settings ?? null
 }
 
 async function countMcpProjectMemoryEntries(
@@ -380,6 +412,8 @@ export async function getMcpProject(
     memoryStatus: schema.projects.memoryStatus,
     memoryUpdatedAt: schema.projects.memoryUpdatedAt,
     useAccountMemory: schema.projects.useAccountMemory,
+    memoryAutoUpdate: schema.projects.memoryAutoUpdate,
+    memoryAutoUpdateEnabledAt: schema.projects.memoryAutoUpdateEnabledAt,
   })
     .from(schema.projects)
     .where(and(
@@ -408,7 +442,11 @@ export async function getMcpProject(
     archived: project.archivedAt !== null,
     activityAt: toIsoTimestamp(project.activityAt),
     createdAt: toIsoTimestamp(project.createdAt),
-    memory: toMcpProjectMemory(project, memoryEntryCount),
+    memory: toMcpProjectMemory(
+      project,
+      memoryEntryCount,
+      await readMcpProjectMemorySettings(db, userId),
+    ),
     knowledgeTotals: {
       items: items.length,
       textBytes: items.reduce((total, item) => {
@@ -763,6 +801,7 @@ export interface McpProjectUpdateInput {
   knowledgeMode?: KnowledgeMode
   memoryEnabled?: boolean
   useAccountMemory?: boolean
+  memoryAutoUpdate?: 'inherit' | 'off'
 }
 
 function hasMcpProjectUpdate(input: McpProjectUpdateInput): boolean {
@@ -772,6 +811,7 @@ function hasMcpProjectUpdate(input: McpProjectUpdateInput): boolean {
     || input.knowledgeMode !== undefined
     || input.memoryEnabled !== undefined
     || input.useAccountMemory !== undefined
+    || input.memoryAutoUpdate !== undefined
 }
 
 function normalizeMcpProjectName(name: string): string {
@@ -806,6 +846,8 @@ async function readMcpProjectState(
     memoryStatus: schema.projects.memoryStatus,
     memoryUpdatedAt: schema.projects.memoryUpdatedAt,
     useAccountMemory: schema.projects.useAccountMemory,
+    memoryAutoUpdate: schema.projects.memoryAutoUpdate,
+    memoryAutoUpdateEnabledAt: schema.projects.memoryAutoUpdateEnabledAt,
   })
     .from(schema.projects)
     .where(and(
@@ -830,7 +872,11 @@ async function readMcpProjectState(
     pinned: project.pinnedAt !== null,
     archived: project.archivedAt !== null,
     knowledgeMode: project.knowledgeMode ?? 'auto',
-    memory: toMcpProjectMemory(project, memoryEntryCount),
+    memory: toMcpProjectMemory(
+      project,
+      memoryEntryCount,
+      await readMcpProjectMemorySettings(db, userId),
+    ),
   }
 }
 
@@ -838,7 +884,10 @@ async function readMcpProjectState(
  * Applies the given fields with set semantics, so repeating a call changes
  * nothing. Turning project memory on only restores its lifecycle state: it
  * never reads chats and never calls a model, so it cannot spend the user's
- * key. Returns the resulting state.
+ * key. `memoryAutoUpdate` accepts only `inherit` and `off`: both can only
+ * reduce what the background sweep reads, while `on` makes the sweep spend
+ * the user's key and is left to the web app (the schema rejects it, and the
+ * guard below keeps it out for any caller). Returns the resulting state.
  */
 export async function updateMcpProject(
   db: DbClient,
@@ -855,7 +904,18 @@ export async function updateMcpProject(
   if (!hasMcpProjectUpdate(input)) {
     throw createInvalidInputError(
       'Send at least one of name, pinned, archived, knowledgeMode, '
-      + 'memoryEnabled or useAccountMemory.',
+      + 'memoryEnabled, useAccountMemory or memoryAutoUpdate.',
+    )
+  }
+
+  if (
+    input.memoryAutoUpdate !== undefined
+    && input.memoryAutoUpdate !== 'inherit'
+    && input.memoryAutoUpdate !== 'off'
+  ) {
+    throw createInvalidInputError(
+      'memoryAutoUpdate accepts inherit or off. Turn automatic updates on '
+      + 'in the Besidka app.',
     )
   }
 
@@ -891,6 +951,15 @@ export async function updateMcpProject(
       input.projectId,
       userId,
       input.useAccountMemory,
+      db,
+    )
+  }
+
+  if (input.memoryAutoUpdate !== undefined) {
+    await applyProjectMemoryAutoUpdate(
+      input.projectId,
+      userId,
+      input.memoryAutoUpdate,
       db,
     )
   }

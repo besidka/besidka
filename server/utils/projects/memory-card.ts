@@ -1,5 +1,6 @@
 import type { ProjectMemoryCardResponse } from '#shared/types/project-memory.d'
 import { MEMORY_SETTING_DEFAULTS } from '#shared/utils/memory-policy'
+import { resolveProjectAutoUpdate } from '#shared/utils/project-memory-auto-update'
 import { createError } from 'evlog'
 import {
   assertOwnedProject,
@@ -18,7 +19,9 @@ type DbClient = ReturnType<typeof useDb>
  * project-scope entries, grouped like the account memory list. The legacy
  * blob is exposed while it is non-blank and not marked migrated, even when
  * entries already exist, so an unconverted blob never vanishes from the card;
- * `usesEntries` (marker or any entry) decides injection. Owner scoped:
+ * `usesEntries` (marker or any entry) decides injection. The automatic-update
+ * fields carry the project's own choice, whether it is effective after the
+ * account switch, and which of the two decided. Owner scoped:
  * another user's project reads as not found.
  */
 export async function buildProjectMemoryCard(
@@ -42,6 +45,8 @@ export async function buildProjectMemoryCard(
       memoryError: true,
       memoryMigratedAt: true,
       useAccountMemory: true,
+      memoryAutoUpdate: true,
+      memoryAutoUpdateEnabledAt: true,
     },
   })
 
@@ -52,6 +57,15 @@ export async function buildProjectMemoryCard(
     })
   }
 
+  const settings = await db.query.userSettings.findFirst({
+    where: { userId },
+    columns: {
+      memoryEnabled: true,
+      memoryExtractionEnabled: true,
+      memoryExtractionEnabledAt: true,
+    },
+  })
+  const autoUpdate = resolveProjectAutoUpdate(project, settings)
   const entries = await listMemoryEntries({
     db,
     userId,
@@ -78,6 +92,9 @@ export async function buildProjectMemoryCard(
     useAccountMemory: project.useAccountMemory
       ?? MEMORY_SETTING_DEFAULTS.useAccountMemory,
     legacyMemory,
+    autoUpdate: autoUpdate.autoUpdate,
+    effectiveAutoUpdate: autoUpdate.isEffective,
+    autoUpdateSource: autoUpdate.source,
     total: entries.length,
     limits: getMemoryEntryLimits(),
     groups: groupMemoryEntries(entries),

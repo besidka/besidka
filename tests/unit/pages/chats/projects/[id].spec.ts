@@ -97,6 +97,9 @@ function createCard(
     usesEntries: true,
     useAccountMemory: true,
     legacyMemory: null,
+    autoUpdate: 'inherit',
+    effectiveAutoUpdate: false,
+    autoUpdateSource: 'account',
     total: 1,
     limits: {} as ProjectMemoryCardResponse['limits'],
     groups: [],
@@ -106,15 +109,32 @@ function createCard(
 
 const MemoryCardStub = defineComponent({
   name: 'ProjectsMemoryCard',
-  props: ['card', 'isSavingAccountMemory', 'projectId'],
-  emits: ['update-account-memory', 'toggle', 'refresh', 'changed'],
+  props: [
+    'card',
+    'isSavingAccountMemory',
+    'isSavingAutoUpdate',
+    'projectId',
+  ],
+  emits: [
+    'update-account-memory',
+    'update-auto-update',
+    'toggle',
+    'refresh',
+    'changed',
+  ],
   setup(props, { emit }) {
     return () => h('div', {
       'data-testid': 'memory-card-stub',
       'data-use-account-memory': String(props.card?.useAccountMemory),
       'data-total': String(props.card?.total),
       'data-saving': String(props.isSavingAccountMemory),
+      'data-auto-update': String(props.card?.autoUpdate),
+      'data-saving-auto-update': String(props.isSavingAutoUpdate),
     }, [
+      h('button', {
+        'data-testid': 'emit-auto-update-on',
+        'onClick': () => emit('update-auto-update', 'on'),
+      }),
       h('button', {
         'data-testid': 'emit-account-off',
         'onClick': () => emit('update-account-memory', false),
@@ -204,6 +224,60 @@ describe('chats/projects/[id] page account memory', () => {
     await flushPromises()
 
     expect(readCard(wrapper).saving).toBe('false')
+  })
+
+  it('sends the automatic update choice and shows the returned card',
+    async () => {
+      const pending = createDeferred<ProjectMemoryCardResponse>()
+
+      mocks.fetch.mockImplementation(async (url: string) => {
+        return url.endsWith('/memory') ? await pending.promise : {}
+      })
+
+      const wrapper = await mountPage()
+      const stub = () => wrapper.get('[data-testid="memory-card-stub"]')
+
+      await wrapper.get('[data-testid="emit-auto-update-on"]').trigger('click')
+
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/projects/project-1/memory',
+        { method: 'PATCH', body: { autoUpdate: 'on' } },
+      )
+      expect(stub().attributes('data-saving-auto-update')).toBe('true')
+
+      pending.resolve(createCard({
+        autoUpdate: 'on',
+        effectiveAutoUpdate: true,
+        autoUpdateSource: 'project',
+      }))
+      await flushPromises()
+
+      expect(stub().attributes('data-saving-auto-update')).toBe('false')
+      expect(stub().attributes('data-auto-update')).toBe('on')
+    })
+
+  it('keeps the card and shows an error toast when the automatic update '
+    + 'choice fails', async () => {
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+    mocks.fetch.mockImplementation(async (url: string) => {
+      if (url.endsWith('/memory')) {
+        throw new Error('Network down')
+      }
+
+      return {}
+    })
+
+    const wrapper = await mountPage()
+
+    await wrapper.get('[data-testid="emit-auto-update-on"]').trigger('click')
+    await flushPromises()
+
+    const stub = wrapper.get('[data-testid="memory-card-stub"]')
+
+    expect(stub.attributes('data-auto-update')).toBe('inherit')
+    expect(stub.attributes('data-saving-auto-update')).toBe('false')
+    expect(useErrorMessage).toHaveBeenCalledTimes(1)
   })
 
   it('replaces the card with the server response on success', async () => {

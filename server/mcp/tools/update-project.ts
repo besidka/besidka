@@ -40,6 +40,13 @@ const inputSchema = {
     .boolean()
     .optional()
     .describe('Whether chats in the project also use your account memory'),
+  memoryAutoUpdate: z
+    .enum(['inherit', 'off'])
+    .optional()
+    .describe('inherit follows your account setting for automatic memory '
+      + 'updates, off stops automatic updates for this project. on is not '
+      + 'available here: it makes Besidka spend your own API key in the '
+      + 'background, so it can only be turned on in the Besidka app'),
 }
 
 type UpdateProjectInput = z.infer<z.ZodObject<typeof inputSchema>>
@@ -49,13 +56,17 @@ export default defineMcpTool({
   title: 'Update a project',
   description: 'Change settings of one of your Besidka projects: rename it, '
     + 'pin or archive it, set the knowledge mode, turn project memory on or '
-    + 'off, or choose whether it also uses account memory. Each field is '
-    + 'set to the value you send, never toggled. Turning memory on again '
+    + 'off, choose whether it also uses account memory, or set automatic '
+    + 'memory updates to inherit (follow your account setting) or off. '
+    + 'Automatic updates cannot be turned on here, only in the app. Each '
+    + 'field is set to the value you send, never toggled. Turning memory on '
+    + 'again '
     + 'restores its state and covers messages written from now on; it does '
     + 'not read earlier chats or call a model (use Refresh in the app to '
     + 'include earlier chats). If a call fails partway, the fields before '
     + 'the failing one are already applied, in the order name, pinned, '
-    + 'archived, knowledgeMode, useAccountMemory, memoryEnabled. Send at '
+    + 'archived, knowledgeMode, useAccountMemory, memoryAutoUpdate, '
+    + 'memoryEnabled. Send at '
     + 'least one field besides projectId. Requires signing in '
     + '(projects:write).',
   inputSchema,

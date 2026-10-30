@@ -35,6 +35,8 @@ export const projects = snakeCase.table(
     memoryError: text(),
     useAccountMemory: integer({ mode: 'boolean' }),
     memoryMigratedAt: integer({ mode: 'timestamp' }),
+    memoryAutoUpdate: text({ enum: ['on', 'off'] }),
+    memoryAutoUpdateEnabledAt: integer({ mode: 'timestamp' }),
     knowledgeMode: text({ enum: knowledgeModes }),
     knowledgeVersion: integer({ mode: 'number' }),
     knowledgePackVersion: integer({ mode: 'number' }),

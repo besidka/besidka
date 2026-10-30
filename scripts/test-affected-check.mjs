@@ -381,6 +381,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/projects/memory-card.spec.ts',
     'tests/unit/utils/projects/memory-account.spec.ts',
     'tests/unit/utils/projects/memory-sweep-settle.spec.ts',
+    'tests/unit/utils/projects/memory-toggle.spec.ts',
+    'tests/unit/utils/memory/project-auto-update.spec.ts',
+    'tests/unit/utils/project-memory-auto-update.spec.ts',
     'tests/unit/utils/memory/extract-manual.spec.ts',
     'tests/unit/utils/project-memory-refresh.spec.ts',
     'tests/unit/utils/memory/extract-grounding.spec.ts',
@@ -2722,7 +2725,22 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/db/accounts-provider-account-id.spec.ts',
         'tests/unit/db/typesafe-roles-migration.spec.ts',
         'tests/unit/db/default-reasoning-level-migration.spec.ts',
+        'tests/unit/db/project-memory-auto-update-migration.spec.ts',
       ],
+    },
+    {
+      pattern: /^(shared\/utils\/project-memory-auto-update|shared\/types\/project-memory\.d|server\/utils\/memory\/project-auto-update)\.ts$/,
+      tests: [
+        ...memoryExtractionTests,
+        'tests/unit/components/Projects/MemoryCard.spec.ts',
+        'tests/unit/pages/chats/projects/[id].spec.ts',
+        'tests/integration/api/projects-memory.spec.ts',
+        'tests/unit/server/utils/mcp/private-projects-manage.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/api\/v1\/projects\/\[id\]\/memory\/index\.(get|patch)\.ts$/,
+      tests: ['tests/integration/api/projects-memory.spec.ts'],
     },
     {
       pattern: /^app\/composables\/social-oauth\.ts$/,

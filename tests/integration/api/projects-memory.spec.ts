@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   toggleProjectMemory: vi.fn(),
   buildProjectMemoryCard: vi.fn(),
   setProjectUseAccountMemory: vi.fn(),
+  setProjectMemoryAutoUpdate: vi.fn(),
   assertNotCrossSiteRequest: vi.fn(),
 }))
 
@@ -51,6 +52,7 @@ vi.mock('~~/server/utils/projects/memory-refresh', () => ({
 
 vi.mock('~~/server/utils/projects/memory-account', () => ({
   setProjectUseAccountMemory: mocks.setProjectUseAccountMemory,
+  setProjectMemoryAutoUpdate: mocks.setProjectMemoryAutoUpdate,
 }))
 
 vi.mock('~~/server/utils/projects/memory-card', () => ({
@@ -69,6 +71,9 @@ function createCard(overrides: Record<string, unknown> = {}) {
     usesEntries: true,
     useAccountMemory: true,
     legacyMemory: null,
+    autoUpdate: 'inherit',
+    effectiveAutoUpdate: false,
+    autoUpdateSource: 'account',
     total: 1,
     limits: {},
     groups: [],
@@ -109,6 +114,15 @@ describe('project memory API', () => {
     mocks.setProjectUseAccountMemory.mockImplementation(
       async (_projectId: string, _userId: number, value: boolean) => {
         return createCard({ useAccountMemory: value })
+      },
+    )
+    mocks.setProjectMemoryAutoUpdate.mockImplementation(
+      async (_projectId: string, _userId: number, value: string) => {
+        return createCard({
+          autoUpdate: value,
+          effectiveAutoUpdate: value === 'on',
+          autoUpdateSource: value === 'inherit' ? 'account' : 'project',
+        })
       },
     )
     mocks.toggleProjectMemory.mockImplementation(
@@ -316,6 +330,85 @@ describe('project memory API', () => {
     expect(mocks.setProjectUseAccountMemory).not.toHaveBeenCalled()
     expect(mocks.toggleProjectMemory).toHaveBeenCalledTimes(1)
   })
+
+  it('sets the automatic update choice and returns the effective card',
+    async () => {
+      const handler = await getToggleProjectMemoryHandler()
+
+      for (const autoUpdate of ['inherit', 'on', 'off']) {
+        const response = await handler({
+          params: { id: 'project-1' },
+          body: { autoUpdate },
+        } as never)
+
+        expect(mocks.setProjectMemoryAutoUpdate).toHaveBeenLastCalledWith(
+          'project-1',
+          1,
+          autoUpdate,
+          undefined,
+          expect.objectContaining({ set: expect.any(Function) }),
+        )
+        expect(response).toMatchObject({
+          autoUpdate,
+          effectiveAutoUpdate: autoUpdate === 'on',
+          autoUpdateSource: autoUpdate === 'inherit' ? 'account' : 'project',
+        })
+      }
+
+      expect(mocks.setProjectMemoryAutoUpdate).toHaveBeenCalledTimes(3)
+      expect(mocks.setProjectUseAccountMemory).not.toHaveBeenCalled()
+      expect(mocks.toggleProjectMemory).not.toHaveBeenCalled()
+    })
+
+  it('rejects an invalid or mixed automatic update body', async () => {
+    const handler = await getToggleProjectMemoryHandler()
+    const invalidBodies = [
+      { autoUpdate: 'always' },
+      { autoUpdate: true },
+      { autoUpdate: null },
+      { autoUpdate: 'on', useAccountMemory: true },
+      { autoUpdate: 'on', extra: 1 },
+    ]
+
+    for (const body of invalidBodies) {
+      await expect(handler({
+        params: { id: 'project-1' },
+        body,
+      } as never)).rejects.toMatchObject({ status: 400 })
+    }
+
+    expect(mocks.setProjectMemoryAutoUpdate).not.toHaveBeenCalled()
+  })
+
+  it('rejects an automatic update change without a session or cross-site',
+    async () => {
+      vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
+
+      const anonymousHandler = await getToggleProjectMemoryHandler()
+
+      await expect(anonymousHandler({
+        params: { id: 'project-1' },
+        body: { autoUpdate: 'on' },
+      } as never)).rejects.toMatchObject({ statusCode: 401 })
+
+      vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+        user: { id: '1' },
+      }))
+      mocks.assertNotCrossSiteRequest.mockImplementation(() => {
+        throw (globalThis as any).createError({
+          status: 403,
+          message: 'Forbidden',
+        })
+      })
+
+      const crossSiteHandler = await getToggleProjectMemoryHandler()
+
+      await expect(crossSiteHandler({
+        params: { id: 'project-1' },
+        body: { autoUpdate: 'on' },
+      } as never)).rejects.toMatchObject({ status: 403 })
+      expect(mocks.setProjectMemoryAutoUpdate).not.toHaveBeenCalled()
+    })
 
   it('propagates a 404 for a foreign or missing project', async () => {
     mocks.setProjectUseAccountMemory.mockRejectedValue(

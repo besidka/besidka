@@ -1,7 +1,7 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   MemoryCategory,
   MemoryEntry,
@@ -9,11 +9,21 @@ import type {
 import type { ProjectMemoryCardResponse } from '#shared/types/project-memory.d'
 import MemoryCard from '../../../../app/components/Projects/MemoryCard.vue'
 
+const mocks = vi.hoisted(() => ({
+  confirm: vi.fn(),
+}))
+
+mockNuxtImport('useConfirm', () => mocks.confirm)
+
 vi.mock('#app', async (importOriginal) => {
   return await importOriginal<Record<string, unknown>>()
 })
 
 enableAutoUnmount(afterEach)
+
+beforeEach(() => {
+  mocks.confirm.mockReset()
+})
 
 const DetailModalStub = defineComponent({
   props: ['open', 'entry', 'limits', 'projectId', 'takenSingletonCategories'],
@@ -76,6 +86,9 @@ function createCard(
     usesEntries: true,
     useAccountMemory: true,
     legacyMemory: null,
+    autoUpdate: 'inherit',
+    effectiveAutoUpdate: false,
+    autoUpdateSource: 'account',
     total: 3,
     limits,
     groups: [
@@ -100,8 +113,8 @@ async function mountCard(
   props: {
     isRefreshing?: boolean
     isToggling?: boolean
-    automaticUpdates?: boolean
     isSavingAccountMemory?: boolean
+    isSavingAutoUpdate?: boolean
   } = {},
 ) {
   const wrapper = await mountSuspended(MemoryCard, {
@@ -133,15 +146,15 @@ async function mountCard(
 describe('Projects/MemoryCard', () => {
   it('renders the title, the automatic hint and no badge when ready',
     async () => {
-      const wrapper = await mountCard(createCard(), {
-        automaticUpdates: true,
-      })
+      const wrapper = await mountCard(createCard({
+        effectiveAutoUpdate: true,
+      }))
       const hint = wrapper.get('[data-testid="project-memory-hint"]')
 
       expect(wrapper.text()).toContain('Project memory')
-      expect(hint.text()).toBe(
-        'Updates automatically after chats in this project; turn it off per '
-        + 'project.',
+      expect(hint.text().replace(/\s+/g, ' ')).toBe(
+        'Updates automatically after chats in this project. Change it with '
+        + 'Automatic updates below.',
       )
       expect(wrapper.find('[data-testid="project-memory-settings-link"]')
         .exists()).toBe(false)
@@ -158,12 +171,178 @@ describe('Projects/MemoryCard', () => {
       )
 
       expect(hint.text().replace(/\s+/g, ' ')).toBe(
-        'Automatic updates are off. Use Refresh memory, or turn on Generate '
-        + 'memory from chats in Memory settings.',
+        'Automatic updates are off. Use Refresh memory, turn on Automatic '
+        + 'updates below, or turn on Generate memory from chats in Memory '
+        + 'settings.',
       )
       expect(link.text()).toBe('Memory settings')
       expect(link.attributes('data-to')).toBe(JSON.stringify('/profile/memory'))
     })
+
+  describe('automatic updates control', () => {
+    function option(
+      wrapper: Awaited<ReturnType<typeof mountCard>>,
+      value: 'inherit' | 'on' | 'off',
+    ) {
+      return wrapper.get(
+        `[data-testid="project-memory-auto-update-${value}"]`,
+      )
+    }
+
+    it('renders the three options with the project choice selected',
+      async () => {
+        const wrapper = await mountCard(createCard({ autoUpdate: 'off' }))
+
+        expect(option(wrapper, 'inherit').text()).toBe('Account setting')
+        expect(option(wrapper, 'on').text()).toBe('On')
+        expect(option(wrapper, 'off').text()).toBe('Off')
+        expect(option(wrapper, 'off').attributes('aria-checked'))
+          .toBe('true')
+        expect(option(wrapper, 'inherit').attributes('aria-checked'))
+          .toBe('false')
+        expect(option(wrapper, 'on').attributes('aria-checked'))
+          .toBe('false')
+      })
+
+    it('describes the effective state and where it comes from', async () => {
+      const cases: [
+        Partial<ProjectMemoryCardResponse>,
+        string,
+      ][] = [
+        [
+          { autoUpdate: 'inherit', effectiveAutoUpdate: true },
+          'Automatic updates: on (from your account setting)',
+        ],
+        [
+          { autoUpdate: 'inherit', effectiveAutoUpdate: false },
+          'Automatic updates: off (from your account setting)',
+        ],
+        [
+          {
+            autoUpdate: 'on',
+            effectiveAutoUpdate: true,
+            autoUpdateSource: 'project',
+          },
+          'Automatic updates: on (set for this project)',
+        ],
+        [
+          {
+            autoUpdate: 'off',
+            effectiveAutoUpdate: false,
+            autoUpdateSource: 'project',
+          },
+          'Automatic updates: off (set for this project)',
+        ],
+        [
+          {
+            autoUpdate: 'on',
+            effectiveAutoUpdate: false,
+            autoUpdateSource: 'project',
+          },
+          'Automatic updates: off (memory is turned off in your account '
+          + 'settings)',
+        ],
+      ]
+
+      for (const [overrides, expected] of cases) {
+        const wrapper = await mountCard(createCard(overrides))
+
+        expect(wrapper.get(
+          '[data-testid="project-memory-auto-update-state"]',
+        ).text()).toBe(expected)
+      }
+    })
+
+    it('points the header at the control when the project turned it off',
+      async () => {
+        const wrapper = await mountCard(createCard({
+          autoUpdate: 'off',
+          autoUpdateSource: 'project',
+        }))
+
+        expect(wrapper.get('[data-testid="project-memory-hint"]').text())
+          .toBe(
+            'Automatic updates are off for this project. Use Refresh '
+            + 'memory, or change Automatic updates below.',
+          )
+        expect(wrapper.find('[data-testid="project-memory-settings-link"]')
+          .exists()).toBe(false)
+      })
+
+    it('emits the choice without a confirm for Off and Account setting',
+      async () => {
+        const wrapper = await mountCard(createCard({ autoUpdate: 'on' }))
+
+        await option(wrapper, 'off').trigger('click')
+        await option(wrapper, 'inherit').trigger('click')
+
+        expect(mocks.confirm).not.toHaveBeenCalled()
+        expect(wrapper.emitted('update-auto-update')).toEqual([
+          ['off'],
+          ['inherit'],
+        ])
+      })
+
+    it('asks for confirmation before turning On and emits once accepted',
+      async () => {
+        mocks.confirm.mockResolvedValue({ label: 'Turn on' })
+
+        const wrapper = await mountCard(createCard())
+
+        await option(wrapper, 'on').trigger('click')
+        await flushPromises()
+
+        expect(mocks.confirm).toHaveBeenCalledTimes(1)
+
+        const options = mocks.confirm.mock.calls[0]![0]
+
+        expect(options.text).toBe(
+          'Turn on automatic updates for this project?',
+        )
+        expect(options.subtitle).toContain('your own API key')
+        expect(options.subtitle).toContain('about 10 minutes')
+        expect(options.subtitle).toContain('from now on')
+        expect(options.subtitle).toContain('Refresh memory')
+        expect(wrapper.emitted('update-auto-update')).toEqual([['on']])
+      })
+
+    it('emits nothing when the confirm is declined', async () => {
+      mocks.confirm.mockResolvedValue(null)
+
+      const wrapper = await mountCard(createCard())
+
+      await option(wrapper, 'on').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('update-auto-update')).toBeUndefined()
+    })
+
+    it('ignores a click on the option that is already selected', async () => {
+      const wrapper = await mountCard(createCard({ autoUpdate: 'on' }))
+
+      await option(wrapper, 'on').trigger('click')
+      await flushPromises()
+
+      expect(mocks.confirm).not.toHaveBeenCalled()
+      expect(wrapper.emitted('update-auto-update')).toBeUndefined()
+    })
+
+    it('disables the control while saving and for a disabled project',
+      async () => {
+        const saving = await mountCard(createCard(), {
+          isSavingAutoUpdate: true,
+        })
+        const disabled = await mountCard(createCard({
+          memoryStatus: 'disabled',
+        }))
+
+        for (const value of ['inherit', 'on', 'off'] as const) {
+          expect(option(saving, value).attributes('disabled')).toBeDefined()
+          expect(option(disabled, value).attributes('disabled'))
+            .toBeDefined()
+        }
+      })
+  })
 
   it('shows the model, the updated age and the error label', async () => {
     const wrapper = await mountCard(createCard({
@@ -333,8 +512,7 @@ describe('Projects/MemoryCard', () => {
 
   it('explains the out-of-date badge when updates are on', async () => {
     const wrapper = await mountCard(
-      createCard({ memoryStatus: 'stale' }),
-      { automaticUpdates: true },
+      createCard({ memoryStatus: 'stale', effectiveAutoUpdate: true }),
     )
     const badge = wrapper.get('[data-testid="project-memory-status"]')
     const explanation = 'Updates automatically about 10 minutes after the '
@@ -377,8 +555,12 @@ describe('Projects/MemoryCard', () => {
   it('shows the empty state with build-up copy when updates are on',
     async () => {
       const wrapper = await mountCard(
-        createCard({ memoryStatus: 'idle', total: 0, groups: [] }),
-        { automaticUpdates: true },
+        createCard({
+          memoryStatus: 'idle',
+          total: 0,
+          groups: [],
+          effectiveAutoUpdate: true,
+        }),
       )
 
       expect(wrapper.get('[data-testid="project-memory-empty"]').text())

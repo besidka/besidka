@@ -14,12 +14,14 @@ const mocks = vi.hoisted(() => {
     setProjectArchived: vi.fn(),
     deleteProject: vi.fn(),
     applyProjectMemoryEnabled: vi.fn(),
+    applyProjectMemoryAutoUpdate: vi.fn(),
     applyProjectUseAccountMemory: vi.fn(),
     refreshProjectMemoryFromChats: vi.fn(),
     toggleProjectMemory: vi.fn(),
     listKnowledgeItems: vi.fn(),
     toKnowledgeItemWire: vi.fn(),
     getResults: [] as unknown[],
+    settings: null as Record<string, unknown> | null,
     logger: { set: vi.fn() },
   }
 })
@@ -69,6 +71,7 @@ vi.mock('~~/server/utils/projects/lifecycle', () => {
 vi.mock('~~/server/utils/projects/memory-toggle', () => {
   return {
     applyProjectMemoryEnabled: mocks.applyProjectMemoryEnabled,
+    applyProjectMemoryAutoUpdate: mocks.applyProjectMemoryAutoUpdate,
     applyProjectUseAccountMemory: mocks.applyProjectUseAccountMemory,
   }
 })
@@ -99,6 +102,9 @@ function createQueuedDb() {
 
   return {
     select: () => chain,
+    query: {
+      userSettings: { findFirst: async () => mocks.settings },
+    },
   } as unknown as ReturnType<typeof useDb>
 }
 
@@ -169,6 +175,7 @@ describe('MCP project management domain functions', () => {
       mocks.setProjectArchived,
       mocks.deleteProject,
       mocks.applyProjectMemoryEnabled,
+      mocks.applyProjectMemoryAutoUpdate,
       mocks.applyProjectUseAccountMemory,
       mocks.refreshProjectMemoryFromChats,
       mocks.toggleProjectMemory,
@@ -179,6 +186,7 @@ describe('MCP project management domain functions', () => {
     }
 
     mocks.getResults = []
+    mocks.settings = null
     mocks.decodeKnowledgeEntityId.mockReturnValue(7)
     mocks.toKnowledgeItemWire.mockImplementation((row: unknown) => row)
   })
@@ -293,6 +301,9 @@ describe('MCP project management domain functions', () => {
             useAccountMemory: false,
             updatedAt: null,
             entryCount: 3,
+            autoUpdate: 'inherit',
+            effectiveAutoUpdate: false,
+            autoUpdateSource: 'account',
           },
         })
       })
@@ -361,6 +372,81 @@ describe('MCP project management domain functions', () => {
       expect(mocks.toggleProjectMemory).not.toHaveBeenCalled()
       expect(result.memory.enabled).toBe(true)
     })
+
+    it('sets memoryAutoUpdate to off and inherit through the shared rule',
+      async () => {
+        for (const memoryAutoUpdate of ['off', 'inherit'] as const) {
+          mocks.getResults = [
+            { id: 'proj1' },
+            projectState(),
+            { total: 0 },
+          ]
+
+          await updateMcpProject(
+            createQueuedDb(),
+            1,
+            { projectId: 'proj1', memoryAutoUpdate },
+            mocks.logger,
+          )
+
+          expect(mocks.applyProjectMemoryAutoUpdate).toHaveBeenLastCalledWith(
+            'proj1',
+            1,
+            memoryAutoUpdate,
+            expect.anything(),
+          )
+        }
+
+        expect(mocks.applyProjectMemoryEnabled).not.toHaveBeenCalled()
+        expect(mocks.refreshProjectMemoryFromChats).not.toHaveBeenCalled()
+      })
+
+    it('never turns automatic updates on, even past the tool schema',
+      async () => {
+        mocks.getResults = [{ id: 'proj1' }]
+
+        await expect(updateMcpProject(
+          createQueuedDb(),
+          1,
+          {
+            projectId: 'proj1',
+            memoryAutoUpdate: 'on' as unknown as 'off',
+          },
+          mocks.logger,
+        )).rejects.toMatchObject({ status: 400 })
+
+        expect(mocks.applyProjectMemoryAutoUpdate).not.toHaveBeenCalled()
+      })
+
+    it('reports the effective automatic update state of the project',
+      async () => {
+        mocks.settings = {
+          memoryEnabled: true,
+          memoryExtractionEnabled: false,
+          memoryExtractionEnabledAt: null,
+        }
+        mocks.getResults = [
+          { id: 'proj1' },
+          projectState({
+            memoryAutoUpdate: 'on',
+            memoryAutoUpdateEnabledAt: new Date('2026-10-30T00:00:00.000Z'),
+          }),
+          { total: 0 },
+        ]
+
+        const result = await updateMcpProject(
+          createQueuedDb(),
+          1,
+          { projectId: 'proj1', pinned: false },
+          mocks.logger,
+        )
+
+        expect(result.memory).toMatchObject({
+          autoUpdate: 'on',
+          effectiveAutoUpdate: true,
+          autoUpdateSource: 'project',
+        })
+      })
 
     it('reports memory as off when the project is disabled', async () => {
       mocks.getResults = [
@@ -772,6 +858,9 @@ describe('MCP project management domain functions', () => {
           useAccountMemory: true,
           updatedAt: '2026-10-03T00:00:00.000Z',
           entryCount: 5,
+          autoUpdate: 'inherit',
+          effectiveAutoUpdate: false,
+          autoUpdateSource: 'account',
         },
         knowledgeTotals: {
           items: 2,

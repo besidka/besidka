@@ -185,6 +185,82 @@ describe('buildProjectMemoryCard', () => {
       expect((await buildCard(isolatedId)).useAccountMemory).toBe(false)
     })
 
+  describe('automatic updates', () => {
+    const accountStamp = minutesBefore(1000)
+
+    async function cardFor(
+      project: {
+        memoryAutoUpdate?: 'on' | 'off' | null
+        memoryAutoUpdateEnabledAt?: Date | null
+      },
+      settings: Parameters<typeof seedUser>[1],
+    ) {
+      const owner = await seedUser(testDb.db, settings)
+      const projectId = await seedProject(testDb.db, owner, project)
+
+      return await buildCard(projectId, owner)
+    }
+
+    it('follows the account switch when the project inherits', async () => {
+      expect(await cardFor({}, {
+        memoryExtractionEnabled: true,
+        memoryExtractionEnabledAt: accountStamp,
+      })).toMatchObject({
+        autoUpdate: 'inherit',
+        effectiveAutoUpdate: true,
+        autoUpdateSource: 'account',
+      })
+      expect(await cardFor({}, { memoryExtractionEnabled: false }))
+        .toMatchObject({
+          autoUpdate: 'inherit',
+          effectiveAutoUpdate: false,
+          autoUpdateSource: 'account',
+        })
+    })
+
+    it('lets the project choice beat the account switch both ways',
+      async () => {
+        expect(await cardFor({
+          memoryAutoUpdate: 'on',
+          memoryAutoUpdateEnabledAt: minutesBefore(10),
+        }, { memoryExtractionEnabled: false })).toMatchObject({
+          autoUpdate: 'on',
+          effectiveAutoUpdate: true,
+          autoUpdateSource: 'project',
+        })
+        expect(await cardFor({ memoryAutoUpdate: 'off' }, {
+          memoryExtractionEnabled: true,
+          memoryExtractionEnabledAt: accountStamp,
+        })).toMatchObject({
+          autoUpdate: 'off',
+          effectiveAutoUpdate: false,
+          autoUpdateSource: 'project',
+        })
+      })
+
+    it('is never effective while memory is off in the account settings',
+      async () => {
+        expect(await cardFor({
+          memoryAutoUpdate: 'on',
+          memoryAutoUpdateEnabledAt: minutesBefore(10),
+        }, { memoryEnabled: false, memoryExtractionEnabled: true }))
+          .toMatchObject({
+            autoUpdate: 'on',
+            effectiveAutoUpdate: false,
+            autoUpdateSource: 'project',
+          })
+      })
+
+    it('treats a user without settings as the account switch off',
+      async () => {
+        expect(await cardFor({}, null)).toMatchObject({
+          autoUpdate: 'inherit',
+          effectiveAutoUpdate: false,
+          autoUpdateSource: 'account',
+        })
+      })
+  })
+
   it('reads another user project as not found', async () => {
     const otherUserId = await seedUser(testDb.db, {})
     const projectId = await seedProject(testDb.db, otherUserId)

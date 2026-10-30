@@ -8,10 +8,10 @@ import {
   isNull,
   lt,
   lte,
-  ne,
   or,
   sql,
 } from 'drizzle-orm'
+import { unionAll } from 'drizzle-orm/sqlite-core'
 import * as schema from '~~/server/db/schema'
 import { sweepBackfillJobs } from '~~/server/utils/memory/backfill'
 import type { SweepBackfillJobsResult } from '~~/server/utils/memory/backfill'
@@ -19,6 +19,7 @@ import {
   chatHasUnextractedActivity,
   chatIsMemoryIncluded,
 } from '~~/server/utils/memory/chat-memory-filters'
+import { projectChatSweepCondition } from '~~/server/utils/memory/project-auto-update'
 import { recordBlockedCounts } from '~~/server/utils/memory/compliance'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { extractChatMemory } from '~~/server/utils/memory/extract'
@@ -71,31 +72,64 @@ interface SelectedChat {
   userId: number
 }
 
-export function buildDueChatsQuery(
-  db: DbClient,
-  batchSize: number,
-  now: Date,
-) {
+function attemptCondition(now: Date) {
   const limits = MEMORY_EXTRACTION_LIMITS
-  const idleCutoff = new Date(now.getTime() - limits.idleMs)
   const backoffCutoff = new Date(now.getTime() - limits.attemptBackoffMs)
-  const poolSize = batchSize * limits.poolMultiplier
   const attemptedAt = schema.chats.memoryExtractionAttemptedAt
   const failures = schema.chats.memoryExtractionFailures
   const hasActivitySinceAttempt = gt(schema.chats.activityAt, attemptedAt)
+
+  return or(
+    isNull(attemptedAt),
+    and(isNull(failures), lt(attemptedAt, backoffCutoff)),
+    and(
+      eq(failures, MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES),
+      hasActivitySinceAttempt,
+    ),
+    and(
+      gt(failures, MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES),
+      lt(attemptedAt, backoffCutoff),
+      or(lt(failures, limits.maxFailures), hasActivitySinceAttempt),
+    ),
+  )
+}
+
+function projectChatIsDirty() {
+  return or(
+    isNull(schema.chats.projectMemorySummaryUpdatedAt),
+    lt(
+      schema.chats.projectMemorySummaryUpdatedAt,
+      schema.chats.activityAt,
+    ),
+  )
+}
+
+const rankedColumns = {
+  id: schema.chats.id,
+  userId: schema.chats.userId,
+  attemptedAt: schema.chats.memoryExtractionAttemptedAt,
+  activityAt: schema.chats.activityAt,
+  userRank: sql<number>`row_number() over (partition by ${schema.chats.userId} order by coalesce(${schema.chats.memoryExtractionAttemptedAt}, 0), ${schema.chats.activityAt})`.as('user_rank'),
+}
+
+function memoryIsNotOff() {
+  return or(
+    isNull(schema.userSettings.memoryEnabled),
+    eq(schema.userSettings.memoryEnabled, true),
+  )
+}
+
+function dueChatsOfExtractionOptedInUsers(
+  db: DbClient,
+  idleCutoff: Date,
+  now: Date,
+) {
   const isExtractionOptedIn
     = sql`${schema.userSettings.memoryExtractionEnabled} = 1`
-
-  const attemptedAtOrZero = sql`coalesce(${schema.chats.memoryExtractionAttemptedAt}, 0)`
   const enabledAtOrZero = sql`coalesce(${schema.userSettings.memoryExtractionEnabledAt}, 0)`
-  const ranked = db
-    .select({
-      id: schema.chats.id,
-      userId: schema.chats.userId,
-      attemptedAt: schema.chats.memoryExtractionAttemptedAt,
-      activityAt: schema.chats.activityAt,
-      userRank: sql<number>`row_number() over (partition by ${schema.chats.userId} order by ${attemptedAtOrZero}, ${schema.chats.activityAt})`.as('user_rank'),
-    })
+
+  return db
+    .select(rankedColumns)
     .from(schema.userSettings)
     .crossJoin(schema.chats)
     .leftJoin(
@@ -109,10 +143,7 @@ export function buildDueChatsQuery(
       eq(schema.chats.userId, schema.userSettings.userId),
       isExtractionOptedIn,
       currentLegalConsentCondition(),
-      or(
-        isNull(schema.userSettings.memoryEnabled),
-        eq(schema.userSettings.memoryEnabled, true),
-      ),
+      memoryIsNotOff(),
       lte(schema.chats.activityAt, idleCutoff),
       gt(schema.chats.activityAt, enabledAtOrZero),
       chatIsMemoryIncluded(),
@@ -128,36 +159,63 @@ export function buildDueChatsQuery(
         and(
           isNotNull(schema.chats.projectId),
           isNotNull(schema.projects.id),
-          ne(schema.projects.memoryStatus, 'disabled'),
-          isNotNull(schema.userSettings.memoryExtractionEnabledAt),
-          gt(
-            schema.chats.activityAt,
-            schema.userSettings.memoryExtractionEnabledAt,
-          ),
-          or(
-            isNull(schema.chats.projectMemorySummaryUpdatedAt),
-            lt(
-              schema.chats.projectMemorySummaryUpdatedAt,
-              schema.chats.activityAt,
-            ),
-          ),
+          projectChatSweepCondition(),
+          projectChatIsDirty(),
         ),
       ),
-      or(
-        isNull(attemptedAt),
-        and(isNull(failures), lt(attemptedAt, backoffCutoff)),
-        and(
-          eq(failures, MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES),
-          hasActivitySinceAttempt,
-        ),
-        and(
-          gt(failures, MEMORY_EXTRACTION_WAITING_FOR_TEXT_FAILURES),
-          lt(attemptedAt, backoffCutoff),
-          or(lt(failures, limits.maxFailures), hasActivitySinceAttempt),
-        ),
-      ),
+      attemptCondition(now),
     ))
-    .as('ranked_due_chats')
+}
+
+function dueChatsOfProjectsOptedInOnTheirOwn(
+  db: DbClient,
+  idleCutoff: Date,
+  now: Date,
+) {
+  return db
+    .select(rankedColumns)
+    .from(schema.projects)
+    .crossJoin(schema.chats)
+    .crossJoin(schema.userSettings)
+    .where(and(
+      eq(schema.chats.projectId, schema.projects.id),
+      eq(schema.chats.userId, schema.projects.userId),
+      eq(schema.userSettings.userId, schema.projects.userId),
+      eq(schema.projects.memoryAutoUpdate, 'on'),
+      sql`coalesce(${schema.userSettings.memoryExtractionEnabled}, 0) != 1`,
+      currentLegalConsentCondition(),
+      memoryIsNotOff(),
+      lte(schema.chats.activityAt, idleCutoff),
+      gt(schema.chats.activityAt, schema.projects.memoryAutoUpdateEnabledAt),
+      chatIsMemoryIncluded(),
+      chatHasUnextractedActivity(),
+      projectChatSweepCondition(),
+      projectChatIsDirty(),
+      attemptCondition(now),
+    ))
+}
+
+/**
+ * Two disjoint arms, ranked per user so the per-user cap applies in SQL. The
+ * extraction arm is the account opt-in: users with the switch on, account
+ * chats and the project chats their projects allow. The override arm covers
+ * users with the switch off who set a project to `on`: it is driven from those
+ * projects (a `CROSS JOIN` pins that order), so nothing is read for anybody
+ * else. A user is in exactly one arm,
+ * which keeps the per-user rank correct across the union.
+ */
+export function buildDueChatsQuery(
+  db: DbClient,
+  batchSize: number,
+  now: Date,
+) {
+  const limits = MEMORY_EXTRACTION_LIMITS
+  const idleCutoff = new Date(now.getTime() - limits.idleMs)
+  const poolSize = batchSize * limits.poolMultiplier
+  const ranked = unionAll(
+    dueChatsOfExtractionOptedInUsers(db, idleCutoff, now),
+    dueChatsOfProjectsOptedInOnTheirOwn(db, idleCutoff, now),
+  ).as('ranked_due_chats')
 
   return db
     .select({ id: ranked.id, userId: ranked.userId })
@@ -257,17 +315,20 @@ function addCounts(
 
 /**
  * Picks due chats and extracts them one after the other until the batch or
- * the runtime budget is spent. Selection starts from the users who opted in
+ * the runtime budget is spent. Selection (`buildDueChatsQuery`) has two
+ * disjoint arms. The first starts from the users who opted in
  * (`memory_extraction_enabled` on, `memory_enabled` null or true) through a
  * partial index and reaches their chats through the partial index
- * `idx_chats_memory_due` (dirty chats not excluded from memory), so nothing is
- * read while nobody has opted in. The join is a `CROSS JOIN` on purpose: it
- * pins `user_settings` as the outer loop, which SQLite otherwise flips into a
- * scan of every user's due chats. Both kinds of chat need the
- * opt-in: account chats are due when idle and dirty on `memory_extracted_at`;
- * project chats additionally need their own project (same owner, not
- * disabled), `memory_extraction_enabled_at` set and activity after it, and are
- * dirty on the project watermark. A chat is due when it was never attempted,
+ * `idx_chats_memory_due` (dirty chats not excluded from memory). The join is a
+ * `CROSS JOIN` on purpose: it pins `user_settings` as the outer loop, which
+ * SQLite otherwise flips into a scan of every user's due chats. Account chats
+ * need the opt-in and are due when idle and dirty on `memory_extracted_at`;
+ * project chats follow `projectChatSweepCondition` (their own project, same
+ * owner, not disabled, the project's automatic-update setting and the
+ * applicable cut-over) and are dirty on the project watermark. The second arm
+ * is for users with the switch off who set a project to `on`: it starts from
+ * those projects and only ever returns chats of such projects, so nothing is
+ * read while nobody has opted in. A chat is due when it was never attempted,
  * or crashed outside the attempt backoff, or waits for more user text and has
  * new activity, or failed outside the backoff and under the failure cap unless
  * new activity lifted it. At most `perUserCapPerTick` chats per user. A chat

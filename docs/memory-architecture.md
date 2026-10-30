@@ -3431,3 +3431,49 @@ which is why the client backs off 10 s after a retry-pending step. Our own
 deadline (`TimeoutError`) is not transient: a chat that hits it is recorded as
 failed at once rather than paid for twice with no usage recorded, so "before
 tokens were spent" stays true for every retried chat.
+
+### Per-project automatic updates override the account switch (2026-10-30)
+
+**Decision.** Each project has its own automatic-update setting with three
+states: `inherit` (default, stored as NULL), `on` and `off`. `on` and `off`
+beat the account switch "Generate memory from chats"
+(`user_settings.memory_extraction_enabled`); `inherit` follows it. Memory
+turned off in the account settings (`memory_enabled = false`) still blocks
+everything, and the legal consent requirement is unchanged. A disabled project
+(`memory_status = 'disabled'`) is never swept whatever its setting. Account
+chats are untouched: the override is for project chats only.
+
+**`on` is the explicit per-project opt-in to background spend.** It is the
+same consent as the account switch, narrowed to one project: Besidka reads the
+project's chats on the user's own key about 10 minutes after the last message
+in a chat. It therefore follows the "no background model calls without an
+explicit opt-in" rule above: default `inherit`, set in the app behind a
+confirm, forward-only. A connected app (MCP `update_project`) may set only
+`inherit` or `off`, never `on`, because a tool call cannot prove that a human
+approved spend (`docs/mcp-server.md`, "What MCP does not do").
+
+**Forward-only cut-over per project.** `projects.memory_auto_update_enabled_at`
+is the project's own cut-over. The sweep reads a project chat only when its
+last activity is after the applicable cut-over: for `on` the later of the
+account cut-over (only while the account switch is on) and the project stamp;
+for `inherit` the account cut-over, or the later of the two when the project
+has a stamp. The stamp is set when the project becomes `on` from another state,
+and when it returns to `inherit` from `off`, so messages written while
+automatic updates were off are never read behind the user's back. Re-saving
+`on` or `inherit` keeps it, `inherit` from `on` keeps it, `off` clears it so a
+later `on` starts a fresh cut-over. The Refresh button still reads earlier
+chats on demand.
+
+**One rule, three places.** The rule lives in `resolveProjectAutoUpdate`
+(`shared/utils/project-memory-auto-update.ts`) for the extraction gate, the
+card and the MCP tools, and in one SQL twin, `projectChatSweepCondition`
+(`server/utils/memory/project-auto-update.ts`), shared by the sweep selection
+and the "chats left for the sweep" settle check, so the two cannot drift. The
+sweep query has two disjoint arms: the existing opted-in-user arm, and an
+override arm driven from `projects WHERE memory_auto_update = 'on'` for users
+whose account switch is off. A project that is not effective is never settled
+by the sweep: its "Out of date" mark clears only through a manual Refresh.
+
+**Schema.** Two nullable columns on `projects`, no SQL default (additive
+migration `20261030194122_project_memory_auto_update`, only `ALTER TABLE ...
+ADD`).
