@@ -2745,6 +2745,8 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/mcp/private-projects.spec.ts',
         'tests/unit/server/utils/mcp/private-memory.spec.ts',
         'tests/unit/server/utils/mcp/bounded-body.spec.ts',
+        'tests/unit/server/utils/mcp/project-text-body-size.spec.ts',
+        'tests/unit/server/mcp/tools/create-project.spec.ts',
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
       ],
     },
@@ -2755,6 +2757,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/mcp/auth.spec.ts',
         'tests/unit/server/utils/mcp/private-access.spec.ts',
         'tests/unit/server/utils/mcp/bounded-body.spec.ts',
+        'tests/unit/server/utils/mcp/project-text-body-size.spec.ts',
       ],
     },
     {
@@ -2766,6 +2769,8 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/mcp/private-chat-cursors.spec.ts',
         'tests/unit/server/utils/mcp/private-projects.spec.ts',
         'tests/unit/server/utils/mcp/private-memory.spec.ts',
+        'tests/unit/server/utils/mcp/project-text-body-size.spec.ts',
+        'tests/unit/server/mcp/tools/create-project.spec.ts',
       ],
     },
     {

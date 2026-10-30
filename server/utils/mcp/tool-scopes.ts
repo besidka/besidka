@@ -7,6 +7,7 @@ export const MCP_PRIVATE_TOOL_SCOPES = {
   list_projects: 'projects:read',
   get_project: 'projects:read',
   read_project_knowledge_item: 'projects:read',
+  create_project: 'projects:write',
   update_project_instructions: 'projects:write',
   add_project_note: 'projects:write',
   add_project_text: 'projects:write',

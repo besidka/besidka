@@ -45,8 +45,15 @@ vi.mock('~~/server/utils/knowledge/text-store', () => {
 })
 
 const {
+  MCP_KNOWLEDGE_BATCH_MAX_ITEMS,
+  MCP_KNOWLEDGE_BATCH_TEXT_MAX_CHARS,
+  MCP_KNOWLEDGE_TEXT_MAX_CHARS,
+  MCP_PROJECT_NAME_MAX_CHARS,
   addMcpProjectNote,
   addMcpProjectText,
+  addMcpProjectTextInput,
+  addMcpProjectTexts,
+  createMcpProject,
   listMcpProjects,
   readMcpKnowledgeItem,
   resolveMcpOwnedProject,
@@ -65,6 +72,30 @@ function createDb() {
   return {
     select: () => chain,
   } as unknown as ReturnType<typeof useDb>
+}
+
+function createInsertDb(row: Record<string, unknown> | undefined) {
+  const values = vi.fn()
+  const returning = vi.fn()
+  const chain = {
+    values: (value: unknown) => {
+      values(value)
+
+      return chain
+    },
+    returning: (columns: unknown) => {
+      returning(columns)
+
+      return chain
+    },
+    get: async () => row,
+  }
+
+  return {
+    values,
+    returning,
+    db: { insert: () => chain } as unknown as ReturnType<typeof useDb>,
+  }
 }
 
 function knowledgeItem(overrides: Partial<KnowledgeItem> = {}): KnowledgeItem {
@@ -204,6 +235,216 @@ describe('mcp project knowledge helpers', () => {
     }, mocks.logger)).rejects.toMatchObject({ status: 400 })
     expect(mocks.ingestKnowledgeItems).not.toHaveBeenCalled()
   })
+
+  it('adds several texts in one committed ingest call', async () => {
+    mocks.ingestKnowledgeItems.mockResolvedValue({
+      items: [
+        knowledgeItem({ id: 'item1', title: 'timesheet-2026-09.csv' }),
+        knowledgeItem({ id: 'item2', title: 'timesheet-2026-10.csv' }),
+      ],
+      skipped: [],
+      version: 2,
+      packVersion: 2,
+    })
+
+    const result = await addMcpProjectTexts(createDb(), 1, {
+      projectId: 'proj1',
+      items: [
+        { name: 'timesheet-2026-09.csv', text: 'a,b\n1,2' },
+        { name: 'timesheet-2026-10.csv', text: 'a,b\n3,4' },
+      ],
+    }, mocks.logger)
+
+    expect(mocks.enforceKnowledgeWriteRateLimit).toHaveBeenCalledTimes(1)
+    expect(mocks.ingestKnowledgeItems).toHaveBeenCalledTimes(1)
+    expect(mocks.ingestKnowledgeItems).toHaveBeenCalledWith(
+      { userId: 1, projectId: 5, logger: mocks.logger },
+      {
+        items: [
+          expect.objectContaining({
+            title: 'timesheet-2026-09.csv',
+            mediaType: 'text/plain',
+            text: 'a,b\n1,2',
+          }),
+          expect.objectContaining({ title: 'timesheet-2026-10.csv' }),
+        ],
+        commit: true,
+      },
+    )
+    expect(result.items.map(item => item.id)).toEqual(['item1', 'item2'])
+    expect(result.skipped).toEqual([])
+  })
+
+  it('names the duplicates a batch skipped and keeps the rest', async () => {
+    mocks.ingestKnowledgeItems.mockResolvedValue({
+      items: [knowledgeItem({ id: 'item2' })],
+      skipped: [{ index: 0, reason: 'duplicate' }],
+      version: 2,
+      packVersion: 2,
+    })
+
+    const result = await addMcpProjectTexts(createDb(), 1, {
+      projectId: 'proj1',
+      items: [
+        { name: 'a.md', text: 'same' },
+        { name: 'b.md', text: 'other' },
+      ],
+    }, mocks.logger)
+
+    expect(result.skipped).toEqual([
+      { index: 0, name: 'a.md', reason: 'duplicate' },
+    ])
+    expect(result.items).toHaveLength(1)
+  })
+
+  it('reports a batch where every item is a duplicate as a conflict',
+    async () => {
+      mocks.ingestKnowledgeItems.mockResolvedValue({
+        items: [],
+        skipped: [{ index: 0, reason: 'duplicate' }],
+        version: 2,
+        packVersion: 2,
+      })
+
+      await expect(addMcpProjectTexts(createDb(), 1, {
+        projectId: 'proj1',
+        items: [{ name: 'a.md', text: 'same' }],
+      }, mocks.logger)).rejects.toMatchObject({ status: 409 })
+    })
+
+  it('caps a batch at the item limit before any write', async () => {
+    const items = Array.from(
+      { length: MCP_KNOWLEDGE_BATCH_MAX_ITEMS + 1 },
+      (_item, index) => {
+        return { name: `file-${index}.md`, text: `text ${index}` }
+      },
+    )
+
+    await expect(addMcpProjectTexts(createDb(), 1, {
+      projectId: 'proj1',
+      items,
+    }, mocks.logger)).rejects.toMatchObject({ status: 400 })
+    await expect(addMcpProjectTexts(createDb(), 1, {
+      projectId: 'proj1',
+      items: [],
+    }, mocks.logger)).rejects.toMatchObject({ status: 400 })
+    expect(mocks.ingestKnowledgeItems).not.toHaveBeenCalled()
+    expect(mocks.enforceKnowledgeWriteRateLimit).not.toHaveBeenCalled()
+  })
+
+  it('caps the total characters of a batch before any write', async () => {
+    const half = Math.floor(MCP_KNOWLEDGE_BATCH_TEXT_MAX_CHARS / 2)
+
+    await expect(addMcpProjectTexts(createDb(), 1, {
+      projectId: 'proj1',
+      items: [
+        { name: 'a.md', text: 'x'.repeat(half) },
+        { name: 'b.md', text: 'y'.repeat(half + 1) },
+      ],
+    }, mocks.logger)).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(
+        String(MCP_KNOWLEDGE_BATCH_TEXT_MAX_CHARS),
+      ),
+    })
+    expect(mocks.ingestKnowledgeItems).not.toHaveBeenCalled()
+
+    mocks.ingestKnowledgeItems.mockResolvedValue({
+      items: [knowledgeItem()],
+      skipped: [],
+      version: 2,
+      packVersion: 2,
+    })
+
+    await expect(addMcpProjectTexts(createDb(), 1, {
+      projectId: 'proj1',
+      items: [
+        { name: 'a.md', text: 'x'.repeat(half) },
+        { name: 'b.md', text: 'y'.repeat(half) },
+      ],
+    }, mocks.logger)).resolves.toMatchObject({ skipped: [] })
+  })
+
+  it('refuses an empty item in a batch before any write', async () => {
+    await expect(addMcpProjectTexts(createDb(), 1, {
+      projectId: 'proj1',
+      items: [
+        { name: 'a.md', text: 'fine' },
+        { name: 'empty.md', text: '   ' },
+      ],
+    }, mocks.logger)).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining('empty.md'),
+    })
+    expect(mocks.ingestKnowledgeItems).not.toHaveBeenCalled()
+  })
+
+  it('treats a foreign project as not found for a batch', async () => {
+    mocks.projectRow = undefined
+
+    await expect(addMcpProjectTexts(createDb(), 1, {
+      projectId: 'proj1',
+      items: [{ name: 'a.md', text: 'text' }],
+    }, mocks.logger)).rejects.toMatchObject({ status: 404 })
+    expect(mocks.ingestKnowledgeItems).not.toHaveBeenCalled()
+  })
+
+  it('keeps one item per call at the single text limit', () => {
+    expect(MCP_KNOWLEDGE_BATCH_TEXT_MAX_CHARS)
+      .toBe(MCP_KNOWLEDGE_TEXT_MAX_CHARS)
+  })
+
+  it('requires exactly one of the single and the batch form', async () => {
+    const invalidInputs = [
+      { projectId: 'proj1' },
+      { projectId: 'proj1', name: 'a.md' },
+      { projectId: 'proj1', text: 'text' },
+      {
+        projectId: 'proj1',
+        name: 'a.md',
+        text: 'text',
+        items: [{ name: 'b.md', text: 'other' }],
+      },
+      { projectId: 'proj1', text: 'text', items: [] },
+    ]
+
+    for (const input of invalidInputs) {
+      await expect(addMcpProjectTextInput(
+        createDb(),
+        1,
+        input,
+        mocks.logger,
+      )).rejects.toMatchObject({ status: 400 })
+    }
+
+    expect(mocks.ingestKnowledgeItems).not.toHaveBeenCalled()
+  })
+
+  it('routes the single and the batch form to their own result shapes',
+    async () => {
+      mocks.ingestKnowledgeItems.mockResolvedValue({
+        items: [knowledgeItem()],
+        skipped: [],
+        version: 2,
+        packVersion: 2,
+      })
+
+      const single = await addMcpProjectTextInput(createDb(), 1, {
+        projectId: 'proj1',
+        name: 'notes.md',
+        text: 'Hello world',
+      }, mocks.logger)
+      const batch = await addMcpProjectTextInput(createDb(), 1, {
+        projectId: 'proj1',
+        items: [{ name: 'notes.md', text: 'Hello world' }],
+      }, mocks.logger)
+
+      expect(single).toMatchObject({ id: 'item1', textBytes: 11 })
+      expect(batch).toMatchObject({
+        items: [{ id: 'item1' }],
+        skipped: [],
+      })
+    })
 
   it('adds a note through createKnowledgeNote', async () => {
     mocks.createKnowledgeNote.mockResolvedValue(knowledgeItem({
@@ -387,5 +628,72 @@ describe('listMcpProjects cursor', () => {
 
     await expect(listMcpProjects(withoutCursor.db, 1, {}))
       .resolves.toMatchObject({ projects: [] })
+  })
+})
+
+describe('createMcpProject', () => {
+  const insertedRow = {
+    id: 'projPub1',
+    name: 'Vaimo Creative Hours',
+    instructions: null,
+    knowledgeMode: null,
+    pinnedAt: null,
+    archivedAt: null,
+    activityAt: new Date('2026-10-30T10:00:00.000Z'),
+  }
+
+  it('inserts the project for the caller and returns the public id', async () => {
+    const { db, values } = createInsertDb(insertedRow)
+
+    const result = await createMcpProject(db, 42, '  Vaimo Creative Hours ')
+
+    expect(values).toHaveBeenCalledWith({
+      userId: 42,
+      name: 'Vaimo Creative Hours',
+    })
+    expect(result).toEqual({
+      id: 'projPub1',
+      name: 'Vaimo Creative Hours',
+      hasInstructions: false,
+      knowledgeMode: 'auto',
+      pinned: false,
+      archived: false,
+      activityAt: '2026-10-30T10:00:00.000Z',
+    })
+  })
+
+  it('selects no numeric row id and no memory columns', async () => {
+    const { db, returning } = createInsertDb(insertedRow)
+
+    await createMcpProject(db, 42, 'Name')
+
+    const columns = Object.keys(returning.mock.calls[0]![0] as object)
+
+    expect(columns.sort()).toEqual([
+      'activityAt',
+      'archivedAt',
+      'id',
+      'instructions',
+      'knowledgeMode',
+      'name',
+      'pinnedAt',
+    ])
+  })
+
+  it('refuses an empty or too long name before inserting', async () => {
+    const { db, values } = createInsertDb(insertedRow)
+
+    for (const name of ['', '   ', 'x'.repeat(MCP_PROJECT_NAME_MAX_CHARS + 1)]) {
+      await expect(createMcpProject(db, 42, name))
+        .rejects.toMatchObject({ status: 400 })
+    }
+
+    expect(values).not.toHaveBeenCalled()
+
+    await expect(createMcpProject(
+      db,
+      42,
+      'x'.repeat(MCP_PROJECT_NAME_MAX_CHARS),
+    )).resolves.toMatchObject({ id: 'projPub1' })
   })
 })
