@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { assertProjectNameCharacters } from '~~/server/utils/projects/name'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -17,6 +18,8 @@ export default defineEventHandler(async (event) => {
       why: body.error.message,
     })
   }
+
+  assertProjectNameCharacters(body.data.name)
 
   const session = await useUserSession()
 

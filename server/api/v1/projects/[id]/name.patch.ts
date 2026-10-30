@@ -7,6 +7,7 @@ import {
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { assertProjectNameCharacters } from '~~/server/utils/projects/name'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -34,6 +35,8 @@ export default defineEventHandler(async (event) => {
       why: body.error.message,
     })
   }
+
+  assertProjectNameCharacters(body.data.name)
 
   const session = await useUserSession()
 

@@ -374,7 +374,7 @@ describe('mcp project knowledge helpers', () => {
       ],
     }, mocks.logger)).rejects.toMatchObject({
       status: 400,
-      message: expect.stringContaining('empty.md'),
+      message: 'Item 2 has empty text.',
     })
     expect(mocks.ingestKnowledgeItems).not.toHaveBeenCalled()
   })
@@ -695,5 +695,35 @@ describe('createMcpProject', () => {
       42,
       'x'.repeat(MCP_PROJECT_NAME_MAX_CHARS),
     )).resolves.toMatchObject({ id: 'projPub1' })
+  })
+
+  it.each([
+    ['a right-to-left override', 'Invoice\u202Efdp.txt'],
+    ['a zero-width space', 'Pro\u200Bject'],
+    ['a bell control character', 'Pro\u0007ject'],
+    ['a C1 control character', 'Pro\u0085ject'],
+  ])('refuses a name containing %s', async (_label, name) => {
+    const { db, values } = createInsertDb(insertedRow)
+
+    await expect(createMcpProject(db, 42, name))
+      .rejects.toMatchObject({ status: 400 })
+    expect(values).not.toHaveBeenCalled()
+  })
+
+  it('names the invisible formatting characters in the message', async () => {
+    const { db } = createInsertDb(insertedRow)
+
+    await expect(createMcpProject(db, 42, 'Pro\u200Bject'))
+      .rejects.toMatchObject({
+        message: expect.stringContaining('invisible formatting characters'),
+      })
+  })
+
+  it('accepts a Cyrillic name with an emoji', async () => {
+    const { db, values } = createInsertDb(insertedRow)
+
+    await createMcpProject(db, 42, 'Бесідка 🚀')
+
+    expect(values).toHaveBeenCalledWith({ userId: 42, name: 'Бесідка 🚀' })
   })
 })

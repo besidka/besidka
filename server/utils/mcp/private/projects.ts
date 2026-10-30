@@ -23,6 +23,7 @@ import {
   isValidMcpCursorId,
 } from '~~/server/utils/mcp/private/chats'
 import { toIsoTimestamp } from '~~/server/utils/mcp/private/text'
+import { assertProjectNameCharacters } from '~~/server/utils/projects/name'
 import {
   createProjectsCursor,
   parseProjectsCursor,
@@ -179,6 +180,8 @@ export async function createMcpProject(
       + `${MCP_PROJECT_NAME_MAX_CHARS} characters.`,
     )
   }
+
+  assertProjectNameCharacters(trimmedName)
 
   const project = await db.insert(schema.projects)
     .values({ userId, name: trimmedName })
@@ -537,13 +540,13 @@ export async function addMcpProjectTexts(
     )
   }
 
-  const emptyItem = input.items.find((item) => {
+  const emptyItemIndex = input.items.findIndex((item) => {
     return item.text.trim().length === 0
   })
 
-  if (emptyItem) {
+  if (emptyItemIndex !== -1) {
     throw createInvalidInputError(
-      `The text of "${emptyItem.name}" is empty.`,
+      `Item ${emptyItemIndex + 1} has empty text.`,
     )
   }
 

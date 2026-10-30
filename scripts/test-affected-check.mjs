@@ -2774,6 +2774,15 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^(shared\/utils\/invisible-characters|server\/utils\/projects\/name)\.ts$/,
+      tests: [
+        'tests/unit/utils/invisible-characters.spec.ts',
+        'tests/unit/utils/knowledge/ingest.spec.ts',
+        'tests/unit/server/utils/mcp/private-projects.spec.ts',
+        'tests/integration/api/projects.spec.ts',
+      ],
+    },
+    {
       pattern: /^app\/composables\/auth\.ts$/,
       tests: [
         'tests/unit/composables/auth-oauth-query.spec.ts',
