@@ -1,6 +1,4 @@
 import { createError } from 'evlog'
-import { and, eq } from 'drizzle-orm'
-import * as schema from '~~/server/db/schema'
 import {
   defineEventHandler,
   setResponseStatus,
@@ -8,29 +6,10 @@ import {
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { revokeConnectedApp } from '~~/server/utils/oauth/revoke-connected-app'
+import type { RevokedConnectedApp } from '~~/server/utils/oauth/revoke-connected-app'
 
 const CLIENT_ID_MAX_LENGTH = 256
-
-function deleteGrants(
-  db: ReturnType<typeof useDb>,
-  userId: number,
-  clientId: string,
-) {
-  return db.batch([
-    db.delete(schema.oauthAccessTokens).where(and(
-      eq(schema.oauthAccessTokens.userId, userId),
-      eq(schema.oauthAccessTokens.clientId, clientId),
-    )).returning({ id: schema.oauthAccessTokens.id }),
-    db.delete(schema.oauthRefreshTokens).where(and(
-      eq(schema.oauthRefreshTokens.userId, userId),
-      eq(schema.oauthRefreshTokens.clientId, clientId),
-    )).returning({ scopes: schema.oauthRefreshTokens.scopes }),
-    db.delete(schema.oauthConsents).where(and(
-      eq(schema.oauthConsents.userId, userId),
-      eq(schema.oauthConsents.clientId, clientId),
-    )).returning({ scopes: schema.oauthConsents.scopes }),
-  ])
-}
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
@@ -57,11 +36,10 @@ export default defineEventHandler(async (event) => {
 
   const userId = parseInt(session.user.id)
   const { clientId } = params.data
-  const db = useDb()
-  let deletedRows: Awaited<ReturnType<typeof deleteGrants>>
+  let revoked: RevokedConnectedApp | null
 
   try {
-    deletedRows = await deleteGrants(db, userId, clientId)
+    revoked = await revokeConnectedApp(useDb(), userId, clientId)
   } catch (exception) {
     throw createError({
       message: 'Failed to disconnect the app',
@@ -70,20 +48,12 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const [accessTokens, refreshTokens, consents] = deletedRows
-
-  if (!accessTokens.length && !refreshTokens.length && !consents.length) {
+  if (!revoked) {
     throw createError({
       message: 'Connected app not found',
       status: 404,
     })
   }
-
-  const revokedScopes = [...new Set(
-    [...consents, ...refreshTokens].flatMap((grant) => {
-      return Array.isArray(grant.scopes) ? grant.scopes as string[] : []
-    }),
-  )]
 
   logger.set({
     userId,
@@ -91,7 +61,7 @@ export default defineEventHandler(async (event) => {
       legalConsent: {
         action: 'oauth_revoked',
         oauthClientId: clientId,
-        scopes: revokedScopes,
+        scopes: revoked.scopes,
       },
     },
   })

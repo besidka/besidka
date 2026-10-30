@@ -1,10 +1,10 @@
 import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { parseStoredOAuthScopes } from '~~/server/utils/oauth/stored-scopes'
 
 export const OAUTH_AUTHORIZE_PATH = '/oauth2/authorize'
 
 const OAUTH_CLIENT_MODEL = 'oauthClient'
-const MAX_JSON_DECODE_PASSES = 2
 
 interface ClientScopeStore {
   findOne: (input: {
@@ -23,29 +23,9 @@ interface ClientScopeLogger {
 }
 
 function readStoredScopes(stored: unknown): string[] | null {
-  let value = stored
+  const scopes = parseStoredOAuthScopes(stored)
 
-  for (let pass = 0; pass < MAX_JSON_DECODE_PASSES; pass++) {
-    if (typeof value !== 'string') {
-      break
-    }
-
-    try {
-      value = JSON.parse(value)
-    } catch (_exception) {
-      return null
-    }
-  }
-
-  if (!Array.isArray(value) || value.length === 0) {
-    return null
-  }
-
-  const isEveryEntryText = value.every((entry) => {
-    return typeof entry === 'string'
-  })
-
-  return isEveryEntryText ? value : null
+  return scopes.length > 0 ? scopes : null
 }
 
 /**

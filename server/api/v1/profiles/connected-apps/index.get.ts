@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler } from 'nuxt/server'
+import { parseStoredOAuthScopes } from '~~/server/utils/oauth/stored-scopes'
 
 const MILLISECONDS_PER_SECOND = 1000
 
@@ -21,6 +22,15 @@ function toTimestampDate(seconds: number | null): Date | null {
   return new Date(Number(seconds) * MILLISECONDS_PER_SECOND)
 }
 
+/**
+ * Lists the apps a user can still act through. An app is live when it has an
+ * unrevoked, unexpired refresh token or access token for the user; a consent
+ * row alone is dead weight and stays hidden, because it holds no token and a
+ * later authorization would skip the approval screen while it still covers
+ * the requested scopes. Each live app carries the scopes of its consent (the
+ * ceiling the user can narrow) or, when the consent row is gone, of its
+ * newest live refresh token.
+ */
 export default defineEventHandler(async () => {
   const session = await useUserSession()
 
@@ -30,6 +40,7 @@ export default defineEventHandler(async () => {
 
   const userId = parseInt(session.user.id)
   const db = useDb()
+  const now = new Date()
   const lastActivity = db
     .select({
       clientId: schema.oauthRefreshTokens.clientId,
@@ -51,16 +62,31 @@ export default defineEventHandler(async () => {
     .where(and(
       eq(schema.oauthRefreshTokens.userId, userId),
       isNull(schema.oauthRefreshTokens.revoked),
-      gt(schema.oauthRefreshTokens.expiresAt, new Date()),
+      gt(schema.oauthRefreshTokens.expiresAt, now),
     ))
     .groupBy(schema.oauthRefreshTokens.clientId)
     .as('live_grants')
+  const liveAccessTokens = db
+    .select({
+      clientId: schema.oauthAccessTokens.clientId,
+      liveUntil: sql<number>`max(${schema.oauthAccessTokens.expiresAt})`
+        .as('live_until'),
+    })
+    .from(schema.oauthAccessTokens)
+    .where(and(
+      eq(schema.oauthAccessTokens.userId, userId),
+      isNull(schema.oauthAccessTokens.revoked),
+      gt(schema.oauthAccessTokens.expiresAt, now),
+    ))
+    .groupBy(schema.oauthAccessTokens.clientId)
+    .as('live_access_tokens')
 
   const rows = await db
     .select({
       clientId: schema.oauthClients.clientId,
       name: schema.oauthClients.name,
       uri: schema.oauthClients.uri,
+      consentId: schema.oauthConsents.id,
       consentScopes: schema.oauthConsents.scopes,
       consentCreatedAt: schema.oauthConsents.createdAt,
       consentUpdatedAt: schema.oauthConsents.updatedAt,
@@ -81,12 +107,16 @@ export default defineEventHandler(async () => {
       eq(liveGrants.clientId, schema.oauthClients.clientId),
     )
     .leftJoin(
+      liveAccessTokens,
+      eq(liveAccessTokens.clientId, schema.oauthClients.clientId),
+    )
+    .leftJoin(
       lastActivity,
       eq(lastActivity.clientId, schema.oauthClients.clientId),
     )
     .where(or(
-      isNotNull(schema.oauthConsents.id),
       isNotNull(liveGrants.clientId),
+      isNotNull(liveAccessTokens.clientId),
     ))
     .orderBy(desc(
       sql`coalesce(${schema.oauthConsents.updatedAt}, ${liveGrants.liveSince})`,
@@ -95,13 +125,17 @@ export default defineEventHandler(async () => {
 
   return rows.map((row) => {
     const liveSince = toTimestampDate(row.liveSince)
-    const scopes = row.consentScopes ?? row.liveScopes
+    const consentScopes = parseStoredOAuthScopes(row.consentScopes)
+    const scopes = consentScopes.length > 0
+      ? consentScopes
+      : parseStoredOAuthScopes(row.liveScopes)
 
     return {
       clientId: row.clientId,
       name: row.name || 'Unnamed app',
       uri: row.uri,
-      scopes: Array.isArray(scopes) ? scopes as string[] : [],
+      scopes,
+      canEditScopes: row.consentId !== null && consentScopes.length > 0,
       createdAt: row.consentCreatedAt ?? liveSince,
       updatedAt: row.consentUpdatedAt ?? liveSince,
       lastUsedAt: toTimestampDate(row.lastUsedAt),

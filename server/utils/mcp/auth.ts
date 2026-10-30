@@ -7,6 +7,7 @@ import {
   MCP_PROTECTED_RESOURCE_METADATA_PATH,
   MCP_SERVER_ROUTE,
 } from '~~/config/mcp-server'
+import { parseStoredOAuthScopes } from '~~/server/utils/oauth/stored-scopes'
 
 export const DEFAULT_MCP_SITE_URL = 'https://besidka.com'
 
@@ -29,10 +30,23 @@ const POSITIVE_INTEGER = /^[1-9]\d{0,15}$/
 const OAUTH_SCOPE_TOKEN = /^[\x21\x23-\x5b\x5d-\x7e]+$/
 const MCP_JWKS_CACHE_KEY = {}
 
+export type McpScopeSource = 'token' | 'consent' | 'token_fallback'
+
 export interface McpAuthContext {
   userId: number
   clientId: string
   scopes: string[]
+  scopeSource?: McpScopeSource
+}
+
+export interface McpPrincipalStatus {
+  isActive: boolean
+  consentScopes: string[]
+}
+
+export interface McpEffectiveScopes {
+  scopes: string[]
+  source: McpScopeSource
 }
 
 export type McpTokenVerification
@@ -67,7 +81,10 @@ export interface McpTokenVerifierDependencies {
   findOpaqueAccessToken: (
     tokenHash: string,
   ) => Promise<McpOpaqueAccessTokenRow | null>
-  isPrincipalActive: (userId: number, clientId: string) => Promise<boolean>
+  resolvePrincipal: (
+    userId: number,
+    clientId: string,
+  ) => Promise<McpPrincipalStatus>
   jwksCacheKey?: object
   now?: () => number
 }
@@ -133,10 +150,10 @@ export async function loadMcpJwksFromDatabase(): Promise<JSONWebKeySet> {
   return toMcpJsonWebKeySet(rows)
 }
 
-export async function isMcpPrincipalActive(
+export async function resolveMcpPrincipal(
   userId: number,
   clientId: string,
-): Promise<boolean> {
+): Promise<McpPrincipalStatus> {
   const db = useDb()
   const [users, clients, consents] = await db.batch([
     db.select({ id: schema.users.id })
@@ -147,7 +164,7 @@ export async function isMcpPrincipalActive(
       .from(schema.oauthClients)
       .where(eq(schema.oauthClients.clientId, clientId))
       .limit(1),
-    db.select({ id: schema.oauthConsents.id })
+    db.select({ scopes: schema.oauthConsents.scopes })
       .from(schema.oauthConsents)
       .where(and(
         eq(schema.oauthConsents.userId, userId),
@@ -156,11 +173,54 @@ export async function isMcpPrincipalActive(
       .limit(1),
   ])
   const client = clients[0]
-
-  return users.length > 0
+  const isActive = users.length > 0
     && Boolean(client)
     && client?.disabled !== true
     && consents.length > 0
+
+  return {
+    isActive,
+    consentScopes: isActive ? parseStoredOAuthScopes(consents[0]?.scopes) : [],
+  }
+}
+
+export async function isMcpPrincipalActive(
+  userId: number,
+  clientId: string,
+): Promise<boolean> {
+  const principal = await resolveMcpPrincipal(userId, clientId)
+
+  return principal.isActive
+}
+
+/**
+ * The consent row is the ceiling of what a connected app may do: the
+ * effective scopes are the token's scopes intersected with the consent's,
+ * never the consent alone. A narrow token cannot gain a scope because the
+ * user's consent is wider, and widening stays inside the OAuth flow, where
+ * the approval screen shows the new options. A consent that holds no
+ * readable scope (a legacy row, or one whose stored list cannot be parsed)
+ * does not narrow anything: the token's scopes stand and the source is
+ * `token_fallback`. Narrowing through the connected-apps API never writes
+ * an empty list, so that fallback cannot widen a deliberate narrowing.
+ */
+export function resolveEffectiveMcpScopes(
+  tokenScopes: readonly string[],
+  consentScopes: readonly string[],
+): McpEffectiveScopes {
+  if (consentScopes.length === 0) {
+    return { scopes: [...tokenScopes], source: 'token_fallback' }
+  }
+
+  const consented = new Set(consentScopes)
+  const scopes = tokenScopes.filter((scope) => {
+    return consented.has(scope)
+  })
+
+  return {
+    scopes,
+    source: scopes.length < tokenScopes.length ? 'consent' : 'token',
+  }
 }
 
 /**
@@ -220,7 +280,7 @@ export function createMcpTokenVerifierDependencies(
     audience: resolveMcpResourceUrl(siteUrl),
     loadJwks: loadMcpJwksFromDatabase,
     findOpaqueAccessToken: findMcpOpaqueAccessToken,
-    isPrincipalActive: isMcpPrincipalActive,
+    resolvePrincipal: resolveMcpPrincipal,
   }
 }
 
@@ -319,6 +379,13 @@ function toStringArray(value: unknown): string[] | null {
   }
 
   return value.every(item => typeof item === 'string') ? value : null
+}
+
+function isStoredScopeShape(value: unknown): boolean {
+  return value === null
+    || value === undefined
+    || typeof value === 'string'
+    || Array.isArray(value)
 }
 
 async function verifyJwtAccessToken(
@@ -432,19 +499,22 @@ export function evaluateMcpOpaqueAccessToken(
   }
 
   const userId = parseMcpUserId(row.userId)
-  const scopes = toStringArray(row.scopes)
 
   if (userId === null) {
     return { status: 'invalid', reason: 'subject' }
   }
 
-  if (scopes === null) {
+  if (!isStoredScopeShape(row.scopes)) {
     return { status: 'invalid', reason: 'scope' }
   }
 
   return {
     status: 'claims',
-    auth: { userId, clientId: row.clientId, scopes: [...new Set(scopes)] },
+    auth: {
+      userId,
+      clientId: row.clientId,
+      scopes: parseStoredOAuthScopes(row.scopes),
+    },
   }
 }
 
@@ -495,19 +565,31 @@ export async function verifyMcpAccessToken(
   }
 
   const { userId, clientId } = claims.auth
-  let isActive: boolean
+  let principal: McpPrincipalStatus
 
   try {
-    isActive = await dependencies.isPrincipalActive(userId, clientId)
+    principal = await dependencies.resolvePrincipal(userId, clientId)
   } catch {
     return { status: 'unavailable', reason: 'principal' }
   }
 
-  if (!isActive) {
+  if (!principal.isActive) {
     return { status: 'invalid', reason: 'principal' }
   }
 
-  return { status: 'valid', auth: claims.auth }
+  const effective = resolveEffectiveMcpScopes(
+    claims.auth.scopes,
+    principal.consentScopes,
+  )
+
+  return {
+    status: 'valid',
+    auth: {
+      ...claims.auth,
+      scopes: effective.scopes,
+      scopeSource: effective.source,
+    },
+  }
 }
 
 const FIRST_PRINTABLE_CODE = 0x20

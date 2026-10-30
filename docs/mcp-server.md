@@ -204,6 +204,71 @@ and the share status (the share URL is returned only when the token also has
 tool that deletes, spends the user's keys or publishes something must get a
 new scope.
 
+#### Consent is the effective scope
+
+A token's scopes are fixed when it is issued, and a refresh token keeps its
+original scopes for its whole life, so the token alone cannot reflect a user
+who later takes a permission away. The consent row is the ceiling instead.
+`verifyMcpAccessToken` already reads that row on every `/mcp` call (the
+principal check, `resolveMcpPrincipal` in `server/utils/mcp/auth.ts`), and
+the effective scopes are the token's scopes **intersected** with the
+consent's (`resolveEffectiveMcpScopes`). Everything downstream sees only the
+effective set: the `403 insufficient_scope` check in the request guard, the
+scopes in the challenge (`mergeMcpScopes(effective, missing)`),
+`assertMcpToolAuthorized`, and `context.scopes` of the private tools (for
+example `get_chat` returns a share URL only when `chats:write` is effective).
+The intersection happens in the verifier, not in the guard, so there is one
+place that decides it and `event.context.mcpAuth.scopes` is already narrowed
+for every later reader.
+
+Why an intersection and never the consent alone: a stolen narrow token must
+not gain scopes because the consent is wider, and widening has to stay in
+the OAuth flow, where the approval screen shows the user the new options.
+The connected-apps editor (`PATCH /api/v1/profiles/connected-apps/[clientId]/scopes`)
+can therefore only remove: it keeps every non-resource scope of the consent,
+keeps the resource scopes the request names and the consent already holds,
+and answers 400 ("To give this app more permissions, reconnect it from the
+app; its approval screen will show the new options.") for a scope the
+consent does not hold. Tokens are not touched, because the intersection
+makes the narrowing immediate. The row is written back as a real JSON array;
+Better Auth reads it back as an array too (its adapter parses only strings),
+and `authorize` still compares `consent.scopes.includes(...)`, so a later
+authorization that asks for a removed scope shows the approval screen again.
+
+Legacy rows: Better Auth writes the list pre-stringified into a Drizzle
+`json` column, so a read can return an array, a JSON text or a double-encoded
+text. `parseStoredOAuthScopes` (`server/utils/oauth/stored-scopes.ts`) reads
+every shape and is the only reader of `oauth_consents.scopes`,
+`oauth_refresh_tokens.scopes`, `oauth_access_tokens.scopes` and
+`oauth_clients.scopes`. A consent whose list parses to nothing (a legacy or
+corrupt row) does not narrow: the token's scopes stand and the request logs
+`mcp.scope_source: token_fallback`; a narrowing that removed something logs
+`consent`. The editor never writes an empty list (it answers 400 and points
+to Disconnect), so the fallback cannot undo a deliberate narrowing. An
+unreadable list on an opaque access token row, which the verifier used to
+reject, is now read like the others.
+
+#### Duplicate connections and dead consents
+
+claude.ai registers a new OAuth client (dynamic client registration) every
+time the user reconnects and never calls `/oauth2/revoke`, so the old client
+keeps a live consent and refresh token and the page used to show several
+"Claude" rows. `GET /api/v1/profiles/connected-apps` lists an app only when
+it is **live**: the user has an unrevoked, unexpired refresh token or access
+token for it. A consent with no live token is dead weight: nothing lists it
+and a later authorization would skip the approval screen while the consent
+still covers the requested scopes. The page groups live apps by name (case
+insensitive); a group of two or more shows a note and **Disconnect older**,
+which keeps the most recently used connection (`lastUsedAt`, falling back to
+`createdAt`) and calls `POST /api/v1/profiles/connected-apps/revoke/bulk`
+(`clientIds`, 1 to 20, revoked one by one, each in its own D1 batch; the page
+sends 20 at a time). The hourly `oauth-grant-sweep` cron deletes dead
+consents too (no live refresh or access token for that user and client, and
+`updated_at` older than a day, so it cannot race an in-flight authorization,
+whose consent is written before its tokens), before it sweeps owner-less
+clients because a consent keeps its client alive. Counts go under
+`attributes.oauthSweep.deletedConsents`.
+
 ### Token verification
 
 The provider issues a **JWT** access token (audience `${siteUrl}/mcp`) only
@@ -240,14 +305,16 @@ other token the opaque path.
   whose `sub` is the client id, are refused). `scope` is the space-separated
   claim. Tokens with a `cnf` claim (DPoP-bound) are refused: the server only
   supports Bearer.
-- One D1 batch (`isMcpPrincipalActive`, three indexed selects) then checks
+- One D1 batch (`resolveMcpPrincipal`, three indexed selects) then checks
   that the user still exists, the OAuth client exists and is not disabled,
   and **a live `oauth_consents` row exists for the user and the client**. A
   deleted account, a disabled client, or a disconnected app (Disconnect on
   `/profile/connected-apps` and account recovery delete the consent rows) gets
   `401 invalid_token` on the next request, not when the access token expires
   (its lifetime is `accessTokenExpiresIn` in `auth.ts`, 15 minutes). The
-  "up to 15 minutes" wording about a disconnected app no longer applies.
+  "up to 15 minutes" wording about a disconnected app no longer applies. The
+  same batch reads the consent's scopes, which narrow the token's (see
+  "Consent is the effective scope").
 
 **Key compromise runbook.** The `jwks` table is the only trust root for the
 JWT path. If a signing key is suspected leaked: delete its row from `jwks`

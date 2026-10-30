@@ -3,6 +3,7 @@ import {
   and,
   asc,
   eq,
+  gt,
   inArray,
   isNotNull,
   isNull,
@@ -43,6 +44,7 @@ interface RunOAuthGrantSweepJobInput {
 interface OAuthGrantSweepCounts {
   accessTokens: number
   refreshTokens: number
+  consents: number
   clients: number
 }
 
@@ -130,6 +132,70 @@ async function sweepStaleRefreshTokens(
   return deleted
 }
 
+async function sweepDeadConsents(
+  db: ReturnType<typeof useDb>,
+  cutoff: Date,
+  now: Date,
+): Promise<number> {
+  let deleted = 0
+
+  for (let batch = 0; batch < OAUTH_SWEEP_MAX_BATCHES; batch++) {
+    const rows = await db.delete(schema.oauthConsents)
+      .where(inArray(
+        schema.oauthConsents.id,
+        db.select({ id: schema.oauthConsents.id })
+          .from(schema.oauthConsents)
+          .where(and(
+            isNotNull(schema.oauthConsents.userId),
+            lt(schema.oauthConsents.updatedAt, cutoff),
+            notExists(
+              db.select({ one: sql`1` })
+                .from(schema.oauthRefreshTokens)
+                .where(and(
+                  eq(
+                    schema.oauthRefreshTokens.userId,
+                    schema.oauthConsents.userId,
+                  ),
+                  eq(
+                    schema.oauthRefreshTokens.clientId,
+                    schema.oauthConsents.clientId,
+                  ),
+                  isNull(schema.oauthRefreshTokens.revoked),
+                  gt(schema.oauthRefreshTokens.expiresAt, now),
+                )),
+            ),
+            notExists(
+              db.select({ one: sql`1` })
+                .from(schema.oauthAccessTokens)
+                .where(and(
+                  eq(
+                    schema.oauthAccessTokens.userId,
+                    schema.oauthConsents.userId,
+                  ),
+                  eq(
+                    schema.oauthAccessTokens.clientId,
+                    schema.oauthConsents.clientId,
+                  ),
+                  isNull(schema.oauthAccessTokens.revoked),
+                  gt(schema.oauthAccessTokens.expiresAt, now),
+                )),
+            ),
+          ))
+          .orderBy(asc(schema.oauthConsents.id))
+          .limit(OAUTH_SWEEP_BATCH_SIZE),
+      ))
+      .returning({ id: schema.oauthConsents.id })
+
+    deleted += rows.length
+
+    if (rows.length < OAUTH_SWEEP_BATCH_SIZE) {
+      break
+    }
+  }
+
+  return deleted
+}
+
 async function sweepOwnerlessClients(
   db: ReturnType<typeof useDb>,
   cutoff: Date,
@@ -200,8 +266,15 @@ async function sweepOwnerlessClients(
  * owner-less dynamically registered clients older than a week with no
  * consent and no token. Access tokens that reference a stale refresh token
  * go first, in the same batch, because of the `refresh_id` foreign key.
- * Every statement is bounded by a batch size and a batch count so one run
- * stays inside the D1 limits; a backlog drains over the following hours.
+ * Consents with no live refresh or access token for their user and client,
+ * untouched for a day, are dead weight too: nothing lists them, and a later
+ * authorization would skip the approval screen while they still cover the
+ * requested scopes. The day of grace keeps the sweep from racing an
+ * in-flight authorization, whose consent is written before its tokens, and
+ * the sweep runs before the owner-less clients one because a consent keeps
+ * its client alive. Every statement is bounded by a batch size and a batch
+ * count so one run stays inside the D1 limits; a backlog drains over the
+ * following hours.
  */
 export async function runOAuthGrantSweepJob(
   input: RunOAuthGrantSweepJobInput,
@@ -223,6 +296,7 @@ export async function runOAuthGrantSweepJob(
   const counts: OAuthGrantSweepCounts = {
     accessTokens: 0,
     refreshTokens: 0,
+    consents: 0,
     clients: 0,
   }
   let status = 200
@@ -258,6 +332,22 @@ export async function runOAuthGrantSweepJob(
 
   if (db) {
     try {
+      counts.consents = await sweepDeadConsents(
+        db,
+        grantCutoff,
+        new Date(input.controller.scheduledTime),
+      )
+    } catch (exception) {
+      logger.set({
+        attributes: {
+          oauthSweep: {
+            consentsError: exceptionMessage(exception),
+          },
+        },
+      })
+    }
+
+    try {
       counts.clients = await sweepOwnerlessClients(db, clientCutoff)
     } catch (exception) {
       logger.set({
@@ -275,6 +365,7 @@ export async function runOAuthGrantSweepJob(
       oauthSweep: {
         deletedAccessTokens: counts.accessTokens,
         deletedRefreshTokens: counts.refreshTokens,
+        deletedConsents: counts.consents,
         deletedClients: counts.clients,
       },
     },

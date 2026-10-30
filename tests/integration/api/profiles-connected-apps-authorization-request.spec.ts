@@ -219,6 +219,23 @@ describe('connected apps authorization request API', () => {
       expect(response.scopes).toEqual(['openid', 'chats:read'])
     })
 
+  it('reads client scopes stored as a double-encoded JSON text', async () => {
+    mocks.clientRows = [clientRow({
+      scopes: JSON.stringify(JSON.stringify(['openid', 'chats:read'])),
+    })]
+
+    const handler = await getHandler()
+    const query = new URLSearchParams(signedQuery())
+
+    query.delete('scope')
+
+    const response = await handler(event(query.toString())) as {
+      scopes: string[]
+    }
+
+    expect(response.scopes).toEqual(['openid', 'chats:read'])
+  })
+
   it('labels an unnamed client and a loopback redirect host', async () => {
     mocks.clientRows = [clientRow({ name: null })]
 
