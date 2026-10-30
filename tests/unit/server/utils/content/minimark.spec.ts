@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { minimarkToMarkdown } from '~~/server/utils/content/minimark'
+import {
+  minimarkToMarkdown,
+  replaceMinimarkComponents,
+} from '~~/server/utils/content/minimark'
 import type { MinimarkBody } from '~~/server/utils/content/minimark'
 
 function body(...value: MinimarkBody['value']): MinimarkBody {
@@ -126,5 +129,61 @@ describe('minimarkToMarkdown', () => {
       },
     })).toBe('Write to privacy@example.com.')
     expect(minimarkToMarkdown(tree)).toBe('Write to .')
+  })
+})
+
+describe('replaceMinimarkComponents', () => {
+  const components = {
+    'privacy-email-link': () => {
+      return 'privacy@example.com'
+    },
+    'account-email-list': () => {
+      return '1. **A:** one.\n2. **B:** two.'
+    },
+  }
+
+  it('replaces an inline component inside a text container', () => {
+    const tree: MinimarkBody['value'] = [
+      ['ul', {},
+        ['li', {}, 'Email: ', ['strong', {}, ['privacy-email-link', {}]]],
+      ],
+      ['p', {}, 'Write to ', ['privacy-email-link', {}], '.'],
+    ]
+
+    expect(replaceMinimarkComponents(tree, components)).toEqual([
+      ['ul', {},
+        ['li', {}, 'Email: ', ['strong', {}, 'privacy@example.com']],
+      ],
+      ['p', {}, 'Write to ', 'privacy@example.com', '.'],
+    ])
+  })
+
+  it('wraps a block component in its own paragraph', () => {
+    expect(replaceMinimarkComponents(
+      [['p', {}, 'Intro'], ['account-email-list', {}]],
+      components,
+    )).toEqual([
+      ['p', {}, 'Intro'],
+      ['p', {}, '1. **A:** one.\n2. **B:** two.'],
+    ])
+  })
+
+  it('leaves unregistered components and plain text untouched', () => {
+    const tree: MinimarkBody['value'] = [
+      'text',
+      ['home-bubble', {}, ['p', {}, 'kept']],
+    ]
+
+    expect(replaceMinimarkComponents(tree, components)).toEqual(tree)
+  })
+
+  it('does not mutate the input tree', () => {
+    const tree: MinimarkBody['value'] = [
+      ['p', {}, ['privacy-email-link', {}]],
+    ]
+
+    replaceMinimarkComponents(tree, components)
+
+    expect(tree).toEqual([['p', {}, ['privacy-email-link', {}]]])
   })
 })

@@ -17,8 +17,17 @@ import {
   MCP_SERVER_VERSION,
 } from './config/mcp-server.ts'
 import { assertSecureSiteUrl, resolveSiteUrl } from './config/site-url.ts'
+import {
+  ACCOUNT_EMAIL_REGISTRY_PATH,
+  createGitDependencies,
+  resolveLegalUpdatedAt,
+} from './config/legal-updated-at.ts'
 
 const siteUrl = resolveSiteUrl(process.env)
+
+const repositoryRoot = fileURLToPath(new URL('./', import.meta.url))
+
+const legalGitDependencies = createGitDependencies(repositoryRoot)
 
 const contentSignal = 'search=yes, ai-input=yes, ai-train=no'
 
@@ -791,6 +800,25 @@ export default defineNuxtConfig({
           { code: 'uk', file: 'cookie-consent.uk.ts' },
         ],
       })
+    },
+    'content:file:afterParse': ({ file, content, collection }) => {
+      if (collection.name !== 'legal') {
+        return
+      }
+
+      const updatedAt = resolveLegalUpdatedAt(
+        {
+          frontmatterValue: content.updatedAt,
+          filePath: file.path,
+          body: file.body,
+          registryPath: ACCOUNT_EMAIL_REGISTRY_PATH,
+        },
+        legalGitDependencies,
+      )
+
+      if (updatedAt) {
+        content.updatedAt = updatedAt
+      }
     },
     'nitro:build:before': (nitro) => {
       nitro.hooks.hook('prerender:routes', (routes) => {

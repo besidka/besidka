@@ -975,6 +975,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/routes/well-known/agent-skills-skill.spec.ts',
     'tests/unit/server/routes/well-known/mcp/server-card.spec.ts',
     'tests/unit/server/plugins/agent-discovery-landing.spec.ts',
+    'tests/unit/server/plugins/agent-discovery-page-components.spec.ts',
     'tests/unit/server/utils/agent-discovery/skills.spec.ts',
     'tests/unit/server/utils/agent-discovery/landing-markdown.spec.ts',
     'tests/unit/server/utils/content/minimark.spec.ts',
@@ -1459,7 +1460,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/routes\/\.well-known\/.*|server\/utils\/(agent-discovery|content)\/.*|server\/plugins\/agent-discovery-landing\.ts|config\/(agent-discovery-routes|mcp-server|site-url)\.ts|skills\/.*|content\/index\.md)$/,
+        /^(server\/routes\/\.well-known\/.*|server\/utils\/(agent-discovery|content)\/.*|server\/plugins\/agent-discovery-(landing|page-components)\.ts|config\/(agent-discovery-routes|mcp-server|site-url)\.ts|skills\/.*|content\/index\.md)$/,
       tests: agentDiscoveryTests,
     },
     {
@@ -2825,8 +2826,26 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(server\/utils\/account\/security-emails\.ts|content\/legal\/privacy-policy\.md|docs\/legal\/art30-record\.md)$/,
+      pattern: /^(server\/utils\/account\/security-emails\.ts|shared\/utils\/account-emails\.ts|content\/legal\/privacy-policy\.md)$/,
       tests: ['tests/unit/content/account-email-list.spec.ts'],
+    },
+    {
+      pattern: /^shared\/utils\/account-emails\.ts$/,
+      tests: [
+        'tests/unit/server/utils/mcp/pages.spec.ts',
+        'tests/unit/server/plugins/agent-discovery-page-components.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(app\/components\/content\/AccountEmailList\.vue|shared\/utils\/account-emails\.ts)$/,
+      tests: ['tests/unit/components/content/AccountEmailList.spec.ts'],
+    },
+    {
+      pattern: /^(config\/legal-updated-at\.ts|nuxt\.config\.ts|content\/legal\/.*\.md|shared\/utils\/account-emails\.ts)$/,
+      tests: [
+        'tests/unit/config/legal-updated-at.spec.ts',
+        'tests/unit/content/legal-pages.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/oauth\/registration-limits\.ts$/,

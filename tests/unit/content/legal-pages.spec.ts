@@ -2,6 +2,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseMarkdown } from '@nuxtjs/mdc/runtime'
 import { describe, expect, it } from 'vitest'
+import {
+  ACCOUNT_EMAIL_REGISTRY_PATH,
+  createGitDependencies,
+  resolveLegalUpdatedAt,
+  toIsoDate,
+} from '~~/config/legal-updated-at'
 
 interface MarkdownNode {
   tag?: string
@@ -26,11 +32,7 @@ const ANCHORS_LINKED_FROM_THE_APP: Record<string, string[]> = {
   'cookie-policy': [],
 }
 
-const UPDATED_AT_BY_PAGE: Record<(typeof LEGAL_PAGES)[number], string> = {
-  'privacy-policy': '2026-10-30',
-  'terms-of-use': '2026-10-29',
-  'cookie-policy': '2026-10-29',
-}
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 const FORBIDDEN_PUBLIC_TEXT = [
   /engineer-drafted/i,
@@ -62,7 +64,7 @@ function collectHeadingIds(node: MarkdownNode, ids: Set<string>) {
 }
 
 describe.each(LEGAL_PAGES)('content/legal/%s.md', (slug) => {
-  it('parses with string metadata and a current updatedAt', async () => {
+  it('parses with string metadata and a derived updatedAt', async () => {
     const parsed = await parseMarkdown(readSource(slug), { highlight: false })
     const data = parsed.data as Record<string, unknown>
 
@@ -73,7 +75,24 @@ describe.each(LEGAL_PAGES)('content/legal/%s.md', (slug) => {
       expect(typeof data.summary).toBe('string')
     }
 
-    expect(String(data.updatedAt)).toContain(UPDATED_AT_BY_PAGE[slug])
+    const floor = toIsoDate(data.updatedAt)
+    const source = readSource(slug)
+
+    expect(floor, 'frontmatter updatedAt must be an ISO date')
+      .toMatch(ISO_DATE)
+
+    const derived = resolveLegalUpdatedAt(
+      {
+        frontmatterValue: data.updatedAt,
+        filePath: join(process.cwd(), `content/legal/${slug}.md`),
+        body: source,
+        registryPath: ACCOUNT_EMAIL_REGISTRY_PATH,
+      },
+      createGitDependencies(process.cwd()),
+    )
+
+    expect(derived).toMatch(ISO_DATE)
+    expect(derived! >= floor!).toBe(true)
   })
 
   it('keeps every heading the app links to', async () => {

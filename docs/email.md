@@ -20,21 +20,21 @@ deliberately not written down here: the list of senders changes, and a hard
 number drifts. The sources of truth are `server/utils/auth.ts` and
 `server/utils/account/security-emails.ts`.
 
-- **Action-link emails** (`ActionEmail.vue`): reset password, verify
-  email, confirm a new email address, confirm account deletion. All
-  triggered by Better Auth callbacks in `server/utils/auth.ts`.
-- **Security notices**, sent via `server/utils/account/security-emails.ts`:
-  password changed, sign-in method connected/disconnected, two-factor
-  turned on/off, two-factor backup codes regenerated, account email
-  changed, passkey added/removed. These use `NoticeEmail.vue`.
-  The connected-app notice (an OAuth app was connected to the account) is
-  also a security notice, but it uses `ActionEmail.vue` because it carries a
-  "Review connected apps" link.
+The list of emails Besidka sends is `shared/utils/account-emails.ts`, one
+entry per email, with the exact phrase the Privacy Policy uses for it
+(`policyText`). It is not restated here, so there is one place to edit. Two
+shapes exist:
 
-Every sender in `security-emails.ts` must also appear in the Privacy Policy
-("Email I send you"), in `docs/legal/art30-record.md` row 20 and in this
-list. `tests/unit/content/account-email-list.spec.ts` fails when a new
-`send...Email` export is added without updating them.
+- **Action-link emails** (`ActionEmail.vue`), triggered by Better Auth
+  callbacks in `server/utils/auth.ts`.
+- **Security notices**, sent via `server/utils/account/security-emails.ts`.
+  Most use `NoticeEmail.vue`; the connected-app notice uses `ActionEmail.vue`
+  because it carries a "Review connected apps" link.
+
+When you add an email, add an entry to the registry. The Privacy Policy list
+(`::account-email-list`) and its "Last updated" date follow from it; see
+`docs/legal.md`. `tests/unit/content/account-email-list.spec.ts` fails when a
+`send...Email` export has no registry entry.
 
 Both shapes are sent through a single helper, `sendTemplateEmail()`, which
 wraps `nuxt-email-renderer`'s `renderEmailComponent()` and `useEmail().send()`
