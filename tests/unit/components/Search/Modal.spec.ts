@@ -201,6 +201,7 @@ describe('Search/Modal.client', () => {
       'search-option-keys',
       'search-option-memory',
       'search-option-preferences',
+      'search-option-connected-apps',
     ])
   })
 
@@ -218,7 +219,7 @@ describe('Search/Modal.client', () => {
       return wrapper.get(`#${id} .iconify`).classes()
     }
 
-    expect(rows).toHaveLength(8)
+    expect(rows).toHaveLength(9)
     expect(labelOf('search-option-projects')).toBe('Projects')
     expect(iconOf('search-option-projects')).toContain('i-lucide:folder')
     expect(labelOf('search-option-memory')).toBe('Memory')
@@ -226,6 +227,9 @@ describe('Search/Modal.client', () => {
     expect(labelOf('search-option-preferences')).toBe('Preferences')
     expect(iconOf('search-option-preferences'))
       .toContain('i-lucide:sliders-horizontal')
+    expect(labelOf('search-option-connected-apps')).toBe('Connected apps')
+    expect(iconOf('search-option-connected-apps'))
+      .toContain('i-lucide:plug')
 
     const orderedIds = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
@@ -237,12 +241,15 @@ describe('Search/Modal.client', () => {
       .toBeGreaterThan(settingsStart)
     expect(orderedIds.indexOf('search-option-preferences'))
       .toBeGreaterThan(orderedIds.indexOf('search-option-memory'))
+    expect(orderedIds.indexOf('search-option-connected-apps'))
+      .toBeGreaterThan(orderedIds.indexOf('search-option-preferences'))
   })
 
   it.each([
     ['search-option-projects', '/chats/projects'],
     ['search-option-memory', '/profile/memory'],
     ['search-option-preferences', '/profile/preferences'],
+    ['search-option-connected-apps', '/profile/connected-apps'],
   ])('closes the modal and navigates from %s to %s', async (id, path) => {
     useSearchModal().isModalOpen.value = true
 
@@ -263,7 +270,7 @@ describe('Search/Modal.client', () => {
     expect(closeSpy).toHaveBeenCalled()
   })
 
-  it('navigates to Preferences when it is the active row and Enter is pressed', async () => {
+  it('navigates to Connected apps when it is the active row and Enter is pressed', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -273,7 +280,7 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').trigger('keydown', { key: 'Enter' })
 
     expect(mocks.navigateToMock)
-      .toHaveBeenCalledWith('/profile/preferences')
+      .toHaveBeenCalledWith('/profile/connected-apps')
   })
 
   it('marks section headings as aria-hidden', async () => {
@@ -583,7 +590,7 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
 
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-preferences')
+      .toBe('search-option-connected-apps')
   })
 
   it('opens the modal on Cmd+K when logged in and no dialog is open', async () => {
