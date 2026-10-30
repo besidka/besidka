@@ -72,9 +72,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/ProjectGroups.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
+    'tests/unit/composables/file-manager-project-groups.spec.ts',
     'tests/unit/utils/files.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/upload-with-progress.spec.ts',
@@ -82,6 +84,8 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/files-delete.spec.ts',
     'tests/integration/api/files-index.spec.ts',
     'tests/integration/api/files-index-source.spec.ts',
+    'tests/integration/api/files-index-project-id.spec.ts',
+    'tests/integration/api/files-projects.spec.ts',
     'tests/integration/server/file-governance.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
     'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
@@ -312,6 +316,8 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/project-knowledge-sweep-plugin.spec.ts',
     'tests/integration/server/chat-deletion-cleanup.spec.ts',
     'tests/integration/api/files-delete.spec.ts',
+    'tests/integration/api/files-index-project-id.spec.ts',
+    'tests/integration/api/files-projects.spec.ts',
     'tests/integration/api/projects.spec.ts',
   ]
   const memoryEntriesTests = [
@@ -1982,7 +1988,7 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
-      pattern: /^app\/composables\/(chat-files|file-manager)\.ts$/,
+      pattern: /^app\/composables\/(chat-files|file-manager(-project-groups)?)\.ts$/,
       tests: filesModuleTests,
     },
     {
@@ -2216,6 +2222,8 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/utils/db/like.spec.ts',
         'tests/integration/api/projects.spec.ts',
         'tests/integration/api/chats-history.spec.ts',
+        'tests/integration/api/files-index-project-id.spec.ts',
+        'tests/integration/api/files-projects.spec.ts',
       ],
     },
     {
