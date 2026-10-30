@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   MCP_DELETE_SCOPES,
+  MCP_OAUTH_SCOPES,
   MCP_RESOURCE_SCOPES,
   isMcpDeleteScope,
   isMcpWriteScope,
@@ -14,6 +15,7 @@ import {
   isMcpDeleteTool,
   isMcpPrivateToolName,
   isMcpWriteTool,
+  mergeMcpScopes,
 } from '~~/server/utils/mcp/tool-scopes'
 
 const TOOLS_DIRECTORY = fileURLToPath(
@@ -158,4 +160,13 @@ describe('mcp tool scopes', () => {
         }
       }
     })
+
+  it('merges scope lists deduplicated in MCP_OAUTH_SCOPES order', () => {
+    expect(mergeMcpScopes(
+      ['data:delete', 'chats:read', 'openid'],
+      ['chats:read', 'memory:write', 'bogus'],
+    )).toEqual(['openid', 'chats:read', 'memory:write', 'data:delete'])
+    expect(mergeMcpScopes([...MCP_OAUTH_SCOPES]))
+      .toEqual([...MCP_OAUTH_SCOPES])
+  })
 })

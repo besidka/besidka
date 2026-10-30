@@ -1,5 +1,6 @@
 import type { McpResourceScope } from '#shared/utils/mcp-oauth-scopes'
 import {
+  MCP_OAUTH_SCOPES,
   isMcpDeleteScope,
   isMcpWriteScope,
 } from '#shared/utils/mcp-oauth-scopes'
@@ -72,5 +73,15 @@ export function findMissingMcpScopes(
 
   return requiredScopes.filter((scope) => {
     return !granted.has(scope)
+  })
+}
+
+export function mergeMcpScopes(
+  ...scopeLists: ReadonlyArray<readonly string[]>
+): string[] {
+  const requested = new Set(scopeLists.flat())
+
+  return MCP_OAUTH_SCOPES.filter((scope) => {
+    return requested.has(scope)
   })
 }

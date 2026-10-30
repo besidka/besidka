@@ -4,6 +4,7 @@ import {
   MCP_MAX_REQUEST_BODY_BYTES,
 } from '~~/config/mcp-server'
 import type { McpTokenVerification } from '~~/server/utils/mcp/auth'
+import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
 
 const mocks = vi.hoisted(() => {
   return {
@@ -57,6 +58,8 @@ function createEvent(
 
 const RESOURCE_METADATA_URL
   = 'https://besidka.com/.well-known/oauth-protected-resource/mcp'
+
+const ALL_SCOPES = MCP_OAUTH_SCOPES.join(' ')
 
 const VALID_AUTH = {
   userId: 42,
@@ -274,7 +277,7 @@ describe('mcp request guard authentication', () => {
       }
     })
 
-  it('answers 401 with a scoped challenge for an anonymous private call',
+  it('answers 401 advertising every scope for an anonymous private call',
     async () => {
       const body = toolsCall('list_chats', 'call-7')
       const { guard } = await createGuard(body)
@@ -289,7 +292,7 @@ describe('mcp request guard authentication', () => {
       })
       expect(mocks.setResponseStatus).toHaveBeenCalledWith(event, 401)
       expect(event.res.headers.get('WWW-Authenticate')).toBe(
-        'Bearer scope="chats:read", '
+        `Bearer scope="${ALL_SCOPES}", `
         + `resource_metadata="${RESOURCE_METADATA_URL}"`,
       )
     })
@@ -312,18 +315,19 @@ describe('mcp request guard authentication', () => {
     })
   })
 
-  it('names the write scope for an anonymous memory write', async () => {
-    const body = toolsCall('add_memory')
-    const { guard } = await createGuard(body)
-    const event = createEvent('POST', '/mcp', {
-      'content-length': String(body.length),
+  it('advertises the same full scope list whatever tool was called',
+    async () => {
+      const body = toolsCall('add_memory')
+      const { guard } = await createGuard(body)
+      const event = createEvent('POST', '/mcp', {
+        'content-length': String(body.length),
+      })
+
+      await guard(event)
+
+      expect(event.res.headers.get('WWW-Authenticate'))
+        .toContain(`scope="${ALL_SCOPES}"`)
     })
-
-    await guard(event)
-
-    expect(event.res.headers.get('WWW-Authenticate'))
-      .toContain('scope="memory:write"')
-  })
 
   it('passes a private call with a token that has the scope', async () => {
     const body = toolsCall('get_chat')
@@ -356,7 +360,11 @@ describe('mcp request guard authentication', () => {
       const header = event.res.headers.get('WWW-Authenticate') ?? ''
 
       expect(header).toMatch(/^Bearer error="insufficient_scope"/)
-      expect(header).toContain('scope="data:delete"')
+      expect(header).toContain('scope="openid chats:read data:delete"')
+      expect(header).toContain(
+        'error_description="The access token is missing the scope '
+        + 'data:delete"',
+      )
       expect(header).toContain(`resource_metadata="${RESOURCE_METADATA_URL}"`)
       expect(mocks.logger.set).toHaveBeenCalledWith({
         mcp: {
@@ -366,6 +374,28 @@ describe('mcp request guard authentication', () => {
         },
       })
     })
+
+  it('keeps granted scopes in the 403 challenge in stable order', async () => {
+    const body = toolsCall('delete_memory', 4)
+    const { guard } = await createGuard(body, {
+      status: 'valid',
+      auth: {
+        userId: 42,
+        clientId: 'client-abc',
+        scopes: ['memory:write', 'openid', 'chats:read', 'unknown:scope'],
+      },
+    })
+    const event = createEvent('POST', '/mcp', {
+      'content-length': String(body.length),
+      'authorization': 'Bearer token',
+    })
+
+    await guard(event)
+
+    expect(event.res.headers.get('WWW-Authenticate')).toContain(
+      'scope="openid chats:read memory:write data:delete"',
+    )
+  })
 
   it('answers 401 invalid_token for an invalid token on any request',
     async () => {
@@ -384,6 +414,8 @@ describe('mcp request guard authentication', () => {
       expect(mocks.setResponseStatus).toHaveBeenCalledWith(event, 401)
       expect(event.res.headers.get('WWW-Authenticate'))
         .toMatch(/^Bearer error="invalid_token"/)
+      expect(event.res.headers.get('WWW-Authenticate'))
+        .toContain(`scope="${ALL_SCOPES}"`)
       expect(event.context.mcpAuth).toBeUndefined()
       expect(readBody).not.toHaveBeenCalled()
     })
