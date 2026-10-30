@@ -27,7 +27,7 @@ export function useFileManager() {
     ReturnType<typeof setTimeout> | null
   >(null)
   const search = shallowRef<string>('')
-  const source = shallowRef<FileSourceFilter>('all')
+  const source = shallowRef<FileSourceFilter>('upload')
   const projectGroupsManager = useFileManagerProjectGroups({ search })
   const projectGroups = projectGroupsManager.groups
   const prefStorage = usePreferenceStorage()

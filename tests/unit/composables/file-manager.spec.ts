@@ -53,6 +53,8 @@ function generateFiles(count: number) {
   }))
 }
 
+const unfilteredSources = ['all', 'upload']
+
 let activeFileSet: typeof smallFileSet
 let baseFetchImpl: (url: string, options?: any) => Promise<any>
 
@@ -63,7 +65,7 @@ function createFetchMock(fileSet: typeof smallFileSet) {
       const source = options?.query?.source || 'all'
       const offset = options?.query?.offset || 0
       const limit = options?.query?.limit || 20
-      const sourceFiles = source === 'all'
+      const sourceFiles = unfilteredSources.includes(source)
         ? fileSet
         : fileSet.filter(file => file.source === source)
       const filteredFiles = search
@@ -168,9 +170,15 @@ describe('useFileManager', () => {
       query: {
         offset: 0,
         limit: 20,
-        source: 'all',
+        source: 'upload',
       },
     })
+  })
+
+  it('starts on the uploaded source', () => {
+    const manager = useFileManager()
+
+    expect(manager.source.value).toBe('upload')
   })
 
   it('filters by source and resets pagination and selection', async () => {
@@ -288,8 +296,9 @@ describe('useFileManager', () => {
       manager.source.value = 'project'
 
       await vi.waitFor(() => {
-        expect(manager.projectGroups.value[0]?.hasLoaded).toBe(true)
+        expect(manager.projectGroups.value).toHaveLength(2)
       })
+      await manager.toggleProjectGroup('project-a')
 
       return manager
     }
@@ -505,7 +514,7 @@ describe('useFileManager', () => {
     it('clears groups when switching back to a flat source', async () => {
       const manager = await openProjectsSource()
 
-      manager.source.value = 'all'
+      manager.source.value = 'upload'
       await vi.waitFor(() => {
         expect(manager.projectGroups.value).toEqual([])
       })
@@ -520,7 +529,10 @@ describe('useFileManager', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/v1/files/projects', {
         query: {},
       })
-      expect(manager.projectGroups.value[0]?.hasLoaded).toBe(true)
+      expect(manager.projectGroups.value.map(group => group.isOpen)).toEqual([
+        false,
+        false,
+      ])
     })
   })
 

@@ -349,7 +349,7 @@ describe('Search/Modal.client', () => {
 
     expect(useFilesModalHandoff().pendingOpen.value).toEqual({
       tab: 'select',
-      source: 'all',
+      source: 'upload',
       targetPath: '/chats/abc123',
     })
     expect(mocks.navigateToMock).not.toHaveBeenCalled()
@@ -368,7 +368,7 @@ describe('Search/Modal.client', () => {
     expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/new')
     expect(useFilesModalHandoff().pendingOpen.value).toEqual({
       tab: 'select',
-      source: 'all',
+      source: 'upload',
       targetPath: '/chats/new',
     })
   })
@@ -376,7 +376,7 @@ describe('Search/Modal.client', () => {
   it('clears a pending files-modal request when navigating away from chat routes', async () => {
     mockRoute.name = 'chats-slug'
     mockRoute.path = '/chats/abc123'
-    useFilesModalHandoff().requestOpen('select', '/chats/abc123', 'all')
+    useFilesModalHandoff().requestOpen('select', '/chats/abc123', 'upload')
 
     await mountModal()
 
@@ -390,7 +390,7 @@ describe('Search/Modal.client', () => {
   it('keeps a pending files-modal request when the route path matches the target exactly', async () => {
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
-    useFilesModalHandoff().requestOpen('select', '/chats/abc123', 'all')
+    useFilesModalHandoff().requestOpen('select', '/chats/abc123', 'upload')
 
     await mountModal()
 
@@ -400,7 +400,7 @@ describe('Search/Modal.client', () => {
 
     expect(useFilesModalHandoff().pendingOpen.value).toEqual({
       tab: 'select',
-      source: 'all',
+      source: 'upload',
       targetPath: '/chats/abc123',
     })
   })
@@ -416,7 +416,7 @@ describe('Search/Modal.client', () => {
 
     expect(useFilesModalHandoff().pendingOpen.value).toEqual({
       tab: 'select',
-      source: 'all',
+      source: 'upload',
       targetPath: '/chats/new',
     })
 

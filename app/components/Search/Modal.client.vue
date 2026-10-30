@@ -192,7 +192,7 @@ async function openAttachments() {
   const isOnChatPage = route.name === 'chats-slug' || route.name === 'chats-new'
   const targetPath = isOnChatPage ? route.path : '/chats/new'
 
-  requestFilesModalOpen('select', targetPath, 'all')
+  requestFilesModalOpen('select', targetPath, 'upload')
 
   if (isOnChatPage) {
     return

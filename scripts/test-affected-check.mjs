@@ -72,6 +72,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/ProjectGroups.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
