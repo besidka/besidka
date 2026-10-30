@@ -176,6 +176,122 @@ describe('createAuthRateLimitStorage', () => {
     expect(afterWindow.allowed).toBe(true)
   })
 
+  it('never blocks steady calls spaced inside a long window', async () => {
+    const kv = createFakeKV()
+    const storage = createAuthRateLimitStorage(
+      kv as any,
+      'auth:rate-limit',
+    )
+    const rule = { window: 3600, max: 20 }
+    const results: boolean[] = []
+
+    for (let call = 0; call < 40; call++) {
+      const result = await storage.consume('mcp:delete', rule)
+
+      results.push(result.allowed)
+      vi.advanceTimersByTime(50 * 60 * 1000)
+    }
+
+    expect(results.every(allowed => allowed)).toBe(true)
+  })
+
+  it('blocks the call after max within one window with the remaining time', async () => {
+    const kv = createFakeKV()
+    const storage = createAuthRateLimitStorage(
+      kv as any,
+      'auth:rate-limit',
+    )
+    const rule = { window: 3600, max: 20 }
+
+    for (let call = 0; call < 20; call++) {
+      const result = await storage.consume('mcp:delete', rule)
+
+      expect(result.allowed).toBe(true)
+      vi.advanceTimersByTime(60 * 1000)
+    }
+
+    const blocked = await storage.consume('mcp:delete', rule)
+
+    expect(blocked.allowed).toBe(false)
+    expect(blocked.retryAfter).toBe(2400)
+  })
+
+  it('opens a new window exactly when the old one ends', async () => {
+    const kv = createFakeKV()
+    const storage = createAuthRateLimitStorage(
+      kv as any,
+      'auth:rate-limit',
+    )
+    const rule = { window: 60, max: 2 }
+
+    await storage.consume('ip:/path', rule)
+    vi.advanceTimersByTime(30_000)
+    await storage.consume('ip:/path', rule)
+
+    const blocked = await storage.consume('ip:/path', rule)
+
+    expect(blocked.allowed).toBe(false)
+    expect(blocked.retryAfter).toBe(30)
+
+    vi.advanceTimersByTime(30_000)
+
+    const reopened = await storage.consume('ip:/path', rule)
+    const stored = JSON.parse(kv.store.get('auth:rate-limit:ip:/path')!)
+
+    expect(reopened.allowed).toBe(true)
+    expect(stored.count).toBe(1)
+    expect(stored.windowStart).toBe(Date.now())
+  })
+
+  it('keeps the window start fixed across increments', async () => {
+    const kv = createFakeKV()
+    const storage = createAuthRateLimitStorage(
+      kv as any,
+      'auth:rate-limit',
+    )
+    const rule = { window: 60, max: 5 }
+    const startedAt = Date.now()
+
+    await storage.consume('ip:/path', rule)
+    vi.advanceTimersByTime(20_000)
+    await storage.consume('ip:/path', rule)
+
+    const stored = JSON.parse(kv.store.get('auth:rate-limit:ip:/path')!)
+
+    expect(stored.windowStart).toBe(startedAt)
+    expect(stored.lastRequest).toBe(startedAt + 20_000)
+    expect(stored.count).toBe(2)
+  })
+
+  it('reads a legacy value without windowStart from lastRequest', async () => {
+    const kv = createFakeKV()
+    const storage = createAuthRateLimitStorage(
+      kv as any,
+      'auth:rate-limit',
+    )
+    const rule = { window: 60, max: 2 }
+
+    kv.store.set(
+      'auth:rate-limit:ip:/path',
+      JSON.stringify({
+        key: 'ip:/path',
+        count: 2,
+        lastRequest: Date.now() - 10_000,
+      }),
+    )
+
+    const blocked = await storage.consume('ip:/path', rule)
+
+    expect(blocked.allowed).toBe(false)
+    expect(blocked.retryAfter).toBe(50)
+
+    vi.advanceTimersByTime(50_000)
+
+    const reopened = await storage.consume('ip:/path', rule)
+
+    expect(reopened.allowed).toBe(true)
+  })
+
   it('stores every value with a TTL of Math.max(60, authRateLimitMaxWindow)', async () => {
     const kv = createFakeKV()
     const storage = createAuthRateLimitStorage(

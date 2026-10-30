@@ -9,6 +9,7 @@ interface AuthRateLimitValue {
   key: string
   count: number
   lastRequest: number
+  windowStart?: number
 }
 
 interface AuthRateLimitConsumeResult {
@@ -117,16 +118,22 @@ export function createAuthRateLimitStorage(
     const now = Date.now()
     const windowInMs = rule.window * 1000
     const data = await get(key)
+    const windowStart = data ? (data.windowStart ?? data.lastRequest) : now
 
-    if (!data || now - data.lastRequest > windowInMs) {
-      await set(key, { key, count: 1, lastRequest: now }, rule.window)
+    if (!data || now - windowStart >= windowInMs) {
+      await set(
+        key,
+        { key, count: 1, lastRequest: now, windowStart: now },
+        rule.window,
+      )
 
       return { allowed: true, retryAfter: null }
     }
 
     if (data.count >= rule.max) {
-      const retryAfter = Math.ceil(
-        (data.lastRequest + windowInMs - now) / 1000,
+      const retryAfter = Math.max(
+        1,
+        Math.ceil((windowStart + windowInMs - now) / 1000),
       )
 
       return { allowed: false, retryAfter }
@@ -138,6 +145,7 @@ export function createAuthRateLimitStorage(
         key,
         count: data.count + 1,
         lastRequest: now,
+        windowStart,
       },
       rule.window,
     )
