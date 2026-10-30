@@ -2,6 +2,7 @@ import type {
   LegalDocumentId,
   LegalNotice,
 } from '#shared/utils/legal-notices'
+import { buildAlreadyAvailableNote } from '#shared/utils/legal-change-history'
 import { parseNoticeEffectiveInstant } from '#shared/utils/legal-notices'
 
 const SITE_ORIGIN = 'https://besidka.com'
@@ -35,7 +36,9 @@ export type LegalNoticeEmailProps = {
   effectiveDate: string
   documents: { label: string, url: string }[]
   contactEmail: string
+  complaintUrl: string
   shortNoticeReason?: string
+  availabilityNote?: string
 }
 
 export interface LegalNoticeEmailContent {
@@ -58,26 +61,6 @@ export function formatNoticeEffectiveDate(notice: LegalNotice): string {
     + `${effective.getUTCFullYear()}`
 }
 
-function buildIntro(documents: readonly LegalDocumentId[]): string {
-  const changesTerms = documents.includes('terms-of-use')
-  const changesData = documents.some((documentId) => {
-    return documentId !== 'terms-of-use'
-  })
-
-  if (changesTerms && changesData) {
-    return 'I\'m changing how Besidka handles your data and the rules for '
-      + 'using it. Here\'s what changes:'
-  }
-
-  if (changesTerms) {
-    return 'I\'m changing the rules for using Besidka. Here\'s what '
-      + 'changes:'
-  }
-
-  return 'I\'m changing how Besidka handles your data. Here\'s what '
-    + 'changes:'
-}
-
 export function buildLegalNoticeEmail(
   notice: LegalNotice,
   contactEmail: string,
@@ -95,7 +78,7 @@ export function buildLegalNoticeEmail(
     props: {
       preview: subject,
       heading: `Changes to Besidka's ${documentsLabel}`,
-      intro: buildIntro(notice.documents),
+      intro: `Here's what changes in Besidka's ${documentsLabel}:`,
       summary: [...notice.summary],
       effectiveDate,
       documents: notice.documents.map((documentId) => {
@@ -105,6 +88,15 @@ export function buildLegalNoticeEmail(
         }
       }),
       contactEmail,
+      complaintUrl: `${SITE_ORIGIN}/privacy-policy#complaining`,
+      ...(notice.alreadyAvailable
+        ? {
+          availabilityNote: buildAlreadyAvailableNote(
+            effectiveDate,
+            documentsLabel,
+          ),
+        }
+        : {}),
       ...(notice.shortNoticeReason
         ? { shortNoticeReason: notice.shortNoticeReason }
         : {}),

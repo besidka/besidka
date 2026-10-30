@@ -18,7 +18,9 @@ defineProps<{
   effectiveDate: string
   documents: { label: string, url: string }[]
   contactEmail: string
+  complaintUrl: string
   shortNoticeReason?: string
+  availabilityNote?: string
 }>()
 </script>
 
@@ -99,6 +101,19 @@ defineProps<{
       {{ shortNoticeReason }}
     </EText>
     <EText
+      v-if="availabilityNote"
+      class="email-text"
+      :style="{
+        color: bodyLight,
+        fontFamily,
+        fontSize: '15px',
+        lineHeight: '25px',
+        margin: '0 0 6px 0',
+      }"
+    >
+      {{ availabilityNote }}
+    </EText>
+    <EText
       class="email-text"
       :style="{
         color: bodyLight,
@@ -158,10 +173,8 @@ defineProps<{
         margin: '20px 0 0 0',
       }"
     >
-      If you don't agree, you can object or withdraw consent in Profile →
-      Security, or delete your account before {{ effectiveDate }}. Deleting
-      your account is the only way to stop these notices; they are legally
-      required service notices, not marketing.
+      You're receiving this because you have a Besidka account. I'm Serhii
+      Chernenko, who runs Besidka and is the controller of your data.
     </EText>
     <EText
       class="email-muted"
@@ -173,12 +186,41 @@ defineProps<{
         margin: '12px 0 0 0',
       }"
     >
-      Questions about this change? Write to
+      If you don't agree, you can object or withdraw consent in Profile →
+      Security → Privacy &amp; consent, or delete your account before
+      {{ effectiveDate }}. Deleting your account is the only way to stop
+      these notices; they are service notices about changes to the terms,
+      not marketing.
+    </EText>
+    <EText
+      class="email-muted"
+      :style="{
+        color: mutedLight,
+        fontFamily,
+        fontSize: '13px',
+        lineHeight: '21px',
+        margin: '12px 0 0 0',
+      }"
+    >
+      You also have the right to complain to a data protection supervisory
+      authority. The Privacy Policy describes how, under
       <a
         class="email-footer-link"
-        :href="`mailto:${contactEmail}`"
+        :href="complaintUrl"
         :style="{ color: mutedLight }"
-      >{{ contactEmail }}</a>.
+      >Complaining</a>.
+    </EText>
+    <EText
+      class="email-muted"
+      :style="{
+        color: mutedLight,
+        fontFamily,
+        fontSize: '13px',
+        lineHeight: '21px',
+        margin: '12px 0 0 0',
+      }"
+    >
+      Questions about this change? Email {{ contactEmail }}.
     </EText>
   </EmailLayout>
 </template>

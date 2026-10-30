@@ -23,13 +23,19 @@ describe('LegalChangeHistory.vue', () => {
 
     expect(section.exists()).toBe(true)
     expect(section.find('strong').text()).toBe(
-      'Announced 31 October 2026, in effect from 1 December 2026',
+      'Announced 31 October 2026, in effect from 4 December 2026',
     )
     expect(section.findAll('time').map((time) => {
       return time.attributes('datetime')
-    })).toEqual(['2026-10-31T06:00:00Z', '2026-12-01'])
+    })).toEqual(['2026-10-31T06:00:00Z', '2026-12-04'])
     expect(section.findAll('li').length).toBeGreaterThanOrEqual(3)
     expect(wrapper.text()).toContain('Profile → Connected apps')
+    expect(wrapper.find(
+      '[data-testid="legal-change-history-note-2026-11-legal-notices"]',
+    ).text()).toBe(
+      'These features are already available; from 4 December 2026 they are '
+      + 'part of the text you agree to.',
+    )
   })
 
   it('says so when the document has no material change yet', async () => {

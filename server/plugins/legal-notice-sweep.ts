@@ -4,6 +4,12 @@ import { sweepLegalNotices } from '~~/server/utils/legal/notice-sweep'
 
 const LEGAL_NOTICE_SWEEP_CRON = '*/5 * * * *'
 
+const ALERTING_STOP_REASONS: ReadonlySet<string> = new Set([
+  'error',
+  'consecutive-failures',
+  'email-noop',
+])
+
 interface ScheduledControllerLike {
   cron: string
   scheduledTime: number
@@ -98,7 +104,9 @@ export async function runLegalNoticeSweepJob(
           sentCount: result.sentCount,
           skippedCount: result.skippedCount,
           failedCount: result.failedCount,
+          lateDeliveries: result.lateDeliveries,
           claimMissedCount: result.claimMissedCount,
+          userDeletedCount: result.userDeletedCount,
           errorCodes: result.errorCodes,
           notices: result.notices,
           stopReason: result.stopReason,
@@ -107,7 +115,7 @@ export async function runLegalNoticeSweepJob(
       },
     })
 
-    if (result.stopReason === 'error') {
+    if (ALERTING_STOP_REASONS.has(result.stopReason)) {
       status = 500
     }
   } catch (exception) {

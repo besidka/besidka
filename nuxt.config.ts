@@ -922,6 +922,11 @@ export default defineNuxtConfig({
             type: 'localStorage',
           },
           {
+            id: 'legal-notice-dismissed',
+            name: 'legal-notice:dismissed:*',
+            type: 'localStorage',
+          },
+          {
             id: 'pwa-refresher-dismissed',
             name: 'pwa:refresher-dismissed-until',
             type: 'sessionStorage',

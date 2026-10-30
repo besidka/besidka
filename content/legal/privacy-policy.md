@@ -48,6 +48,7 @@ Everything below lives in a Cloudflare D1 database, except files, which live in 
 - Your settings, such as your file retention period, your default reasoning effort and whether reasoning is shown expanded, whether the sidebar is pinned, your favourite models, whether links in deep research reports open without a warning, whether you were asked about push notifications and what you answered, and which TypeSafe AI checks you left on (all of them are on until you switch one off)
 - Deep research jobs, including the request and the resulting report
 - Your memory entries and memory settings (see [Memory](#memory))
+- A record of the legal change notices I sent you: which notice, when, whether it was delivered, and an error code if it failed (see [Email I send you](#email-i-send-you))
 - Your consent record: when you accepted the Terms of Use and confirmed that you are 18 or over, when you gave your consent to store sensitive information and when you withdrew it, if you did, and which version of the text you agreed to (see [Sensitive information in your chats](#sensitive-information-in-your-chats)). If you consent to sending your messages to DeepSeek, Moonshot AI, Qwen, one of the other vendors listed there, or through a router or preset model, I also keep when you gave that consent and when you withdrew it (see [Transfers outside the EU](#transfers-outside-the-eu))
 
 ### Your API keys
@@ -101,7 +102,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Send text to TypeSafe AI for the TypeSafe AI checks you leave on (see [TypeSafe AI checks](#typesafe-ai-checks)), only if you saved a TypeSafe AI key | Contract — Art. 6(1)(b), because you added the key and left the check on. For sensitive information, also your explicit consent — Art. 9(2)(a) |
 | Keep a record of your consents, of when you accepted the Terms of Use and of your age confirmation | Legal obligation to be able to prove consent — Art. 6(1)(c) with Art. 7(1) for the consents; legitimate interests — Art. 6(1)(f) for the Terms and age record |
 | Send your messages to DeepSeek, Moonshot AI, Qwen, one of the other gateway vendors listed under [Transfers outside the EU](#transfers-outside-the-eu) (in China, Singapore, Malaysia or Indonesia), or to a router or preset model that can pick any provider, outside the EU without an adequacy decision | Your explicit consent to the transfer — Art. 49(1)(a) |
-| Send the account emails listed under [Email I send you](#email-i-send-you) | Contract — Art. 6(1)(b) for verification, password reset and confirmation emails; legitimate interests — Art. 6(1)(f) for security notices that tell you something on your account changed; legal obligation — Art. 6(1)(c), my duty to inform you under Art. 12 to 14, and contract — Art. 6(1)(b), because the Terms are the contract and a change to them has to reach you, for notices of changes to the Privacy Policy, the Terms of Use or the Cookie Policy |
+| Send the account emails listed under [Email I send you](#email-i-send-you) | Contract — Art. 6(1)(b) for verification, password reset and confirmation emails, and, mainly, for notices of changes to the Privacy Policy, the Terms of Use or the Cookie Policy, because the Terms are the contract and a change to them binds you only once it has been delivered to you (Polish Civil Code art. 384¹); legal obligation — Art. 6(1)(c) where Art. 13(3) or 14(4) requires me to tell you before I use your data for a new purpose; legitimate interests — Art. 6(1)(f) for security notices that tell you something on your account changed and for the rest of a legal notice, and you can object to that (Art. 21) |
 | Send you push notifications | Your consent — Art. 6(1)(a) |
 | Publish a chat behind a share link | Your consent — Art. 6(1)(a) |
 | Let search engines index a shared chat | A separate consent — Art. 6(1)(a) |
@@ -495,7 +496,7 @@ I send only transactional email, which is email about your account and what you 
 ::account-email-list
 ::
 
-That is all. **I never send marketing email**, newsletters or product announcements, and there is no mailing list to unsubscribe from. A legal notice is a notice about the service that the law asks me to give you, so it carries no promotion and no unsubscribe link. The only way to stop receiving them is to delete your account. I keep a record that a legal notice was sent to you, as described under [How long I keep things](#how-long-i-keep-things). Email is sent through Cloudflare's email sending service.
+That is all. **I never send marketing email**, newsletters or product announcements, and there is no mailing list to unsubscribe from. A legal notice is a notice about a change to these terms that I need to give you for it to apply, so it carries no promotion and no unsubscribe link. The only way to stop receiving them is to delete your account. I keep a record that a legal notice was sent to you, as described under [How long I keep things](#how-long-i-keep-things). Email is sent through Cloudflare's email sending service.
 
 ## Analytics
 
@@ -626,7 +627,7 @@ You can also complain to the supervisory authority of the EU or EEA country wher
 
 I tell you about a **material change** before it takes effect. A change is material when it changes what data I collect, why I use it, who receives it, how long I keep it, or what rights and choices you have.
 
-- **Material changes** are announced by email to every account and by a notice in the app, at least **30 days** before they take effect. When a change is required by law or is needed for security and cannot wait that long, I give at least **14 days** and say in the notice why. This email is a notice about the service, not marketing, so it has no unsubscribe link.
+- **Material changes** are announced by email to every account with a verified email address that exists when the notice is published (if you sign up after that, you agree to the new text) and by a notice in the app. I publish the notice on this page and in the app first, at least **30 days** before the change takes effect (**14** when the law or security requires it, with the reason). Emails go out from then on; I send a limited number a day, so yours can arrive a few days after publication. This email is a notice about a change to these terms, not marketing, so it has no unsubscribe link.
 - **Everything else** takes effect when published, and I only update the date at the top: typo fixes, formatting, and clarifications that do not change what I do.
 - The change history below lists every material change, with the date I announced it and the date it takes effect.
 

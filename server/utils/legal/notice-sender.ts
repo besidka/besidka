@@ -1,17 +1,27 @@
-export interface SendLegalNoticeEmailInput {
+import type { RenderedEmail } from '~~/server/utils/email-template'
+
+export interface SendLegalNoticeEmailInput extends RenderedEmail {
   to: string
   subject: string
-  props: Record<string, unknown>
+}
+
+export async function renderLegalNoticeEmail(
+  props: Record<string, unknown>,
+): Promise<RenderedEmail> {
+  return await renderTemplateEmail({
+    template: 'LegalNoticeEmail',
+    props,
+  })
 }
 
 export async function sendLegalNoticeEmail(
   input: SendLegalNoticeEmailInput,
 ): Promise<{ messageId: string }> {
-  return await sendTemplateEmail({
+  return await sendRenderedEmail({
     to: input.to,
     subject: input.subject,
-    template: 'LegalNoticeEmail',
-    props: input.props,
+    html: input.html,
+    text: input.text,
     from: 'noreply',
   })
 }

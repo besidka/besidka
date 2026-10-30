@@ -25,6 +25,12 @@
             {{ line }}
           </li>
         </ul>
+        <p
+          v-if="item.availabilityNote"
+          :data-testid="`legal-change-history-note-${item.id}`"
+        >
+          {{ item.availabilityNote }}
+        </p>
       </section>
     </template>
   </div>

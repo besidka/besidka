@@ -34,8 +34,13 @@ describe('AccountEmailList.vue', () => {
     expect(text).toContain(', or an app was connected to your account.')
     expect(text).toContain(
       'a notice of a significant change to the Privacy Policy, the Terms of '
-      + 'Use or the Cookie Policy, sent at least 30 days before it takes '
-      + 'effect (14 days if the law or security requires it).',
+      + 'Use or the Cookie Policy, sent to every account with a verified '
+      + 'email address that exists when the notice is published (if you sign '
+      + 'up after that, you agree to the new text). The notice is published '
+      + 'on the page and in the app first, at least 30 days before the '
+      + 'change takes effect (14 days if the law or security requires it), '
+      + 'and emails go out from then on, a limited number a day, so yours '
+      + 'can arrive a few days after publication.',
     )
   })
 })

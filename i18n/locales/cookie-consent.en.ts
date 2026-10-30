@@ -124,6 +124,15 @@ export default defineI18nLocale(() => ({
           + 'link a folder.',
         duration: 'Until the folder is removed',
       },
+      'legal-notice-dismissed': {
+        description:
+          'Remembers that you dismissed the notice about a change to the '
+          + 'Privacy Policy, Terms of Use or Cookie Policy, one key per notice '
+          + 'and account, so it does not come back. It stays in your browser '
+          + 'and is never sent to the server. Written only after you dismiss '
+          + 'a notice.',
+        duration: 'Until deleted',
+      },
       'pwa-refresher-dismissed': {
         description:
           'Remembers for this tab that you dismissed the '

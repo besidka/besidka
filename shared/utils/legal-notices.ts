@@ -10,6 +10,7 @@ export interface LegalNotice {
   sendFrom: string
   effectiveAt: string
   shortNoticeReason?: string
+  alreadyAvailable?: boolean
   summary: readonly string[]
 }
 
@@ -25,6 +26,8 @@ export const SHORT_NOTICE_DAYS = 14
 
 export const NOTICE_ACTIVE_AFTER_EFFECTIVE_DAYS = 14
 
+export const SEND_WINDOW_BUFFER_DAYS = 3
+
 const MILLISECONDS_PER_DAY = 86_400_000
 
 export const LEGAL_NOTICES = [
@@ -33,18 +36,20 @@ export const LEGAL_NOTICES = [
     documents: ['privacy-policy', 'terms-of-use'],
     publishedAt: '2026-10-31T06:00:00Z',
     sendFrom: '2026-10-31T09:00:00Z',
-    effectiveAt: '2026-12-01',
+    effectiveAt: '2026-12-04',
+    alreadyAvailable: true,
     summary: [
-      'I now tell you about significant changes to the Privacy Policy, the '
-      + 'Terms of Use and the Cookie Policy by email and with a notice in '
-      + 'the app, at least 30 days before they take effect. Typo fixes and '
-      + 'clarifications that do not change what I do take effect when '
-      + 'published and only update the date.',
-      'AI apps you connect to your account, such as Claude, can be given '
-      + 'permission to change your data and, as a separate permission, to '
-      + 'delete it. Deleting through an app is permanent, and each '
-      + 'permission is off until you tick it. Apps you connected earlier '
-      + 'do not have these permissions and have to ask you for them.',
+      'I now tell you about significant changes to my legal pages by email '
+      + 'and with a notice in the app, at least 30 days before they take '
+      + 'effect (14 days, with the reason, when the law or security '
+      + 'requires it). Typo fixes and clarifications that do not change '
+      + 'what I do take effect when published and only update the date.',
+      'Connected AI apps such as Claude can now be given more permissions, '
+      + 'including changing your chats, files and settings and, as a '
+      + 'separate permission, deleting your data. The change and delete '
+      + 'permissions are off until you tick them. Apps you connected '
+      + 'earlier keep what you approved and have to ask you for the new '
+      + 'permissions.',
       'You can remove single permissions from a connected app, or '
       + 'disconnect it, at any time in Profile → Connected apps. It takes '
       + 'effect on the app\'s next request.',
@@ -52,7 +57,7 @@ export const LEGAL_NOTICES = [
       + 'can follow your account setting, be turned on or be turned off for '
       + 'that project, independently of your account setting. Updates run '
       + 'on your own API key and only cover messages written after you '
-      + 'turn them on.',
+      + 'turn them on. Nothing is turned on for you.',
       'I delete the approval of a connected app automatically when it has '
       + 'no live token and the app has not been used for 30 days.',
     ],
@@ -76,6 +81,17 @@ export function getNoticeLeadDays(notice: LegalNotice): number {
 
 export function getRequiredNoticeDays(notice: LegalNotice): number {
   return notice.shortNoticeReason ? SHORT_NOTICE_DAYS : STANDARD_NOTICE_DAYS
+}
+
+export function getNoticeSendLeadDays(notice: LegalNotice): number {
+  return (
+    parseNoticeEffectiveInstant(notice.effectiveAt)
+    - parseNoticeInstant(notice.sendFrom)
+  ) / MILLISECONDS_PER_DAY
+}
+
+export function getRequiredNoticeSendLeadDays(notice: LegalNotice): number {
+  return getRequiredNoticeDays(notice) + SEND_WINDOW_BUFFER_DAYS
 }
 
 export function isLegalNoticePublished(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   LEGAL_CHANGE_HISTORY_EMPTY_TEXT,
+  buildAlreadyAvailableNote,
   buildLegalChangeHistoryItems,
   buildLegalChangeHistoryMarkdown,
   formatLegalDate,
@@ -118,5 +119,29 @@ describe('buildLegalChangeHistoryMarkdown', () => {
   it('says so when there is no material change yet', () => {
     expect(buildLegalChangeHistoryMarkdown('cookie-policy', NOW, NOTICES))
       .toBe(LEGAL_CHANGE_HISTORY_EMPTY_TEXT)
+  })
+
+  it('adds the availability line for a notice that is already live', () => {
+    const notices = [createNotice({ id: 'live', alreadyAvailable: true })]
+    const [item] = buildLegalChangeHistoryItems('privacy-policy', NOW, notices)
+
+    expect(item!.availabilityNote).toBe(
+      'These features are already available; from 15 February 2026 they '
+      + 'are part of the text you agree to.',
+    )
+    expect(buildLegalChangeHistoryMarkdown('privacy-policy', NOW, notices))
+      .toContain(`\n\n${item!.availabilityNote}`)
+    expect(
+      buildLegalChangeHistoryItems('privacy-policy', NOW, NOTICES)[0]!
+        .availabilityNote,
+    ).toBeNull()
+  })
+
+  it('writes the availability line for any subject', () => {
+    expect(buildAlreadyAvailableNote('4 December 2026', 'Privacy Policy'))
+      .toBe(
+        'These features are already available; from 4 December 2026 they '
+        + 'are part of the Privacy Policy you agree to.',
+      )
   })
 })

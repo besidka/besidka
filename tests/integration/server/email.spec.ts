@@ -226,6 +226,39 @@ describe('useEmail', () => {
     expect(getEmailErrorCode(exception)).toBe('E_RATE_LIMIT_EXCEEDED')
   })
 
+  it('marks a missing binding and a missing sender as not configured',
+    async () => {
+      const {
+        useEmail,
+        getEmailErrorCode,
+        EMAIL_NOT_CONFIGURED_CODE,
+      } = await import('../../../server/utils/email')
+      const message = {
+        to: 'test@example.com',
+        subject: 'Subject',
+        html: '<p>Hello</p>',
+      }
+      const withoutBinding = await useEmail(createRuntimeConfig({
+        emailSenderNoreply: 'noreply@example.com',
+      }), undefined).send(message).catch((caught: unknown) => caught)
+      const withoutSender = await useEmail(
+        createRuntimeConfig(),
+        { send: vi.fn() },
+      ).send(message).catch((caught: unknown) => caught)
+
+      expect(EMAIL_NOT_CONFIGURED_CODE).toBe('E_EMAIL_NOT_CONFIGURED')
+      expect(getEmailErrorCode(withoutBinding)).toBe(EMAIL_NOT_CONFIGURED_CODE)
+      expect(getEmailErrorCode(withoutSender)).toBe(EMAIL_NOT_CONFIGURED_CODE)
+    })
+
+  it('exports the noop message id the legal notice sweep refuses', async () => {
+    const { EMAIL_NOOP_MESSAGE_ID } = await import(
+      '../../../server/utils/email'
+    )
+
+    expect(EMAIL_NOOP_MESSAGE_ID).toBe('email-noop')
+  })
+
   it('throws without a code when the binding error has none', async () => {
     const { useEmail, getEmailErrorCode } = await import(
       '../../../server/utils/email'

@@ -173,4 +173,18 @@ describe('legal page substance', () => {
     expect(source).toContain('`knowledge-folders:<project id>`')
     expect(source).toContain('`knowledge-cache-info-seen`')
   })
+
+  it('lists the browser storage added with legal change notices', () => {
+    const source = readSource('cookie-policy')
+    const [row] = source.split('\n').filter((line) => {
+      return line.startsWith('| `legal-notice:dismissed:*`')
+    })
+
+    expect(row).toBeDefined()
+    expect(row).toContain('| localStorage |')
+    expect(row).toContain('one key per notice and account')
+    expect(row).toContain('never sent to me')
+    expect(row).toContain('| Until removed |')
+    expect(source.indexOf(row!)).toBeLessThan(source.indexOf('## Preferences'))
+  })
 })

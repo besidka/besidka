@@ -125,10 +125,10 @@ describe('email template rendering', () => {
         const { render } = await importRealRender()
         const html = await render(LegalNoticeEmail, props)
 
-        expect(subject).toContain('1 December 2026')
+        expect(subject).toContain('4 December 2026')
         expect(html).toContain(escapeApostrophes(props.heading))
         expect(html).toContain(escapeApostrophes(props.intro))
-        expect(html).toContain('The changes take effect on 1 December 2026.')
+        expect(html).toContain('The changes take effect on 4 December 2026.')
         expect(html).toContain(
           'href="https://besidka.com/privacy-policy#change-history"',
         )
@@ -137,10 +137,20 @@ describe('email template rendering', () => {
         )
         expect(html).toContain('Read the Privacy Policy changes')
         expect(html).toContain('Read the Terms of Use changes')
-        expect(html).toContain('href="mailto:privacy@example.test"')
-        expect(html).toContain('delete your account before 1 December 2026')
+        expect(html).toContain('Email privacy@example.test.')
+        expect(html).toContain('delete your account before 4 December 2026')
         expect(html).toContain('not marketing')
         expect(html).toContain('prefers-color-scheme: dark')
+        expect(html).toContain(escapeApostrophes(
+          'You\'re receiving this because you have a Besidka account.',
+        ))
+        expect(html).toContain('Serhii Chernenko')
+        expect(html).toContain('Profile → Security → Privacy &amp; consent')
+        expect(html).toContain(
+          'href="https://besidka.com/privacy-policy#complaining"',
+        )
+        expect(html).toContain('supervisory authority')
+        expect(html).toContain(escapeApostrophes(props.availabilityNote!))
 
         for (const item of props.summary) {
           expect(html).toContain(escapeApostrophes(item))
@@ -179,10 +189,18 @@ describe('email template rendering', () => {
         const normalizedText = text.replace(/\s+/g, ' ')
 
         expect(normalizedText).toContain(props.intro)
-        expect(normalizedText).toContain('1 December 2026')
+        expect(normalizedText).toContain('4 December 2026')
         expect(text).toContain('https://besidka.com/privacy-policy#change-history')
         expect(text).toContain('https://besidka.com/terms-of-use#change-history')
-        expect(text).toContain('privacy@example.test')
+        expect(text.split('privacy@example.test')).toHaveLength(2)
+        expect(normalizedText).toContain(
+          'Questions about this change? Email privacy@example.test.',
+        )
+        expect(text).toContain('https://besidka.com/privacy-policy#complaining')
+        expect(normalizedText).toContain(props.availabilityNote)
+        expect(normalizedText).toContain(
+          'Profile → Security → Privacy & consent',
+        )
         expect(text).not.toMatch(/<\/?[a-z][^>]*>/i)
       })
   })

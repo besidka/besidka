@@ -72,13 +72,38 @@ describe('buildLegalNoticeEmail', () => {
     }
 
     expect(introFor(['privacy-policy', 'terms-of-use'])).toBe(
-      'I\'m changing how Besidka handles your data and the rules for using '
-      + 'it. Here\'s what changes:',
+      'Here\'s what changes in Besidka\'s Privacy Policy and Terms of Use:',
     )
-    expect(introFor(['privacy-policy'])).toContain('handles your data')
-    expect(introFor(['cookie-policy'])).toContain('handles your data')
-    expect(introFor(['terms-of-use'])).toContain('rules for using Besidka')
+    expect(introFor(['privacy-policy'])).toBe(
+      'Here\'s what changes in Besidka\'s Privacy Policy:',
+    )
+    expect(introFor(['cookie-policy'])).toBe(
+      'Here\'s what changes in Besidka\'s Cookie Policy:',
+    )
   })
+
+  it('links the complaint section of the Privacy Policy', () => {
+    const { props } = buildLegalNoticeEmail(BASE_NOTICE, 'p@example.test')
+
+    expect(props.complaintUrl).toBe(
+      'https://besidka.com/privacy-policy#complaining',
+    )
+  })
+
+  it('adds the availability note only for a notice that is already live',
+    () => {
+      const plain = buildLegalNoticeEmail(BASE_NOTICE, 'p@example.test')
+      const live = buildLegalNoticeEmail({
+        ...BASE_NOTICE,
+        alreadyAvailable: true,
+      }, 'p@example.test')
+
+      expect(plain.props).not.toHaveProperty('availabilityNote')
+      expect(live.props.availabilityNote).toBe(
+        'These features are already available; from 1 December 2026 they '
+        + 'are part of the Privacy Policy and Terms of Use you agree to.',
+      )
+    })
 
   it('carries the summary, the contact and an optional short-notice reason',
     () => {

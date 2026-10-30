@@ -7,8 +7,11 @@ import {
   getActiveLegalNotices,
   getLatestLegalNotice,
   getLegalNoticeById,
+  SEND_WINDOW_BUFFER_DAYS,
   getNoticeLeadDays,
+  getNoticeSendLeadDays,
   getRequiredNoticeDays,
+  getRequiredNoticeSendLeadDays,
   isLegalDocumentId,
 } from '#shared/utils/legal-notices'
 import type { LegalNotice } from '#shared/utils/legal-notices'
@@ -63,6 +66,18 @@ describe('LEGAL_NOTICES invariants', () => {
     ).toBeGreaterThanOrEqual(requiredDays)
   })
 
+  it.each(LEGAL_NOTICES)('$id leaves room to deliver before it takes effect',
+    (notice) => {
+      const requiredDays = getRequiredNoticeSendLeadDays(notice)
+
+      expect(
+        getNoticeSendLeadDays(notice),
+        `${notice.id} takes effect less than ${requiredDays} days after `
+        + `sendFrom (${getRequiredNoticeDays(notice)} days of notice plus `
+        + `${SEND_WINDOW_BUFFER_DAYS} days to deliver). Move effectiveAt later.`,
+      ).toBeGreaterThanOrEqual(requiredDays)
+    })
+
   it.each(LEGAL_NOTICES)('$id starts sending after it is published', (notice) => {
     expect(Date.parse(notice.sendFrom)).toBeGreaterThanOrEqual(
       Date.parse(notice.publishedAt),
@@ -107,6 +122,24 @@ describe('notice period rule', () => {
 
   it('measures lead time from publishedAt to the start of effectiveAt', () => {
     expect(getNoticeLeadDays(createNotice())).toBe(30.75)
+  })
+
+  it('needs the notice period plus a 3-day buffer after sendFrom', () => {
+    expect(SEND_WINDOW_BUFFER_DAYS).toBe(3)
+    expect(getRequiredNoticeSendLeadDays(createNotice())).toBe(33)
+    expect(
+      getRequiredNoticeSendLeadDays(
+        createNotice({ shortNoticeReason: 'Security' }),
+      ),
+    ).toBe(17)
+  })
+
+  it('measures send lead time from sendFrom to the start of effectiveAt', () => {
+    expect(getNoticeSendLeadDays(createNotice())).toBe(30.625)
+    expect(getNoticeSendLeadDays(createNotice({
+      sendFrom: '2026-01-01T09:00:00Z',
+      effectiveAt: '2026-02-05',
+    }))).toBeGreaterThanOrEqual(getRequiredNoticeSendLeadDays(createNotice()))
   })
 })
 

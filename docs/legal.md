@@ -372,7 +372,7 @@ users when it is material. Three signals exist, and they are independent:
 | --- | --- | --- | --- |
 | Last updated date | git commit date of the page (and of the registries it renders), `config/legal-updated-at.ts` | Cosmetic: something was committed | Date shown on the page, nothing else |
 | `CURRENT_CONSENT_VERSION` | `server/utils/legal/consent.ts` | The consent text changed in a way that needs a fresh agreement | Everyone re-confirms the consent gate (see "Consent records"), unchanged by this feature |
-| `LEGAL_NOTICES` | `shared/utils/legal-notices.ts` | A material change, announced in advance | Email to every account, an in-app banner and an entry in the public change history |
+| `LEGAL_NOTICES` | `shared/utils/legal-notices.ts` | A material change, announced in advance | Email to every verified account that exists when the notice is published, an in-app banner and an entry in the public change history |
 
 **Who decides materiality: the author of the change, forced by CI.**
 `shared/utils/legal-document-revisions.ts` records, per document, the hash of
@@ -428,7 +428,8 @@ The email half is sent by the `legal-notice-sweep` cron job
 (`server/utils/legal/notice-sweep.ts`, `server/plugins/legal-notice-sweep.ts`),
 which is off by default and on only in the production Worker. It mails every
 verified account created before `publishedAt`, from `sendFrom` until
-`effectiveAt`, 25 a tick and 300 a day at most, and records each delivery in
+`effectiveAt`, 25 a tick and 300 a day at most, renders the email once per
+notice per tick, and records each delivery in
 `legal_notice_deliveries` (one row per user and notice; kept until the account
 is deleted, as proof of notice; see `docs/legal/art30-record.md`, row 20).
 `docs/email.md` ("Legal change notices") has the claim, retry and error-code
@@ -436,9 +437,19 @@ rules. Two consequences for whoever publishes a notice:
 
 - The daily cap means the last recipient is mailed about `users / 300` days
   after `sendFrom`, and the notice period that user actually gets is shorter by
-  that much. Check the user count before choosing `sendFrom` and `effectiveAt`.
+  that much. Check the verified-user count against the daily cap before
+  choosing `sendFrom` and `effectiveAt`. The registry spec requires
+  `effectiveAt` to be at least `sendFrom` plus 30 days plus a 3-day buffer
+  (14 plus 3 with `shortNoticeReason`), so the cap must clear the user count in
+  those 3 days, or the buffer must be widened by hand. A delivery that still
+  lands inside the notice period (less than 30 days, or 14 with a reason,
+  before `effectiveAt`) is counted as `lateDeliveries` in the sweep's wide event.
 - An account created after `publishedAt` is not mailed: it signed up to the new
-  text.
+  text. That is why `publishedAt` must not come before the deploy that ships
+  the new text (see "How to add a notice").
+- After the send window closes, list the rows that did not end up `sent` (the
+  SQL is in `docs/email.md`, "Legal change notices") and decide what to do with
+  each: a `failed` row with `attempts = 3` is a user who was never told.
 
 ### Why, and how long
 
@@ -458,8 +469,21 @@ rules. Two consequences for whoever publishes a notice:
 - **30 days, 14 for law or security.** `effectiveAt` must be at least 30 days
   after `publishedAt`. With `shortNoticeReason` set (a change required by law or
   needed for security) 14 days is enough, and the reason is stated in the
-  notice. The registry spec enforces both. A notice stays "active" (banner) until
-  14 days after it takes effect.
+  notice. The registry spec enforces both, and also `effectiveAt >= sendFrom +
+  30 days + 3 days` (14 + 3 with a reason), because emails arrive from
+  `sendFrom` and, with the daily cap, over a few days after it. A notice stays
+  "active" (banner) until 14 days after it takes effect.
+- **Whom the notice reaches.** The in-app notice and the page publish first
+  (`publishedAt`); emails go out from `sendFrom`, to verified accounts that
+  exist at `publishedAt`. An account that signs up later agrees to the new text
+  and is not mailed. The three Changes clauses and the account-email list in the
+  Privacy Policy say exactly this, in the same words.
+- **Legal basis (decided 2026-10-30).** Mainly Art. 6(1)(b): the Terms are the
+  contract, and a change to a template contract binds the user only once it was
+  delivered (KC art. 384¹). Art. 6(1)(c) where Art. 13(3) or 14(4) requires
+  telling the user before a new purpose. Art. 6(1)(f) for the rest, with the
+  right to object (Art. 21). The Privacy Policy legal-basis row and
+  `docs/legal/art30-record.md` row 20 carry the same wording.
 - **No unsubscribe.** The email is a legal notice about the service, not
   marketing, like the security notices. The policies say so. Do not add a
   marketing-style opt-out, and keep the email free of promotion.
@@ -474,9 +498,15 @@ rules. Two consequences for whoever publishes a notice:
    `note`. Stop here.
 4. Material: add an entry at the end of `LEGAL_NOTICES` in
    `shared/utils/legal-notices.ts` with a unique `id` (`YYYY-MM-name`),
-   `documents`, `publishedAt` (when the in-app notice appears), `sendFrom`
-   (emails start no earlier, at or after `publishedAt`), `effectiveAt` (at
-   least 30 days after `publishedAt`, 14 with `shortNoticeReason`) and 3 to 6
+   `documents`, `publishedAt` (when the in-app notice appears; it must be at
+   or after the deploy that ships the new text, because anyone who signs up
+   between the deploy and `publishedAt` accepted the old text and is not
+   emailed), `sendFrom` (emails start no earlier, at or after `publishedAt`),
+   `effectiveAt` (at least 30 days after `publishedAt`, and at least 30 days
+   plus 3 days of buffer after `sendFrom`; 14 and 14 plus 3 with
+   `shortNoticeReason`). Check the verified-user count against the daily cap
+   before choosing the dates. Add `alreadyAvailable: true` when the features
+   are live before `effectiveAt`. Then write 3 to 6
    plain-English `summary` bullets in the policy's first-person voice that say
    what changes and what it means for the user. Then set each affected
    document to the new hash, `classification: 'material'` and that `noticeId`.

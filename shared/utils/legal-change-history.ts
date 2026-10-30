@@ -10,6 +10,7 @@ export interface LegalChangeHistoryItem {
   publishedLabel: string
   effectiveAt: string
   effectiveLabel: string
+  availabilityNote: string | null
   summary: readonly string[]
 }
 
@@ -42,6 +43,14 @@ export function formatLegalDate(value: string): string {
   return `${Number(match[3])} ${month} ${match[1]}`
 }
 
+export function buildAlreadyAvailableNote(
+  effectiveLabel: string,
+  documentsLabel: string,
+): string {
+  return `These features are already available; from ${effectiveLabel} they `
+    + `are part of the ${documentsLabel} you agree to.`
+}
+
 export function buildLegalChangeHistoryItems(
   documentId?: LegalDocumentId,
   now: Date = new Date(),
@@ -59,6 +68,12 @@ export function buildLegalChangeHistoryItems(
         publishedLabel: formatLegalDate(notice.publishedAt),
         effectiveAt: notice.effectiveAt,
         effectiveLabel: formatLegalDate(notice.effectiveAt),
+        availabilityNote: notice.alreadyAvailable
+          ? buildAlreadyAvailableNote(
+            formatLegalDate(notice.effectiveAt),
+            'text',
+          )
+          : null,
         summary: notice.summary,
       }
     })
@@ -87,6 +102,7 @@ export function buildLegalChangeHistoryMarkdown(
         + `${item.effectiveLabel}**`,
         '',
         ...bullets,
+        ...(item.availabilityNote ? ['', item.availabilityNote] : []),
       ].join('\n')
     })
     .join('\n\n')

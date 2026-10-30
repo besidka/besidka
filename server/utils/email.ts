@@ -4,6 +4,10 @@ import { env } from 'cloudflare:workers'
 
 type From = 'noreply' | 'personalized'
 
+export const EMAIL_NOOP_MESSAGE_ID = 'email-noop'
+
+export const EMAIL_NOT_CONFIGURED_CODE = 'E_EMAIL_NOT_CONFIGURED'
+
 interface EmailRuntimeConfig {
   emailNoopEnabled: boolean | string
   emailSenderNoreply: string
@@ -21,13 +25,21 @@ function getSenderEmail(
         return emailSenderNoreply
       }
 
-      throw createError('Sender email is required for noreply emails')
+      throw createError({
+        message: 'Sender email is required for noreply emails',
+        status: 500,
+        code: EMAIL_NOT_CONFIGURED_CODE,
+      })
     case 'personalized':
       if (emailSenderPersonalized) {
         return emailSenderPersonalized
       }
 
-      throw createError('Sender email is required for personalized emails')
+      throw createError({
+        message: 'Sender email is required for personalized emails',
+        status: 500,
+        code: EMAIL_NOT_CONFIGURED_CODE,
+      })
     default:
       throw createError('Invalid sender type')
   }
@@ -102,13 +114,14 @@ export const useEmail = (
     }
 
     if (String(emailNoopEnabled) === 'true') {
-      return { messageId: 'email-noop' }
+      return { messageId: EMAIL_NOOP_MESSAGE_ID }
     }
 
     if (!emailBinding) {
       throw createError({
         message: 'Email binding (EMAIL) is not available in the runtime.',
         status: 500,
+        code: EMAIL_NOT_CONFIGURED_CODE,
       })
     }
 

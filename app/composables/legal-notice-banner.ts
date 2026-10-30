@@ -34,6 +34,10 @@ export function getLegalNoticeHref(notice: LegalNotice): string {
   return `/${firstDocument}#change-history`
 }
 
+function getDismissedKey(userId: number | string, noticeId: string): string {
+  return `${DISMISSED_KEY_PREFIX}${userId}:${noticeId}`
+}
+
 function readStoredDismissal(key: string): boolean {
   try {
     return window.localStorage.getItem(key) === DISMISSED_VALUE
@@ -57,7 +61,7 @@ export function useLegalNoticeVisibility() {
 }
 
 export function useLegalNoticeBanner() {
-  const { loggedIn } = useAuth()
+  const { loggedIn, user } = useAuth()
   const dismissedThisSession = useState<string[]>(
     'legal-notice:dismissed-session',
     () => [],
@@ -65,7 +69,7 @@ export function useLegalNoticeBanner() {
   const now = shallowRef<Date>(new Date())
 
   const notice = computed<LegalNotice | null>(() => {
-    if (!loggedIn.value) {
+    if (!loggedIn.value || user.value?.id === undefined) {
       return null
     }
 
@@ -75,8 +79,9 @@ export function useLegalNoticeBanner() {
       return null
     }
 
-    const isDismissed = dismissedThisSession.value.includes(activeNotice.id)
-      || readStoredDismissal(`${DISMISSED_KEY_PREFIX}${activeNotice.id}`)
+    const dismissedKey = getDismissedKey(user.value.id, activeNotice.id)
+    const isDismissed = dismissedThisSession.value.includes(dismissedKey)
+      || readStoredDismissal(dismissedKey)
 
     return isDismissed ? null : activeNotice
   })
@@ -94,14 +99,17 @@ export function useLegalNoticeBanner() {
   })
 
   function dismiss(): void {
-    if (!notice.value) {
+    if (!notice.value || user.value?.id === undefined) {
       return
     }
 
-    const { id } = notice.value
+    const dismissedKey = getDismissedKey(user.value.id, notice.value.id)
 
-    dismissedThisSession.value = [...dismissedThisSession.value, id]
-    writeStoredDismissal(`${DISMISSED_KEY_PREFIX}${id}`)
+    dismissedThisSession.value = [
+      ...dismissedThisSession.value,
+      dismissedKey,
+    ]
+    writeStoredDismissal(dismissedKey)
   }
 
   return {

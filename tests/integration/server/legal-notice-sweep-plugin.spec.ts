@@ -17,7 +17,9 @@ const sweepResult = {
   sentCount: 2,
   skippedCount: 1,
   failedCount: 0,
+  lateDeliveries: 0,
   claimMissedCount: 0,
+  userDeletedCount: 0,
   errorCodes: { E_RECIPIENT_SUPPRESSED: 1 },
   notices: [{
     noticeId: '2026-11-legal-notices',
@@ -25,6 +27,7 @@ const sweepResult = {
     sentCount: 2,
     skippedCount: 1,
     failedCount: 0,
+    lateDeliveries: 0,
   }],
   stopReason: 'completed',
   runtimeMs: 120,
@@ -152,6 +155,28 @@ describe('legal notice sweep plugin', () => {
 
       expect(loggerEmit).toHaveBeenCalledWith({ status: 500 })
     })
+
+  it.each([
+    'consecutive-failures',
+    'email-noop',
+  ])('emits status 500 when the sweep stopped on %s', async (stopReason) => {
+    const { loggerEmit, createLogger } = createLoggerMock()
+    const runLegalNoticeSweepJob = await loadJob()
+
+    await runLegalNoticeSweepJob({
+      controller,
+      config,
+      createLogger,
+      runSweep: vi.fn().mockResolvedValue({
+        ...sweepResult,
+        failedCount: 3,
+        stopReason,
+      }),
+      isDevelopment: false,
+    })
+
+    expect(loggerEmit).toHaveBeenCalledWith({ status: 500 })
+  })
 
   it('emits a failure event with status 500 when the sweep throws',
     async () => {

@@ -11,21 +11,23 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '1dacf74296fc82a6041a57cd643d845c802c290bb492b382d0a65f12542fa7fd',
+    hash: '912e35671a8add52847d1170b604f8a4ba04d0329a693a870aeacbc22947817c',
     classification: 'material',
     noticeId: '2026-11-legal-notices',
-    note: 'Change notice clause and its email, connected-app permissions '
-      + 'and per-project memory updates.',
+    note: 'Change notice clause, its email, recipients, timing and legal '
+      + 'basis, connected-app permissions and per-project memory updates.',
   },
   'terms-of-use': {
-    hash: '7e5cf76de1bed9fef15a739e962d50b9075c170009c3da45d522433ff5e0de5f',
+    hash: '75ad669cf6a09256d41e6c228d8d93c38f0d8067b6ffe4fe75807801ac54f995',
     classification: 'material',
     noticeId: '2026-11-legal-notices',
-    note: 'Change notice clause and connected-app permissions.',
+    note: 'Change notice clause, its recipients and timing, and '
+      + 'connected-app permissions.',
   },
   'cookie-policy': {
-    hash: '3f7cdc84eeaba26695783a9fa21754b80eef9561d1f2534f8300ecd13c6aaf21',
+    hash: '767342201cf16e5041180bd8d8e7169273784c68a9618ef47614014c0547b0de',
     classification: 'minor',
-    note: 'Change clause and change history reference only, no new storage.',
+    note: 'Change clause, change history and one necessary localStorage '
+      + 'key (legal-notice:dismissed:*) that remembers a dismissed notice.',
   },
 } as const satisfies Record<LegalDocumentId, LegalDocumentRevision>

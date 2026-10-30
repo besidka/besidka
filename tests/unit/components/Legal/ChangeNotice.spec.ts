@@ -8,14 +8,16 @@ import {
 import ChangeNotice from '../../../../app/components/Legal/ChangeNotice.client.vue'
 
 const NOTICE_ID = '2026-11-legal-notices'
-const DISMISSED_KEY = `legal-notice:dismissed:${NOTICE_ID}`
+const USER_ID = 42
+const DISMISSED_KEY = `legal-notice:dismissed:${USER_ID}:${NOTICE_ID}`
 const PUBLISHED_AT = '2026-10-31T06:00:00Z'
-const ACTIVE_UNTIL = '2026-12-15T00:00:00Z'
+const ACTIVE_UNTIL = '2026-12-18T00:00:00Z'
 const BANNER = '[data-testid="legal-change-notice"]'
 const DISMISS = '[data-testid="legal-change-notice-dismiss"]'
 
 const store = new Map<string, string>()
 const loggedIn = ref<boolean>(true)
+const user = ref<{ id: number } | null>({ id: USER_ID })
 const route = reactive<{ name: string }>({ name: 'chats-new' })
 const isPreferencesAllowed = vi.fn(() => false)
 
@@ -40,7 +42,7 @@ const throwingStorageShim = {
 }
 
 mockNuxtImport('useAuth', () => {
-  return () => ({ loggedIn })
+  return () => ({ loggedIn, user })
 })
 
 mockNuxtImport('useRoute', () => {
@@ -83,6 +85,7 @@ describe('Legal change notice', () => {
     isPreferencesAllowed.mockClear()
     route.name = 'chats-new'
     loggedIn.value = true
+    user.value = { id: USER_ID }
   })
 
   afterEach(() => {
@@ -96,7 +99,7 @@ describe('Legal change notice', () => {
     expect(banner.exists()).toBe(true)
     expect(banner.text()).toContain(
       'Changes to the Privacy Policy and Terms of Use take effect on '
-      + '1 December 2026.',
+      + '4 December 2026.',
     )
     expect(banner.text()).toContain('See what changes')
   })
@@ -145,6 +148,30 @@ describe('Legal change notice', () => {
     expect(wrapper.find(BANNER).exists()).toBe(false)
   })
 
+  it('keeps a dismissal to the account that made it', async () => {
+    store.set(DISMISSED_KEY, '1')
+    user.value = { id: USER_ID + 1 }
+
+    const wrapper = await mountNotice()
+
+    expect(wrapper.find(BANNER).exists()).toBe(true)
+
+    await wrapper.find(DISMISS).trigger('click')
+    await flushPromises()
+
+    expect(store.get(
+      `legal-notice:dismissed:${USER_ID + 1}:${NOTICE_ID}`,
+    )).toBe('1')
+  })
+
+  it('stays hidden until the account is known', async () => {
+    user.value = null
+
+    const wrapper = await mountNotice()
+
+    expect(wrapper.find(BANNER).exists()).toBe(false)
+  })
+
   it('stays hidden before the notice is published', async () => {
     setNow('2026-10-31T05:59:59Z')
 
@@ -162,7 +189,7 @@ describe('Legal change notice', () => {
   })
 
   it('shows until 14 days after the effective date', async () => {
-    setNow('2026-12-14T23:59:59Z')
+    setNow('2026-12-17T23:59:59Z')
 
     const wrapper = await mountNotice()
 

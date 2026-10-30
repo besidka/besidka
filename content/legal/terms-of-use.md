@@ -260,7 +260,7 @@ Moderation is therefore **reactive**. I act on reports, on notices from authorit
 
 ## Changes to these terms
 
-If I change these terms in a way that matters to you (a **material change**), I email every account and show a notice in the app at least **30 days** before the change takes effect, and I say what changes and when. When a change is required by law or is needed for security and cannot wait that long, I give at least **14 days** and say in the notice why. This email is a notice about the service, not marketing, so it has no unsubscribe link.
+If I change these terms in a way that matters to you (a **material change**), I email every account with a verified email address that exists when the notice is published (if you sign up after that, you agree to the new text) and show a notice in the app. I publish the notice on this page and in the app first, at least **30 days** before the change takes effect (**14** when the law or security requires it, with the reason), and I say what changes and when. Emails go out from then on; I send a limited number a day, so yours can arrive a few days after publication. This email is a notice about a change to these terms, not marketing, so it has no unsubscribe link.
 
 If you do not accept the new terms, you can stop using the service and delete your account before they take effect. Continuing to use the service after the change takes effect means you accept it.
 

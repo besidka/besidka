@@ -124,8 +124,8 @@ const legalNoticeEmailVariants = [
     preview: 'Changes to Besidka\'s Privacy Policy and Terms of Use take '
       + 'effect on 1 December 2026',
     heading: 'Changes to Besidka\'s Privacy Policy and Terms of Use',
-    intro: 'I\'m changing how Besidka handles your data and the rules for '
-      + 'using it. Here\'s what changes:',
+    intro: 'Here\'s what changes in Besidka\'s Privacy Policy and Terms of '
+      + 'Use:',
     summary: [
       'I now tell you about significant changes to the policies by email '
       + 'and with a notice in the app, at least 30 days before they take '
@@ -145,13 +145,13 @@ const legalNoticeEmailVariants = [
       },
     ],
     contactEmail: 'privacy@besidka.com',
+    complaintUrl: 'https://besidka.com/privacy-policy#complaining',
   },
   {
     preview: 'Changes to Besidka\'s Privacy Policy take effect on '
       + '15 January 2027',
     heading: 'Changes to Besidka\'s Privacy Policy',
-    intro: 'I\'m changing how Besidka handles your data. Here\'s what '
-      + 'changes:',
+    intro: 'Here\'s what changes in Besidka\'s Privacy Policy:',
     summary: [
       'A new provider receives your messages only if you add its key.',
     ],
@@ -165,6 +165,7 @@ const legalNoticeEmailVariants = [
       },
     ],
     contactEmail: 'privacy@besidka.com',
+    complaintUrl: 'https://besidka.com/privacy-policy#complaining',
   },
 ]
 
