@@ -17,6 +17,8 @@ interface ProjectGroupRequestContext {
 
 const PROJECT_GROUP_PAGE_SIZE = 20
 const PROJECT_GROUP_FETCH_CONCURRENCY = 4
+const PROJECT_GROUP_SYNC_CHUNK_SIZE = 100
+const PROJECT_GROUP_SEARCH_AUTO_OPEN_LIMIT = 5
 const SEARCH_INDICATOR_DELAY = 300
 
 export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
@@ -118,6 +120,7 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
     let isSuccess = false
 
     group.isLoading = true
+    group.hasError = false
 
     try {
       const response = await $fetch<FetchFilesResponse>('/api/v1/files', {
@@ -153,6 +156,7 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
       currentGroup.total = response.total
       currentGroup.fileCount = response.total
       currentGroup.hasLoaded = true
+      currentGroup.hasError = false
       isSuccess = true
 
       if (response.total === 0) {
@@ -161,6 +165,12 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
     } catch (exception) {
       if (!isCurrentGroupRequest(groupId, context)) {
         return false
+      }
+
+      const failedGroup = findGroup(groupId)
+
+      if (failedGroup) {
+        failedGroup.hasError = true
       }
 
       const parsedException = parseError(exception)
@@ -182,7 +192,11 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
     return isSuccess
   }
 
-  async function loadGroupPages(groupIds: string[], generation: number) {
+  async function runWithConcurrency(
+    groupIds: string[],
+    generation: number,
+    worker: (groupId: string) => Promise<unknown>,
+  ) {
     const queue = [...groupIds]
     const workers = Array.from({
       length: Math.min(PROJECT_GROUP_FETCH_CONCURRENCY, queue.length),
@@ -194,11 +208,17 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
           return
         }
 
-        await fetchGroupFiles(groupId, true)
+        await worker(groupId)
       }
     })
 
     await Promise.all(workers)
+  }
+
+  async function loadGroupPages(groupIds: string[], generation: number) {
+    await runWithConcurrency(groupIds, generation, (groupId) => {
+      return fetchGroupFiles(groupId, true)
+    })
   }
 
   async function fetchGroups(
@@ -246,7 +266,7 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
         let isOpen = index === 0
 
         if (search) {
-          isOpen = true
+          isOpen = index < PROJECT_GROUP_SEARCH_AUTO_OPEN_LIMIT
         } else if (hasPreservedOpenGroup) {
           isOpen = previousOpenIds.has(project.id)
         }
@@ -263,6 +283,7 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
           isLoading: isOpen,
           isOpen,
           hasLoaded: false,
+          hasError: false,
         }
       })
       openGroupIds = groups.value
@@ -283,7 +304,10 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
     } finally {
       if (generation === listGeneration) {
         isLoading.value = false
-        clearSearchTimeout()
+
+        if (!isSuccess) {
+          clearSearchTimeout()
+        }
       }
     }
 
@@ -293,7 +317,160 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
 
     await loadGroupPages(openGroupIds, generation)
 
-    return generation === listGeneration
+    if (generation !== listGeneration) {
+      return false
+    }
+
+    clearSearchTimeout()
+
+    return true
+  }
+
+  async function fetchSyncedGroupFiles(
+    groupId: string,
+    depth: number,
+    search: string,
+  ): Promise<{ files: FileManagerFile[], total: number }> {
+    const syncedFiles: FileManagerFile[] = []
+    let syncedTotal = 0
+    let offset = 0
+
+    while (syncedFiles.length < depth) {
+      const response = await $fetch<FetchFilesResponse>('/api/v1/files', {
+        query: {
+          source: 'project',
+          projectId: groupId,
+          offset,
+          limit: Math.min(
+            depth - syncedFiles.length,
+            PROJECT_GROUP_SYNC_CHUNK_SIZE,
+          ),
+          ...(search && { search }),
+        },
+      })
+
+      if (offset === 0) {
+        syncedTotal = response.total
+      }
+
+      if (response.files.length === 0) {
+        break
+      }
+
+      syncedFiles.push(...response.files)
+      offset += response.files.length
+
+      if (syncedFiles.length >= syncedTotal) {
+        break
+      }
+    }
+
+    return {
+      files: syncedFiles,
+      total: syncedTotal,
+    }
+  }
+
+  async function syncGroups(): Promise<boolean> {
+    const generation = ++listGeneration
+    const search = appliedSearch
+    const previousGroups = new Map(
+      groups.value.map(group => [group.id, group]),
+    )
+    const hadGroups = previousGroups.size > 0
+    const response = await $fetch('/api/v1/files/projects', {
+      query: {
+        ...(search && { search }),
+      },
+    })
+
+    if (generation !== listGeneration) {
+      return false
+    }
+
+    const nextGroups = response.projects.map((project, index) => {
+      const previous = previousGroups.get(project.id)
+
+      return {
+        project,
+        previous,
+        isOpen: previous ? previous.isOpen : !hadGroups && index === 0,
+      }
+    })
+    const syncedGroupFiles = new Map<
+      string,
+      { files: FileManagerFile[], total: number }
+    >()
+
+    await runWithConcurrency(
+      nextGroups.filter(entry => entry.isOpen).map(entry => entry.project.id),
+      generation,
+      async (groupId) => {
+        const loadedDepth = previousGroups.get(groupId)?.files.length ?? 0
+
+        syncedGroupFiles.set(
+          groupId,
+          await fetchSyncedGroupFiles(
+            groupId,
+            Math.max(loadedDepth, PROJECT_GROUP_PAGE_SIZE),
+            search,
+          ),
+        )
+      },
+    )
+
+    if (generation !== listGeneration) {
+      return false
+    }
+
+    groupGenerations.clear()
+    groups.value = nextGroups.flatMap(({ project, previous, isOpen }) => {
+      const synced = syncedGroupFiles.get(project.id)
+      const total = synced?.total ?? project.fileCount
+
+      if (synced && total === 0) {
+        return []
+      }
+
+      const files = synced?.files ?? previous?.files ?? []
+
+      return [{
+        id: project.id,
+        name: project.name,
+        fileCount: total,
+        pinned: project.pinned,
+        archived: project.archived,
+        files,
+        total,
+        serverOffset: files.length,
+        isLoading: false,
+        isOpen,
+        hasLoaded: Boolean(synced) || (previous?.hasLoaded ?? false),
+        hasError: false,
+      }]
+    })
+
+    return true
+  }
+
+  async function refillEmptyGroups() {
+    const emptiedGroups = groups.value.filter((group) => {
+      return group.hasLoaded && group.files.length === 0 && group.total > 0
+    })
+    const openGroupIds: string[] = []
+
+    for (const group of emptiedGroups) {
+      if (group.isOpen) {
+        openGroupIds.push(group.id)
+      } else {
+        group.hasLoaded = false
+        group.serverOffset = 0
+      }
+    }
+
+    await runWithConcurrency(openGroupIds, listGeneration, (groupId) => {
+      return fetchGroupFiles(groupId, true)
+    })
   }
 
   async function toggleGroup(groupId: string) {
@@ -375,6 +552,8 @@ export function useFileManagerProjectGroups(options: ProjectGroupsOptions) {
 
     findGroup,
     fetchGroups,
+    syncGroups,
+    refillEmptyGroups,
     toggleGroup,
     loadMoreGroup,
     renameFile,

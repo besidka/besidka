@@ -29,11 +29,12 @@ function createFiles(prefix: string, count: number) {
   })
 }
 
-const projects = [
+const baseProjects = [
   { id: 'project-a', name: 'Alpha', pinned: true, archived: false },
   { id: 'project-b', name: 'Beta', pinned: false, archived: false },
   { id: 'project-c', name: 'Gamma', pinned: false, archived: true },
 ]
+const projects = [...baseProjects]
 
 let filesByProject: Record<string, ReturnType<typeof createFile>[]>
 
@@ -99,6 +100,7 @@ describe('useFileManagerProjectGroups', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     search = shallowRef<string>('')
+    projects.splice(0, projects.length, ...baseProjects)
     filesByProject = {
       'project-a': createFiles('a', 25),
       'project-b': createFiles('b', 3),
@@ -408,5 +410,198 @@ describe('useFileManagerProjectGroups', () => {
 
     expect(manager.groups.value).toEqual([])
     expect(manager.loadedFiles.value).toEqual([])
+  })
+
+  it('flags a failed first page and clears the flag on retry', async () => {
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups()
+    fetchMock.mockRejectedValueOnce(new Error('boom'))
+    await manager.toggleGroup('project-b')
+
+    expect(manager.findGroup('project-b')?.hasError).toBe(true)
+
+    await manager.loadMoreGroup('project-b')
+
+    expect(manager.findGroup('project-b')?.hasError).toBe(false)
+    expect(manager.findGroup('project-b')?.hasLoaded).toBe(true)
+  })
+
+  it('does not flag an error when a group is only invalidated', async () => {
+    const stalled = createDeferred<unknown>()
+    const manager = useFileManagerProjectGroups({ search })
+
+    fetchMock.mockImplementation(async (url: string, options?: any) => {
+      if (url === '/api/v1/files' && options.query.projectId === 'project-a') {
+        return stalled.promise
+      }
+
+      return createFetchImplementation()(url, options)
+    })
+
+    const pending = manager.fetchGroups()
+
+    await vi.waitFor(() => {
+      expect(manager.findGroup('project-a')?.isLoading).toBe(true)
+    })
+    manager.invalidate()
+
+    const group = manager.findGroup('project-a')
+
+    expect(group?.isLoading).toBe(false)
+    expect(group?.hasLoaded).toBe(false)
+    expect(group?.hasError).toBe(false)
+
+    stalled.resolve({ files: [], total: 0, offset: 0, limit: 20 })
+    await pending
+  })
+
+  it('auto-opens at most five groups while searching', async () => {
+    projects.length = 0
+
+    for (let index = 1; index <= 7; index++) {
+      projects.push({
+        id: `project-${index}`,
+        name: `Project ${index}`,
+        pinned: false,
+        archived: false,
+      })
+      filesByProject[`project-${index}`] = createFiles(`p${index}`, 2)
+    }
+
+    search.value = 'report'
+
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups(false, true)
+
+    expect(manager.groups.value).toHaveLength(7)
+    expect(manager.groups.value.map(group => group.isOpen)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+    ])
+    expect(getFilesCalls()).toHaveLength(5)
+
+    await manager.toggleGroup('project-6')
+
+    expect(manager.findGroup('project-6')?.files).toHaveLength(2)
+    expect(getFilesCalls()).toHaveLength(6)
+  })
+
+  it('keeps the search indicator until the auto-opened pages finish', async () => {
+    vi.useFakeTimers()
+
+    const slowPage = createDeferred<unknown>()
+    const manager = useFileManagerProjectGroups({ search })
+
+    search.value = 'report'
+    fetchMock.mockImplementation(async (url: string, options?: any) => {
+      if (url === '/api/v1/files') {
+        return slowPage.promise
+      }
+
+      return createFetchImplementation()(url, options)
+    })
+
+    const pending = manager.fetchGroups(false, true)
+
+    await vi.advanceTimersByTimeAsync(400)
+
+    expect(manager.isLoading.value).toBe(false)
+    expect(manager.isSearching.value).toBe(true)
+
+    slowPage.resolve({
+      files: filesByProject['project-a']!.slice(0, 20),
+      total: 25,
+      offset: 0,
+      limit: 20,
+    })
+    await pending
+
+    expect(manager.isSearching.value).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('syncs open groups to their loaded depth and keeps collapsed state', async () => {
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups()
+    await manager.loadMoreGroup('project-a')
+    await manager.toggleGroup('project-b')
+    await manager.toggleGroup('project-b')
+
+    filesByProject['project-a'] = filesByProject['project-a']!.slice(1)
+    fetchMock.mockClear()
+
+    expect(await manager.syncGroups()).toBe(true)
+
+    const groupA = manager.findGroup('project-a')
+    const groupB = manager.findGroup('project-b')
+
+    expect(groupA?.isOpen).toBe(true)
+    expect(groupA?.files).toHaveLength(24)
+    expect(groupA?.total).toBe(24)
+    expect(groupA?.serverOffset).toBe(24)
+    expect(groupB?.isOpen).toBe(false)
+    expect(groupB?.hasLoaded).toBe(true)
+    expect(groupB?.files).toHaveLength(3)
+    expect(manager.findGroup('project-c')?.hasLoaded).toBe(false)
+    expect(getFilesCalls().every(([, options]) => {
+      return options.query.projectId === 'project-a'
+        && options.query.limit <= 100
+    })).toBe(true)
+  })
+
+  it('refetches the first page of an open group emptied by deletes', async () => {
+    filesByProject['project-a'] = createFiles('a', 22)
+
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups()
+
+    const loadedIds = manager.findGroup('project-a')!.files.map(file => file.id)
+
+    filesByProject['project-a'] = filesByProject['project-a']!.filter((file) => {
+      return !loadedIds.includes(file.id)
+    })
+    manager.removeFiles(loadedIds)
+
+    expect(manager.findGroup('project-a')?.files).toHaveLength(0)
+    expect(manager.findGroup('project-a')?.total).toBe(2)
+
+    await manager.refillEmptyGroups()
+
+    expect(manager.findGroup('project-a')?.files).toHaveLength(2)
+  })
+
+  it('marks a collapsed emptied group to reload on open', async () => {
+    filesByProject['project-b'] = createFiles('b', 22)
+
+    const manager = useFileManagerProjectGroups({ search })
+
+    await manager.fetchGroups()
+    await manager.toggleGroup('project-b')
+    await manager.toggleGroup('project-b')
+
+    const loadedIds = manager.findGroup('project-b')!.files.map(file => file.id)
+
+    filesByProject['project-b'] = filesByProject['project-b']!.filter((file) => {
+      return !loadedIds.includes(file.id)
+    })
+    manager.removeFiles(loadedIds)
+    fetchMock.mockClear()
+    await manager.refillEmptyGroups()
+
+    expect(getFilesCalls()).toHaveLength(0)
+    expect(manager.findGroup('project-b')?.hasLoaded).toBe(false)
+
+    await manager.toggleGroup('project-b')
+
+    expect(manager.findGroup('project-b')?.files).toHaveLength(2)
   })
 })

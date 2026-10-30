@@ -41,6 +41,7 @@ function createProjectGroup(
     isLoading: false,
     isOpen: true,
     hasLoaded: false,
+    hasError: false,
     ...overrides,
   }
 }

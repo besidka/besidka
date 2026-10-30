@@ -7,7 +7,7 @@
     <details
       v-for="group in groups"
       :key="group.id"
-      class="js-project-group group collapse"
+      class="js-project-group group/project-group collapse"
       :open="group.isOpen"
       :data-project-group-id="group.id"
       data-testid="files-project-group"
@@ -25,7 +25,7 @@
           name="lucide:chevron-right"
           class="
             size-4 shrink-0 text-base-content/60 transition-transform
-            group-open:rotate-90
+            group-open/project-group:rotate-90
           "
         />
         <Icon
@@ -61,7 +61,7 @@
         v-if="group.isOpen"
         class="collapse-content px-0 pb-1"
       >
-        <template v-if="group.isLoading && !group.hasLoaded">
+        <template v-if="!group.hasLoaded && !group.hasError">
           <LazyChatInputFilesModalSelectGridSkeleton
             v-if="viewMode === 'grid'"
           />

@@ -252,7 +252,7 @@ export function useFileManager() {
     invalidateFileRequests()
 
     if (source.value === 'project') {
-      const isSynced = await projectGroupsManager.fetchGroups(true)
+      const isSynced = await projectGroupsManager.syncGroups()
 
       pruneSelectionToLoadedFiles()
 
@@ -542,6 +542,8 @@ export function useFileManager() {
         await syncAfterStaleDelete()
       } else if (files.value.length === 0 && pagination.total > 0) {
         await fetchFiles(true)
+      } else {
+        await projectGroupsManager.refillEmptyGroups()
       }
 
       useSuccessMessage('File deleted successfully')
@@ -583,6 +585,8 @@ export function useFileManager() {
         await syncAfterStaleDelete()
       } else if (files.value.length === 0 && pagination.total > 0) {
         await fetchFiles(true)
+      } else {
+        await projectGroupsManager.refillEmptyGroups()
       }
 
       return true

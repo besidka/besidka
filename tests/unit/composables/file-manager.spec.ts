@@ -436,6 +436,72 @@ describe('useFileManager', () => {
       ])
     })
 
+    it('refills a group emptied by a bulk delete while more files remain', async () => {
+      projectFiles['project-a'] = Array.from({ length: 22 }, (_, index) => {
+        return {
+          ...smallFileSet[0]!,
+          id: `a-${index + 1}`,
+          name: `A ${index + 1}.png`,
+        }
+      })
+
+      const manager = await openProjectsSource()
+      const loadedIds = manager.projectGroups.value[0]!.files.map((file) => {
+        return file.id
+      })
+
+      expect(loadedIds).toHaveLength(20)
+
+      manager.selectedIds.value = new Set(loadedIds)
+
+      expect(await manager.deleteSelected()).toBe(true)
+
+      await vi.waitFor(() => {
+        expect(manager.projectGroups.value[0]?.files).toHaveLength(2)
+      })
+
+      expect(manager.projectGroups.value[0]?.total).toBe(2)
+    })
+
+    it('syncs groups to their loaded depth after a stale delete', async () => {
+      const deleteResponse = createDeferred<void>()
+      const baseImplementation = fetchMock.getMockImplementation()!
+
+      fetchMock.mockImplementation(async (url: string, options?: any) => {
+        if (options?.method === 'DELETE') {
+          await deleteResponse.promise
+        }
+
+        return baseImplementation(url, options)
+      })
+
+      const manager = await openProjectsSource()
+
+      await manager.toggleProjectGroup('project-b')
+      await manager.toggleProjectGroup('project-b')
+      manager.selectedIds.value = new Set(['a-1', 'b-1'])
+
+      const deletion = manager.deleteFile('a-1')
+
+      manager.search.value = 'ignored'
+      deleteResponse.resolve()
+
+      expect(await deletion).toBe(true)
+
+      await vi.waitFor(() => {
+        expect(
+          manager.projectGroups.value[0]?.files.map(file => file.id),
+        ).not.toContain('a-1')
+      })
+
+      expect(manager.projectGroups.value[0]?.isOpen).toBe(true)
+      expect(manager.projectGroups.value[1]?.isOpen).toBe(false)
+      expect(manager.projectGroups.value[1]?.hasLoaded).toBe(true)
+      expect(Array.from(manager.selectedIds.value)).toEqual(['b-1'])
+
+      manager.reset()
+    })
+
     it('clears groups when switching back to a flat source', async () => {
       const manager = await openProjectsSource()
 

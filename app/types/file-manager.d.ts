@@ -39,4 +39,5 @@ export interface ProjectFileGroup extends ProjectFileGroupSummary {
   isLoading: boolean
   isOpen: boolean
   hasLoaded: boolean
+  hasError: boolean
 }

@@ -35,6 +35,7 @@ function createGroup(
     isLoading: false,
     isOpen: true,
     hasLoaded: files.length > 0,
+    hasError: false,
     ...overrides,
   }
 }
@@ -61,7 +62,7 @@ async function mountGroups(
 
   await vi.waitFor(() => {
     expect(
-      wrapper.findAll('.js-project-group .select-none'),
+      wrapper.findAll('[data-testid="files-project-group"] .select-none'),
     ).toHaveLength(expectedViewCount)
   })
 
@@ -162,9 +163,38 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
     expect(wrapper.find('[data-file-index]').exists()).toBe(false)
   })
 
-  it('offers a retry when the first page failed', async () => {
+  it('shows a skeleton, not a retry, for an unloaded group that is idle', async () => {
     const wrapper = await mountGroups([
       createGroup({ isLoading: false, hasLoaded: false, fileCount: 4 }),
+    ])
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('.skeleton').exists()).toBe(true)
+    })
+
+    expect(
+      wrapper.find('[data-testid="files-project-group-retry"]').exists(),
+    ).toBe(false)
+  })
+
+  it('uses a named group so tile hover actions stay scoped to the tile', async () => {
+    const wrapper = await mountGroups([
+      createGroup({ files: [createFile('file-1')] }),
+    ])
+    const classes = wrapper.get('[data-testid="files-project-group"]').classes()
+
+    expect(classes).not.toContain('group')
+    expect(classes).toContain('group/project-group')
+  })
+
+  it('offers a retry when the first page failed', async () => {
+    const wrapper = await mountGroups([
+      createGroup({
+        isLoading: false,
+        hasLoaded: false,
+        hasError: true,
+        fileCount: 4,
+      }),
     ])
 
     await wrapper.get('[data-testid="files-project-group-retry"]')
@@ -227,7 +257,7 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
       }),
     ])
 
-    const groupElements = wrapper.findAll('.js-project-group')
+    const groupElements = wrapper.findAll('[data-testid="files-project-group"]')
 
     expect(groupElements.map((element) => {
       return element.attributes('data-project-group-id')
@@ -250,7 +280,7 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
       }),
     ])
 
-    await wrapper.findAll('.js-project-group')[1]
+    await wrapper.findAll('[data-testid="files-project-group"]')[1]
       ?.get('[data-file-index="0"]')
       .trigger('click')
 
@@ -274,7 +304,7 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
       selectedIds: new Set(['shared']),
     })
 
-    const groupElements = wrapper.findAll('.js-project-group')
+    const groupElements = wrapper.findAll('[data-testid="files-project-group"]')
     const selectedPressed = groupElements.map((element) => {
       return element.findAll('[data-file-index]').map((tile) => {
         return tile.attributes('aria-pressed')
@@ -303,7 +333,7 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
       expect(wrapper.findAll('table')).toHaveLength(2)
     })
 
-    const groupElements = wrapper.findAll('.js-project-group')
+    const groupElements = wrapper.findAll('[data-testid="files-project-group"]')
     const headerCheckboxes = groupElements.map((element) => {
       return element.get('thead input[type="checkbox"]')
         .element as HTMLInputElement
@@ -348,7 +378,7 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
       touchGroupId: 'project-b',
     })
 
-    const groupElements = wrapper.findAll('.js-project-group')
+    const groupElements = wrapper.findAll('[data-testid="files-project-group"]')
     const touchedClass = 'ring-secondary-content/50'
 
     expect(
@@ -368,7 +398,7 @@ describe('ChatInput/Files/Modal/Select/ProjectGroups', () => {
     const wrapper = await mountGroups([createGroup()])
 
     expect(wrapper.vm.containerRef).toBe(
-      wrapper.get('.js-project-groups').element,
+      wrapper.get('[data-testid="files-project-groups"]').element,
     )
   })
 })
