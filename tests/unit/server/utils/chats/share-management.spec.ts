@@ -179,4 +179,40 @@ describe('revokeChatShares ownership', () => {
       expect(await readShareCount(ownChat.id)).toBe(0)
       expect(await readShareCount(foreignChat.id)).toBe(1)
     })
+
+  it('revokes 90 owned chats in one statement under the parameter limit',
+    async () => {
+      const ownerId = await seedUser(testDb.db, {})
+      const callerId = await seedUser(testDb.db, {})
+      const ownChats = []
+
+      for (let index = 0; index < 90; index += 1) {
+        ownChats.push(await seedSharedChat(callerId))
+      }
+
+      const foreignChat = await seedSharedChat(ownerId)
+      const chatIds = ownChats.map((chat) => {
+        return chat.id
+      })
+      const placeholderCounts: number[] = []
+      const prepare = testDb.sqlite.prepare.bind(testDb.sqlite)
+
+      vi.spyOn(testDb.sqlite, 'prepare').mockImplementation(
+        (source: string) => {
+          if (source.startsWith('delete from "chat_shares"')) {
+            placeholderCounts.push(source.split('?').length - 1)
+          }
+
+          return prepare(source)
+        },
+      )
+
+      const result = await revokeChatShares(testDb.db, callerId, chatIds)
+
+      expect(placeholderCounts).toHaveLength(1)
+      expect(placeholderCounts[0]).toBeLessThanOrEqual(100)
+      expect(result.deletedCount).toBe(90)
+      expect(result.revokedChatIds).toHaveLength(90)
+      expect(await readShareCount(foreignChat.id)).toBe(1)
+    })
 })

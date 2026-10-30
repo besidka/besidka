@@ -46,17 +46,14 @@ export async function revokeChatShares(
   ) {
     const chunk = chatIds.slice(offset, offset + MAX_BATCH_QUERY_PARAMS)
     const deletedShares = await db.delete(schema.chatShares)
-      .where(and(
-        inArray(schema.chatShares.chatId, chunk),
-        inArray(
-          schema.chatShares.chatId,
-          db.select({ id: schema.chats.id })
-            .from(schema.chats)
-            .where(and(
-              eq(schema.chats.userId, userId),
-              inArray(schema.chats.id, chunk),
-            )),
-        ),
+      .where(inArray(
+        schema.chatShares.chatId,
+        db.select({ id: schema.chats.id })
+          .from(schema.chats)
+          .where(and(
+            eq(schema.chats.userId, userId),
+            inArray(schema.chats.id, chunk),
+          )),
       ))
       .returning({
         id: schema.chatShares.id,

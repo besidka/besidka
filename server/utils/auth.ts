@@ -31,7 +31,7 @@ import { revokeUserOAuthGrants } from './account/revoke-user-oauth-grants'
 import {
   OAUTH_AUTHORIZE_PATH,
   refreshStaleClientScopes,
-} from './oauth/client-scope-upgrade'
+} from '~~/server/utils/oauth/client-scope-upgrade'
 import { findClientRegistrationViolation } from './oauth/registration-limits'
 import {
   sendEmailChangedEmail,
