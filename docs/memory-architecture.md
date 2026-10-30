@@ -3458,8 +3458,10 @@ last activity is after the applicable cut-over: for `on` the later of the
 account cut-over (only while the account switch is on) and the project stamp;
 for `inherit` the account cut-over, or the later of the two when the project
 has a stamp. The stamp is set when the project becomes `on` from another state,
-and when it returns to `inherit` from `off`, so messages written while
-automatic updates were off are never read behind the user's back. Re-saving
+and when it returns to `inherit` from `off`, also when project memory is turned
+back on and, for projects set to `on`, when account memory is turned back on,
+so messages written while automatic updates were off are never read behind the
+user's back. Re-saving
 `on` or `inherit` keeps it, `inherit` from `on` keeps it, `off` clears it so a
 later `on` starts a fresh cut-over. The Refresh button still reads earlier
 chats on demand.
@@ -3476,4 +3478,6 @@ by the sweep: its "Out of date" mark clears only through a manual Refresh.
 
 **Schema.** Two nullable columns on `projects`, no SQL default (additive
 migration `20261030194122_project_memory_auto_update`, only `ALTER TABLE ...
-ADD`).
+ADD`), and a partial index for the override arm (second migration
+`20261030202204_black_elektra`, `CREATE INDEX idx_projects_auto_update_on ON
+projects (user_id) WHERE memory_auto_update = 'on'`).

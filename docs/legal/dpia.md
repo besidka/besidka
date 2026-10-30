@@ -56,8 +56,9 @@ opt-in to background extraction on the user's own key, narrowed to one project,
 with its own forward-only stamp (`projects.memory_auto_update_enabled_at`).
 No new purpose, recipient or data category, and no change to the consent gate
 or `CURRENT_CONSENT_VERSION`. A connected app can set a project only to
-`inherit` or `off`, never `on`, so nothing in section 3.11 gains a way to spend
-the user's key.
+`inherit` or `off`, never `on`, and cannot turn project memory back on while
+the project is disabled and set to `on`, so nothing in section 3.11 gains a way
+to spend the user's key.
 
 ## 1. Why a DPIA is required
 
@@ -86,8 +87,8 @@ covers both.
 (endorsed by the EDPB) list nine criteria and use the same two-criteria rule.
 Besidka meets:
 
-- evaluation or scoring (profiling): background extraction records preferences,
-  interests and work;
+- evaluation or scoring (profiling): background extraction (or a project set to
+  On) records preferences, interests and work;
 - sensitive data or data of a highly personal nature: chats;
 - innovative use or new technological solutions: LLM memory.
 
@@ -201,8 +202,9 @@ removed.
 - **Purpose.** Save lasting facts and preferences from chats without the user
   asking each time.
 - **Opt-in.** Off by default. The user switches on "Generate memory from
-  chats". The app records `memory_extraction_enabled_at`. Nothing runs in the
-  background before that. Enabling it never reads old history by itself.
+  chats" (or sets a project to On, below). The app records
+  `memory_extraction_enabled_at`. Nothing runs in the background before that.
+  Enabling it never reads old history by itself.
 - **Per-project opt-in.** Each project has an automatic-update setting:
   `inherit` (the default, follows the account switch), `on` or `off`. `on` is a
   second explicit opt-in: the user sets a project to On in the app, behind a
@@ -213,7 +215,9 @@ removed.
   applicable cut-over (the later of the account stamp, while the account
   switch is on, and the project stamp). `off` stops it for the project and
   clears the stamp; `off` back to `inherit` restamps, so messages written
-  while it was off are never read; `on` back to `inherit` keeps the stamp. Memory
+  while it was off are never read; `on` back to `inherit` keeps the stamp. The
+  stamp is also restamped when project memory is turned back on, and, for
+  projects set to `on`, when account memory is turned back on. Memory
   turned off in the account settings, a disabled project and the consent gate
   still block everything. Account chats are not affected.
   History is read only through the explicit "Build memory from past chats"
@@ -682,7 +686,7 @@ to send messages. It is a judgment call (section 6, item 1).
   - Erasure: per-entry delete, Reset, delete chat, delete project, delete
     account. Deleting a chat removes generated entries that came only from it.
     Entries the user saved stay, because the user asked for them.
-  - Withdrawal: switch extraction off, withdraw the chat consent, remove a key.
+  - Withdrawal: switch extraction off and set every project that is On to Account setting or Off, withdraw the chat consent, remove a key.
   - Backups: copies can survive up to 30 days in D1 Time Travel.
 - **Alternatives considered.** Reading no chat text for memory at all (rejected:
   it removes the feature). A model-based classifier (rejected: it would send
@@ -735,7 +739,7 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 34 | Sensitive and third-party data reaches an AI client run by a company outside the EEA with no adequacy decision and no safeguard Besidka can provide; the characterisation under Chapter V is unsettled | Medium | High | The user chooses the client and directs the disclosure; nothing reaches a client the user did not approve; the screen states that the app may be outside the EU and that Besidka has no contract with it, and the approval is meant to double as explicit Art. 49(1)(a) consent if the disclosure is a transfer; the Privacy Policy says the question is not settled; sending chat messages and API keys are out of scope for this release | built | Medium to high, accepted and disclosed (section 6, item 12) |
 | 35 | OAuth records outlive the account: `oauth_consents`, `oauth_access_tokens` and `oauth_refresh_tokens` reference `users` with no `ON DELETE`, so they are not removed by the cascade | Medium | Medium | The account-deletion path must delete the user's OAuth rows explicitly before the user row, and the same for Time Travel restore reconciliation (`docs/d1-restore-reconciliation.md`). Must be verified before release **[U]** | planned | Low once verified |
 | 36 | A connected app, or an agent steered by text it reads, deletes or overwrites the user's data (chats, messages, projects with their knowledge and project memory, files, memory entries) or changes settings, and the user cannot get it back | Medium | High | Every write scope is off by default and a separate tick; all permanent deletion sits behind its own scope, `data:delete`, which no existing approval holds and which a "Change" scope does not include, so an app that only needs to read, add notes or rename never holds a delete power; the consent screen says in words that write access can change or delete; every destructive tool carries `destructiveHint: true` so a client asks the user first (a unit test fails when the annotations and the tool map disagree); `delete_project` needs the exact project name as `confirmName` and `reset_memory` needs `confirm: true`; batches are capped (25 chats per call, 100 files, 100 knowledge items, 90 share revocations); deleting or branching a chat that is generating a reply is skipped or refused, on a best-effort basis (a check of the generation lease, not a lock); deleting a project keeps its chats; deletes are limited to 20 calls an hour and writes to 30 a minute per user, which slows a runaway agent but does not stop it from deleting within those limits; settings that spend the user's keys or change the data recipient cannot be changed (`docs/mcp-server.md`, "What MCP does not do (and why)"); the user can disconnect an app in Profile → Connected apps and the next call fails at once, or remove just `data:delete` or any other permission there and the next call is refused for that tool (the effective scopes are the token's intersected with the current approval). **Residual:** deletion is permanent, as in the app, and narrowing helps only a user who opens that page: an app the user never reviews keeps what it was given, and a consent row whose scope list cannot be read grants the app no scope until the user approves it again (it fails closed, so it is a damaged row, not a way round narrowing). A "Change" scope cannot delete those records directly but has side effects: excluding a chat from memory removes extraction-only memory entries learned only from it, stopping a share removes its link, editing replaces the old text (instructions, knowledge items, memory entries, file names, favourites) and switching project memory off resets its state. D1 Time Travel is disaster recovery for the whole database, not a per-user undo, and restoring it for one user would roll back every other user (`docs/d1-restore-reconciliation.md`). A client that does not ask before a call can still delete what its scope allows, within the caps. The Privacy Policy and Terms say deletions through an app are permanent | built on `feat/mcp-ui-parity`, not yet deployed | Medium, accepted and disclosed |
-| 37 | Scope growth: a client registered before the write scopes existed may ask for them, and a stored approval could be read as covering them, so an app gains delete power the user never ticked | Low | High | Any client whose stored scope list is a strict subset of the current one may *ask for* the new scopes (the `hooks.before` upgrade on `/oauth2/authorize`, `server/utils/oauth/client-scope-upgrade.ts`: a stored list that is a strict subset of the current scopes is rewritten, anything else is left alone, a failure never blocks sign-in). The user's `oauth_consents` row is not widened: authorize sends the user to the consent page whenever a requested scope is not in their row, so the user ticks each new scope on the screen. A tool behind a scope the user did not grant answers `403 insufficient_scope`. An existing connection that never asks for the new scopes keeps working with what it had. **Residual:** consent is stored per scope name, so when a tool is added behind a scope the user already granted, the existing approval gets it with no new prompt. Deletion is closed off by `data:delete` (`delete_memory` moved there from `memory:write`, so existing connections lose it until the user ticks the new scope). What did reach existing approvals involves no deletion or spend, though overwrites are possible: under `projects:write`, `update_project` (rename, pin, archive, knowledge mode, project memory switch) and `update_project_knowledge_item`; under `chats:read`, `list_shared_chats` and share status (the URL needs `chats:write`). The Privacy Policy says this and tells the user to check Profile → Connected apps after such a change. Future extensions of an existing scope must involve no deletion or spend, though overwrites are possible. The user can remove permissions from an approval and never add them there; adding one goes through the app's own OAuth flow, because a token keeps the scopes it was issued with, so narrowing cannot be used to widen. A removed scope is asked for again on the approval screen if the app requests it, and the hourly sweep deletes approvals with no live token that were unused for 30 days, so a long-stale approval cannot silently cover a later authorization | built on `feat/mcp-ui-parity`, not yet deployed | Low to medium, accepted and disclosed |
+| 37 | Scope growth: a client registered before the write scopes existed may ask for them, and a stored approval could be read as covering them, so an app gains delete power the user never ticked | Low | High | Any client whose stored scope list is a strict subset of the current one may *ask for* the new scopes (the `hooks.before` upgrade on `/oauth2/authorize`, `server/utils/oauth/client-scope-upgrade.ts`: a stored list that is a strict subset of the current scopes is rewritten, anything else is left alone, a failure never blocks sign-in). The user's `oauth_consents` row is not widened: authorize sends the user to the consent page whenever a requested scope is not in their row, so the user ticks each new scope on the screen. A tool behind a scope the user did not grant answers `403 insufficient_scope`. An existing connection that never asks for the new scopes keeps working with what it had. **Residual:** consent is stored per scope name, so when a tool is added behind a scope the user already granted, the existing approval gets it with no new prompt. Deletion is closed off by `data:delete` (`delete_memory` moved there from `memory:write`, so existing connections lose it until the user ticks the new scope). What did reach existing approvals involves no deletion or spend, though overwrites are possible: under `projects:write`, `update_project` (rename, pin, archive, knowledge mode, project memory switch, and `memoryAutoUpdate` set to `inherit` or `off`, which is spend-free but can overwrite a project the user set to `on`) and `update_project_knowledge_item`; under `chats:read`, `list_shared_chats` and share status (the URL needs `chats:write`). The Privacy Policy says this and tells the user to check Profile → Connected apps after such a change. Future extensions of an existing scope must involve no deletion or spend, though overwrites are possible. The user can remove permissions from an approval and never add them there; adding one goes through the app's own OAuth flow, because a token keeps the scopes it was issued with, so narrowing cannot be used to widen. A removed scope is asked for again on the approval screen if the app requests it, and the hourly sweep deletes approvals with no live token that were unused for 30 days, so a long-stale approval cannot silently cover a later authorization | built on `feat/mcp-ui-parity`, not yet deployed | Low to medium, accepted and disclosed |
 
 ## 6. Residual risks
 

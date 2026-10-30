@@ -35,7 +35,9 @@ const inputSchema = {
   memoryEnabled: z
     .boolean()
     .optional()
-    .describe('true turns project memory on, false turns it off'),
+    .describe('true turns project memory on (refused while it is off and '
+      + 'automatic updates are on for the project, which can only be '
+      + 'resumed in the Besidka app), false turns it off'),
   useAccountMemory: z
     .boolean()
     .optional()
@@ -61,7 +63,9 @@ export default defineMcpTool({
     + 'off, choose whether it also uses account memory, or set automatic '
     + 'memory updates to inherit (follow your account setting, not allowed '
     + 'while they are off for the project) or off. Automatic updates '
-    + 'cannot be turned on, or back from off, here, only in the app. Each '
+    + 'cannot be turned on, or back from off, here, only in the app, and '
+    + 'project memory cannot be turned back on here while its automatic '
+    + 'updates are on. Each '
     + 'field is set to the value you send, never toggled. Turning memory on '
     + 'again '
     + 'restores its state and covers messages written from now on; it does '

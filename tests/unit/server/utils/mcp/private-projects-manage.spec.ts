@@ -247,6 +247,7 @@ describe('MCP project management domain functions', () => {
       async () => {
         mocks.getResults = [
           { id: 'proj1' },
+          { memoryAutoUpdate: null, memoryStatus: 'disabled' },
           projectState({
             name: 'New',
             pinnedAt: new Date('2026-10-02T00:00:00.000Z'),
@@ -353,6 +354,7 @@ describe('MCP project management domain functions', () => {
     it('turning memory on never refreshes from chats', async () => {
       mocks.getResults = [
         { id: 'proj1' },
+        { memoryAutoUpdate: null, memoryStatus: 'disabled' },
         projectState({ memoryStatus: 'idle' }),
         { total: 0 },
       ]
@@ -371,6 +373,61 @@ describe('MCP project management domain functions', () => {
       expect(mocks.refreshProjectMemoryFromChats).not.toHaveBeenCalled()
       expect(mocks.toggleProjectMemory).not.toHaveBeenCalled()
       expect(result.memory.enabled).toBe(true)
+    })
+
+    it('refuses turning memory on over a disabled project that is set to on',
+      async () => {
+        mocks.getResults = [
+          { id: 'proj1' },
+          { memoryAutoUpdate: 'on', memoryStatus: 'disabled' },
+        ]
+
+        await expect(updateMcpProject(
+          createQueuedDb(),
+          1,
+          { projectId: 'proj1', memoryEnabled: true, pinned: true },
+          mocks.logger,
+        )).rejects.toMatchObject({ status: 400 })
+        expect(mocks.applyProjectMemoryEnabled).not.toHaveBeenCalled()
+        expect(mocks.setProjectPinned).not.toHaveBeenCalled()
+      })
+
+    it('allows turning memory on over a project set to on when it is '
+      + 'already enabled or the call also sets automatic updates off',
+    async () => {
+      const scenarios = [
+        {
+          current: { memoryAutoUpdate: 'on', memoryStatus: 'ready' },
+          input: { memoryEnabled: true },
+        },
+        {
+          current: { memoryAutoUpdate: 'on', memoryStatus: 'disabled' },
+          input: { memoryEnabled: true, memoryAutoUpdate: 'off' as const },
+        },
+        {
+          current: { memoryAutoUpdate: 'off', memoryStatus: 'disabled' },
+          input: { memoryEnabled: true },
+        },
+      ]
+
+      for (const scenario of scenarios) {
+        mocks.getResults = [
+          { id: 'proj1' },
+          scenario.current,
+          projectState(),
+          { total: 0 },
+        ]
+        mocks.applyProjectMemoryEnabled.mockClear()
+
+        await updateMcpProject(
+          createQueuedDb(),
+          1,
+          { projectId: 'proj1', ...scenario.input },
+          mocks.logger,
+        )
+
+        expect(mocks.applyProjectMemoryEnabled).toHaveBeenCalledTimes(1)
+      }
     })
 
     it('sets memoryAutoUpdate to off and inherit through the shared rule',

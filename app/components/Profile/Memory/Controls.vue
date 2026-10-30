@@ -52,7 +52,8 @@
               Covers your profile and project memory. Off by default. When on,
               chats you have from now on are summarised in the background on
               your key. Use "Build memory from past chats" to include older
-              chats.
+              chats. Projects set to On keep updating until you change them
+              on the project page.
             </span>
             <span
               v-if="!settings.memoryEnabled"
@@ -210,7 +211,9 @@ async function onGenerationChange(event: Event) {
   const choice = await useConfirm({
     text: 'Turn off memory from chats?',
     subtitle: 'Keep the entries Besidka generated from your chats, or '
-      + 'delete them? Entries you wrote, edited or imported are always kept.',
+      + 'delete them? Entries you wrote, edited or imported are always kept. '
+      + 'Projects set to On keep updating until you change them on the '
+      + 'project page.',
     actions: [KEEP_GENERATED_ACTION, DELETE_GENERATED_ACTION],
     labelDecline: 'Cancel',
   })

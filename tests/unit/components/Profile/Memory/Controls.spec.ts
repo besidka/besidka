@@ -118,7 +118,8 @@ describe('Profile/Memory/Controls', () => {
           text: 'Turn off memory from chats?',
           subtitle: 'Keep the entries Besidka generated from your chats, or '
             + 'delete them? Entries you wrote, edited or imported are always '
-            + 'kept.',
+            + 'kept. Projects set to On keep updating until you change them '
+            + 'on the project page.',
           actions: ['Keep entries', 'Delete them'],
           labelDecline: 'Cancel',
         })
@@ -240,7 +241,8 @@ describe('Profile/Memory/Controls', () => {
       'Covers your profile and project memory. Off by default. When on, '
       + 'chats you have from now on are summarised in the background on '
       + 'your key. Use "Build memory from past chats" to include older '
-      + 'chats.',
+      + 'chats. Projects set to On keep updating until you change them on '
+      + 'the project page.',
     )
     expect(toggle(wrapper, 'memory-generation-toggle')
       .attributes('aria-describedby'))

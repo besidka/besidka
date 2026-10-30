@@ -889,8 +889,10 @@ async function readMcpProjectState(
  * resume background spend the user stopped in the app, while `on` makes the
  * sweep spend the user's key outright. Both are left to the web app (the
  * schema rejects `on`, and the guards below keep these out for any caller).
- * `off` is always allowed and `inherit` is allowed over `on`. Returns the
- * resulting state.
+ * `off` is always allowed and `inherit` is allowed over `on`. Turning
+ * project memory back on is refused while the project is disabled and its
+ * automatic updates are `on`, because that would resume the sweep. Returns
+ * the resulting state.
  */
 export async function updateMcpProject(
   db: DbClient,
@@ -922,9 +924,10 @@ export async function updateMcpProject(
     )
   }
 
-  if (input.memoryAutoUpdate === 'inherit') {
+  if (input.memoryAutoUpdate === 'inherit' || input.memoryEnabled === true) {
     const current = await db.select({
       memoryAutoUpdate: schema.projects.memoryAutoUpdate,
+      memoryStatus: schema.projects.memoryStatus,
     })
       .from(schema.projects)
       .where(and(
@@ -933,11 +936,27 @@ export async function updateMcpProject(
       ))
       .get()
 
-    if (current?.memoryAutoUpdate === 'off') {
+    if (
+      input.memoryAutoUpdate === 'inherit'
+      && current?.memoryAutoUpdate === 'off'
+    ) {
       throw createInvalidInputError(
         'Automatic memory updates are off for this project. Turning them '
         + 'back to the account setting would resume background updates '
         + 'that use your API keys. Change it in Besidka instead.',
+      )
+    }
+
+    if (
+      input.memoryEnabled === true
+      && input.memoryAutoUpdate === undefined
+      && current?.memoryStatus === 'disabled'
+      && current.memoryAutoUpdate === 'on'
+    ) {
+      throw createInvalidInputError(
+        'Project memory is off and automatic updates are set to on for '
+        + 'this project. Turning memory back on would resume background '
+        + 'updates that use your API keys. Turn it on in Besidka instead.',
       )
     }
   }
