@@ -376,11 +376,18 @@ describe('MCP project management domain functions', () => {
     it('sets memoryAutoUpdate to off and inherit through the shared rule',
       async () => {
         for (const memoryAutoUpdate of ['off', 'inherit'] as const) {
-          mocks.getResults = [
-            { id: 'proj1' },
-            projectState(),
-            { total: 0 },
-          ]
+          mocks.getResults = memoryAutoUpdate === 'inherit'
+            ? [
+              { id: 'proj1' },
+              { memoryAutoUpdate: 'on' },
+              projectState(),
+              { total: 0 },
+            ]
+            : [
+              { id: 'proj1' },
+              projectState(),
+              { total: 0 },
+            ]
 
           await updateMcpProject(
             createQueuedDb(),
@@ -400,6 +407,48 @@ describe('MCP project management domain functions', () => {
         expect(mocks.applyProjectMemoryEnabled).not.toHaveBeenCalled()
         expect(mocks.refreshProjectMemoryFromChats).not.toHaveBeenCalled()
       })
+
+    it('refuses inherit over a project whose automatic updates are off',
+      async () => {
+        mocks.getResults = [{ id: 'proj1' }, { memoryAutoUpdate: 'off' }]
+
+        await expect(updateMcpProject(
+          createQueuedDb(),
+          1,
+          { projectId: 'proj1', memoryAutoUpdate: 'inherit' },
+          mocks.logger,
+        )).rejects.toMatchObject({ status: 400 })
+
+        expect(mocks.applyProjectMemoryAutoUpdate).not.toHaveBeenCalled()
+      })
+
+    it('allows inherit over a project that follows the account and off '
+      + 'over a project that is off', async () => {
+      mocks.getResults = [
+        { id: 'proj1' },
+        { memoryAutoUpdate: null },
+        projectState(),
+        { total: 0 },
+      ]
+
+      await updateMcpProject(
+        createQueuedDb(),
+        1,
+        { projectId: 'proj1', memoryAutoUpdate: 'inherit' },
+        mocks.logger,
+      )
+
+      mocks.getResults = [{ id: 'proj1' }, projectState(), { total: 0 }]
+
+      await updateMcpProject(
+        createQueuedDb(),
+        1,
+        { projectId: 'proj1', memoryAutoUpdate: 'off' },
+        mocks.logger,
+      )
+
+      expect(mocks.applyProjectMemoryAutoUpdate).toHaveBeenCalledTimes(2)
+    })
 
     it('never turns automatic updates on, even past the tool schema',
       async () => {

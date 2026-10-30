@@ -189,19 +189,24 @@ describe('Projects/MemoryCard', () => {
       )
     }
 
+    function radio(
+      wrapper: Awaited<ReturnType<typeof mountCard>>,
+      value: 'inherit' | 'on' | 'off',
+    ) {
+      return option(wrapper, value).element as HTMLInputElement
+    }
+
     it('renders the three options with the project choice selected',
       async () => {
         const wrapper = await mountCard(createCard({ autoUpdate: 'off' }))
 
-        expect(option(wrapper, 'inherit').text()).toBe('Account setting')
-        expect(option(wrapper, 'on').text()).toBe('On')
-        expect(option(wrapper, 'off').text()).toBe('Off')
-        expect(option(wrapper, 'off').attributes('aria-checked'))
-          .toBe('true')
-        expect(option(wrapper, 'inherit').attributes('aria-checked'))
-          .toBe('false')
-        expect(option(wrapper, 'on').attributes('aria-checked'))
-          .toBe('false')
+        expect(option(wrapper, 'inherit').attributes('aria-label'))
+          .toBe('Account setting')
+        expect(option(wrapper, 'on').attributes('aria-label')).toBe('On')
+        expect(option(wrapper, 'off').attributes('aria-label')).toBe('Off')
+        expect(radio(wrapper, 'off').checked).toBe(true)
+        expect(radio(wrapper, 'inherit').checked).toBe(false)
+        expect(radio(wrapper, 'on').checked).toBe(false)
       })
 
     it('describes the effective state and where it comes from', async () => {
@@ -273,8 +278,8 @@ describe('Projects/MemoryCard', () => {
       async () => {
         const wrapper = await mountCard(createCard({ autoUpdate: 'on' }))
 
-        await option(wrapper, 'off').trigger('click')
-        await option(wrapper, 'inherit').trigger('click')
+        await option(wrapper, 'off').setValue()
+        await option(wrapper, 'inherit').setValue()
 
         expect(mocks.confirm).not.toHaveBeenCalled()
         expect(wrapper.emitted('update-auto-update')).toEqual([
@@ -289,7 +294,7 @@ describe('Projects/MemoryCard', () => {
 
         const wrapper = await mountCard(createCard())
 
-        await option(wrapper, 'on').trigger('click')
+        await option(wrapper, 'on').setValue()
         await flushPromises()
 
         expect(mocks.confirm).toHaveBeenCalledTimes(1)
@@ -311,7 +316,7 @@ describe('Projects/MemoryCard', () => {
 
       const wrapper = await mountCard(createCard())
 
-      await option(wrapper, 'on').trigger('click')
+      await option(wrapper, 'on').setValue()
       await flushPromises()
 
       expect(wrapper.emitted('update-auto-update')).toBeUndefined()
@@ -320,27 +325,83 @@ describe('Projects/MemoryCard', () => {
     it('ignores a click on the option that is already selected', async () => {
       const wrapper = await mountCard(createCard({ autoUpdate: 'on' }))
 
-      await option(wrapper, 'on').trigger('click')
+      await option(wrapper, 'on').setValue()
       await flushPromises()
 
       expect(mocks.confirm).not.toHaveBeenCalled()
       expect(wrapper.emitted('update-auto-update')).toBeUndefined()
     })
 
-    it('disables the control while saving and for a disabled project',
-      async () => {
-        const saving = await mountCard(createCard(), {
-          isSavingAutoUpdate: true,
-        })
-        const disabled = await mountCard(createCard({
-          memoryStatus: 'disabled',
-        }))
+    it('disables the control for a disabled project', async () => {
+      const disabled = await mountCard(createCard({
+        memoryStatus: 'disabled',
+      }))
 
-        for (const value of ['inherit', 'on', 'off'] as const) {
-          expect(option(saving, value).attributes('disabled')).toBeDefined()
-          expect(option(disabled, value).attributes('disabled'))
-            .toBeDefined()
-        }
+      for (const value of ['inherit', 'on', 'off'] as const) {
+        expect(option(disabled, value).attributes('disabled'))
+          .toBeDefined()
+      }
+    })
+
+    it('keeps the control enabled while saving so focus is not lost, marks '
+      + 'it busy and ignores a change', async () => {
+      const wrapper = await mountCard(createCard({ autoUpdate: 'on' }), {
+        isSavingAutoUpdate: true,
+      })
+      const control = wrapper.get(
+        '[data-testid="project-memory-auto-update-control"]',
+      )
+
+      expect(control.attributes('aria-busy')).toBe('true')
+
+      for (const value of ['inherit', 'on', 'off'] as const) {
+        expect(option(wrapper, value).attributes('disabled')).toBeUndefined()
+      }
+
+      await option(wrapper, 'off').setValue()
+      await flushPromises()
+
+      expect(wrapper.emitted('update-auto-update')).toBeUndefined()
+      expect(radio(wrapper, 'on').checked).toBe(true)
+      expect(radio(wrapper, 'off').checked).toBe(false)
+    })
+
+    it('is a native radio group, so the arrow keys move and select',
+      async () => {
+        const wrapper = await mountCard(createCard({ autoUpdate: 'inherit' }))
+        const radios = (['inherit', 'on', 'off'] as const).map((value) => {
+          return radio(wrapper, value)
+        })
+
+        expect(radios.every(input => input.type === 'radio')).toBe(true)
+        expect(new Set(radios.map(input => input.name)).size).toBe(1)
+        expect(radios[0]!.name).not.toBe('')
+        expect(radios.map(input => input.getAttribute('aria-label')))
+          .toEqual(['Account setting', 'On', 'Off'])
+        expect(wrapper.get('[role="radiogroup"]').attributes(
+          'aria-labelledby',
+        )).toBeTruthy()
+
+        radios[2]!.focus()
+        radios[2]!.checked = true
+        radios[2]!.dispatchEvent(new Event('change', { bubbles: true }))
+        await flushPromises()
+
+        expect(wrapper.emitted('update-auto-update')).toEqual([['off']])
+      })
+
+    it('puts the selection back when the confirm for On is declined',
+      async () => {
+        mocks.confirm.mockResolvedValue(null)
+
+        const wrapper = await mountCard(createCard({ autoUpdate: 'off' }))
+
+        await option(wrapper, 'on').setValue()
+        await flushPromises()
+
+        expect(radio(wrapper, 'on').checked).toBe(false)
+        expect(radio(wrapper, 'off').checked).toBe(true)
+        expect(wrapper.emitted('update-auto-update')).toBeUndefined()
       })
   })
 

@@ -41,10 +41,11 @@ export async function projectMemorySettledStatus(
  * clears the lifecycle fields. Turning it on restores `ready` or `idle`
  * from the existing entries. `enabled` means the project was disabled before,
  * the only case where the web action goes on to refresh; `unchanged` means
- * it was already on. With `forwardOnly`, turning it on first stamps the
- * project's chats as already summarized, so the background sweep reads only
- * what is written from now on and never spends the user's key on messages
- * written while memory was off.
+ * it was already on. Turning it on also moves the project's automatic-update
+ * cut-over to now unless the setting is `off`, so the background sweep never
+ * reads messages written while project memory was off. With `forwardOnly`,
+ * turning it on first stamps the project's chats as already summarized as
+ * well, for callers that do not go on to refresh.
  */
 export async function applyProjectMemoryEnabled(
   projectId: string,
@@ -111,6 +112,16 @@ export async function applyProjectMemoryEnabled(
     .where(and(
       eq(schema.projects.id, project.id),
       eq(schema.projects.userId, userId),
+    ))
+  await db.update(schema.projects)
+    .set({ memoryAutoUpdateEnabledAt: new Date() })
+    .where(and(
+      eq(schema.projects.id, project.id),
+      eq(schema.projects.userId, userId),
+      or(
+        isNull(schema.projects.memoryAutoUpdate),
+        eq(schema.projects.memoryAutoUpdate, 'on'),
+      ),
     ))
 
   return 'enabled'

@@ -134,7 +134,7 @@ describe('update_project tool', () => {
       .success).toBe(false)
     expect(schema.safeParse({ projectId: 'p', memoryAutoUpdate: true })
       .success).toBe(false)
-    expect(tool.description).toContain('cannot be turned on here')
+    expect(tool.description).toContain('cannot be turned on')
   })
 
   it('runs the domain function for the token user and logs ids only',

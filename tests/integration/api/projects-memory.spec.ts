@@ -368,6 +368,8 @@ describe('project memory API', () => {
       { autoUpdate: null },
       { autoUpdate: 'on', useAccountMemory: true },
       { autoUpdate: 'on', extra: 1 },
+      { enabled: true, autoUpdate: 'on' },
+      { enabled: true, extra: 1 },
     ]
 
     for (const body of invalidBodies) {

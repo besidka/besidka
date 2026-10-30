@@ -48,9 +48,11 @@ export function dedupeFavoriteGatewayModels(
 /**
  * Writes validated settings fields for a user: the upsert of the
  * `user_settings` row, the chat restamp and the extraction-enable cooldown
- * when the update turns automatic memory extraction on, and the
- * cancellation of a running memory backfill when it turns memory or
- * extraction off.
+ * when the update turns automatic memory extraction on, the restamp of the
+ * cut-over of every project set to automatic updates `on` when it turns
+ * account memory back on (so messages written while memory was off are never
+ * read by the background sweep), and the cancellation of a running memory
+ * backfill when it turns memory or extraction off.
  */
 export async function applyUserSettingsUpdate(input: {
   db: DbClient
@@ -76,6 +78,9 @@ export async function applyUserSettingsUpdate(input: {
         ?? existingSettings?.memoryExtractionEnabled) === true
   const isEnablingExtraction = !isExtractionEffectiveBefore
     && isExtractionEffectiveAfter
+  const isMemoryOnBefore = existingSettings?.memoryEnabled ?? true
+  const isMemoryOnAfter = fieldUpdates.memoryEnabled ?? isMemoryOnBefore
+  const isResumingMemory = !isMemoryOnBefore && isMemoryOnAfter
 
   if (isEnablingExtraction) {
     await claimExtractionEnableCooldown(userId)
@@ -117,6 +122,17 @@ export async function applyUserSettingsUpdate(input: {
             isNull(schema.chats.memoryExtractedAt),
             lt(schema.chats.memoryExtractedAt, schema.chats.activityAt),
           ),
+        )),
+    )
+  }
+
+  if (isResumingMemory) {
+    statements.push(
+      db.update(schema.projects)
+        .set({ memoryAutoUpdateEnabledAt: stampedAt })
+        .where(and(
+          eq(schema.projects.userId, userId),
+          eq(schema.projects.memoryAutoUpdate, 'on'),
         )),
     )
   }

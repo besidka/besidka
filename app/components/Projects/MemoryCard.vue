@@ -175,25 +175,27 @@
           >{{ autoUpdateCaption }}</span>
         </div>
         <div
+          ref="autoUpdateControl"
           class="join shrink-0"
           role="radiogroup"
           :aria-labelledby="`${idPrefix}-auto-update-title`"
+          :aria-busy="isSavingAutoUpdate"
           data-testid="project-memory-auto-update-control"
         >
-          <button
+          <input
             v-for="option in autoUpdateOptions"
             :key="option.value"
-            type="button"
-            role="radio"
+            type="radio"
             class="btn btn-sm join-item"
             :class="{ 'btn-active btn-primary': card.autoUpdate === option.value }"
-            :aria-checked="card.autoUpdate === option.value"
-            :disabled="isDisabled || isSavingAutoUpdate"
+            :name="`${idPrefix}-auto-update`"
+            :value="option.value"
+            :aria-label="option.label"
+            :checked="card.autoUpdate === option.value"
+            :disabled="isDisabled"
             :data-testid="`project-memory-auto-update-${option.value}`"
-            @click="selectAutoUpdate(option.value)"
+            @change="selectAutoUpdate(option.value)"
           >
-            {{ option.label }}
-          </button>
         </div>
       </div>
     </div>
@@ -341,6 +343,7 @@ const idPrefix = useId()
 
 const { messageComponents } = useChatFormat()
 
+const autoUpdateControl = useTemplateRef<HTMLElement>('autoUpdateControl')
 const selectedEntry = shallowRef<MemoryEntry | null>(null)
 const isDetailOpen = shallowRef<boolean>(false)
 
@@ -527,8 +530,25 @@ const metaLines = computed<string[]>(() => {
   return lines
 })
 
+function syncAutoUpdateRadios() {
+  const radios = autoUpdateControl.value
+    ?.querySelectorAll<HTMLInputElement>('input[type="radio"]')
+
+  radios?.forEach((radio) => {
+    radio.checked = radio.value === props.card?.autoUpdate
+  })
+}
+
+watch(() => props.isSavingAutoUpdate, (isSaving) => {
+  if (!isSaving) {
+    syncAutoUpdateRadios()
+  }
+}, { flush: 'post' })
+
 async function selectAutoUpdate(autoUpdate: ProjectAutoUpdate) {
   if (props.card?.autoUpdate === autoUpdate || props.isSavingAutoUpdate) {
+    syncAutoUpdateRadios()
+
     return
   }
 
@@ -544,6 +564,8 @@ async function selectAutoUpdate(autoUpdate: ProjectAutoUpdate) {
     })
 
     if (!result) {
+      syncAutoUpdateRadios()
+
       return
     }
   }

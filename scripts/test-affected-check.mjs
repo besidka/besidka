@@ -394,6 +394,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/projects/memory-toggle.spec.ts',
     'tests/unit/utils/memory/project-auto-update.spec.ts',
     'tests/unit/utils/project-memory-auto-update.spec.ts',
+    'tests/unit/utils/memory/forward-only-memory-resume.spec.ts',
     'tests/unit/utils/memory/extract-manual.spec.ts',
     'tests/unit/utils/project-memory-refresh.spec.ts',
     'tests/unit/utils/memory/extract-grounding.spec.ts',
@@ -2831,6 +2832,10 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
         ...mcpUiParityTests,
       ],
+    },
+    {
+      pattern: /^server\/utils\/settings\/apply-user-settings\.ts$/,
+      tests: ['tests/unit/utils/memory/forward-only-memory-resume.spec.ts'],
     },
     {
       pattern: /^(server\/utils\/(chats\/(lifecycle|share-management|generation-in-progress)|projects\/(lifecycle|memory-toggle)|files\/(delete-files|source-filter|file-name)|settings\/.*|oauth\/(client-scope-upgrade|stored-scopes)|knowledge\/linked-files)|shared\/utils\/user-settings-schemas)\.ts$/,

@@ -884,10 +884,13 @@ async function readMcpProjectState(
  * Applies the given fields with set semantics, so repeating a call changes
  * nothing. Turning project memory on only restores its lifecycle state: it
  * never reads chats and never calls a model, so it cannot spend the user's
- * key. `memoryAutoUpdate` accepts only `inherit` and `off`: both can only
- * reduce what the background sweep reads, while `on` makes the sweep spend
- * the user's key and is left to the web app (the schema rejects it, and the
- * guard below keeps it out for any caller). Returns the resulting state.
+ * key. `memoryAutoUpdate` accepts only `inherit` and `off`, and `inherit` is
+ * refused over a project that is currently `off`: returning from `off` would
+ * resume background spend the user stopped in the app, while `on` makes the
+ * sweep spend the user's key outright. Both are left to the web app (the
+ * schema rejects `on`, and the guards below keep these out for any caller).
+ * `off` is always allowed and `inherit` is allowed over `on`. Returns the
+ * resulting state.
  */
 export async function updateMcpProject(
   db: DbClient,
@@ -917,6 +920,26 @@ export async function updateMcpProject(
       'memoryAutoUpdate accepts inherit or off. Turn automatic updates on '
       + 'in the Besidka app.',
     )
+  }
+
+  if (input.memoryAutoUpdate === 'inherit') {
+    const current = await db.select({
+      memoryAutoUpdate: schema.projects.memoryAutoUpdate,
+    })
+      .from(schema.projects)
+      .where(and(
+        eq(schema.projects.id, input.projectId),
+        eq(schema.projects.userId, userId),
+      ))
+      .get()
+
+    if (current?.memoryAutoUpdate === 'off') {
+      throw createInvalidInputError(
+        'Automatic memory updates are off for this project. Turning them '
+        + 'back to the account setting would resume background updates '
+        + 'that use your API keys. Change it in Besidka instead.',
+      )
+    }
   }
 
   const name = input.name === undefined

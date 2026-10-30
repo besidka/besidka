@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedBody(event, z.union([
-    z.object({
+    z.strictObject({
       enabled: z.boolean(),
       useAccountMemory: z.boolean().optional(),
     }),

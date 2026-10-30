@@ -118,8 +118,19 @@ async function assertMemoryEnableDoesNotResumeExtraction(
 ): Promise<void> {
   const current = await getMcpSettings(db, userId)
 
-  if (current.memoryEnabled || !current.memoryExtractionEnabled) {
+  if (current.memoryEnabled) {
     return
+  }
+
+  if (!current.memoryExtractionEnabled) {
+    const projectWithAutoUpdateOn = await db.query.projects.findFirst({
+      where: { userId, memoryAutoUpdate: 'on' },
+      columns: { id: true },
+    })
+
+    if (!projectWithAutoUpdateOn) {
+      return
+    }
   }
 
   throw createError({

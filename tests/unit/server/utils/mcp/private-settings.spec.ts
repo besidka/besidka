@@ -235,6 +235,42 @@ describe('mcp settings tools', () => {
         expect(mocks.applyUserSettingsUpdate).not.toHaveBeenCalled()
       })
 
+    it('refuses to turn memory on while a project has automatic updates on',
+      async () => {
+        seedSettings({ memory_enabled: 0, memory_extraction_enabled: 0 })
+        testDb.insertProject({ id: 1, userId: USER })
+        testDb.sqlite.prepare(
+          'update projects set memory_auto_update = ? where id = ?',
+        ).run('on', 1)
+
+        const { updateMcpSettings } = await load()
+
+        await expect(updateMcpSettings(testDb.db, USER, {
+          memoryEnabled: true,
+        })).rejects.toMatchObject({ status: 400 })
+        expect(mocks.applyUserSettingsUpdate).not.toHaveBeenCalled()
+      })
+
+    it('turns memory on when only other projects or other users have it on',
+      async () => {
+        seedSettings({ memory_enabled: 0, memory_extraction_enabled: 0 })
+        testDb.insertProject({ id: 1, userId: USER })
+        testDb.insertProject({ id: 2, userId: USER })
+        testDb.insertProject({ id: 3, userId: USER + 1 })
+        testDb.sqlite.prepare(
+          'update projects set memory_auto_update = ? where id = ?',
+        ).run('off', 1)
+        testDb.sqlite.prepare(
+          'update projects set memory_auto_update = ? where id = ?',
+        ).run('on', 3)
+
+        const { updateMcpSettings } = await load()
+
+        await updateMcpSettings(testDb.db, USER, { memoryEnabled: true })
+
+        expect(mocks.applyUserSettingsUpdate).toHaveBeenCalledTimes(1)
+      })
+
     it('turns memory on when extraction is off and turns it off always',
       async () => {
         seedSettings({ memory_enabled: 0, memory_extraction_enabled: 0 })

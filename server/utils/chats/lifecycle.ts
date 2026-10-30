@@ -98,7 +98,11 @@ export async function setChatPinnedAt(
  * null. The caller has already resolved the chats for this user, dropped the
  * ones already in the target and verified the project belongs to the user.
  * Every source project gets its activity time recomputed and, with the
- * target, its memory marked stale.
+ * target, its memory marked stale. When the target project has automatic
+ * updates set to `on` itself, the moved chats are stamped as already
+ * summarized, so the background sweep reads only messages written after the
+ * move and never spends the user's key on what was written under another
+ * scope.
  */
 export async function moveChatsToProject(
   db: DbClient,
@@ -110,12 +114,22 @@ export async function moveChatsToProject(
   const sourceProjectIds = chats.map((chat) => {
     return chat.projectId
   })
+  const targetProject = project
+    ? await db.query.projects.findFirst({
+      where: { id: project.id, userId },
+      columns: { memoryAutoUpdate: true },
+    })
+    : undefined
+  const forwardStamp = targetProject?.memoryAutoUpdate === 'on'
+    ? { projectMemorySummaryUpdatedAt: activityAt }
+    : {}
 
   for (const chunk of chunkIds(chats.map(chat => chat.id))) {
     await db.update(schema.chats)
       .set({
         projectId: project ? project.id : sql`NULL`,
         activityAt,
+        ...forwardStamp,
       })
       .where(and(
         eq(schema.chats.userId, userId),
