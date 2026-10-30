@@ -458,7 +458,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   and XLSX ZIP-bomb limits, the send path, the spike results)
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
   32 per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): UI parity
-  (everything the web UI does except chatting: the ten scopes, the tool table
+  (everything the web UI does except chatting: the eleven scopes, the tool table
   with scope and destructive flag, permanent deletes and their guard rails
   `confirmName`/`confirm`/caps, existing-client scope upgrade), the
   "What MCP does not do (and why)" list (no spend on the user's keys, no

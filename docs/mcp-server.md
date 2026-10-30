@@ -83,9 +83,9 @@ never data.
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
 
 The per-user surface has 32 tools: the original thirteen plus 19 added for
-UI parity (the five new scopes `files:read`, `settings:read`, `chats:write`,
-`files:write` and `settings:write`, and more tools behind `projects:write` and
-`memory:write`), plus the sixth scope `data:delete`. Write scopes are off by
+UI parity (six new scopes: `files:read`, `settings:read`, `chats:write`,
+`files:write`, `settings:write` and `data:delete`, and more tools behind
+`projects:write` and `memory:write`). Write scopes are off by
 default on the consent page and each is ticked separately. A new scope has to be added in three places that stay in
 step: `shared/utils/mcp-oauth-scopes.ts`, the map above, and the consent
 labels in `app/components/OAuth/ScopeLabel.vue`.
@@ -163,8 +163,15 @@ and the consent page asks) and ticks it.
 
 Consent is stored as scope names only, so the reverse also holds: a tool
 added behind a scope the user already granted reaches existing approvals with
-no new prompt. That is why every deletion has its own scope (`data:delete`),
-and why extending an existing scope must stay non-destructive. Under this
+no new prompt. That is why every deletion has its own scope (`data:delete`).
+A "Change" scope is not free of side effects: `update_chat` with
+`memoryExcluded: true` (`chats:write`) removes the extraction-only memory
+entries learned only from that chat, `revoke_chat_shares` removes share links,
+`update_project` with `memoryEnabled: false` resets the project memory state,
+and edits replace old text (`update_project_knowledge_item`,
+`update_project_instructions` with `null`, `update_memory`, `rename_file`,
+`update_settings` favourites). Extending an existing scope must therefore
+involve no deletion or spend, though overwrites are possible. Under this
 rule `projects:write` gained `update_project` and
 `update_project_knowledge_item`, and `chats:read` gained `list_shared_chats`
 and the share status (the share URL is returned only when the token also has

@@ -309,8 +309,11 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   approval includes `data:delete`. **Known limit:** consent is stored per scope
   name, so a tool added behind a scope the user already granted reaches the
   existing approval with no new prompt. That is why every deletion sits behind
-  `data:delete`, and why extensions of an existing scope must stay
-  non-destructive (so far `update_project` and
+  `data:delete` (a "Change" scope still has side effects: `update_chat`
+  `memoryExcluded` removes extraction-only memory entries learned only from
+  that chat, `revoke_chat_shares` removes share links, and edits replace old
+  text), and why extensions of an existing scope must involve no deletion or
+  spend, though overwrites are possible (so far `update_project` and
   `update_project_knowledge_item` under `projects:write`, and
   `list_shared_chats` and the share status under `chats:read`, whose share URL
   needs `chats:write` too). The Privacy Policy says this ("When a permission
