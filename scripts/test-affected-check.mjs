@@ -2810,6 +2810,10 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^(server\/utils\/account\/security-emails\.ts|content\/legal\/privacy-policy\.md|docs\/legal\/art30-record\.md)$/,
+      tests: ['tests/unit/content/account-email-list.spec.ts'],
+    },
+    {
       pattern: /^server\/utils\/oauth\/registration-limits\.ts$/,
       tests: [
         'tests/unit/utils/oauth/registration-limits.spec.ts',
