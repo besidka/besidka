@@ -82,12 +82,12 @@
                   sm:gap-4"
               >
                 <div class="grid gap-1 min-w-0">
-                  <p class="font-bold break-words">
-                    {{ app.name }}
+                  <p class="flex flex-wrap items-center gap-2 font-bold">
+                    <span class="break-words min-w-0">{{ app.name }}</span>
                     <span
                       v-if="group.apps.length > 1
                         && app.clientId === group.newestClientId"
-                      class="badge badge-sm badge-success ml-1 align-middle"
+                      class="badge badge-sm badge-soft badge-success"
                       data-testid="connected-apps-newest"
                     >
                       Most recent
@@ -108,10 +108,10 @@
                     <li
                       v-for="scope in filterVisibleScopes(app.scopes)"
                       :key="scope"
-                      class="badge badge-sm"
+                      class="badge badge-sm badge-soft"
                       :class="isMcpWriteScope(scope)
                         ? 'badge-warning'
-                        : 'badge-ghost'"
+                        : 'badge-neutral'"
                     >
                       <OAuthScopeLabel :scope="scope" />
                     </li>
