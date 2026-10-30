@@ -68,7 +68,8 @@ Besidka is an OAuth 2.1 authorization server for one resource: the MCP server
 at `/mcp`. The public read-only tools need no token. Per-user tools need an
 access token for a signed-in Besidka user. This is lazy auth: a protected
 `tools/call` without a valid token returns `401` with a `WWW-Authenticate`
-header that carries `resource_metadata`, so a client that only wants the
+header that carries `resource_metadata` and the full scope list
+(`MCP_OAUTH_SCOPES`, see `docs/mcp-server.md`), so a client that only wants the
 public tools never authenticates.
 
 | Piece | URL | Served by |

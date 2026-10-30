@@ -28,7 +28,9 @@ import {
 import {
   findMissingMcpScopes,
   getMcpToolRequiredScopes,
+  mergeMcpScopes,
 } from '~~/server/utils/mcp/tool-scopes'
+import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const JSON_RPC_PARSE_ERROR = -32700
@@ -219,6 +221,7 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
           401,
           buildMcpBearerChallenge({
             resourceMetadataUrl: resolveResourceMetadataUrl(),
+            scopes: MCP_OAUTH_SCOPES,
             error: 'invalid_token',
             description: 'The access token is invalid or expired',
           }),
@@ -310,7 +313,7 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
         401,
         buildMcpBearerChallenge({
           resourceMetadataUrl: resolveResourceMetadataUrl(),
-          scopes: requiredScopes,
+          scopes: MCP_OAUTH_SCOPES,
         }),
         'Sign in to Besidka to use this tool.',
         message.id,
@@ -334,7 +337,7 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
       403,
       buildMcpBearerChallenge({
         resourceMetadataUrl: resolveResourceMetadataUrl(),
-        scopes: missingScopes,
+        scopes: mergeMcpScopes(auth.scopes, missingScopes),
         error: 'insufficient_scope',
         description: `The access token is missing the scope ${missingScopes.join(' ')}`,
       }),

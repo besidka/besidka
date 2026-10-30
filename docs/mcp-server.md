@@ -28,19 +28,24 @@ first calls a tool that needs it.
   `enabled` guard on private tools: it hides them from anonymous listings.
 - A `tools/call` of a private tool without a token gets **HTTP 401** before
   the MCP SDK runs, with
-  `WWW-Authenticate: Bearer scope="<scopes the tool needs>", resource_metadata="<site>/.well-known/oauth-protected-resource/mcp"`.
-  The client reads the protected-resource metadata, runs OAuth (dynamic
-  client registration, PKCE, `/oauth/consent`) and retries with the token.
+  `WWW-Authenticate: Bearer scope="<every scope in MCP_OAUTH_SCOPES>", resource_metadata="<site>/.well-known/oauth-protected-resource/mcp"`.
+  The scope list is the same whichever tool was called (see "Why the 401
+  challenge names every scope" below). The client reads the
+  protected-resource metadata, runs OAuth (dynamic client registration, PKCE,
+  `/oauth/consent`) and retries with the token.
   The root `/.well-known/oauth-protected-resource` describes the origin, the
   `/mcp` one describes the MCP resource, and the 401 `resource_metadata`
   points at the `/mcp` one.
 - A valid token that lacks the tool's scope gets **HTTP 403** with
-  `WWW-Authenticate: Bearer error="insufficient_scope", scope="<missing>", resource_metadata="...", error_description="..."`
+  `WWW-Authenticate: Bearer error="insufficient_scope", scope="<granted + missing>", resource_metadata="...", error_description="..."`
   (RFC 6750 section 3.1), so the client can step up in one round trip.
+  `scope` is the union of the token's current scopes and the missing ones, in
+  `MCP_OAUTH_SCOPES` order, while `error_description` names only the missing
+  scope(s).
 - An `Authorization: Bearer` header with an invalid or expired token, or a
   malformed one (`Bearer` with no token), gets **HTTP 401** with
-  `error="invalid_token"` on any request, public tools included, so the
-  client refreshes instead of silently falling back to anonymous. An
+  `error="invalid_token"` (and the full scope list) on any request, public
+  tools included, so the client refreshes instead of silently falling back to anonymous. An
   `Authorization` header with **any other scheme** (`Basic`, `DPoP`) is
   ignored and the request is treated as anonymous: a gateway or proxy that
   adds its own credentials must not break the public tools. The scheme
@@ -123,6 +128,26 @@ Each of those tool descriptions ends with `Requires signing in
 connections keep every other tool but lose `delete_memory` (and the other six)
 until the user reconnects, answers the `403 insufficient_scope` step-up and
 ticks "Delete your data". No consent row is rewritten.
+
+#### Why the 401 challenge names every scope
+
+claude.ai connects anonymously, calls a private tool, and runs OAuth
+requesting exactly the `scope` of the `401` challenge (confirmed in Axiom:
+`scope=projects:read offline_access`, earlier `scope=chats:read
+offline_access`). When the challenge named only the called tool's scope,
+every connection ended up with one permission, the consent page offered one
+checkbox, and later tools failed with `403 insufficient_scope` because
+claude.ai does not step up. The MCP authorization spec has clients take the
+scope from the challenge, so the `401` advertises all of `MCP_OAUTH_SCOPES`.
+The consent page (`app/components/OAuth/ScopePicker.vue`) still pre-ticks
+only the read scopes and leaves the write scopes unticked, so the user
+decides what is granted; the challenge only widens what the client asks for.
+
+The `403 insufficient_scope` advertises the granted scopes plus the missing
+ones (`mergeMcpScopes` in `server/utils/mcp/tool-scopes.ts`), so a client
+that does step up re-requests what it already had instead of dropping
+existing grants. Scopes outside `MCP_OAUTH_SCOPES` are not echoed. The
+`invalid_token` `401` carries the full list too.
 
 #### Scope upgrades for existing clients
 
