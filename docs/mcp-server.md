@@ -197,6 +197,17 @@ takes the tool name for this. The message-search leg behind `list_chats`
 (`findChatsMatchingMessageContent`) logs the same summary under
 `attributes.messageSearchContent` instead of the error message.
 
+Every `tools/call` row also says how it ended, under `attributes.mcp`:
+`outcome` is `success`, `error`, `auth_required` or `insufficient_scope`,
+`duration_ms` is the handler time, and `error_status` is the HTTP-style status
+of a thrown error (the 4xx of a deliberate client error, otherwise 500). The
+toolkit turns a thrown error into an `isError` result and still answers HTTP
+200, so `server/plugins/mcp-tool-outcome.ts` reads `outcome` and `duration_ms`
+from its `mcp:tool:called` hook. `outcome` is written for tools that run only
+(`success` or `error`). The guard writes `method`, `tool` and `outcome` for the
+401 and 403 answers, which never reach the toolkit. Rows from before this
+change carry only the HTTP status. Dashboard: MCP tool calls (Axiom).
+
 ## Connecting a client
 
 - Endpoint: `https://besidka.com/mcp`. Streamable HTTP. Public tools need no

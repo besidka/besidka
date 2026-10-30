@@ -294,6 +294,24 @@ describe('mcp request guard authentication', () => {
       )
     })
 
+  it('logs the method, tool and auth_required outcome for an anonymous '
+    + 'private call', async () => {
+    const body = toolsCall('list_chats')
+    const { guard } = await createGuard(body)
+
+    await guard(createEvent('POST', '/mcp', {
+      'content-length': String(body.length),
+    }))
+
+    expect(mocks.logger.set).toHaveBeenCalledWith({
+      mcp: {
+        method: 'tools/call',
+        tool: 'list_chats',
+        outcome: 'auth_required',
+      },
+    })
+  })
+
   it('names the write scope for an anonymous memory write', async () => {
     const body = toolsCall('add_memory')
     const { guard } = await createGuard(body)
@@ -340,6 +358,13 @@ describe('mcp request guard authentication', () => {
       expect(header).toMatch(/^Bearer error="insufficient_scope"/)
       expect(header).toContain('scope="memory:write"')
       expect(header).toContain(`resource_metadata="${RESOURCE_METADATA_URL}"`)
+      expect(mocks.logger.set).toHaveBeenCalledWith({
+        mcp: {
+          auth_denied: 'insufficient_scope',
+          tool: 'delete_memory',
+          outcome: 'insufficient_scope',
+        },
+      })
     })
 
   it('answers 401 invalid_token for an invalid token on any request',

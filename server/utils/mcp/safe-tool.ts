@@ -30,6 +30,14 @@ export function isClientError(exception: unknown): boolean {
   return status >= 400 && status < 500
 }
 
+function logToolErrorStatus(status: number): void {
+  try {
+    useRequestLogger(useEvent()).set({ mcp: { error_status: status } })
+  } catch {
+    return
+  }
+}
+
 function logToolFailure(exception: unknown, toolName: string): void {
   const details: Record<string, string> = {
     toolName,
@@ -64,9 +72,12 @@ export function withSafeToolErrors<Handler extends ToolHandler>(
       return await handler(...args)
     } catch (exception) {
       if (isClientError(exception)) {
+        logToolErrorStatus(readStatus(exception))
+
         throw exception
       }
 
+      logToolErrorStatus(500)
       logToolFailure(exception, toolName)
 
       throw createError({

@@ -172,6 +172,41 @@ describe('withSafeToolErrors', () => {
       expect(logged).not.toContain('SECRET')
     })
 
+  it('logs the 4xx status of a deliberate client error', async () => {
+    await callToolResult(createError({ status: 404, message: 'Not found' }))
+
+    expect(mocks.logger.set).toHaveBeenCalledWith({
+      mcp: { error_status: 404 },
+    })
+  })
+
+  it('logs status 500 for an unexpected failure', async () => {
+    await callToolResult(new Error(SECRET_MESSAGE))
+
+    expect(mocks.logger.set).toHaveBeenCalledWith({
+      mcp: { error_status: 500 },
+    })
+  })
+
+  it('still throws the sanitized error when the logger is unavailable',
+    async () => {
+      mocks.useEvent.mockImplementation(() => {
+        throw new Error('no event')
+      })
+
+      const {
+        withSafeToolErrors,
+        MCP_TOOL_FAILURE_MESSAGE,
+      } = await loadModule()
+      const handler = withSafeToolErrors(async () => {
+        throw new Error(SECRET_MESSAGE)
+      }, 'list_chats')
+
+      await expect(handler()).rejects.toMatchObject({
+        message: MCP_TOOL_FAILURE_MESSAGE,
+      })
+    })
+
   it('falls back to the standalone logger outside a request', async () => {
     mocks.useEvent.mockImplementation(() => {
       throw new Error('no event')
