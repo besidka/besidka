@@ -2860,6 +2860,10 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^server\/plugins\/mcp-tool-outcome\.ts$/,
+      tests: ['tests/unit/server/plugins/mcp-tool-outcome.spec.ts'],
+    },
+    {
       pattern: /^server\/plugins\/evlog-request-observability\.ts$/,
       tests: ['tests/unit/server/plugins/evlog-request-observability.spec.ts'],
     },

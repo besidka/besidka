@@ -294,7 +294,17 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
       return
     }
 
+    const toolLogFields = typeof message.toolName === 'string'
+      ? { tool: message.toolName }
+      : {}
+
     if (!auth) {
+      setMcpAuthLogFields(event, {
+        method: 'tools/call',
+        ...toolLogFields,
+        outcome: 'auth_required',
+      })
+
       return challenge(
         event,
         401,
@@ -313,7 +323,11 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
       return
     }
 
-    setMcpAuthLogFields(event, { auth_denied: 'insufficient_scope' })
+    setMcpAuthLogFields(event, {
+      auth_denied: 'insufficient_scope',
+      ...toolLogFields,
+      outcome: 'insufficient_scope',
+    })
 
     return challenge(
       event,
