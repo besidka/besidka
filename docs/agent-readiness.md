@@ -211,6 +211,17 @@ came out empty. `server/plugins/agent-discovery-landing.ts` hooks
 `server/utils/agent-discovery/landing-markdown.ts`. It also adds the key
 guide list from the `keyGuides` collection.
 
+The legal pages and `/byok` use MDC components (`:privacy-email-link`,
+`::account-email-list`) that the module's serializer would publish as literal
+directives. `server/plugins/agent-discovery-page-components.ts` hooks
+`agent-discovery:document` and swaps each registered component for the text
+its renderer returns (`replaceMinimarkComponents` in
+`server/utils/content/minimark.ts`). The renderers are the ones the MCP
+`get_page` tool uses, `createPageComponentRenderers` in
+`server/utils/mcp/pages.ts`, so a new content component needs one renderer
+there and then shows up in both the twins and MCP. `/raw/**` and the
+`Accept: text/markdown` negotiation share this path.
+
 ### Redirects from content paths
 
 The module derives canonical URLs from the Nuxt Content path, not from the

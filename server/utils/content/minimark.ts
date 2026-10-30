@@ -46,6 +46,20 @@ const INLINE_TAGS = new Set([
 
 const LIST_TAGS = new Set(['ol', 'ul'])
 
+const TEXT_CONTAINER_TAGS = new Set([
+  ...INLINE_TAGS,
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'p',
+  'li',
+  'td',
+  'th',
+])
+
 function isElement(
   node: MinimarkNode,
 ): node is [string, Record<string, unknown>, ...MinimarkNode[]] {
@@ -286,4 +300,49 @@ export function minimarkToMarkdown(
   }
 
   return renderBlocks(body.value, options)
+}
+
+function replaceComponentNode(
+  node: MinimarkNode,
+  components: ComponentRenderers,
+  parentTag?: string,
+): MinimarkNode {
+  if (!isElement(node)) {
+    return node
+  }
+
+  const [tag, props, ...children] = node
+  const componentRenderer = components[tag]
+
+  if (componentRenderer) {
+    const text = componentRenderer(props)
+
+    return parentTag && TEXT_CONTAINER_TAGS.has(parentTag)
+      ? text
+      : ['p', {}, text]
+  }
+
+  return [
+    tag,
+    props,
+    ...children.map((child) => {
+      return replaceComponentNode(child, components, tag)
+    }),
+  ]
+}
+
+/**
+ * Replaces registered MDC component nodes with the text their renderer
+ * returns, so a serializer that knows nothing about the components (the
+ * markdown twins) emits real text instead of `:name{}` directives. A
+ * component inside a text container becomes inline text; anywhere else it
+ * becomes its own paragraph. Returns a new tree and leaves the input alone.
+ */
+export function replaceMinimarkComponents(
+  nodes: MinimarkNode[],
+  components: ComponentRenderers,
+): MinimarkNode[] {
+  return nodes.map((node) => {
+    return replaceComponentNode(node, components)
+  })
 }

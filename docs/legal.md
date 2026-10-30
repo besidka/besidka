@@ -19,7 +19,8 @@ Structural facts worth knowing before editing:
   `useRuntimeConfig().public.privacyEmail` (from `NUXT_PUBLIC_PRIVACY_EMAIL`,
   which `wrangler.jsonc` sets for the local, production and preview configs) and
   renders a `NuxtLink` to `mailto:<address>` whose text is the address. Keep the
-  component form exactly: `**:privacy-email-link{}**`.
+  component form exactly: `**:privacy-email-link{}**`. The markdown twins and
+  MCP render it as the plain address.
 - **Failure mode: the address vanishes silently.** If the env var is unset or
   empty the component still renders, as a link to `mailto:` with no visible
   text, and nothing errors. Any verification must assert that the address is
@@ -43,6 +44,11 @@ Structural facts worth knowing before editing:
   registry has one entry per email with its `category` and the exact
   `policyText`; identical texts collapse and first-seen order is kept. The MCP
   `get_page` markdown renders the component through `createPageComponentRenderers`.
+  The `/raw/legal/*.md` twins and `Accept: text/markdown` render both
+  components through the same renderers (`agent-discovery-page-components`
+  plugin, `docs/agent-readiness.md`). A new content component needs a renderer
+  in `server/utils/mcp/pages.ts`, or the twins publish it as a literal
+  `::name` directive.
   **Failure mode: the list vanishes silently.** A mistyped tag
   (`::account-emails`) renders nothing and nothing errors, so verification must
   assert the rendered text (`tests/unit/content/account-email-list.spec.ts`
