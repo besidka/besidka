@@ -125,3 +125,34 @@ describe('OAuth scope picker', () => {
     expect(lastSelection(wrapper)).toContain('memory:write')
   })
 })
+
+describe('OAuth scope picker in edit mode', () => {
+  it('selects every granted scope, writes included', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: {
+        scopes: ['chats:read', 'chats:write', 'data:delete'],
+        modelValue: [],
+        mode: 'edit',
+      },
+    })
+
+    expect(lastSelection(wrapper)).toEqual([
+      'chats:read',
+      'chats:write',
+      'data:delete',
+    ])
+  })
+
+  it('does not show the grant-time write warning', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: {
+        scopes: ['chats:read', 'chats:write'],
+        modelValue: [],
+        mode: 'edit',
+      },
+    })
+
+    expect(wrapper.find('[data-testid="oauth-write-warning"]').exists())
+      .toBe(false)
+  })
+})

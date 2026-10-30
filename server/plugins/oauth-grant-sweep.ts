@@ -3,6 +3,7 @@ import {
   and,
   asc,
   eq,
+  gt,
   inArray,
   isNotNull,
   isNull,
@@ -13,6 +14,7 @@ import {
 } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { OAUTH_REFRESH_TOKEN_TTL_SECONDS } from '~~/server/utils/oauth/token-ttl'
 
 export const OAUTH_GRANT_RETENTION_DAYS = 1
 export const OAUTH_OWNERLESS_CLIENT_RETENTION_DAYS = 7
@@ -28,6 +30,7 @@ export const OAUTH_SWEEP_CLIENT_BATCH_SIZE = 50
 
 const OAUTH_GRANT_SWEEP_CRON = '0 * * * *'
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
+const MILLISECONDS_PER_SECOND = 1000
 
 interface ScheduledControllerLike {
   cron: string
@@ -43,6 +46,7 @@ interface RunOAuthGrantSweepJobInput {
 interface OAuthGrantSweepCounts {
   accessTokens: number
   refreshTokens: number
+  consents: number
   clients: number
 }
 
@@ -130,6 +134,70 @@ async function sweepStaleRefreshTokens(
   return deleted
 }
 
+async function sweepDeadConsents(
+  db: ReturnType<typeof useDb>,
+  consentCutoff: Date,
+  now: Date,
+): Promise<number> {
+  let deleted = 0
+
+  for (let batch = 0; batch < OAUTH_SWEEP_MAX_BATCHES; batch++) {
+    const rows = await db.delete(schema.oauthConsents)
+      .where(inArray(
+        schema.oauthConsents.id,
+        db.select({ id: schema.oauthConsents.id })
+          .from(schema.oauthConsents)
+          .where(and(
+            isNotNull(schema.oauthConsents.userId),
+            lt(schema.oauthConsents.updatedAt, consentCutoff),
+            notExists(
+              db.select({ one: sql`1` })
+                .from(schema.oauthRefreshTokens)
+                .where(and(
+                  eq(
+                    schema.oauthRefreshTokens.userId,
+                    schema.oauthConsents.userId,
+                  ),
+                  eq(
+                    schema.oauthRefreshTokens.clientId,
+                    schema.oauthConsents.clientId,
+                  ),
+                  isNull(schema.oauthRefreshTokens.revoked),
+                  gt(schema.oauthRefreshTokens.expiresAt, now),
+                )),
+            ),
+            notExists(
+              db.select({ one: sql`1` })
+                .from(schema.oauthAccessTokens)
+                .where(and(
+                  eq(
+                    schema.oauthAccessTokens.userId,
+                    schema.oauthConsents.userId,
+                  ),
+                  eq(
+                    schema.oauthAccessTokens.clientId,
+                    schema.oauthConsents.clientId,
+                  ),
+                  isNull(schema.oauthAccessTokens.revoked),
+                  gt(schema.oauthAccessTokens.expiresAt, now),
+                )),
+            ),
+          ))
+          .orderBy(asc(schema.oauthConsents.id))
+          .limit(OAUTH_SWEEP_BATCH_SIZE),
+      ))
+      .returning({ id: schema.oauthConsents.id })
+
+    deleted += rows.length
+
+    if (rows.length < OAUTH_SWEEP_BATCH_SIZE) {
+      break
+    }
+  }
+
+  return deleted
+}
+
 async function sweepOwnerlessClients(
   db: ReturnType<typeof useDb>,
   cutoff: Date,
@@ -200,8 +268,19 @@ async function sweepOwnerlessClients(
  * owner-less dynamically registered clients older than a week with no
  * consent and no token. Access tokens that reference a stale refresh token
  * go first, in the same batch, because of the `refresh_id` foreign key.
- * Every statement is bounded by a batch size and a batch count so one run
- * stays inside the D1 limits; a backlog drains over the following hours.
+ * Consents go once the user has no live refresh token and no live opaque
+ * access token for that client and the consent's `updated_at` is older than
+ * the refresh token lifetime (`OAUTH_REFRESH_TOKEN_TTL_SECONDS`, 30 days).
+ * The `updated_at` test is what keeps an app that never asked for
+ * `offline_access` alive: its JWT access tokens are not stored, so
+ * `resolveMcpPrincipal` bumps `updated_at` on every verified `/mcp` call
+ * (throttled to once per 15 minutes) and a connection in use never ages out.
+ * A consent that old with no live token is dead weight: nothing lists it, and
+ * a later authorization would skip the approval screen while it still covers
+ * the requested scopes. The sweep runs the consent step before the owner-less
+ * clients one because a consent keeps its client alive. Every statement is
+ * bounded by a batch size and a batch count so one run stays inside the D1
+ * limits; a backlog drains over the following hours.
  */
 export async function runOAuthGrantSweepJob(
   input: RunOAuthGrantSweepJobInput,
@@ -216,6 +295,10 @@ export async function runOAuthGrantSweepJob(
     input.controller.scheduledTime
     - OAUTH_GRANT_RETENTION_DAYS * MILLISECONDS_PER_DAY,
   )
+  const consentCutoff = new Date(
+    input.controller.scheduledTime
+    - OAUTH_REFRESH_TOKEN_TTL_SECONDS * MILLISECONDS_PER_SECOND,
+  )
   const clientCutoff = new Date(
     input.controller.scheduledTime
     - OAUTH_OWNERLESS_CLIENT_RETENTION_DAYS * MILLISECONDS_PER_DAY,
@@ -223,6 +306,7 @@ export async function runOAuthGrantSweepJob(
   const counts: OAuthGrantSweepCounts = {
     accessTokens: 0,
     refreshTokens: 0,
+    consents: 0,
     clients: 0,
   }
   let status = 200
@@ -233,6 +317,7 @@ export async function runOAuthGrantSweepJob(
         cron: input.controller.cron,
         scheduledTime: new Date(input.controller.scheduledTime).toISOString(),
         grantCutoff: grantCutoff.toISOString(),
+        consentCutoff: consentCutoff.toISOString(),
         clientCutoff: clientCutoff.toISOString(),
       },
     },
@@ -258,6 +343,22 @@ export async function runOAuthGrantSweepJob(
 
   if (db) {
     try {
+      counts.consents = await sweepDeadConsents(
+        db,
+        consentCutoff,
+        new Date(input.controller.scheduledTime),
+      )
+    } catch (exception) {
+      logger.set({
+        attributes: {
+          oauthSweep: {
+            consentsError: exceptionMessage(exception),
+          },
+        },
+      })
+    }
+
+    try {
       counts.clients = await sweepOwnerlessClients(db, clientCutoff)
     } catch (exception) {
       logger.set({
@@ -275,6 +376,7 @@ export async function runOAuthGrantSweepJob(
       oauthSweep: {
         deletedAccessTokens: counts.accessTokens,
         deletedRefreshTokens: counts.refreshTokens,
+        deletedConsents: counts.consents,
         deletedClients: counts.clients,
       },
     },

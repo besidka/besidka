@@ -1055,21 +1055,46 @@ client id and scopes only, never a token.
 
 ### Connected apps and revocation
 
-`/profile/connected-apps` lists every client the user has a consent for
-or a live (not revoked, not expired) refresh token for, so a grant whose
-consent row is gone still shows up and can be revoked. Scopes come from
-the consent, or from the newest live refresh token when there is none (a
-bare `max()` aggregate in SQLite takes the other columns from the max
-row). **Disconnect**
+`/profile/connected-apps` lists every client the user can still act
+through: one with a live (not revoked, not expired) refresh token or access
+token. A consent row with no live token and no use for 30 days is hidden, because it is dead weight
+and a later authorization would skip the approval screen while it still
+covers the requested scopes. A consent used within 30 days is still listed, because an app without `offline_access` leaves no token rows; a live grant whose consent row is gone still
+shows up and can be revoked. Scopes come from the consent, or from the
+newest live refresh token when there is none (a bare `max()` aggregate in
+SQLite takes the other columns from the max row), read through
+`parseStoredOAuthScopes` because Better Auth stores them pre-stringified.
+Apps that register a new client on every reconnect (claude.ai) show up as
+several rows; the page groups them by name and offers **Disconnect older**
+(`POST /api/v1/profiles/connected-apps/revoke/bulk`, up to 20 client ids,
+sequential per client, logged per client as `oauth_revoked`).
+**Disconnect**
 (`POST /api/v1/profiles/connected-apps/[clientId]/revoke`) deletes, in one
 D1 batch and in foreign-key order, the user's access tokens, refresh
 tokens and consents for that client, unconditionally, and answers 404 only
 when none of the three existed. The plugin's own `/oauth2/delete-consent`
 is disabled.
 
+**Edit permissions** (`PATCH /api/v1/profiles/connected-apps/[clientId]/scopes`,
+limited by the `legal-consent` rate bucket) removes resource scopes from the
+consent and nothing else: tokens are untouched and the MCP server intersects
+a token's scopes with the consent's on every call, so a removed permission
+stops working at once. It can never add a scope (400, "reconnect it from the
+app"), keeps identity scopes, never writes an empty list, answers 409 when
+the approval changed after it was read (the write is conditional on the
+`updated_at` it read) and logs
+`attributes.legalConsent` with `action: oauth_scopes_narrowed`, the kept and
+the removed scopes. See "Consent is the effective scope" in
+`docs/mcp-server.md`. After a D1 restore, replay `oauth_scopes_narrowed` and
+`oauth_revoked` events from Axiom like any other revocation.
+
 The MCP server checks for a live consent row on every call, so
 disconnecting takes effect at once even though access tokens are JWTs
-verified without a database read. The UI no longer promises a delay.
+verified without a database read. The UI no longer promises a delay. A
+consent row whose scope list cannot be read (a legacy or damaged row) fails
+closed: the effective scopes are empty and the call logs
+`mcp.scope_source: consent_unreadable`, so the app keeps only the tools that
+need no scope until the user approves it again.
 
 ### Recovery ends every grant
 
@@ -1107,11 +1132,15 @@ and a link to `/profile/connected-apps`.
 per run, D1 has no `DELETE ... LIMIT`, so each delete selects its ids with
 a limited subquery): access tokens expired for a day; refresh tokens
 expired or revoked for a day, after the access tokens that reference them
-(`refresh_id` foreign key); and owner-less clients older than 7 days with
-no consent and no token. **Trade-off:** a client that cached its
-`client_id` and was never approved, or whose user revoked it and then
-waited 7 days, gets `invalid_client` at authorize and has to register
-again. The owner-less client delete binds one parameter per id, so it uses
+(`refresh_id` foreign key); dead consents (no live refresh or opaque access
+token for that user and client, `updated_at` older than 30 days, the
+refresh token lifetime; `resolveMcpPrincipal` bumps `updated_at` on `/mcp`
+calls so an app that never asked for `offline_access`, whose JWT access
+tokens are not stored, stays alive while it is used); and, after those because a
+consent keeps its client alive, owner-less clients older than 7 days with no
+consent and no token. **Trade-off:** a client that cached its `client_id`
+and was never approved, or whose user revoked it and then waited 7 days, gets
+`invalid_client` at authorize and has to register again. The owner-less client delete binds one parameter per id, so it uses
 a smaller batch of 50 (`OAUTH_SWEEP_CLIENT_BATCH_SIZE`) to stay under D1's
 ~100 bound-parameter limit. A foreign-key error in that step (a consent or
 token created between the select and the delete) is caught and logged as

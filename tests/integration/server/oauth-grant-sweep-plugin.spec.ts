@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/d1'
 
 const SCHEDULED_TIME = Date.UTC(2026, 9, 29, 12, 0, 0)
 const ONE_DAY_SECONDS = 24 * 60 * 60
+const THIRTY_DAYS_SECONDS = 30 * ONE_DAY_SECONDS
 
 interface BuiltQuery {
   toSQL: () => { sql: string, params: unknown[] }
@@ -32,12 +33,14 @@ function createSweepDb(options: {
   accessTokenBatches?: number[]
   refreshTokenBatches?: number[]
   clientBatches?: number[]
+  consentBatches?: number[]
   clientDeleteError?: Error
 } = {}) {
   const db = drizzle({} as never)
   const accessTokenBatches = [...(options.accessTokenBatches ?? [0])]
   const refreshTokenBatches = [...(options.refreshTokenBatches ?? [0])]
   const clientBatches = [...(options.clientBatches ?? [0])]
+  const consentBatches = [...(options.consentBatches ?? [0])]
   const executed: BuiltQuery[] = []
   const realDelete = db.delete.bind(db)
   const realSelect = db.select.bind(db)
@@ -73,6 +76,10 @@ function createSweepDb(options: {
                   && options.clientDeleteError
                 ) {
                   throw options.clientDeleteError
+                }
+
+                if (tableName === 'oauth_consents') {
+                  return rowsOf(consentBatches.shift() ?? 0)
                 }
 
                 return rowsOf(tableName === 'oauth_clients'
@@ -161,6 +168,7 @@ describe('oauth grant sweep plugin', () => {
         oauthSweep: {
           deletedAccessTokens: 0,
           deletedRefreshTokens: 0,
+          deletedConsents: 0,
           deletedClients: 0,
         },
       },
@@ -187,6 +195,7 @@ describe('oauth grant sweep plugin', () => {
         oauthSweep: {
           deletedAccessTokens: 203,
           deletedRefreshTokens: 102,
+          deletedConsents: 0,
           deletedClients: 0,
         },
       },
@@ -287,6 +296,121 @@ describe('oauth grant sweep plugin', () => {
         .toContain('not exists (select 1 from "oauth_access_tokens"')
     })
 
+  it('only deletes consents with no live token, idle for 30 days', async () => {
+    const { db, executed } = createSweepDb()
+    const { createLogger } = createLoggerDouble()
+    const { runOAuthGrantSweepJob } = await importSweep()
+
+    await runOAuthGrantSweepJob({
+      controller: { cron: '0 * * * *', scheduledTime: SCHEDULED_TIME },
+      createLogger,
+      db: db as never,
+    })
+
+    const consentDelete = executed.map((query) => {
+      return query.toSQL()
+    }).find((statement) => {
+      return statement.sql.startsWith('delete from "oauth_consents"')
+    })
+
+    expect(consentDelete).toBeDefined()
+    expect(consentDelete!.sql).toContain('"updated_at" < ?')
+    expect(consentDelete!.sql)
+      .toContain('not exists (select 1 from "oauth_refresh_tokens"')
+    expect(consentDelete!.sql)
+      .toContain('not exists (select 1 from "oauth_access_tokens"')
+    expect(consentDelete!.sql).toContain(
+      '"oauth_refresh_tokens"."user_id" = "oauth_consents"."user_id"',
+    )
+    expect(consentDelete!.sql).toContain(
+      '"oauth_access_tokens"."client_id" = "oauth_consents"."client_id"',
+    )
+    expect(consentDelete!.sql).toContain('"revoked" is null')
+    expect(consentDelete!.sql).toContain('"expires_at" > ?')
+    expect(consentDelete!.sql).toContain('limit')
+    expect(consentDelete!.params).toContain(SCHEDULED_TIME / 1000
+      - THIRTY_DAYS_SECONDS)
+    expect(consentDelete!.params).not.toContain(SCHEDULED_TIME / 1000
+      - ONE_DAY_SECONDS)
+    expect(consentDelete!.params).toContain(SCHEDULED_TIME / 1000)
+  })
+
+  it('logs the 30-day consent cutoff next to the one-day token cutoff',
+    async () => {
+      const { db } = createSweepDb()
+      const { set, createLogger } = createLoggerDouble()
+      const { runOAuthGrantSweepJob } = await importSweep()
+
+      await runOAuthGrantSweepJob({
+        controller: { cron: '0 * * * *', scheduledTime: SCHEDULED_TIME },
+        createLogger,
+        db: db as never,
+      })
+
+      expect(set).toHaveBeenCalledWith({
+        attributes: {
+          oauthSweep: expect.objectContaining({
+            grantCutoff: new Date(
+              SCHEDULED_TIME - ONE_DAY_SECONDS * 1000,
+            ).toISOString(),
+            consentCutoff: new Date(
+              SCHEDULED_TIME - THIRTY_DAYS_SECONDS * 1000,
+            ).toISOString(),
+          }),
+        },
+      })
+    })
+
+  it('counts deleted consents and keeps going over full batches', async () => {
+    const { db } = createSweepDb({ consentBatches: [100, 7] })
+    const { set, emit, createLogger } = createLoggerDouble()
+    const { runOAuthGrantSweepJob } = await importSweep()
+
+    await runOAuthGrantSweepJob({
+      controller: { cron: '0 * * * *', scheduledTime: SCHEDULED_TIME },
+      createLogger,
+      db: db as never,
+    })
+
+    expect(set).toHaveBeenCalledWith({
+      attributes: {
+        oauthSweep: {
+          deletedAccessTokens: 0,
+          deletedRefreshTokens: 0,
+          deletedConsents: 107,
+          deletedClients: 0,
+        },
+      },
+    })
+    expect(emit).toHaveBeenCalledWith({ status: 200 })
+  })
+
+  it('sweeps consents before owner-less clients', async () => {
+    const { db, executed } = createSweepDb()
+    const { createLogger } = createLoggerDouble()
+    const { runOAuthGrantSweepJob } = await importSweep()
+
+    await runOAuthGrantSweepJob({
+      controller: { cron: '0 * * * *', scheduledTime: SCHEDULED_TIME },
+      createLogger,
+      db: db as never,
+    })
+
+    const statements = executed.map((query) => {
+      return query.toSQL().sql
+    })
+    const consentIndex = statements.findIndex((statement) => {
+      return statement.startsWith('delete from "oauth_consents"')
+    })
+    const clientIndex = statements.findIndex((statement) => {
+      return statement.startsWith('select')
+        && statement.includes('from "oauth_clients"')
+    })
+
+    expect(consentIndex).toBeGreaterThan(-1)
+    expect(consentIndex).toBeLessThan(clientIndex)
+  })
+
   it('logs the error and emits 500 when a delete fails', async () => {
     const { db, batch } = createSweepDb()
     const { set, emit, createLogger } = createLoggerDouble()
@@ -356,6 +480,7 @@ describe('oauth grant sweep plugin', () => {
           oauthSweep: {
             deletedAccessTokens: 4,
             deletedRefreshTokens: 0,
+            deletedConsents: 0,
             deletedClients: 0,
           },
         },

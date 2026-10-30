@@ -236,6 +236,9 @@ export function createMcpRequestGuard(options: McpRequestGuardOptions) {
         auth: 'token',
         user_id: auth.userId,
         client_id: auth.clientId,
+        ...(auth.scopeSource && auth.scopeSource !== 'token'
+          ? { scope_source: auth.scopeSource }
+          : {}),
       })
     }
 
