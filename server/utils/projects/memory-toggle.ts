@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { createError } from 'evlog'
+import type { ProjectMemoryStatus } from '#shared/types/projects.d'
 import * as schema from '~~/server/db/schema'
 
 type DbClient = ReturnType<typeof useDb>
@@ -21,6 +22,16 @@ export async function projectHasMemoryEntries(
   })
 
   return !!entry
+}
+
+export async function projectMemorySettledStatus(
+  db: DbClient,
+  projectId: string,
+  userId: number,
+): Promise<Extract<ProjectMemoryStatus, 'ready' | 'idle'>> {
+  const hasEntries = await projectHasMemoryEntries(db, projectId, userId)
+
+  return hasEntries ? 'ready' : 'idle'
 }
 
 /**
@@ -75,7 +86,11 @@ export async function applyProjectMemoryEnabled(
     return 'unchanged'
   }
 
-  const hasEntries = await projectHasMemoryEntries(db, project.id, userId)
+  const settledStatus = await projectMemorySettledStatus(
+    db,
+    project.id,
+    userId,
+  )
 
   if (options.forwardOnly) {
     await db.update(schema.chats)
@@ -88,7 +103,7 @@ export async function applyProjectMemoryEnabled(
 
   await db.update(schema.projects)
     .set({
-      memoryStatus: hasEntries ? 'ready' : 'idle',
+      memoryStatus: settledStatus,
       memoryDirtyAt: null,
       memoryError: null,
     })

@@ -22,7 +22,7 @@ import type { ProjectMemoryLogger } from '~~/server/utils/projects/memory-lease'
 import { PROJECT_MEMORY_LIMITS } from '~~/server/utils/projects/memory-limits'
 import {
   applyProjectMemoryEnabled,
-  projectHasMemoryEntries,
+  projectMemorySettledStatus,
 } from '~~/server/utils/projects/memory-toggle'
 
 type DbClient = ReturnType<typeof useDb>
@@ -505,7 +505,6 @@ async function writeFinalRefreshState(
   const isPending = outcome.leftoverCount > 0
     || hasMessageArrivedDuringPass
     || hasFailedChats
-  const hasEntries = await projectHasMemoryEntries(db, project.id, userId)
   let memoryDirtyAt: Date | null = null
 
   if (outcome.leftoverCount > 0 || hasFailedChats) {
@@ -514,11 +513,9 @@ async function writeFinalRefreshState(
     memoryDirtyAt = currentDirtyAt
   }
 
-  let memoryStatus: ProjectMemoryStatus = hasEntries ? 'ready' : 'idle'
-
-  if (isPending) {
-    memoryStatus = 'stale'
-  }
+  const memoryStatus: ProjectMemoryStatus = isPending
+    ? 'stale'
+    : await projectMemorySettledStatus(db, project.id, userId)
 
   await writeRefreshState(db, project.id, userId, {
     ...(hasAppliedChanges ? { memoryUpdatedAt: new Date() } : {}),

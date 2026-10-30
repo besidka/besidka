@@ -337,8 +337,8 @@ describe('Projects/MemoryCard', () => {
       { automaticUpdates: true },
     )
     const badge = wrapper.get('[data-testid="project-memory-status"]')
-    const explanation = 'It will update after your next chat in this project, '
-      + 'or use Refresh memory.'
+    const explanation = 'Updates automatically about 10 minutes after the '
+      + 'last message in a chat, or use Refresh memory.'
 
     expect(badge.attributes('title')).toBe(explanation)
     expect(wrapper.get('[data-testid="project-memory-status-explanation"]')
