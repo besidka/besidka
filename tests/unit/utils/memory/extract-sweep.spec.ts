@@ -806,7 +806,12 @@ describe('sweepMemoryExtraction', () => {
       + 'same partial due-chats index, ranged by the project cut-over', () => {
       const plan = explain()
 
-      expect(plan.some(detail => /SCAN projects$/.test(detail))).toBe(true)
+      expect(plan.some((detail) => {
+        return /(SCAN|SEARCH) projects USING INDEX idx_projects_auto_update_on/
+          .test(detail)
+      })).toBe(true)
+      expect(plan.some(detail => /SCAN projects$/.test(detail)))
+        .toBe(false)
       expect(plan.filter((detail) => {
         return /SEARCH chats USING INDEX idx_chats_memory_due \(user_id=\? AND activity_at>\? AND activity_at<\?\)/
           .test(detail)

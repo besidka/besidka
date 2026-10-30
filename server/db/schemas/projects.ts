@@ -1,6 +1,7 @@
 import {
   snakeCase, text, integer, uniqueIndex, index,
 } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
 import { knowledgeModes } from '#shared/utils/project-knowledge-policy'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
@@ -49,5 +50,8 @@ export const projects = snakeCase.table(
   table => [
     uniqueIndex('uq_project_user').on(table.id, table.userId),
     index('idx_projects_activity_at').on(table.activityAt),
+    index('idx_projects_auto_update_on')
+      .on(table.userId)
+      .where(sql`memory_auto_update = 'on'`),
   ],
 )
