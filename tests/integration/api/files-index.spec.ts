@@ -103,6 +103,25 @@ describe('files index API', () => {
     }))
   })
 
+  it.each(['project', 'library'])('accepts the %s source filter', async (source) => {
+    const filesChain = createSelectChain([])
+    const countChain = createSelectChain({ count: 0 })
+    const select = vi.fn()
+      .mockReturnValueOnce(filesChain)
+      .mockReturnValueOnce(countChain)
+
+    vi.stubGlobal('getQuery', () => ({ source }))
+    vi.stubGlobal('useDb', () => ({ select }))
+
+    const handler = await getHandler()
+    const result = await handler({} as any)
+
+    expect(result).toMatchObject({ files: [], total: 0 })
+    expect(mocks.eq).not.toHaveBeenCalledWith(expect.anything(), source)
+    expect(filesChain.where).toHaveBeenCalledTimes(1)
+    expect(countChain.where).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects an unknown source filter', async () => {
     vi.stubGlobal('getQuery', () => ({ source: 'provider' }))
     vi.stubGlobal('useDb', vi.fn())

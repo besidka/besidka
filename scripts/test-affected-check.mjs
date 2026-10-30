@@ -81,6 +81,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/files-upload.spec.ts',
     'tests/integration/api/files-delete.spec.ts',
     'tests/integration/api/files-index.spec.ts',
+    'tests/integration/api/files-index-source.spec.ts',
     'tests/integration/server/file-governance.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
     'tests/integration/server/reconstruct-generated-image-parts.spec.ts',

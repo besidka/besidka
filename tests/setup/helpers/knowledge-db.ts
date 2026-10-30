@@ -20,6 +20,7 @@ export interface KnowledgeTestDb {
     name?: string
     size?: number
     type?: string
+    source?: 'upload' | 'assistant'
     expiresAt?: number | null
     createdAt?: number
   }) => void
@@ -215,6 +216,7 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
     name?: string
     size?: number
     type?: string
+    source?: 'upload' | 'assistant'
     expiresAt?: number | null
     createdAt?: number
   }): void {
@@ -222,7 +224,8 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
 
     sqlite.prepare(
       'insert into files (id, created_at, updated_at, user_id, storage_key,'
-      + ' name, size, type, expires_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      + ' name, size, type, source, expires_at)'
+      + ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       input.id,
       createdAt,
@@ -232,6 +235,7 @@ export function createKnowledgeTestDb(): KnowledgeTestDb {
       input.name ?? `file-${input.id}.pdf`,
       input.size ?? 1024,
       input.type ?? 'application/pdf',
+      input.source ?? 'upload',
       input.expiresAt ?? null,
     )
   }

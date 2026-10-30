@@ -197,6 +197,48 @@ describe('useFileManager', () => {
     })
   })
 
+  it('requests project files when the Projects source is selected', async () => {
+    const projectFile = {
+      id: 'file-project-1',
+      storageKey: 'file-project-1.pdf',
+      name: 'Pesel.pdf',
+      size: 2048,
+      type: 'application/pdf',
+      source: 'upload' as const,
+      createdAt: new Date('2024-01-04').toISOString(),
+    }
+    const manager = useFileManager()
+
+    await manager.fetchFiles(true)
+
+    fetchMock.mockImplementation(async (_url: string, options?: any) => {
+      const isProject = options?.query?.source === 'project'
+
+      return {
+        files: isProject ? [projectFile] : [],
+        total: isProject ? 1 : 0,
+        offset: 0,
+        limit: 20,
+      }
+    })
+
+    manager.source.value = 'project'
+
+    await vi.waitFor(() => {
+      expect(manager.files.value).toHaveLength(1)
+    })
+
+    expect(manager.files.value[0]?.id).toBe('file-project-1')
+    expect(manager.pagination.total).toBe(1)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/files', {
+      query: {
+        offset: 0,
+        limit: 20,
+        source: 'project',
+      },
+    })
+  })
+
   it('ignores an older All response after switching source', async () => {
     const allResponse = createDeferred<{
       files: typeof smallFileSet
