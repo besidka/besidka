@@ -26,6 +26,12 @@ const ANCHORS_LINKED_FROM_THE_APP: Record<string, string[]> = {
   'cookie-policy': [],
 }
 
+const UPDATED_AT_BY_PAGE: Record<(typeof LEGAL_PAGES)[number], string> = {
+  'privacy-policy': '2026-10-30',
+  'terms-of-use': '2026-10-29',
+  'cookie-policy': '2026-10-29',
+}
+
 const FORBIDDEN_PUBLIC_TEXT = [
   /engineer-drafted/i,
   /lawyer-reviewed/i,
@@ -67,7 +73,7 @@ describe.each(LEGAL_PAGES)('content/legal/%s.md', (slug) => {
       expect(typeof data.summary).toBe('string')
     }
 
-    expect(String(data.updatedAt)).toContain('2026-10-29')
+    expect(String(data.updatedAt)).toContain(UPDATED_AT_BY_PAGE[slug])
   })
 
   it('keeps every heading the app links to', async () => {

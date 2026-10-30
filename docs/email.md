@@ -14,17 +14,27 @@ The app sends transactional email only — there is no marketing or bulk
 email. Keep it that way: Cloudflare Email Sending is for transactional mail
 only.
 
-As of the styled-emails work, that transactional mail spans 13 flows built
-from 2 Vue SFC template shapes rendered by `nuxt-email-renderer`
-(see [Templates](#templates) below):
+All transactional mail is built from 2 Vue SFC template shapes rendered by
+`nuxt-email-renderer` (see [Templates](#templates) below). The flow counts are
+deliberately not written down here: the list of senders changes, and a hard
+number drifts. The sources of truth are `server/utils/auth.ts` and
+`server/utils/account/security-emails.ts`.
 
-- **4 action-link emails** (`ActionEmail.vue`): reset password, verify
+- **Action-link emails** (`ActionEmail.vue`): reset password, verify
   email, confirm a new email address, confirm account deletion. All
   triggered by Better Auth callbacks in `server/utils/auth.ts`.
-- **9 security notices** (`NoticeEmail.vue`), sent via
-  `server/utils/account/security-emails.ts`: password changed, sign-in
-  method connected/disconnected, two-factor turned on/off, two-factor
-  backup codes regenerated, account email changed, passkey added/removed.
+- **Security notices**, sent via `server/utils/account/security-emails.ts`:
+  password changed, sign-in method connected/disconnected, two-factor
+  turned on/off, two-factor backup codes regenerated, account email
+  changed, passkey added/removed. These use `NoticeEmail.vue`.
+  The connected-app notice (an OAuth app was connected to the account) is
+  also a security notice, but it uses `ActionEmail.vue` because it carries a
+  "Review connected apps" link.
+
+Every sender in `security-emails.ts` must also appear in the Privacy Policy
+("Email I send you"), in `docs/legal/art30-record.md` row 20 and in this
+list. `tests/unit/content/account-email-list.spec.ts` fails when a new
+`send...Email` export is added without updating them.
 
 Both shapes are sent through a single helper, `sendTemplateEmail()`, which
 wraps `nuxt-email-renderer`'s `renderEmailComponent()` and `useEmail().send()`
@@ -44,7 +54,7 @@ exactly like the `DB`, `KV`, and `DATA_BUCKET` bindings.
 | `server/utils/email-template.ts` | `sendTemplateEmail()` — renders an `ActionEmail`/`NoticeEmail` template (html + plain text) and hands both to `useEmail().send()` |
 | `app/emails/**` | The two Vue SFC templates (`ActionEmail.vue`, `NoticeEmail.vue`) plus shared layout pieces (`components/EmailLayout.vue`, `EmailHeader.vue`, `EmailFooter.vue`, `theme.ts`) |
 | `server/utils/auth.ts` | Better Auth `sendResetPassword` / `sendVerificationEmail` / `sendChangeEmailConfirmation` / `sendDeleteAccountVerification` callers, all via `sendTemplateEmail()` with `ActionEmail` |
-| `server/utils/account/security-emails.ts` | The 9 security-notice senders, all via `sendTemplateEmail()` with `NoticeEmail` |
+| `server/utils/account/security-emails.ts` | The security-notice senders, all via `sendTemplateEmail()`: `NoticeEmail` for the plain notices, `ActionEmail` for the connected-app notice (it carries a "Review connected apps" link) |
 | `wrangler.jsonc` | `send_email` binding + `NUXT_EMAIL_SENDER_*` vars (preview + production) |
 | `nuxt.config.ts` / `index.d.ts` | `emailNoopEnabled`, `emailSenderNoreply`, `emailSenderPersonalized` runtime config; the `nuxtEmailRenderer` module options block and the `forceInlineVueI18nForEmailRenderer` local module (see [Templates](#templates)) |
 | `.dev.vars.example` | documents `NUXT_EMAIL_NOOP_ENABLED` |
@@ -94,7 +104,8 @@ Both template shapes live under `app/emails/`:
 - `ActionEmail.vue` — heading, intro text, a CTA button/link, a raw-URL
   fallback line, and a footnote. Used for every flow that needs the
   recipient to click through (password reset, email verification, email
-  change confirmation, account deletion confirmation).
+  change confirmation, account deletion confirmation) and for the
+  connected-app security notice, which links to "Connected apps".
 - `NoticeEmail.vue` — heading and a body paragraph, no CTA. Used for
   after-the-fact security notices that only inform, never require action.
 
