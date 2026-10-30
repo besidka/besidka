@@ -60,6 +60,7 @@
 		"landing:video": "node scripts/landing-demo-video.mjs",
 		"cms:files:upload": "node scripts/cms-bucket-manager.mjs upload",
 		"cms:files:download": "node scripts/cms-bucket-manager.mjs download",
+		"legal:hash": "node scripts/legal-revision-hash.mjs",
 		"bench:files-index": "node scripts/bench/files-user-id-index.mjs"
 	},
 	"dependencies": {

@@ -623,7 +623,18 @@ You can also complain to the supervisory authority of the EU or EEA country wher
 
 ## Changes to this policy
 
-If I change this policy in a way that matters, I will update the date at the top and, for significant changes, tell you in the app before the change takes effect. The current version is always at this URL.
+I tell you about a **material change** before it takes effect. A change is material when it changes what data I collect, why I use it, who receives it, how long I keep it, or what rights and choices you have.
+
+- **Material changes** are announced by email to every account and by a notice in the app, at least **30 days** before they take effect. When a change is required by law or is needed for security and cannot wait that long, I give at least **14 days** and say in the notice why. This email is a notice about the service, not marketing, so it has no unsubscribe link.
+- **Everything else** takes effect when published, and I only update the date at the top: typo fixes, formatting, and clarifications that do not change what I do.
+- The change history below lists every material change, with the date I announced it and the date it takes effect.
+
+If you do not agree with a change, you can object to it or withdraw a consent you gave (see [Your rights](#your-rights) and **Profile → Security → Privacy & consent**), or [delete your account](#deleting-your-account), before it takes effect. The current version is always at this URL.
+
+### Change history
+
+::legal-change-history{document="privacy-policy"}
+::
 
 ## Contact
 

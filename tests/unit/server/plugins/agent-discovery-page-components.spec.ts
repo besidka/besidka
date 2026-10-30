@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { LEGAL_CHANGE_HISTORY_EMPTY_TEXT } from '#shared/utils/legal-change-history'
 
 vi.mock('#app/nuxt', () => {
   return {
@@ -74,6 +75,21 @@ describe('agent-discovery-page-components nitro plugin', () => {
     expect(items[1]).toMatch(/^2\. \*\*Account deletion:\*\* /)
     expect(items[2]).toMatch(/^3\. \*\*Security notices\*\*, /)
     expect(JSON.stringify(page.body.value)).not.toContain('account-email-list')
+  })
+
+  it('renders the change history instead of a literal directive', async () => {
+    const hook = await registerDocumentHook()
+    const page = {
+      body: {
+        value: [['legal-change-history', { document: 'cookie-policy' }]],
+      },
+    }
+
+    hook({}, page)
+
+    expect(page.body.value).toEqual([
+      ['p', {}, LEGAL_CHANGE_HISTORY_EMPTY_TEXT],
+    ])
   })
 
   it('skips a page that has no body array', async () => {

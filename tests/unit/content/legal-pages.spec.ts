@@ -4,6 +4,7 @@ import { parseMarkdown } from '@nuxtjs/mdc/runtime'
 import { describe, expect, it } from 'vitest'
 import {
   ACCOUNT_EMAIL_REGISTRY_PATH,
+  LEGAL_NOTICES_REGISTRY_PATH,
   createGitDependencies,
   resolveLegalUpdatedAt,
   toIsoDate,
@@ -27,9 +28,10 @@ const ANCHORS_LINKED_FROM_THE_APP: Record<string, string[]> = {
     'transfers-outside-the-eu',
     'memory',
     'getting-a-copy-of-your-data',
+    'change-history',
   ],
-  'terms-of-use': [],
-  'cookie-policy': [],
+  'terms-of-use': ['change-history'],
+  'cookie-policy': ['change-history'],
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -51,6 +53,22 @@ function readSource(slug: string): string {
     join(process.cwd(), `content/legal/${slug}.md`),
     'utf-8',
   )
+}
+
+function findNodes(
+  node: MarkdownNode,
+  tag: string,
+  found: MarkdownNode[] = [],
+): MarkdownNode[] {
+  if (node.tag === tag) {
+    found.push(node)
+  }
+
+  for (const child of node.children ?? []) {
+    findNodes(child, tag, found)
+  }
+
+  return found
 }
 
 function collectHeadingIds(node: MarkdownNode, ids: Set<string>) {
@@ -87,6 +105,7 @@ describe.each(LEGAL_PAGES)('content/legal/%s.md', (slug) => {
         filePath: join(process.cwd(), `content/legal/${slug}.md`),
         body: source,
         registryPath: ACCOUNT_EMAIL_REGISTRY_PATH,
+        noticesRegistryPath: LEGAL_NOTICES_REGISTRY_PATH,
       },
       createGitDependencies(process.cwd()),
     )
@@ -104,6 +123,14 @@ describe.each(LEGAL_PAGES)('content/legal/%s.md', (slug) => {
     for (const anchor of ANCHORS_LINKED_FROM_THE_APP[slug] ?? []) {
       expect(ids, `#${anchor} is missing`).toContain(anchor)
     }
+  })
+
+  it('renders its own change history from the notices registry', async () => {
+    const parsed = await parseMarkdown(readSource(slug), { highlight: false })
+    const nodes = findNodes(parsed.body as MarkdownNode, 'legal-change-history')
+
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0]?.props?.document).toBe(slug)
   })
 
   it('publishes no internal drafting markers or case-law citations', () => {

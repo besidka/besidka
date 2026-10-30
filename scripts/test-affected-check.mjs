@@ -2942,7 +2942,29 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/components/content/AccountEmailList.spec.ts'],
     },
     {
-      pattern: /^(config\/legal-updated-at\.ts|nuxt\.config\.ts|content\/legal\/.*\.md|shared\/utils\/account-emails\.ts)$/,
+      pattern: /^(shared\/utils\/(legal-notices|legal-change-history)\.ts)$/,
+      tests: [
+        'tests/unit/utils/legal-notices.spec.ts',
+        'tests/unit/utils/legal-change-history.spec.ts',
+        'tests/unit/components/content/LegalChangeHistory.spec.ts',
+        'tests/unit/server/utils/mcp/pages.spec.ts',
+        'tests/unit/server/plugins/agent-discovery-page-components.spec.ts',
+        'tests/unit/content/legal-revisions.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/content\/LegalChangeHistory\.vue$/,
+      tests: ['tests/unit/components/content/LegalChangeHistory.spec.ts'],
+    },
+    {
+      pattern: /^(shared\/utils\/legal-document-revisions\.ts|scripts\/legal-revision-hash\.mjs|content\/legal\/.*\.md)$/,
+      tests: [
+        'tests/unit/content/legal-revisions.spec.ts',
+        'tests/unit/scripts/legal-revision-hash.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(config\/legal-updated-at\.ts|nuxt\.config\.ts|content\/legal\/.*\.md|shared\/utils\/(account-emails|legal-notices)\.ts)$/,
       tests: [
         'tests/unit/config/legal-updated-at.spec.ts',
         'tests/unit/content/legal-pages.spec.ts',

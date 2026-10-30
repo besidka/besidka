@@ -20,6 +20,7 @@ import { assertSecureSiteUrl, resolveSiteUrl } from './config/site-url.ts'
 import {
   ACCOUNT_EMAIL_REGISTRY_PATH,
   createGitDependencies,
+  LEGAL_NOTICES_REGISTRY_PATH,
   resolveLegalUpdatedAt,
 } from './config/legal-updated-at.ts'
 
@@ -812,6 +813,7 @@ export default defineNuxtConfig({
           filePath: file.path,
           body: file.body,
           registryPath: ACCOUNT_EMAIL_REGISTRY_PATH,
+          noticesRegistryPath: LEGAL_NOTICES_REGISTRY_PATH,
         },
         legalGitDependencies,
       )

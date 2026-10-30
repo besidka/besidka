@@ -260,9 +260,18 @@ Moderation is therefore **reactive**. I act on reports, on notices from authorit
 
 ## Changes to these terms
 
-If I change these terms in a way that matters to you, I will give you **advance notice** — in the app, or by email if the change is significant — and say when it takes effect. If you do not accept the new terms, you can stop using the service and delete your account before that date. Continuing to use the service after the change takes effect means you accept it.
+If I change these terms in a way that matters to you (a **material change**), I email every account and show a notice in the app at least **30 days** before the change takes effect, and I say what changes and when. When a change is required by law or is needed for security and cannot wait that long, I give at least **14 days** and say in the notice why. This email is a notice about the service, not marketing, so it has no unsubscribe link.
 
-Small corrections that do not affect your rights or obligations (typos, clarifications, updated contact details) take effect when published.
+If you do not accept the new terms, you can stop using the service and delete your account before they take effect. Continuing to use the service after the change takes effect means you accept it.
+
+Typo fixes, formatting, updated contact details and clarifications that do not affect your rights or obligations take effect when published, and I only update the date at the top.
+
+### Change history
+
+The change history lists every material change to these terms, with the date I announced it and the date it takes effect.
+
+::legal-change-history{document="terms-of-use"}
+::
 
 ## Open source, self-hosting and the Besidka name
 

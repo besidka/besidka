@@ -170,6 +170,15 @@ You can also clear or block storage in your browser settings. Blocking the neces
 
 If I add or remove a cookie or a storage key, I update this table and the date at the top. If a change means I need new consent, I will ask you again before storing anything new.
 
+A **material change**, such as a new third-party script or a new purpose for something I already store, is announced like a change to the Privacy Policy: by email to every account and by a notice in the app, at least **30 days** before it takes effect, or at least **14 days** when the law or security requires it, with the reason stated. Typo fixes, formatting and clarifications that do not change what I store take effect when published.
+
+### Change history
+
+The change history lists every material change to this policy, with the date I announced it and the date it takes effect.
+
+::legal-change-history{document="cookie-policy"}
+::
+
 ## Contact
 
 Questions about anything on this page: **:privacy-email-link{}**.
