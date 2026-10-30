@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.3, 2026-10-30 (connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
+| Version | 1.4, 2026-10-30 (a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -40,6 +40,16 @@ The step that matters for the risk is that deletions are permanent. Corrected th
 same day: section 3.11 and rows 28 to 34 are `built` (in production since
 2026-10-29), and row 33 no longer holds, because disconnecting stops an app on
 its next call.
+
+**Added 2026-10-30 (per-project automatic updates).** A project now has its own
+automatic-update setting (`inherit`, `on`, `off`) that beats the account
+switch "Generate memory from chats" (section 3.4). `on` is a second, explicit
+opt-in to background extraction on the user's own key, narrowed to one project,
+with its own forward-only stamp (`projects.memory_auto_update_enabled_at`).
+No new purpose, recipient or data category, and no change to the consent gate
+or `CURRENT_CONSENT_VERSION`. A connected app can set a project only to
+`inherit` or `off`, never `on`, so nothing in section 3.11 gains a way to spend
+the user's key.
 
 ## 1. Why a DPIA is required
 
@@ -185,6 +195,19 @@ removed.
 - **Opt-in.** Off by default. The user switches on "Generate memory from
   chats". The app records `memory_extraction_enabled_at`. Nothing runs in the
   background before that. Enabling it never reads old history by itself.
+- **Per-project opt-in.** Each project has an automatic-update setting:
+  `inherit` (the default, follows the account switch), `on` or `off`. `on` is a
+  second explicit opt-in: the user sets a project to On in the app, behind a
+  confirm, and only that project's chats are then read in the background on
+  the user's own key, even while the account switch is off. The app records
+  `projects.memory_auto_update_enabled_at` as that project's own cut-over, and
+  the sweep reads a project chat only when its last activity is after the
+  applicable cut-over (the later of the account stamp, while the account
+  switch is on, and the project stamp). `off` stops it for the project and
+  clears the stamp; `off` back to `inherit` restamps, so messages written
+  while it was off are never read; `on` back to `inherit` keeps the stamp. Memory
+  turned off in the account settings, a disabled project and the consent gate
+  still block everything. Account chats are not affected.
   History is read only through the explicit "Build memory from past chats"
   action, which shows a cost estimate first and has hard ceilings (200 chats
   and 4 million tokens per run).
@@ -201,7 +224,9 @@ removed.
 - **Profiling.** Yes (Art. 4(4)). Not an Art. 22 decision.
 - **Recipients.** The memory model's provider or gateway. Cloudflare.
 - **Retention.** As memory entries. Run records: the last five runs per user.
-- **Basis.** Consent (Art. 6(1)(a)). Switching it off is withdrawal. The user
+- **Basis.** Consent (Art. 6(1)(a)), given by the account switch or by a
+  project's `on`. Switching it off, or setting the project to `off`, is
+  withdrawal. The user
   chooses whether to keep or delete what it already generated (built, #544:
   the prompt in `app/components/Profile/Memory/Controls.vue` and
   `POST /api/v1/memory/entries/delete-extracted`).
@@ -214,7 +239,8 @@ removed.
   entry on first read. The old column stays in place.
 - **How.** The same paths as section 3.3 and 3.4, plus the explicit
   **Refresh** button on a project. Nothing runs in the background for a project
-  unless the extraction opt-in is on, and only for users with current consent.
+  unless the extraction opt-in is on, for the account or for that project
+  (section 3.4), and only for users with current consent.
 - **Background refresh is gone in this release.** Production before this release
   refreshed project memory after every answer, on a key picked in a fixed
   provider order, without an opt-in. In this release the client no longer posts
@@ -498,7 +524,9 @@ removed.
   generation, the share personal-data check, deep research), creating or
   updating a public chat share, "Allow anyway" on a flagged knowledge item,
   settings that authorise spend or change the data recipient (automatic
-  memory extraction, memory models, TypeSafe AI roles), and API keys,
+  memory extraction, memory models, TypeSafe AI roles), setting a project's
+  automatic memory updates to On (a connected app may only set `inherit` or
+  `off`, which can only reduce what the background sweep reads), and API keys,
   sessions, consents, push, email, password, 2FA, passkeys and account
   deletion. Reasons and revisit criteria: `docs/mcp-server.md`, "What MCP does
   not do (and why)".
@@ -600,6 +628,9 @@ to send messages. It is a judgment call (section 6, item 1).
   input. No files, tool results or web results in extraction.
 - **Opt-in where it profiles or spends money.** Extraction is off by default.
   There is no background model call on a user's key without an explicit opt-in.
+  The opt-in is the account switch or, for one project, that project's `on`
+  setting; the project's default is `inherit`, and a connected app cannot set
+  `on`.
 - **No secondary use.** No training, no advertising, no sale, no scoring.
 - **TypeSafe AI checks.** Optional, tied to the user's own key, each with its own
   toggle. Each sends only the text that check needs and fails safe to the
