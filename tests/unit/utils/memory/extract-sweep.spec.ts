@@ -802,6 +802,17 @@ describe('sweepMemoryExtraction', () => {
       })).toBe(false)
     })
 
+    it('drives the override arm from projects and reaches chats by the '
+      + 'same partial due-chats index, ranged by the project cut-over', () => {
+      const plan = explain()
+
+      expect(plan.some(detail => /SCAN projects$/.test(detail))).toBe(true)
+      expect(plan.filter((detail) => {
+        return /SEARCH chats USING INDEX idx_chats_memory_due \(user_id=\? AND activity_at>\? AND activity_at<\?\)/
+          .test(detail)
+      })).toHaveLength(2)
+    })
+
     it('ranges the due-chats index from the opt-in cut-over to the idle '
       + 'cutoff, so idle chats from before the opt-in are never read', () => {
       expect(explain().some((detail) => {
