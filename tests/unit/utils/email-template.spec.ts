@@ -118,4 +118,58 @@ describe('sendTemplateEmail', () => {
       from: 'personalized',
     })
   })
+
+  it('returns the message id of the sent email', async () => {
+    mocks.renderEmailComponent
+      .mockResolvedValueOnce('<p>Hello</p>')
+      .mockResolvedValueOnce('Hello')
+
+    const { sendTemplateEmail } = await importEmailTemplate()
+
+    await expect(sendTemplateEmail({
+      to: 'user@example.com',
+      subject: 'Subject',
+      template: 'LegalNoticeEmail',
+      props: { heading: 'Hi' },
+    })).resolves.toEqual({ messageId: 'm1' })
+    expect(mocks.renderEmailComponent).toHaveBeenCalledWith(
+      'LegalNoticeEmail',
+      { heading: 'Hi' },
+    )
+  })
+
+  it('renders without sending through renderTemplateEmail', async () => {
+    mocks.renderEmailComponent
+      .mockResolvedValueOnce('<p>Hello</p>')
+      .mockResolvedValueOnce({ html: 'Hello', subject: 'Subject' })
+
+    const { renderTemplateEmail } = await importEmailTemplate()
+
+    await expect(renderTemplateEmail({
+      template: 'LegalNoticeEmail',
+      props: { heading: 'Hi' },
+    })).resolves.toEqual({ html: '<p>Hello</p>', text: 'Hello' })
+    expect(mocks.renderEmailComponent).toHaveBeenCalledTimes(2)
+    expect(mocks.send).not.toHaveBeenCalled()
+  })
+
+  it('sends a pre-rendered email without rendering again', async () => {
+    const { sendRenderedEmail } = await importEmailTemplate()
+
+    await expect(sendRenderedEmail({
+      to: 'user@example.com',
+      subject: 'Subject',
+      html: '<p>Hello</p>',
+      text: 'Hello',
+      from: 'noreply',
+    })).resolves.toEqual({ messageId: 'm1' })
+    expect(mocks.renderEmailComponent).not.toHaveBeenCalled()
+    expect(mocks.send).toHaveBeenCalledWith({
+      to: 'user@example.com',
+      subject: 'Subject',
+      html: '<p>Hello</p>',
+      text: 'Hello',
+      from: 'noreply',
+    })
+  })
 })

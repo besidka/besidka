@@ -402,7 +402,9 @@ The manifest cannot declare IndexedDB storage: an entry's `type` is `cookie`,
 every manifest entry appears in the Cookie Policy, so a key added to the
 manifest cannot go unlisted. A per-project key such as
 `knowledge-folders:<project id>` is declared with a trailing `*`
-(`knowledge-folders:*`), which the cleanup routine treats as a prefix.
+(`knowledge-folders:*`), which the cleanup routine treats as a prefix. The
+necessary key `legal-notice:dismissed:<user id>:<notice id>` (the dismissed
+legal change banner) is declared the same way, as `legal-notice:dismissed:*`.
 
 ### Never call consent composables during SSR
 

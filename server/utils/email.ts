@@ -4,6 +4,10 @@ import { env } from 'cloudflare:workers'
 
 type From = 'noreply' | 'personalized'
 
+export const EMAIL_NOOP_MESSAGE_ID = 'email-noop'
+
+export const EMAIL_NOT_CONFIGURED_CODE = 'E_EMAIL_NOT_CONFIGURED'
+
 interface EmailRuntimeConfig {
   emailNoopEnabled: boolean | string
   emailSenderNoreply: string
@@ -21,13 +25,21 @@ function getSenderEmail(
         return emailSenderNoreply
       }
 
-      throw createError('Sender email is required for noreply emails')
+      throw createError({
+        message: 'Sender email is required for noreply emails',
+        status: 500,
+        code: EMAIL_NOT_CONFIGURED_CODE,
+      })
     case 'personalized':
       if (emailSenderPersonalized) {
         return emailSenderPersonalized
       }
 
-      throw createError('Sender email is required for personalized emails')
+      throw createError({
+        message: 'Sender email is required for personalized emails',
+        status: 500,
+        code: EMAIL_NOT_CONFIGURED_CODE,
+      })
     default:
       throw createError('Invalid sender type')
   }
@@ -45,6 +57,33 @@ function htmlToText(html: string): string {
     .replace(/&#39;/gi, '\'')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/**
+ * The Cloudflare Email Sending binding reports a failure as an error whose
+ * `code` is an `E_` constant, for example `E_RATE_LIMIT_EXCEEDED`. `useEmail`
+ * copies it to the error it throws, so callers can tell a quota stop from a
+ * rejected recipient without parsing messages.
+ */
+export function getEmailErrorCode(exception: unknown): string | null {
+  const candidates = [
+    exception,
+    exception instanceof Error ? exception.cause : undefined,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue
+    }
+
+    const code = (candidate as { code?: unknown }).code
+
+    if (typeof code === 'string' && code) {
+      return code
+    }
+  }
+
+  return null
 }
 
 export const useEmail = (
@@ -75,13 +114,14 @@ export const useEmail = (
     }
 
     if (String(emailNoopEnabled) === 'true') {
-      return { messageId: 'email-noop' }
+      return { messageId: EMAIL_NOOP_MESSAGE_ID }
     }
 
     if (!emailBinding) {
       throw createError({
         message: 'Email binding (EMAIL) is not available in the runtime.',
         status: 500,
+        code: EMAIL_NOT_CONFIGURED_CODE,
       })
     }
 
@@ -106,6 +146,7 @@ export const useEmail = (
       throw createError({
         message: exception.message,
         status: 500,
+        code: getEmailErrorCode(exception) ?? undefined,
         cause: exception,
       })
     }

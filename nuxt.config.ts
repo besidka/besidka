@@ -20,6 +20,7 @@ import { assertSecureSiteUrl, resolveSiteUrl } from './config/site-url.ts'
 import {
   ACCOUNT_EMAIL_REGISTRY_PATH,
   createGitDependencies,
+  LEGAL_NOTICES_REGISTRY_PATH,
   resolveLegalUpdatedAt,
 } from './config/legal-updated-at.ts'
 
@@ -371,6 +372,10 @@ export default defineNuxtConfig({
     memoryExtractionSweepMaxRuntimeMs: 120000,
     memoryBackfillSweepEnabled: false,
     memoryBackfillSweepMaxRuntimeMs: 45000,
+    legalNoticeSweepEnabled: false,
+    legalNoticeSweepBatchSize: 25,
+    legalNoticeSweepMaxRuntimeMs: 60000,
+    legalNoticeDailyCap: 300,
     researchMockEnabled: false,
     messageSearchSweepEnabled: false,
     messageSearchSweepBatchSize: 200,
@@ -812,6 +817,7 @@ export default defineNuxtConfig({
           filePath: file.path,
           body: file.body,
           registryPath: ACCOUNT_EMAIL_REGISTRY_PATH,
+          noticesRegistryPath: LEGAL_NOTICES_REGISTRY_PATH,
         },
         legalGitDependencies,
       )
@@ -913,6 +919,11 @@ export default defineNuxtConfig({
           {
             id: 'knowledge-folders',
             name: 'knowledge-folders:*',
+            type: 'localStorage',
+          },
+          {
+            id: 'legal-notice-dismissed',
+            name: 'legal-notice:dismissed:*',
             type: 'localStorage',
           },
           {

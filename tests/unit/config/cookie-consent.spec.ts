@@ -128,6 +128,7 @@ describe('cookie consent manifest contract', () => {
         'settings_exa_search_level',
         'settings_web_search_auto',
         'knowledge-folders:*',
+        'legal-notice:dismissed:*',
       ]))
     })
 

@@ -3,6 +3,9 @@ import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import ActionEmail from '../../../app/emails/ActionEmail.vue'
 import NoticeEmail from '../../../app/emails/NoticeEmail.vue'
+import LegalNoticeEmail from '../../../app/emails/LegalNoticeEmail.vue'
+import { buildLegalNoticeEmail } from '../../../server/utils/legal/notice-email'
+import { LEGAL_NOTICES } from '../../../shared/utils/legal-notices'
 
 /**
  * `nuxt-email-renderer`'s `package.json` `exports` map only lists "." and
@@ -45,6 +48,10 @@ const noticeEmailProps = {
   heading: 'Your password was changed',
   body: 'Your Besidka account password was just changed. If this was not '
     + 'you, reset your password immediately.',
+}
+
+function escapeApostrophes(value: string): string {
+  return value.replaceAll('\'', '&#39;')
 }
 
 describe('email template rendering', () => {
@@ -106,4 +113,95 @@ describe('email template rendering', () => {
       expect(normalizedText).toContain(noticeEmailProps.body.toLowerCase())
       expect(text).not.toMatch(/<\/?[a-z][^>]*>/i)
     })
+
+  describe('LegalNoticeEmail', () => {
+    const { subject, props } = buildLegalNoticeEmail(
+      LEGAL_NOTICES[0],
+      'privacy@example.test',
+    )
+
+    it('renders the summary, the effective date and the document links',
+      async () => {
+        const { render } = await importRealRender()
+        const html = await render(LegalNoticeEmail, props)
+
+        expect(subject).toContain('4 December 2026')
+        expect(html).toContain(escapeApostrophes(props.heading))
+        expect(html).toContain(escapeApostrophes(props.intro))
+        expect(html).toContain('The changes take effect on 4 December 2026.')
+        expect(html).toContain(
+          'href="https://besidka.com/privacy-policy#change-history"',
+        )
+        expect(html).toContain(
+          'href="https://besidka.com/terms-of-use#change-history"',
+        )
+        expect(html).toContain('Read the Privacy Policy changes')
+        expect(html).toContain('Read the Terms of Use changes')
+        expect(html).toContain('Email privacy@example.test.')
+        expect(html).toContain('delete your account before 4 December 2026')
+        expect(html).toContain('not marketing')
+        expect(html).toContain('prefers-color-scheme: dark')
+        expect(html).toContain(escapeApostrophes(
+          'You\'re receiving this because you have a Besidka account.',
+        ))
+        expect(html).toContain('Serhii Chernenko')
+        expect(html).toContain('Profile → Security → Privacy &amp; consent')
+        expect(html).toContain(
+          'href="https://besidka.com/privacy-policy#complaining"',
+        )
+        expect(html).toContain('supervisory authority')
+        expect(html).toContain(escapeApostrophes(props.availabilityNote!))
+
+        for (const item of props.summary) {
+          expect(html).toContain(escapeApostrophes(item))
+        }
+      })
+
+    it('has no unsubscribe link and no promotion', async () => {
+      const { render } = await importRealRender()
+      const html = await render(LegalNoticeEmail, props)
+      const text = await render(LegalNoticeEmail, props, { plainText: true })
+
+      expect(html.toLowerCase()).not.toContain('unsubscribe')
+      expect(text.toLowerCase()).not.toContain('unsubscribe')
+      expect(html.toLowerCase()).not.toContain('newsletter')
+    })
+
+    it('shows the short-notice reason only when the notice has one',
+      async () => {
+        const { render } = await importRealRender()
+        const without = await render(LegalNoticeEmail, props)
+        const withReason = await render(LegalNoticeEmail, {
+          ...props,
+          shortNoticeReason: 'The law requires this change.',
+        })
+
+        expect(without).not.toContain('The law requires this change.')
+        expect(withReason).toContain('The law requires this change.')
+      })
+
+    it('renders plain text with the date, the links and no html tags',
+      async () => {
+        const { render } = await importRealRender()
+        const text = await render(LegalNoticeEmail, props, {
+          plainText: true,
+        })
+        const normalizedText = text.replace(/\s+/g, ' ')
+
+        expect(normalizedText).toContain(props.intro)
+        expect(normalizedText).toContain('4 December 2026')
+        expect(text).toContain('https://besidka.com/privacy-policy#change-history')
+        expect(text).toContain('https://besidka.com/terms-of-use#change-history')
+        expect(text.split('privacy@example.test')).toHaveLength(2)
+        expect(normalizedText).toContain(
+          'Questions about this change? Email privacy@example.test.',
+        )
+        expect(text).toContain('https://besidka.com/privacy-policy#complaining')
+        expect(normalizedText).toContain(props.availabilityNote)
+        expect(normalizedText).toContain(
+          'Profile → Security → Privacy & consent',
+        )
+        expect(text).not.toMatch(/<\/?[a-z][^>]*>/i)
+      })
+  })
 })

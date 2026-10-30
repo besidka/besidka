@@ -14,7 +14,7 @@ The app sends transactional email only — there is no marketing or bulk
 email. Keep it that way: Cloudflare Email Sending is for transactional mail
 only.
 
-All transactional mail is built from 2 Vue SFC template shapes rendered by
+All transactional mail is built from 3 Vue SFC template shapes rendered by
 `nuxt-email-renderer` (see [Templates](#templates) below). The flow counts are
 deliberately not written down here: the list of senders changes, and a hard
 number drifts. The sources of truth are `server/utils/auth.ts` and
@@ -31,10 +31,15 @@ shapes exist:
   Most use `NoticeEmail.vue`; the connected-app notice uses `ActionEmail.vue`
   because it carries a "Review connected apps" link.
 
+- **Legal change notices** (`LegalNoticeEmail.vue`), sent by the
+  `legal-notice-sweep` cron job, see
+  [Legal change notices](#legal-change-notices).
+
 When you add an email, add an entry to the registry. The Privacy Policy list
 (`::account-email-list`) and its "Last updated" date follow from it; see
 `docs/legal.md`. `tests/unit/content/account-email-list.spec.ts` fails when a
-`send...Email` export has no registry entry.
+`send...Email` export (in `server/utils/account/` or `server/utils/legal/`) has
+no registry entry.
 
 Both shapes are sent through a single helper, `sendTemplateEmail()`, which
 wraps `nuxt-email-renderer`'s `renderEmailComponent()` and `useEmail().send()`
@@ -52,7 +57,9 @@ exactly like the `DB`, `KV`, and `DATA_BUCKET` bindings.
 |------|------|
 | `server/utils/email.ts` | `useEmail().send()` — the single low-level send path |
 | `server/utils/email-template.ts` | `sendTemplateEmail()` — renders an `ActionEmail`/`NoticeEmail` template (html + plain text) and hands both to `useEmail().send()` |
-| `app/emails/**` | The two Vue SFC templates (`ActionEmail.vue`, `NoticeEmail.vue`) plus shared layout pieces (`components/EmailLayout.vue`, `EmailHeader.vue`, `EmailFooter.vue`, `theme.ts`) |
+| `server/utils/legal/notice-sweep.ts`, `server/utils/legal/notice-email.ts`, `server/plugins/legal-notice-sweep.ts` | The legal change notice sweep, the subject and props builder for `LegalNoticeEmail`, and the cron plugin (see [Legal change notices](#legal-change-notices)) |
+| `server/db/schemas/legal-notice-deliveries.ts` | `legal_notice_deliveries`: one row per user and notice, the at-most-once claim and the proof of notice |
+| `app/emails/**` | The three Vue SFC templates (`ActionEmail.vue`, `NoticeEmail.vue`, `LegalNoticeEmail.vue`) plus shared layout pieces (`components/EmailLayout.vue`, `EmailHeader.vue`, `EmailFooter.vue`, `theme.ts`) |
 | `server/utils/auth.ts` | Better Auth `sendResetPassword` / `sendVerificationEmail` / `sendChangeEmailConfirmation` / `sendDeleteAccountVerification` callers, all via `sendTemplateEmail()` with `ActionEmail` |
 | `server/utils/account/security-emails.ts` | The security-notice senders, all via `sendTemplateEmail()`: `NoticeEmail` for the plain notices, `ActionEmail` for the connected-app notice (it carries a "Review connected apps" link) |
 | `wrangler.jsonc` | `send_email` binding + `NUXT_EMAIL_SENDER_*` vars (preview + production) |
@@ -108,6 +115,16 @@ Both template shapes live under `app/emails/`:
   connected-app security notice, which links to "Connected apps".
 - `NoticeEmail.vue` — heading and a body paragraph, no CTA. Used for
   after-the-fact security notices that only inform, never require action.
+- `LegalNoticeEmail.vue` — heading, intro line, the notice's summary bullets,
+  the effective date, an optional "already available" line, one button per
+  changed document linking to its `#change-history`, why the recipient gets it
+  ("you have a Besidka account"), the controller by name, the rights line
+  (Profile → Security → Privacy & consent), the right to complain to a
+  supervisory authority (links to the Privacy Policy "Complaining" section) and
+  the privacy contact. It has no
+  unsubscribe link and no promotion by design (a legal notice is not
+  marketing; see `docs/legal.md`, "Notifying users of changes"). Its props are
+  built by `buildLegalNoticeEmail()` in `server/utils/legal/notice-email.ts`.
 
 Both wrap `components/EmailLayout.vue`, which renders the shared
 `nuxt-email-renderer` chrome (`EHtml`, `EHead`, `EBody`, `EContainer`) plus
@@ -139,7 +156,11 @@ duplicated inside the `:root {}` block.
 template, props, from })`, which calls `renderEmailComponent(template,
 props)` for the HTML body and `renderEmailComponent(template, props,
 { plainText: true })` for the plain-text body, then passes both to
-`useEmail().send()`.
+`useEmail().send()`. It is built from two lower-level exports:
+`renderTemplateEmail({ template, props })` (both bodies) and
+`sendRenderedEmail({ to, subject, html, text, from })` (the send). A caller
+that mails the same content to many recipients, like the legal notice sweep,
+renders once and sends many times.
 
 The dev-only render endpoint (`nuxt-email-renderer`'s own
 `POST /api/emails/render`) is useful for manually inspecting a template
@@ -168,6 +189,182 @@ explicit `text`). It remains in place as a safety net for any future direct
 `useEmail().send()` caller that skips the template renderer, and is
 link-aware (it rewrites `<a href="URL">label</a>` to `label (URL)` so
 plaintext MUAs keep the link) and decodes common HTML entities.
+
+## Legal change notices
+
+A material change to the Privacy Policy, Terms of Use or Cookie Policy is an
+entry in `LEGAL_NOTICES` (`shared/utils/legal-notices.ts`). The email half of
+the notice is sent by `server/utils/legal/notice-sweep.ts`, run by the
+`legal-notice-sweep` Nitro plugin on the existing `*/5 * * * *` cron (exact
+string match, like the other sweeps). The in-app banner and the public change
+history are separate.
+
+**Who gets it.** For each notice with `sendFrom <= now < effectiveAt`, oldest
+first: every user with `email_verified = 1` and `created_at <
+notice.publishedAt`, in `users.id` order. An account created after the notice
+was published has already agreed to the new text and gets no email. The page
+and the in-app banner publish at `publishedAt`; emails follow from `sendFrom`
+at a limited number a day, so a recipient can get theirs a few days after
+publication. The Changes clauses of the three policies say this in the same
+words.
+
+**State** is `legal_notice_deliveries` (unique on `user_id` + `notice_id`,
+index on `notice_id` + `status`, cascades with the account). Statuses:
+`sending`, `sent`, `failed`, `skipped`. A row is the at-most-once claim and,
+once `sent`, the proof of notice. It is kept until the account is deleted.
+
+**Per tick.** The email is rendered once per notice (`renderLegalNoticeEmail`)
+and the same HTML and text go to every recipient of that tick; only the
+recipient differs. Then, per recipient (sequential):
+
+1. Claim: `INSERT ... ON CONFLICT DO NOTHING`; if the row exists, a guarded
+   `UPDATE` to `sending` with `attempts + 1`, allowed only for a `failed` row
+   older than 30 minutes or a `sending` row older than 1 hour (a Worker that
+   died mid-send), and only while `attempts < 3`. If neither claims the row
+   the user is skipped for this tick.
+   If the insert fails with a foreign-key error, the user was deleted between
+   the select and the claim: the candidate is skipped (`userDeletedCount`) and
+   the tick carries on.
+2. Send the pre-rendered `LegalNoticeEmail` from `noreply` with
+   `sendRenderedEmail()`.
+3. Mark `sent` (with `message_id` and `sent_at`), or handle the error. A send
+   that returns the message id `email-noop` is **not** marked `sent` (see
+   below).
+
+At-most-once holds per claim. The only way a user gets the notice twice is a
+Worker dying between the send and the `sent` write, which the one-hour
+`sending` recovery then retries.
+
+**Error codes.** The Cloudflare binding rejects with an error whose `code` is
+an `E_` constant. `useEmail()` copies it to the `createError` it throws
+(`code`), and `getEmailErrorCode()` reads it back.
+
+| Code | Handling |
+| --- | --- |
+| `E_RATE_LIMIT_EXCEEDED`, `E_DAILY_LIMIT_EXCEEDED` | The row goes back to `failed` with the claim's attempt refunded (a quota stop must not use up a user's three attempts), and the whole tick stops. The next tick tries other users, and the failed row waits out its 30-minute backoff |
+| `E_RECIPIENT_SUPPRESSED`, `E_VALIDATION*` | `skipped` with the code. Never retried |
+| `E_EMAIL_NOT_CONFIGURED` (missing `EMAIL` binding or sender address, thrown by `useEmail()`), `E_SENDER_NOT_VERIFIED`, `E_SENDER_NOT_ALLOWED`, `E_SENDER_DOMAIN_NOT_AVAILABLE`, `E_RECIPIENT_NOT_ALLOWED` | Systemic, not about this recipient. `failed` with the code, the attempt refunded, and the tick stops with `consecutive-failures` |
+| Anything else, or no code (`E_UNKNOWN`) | `failed` with the code. Retried after 30 minutes, up to 3 attempts. The third failure in a row (a success or a `skipped` row resets the count) stops the tick with `consecutive-failures` and refunds the attempts of those three rows, because a failing run says something about the service and not about three users |
+
+**Why the breaker refunds.** Without it, one bad deploy (a revoked sender, a
+broken binding) would run every verified user to three failed attempts in
+about an hour at 25 a tick, and a given-up row is never retried, so a user
+would silently never be told. A refunded row is `failed` with `attempts`
+reduced by one, so it waits out the 30-minute backoff and is tried again.
+
+**No-op sends.** `useEmail()` returns the message id `email-noop` when
+`NUXT_EMAIL_NOOP_ENABLED=true` and sends nothing. The sweep refuses to record
+that as delivery: the row goes back to `failed` with the attempt refunded and
+`last_error_code = 'E_EMAIL_NOOP'`, and the tick stops with `email-noop`.
+Both stop reasons make the CRON wide event status 500, so they show up as
+errors in Axiom.
+
+**Limits.** Cloudflare publishes no numeric sending quota for the binding
+(it states that limits exist and returns the codes above). Pricing is 3,000
+emails a month included with Workers Paid, then $0.35 per 1,000. The sweep is
+deliberately slow: 25 recipients per tick (`legalNoticeSweepBatchSize`), every
+five minutes, at most 300 a day (`legalNoticeDailyCap`, counted from `sent`
+rows with `sent_at` on the current UTC day), and it stops after
+`legalNoticeSweepMaxRuntimeMs` (60 s). 300 a day keeps a launch to one
+mail every few minutes and the first-month volume inside the included 3,000.
+Raise the cap only after reading the current Cloudflare quota page.
+
+**Config.** `legalNoticeSweepEnabled` (default `false`),
+`legalNoticeSweepBatchSize` (25), `legalNoticeSweepMaxRuntimeMs` (60000),
+`legalNoticeDailyCap` (300), as `NUXT_LEGAL_NOTICE_*` vars. `wrangler.jsonc`
+sets the flag `true` only in `env.production` (the top-level preview env and
+`env.production.previews` run against preview data and must never mail real
+addresses, so they are `false`). The sweep also needs
+`NUXT_PUBLIC_PRIVACY_EMAIL` and stops with `privacy-email-missing` without it.
+It does nothing under `import.meta.dev`. Never turn the noop flag
+(`NUXT_EMAIL_NOOP_ENABLED=true`) on in a Worker that has the sweep enabled: the
+sweep stops with `email-noop` on the first send and marks nobody as told.
+
+**Logs.** One CRON wide event `/internal/jobs/legal-notice-sweep` with
+`attributes.legalNoticeSweepResult`: `selectedCount`, `sentCount`,
+`skippedCount`, `failedCount`, `lateDeliveries` (sent less than 30 days before
+`effectiveAt`, or 14 with a `shortNoticeReason`), `claimMissedCount`,
+`userDeletedCount`, `errorCodes`, the per-notice counts, `stopReason` and
+`runtimeMs`. Never an address or a name. Stop reasons: `no-active-notice`,
+`completed`, `quota`, `daily-cap`, `max-runtime`, `privacy-email-missing`,
+`consecutive-failures`, `email-noop`, `error`. The last three set the event
+status to 500.
+
+**Operating it.** Progress per notice:
+
+```sql
+SELECT status, COUNT(*) FROM legal_notice_deliveries
+WHERE notice_id = '2026-11-legal-notices' GROUP BY status;
+```
+
+Users still to mail are verified accounts older than `publishedAt` without a
+`sent` or `skipped` row. A `failed` row with `attempts = 3` is given up on;
+reset it by hand only after checking `last_error_code`.
+
+Exhausted rows, in D1 (production needs `--env production`):
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="SELECT
+  last_error_code, COUNT(*) AS rows_given_up
+  FROM legal_notice_deliveries
+  WHERE notice_id = '2026-11-legal-notices'
+    AND status = 'failed' AND attempts = 3
+  GROUP BY last_error_code;"
+```
+
+The same in Axiom (APL) from the wide events, to see whether the sweep is
+failing right now and why (`besidka-prod`):
+
+```kusto
+['besidka-prod']
+| where path == '/internal/jobs/legal-notice-sweep'
+| extend result = attributes['legalNoticeSweepResult']
+| where toint(result['failedCount']) > 0
+    or tostring(result['stopReason']) in ('consecutive-failures', 'email-noop', 'error')
+| project _time,
+    stopReason = tostring(result['stopReason']),
+    failed = toint(result['failedCount']),
+    sent = toint(result['sentCount']),
+    late = toint(result['lateDeliveries']),
+    errorCodes = result['errorCodes']
+| order by _time desc
+```
+
+The `attempts = 3` count is the only place a user who was never told shows up;
+Axiom counts events, not users, so use D1 for the number of people.
+
+Manual reset after a systemic failure (fix the cause first: sender, binding,
+noop flag; then check the codes with the query above). This puts the rows back
+in the queue; the next tick claims them after the 30-minute backoff:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="UPDATE
+  legal_notice_deliveries
+  SET attempts = 0, updated_at = unixepoch() - 7200
+  WHERE notice_id = '2026-11-legal-notices'
+    AND status = 'failed' AND attempts >= 3
+    AND last_error_code IN ('E_EMAIL_NOT_CONFIGURED', 'E_SENDER_NOT_VERIFIED',
+      'E_SENDER_NOT_ALLOWED', 'E_SENDER_DOMAIN_NOT_AVAILABLE',
+      'E_RECIPIENT_NOT_ALLOWED', 'E_EMAIL_NOOP');"
+```
+
+Widen or drop the `last_error_code` filter only after reading the codes: a
+row that failed with `E_DELIVERY_FAILED` three times is probably a real bad
+address. Take a D1 Time Travel bookmark first, as for any production write
+(see CLAUDE.md), and run the row count query before and after.
+
+After the send window closes (`effectiveAt`), list who was not told:
+
+```sql
+SELECT d.status, d.last_error_code, COUNT(*) AS users
+FROM legal_notice_deliveries d
+WHERE d.notice_id = '2026-11-legal-notices' AND d.status != 'sent'
+GROUP BY d.status, d.last_error_code;
+```
+
+Verified accounts older than `publishedAt` with no row at all were never
+selected (the cap or a stop ended the window first); count them with the
+"users still to mail" rule above.
 
 ## Configuration
 

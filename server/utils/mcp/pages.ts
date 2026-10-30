@@ -1,4 +1,6 @@
 import { buildAccountEmailListMarkdown } from '#shared/utils/account-emails'
+import { buildLegalChangeHistoryMarkdown } from '#shared/utils/legal-change-history'
+import { isLegalDocumentId } from '#shared/utils/legal-notices'
 import { minimarkToMarkdown } from '~~/server/utils/content/minimark'
 import type {
   ComponentRenderers,
@@ -65,6 +67,11 @@ export function createPageComponentRenderers(
     },
     'account-email-list': () => {
       return buildAccountEmailListMarkdown()
+    },
+    'legal-change-history': (props) => {
+      return buildLegalChangeHistoryMarkdown(
+        isLegalDocumentId(props.document) ? props.document : undefined,
+      )
     },
   }
 }

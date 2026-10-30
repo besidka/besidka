@@ -92,7 +92,7 @@ PRAGMA foreign_keys=ON;
 
 These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `users` without recovery plan:
 
-- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`, `memory_entries`, `memory_backfill_jobs`, `project_knowledge_items`, `push_subscriptions`
+- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`, `memory_entries`, `memory_backfill_jobs`, `project_knowledge_items`, `push_subscriptions`, `legal_notice_deliveries`
 
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
@@ -262,7 +262,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   hazards), and the automatic "Last updated" date (derived from git at build
   time, so CI build jobs need full history) and the account-email registry
   (`shared/utils/account-emails.ts`) behind the generated "Email I send you"
-  list
+  list, and "Notifying users of changes": the three signals (git-derived Last
+  updated date, `CURRENT_CONSENT_VERSION`, `LEGAL_NOTICES` for material
+  changes: email, in-app banner and the generated `::legal-change-history`),
+  the CI hash gate (`legal-document-revisions.ts`, `pnpm run legal:hash`),
+  the WP260 materiality checklist, the 30/14-day rule, and how to add a notice
 - `docs/legal-memory-sensitive-data.md` - GDPR Art. 9 decision log for memory
   (opt-in removed from v1, owner 2026-10-25, option (c)): why explicit consent
   is the only basis, why it was not shipped, option (b) with its launch

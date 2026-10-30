@@ -62,7 +62,9 @@ Structural facts worth knowing before editing:
   collection and sets `updatedAt` to the latest of the frontmatter date, the
   last git commit date of the page file and, for pages that use
   `::account-email-list`, the last git commit date of
-  `shared/utils/account-emails.ts` (`config/legal-updated-at.ts`). Any commit to
+  `shared/utils/account-emails.ts`, and, for pages that use
+  `::legal-change-history`, the last git commit date of
+  `shared/utils/legal-notices.ts` (`config/legal-updated-at.ts`). Any commit to
   a page, typo fixes included, moves its date, so the date means "last
   committed change", not "last substantive change". Raise the frontmatter value
   only to pin a later date than git reports. In a shallow clone git is ignored
@@ -73,6 +75,20 @@ Structural facts worth knowing before editing:
   keyed on the file text, so a local build can keep a stale date after a
   registry-only change; remove `.data/content` to refresh. The legal pages spec
   asserts valid ISO dates, not fixed values.
+- **The change history is generated too.** Every page ends its "Changes"
+  section with a `### Change history` heading (its auto id is
+  `#change-history`, which the notice email links to) and the block component
+  `::legal-change-history{document="<slug>"}` (closed with `::`),
+  `app/components/content/LegalChangeHistory.vue`. It lists the
+  `LEGAL_NOTICES` that include that document, newest first, once their
+  `publishedAt` has passed, and says "No material changes have been announced
+  yet." when there is none (so a mistyped tag or a wrong `document` value
+  cannot fail silently as an empty block). The `document` attribute arrives as
+  `props.document`; the renderer in `server/utils/mcp/pages.ts` reads the same
+  prop for `/raw/*.md`, `Accept: text/markdown` and MCP `get_page`, and lists
+  every notice when the value is not a legal page id. `legal-pages.spec.ts`
+  asserts each page parses to exactly one such node whose `document` equals its
+  slug.
 - `SURFACE_BY_PATH` in `server/utils/landing/client-events.ts` maps page paths
   to analytics surfaces and must track these slugs, or client analytics events
   from a legal page are rejected.
@@ -346,6 +362,160 @@ in the Privacy Policy section `#sensitive-information-in-your-chats`.
   (plus rows in the legal-basis, recipients, retention and deletion sections),
   Terms of Use `#connected-apps`, one cookie row in the Cookie Policy, DPIA
   3.11 and risk rows 28 to 37, Art. 30 row 10a. Edit them together.
+
+## Notifying users of changes
+
+Engineer-drafted, not lawyer-reviewed. A change to a legal page is announced to
+users when it is material. Three signals exist, and they are independent:
+
+| Signal | Source of truth | Means | Effect |
+| --- | --- | --- | --- |
+| Last updated date | git commit date of the page (and of the registries it renders), `config/legal-updated-at.ts` | Cosmetic: something was committed | Date shown on the page, nothing else |
+| `CURRENT_CONSENT_VERSION` | `server/utils/legal/consent.ts` | The consent text changed in a way that needs a fresh agreement | Everyone re-confirms the consent gate (see "Consent records"), unchanged by this feature |
+| `LEGAL_NOTICES` | `shared/utils/legal-notices.ts` | A material change, announced in advance | Email to every verified account that exists when the notice is published, an in-app banner and an entry in the public change history |
+
+**Who decides materiality: the author of the change, forced by CI.**
+`shared/utils/legal-document-revisions.ts` records, per document, the hash of
+its current markdown body, a `classification` (`material` or `minor`), the
+`noticeId` for a material one and a one-line `note`.
+`tests/unit/content/legal-revisions.spec.ts` hashes every `content/legal/*.md`
+with `scripts/legal-revision-hash.mjs` and fails when the hash differs from the
+record, so no text change merges without a decision. It also fails when a
+`material` record names a notice that is not in `LEGAL_NOTICES` or does not
+list that document. The failure message prints the new hash.
+
+**The hash covers only the markdown body.** The frontmatter (`title`,
+`description`, `summary`, `updatedAt`) is excluded and line endings are
+normalised, so a date change and the git-derived date never trigger the gate.
+The lists generated from registries (`::account-email-list`,
+`::legal-change-history`) are directives in the body, so growing
+`shared/utils/account-emails.ts` or `LEGAL_NOTICES` never moves a hash and a new
+account email needs no notice (the spec asserts the directives are present and
+the generated text is not typed by hand). Known gap: a substantive edit made
+only in a frontmatter `summary` or `description` is not seen by the gate;
+mirror any such change in the body.
+
+### Materiality checklist (WP260 rev.01 paras 29 to 31)
+
+Material, so a `LEGAL_NOTICES` entry is required:
+
+- a new purpose of processing;
+- a new recipient, provider or processor, or a new transfer to a third country;
+- a change of legal basis;
+- a longer retention period;
+- a change in which rights users have, or how to exercise them;
+- a change of controller or contact;
+- in the Terms: new obligations or restrictions on users, fees or
+  monetisation, changes to liability, grounds for termination or suspension,
+  or dispute rules.
+
+Minor, so record the new hash as `minor` with a note:
+
+- typos, grammar, formatting, rewording and clarifications that do not change
+  what Besidka does;
+- renamed UI paths in descriptions;
+- describing an opt-in feature already covered by the existing purposes and
+  recipients;
+- generated content (the `::account-email-list` and `::legal-change-history`
+  directives).
+
+When unsure, treat it as material: an unneeded notice costs one email, a missed
+one costs trust and may breach the duty below.
+
+### How the email is delivered
+
+The email half is sent by the `legal-notice-sweep` cron job
+(`server/utils/legal/notice-sweep.ts`, `server/plugins/legal-notice-sweep.ts`),
+which is off by default and on only in the production Worker. It mails every
+verified account created before `publishedAt`, from `sendFrom` until
+`effectiveAt`, 25 a tick and 300 a day at most, renders the email once per
+notice per tick, and records each delivery in
+`legal_notice_deliveries` (one row per user and notice; kept until the account
+is deleted, as proof of notice; see `docs/legal/art30-record.md`, row 20).
+`docs/email.md` ("Legal change notices") has the claim, retry and error-code
+rules. Two consequences for whoever publishes a notice:
+
+- The daily cap means the last recipient is mailed about `users / 300` days
+  after `sendFrom`, and the notice period that user actually gets is shorter by
+  that much. Check the verified-user count against the daily cap before
+  choosing `sendFrom` and `effectiveAt`. The registry spec requires
+  `effectiveAt` to be at least `sendFrom` plus 30 days plus a 3-day buffer
+  (14 plus 3 with `shortNoticeReason`), so the cap must clear the user count in
+  those 3 days, or the buffer must be widened by hand. A delivery that still
+  lands inside the notice period (less than 30 days, or 14 with a reason,
+  before `effectiveAt`) is counted as `lateDeliveries` in the sweep's wide event.
+- An account created after `publishedAt` is not mailed: it signed up to the new
+  text. That is why `publishedAt` must not come before the deploy that ships
+  the new text (see "How to add a notice").
+- After the send window closes, list the rows that did not end up `sent` (the
+  SQL is in `docs/email.md`, "Legal change notices") and decide what to do with
+  each: a `failed` row with `attempts = 3` is a user who was never told.
+
+### Why, and how long
+
+- **GDPR Art. 12 to 14 and WP260 rev.01 paras 29 to 31.** Changes to a privacy
+  notice must be communicated, and material changes (a new purpose, recipient or
+  transfer) must be actively notified in good time before they take effect,
+  not only published on the page.
+- **Polish Civil Code art. 384(1) (KC art. 384¹).** A change to a template
+  contract in a continuing relationship, which is what the Terms are, binds
+  the user only if they were told and could end the relationship by the
+  stated date. That is why the Terms clause tells the user they can delete their
+  account before the change takes effect. Not checked against commentary.
+- **DSA Art. 14(2)** asks providers to inform users of significant changes to
+  their terms. Besidka follows the DSA notice rules voluntarily (see the
+  2026-10-28 review), so this is adopted by choice, not an obligation we
+  concede.
+- **30 days, 14 for law or security.** `effectiveAt` must be at least 30 days
+  after `publishedAt`. With `shortNoticeReason` set (a change required by law or
+  needed for security) 14 days is enough, and the reason is stated in the
+  notice. The registry spec enforces both, and also `effectiveAt >= sendFrom +
+  30 days + 3 days` (14 + 3 with a reason), because emails arrive from
+  `sendFrom` and, with the daily cap, over a few days after it. A notice stays
+  "active" (banner) until 14 days after it takes effect.
+- **Whom the notice reaches.** The in-app notice and the page publish first
+  (`publishedAt`); emails go out from `sendFrom`, to verified accounts that
+  exist at `publishedAt`. An account that signs up later agrees to the new text
+  and is not mailed. The three Changes clauses and the account-email list in the
+  Privacy Policy say exactly this, in the same words.
+- **Legal basis (decided 2026-10-30).** Mainly Art. 6(1)(b): the Terms are the
+  contract, and a change to a template contract binds the user only once it was
+  delivered (KC art. 384¹). Art. 6(1)(c) where Art. 13(3) or 14(4) requires
+  telling the user before a new purpose. Art. 6(1)(f) for the rest, with the
+  right to object (Art. 21). The Privacy Policy legal-basis row and
+  `docs/legal/art30-record.md` row 20 carry the same wording.
+- **No unsubscribe.** The email is a legal notice about the service, not
+  marketing, like the security notices. The policies say so. Do not add a
+  marketing-style opt-out, and keep the email free of promotion.
+
+### How to add a notice
+
+1. Edit the page(s) under `content/legal/`.
+2. Run `pnpm run legal:hash` and `pnpm vitest run tests/unit/content/legal-revisions.spec.ts`.
+   The spec tells you which document changed.
+3. Decide with the checklist above. Minor: set the document's `hash` to the new
+   value, `classification: 'minor'`, drop any `noticeId` and write a one-line
+   `note`. Stop here.
+4. Material: add an entry at the end of `LEGAL_NOTICES` in
+   `shared/utils/legal-notices.ts` with a unique `id` (`YYYY-MM-name`),
+   `documents`, `publishedAt` (when the in-app notice appears; it must be at
+   or after the deploy that ships the new text, because anyone who signs up
+   between the deploy and `publishedAt` accepted the old text and is not
+   emailed), `sendFrom` (emails start no earlier, at or after `publishedAt`),
+   `effectiveAt` (at least 30 days after `publishedAt`, and at least 30 days
+   plus 3 days of buffer after `sendFrom`; 14 and 14 plus 3 with
+   `shortNoticeReason`). Check the verified-user count against the daily cap
+   before choosing the dates. Add `alreadyAvailable: true` when the features
+   are live before `effectiveAt`. Then write 3 to 6
+   plain-English `summary` bullets in the policy's first-person voice that say
+   what changes and what it means for the user. Then set each affected
+   document to the new hash, `classification: 'material'` and that `noticeId`.
+5. The text goes live with the deploy, but the notice must be published
+   (`publishedAt`) before `effectiveAt - 30 days`. Write the page so it is
+   accurate from the day it ships and say in the notice when each change
+   applies if that is later.
+6. Raise `CURRENT_CONSENT_VERSION` separately, and only if the consent text
+   itself changed (see "Consent records").
 
 ## How legal text reaches production
 

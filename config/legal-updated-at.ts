@@ -4,6 +4,10 @@ export const ACCOUNT_EMAIL_REGISTRY_PATH = 'shared/utils/account-emails.ts'
 
 export const ACCOUNT_EMAIL_LIST_COMPONENT = 'account-email-list'
 
+export const LEGAL_NOTICES_REGISTRY_PATH = 'shared/utils/legal-notices.ts'
+
+export const LEGAL_CHANGE_HISTORY_COMPONENT = 'legal-change-history'
+
 const ISO_DATE_PATTERN = /^(\d{4}-\d{2}-\d{2})/
 
 export interface LegalUpdatedAtDependencies {
@@ -16,6 +20,7 @@ export interface LegalUpdatedAtInput {
   filePath: string
   body: string
   registryPath: string
+  noticesRegistryPath: string
 }
 
 export function toIsoDate(value: unknown): string | null {
@@ -55,6 +60,12 @@ export function resolveLegalUpdatedAt(
   if (input.body.includes(ACCOUNT_EMAIL_LIST_COMPONENT)) {
     candidates.push(
       toIsoDate(dependencies.readCommitDate(input.registryPath)),
+    )
+  }
+
+  if (input.body.includes(LEGAL_CHANGE_HISTORY_COMPONENT)) {
+    candidates.push(
+      toIsoDate(dependencies.readCommitDate(input.noticesRegistryPath)),
     )
   }
 

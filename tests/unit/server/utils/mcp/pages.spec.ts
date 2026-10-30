@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { LEGAL_CHANGE_HISTORY_EMPTY_TEXT } from '#shared/utils/legal-change-history'
 import {
   createPageComponentRenderers,
   formatPublicPage,
@@ -70,5 +71,39 @@ describe('formatPublicPage', () => {
     expect(formatted.markdown).toContain(
       '3. **Security notices**, when something on your account changes: ',
     )
+  })
+
+  it('renders the change history component for its document', () => {
+    const formatted = formatPublicPage(
+      'privacy-policy',
+      {
+        ...page,
+        body: {
+          type: 'minimark',
+          value: [['legal-change-history', { document: 'cookie-policy' }]],
+        },
+      },
+      'https://besidka.com',
+      createPageComponentRenderers('privacy@besidka.com'),
+    )
+
+    expect(formatted.markdown).toBe(LEGAL_CHANGE_HISTORY_EMPTY_TEXT)
+  })
+
+  it('does not publish the directive for an unknown document attribute', () => {
+    const formatted = formatPublicPage(
+      'privacy-policy',
+      {
+        ...page,
+        body: {
+          type: 'minimark',
+          value: [['legal-change-history', { document: 'nope' }]],
+        },
+      },
+      'https://besidka.com',
+      createPageComponentRenderers('privacy@besidka.com'),
+    )
+
+    expect(formatted.markdown).not.toContain('legal-change-history')
   })
 })

@@ -8,6 +8,7 @@ import {
 } from '#shared/utils/account-emails'
 import type { AccountEmailId } from '#shared/utils/account-emails'
 import * as securityEmails from '~~/server/utils/account/security-emails'
+import * as legalNoticeSender from '~~/server/utils/legal/notice-sender'
 
 const SECURITY_NOTICE_ID_BY_SENDER: Record<string, AccountEmailId> = {
   sendPasswordChangedEmail: 'password-changed',
@@ -20,6 +21,10 @@ const SECURITY_NOTICE_ID_BY_SENDER: Record<string, AccountEmailId> = {
   sendPasskeyAddedEmail: 'passkey-added',
   sendPasskeyRemovedEmail: 'passkey-removed',
   sendOAuthAppConnectedEmail: 'oauth-app-connected',
+}
+
+const LEGAL_NOTICE_ID_BY_SENDER: Record<string, AccountEmailId> = {
+  sendLegalNoticeEmail: 'legal-change-notice',
 }
 
 const NEW_EMAIL_HINT = 'add an entry to shared/utils/account-emails.ts'
@@ -44,15 +49,31 @@ function listSenders(): string[] {
     .sort()
 }
 
-function listSecurityNoticeIds(): string[] {
+function listLegalSenders(): string[] {
+  return Object.keys(legalNoticeSender)
+    .filter((name) => {
+      return /^send\w+Email$/.test(name)
+    })
+    .sort()
+}
+
+function listIdsOfCategory(category: string): string[] {
   return ACCOUNT_EMAILS
     .filter((email) => {
-      return email.category === 'security-notice'
+      return email.category === category
     })
     .map((email) => {
       return email.id
     })
     .sort()
+}
+
+function listSecurityNoticeIds(): string[] {
+  return listIdsOfCategory('security-notice')
+}
+
+function listLegalNoticeIds(): string[] {
+  return listIdsOfCategory('legal-notice')
 }
 
 describe('account email registry stays in step with the senders', () => {
@@ -73,6 +94,15 @@ describe('account email registry stays in step with the senders', () => {
     )
   })
 
+  it('maps every legal-notice sender to a registry entry', () => {
+    expect(listLegalSenders(), NEW_EMAIL_HINT).toEqual(
+      Object.keys(LEGAL_NOTICE_ID_BY_SENDER).sort(),
+    )
+    expect(listLegalNoticeIds(), NEW_EMAIL_HINT).toEqual(
+      Object.values(LEGAL_NOTICE_ID_BY_SENDER).sort(),
+    )
+  })
+
   it('uses unique ids', () => {
     const ids = ACCOUNT_EMAILS.map((email) => {
       return email.id
@@ -83,7 +113,7 @@ describe('account email registry stays in step with the senders', () => {
 })
 
 describe('buildAccountEmailListItems', () => {
-  it('produces exactly the three items the policy publishes', () => {
+  it('produces exactly the four items the policy publishes', () => {
     expect(buildAccountEmailListItems().map((item) => {
       return item.text
     })).toEqual([
@@ -97,6 +127,15 @@ describe('buildAccountEmailListItems', () => {
       + 'backup codes were regenerated, your account email was changed, a '
       + 'passkey was added or removed, or an app was connected to your '
       + 'account.',
+      'Legal notices: a notice of a significant change to the Privacy '
+      + 'Policy, the Terms of Use or the Cookie Policy, sent to every '
+      + 'account with a verified email address that exists when the notice '
+      + 'is published (if you sign up after that, you agree to the new '
+      + 'text). The notice is published on the page and in the app first, '
+      + 'at least 30 days before the change takes effect (14 days if the '
+      + 'law or security requires it), and emails go out from then on, a '
+      + 'limited number a day, so yours can arrive a few days after '
+      + 'publication.',
     ])
   })
 
@@ -124,6 +163,7 @@ describe('buildAccountEmailListItems', () => {
       expect.stringMatching(
         /^3\. \*\*Security notices\*\*, when something on your account /,
       ),
+      expect.stringMatching(/^4\. \*\*Legal notices:\*\* a notice of a /),
     ])
   })
 })
@@ -143,5 +183,12 @@ describe('Privacy Policy email section', () => {
 
     expect(section).toContain('I send only transactional email')
     expect(section).toContain('**I never send marketing email**')
+  })
+
+  it('says a legal notice has no promotion and no unsubscribe link', () => {
+    const section = readPolicyEmailSection()
+
+    expect(section).toContain('A legal notice is a notice about a change to these terms')
+    expect(section).toContain('no unsubscribe link')
   })
 })

@@ -4,11 +4,12 @@
     class="
       overflow-y-auto overflow-x-hidden z-10
       flex-1
-      pt-[var(--sat)] pb-[var(--sab)]
+      pb-[var(--sab)]
       [-webkit-overflow-scrolling:touch]
       mask-linear-1 mask-linear-from-base-100
       mask-linear-to-base-100
     "
+    :class="{ 'pt-[var(--sat)]': !isLegalNoticeVisible }"
   >
     <ChatContainer class="!gap-0">
       <p
@@ -512,6 +513,7 @@ const { messageComponents, getUnwrap } = useChatFormat()
 const hideMessages = shallowRef<boolean>(true)
 
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
+const isLegalNoticeVisible = useLegalNoticeVisibility()
 const messagesEndRef = ref<HTMLDivElement | null>(null)
 
 const nuxtApp = useNuxtApp()

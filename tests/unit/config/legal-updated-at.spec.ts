@@ -8,6 +8,7 @@ import type { LegalUpdatedAtDependencies } from '~~/config/legal-updated-at'
 
 const FILE_PATH = '/repo/content/legal/privacy-policy.md'
 const REGISTRY_PATH = 'shared/utils/account-emails.ts'
+const NOTICES_PATH = 'shared/utils/legal-notices.ts'
 
 function createDependencies(
   commitDates: Record<string, string | null>,
@@ -34,6 +35,7 @@ function resolve(
       filePath: FILE_PATH,
       body,
       registryPath: REGISTRY_PATH,
+      noticesRegistryPath: NOTICES_PATH,
     },
     dependencies,
   )
@@ -86,6 +88,32 @@ describe('resolveLegalUpdatedAt', () => {
     expect(resolve('plain body', dependencies)).toBe('2026-10-05')
     expect(resolve('::account-email-list\n::', dependencies)).toBe(
       '2026-10-25',
+    )
+  })
+
+  it('counts the notices date only for files using the change history', () => {
+    const dependencies = createDependencies({
+      [FILE_PATH]: '2026-10-05',
+      [REGISTRY_PATH]: '2026-10-10',
+      [NOTICES_PATH]: '2026-10-31',
+    })
+
+    expect(resolve('plain body', dependencies)).toBe('2026-10-05')
+    expect(resolve('::account-email-list\n::', dependencies)).toBe(
+      '2026-10-10',
+    )
+    expect(resolve('::legal-change-history{document="x"}\n::', dependencies))
+      .toBe('2026-10-31')
+  })
+
+  it('ignores the notices date in a shallow clone', () => {
+    const dependencies = createDependencies(
+      { [FILE_PATH]: '2026-10-29', [NOTICES_PATH]: '2026-10-29' },
+      true,
+    )
+
+    expect(resolve('::legal-change-history\n::', dependencies)).toBe(
+      '2026-10-01',
     )
   })
 

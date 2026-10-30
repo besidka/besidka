@@ -1,8 +1,24 @@
-interface SendTemplateEmailOptions {
+type EmailTemplateName = 'ActionEmail' | 'NoticeEmail' | 'LegalNoticeEmail'
+
+interface RenderTemplateEmailOptions {
+  template: EmailTemplateName
+  props: Record<string, unknown>
+}
+
+export interface RenderedEmail {
+  html: string
+  text: string
+}
+
+interface SendRenderedEmailOptions extends RenderedEmail {
   to: string
   subject: string
-  template: 'ActionEmail' | 'NoticeEmail'
-  props: Record<string, unknown>
+  from?: 'noreply' | 'personalized'
+}
+
+interface SendTemplateEmailOptions extends RenderTemplateEmailOptions {
+  to: string
+  subject: string
   from?: 'noreply' | 'personalized'
 }
 
@@ -13,28 +29,49 @@ interface SendTemplateEmailOptions {
  * `NoticeEmail` uses `<ESubject>`, but the narrowing below handles either
  * shape safely.
  */
-export async function sendTemplateEmail({
-  to,
-  subject,
+export async function renderTemplateEmail({
   template,
   props,
-  from,
-}: SendTemplateEmailOptions): Promise<void> {
+}: RenderTemplateEmailOptions): Promise<RenderedEmail> {
   const htmlResult = await renderEmailComponent(template, props)
   const textResult = await renderEmailComponent(template, props, {
     plainText: true,
   })
 
-  const html = typeof htmlResult === 'string' ? htmlResult : htmlResult.html
-  const text = typeof textResult === 'string' ? textResult : textResult.html
+  return {
+    html: typeof htmlResult === 'string' ? htmlResult : htmlResult.html,
+    text: typeof textResult === 'string' ? textResult : textResult.html,
+  }
+}
 
+export async function sendRenderedEmail({
+  to,
+  subject,
+  html,
+  text,
+  from,
+}: SendRenderedEmailOptions): Promise<{ messageId: string }> {
   const { send: sendEmail } = useEmail()
 
-  await sendEmail({
+  const result = await sendEmail({
     to,
     subject,
     html,
     text,
     from,
   })
+
+  return { messageId: result.messageId }
+}
+
+export async function sendTemplateEmail({
+  to,
+  subject,
+  template,
+  props,
+  from,
+}: SendTemplateEmailOptions): Promise<{ messageId: string }> {
+  const { html, text } = await renderTemplateEmail({ template, props })
+
+  return await sendRenderedEmail({ to, subject, html, text, from })
 }
