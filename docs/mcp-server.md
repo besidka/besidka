@@ -264,11 +264,14 @@ handler:
    `MCP_PRIVATE_WRITE_RATE_LIMIT` and `MCP_PRIVATE_DELETE_RATE_LIMIT` in
    `config/mcp-server.ts`): 120 private tool calls per minute, 30 of them per
    minute for write tools, and 20 per hour for the `data:delete` tools, on the
-   same KV limiter as the auth routes (`createAuthRateLimitStorage`, keys
+   same KV limiter as the auth routes (`createAuthRateLimitStorage`, a fixed
+   window that starts at the first call and resets when it ends, so a call
+   spaced out over time never accumulates toward the limit; keys
    `mcp:rate-limit:all:<userId>`, `mcp:rate-limit:write:<userId>` and
    `mcp:rate-limit:delete:<userId>`). A delete call is counted in all three
    buckets. The KV entry lives for the longer of the rule window and the auth
-   default, so the hourly bucket is not forgotten after 15 minutes. The
+   default (`expirationTtl`), so the hourly bucket is not forgotten after 15
+   minutes and always outlives its fixed window. The
    memory and knowledge write limiters of the HTTP routes apply on top.
    A limit is a JSON-RPC tool error (`isError: true`), not an HTTP 429 or
    401, so the client does not start OAuth again.
@@ -487,7 +490,7 @@ Notes:
   of the generation lease, not a lock: a reply that starts between the check
   and the write is not stopped); `delete_chats` takes at most 25 slugs; all
   writes share the 30 per minute write limit; and the deletion tools need the
-  separate `data:delete` scope and share a 20 per hour limit. A client that does not ask the user before a destructive call still
+  separate `data:delete` scope and share a 20 per hour fixed-window limit. A client that does not ask the user before a destructive call still
   cannot get past these caps, but it can delete what the user connected it to
   delete, which is why the write scopes are off by default.
 - `update_chat` and `update_project` set values, never toggle. Fields are
