@@ -3,18 +3,9 @@ import { eq } from 'drizzle-orm'
 import { verifyOAuthQueryParams } from '@better-auth/oauth-provider'
 import * as schema from '~~/server/db/schema'
 import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
+import { parseStoredOAuthScopes } from '~~/server/utils/oauth/stored-scopes'
 
 const OAUTH_QUERY_MAX_LENGTH = 8192
-
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return value.filter((item): item is string => {
-    return typeof item === 'string'
-  })
-}
 
 function resolveRedirectHost(redirectUri: string): string | null {
   try {
@@ -97,7 +88,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const requestedScopes = params.get('scope')?.split(' ').filter(Boolean)
-    ?? toStringArray(client.scopes)
+    ?? parseStoredOAuthScopes(client.scopes)
 
   return {
     client: {

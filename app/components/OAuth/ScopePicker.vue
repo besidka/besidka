@@ -28,7 +28,7 @@
       </li>
     </ul>
     <p
-      v-if="hasWriteScopes"
+      v-if="hasWriteScopes && mode === 'grant'"
       role="note"
       class="alert alert-warning alert-soft text-sm"
       data-testid="oauth-write-warning"
@@ -71,8 +71,10 @@ import {
 const props = withDefaults(defineProps<{
   scopes: string[]
   disabled?: boolean
+  mode?: 'grant' | 'edit'
 }>(), {
   disabled: false,
+  mode: 'grant',
 })
 
 const selected = defineModel<string[]>({ default: () => [] })
@@ -98,9 +100,11 @@ const hasWriteScopes = computed<boolean>(() => {
 })
 
 watch(resourceScopes, (scopes) => {
-  selected.value = scopes.filter((scope) => {
-    return !isMcpWriteScope(scope)
-  })
+  selected.value = props.mode === 'edit'
+    ? [...scopes]
+    : scopes.filter((scope) => {
+      return !isMcpWriteScope(scope)
+    })
 }, { immediate: true })
 
 function toggle(scope: string) {

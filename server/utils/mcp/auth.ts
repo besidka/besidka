@@ -1,12 +1,16 @@
 import type { JSONWebKeySet, JWK, JWTPayload } from 'jose'
 import { errors as joseErrors } from 'jose'
 import { verifyJwsAccessToken } from 'better-auth/oauth2'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, lt } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
   MCP_PROTECTED_RESOURCE_METADATA_PATH,
   MCP_SERVER_ROUTE,
 } from '~~/config/mcp-server'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { parseStoredOAuthScopes } from '~~/server/utils/oauth/stored-scopes'
+import { OAUTH_CONSENT_TOUCH_INTERVAL_SECONDS } from '~~/server/utils/oauth/token-ttl'
 
 export const DEFAULT_MCP_SITE_URL = 'https://besidka.com'
 
@@ -29,10 +33,23 @@ const POSITIVE_INTEGER = /^[1-9]\d{0,15}$/
 const OAUTH_SCOPE_TOKEN = /^[\x21\x23-\x5b\x5d-\x7e]+$/
 const MCP_JWKS_CACHE_KEY = {}
 
+export type McpScopeSource = 'token' | 'consent' | 'consent_unreadable'
+
 export interface McpAuthContext {
   userId: number
   clientId: string
   scopes: string[]
+  scopeSource?: McpScopeSource
+}
+
+export interface McpPrincipalStatus {
+  isActive: boolean
+  consentScopes: string[]
+}
+
+export interface McpEffectiveScopes {
+  scopes: string[]
+  source: McpScopeSource
 }
 
 export type McpTokenVerification
@@ -67,7 +84,10 @@ export interface McpTokenVerifierDependencies {
   findOpaqueAccessToken: (
     tokenHash: string,
   ) => Promise<McpOpaqueAccessTokenRow | null>
-  isPrincipalActive: (userId: number, clientId: string) => Promise<boolean>
+  resolvePrincipal: (
+    userId: number,
+    clientId: string,
+  ) => Promise<McpPrincipalStatus>
   jwksCacheKey?: object
   now?: () => number
 }
@@ -133,10 +153,60 @@ export async function loadMcpJwksFromDatabase(): Promise<JSONWebKeySet> {
   return toMcpJsonWebKeySet(rows)
 }
 
-export async function isMcpPrincipalActive(
+function logConsentTouchFailure(exception: unknown): void {
+  try {
+    useRequestLogger(useEvent()).set({
+      mcp: { consent_touch_error: exceptionMessage(exception) },
+    })
+  } catch {
+    return
+  }
+}
+
+async function touchStaleConsent(
+  db: ReturnType<typeof useDb>,
+  consent: { id: number, updatedAt: Date | null | undefined } | undefined,
+): Promise<void> {
+  if (!(consent?.updatedAt instanceof Date)) {
+    return
+  }
+
+  const now = Date.now()
+  const staleBefore = new Date(
+    now - OAUTH_CONSENT_TOUCH_INTERVAL_SECONDS * 1000,
+  )
+
+  if (consent.updatedAt.getTime() >= staleBefore.getTime()) {
+    return
+  }
+
+  try {
+    await db.update(schema.oauthConsents)
+      .set({ updatedAt: new Date(now) })
+      .where(and(
+        eq(schema.oauthConsents.id, consent.id),
+        lt(schema.oauthConsents.updatedAt, staleBefore),
+      ))
+  } catch (exception) {
+    logConsentTouchFailure(exception)
+  }
+}
+
+/**
+ * Reads the user, the client and the user's consent for one verified call.
+ * `oauth_consents.updated_at` doubles as the app's last-used signal: JWT
+ * access tokens are never stored, so an app without `offline_access` leaves
+ * no token rows, and this is the only trace of its use. A call touches it at
+ * most once per `OAUTH_CONSENT_TOUCH_INTERVAL_SECONDS` with a conditional
+ * update that is awaited (a Worker may drop a floating promise) and never
+ * fails the request: a failed touch is logged as `mcp.consent_touch_error`.
+ * The Connected apps list and the hourly sweep read the same column to keep
+ * an app that is still in use.
+ */
+export async function resolveMcpPrincipal(
   userId: number,
   clientId: string,
-): Promise<boolean> {
+): Promise<McpPrincipalStatus> {
   const db = useDb()
   const [users, clients, consents] = await db.batch([
     db.select({ id: schema.users.id })
@@ -147,7 +217,11 @@ export async function isMcpPrincipalActive(
       .from(schema.oauthClients)
       .where(eq(schema.oauthClients.clientId, clientId))
       .limit(1),
-    db.select({ id: schema.oauthConsents.id })
+    db.select({
+      id: schema.oauthConsents.id,
+      scopes: schema.oauthConsents.scopes,
+      updatedAt: schema.oauthConsents.updatedAt,
+    })
       .from(schema.oauthConsents)
       .where(and(
         eq(schema.oauthConsents.userId, userId),
@@ -156,11 +230,59 @@ export async function isMcpPrincipalActive(
       .limit(1),
   ])
   const client = clients[0]
-
-  return users.length > 0
+  const isActive = users.length > 0
     && Boolean(client)
     && client?.disabled !== true
     && consents.length > 0
+
+  if (isActive) {
+    await touchStaleConsent(db, consents[0])
+  }
+
+  return {
+    isActive,
+    consentScopes: isActive ? parseStoredOAuthScopes(consents[0]?.scopes) : [],
+  }
+}
+
+export async function isMcpPrincipalActive(
+  userId: number,
+  clientId: string,
+): Promise<boolean> {
+  const principal = await resolveMcpPrincipal(userId, clientId)
+
+  return principal.isActive
+}
+
+/**
+ * The consent row is the ceiling of what a connected app may do: the
+ * effective scopes are the token's scopes intersected with the consent's,
+ * never the consent alone. A narrow token cannot gain a scope because the
+ * user's consent is wider, and widening stays inside the OAuth flow, where
+ * the approval screen shows the new options. A consent that holds no
+ * readable scope (a legacy row, or one whose stored list cannot be parsed)
+ * fails closed: the effective scopes are empty and the source is
+ * `consent_unreadable`, so the app keeps only the tools that need no scope
+ * until the user approves it again. Narrowing through the connected-apps API
+ * never writes an empty list, so only a damaged row lands here.
+ */
+export function resolveEffectiveMcpScopes(
+  tokenScopes: readonly string[],
+  consentScopes: readonly string[],
+): McpEffectiveScopes {
+  if (consentScopes.length === 0) {
+    return { scopes: [], source: 'consent_unreadable' }
+  }
+
+  const consented = new Set(consentScopes)
+  const scopes = tokenScopes.filter((scope) => {
+    return consented.has(scope)
+  })
+
+  return {
+    scopes,
+    source: scopes.length < tokenScopes.length ? 'consent' : 'token',
+  }
 }
 
 /**
@@ -220,7 +342,7 @@ export function createMcpTokenVerifierDependencies(
     audience: resolveMcpResourceUrl(siteUrl),
     loadJwks: loadMcpJwksFromDatabase,
     findOpaqueAccessToken: findMcpOpaqueAccessToken,
-    isPrincipalActive: isMcpPrincipalActive,
+    resolvePrincipal: resolveMcpPrincipal,
   }
 }
 
@@ -319,6 +441,13 @@ function toStringArray(value: unknown): string[] | null {
   }
 
   return value.every(item => typeof item === 'string') ? value : null
+}
+
+function isStoredScopeShape(value: unknown): boolean {
+  return value === null
+    || value === undefined
+    || typeof value === 'string'
+    || Array.isArray(value)
 }
 
 async function verifyJwtAccessToken(
@@ -432,19 +561,22 @@ export function evaluateMcpOpaqueAccessToken(
   }
 
   const userId = parseMcpUserId(row.userId)
-  const scopes = toStringArray(row.scopes)
 
   if (userId === null) {
     return { status: 'invalid', reason: 'subject' }
   }
 
-  if (scopes === null) {
+  if (!isStoredScopeShape(row.scopes)) {
     return { status: 'invalid', reason: 'scope' }
   }
 
   return {
     status: 'claims',
-    auth: { userId, clientId: row.clientId, scopes: [...new Set(scopes)] },
+    auth: {
+      userId,
+      clientId: row.clientId,
+      scopes: parseStoredOAuthScopes(row.scopes),
+    },
   }
 }
 
@@ -495,19 +627,31 @@ export async function verifyMcpAccessToken(
   }
 
   const { userId, clientId } = claims.auth
-  let isActive: boolean
+  let principal: McpPrincipalStatus
 
   try {
-    isActive = await dependencies.isPrincipalActive(userId, clientId)
+    principal = await dependencies.resolvePrincipal(userId, clientId)
   } catch {
     return { status: 'unavailable', reason: 'principal' }
   }
 
-  if (!isActive) {
+  if (!principal.isActive) {
     return { status: 'invalid', reason: 'principal' }
   }
 
-  return { status: 'valid', auth: claims.auth }
+  const effective = resolveEffectiveMcpScopes(
+    claims.auth.scopes,
+    principal.consentScopes,
+  )
+
+  return {
+    status: 'valid',
+    auth: {
+      ...claims.auth,
+      scopes: effective.scopes,
+      scopeSource: effective.source,
+    },
+  }
 }
 
 const FIRST_PRINTABLE_CODE = 0x20

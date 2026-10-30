@@ -76,11 +76,16 @@ describe('upgradeClientScopes', () => {
 
   it('leaves invalid JSON and wrong shapes', () => {
     expect(upgradeClientScopes('not json')).toBeNull()
-    expect(upgradeClientScopes('openid profile')).toBeNull()
     expect(upgradeClientScopes('{"scopes":["openid"]}')).toBeNull()
     expect(upgradeClientScopes(42)).toBeNull()
     expect(upgradeClientScopes({ openid: true })).toBeNull()
-    expect(upgradeClientScopes(['openid', 7])).toBeNull()
+  })
+
+  it('reads a space-separated snapshot and ignores non-text entries', () => {
+    expect(upgradeClientScopes('openid profile'))
+      .toEqual([...MCP_OAUTH_SCOPES])
+    expect(upgradeClientScopes(['openid', 7]))
+      .toEqual([...MCP_OAUTH_SCOPES])
   })
 })
 

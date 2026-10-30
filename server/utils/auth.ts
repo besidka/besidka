@@ -23,6 +23,10 @@ import {
 } from '~~/server/utils/analytics/activation'
 import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
 import {
+  OAUTH_ACCESS_TOKEN_TTL_SECONDS,
+  OAUTH_REFRESH_TOKEN_TTL_SECONDS,
+} from '~~/server/utils/oauth/token-ttl'
+import {
   purgeUserData,
   purgeUserOAuthData,
 } from './account/purge-user-data'
@@ -56,8 +60,6 @@ let _auth: ServerAuth | undefined
 
 const IMAGE_REJECTING_PATHS = new Set(['/update-user', '/sign-up/email'])
 const DEFAULT_SITE_URL = 'https://besidka.com'
-const OAUTH_ACCESS_TOKEN_TTL_SECONDS = 15 * 60
-const OAUTH_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
 const OAUTH_CLIENT_REGISTRATION_PATH = '/oauth2/register'
 const OAUTH_CONSENT_PATH = '/oauth2/consent'
 const OAUTH_GRANT_TYPES = ['authorization_code', 'refresh_token'] as const

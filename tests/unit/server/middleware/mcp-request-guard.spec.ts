@@ -375,6 +375,126 @@ describe('mcp request guard authentication', () => {
       })
     })
 
+  describe('with the consent narrowing the token', () => {
+    const OPAQUE_TOKEN = 'AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEf'
+
+    async function createNarrowedGuard(
+      body: string,
+      consentScopes: string[],
+      tokenScopes: string[],
+    ) {
+      const { verifyMcpAccessToken } = await import(
+        '~~/server/utils/mcp/auth'
+      )
+      const dependencies = {
+        issuer: 'https://besidka.com',
+        audience: 'https://besidka.com/mcp',
+        loadJwks: async () => {
+          return { keys: [] }
+        },
+        findOpaqueAccessToken: async () => {
+          return {
+            userId: 42,
+            clientId: 'client-abc',
+            scopes: tokenScopes,
+            resources: null,
+            expiresAt: new Date(Date.now() + 900_000),
+            revoked: null,
+            confirmation: null,
+            sessionId: null,
+            sessionExpiresAt: null,
+          }
+        },
+        resolvePrincipal: async () => {
+          return { isActive: true, consentScopes }
+        },
+      }
+      const { createMcpRequestGuard } = await import(
+        '~~/server/middleware/01.mcp-request-guard'
+      )
+      const guard = createMcpRequestGuard({
+        readBody: async () => body,
+        verifyAccessToken: (authorization) => {
+          return verifyMcpAccessToken(authorization, dependencies)
+        },
+        resolveResourceMetadataUrl: () => RESOURCE_METADATA_URL,
+      }) as unknown as Guard
+
+      return {
+        guard,
+        event: createEvent('POST', '/mcp', {
+          'content-length': String(body.length),
+          'authorization': `Bearer ${OPAQUE_TOKEN}`,
+        }),
+      }
+    }
+
+    it('answers 403 for a token scope the consent no longer holds',
+      async () => {
+        const body = toolsCall('delete_memory', 7)
+        const { guard, event } = await createNarrowedGuard(
+          body,
+          ['openid', 'memory:read'],
+          ['openid', 'memory:read', 'data:delete'],
+        )
+
+        await expect(guard(event)).resolves.toMatchObject({ id: 7 })
+        expect(mocks.setResponseStatus).toHaveBeenCalledWith(event, 403)
+        expect(event.res.headers.get('WWW-Authenticate'))
+          .toContain('scope="openid memory:read data:delete"')
+        expect(mocks.logger.set).toHaveBeenCalledWith({
+          mcp: expect.objectContaining({ scope_source: 'consent' }),
+        })
+      })
+
+    it('hands the tools the narrowed scopes and logs the source', async () => {
+      const body = toolsCall('get_chat', 8)
+      const { guard, event } = await createNarrowedGuard(
+        body,
+        ['openid', 'chats:read'],
+        ['openid', 'chats:read', 'chats:write', 'data:delete'],
+      )
+
+      await expect(guard(event)).resolves.toBeUndefined()
+      expect(event.context.mcpAuth).toMatchObject({
+        scopes: ['openid', 'chats:read'],
+        scopeSource: 'consent',
+      })
+      expect(mocks.logger.set).toHaveBeenCalledWith({
+        mcp: {
+          auth: 'token',
+          user_id: 42,
+          client_id: 'client-abc',
+          scope_source: 'consent',
+        },
+      })
+    })
+
+    it('answers 403 for an unreadable consent and logs the source',
+      async () => {
+        const body = toolsCall('delete_memory', 9)
+        const { guard, event } = await createNarrowedGuard(
+          body,
+          [],
+          ['openid', 'data:delete'],
+        )
+
+        await expect(guard(event)).resolves.toMatchObject({ id: 9 })
+        expect(mocks.setResponseStatus).toHaveBeenCalledWith(event, 403)
+        expect(event.res.headers.get('WWW-Authenticate'))
+          .toContain('error="insufficient_scope"')
+        expect(event.context.mcpAuth).toMatchObject({
+          scopes: [],
+          scopeSource: 'consent_unreadable',
+        })
+        expect(mocks.logger.set).toHaveBeenCalledWith({
+          mcp: expect.objectContaining({
+            scope_source: 'consent_unreadable',
+          }),
+        })
+      })
+  })
+
   it('keeps granted scopes in the 403 challenge in stable order', async () => {
     const body = toolsCall('delete_memory', 4)
     const { guard } = await createGuard(body, {

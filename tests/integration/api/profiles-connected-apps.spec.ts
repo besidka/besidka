@@ -159,6 +159,31 @@ describe('connected apps revoke API', () => {
       }
     })
 
+  it('logs scopes stored as double-encoded JSON text as a list', async () => {
+    const { db } = createDb([
+      [],
+      [{ scopes: JSON.stringify(JSON.stringify(['openid', 'chats:read'])) }],
+      [{ scopes: JSON.stringify(['openid', 'memory:read']) }],
+    ])
+
+    vi.stubGlobal('useDb', () => db)
+
+    const handler = await getRevokeHandler()
+
+    await handler(revokeEvent('client-1'))
+
+    expect(mocks.loggerSet).toHaveBeenCalledWith({
+      userId: 5,
+      attributes: {
+        legalConsent: {
+          action: 'oauth_revoked',
+          oauthClientId: 'client-1',
+          scopes: ['openid', 'memory:read', 'chats:read'],
+        },
+      },
+    })
+  })
+
   it('surfaces a failed delete as a 500', async () => {
     const { db, batch } = createDb()
 

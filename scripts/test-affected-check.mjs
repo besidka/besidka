@@ -154,6 +154,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/account/security-emails.spec.ts',
     'tests/unit/utils/oauth/registration-limits.spec.ts',
     'tests/unit/utils/oauth/client-scope-upgrade.spec.ts',
+    'tests/unit/utils/oauth/stored-scopes.spec.ts',
+    'tests/unit/utils/oauth/narrow-consent-scopes.spec.ts',
     'tests/unit/utils/oauth/protected-resource-metadata.spec.ts',
     'tests/unit/server/routes/well-known/oauth-protected-resource.spec.ts',
     'tests/integration/server/oauth-grant-sweep-plugin.spec.ts',
@@ -161,6 +163,13 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profiles-connected-apps.spec.ts',
     'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
     'tests/integration/api/profiles-connected-apps-list.spec.ts',
+    'tests/integration/api/profiles-connected-apps-scopes.spec.ts',
+    'tests/integration/api/profiles-connected-apps-revoke-bulk.spec.ts',
+    'tests/unit/server/utils/mcp/auth.spec.ts',
+    'tests/unit/server/middleware/mcp-request-guard.spec.ts',
+    'tests/unit/utils/connected-apps.spec.ts',
+    'tests/unit/components/Profile/ConnectedApps/PermissionsEditor.spec.ts',
+    'tests/unit/pages/profile/connected-apps.spec.ts',
   ]
   const mcpUiParityTests = [
     'tests/unit/server/mcp/tools/branch-chat.spec.ts',
@@ -197,6 +206,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/projects/lifecycle.spec.ts',
     'tests/unit/utils/projects/memory-toggle.spec.ts',
     'tests/unit/utils/oauth/client-scope-upgrade.spec.ts',
+    'tests/unit/utils/oauth/stored-scopes.spec.ts',
   ]
   const memoryContractTests = [
     'tests/unit/utils/memory-policy.spec.ts',
@@ -2805,7 +2815,7 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(server\/utils\/(chats\/(lifecycle|share-management|generation-in-progress)|projects\/(lifecycle|memory-toggle)|files\/(delete-files|source-filter|file-name)|settings\/.*|oauth\/client-scope-upgrade|knowledge\/linked-files)|shared\/utils\/user-settings-schemas)\.ts$/,
+      pattern: /^(server\/utils\/(chats\/(lifecycle|share-management|generation-in-progress)|projects\/(lifecycle|memory-toggle)|files\/(delete-files|source-filter|file-name)|settings\/.*|oauth\/(client-scope-upgrade|stored-scopes)|knowledge\/linked-files)|shared\/utils\/user-settings-schemas)\.ts$/,
       tests: mcpUiParityTests,
     },
     {
@@ -2854,7 +2864,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/(components\/OAuth|pages\/oauth)\/.*$/,
-      tests: ['tests/unit/components/OAuth/ScopePicker.spec.ts'],
+      tests: [
+        'tests/unit/components/OAuth/ScopePicker.spec.ts',
+        'tests/unit/components/Profile/ConnectedApps/PermissionsEditor.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/(components\/Profile\/ConnectedApps\/.*\.vue|utils\/connected-apps\.ts)$/,
+      tests: [
+        'tests/unit/utils/connected-apps.spec.ts',
+        'tests/unit/components/Profile/ConnectedApps/PermissionsEditor.spec.ts',
+        'tests/unit/pages/profile/connected-apps.spec.ts',
+      ],
     },
     {
       pattern: /^(shared\/utils\/mcp-oauth-scopes|server\/utils\/auth|server\/routes\/\.well-known\/(oauth-.*|openid-configuration.*))\.ts$/,
@@ -2929,11 +2950,17 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/integration/server/oauth-grant-sweep-plugin.spec.ts'],
     },
     {
-      pattern: /^server\/api\/v1\/profiles\/connected-apps\/.*\.ts$/,
+      pattern: /^(server\/api\/v1\/profiles\/connected-apps\/.*|server\/utils\/oauth\/(stored-scopes|narrow-consent-scopes|revoke-connected-app))\.ts$/,
       tests: [
         'tests/integration/api/profiles-connected-apps.spec.ts',
         'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
         'tests/integration/api/profiles-connected-apps-list.spec.ts',
+        'tests/integration/api/profiles-connected-apps-scopes.spec.ts',
+        'tests/integration/api/profiles-connected-apps-revoke-bulk.spec.ts',
+        'tests/unit/utils/oauth/stored-scopes.spec.ts',
+        'tests/unit/utils/oauth/narrow-consent-scopes.spec.ts',
+        'tests/unit/server/utils/mcp/auth.spec.ts',
+        'tests/unit/server/middleware/mcp-request-guard.spec.ts',
       ],
     },
     {
@@ -2942,7 +2969,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^(app\/layouts\/profile\.vue|app\/pages\/profile\/connected-apps\.vue)$/,
-      tests: ['tests/unit/layouts/profile.spec.ts'],
+      tests: [
+        'tests/unit/layouts/profile.spec.ts',
+        'tests/unit/pages/profile/connected-apps.spec.ts',
+      ],
     },
     {
       pattern: /^server\/plugins\/cache-key-without-query\.ts$/,

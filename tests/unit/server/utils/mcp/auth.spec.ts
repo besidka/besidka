@@ -1,6 +1,15 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import type { JWK, JWTPayload, KeyObject } from 'jose'
 import { SignJWT, exportJWK, generateKeyPair } from 'jose'
+import { drizzle } from 'drizzle-orm/d1'
 import {
   MCP_JWKS_GRACE_PERIOD_MS,
   buildMcpBearerChallenge,
@@ -11,11 +20,14 @@ import {
   parseBearerToken,
   parseMcpScopes,
   parseMcpUserId,
+  resolveEffectiveMcpScopes,
+  resolveMcpPrincipal,
   resolveMcpResourceMetadataUrl,
   resolveMcpResourceUrl,
   toMcpJsonWebKeySet,
   verifyMcpAccessToken,
 } from '~~/server/utils/mcp/auth'
+import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
 import type {
   McpOpaqueAccessTokenRow,
   McpTokenVerifierDependencies,
@@ -89,8 +101,8 @@ function createDependencies(
     findOpaqueAccessToken: async () => {
       return null
     },
-    isPrincipalActive: async () => {
-      return true
+    resolvePrincipal: async () => {
+      return { isActive: true, consentScopes: [...MCP_OAUTH_SCOPES] }
     },
     jwksCacheKey: {},
     ...overrides,
@@ -109,10 +121,10 @@ async function verify(
 
 describe('verifyMcpAccessToken', () => {
   it('accepts a valid token and returns user, client and scopes', async () => {
-    const isPrincipalActive = vi.fn(async () => {
-      return true
+    const resolvePrincipal = vi.fn(async () => {
+      return { isActive: true, consentScopes: [...MCP_OAUTH_SCOPES] }
     })
-    const result = await verify(await signToken(), { isPrincipalActive })
+    const result = await verify(await signToken(), { resolvePrincipal })
 
     expect(result).toEqual({
       status: 'valid',
@@ -120,10 +132,75 @@ describe('verifyMcpAccessToken', () => {
         userId: 42,
         clientId: 'client-abc',
         scopes: ['openid', 'chats:read', 'memory:read'],
+        scopeSource: 'token',
       },
     })
-    expect(isPrincipalActive).toHaveBeenCalledWith(42, 'client-abc')
+    expect(resolvePrincipal).toHaveBeenCalledWith(42, 'client-abc')
   })
+
+  it('intersects the token scopes with the consent scopes', async () => {
+    const result = await verify(await signToken(), {
+      resolvePrincipal: async () => {
+        return {
+          isActive: true,
+          consentScopes: ['openid', 'chats:read', 'projects:read'],
+        }
+      },
+    })
+
+    expect(result).toEqual({
+      status: 'valid',
+      auth: {
+        userId: 42,
+        clientId: 'client-abc',
+        scopes: ['openid', 'chats:read'],
+        scopeSource: 'consent',
+      },
+    })
+  })
+
+  it('never widens a token to the scopes of a wider consent', async () => {
+    const result = await verify(await signToken({ scope: 'openid chats:read' }), {
+      resolvePrincipal: async () => {
+        return { isActive: true, consentScopes: [...MCP_OAUTH_SCOPES] }
+      },
+    })
+
+    expect(result).toMatchObject({
+      status: 'valid',
+      auth: { scopes: ['openid', 'chats:read'], scopeSource: 'token' },
+    })
+  })
+
+  it('drops a delete scope the consent no longer holds', async () => {
+    const result = await verify(
+      await signToken({ scope: 'openid chats:read data:delete' }),
+      {
+        resolvePrincipal: async () => {
+          return { isActive: true, consentScopes: ['openid', 'chats:read'] }
+        },
+      },
+    )
+
+    expect(result).toMatchObject({
+      status: 'valid',
+      auth: { scopes: ['openid', 'chats:read'], scopeSource: 'consent' },
+    })
+  })
+
+  it('grants no scope when the consent holds no readable scope',
+    async () => {
+      const result = await verify(await signToken(), {
+        resolvePrincipal: async () => {
+          return { isActive: true, consentScopes: [] }
+        },
+      })
+
+      expect(result).toMatchObject({
+        status: 'valid',
+        auth: { scopes: [], scopeSource: 'consent_unreadable' },
+      })
+    })
 
   it('rejects a token for another audience', async () => {
     const token = await signToken({ aud: 'https://besidka.com/other' })
@@ -212,8 +289,8 @@ describe('verifyMcpAccessToken', () => {
 
   it('rejects a token whose user or client is gone', async () => {
     const result = await verify(await signToken(), {
-      isPrincipalActive: async () => {
-        return false
+      resolvePrincipal: async () => {
+        return { isActive: false, consentScopes: [] }
       },
     })
 
@@ -232,7 +309,7 @@ describe('verifyMcpAccessToken', () => {
 
   it('reports unavailable when the principal lookup fails', async () => {
     const result = await verify(await signToken(), {
-      isPrincipalActive: async () => {
+      resolvePrincipal: async () => {
         throw new Error('D1 down')
       },
     })
@@ -287,6 +364,7 @@ describe('verifyMcpAccessToken with an opaque token', () => {
         userId: 42,
         clientId: 'client-abc',
         scopes: ['openid', 'projects:read'],
+        scopeSource: 'token',
       },
     })
     expect(findOpaqueAccessToken).toHaveBeenCalledWith(
@@ -317,8 +395,8 @@ describe('verifyMcpAccessToken with an opaque token', () => {
       findOpaqueAccessToken: async () => {
         return opaqueRow()
       },
-      isPrincipalActive: async () => {
-        return false
+      resolvePrincipal: async () => {
+        return { isActive: false, consentScopes: [] }
       },
     })
 
@@ -338,7 +416,8 @@ describe('evaluateMcpOpaqueAccessToken', () => {
     ['audience', { resources: ['https://besidka.com/other'] }],
     ['audience', { resources: 'https://besidka.com/mcp' }],
     ['subject', { userId: null }],
-    ['scope', { scopes: 'projects:read' }],
+    ['scope', { scopes: 42 }],
+    ['scope', { scopes: { read: true } }],
   ] as const)('rejects with %s', (reason, overrides) => {
     expect(evaluateMcpOpaqueAccessToken(
       opaqueRow(overrides as Partial<McpOpaqueAccessTokenRow>),
@@ -433,6 +512,267 @@ describe('toMcpJsonWebKeySet retired key grace', () => {
   })
 })
 
+describe('resolveEffectiveMcpScopes', () => {
+  it('returns the token scopes when the consent covers them', () => {
+    expect(resolveEffectiveMcpScopes(
+      ['openid', 'chats:read'],
+      ['openid', 'chats:read', 'memory:read'],
+    )).toEqual({ scopes: ['openid', 'chats:read'], source: 'token' })
+  })
+
+  it('removes a scope missing from the consent', () => {
+    expect(resolveEffectiveMcpScopes(
+      ['openid', 'chats:read', 'data:delete'],
+      ['openid', 'chats:read'],
+    )).toEqual({ scopes: ['openid', 'chats:read'], source: 'consent' })
+  })
+
+  it('leaves identity-only access when the consent holds only identity',
+    () => {
+      expect(resolveEffectiveMcpScopes(
+        ['openid', 'chats:read'],
+        ['openid'],
+      )).toEqual({ scopes: ['openid'], source: 'consent' })
+    })
+
+  it('fails closed for an empty consent', () => {
+    expect(resolveEffectiveMcpScopes(['openid', 'chats:read'], []))
+      .toEqual({ scopes: [], source: 'consent_unreadable' })
+  })
+})
+
+describe('opaque access token scope storage', () => {
+  const options = { audience: AUDIENCE, now: Date.now() }
+
+  it('reads a JSON text and a double-encoded JSON text', () => {
+    const encoded = JSON.stringify(['openid', 'chats:read'])
+
+    for (const scopes of [encoded, JSON.stringify(encoded)]) {
+      expect(evaluateMcpOpaqueAccessToken(
+        opaqueRow({ scopes }),
+        options,
+      )).toMatchObject({
+        status: 'claims',
+        auth: { scopes: ['openid', 'chats:read'] },
+      })
+    }
+  })
+})
+
+describe('resolveMcpPrincipal', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubDatabase(rows: {
+    users: unknown[]
+    clients: unknown[]
+    consents: unknown[]
+  }) {
+    const chain = {
+      from: () => chain,
+      where: () => chain,
+      limit: () => chain,
+    }
+
+    vi.stubGlobal('useDb', () => {
+      return {
+        select: () => chain,
+        batch: async () => [rows.users, rows.clients, rows.consents],
+      }
+    })
+  }
+
+  it('returns the parsed consent scopes of an active principal', async () => {
+    stubDatabase({
+      users: [{ id: 42 }],
+      clients: [{ disabled: false }],
+      consents: [{ scopes: JSON.stringify('["openid","chats:read"]') }],
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+      isActive: true,
+      consentScopes: ['openid', 'chats:read'],
+    })
+  })
+
+  it('returns an empty list for an unreadable consent scope column',
+    async () => {
+      stubDatabase({
+        users: [{ id: 42 }],
+        clients: [{ disabled: false }],
+        consents: [{ scopes: 42 }],
+      })
+
+      await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+        isActive: true,
+        consentScopes: [],
+      })
+    })
+
+  it('reports an inactive principal without scopes', async () => {
+    stubDatabase({
+      users: [{ id: 42 }],
+      clients: [{ disabled: false }],
+      consents: [],
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+      isActive: false,
+      consentScopes: [],
+    })
+  })
+})
+
+describe('resolveMcpPrincipal consent touch', () => {
+  const NOW = Date.UTC(2026, 9, 30, 12, 0, 0)
+  const FIFTEEN_MINUTES = 15 * 60 * 1000
+
+  interface TouchedUpdate {
+    values: Record<string, unknown>
+    sql: string
+    params: unknown[]
+  }
+
+  function stubTouchDatabase(options: {
+    updatedAt: unknown
+    updateError?: Error
+    clientDisabled?: boolean
+  }) {
+    const db = drizzle({} as never)
+    const updates: TouchedUpdate[] = []
+    const realUpdate = db.update.bind(db)
+
+    Object.assign(db, {
+      batch: async () => {
+        return [
+          [{ id: 42 }],
+          [{ disabled: options.clientDisabled ?? false }],
+          [{
+            id: 9,
+            scopes: JSON.stringify(['openid', 'chats:read']),
+            updatedAt: options.updatedAt,
+          }],
+        ]
+      },
+      update: (table: Parameters<typeof realUpdate>[0]) => {
+        const builder = realUpdate(table)
+        const realSet = builder.set.bind(builder)
+
+        return {
+          set: (values: Parameters<typeof realSet>[0]) => {
+            const setBuilder = realSet(values)
+            const realWhere = setBuilder.where.bind(setBuilder)
+
+            return {
+              where: async (condition: Parameters<typeof realWhere>[0]) => {
+                if (options.updateError) {
+                  throw options.updateError
+                }
+
+                const { sql, params } = realWhere(condition).toSQL()
+
+                updates.push({
+                  values: values as Record<string, unknown>,
+                  sql,
+                  params,
+                })
+              },
+            }
+          },
+        }
+      },
+    })
+    vi.stubGlobal('useDb', () => db)
+
+    return { updates }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('touches a consent last updated more than 15 minutes ago', async () => {
+    const staleUpdatedAt = new Date(NOW - FIFTEEN_MINUTES - 60_000)
+    const { updates } = stubTouchDatabase({ updatedAt: staleUpdatedAt })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+      isActive: true,
+      consentScopes: ['openid', 'chats:read'],
+    })
+    expect(updates).toHaveLength(1)
+    expect(updates[0]!.values).toEqual({ updatedAt: new Date(NOW) })
+    expect(updates[0]!.sql).toContain('update "oauth_consents"')
+    expect(updates[0]!.sql).toContain('"id" = ?')
+    expect(updates[0]!.sql).toContain('"updated_at" < ?')
+    expect(updates[0]!.params).toContain(9)
+    expect(updates[0]!.params).toContain(
+      Math.floor((NOW - FIFTEEN_MINUTES) / 1000),
+    )
+  })
+
+  it('does not write for a consent updated within 15 minutes', async () => {
+    const { updates } = stubTouchDatabase({
+      updatedAt: new Date(NOW - FIFTEEN_MINUTES + 60_000),
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toMatchObject({
+      isActive: true,
+    })
+    expect(updates).toHaveLength(0)
+  })
+
+  it('does not write for an inactive principal', async () => {
+    const { updates } = stubTouchDatabase({
+      updatedAt: new Date(0),
+      clientDisabled: true,
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+      isActive: false,
+      consentScopes: [],
+    })
+    expect(updates).toHaveLength(0)
+  })
+
+  it('swallows a failed touch, logs it and still answers', async () => {
+    const set = vi.fn()
+
+    vi.stubGlobal('useEvent', () => {
+      return { context: { log: { set } } }
+    })
+    stubTouchDatabase({
+      updatedAt: new Date(0),
+      updateError: new Error('d1 unavailable'),
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toEqual({
+      isActive: true,
+      consentScopes: ['openid', 'chats:read'],
+    })
+    expect(set).toHaveBeenCalledWith({
+      mcp: { consent_touch_error: 'd1 unavailable' },
+    })
+  })
+
+  it('answers even when the failure cannot be logged', async () => {
+    stubTouchDatabase({
+      updatedAt: new Date(0),
+      updateError: new Error('d1 unavailable'),
+    })
+
+    await expect(resolveMcpPrincipal(42, 'client-abc')).resolves.toMatchObject({
+      isActive: true,
+    })
+  })
+})
+
 describe('isMcpPrincipalActive', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -516,8 +856,8 @@ describe('isMcpPrincipalActive', () => {
 
   it('fails a token for a disconnected app through the verifier', async () => {
     const result = await verify(await signToken(), {
-      isPrincipalActive: async () => {
-        return false
+      resolvePrincipal: async () => {
+        return { isActive: false, consentScopes: [] }
       },
     })
 
