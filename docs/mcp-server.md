@@ -348,7 +348,8 @@ Notes:
   writes with the user's explicit `memory:write` grant, and the compliance
   gate still runs on every write.
 - No ZIP, PDF, image or other binary upload goes through MCP. Model and tool
-  selection and sending messages are out of scope for now.
+  selection are out of scope for now. Sending messages is deliberately not
+  built, see [Sending messages](#sending-messages-not-built).
 - `read_project_knowledge_item` does not return the text of a flagged item
   (suspected prompt injection) unless the caller passes `includeFlagged:
   true`. The default answer is the metadata (`id`, `title`, `status`,
@@ -361,6 +362,40 @@ Notes:
   (`decodeKnowledgeEntityId`); a search cursor must be a valid offset. A bad
   cursor is a `400` tool error asking the caller to omit it, never a `500`
   or a silent restart from the first page.
+
+### Sending messages (not built)
+
+There is no `send_message` tool, by decision (owner, 2026-10-30). Every tool
+above reads the user's data or changes their own records; none starts work
+that spends the user's provider keys. That boundary is kept on purpose:
+
+- **No guaranteed human approval per call.** claude.ai asks before a tool
+  call, but Claude Code in auto mode, CLI harnesses and MCP servers that call
+  other MCP servers may not. An agent that reads a prompt-injected page could
+  then spend the user's keys, and the server cannot tell an approved call from
+  an injected one. This breaks the rule that spending on a user's key needs
+  their explicit consent.
+- **Little distinctive value.** The caller is already a model with its own
+  provider access. Relaying a prompt to another model through Besidka adds a
+  hop; the only thing Besidka adds is the answer landing in chat history. A
+  full mobile client is the PWA's job, not the MCP server's.
+- **Legal cost.** A send through MCP is a new processing route. It would have
+  to pass the per-provider Art. 49(1)(a) transfer consent that the chat UI
+  shows before a send (`docs/legal-memory-sensitive-data.md`), and it needs
+  updates to `docs/legal/dpia.md` and `docs/legal/art30-record.md`.
+- **Engineering cost.** The generation lease and heartbeat
+  (`docs/chats/stuck-generation-guard.md`), a returned result instead of a
+  stream, and cost and web-search accounting would all need an MCP path.
+
+**Revisit when** the [MCP tool calls dashboard](https://app.axiom.co/besidka-tnqd/dashboards/uid/besidka-mcp-tool-calls)
+shows the private tools used by people other than the owner, or a user names
+a concrete workflow that needs it.
+
+**If it is ever built, start with a draft, not a send.** A tool such as
+`create_chat_draft` would create a chat with an unsent message and return its
+URL. The user presses send in the app, so consent, spend, the lease and
+streaming all run on the normal path and the MCP call costs nothing. No tool
+creates chats today, so this is a new tool, not a change to an existing one.
 
 ## Transport
 
