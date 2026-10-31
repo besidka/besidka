@@ -1991,7 +1991,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/chat-scroll-spacer\.ts$/,
-      tests: ['tests/e2e/chat/scroll-spacer.spec.ts'],
+      tests: [
+        'tests/unit/composables/chat-scroll-spacer.spec.ts',
+        'tests/e2e/chat/scroll-spacer.spec.ts',
+        'tests/e2e/chat/chat-input-collapse-on-attach.spec.ts',
+      ],
     },
     {
       pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
@@ -2709,6 +2713,7 @@ export function getAffectedTests(changedFiles) {
         'tests/e2e/chat/gateway-image-generation.spec.ts',
         'tests/e2e/chat/files.spec.ts',
         'tests/e2e/chat/files-carousel-scroll.spec.ts',
+        'tests/e2e/chat/chat-input-collapse-on-attach.spec.ts',
         'tests/e2e/projects/picker.spec.ts',
       ],
     },

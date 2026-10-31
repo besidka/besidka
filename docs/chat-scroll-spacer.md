@@ -1,6 +1,6 @@
 # Chat scroll and spacer behavior
 
-Last updated: July 17, 2026
+Last updated: October 31, 2026
 Scope: `app/composables/chat-scroll-spacer.ts`,
 `app/composables/chat-image-ui.ts`, and `app/components/ChatInput.client.vue`
 
@@ -347,6 +347,25 @@ Visible result:
 - submitting/streaming path still calls `pushUserMessageToTop()`
   (default smooth behavior)
 
+5. Scroll to the bottom only after the spacer has re-rendered
+- the `chat-input:height` debounce callback (`fitSpacerToInputHeight()`)
+  sets `spacerHeight = inputHeight`, then `await nextTick()`, and only then
+  reads `scrollHeight` and scrolls, like `pushUserMessageToTop()` and
+  `adjustSpacerAfterResponse()` already did
+- without the `nextTick()` it scrolled to the stale, pre-growth
+  `scrollHeight`; the spacer then grew, the container sat that many pixels
+  above the bottom, and the rebroadcast `measure()` read
+  `arrivedState.bottom = false`, so the input slid into the desktop
+  half-collapsed state
+- trigger (October 2026): with a pill setting tile in the attachments row,
+  attaching a file turns every tile square (40px to 64px), the input grows
+  by 24px, and a user who had scrolled to the very bottom got collapsed.
+  It was timing-dependent: when a later `chat-input:height` emission ran the
+  callback again, that run saw the already-grown spacer, scrolled to the
+  real bottom and masked the bug
+- covered by `tests/e2e/chat/chat-input-collapse-on-attach.spec.ts`
+  (desktop, 1280x800) and `tests/unit/composables/chat-scroll-spacer.spec.ts`
+
 ## Scroll-to-bottom behavior split (short pair vs tall pair)
 
 Hook in `chat-scroll-spacer.ts`:
@@ -628,8 +647,11 @@ Expected:
 
 ### E2E automation
 
-Implemented E2E suite:
+Implemented E2E suites:
 - `tests/e2e/chat/scroll-spacer.spec.ts`
+- `tests/e2e/chat/chat-input-collapse-on-attach.spec.ts` (desktop: attaching
+  a file next to a pill tile must not collapse a bottom-scrolled input; see
+  stabilization rule 5)
 
 Run command:
 - `pnpm run test:e2e:chromium -- tests/e2e/chat/scroll-spacer.spec.ts`
