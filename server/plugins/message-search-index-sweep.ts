@@ -75,12 +75,14 @@ export async function runMessageSearchSweepJob(
   let status = 200
 
   logger.set({
-    messageSearchSweepJob: {
-      job: 'message-search-index-sweep',
-      cron: input.controller.cron,
-      scheduledTime,
-      batchSize,
-      maxRuntimeMs,
+    attributes: {
+      messageSearchSweepJob: {
+        job: 'message-search-index-sweep',
+        cron: input.controller.cron,
+        scheduledTime,
+        batchSize,
+        maxRuntimeMs,
+      },
     },
   })
 
@@ -92,23 +94,23 @@ export async function runMessageSearchSweepJob(
     })
 
     logger.set({
-      messageSearchSweepResult: {
-        backfilledCount: result.backfilledCount,
-        emptyBodyBackfilledCount: result.emptyBodyBackfilledCount,
-        garbageCollectedCount: result.garbageCollectedCount,
-        hasMore: result.hasMore,
-        runtimeMs: result.runtimeMs,
-        nextCursor: result.nextCursor,
+      attributes: {
+        messageSearchSweepResult: {
+          backfilledCount: result.backfilledCount,
+          emptyBodyBackfilledCount: result.emptyBodyBackfilledCount,
+          garbageCollectedCount: result.garbageCollectedCount,
+          hasMore: result.hasMore,
+          runtimeMs: result.runtimeMs,
+          nextCursor: result.nextCursor,
+        },
       },
     })
   } catch (exception) {
     status = 500
     logger.set({
-      messageSearchSweepError: {
-        phase: 'sweep-run',
-      },
       attributes: {
         messageSearchSweepError: {
+          phase: 'sweep-run',
           message: exceptionMessage(exception),
           stack: getSafeErrorStack(exception),
         },

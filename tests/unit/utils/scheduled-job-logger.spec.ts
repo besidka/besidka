@@ -102,4 +102,17 @@ describe('scheduled plugins', () => {
       `Direct .emit( call in: ${offenders.join(', ')}`,
     ).toEqual([])
   })
+
+  it('keeps job fields under the attributes map', () => {
+    const offenders = scheduledPlugins
+      .filter(({ source }) => {
+        return /logger\??\.set\(\{\s*(?!attributes\b)\w/.test(source)
+      })
+      .map(({ fileName }) => fileName)
+
+    expect(
+      offenders,
+      `logger.set( with a top-level key other than attributes in: ${offenders.join(', ')}`,
+    ).toEqual([])
+  })
 })

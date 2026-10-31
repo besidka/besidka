@@ -79,12 +79,14 @@ export async function runFileRetentionCleanupJob(
   let status = 200
 
   logger.set({
-    retentionCleanupJob: {
-      job: 'file-retention-cleanup',
-      cron: input.controller.cron,
-      scheduledTime,
-      batchSize,
-      maxRuntimeMs,
+    attributes: {
+      retentionCleanupJob: {
+        job: 'file-retention-cleanup',
+        cron: input.controller.cron,
+        scheduledTime,
+        batchSize,
+        maxRuntimeMs,
+      },
     },
   })
 
@@ -97,23 +99,23 @@ export async function runFileRetentionCleanupJob(
     })
 
     logger.set({
-      retentionCleanupResult: {
-        selectedCount: result.selectedCount,
-        deletedCount: result.deletedCount,
-        failedCount: result.failedCount,
-        hasMore: result.hasMore,
-        runtimeMs: result.runtimeMs,
-        batchCount: result.batchCount,
+      attributes: {
+        retentionCleanupResult: {
+          selectedCount: result.selectedCount,
+          deletedCount: result.deletedCount,
+          failedCount: result.failedCount,
+          hasMore: result.hasMore,
+          runtimeMs: result.runtimeMs,
+          batchCount: result.batchCount,
+        },
       },
     })
   } catch (exception) {
     status = 500
     logger.set({
-      retentionCleanupError: {
-        phase: 'cleanup-run',
-      },
       attributes: {
         retentionCleanupError: {
+          phase: 'cleanup-run',
           message: exceptionMessage(exception),
           stack: getSafeErrorStack(exception),
         },

@@ -55,10 +55,12 @@ export async function runLandingCacheRefreshJob(
   const scheduledTime = new Date(input.controller.scheduledTime).toISOString()
 
   logger.set({
-    landingCacheRefreshJob: {
-      job: 'landing-cache-refresh',
-      cron: input.controller.cron,
-      scheduledTime,
+    attributes: {
+      landingCacheRefreshJob: {
+        job: 'landing-cache-refresh',
+        cron: input.controller.cron,
+        scheduledTime,
+      },
     },
   })
 
@@ -82,23 +84,17 @@ export async function runLandingCacheRefreshJob(
   ])
 
   logger.set({
-    stats: statsResult.status === 'fulfilled'
-      ? {
-        updatedAt: statsResult.value.updatedAt,
-        files: statsResult.value.files,
-        uploadedFiles: statsResult.value.uploadedFiles,
-        generatedImages: statsResult.value.generatedImages,
-      }
-      : {},
-    githubStars: githubStarsResult.status === 'fulfilled'
-      ? { updatedAt: githubStarsResult.value.updatedAt }
-      : {},
     attributes: {
       stats: statsResult.status === 'fulfilled'
-        ? {}
+        ? {
+          updatedAt: statsResult.value.updatedAt,
+          files: statsResult.value.files,
+          uploadedFiles: statsResult.value.uploadedFiles,
+          generatedImages: statsResult.value.generatedImages,
+        }
         : { error: exceptionMessage(statsResult.reason) },
       githubStars: githubStarsResult.status === 'fulfilled'
-        ? {}
+        ? { updatedAt: githubStarsResult.value.updatedAt }
         : { error: exceptionMessage(githubStarsResult.reason) },
     },
   })

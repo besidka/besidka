@@ -111,13 +111,11 @@ export async function sweepMessageSearchIndex(input: {
         }).length
       } catch (exception) {
         input.logger.set({
-          messageSearchSweep: {
-            phase: 'user-backfill',
-            userId,
-            rowCount: userRows.length,
-          },
           attributes: {
             messageSearchSweep: {
+              phase: 'user-backfill',
+              userId,
+              rowCount: userRows.length,
               error: exceptionMessage(exception),
             },
           },
@@ -166,11 +164,9 @@ export async function sweepMessageSearchIndex(input: {
     }
   } catch (exception) {
     input.logger.set({
-      messageSearchSweep: {
-        phase: 'sweep-run',
-      },
       attributes: {
         messageSearchSweep: {
+          phase: 'sweep-run',
           error: exceptionMessage(exception),
         },
       },
@@ -218,11 +214,9 @@ async function readSweepCursor(logger: SearchIndexLogger): Promise<number> {
     return Number.isFinite(cursor) && cursor >= 0 ? cursor : 0
   } catch (exception) {
     logger.set({
-      messageSearchSweep: {
-        phase: 'cursor-read',
-      },
       attributes: {
         messageSearchSweep: {
+          phase: 'cursor-read',
           error: exceptionMessage(exception),
         },
       },
@@ -240,11 +234,9 @@ async function writeSweepCursor(
     await useKV().put(SEARCH_INDEX_SWEEP_CURSOR_KEY, String(cursor))
   } catch (exception) {
     logger.set({
-      messageSearchSweep: {
-        phase: 'cursor-write',
-      },
       attributes: {
         messageSearchSweep: {
+          phase: 'cursor-write',
           error: exceptionMessage(exception),
         },
       },

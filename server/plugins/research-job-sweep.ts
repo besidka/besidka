@@ -78,12 +78,14 @@ export async function runResearchJobSweepJob(
   let status = 200
 
   logger.set({
-    researchSweepJob: {
-      job: 'research-job-sweep',
-      cron: input.controller.cron,
-      scheduledTime,
-      batchSize: input.config.researchSweepBatchSize,
-      maxRuntimeMs: input.config.researchSweepMaxRuntimeMs,
+    attributes: {
+      researchSweepJob: {
+        job: 'research-job-sweep',
+        cron: input.controller.cron,
+        scheduledTime,
+        batchSize: input.config.researchSweepBatchSize,
+        maxRuntimeMs: input.config.researchSweepMaxRuntimeMs,
+      },
     },
   })
 
@@ -97,23 +99,23 @@ export async function runResearchJobSweepJob(
     })
 
     logger.set({
-      researchSweepResult: {
-        selectedCount: result.selectedCount,
-        finalizedCount: result.finalizedCount,
-        stillRunningCount: result.stillRunningCount,
-        failedCount: result.failedCount,
-        erroredCount: result.erroredCount,
-        runtimeMs: result.runtimeMs,
+      attributes: {
+        researchSweepResult: {
+          selectedCount: result.selectedCount,
+          finalizedCount: result.finalizedCount,
+          stillRunningCount: result.stillRunningCount,
+          failedCount: result.failedCount,
+          erroredCount: result.erroredCount,
+          runtimeMs: result.runtimeMs,
+        },
       },
     })
   } catch (exception) {
     status = 500
     logger.set({
-      researchSweepError: {
-        phase: 'sweep-run',
-      },
       attributes: {
         researchSweepError: {
+          phase: 'sweep-run',
           message: exceptionMessage(exception),
           stack: getSafeErrorStack(exception),
         },

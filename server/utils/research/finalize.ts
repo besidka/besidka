@@ -97,10 +97,10 @@ export async function finalizeResearchJob(
       research: {
         phase: 'poll',
         jobId: job.id,
-        errorStatus: exceptionDetails.status,
       },
       attributes: {
         research: {
+          errorStatus: exceptionDetails.status,
           error: exceptionDetails.message,
         },
       },
@@ -155,10 +155,10 @@ export async function finalizeResearchJob(
           research: {
             phase: 'timeout-cancel',
             jobId: job.id,
-            errorStatus: exceptionDetails.status,
           },
           attributes: {
             research: {
+              errorStatus: exceptionDetails.status,
               error: exceptionDetails.message,
             },
           },
@@ -208,10 +208,10 @@ export async function finalizeResearchJob(
       research: {
         phase: 'result',
         jobId: job.id,
-        errorStatus: exceptionDetails.status,
       },
       attributes: {
         research: {
+          errorStatus: exceptionDetails.status,
           error: exceptionDetails.message,
         },
       },
@@ -317,8 +317,12 @@ export async function finalizeResearchJob(
     research: {
       phase: 'finalize',
       jobId: job.id,
-      sources: result.sources.length,
-      durationMs,
+    },
+    attributes: {
+      research: {
+        sources: result.sources.length,
+        durationMs,
+      },
     },
   })
 

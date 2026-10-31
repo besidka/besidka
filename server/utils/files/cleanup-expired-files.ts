@@ -70,15 +70,13 @@ export async function cleanupExpiredFiles(
     } catch (exception) {
       failedCount++
       logger?.set({
-        retentionCleanup: {
-          phase: 'r2-delete',
-          fileId: file.id,
-          storageKey: file.storageKey,
-          userId: file.userId,
-          expiresAt,
-        },
         attributes: {
           retentionCleanup: {
+            phase: 'r2-delete',
+            fileId: file.id,
+            storageKey: file.storageKey,
+            userId: file.userId,
+            expiresAt,
             error: exceptionMessage(exception),
           },
         },
@@ -90,15 +88,13 @@ export async function cleanupExpiredFiles(
       await invalidateFileCache(file.storageKey, logger)
     } catch (exception) {
       logger?.set({
-        retentionCleanup: {
-          phase: 'cache-invalidate',
-          fileId: file.id,
-          storageKey: file.storageKey,
-          userId: file.userId,
-          expiresAt,
-        },
         attributes: {
           retentionCleanup: {
+            phase: 'cache-invalidate',
+            fileId: file.id,
+            storageKey: file.storageKey,
+            userId: file.userId,
+            expiresAt,
             error: exceptionMessage(exception),
           },
         },
@@ -115,15 +111,13 @@ export async function cleanupExpiredFiles(
         .run()
     } catch (exception) {
       logger?.set({
-        retentionCleanup: {
-          phase: 'db-delete',
-          fileId: file.id,
-          storageKey: file.storageKey,
-          userId: file.userId,
-          expiresAt,
-        },
         attributes: {
           retentionCleanup: {
+            phase: 'db-delete',
+            fileId: file.id,
+            storageKey: file.storageKey,
+            userId: file.userId,
+            expiresAt,
             error: exceptionMessage(exception),
           },
         },
@@ -141,12 +135,10 @@ export async function cleanupExpiredFiles(
       await invalidateStorageCache(userId, logger)
     } catch (exception) {
       logger?.set({
-        retentionCleanup: {
-          phase: 'storage-cache-invalidate',
-          userId,
-        },
         attributes: {
           retentionCleanup: {
+            phase: 'storage-cache-invalidate',
+            userId,
             error: exceptionMessage(exception),
           },
         },

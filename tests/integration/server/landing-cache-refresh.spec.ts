@@ -74,18 +74,16 @@ describe('landing cache refresh job', () => {
         'landing:landing-stats-image-generation-v1:global.json',
       )
       expect(logger.set).toHaveBeenCalledWith({
-        stats: {
-          updatedAt: '2026-07-15T03:00:00.000Z',
-          files: 245,
-          uploadedFiles: 205,
-          generatedImages: 40,
-        },
-        githubStars: {
-          updatedAt: '2026-07-15T03:00:00.000Z',
-        },
         attributes: {
-          stats: {},
-          githubStars: {},
+          stats: {
+            updatedAt: '2026-07-15T03:00:00.000Z',
+            files: 245,
+            uploadedFiles: 205,
+            generatedImages: 40,
+          },
+          githubStars: {
+            updatedAt: '2026-07-15T03:00:00.000Z',
+          },
         },
       })
       expect(logger.emit).toHaveBeenCalledWith({ status: 200 })

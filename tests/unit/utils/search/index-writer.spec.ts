@@ -140,8 +140,10 @@ describe('indexMessagesForSearch / removeChatsFromSearchIndex', () => {
     expect(result.failedCount).toBe(1)
     expect(result.indexedCount).toBe(0)
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
-      messageSearchIndex: expect.objectContaining({
-        action: 'insert-failed',
+      attributes: expect.objectContaining({
+        messageSearchIndex: expect.objectContaining({
+          action: 'insert-failed',
+        }),
       }),
     }))
   })
