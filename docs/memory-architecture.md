@@ -2079,7 +2079,7 @@ Constants are from `shared/utils/jev-policy.ts` unless a file is named;
 | Role id | Section | What is sent, and when | Thresholds and caps | Timeout | Failure direction |
 |---|---|---|---|---|---|
 | `memoryChecks` | Memory checks | Entry text after never-store removal plus a short source excerpt, before an entry is saved. Add-only: it can block what the gate allowed, never allow what the gate blocked | Block at or above 0.5 (`MEMORY_JEV_SENSITIVE_THRESHOLD`), reject ungrounded below 0.5 (`MEMORY_JEV_GROUNDING_THRESHOLD`); at most 100 questions or 90,000 characters per call; source window 300 characters, source cap 9,000 (all in `server/utils/memory/jev-check.ts`) | 2,500 ms (`MEMORY_JEV_TIMEOUT_MS`) | Fails open to the built-in gate alone |
-| `autoWebSearch` | J1 | Only in the Auto web search mode, each message: the message and the last three turns, never-store removed. A URL, a domain or a recency phrase searches with no Jev call | `w1_live`: search at or above 0.2 (`searchAtOrAbove`); `recentTurns` 3; each turn capped at 4,000 characters (`JEV_SEND_PATH_MAX_TURN_CHARS`) | 800 ms | Searches, as without a key |
+| `autoWebSearch` | J1 | Only in the Auto web search mode, each message: the message and the last three turns, never-store removed. A URL, a domain, a recency phrase, an explicit request to search the web or a game-help phrase or a request for sources searches with no Jev call | Four questions in one call, search if any is at or above 0.2 (`searchAtOrAbove`): `w1_live` (live information), `w2_specific` (a particular game, book, film, series, historical event or article; `JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK`), `w3_practical` (practical real-world guidance; `JEV_AUTO_WEB_SEARCH_PRACTICAL`) and `w4_factual` (the catch-all for specific facts a model could misremember; `JEV_AUTO_WEB_SEARCH_FACTUAL`). All four share one false criterion, `JEV_AUTO_WEB_SEARCH_SELF_CONTAINED`; `recentTurns` 3; each turn capped at 4,000 characters (`JEV_SEND_PATH_MAX_TURN_CHARS`) | 800 ms | Searches, as without a key |
 | `extractionPrefilter` | J2 | Before memory is generated from a chat (opt-in extraction, backfill, project Refresh; never extract-now or import): chat text after never-store removal, in chunks. Nothing worth remembering skips the model extraction. Highest exposure: chat text can hold Art. 9 data | `e1_durable`: skip only when every piece scores below 0.4 (`skipBelow`); chunks of up to 8,000 tokens (`maxChunkTokens`) | 2,500 ms per call | Extracts as usual |
 | `injectionScreening` | J3 | Project knowledge files and notes (chunks of the extracted text) and the title and snippet of each Brave and Exa result fetched through Besidka, never-store removed. A flagged file waits for the user's review; a flagged result is left out of context; nothing is deleted. A chat model's own built-in search cannot be checked | `i2_attack`: flag at or above 0.3 (`flagAtOrAbove`); chunks of 2,000 tokens; 3 concurrent calls; 24 calls per knowledge request; re-screen 10 items per sweep, 12 calls per item, 5 attempts, 14-day queue | 2,500 ms for knowledge, 800 ms for search results | Undecided text is used unscreened: search results are kept with no notice, knowledge is stored `ready` and queued for the hourly re-screen |
 | `rerank` | J4 | Past-chat and project-knowledge search: the query and passages, never-store removed, each cut to about 300 tokens, up to 30 per search | Up to 30 candidates (`maxCandidates`); passages 300 tokens (`maxPassageTokens`); drop below 0.5 (`dropBelow`), and only while at least `limit` candidates remain | 800 ms | Original BM25 order |
@@ -2125,10 +2125,14 @@ throws on a Jev failure:
   latencyMs?, counts?, scores? }, logger)` in `server/utils/jev/logging.ts`:
   numbers and a status only, summed across calls in one request.
 - `shared/utils/jev-policy.ts`: `JEV_AUTO_WEB_SEARCH`,
+  `JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK`, `JEV_AUTO_WEB_SEARCH_PRACTICAL`,
+  `JEV_AUTO_WEB_SEARCH_FACTUAL`, `JEV_AUTO_WEB_SEARCH_SELF_CONTAINED`,
   `JEV_EXTRACTION_PREFILTER`, `JEV_INJECTION_SCREENING`, `JEV_RERANK`,
   `JEV_SHARE_PII_CHECK`, `JEV_PAST_CHAT_RETRIEVAL` (question id, verbatim
   wording and criteria, threshold, size cap, timeout), the phrase lists
-  `JEV_RECENCY_PHRASES` and `JEV_PAST_CHAT_PHRASES` with `matchesJevPhrases`
+  `JEV_RECENCY_PHRASES`, `JEV_EXPLICIT_SEARCH_PHRASES`,
+  `JEV_GAME_GUIDE_PHRASES`, `JEV_SOURCES_PHRASES` and
+  `JEV_PAST_CHAT_PHRASES` with `matchesJevPhrases`
   (whole words, so "now" never matches "know" and "курс" never matches
   "курсор"; only `JEV_PHRASE_STEMS` may continue), and
   `JEV_URL_OR_DOMAIN_PATTERN` (a scheme, `www.` or a web TLD from a short
@@ -2311,14 +2315,48 @@ the provider switch. In order:
    and calls nothing (`counts.reused`). That covers a retry of the same
    message id and a retry of a new chat's first message its first POST
    already decided; the chip is derived from whether those tools search.
-4. Guards: `JEV_URL_OR_DOMAIN_PATTERN` or `matchesJevPhrases(text,
-   JEV_RECENCY_PHRASES)` forces the search with no Jev call (`forced`).
-5. One `decideSendPathJev` call with `state = { message, recent_turns }`
+4. Guards: `JEV_URL_OR_DOMAIN_PATTERN`, or `matchesJevPhrases` over
+   `JEV_RECENCY_PHRASES`, `JEV_EXPLICIT_SEARCH_PHRASES`,
+   `JEV_SOURCES_PHRASES` ("sources", "джерела", "źródła", "источники"; the
+   singular "source" in en is not listed, so "open source" never forces) or
+   `JEV_GAME_GUIDE_PHRASES` (game-specific whole words such as
+   "walkthrough", "в грі", "квест", "w grze", "в игре"), forces the search
+   with no Jev call (`forced`). The explicit-search list exists because on 2026-10-31 an
+   explicit "search the internet" in Ukrainian scored 0.19 and skipped:
+   `w1_live` asks only whether the answer needs live information, so the
+   criteria now also say true when the user asks to search the web, and the
+   list covers the phrasings that must never depend on a score.
+
+   Owner decision, 2026-10-31: a Witcher 3 chat in Auto mode scored 0.08
+   ("Слідами цірі… куди мені далі і що робити") and 0.13 (whether to tell the
+   banker the truth, and what it does to the plot or the reward) on
+   `w1_live` and skipped. Questions about the plot of a game, book, film or
+   series, about history, or about an article (even an old one) always
+   search, and game help always searches without exception. Practical
+   instructions (health, plants, repairs and similar) always search too,
+   because the model cannot know everything by itself. That is why the call
+   carries `w2_specific` and `w3_practical` next to `w1_live`, and why
+   `JEV_GAME_GUIDE_PHRASES` forces game help deterministically. `w3` has no
+   phrase list: it is too broad for one. The same day the owner added the
+   catch-all `w4_factual` and made the skip set one shared false criterion
+   (`JEV_AUTO_WEB_SEARCH_SELF_CONTAINED`): code that involves a specific
+   third-party library, framework, CLI tool, config option, API behavior or
+   exact error message is no longer a skip, and the old "coding" wording is
+   gone from `w1` and `w3`. Expect a clear rise in search volume (and Brave
+   or Exa spend) against the live-only question.
+
+   Principle: Auto skips only self-contained messages. The skip set is the
+   shared false criterion; new categories go into `w4`'s true list, not a
+   new question. The design stops at four questions.
+5. One `decideSendPathJev` call asking four boolean questions
+   (`w1_live`, `w2_specific`, `w3_practical`, `w4_factual`) with
+   `state = { message, recent_turns }`
    (the last `JEV_AUTO_WEB_SEARCH.recentTurns` persisted turns with text),
    each text never-store-redacted and capped at
    `JEV_SEND_PATH_MAX_TURN_CHARS`, on `JEV_SEND_PATH_TIMEOUT_MS`. Search when
-   `p >= JEV_AUTO_WEB_SEARCH.searchAtOrAbove` (`searched`), else drop only the
-   web-search tool (`skipped`). Any failure, refusal or missing answer
+   any `p >= searchAtOrAbove` (0.2 for each; `searched`), else drop only the
+   web-search tool (`skipped`, only when all four answers are numbers below
+   it). Any failure, refusal or a missing answer to any of the four
    searches (`fallback`).
 
 **First message.** The PUT persists the chosen tools and never calls Jev (no
@@ -2355,7 +2393,7 @@ the chip says searched or skipped.
 
 **Logging.** `attributes.autoWebSearchJev` via `recordJevRoleLog`: `status`,
 `calls`, `questions`, `inputTokens`, `latencyMs`, `scores` (the rounded
-probability) and `counts` keyed by outcome plus `reused`. No text.
+probabilities, `w1` to `w4` in that order) and `counts` keyed by outcome plus `reused`. No text.
 
 **J6 seam.** `server/utils/jev/send-path.ts` holds the shared send-path
 pieces: `readSendPathTurns`, `buildSendPathJevState` and

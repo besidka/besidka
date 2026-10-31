@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
   JEV_AUTO_WEB_SEARCH,
+  JEV_AUTO_WEB_SEARCH_FACTUAL,
+  JEV_AUTO_WEB_SEARCH_PRACTICAL,
+  JEV_AUTO_WEB_SEARCH_SELF_CONTAINED,
+  JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK,
   JEV_BACKGROUND_TIMEOUT_MS,
   JEV_EXTRACTION_PREFILTER,
   JEV_INJECTION_SCREENING,
   JEV_MODEL_ID,
   JEV_PAST_CHAT_PHRASES,
   JEV_PAST_CHAT_RETRIEVAL,
+  JEV_EXPLICIT_SEARCH_PHRASES,
+  JEV_GAME_GUIDE_PHRASES,
+  JEV_SOURCES_PHRASES,
   JEV_RECENCY_PHRASES,
   JEV_RERANK,
   JEV_ROLE_IDS,
@@ -40,6 +47,18 @@ describe('jev policy', () => {
       questionId: 'w1_live',
       searchAtOrAbove: 0.2,
       timeoutMs: 800,
+    })
+    expect(JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK).toMatchObject({
+      questionId: 'w2_specific',
+      searchAtOrAbove: 0.2,
+    })
+    expect(JEV_AUTO_WEB_SEARCH_PRACTICAL).toMatchObject({
+      questionId: 'w3_practical',
+      searchAtOrAbove: 0.2,
+    })
+    expect(JEV_AUTO_WEB_SEARCH_FACTUAL).toMatchObject({
+      questionId: 'w4_factual',
+      searchAtOrAbove: 0.2,
     })
     expect(JEV_EXTRACTION_PREFILTER).toMatchObject({
       questionId: 'e1_durable',
@@ -87,6 +106,35 @@ describe('jev policy', () => {
       )
       expect(JEV_AUTO_WEB_SEARCH.question.criteria.true)
         .toContain('who currently holds a role')
+      expect(JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK.question.instructions).toBe(
+        'Does answering `message` need specific details about a particular '
+        + 'game, book, film, series, historical event or article?',
+      )
+      expect(JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK.question.criteria.true)
+        .toContain('Any question asking for help progressing in a video game')
+      expect(JEV_AUTO_WEB_SEARCH_PRACTICAL.question.instructions).toBe(
+        'Does answering `message` need practical, real-world guidance that '
+        + 'should be checked against sources?',
+      )
+      expect(JEV_AUTO_WEB_SEARCH_PRACTICAL.question.criteria.true)
+        .toContain('symptoms, illnesses, medicines, doses or first aid')
+      expect(JEV_AUTO_WEB_SEARCH_FACTUAL.question.instructions).toBe(
+        'Does a good answer to `message` depend on specific facts about the '
+        + 'world outside this conversation that a model could misremember?',
+      )
+      expect(JEV_AUTO_WEB_SEARCH_FACTUAL.question.criteria.true)
+        .toContain('a request for sources, links or citations')
+
+      for (const policy of [
+        JEV_AUTO_WEB_SEARCH,
+        JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK,
+        JEV_AUTO_WEB_SEARCH_PRACTICAL,
+        JEV_AUTO_WEB_SEARCH_FACTUAL,
+      ]) {
+        expect(policy.question.criteria.false)
+          .toBe(JEV_AUTO_WEB_SEARCH_SELF_CONTAINED)
+      }
+
       expect(JEV_EXTRACTION_PREFILTER.question.criteria.false)
         .toContain('hypothetical situations do not count')
       expect(JEV_INJECTION_SCREENING.question).toEqual({
@@ -103,6 +151,9 @@ describe('jev policy', () => {
 
       for (const policy of [
         JEV_AUTO_WEB_SEARCH,
+        JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK,
+        JEV_AUTO_WEB_SEARCH_PRACTICAL,
+        JEV_AUTO_WEB_SEARCH_FACTUAL,
         JEV_EXTRACTION_PREFILTER,
         JEV_INJECTION_SCREENING,
         JEV_SHARE_PII_CHECK,
@@ -113,7 +164,13 @@ describe('jev policy', () => {
     })
 
   it('carries EN, UK, PL and RU phrase lists for the guards', () => {
-    for (const lists of [JEV_RECENCY_PHRASES, JEV_PAST_CHAT_PHRASES]) {
+    for (const lists of [
+      JEV_RECENCY_PHRASES,
+      JEV_EXPLICIT_SEARCH_PHRASES,
+      JEV_GAME_GUIDE_PHRASES,
+      JEV_SOURCES_PHRASES,
+      JEV_PAST_CHAT_PHRASES,
+    ]) {
       expect(Object.keys(lists)).toEqual(['en', 'uk', 'pl', 'ru'])
     }
 
@@ -126,6 +183,18 @@ describe('jev policy', () => {
     expect(matchesJevPhrases('В прошлый раз ты говорил иначе',
       JEV_PAST_CHAT_PHRASES)).toBe(true)
     expect(matchesJevPhrases('Explain recursion', JEV_RECENCY_PHRASES))
+      .toBe(false)
+    expect(matchesJevPhrases('Ану давай шукай інформацію в інтернеті',
+      JEV_EXPLICIT_SEARCH_PHRASES)).toBe(true)
+    expect(matchesJevPhrases('Шукаю роботу', JEV_EXPLICIT_SEARCH_PHRASES))
+      .toBe(false)
+    expect(matchesJevPhrases('Куди йти далі в грі?', JEV_GAME_GUIDE_PHRASES))
+      .toBe(true)
+    expect(matchesJevPhrases('Граю на гітарі', JEV_GAME_GUIDE_PHRASES))
+      .toBe(false)
+    expect(matchesJevPhrases('Дай посилання на джерела', JEV_SOURCES_PHRASES))
+      .toBe(true)
+    expect(matchesJevPhrases('An open source license', JEV_SOURCES_PHRASES))
       .toBe(false)
   })
 
