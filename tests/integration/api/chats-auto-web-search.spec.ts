@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { APICallError, simulateReadableStream } from 'ai'
-import { JEV_AUTO_WEB_SEARCH } from '#shared/utils/jev-policy'
+import {
+  JEV_AUTO_WEB_SEARCH,
+  JEV_AUTO_WEB_SEARCH_FACTUAL,
+  JEV_AUTO_WEB_SEARCH_PRACTICAL,
+  JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK,
+} from '#shared/utils/jev-policy'
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')
@@ -318,7 +323,21 @@ async function runSend(input: SendInput) {
 
 function jevAnswer(probability: number) {
   return {
-    answers: { [QUESTION_ID]: { type: 'boolean', probability } },
+    answers: {
+      [QUESTION_ID]: { type: 'boolean', probability },
+      [JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK.questionId]: {
+        type: 'boolean',
+        probability,
+      },
+      [JEV_AUTO_WEB_SEARCH_PRACTICAL.questionId]: {
+        type: 'boolean',
+        probability,
+      },
+      [JEV_AUTO_WEB_SEARCH_FACTUAL.questionId]: {
+        type: 'boolean',
+        probability,
+      },
+    },
     usage: { inputTokens: 443 },
   }
 }

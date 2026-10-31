@@ -6,7 +6,13 @@ import type {
 } from '#shared/utils/auto-web-search'
 import {
   JEV_AUTO_WEB_SEARCH,
+  JEV_AUTO_WEB_SEARCH_FACTUAL,
+  JEV_AUTO_WEB_SEARCH_PRACTICAL,
+  JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK,
+  JEV_EXPLICIT_SEARCH_PHRASES,
+  JEV_GAME_GUIDE_PHRASES,
   JEV_RECENCY_PHRASES,
+  JEV_SOURCES_PHRASES,
   JEV_URL_OR_DOMAIN_PATTERN,
   matchesJevPhrases,
 } from '#shared/utils/jev-policy'
@@ -26,7 +32,14 @@ import type { SendPathTurn } from '~~/server/utils/jev/send-path'
 type DbClient = ReturnType<typeof useDb>
 
 const AUTO_WEB_SEARCH_ROLE = 'autoWebSearch'
-const QUESTION_COUNT = 1
+const QUESTION_COUNT = 4
+
+const AUTO_WEB_SEARCH_POLICIES = [
+  JEV_AUTO_WEB_SEARCH,
+  JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK,
+  JEV_AUTO_WEB_SEARCH_PRACTICAL,
+  JEV_AUTO_WEB_SEARCH_FACTUAL,
+] as const
 
 export interface AutoWebSearchResolution {
   tools: Tools
@@ -36,6 +49,7 @@ export interface AutoWebSearchResolution {
 export interface AutoWebSearchAnswer {
   outcome: Exclude<AutoWebSearchOutcome, 'forced'>
   score: number | null
+  scores: number[]
 }
 
 export interface ResolveAutoWebSearchInput {
@@ -61,18 +75,24 @@ export function withoutWebSearchTools(tools: Tools): Tools {
 }
 
 /**
- * A URL or domain, or a recency phrase, makes a search certain: such a
- * message is searched without asking Jev.
+ * A URL or domain, a recency phrase, an explicit request to search the web,
+ * a phrase that marks game help, or a request for sources makes a search
+ * certain: such a message is searched without asking Jev.
  */
 export function shouldForceAutoWebSearch(messageText: string): boolean {
   return JEV_URL_OR_DOMAIN_PATTERN.test(messageText)
     || matchesJevPhrases(messageText, JEV_RECENCY_PHRASES)
+    || matchesJevPhrases(messageText, JEV_EXPLICIT_SEARCH_PHRASES)
+    || matchesJevPhrases(messageText, JEV_GAME_GUIDE_PHRASES)
+    || matchesJevPhrases(messageText, JEV_SOURCES_PHRASES)
 }
 
 export function autoWebSearchJevQuestions(): JevQuestions {
-  return {
-    [JEV_AUTO_WEB_SEARCH.questionId]: JEV_AUTO_WEB_SEARCH.question,
-  }
+  return Object.fromEntries(
+    AUTO_WEB_SEARCH_POLICIES.map((policy) => {
+      return [policy.questionId, policy.question]
+    }),
+  )
 }
 
 /**
@@ -84,20 +104,27 @@ export function readAutoWebSearchAnswer(
   result: JevDecideResult,
 ): AutoWebSearchAnswer {
   if (!result.ok) {
-    return { outcome: 'fallback', score: null }
+    return { outcome: 'fallback', score: null, scores: [] }
   }
 
-  const score = result.probabilities[JEV_AUTO_WEB_SEARCH.questionId]
+  const scores: number[] = []
+  let needsSearch = false
 
-  if (typeof score !== 'number') {
-    return { outcome: 'fallback', score: null }
+  for (const policy of AUTO_WEB_SEARCH_POLICIES) {
+    const score = result.probabilities[policy.questionId]
+
+    if (typeof score !== 'number') {
+      return { outcome: 'fallback', score: null, scores: [] }
+    }
+
+    scores.push(score)
+    needsSearch = needsSearch || score >= policy.searchAtOrAbove
   }
 
   return {
-    outcome: score >= JEV_AUTO_WEB_SEARCH.searchAtOrAbove
-      ? 'searched'
-      : 'skipped',
-    score,
+    outcome: needsSearch ? 'searched' : 'skipped',
+    score: Math.max(...scores),
+    scores,
   }
 }
 
@@ -203,7 +230,7 @@ export async function resolveAutoWebSearch(
     inputTokens: result.ok ? result.inputTokens ?? undefined : undefined,
     latencyMs: result.latencyMs,
     counts: { [answer.outcome]: 1 },
-    scores: answer.score === null ? undefined : [answer.score],
+    scores: answer.scores.length === 0 ? undefined : answer.scores,
   }, input.logger)
 
   return {

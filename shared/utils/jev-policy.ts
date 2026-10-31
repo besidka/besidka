@@ -31,6 +31,13 @@ export interface JevBooleanQuestion {
   criteria?: JevBooleanCriteria
 }
 
+export const JEV_AUTO_WEB_SEARCH_SELF_CONTAINED = 'The message is '
+  + 'self-contained: reasoning or opinion about what is already in the '
+  + 'conversation, small talk, creative writing, editing or translating text '
+  + 'the user supplied, math, explaining a general concept or algorithm, or '
+  + 'writing code from scratch with no specific third-party library, tool or '
+  + 'error involved.'
+
 /**
  * Role policies for TypeSafe AI Jev (`JEV_MODEL_ID`). Question wordings and
  * criteria are copied verbatim from the 2026-10-26 synthetic eval; the
@@ -52,12 +59,90 @@ export const JEV_AUTO_WEB_SEARCH = {
     criteria: {
       true: 'A good answer depends on information that changes over time or '
         + 'is recent: news, prices or rates, software versions and releases, '
-        + 'weather, sports results, schedules and opening hours, service '
-        + 'status, who currently holds a role, what products are currently '
-        + 'available, or the content of a specific web page.',
-      false: 'A good answer can be given from stable general knowledge, '
-        + 'reasoning, writing, coding, math, translation, or from what is '
-        + 'already in the conversation.',
+        + 'weather, sports results, schedules and opening hours, upcoming or '
+        + 'past events on a date: releases, concerts, deadlines, exams, '
+        + 'elections, service status, who currently holds a role, what '
+        + 'products are currently available, or the content of a specific '
+        + 'web page; or the user asks to search the web or look something up '
+        + 'online.',
+      false: JEV_AUTO_WEB_SEARCH_SELF_CONTAINED,
+    },
+  },
+} as const satisfies {
+  question: JevBooleanQuestion
+  [key: string]: unknown
+}
+
+export const JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK = {
+  questionId: 'w2_specific',
+  searchAtOrAbove: JEV_AUTO_WEB_SEARCH.searchAtOrAbove,
+  question: {
+    type: 'boolean',
+    instructions: 'Does answering `message` need specific details about a '
+      + 'particular game, book, film, series, historical event or article?',
+    criteria: {
+      true: 'The message, read with the recent turns, asks about the plot, '
+        + 'characters, quests, missions, walkthrough, where to go or what to '
+        + 'do next in a game, choices and their consequences or rewards, '
+        + 'endings, lore, editions or remasters, cast, authors, release '
+        + 'years, episode or chapter lists, awards, editions, events, dates '
+        + 'or people in history, or the content of a specific article or '
+        + 'book, even old ones. Any question asking for help progressing in '
+        + 'a video game is true.',
+      false: JEV_AUTO_WEB_SEARCH_SELF_CONTAINED,
+    },
+  },
+} as const satisfies {
+  question: JevBooleanQuestion
+  [key: string]: unknown
+}
+
+export const JEV_AUTO_WEB_SEARCH_PRACTICAL = {
+  questionId: 'w3_practical',
+  searchAtOrAbove: JEV_AUTO_WEB_SEARCH.searchAtOrAbove,
+  question: {
+    type: 'boolean',
+    instructions: 'Does answering `message` need practical, real-world '
+      + 'guidance that should be checked against sources?',
+    criteria: {
+      true: 'The user asks how to do something in the real world, or what '
+        + 'something means for them. This covers symptoms, illnesses, '
+        + 'medicines, doses or first aid; care of plants, pets or animals; '
+        + 'cooking and food safety; home repair, appliances, cars or DIY; '
+        + 'setting up or using a device, app or service; travel rules, '
+        + 'documents or visas; laws, taxes, bills or official procedures; '
+        + 'fitness or nutrition; education and admissions, parenting and '
+        + 'childcare, money (banking, loans, insurance), safety and '
+        + 'emergencies; and any step-by-step instructions or advice whose '
+        + 'correctness depends on facts.',
+      false: JEV_AUTO_WEB_SEARCH_SELF_CONTAINED,
+    },
+  },
+} as const satisfies {
+  question: JevBooleanQuestion
+  [key: string]: unknown
+}
+
+export const JEV_AUTO_WEB_SEARCH_FACTUAL = {
+  questionId: 'w4_factual',
+  searchAtOrAbove: JEV_AUTO_WEB_SEARCH.searchAtOrAbove,
+  question: {
+    type: 'boolean',
+    instructions: 'Does a good answer to `message` depend on specific facts '
+      + 'about the world outside this conversation that a model could '
+      + 'misremember?',
+    criteria: {
+      true: 'The message involves a specific named person, place, '
+        + 'organization, company, product, device, work or term that is not '
+        + 'common general knowledge; exact numbers, statistics, dates, '
+        + 'measurements or records; quotes and who said them; a scientific '
+        + 'or medical claim, study or paper; reviews, comparisons or which '
+        + 'X to buy or use; a fact-check such as whether something is true '
+        + 'or really happened; a specific third-party library, framework, '
+        + 'CLI tool, config option, API behavior or exact error message; '
+        + 'local or regional information about any named place; or a '
+        + 'request for sources, links or citations.',
+      false: JEV_AUTO_WEB_SEARCH_SELF_CONTAINED,
     },
   },
 } as const satisfies {
@@ -201,6 +286,92 @@ export const JEV_RECENCY_PHRASES = {
   uk: ['сьогодні', 'зараз', 'останні', 'курс', 'погода'],
   pl: ['dziś', 'teraz', 'najnowsz', 'kurs', 'pogoda', 'wynik'],
   ru: ['сегодня', 'сейчас', 'последн', 'курс'],
+} as const
+
+export const JEV_EXPLICIT_SEARCH_PHRASES = {
+  en: [
+    'search the web',
+    'search online',
+    'search the internet',
+    'web search',
+    'google it',
+    'look it up',
+    'look online',
+    'browse the web',
+  ],
+  uk: [
+    'пошукай',
+    'пошукайте',
+    'пошукати',
+    'шукай',
+    'шукайте',
+    'в інтернеті',
+    'в мережі',
+    'погугли',
+    'загугли',
+    'гугли',
+  ],
+  pl: [
+    'wyszukaj',
+    'poszukaj',
+    'w internecie',
+    'w sieci',
+    'wygoogluj',
+    'wygugluj',
+  ],
+  ru: [
+    'поищи',
+    'поищите',
+    'поискать',
+    'ищи',
+    'в интернете',
+    'в сети',
+    'погугли',
+    'загугли',
+  ],
+} as const
+
+export const JEV_GAME_GUIDE_PHRASES = {
+  en: [
+    'walkthrough',
+    'playthrough',
+    'side quest',
+    'main quest',
+    'in the game',
+    'in game',
+  ],
+  uk: [
+    'проходження',
+    'квест',
+    'квесту',
+    'квести',
+    'в грі',
+    'по грі',
+    'у грі',
+    'граю в',
+  ],
+  pl: [
+    'przejście gry',
+    'poradnik do gry',
+    'w grze',
+    'misja poboczna',
+    'gram w',
+  ],
+  ru: [
+    'прохождение',
+    'квест',
+    'квеста',
+    'в игре',
+    'по игре',
+    'играю в',
+  ],
+} as const
+
+export const JEV_SOURCES_PHRASES = {
+  en: ['sources', 'cite', 'citation', 'citations', 'with links'],
+  uk: ['джерела', 'джерело', 'посилання'],
+  pl: ['źródła', 'źródło', 'linki'],
+  ru: ['источники', 'источник', 'ссылки'],
 } as const
 
 export const JEV_PAST_CHAT_PHRASES = {

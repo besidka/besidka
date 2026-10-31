@@ -3,10 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Tools } from '#shared/types/chats.d'
 import {
   JEV_AUTO_WEB_SEARCH,
+  JEV_AUTO_WEB_SEARCH_FACTUAL,
+  JEV_AUTO_WEB_SEARCH_PRACTICAL,
+  JEV_AUTO_WEB_SEARCH_SELF_CONTAINED,
+  JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK,
   JEV_SEND_PATH_MAX_TURN_CHARS,
   JEV_SEND_PATH_TIMEOUT_MS,
 } from '#shared/utils/jev-policy'
 import {
+  autoWebSearchJevQuestions,
   collectAutoWebSearchCandidateTools,
   hasFirstMessageAutoWebSearchDecision,
   readAutoWebSearchAnswer,
@@ -40,6 +45,9 @@ vi.mock('~~/server/utils/encryption', () => ({
 }))
 
 const QUESTION_ID = JEV_AUTO_WEB_SEARCH.questionId
+const SPECIFIC_QUESTION_ID = JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK.questionId
+const PRACTICAL_QUESTION_ID = JEV_AUTO_WEB_SEARCH_PRACTICAL.questionId
+const FACTUAL_QUESTION_ID = JEV_AUTO_WEB_SEARCH_FACTUAL.questionId
 const BRAVE: Tools = ['web_search_brave']
 
 function createDb(input: {
@@ -80,7 +88,12 @@ function createLogger() {
 
 function answer(probability: number) {
   return {
-    answers: { [QUESTION_ID]: { type: 'boolean', probability } },
+    answers: {
+      [QUESTION_ID]: { type: 'boolean', probability },
+      [SPECIFIC_QUESTION_ID]: { type: 'boolean', probability },
+      [PRACTICAL_QUESTION_ID]: { type: 'boolean', probability },
+      [FACTUAL_QUESTION_ID]: { type: 'boolean', probability },
+    },
     usage: { inputTokens: 443 },
   }
 }
@@ -125,6 +138,18 @@ describe('shouldForceAutoWebSearch', () => {
     'Latest Nuxt release notes',
     'Який курс долара сьогодні?',
     'Jaki był wynik meczu?',
+    'Ану давай шукай інформацію в інтернеті ',
+    'Ще раз пошукай',
+    'Can you search the web for this?',
+    'Poszukaj w internecie',
+    'Поищи в интернете',
+    'Just google it',
+    'Чорне це курсор в грі на пс5',
+    'Яке проходження цього квесту?',
+    'Where is the walkthrough for the Bloody Baron?',
+    'Co zrobić w grze dalej?',
+    'Дай посилання на джерела',
+    'Answer with sources',
   ])('forces a search for %s', (text) => {
     expect(shouldForceAutoWebSearch(text)).toBe(true)
   })
@@ -133,44 +158,113 @@ describe('shouldForceAutoWebSearch', () => {
     'Refactor index.ts and app.vue please',
     'I know the cursor moves in курсор mode',
     'Write a poem about the sea',
+    'Граю на гітарі, порадь акорди',
+    'Questions about gaming laptops',
+    'Open source license question',
+    'Шукаю роботу програміста, допоможи з резюме',
+    'Write a search function in TypeScript',
+    'I lost my keys, help me look for ideas',
   ])('does not force a search for %s', (text) => {
     expect(shouldForceAutoWebSearch(text)).toBe(false)
   })
 })
 
-describe('readAutoWebSearchAnswer', () => {
-  it('searches at or above the policy threshold and skips below it', () => {
-    const threshold = JEV_AUTO_WEB_SEARCH.searchAtOrAbove
+function jevResult(probabilities: Record<string, number>) {
+  return {
+    ok: true as const,
+    status: 'ok' as const,
+    probabilities,
+    inputTokens: 1,
+    latencyMs: 1,
+  }
+}
 
-    expect(readAutoWebSearchAnswer({
-      ok: true,
-      status: 'ok',
-      probabilities: { [QUESTION_ID]: threshold },
-      inputTokens: 1,
-      latencyMs: 1,
-    })).toEqual({ outcome: 'searched', score: threshold })
-    expect(readAutoWebSearchAnswer({
-      ok: true,
-      status: 'ok',
-      probabilities: { [QUESTION_ID]: threshold - 0.01 },
-      inputTokens: 1,
-      latencyMs: 1,
-    }).outcome).toBe('skipped')
+describe('autoWebSearchJevQuestions', () => {
+  it('asks the four questions in one call', () => {
+    expect(autoWebSearchJevQuestions()).toEqual({
+      [QUESTION_ID]: JEV_AUTO_WEB_SEARCH.question,
+      [SPECIFIC_QUESTION_ID]: JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK.question,
+      [PRACTICAL_QUESTION_ID]: JEV_AUTO_WEB_SEARCH_PRACTICAL.question,
+      [FACTUAL_QUESTION_ID]: JEV_AUTO_WEB_SEARCH_FACTUAL.question,
+    })
+    expect(Object.keys(autoWebSearchJevQuestions())).toEqual([
+      'w1_live',
+      'w2_specific',
+      'w3_practical',
+      'w4_factual',
+    ])
+  })
+
+  it('gives every question the same shared false criterion', () => {
+    for (const question of Object.values(autoWebSearchJevQuestions())) {
+      expect((question as any).criteria.false)
+        .toBe(JEV_AUTO_WEB_SEARCH_SELF_CONTAINED)
+    }
+  })
+})
+
+describe('readAutoWebSearchAnswer', () => {
+  const threshold = JEV_AUTO_WEB_SEARCH.searchAtOrAbove
+  const questionIds = [
+    QUESTION_ID,
+    SPECIFIC_QUESTION_ID,
+    PRACTICAL_QUESTION_ID,
+    FACTUAL_QUESTION_ID,
+  ]
+
+  function probabilitiesWith(scores: number[]) {
+    return Object.fromEntries(questionIds.map((id, index) => {
+      return [id, scores[index]]
+    }))
+  }
+
+  it.each([
+    ['live', [threshold, 0.01, 0.02, 0.03]],
+    ['specific-work', [0.08, 0.9, 0.02, 0.03]],
+    ['practical', [0.05, 0.06, 0.7, 0.03]],
+    ['factual', [0.05, 0.06, 0.07, 0.6]],
+  ])('searches when only the %s question is at the threshold',
+    (_label, scores) => {
+      expect(readAutoWebSearchAnswer(jevResult(probabilitiesWith(scores))))
+        .toEqual({
+          outcome: 'searched',
+          score: Math.max(...scores),
+          scores,
+        })
+    })
+
+  it('skips only when all four questions are below the threshold', () => {
+    const scores = [
+      threshold - 0.01,
+      threshold - 0.02,
+      threshold - 0.03,
+      threshold - 0.04,
+    ]
+
+    expect(readAutoWebSearchAnswer(jevResult(probabilitiesWith(scores))))
+      .toEqual({ outcome: 'skipped', score: threshold - 0.01, scores })
   })
 
   it('falls back to a search on a failure or a missing answer', () => {
+    const fallback = { outcome: 'fallback', score: null, scores: [] }
+
     expect(readAutoWebSearchAnswer({
       ok: false,
       status: 'timeout',
       latencyMs: 800,
-    })).toEqual({ outcome: 'fallback', score: null })
-    expect(readAutoWebSearchAnswer({
-      ok: true,
-      status: 'ok',
-      probabilities: { other: 0.9 },
-      inputTokens: 1,
-      latencyMs: 1,
-    })).toEqual({ outcome: 'fallback', score: null })
+    })).toEqual(fallback)
+    expect(readAutoWebSearchAnswer(jevResult({ other: 0.9 })))
+      .toEqual(fallback)
+
+    for (const missing of questionIds) {
+      const probabilities = Object.fromEntries(
+        Object.entries(probabilitiesWith([0.01, 0.01, 0.01, 0.01]))
+          .filter(([id]) => id !== missing),
+      )
+
+      expect(readAutoWebSearchAnswer(jevResult(probabilities)))
+        .toEqual(fallback)
+    }
   })
 })
 
@@ -266,10 +360,10 @@ describe('resolveAutoWebSearch', () => {
         model: 'jev-1.14.0',
         status: 'ok',
         calls: 1,
-        questions: 1,
+        questions: 4,
         inputTokens: 443,
         counts: { skipped: 1 },
-        scores: [0.05],
+        scores: [0.05, 0.05, 0.05, 0.05],
       })
     })
 
@@ -297,7 +391,7 @@ describe('resolveAutoWebSearch', () => {
     })
   })
 
-  it('sends one question with the message and recent turns, redacted, on '
+  it('sends all four questions with the message and recent turns, redacted, on '
     + 'the send-path timeout', async () => {
     await resolveAutoWebSearch(baseInput({
       messageText: 'My card is 4111 1111 1111 1111, is this poem good?',
@@ -311,8 +405,19 @@ describe('resolveAutoWebSearch', () => {
 
     const [options] = mocks.decide.mock.calls[0] as [Record<string, any>]
 
-    expect(Object.keys(options.questions)).toEqual([QUESTION_ID])
+    expect(Object.keys(options.questions)).toEqual([
+      QUESTION_ID,
+      SPECIFIC_QUESTION_ID,
+      PRACTICAL_QUESTION_ID,
+      FACTUAL_QUESTION_ID,
+    ])
     expect(options.questions[QUESTION_ID]).toEqual(JEV_AUTO_WEB_SEARCH.question)
+    expect(options.questions[SPECIFIC_QUESTION_ID])
+      .toEqual(JEV_AUTO_WEB_SEARCH_SPECIFIC_WORK.question)
+    expect(options.questions[PRACTICAL_QUESTION_ID])
+      .toEqual(JEV_AUTO_WEB_SEARCH_PRACTICAL.question)
+    expect(options.questions[FACTUAL_QUESTION_ID])
+      .toEqual(JEV_AUTO_WEB_SEARCH_FACTUAL.question)
     expect(options.state.message).not.toContain('4111')
     expect(options.state.recent_turns).toEqual([
       { role: 'assistant', text: 'turn two' },
