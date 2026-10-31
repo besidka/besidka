@@ -436,24 +436,30 @@ export function useChatScrollSpacer(
       clearTimeout(inputHeightTimer.value)
     }
 
-    inputHeightTimer.value = setTimeout(() => {
-      const lastMessage = chatSdk.messages.at(-1)
-
-      if (
-        !userMessageData.value
-        && lastMessage?.role !== 'user'
-      ) {
-        spacerHeight.value = inputHeight.value
-
-        scrollContainerRef.value?.scrollTo({
-          top: scrollContainerRef.value?.scrollHeight ?? 0,
-          behavior: 'instant',
-        })
-
-        rebroadcastSpacerChange(spacerHeight.value)
-      }
-    }, DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS)
+    inputHeightTimer.value = setTimeout(
+      fitSpacerToInputHeight,
+      DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS,
+    )
   })
+
+  async function fitSpacerToInputHeight() {
+    const lastMessage = chatSdk.messages.at(-1)
+
+    if (userMessageData.value || lastMessage?.role === 'user') {
+      return
+    }
+
+    spacerHeight.value = inputHeight.value
+
+    await nextTick()
+
+    scrollContainerRef.value?.scrollTo({
+      top: scrollContainerRef.value?.scrollHeight ?? 0,
+      behavior: 'instant',
+    })
+
+    rebroadcastSpacerChange(spacerHeight.value)
+  }
 
   nuxtApp.hook('chat:regenerate', pushUserMessageToTop)
 
