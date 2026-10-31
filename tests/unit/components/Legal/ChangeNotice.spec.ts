@@ -130,6 +130,21 @@ describe('Legal change notice', () => {
     expect(dismiss.attributes('aria-label')).toBe('Dismiss notice')
   })
 
+  it('positions the banner above the page background gradient', async () => {
+    const wrapper = await mountNotice()
+
+    expect(wrapper.find(BANNER).classes()).toContain('relative')
+  })
+
+  it('shows the dismiss tooltip on the left', async () => {
+    const wrapper = await mountNotice()
+    const tooltip = wrapper.find('.tooltip')
+
+    expect(tooltip.exists()).toBe(true)
+    expect(tooltip.classes()).toContain('tooltip-left')
+    expect(tooltip.classes()).not.toContain('tooltip-bottom')
+  })
+
   it('hides and remembers the dismissal per notice id', async () => {
     const wrapper = await mountNotice()
 

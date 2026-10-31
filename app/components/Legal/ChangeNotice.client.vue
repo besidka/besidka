@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="notice"
-    class="shrink-0 px-3 pb-1 sm:px-4"
+    class="relative shrink-0 px-3 pb-1 sm:px-4"
     :class="isChatPage ? 'pt-[calc(var(--sat)_+_0.5rem)]' : 'pt-2'"
     data-testid="legal-change-notice"
   >
@@ -30,6 +30,7 @@
         ghost
         size="xs"
         text="Dismiss notice"
+        tooltip-position="left"
         icon-only
         icon-name="lucide:x"
         aria-label="Dismiss notice"
