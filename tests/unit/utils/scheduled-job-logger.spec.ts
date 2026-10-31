@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { WideEvent } from 'evlog'
 import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
@@ -59,5 +61,45 @@ describe('emitScheduledJobEvent', () => {
     expect(consoleError).toHaveBeenCalled()
 
     consoleError.mockRestore()
+  })
+})
+
+const pluginsDirectory = resolve(import.meta.dirname, '../../../server/plugins')
+
+const scheduledPlugins = readdirSync(pluginsDirectory)
+  .filter(fileName => fileName.endsWith('.ts'))
+  .map((fileName) => {
+    return {
+      fileName,
+      source: readFileSync(resolve(pluginsDirectory, fileName), 'utf-8'),
+    }
+  })
+  .filter(({ source }) => source.includes('\'cloudflare:scheduled\''))
+
+describe('scheduled plugins', () => {
+  it('finds at least ten scheduled plugins', () => {
+    expect(scheduledPlugins.length).toBeGreaterThanOrEqual(10)
+  })
+
+  it('ships every wide event through emitScheduledJobEvent', () => {
+    const offenders = scheduledPlugins
+      .filter(({ source }) => !source.includes('emitScheduledJobEvent('))
+      .map(({ fileName }) => fileName)
+
+    expect(
+      offenders,
+      `Missing emitScheduledJobEvent( in: ${offenders.join(', ')}`,
+    ).toEqual([])
+  })
+
+  it('never calls a bare logger emit', () => {
+    const offenders = scheduledPlugins
+      .filter(({ source }) => source.includes('.emit('))
+      .map(({ fileName }) => fileName)
+
+    expect(
+      offenders,
+      `Direct .emit( call in: ${offenders.join(', ')}`,
+    ).toEqual([])
   })
 })
