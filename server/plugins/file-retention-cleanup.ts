@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
@@ -23,6 +25,7 @@ interface RunFileRetentionCleanupJobInput {
   controller: ScheduledControllerLike
   config: RetentionCleanupConfig
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runCleanup?: typeof cleanupExpiredFiles
 }
 
@@ -118,7 +121,7 @@ export async function runFileRetentionCleanupJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }
 
 async function runCleanupBatches(input: {

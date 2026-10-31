@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { and, isNull, lt, or } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -16,6 +18,7 @@ interface ScheduledControllerLike {
 interface RunPushSubscriptionSweepJobInput {
   controller: ScheduledControllerLike
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   db?: ReturnType<typeof useDb>
 }
 
@@ -89,5 +92,5 @@ export async function runPushSubscriptionSweepJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }

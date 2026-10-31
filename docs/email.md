@@ -290,6 +290,15 @@ sweep stops with `email-noop` on the first send and marks nobody as told.
 `consecutive-failures`, `email-noop`, `error`. The last three set the event
 status to 500.
 
+Cron wide events reach Axiom through `emitScheduledJobEvent`
+(`server/utils/scheduled-job-logger.ts`), which every `cloudflare:scheduled`
+plugin ends with. A standalone `createRequestLogger().emit()` only prints to the
+Worker console under the Nitro adapter, so before this fix none of the cron
+events (this sweep included) were in `besidka-prod`. List them with
+`['besidka-prod'] | where method == 'CRON'`, or this job with
+`path == '/internal/jobs/legal-notice-sweep'`. A new cron plugin must finish
+through the same helper.
+
 **Operating it.** Progress per notice:
 
 ```sql

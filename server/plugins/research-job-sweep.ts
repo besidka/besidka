@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import type { VapidKeys } from '~~/server/utils/push'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { sweepResearchJobs } from '~~/server/utils/research/sweep'
@@ -23,6 +25,7 @@ interface RunResearchJobSweepJobInput {
   vapid: VapidKeys
   waitUntil?: (promise: Promise<unknown>) => void
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runSweep?: typeof sweepResearchJobs
 }
 
@@ -118,7 +121,7 @@ export async function runResearchJobSweepJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }
 
 function getSafeErrorStack(exception: unknown): string | undefined {

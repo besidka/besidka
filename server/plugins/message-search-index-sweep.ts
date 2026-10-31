@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { sweepMessageSearchIndex } from '~~/server/utils/search/sweeper'
 
@@ -19,6 +21,7 @@ interface RunMessageSearchSweepJobInput {
   controller: ScheduledControllerLike
   config: MessageSearchSweepConfig
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runSweep?: typeof sweepMessageSearchIndex
 }
 
@@ -113,7 +116,7 @@ export async function runMessageSearchSweepJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }
 
 function getSafeErrorStack(exception: unknown): string | undefined {

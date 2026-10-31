@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { sweepProjectKnowledge } from '~~/server/utils/knowledge/sweep'
 
@@ -19,6 +21,7 @@ interface RunProjectKnowledgeSweepJobInput {
   controller: ScheduledControllerLike
   config: ProjectKnowledgeSweepConfig
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runSweep?: typeof sweepProjectKnowledge
 }
 
@@ -118,7 +121,7 @@ export async function runProjectKnowledgeSweepJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }
 
 function getSafeErrorStack(exception: unknown): string | undefined {
