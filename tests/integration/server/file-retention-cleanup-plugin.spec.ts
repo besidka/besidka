@@ -54,19 +54,23 @@ describe('file-retention cleanup plugin', () => {
       }),
     })
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-      retentionCleanupJob: expect.objectContaining({
-        job: 'file-retention-cleanup',
-        cron: '* * * * *',
+      attributes: expect.objectContaining({
+        retentionCleanupJob: expect.objectContaining({
+          job: 'file-retention-cleanup',
+          cron: '* * * * *',
+        }),
       }),
     }))
     expect(loggerSet).toHaveBeenCalledWith({
-      retentionCleanupResult: {
-        selectedCount: 3,
-        deletedCount: 2,
-        failedCount: 1,
-        hasMore: false,
-        runtimeMs: expect.any(Number),
-        batchCount: 1,
+      attributes: {
+        retentionCleanupResult: {
+          selectedCount: 3,
+          deletedCount: 2,
+          failedCount: 1,
+          hasMore: false,
+          runtimeMs: expect.any(Number),
+          batchCount: 1,
+        },
       },
     })
     expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
@@ -99,11 +103,9 @@ describe('file-retention cleanup plugin', () => {
     })
 
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-      retentionCleanupError: expect.objectContaining({
-        phase: 'cleanup-run',
-      }),
       attributes: expect.objectContaining({
         retentionCleanupError: expect.objectContaining({
+          phase: 'cleanup-run',
           message: 'cleanup failed',
         }),
       }),
@@ -160,13 +162,15 @@ describe('file-retention cleanup plugin', () => {
 
     expect(runCleanup).toHaveBeenCalledTimes(3)
     expect(logger.set).toHaveBeenCalledWith({
-      retentionCleanupResult: {
-        selectedCount: 240,
-        deletedCount: 239,
-        failedCount: 1,
-        hasMore: false,
-        runtimeMs: expect.any(Number),
-        batchCount: 3,
+      attributes: {
+        retentionCleanupResult: {
+          selectedCount: 240,
+          deletedCount: 239,
+          failedCount: 1,
+          hasMore: false,
+          runtimeMs: expect.any(Number),
+          batchCount: 3,
+        },
       },
     })
   })

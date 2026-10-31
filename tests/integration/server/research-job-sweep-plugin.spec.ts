@@ -82,19 +82,23 @@ describe('research job sweep plugin', () => {
       }),
     })
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-      researchSweepJob: expect.objectContaining({
-        job: 'research-job-sweep',
-        cron: '*/5 * * * *',
+      attributes: expect.objectContaining({
+        researchSweepJob: expect.objectContaining({
+          job: 'research-job-sweep',
+          cron: '*/5 * * * *',
+        }),
       }),
     }))
     expect(loggerSet).toHaveBeenCalledWith({
-      researchSweepResult: {
-        selectedCount: 3,
-        finalizedCount: 1,
-        stillRunningCount: 1,
-        failedCount: 1,
-        erroredCount: 0,
-        runtimeMs: 120,
+      attributes: {
+        researchSweepResult: {
+          selectedCount: 3,
+          finalizedCount: 1,
+          stillRunningCount: 1,
+          failedCount: 1,
+          erroredCount: 0,
+          runtimeMs: 120,
+        },
       },
     })
     expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
@@ -125,11 +129,9 @@ describe('research job sweep plugin', () => {
     })
 
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-      researchSweepError: expect.objectContaining({
-        phase: 'sweep-run',
-      }),
       attributes: expect.objectContaining({
         researchSweepError: expect.objectContaining({
+          phase: 'sweep-run',
           message: 'sweep failed',
         }),
       }),

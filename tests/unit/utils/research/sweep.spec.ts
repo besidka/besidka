@@ -85,11 +85,9 @@ describe('sweepResearchJobs', () => {
     expect(result.erroredCount).toBe(1)
     expect(result.finalizedCount).toBe(1)
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
-      researchSweep: expect.objectContaining({
-        jobId: 'job-1',
-      }),
       attributes: expect.objectContaining({
         researchSweep: expect.objectContaining({
+          jobId: 'job-1',
           error: 'boom',
         }),
       }),

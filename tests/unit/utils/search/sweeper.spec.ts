@@ -262,8 +262,10 @@ describe('sweepMessageSearchIndex', () => {
     }))
 
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
-      messageSearchSweep: expect.objectContaining({
-        phase: 'sweep-run',
+      attributes: expect.objectContaining({
+        messageSearchSweep: expect.objectContaining({
+          phase: 'sweep-run',
+        }),
       }),
     }))
   })
@@ -372,9 +374,11 @@ describe('sweepMessageSearchIndex', () => {
     expect(result.backfilledCount).toBe(1)
     expect(result.garbageCollectedCount).toBe(1)
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
-      messageSearchSweep: expect.objectContaining({
-        phase: 'user-backfill',
-        userId: 7,
+      attributes: expect.objectContaining({
+        messageSearchSweep: expect.objectContaining({
+          phase: 'user-backfill',
+          userId: 7,
+        }),
       }),
     }))
 

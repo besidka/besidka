@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import type { VapidKeys } from '~~/server/utils/push'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { sweepResearchJobs } from '~~/server/utils/research/sweep'
@@ -23,6 +25,7 @@ interface RunResearchJobSweepJobInput {
   vapid: VapidKeys
   waitUntil?: (promise: Promise<unknown>) => void
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runSweep?: typeof sweepResearchJobs
 }
 
@@ -75,12 +78,14 @@ export async function runResearchJobSweepJob(
   let status = 200
 
   logger.set({
-    researchSweepJob: {
-      job: 'research-job-sweep',
-      cron: input.controller.cron,
-      scheduledTime,
-      batchSize: input.config.researchSweepBatchSize,
-      maxRuntimeMs: input.config.researchSweepMaxRuntimeMs,
+    attributes: {
+      researchSweepJob: {
+        job: 'research-job-sweep',
+        cron: input.controller.cron,
+        scheduledTime,
+        batchSize: input.config.researchSweepBatchSize,
+        maxRuntimeMs: input.config.researchSweepMaxRuntimeMs,
+      },
     },
   })
 
@@ -94,23 +99,23 @@ export async function runResearchJobSweepJob(
     })
 
     logger.set({
-      researchSweepResult: {
-        selectedCount: result.selectedCount,
-        finalizedCount: result.finalizedCount,
-        stillRunningCount: result.stillRunningCount,
-        failedCount: result.failedCount,
-        erroredCount: result.erroredCount,
-        runtimeMs: result.runtimeMs,
+      attributes: {
+        researchSweepResult: {
+          selectedCount: result.selectedCount,
+          finalizedCount: result.finalizedCount,
+          stillRunningCount: result.stillRunningCount,
+          failedCount: result.failedCount,
+          erroredCount: result.erroredCount,
+          runtimeMs: result.runtimeMs,
+        },
       },
     })
   } catch (exception) {
     status = 500
     logger.set({
-      researchSweepError: {
-        phase: 'sweep-run',
-      },
       attributes: {
         researchSweepError: {
+          phase: 'sweep-run',
           message: exceptionMessage(exception),
           stack: getSafeErrorStack(exception),
         },
@@ -118,7 +123,7 @@ export async function runResearchJobSweepJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }
 
 function getSafeErrorStack(exception: unknown): string | undefined {

@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 import { sweepMemoryExtraction } from '~~/server/utils/memory/extract-sweep'
 
@@ -21,6 +23,7 @@ interface RunMemoryExtractionSweepJobInput {
   config: MemoryExtractionSweepConfig
   waitUntil?: (promise: Promise<unknown>) => void
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runSweep?: typeof sweepMemoryExtraction
 }
 
@@ -120,5 +123,5 @@ export async function runMemoryExtractionSweepJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }

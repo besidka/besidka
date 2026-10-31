@@ -4,7 +4,8 @@ import {
   LANDING_STATS_CACHE_NAME,
 } from '~~/server/utils/landing/stats'
 import { cachedGithubStars } from '~~/server/utils/landing/github-stars'
-import { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const REFRESH_UTC_HOUR = 3
@@ -54,10 +55,12 @@ export async function runLandingCacheRefreshJob(
   const scheduledTime = new Date(input.controller.scheduledTime).toISOString()
 
   logger.set({
-    landingCacheRefreshJob: {
-      job: 'landing-cache-refresh',
-      cron: input.controller.cron,
-      scheduledTime,
+    attributes: {
+      landingCacheRefreshJob: {
+        job: 'landing-cache-refresh',
+        cron: input.controller.cron,
+        scheduledTime,
+      },
     },
   })
 
@@ -81,23 +84,17 @@ export async function runLandingCacheRefreshJob(
   ])
 
   logger.set({
-    stats: statsResult.status === 'fulfilled'
-      ? {
-        updatedAt: statsResult.value.updatedAt,
-        files: statsResult.value.files,
-        uploadedFiles: statsResult.value.uploadedFiles,
-        generatedImages: statsResult.value.generatedImages,
-      }
-      : {},
-    githubStars: githubStarsResult.status === 'fulfilled'
-      ? { updatedAt: githubStarsResult.value.updatedAt }
-      : {},
     attributes: {
       stats: statsResult.status === 'fulfilled'
-        ? {}
+        ? {
+          updatedAt: statsResult.value.updatedAt,
+          files: statsResult.value.files,
+          uploadedFiles: statsResult.value.uploadedFiles,
+          generatedImages: statsResult.value.generatedImages,
+        }
         : { error: exceptionMessage(statsResult.reason) },
       githubStars: githubStarsResult.status === 'fulfilled'
-        ? {}
+        ? { updatedAt: githubStarsResult.value.updatedAt }
         : { error: exceptionMessage(githubStarsResult.reason) },
     },
   })
@@ -107,11 +104,5 @@ export async function runLandingCacheRefreshJob(
     ? 200
     : 500
 
-  const wideEvent = logger.emit({ status })
-
-  if (wideEvent) {
-    const shipWideEvent = input.shipWideEvent || shipWideEventToAxiom
-
-    await shipWideEvent(wideEvent)
-  }
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }

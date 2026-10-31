@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { sweepLegalNotices } from '~~/server/utils/legal/notice-sweep'
 
@@ -27,6 +29,7 @@ interface RunLegalNoticeSweepJobInput {
   controller: ScheduledControllerLike
   config: LegalNoticeSweepConfig
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runSweep?: typeof sweepLegalNotices
   isDevelopment?: boolean
 }
@@ -130,5 +133,5 @@ export async function runLegalNoticeSweepJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }

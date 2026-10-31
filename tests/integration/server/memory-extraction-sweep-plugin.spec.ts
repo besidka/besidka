@@ -109,6 +109,26 @@ describe('memory extraction sweep plugin', () => {
     expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
   })
 
+  it('ships the emitted wide event to Axiom', async () => {
+    const wideEvent = { method: 'CRON', status: 200 }
+    const { loggerEmit, createLogger } = createLoggerMock()
+    const shipWideEvent = vi.fn().mockResolvedValue([])
+    const runMemoryExtractionSweepJob = await loadJob()
+
+    loggerEmit.mockReturnValue(wideEvent)
+
+    await runMemoryExtractionSweepJob({
+      controller,
+      config,
+      createLogger,
+      runSweep: vi.fn().mockResolvedValue(sweepResult),
+      shipWideEvent,
+    })
+
+    expect(shipWideEvent).toHaveBeenCalledTimes(1)
+    expect(shipWideEvent).toHaveBeenCalledWith(wideEvent)
+  })
+
   it('emits a failure event with status 500 when the sweep throws', async () => {
     const { loggerSet, loggerEmit, createLogger } = createLoggerMock()
     const runSweep = vi.fn().mockRejectedValue(new Error('sweep failed'))

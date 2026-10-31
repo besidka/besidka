@@ -2825,6 +2825,22 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/server/middleware/studio-guard.spec.ts'],
     },
     {
+      pattern: /^server\/utils\/scheduled-job-logger\.ts$/,
+      tests: [
+        'tests/unit/utils/scheduled-job-logger.spec.ts',
+        'tests/integration/server/landing-cache-refresh.spec.ts',
+        'tests/integration/server/file-retention-cleanup-plugin.spec.ts',
+        'tests/integration/server/legal-notice-sweep-plugin.spec.ts',
+        'tests/integration/server/memory-backfill-sweep-plugin.spec.ts',
+        'tests/integration/server/memory-extraction-sweep-plugin.spec.ts',
+        'tests/integration/server/message-search-sweep-plugin.spec.ts',
+        'tests/integration/server/oauth-grant-sweep-plugin.spec.ts',
+        'tests/integration/server/project-knowledge-sweep-plugin.spec.ts',
+        'tests/integration/server/push-subscription-sweep-plugin.spec.ts',
+        'tests/integration/server/research-job-sweep-plugin.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/plugins\/landing-cache-control\.ts$/,
       tests: ['tests/unit/server/plugins/landing-cache-control.spec.ts'],
     },

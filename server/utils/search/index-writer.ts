@@ -95,14 +95,12 @@ export async function indexMessagesForSearch(input: {
       } catch (exception) {
         failedCount += chunk.length
         input.logger?.set({
-          messageSearchIndex: {
-            stage: input.stage || 'index-messages',
-            action: 'insert-failed',
-            chunkSize: chunk.length,
-            userId: input.userId,
-          },
           attributes: {
             messageSearchIndex: {
+              stage: input.stage || 'index-messages',
+              action: 'insert-failed',
+              chunkSize: chunk.length,
+              userId: input.userId,
               error: exceptionMessage(exception),
             },
           },
@@ -112,13 +110,11 @@ export async function indexMessagesForSearch(input: {
   } catch (exception) {
     failedCount += input.messages.length - indexedCount - failedCount
     input.logger?.set({
-      messageSearchIndex: {
-        stage: input.stage || 'index-messages',
-        action: 'index-failed',
-        userId: input.userId,
-      },
       attributes: {
         messageSearchIndex: {
+          stage: input.stage || 'index-messages',
+          action: 'index-failed',
+          userId: input.userId,
           error: exceptionMessage(exception),
         },
       },
@@ -178,14 +174,12 @@ export async function removeChatsFromSearchIndex(input: {
       } catch (exception) {
         failed = true
         input.logger?.set({
-          messageSearchIndex: {
-            stage: input.stage || 'remove-chats',
-            action: 'delete-failed',
-            chunkSize: chunk.length,
-            userId: input.userId,
-          },
           attributes: {
             messageSearchIndex: {
+              stage: input.stage || 'remove-chats',
+              action: 'delete-failed',
+              chunkSize: chunk.length,
+              userId: input.userId,
               error: exceptionMessage(exception),
             },
           },
@@ -195,13 +189,11 @@ export async function removeChatsFromSearchIndex(input: {
   } catch (exception) {
     failed = true
     input.logger?.set({
-      messageSearchIndex: {
-        stage: input.stage || 'remove-chats',
-        action: 'remove-chats-failed',
-        userId: input.userId,
-      },
       attributes: {
         messageSearchIndex: {
+          stage: input.stage || 'remove-chats',
+          action: 'remove-chats-failed',
+          userId: input.userId,
           error: exceptionMessage(exception),
         },
       },
@@ -244,13 +236,11 @@ export async function removeMessageRowsFromSearchIndex(input: {
       } catch (exception) {
         failed = true
         input.logger?.set({
-          messageSearchIndex: {
-            stage: 'sweeper-gc',
-            action: 'delete-failed',
-            chunkSize: chunk.length,
-          },
           attributes: {
             messageSearchIndex: {
+              stage: 'sweeper-gc',
+              action: 'delete-failed',
+              chunkSize: chunk.length,
               error: exceptionMessage(exception),
             },
           },
@@ -260,12 +250,10 @@ export async function removeMessageRowsFromSearchIndex(input: {
   } catch (exception) {
     failed = true
     input.logger?.set({
-      messageSearchIndex: {
-        stage: 'sweeper-gc',
-        action: 'gc-failed',
-      },
       attributes: {
         messageSearchIndex: {
+          stage: 'sweeper-gc',
+          action: 'gc-failed',
           error: exceptionMessage(exception),
         },
       },

@@ -78,19 +78,23 @@ describe('message search index sweep plugin', () => {
       }),
     })
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-      messageSearchSweepJob: expect.objectContaining({
-        job: 'message-search-index-sweep',
-        cron: '0 * * * *',
+      attributes: expect.objectContaining({
+        messageSearchSweepJob: expect.objectContaining({
+          job: 'message-search-index-sweep',
+          cron: '0 * * * *',
+        }),
       }),
     }))
     expect(loggerSet).toHaveBeenCalledWith({
-      messageSearchSweepResult: {
-        backfilledCount: 4,
-        emptyBodyBackfilledCount: 0,
-        garbageCollectedCount: 1,
-        hasMore: false,
-        runtimeMs: 120,
-        nextCursor: 0,
+      attributes: {
+        messageSearchSweepResult: {
+          backfilledCount: 4,
+          emptyBodyBackfilledCount: 0,
+          garbageCollectedCount: 1,
+          hasMore: false,
+          runtimeMs: 120,
+          nextCursor: 0,
+        },
       },
     })
     expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
@@ -120,11 +124,9 @@ describe('message search index sweep plugin', () => {
     })
 
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
-      messageSearchSweepError: expect.objectContaining({
-        phase: 'sweep-run',
-      }),
       attributes: expect.objectContaining({
         messageSearchSweepError: expect.objectContaining({
+          phase: 'sweep-run',
           message: 'sweep failed',
         }),
       }),

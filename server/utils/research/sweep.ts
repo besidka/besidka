@@ -64,12 +64,10 @@ export async function sweepResearchJobs(
     } catch (exception) {
       erroredCount += 1
       logger?.set({
-        researchSweep: {
-          phase: 'finalize',
-          jobId: job.id,
-        },
         attributes: {
           researchSweep: {
+            phase: 'finalize',
+            jobId: job.id,
             error: exceptionMessage(exception),
           },
         },

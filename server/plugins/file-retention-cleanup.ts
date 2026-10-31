@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
@@ -23,6 +25,7 @@ interface RunFileRetentionCleanupJobInput {
   controller: ScheduledControllerLike
   config: RetentionCleanupConfig
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runCleanup?: typeof cleanupExpiredFiles
 }
 
@@ -76,12 +79,14 @@ export async function runFileRetentionCleanupJob(
   let status = 200
 
   logger.set({
-    retentionCleanupJob: {
-      job: 'file-retention-cleanup',
-      cron: input.controller.cron,
-      scheduledTime,
-      batchSize,
-      maxRuntimeMs,
+    attributes: {
+      retentionCleanupJob: {
+        job: 'file-retention-cleanup',
+        cron: input.controller.cron,
+        scheduledTime,
+        batchSize,
+        maxRuntimeMs,
+      },
     },
   })
 
@@ -94,23 +99,23 @@ export async function runFileRetentionCleanupJob(
     })
 
     logger.set({
-      retentionCleanupResult: {
-        selectedCount: result.selectedCount,
-        deletedCount: result.deletedCount,
-        failedCount: result.failedCount,
-        hasMore: result.hasMore,
-        runtimeMs: result.runtimeMs,
-        batchCount: result.batchCount,
+      attributes: {
+        retentionCleanupResult: {
+          selectedCount: result.selectedCount,
+          deletedCount: result.deletedCount,
+          failedCount: result.failedCount,
+          hasMore: result.hasMore,
+          runtimeMs: result.runtimeMs,
+          batchCount: result.batchCount,
+        },
       },
     })
   } catch (exception) {
     status = 500
     logger.set({
-      retentionCleanupError: {
-        phase: 'cleanup-run',
-      },
       attributes: {
         retentionCleanupError: {
+          phase: 'cleanup-run',
           message: exceptionMessage(exception),
           stack: getSafeErrorStack(exception),
         },
@@ -118,7 +123,7 @@ export async function runFileRetentionCleanupJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }
 
 async function runCleanupBatches(input: {

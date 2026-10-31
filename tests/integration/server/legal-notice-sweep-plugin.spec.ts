@@ -137,6 +137,47 @@ describe('legal notice sweep plugin', () => {
     expect(loggerEmit).toHaveBeenCalledWith({ status: 200 })
   })
 
+  it('ships the emitted wide event to Axiom', async () => {
+    const wideEvent = { method: 'CRON', status: 200 }
+    const { loggerEmit, createLogger } = createLoggerMock()
+    const shipWideEvent = vi.fn().mockResolvedValue([])
+    const runLegalNoticeSweepJob = await loadJob()
+
+    loggerEmit.mockReturnValue(wideEvent)
+
+    await runLegalNoticeSweepJob({
+      controller,
+      config,
+      createLogger,
+      runSweep: vi.fn().mockResolvedValue(sweepResult),
+      shipWideEvent,
+      isDevelopment: false,
+    })
+
+    expect(shipWideEvent).toHaveBeenCalledTimes(1)
+    expect(shipWideEvent).toHaveBeenCalledWith(wideEvent)
+  })
+
+  it('ships the wide event when the sweep throws', async () => {
+    const wideEvent = { method: 'CRON', status: 500 }
+    const { loggerEmit, createLogger } = createLoggerMock()
+    const shipWideEvent = vi.fn().mockResolvedValue([])
+    const runLegalNoticeSweepJob = await loadJob()
+
+    loggerEmit.mockReturnValue(wideEvent)
+
+    await runLegalNoticeSweepJob({
+      controller,
+      config,
+      createLogger,
+      runSweep: vi.fn().mockRejectedValue(new Error('sweep failed')),
+      shipWideEvent,
+      isDevelopment: false,
+    })
+
+    expect(shipWideEvent).toHaveBeenCalledWith(wideEvent)
+  })
+
   it('emits status 500 when the sweep stopped on a bookkeeping error',
     async () => {
       const { loggerEmit, createLogger } = createLoggerMock()

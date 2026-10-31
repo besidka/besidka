@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { sweepBackfillJobs } from '~~/server/utils/memory/backfill'
 import { memoryExtractionErrorSummary } from '~~/server/utils/memory/extract-error'
 
@@ -18,6 +20,7 @@ interface RunMemoryBackfillSweepJobInput {
   controller: ScheduledControllerLike
   config: MemoryBackfillSweepConfig
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runSweep?: typeof sweepBackfillJobs
 }
 
@@ -104,5 +107,5 @@ export async function runMemoryBackfillSweepJob(
     return
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }

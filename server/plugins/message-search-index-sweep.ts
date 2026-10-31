@@ -1,4 +1,6 @@
 import { createRequestLogger } from 'evlog'
+import type { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { sweepMessageSearchIndex } from '~~/server/utils/search/sweeper'
 
@@ -19,6 +21,7 @@ interface RunMessageSearchSweepJobInput {
   controller: ScheduledControllerLike
   config: MessageSearchSweepConfig
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
   runSweep?: typeof sweepMessageSearchIndex
 }
 
@@ -72,12 +75,14 @@ export async function runMessageSearchSweepJob(
   let status = 200
 
   logger.set({
-    messageSearchSweepJob: {
-      job: 'message-search-index-sweep',
-      cron: input.controller.cron,
-      scheduledTime,
-      batchSize,
-      maxRuntimeMs,
+    attributes: {
+      messageSearchSweepJob: {
+        job: 'message-search-index-sweep',
+        cron: input.controller.cron,
+        scheduledTime,
+        batchSize,
+        maxRuntimeMs,
+      },
     },
   })
 
@@ -89,23 +94,23 @@ export async function runMessageSearchSweepJob(
     })
 
     logger.set({
-      messageSearchSweepResult: {
-        backfilledCount: result.backfilledCount,
-        emptyBodyBackfilledCount: result.emptyBodyBackfilledCount,
-        garbageCollectedCount: result.garbageCollectedCount,
-        hasMore: result.hasMore,
-        runtimeMs: result.runtimeMs,
-        nextCursor: result.nextCursor,
+      attributes: {
+        messageSearchSweepResult: {
+          backfilledCount: result.backfilledCount,
+          emptyBodyBackfilledCount: result.emptyBodyBackfilledCount,
+          garbageCollectedCount: result.garbageCollectedCount,
+          hasMore: result.hasMore,
+          runtimeMs: result.runtimeMs,
+          nextCursor: result.nextCursor,
+        },
       },
     })
   } catch (exception) {
     status = 500
     logger.set({
-      messageSearchSweepError: {
-        phase: 'sweep-run',
-      },
       attributes: {
         messageSearchSweepError: {
+          phase: 'sweep-run',
           message: exceptionMessage(exception),
           stack: getSafeErrorStack(exception),
         },
@@ -113,7 +118,7 @@ export async function runMessageSearchSweepJob(
     })
   }
 
-  logger.emit({ status })
+  await emitScheduledJobEvent(logger, status, input.shipWideEvent)
 }
 
 function getSafeErrorStack(exception: unknown): string | undefined {
