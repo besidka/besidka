@@ -247,6 +247,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-new-auto-web-search.spec.ts',
     'tests/unit/composables/auto-web-search.spec.ts',
     'tests/unit/components/Chat/AutoWebSearchChip.spec.ts',
+    'tests/unit/utils/auto-web-search.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu/WebSearchSection.spec.ts',
     'tests/unit/utils/chat-input-tiles.spec.ts',
     'tests/unit/components/ChatInput/ToolsMenu.spec.ts',
