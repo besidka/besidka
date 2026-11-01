@@ -12,6 +12,7 @@ import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { mcp } from '@better-auth/mcp'
 import { passkey } from '@better-auth/passkey'
 import { jwtVerify } from 'jose'
+import { log } from 'evlog'
 import type {
   ModuleOptions,
 } from '~~/modules/cookie-consent/src/runtime/types/module'
@@ -37,6 +38,10 @@ import {
   refreshStaleClientScopes,
 } from '~~/server/utils/oauth/client-scope-upgrade'
 import { findClientRegistrationViolation } from './oauth/registration-limits'
+import {
+  isAuthorizationCodeRedirect,
+  revokeSupersededClients,
+} from '~~/server/utils/oauth/revoke-superseded-clients'
 import {
   sendEmailChangedEmail,
   sendPasskeyAddedEmail,
@@ -151,6 +156,56 @@ export function useServerAuth(): ServerAuth {
   }
 
   return _auth
+}
+
+async function revokeSupersededOAuthConnections(
+  db: ReturnType<typeof useDb>,
+  userId: number,
+  clientId: string | null,
+): Promise<void> {
+  if (!clientId) {
+    return
+  }
+
+  try {
+    const revokedClients = await revokeSupersededClients(db, userId, clientId)
+
+    if (!revokedClients.length) {
+      return
+    }
+
+    for (const revokedClient of revokedClients) {
+      log.info({
+        action: 'oauth_revoked',
+        userId,
+        attributes: {
+          legalConsent: {
+            action: 'oauth_revoked',
+            oauthClientId: revokedClient.clientId,
+            scopes: revokedClient.scopes,
+            reason: 'superseded',
+            supersededBy: clientId,
+          },
+        },
+      })
+    }
+
+    resolveServerLogger().set({
+      attributes: {
+        oauthAutoRevoke: {
+          revokedClientIds: revokedClients.map((revokedClient) => {
+            return revokedClient.clientId
+          }),
+        },
+      },
+    })
+  } catch (exception) {
+    resolveServerLogger().set({
+      attributes: {
+        oauthAutoRevoke: { error: exceptionMessage(exception) },
+      },
+    })
+  }
 }
 
 function isPreferencesConsentGranted(
@@ -629,6 +684,14 @@ function createAuth() {
                 clientId: decision.clientId,
                 scopes: decision.scopes,
               })
+
+              if (isAuthorizationCodeRedirect(ctx.context.returned)) {
+                await revokeSupersededOAuthConnections(
+                  db,
+                  Number(user.id),
+                  decision.clientId,
+                )
+              }
             }
 
             return

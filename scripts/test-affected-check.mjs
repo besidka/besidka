@@ -156,6 +156,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/oauth/client-scope-upgrade.spec.ts',
     'tests/unit/utils/oauth/stored-scopes.spec.ts',
     'tests/unit/utils/oauth/narrow-consent-scopes.spec.ts',
+    'tests/unit/utils/oauth/revoke-superseded-clients.spec.ts',
     'tests/unit/utils/oauth/protected-resource-metadata.spec.ts',
     'tests/unit/server/routes/well-known/oauth-protected-resource.spec.ts',
     'tests/integration/server/oauth-grant-sweep-plugin.spec.ts',
@@ -3040,7 +3041,7 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/integration/server/oauth-grant-sweep-plugin.spec.ts'],
     },
     {
-      pattern: /^(server\/api\/v1\/profiles\/connected-apps\/.*|server\/utils\/oauth\/(stored-scopes|narrow-consent-scopes|revoke-connected-app))\.ts$/,
+      pattern: /^(server\/api\/v1\/profiles\/connected-apps\/.*|server\/utils\/oauth\/(stored-scopes|narrow-consent-scopes|revoke-connected-app|revoke-superseded-clients))\.ts$/,
       tests: [
         'tests/integration/api/profiles-connected-apps.spec.ts',
         'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
@@ -3049,6 +3050,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/profiles-connected-apps-revoke-bulk.spec.ts',
         'tests/unit/utils/oauth/stored-scopes.spec.ts',
         'tests/unit/utils/oauth/narrow-consent-scopes.spec.ts',
+        'tests/unit/utils/oauth/revoke-superseded-clients.spec.ts',
         'tests/unit/server/utils/mcp/auth.spec.ts',
         'tests/unit/server/middleware/mcp-request-guard.spec.ts',
       ],

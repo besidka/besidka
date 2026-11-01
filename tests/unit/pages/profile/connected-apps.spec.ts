@@ -155,7 +155,7 @@ describe('profile connected apps page', () => {
       expect(wrapper.findAll('[data-testid="connected-apps-duplicates-note"]'))
         .toHaveLength(1)
       expect(wrapper.get('[data-testid="connected-apps-duplicates-note"]')
-        .text()).toContain('registers a new connection each time you reconnect')
+        .text()).toContain('Besidka disconnects the older connection for you')
       expect(wrapper.findAll('[data-testid="connected-apps-newest"]'))
         .toHaveLength(1)
     })
