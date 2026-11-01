@@ -5,6 +5,11 @@ import { exceptionMessage } from '../../../server/utils/evlog-attributes'
 const mocks = vi.hoisted(() => ({
   revokeUserOAuthGrants: vi.fn(async () => true),
   notifyOAuthAppConnected: vi.fn(async () => undefined),
+  revokeSupersededClients: vi.fn(async () => [] as Array<{
+    clientId: string
+    scopes: string[]
+  }>),
+  logInfo: vi.fn(),
   sendPasswordChangedEmail: vi.fn(async () => undefined),
   purgeUserData: vi.fn(async () => undefined),
   purgeUserOAuthData: vi.fn(async () => undefined),
@@ -21,6 +26,26 @@ vi.mock('~~/server/utils/account/revoke-user-oauth-grants', () => ({
 vi.mock('~~/server/utils/account/notify-oauth-app-connected', () => ({
   notifyOAuthAppConnected: mocks.notifyOAuthAppConnected,
 }))
+
+vi.mock(
+  '~~/server/utils/oauth/revoke-superseded-clients',
+  async (importOriginal) => {
+    const original = await importOriginal<
+      typeof import('~~/server/utils/oauth/revoke-superseded-clients')
+    >()
+
+    return {
+      ...original,
+      revokeSupersededClients: mocks.revokeSupersededClients,
+    }
+  },
+)
+
+vi.mock('evlog', async (importOriginal) => {
+  const original = await importOriginal<typeof import('evlog')>()
+
+  return { ...original, log: { ...original.log, info: mocks.logInfo } }
+})
 
 vi.mock('~~/server/utils/account/purge-user-data', () => ({
   purgeUserData: mocks.purgeUserData,
@@ -520,6 +545,152 @@ describe('auth hardening for the OAuth authorization server', () => {
     } as any)
 
     expect(mocks.notifyOAuthAppConnected).not.toHaveBeenCalled()
+  })
+
+  describe('superseded connection revoke', () => {
+    function grantedConsent(clientQuery = 'client_id=client-1&sig=x') {
+      return {
+        path: '/oauth2/consent',
+        body: { accept: true, oauth_query: clientQuery },
+        context: {
+          returned: {
+            redirect: true,
+            url: 'https://claude.ai/cb?code=abc&state=s',
+          },
+          session: { user: { id: '9', email: 'user@example.com' } },
+        },
+      } as any
+    }
+
+    it('revokes the older connections after a granted consent', async () => {
+      const loggerSet = vi.fn()
+      const options = await importAuthOptions(loggerSet)
+
+      mocks.revokeSupersededClients.mockResolvedValueOnce([
+        { clientId: 'old-1', scopes: ['openid', 'chats:read'] },
+        { clientId: 'old-2', scopes: ['openid'] },
+      ])
+
+      await options.hooks!.after!(grantedConsent())
+
+      expect(mocks.revokeSupersededClients)
+        .toHaveBeenCalledWith(expect.anything(), 9, 'client-1')
+      expect(mocks.logInfo).toHaveBeenCalledTimes(2)
+      expect(mocks.logInfo).toHaveBeenCalledWith({
+        action: 'oauth_revoked',
+        userId: 9,
+        attributes: {
+          legalConsent: {
+            action: 'oauth_revoked',
+            oauthClientId: 'old-1',
+            scopes: ['openid', 'chats:read'],
+            reason: 'superseded',
+            supersededBy: 'client-1',
+          },
+        },
+      })
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: {
+          oauthAutoRevoke: { revokedClientIds: ['old-1', 'old-2'] },
+        },
+      })
+    })
+
+    it('runs after the email notification', async () => {
+      const options = await importAuthOptions()
+      const order: string[] = []
+
+      mocks.notifyOAuthAppConnected.mockImplementationOnce(async () => {
+        order.push('notify')
+      })
+      mocks.revokeSupersededClients.mockImplementationOnce(async () => {
+        order.push('revoke')
+
+        return []
+      })
+
+      await options.hooks!.after!(grantedConsent())
+
+      expect(order).toEqual(['notify', 'revoke'])
+    })
+
+    it('logs nothing when no older connection was revoked', async () => {
+      const loggerSet = vi.fn()
+      const options = await importAuthOptions(loggerSet)
+
+      await options.hooks!.after!(grantedConsent())
+
+      expect(mocks.logInfo).not.toHaveBeenCalled()
+      expect(loggerSet).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not revoke when the approval returned an error redirect',
+      async () => {
+        const options = await importAuthOptions()
+        const consent = grantedConsent()
+
+        consent.context.returned = {
+          redirect: true,
+          url: 'https://claude.ai/cb?error=invalid_scope&state=s',
+        }
+
+        await options.hooks!.after!(consent)
+
+        expect(mocks.notifyOAuthAppConnected).toHaveBeenCalledTimes(1)
+        expect(mocks.revokeSupersededClients).not.toHaveBeenCalled()
+        expect(mocks.logInfo).not.toHaveBeenCalled()
+      })
+
+    it('does not revoke when the approval returned no authorization code',
+      async () => {
+        const options = await importAuthOptions()
+        const consent = grantedConsent()
+
+        consent.context.returned = {
+          redirect: true,
+          url: '/signin?client_id=client-1',
+        }
+
+        await options.hooks!.after!(consent)
+
+        expect(mocks.revokeSupersededClients).not.toHaveBeenCalled()
+      })
+
+    it('does not revoke when the consent is denied', async () => {
+      const options = await importAuthOptions()
+
+      await options.hooks!.after!({
+        ...grantedConsent(),
+        body: { accept: false, oauth_query: 'client_id=client-1&sig=x' },
+      })
+
+      expect(mocks.revokeSupersededClients).not.toHaveBeenCalled()
+    })
+
+    it('does not revoke when the consent names no client', async () => {
+      const options = await importAuthOptions()
+
+      await options.hooks!.after!(grantedConsent('sig=x'))
+
+      expect(mocks.revokeSupersededClients).not.toHaveBeenCalled()
+    })
+
+    it('never fails the grant when the revoke fails', async () => {
+      const loggerSet = vi.fn()
+      const options = await importAuthOptions(loggerSet)
+
+      mocks.revokeSupersededClients.mockRejectedValueOnce(
+        new Error('D1 unavailable'),
+      )
+
+      await expect(options.hooks!.after!(grantedConsent()))
+        .resolves.toBeUndefined()
+
+      expect(loggerSet).toHaveBeenCalledWith({
+        attributes: { oauthAutoRevoke: { error: 'D1 unavailable' } },
+      })
+      expect(mocks.logInfo).not.toHaveBeenCalled()
+    })
   })
 
   it('rejects an oversized client registration with the OAuth error shape',

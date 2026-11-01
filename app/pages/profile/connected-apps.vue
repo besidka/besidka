@@ -56,9 +56,10 @@
               aria-hidden="true"
             />
             <span>
-              {{ group.name }} registers a new connection each time you
-              reconnect it. Older ones keep working until you disconnect
-              them.
+              When you reconnect {{ group.name }}, Besidka disconnects the
+              older connection for you. The ones still listed were
+              connected earlier or from elsewhere and keep working until
+              you disconnect them.
             </span>
             <UiButton
               text="Disconnect older"

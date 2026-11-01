@@ -282,6 +282,43 @@ clients because a consent keeps its client alive. Counts go under
 (`PATCH .../scopes`) are conditional on the `updated_at` they read and answer
 409 when the approval changed in the meantime.
 
+**Automatic revoke of the older connection.** When the user approves a
+consent (`POST /oauth2/consent`, `decision.action === 'oauth_granted'`), the
+`hooks.after` branch in `server/utils/auth.ts` calls `revokeSupersededClients`
+(`server/utils/oauth/revoke-superseded-clients.ts`) after the connected-app
+email. It runs only when the approval returned an authorization code
+(`isAuthorizationCodeRedirect`: a `{ redirect: true, url }` whose URL has a
+non-empty `code` and no `error`), so a consent that was re-routed or ended in
+an error redirect revokes nothing. It loads the clients this user holds a consent, refresh token or access
+token for, and revokes every one that `findSupersededClientIds` matches
+against the newly approved client: the same name (trimmed, case insensitive,
+never empty), the **identical** set of redirect URIs (order insensitive, never
+empty, read through `parseStoredRedirectUris` because Better Auth sometimes
+stores the list pre-stringified), and a `created_at` **strictly earlier** than
+the new client's. The date guard exists so that a scope step-up on an older
+connection (which also runs the consent screen) can never revoke a newer
+connection. `oauth_clients.created_at` has second resolution, so two clients
+registered in the same second are never treated as superseding each other.
+Every claude.ai registration uses `https://claude.ai/api/mcp/auth_callback`,
+which is what makes the redirect URIs a usable identity. Matches are revoked
+one at a time through `revokeConnectedApp` (one D1 batch each). The whole step
+is wrapped so it can never fail the consent: an error is swallowed and logged
+as `attributes.oauthAutoRevoke.error`, and a success logs
+`attributes.oauthAutoRevoke.revokedClientIds` plus one ledger event per
+revoked client, `action: 'oauth_revoked'` with
+`legalConsent.reason: 'superseded'` and `legalConsent.supersededBy` set to the
+new client id. The **Disconnect older** button stays for connections made
+before this existed or from a different place. Accepted trade-offs:
+
+- If consent is granted but the token exchange then fails, the older
+  connection is already gone and the user reconnects.
+- Two different Claude accounts connected to the same Besidka account share
+  the redirect URI, so connecting the second revokes the first.
+- A client that names itself "Claude" and registers claude.ai's redirect URI
+  could revoke the real connection, but only if the user approves its consent
+  screen, and it gains nothing: the authorization code still goes to
+  claude.ai.
+
 ### Token verification
 
 The provider issues a **JWT** access token (audience `${siteUrl}/mcp`) only
