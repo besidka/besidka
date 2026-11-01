@@ -1,19 +1,20 @@
 <template>
   <p
-    v-if="outcome"
+    v-if="outcome && chipState"
     class="mt-2 flex"
   >
     <span
       class="badge badge-sm badge-ghost gap-1 text-base-content/70"
       :data-outcome="outcome"
+      :data-searched="chipState.searched"
       data-testid="auto-web-search-chip"
     >
       <Icon
-        :name="didSearch ? 'lucide:globe' : 'lucide:circle-slash-2'"
+        :name="chipState.icon"
         size="12"
         class="shrink-0"
       />
-      <span>{{ label }}</span>
+      <span>{{ chipState.label }}</span>
     </span>
   </p>
 </template>
@@ -21,28 +22,42 @@
 <script setup lang="ts">
 import type { UIMessage } from 'ai'
 import {
-  didAutoWebSearchSearch,
-  getAutoWebSearchChipLabel,
+  canObserveWebSearch,
+  didMessageSearchTheWeb,
+  getAutoWebSearchChipState,
   isAutoWebSearchOutcome,
 } from '#shared/utils/auto-web-search'
-import type { AutoWebSearchOutcome } from '#shared/utils/auto-web-search'
+import type {
+  AutoWebSearchChipState,
+  AutoWebSearchOutcome,
+} from '#shared/utils/auto-web-search'
 import { getMessageMetadata } from '#shared/utils/message-metadata'
 
 const props = defineProps<{
   message: UIMessage
 }>()
 
+const usage = computed(() => {
+  return getMessageMetadata(props.message).usage
+})
+
 const outcome = computed<AutoWebSearchOutcome | null>(() => {
-  const value = getMessageMetadata(props.message).usage?.autoWebSearch
+  const value = usage.value?.autoWebSearch
 
   return isAutoWebSearchOutcome(value) ? value : null
 })
 
-const didSearch = computed<boolean>(() => {
-  return outcome.value ? didAutoWebSearchSearch(outcome.value) : false
-})
+const chipState = computed<AutoWebSearchChipState | null>(() => {
+  if (!outcome.value) {
+    return null
+  }
 
-const label = computed<string>(() => {
-  return outcome.value ? getAutoWebSearchChipLabel(outcome.value) : ''
+  return getAutoWebSearchChipState(outcome.value, {
+    didSearch: didMessageSearchTheWeb(
+      props.message.parts,
+      usage.value?.searchUnits,
+    ),
+    canObserve: canObserveWebSearch(usage.value?.provider),
+  })
 })
 </script>

@@ -2386,10 +2386,23 @@ Off. Without the Auto preference it is `findLastUserMessageTools` unchanged.
 **Chip.** The outcome is stored as `usage.autoWebSearch` on the assistant
 message (`searched`, `skipped`, `forced`, `fallback`), in both the streamed
 finish metadata and the persisted row (`addAutoWebSearchUsage`).
-`Chat/AutoWebSearchChip.vue` renders "Auto: searched the web" or "Auto: no web
-search needed" under the answer, on the owner's chat page only (not on shared
-chats). A turn whose usage capture failed has no chip. For a reused decision
-the chip says searched or skipped.
+`Chat/AutoWebSearchChip.vue` renders one of four labels under the answer, on
+the owner's chat page only (not on shared chats): "Auto: no web search needed"
+(`skipped`), "Auto: searched the web", "Auto: search allowed, not used" and
+"Auto: search allowed". A
+`searched`, `forced` or `fallback` outcome only means the search tool was
+offered to the model, and the model decides whether to call it, so "searched"
+is shown only when a search actually ran: `usage.searchUnits` above zero, a
+`source-url` or `source-document` part, or a completed (`output-available`)
+search tool part (`didMessageSearchTheWeb` in `shared/utils/auto-web-search.ts`).
+Otherwise the chip says search was allowed but not used. Qwen (DashScope
+`enable_search` only) and the gateway sends (`vercel-gateway`, `openrouter`,
+`cloudflare-gateway`; search cost is blended into `totalCost`, and OpenRouter
+may return no citations) cannot report whether a native search ran, so without
+a search signal the chip says only "Auto: search allowed"
+(`canObserveWebSearch`). The chip carries `data-outcome` and `data-searched`
+(`true`, `false` or `unknown`). A turn whose usage capture failed has no
+chip. For a reused decision the chip follows the same rule.
 
 **Logging.** `attributes.autoWebSearchJev` via `recordJevRoleLog`: `status`,
 `calls`, `questions`, `inputTokens`, `latencyMs`, `scores` (the rounded
