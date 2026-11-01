@@ -6,7 +6,7 @@
     <span
       class="badge badge-sm badge-ghost gap-1 text-base-content/70"
       :data-outcome="outcome"
-      :data-searched="chipState.searched ? 'true' : 'false'"
+      :data-searched="chipState.searched"
       data-testid="auto-web-search-chip"
     >
       <Icon
@@ -22,6 +22,7 @@
 <script setup lang="ts">
 import type { UIMessage } from 'ai'
 import {
+  canObserveWebSearch,
   didMessageSearchTheWeb,
   getAutoWebSearchChipState,
   isAutoWebSearchOutcome,
@@ -51,9 +52,12 @@ const chipState = computed<AutoWebSearchChipState | null>(() => {
     return null
   }
 
-  return getAutoWebSearchChipState(
-    outcome.value,
-    didMessageSearchTheWeb(props.message.parts, usage.value?.searchUnits),
-  )
+  return getAutoWebSearchChipState(outcome.value, {
+    didSearch: didMessageSearchTheWeb(
+      props.message.parts,
+      usage.value?.searchUnits,
+    ),
+    canObserve: canObserveWebSearch(usage.value?.provider),
+  })
 })
 </script>

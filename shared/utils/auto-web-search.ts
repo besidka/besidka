@@ -28,6 +28,14 @@ export const AUTO_WEB_SEARCH_EXPLANATION = 'TypeSafe AI decides per message '
 const SEARCHED_LABEL = 'Auto: searched the web'
 const SKIPPED_LABEL = 'Auto: no web search needed'
 const NOT_USED_LABEL = 'Auto: search allowed, not used'
+const ALLOWED_LABEL = 'Auto: search allowed'
+
+const UNOBSERVABLE_SEARCH_PROVIDERS = new Set([
+  'qwen',
+  'vercel-gateway',
+  'openrouter',
+  'cloudflare-gateway',
+])
 
 const SEARCH_TOOL_PART_TYPES = new Set([
   'tool-web_search',
@@ -41,10 +49,17 @@ const SEARCH_SOURCE_PART_TYPES = new Set([
   'source-document',
 ])
 
+export type AutoWebSearchChipSearched = 'true' | 'false' | 'unknown'
+
 export type AutoWebSearchChipState = {
   label: string
   icon: string
-  searched: boolean
+  searched: AutoWebSearchChipSearched
+}
+
+export type AutoWebSearchChipSignals = {
+  didSearch: boolean
+  canObserve: boolean
 }
 
 export function isAutoWebSearchOutcome(
@@ -80,21 +95,32 @@ export function didMessageSearchTheWeb(
   })
 }
 
+export function canObserveWebSearch(provider: unknown): boolean {
+  return !(
+    typeof provider === 'string'
+    && UNOBSERVABLE_SEARCH_PROVIDERS.has(provider)
+  )
+}
+
 export function getAutoWebSearchChipState(
   outcome: AutoWebSearchOutcome,
-  didSearch: boolean,
+  { didSearch, canObserve }: AutoWebSearchChipSignals,
 ): AutoWebSearchChipState {
   if (outcome === 'skipped') {
     return {
       label: SKIPPED_LABEL,
       icon: 'lucide:circle-slash-2',
-      searched: false,
+      searched: 'false',
     }
   }
 
   if (didSearch) {
-    return { label: SEARCHED_LABEL, icon: 'lucide:globe', searched: true }
+    return { label: SEARCHED_LABEL, icon: 'lucide:globe', searched: 'true' }
   }
 
-  return { label: NOT_USED_LABEL, icon: 'lucide:search-x', searched: false }
+  if (!canObserve) {
+    return { label: ALLOWED_LABEL, icon: 'lucide:globe', searched: 'unknown' }
+  }
+
+  return { label: NOT_USED_LABEL, icon: 'lucide:search-x', searched: 'false' }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canObserveWebSearch,
   didMessageSearchTheWeb,
   getAutoWebSearchChipState,
 } from '#shared/utils/auto-web-search'
@@ -66,22 +67,70 @@ describe('didMessageSearchTheWeb', () => {
   })
 })
 
-describe('getAutoWebSearchChipState', () => {
-  it('reports a skipped outcome regardless of the search flag', () => {
-    expect(getAutoWebSearchChipState('skipped', false)).toEqual({
-      label: 'Auto: no web search needed',
-      icon: 'lucide:circle-slash-2',
-      searched: false,
-    })
+describe('canObserveWebSearch', () => {
+  it.each(['qwen', 'vercel-gateway', 'openrouter', 'cloudflare-gateway'])(
+    'is false for the %s provider',
+    (provider) => {
+      expect(canObserveWebSearch(provider)).toBe(false)
+    },
+  )
+
+  it.each(['anthropic', 'openai', 'google', 'xai', 'deepseek', 'moonshotai'])(
+    'is true for the %s provider',
+    (provider) => {
+      expect(canObserveWebSearch(provider)).toBe(true)
+    },
+  )
+
+  it('is true when the provider is missing or not a string', () => {
+    expect(canObserveWebSearch(undefined)).toBe(true)
+    expect(canObserveWebSearch(null)).toBe(true)
+    expect(canObserveWebSearch(42)).toBe(true)
   })
+})
+
+describe('getAutoWebSearchChipState', () => {
+  it.each([true, false])(
+    'reports a skipped outcome regardless of the signals (observe: %s)',
+    (canObserve) => {
+      expect(
+        getAutoWebSearchChipState('skipped', { didSearch: false, canObserve }),
+      ).toEqual({
+        label: 'Auto: no web search needed',
+        icon: 'lucide:circle-slash-2',
+        searched: 'false',
+      })
+    },
+  )
 
   it.each(['searched', 'forced', 'fallback'] as const)(
     'reports a search for the %s outcome when one ran',
     (outcome) => {
-      expect(getAutoWebSearchChipState(outcome, true)).toEqual({
+      expect(
+        getAutoWebSearchChipState(outcome, {
+          didSearch: true,
+          canObserve: true,
+        }),
+      ).toEqual({
         label: 'Auto: searched the web',
         icon: 'lucide:globe',
-        searched: true,
+        searched: 'true',
+      })
+    },
+  )
+
+  it.each(['searched', 'forced', 'fallback'] as const)(
+    'reports a search for the %s outcome even on an unobservable provider',
+    (outcome) => {
+      expect(
+        getAutoWebSearchChipState(outcome, {
+          didSearch: true,
+          canObserve: false,
+        }),
+      ).toEqual({
+        label: 'Auto: searched the web',
+        icon: 'lucide:globe',
+        searched: 'true',
       })
     },
   )
@@ -89,10 +138,31 @@ describe('getAutoWebSearchChipState', () => {
   it.each(['searched', 'forced', 'fallback'] as const)(
     'reports an unused search for the %s outcome when none ran',
     (outcome) => {
-      expect(getAutoWebSearchChipState(outcome, false)).toEqual({
+      expect(
+        getAutoWebSearchChipState(outcome, {
+          didSearch: false,
+          canObserve: true,
+        }),
+      ).toEqual({
         label: 'Auto: search allowed, not used',
         icon: 'lucide:search-x',
-        searched: false,
+        searched: 'false',
+      })
+    },
+  )
+
+  it.each(['searched', 'forced', 'fallback'] as const)(
+    'reports an unknown result for the %s outcome on an unobservable provider',
+    (outcome) => {
+      expect(
+        getAutoWebSearchChipState(outcome, {
+          didSearch: false,
+          canObserve: false,
+        }),
+      ).toEqual({
+        label: 'Auto: search allowed',
+        icon: 'lucide:globe',
+        searched: 'unknown',
       })
     },
   )

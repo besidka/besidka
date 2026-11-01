@@ -52,6 +52,48 @@ describe('Chat/AutoWebSearchChip', () => {
     },
   )
 
+  it.each(['qwen', 'vercel-gateway', 'openrouter', 'cloudflare-gateway'])(
+    'says search was allowed without claiming it was unused for %s',
+    async (provider) => {
+      const chip = await mountChip(
+        assistantMessage(usageWith('searched', { provider })),
+      )
+
+      expect(chip.text()).toBe('Auto: search allowed')
+      expect(chip.attributes('data-searched')).toBe('unknown')
+    },
+  )
+
+  it('says the web was searched for qwen after a completed Exa call',
+    async () => {
+      const chip = await mountChip(assistantMessage(
+        usageWith('forced', { provider: 'qwen' }),
+        [{ type: 'tool-web_search_exa', state: 'output-available' }],
+      ))
+
+      expect(chip.text()).toBe('Auto: searched the web')
+      expect(chip.attributes('data-searched')).toBe('true')
+    })
+
+  it('says search was not used for anthropic without a search signal',
+    async () => {
+      const chip = await mountChip(assistantMessage(
+        usageWith('searched', { provider: 'anthropic' }),
+      ))
+
+      expect(chip.text()).toBe('Auto: search allowed, not used')
+      expect(chip.attributes('data-searched')).toBe('false')
+    })
+
+  it('keeps the skipped label on an unobservable provider', async () => {
+    const chip = await mountChip(
+      assistantMessage(usageWith('skipped', { provider: 'qwen' })),
+    )
+
+    expect(chip.text()).toBe('Auto: no web search needed')
+    expect(chip.attributes('data-searched')).toBe('false')
+  })
+
   it('labels the skipped outcome', async () => {
     const chip = await mountChip(assistantMessage(usageWith('skipped')))
 
