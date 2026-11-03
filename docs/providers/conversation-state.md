@@ -71,12 +71,15 @@ Specific to OpenAI:
 
 ## Within one send (the only candidate)
 
-The tool loop (`server/utils/ai/tool-loop.ts`, `stepCountIs(4)`) runs its
-steps seconds apart, with the same system prompt and tools, and only appends
-messages. Nothing a user edits can land in the middle. This is the one place
-where either feature fits:
+The tool loop (`server/utils/ai/tool-loop.ts`, `stepCountIs(maxSteps)`, where
+`maxSteps` is the tool steps plus 1: 3 each for web search, chat search or
+memory, and project knowledge, so 4 to 10 steps) runs its steps seconds
+apart, with the same system prompt and tools, and only appends messages.
+Nothing a user edits can land in the middle. This is the one place where
+either feature fits:
 
-- **Anthropic**: at most two continue steps per send. The forced last step
+- **Anthropic**: up to `maxSteps - 2` continue steps per send (2 to 8),
+  after the create step. The forced last step
   keeps its tools and tool choice and only appends the final-step addendum
   to the instructions. That changes the frozen system prompt, so it must run
   unthreaded. The search-answer continuation changes tools, so it runs
