@@ -377,6 +377,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   trap, per-gateway cost capture and the blended-vs-search double-count
   guard, gateway reasoning/web-search/image-generation/prompt-caching
   mechanisms, and the `GatewayModel.toolCall` Brave/Exa gate
+- `docs/providers/conversation-state.md` - Why Besidka does not use
+  provider-side conversation state (OpenAI `previous_response_id` and the
+  Conversations API, Anthropic message threads), decided on 2026-11-03: neither
+  lowers cost, they clash with D1 as the source of truth (message delete, edit,
+  branch, regenerate), the text-only history sanitizer and model switches, and
+  Anthropic threads expire after 5 minutes with a frozen system prompt and
+  tools; the only candidate is chaining inside one send's tool loop; the AI SDK
+  support for each, data-handling notes, and the revisit criteria
 - `docs/nuxt-4-6-upgrade.md` - Decision log for the Nuxt 4.5 -> 4.6 upgrade
   branch: the Vue 3.6 release candidate (twelve pnpm overrides, accepted RC
   risk), the one-shot `minimum_release_age=0` install and the

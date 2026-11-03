@@ -148,3 +148,9 @@ old behavior.
 This fixes cost display beyond Anthropic: OpenAI, Google, xAI and DeepSeek
 cache automatically and report `cacheReadTokens`, which used to be billed at
 the full input price. They now use their published `cache_read` rate.
+
+## Message threads
+
+Not used. Evaluated on 2026-11-03 together with OpenAI's
+`previous_response_id`, see
+[`conversation-state.md`](./conversation-state.md).
