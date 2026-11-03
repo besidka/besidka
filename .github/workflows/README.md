@@ -47,6 +47,9 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │      ├─ indexnow job (after deploy)                              │
 │      │   No-op without INDEXNOW_KEY; else submits changed pages  │
 │      │                                                           │
+│      ├─ mcp-registry job (after deploy)                          │
+│      │   Publishes server.json's version unless already listed   │
+│      │                                                           │
 │      └─ deploy-preview job (after deploy)                        │
 │          ├─ Apply DB + CONSENT_DB migrations to the preview DBs  │
 │          └─ wrangler preview --env production --name preview     │
@@ -306,6 +309,15 @@ database or Worker is touched.
 page (`content/`, public `app/pages/`, landing components), it reads the live
 sitemap, checks `https://besidka.com/indexnow-key.txt` serves the same key,
 and submits the sitemap URLs to IndexNow. See `docs/seo.md` → "IndexNow".
+
+**mcp-registry**: Runs after `deploy` (main only, not on a dry run). Reads
+the `server.json` version and stops when the MCP Registry already lists it.
+Otherwise it installs the pinned `mcp-publisher` (SHA-256 checked against the
+release's checksums file), logs in with the `MCP_REGISTRY_PRIVATE_KEY` secret,
+publishes, and fails unless the version comes back `active`. On pull requests,
+the `static` job's `scripts/mcp-version-guard.mjs` step makes sure a changed
+MCP surface comes with a higher `MCP_SERVER_VERSION`. See
+`docs/mcp-marketplaces.md`.
 
 **deploy-preview**: Runs after `deploy`. Downloads the
 `preview-build` artifact (the build of this exact `main` HEAD, whose tests ran

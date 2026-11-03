@@ -442,6 +442,139 @@ jobs:
           git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" > changed-files.txt
           node scripts/indexnow-submit.mjs --changed-files=changed-files.txt
 
+  mcp-registry:
+    name: Publish to MCP Registry
+    needs: deploy
+    if: github.ref == 'refs/heads/main' && inputs.dry-run != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      MCP_PUBLISHER_TAG: v1.8.7
+      MCP_PUBLISHER_ARCHIVE: mcp-publisher_linux_amd64.tar.gz
+      MCP_PUBLISHER_SHA256: 00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579
+      MCP_REGISTRY_VERSIONS_URL: https://registry.modelcontextprotocol.io/v0.1/servers/com.besidka%2Fmcp/versions
+      MCP_REGISTRY_STATUS_KEY: io.modelcontextprotocol.registry/official
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Read the version from server.json
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' server.json)
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::server.json version \"$VERSION\" is not MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the version is already published
+        id: registry
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          STATUS=$(curl -s -o published.json -w '%{http_code}' --retry 3 --retry-all-errors "$MCP_REGISTRY_VERSIONS_URL/$VERSION")
+
+          case "$STATUS" in
+            200) echo "published=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "published=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::The registry answered HTTP $STATUS for com.besidka/mcp $VERSION"
+              exit 1
+              ;;
+          esac
+
+          echo "com.besidka/mcp $VERSION registry status: HTTP $STATUS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail when server.json differs from the published version
+        if: steps.registry.outputs.published == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          FIELDS='{name, description, version, remotes, websiteUrl, repository, icons}'
+          jq -S "$FIELDS" server.json > local-entry.json
+          jq -S ".server | $FIELDS" published.json > published-entry.json
+
+          if ! diff -u published-entry.json local-entry.json; then
+            echo "::error::server.json changed but version $VERSION is already published; bump MCP_SERVER_VERSION (config/mcp-server.ts, server.json and plugins/besidka)"
+            exit 1
+          fi
+
+      - name: Install mcp-publisher
+        if: steps.registry.outputs.published == 'false'
+        run: |
+          RELEASE_URL="https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_TAG"
+          INSTALL_DIR="$RUNNER_TEMP/mcp-publisher"
+
+          mkdir -p "$INSTALL_DIR"
+          curl -fsSL --retry 3 -o "$INSTALL_DIR/$MCP_PUBLISHER_ARCHIVE" "$RELEASE_URL/$MCP_PUBLISHER_ARCHIVE"
+          curl -fsSL --retry 3 -o "$INSTALL_DIR/checksums.txt" "$RELEASE_URL/registry_${MCP_PUBLISHER_TAG#v}_checksums.txt"
+
+          cd "$INSTALL_DIR"
+          echo "$MCP_PUBLISHER_SHA256  $MCP_PUBLISHER_ARCHIVE" | sha256sum --check --strict -
+          awk -v name="$MCP_PUBLISHER_ARCHIVE" '$2 == name' checksums.txt | sha256sum --check --strict -
+          tar -xzf "$MCP_PUBLISHER_ARCHIVE" mcp-publisher
+
+          echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+      - name: Validate server.json
+        if: steps.registry.outputs.published == 'false'
+        run: mcp-publisher validate
+
+      - name: Log in to the registry
+        if: steps.registry.outputs.published == 'false'
+        env:
+          MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
+        run: |
+          if [ -z "$MCP_REGISTRY_PRIVATE_KEY" ]; then
+            echo "::error::The MCP_REGISTRY_PRIVATE_KEY secret is not set"
+            exit 1
+          fi
+
+          mcp-publisher login http --domain besidka.com --private-key "$MCP_REGISTRY_PRIVATE_KEY" > /dev/null
+
+      - name: Publish to the registry
+        if: steps.registry.outputs.published == 'false'
+        run: mcp-publisher publish
+
+      - name: Verify the published version is active
+        if: steps.registry.outputs.published == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          STATUS=""
+          for _ in 1 2 3 4 5; do
+            curl -s --retry 3 --retry-all-errors -o response.json -w '%{http_code}' "$MCP_REGISTRY_VERSIONS_URL/$VERSION" > http-status.txt || true
+            STATUS=$(cat http-status.txt)
+
+            if [ "$STATUS" = "200" ]; then
+              break
+            fi
+
+            sleep 3
+          done
+
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::The registry answered HTTP $STATUS for com.besidka/mcp $VERSION after publishing"
+            exit 1
+          fi
+
+          ACTIVE=$(jq -r --arg key "$MCP_REGISTRY_STATUS_KEY" '._meta[$key].status' response.json)
+
+          if [ "$ACTIVE" != "active" ]; then
+            echo "::error::com.besidka/mcp $VERSION has registry status \"$ACTIVE\", expected \"active\""
+            exit 1
+          fi
+
+          echo "Published com.besidka/mcp $VERSION to the MCP Registry (active)." >> "$GITHUB_STEP_SUMMARY"
+
   deploy-preview:
     name: Deploy long-lived preview
     needs: deploy
