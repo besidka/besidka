@@ -398,6 +398,9 @@ jobs:
   indexnow:
     name: Notify IndexNow
     needs: deploy
+    if: >-
+      !cancelled()
+      && needs.deploy.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -445,7 +448,11 @@ jobs:
   mcp-registry:
     name: Publish to MCP Registry
     needs: deploy
-    if: github.ref == 'refs/heads/main' && inputs.dry-run != true
+    if: >-
+      !cancelled()
+      && needs.deploy.result == 'success'
+      && github.ref == 'refs/heads/main'
+      && inputs.dry-run != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -578,6 +585,9 @@ jobs:
   deploy-preview:
     name: Deploy long-lived preview
     needs: deploy
+    if: >-
+      !cancelled()
+      && needs.deploy.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: production
@@ -631,6 +641,10 @@ jobs:
     needs:
       - deploy
       - deploy-preview
+    if: >-
+      !cancelled()
+      && needs.deploy.result == 'success'
+      && needs.deploy-preview.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
