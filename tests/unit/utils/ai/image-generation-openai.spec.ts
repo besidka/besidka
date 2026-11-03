@@ -242,11 +242,20 @@ describe('OpenAI image generation tool execution', () => {
     await runTool(createTool([createDataUrl('image/png', 'one')], logger))
 
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
-      imageGeneration: expect.objectContaining({
+      attributes: {
+        imageGeneration: expect.objectContaining({
+          mode: 'edit',
+          sourceImages: 1,
+        }),
+      },
+    }))
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      imageGeneration: {
         status: 'ready',
-        mode: 'edit',
-        sourceImages: 1,
-      }),
+        durationMs: expect.any(Number),
+        size: 58,
+        warnings: 0,
+      },
     }))
   })
 
@@ -256,11 +265,12 @@ describe('OpenAI image generation tool execution', () => {
     await runTool(createTool(undefined, logger))
 
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
-      imageGeneration: expect.objectContaining({
-        status: 'ready',
-        mode: 'generate',
-        sourceImages: 0,
-      }),
+      attributes: {
+        imageGeneration: expect.objectContaining({
+          mode: 'generate',
+          sourceImages: 0,
+        }),
+      },
     }))
   })
 
@@ -273,9 +283,15 @@ describe('OpenAI image generation tool execution', () => {
       runTool(createTool([createDataUrl('image/png', 'one')], logger)),
     ).rejects.toBeDefined()
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
-      imageGeneration: expect.objectContaining({
-        status: 'failed',
-        mode: 'edit',
+      attributes: {
+        imageGeneration: expect.objectContaining({
+          mode: 'edit',
+        }),
+      },
+    }))
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      imageGeneration: expect.not.objectContaining({
+        mode: expect.anything(),
       }),
     }))
   })
