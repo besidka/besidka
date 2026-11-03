@@ -17,6 +17,10 @@ import {
   MEMORY_EXTRACTION_LIMITS,
   isMemoryExtractionEditableOrigin,
 } from '~~/server/utils/memory/extract-limits'
+import {
+  READ_CHAT_TOOL_NAME,
+  SEARCH_CHATS_TOOL_NAME,
+} from '~~/server/utils/memory/tools/constants'
 import { PROJECT_MEMORY_LIMITS } from '~~/server/utils/projects/memory-limits'
 import {
   projectMemoryMessageText,
@@ -25,7 +29,12 @@ import {
 
 type DbClient = ReturnType<typeof useDb>
 
-const RECALL_TOOL_NAMES: readonly string[] = ['memory_list', 'memory_read']
+const RECALL_TOOL_NAMES: readonly string[] = [
+  'memory_list',
+  'memory_read',
+  SEARCH_CHATS_TOOL_NAME,
+  READ_CHAT_TOOL_NAME,
+]
 const TOOL_PART_PREFIX = 'tool-'
 const OMITTED_MESSAGES_MARKER = '[earlier messages omitted]'
 const TRANSCRIPT_LINE_SEPARATOR = '\n\n'

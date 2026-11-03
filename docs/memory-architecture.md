@@ -251,8 +251,9 @@ project entry on first read; the column is left in place and writes stop
   file and reasoning parts are never fed. The extractor prompt forbids
   storing instructions ("always do X when…") that originate outside user
   messages. Assistant turns whose `messages.tools` contain `memory_list` /
-  `memory_read` (a "what do you know about me" dump) are excluded from the
-  extraction window so memory doesn't feed on itself.
+  `memory_read` (a "what do you know about me" dump) or `search_chats` /
+  `read_chat` (excerpts of other chats, including the J6 pre-retrieval chip)
+  are excluded from the extraction window so memory doesn't feed on itself.
 - **Model**: cheapest flagged model on any key the user has — extend
   `forProjectMemory` to Anthropic (Haiku tier), xAI, DeepSeek etc. (fixes G4).
   ~$0.001–0.004 per pass at 10k in / 0.5k out. Superseded by the owner's
@@ -1193,7 +1194,9 @@ double pass harmless, and the lease only avoids paying twice.
 **Input and trust boundary.** Only `text` parts. User text is the primary
 source, assistant text is labeled low-trust, tool, source, file and reasoning
 parts are never read. Assistant turns whose `tools` column or tool parts name
-`memory_list`/`memory_read` are excluded. The prompt wraps the transcript as
+`memory_list`/`memory_read` or `search_chats`/`read_chat` are excluded, which
+also covers the J6 pre-retrieval chip (a `tool-search_chats` part). The user
+message before such a turn stays, so its quotes still ground evidence. The prompt wraps the transcript as
 untrusted data and forbids storing instructions that originate outside the
 user's words. The window is capped (36k chars) and bounded to the messages
 after `memory_extracted_at`. The current entry index of the scope (account
