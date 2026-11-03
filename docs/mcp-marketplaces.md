@@ -45,6 +45,10 @@ malware, spam and servers that do not work.
 | `config/mcp-server.ts` | `MCP_REGISTRY_PUBLIC_KEY`, the public half of the signing key |
 | `server/routes/.well-known/mcp-registry-auth.get.ts` | Serves `v=MCPv1; k=ed25519; p=<public key>` as `text/plain` |
 | `tests/unit/config/mcp-registry-manifests.spec.ts` | Fails when `server.json` or the plugin manifests drift from `config/mcp-server.ts` |
+| `config/mcp-surface.json` | Committed snapshot of the public MCP surface: every tool with its title, description, input schema, annotations, required scopes and whether it is public, plus the server name, title and description. Written by `pnpm run mcp:surface` |
+| `tests/unit/config/mcp-surface.spec.ts` | Fails when the tools no longer match the snapshot |
+| `scripts/mcp-version-guard.mjs` | Pull request check: fails when the snapshot or `server.json` changed without a higher `MCP_SERVER_VERSION` |
+| `.github/workflows/production.yml`, job `mcp-registry` | Publishes `server.json` to the registry after a production deploy |
 
 The name `com.besidka/mcp` is reverse DNS, so the registry needs proof that
 the publisher controls `besidka.com`. HTTP verification fetches
@@ -87,9 +91,57 @@ macOS LibreSSL has no Ed25519, so use Homebrew `openssl@3`.
 
 ### Publishing
 
-Prerequisites: the PR with `server.json` is merged and deployed, and WAF
-step 1c in `docs/agent-readiness.md` is applied, so that this prints
-`200` and the `v=MCPv1` line:
+Publishing is automatic. After a push to `main` deploys to production, the
+`mcp-registry` job in `.github/workflows/production.yml` runs:
+
+1. It reads `version` from `server.json` and asks the registry for
+   `com.besidka/mcp` at that version. HTTP 200 means it is already published,
+   and the job stops there. Most deploys end here, because the version did
+   not change.
+2. Otherwise it downloads `mcp-publisher` (the tag is pinned in the job's
+   `MCP_PUBLISHER_TAG`), checks the archive against the SHA-256 in that
+   release's `registry_<version>_checksums.txt`, runs `mcp-publisher
+   validate`, logs in over HTTP for `besidka.com` with the secret
+   `MCP_REGISTRY_PRIVATE_KEY`, and runs `mcp-publisher publish`.
+3. It fetches the version again and fails unless the answer is HTTP 200 and
+   `_meta["io.modelcontextprotocol.registry/official"].status` is `active`.
+
+The job also runs on a manual `workflow_dispatch` of the workflow on `main`
+(not a dry run), and it is safe to repeat because step 1 skips versions that
+exist. To retry a failed publish without a new commit, re-run the failed job
+from the workflow run page.
+
+The secret `MCP_REGISTRY_PRIVATE_KEY` is the 64-character hex Ed25519 private
+key that matches `MCP_REGISTRY_PUBLIC_KEY`, the form `mcp-publisher login
+http --private-key` takes. It is a repository secret, passed to the login
+step only through `env:`, and GitHub masks it in logs. The login token lasts
+5 minutes, so login and publish run back to back. `mcp-publisher` takes the
+key as a command-line argument, which is acceptable on a one-off GitHub
+runner.
+
+To rotate the key, generate a new pair as in "The signing key", put the new
+public key in `MCP_REGISTRY_PUBLIC_KEY`, deploy so that
+`/.well-known/mcp-registry-auth` serves it, then replace the secret with the
+new key's hex. Print the hex of a PEM key with:
+
+```bash
+/opt/homebrew/opt/openssl@3/bin/openssl pkey -in ~/.config/besidka/mcp-registry-ed25519.pem -noout -text | grep -A3 'priv:' | tail -n +2 | tr -d ' :\n'
+```
+
+Check an entry by hand:
+
+```bash
+curl -s 'https://registry.modelcontextprotocol.io/v0.1/servers/com.besidka%2Fmcp/versions/latest'
+```
+
+The answer has `server.name` `com.besidka/mcp` and
+`_meta["io.modelcontextprotocol.registry/official"].status` `active`.
+
+#### Manual fallback
+
+Use this only when the job cannot run. The prerequisites are that the
+version is deployed and WAF step 1c in `docs/agent-readiness.md` is applied,
+so that this prints `200` and the `v=MCPv1` line:
 
 ```bash
 curl -s -w '\n%{http_code}\n' https://besidka.com/.well-known/mcp-registry-auth
@@ -109,30 +161,40 @@ mcp-publisher validate
 mcp-publisher login http --domain besidka.com --private-key "$(/opt/homebrew/opt/openssl@3/bin/openssl pkey -in ~/.config/besidka/mcp-registry-ed25519.pem -noout -text | grep -A3 'priv:' | tail -n +2 | tr -d ' :\n')" && mcp-publisher publish
 ```
 
-The login token lasts 5 minutes, so login and publish run together. The
-login needs no account and no browser.
-`mcp-publisher` takes the key only as a command-line argument, so the hex
-key is briefly visible to other processes of the same user (`ps`). Run it on
-the owner's own machine, and start the line with a space if the shell keeps
-such lines out of its history (`HIST_IGNORE_SPACE` in zsh).
-
-Check the entry:
-
-```bash
-curl -s 'https://registry.modelcontextprotocol.io/v0.1/servers/com.besidka%2Fmcp/versions/latest'
-```
-
-The answer has `server.name` `com.besidka/mcp` and
-`_meta["io.modelcontextprotocol.registry/official"].status` `active`.
+The key is briefly visible to other processes of the same user (`ps`), so
+run it on the owner's own machine, and start the line with a space if the
+shell keeps such lines out of its history (`HIST_IGNORE_SPACE` in zsh).
 
 ### When to publish again
 
-Every change to `MCP_SERVER_VERSION`, `MCP_SERVER_DESCRIPTION` or the remote
-URL needs a new registry version. Bump `MCP_SERVER_VERSION`, update
-`server.json` (the manifest test fails until both agree), deploy, then run
-the login and publish command again. Adding or changing tools does not need
-a new registry version: the registry stores no tool list, and clients read
-tools from the server.
+Every change to the public MCP surface needs a new registry version, and CI
+enforces it:
+
+- `config/mcp-surface.json` is generated from the tool files in
+  `server/mcp/tools/` and `config/mcp-server.ts`. When a tool, its input
+  schema, its annotations, its scopes, or the server description changes,
+  `tests/unit/config/mcp-surface.spec.ts` fails until you run
+  `pnpm run mcp:surface` and commit the result.
+- On a pull request, `scripts/mcp-version-guard.mjs` (step "Check the MCP
+  version was bumped" in the `static` job of `preview-build.yml`) compares
+  the branch with the merge base on `origin/main`. If the snapshot changed,
+  or `server.json` changed in any field except `version`, then
+  `MCP_SERVER_VERSION` must be strictly greater than on the base, or the job
+  fails and says which level to use. A snapshot that does not exist on the
+  base yet counts as the baseline. Run it locally with
+  `pnpm run mcp:version-guard`.
+
+Choose the level like this: major for a removed tool, a removed or renamed
+input, a new required input or a changed required scope; minor for an added
+tool or an added optional input; patch for text-only changes.
+
+To bump: set `MCP_SERVER_VERSION` in `config/mcp-server.ts`, the same
+`version` in `server.json`, and in `plugins/besidka/plugin.json` and
+`plugins/besidka/.cursor-plugin/plugin.json` (the manifest test fails until
+all agree). When the PR is merged and deployed, the `mcp-registry` job
+publishes the new version without any manual step. A change to `server.json`
+that is not a version bump, such as the remote URL, must also bump the
+version, because registry versions are immutable.
 
 ### Downstream directories
 

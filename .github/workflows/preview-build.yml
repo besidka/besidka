@@ -168,6 +168,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
       - name: Setup project
         uses: ./.github/actions/setup
@@ -177,6 +178,9 @@ jobs:
 
       - name: Run TypeScript type checks
         run: pnpm run typecheck
+
+      - name: Check the MCP version was bumped
+        run: node scripts/mcp-version-guard.mjs
 
       - name: Check that migrations are committed
         run: |

@@ -488,8 +488,9 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the
-  `/.well-known/mcp-registry-auth` key and the `mcp-publisher` login and
-  publish commands (republish on every `MCP_SERVER_VERSION` bump), the
+  `/.well-known/mcp-registry-auth` key, the automatic registry publish on
+  every `MCP_SERVER_VERSION` bump, the `config/mcp-surface.json` snapshot
+  (`pnpm run mcp:surface`) and the PR version guard, the
   `plugins/besidka/` plugin for Cursor and the ChatGPT ZIP, the
   `NUXT_OPENAI_APPS_CHALLENGE` token route, paste-ready listing text, the
   reviewer account rules, and the owner checklist
