@@ -77,9 +77,10 @@ messages. Nothing a user edits can land in the middle. This is the one place
 where either feature fits:
 
 - **Anthropic**: at most two continue steps per send. The forced last step
-  switches to `toolChoice: 'none'`, `activeTools: []` and new instructions.
-  That is a fingerprint mismatch, so it must run unthreaded. The
-  search-answer continuation changes tools, so it runs unthreaded too.
+  keeps its tools and tool choice and only appends the final-step addendum
+  to the instructions. That changes the frozen system prompt, so it must run
+  unthreaded. The search-answer continuation changes tools, so it runs
+  unthreaded too.
 - **OpenAI**: `prepareStep` could pass `previousResponseId` from
   `steps.at(-1).response.id` and send only the new tool results. This saves
   upload only.
