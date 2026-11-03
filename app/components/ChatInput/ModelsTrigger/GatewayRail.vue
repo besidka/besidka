@@ -27,11 +27,7 @@
         class="btn shrink-0 gap-1.5 rounded-full"
         :class="[
           layout === 'sheet' ? 'btn-sm' : 'btn-xs',
-          activeGatewayId === gateway.id ? 'btn-accent' : 'btn-ghost',
-          {
-            'opacity-60': gateway.hasKey === false
-              && activeGatewayId !== gateway.id
-          }
+          activeGatewayId === gateway.id ? 'btn-accent' : 'btn-ghost'
         ]"
         :aria-pressed="activeGatewayId === gateway.id"
         :aria-label="getGatewayLabel(gateway)"
@@ -41,8 +37,12 @@
           :provider-id="gateway.id"
           :label="gateway.label"
           class="!size-3.5 shrink-0"
+          :class="{ 'opacity-60': isDimmed(gateway) }"
         />
-        <span class="truncate">
+        <span
+          class="truncate"
+          :class="{ 'opacity-60': isDimmed(gateway) }"
+        >
           {{ gateway.label }}
         </span>
         <Icon
@@ -93,6 +93,10 @@ const scroller = useTemplateRef<HTMLDivElement>('scroller')
 const { fadeStyle: scrollerFadeStyle } = useScrollEdgeFade(() => {
   return props.layout === 'sheet' ? scroller.value : null
 }, 'x')
+
+function isDimmed(gateway: GatewayRailItem): boolean {
+  return gateway.hasKey === false && props.activeGatewayId !== gateway.id
+}
 
 function getGatewayLabel(gateway: GatewayRailItem): string {
   if (gateway.hasKey === false) {

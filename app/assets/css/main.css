@@ -214,6 +214,16 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
     @apply bg-base-100 border-base-300 p-6;
   }
 
+  .tabs > .tab:not(.tab-active, .tab-disabled, [disabled], [aria-selected="true"], [aria-current="true"], [aria-current="page"], :has(:checked)) {
+    color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+
+    @media (hover: hover) {
+      &:hover {
+        color: var(--color-base-content);
+      }
+    }
+  }
+
   .skeleton:not(.skeleton--default):not(.skeleton-text) {
       background-color: var(--color-skeleton);
       background-image: linear-gradient(
