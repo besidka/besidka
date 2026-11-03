@@ -507,8 +507,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   module-internal dependencies, the prerender guard), the ownership boundary
   for a future `/docs` and `/blog` split, and the owner runbook (the WAF
   `.well-known` allowlist and `/mcp` plus `/raw/` in the rate-limit rule, both
-  applied 2026-10-29; step 1b, the OAuth discovery paths to add to the
-  allowlist; the Anthropic egress range against the per-IP limit; the optional
+  applied 2026-10-29; steps 1b and 1c, the OAuth discovery paths and the MCP
+  Registry and ChatGPT verification files, both applied; the Anthropic egress range against the per-IP limit; the optional
   WebMCP origin-trial token; DNSSEC and the DNS-AID records per draft -02)
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
@@ -602,7 +602,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `/auth.md`. The production WAF rule "URL attackers" allows only an explicit
   list of `.well-known` paths (applied 2026-10-29), so a new discovery file
   needs that list extended (runbook step 1; the OAuth metadata paths are
-  step 1b). The MCP server is `/mcp`: public read-only tools plus per-user
+  step 1b, the registry and ChatGPT verification files step 1c). The MCP server is `/mcp`: public read-only tools plus per-user
   tools behind OAuth 2.1 (see the same doc); the repo's `.mcp.json` connects
   Claude Code to it as `besidka`.
 
