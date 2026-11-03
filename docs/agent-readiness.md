@@ -29,7 +29,8 @@ PR #584 added everything below except the owner steps in
 The `feat/mcp-oauth` branch added the OAuth authorization server, protected
 resource metadata and `/auth.md` (see [Auth metadata](#auth-metadata)). It
 shipped, and runbook step 1b is applied. Step 1c, the MCP Registry and
-ChatGPT verification files, is open. Steps 3 to 5 stay optional.
+ChatGPT verification files, was applied on 2026-11-03. Steps 3 to 5 stay
+optional.
 
 ## Check by check
 
@@ -380,7 +381,12 @@ curl -s -o /dev/null -w '%{http_code}\n' https://besidka.com/.well-known/oauth-p
 The last one returns 403 because the allowlist matches the exact path or the
 prefix that ends in `/`, not a bare prefix.
 
-### 1c. Allow the MCP Registry and ChatGPT verification files (open)
+### 1c. Allow the MCP Registry and ChatGPT verification files (done)
+
+Applied on 2026-11-03 with the `cf` CLI (`cf rulesets account-rulesets rules
+update`, ruleset `a6a4141386324c0eb7e691ce5d4094cf`); the rule is now version
+18. After the deploy of besidka/besidka#621, `mcp-registry-auth` returned 200,
+`openai-apps-challenge` 404 (token unset) and `/.well-known/zzz` still 403.
 
 Two more files must get through the same clause:
 
@@ -389,7 +395,7 @@ Two more files must get through the same clause:
 | `/.well-known/mcp-registry-auth` | The official MCP Registry, on `mcp-publisher login http` | `docs/mcp-marketplaces.md` |
 | `/.well-known/openai-apps-challenge` | OpenAI, when the ChatGPT plugin is connected | `docs/mcp-marketplaces.md` |
 
-The live rule on 2026-11-03 (version 17) ends with this clause:
+Before the change, the live rule (version 17) ended with this clause:
 
 ```
 (http.request.uri.path contains ".well-known" and not (http.request.uri.path in {"/.well-known/api-catalog" "/.well-known/ai-catalog.json" "/.well-known/poppy.json"} or starts_with(http.request.uri.path, "/.well-known/mcp/") or starts_with(http.request.uri.path, "/.well-known/agent-skills/") or starts_with(http.request.uri.path, "/.well-known/skills/") or http.request.uri.path in {"/.well-known/oauth-authorization-server" "/.well-known/openid-configuration" "/.well-known/oauth-protected-resource"} or starts_with(http.request.uri.path, "/.well-known/oauth-protected-resource/")))
@@ -397,7 +403,7 @@ The live rule on 2026-11-03 (version 17) ends with this clause:
 
 Add both exact paths to the first set. Do not use a prefix: the existing
 `/.well-known/mcp/` prefix does not match `/.well-known/mcp-registry-auth`,
-and it should not. The clause becomes:
+and it should not. The clause is now:
 
 ```
 (http.request.uri.path contains ".well-known" and not (http.request.uri.path in {"/.well-known/api-catalog" "/.well-known/ai-catalog.json" "/.well-known/poppy.json" "/.well-known/mcp-registry-auth" "/.well-known/openai-apps-challenge"} or starts_with(http.request.uri.path, "/.well-known/mcp/") or starts_with(http.request.uri.path, "/.well-known/agent-skills/") or starts_with(http.request.uri.path, "/.well-known/skills/") or http.request.uri.path in {"/.well-known/oauth-authorization-server" "/.well-known/openid-configuration" "/.well-known/oauth-protected-resource"} or starts_with(http.request.uri.path, "/.well-known/oauth-protected-resource/")))

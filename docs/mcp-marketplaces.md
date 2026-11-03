@@ -13,7 +13,7 @@ could not be checked, say so.
 
 | Store | Status | Why |
 | --- | --- | --- |
-| Official MCP Registry | Repo side done; publish needs the owner (WAF step 1c, then one command) | Self-serve, no account, no review. Glama and others copy from it |
+| Official MCP Registry | Done: `com.besidka/mcp` 1.1.0 published on 2026-11-03 | Self-serve, no account, no review. Glama and others copy from it |
 | Claude connector directory | Needs the owner | Any paid Claude plan can submit. DCR and mixed public/OAuth are accepted as they are |
 | ChatGPT plugin directory | Repo side done; needs the owner | Individual ID verification, a demo video, a reviewer account and the domain token |
 | Cursor Marketplace | Repo side done; needs the owner | Manual review; the plugin lives in `plugins/besidka/` |
@@ -413,16 +413,15 @@ Free listings go through the same step.
 
 In this order:
 
-1. Merge the PR that adds `server.json`, the two `.well-known` routes and the
-   plugin, and wait for the production deploy.
-2. Apply WAF step 1c in `docs/agent-readiness.md` (two exact paths), then run
-   its check commands.
+1. Done on 2026-11-03: besidka/besidka#621 merged and deployed.
+2. Done on 2026-11-03: WAF step 1c in `docs/agent-readiness.md`.
 3. Store the registry private key, handed over outside the repo on
    2026-11-03, at `~/.config/besidka/mcp-registry-ed25519.pem` (mode `600`)
    and in the password manager. If it is gone, make a new pair as described
    in [The signing key](#the-signing-key) first.
-4. Publish to the official MCP Registry with the commands in
-   [Publishing](#publishing) and check the entry.
+4. Done on 2026-11-03: `com.besidka/mcp` 1.1.0 is published and `active` in
+   the official MCP Registry. Repeat [Publishing](#publishing) on every
+   `MCP_SERVER_VERSION` bump.
 5. Create the reviewer account described in
    [Reviewer test account](#reviewer-test-account).
 6. Record a short demo video (connect, sign in, approve scopes, run two read
