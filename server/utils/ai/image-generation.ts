@@ -1,4 +1,4 @@
-import type { ImageModel } from 'ai'
+import type { ImageModel, UIMessage } from 'ai'
 import type { OpenAIImageModelGenerationOptions } from '@ai-sdk/openai'
 import type { GoogleLanguageModelOptions } from '@ai-sdk/google'
 import type {
@@ -30,6 +30,13 @@ import {
 export const MAX_GENERATED_IMAGE_BYTES = 10 * 1024 * 1024
 export const MAX_GENERATED_IMAGE_DIMENSION = 8192
 export const MAX_GENERATED_IMAGE_PIXELS = 64 * 1024 * 1024
+export const MAX_IMAGE_EDIT_SOURCE_IMAGES = 16
+export const MAX_IMAGE_EDIT_SOURCE_BYTES = 20 * 1024 * 1024
+export const IMAGE_EDIT_SUPPORTED_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+])
 
 type GenerateImageOptions = Parameters<typeof generateImage>[0]
 
@@ -52,23 +59,102 @@ export interface CreateImageGenerationToolInput {
   imageModel: ImageModel
   logger: LoggerLike
   requestId?: string
+  sourceImages?: string[]
   onGenerated?: (result: {
     aspectRatio: ImageGenerationAspectRatio
   }) => void
+}
+
+function getDataUrlMediaType(url: string): string {
+  const header = url.slice('data:'.length).split(/[;,]/, 1)[0] || ''
+
+  return normalizeMediaType(header)
+}
+
+function estimateDataUrlBytes(url: string): number {
+  const base64Length = url.length - (url.indexOf(',') + 1)
+
+  return Math.ceil(base64Length * 3 / 4)
+}
+
+/**
+ * Returns the data-URL image parts of the latest user message that OpenAI's
+ * image edit endpoint accepts, in their original order, capped by the
+ * endpoint's image count and by a raw-byte budget. The media type is read
+ * from the data URL header, which is what the AI SDK sends to OpenAI. Images
+ * that do not fit the remaining budget are skipped. Earlier turns are
+ * deliberately ignored.
+ */
+export function getImageEditSourceImages(messages: UIMessage[]): string[] {
+  const latestUserMessage = messages.findLast((message) => {
+    return message.role === 'user'
+  })
+
+  if (!latestUserMessage || !Array.isArray(latestUserMessage.parts)) {
+    return []
+  }
+
+  const sourceImages: string[] = []
+  let totalBytes = 0
+
+  for (const part of latestUserMessage.parts) {
+    if (sourceImages.length >= MAX_IMAGE_EDIT_SOURCE_IMAGES) {
+      break
+    }
+
+    if (
+      part.type !== 'file'
+      || typeof part.url !== 'string'
+      || !part.url.startsWith('data:')
+      || !IMAGE_EDIT_SUPPORTED_MEDIA_TYPES.has(getDataUrlMediaType(part.url))
+    ) {
+      continue
+    }
+
+    const imageBytes = estimateDataUrlBytes(part.url)
+
+    if (totalBytes + imageBytes > MAX_IMAGE_EDIT_SOURCE_BYTES) {
+      continue
+    }
+
+    totalBytes += imageBytes
+    sourceImages.push(part.url)
+  }
+
+  return sourceImages
+}
+
+function getImageGenerationToolDescription(hasSourceImages: boolean): string {
+  if (hasSourceImages) {
+    return [
+      'Edit the image or images the user attached and save the result to',
+      'their private Besidka files. The attached image or images are sent to',
+      'the image model as the source to edit. Write prompt as the edit',
+      'instruction: state what to change and what to keep unchanged, rather',
+      'than re-describing the whole scene. Pick the aspectRatio closest to',
+      'the source image. Return the saved file produced by this tool; do not',
+      'claim that image generation is unavailable.',
+    ].join(' ')
+  }
+
+  return [
+    'Generate one image from the user request and save it to their private',
+    'Besidka files. Use the full visual request as prompt. Return the saved',
+    'file produced by this tool; do not claim that image generation is',
+    'unavailable.',
+  ].join(' ')
 }
 
 export function createImageGenerationTool(
   input: CreateImageGenerationToolInput,
 ) {
   let isExecutionClaimed = false
+  const sourceImages = input.sourceImages ?? []
+  const hasSourceImages = sourceImages.length > 0
+  const generationMode = hasSourceImages ? 'edit' : 'generate'
 
   return tool({
-    description: [
-      'Generate one image from the user request and save it to their private',
-      'Besidka files. Use the full visual request as prompt. Return the saved',
-      'file produced by this tool; do not claim that image generation is',
-      'unavailable.',
-    ].join(' '),
+    description: getImageGenerationToolDescription(hasSourceImages),
     inputSchema: generateImageInputSchema,
     async* execute(
       { prompt, aspectRatio, fileName },
@@ -96,7 +182,9 @@ export function createImageGenerationTool(
 
         const result = await generateImage({
           model: input.imageModel,
-          prompt,
+          prompt: hasSourceImages
+            ? { images: sourceImages, text: prompt }
+            : prompt,
           n: 1,
           maxImagesPerCall: 1,
           maxRetries: 0,
@@ -140,6 +228,8 @@ export function createImageGenerationTool(
             imageGeneration: {
               provider: input.provider,
               model: input.model,
+              mode: generationMode,
+              sourceImages: sourceImages.length,
               mediaType: persistedFile.type,
               usage: result.usage,
             },
@@ -181,6 +271,7 @@ export function createImageGenerationTool(
             imageGeneration: {
               provider: input.provider,
               model: input.model,
+              mode: generationMode,
               errorCode: safeError.code,
             },
           },

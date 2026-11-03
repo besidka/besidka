@@ -124,6 +124,69 @@ is a live-key error, not a picker cosmetic).
   this pattern yet; DeepSeek and Moonshot AI don't offer image generation at
   all.
 
+### OpenAI image edits from an attached image
+
+Until 2026-11-03 the `generate_image` tool forwarded only the controller's
+text prompt to the image model, so an image attached to a GPT Image send
+reached the controller (`gpt-6-luna`) but never OpenAI's Images API. "Use
+exactly this background" was answered by a fresh generation from a text
+description of the photo.
+
+Now, on the direct OpenAI path only, the send passes the images on the
+latest user message to the tool as `sourceImages`, and the tool calls
+`generateImage({ prompt: { images, text } })`. AI SDK v7 turns `images` into
+image-model files, and `@ai-sdk/openai` (4.0.102) posts to `/images/edits`
+whenever files are present; a send without an attached image still sends a
+plain string prompt to `/images/generations`, unchanged.
+
+- **Which images.** `getImageEditSourceImages()`
+  (`server/utils/ai/image-generation.ts`) takes the last `user` message of
+  `messagesForAI` and keeps its `file` parts that are `data:` URLs with
+  media type `image/png`, `image/jpeg` or `image/webp`, in their original
+  order (OpenAI treats the first as the primary image), capped at 16 (the
+  Images API limit for GPT image models). The media type is read from the
+  `data:` URL header, because that header is what the AI SDK sends to
+  OpenAI; the part's declared `mediaType` comes from the client and is
+  ignored. Images from earlier turns, generated images in assistant
+  messages, PDFs, GIFs and text files are not forwarded; the controller
+  still sees them as before.
+- **Memory budget.** The SDK decodes each image and copies it into a
+  multipart body, so the edit holds several copies of every source image at
+  once on a 128 MB Worker, while the per-message upload cap is 1 GB. The
+  forwarded images are therefore capped at `MAX_IMAGE_EDIT_SOURCE_BYTES`
+  (20 MB decoded, estimated from the base64 length). An image that would
+  exceed the budget is skipped and later, smaller ones are still kept. If
+  nothing fits, the send falls back to text-only generation.
+- **No extra R2 reads.** `convertFilesForAI()` has already read the latest
+  message's owned files from R2 one at a time (with the 5-minute KV data-URL
+  cache) and replaced their `/files/` URLs with `data:` URLs, so the tool
+  reuses those. The edit adds no R2 or KV connection to the send.
+- **Request options.** `quality`, `outputFormat` and `outputCompression`
+  are in the base options schema shared by the generation and edit
+  endpoints, so `getProviderGenerationOptions('openai', …)` is unchanged.
+  `inputFidelity` is deliberately not sent: OpenAI's edit reference says to
+  omit it for `gpt-image-2`, and an unsupported parameter fails only with a
+  real key. No mask is sent, so the model edits the whole image as the
+  prompt describes.
+- **Controller prompt.** When source images are present, the tool
+  description asks the controller to write the edit instruction (what to
+  change and what to keep) rather than describing the whole scene again,
+  and to pick the aspect ratio closest to the source.
+- **Cost.** `getImageGenerationCost()` is still the per-image output
+  price. An edit also bills the input image tokens, which the flat estimate
+  does not include (the model's `price.display` already says "plus input").
+- **Scope.** Google and xAI image models and every gateway image path are
+  unchanged: their `createImageGenerationTool()` calls pass no source
+  images, and gateway image generation has no tool at all (see
+  [`gateways.md`](./gateways.md)).
+- **Iterative edits are not covered.** Only the latest message's
+  attachments are forwarded. A follow-up such as "make it darker" without
+  re-attaching edits nothing: the previous result is in history only as
+  text, so the send is a fresh generation.
+- **Unverified live.** Covered by unit tests against the real
+  `@ai-sdk/openai` request builder with a mocked `fetch`; a send with a
+  real OpenAI key is still the owner's check.
+
 ## Prompt caching
 
 Cached input tokens bill at a fraction of the base input price, so every
