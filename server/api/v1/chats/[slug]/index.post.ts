@@ -141,7 +141,10 @@ import {
   persistGatewayGeneratedImageParts,
   stripUndeliveredInlineDataParts,
 } from '~~/server/utils/files/assistant-files'
-import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
+import {
+  createImageGenerationTool,
+  getImageEditSourceImages,
+} from '~~/server/utils/ai/image-generation'
 import {
   putGenerationGuard,
   startGenerationGuardHeartbeat,
@@ -988,6 +991,7 @@ export default defineEventHandler(async (event) => {
               imageModel: openAiImageModel,
               logger: aiLogger,
               requestId: getRequestId(event),
+              sourceImages: getImageEditSourceImages(messagesForAI),
               onGenerated: ({ aspectRatio }) => {
                 generatedImage = { modelId: openAiImageModelId, aspectRatio }
               },
