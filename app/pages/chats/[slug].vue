@@ -15,7 +15,7 @@
       <p
         v-if="isMemoryExcluded"
         data-testid="chat-memory-excluded-indicator"
-        class="flex items-center justify-center gap-1 text-xs opacity-60"
+        class="flex items-center justify-center gap-1 text-xs text-base-content/70"
         :title="CHAT_MEMORY_EXCLUSION_HELPER"
       >
         <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="12" />

@@ -95,7 +95,7 @@
       <template v-else>
         <template v-if="pinned.length > 0">
           <div class="flex items-center gap-2">
-            <span class="text-xs opacity-60 uppercase tracking-wide font-semibold">
+            <span class="text-xs text-base-content/70 uppercase tracking-wide font-semibold">
               Pinned
             </span>
             <div class="flex-1 h-px bg-base-300" />
@@ -138,7 +138,7 @@
                     />
                   </div>
                 </div>
-                <div class="text-xs opacity-50">
+                <div class="text-xs text-base-content/70">
                   {{ formatActivityAge(new Date(project.activityAt)) }}
                 </div>
               </div>
@@ -151,7 +151,7 @@
             v-if="pinned.length > 0"
             class="flex items-center gap-2"
           >
-            <span class="text-xs opacity-60 uppercase tracking-wide font-semibold">
+            <span class="text-xs text-base-content/70 uppercase tracking-wide font-semibold">
               All projects
             </span>
             <div class="flex-1 h-px bg-base-300" />
@@ -194,7 +194,7 @@
                     />
                   </div>
                 </div>
-                <div class="text-xs opacity-50">
+                <div class="text-xs text-base-content/70">
                   {{ formatActivityAge(new Date(project.activityAt)) }}
                 </div>
               </div>
@@ -224,14 +224,14 @@
           <template v-if="search.length >= 2">
             <Icon name="lucide:search-x" size="40" class="mx-auto mb-3 opacity-60" />
             <p class="font-medium">No projects match your search</p>
-            <p class="mt-2 text-sm opacity-60">
+            <p class="mt-2 text-sm text-base-content/70">
               Try a different project name.
             </p>
           </template>
           <template v-else-if="showArchived">
             <Icon name="lucide:archive" size="40" class="mx-auto mb-3 opacity-60" />
             <p class="font-medium">No archived projects</p>
-            <p class="mt-2 text-sm opacity-60">
+            <p class="mt-2 text-sm text-base-content/70">
               Archived projects will show up here.
             </p>
           </template>
@@ -242,7 +242,7 @@
               class="mx-auto mb-3 opacity-60"
             />
             <p class="font-medium">Create your first project to organize chats</p>
-            <p class="mt-2 mb-4 text-sm opacity-60">
+            <p class="mt-2 mb-4 text-sm text-base-content/70">
               Keep related conversations together and easier to revisit.
             </p>
             <button

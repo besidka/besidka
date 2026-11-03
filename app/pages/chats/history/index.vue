@@ -21,7 +21,7 @@
 
     <p
       v-if="searchCapped"
-      class="text-xs opacity-60 -mt-2"
+      class="text-xs text-base-content/70 -mt-2"
     >
       Showing the first 200 matches — refine your search
     </p>

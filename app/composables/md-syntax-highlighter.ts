@@ -13,7 +13,7 @@ export async function useHighlighter() {
   if (!promise) {
     promise = createHighlighter({
       engine: createJavaScriptRegexEngine(),
-      themes: ['github-dark', 'github-light'],
+      themes: ['github-dark-high-contrast', 'github-light-high-contrast'],
       langs: Object.keys(bundledLanguages),
     })
   }

@@ -165,8 +165,8 @@
             :code="effectiveSource"
             :lang="lang"
             :theme="$colorMode.value === 'dark'
-              ? 'github-dark'
-              : 'github-light'
+              ? 'github-dark-high-contrast'
+              : 'github-light-high-contrast'
             "
           >
             Render

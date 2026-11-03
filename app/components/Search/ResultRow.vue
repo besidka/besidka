@@ -26,7 +26,7 @@
         </template>
       </p>
       <div class="flex flex-wrap items-center gap-2 mt-0.5">
-        <span class="text-xs opacity-50 truncate">
+        <span class="text-xs text-base-content/70 truncate">
           {{ activityAge }}
         </span>
         <span
