@@ -1,0 +1,97 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "besidka",
+  "version": "1.1.0",
+  "description": "Read and organise your Besidka chats, projects, project knowledge, memory, files and settings.",
+  "author": {
+    "name": "Besidka",
+    "url": "https://besidka.com"
+  },
+  "homepage": "https://besidka.com",
+  "repository": "https://github.com/besidka/besidka",
+  "license": "MIT",
+  "keywords": ["chat", "projects", "memory", "notes", "productivity"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Besidka",
+        "shortDescription": "Chats, projects and memory",
+        "longDescription": "Work with your Besidka account from ChatGPT. Find and read your chats, organise them into projects, add notes and text to project knowledge, review and edit what Besidka remembers, save and read text files, and change your Besidka settings. Every action uses your own Besidka data after you sign in and approve each permission, and deleting anything needs a separate permission. Public tools, which need no sign-in, list the models and providers Besidka supports and link to step-by-step guides for getting a provider key.",
+        "developerName": "Besidka",
+        "category": "Productivity",
+        "capabilities": [
+          "Read and organise chats",
+          "Manage project knowledge",
+          "Review and edit memory",
+          "Read and save text files"
+        ],
+        "websiteURL": "https://besidka.com",
+        "supportURL": "https://github.com/besidka/besidka/issues",
+        "privacyPolicyURL": "https://besidka.com/privacy-policy",
+        "termsOfServiceURL": "https://besidka.com/terms-of-use",
+        "defaultPrompt": [
+          "List my recent Besidka chats.",
+          "What does Besidka remember about me?",
+          "Which Besidka models support reasoning?"
+        ],
+        "logo": "./assets/logo.png",
+        "composerIcon": "./assets/logo.png"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "List recent chats",
+              "prompt": "List my five most recent Besidka chats.",
+              "tools_triggered": "list_chats",
+              "expected_behavior": "Return the five most recently active chats with titles and links, newest first."
+            },
+            {
+              "description": "Summarize a chat",
+              "prompt": "Summarize my Besidka chat about the trip plan.",
+              "tools_triggered": "list_chats, get_chat",
+              "expected_behavior": "Find the chat by searching titles and content, read it, and summarize it without inventing details."
+            },
+            {
+              "description": "Add a project note",
+              "prompt": "Add a note called Reviewer check to my Besidka project Demo saying the review ran today.",
+              "tools_triggered": "list_projects, add_project_note",
+              "expected_behavior": "Find the Demo project and add the note to its knowledge; report the new note."
+            },
+            {
+              "description": "Review memory",
+              "prompt": "What does Besidka remember about me?",
+              "tools_triggered": "list_memory",
+              "expected_behavior": "List the account memory entries with their titles and descriptions."
+            },
+            {
+              "description": "Public model catalog",
+              "prompt": "Which Besidka models support reasoning?",
+              "tools_triggered": "list_models",
+              "expected_behavior": "List models whose capabilities include reasoning, grouped by provider, without requiring sign-in."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Sending a chat message",
+              "prompt": "Send 'hello' in my latest Besidka chat and show the model's reply."
+            },
+            {
+              "description": "Reading provider API keys",
+              "prompt": "Show me the OpenAI API key saved in my Besidka account."
+            },
+            {
+              "description": "Changing account security",
+              "prompt": "Change my Besidka password and turn off two-factor authentication."
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "Besidka does not sell anything or process payments through this plugin."
+      },
+      "publication": {
+        "release_notes": "First release: chats, projects, project knowledge, memory, files and settings, plus the public model catalog and key guides."
+      }
+    }
+  }
+}

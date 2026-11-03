@@ -393,6 +393,7 @@ export default defineNuxtConfig({
     vapidSubject: '',
     // Public by design (served at /indexnow-key.txt); see docs/seo.md.
     indexnowKey: '',
+    openaiAppsChallenge: '',
     public: {
       baseUrl: '',
       privacyEmail: '',
