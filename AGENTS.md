@@ -485,6 +485,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   there is no `send_message` tool (decided 2026-10-30: no per-call approval
   guarantee, Art. 49 consent path; revisit criteria and the zero-spend
   `create_chat_draft` alternative)
+- `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
+  MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
+  Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the
+  `/.well-known/mcp-registry-auth` key and the `mcp-publisher` login and
+  publish commands (republish on every `MCP_SERVER_VERSION` bump), the
+  `plugins/besidka/` plugin for Cursor and the ChatGPT ZIP, the
+  `NUXT_OPENAI_APPS_CHALLENGE` token route, paste-ready listing text, the
+  reviewer account rules, and the owner checklist
 - `docs/agent-readiness.md` - How besidka.com answers AI agents
   (isitagentready.com: Level 1, score 20, before 2026-10-29; Level 4 in
   production since that day): the check-by-check

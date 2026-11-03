@@ -36,3 +36,6 @@ export const MCP_SERVER_REPOSITORY = {
   url: 'https://github.com/besidka/besidka',
   source: 'github',
 } as const
+
+export const MCP_REGISTRY_PUBLIC_KEY
+  = 'U7zqIcZTIY1E3EQXsOqYxriQ/shVOnJePLONkfe97E0='

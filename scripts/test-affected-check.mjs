@@ -1046,6 +1046,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/routes/well-known/poppy.spec.ts',
     'tests/unit/server/routes/well-known/agent-skills-skill.spec.ts',
     'tests/unit/server/routes/well-known/mcp/server-card.spec.ts',
+    'tests/unit/server/routes/well-known/mcp-registry-auth.spec.ts',
+    'tests/unit/server/routes/well-known/openai-apps-challenge.spec.ts',
+    'tests/unit/config/mcp-registry-manifests.spec.ts',
     'tests/unit/server/plugins/agent-discovery-landing.spec.ts',
     'tests/unit/server/plugins/agent-discovery-page-components.spec.ts',
     'tests/unit/server/utils/agent-discovery/skills.spec.ts',
@@ -1535,6 +1538,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/routes\/\.well-known\/.*|server\/utils\/(agent-discovery|content)\/.*|server\/plugins\/agent-discovery-(landing|page-components)\.ts|config\/(agent-discovery-routes|mcp-server|site-url)\.ts|skills\/.*|content\/index\.md)$/,
       tests: agentDiscoveryTests,
+    },
+    {
+      pattern:
+        /^(server\.json|plugins\/besidka\/.*|\.cursor-plugin\/marketplace\.json)$/,
+      tests: ['tests/unit/config/mcp-registry-manifests.spec.ts'],
     },
     {
       pattern: /^app\/pages\/\((auth|legal)\)\/.*\.vue$/,

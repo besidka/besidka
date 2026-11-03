@@ -1,0 +1,16 @@
+{
+  "name": "besidka",
+  "owner": {
+    "name": "Besidka"
+  },
+  "metadata": {
+    "description": "The Besidka MCP server for Cursor."
+  },
+  "plugins": [
+    {
+      "name": "besidka",
+      "source": "plugins/besidka",
+      "description": "Read and organise your Besidka chats, projects, project knowledge, memory, files and settings."
+    }
+  ]
+}
