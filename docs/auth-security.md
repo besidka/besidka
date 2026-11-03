@@ -530,6 +530,37 @@ do restore, follow `docs/d1-restore-reconciliation.md` right after: a
 restore revives revoked sessions through the D1 fallback, and you must clear
 them in both D1 and KV.
 
+## Email sign-up: the "check your email" state
+
+With `requireEmailVerification` on (everywhere except dev and CI), Better Auth
+answers `/sign-up/email` for an email that already has an account with a
+synthetic success: `{ token: null, user: { ...synthetic } }`, no new row and no
+email (`node_modules/better-auth/dist/api/routes/sign-up.mjs`,
+`shouldReturnGenericDuplicateResponse`). That is deliberate anti-enumeration,
+and the response for a brand-new address is indistinguishable from it on the
+wire. In production on 2026-11-03 the two calls took 1726 ms (create, render and
+send) versus 289 ms (password hash only), which is how the duplicate shows up in
+Axiom.
+
+The sign-up page therefore never reads the response as "your account exists" or
+"your account was created". It branches on `data.token` only: a session token
+(dev and CI, `autoSignIn`) navigates on, and `token: null` swaps the form for
+`Auth/CheckEmail.vue`, which names the address, offers a resend and a way back
+to the form. Both outcomes render the same state. Do not add "if this account
+exists" copy and do not reveal which case happened.
+
+Resend calls `/send-verification-email` (not captcha gated, rate limited to 3 per
+900 s in the table above) with the same callback URL as the sign-up, behind a
+60 s client cooldown. An existing but unverified user gets a fresh email; an
+unknown or verified address gets the same success response and no email.
+
+Delivery is not logged on success, and a send failure inside Better Auth's
+`sendVerificationEmail` callback is swallowed by `runInBackgroundOrAwait`, so
+the sign-up still returns 200. If a user reports a missing email, check that
+the recipient has a mailbox before suspecting the code: `besidka.com` mail goes
+through Cloudflare Email Routing, so an address with no rule and no catch-all
+cannot receive it.
+
 ## Turnstile owner checklist
 
 Manual steps needed before `turnstileEnforced` can be safely flipped to

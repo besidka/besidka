@@ -1019,6 +1019,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/turnstile.spec.ts',
     'tests/unit/components/Auth/Turnstile.client.spec.ts',
     'tests/unit/components/Auth/OAuthNotice.spec.ts',
+    'tests/unit/components/Auth/CheckEmail.spec.ts',
     'tests/unit/composables/captcha.spec.ts',
     'tests/unit/pages/(auth)/signin.spec.ts',
     'tests/unit/pages/(auth)/signup.spec.ts',
@@ -1506,7 +1507,7 @@ export function getAffectedTests(changedFiles) {
       tests: turnstileTests,
     },
     {
-      pattern: /^app\/components\/Auth\/OAuthNotice\.vue$/,
+      pattern: /^app\/components\/Auth\/(OAuthNotice|CheckEmail)\.vue$/,
       tests: turnstileTests,
     },
     {
