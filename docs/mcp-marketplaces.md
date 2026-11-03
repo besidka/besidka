@@ -96,11 +96,13 @@ Publishing is automatic. After a push to `main` deploys to production, the
 
 1. It reads `version` from `server.json` and asks the registry for
    `com.besidka/mcp` at that version. HTTP 200 means it is already published,
-   and the job stops there. Most deploys end here, because the version did
+   and the job compares the published entry with `server.json` (see "When to
+   publish again"), then stops. Most deploys end here, because the version did
    not change.
 2. Otherwise it downloads `mcp-publisher` (the tag is pinned in the job's
-   `MCP_PUBLISHER_TAG`), checks the archive against the SHA-256 in that
-   release's `registry_<version>_checksums.txt`, runs `mcp-publisher
+   `MCP_PUBLISHER_TAG`, the hash in `MCP_PUBLISHER_SHA256`), checks the archive
+   against both that hash and the SHA-256 in the release's
+   `registry_<version>_checksums.txt`, runs `mcp-publisher
    validate`, logs in over HTTP for `besidka.com` with the secret
    `MCP_REGISTRY_PRIVATE_KEY`, and runs `mcp-publisher publish`.
 3. It fetches the version again and fails unless the answer is HTTP 200 and
@@ -183,6 +185,17 @@ enforces it:
   fails and says which level to use. A snapshot that does not exist on the
   base yet counts as the baseline. Run it locally with
   `pnpm run mcp:version-guard`.
+
+The guard also reads `MCP_SERVER_VERSION` at the current `origin/main` tip.
+When anything MCP-related changed, the branch version must be strictly above
+both the merge base and that tip, so two open pull requests cannot claim the
+same version ("main is already at X; bump above it": rebase and bump again).
+As a safety net, when the `mcp-registry` job finds the version already listed,
+it compares the published entry's `name`, `description`, `version`, `remotes`,
+`websiteUrl`, `repository` and `icons` with `server.json` (registry-added
+`_meta` is ignored) and fails with "bump MCP_SERVER_VERSION" if they differ.
+Every tool text or schema change therefore produces a new registry version.
+That is deliberate, even for a one-word description edit.
 
 Choose the level like this: major for a removed tool, a removed or renamed
 input, a new required input or a changed required scope; minor for an added

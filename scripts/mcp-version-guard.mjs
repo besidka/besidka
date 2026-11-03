@@ -5,8 +5,12 @@
  * MCP_SERVER_VERSION. Compares the working tree with the merge base of
  * origin/main: config/mcp-surface.json (tools, schemas, scopes, annotations,
  * server text) and every server.json field except `version`. A file that does
- * not exist on the base counts as a new baseline, not as a change. See
- * "When to publish again" in docs/mcp-marketplaces.md.
+ * not exist on the base counts as a new baseline, not as a change. When
+ * something changed, the version must be strictly greater than both the merge
+ * base version and the version at the current origin/main tip, so two open
+ * pull requests cannot claim the same version. Exit 1 means a missing bump;
+ * exit 2 means the guard could not run (git error, unreadable HEAD version).
+ * See "When to publish again" in docs/mcp-marketplaces.md.
  *
  * Usage:
  *   pnpm run mcp:version-guard [--base=origin/main]
@@ -181,7 +185,9 @@ export function bumpVersion(version, level) {
   return `${major}.${minor}.${patch + 1}`
 }
 
-export function checkMcpVersion({ base, head }) {
+export function checkMcpVersion({ base, head, main = null }) {
+  parseVersion(head.version)
+
   const changes = []
   const surfaceChanged = base.surface !== null
     && !isEqualJson(base.surface, head.surface)
@@ -204,7 +210,11 @@ export function checkMcpVersion({ base, head }) {
     return { ok: true, changes, message: 'No MCP surface change.' }
   }
 
-  if (base.version === null) {
+  const knownVersions = [base.version, main?.version].filter((version) => {
+    return version !== null && version !== undefined
+  })
+
+  if (knownVersions.length === 0) {
     return {
       ok: true,
       changes,
@@ -212,11 +222,15 @@ export function checkMcpVersion({ base, head }) {
     }
   }
 
-  if (compareVersions(head.version, base.version) > 0) {
+  const floorVersion = knownVersions.reduce((highest, version) => {
+    return compareVersions(version, highest) > 0 ? version : highest
+  })
+
+  if (compareVersions(head.version, floorVersion) > 0) {
     return {
       ok: true,
       changes,
-      message: `MCP_SERVER_VERSION went from ${base.version} to `
+      message: `MCP_SERVER_VERSION went from ${floorVersion} to `
         + `${head.version}.`,
     }
   }
@@ -225,9 +239,15 @@ export function checkMcpVersion({ base, head }) {
     surfaceChanged ? base.surface : null,
     surfaceChanged ? head.surface : null,
   )
+  const mainIsAhead = main?.version != null
+    && compareVersions(main.version, base.version ?? '0.0.0') > 0
+  const header = mainIsAhead
+    ? `The MCP surface changed and main is already at ${main.version}; bump `
+    + `above it (head ${head.version}, merge base ${base.version}).`
+    : 'The MCP surface changed but MCP_SERVER_VERSION did not increase '
+      + `(base ${base.version}, head ${head.version}).`
   const lines = [
-    'The MCP surface changed but MCP_SERVER_VERSION did not increase '
-    + `(base ${base.version}, head ${head.version}).`,
+    header,
     ...changes.map((change) => {
       return `  - ${change}`
     }),
@@ -235,7 +255,7 @@ export function checkMcpVersion({ base, head }) {
       return `    ${reason}`
     }),
     `Suggested bump: ${suggestedLevel} `
-    + `(${bumpVersion(base.version, suggestedLevel)}). Major for a removed `
+    + `(${bumpVersion(floorVersion, suggestedLevel)}). Major for a removed `
     + 'tool, a removed or renamed input or a new required input; minor for '
     + 'an added tool or an added optional input; patch for text-only '
     + 'changes.',
@@ -254,12 +274,14 @@ function git(args) {
   }).trim()
 }
 
-function readBaseFile(mergeBase, path) {
-  try {
-    return git(['show', `${mergeBase}:${path}`])
-  } catch {
+export function readFileAtRevision(revision, path, runGit = git) {
+  const listing = runGit(['ls-tree', '--name-only', revision, '--', path])
+
+  if (listing === '') {
     return null
   }
+
+  return runGit(['show', `${revision}:${path}`])
 }
 
 function parseJsonOrNull(source) {
@@ -285,24 +307,33 @@ function main() {
     })
     ?.slice('--base='.length)
   const baseRef = baseArgument || 'origin/main'
-  let mergeBase
+  let result
 
   try {
-    mergeBase = git(['merge-base', baseRef, 'HEAD'])
-  } catch {
+    const mergeBase = git(['merge-base', baseRef, 'HEAD'])
+
+    result = checkMcpVersion({
+      base: readSnapshot((path) => {
+        return readFileAtRevision(mergeBase, path)
+      }),
+      head: readSnapshot(readHeadFile),
+      main: {
+        version: readServerVersion(
+          readFileAtRevision(baseRef, SERVER_CONFIG_PATH),
+        ),
+      },
+    })
+  } catch (exception) {
     console.error(
-      `Could not find the merge base with ${baseRef}. Fetch it with `
-      + `"git fetch origin main" and make sure the checkout has history.`,
+      `::error::The MCP version guard could not run: ${exception.message}`,
+    )
+    console.error(
+      `Fetch the base with "git fetch origin main", make sure the checkout `
+      + 'has history, and check that config/mcp-server.ts declares '
+      + 'MCP_SERVER_VERSION as a plain MAJOR.MINOR.PATCH string.',
     )
     process.exit(2)
   }
-
-  const result = checkMcpVersion({
-    base: readSnapshot((path) => {
-      return readBaseFile(mergeBase, path)
-    }),
-    head: readSnapshot(readHeadFile),
-  })
 
   if (!result.ok) {
     console.error(`::error::${result.message.split('\n')[0]}`)
