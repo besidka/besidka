@@ -188,6 +188,14 @@ Choose the level like this: major for a removed tool, a removed or renamed
 input, a new required input or a changed required scope; minor for an added
 tool or an added optional input; patch for text-only changes.
 
+Known trade-offs: a zod upgrade that changes the JSON Schema output, or a
+pure key reorder in `server.json`, also trips the snapshot test or the guard
+with no real surface change. Regenerate and bump the patch level. The surface
+spec stubs `defineMcpTool`, `defineCachedFunction`, `useEvent` and `useDb`;
+a new tool that imports a module using another auto-import (for example
+`useRuntimeConfig`) fails with a `ReferenceError` at import, and the fix is
+one more `vi.stubGlobal` in `tests/unit/config/mcp-surface.spec.ts`.
+
 To bump: set `MCP_SERVER_VERSION` in `config/mcp-server.ts`, the same
 `version` in `server.json`, and in `plugins/besidka/plugin.json` and
 `plugins/besidka/.cursor-plugin/plugin.json` (the manifest test fails until
