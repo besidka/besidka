@@ -38,7 +38,7 @@
             <div
               v-if="group.heading"
               aria-hidden="true"
-              class="px-3 pt-3 pb-1 text-xs font-semibold uppercase opacity-50"
+              class="px-3 pt-3 pb-1 text-xs font-semibold uppercase text-base-content/70"
             >
               {{ group.heading }}
             </div>

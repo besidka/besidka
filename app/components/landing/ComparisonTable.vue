@@ -23,7 +23,8 @@
             scope="col"
             class="text-center font-semibold py-2 px-3 min-w-[7rem]"
             :class="colIndex === 0
-              ? 'static sm:sticky sm:left-[9.5rem] z-20 text-accent '
+              ? 'static sm:sticky sm:left-[9.5rem] z-20 '
+                + 'text-(--color-accent-text) '
                 + 'sm:bg-base-100/80 sm:backdrop-blur-lg '
                 + 'sm:backdrop-saturate-150'
               : 'static text-base-content/80'"
@@ -54,7 +55,8 @@
             :class="colIndex === 0
               ? 'static sm:sticky sm:left-[9.5rem] z-10 '
                 + 'sm:bg-base-100/80 sm:backdrop-blur-lg '
-                + 'sm:backdrop-saturate-150 text-accent font-medium'
+                + 'sm:backdrop-saturate-150 text-(--color-accent-text) '
+                + 'font-medium'
               : 'bg-transparent text-base-content/70'"
           >
             <span v-if="value === 'yes'" aria-label="Yes">

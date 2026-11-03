@@ -11,7 +11,7 @@
             <h3 class="font-bold text-lg">
               Move to project
             </h3>
-            <p class="text-sm opacity-60 mt-1">
+            <p class="text-sm text-base-content/70 mt-1">
               Choose where this chat should live.
             </p>
           </div>
@@ -142,7 +142,7 @@
                     : 'No projects yet'
                 }}
               </p>
-              <p class="mt-2 text-sm opacity-60">
+              <p class="mt-2 text-sm text-base-content/70">
                 {{ search.length
                   ? 'Try a different project name.'
                   : 'Create a project to organize chats.' }}

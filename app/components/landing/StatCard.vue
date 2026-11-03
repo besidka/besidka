@@ -29,7 +29,7 @@
     >
       {{ displayValue }}
     </span>
-    <p class="text-xs sm:text-sm text-base-content/60 leading-snug">
+    <p class="text-xs sm:text-sm text-base-content/70 leading-snug">
       {{ label }}
     </p>
   </div>

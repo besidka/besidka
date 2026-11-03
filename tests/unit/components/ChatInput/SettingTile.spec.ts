@@ -114,6 +114,18 @@ describe('ChatInput/SettingTile', () => {
       .exists()).toBe(true)
   })
 
+  it('keeps the caption at full opacity in light for contrast', async () => {
+    const wrapper = await mountSuspended(SettingTile, {
+      props: {
+        tile: createTile({ id: 'deep-research', removeLabel: null }),
+      },
+    })
+    const caption = wrapper.get('button span.font-semibold')
+
+    expect(caption.classes()).toContain('dark:opacity-85')
+    expect(caption.classes()).not.toContain('opacity-85')
+  })
+
   it('dims a disabled tile', async () => {
     const wrapper = await mountSuspended(SettingTile, {
       props: {

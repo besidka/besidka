@@ -5,7 +5,7 @@
   >
     <h2
       class="inline-flex items-center gap-2 text-lg font-bold"
-      :class="{ 'text-error': danger }"
+      :class="{ 'text-red-800 dark:text-error': danger }"
     >
       <slot name="icon" />
       {{ heading }}

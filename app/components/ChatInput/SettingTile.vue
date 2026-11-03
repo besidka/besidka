@@ -58,7 +58,7 @@
       </span>
       <span class="flex flex-col min-w-0" :class="textVariantClass">
         <span
-          class="font-semibold opacity-85 truncate"
+          class="font-semibold dark:opacity-85 truncate"
           :class="isPill ? 'text-[10px] leading-3' : 'text-[9px] leading-[10px]'"
         >
           {{ tile.caption }}

@@ -8,7 +8,7 @@
         <h3 class="font-bold text-lg mb-2">
           {{ mode === 'create' ? 'Create project' : 'Rename project' }}
         </h3>
-        <p class="text-sm opacity-60 mb-4">
+        <p class="text-sm text-base-content/70 mb-4">
           {{ mode === 'create'
             ? 'Organize related conversations together.'
             : 'Choose a new name for this project.' }}

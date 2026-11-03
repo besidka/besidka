@@ -35,7 +35,7 @@ Keep replies concise and production-focused."
     />
 
     <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-      <p class="text-xs opacity-60">
+      <p class="text-xs text-base-content/70">
         Leave empty to disable project-specific instructions.
       </p>
       <button

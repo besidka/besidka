@@ -157,6 +157,23 @@ describe('ChatInput/ModelsTrigger/GatewayRail', () => {
       ).toBe('Browse Vercel AI Gateway models — API key required')
     })
 
+    it('dims the label and provider icon but not the key icon', async () => {
+      const wrapper = await mountRail({
+        gateways: [
+          { id: 'vercel', label: 'Vercel AI Gateway', hasKey: false },
+        ],
+        activeGatewayId: null,
+      })
+      const button = wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+
+      expect(button.classes()).not.toContain('opacity-60')
+      expect(button.get('span.truncate').classes()).toContain('opacity-60')
+      expect(
+        button.get('[data-testid="models-picker-gateway-vercel-keyless"]')
+          .classes(),
+      ).not.toContain('opacity-60')
+    })
+
     it('keeps the button usable so it can reach the key prompt', async () => {
       const wrapper = await mountRail({
         gateways: [
