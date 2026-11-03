@@ -304,6 +304,13 @@ expires on its own after one day. A dry run never reuses a PR's tests, so
 `static`, `unit`, `integration`, `build` and `e2e` all run and no remote
 database or Worker is touched.
 
+**Post-deploy jobs and `!cancelled()`.** `indexnow`, `mcp-registry`,
+`deploy-preview` and `cleanup-preview-build-artifact` all carry
+`!cancelled() && needs.deploy.result == 'success'` in their `if:`. Without
+`!cancelled()`, GitHub's implicit `success()` skips every descendant of a
+skipped job, and on the skip-tests path the test jobs are skipped, so these
+jobs would be skipped even though `deploy` succeeded (run 41732870499).
+
 **indexnow**: Runs after `deploy`. A no-op unless the
 `INDEXNOW_KEY` secret exists. When it does, and the push changed a public
 page (`content/`, public `app/pages/`, landing components), it reads the live
@@ -337,7 +344,8 @@ without it.
 
 **cleanup-preview-build-artifact**: Runs only after `deploy` and
 `deploy-preview` both succeed and deletes the run's `preview-build` artifact.
-It has no `if: always()` on purpose: the E2E shards and `deploy` download that
+It runs only when `deploy` and `deploy-preview` both report `success`, not
+under `if: always()`, on purpose: the E2E shards and `deploy` download that
 artifact, so keeping it after a failed, cancelled or dry run lets "Re-run
 failed jobs" re-run a failed E2E shard or deploy job without an "Artifact not
 found" error. A failed run, a cancelled run or a dry run leaves the artifact in

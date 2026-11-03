@@ -295,6 +295,12 @@ of 211 s versus 244 s for the full suite.
 Result on main: **~3 min** when the tree matches, **~7 min** when it differs
 (full graph + deploy).
 
+Every job downstream of `deploy` (`indexnow`, `mcp-registry`, `deploy-preview`,
+`cleanup-preview-build-artifact`) needs `!cancelled() && needs.deploy.result ==
+'success'` in its `if:`, because on the skip-tests path the test jobs are
+skipped and the implicit `success()` would otherwise skip every descendant of
+a successful deploy (run 41732870499).
+
 Side effect: `scripts/test-affected-check.mjs` (1950 lines of hand-written
 mapping) stops being part of the CI gate. It stays for the local
 `pnpm run test:affected` and the pre-push hook, so the rule "register every
