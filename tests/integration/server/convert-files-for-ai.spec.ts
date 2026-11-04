@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
-import { convertFilesForAI } from '../../../server/utils/files/convert-files-for-ai'
+import {
+  convertFilesForAI,
+  loadOwnedGeneratedImageDataUrl,
+} from '../../../server/utils/files/convert-files-for-ai'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   getOwnedFilesByStorageKeys: vi.fn(),
+  getOwnedGeneratedImageFilesByStorageKeys: vi.fn(),
 }))
 
 vi.mock('evlog', () => ({
@@ -27,6 +31,8 @@ vi.mock('~~/server/utils/files/file-governance', async () => {
   return {
     ...actual,
     getOwnedFilesByStorageKeys: mocks.getOwnedFilesByStorageKeys,
+    getOwnedGeneratedImageFilesByStorageKeys:
+      mocks.getOwnedGeneratedImageFilesByStorageKeys,
   }
 })
 
@@ -184,5 +190,122 @@ describe('convertFilesForAI', () => {
       filename: 'foreign-file.png',
     }])
     expect(storageGet).not.toHaveBeenCalled()
+  })
+})
+
+describe('loadOwnedGeneratedImageDataUrl', () => {
+  const logger = { set: vi.fn() }
+
+  function stubKv(cached: string | null = null) {
+    const kv = {
+      get: vi.fn().mockResolvedValue(cached),
+      put: vi.fn().mockResolvedValue(undefined),
+    }
+
+    vi.stubGlobal('useKV', () => kv)
+
+    return kv
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubGlobal('useEvent', () => {
+      throw new Error('useEvent must not be called')
+    })
+  })
+
+  it('loads an owned generated image once and caches the data url',
+    async () => {
+      const kv = stubKv()
+      const storage = {
+        get: vi.fn().mockResolvedValue({
+          arrayBuffer: async () => new TextEncoder().encode('abc').buffer,
+        }),
+      }
+
+      mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(
+        new Map([['gen-1.webp', { storageKey: 'gen-1.webp', type: 'image/webp' }]]),
+      )
+
+      const dataUrl = await loadOwnedGeneratedImageDataUrl({
+        userId: 7,
+        storageKey: 'gen-1.webp',
+        storage: storage as never,
+        logger,
+      })
+
+      expect(dataUrl).toMatch(/^data:image\/webp;base64,/)
+      expect(mocks.getOwnedGeneratedImageFilesByStorageKeys)
+        .toHaveBeenCalledWith(7, ['gen-1.webp'])
+      expect(storage.get).toHaveBeenCalledTimes(1)
+      expect(kv.put).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('returns the cached data url without reading storage', async () => {
+    stubKv('data:image/webp;base64,Y2FjaGVk')
+
+    const storage = { get: vi.fn() }
+
+    mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(
+      new Map([['gen-1.webp', { storageKey: 'gen-1.webp', type: 'image/webp' }]]),
+    )
+
+    const dataUrl = await loadOwnedGeneratedImageDataUrl({
+      userId: 7,
+      storageKey: 'gen-1.webp',
+      storage: storage as never,
+      logger,
+    })
+
+    expect(dataUrl).toBe('data:image/webp;base64,Y2FjaGVk')
+    expect(storage.get).not.toHaveBeenCalled()
+  })
+
+  it('returns null for a file the user does not own', async () => {
+    stubKv()
+
+    const storage = { get: vi.fn() }
+
+    mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(new Map())
+
+    const dataUrl = await loadOwnedGeneratedImageDataUrl({
+      userId: 7,
+      storageKey: 'foreign.webp',
+      storage: storage as never,
+      logger,
+    })
+
+    expect(dataUrl).toBeNull()
+    expect(storage.get).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        imageGeneration: { previousImageMissing: 'not-owned' },
+      },
+    })
+  })
+
+  it('returns null when the object is gone from storage', async () => {
+    const kv = stubKv()
+    const storage = { get: vi.fn().mockResolvedValue(null) }
+
+    mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(
+      new Map([['gen-1.webp', { storageKey: 'gen-1.webp', type: 'image/webp' }]]),
+    )
+
+    const dataUrl = await loadOwnedGeneratedImageDataUrl({
+      userId: 7,
+      storageKey: 'gen-1.webp',
+      storage: storage as never,
+      logger,
+    })
+
+    expect(dataUrl).toBeNull()
+    expect(kv.put).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        imageGeneration: { previousImageMissing: 'missing-object' },
+      },
+    })
   })
 })

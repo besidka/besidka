@@ -179,13 +179,65 @@ plain string prompt to `/images/generations`, unchanged.
   unchanged: their `createImageGenerationTool()` calls pass no source
   images, and gateway image generation has no tool at all (see
   [`gateways.md`](./gateways.md)).
-- **Iterative edits are not covered.** Only the latest message's
-  attachments are forwarded. A follow-up such as "make it darker" without
-  re-attaching edits nothing: the previous result is in history only as
-  text, so the send is a fresh generation.
-- **Unverified live.** Covered by unit tests against the real
-  `@ai-sdk/openai` request builder with a mocked `fetch`; a send with a
-  real OpenAI key is still the owner's check.
+- **Verified live** on the PR preview on 2026-11-03: a red circle on white,
+  attached with "add a blue square in the top-left corner", came back with
+  the circle and background kept and the square added.
+
+### Follow-up edits of the previous generated image
+
+A follow-up such as "make it darker" carries no attachment, and the
+previous result reaches the controller only as the text "Generated file
+saved in the user file library: <name> (<type>)." (`sanitizeMessageParts`
+in `server/utils/files/assistant-files.ts`). Until 2026-11-04 such a send
+was a fresh generation from a text prompt.
+
+Whether a follow-up is an edit is a language decision ("make it darker"
+versus "now draw a cat"), so the controller makes it, not the route:
+
+- **Which image.** `findPreviousGeneratedImage()` walks the persisted
+  history (`allMessages`, built from D1, not `messagesForAI`, where
+  assistant files are already text) from the end and takes the most recent
+  assistant `file` part marked `?generated=1`
+  (`markUrlAsGeneratedFile`) with a PNG, JPEG or WebP media type. Images the
+  user attached in earlier turns are not candidates. A gateway-generated
+  image is persisted the same way, so a Gemini result can be refined with
+  GPT Image after a model switch.
+- **Attachments win.** When the latest message has attached images, the
+  tool edits those, exactly as above, and the previous image is not
+  offered. This holds for any `image/*` attachment, even one the edit
+  endpoint cannot take (a GIF, HEIC or oversized image): "make this darker"
+  then means the attached image, so editing the older generated one would
+  be wrong.
+- **The flag.** Otherwise, when a previous image exists, the tool schema
+  gains an optional `editPreviousImage` boolean and the description names
+  the file and says to set it only when the user asks to change, refine,
+  fix or continue that image. Without a previous image the schema and
+  description are the original ones, byte for byte.
+- **Lazy read.** The image is read only when the controller sets the flag:
+  `loadOwnedGeneratedImageDataUrl()` (`convert-files-for-ai.ts`) checks the
+  `files` row for this user with `source: 'assistant'`, then uses the
+  5-minute KV data-URL cache or one R2 read. A fresh generation in a chat
+  with earlier images costs no extra connection. The loader closes over a
+  `useFileStorage()` captured before the tool is built, because the tool
+  runs inside the AI SDK loop, and it never calls `useEvent()`.
+- **Same limits.** The loaded data URL goes through
+  `filterImageEditSourceImages()`, the filter used for attachments (header
+  media type, count cap, `MAX_IMAGE_EDIT_SOURCE_BYTES`).
+- **Deleted image.** If the controller asks for an edit but the file was
+  deleted or has expired, the tool fails with `source-image-unavailable`
+  ("The earlier image is no longer available to edit. Attach it again, then
+  try again.") instead of quietly making an unrelated image. That is a
+  judgment call: the user asked for an edit, and a new image would look
+  like the edit failed.
+- **Logs.** `attributes.imageGeneration.source` is `attached`, `previous`
+  or `none`, next to `mode`. When the loader finds nothing,
+  `attributes.imageGeneration.previousImageMissing` says why: `not-owned`
+  (no `files` row for this user) or `missing-object` (gone from R2 or the
+  read failed). Both are under the `attributes` map, because
+  `besidka-prod` is at Axiom's field cap (see
+  [`../axiom-map-fields.md`](../axiom-map-fields.md)).
+- **Scope.** Direct OpenAI image models only. Google and xAI image tools and
+  the gateway paths are unchanged.
 
 ## Prompt caching
 

@@ -26,6 +26,7 @@ const chatErrorCodes: ChatErrorCode[] = [
   'provider-safety',
   'invalid-provider-output',
   'image-save-failed',
+  'source-image-unavailable',
   'message-persist-failed',
   'chat-request-invalid',
   'research-tier-required',
