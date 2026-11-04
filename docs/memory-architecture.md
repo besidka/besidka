@@ -2970,20 +2970,18 @@ the model's answer in chat A is. Two separate effects:
   the quote). The feature closes this: assistant turns holding a
   `search_other_projects` result are excluded from the extraction window, the
   way `memory_list` and `memory_read` turns are. `RECALL_TOOL_NAMES`
-  (`extract-input.ts:28`) is matched by `isMemoryExtractionRecallMessage`
-  (`:129`) against `messages.tools` and the part types, and
-  `loadMemoryExtractionWindow` skips those rows (`:272`). The sweep, backfill
+  (`extract-input.ts:32`) is matched by `isMemoryExtractionRecallMessage`
+  (`:138`) against `messages.tools` and the part types, and
+  `loadMemoryExtractionWindow` skips those rows (`:281`). The sweep, backfill
   and the project Refresh all read through that window (`extractChatMemory`),
   so adding the new name there covers all of them. Grounding is unaffected,
   because the user row stays in the window. A later turn that restates the
   fact without a tool part is not excluded.
 
-The same defence-in-depth gap exists for `search_chats` today: its turns are
-not in `RECALL_TOOL_NAMES`, under the "memory does not feed on itself" rule
-that excludes `memory_list` and `memory_read`. It is not an open leak, since
-user-text grounding applies. The cheap fix, not part of this proposal, is
-adding `search_chats`, `read_chat` and the J6 synthetic chip part (matched by
-the `tool-` prefix) to `RECALL_TOOL_NAMES`.
+`search_chats`, `read_chat` and the J6 synthetic chip part (a
+`tool-search_chats` part, matched through the `tool-` prefix) are already
+excluded this way since #620. `search_other_projects` follows the same
+pattern.
 
 **2. Consent per source project, default off.** New nullable column
 `projects.share_memory` (integer boolean), setting "Let my other projects use
@@ -3102,7 +3100,7 @@ Wiring that is easy to miss:
   of `kind: 'entry'` results before `messages.parts` is written. Otherwise an
   entry that is forgotten or deleted in B outlives itself inside a chat of A.
   Ids, titles and the project label stay.
-- Add the tool name to `RECALL_TOOL_NAMES` (`extract-input.ts:28`), see item 1.
+- Add the tool name to `RECALL_TOOL_NAMES` (`extract-input.ts:32`), see item 1.
 
 **6. Jev path (optional, TypeSafe AI key).** No new role. J6 `pastChatRetrieval`
 (3.19) pre-retrieves past chats only on sends where tools are not registered
