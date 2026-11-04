@@ -160,6 +160,11 @@ describe('memory tools', () => {
       expect(description).toContain('are never stored')
       expect(description).toContain('the server refuses such entries')
       expect(description).toContain('do not try to word around it')
+      expect(description).toContain('With an id, the entry\'s fields are')
+      expect(description).toContain('complete merged body')
+      expect(description).toContain('Without an id')
+      expect(description).toContain('keeps its title and description')
+      expect(description).not.toContain('not appended')
       expect(description).not.toContain('Notes about other people')
       expect(description).not.toContain('mark it special')
       expect(description).not.toContain('sensitivity')
@@ -814,8 +819,8 @@ describe('memory tools', () => {
       expect(output.action).toBe('created')
     })
 
-    it('updates the entry with the same title slug and returns the '
-      + 'previous values', async () => {
+    it('appends to the entry with the same title slug and keeps its title '
+      + 'and description', async () => {
       const { tools } = build()
 
       await tools.memory_write!.execute(writeInput(), toolOptions)
@@ -838,7 +843,43 @@ describe('memory tools', () => {
         sensitiveCategory: null,
       })
       expect(testDb.countEntries()).toBe(1)
-      expect(readRowBySlug('cooking')?.body).toBe('Cooks pasta and risotto.')
+      expect(readRowBySlug('cooking')).toMatchObject({
+        title: 'Cooking',
+        description: 'Likes to cook pasta',
+        body: 'Cooks pasta twice a week.\nCooks pasta and risotto.',
+      })
+    })
+
+    it('appends to a matching non-singleton entry and keeps its title and '
+      + 'description', async () => {
+      testDb.insertEntry({
+        id: 1,
+        userId: OWNER,
+        slug: 'cooking',
+        title: 'Cooking',
+        description: 'Stored description',
+        body: 'Cooks pasta twice a week.',
+      })
+
+      const output = await build().tools.memory_write!.execute(
+        writeInput({
+          title: 'cooking',
+          description: 'A new description',
+          body: 'Bakes bread on Sundays.',
+        }),
+        toolOptions,
+      )
+
+      expect(output.action).toBe('updated')
+      expect(output.entry).toMatchObject({
+        title: 'Cooking',
+        description: 'Stored description',
+      })
+      expect(readRow(1)).toMatchObject({
+        title: 'Cooking',
+        description: 'Stored description',
+        body: 'Cooks pasta twice a week.\nBakes bread on Sundays.',
+      })
     })
 
     it('treats the profile category as one entry per scope', async () => {
@@ -861,6 +902,149 @@ describe('memory tools', () => {
       expect(second.action).toBe('updated')
       expect(second.entry.handle).toBe('profile/profile')
       expect(testDb.countEntries()).toBe(1)
+
+      const row = readRowBySlug('profile')
+
+      expect(row?.title).toBe('Me')
+      expect(row?.body).toContain('First.')
+      expect(row?.body).toContain('Second.')
+    })
+
+    it('appends an id-less preferences write to the stored entry instead '
+      + 'of replacing it', async () => {
+      const storedBody = '- Likes espresso\n- Dislikes sugar'
+
+      testDb.insertEntry({
+        id: 1,
+        userId: OWNER,
+        category: 'preferences',
+        slug: 'preferences',
+        title: 'Coffee tastes',
+        description: 'How the user takes coffee',
+        body: storedBody,
+      })
+
+      const output = await build().tools.memory_write!.execute(
+        writeInput({
+          category: 'preferences',
+          title: 'Test Report Format',
+          description: 'Wants test reports as tables',
+          body: '- Wants test reports as tables',
+        }),
+        toolOptions,
+      )
+
+      expect(output.action).toBe('updated')
+      expect(output.previous.body).toBe(storedBody)
+      expect(output.entry).toMatchObject({
+        title: 'Coffee tastes',
+        description: 'How the user takes coffee',
+      })
+      expect(readRow(1)).toMatchObject({
+        category: 'preferences',
+        title: 'Coffee tastes',
+        description: 'How the user takes coffee',
+        body: `${storedBody}\n- Wants test reports as tables`,
+      })
+      expect(testDb.countEntries()).toBe(1)
+    })
+
+    it('does not append a line the entry already holds, whatever its '
+      + 'bullet marker or case', async () => {
+      testDb.insertEntry({
+        id: 1,
+        userId: OWNER,
+        category: 'preferences',
+        slug: 'preferences',
+        body: '- Likes espresso',
+      })
+
+      const output = await build().tools.memory_write!.execute(
+        writeInput({
+          category: 'preferences',
+          body: '* LIKES ESPRESSO\n* Dislikes sugar',
+        }),
+        toolOptions,
+      )
+
+      expect(output.action).toBe('updated')
+      expect(readRow(1)?.body).toBe('- Likes espresso\n* Dislikes sugar')
+
+      await build().tools.memory_write!.execute(
+        writeInput({ category: 'preferences', body: 'likes espresso' }),
+        toolOptions,
+      )
+
+      expect(readRow(1)?.body).toBe('- Likes espresso\n* Dislikes sugar')
+    })
+
+    it('replaces title, description and body when the write carries an id',
+      async () => {
+        testDb.insertEntry({
+          id: 1,
+          userId: OWNER,
+          category: 'preferences',
+          slug: 'preferences',
+          title: 'Coffee tastes',
+          description: 'How the user takes coffee',
+          body: '- Likes espresso',
+        })
+
+        const output = await build().tools.memory_write!.execute(
+          writeInput({
+            id: encodePublicId(1),
+            category: 'preferences',
+            title: 'Drink tastes',
+            description: 'How the user takes drinks',
+            body: '- Likes tea',
+          }),
+          toolOptions,
+        )
+
+        expect(output.action).toBe('updated')
+        expect(readRow(1)).toMatchObject({
+          title: 'Drink tastes',
+          description: 'How the user takes drinks',
+          body: '- Likes tea',
+        })
+      })
+
+    it('rejects an id-less append that overflows a singleton and tells the '
+      + 'model to pass the id', async () => {
+      const storedBody = 'x'.repeat(MEMORY_LIMITS.maxAlwaysInjectedBodyBytes - 10)
+
+      testDb.insertEntry({
+        id: 1,
+        userId: OWNER,
+        category: 'preferences',
+        slug: 'preferences',
+        title: 'Coffee tastes',
+        body: storedBody,
+      })
+
+      const failure = await build().tools.memory_write!.execute(
+        writeInput({
+          category: 'preferences',
+          body: 'y'.repeat(100),
+        }),
+        toolOptions,
+      ).catch((exception: Error) => exception)
+
+      expect(failure).toMatchObject({
+        status: 400,
+        message: expect.stringContaining(
+          `${MEMORY_LIMITS.maxAlwaysInjectedBodyBytes} bytes`,
+        ),
+      })
+      expect((failure as Error).message).toContain(
+        `id "${encodePublicId(1)}"`,
+      )
+      expect((failure as Error).message.match(/Invalid memory entry/g))
+        .toHaveLength(1)
+      expect(readRow(1)).toMatchObject({
+        title: 'Coffee tastes',
+        body: storedBody,
+      })
     })
 
     it('updates by id, marks the entry as tool-written and merges the '
@@ -1272,6 +1456,11 @@ describe('memory tools', () => {
       )
 
       expect(output.action).toBe('updated')
+      expect(readRow(1)).toMatchObject({
+        title: 'profile',
+        description: 'About profile',
+        body: 'Visible note.\nCooks pasta twice a week.',
+      })
     })
 
     it('answers 409 when the account memory is full', async () => {

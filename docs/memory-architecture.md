@@ -949,9 +949,17 @@ hidden. Anything else is a 404 tool error.
   budget.
   A negated request ("don't remember my address" contains "remember my
   address") and text the user pasted still pass the quote check.
-- `memory_write` upserts: with `id` it updates that entry, without it the entry
-  with the same title slug (or the singleton slug) in that scope is updated,
-  otherwise one is created. Writes always set `origin: 'tool'` (an edited
+- `memory_write` upserts: with `id` it replaces that entry's title,
+  description and body. Without `id`, a write that lands on the entry with the
+  same title slug (or the singleton slug of `profile`/`preferences`) in that
+  scope only appends the body lines that entry does not hold yet
+  (`appendMemoryBodyLines`) and keeps its title and description; otherwise
+  one is created. Before 2026-11-04 the id-less hit replaced all three fields,
+  so a weak model writing "a new preference" wiped the whole `preferences`
+  entry. An append over the body byte cap is a 400 whose `fix` names the
+  entry id, so the model can retry with `id` and a shorter merged body. The
+  output stays `action: 'updated'` with `previous`, so the chip's Undo
+  restores the pre-append body. Writes always set `origin: 'tool'` (an edited
   user entry is re-marked `tool`), `sourceChatIds` = the existing ids plus the
   current chat's **public id** (`chats.id`, not the slug), and
   `sourceMessageId` = the persisted user message's public id (`newMessage.id`).

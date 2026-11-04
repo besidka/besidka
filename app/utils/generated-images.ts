@@ -69,6 +69,13 @@ const imageGenerationFailureTextByCode = new Map<ChatErrorCode, string>([
     ].join(' '),
   ],
   [
+    'source-image-unavailable',
+    [
+      'The earlier image is no longer available to edit.',
+      'Attach it again, then try again.',
+    ].join(' '),
+  ],
+  [
     'provider-rate-limit',
     [
       'Image generation is temporarily rate limited.',
