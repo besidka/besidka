@@ -61,6 +61,8 @@
 		"cms:files:upload": "node scripts/cms-bucket-manager.mjs upload",
 		"cms:files:download": "node scripts/cms-bucket-manager.mjs download",
 		"legal:hash": "node scripts/legal-revision-hash.mjs",
+		"mcp:surface": "vitest run tests/unit/config/mcp-surface.spec.ts -u",
+		"mcp:version-guard": "node scripts/mcp-version-guard.mjs",
 		"bench:files-index": "node scripts/bench/files-user-id-index.mjs"
 	},
 	"dependencies": {

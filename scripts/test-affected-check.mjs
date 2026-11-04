@@ -1608,6 +1608,14 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^(scripts\/mcp-version-guard\.mjs|config\/mcp-surface\.json|server\.json|config\/mcp-server\.ts)$/,
+      tests: ['tests/unit/scripts/mcp-version-guard.spec.ts'],
+    },
+    {
+      pattern: /^(config\/(mcp-surface\.json|mcp-server\.ts)|server\/(mcp\/tools\/.*|utils\/mcp\/tool-scopes)\.ts)$/,
+      tests: ['tests/unit/config/mcp-surface.spec.ts'],
+    },
+    {
       pattern: /^(scripts\/indexnow-submit\.mjs|server\/routes\/indexnow-key\.txt\.ts)$/,
       tests: ['tests/unit/scripts/indexnow-submit.spec.ts'],
     },
