@@ -11,12 +11,22 @@ const mocks = vi.hoisted(() => ({
     error: null as { message?: string } | null,
   })),
   signInSocial: vi.fn(async (..._args: any[]) => ({ data: {}, error: null })),
+  sendVerificationEmail: vi.fn(async (..._args: any[]) => ({
+    data: null,
+    error: null as { message?: string } | null,
+  })),
+  navigateTo: vi.fn(async (..._args: any[]) => {}),
 }))
+
+mockNuxtImport('navigateTo', () => {
+  return mocks.navigateTo
+})
 
 mockNuxtImport('useAuth', () => {
   return () => ({
     signUp: { email: mocks.signUpEmail },
     signIn: { social: mocks.signInSocial },
+    client: { sendVerificationEmail: mocks.sendVerificationEmail },
   })
 })
 
@@ -88,6 +98,8 @@ describe('signup page', () => {
     vi.stubGlobal('useSeoMeta', vi.fn())
     mocks.signUpEmail.mockClear()
     mocks.signInSocial.mockClear()
+    mocks.sendVerificationEmail.mockClear()
+    mocks.navigateTo.mockClear()
     mocks.signUpEmail.mockResolvedValue({ data: { user: {} }, error: null })
     mockRoute.query = {}
   })
@@ -206,6 +218,96 @@ describe('signup page', () => {
     resolveRequest({ data: {}, error: null })
     await flushPromises()
   })
+  describe('after a successful request', () => {
+    it('replaces the form with the check-your-email state naming the '
+      + 'address', async () => {
+      const wrapper = await mountSuspended(SignupPage, {
+        global: { stubs: stubs() },
+      })
+
+      await submitValidForm(wrapper)
+
+      expect(wrapper.find('form').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="check-email"]').exists()).toBe(true)
+      expect(wrapper.get('[data-testid="check-email-address"]').text())
+        .toBe('user@example.com')
+      expect(mocks.navigateTo).not.toHaveBeenCalled()
+    })
+
+    it('shows the same state when the address already has an account',
+      async () => {
+        mocks.signUpEmail.mockResolvedValue({
+          data: { token: null, user: { email: 'user@example.com' } } as any,
+          error: null,
+        })
+
+        const wrapper = await mountSuspended(SignupPage, {
+          global: { stubs: stubs() },
+        })
+
+        await submitValidForm(wrapper)
+
+        expect(wrapper.find('form').exists()).toBe(false)
+        expect(wrapper.get('[data-testid="check-email-address"]').text())
+          .toBe('user@example.com')
+      })
+
+    it('navigates away instead when the server signed the user in',
+      async () => {
+        mockRoute.query = { next: '/profile/keys' }
+        mocks.signUpEmail.mockResolvedValue({
+          data: { token: 'session-token', user: {} } as any,
+          error: null,
+        })
+
+        const wrapper = await mountSuspended(SignupPage, {
+          global: { stubs: stubs() },
+        })
+
+        await submitValidForm(wrapper)
+
+        expect(mocks.navigateTo).toHaveBeenCalledWith('/profile/keys')
+        expect(wrapper.find('[data-testid="check-email"]').exists())
+          .toBe(false)
+      })
+
+    it('restores the form from the use-a-different-address action',
+      async () => {
+        const wrapper = await mountSuspended(SignupPage, {
+          global: { stubs: stubs() },
+        })
+
+        await submitValidForm(wrapper)
+        await wrapper.get('[data-testid="check-email-change"]')
+          .trigger('click')
+        await flushPromises()
+
+        expect(wrapper.find('form').exists()).toBe(true)
+        expect(wrapper.find('[data-testid="check-email"]').exists())
+          .toBe(false)
+      })
+
+    it('keeps the form and shows the error when the request throws',
+      async () => {
+        mocks.signUpEmail.mockRejectedValueOnce(new Error('Network down'))
+
+        const useErrorMessage = vi.spyOn(
+          messagesComposable,
+          'useErrorMessage',
+        )
+        const wrapper = await mountSuspended(SignupPage, {
+          global: { stubs: stubs() },
+        })
+
+        await submitValidForm(wrapper)
+
+        expect(useErrorMessage).toHaveBeenCalled()
+        expect(wrapper.find('form').exists()).toBe(true)
+        expect(wrapper.get('button[type="submit"]').attributes('disabled'))
+          .toBeUndefined()
+      })
+  })
+
   describe('post-signup next path', () => {
     function readCallbackUrl(): URL {
       const [payload] = mocks.signUpEmail.mock.calls[0] as [
