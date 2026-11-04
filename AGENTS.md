@@ -450,10 +450,11 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `memory-check` key kind, the seven per-role toggles in
   `user_settings.typesafe_roles`, the failure direction of each role, J1 to
   J6, the delta audit fixes #560, and the `experimental_decide` seam to
-  re-check on SDK upgrades), the as-built phase map (section 5), and the
+  re-check on SDK upgrades), the as-built phase map (section 5), the
   decision log (section 7: no expiry, singletons, entry caps, the write lock,
   the pending Anthropic token factor, non-atomic leases, deferred issues
-  #537 to #540)
+  #537 to #540), and the cross-project memory proposal (3.20: per-project
+  `share_memory`, the `search_other_projects` tool, no entry FTS)
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
