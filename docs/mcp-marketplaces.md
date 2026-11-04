@@ -395,6 +395,28 @@ codes, no magic links, no sign-up during review.
   clicks Publish. OpenAI rescans the server daily; new tools stay hidden
   until approved.
 
+## Reviewer demo videos
+
+Both submissions link a silent 1080p demo of the connector in the client being
+reviewed:
+
+- Claude: https://besidka.com/videos/mcp-demo-claude-1080.mp4
+- ChatGPT: https://besidka.com/videos/mcp-demo-chatgpt-1080.mp4
+
+They are served by `server/routes/videos/[name].ts` from the `CMS_BUCKET` R2
+bucket, which is `besidka-cms` in production and `besidka-cms-preview` in
+preview. The route allow-lists exactly these two names
+(`MCP_DEMO_VIDEO_FILES`) and no other rendition, so `-360` and the bare name
+are a 404. The route behavior is described in `docs/landing-studio.md`.
+
+The sources are archived in iCloud, in the folder
+"mcp connector demo 2026-11/finals/". To upload or replace them, copy the two
+files into `.files/` (gitignored) and run
+`pnpm run cms:files:upload --remote -e production --force --yes`.
+`scripts/cms-bucket-manager.mjs` picks them up when present and does not
+complain when they are absent. Responses are cached for a day
+(`max-age=86400`), so a replaced file can take that long to reach reviewers.
+
 ## Cursor
 
 - Marketplace: apply at https://cursor.com/marketplace/publish (sign-in
