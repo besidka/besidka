@@ -458,6 +458,37 @@ describe('GET /videos/[name]', () => {
       .rejects.toMatchObject({ status: 404 })
   })
 
+  it('serves the two MCP connector demo videos from the bucket', async () => {
+    for (const name of [
+      'mcp-demo-claude-1080.mp4',
+      'mcp-demo-chatgpt-1080.mp4',
+    ]) {
+      mocks.get.mockReset()
+      mocks.params.name = name
+      mocks.get.mockResolvedValue(createBody())
+
+      const event = createEvent()
+      const result = await callRoute(event)
+
+      expect(result).toBe(BODY)
+      expect(mocks.get.mock.calls[0]![0]).toBe(name)
+      expect(event.res.headers.get('Content-Type')).toBe('video/mp4')
+    }
+  })
+
+  it.each([
+    'mcp-demo-claude.mp4',
+    'mcp-demo-claude-360.mp4',
+    'mcp-demo-chatgpt.mp4',
+    'mcp-demo-gemini-1080.mp4',
+    'mcp-demo-claude-1080.mov',
+  ])('returns 404 for the non-allow-listed MCP demo name %s', async (name) => {
+    mocks.params.name = name
+
+    await expect(callRoute(createEvent()))
+      .rejects.toMatchObject({ status: 404 })
+  })
+
   it.each([
     'key-guide-unknown.mp4',
     'key-guide-unknown-1080.mp4',

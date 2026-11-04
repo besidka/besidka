@@ -15,6 +15,11 @@ const KEY_GUIDE_RENDITION_SUFFIXES = ['', '-1080', '-360']
 
 const EXPLAINER_VIDEO_IDS = ['memory']
 
+const MCP_DEMO_VIDEO_FILES = [
+  'mcp-demo-claude-1080.mp4',
+  'mcp-demo-chatgpt-1080.mp4',
+]
+
 const ALLOWED_FILES = new Set([
   'demo.mp4',
   'demo-360.mp4',
@@ -30,6 +35,7 @@ const ALLOWED_FILES = new Set([
       return `${explainerId}${suffix}.mp4`
     })
   }),
+  ...MCP_DEMO_VIDEO_FILES,
 ])
 
 const ALLOWED_METHODS = 'GET, HEAD'

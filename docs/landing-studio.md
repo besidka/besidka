@@ -484,7 +484,9 @@ its checks are described under "First frame" in `docs/key-guides.md`.
 #### Serving: one R2 read per request
 
 `server/routes/videos/[name].ts` serves a fixed allow-list (`demo.mp4`,
-`demo-360.mp4`, `demo-1080.mp4`, `demo.en.vtt`; anything else is 404). Only
+`demo-360.mp4`, `demo-1080.mp4`, `demo.en.vtt`, plus the key guide and memory
+explainer videos and the two MCP reviewer demos, see
+`docs/mcp-marketplaces.md`; anything else is 404). Only
 `GET` and `HEAD` are accepted; every other method is `405` with
 `Allow: GET, HEAD`. Successful responses carry `Accept-Ranges: bytes` and
 `Cache-Control: public, max-age=86400`; **all** responses carry
