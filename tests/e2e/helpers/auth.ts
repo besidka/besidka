@@ -287,7 +287,7 @@ export async function signIn(
   page: Page,
   email: string = 'test@example.com',
   password: string = DEFAULT_PASSWORD,
-  options: { startPath?: string, expectedUrl?: string } = {},
+  options: { startPath?: string, expectedUrl?: string | RegExp } = {},
 ): Promise<void> {
   const { startPath = '/signin', expectedUrl = '/chats/new' } = options
 

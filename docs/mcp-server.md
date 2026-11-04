@@ -319,6 +319,109 @@ before this existed or from a different place. Accepted trade-offs:
   screen, and it gains nothing: the authorization code still goes to
   claude.ai.
 
+#### The consent page works before it hydrates
+
+`/oauth/consent` (`app/pages/oauth/consent.vue`) is server-rendered, and
+Approve and Deny sit in a real `<form method="post">` that posts to
+`POST /api/v1/profiles/connected-apps/consent`. When the page has hydrated,
+`@submit.prevent` takes over and the Better Auth client calls
+`/oauth2/consent` with a fetch, as before. When it has not, the browser posts
+the form itself and the button still works.
+
+Why: on 2026-11-04 the owner opened the consent page from claude.ai after
+switching to the reviewer account (client `KFyE...`, 15:55:26 UTC), clicked
+Approve and nothing happened; a reload fixed it. Axiom (`besidka-prod`) shows
+that the first open made **no client-side requests at all** for the 34
+seconds before the reload: no `/_i18n/.../messages.json`, no client icons, no
+`get-session?disableCookieCache=true` (the first call Approve makes). The
+reload fetched `messages.json` and the `ClientOnly` icons within half a
+second, and the next click reached `/oauth2/consent`. So on that first open
+the Nuxt client never finished starting, and a `type="button"` with a Vue
+`@click` handler was the only way to decide. Server logs cannot show why the
+client did not start (the `/_nuxt` assets bypass the Worker, so a failed or
+stalled chunk is invisible; no client error reached the evlog ingest). The
+fix does not depend on finding that out, because the decision no longer needs
+client JavaScript. To investigate a repeat, query `besidka-prod` for the
+user's requests after the `/oauth/consent` document: a hydrated page fetches
+`/_i18n/<hash>/en/messages.json` within about a second.
+
+A second, reproducible way to get a dead Approve button was a hydration
+mismatch. The page started with `selectedScopes = []` and let
+`OAuthScopePicker` fill in the defaults from a watcher. On the server the
+picker ran before the parent rendered the button, so the server sent an
+enabled `<button>`. In the browser the parent rendered first with no scopes,
+so when the client requested no identity scope (`openid`, `profile`,
+`email`, `offline_access`), it computed `canApprove = false` and expected
+the disabled `UiButton`, which is a `<span>` without the click handler.
+Vue replaced the server `<button>` with that span and only swapped it back
+after the next render. The page now starts from `defaultSelectedMcpScopes`
+(`shared/utils/mcp-oauth-scopes.ts`), the same helper the picker uses, so
+both renders agree.
+
+The form route:
+
+- Rejects `Sec-Fetch-Site: cross-site` (`assertNotCrossSiteRequest`) and
+  any `Origin` other than the request's own origin, a missing one included:
+  browsers always send `Origin` on a form `POST`, and synthesizing one from
+  the `Referer` or the request URL would hand Better Auth an origin it never
+  checked. A same-site subdomain is refused too. The `Origin` is then
+  forwarded to Better Auth, whose own origin check also applies. The session
+  cookie is `SameSite=Lax`, so a cross-site form post carries no session
+  anyway.
+- Refuses a body above 16 KiB (`413`) before parsing it.
+- Reads `oauth_query` (the signed query the page picked, printable ASCII
+  only), `decision` (`approve`, `deny` or `none`), `user_id` (the account
+  the page showed) and the ticked `scope` checkboxes. It verifies the
+  signature and expiry first, so an unverified query is never reflected
+  into a redirect; an invalid or expired one goes to
+  `/oauth/consent?consent_error=expired`, which the page shows instead of
+  "the link is missing the details" (the auth middleware strips an expired
+  signed query). Without a session it then sends the user to
+  `/signin?<oauth_query>`.
+- Builds the granted scope with `buildApprovedMcpScope`: the requested
+  identity scopes plus the ticked resource scopes the app asked for, the same
+  helper the page uses. A ticked scope the app never asked for is dropped.
+- Forwards the decision to Better Auth's own `/oauth2/consent` through
+  `useServerAuth().handler(...)`, not `auth.api`: the authorize step inside
+  consent needs a `Request`, and going through the handler keeps the
+  `/oauth2/consent` rate limit, the after-hooks (ledger event, new-app email,
+  `revokeSupersededOAuthConnections`) and their logging identical for both
+  paths. It answers `303` to the URL Better Auth returns and copies any
+  `Set-Cookie`.
+- Sends every failure back to the consent page with
+  `consent_error=<code>` (`expired`, `account_changed`, `nothing_selected`,
+  `rate_limited`, `failed`; messages in
+  `shared/utils/oauth-consent-errors.ts`). The page renders the message
+  server-side, so it shows without JavaScript too. The field
+  `attributes.oauthConsentForm` logs the decision and the error code.
+
+On the hydrated path every failure ends in a toast, including a `200` from
+`/oauth2/consent` without a redirect URL, which used to re-enable the button
+silently. `@submit` cancels the native post only once it has read a known
+decision from `event.submitter`; any other submit falls through to the form
+route, so a click is never dropped.
+
+Pressing Enter on a scope checkbox triggers the browser's implicit
+submission, which clicks the form's first submit button. That used to be
+Deny, so Enter sent the user back to the app with `access_denied`. The first
+submit button is now a hidden `decision=none` button: with JavaScript the
+handler ignores it, without it the route sends the user back to the same
+consent page. A *disabled* hidden button does not work: Chromium skips
+disabled buttons and clicks the next one (Deny).
+
+Known limits of the no-JavaScript path: when nothing is pre-ticked (a
+request for write scopes only, with no identity scope), Approve renders as
+the disabled `UiButton` `<span>` and cannot be submitted until JavaScript
+runs; claude.ai and ChatGPT always request read scopes, so this does not
+affect them. A double click posts twice, so Better Auth issues two codes
+and the new-app email can go out twice.
+
+Tests: `tests/e2e/profile/oauth-consent.spec.ts` approves and denies with
+JavaScript disabled, checks that a first open with resource-only scopes
+hydrates without a mismatch and approves, and runs the "Use a different
+account" round trip. `tests/integration/api/profiles-connected-apps-consent.spec.ts`
+covers the form route.
+
 ### Token verification
 
 The provider issues a **JWT** access token (audience `${siteUrl}/mcp`) only

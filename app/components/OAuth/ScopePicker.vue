@@ -12,6 +12,7 @@
         <label class="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
+            name="scope"
             class="checkbox checkbox-sm mt-0.5"
             :class="{ 'checkbox-warning': isMcpWriteScope(scope) }"
             :value="scope"
@@ -64,6 +65,7 @@
 </template>
 <script setup lang="ts">
 import {
+  defaultSelectedMcpScopes,
   isMcpWriteScope,
   MCP_IDENTITY_SCOPES,
 } from '#shared/utils/mcp-oauth-scopes'
@@ -102,9 +104,7 @@ const hasWriteScopes = computed<boolean>(() => {
 watch(resourceScopes, (scopes) => {
   selected.value = props.mode === 'edit'
     ? [...scopes]
-    : scopes.filter((scope) => {
-      return !isMcpWriteScope(scope)
-    })
+    : defaultSelectedMcpScopes(scopes)
 }, { immediate: true })
 
 function toggle(scope: string) {

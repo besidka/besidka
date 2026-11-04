@@ -163,6 +163,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/routes/auth.md.spec.ts',
     'tests/integration/api/profiles-connected-apps.spec.ts',
     'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
     'tests/integration/api/profiles-connected-apps-list.spec.ts',
     'tests/integration/api/profiles-connected-apps-scopes.spec.ts',
     'tests/integration/api/profiles-connected-apps-revoke-bulk.spec.ts',
@@ -2952,6 +2953,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/OAuth/ScopePicker.spec.ts',
         'tests/unit/components/Profile/ConnectedApps/PermissionsEditor.spec.ts',
+        'tests/e2e/profile/oauth-consent.spec.ts',
       ],
     },
     {
@@ -2964,7 +2966,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^(shared\/utils\/mcp-oauth-scopes|server\/utils\/auth|server\/routes\/\.well-known\/(oauth-.*|openid-configuration.*))\.ts$/,
-      tests: ['tests/unit/utils/auth-oauth.spec.ts'],
+      tests: [
+        'tests/unit/utils/auth-oauth.spec.ts',
+        'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+      ],
     },
     {
       pattern: /^server\/db\/schemas\/oauth\.ts$/,
@@ -3057,6 +3062,14 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^shared\/utils\/oauth-consent-errors\.ts$/,
+      tests: [
+        'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+        'tests/unit/components/OAuth/ScopePicker.spec.ts',
+        'tests/e2e/profile/oauth-consent.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/plugins\/oauth-grant-sweep\.ts$/,
       tests: ['tests/integration/server/oauth-grant-sweep-plugin.spec.ts'],
     },
@@ -3065,6 +3078,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/integration/api/profiles-connected-apps.spec.ts',
         'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
+        'tests/integration/api/profiles-connected-apps-consent.spec.ts',
         'tests/integration/api/profiles-connected-apps-list.spec.ts',
         'tests/integration/api/profiles-connected-apps-scopes.spec.ts',
         'tests/integration/api/profiles-connected-apps-revoke-bulk.spec.ts',
