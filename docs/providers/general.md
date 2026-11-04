@@ -204,7 +204,10 @@ versus "now draw a cat"), so the controller makes it, not the route:
   GPT Image after a model switch.
 - **Attachments win.** When the latest message has attached images, the
   tool edits those, exactly as above, and the previous image is not
-  offered.
+  offered. This holds for any `image/*` attachment, even one the edit
+  endpoint cannot take (a GIF, HEIC or oversized image): "make this darker"
+  then means the attached image, so editing the older generated one would
+  be wrong.
 - **The flag.** Otherwise, when a previous image exists, the tool schema
   gains an optional `editPreviousImage` boolean and the description names
   the file and says to set it only when the user asks to change, refine,
@@ -227,7 +230,10 @@ versus "now draw a cat"), so the controller makes it, not the route:
   judgment call: the user asked for an edit, and a new image would look
   like the edit failed.
 - **Logs.** `attributes.imageGeneration.source` is `attached`, `previous`
-  or `none`, next to `mode`. Both are under the `attributes` map, because
+  or `none`, next to `mode`. When the loader finds nothing,
+  `attributes.imageGeneration.previousImageMissing` says why: `not-owned`
+  (no `files` row for this user) or `missing-object` (gone from R2 or the
+  read failed). Both are under the `attributes` map, because
   `besidka-prod` is at Axiom's field cap (see
   [`../axiom-map-fields.md`](../axiom-map-fields.md)).
 - **Scope.** Direct OpenAI image models only. Google and xAI image tools and

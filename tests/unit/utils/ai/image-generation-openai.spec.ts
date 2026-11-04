@@ -936,6 +936,33 @@ describe('findPreviousGeneratedImage', () => {
     },
   )
 
+  it('returns null when the latest user message attaches an unsupported '
+    + 'image', () => {
+    expect(findPreviousGeneratedImage([
+      createMessage('assistant', [
+        createGeneratedFilePart('older.png', 'image/png'),
+      ], 'a1'),
+      createMessage('user', [
+        createFilePart(createDataUrl('image/gif', 'gif'), 'image/gif'),
+      ], 'u1'),
+    ])).toBeNull()
+  })
+
+  it('still finds the previous image when the latest user message only '
+    + 'attaches a PDF', () => {
+    expect(findPreviousGeneratedImage([
+      createMessage('assistant', [
+        createGeneratedFilePart('older.png', 'image/png'),
+      ], 'a1'),
+      createMessage('user', [
+        createFilePart(
+          createDataUrl('application/pdf', 'pdf'),
+          'application/pdf',
+        ),
+      ], 'u1'),
+    ])?.storageKey).toBe('older.png')
+  })
+
   it('ignores generated parts whose url has no local storage key', () => {
     expect(findPreviousGeneratedImage([
       createMessage('assistant', [{

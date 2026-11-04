@@ -248,6 +248,12 @@ export async function loadOwnedGeneratedImageDataUrl(
   const file = ownedFiles.get(storageKey)
 
   if (!file) {
+    logger.set({
+      attributes: {
+        imageGeneration: { previousImageMissing: 'not-owned' },
+      },
+    })
+
     return null
   }
 
@@ -265,6 +271,12 @@ export async function loadOwnedGeneratedImageDataUrl(
   )
 
   if (!dataUrl) {
+    logger.set({
+      attributes: {
+        imageGeneration: { previousImageMissing: 'missing-object' },
+      },
+    })
+
     return null
   }
 

@@ -991,7 +991,9 @@ export default defineEventHandler(async (event) => {
             const previousGeneratedImage = findPreviousGeneratedImage(
               allMessages,
             )
-            const fileStorage = useFileStorage()
+            const fileStorage = previousGeneratedImage
+              ? useFileStorage()
+              : undefined
             const imageGenerationTool = createImageGenerationTool({
               userId,
               provider: 'openai',
@@ -1000,7 +1002,7 @@ export default defineEventHandler(async (event) => {
               logger: aiLogger,
               requestId: getRequestId(event),
               sourceImages: getImageEditSourceImages(messagesForAI),
-              previousImage: previousGeneratedImage
+              previousImage: previousGeneratedImage && fileStorage
                 ? {
                   name: previousGeneratedImage.filename,
                   load: () => {

@@ -8,6 +8,9 @@ import {
 } from '#shared/utils/chat-failure-text'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 
+export const SOURCE_IMAGE_UNAVAILABLE_MESSAGE
+  = 'The earlier image is no longer available to edit.'
+
 interface ImageGenerationErrorDefinition {
   code: ChatErrorCode
   message: string
@@ -68,7 +71,7 @@ const imageGenerationErrors = {
   },
   sourceImageUnavailable: {
     code: 'source-image-unavailable',
-    message: 'The earlier image is no longer available to edit.',
+    message: SOURCE_IMAGE_UNAVAILABLE_MESSAGE,
     why: 'The image was deleted or is no longer stored in your files.',
     fix: 'Attach the image again, then try again.',
     status: 404,
@@ -169,7 +172,9 @@ export function getSafeImageGenerationError(
     || normalizedMessage.includes('already been started')
   ) {
     definition = imageGenerationErrors.generationBusy
-  } else if (normalizedMessage.includes('no longer available to edit')) {
+  } else if (
+    normalizedMessage.includes(SOURCE_IMAGE_UNAVAILABLE_MESSAGE.toLowerCase())
+  ) {
     definition = imageGenerationErrors.sourceImageUnavailable
   } else if (
     normalizedMessage.includes('storage')

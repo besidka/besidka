@@ -278,6 +278,11 @@ describe('loadOwnedGeneratedImageDataUrl', () => {
 
     expect(dataUrl).toBeNull()
     expect(storage.get).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        imageGeneration: { previousImageMissing: 'not-owned' },
+      },
+    })
   })
 
   it('returns null when the object is gone from storage', async () => {
@@ -297,5 +302,10 @@ describe('loadOwnedGeneratedImageDataUrl', () => {
 
     expect(dataUrl).toBeNull()
     expect(kv.put).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        imageGeneration: { previousImageMissing: 'missing-object' },
+      },
+    })
   })
 })
