@@ -18,10 +18,12 @@
     </h2>
     <p>
       We sent a verification link to
-      <strong
-        class="break-all"
-        data-testid="check-email-address"
-      >{{ email }}</strong>.
+    </p>
+    <p
+      class="badge badge-primary h-auto max-w-full justify-self-center py-1 break-all"
+      data-testid="check-email-address"
+    >{{ email }}</p>
+    <p>
       Open it to activate your account.
     </p>
     <p class="text-sm opacity-80">
