@@ -72,7 +72,7 @@ jobs:
     name: Lint & typecheck
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -106,7 +106,7 @@ jobs:
     name: Unit tests
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -127,7 +127,7 @@ jobs:
     name: Integration tests
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.skip-tests != 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -145,7 +145,7 @@ jobs:
     name: Build
     needs: gate
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       contents: read
@@ -206,7 +206,7 @@ jobs:
       - gate
       - build
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.gate.outputs.skip-tests != 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -265,7 +265,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.skip-tests == 'true'
     continue-on-error: true
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: read

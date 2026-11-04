@@ -159,7 +159,7 @@ jobs:
     name: Lint & typecheck
     needs: gate
     if: needs.gate.outputs.should-skip != 'true'
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -199,7 +199,7 @@ jobs:
     name: Unit tests
     needs: gate
     if: needs.gate.outputs.should-skip != 'true'
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -222,7 +222,7 @@ jobs:
     name: Integration tests
     needs: gate
     if: needs.gate.outputs.should-skip != 'true'
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
@@ -242,7 +242,7 @@ jobs:
     name: Build
     needs: gate
     if: needs.gate.outputs.should-skip != 'true'
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       contents: read
@@ -312,7 +312,7 @@ jobs:
     needs:
       - gate
       - build
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
