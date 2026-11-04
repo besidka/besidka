@@ -59,8 +59,8 @@ describe('useChatFormat', () => {
     expect(getParserOptions('user').highlight).toBe(false)
     expect(userPlugins?.['rehype-raw']).toBe(false)
     expect(userPlugins?.['rehype-raw-html-as-text']).toBeDefined()
-    expect(getParserOptions('assistant')).toEqual({ highlight: false })
-    expect(getParserOptions('system')).toEqual({ highlight: false })
+    expect(getParserOptions('assistant').rehype).toBeUndefined()
+    expect(getParserOptions('system').rehype).toBeUndefined()
   })
 
   it('mounts hostile user payloads without throwing or live elements',
@@ -82,12 +82,42 @@ describe('useChatFormat', () => {
       }
     })
 
-  it('disables mdc syntax and html tokenizing for user messages only', () => {
-    const { getParserOptions } = useChatFormat()
-    const userPlugins = getParserOptions('user').remark?.plugins
+  it('disables mdc syntax for every role and html tokenizing for user only',
+    () => {
+      const { getParserOptions } = useChatFormat()
+      const userPlugins = getParserOptions('user').remark?.plugins
+      const assistantPlugins = getParserOptions('assistant').remark?.plugins
 
-    expect(userPlugins?.['remark-mdc']).toBe(false)
-    expect(userPlugins?.['remark-disable-html']).toBeDefined()
-    expect(getParserOptions('assistant').remark).toBeUndefined()
-  })
+      expect(userPlugins?.['remark-mdc']).toBe(false)
+      expect(userPlugins?.['remark-disable-html']).toBeDefined()
+      expect(assistantPlugins?.['remark-mdc']).toBe(false)
+      expect(assistantPlugins?.['remark-disable-html']).toBeUndefined()
+      expect(getParserOptions('assistant')).toEqual({
+        highlight: false,
+        remark: { plugins: { 'remark-mdc': false } },
+      })
+      expect(getParserOptions('system')).toBe(getParserOptions('assistant'))
+    })
+
+  it('mounts hostile assistant payloads without throwing or live elements',
+    async () => {
+      const { getParserOptions } = useChatFormat()
+
+      for (const payload of DIRECTIVE_PAYLOADS) {
+        const parsed = await parseMarkdown(
+          payload,
+          getParserOptions('assistant'),
+        )
+        const wrapper = await mountSuspended(MDCRenderer, {
+          props: { body: parsed.body, data: parsed.data },
+        })
+        const html = wrapper.html()
+
+        for (const tag of LIVE_ELEMENT_TAGS) {
+          expect(html).not.toContain(`<${tag}`)
+        }
+
+        expect(wrapper.element.querySelector('[style]')).toBeNull()
+      }
+    })
 })

@@ -39,7 +39,14 @@ const userParserOptions: MDCParseOptions = {
   },
 }
 
-const defaultParserOptions: MDCParseOptions = { highlight: false }
+const defaultParserOptions: MDCParseOptions = {
+  highlight: false,
+  remark: {
+    plugins: {
+      'remark-mdc': false,
+    },
+  },
+}
 
 function getParserOptions(role: UIMessage['role']) {
   return role === 'user' ? userParserOptions : defaultParserOptions

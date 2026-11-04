@@ -187,3 +187,59 @@ describe('user message mdc directive payloads', () => {
     })
   }
 })
+
+async function parseAssistantMessage(markdown: string): Promise<CompiledNode> {
+  const parsed = await parseMarkdown(
+    markdown,
+    useChatFormat().getParserOptions('assistant'),
+  )
+
+  return parsed.body as CompiledNode
+}
+
+describe('assistant message without mdc', () => {
+  it('keeps template braces as literal text', async () => {
+    const body = await parseAssistantMessage('Use {{ message }} in the template')
+
+    expect(findByTag(body, 'binding')).toEqual([])
+    expect(collectText(body)).toBe('Use {{ message }} in the template')
+  })
+
+  for (const [name, payload] of Object.entries(DIRECTIVE_PAYLOADS)) {
+    it(`renders ${name} without live elements`, async () => {
+      const body = await parseAssistantMessage(payload)
+      const elements = flatten(body).filter(node => node.type === 'element')
+
+      for (const tag of FORBIDDEN_TAGS) {
+        expect(findByTag(body, tag)).toEqual([])
+      }
+
+      expect(findByTag(body, 'binding')).toEqual([])
+      expect(elements.every((element) => {
+        return !element.props?.style && !element.props?.class
+      })).toBe(true)
+      expect(collectText(body).length).toBeGreaterThan(0)
+    })
+  }
+
+  it('keeps raw html such as br and sup inside gfm tables', async () => {
+    const body = await parseAssistantMessage(
+      '| a | b |\n| - | - |\n| x<br>y | m<sup>2</sup> |',
+    )
+
+    expect(findByTag(body, 'table')).toHaveLength(1)
+    expect(findByTag(body, 'br')).toHaveLength(1)
+    expect(findByTag(body, 'sup')).toHaveLength(1)
+  })
+
+  it('keeps a mermaid fence as a pre with the mermaid language', async () => {
+    const body = await parseAssistantMessage(
+      '```mermaid\ngraph TD\n  A --> B\n```',
+    )
+    const pres = findByTag(body, 'pre')
+
+    expect(pres).toHaveLength(1)
+    expect(pres[0]?.props?.language).toBe('mermaid')
+    expect(pres[0]?.props?.code).toBe('graph TD\n  A --> B\n')
+  })
+})

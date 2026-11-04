@@ -166,8 +166,7 @@ the composable sets an `isApplyingEdit` flag around every replacement and
 ## Rendering user messages
 
 User messages are Markdown, not HTML and not MDC. `getParserOptions('user')` in
-`app/composables/chat-format.ts` (assistant and default options are unchanged)
-turns off everything that could make user text into live elements:
+`app/composables/chat-format.ts` turns off everything that could make user text into live elements:
 
 1. `remark-mdc` is disabled (`'remark-mdc': false`). MDC directive syntax in a
    user message used to produce live elements, and the public
@@ -205,6 +204,32 @@ The layers are independent on purpose: the first two stop the dangerous syntax
 from being parsed, the last two catch what a parser or module upgrade lets
 through. Do not re-enable `remark-mdc` or `rehype-raw` for user messages.
 
+### Assistant messages
+
+`getParserOptions` for every other role (assistant, system) is
+`{ highlight: false, remark: { plugins: { 'remark-mdc': false } } }`. Only
+`remark-mdc` is off, for two reasons verified with the real parser:
+
+- **Binding swallow.** With `remark-mdc` on, assistant text such as
+  `Use {{ message }} in the template` renders `{{ message }}` as an MDC
+  `binding` element, so Vue and Jinja answers lose their braces, and
+  `{{ $doc.updateRuntimeData }}` crashes rendering.
+- **Directive injection by echo.** A model asked to echo
+  `::iframe{src="https://evil.example"}\n::` rendered a live iframe, and the
+  public `/shared/<publicId>` page shows assistant messages to anonymous
+  visitors, so the injection reaches them.
+
+Nothing in the app injects MDC directive syntax into assistant text. The only
+special syntax is the ```` ```mermaid ```` fence, which is an ordinary code
+fence handled by the `pre` component (`prose/PreStream.vue`), so diagrams still
+render.
+
+`rehype-raw` stays **on** for assistant messages: models emit `<br>`, `<sup>`
+and `<details>` inside tables and prose, and they must keep rendering. A full
+allowlist of assistant HTML (sanitizing what `rehype-raw` lets through, as the
+user path does by not parsing it at all) is a separate follow-up and is not
+done here.
+
 ## Rejected for now: a WYSIWYG editor
 
 TipTap or ProseMirror was considered and deferred. The textarea is kept
@@ -231,9 +256,11 @@ than structure-preserving paste.
 - `tests/unit/utils/knowledge-html-to-markdown.spec.ts` (`htmlToChatMarkdown`).
 - `tests/unit/utils/remark-disable-html.spec.ts` (the real `parseMarkdown`
   with `getParserOptions('user')`: literal generics and tags, every directive
-  payload, `remark-breaks`, GFM, emoji), `tests/unit/utils/rehype-raw-html-as-text.spec.ts`
-  and `tests/unit/composables/chat-format.spec.ts` (hostile payloads mounted
-  through `MDCRenderer`).
+  payload, `remark-breaks`, GFM, emoji; and the assistant role: literal
+  `{{ message }}`, every directive payload inert, `br`/`sup` in tables, the
+  mermaid fence), `tests/unit/utils/rehype-raw-html-as-text.spec.ts`
+  and `tests/unit/composables/chat-format.spec.ts` (hostile user and assistant
+  payloads mounted through `MDCRenderer`).
 - `tests/e2e/chat/chat-input-markdown.spec.ts` (the `markdown` test scenario in
   `server/utils/chats/test/markdown-fixture.ts`, including an iframe directive
   and `Vec<String>`).
