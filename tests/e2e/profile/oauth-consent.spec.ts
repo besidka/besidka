@@ -106,6 +106,29 @@ async function waitForApproveButtonHydration(page: Page): Promise<void> {
   }).toBe(true)
 }
 
+async function expectEnterOnScopeToStayOnPage(page: Page): Promise<void> {
+  const decisionRequests: string[] = []
+
+  page.on('request', (request) => {
+    const url = request.url()
+
+    if (
+      url.includes('/oauth2/consent')
+      || url.startsWith(CLIENT_REDIRECT_URI)
+    ) {
+      decisionRequests.push(url)
+    }
+  })
+
+  await page.getByTestId('oauth-scope-chats:read').focus()
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(1_000)
+
+  expect(decisionRequests).toEqual([])
+  await expect(page).toHaveURL(CONSENT_URL_PATTERN)
+  await expect(page.getByTestId('oauth-consent-approve')).toBeVisible()
+}
+
 function collectHydrationErrors(page: Page): string[] {
   const hydrationErrors: string[] = []
 
@@ -159,6 +182,22 @@ test.describe('OAuth consent before the app hydrates', () => {
     expect(callbackUrl.searchParams.get('error')).toBe('access_denied')
     expect(callbackUrl.searchParams.get('code')).toBeNull()
   })
+  test('pressing Enter on a scope does not decide', async ({ page }) => {
+    test.setTimeout(30_000)
+
+    const request = await createAuthorizationRequest(page)
+
+    await page.goto(request.path)
+    await expect(page).toHaveURL(CONSENT_URL_PATTERN)
+    await expectEnterOnScopeToStayOnPage(page)
+  })
+
+  test('shows why an expired request failed', async ({ page }) => {
+    await page.goto('/oauth/consent?consent_error=expired')
+
+    await expect(page.getByTestId('oauth-consent-invalid'))
+      .toContainText('This connection request has expired')
+  })
 })
 
 test.describe('OAuth consent after hydration', () => {
@@ -195,6 +234,18 @@ test.describe('OAuth consent after hydration', () => {
     expect((await consentResponse).ok()).toBe(true)
 
     expect(callbackUrl.searchParams.get('code')).toBeTruthy()
+  })
+  test('pressing Enter on a scope does not decide after hydration', async ({
+    page,
+  }) => {
+    test.setTimeout(30_000)
+
+    const request = await createAuthorizationRequest(page)
+
+    await page.goto(request.path)
+    await expect(page).toHaveURL(CONSENT_URL_PATTERN)
+    await waitForApproveButtonHydration(page)
+    await expectEnterOnScopeToStayOnPage(page)
   })
 })
 

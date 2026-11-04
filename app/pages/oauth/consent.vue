@@ -11,7 +11,7 @@
       </template>
       <template v-else>
         <h1 class="text-2xl font-bold">
-          This connection request isn't valid
+          {{ consentError?.title ?? 'This connection request isn\'t valid' }}
         </h1>
         <p class="opacity-80">
           {{ invalidReason }}
@@ -82,8 +82,16 @@
         :action="CONSENT_FORM_ACTION"
         class="grid gap-6"
         data-testid="oauth-consent-form"
-        @submit.prevent="onFormSubmit"
+        @submit="onFormSubmit"
       >
+        <button
+          type="submit"
+          name="decision"
+          value="none"
+          class="hidden"
+          aria-hidden="true"
+          tabindex="-1"
+        />
         <input
           type="hidden"
           name="oauth_query"
@@ -177,9 +185,10 @@ import {
   OAUTH_CONSENT_ERRORS,
 } from '#shared/utils/oauth-consent-errors'
 
-type ConsentDecision = 'approve' | 'deny'
+type ConsentDecision = 'approve' | 'deny' | 'none'
 
 const CONSENT_FORM_ACTION = '/api/v1/profiles/connected-apps/consent'
+const CONSENT_DECISIONS = new Set<string>(['approve', 'deny', 'none'])
 
 definePageMeta({
   layout: 'auth',
@@ -223,19 +232,23 @@ const shownUserId = shallowRef<string | null>(
   user.value ? String(user.value.id) : null,
 )
 
+const consentError = computed(() => {
+  const code = route.query[OAUTH_CONSENT_ERROR_PARAM]
+
+  return isOAuthConsentErrorCode(code) ? OAUTH_CONSENT_ERRORS[code] : null
+})
+
 const invalidReason = computed<string>(() => {
+  if (consentError.value) {
+    return consentError.value.description
+  }
+
   if (!oauthQuery.value) {
     return 'The link is missing the details of the app that asked to connect.'
   }
 
   return error.value?.message
     || 'It may have expired. Go back to the app and start again.'
-})
-
-const consentError = computed(() => {
-  const code = route.query[OAUTH_CONSENT_ERROR_PARAM]
-
-  return isOAuthConsentErrorCode(code) ? OAUTH_CONSENT_ERRORS[code] : null
 })
 
 function buildApprovedScope(): string {
@@ -329,8 +342,8 @@ function readSubmittedDecision(event: SubmitEvent): ConsentDecision | null {
     return null
   }
 
-  return submitter.value === 'approve' || submitter.value === 'deny'
-    ? submitter.value
+  return CONSENT_DECISIONS.has(submitter.value)
+    ? submitter.value as ConsentDecision
     : null
 }
 
@@ -338,6 +351,12 @@ async function onFormSubmit(event: SubmitEvent) {
   const decision = readSubmittedDecision(event)
 
   if (!decision) {
+    return
+  }
+
+  event.preventDefault()
+
+  if (decision === 'none') {
     return
   }
 

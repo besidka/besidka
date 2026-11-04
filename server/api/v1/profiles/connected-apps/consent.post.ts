@@ -15,8 +15,10 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const OAUTH_QUERY_MAX_LENGTH = 8192
+const FORM_BODY_MAX_BYTES = 16 * 1024
 const SCOPE_MAX_LENGTH = 64
 const SCOPE_MAX_COUNT = 32
+const PRINTABLE_QUERY_PATTERN = /^[\x21-\x7E]+$/
 const SEE_OTHER = 303
 const TOO_MANY_REQUESTS = 429
 const FORWARDED_HEADER_NAMES = [
@@ -32,8 +34,11 @@ const scopeFieldSchema = z.union([
 ]).optional()
 
 const consentFormSchema = z.object({
-  oauth_query: z.string().min(1).max(OAUTH_QUERY_MAX_LENGTH),
-  decision: z.enum(['approve', 'deny']),
+  oauth_query: z.string()
+    .min(1)
+    .max(OAUTH_QUERY_MAX_LENGTH)
+    .regex(PRINTABLE_QUERY_PATTERN),
+  decision: z.enum(['approve', 'deny', 'none']),
   user_id: z.string().min(1).max(32),
   scope: scopeFieldSchema,
 })
@@ -46,34 +51,43 @@ function toScopeList(scope: string | string[] | undefined): string[] {
   return Array.isArray(scope) ? scope : [scope]
 }
 
-function resolveRequestOrigin(event: RequestEvent): string {
+function assertFormBodyWithinLimit(event: RequestEvent): void {
+  const contentLength = Number(getRequestHeader(event, 'content-length'))
+
+  if (Number.isFinite(contentLength) && contentLength > FORM_BODY_MAX_BYTES) {
+    throw createError({
+      message: 'This connection request is too large',
+      status: 413,
+      why: `Body of ${contentLength} bytes exceeds ${FORM_BODY_MAX_BYTES}`,
+    })
+  }
+}
+
+function assertSameOriginFormPost(event: RequestEvent): string {
   const origin = getRequestHeader(event, 'origin')
+  const requestOrigin = getRequestURL(event).origin
 
-  if (origin) {
-    return origin
+  if (origin !== requestOrigin) {
+    throw createError({
+      message: 'Forbidden',
+      status: 403,
+      why: `Origin "${origin ?? 'missing'}" is not ${requestOrigin}`,
+      fix: 'Approve or deny the request from the Besidka consent page.',
+    })
   }
 
-  const referer = getRequestHeader(event, 'referer')
-
-  if (referer) {
-    try {
-      return new URL(referer).origin
-    } catch {
-      return getRequestURL(event).origin
-    }
-  }
-
-  return getRequestURL(event).origin
+  return origin
 }
 
 function buildConsentRequest(
   event: RequestEvent,
+  origin: string,
   body: Record<string, unknown>,
 ): Request {
   const headers = new Headers({
     'accept': 'application/json',
     'content-type': 'application/json',
-    'origin': resolveRequestOrigin(event),
+    origin,
   })
 
   for (const name of FORWARDED_HEADER_NAMES) {
@@ -129,6 +143,10 @@ export default defineEventHandler(async (event) => {
 
   assertNotCrossSiteRequest(event)
 
+  const origin = assertSameOriginFormPost(event)
+
+  assertFormBodyWithinLimit(event)
+
   const form = await readValidatedBody(event, consentFormSchema.safeParse)
 
   if (form.error) {
@@ -141,16 +159,32 @@ export default defineEventHandler(async (event) => {
   }
 
   const { oauth_query: oauthQuery, decision, user_id: shownUserId } = form.data
-  const consentPagePath = `/oauth/consent?${oauthQuery}`
 
-  function returnToConsentPage(code: OAuthConsentErrorCode) {
+  function returnToConsentPage(
+    code: OAuthConsentErrorCode,
+    consentQuery: string = oauthQuery,
+  ) {
     logger.set({ attributes: { oauthConsentForm: { decision, error: code } } })
+
+    const errorQuery = `${OAUTH_CONSENT_ERROR_PARAM}=${code}`
 
     return sendRedirect(
       event,
-      `${consentPagePath}&${OAUTH_CONSENT_ERROR_PARAM}=${code}`,
+      consentQuery
+        ? `/oauth/consent?${consentQuery}&${errorQuery}`
+        : `/oauth/consent?${errorQuery}`,
       SEE_OTHER,
     )
+  }
+
+  const { secret } = await useServerAuth().$context
+
+  if (!await verifyOAuthQueryParams(oauthQuery, secret)) {
+    return returnToConsentPage('expired', '')
+  }
+
+  if (decision === 'none') {
+    return sendRedirect(event, `/oauth/consent?${oauthQuery}`, SEE_OTHER)
   }
 
   const session = await useUserSession()
@@ -161,12 +195,6 @@ export default defineEventHandler(async (event) => {
 
   if (String(session.user.id) !== shownUserId) {
     return returnToConsentPage('account_changed')
-  }
-
-  const { secret } = await useServerAuth().$context
-
-  if (!await verifyOAuthQueryParams(oauthQuery, secret)) {
-    return returnToConsentPage('expired')
   }
 
   const requestedScopes = new URLSearchParams(oauthQuery)
@@ -186,9 +214,13 @@ export default defineEventHandler(async (event) => {
   let response: Response
 
   try {
-    response = await useServerAuth().handler(buildConsentRequest(event, accept
-      ? { accept: true, scope: approvedScope, oauth_query: oauthQuery }
-      : { accept: false, oauth_query: oauthQuery }))
+    response = await useServerAuth().handler(buildConsentRequest(
+      event,
+      origin,
+      accept
+        ? { accept: true, scope: approvedScope, oauth_query: oauthQuery }
+        : { accept: false, oauth_query: oauthQuery },
+    ))
   } catch (exception) {
     logger.set({
       attributes: {

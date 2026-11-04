@@ -361,12 +361,22 @@ both renders agree.
 The form route:
 
 - Rejects `Sec-Fetch-Site: cross-site` (`assertNotCrossSiteRequest`) and
-  forwards the request's `Origin` to Better Auth, whose own origin check
-  applies. The session cookie is `SameSite=Lax`, so a cross-site form post
-  carries no session anyway.
-- Reads `oauth_query` (the signed query the page picked), `decision`
-  (`approve` or `deny`), `user_id` (the account the page showed) and the
-  ticked `scope` checkboxes. Without a session it sends the user to
+  any `Origin` other than the request's own origin, a missing one included:
+  browsers always send `Origin` on a form `POST`, and synthesizing one from
+  the `Referer` or the request URL would hand Better Auth an origin it never
+  checked. A same-site subdomain is refused too. The `Origin` is then
+  forwarded to Better Auth, whose own origin check also applies. The session
+  cookie is `SameSite=Lax`, so a cross-site form post carries no session
+  anyway.
+- Refuses a body above 16 KiB (`413`) before parsing it.
+- Reads `oauth_query` (the signed query the page picked, printable ASCII
+  only), `decision` (`approve`, `deny` or `none`), `user_id` (the account
+  the page showed) and the ticked `scope` checkboxes. It verifies the
+  signature and expiry first, so an unverified query is never reflected
+  into a redirect; an invalid or expired one goes to
+  `/oauth/consent?consent_error=expired`, which the page shows instead of
+  "the link is missing the details" (the auth middleware strips an expired
+  signed query). Without a session it then sends the user to
   `/signin?<oauth_query>`.
 - Builds the granted scope with `buildApprovedMcpScope`: the requested
   identity scopes plus the ticked resource scopes the app asked for, the same
@@ -387,7 +397,24 @@ The form route:
 
 On the hydrated path every failure ends in a toast, including a `200` from
 `/oauth2/consent` without a redirect URL, which used to re-enable the button
-silently.
+silently. `@submit` cancels the native post only once it has read a known
+decision from `event.submitter`; any other submit falls through to the form
+route, so a click is never dropped.
+
+Pressing Enter on a scope checkbox triggers the browser's implicit
+submission, which clicks the form's first submit button. That used to be
+Deny, so Enter sent the user back to the app with `access_denied`. The first
+submit button is now a hidden `decision=none` button: with JavaScript the
+handler ignores it, without it the route sends the user back to the same
+consent page. A *disabled* hidden button does not work: Chromium skips
+disabled buttons and clicks the next one (Deny).
+
+Known limits of the no-JavaScript path: when nothing is pre-ticked (a
+request for write scopes only, with no identity scope), Approve renders as
+the disabled `UiButton` `<span>` and cannot be submitted until JavaScript
+runs; claude.ai and ChatGPT always request read scopes, so this does not
+affect them. A double click posts twice, so Better Auth issues two codes
+and the new-app email can go out twice.
 
 Tests: `tests/e2e/profile/oauth-consent.spec.ts` approves and denies with
 JavaScript disabled, checks that a first open with resource-only scopes

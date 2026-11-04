@@ -149,11 +149,45 @@ describe('connected apps consent form API', () => {
     expect(authHandler).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['a missing Origin', undefined],
+    ['a foreign Origin', 'https://attacker.example'],
+    ['a same-site subdomain Origin', 'https://studio.besidka.com'],
+  ])('rejects %s with 403', async (_label, origin) => {
+    mocks.getRequestHeader.mockImplementation(
+      (_event: unknown, name: string) => {
+        const headers: Record<string, string | undefined> = {
+          origin,
+          cookie: COOKIE,
+        }
+
+        return headers[name]
+      },
+    )
+
+    const handler = await getHandler()
+
+    await expect(handler(createEvent(validBody())))
+      .rejects.toMatchObject({ status: 403 })
+    expect(authHandler).not.toHaveBeenCalled()
+  })
+
   it('rejects a missing oauth_query with 400', async () => {
     const handler = await getHandler()
 
     await expect(handler(createEvent(validBody({ oauth_query: undefined }))))
       .rejects.toMatchObject({ status: 400 })
+    expect(authHandler).not.toHaveBeenCalled()
+  })
+
+  it('rejects an oauth_query with a line break with 400', async () => {
+    const handler = await getHandler()
+    const body = validBody()
+
+    await expect(handler(createEvent({
+      ...body,
+      oauth_query: `${body.oauth_query}\r\nx-injected: 1`,
+    }))).rejects.toMatchObject({ status: 400 })
     expect(authHandler).not.toHaveBeenCalled()
   })
 
@@ -163,6 +197,51 @@ describe('connected apps consent form API', () => {
     await expect(handler(createEvent(validBody({ decision: 'maybe' }))))
       .rejects.toMatchObject({ status: 400 })
     expect(authHandler).not.toHaveBeenCalled()
+  })
+
+  it('rejects a body above the size limit with 413', async () => {
+    mocks.getRequestHeader.mockImplementation(
+      (_event: unknown, name: string) => {
+        const headers: Record<string, string> = {
+          'origin': ORIGIN,
+          'cookie': COOKIE,
+          'content-length': String(64 * 1024),
+        }
+
+        return headers[name]
+      },
+    )
+
+    const handler = await getHandler()
+
+    await expect(handler(createEvent(validBody())))
+      .rejects.toMatchObject({ status: 413 })
+    expect(authHandler).not.toHaveBeenCalled()
+  })
+
+  it('returns to the unchanged consent page on an implicit submit', async () => {
+    const handler = await getHandler()
+    const body = validBody({ decision: 'none' })
+    const response = await handler(createEvent(body))
+
+    expect(response).toEqual({
+      location: `/oauth/consent?${body.oauth_query}`,
+      status: 303,
+    })
+    expect(authHandler).not.toHaveBeenCalled()
+  })
+
+  it('verifies the signature before reflecting the query', async () => {
+    mocks.verifyOAuthQueryParams.mockResolvedValueOnce(false)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
+
+    const handler = await getHandler()
+    const response = await handler(createEvent(validBody()))
+
+    expect(response).toEqual({
+      location: '/oauth/consent?consent_error=expired',
+      status: 303,
+    })
   })
 
   it('redirects to sign-in without a session', async () => {
@@ -201,7 +280,7 @@ describe('connected apps consent form API', () => {
     expect(mocks.verifyOAuthQueryParams)
       .toHaveBeenCalledExactlyOnceWith(body.oauth_query, SECRET)
     expect(response).toEqual({
-      location: consentErrorUrl(body.oauth_query, 'expired'),
+      location: '/oauth/consent?consent_error=expired',
       status: SEE_OTHER,
     })
     expect(authHandler).not.toHaveBeenCalled()
