@@ -1,3 +1,4 @@
+import { crc32 } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import { convertToModelMessages } from 'ai'
@@ -46,6 +47,35 @@ function createWebPBytes(): Uint8Array {
     0x00, 0x00,
   ])
 }
+
+function createPngBytes(): Uint8Array {
+  const buildChunk = (type: string, payload: number[]): number[] => {
+    const body = [...type].map(character => character.charCodeAt(0))
+      .concat(payload)
+    const toUint32 = (value: number): number[] => [
+      (value >>> 24) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 8) & 0xff,
+      value & 0xff,
+    ]
+
+    return [
+      ...toUint32(payload.length),
+      ...body,
+      ...toUint32(crc32(Uint8Array.from(body))),
+    ]
+  }
+
+  return Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ...buildChunk('IHDR', [0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]),
+    ...buildChunk('IDAT', [0x78, 0x9c, 0x63, 0x00, 0x01, 0x00]),
+    ...buildChunk('IEND', []),
+  ])
+}
+
+const TRAINED_SOURCE_TYPE_ATTRIBUTE = 'Iptc4xmpExt:DigitalSourceType='
+  + '"http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"'
 
 function buildImageDataUrl(bytes: Uint8Array, mediaType: string): string {
   const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join('')
@@ -1247,6 +1277,52 @@ describe('persistGatewayGeneratedImageParts', () => {
       originModel: 'openai/gpt-5-image',
     }))
   })
+
+  it('marks a gateway image with an IPTC source type and logs the marking',
+    async () => {
+      mocks.persistFile.mockResolvedValue({
+        id: 'file-44',
+        storageKey: 'generated-44.png',
+        name: 'generated-image-1.png',
+        size: 200,
+        type: 'image/png',
+        source: 'assistant',
+        expiresAt: null,
+      })
+
+      const logger = { set: vi.fn() }
+      const parts: UIMessage['parts'] = [
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          url: buildImageDataUrl(createPngBytes(), 'image/png'),
+        },
+      ] as any
+
+      await persistGatewayGeneratedImageParts({
+        parts,
+        userId: 7,
+        chatId: 'chat-gateway-provenance',
+        gatewayId: 'openrouter',
+        modelId: 'x-ai/grok-imagine-image',
+        logger,
+      })
+
+      const persistInput = mocks.persistFile.mock.calls[0]?.[0]
+      const persistedText = new TextDecoder().decode(persistInput.fileData)
+
+      expect(persistedText).toContain(TRAINED_SOURCE_TYPE_ATTRIBUTE)
+      expect(persistedText).toContain(
+        'Iptc4xmpExt:AISystemUsed="x-ai/grok-imagine-image"',
+      )
+      expect(logger.set).toHaveBeenCalledWith({
+        attributes: {
+          assistantFiles: {
+            provenance: ['added-xmp'],
+          },
+        },
+      })
+    })
 
   it('uploads a reasoning-file part carrying an inline data: image URL '
     + 'the same way as a plain file part — Gemini via the Vercel gateway '
