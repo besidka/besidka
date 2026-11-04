@@ -77,66 +77,109 @@
           Use a different account
         </button>
       </div>
-      <OAuthScopePicker
-        v-model="selectedScopes"
-        :scopes="request.scopes"
-        :disabled="isSubmitting"
-      />
-      <div
-        class="rounded-box bg-base-200/60 p-4 text-sm grid gap-2"
-        data-testid="oauth-consent-legal"
+      <form
+        method="post"
+        :action="CONSENT_FORM_ACTION"
+        class="grid gap-6"
+        data-testid="oauth-consent-form"
+        @submit.prevent="onFormSubmit"
       >
-        <p>
-          Your chats, projects, files and memory can contain sensitive
-          information, including information about other people.
-        </p>
-        <p>
-          By approving, you explicitly consent to Besidka sending the data
-          you allow above to {{ request.client.name }}. The app may be run
-          from outside the EU, and Besidka has no contract with it, so its
-          own terms and privacy policy apply to what it receives.
-          <NuxtLink
-            to="/privacy-policy#connected-ai-apps"
-            target="_blank"
-            class="underline hover:no-underline"
-          >How connected apps work</NuxtLink>
-        </p>
-        <p>
-          You can disconnect the app at any time in Profile, Connected apps.
-        </p>
-      </div>
-      <p
-        v-if="!canApprove"
-        class="text-sm text-center opacity-80"
-        data-testid="oauth-consent-nothing-selected"
-      >
-        Choose at least one thing to share to approve, or deny the request.
-      </p>
-      <div class="grid grid-cols-2 gap-3">
-        <UiButton
-          mode="default"
-          outline
-          block
-          text="Deny"
+        <input
+          type="hidden"
+          name="oauth_query"
+          :value="oauthQuery"
+        >
+        <input
+          type="hidden"
+          name="user_id"
+          :value="shownUserId ?? ''"
+        >
+        <OAuthScopePicker
+          v-model="selectedScopes"
+          :scopes="request.scopes"
           :disabled="isSubmitting"
-          data-testid="oauth-consent-deny"
-          @click="submit(false)"
         />
-        <UiButton
-          mode="primary"
-          block
-          :text="isSubmitting ? 'Connecting...' : 'Approve'"
-          :disabled="isSubmitting || !canApprove"
-          data-testid="oauth-consent-approve"
-          @click="submit(true)"
-        />
-      </div>
+        <div
+          class="rounded-box bg-base-200/60 p-4 text-sm grid gap-2"
+          data-testid="oauth-consent-legal"
+        >
+          <p>
+            Your chats, projects, files and memory can contain sensitive
+            information, including information about other people.
+          </p>
+          <p>
+            By approving, you explicitly consent to Besidka sending the data
+            you allow above to {{ request.client.name }}. The app may be run
+            from outside the EU, and Besidka has no contract with it, so its
+            own terms and privacy policy apply to what it receives.
+            <NuxtLink
+              to="/privacy-policy#connected-ai-apps"
+              target="_blank"
+              class="underline hover:no-underline"
+            >How connected apps work</NuxtLink>
+          </p>
+          <p>
+            You can disconnect the app at any time in Profile, Connected apps.
+          </p>
+        </div>
+        <div
+          v-if="consentError"
+          role="alert"
+          class="alert alert-error alert-soft text-sm grid gap-1"
+          data-testid="oauth-consent-error"
+        >
+          <strong>{{ consentError.title }}</strong>
+          <span>{{ consentError.description }}</span>
+        </div>
+        <p
+          v-if="!canApprove"
+          class="text-sm text-center opacity-80"
+          data-testid="oauth-consent-nothing-selected"
+        >
+          Choose at least one thing to share to approve, or deny the request.
+        </p>
+        <div class="grid grid-cols-2 gap-3">
+          <UiButton
+            type="submit"
+            name="decision"
+            value="deny"
+            mode="default"
+            outline
+            block
+            text="Deny"
+            :disabled="isSubmitting"
+            data-testid="oauth-consent-deny"
+          />
+          <UiButton
+            type="submit"
+            name="decision"
+            value="approve"
+            mode="primary"
+            block
+            :text="isSubmitting ? 'Connecting...' : 'Approve'"
+            :disabled="isSubmitting || !canApprove"
+            data-testid="oauth-consent-approve"
+          />
+        </div>
+      </form>
     </div>
   </UiBubble>
 </template>
 <script setup lang="ts">
 import { parseError } from 'evlog'
-import { MCP_IDENTITY_SCOPES } from '#shared/utils/mcp-oauth-scopes'
+import {
+  buildApprovedMcpScope,
+  defaultSelectedMcpScopes,
+} from '#shared/utils/mcp-oauth-scopes'
+import {
+  isOAuthConsentErrorCode,
+  OAUTH_CONSENT_ERROR_PARAM,
+  OAUTH_CONSENT_ERRORS,
+} from '#shared/utils/oauth-consent-errors'
+
+type ConsentDecision = 'approve' | 'deny'
+
+const CONSENT_FORM_ACTION = '/api/v1/profiles/connected-apps/consent'
 
 definePageMeta({
   layout: 'auth',
@@ -172,7 +215,9 @@ const { data: request, error, status } = await useFetch(
   },
 )
 
-const selectedScopes = ref<string[]>([])
+const selectedScopes = ref<string[]>(
+  defaultSelectedMcpScopes(request.value?.scopes ?? []),
+)
 const isSubmitting = shallowRef<boolean>(false)
 const shownUserId = shallowRef<string | null>(
   user.value ? String(user.value.id) : null,
@@ -187,15 +232,17 @@ const invalidReason = computed<string>(() => {
     || 'It may have expired. Go back to the app and start again.'
 })
 
-const identityScopeSet = new Set<string>(MCP_IDENTITY_SCOPES)
+const consentError = computed(() => {
+  const code = route.query[OAUTH_CONSENT_ERROR_PARAM]
+
+  return isOAuthConsentErrorCode(code) ? OAUTH_CONSENT_ERRORS[code] : null
+})
 
 function buildApprovedScope(): string {
-  const requestedIdentityScopes = (request.value?.scopes ?? [])
-    .filter((scope) => {
-      return identityScopeSet.has(scope)
-    })
-
-  return [...requestedIdentityScopes, ...selectedScopes.value].join(' ')
+  return buildApprovedMcpScope(
+    request.value?.scopes ?? [],
+    selectedScopes.value,
+  )
 }
 
 const canApprove = computed<boolean>(() => {
@@ -241,15 +288,16 @@ async function submit(accept: boolean) {
       return
     }
 
-    const { data, error: consentError } = await $auth.client.oauth2.consent(
+    const consentResult = await $auth.client.oauth2.consent(
       accept
         ? { accept: true, scope: buildApprovedScope() }
         : { accept: false },
     )
+    const { data, error: consentRequestError } = consentResult
 
-    if (consentError) {
+    if (consentRequestError) {
       useErrorMessage(
-        consentError.message || 'Failed to save your decision',
+        consentRequestError.message || 'Failed to save your decision',
       )
       isSubmitting.value = false
 
@@ -257,6 +305,10 @@ async function submit(accept: boolean) {
     }
 
     if (!readOAuthRedirectUrl(data)) {
+      useErrorMessage(
+        OAUTH_CONSENT_ERRORS.failed.title,
+        OAUTH_CONSENT_ERRORS.failed.description,
+      )
       isSubmitting.value = false
     }
   } catch (exception) {
@@ -268,6 +320,28 @@ async function submit(accept: boolean) {
     )
     isSubmitting.value = false
   }
+}
+
+function readSubmittedDecision(event: SubmitEvent): ConsentDecision | null {
+  const submitter = event.submitter
+
+  if (!(submitter instanceof HTMLButtonElement)) {
+    return null
+  }
+
+  return submitter.value === 'approve' || submitter.value === 'deny'
+    ? submitter.value
+    : null
+}
+
+async function onFormSubmit(event: SubmitEvent) {
+  const decision = readSubmittedDecision(event)
+
+  if (!decision) {
+    return
+  }
+
+  await submit(decision === 'approve')
 }
 
 async function switchAccount() {
