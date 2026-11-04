@@ -23,9 +23,9 @@
 | 5 | Subscriptions and California ARL | Not applicable. Nothing is sold | Nothing | Revisit before any paid tier |
 | 6 | Uploads and the DMCA | Decided 2026-10-28: no agent; no safe harbour claimed; revisit only if a JDG is opened. Notice process published | New Terms section "Copyright complaints", Privacy Policy "Reports and notices about content", share defaults off, retention 12 and 24 months | None |
 | 7 | DSA | Untested argument that it does not apply. Followed voluntarily | Stopped self-labelling as an "online platform" | Counsel check |
-| 8 | AI Act Art. 50 | Visible badge shipped (not the art. 50(2) marking); provider metadata not stripped; provider status open, 2.12.2026 (see 3.2) | AI-generated badge on generated images in the chat UI, share pages and the image preview | None |
+| 8 | AI Act Art. 50 | Partly done 2026-11-04: provider C2PA kept byte-identical, an IPTC XMP tag (model id only) added otherwise, visible badge stays; no own signature or watermark, so xAI, Qwen and unverified gateway images likely fall short (see 3.2) | Image marking module `server/utils/ai/image-provenance.ts`, called before both image paths save to R2; Terms sentences on the machine-readable mark | Decide before 2.12.2026 what to do for providers and gateway models with no C2PA or watermark (see 3.2) |
 | 9 | TCO Regulation 2021/784 | Watch | Nothing | Keep the contact address monitored |
-| 10 | GDPR Art. 33 breach procedure | Missing | Nothing | Write a short 72-hour procedure |
+| 10 | GDPR Art. 33 breach procedure | Done 2026-11-04: runbook written (`docs/legal/breach-runbook.md`) | Runbook: 72-hour clock, first-hour containment, risk table, UODO and user notices, processor notices, private breach record | Get a Profil Zaufany if not already held. Keep the breach record privately, not in this repository |
 | 11 | GDPR damages and fonts case law | Context | Nothing | None |
 | 12 | EU-US DPF | Context | Nothing | Watch the appeal |
 
@@ -229,26 +229,99 @@
 ### 3.2 AI Act Article 50
 
 - **Timing.** Art. 50 applies from 2 August 2026. Art. 50(2) (machine-readable
-  marking) applies from **2.8.2026**, and Regulation (EU) 2026/1744 gives
-  systems already on the market until **2.12.2026**.
-- **Open point.** Art. 50(2) obliges **providers** of AI systems that generate
-  synthetic images, audio, video or text to mark the output in a machine-readable
-  format. Whether a non-commercial operator who only forwards a user's request to
-  a provider with the user's own key (a BYOK relay) is a "provider" is
-  unsettled (Art. 3(9) to (11) define provider, deployer and placing on the
-  market). It stays an open item with the 2.12.2026 date. Deployer duties in
-  Art. 50(4) (deep fakes) attach to those who use the system in the course of a
-  professional activity, which a personal project is not.
-- **Practical step, done.** An AI-generated badge now ships on generated images
-  in the chat UI, on share pages and in the image preview. The badge is a
-  visible label; it is **not** the art. 50(2) machine-readable marking.
-  Generated images are stored and served without re-encoding
-  (`server/utils/ai/image-generation.ts`, `persist-file.ts`), so markings a
-  provider embeds (C2PA, SynthID) pass through Besidka intact. User uploads are
-  re-encoded through the IMAGES binding (`server/utils/images.ts`), but those
-  are not AI output. The Terms promise only the label, not that provider
-  metadata survives.
-- **What changed.** The AI-generated badge.
+  marking) applies from **2.8.2026**. Regulation (EU) 2026/1744 adds Art.
+  111(4): a system placed on the market before 2.8.2026 has until
+  **2.12.2026** (source:
+  https://ai-act-service-desk.ec.europa.eu/en/ai-act/article-111). Besidka
+  generated images before 2.8.2026, so the later date is the working deadline.
+- **Who is the provider.** The Commission guidelines on Art. 50 (20 July 2026)
+  point strongly to Besidka being a provider, and this review treats it as one.
+  The text of para 11 gives the example: a company that offers a generative app
+  under its own name is a provider, free or paid. A BYOK relay with Besidka's
+  name on it fits that example. Art. 3(3) covers supply free of charge. Not
+  every step is settled: "placing on the market" (Art. 3(9) with 3(10)) needs a
+  commercial activity, but "putting into service" (Art. 3(11)) does not, and a
+  personal project can be a provider by putting the system into service. The
+  Art. 2(12) open-source exemption was **not verified**. Para 74 lets a system
+  provider rely on an upstream model provider's marking, without prejudice to
+  its duty to demonstrate compliance. Deployer duties in Art. 50(4) (deep fakes)
+  are unchanged: they attach to professional use, which a personal project is
+  not.
+- **What the upstream providers do.** Checked on 2026-11-04 against the owner's
+  own stored images in production R2: Google `gemini-2.5-flash-image` (PNG),
+  Google `gemini-3.1-flash-image` (JPEG) and OpenAI `gpt-image-2` (WebP) API
+  outputs already carry a C2PA manifest with the IPTC `DigitalSourceType`
+  `trainedAlgorithmicMedia`. Google's mentions SynthID. xAI and Alibaba Qwen
+  document no embedded marking (Qwen has only an opt-in visible watermark
+  flag). Gateway passthrough was not researched.
+- **What Besidka does now.** `server/utils/ai/image-provenance.ts` marks the
+  bytes before they are saved to R2, on both paths: the direct `generate_image`
+  tool (`server/utils/ai/image-generation.ts`) and gateway images
+  (`server/utils/files/assistant-files.ts`). The rules:
+  - A file that already has a C2PA manifest (PNG `caBX`, JPEG APP11 JUMBF,
+    WebP `C2PA` chunk) is left **byte-identical**. Any change would invalidate
+    the provider's signature, and the provider's mark is the stronger one.
+  - A file that already has XMP with an AI `DigitalSourceType` is left alone.
+    An existing plain XMP packet gets Besidka's `rdf:Description` merged in.
+  - Otherwise an XMP packet is inserted at byte level, with no re-encoding.
+    Pixels are identical (`magick compare -metric AE` = 0 on PNG, JPEG, lossy,
+    lossless and alpha WebP). The tag holds `Iptc4xmpExt:DigitalSourceType` set
+    to `trainedAlgorithmicMedia` (`compositeWithTrainedAlgorithmicMedia` when
+    the model edited a user's image) and `Iptc4xmpExt:AISystemUsed` set to the
+    model id. Nothing else: no `xmp:CreatorTool`, no prompt, no user data
+    (owner decision, data minimisation).
+  - The result is logged as `attributes.imageGeneration.provenance` or
+    `attributes.assistantFiles.provenance` with one of `upstream-c2pa`,
+    `upstream-xmp`, `existing-xmp-unmarked`, `added-xmp`, `merged-xmp`,
+    `skipped-oversize`, `unsupported`.
+  - The visible AI-generated badge in the chat UI, on share pages and in the
+    image preview stays. It is a label for people, not the machine-readable
+    mark. The Terms describe both.
+- **Detection.** Art. 50(2) marking is only useful if it can be read (guidelines
+  paras 69 and 70). Anyone can read IPTC and XMP with standard tools
+  (`exiftool`, image viewers), and C2PA at https://contentcredentials.org/verify.
+  Para 73 accepts watermarks, metadata, cryptographic provenance and
+  fingerprints.
+- **Residual gaps.**
+  - Guidelines para 81 says technical feasibility is objective and does not
+    depend on a provider's resources. Cost counts (paras 80 and 85), but para 86
+    accepts metadata-only marking only in narrow closed-environment cases. The
+    Code of Practice on marking and labelling AI-generated content (final 10
+    June 2026) asks for at least two layers (digitally signed metadata plus an
+    imperceptible watermark) and retention of existing markings (Measures 1.1
+    and 1.2). It is voluntary and Besidka is not a signatory. Besidka keeps
+    existing marks (Measure 1.2) but does not sign C2PA itself (no certificate)
+    and adds no invisible watermark (that needs pixel processing, which does not
+    fit on Workers).
+  - Images from xAI, Qwen and unverified gateway models carry only Besidka's
+    unsigned IPTC tag: one layer, likely below what Art. 50(2) requires. Para 74
+    lets Besidka rely on a provider's mark only to the extent that mark
+    complies.
+  - Gateway passthrough is unverified.
+  - Some files stay unmarked: those logged `existing-xmp-unmarked` (compressed
+    XMP, or an existing non-AI `DigitalSourceType`), `unsupported` (format not
+    handled) and `skipped-oversize`. Images stored before 2026-11-04 were not
+    changed.
+  - Metadata can be stripped by anyone who re-saves or screenshots the image.
+    User uploads are re-encoded through the IMAGES binding
+    (`server/utils/images.ts`) but those are not AI output.
+- **Open owner decision before 2.12.2026.** For providers and gateway models
+  with no C2PA or watermark: keep image generation for them and accept the risk,
+  switch it off for them, or add a watermark.
+- **Revisit when.**
+  - a provider starts or stops embedding C2PA (re-run the R2 check above);
+  - the Commission publishes further guidance, or a standard under Art. 50(7)
+    or Art. 40;
+  - Besidka gains a signing certificate;
+  - a cheap Workers-compatible watermark library appears.
+- **What changed.** The marking module and its two call sites, the log
+  attribute, the Terms sentences (recorded as `minor` in
+  `shared/utils/legal-document-revisions.ts`: they describe service behaviour
+  and add no purpose, recipient or obligation), and the unit tests
+  (`tests/unit/utils/ai/image-provenance.spec.ts`).
+- **Sources.** Commission guidelines on Art. 50:
+  https://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems.
+  Code of Practice: https://digital-strategy.ec.europa.eu/en/policies/code-practice-ai-generated-content.
 
 ### 3.3 Terrorist Content Online Regulation (EU) 2021/784
 
@@ -265,11 +338,19 @@
 - A personal-data breach must be notified to the supervisory authority (UODO)
   within 72 hours of becoming aware, unless it is unlikely to result in a risk,
   and to the users when the risk is high (Art. 34).
-- **Gap.** There is no written procedure. A one-page runbook is enough: who
-  decides, where the 72 hours start, what to record, the UODO notification form,
-  the user notice, and the keys to rotate (`betterAuthSecret` rotation destroys
-  2FA secrets, see `docs/auth-security.md`).
-- **What changed.** Nothing. Owner follow-up.
+- **Gap (closed 2026-11-04).** There was no written procedure. The runbook now
+  exists at `docs/legal/breach-runbook.md`. It covers where the 72 hours start,
+  the first-hour containment per incident type (including why `betterAuthSecret`
+  rotation destroys 2FA secrets, see `docs/auth-security.md`), a risk table
+  with the EDPB cases, the UODO channels and the Art. 33(3) fill-in, the user
+  notice, processor notices, and a copy-paste breach record.
+- **What changed.** The runbook, dated 2026-11-04. Engineer-drafted, not
+  lawyer-reviewed. A few points are marked unconfirmed in it (the biznes.gov.pl
+  e-form for a private individual, the Cloudflare notice channel, the Polish KSC
+  amendment, CERT Polska reporting).
+- **Owner follow-up (one action).** Get a Profil Zaufany if not already held, so
+  the UODO filing can be signed. Keep the breach record privately, not in this
+  public repository.
 
 ### 3.5 GDPR damages case law (context)
 
@@ -295,11 +376,17 @@ publish. Watch the appeal.
    claimed; revisit only if a JDG is opened.
 2. Retention for reports and notices (2.6). Decided: 12 months, 24 months for
    the copyright-removal note.
-3. AI image labelling (3.2). Badge ships (visible label only, not the
-   art. 50(2) marking). Provider metadata is not stripped. Open: whether a BYOK
-   relay is an art. 50(2) "provider"; date 2.12.2026 for systems already on the
-   market (Regulation (EU) 2026/1744).
-4. Write a one-page Art. 33 breach runbook (3.4).
+3. AI image marking (3.2). Partly done 2026-11-04: provider C2PA is kept
+   byte-identical, otherwise Besidka adds an IPTC XMP tag (model id and
+   `trainedAlgorithmicMedia` only), and the visible badge stays. Open before
+   2.12.2026 (Regulation (EU) 2026/1744): xAI, Qwen and unverified gateway
+   images carry only unsigned IPTC, likely below Art. 50(2). Keep image
+   generation for them and accept the risk, switch it off for them, or add a
+   watermark. Besidka is treated as a provider (guidelines para 11). Revisit
+   conditions are in 3.2.
+4. Art. 33 breach runbook (3.4): written 2026-11-04 (`docs/legal/breach-runbook.md`).
+   Remaining: get a Profil Zaufany if not already held; keep the breach record
+   privately.
 5. Keep the contact mailbox monitored (3.3).
 6. Have a Polish `radca prawny` look at the DSA conclusion (3.1), the copyright
    notice text for EU users, and the legal-basis choices for the new

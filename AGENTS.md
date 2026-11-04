@@ -294,9 +294,34 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   and CAN-SPAM, subscriptions and the California ARL, uploads and the DMCA)
   with status, what changed, owner follow-ups and sources; plus the DSA
   applicability argument and the Polish implementing act (Dz.U. 2026 poz.
-  1296), AI Act Art. 50, TCO Regulation 2021/784, the GDPR Art. 33 runbook gap,
+  1296), AI Act Art. 50 (the 50(2) marking recorded as partly done: provider C2PA
+  passed through byte-identical, an IPTC XMP tag with model id only added by
+  `server/utils/ai/image-provenance.ts`, residual gaps, the open owner decision
+  before 2.12.2026 and revisit conditions),
+  TCO Regulation 2021/784, the GDPR Art. 33 runbook (now
+  `docs/legal/breach-runbook.md`),
   and the DMCA designated-agent decision that conflicts with the
   no-postal-address position
+- `docs/legal/breach-runbook.md` - GDPR Art. 33/34 personal-data breach runbook
+  for a private-individual controller in Poland (engineer-drafted, not
+  lawyer-reviewed, 2026-11-04): what counts as a breach and when the 72 hours
+  start (weekends included, a processor's notice starts the clock), the
+  first-hour checklist (evidence: D1 Time Travel bookmark, Axiom
+  `besidka-prod`, Cloudflare audit log; containment per incident type: revoke
+  sessions in D1 and under the KV `auth:` prefix, never rotate
+  `betterAuthSecret` as a sign-out switch because it destroys 2FA secrets and
+  backup codes, `NUXT_ENCRYPTION_KEY` rotation needing a re-encryption job for
+  the `keys` table, share revocation, route disable, WAF), the EDPB-based risk
+  table (session tokens, encrypted BYOK keys, share links, R2 exposure,
+  outage and loss, IP logs) with the Art. 34(3) exceptions, the UODO channels
+  (biznes.gov.pl e-form, ePUAP, post; Profil Zaufany needed; preliminary then
+  supplementary filing) with the Art. 33(3) fill-in, the user email template
+  and why the legal-notice sweep is not the sender (the owner decision of
+  2026-11-04: no in-app mailer, a manual BCC batch from the privacy mailbox),
+  processor notices (Cloudflare DPA 3.1(e), Axiom DPA 5.3), the private
+  breach record template (Art. 33(5), never in this public repo), and the
+  unconfirmed points (e-form for a private individual, Cloudflare notice
+  channel, KSC amendment, CERT Polska)
 - `docs/legal/monetisation-readiness.md` - Everything that must happen before
   and when Besidka earns in any form (donations, ads, affiliate links, a paid
   tier, credits, paid support; selling data excluded), engineer-drafted,

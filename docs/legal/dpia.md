@@ -902,7 +902,8 @@ again after the first month of real use.
 - the consent text, version or flow changes;
 - the classifier categories or the never-store list change;
 - the retention rules, storage locations or processors change;
-- a complaint, breach or authority request touches this processing;
+- a complaint, breach or authority request touches this processing (the breach
+  procedure is `docs/legal/breach-runbook.md`);
 - any other material change to the processing.
 
 Otherwise review at least every 12 months. Keep the previous version in git

@@ -18,11 +18,12 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'basis, connected-app permissions and per-project memory updates.',
   },
   'terms-of-use': {
-    hash: '75ad669cf6a09256d41e6c228d8d93c38f0d8067b6ffe4fe75807801ac54f995',
-    classification: 'material',
-    noticeId: '2026-11-legal-notices',
-    note: 'Change notice clause, its recipients and timing, and '
-      + 'connected-app permissions.',
+    hash: '9ed16390042063601702e2848cfc14c44ff111c8a6e0dd79b8c4b89e26fea941',
+    classification: 'minor',
+    note: 'Describes the machine-readable AI image marks (provider C2PA '
+      + 'kept, otherwise an IPTC tag naming only the model); no new '
+      + 'purpose, recipient or obligation. Body still includes the '
+      + '2026-11-legal-notices changes, effective 2026-12-04.',
   },
   'cookie-policy': {
     hash: '767342201cf16e5041180bd8d8e7169273784c68a9618ef47614014c0547b0de',
