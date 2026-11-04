@@ -66,6 +66,14 @@ const imageGenerationErrors = {
     status: 500,
     persistenceText: IMAGE_GENERATION_FAILURE_TEXT.imageSaveFailed,
   },
+  sourceImageUnavailable: {
+    code: 'source-image-unavailable',
+    message: 'The earlier image is no longer available to edit.',
+    why: 'The image was deleted or is no longer stored in your files.',
+    fix: 'Attach the image again, then try again.',
+    status: 404,
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.sourceImageUnavailable,
+  },
   providerRateLimit: {
     code: 'provider-rate-limit',
     message: 'Image generation is temporarily rate limited.',
@@ -161,6 +169,8 @@ export function getSafeImageGenerationError(
     || normalizedMessage.includes('already been started')
   ) {
     definition = imageGenerationErrors.generationBusy
+  } else if (normalizedMessage.includes('no longer available to edit')) {
+    definition = imageGenerationErrors.sourceImageUnavailable
   } else if (
     normalizedMessage.includes('storage')
     || normalizedMessage.includes('10 mb')

@@ -143,8 +143,12 @@ import {
 } from '~~/server/utils/files/assistant-files'
 import {
   createImageGenerationTool,
+  findPreviousGeneratedImage,
   getImageEditSourceImages,
 } from '~~/server/utils/ai/image-generation'
+import {
+  loadOwnedGeneratedImageDataUrl,
+} from '~~/server/utils/files/convert-files-for-ai'
 import {
   putGenerationGuard,
   startGenerationGuardHeartbeat,
@@ -984,6 +988,10 @@ export default defineEventHandler(async (event) => {
               })
             }
 
+            const previousGeneratedImage = findPreviousGeneratedImage(
+              allMessages,
+            )
+            const fileStorage = useFileStorage()
             const imageGenerationTool = createImageGenerationTool({
               userId,
               provider: 'openai',
@@ -992,6 +1000,19 @@ export default defineEventHandler(async (event) => {
               logger: aiLogger,
               requestId: getRequestId(event),
               sourceImages: getImageEditSourceImages(messagesForAI),
+              previousImage: previousGeneratedImage
+                ? {
+                  name: previousGeneratedImage.filename,
+                  load: () => {
+                    return loadOwnedGeneratedImageDataUrl({
+                      userId,
+                      storageKey: previousGeneratedImage.storageKey,
+                      storage: fileStorage,
+                      logger: aiLogger,
+                    })
+                  },
+                }
+                : undefined,
               onGenerated: ({ aspectRatio }) => {
                 generatedImage = { modelId: openAiImageModelId, aspectRatio }
               },

@@ -1,11 +1,14 @@
 import type { ImageModel, UIMessage } from 'ai'
 import type { ImageGenerationToolOutput } from '#shared/types/image-generation.d'
+import type { PreviousImageSource } from '../../../../server/utils/ai/image-generation'
 import { createOpenAI } from '@ai-sdk/openai'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_IMAGE_EDIT_SOURCE_BYTES,
   MAX_IMAGE_EDIT_SOURCE_IMAGES,
   createImageGenerationTool,
+  filterImageEditSourceImages,
+  findPreviousGeneratedImage,
   getImageEditSourceImages,
 } from '../../../../server/utils/ai/image-generation'
 
@@ -88,12 +91,14 @@ function createMessage(
 
 async function runTool(
   imageTool: ReturnType<typeof createImageGenerationTool>,
+  overrides: { editPreviousImage?: boolean } = {},
 ): Promise<ImageGenerationToolOutput[]> {
   const execution = imageTool.execute?.(
     {
       prompt: 'Make the sky purple',
       aspectRatio: '1:1',
       fileName: 'Purple sky',
+      ...overrides,
     },
     {
       toolCallId: 'tool-1',
@@ -110,7 +115,11 @@ async function runTool(
   return outputs
 }
 
-function createTool(sourceImages?: string[], logger = { set: vi.fn() }) {
+function createTool(
+  sourceImages?: string[],
+  logger = { set: vi.fn() },
+  previousImage?: PreviousImageSource,
+) {
   return createImageGenerationTool({
     userId: 1,
     provider: 'openai',
@@ -118,7 +127,30 @@ function createTool(sourceImages?: string[], logger = { set: vi.fn() }) {
     imageModel: {} as ImageModel,
     logger,
     sourceImages,
+    previousImage,
   })
+}
+
+function createPreviousImage(
+  dataUrl: string | null,
+  options: { name?: string } = { name: 'blue-square.webp' },
+) {
+  const load = vi.fn(async () => dataUrl)
+
+  return { load, source: { name: options.name, load } }
+}
+
+function createGeneratedFilePart(
+  storageKey: string,
+  mediaType: string = 'image/webp',
+  filename?: string,
+) {
+  return {
+    type: 'file' as const,
+    url: `/files/${storageKey}?generated=1`,
+    mediaType,
+    filename,
+  }
 }
 
 const expectedOpenAIOptions = {
@@ -245,6 +277,7 @@ describe('OpenAI image generation tool execution', () => {
       attributes: {
         imageGeneration: expect.objectContaining({
           mode: 'edit',
+          source: 'attached',
           sourceImages: 1,
         }),
       },
@@ -268,6 +301,7 @@ describe('OpenAI image generation tool execution', () => {
       attributes: {
         imageGeneration: expect.objectContaining({
           mode: 'generate',
+          source: 'none',
           sourceImages: 0,
         }),
       },
@@ -286,6 +320,7 @@ describe('OpenAI image generation tool execution', () => {
       attributes: {
         imageGeneration: expect.objectContaining({
           mode: 'edit',
+          source: 'attached',
         }),
       },
     }))
@@ -313,6 +348,199 @@ describe('OpenAI image generation tool execution', () => {
     expect(editDescription).toContain('source to edit')
     expect(editDescription).toContain('what to change and what to keep')
     expect(editDescription).toContain('aspectRatio closest to')
+  })
+
+  describe('editing the previous generated image', () => {
+    const previousDataUrl = createDataUrl('image/webp', 'previous-image')
+
+    it('exposes editPreviousImage and names the file when a previous '
+      + 'image exists', () => {
+      const { source } = createPreviousImage(previousDataUrl)
+      const imageTool = createTool(undefined, undefined, source)
+      const shape = (imageTool.inputSchema as unknown as {
+        shape: Record<string, unknown>
+      }).shape
+
+      expect(shape).toHaveProperty('editPreviousImage')
+      expect(imageTool.description).toContain('"blue-square.webp"')
+      expect(imageTool.description).toContain('editPreviousImage')
+      expect(imageTool.description).toContain('earlier image')
+      expect(imageTool.description).toContain('what to keep unchanged')
+      expect(imageTool.description).toContain(
+        'do not claim that image generation is unavailable.',
+      )
+    })
+
+    it('keeps the original schema and description without a previous '
+      + 'image', () => {
+      const imageTool = createTool()
+      const shape = (imageTool.inputSchema as unknown as {
+        shape: Record<string, unknown>
+      }).shape
+
+      expect(shape).not.toHaveProperty('editPreviousImage')
+      expect(imageTool.description).toBe([
+        'Generate one image from the user request and save it to their private',
+        'Besidka files. Use the full visual request as prompt. Return the saved',
+        'file produced by this tool; do not claim that image generation is',
+        'unavailable.',
+      ].join(' '))
+    })
+
+    it('omits the file name from the description when it is unknown', () => {
+      const { source } = createPreviousImage(previousDataUrl, {})
+      const imageTool = createTool(undefined, undefined, source)
+
+      expect(imageTool.description).toContain(
+        'An earlier image from this chat is available to edit.',
+      )
+    })
+
+    it('prefers attachments over the previous image', async () => {
+      const attached = createDataUrl('image/png', 'attached')
+      const { load, source } = createPreviousImage(previousDataUrl)
+      const imageTool = createTool([attached], undefined, source)
+      const shape = (imageTool.inputSchema as unknown as {
+        shape: Record<string, unknown>
+      }).shape
+
+      expect(shape).not.toHaveProperty('editPreviousImage')
+      expect(imageTool.description).toContain('attached')
+      expect(imageTool.description).not.toContain('editPreviousImage')
+
+      await runTool(imageTool, { editPreviousImage: true })
+
+      const call = mocks.generateImage.mock.calls[0]![0]
+
+      expect(call.prompt).toEqual({
+        images: [attached],
+        text: 'Make the sky purple',
+      })
+      expect(load).toHaveBeenCalledTimes(0)
+    })
+
+    it('sends a plain prompt and skips the loader when the flag is false',
+      async () => {
+        const { load, source } = createPreviousImage(previousDataUrl)
+
+        await runTool(
+          createTool(undefined, undefined, source),
+          { editPreviousImage: false },
+        )
+
+        expect(mocks.generateImage.mock.calls[0]![0].prompt).toBe(
+          'Make the sky purple',
+        )
+        expect(load).toHaveBeenCalledTimes(0)
+      },
+    )
+
+    it('sends a plain prompt and skips the loader when the flag is omitted',
+      async () => {
+        const logger = { set: vi.fn() }
+        const { load, source } = createPreviousImage(previousDataUrl)
+
+        await runTool(createTool(undefined, logger, source))
+
+        expect(mocks.generateImage.mock.calls[0]![0].prompt).toBe(
+          'Make the sky purple',
+        )
+        expect(load).toHaveBeenCalledTimes(0)
+        expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+          attributes: {
+            imageGeneration: expect.objectContaining({
+              mode: 'generate',
+              source: 'none',
+              sourceImages: 0,
+            }),
+          },
+        }))
+      },
+    )
+
+    it('edits the previous image when the flag is true', async () => {
+      const logger = { set: vi.fn() }
+      const { load, source } = createPreviousImage(previousDataUrl)
+
+      const outputs = await runTool(
+        createTool(undefined, logger, source),
+        { editPreviousImage: true },
+      )
+
+      expect(outputs.at(-1)).toMatchObject({ status: 'ready' })
+      expect(load).toHaveBeenCalledTimes(1)
+
+      const call = mocks.generateImage.mock.calls[0]![0]
+
+      expect(call.prompt).toEqual({
+        images: [previousDataUrl],
+        text: 'Make the sky purple',
+      })
+      expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+        attributes: {
+          imageGeneration: expect.objectContaining({
+            mode: 'edit',
+            source: 'previous',
+            sourceImages: 1,
+          }),
+        },
+      }))
+
+      const successTopLevel = logger.set.mock.calls
+        .map(([payload]) => payload.imageGeneration)
+        .find(value => value?.status === 'ready')
+
+      expect(successTopLevel).not.toHaveProperty('mode')
+      expect(successTopLevel).not.toHaveProperty('source')
+      expect(successTopLevel).not.toHaveProperty('sourceImages')
+    })
+
+    it('fails with source-image-unavailable when the loader returns null',
+      async () => {
+        const logger = { set: vi.fn() }
+        const { load, source } = createPreviousImage(null)
+
+        await expect(
+          runTool(
+            createTool(undefined, logger, source),
+            { editPreviousImage: true },
+          ),
+        ).rejects.toMatchObject({
+          message: 'The earlier image is no longer available to edit.',
+          status: 404,
+        })
+
+        expect(load).toHaveBeenCalledTimes(1)
+        expect(mocks.generateImage).not.toHaveBeenCalled()
+        expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+          attributes: {
+            imageGeneration: expect.objectContaining({
+              mode: 'edit',
+              source: 'previous',
+              errorCode: 'source-image-unavailable',
+            }),
+          },
+        }))
+        expect(mocks.releaseImageGenerationLease).toHaveBeenCalledTimes(1)
+      },
+    )
+
+    it('fails with source-image-unavailable when the loaded image is not '
+      + 'an editable image', async () => {
+      const { source } = createPreviousImage(
+        createDataUrl('image/gif', 'gif'),
+      )
+
+      await expect(
+        runTool(
+          createTool(undefined, undefined, source),
+          { editPreviousImage: true },
+        ),
+      ).rejects.toMatchObject({
+        message: 'The earlier image is no longer available to edit.',
+      })
+      expect(mocks.generateImage).not.toHaveBeenCalled()
+    })
   })
 
   describe('through the real OpenAI image model', () => {
@@ -599,5 +827,130 @@ describe('getImageEditSourceImages', () => {
     expect(getImageEditSourceImages([
       { id: 'u1', role: 'user' } as unknown as UIMessage,
     ])).toEqual([])
+  })
+})
+
+describe('filterImageEditSourceImages', () => {
+  it('keeps supported data urls in order and drops everything else', () => {
+    const png = createDataUrl('image/png', 'png')
+    const webp = createDataUrl('image/webp', 'webp')
+
+    expect(filterImageEditSourceImages([
+      png,
+      '/files/stored.png',
+      createDataUrl('image/gif', 'gif'),
+      createDataUrl('application/pdf', 'pdf'),
+      webp,
+    ])).toEqual([png, webp])
+  })
+
+  it('skips an oversized image and keeps later small ones', () => {
+    const oversized = createSizedDataUrl(
+      'image/png',
+      Math.ceil(MAX_IMAGE_EDIT_SOURCE_BYTES * 4 / 3) + 4,
+    )
+    const small = createDataUrl('image/png', 'small')
+
+    expect(filterImageEditSourceImages([oversized, small])).toEqual([small])
+  })
+
+  it('caps the result at the maximum number of source images', () => {
+    const urls = Array.from(
+      { length: MAX_IMAGE_EDIT_SOURCE_IMAGES + 2 },
+      (_value, index) => createDataUrl('image/png', `image-${index}`),
+    )
+
+    expect(filterImageEditSourceImages(urls)).toEqual(
+      urls.slice(0, MAX_IMAGE_EDIT_SOURCE_IMAGES),
+    )
+  })
+
+  it('returns an empty list for an empty input', () => {
+    expect(filterImageEditSourceImages([])).toEqual([])
+  })
+})
+
+describe('findPreviousGeneratedImage', () => {
+  it('picks the most recent generated image across several turns', () => {
+    const previousImage = findPreviousGeneratedImage([
+      createMessage('user', [{ type: 'text', text: 'Draw' }], 'u1'),
+      createMessage('assistant', [
+        createGeneratedFilePart('first.webp', 'image/webp', 'first.webp'),
+      ], 'a1'),
+      createMessage('user', [{ type: 'text', text: 'Darker' }], 'u2'),
+      createMessage('assistant', [
+        createGeneratedFilePart('second.png', 'image/png', 'second.png'),
+        createGeneratedFilePart('third.png', 'image/png', 'third.png'),
+      ], 'a2'),
+      createMessage('user', [{ type: 'text', text: 'Thanks' }], 'u3'),
+      createMessage('assistant', [{ type: 'text', text: 'Welcome' }], 'a3'),
+    ])
+
+    expect(previousImage).toEqual({
+      storageKey: 'third.png',
+      filename: 'third.png',
+      mediaType: 'image/png',
+    })
+  })
+
+  it('returns the image without a filename when none is stored', () => {
+    expect(findPreviousGeneratedImage([
+      createMessage('assistant', [createGeneratedFilePart('only.webp')]),
+    ])).toEqual({
+      storageKey: 'only.webp',
+      filename: undefined,
+      mediaType: 'image/webp',
+    })
+  })
+
+  it('ignores user-attached image parts', () => {
+    expect(findPreviousGeneratedImage([
+      createMessage('user', [
+        createGeneratedFilePart('user-upload.png', 'image/png'),
+        createFilePart(createDataUrl('image/png', 'x'), 'image/png'),
+      ], 'u1'),
+    ])).toBeNull()
+  })
+
+  it('ignores assistant file parts without the generated marker', () => {
+    expect(findPreviousGeneratedImage([
+      createMessage('assistant', [
+        createFilePart('/files/plain.png', 'image/png'),
+      ], 'a1'),
+    ])).toBeNull()
+  })
+
+  it('ignores unsupported media types and falls back to an older image',
+    () => {
+      const previousImage = findPreviousGeneratedImage([
+        createMessage('assistant', [
+          createGeneratedFilePart('older.png', 'image/png'),
+        ], 'a1'),
+        createMessage('assistant', [
+          createGeneratedFilePart('animated.gif', 'image/gif'),
+          createGeneratedFilePart('report.pdf', 'application/pdf'),
+        ], 'a2'),
+      ])
+
+      expect(previousImage?.storageKey).toBe('older.png')
+    },
+  )
+
+  it('ignores generated parts whose url has no local storage key', () => {
+    expect(findPreviousGeneratedImage([
+      createMessage('assistant', [{
+        type: 'file',
+        url: 'https://example.com/x.png?generated=1',
+        mediaType: 'image/png',
+      }], 'a1'),
+    ])).toBeNull()
+  })
+
+  it('returns null without messages or generated images', () => {
+    expect(findPreviousGeneratedImage([])).toBeNull()
+    expect(findPreviousGeneratedImage([
+      createMessage('assistant', [{ type: 'text', text: 'Hi' }]),
+      { id: 'a2', role: 'assistant' } as unknown as UIMessage,
+    ])).toBeNull()
   })
 })

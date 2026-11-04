@@ -4,6 +4,7 @@ import { normalizeMediaType } from '#shared/utils/files'
 import {
   extractStorageKeyFromFileUrl,
   getOwnedFilesByStorageKeys,
+  getOwnedGeneratedImageFilesByStorageKeys,
 } from '~~/server/utils/files/file-governance'
 import {
   resolveServerLogger,
@@ -221,6 +222,55 @@ export async function convertFilesForAI(
     messages: convertedMessages,
     missingFiles,
   }
+}
+
+export interface LoadOwnedGeneratedImageInput {
+  userId: number
+  storageKey: string
+  storage: ReturnType<typeof useFileStorage>
+  logger: LoggerLike
+}
+
+/**
+ * Loads one image the assistant generated for this user as a data URL. Runs
+ * inside the AI SDK tool loop, so it takes its storage and logger explicitly
+ * and never reads the request event. Returns null when the file is not owned
+ * by the user, is not an assistant-generated file, or is gone from storage.
+ */
+export async function loadOwnedGeneratedImageDataUrl(
+  input: LoadOwnedGeneratedImageInput,
+): Promise<string | null> {
+  const { userId, storageKey, storage, logger } = input
+  const ownedFiles = await getOwnedGeneratedImageFilesByStorageKeys(
+    userId,
+    [storageKey],
+  )
+  const file = ownedFiles.get(storageKey)
+
+  if (!file) {
+    return null
+  }
+
+  const cachedDataUrl = await getCachedFileDataUrl(storageKey, logger)
+
+  if (cachedDataUrl) {
+    return cachedDataUrl
+  }
+
+  const dataUrl = await convertStorageFileToDataUrl(
+    storage,
+    storageKey,
+    file.type,
+    logger,
+  )
+
+  if (!dataUrl) {
+    return null
+  }
+
+  await cacheFileDataUrl(storageKey, dataUrl, logger)
+
+  return dataUrl
 }
 
 async function getCachedFileDataUrl(
