@@ -99,11 +99,13 @@ async function clickAndWaitForClientCallback(
 }
 
 async function waitForApproveButtonHydration(page: Page): Promise<void> {
-  await expect.poll(async () => {
-    return page.getByTestId('oauth-consent-approve').evaluate((element) => {
-      return '__vnode' in element
-    })
-  }).toBe(true)
+  await expect(page.getByTestId('oauth-consent-approve')).toBeVisible()
+  await page.waitForFunction(() => {
+    const root = document.querySelector('#__nuxt') as any
+    const nuxtApp = root?.__vue_app__?.config?.globalProperties?.$nuxt
+
+    return nuxtApp?.isHydrating === false
+  })
 }
 
 async function expectEnterOnScopeToStayOnPage(page: Page): Promise<void> {
