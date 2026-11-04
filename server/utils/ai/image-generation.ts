@@ -27,6 +27,7 @@ import {
   getSafeImageGenerationError,
 } from '~~/server/utils/ai/image-generation-errors'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
+import { markAiGeneratedImage } from '~~/server/utils/ai/image-provenance'
 import {
   acquireImageGenerationLease,
   releaseImageGenerationLease,
@@ -353,6 +354,13 @@ export function createImageGenerationTool(
         image.uint8Array,
         image.mediaType,
       )
+      const markedImage = markAiGeneratedImage({
+        data: validatedImage.data,
+        mediaType: validatedImage.mediaType,
+        model: input.model,
+        isEdit: generationMode === 'edit',
+        maxBytes: MAX_GENERATED_IMAGE_BYTES,
+      })
 
       yield { status: 'saving' }
 
@@ -363,7 +371,7 @@ export function createImageGenerationTool(
           validatedImage.mediaType,
         ),
         mediaType: validatedImage.mediaType,
-        fileData: validatedImage.data,
+        fileData: markedImage.data,
         source: 'assistant',
         originProvider: input.provider,
         originModel: input.model,
@@ -387,6 +395,7 @@ export function createImageGenerationTool(
             source: editSource,
             sourceImages: sourceImages.length,
             mediaType: persistedFile.type,
+            provenance: markedImage.marking,
             usage: result.usage,
           },
         },
@@ -567,7 +576,7 @@ function getOpenAIImageSize(
   return '1024x1024'
 }
 
-interface ValidatedGeneratedImage {
+export interface ValidatedGeneratedImage {
   data: Uint8Array
   mediaType: 'image/png' | 'image/jpeg' | 'image/webp'
 }

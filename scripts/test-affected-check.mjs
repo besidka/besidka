@@ -440,6 +440,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/image-generation-xai.spec.ts',
     'tests/unit/utils/ai/image-generation-openai.spec.ts',
     'tests/unit/utils/ai/image-generation-errors.spec.ts',
+    'tests/unit/utils/ai/image-provenance.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
     'tests/unit/composables/chat-input-url-detection.spec.ts',
     'tests/unit/composables/chat-image-preview-guard.spec.ts',
@@ -1158,7 +1159,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/Preview\.client)\.vue)|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/utils\/ai\/image-provenance\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/Preview\.client)\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
     },
     {

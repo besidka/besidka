@@ -77,6 +77,10 @@ the means (GDPR Recital 18).
 deleted record can survive in a backup for up to 30 days. This applies to every
 row stored in D1 below and is not repeated in each row.
 
+**Breach procedure.** `docs/legal/breach-runbook.md` (2026-11-04): the 72-hour
+clock, containment, the risk assessment, the UODO and user notices and the
+private breach record (Art. 33(5)).
+
 ## 4. Processing activities: users and their content
 
 | # | Activity and purpose | Data subjects | Data categories | Recipients | Transfers and safeguards | Retention | Security |
@@ -185,6 +189,7 @@ browser, not by Besidka. They are listed here for completeness.
 | 2026-10-30 | Per-project automatic memory updates. Row 8: a project has its own setting (`inherit`, `on`, `off`; `projects.memory_auto_update`) and cut-over (`projects.memory_auto_update_enabled_at`) that beat the account switch; `on` is a second explicit opt-in to background extraction on the user's key, forward-only, and `off` clears the cut-over. Row 12 notes the per-project timestamp. Row 10a: `update_project` can also set the setting to `inherit` or `off`, never `on`, and `get_project` shows it with the effective state. Same purpose, legal basis (consent, Art. 6(1)(a)) and recipients; no new data category or processor; consent version unchanged. Privacy Policy and DPIA 3.4 updated to match. | Engineer draft |
 | 2026-10-30 | Row 20: legal change notices. A new `legal_notice_deliveries` table (user id, notice id, status, attempts, error code, message id, send time; unique per user and notice; cascades with the account) records each notice email, and the `legal-notice-sweep` cron job sends it from the `noreply` sender in batches of 25 every five minutes, at most 300 a day, to verified accounts created before the notice was published. Basis: Art. 6(1)(c) with Art. 12 to 14, and Art. 6(1)(b). No new recipient (Cloudflare Email Sending already covers row 20) and no new purpose. Retention: until the account is deleted. Privacy Policy "Email I send you", the legal-basis row and "How long I keep things" updated; consent version unchanged. | Engineer draft |
 | 2026-10-30 | Row 20: the legal basis of the legal change notice restated as mainly contract, Art. 6(1)(b) (the Terms are the contract, and a change binds the user only once it is delivered, KC art. 384¹), Art. 6(1)(c) where Art. 13(3) or 14(4) requires telling the user before a new purpose, and Art. 6(1)(f) for the rest with the right to object (Art. 21). Recipients are verified accounts that exist when the notice is published. No new data, recipient or retention. Privacy Policy legal-basis row updated. | Engineer draft |
+| 2026-11-04 | Added a pointer to the breach runbook (`docs/legal/breach-runbook.md`) after the Backups paragraph. No new activity, recipient or retention rule. | Engineer draft |
 
 Update this record whenever a new activity, provider, processor, storage
 location, memory origin or retention rule is added. Keep it in step with the
