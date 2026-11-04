@@ -66,7 +66,9 @@
             class="textarea p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
             :placeholder="textareaPlaceholder"
             :disabled="displayStop"
-            @keydown.enter.exact="handleEnter"
+            @keydown="onTextareaKeydown"
+            @beforeinput="onMarkdownBeforeInput"
+            @paste="onMarkdownPaste"
             @focus="onKeyboardFocus"
             @blur="onKeyboardBlur"
           />
@@ -166,6 +168,7 @@ import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import type { FileSourceFilter } from '~/types/file-manager'
+import type { TextSnapshot } from '~/composables/markdown-textarea'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
 import type {
@@ -568,6 +571,16 @@ watch(
 
 const { textarea, input } = useTextareaAutosize({
   input: message,
+})
+
+const {
+  onPaste: onMarkdownPaste,
+  onKeydown: onMarkdownKeydown,
+  onBeforeInput: onMarkdownBeforeInput,
+  insertText: insertTextAtSelection,
+} = useMarkdownTextarea(textarea, {
+  onLongPaste: attachLongPaste,
+  continueListsOnEnter: () => !isDesktop,
 })
 
 const hasMessage = computed<boolean>(() => {
@@ -1031,6 +1044,42 @@ function onFilesDetached(fileIds: string[]) {
   const idsToDetach = new Set(fileIds)
 
   files.value = files.value.filter(file => !idsToDetach.has(file.id))
+}
+
+async function attachLongPaste(text: string, snapshot: TextSnapshot) {
+  const file = new File([text], createPastedTextFileName(), {
+    type: 'text/plain',
+  })
+  let isAttached = false
+
+  try {
+    isAttached = await uploadFiles([file])
+  } catch (_exception) {
+    isAttached = false
+  }
+
+  if (!isAttached) {
+    insertTextAtSelection(text, snapshot)
+  }
+}
+
+function onTextareaKeydown(event: KeyboardEvent) {
+  if (onMarkdownKeydown(event)) {
+    return
+  }
+
+  const hasModifier = event.shiftKey
+    || event.ctrlKey
+    || event.metaKey
+    || event.altKey
+
+  const key = event.key?.toLowerCase()
+
+  if (key !== 'enter' || isImeEvent(event) || hasModifier) {
+    return
+  }
+
+  handleEnter(event)
 }
 
 function handleEnter(event: KeyboardEvent) {

@@ -205,6 +205,16 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   "Save X as default" caption link, rows hidden until they can act (animated
   reveal plus the reveal guard), section header icons, the web search price
   badge with its InfoNote, memory icons, the inline Exa mark
+- `docs/chats/chat-input-markdown.md` - The Markdown-aware chat textarea
+  (`useMarkdownTextarea`, also on the project instructions card): HTML paste
+  conversion from Apple Mail, Gmail and web pages (the `shouldConvertHtml` gate
+  that lets VS Code span soup fall through, `htmlToChatMarkdown`, bullet glyph
+  normalisation for `text/plain`), long paste (over 4000 characters or 80 lines)
+  becoming a `pasted-text-<timestamp>.txt` attachment and why `text/plain`
+  works for every provider, the keyboard rules (Enter inside an open fence
+  does not send, Shift+Enter list continuation, Tab indent, IME guard), the
+  single insertion helper that keeps native undo, and why a TipTap/ProseMirror
+  editor was deferred
 - `docs/chats/model-picker.md` - The chat input model picker: dropdown at
   md+, bottom sheet below (same breakpoint and chrome as the tools sheet),
   the `layout` prop on the shared Panel, inline filter chips, the

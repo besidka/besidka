@@ -32,6 +32,9 @@
       "
       placeholder="Example: Always answer as a senior TypeScript engineer.
 Keep replies concise and production-focused."
+      @keydown="onKeydown"
+      @beforeinput="onBeforeInput"
+      @paste="onPaste"
     />
 
     <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -73,6 +76,10 @@ const emit = defineEmits<{
 
 const { textarea, input } = useTextareaAutosize({
   input: shallowRef(props.modelValue),
+})
+
+const { onPaste, onKeydown, onBeforeInput } = useMarkdownTextarea(textarea, {
+  continueListsOnEnter: () => true,
 })
 
 watch(() => props.modelValue, (value) => {

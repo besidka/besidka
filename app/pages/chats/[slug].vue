@@ -130,7 +130,7 @@
               v-else-if="part.type === 'text'"
               :key="`mdc-${m.id}-part-${index}`"
               :source="m.role === 'user'
-                ? $sanitizeHtml(part.text)
+                ? part.text
                 : stripModelCitationMarkers(part.text)
               "
               :streaming="isLastAssistantMessage(messageIndex)
@@ -139,7 +139,7 @@
             >
               <MDCCached
                 :value="m.role === 'user'
-                  ? $sanitizeHtml(part.text)
+                  ? part.text
                   : stripModelCitationMarkers(part.text)
                 "
                 :cache-key="isLastAssistantMessage(messageIndex)
@@ -147,7 +147,7 @@
                   : `mdc-${m.id}-part-${index}`
                 "
                 :components="messageComponents"
-                :parser-options="{ highlight: false }"
+                :parser-options="getParserOptions(m.role)"
                 class="chat-markdown js-message-text"
                 :unwrap="getUnwrap(m.role)"
               />
@@ -509,7 +509,11 @@ function onResearchRetry(): void {
   }
 }
 
-const { messageComponents, getUnwrap } = useChatFormat()
+const {
+  messageComponents,
+  getUnwrap,
+  getParserOptions,
+} = useChatFormat()
 const hideMessages = shallowRef<boolean>(true)
 
 const scrollContainerRef = ref<HTMLDivElement | null>(null)

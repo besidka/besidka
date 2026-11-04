@@ -187,17 +187,18 @@ export function useChatFiles(
   }
 
   /**
-   * Add files to upload queue
+   * Add files to upload queue. Resolves true only when the files were
+   * accepted and queued, false when they were refused before queuing.
    */
-  async function uploadFiles(candidateFiles: File[]) {
+  async function uploadFiles(candidateFiles: File[]): Promise<boolean> {
     const newFiles = rejectUnsupportedFiles(candidateFiles)
 
     if (newFiles.length === 0) {
-      return
+      return false
     }
 
     if (!await ensureSendConsent(null)) {
-      return
+      return false
     }
 
     const {
@@ -213,21 +214,29 @@ export function useChatFiles(
     const totalCount = newFiles.length + attachedFiles.value.length
 
     if (newFiles.length > maxFilesPerMessage) {
-      return useErrorMessage(
+      useErrorMessage(
         `You can upload a maximum of ${maxFilesPerMessage} files at once.`,
       )
+
+      return false
     } else if (totalCount > maxFilesPerMessage) {
-      return useErrorMessage(
+      useErrorMessage(
         `You can attach a maximum of ${maxFilesPerMessage} files in total. You currently have ${attachedFiles.value.length} attached.`,
       )
+
+      return false
     } else if (newFilesSize > maxMessageFilesBytes) {
-      return useErrorMessage(
+      useErrorMessage(
         `Selected files size exceeds the maximum of ${formatFileSize(maxMessageFilesBytes)}`,
       )
+
+      return false
     } else if (totalSize > maxMessageFilesBytes) {
-      return useErrorMessage(
+      useErrorMessage(
         `Total files size would exceed the maximum of ${formatFileSize(maxMessageFilesBytes)}. Current: ${formatFileSize(existingFilesSize)}, Adding: ${formatFileSize(newFilesSize)}`,
       )
+
+      return false
     }
 
     for (const file of newFiles) {
@@ -247,6 +256,8 @@ export function useChatFiles(
     }
 
     void processQueue()
+
+    return true
   }
 
   /**

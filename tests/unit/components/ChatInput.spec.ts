@@ -6,6 +6,7 @@ import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { LONG_PASTE_MIN_CHARACTERS } from '../../../app/composables/markdown-textarea'
 import { REVEAL_GUARD_DURATION_MS } from '../../../app/composables/reveal-guard'
 
 const mocks = vi.hoisted(() => ({
@@ -206,6 +207,27 @@ function createPasteEvent(files: File[]) {
   return event
 }
 
+function createTextPasteEvent(plainText: string, html: string = '') {
+  const event = new Event('paste', {
+    bubbles: true,
+    cancelable: true,
+  }) as ClipboardEvent
+  const data: Record<string, string> = {
+    'text/plain': plainText,
+    'text/html': html,
+  }
+
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      items: [],
+      getData: (type: string) => data[type] ?? '',
+    },
+    configurable: true,
+  })
+
+  return event
+}
+
 function appendBlockingDialog(className: string) {
   const dialog = document.createElement('dialog')
 
@@ -266,6 +288,7 @@ describe('ChatInput.client', () => {
 
     filesModalOpenMock.mockReset()
     mocks.uploadFiles.mockReset()
+    mocks.uploadFiles.mockResolvedValue(true)
     mocks.useWarningMessage.mockReset()
     mocks.requestPersistence.mockReset()
     mocks.setDefaultReasoningLevel.mockReset()
@@ -370,6 +393,239 @@ describe('ChatInput.client', () => {
 
       document.dispatchEvent(createPasteEvent([file]))
 
+      expect(mocks.uploadFiles).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('markdown-aware textarea', () => {
+    it('inserts a newline instead of sending for Enter inside an open code fence', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('```ts\nconst a = 1')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(element.value).toBe('```ts\nconst a = 1\n')
+    })
+
+    it('sends on Enter once the code fence is closed', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('```\ncode\n```')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('does not send on Enter while an IME composition is active', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('hello')
+      await textarea.trigger('keydown', { key: 'Enter', isComposing: true })
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('continues a list on Shift+Enter without sending', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('- one')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown', { key: 'Enter', shiftKey: true })
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(element.value).toBe('- one\n- ')
+    })
+
+    it('attaches a long paste as a text/plain file instead of inserting it', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const longText = 'x'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      textarea.element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+
+      expect(mocks.uploadFiles).toHaveBeenCalledTimes(1)
+
+      const [[file]] = mocks.uploadFiles.mock.calls[0] as [[File]]
+
+      expect(file.type).toBe('text/plain')
+      expect(file.name).toMatch(/^pasted-text-\d{8}-\d{6}-\d{3}\.txt$/)
+      expect(await file.text()).toBe(longText)
+      expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+    })
+
+    it('inserts the pasted text when the upload is refused', async () => {
+      mocks.uploadFiles.mockResolvedValueOnce(false)
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const longText = 'y'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      textarea.element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+
+      expect(mocks.uploadFiles).toHaveBeenCalledTimes(1)
+      expect((textarea.element as HTMLTextAreaElement).value).toBe(longText)
+    })
+
+    it('inserts the pasted text when the upload throws', async () => {
+      mocks.uploadFiles.mockRejectedValueOnce(new Error('policy failed'))
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const longText = 'z'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      textarea.element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+
+      expect((textarea.element as HTMLTextAreaElement).value).toBe(longText)
+    })
+
+    it('inserts a refused long paste at the original caret', async () => {
+      mocks.uploadFiles.mockResolvedValueOnce(false)
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+      const longText = 'q'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      await textarea.setValue('abcd')
+      element.setSelectionRange(2, 2)
+      element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+
+      expect(element.value).toBe(`ab${longText}cd`)
+    })
+
+    it('does not send on Enter keydown with keyCode 229', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('hello')
+      await textarea.trigger('keydown', { key: 'Enter', keyCode: 229 })
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('continues a list on a mobile insertLineBreak beforeinput', async () => {
+      mocks.useDevice.mockReturnValue({
+        isIos: false,
+        isAndroid: true,
+        isDesktop: false,
+      })
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('- one')
+      element.setSelectionRange(element.value.length, element.value.length)
+      element.dispatchEvent(new InputEvent('beforeinput', {
+        inputType: 'insertLineBreak',
+        bubbles: true,
+        cancelable: true,
+      }))
+      await flushPromises()
+
+      expect(element.value).toBe('- one\n- ')
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('keeps the textarea empty when the upload is accepted', async () => {
+      mocks.uploadFiles.mockResolvedValueOnce(true)
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        'y'.repeat(LONG_PASTE_MIN_CHARACTERS + 1),
+      ))
+      await flushPromises()
+
+      expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+    })
+
+    it('continues a list on plain Enter on mobile without sending', async () => {
+      mocks.useDevice.mockReturnValue({
+        isIos: true,
+        isAndroid: false,
+        isDesktop: false,
+      })
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('- one')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(element.value).toBe('- one\n- ')
+      expect(wrapper.emitted('submit')).toBeUndefined()
+
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(element.value).toBe('- one\n')
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('still sends a list message on plain Enter on desktop', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('- one')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('inserts a short paste into the textarea without attaching it', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(
+        createTextPasteEvent('\t•\tOne\n\t•\tTwo'),
+      )
+      await flushPromises()
+
+      expect(mocks.uploadFiles).not.toHaveBeenCalled()
+      expect((textarea.element as HTMLTextAreaElement).value)
+        .toBe('- One\n- Two')
+    })
+
+    it('converts a pasted HTML list into Markdown in the textarea', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        'Totals',
+        '<div>Totals</div><ul><li>Power</li><li>Water</li></ul>',
+      ))
+
+      await vi.waitFor(() => {
+        expect((textarea.element as HTMLTextAreaElement).value)
+          .toBe('Totals\n\n- Power\n- Water')
+      })
       expect(mocks.uploadFiles).not.toHaveBeenCalled()
     })
   })

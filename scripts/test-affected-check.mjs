@@ -124,6 +124,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/web-search-price.spec.ts',
     'tests/unit/composables/scroll-edge-fade.spec.ts',
   ]
+  const markdownTextareaTests = [
+    'tests/unit/composables/markdown-textarea.spec.ts',
+    'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/Projects/InstructionsCard.spec.ts',
+    'tests/e2e/chat/chat-input-markdown.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
     'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
@@ -561,6 +568,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/gateway-image-generation.spec.ts',
     'tests/e2e/chat/image-generation-single-message.spec.ts',
     'tests/e2e/chat/mermaid-diagram.spec.ts',
+    'tests/e2e/chat/chat-input-markdown.spec.ts',
   ]
   const mermaidDiagramTests = [
     'tests/unit/utils/markdown-fences.spec.ts',
@@ -2743,6 +2751,21 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/plugins\/.*user-settings.*\.ts$/,
       tests: profileSettingsTests,
+    },
+    {
+      pattern:
+        /^(app\/composables\/markdown-textarea\.ts|app\/utils\/knowledge-html-to-markdown\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard)\.vue)$/,
+      tests: markdownTextareaTests,
+    },
+    {
+      pattern:
+        /^(app\/utils\/(rehype-raw-html-as-text|remark-disable-html)\.ts|app\/composables\/chat-format\.ts)$/,
+      tests: [
+        'tests/unit/utils/rehype-raw-html-as-text.spec.ts',
+        'tests/unit/utils/remark-disable-html.spec.ts',
+        'tests/unit/composables/chat-format.spec.ts',
+        'tests/e2e/chat/chat-input-markdown.spec.ts',
+      ],
     },
     {
       pattern: /^app\/utils\/.*\.ts$/,
