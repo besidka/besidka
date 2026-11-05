@@ -9,7 +9,11 @@
       @cancel.prevent="requestClose"
       @close="onClose"
     >
-      <div class="modal-box flex max-h-[85dvh] w-full max-w-3xl flex-col gap-3">
+      <div
+        class="modal-box flex max-h-[85dvh] w-full max-w-3xl flex-col gap-3 [--text-file-sheet-bottom-padding:max(calc(1rem+var(--sab,0px)),env(safe-area-inset-bottom))] max-sm:pb-[var(--text-file-sheet-bottom-padding)]"
+        :style="sheetBoxStyle"
+        data-testid="text-file-modal-box"
+      >
         <header class="flex shrink-0 items-center gap-3">
           <Icon
             name="lucide:file-text"
@@ -41,118 +45,129 @@
         </header>
 
         <div
-          v-if="isLoading"
-          class="skeleton skeleton--default h-64 w-full"
-          role="status"
-          aria-label="Loading file"
-          data-testid="text-file-modal-loading"
-        />
-        <div
-          v-else-if="unavailableMessage"
-          class="flex flex-col items-center gap-2 rounded-box bg-base-200 p-8 text-center"
-          role="alert"
-          data-testid="text-file-modal-unavailable"
+          class="contents"
+          :inert="isContentInert"
+          data-testid="text-file-modal-content-region"
         >
-          <Icon
-            name="lucide:file-warning"
-            size="32"
-            class="text-base-content/40"
+          <div
+            v-if="isLoading"
+            class="skeleton skeleton--default h-64 w-full"
+            role="status"
+            aria-label="Loading file"
+            data-testid="text-file-modal-loading"
           />
-          <p class="text-sm text-base-content/70">
-            {{ unavailableMessage }}
-          </p>
-        </div>
-        <template v-else>
-          <pre
-            v-if="isReadonly"
-            class="min-h-0 grow overflow-auto whitespace-pre-wrap break-words rounded-box bg-base-200 p-3 font-mono text-xs"
-            tabindex="0"
-            data-testid="text-file-modal-content"
-          >{{ draft }}</pre>
-          <textarea
-            v-else
-            ref="textareaRef"
-            v-model="draft"
-            class="textarea min-h-64 w-full grow resize-none font-mono text-xs"
-            spellcheck="false"
-            aria-label="File content"
-            data-testid="text-file-modal-textarea"
-          />
-          <p
-            class="shrink-0 text-xs text-base-content/60"
-            data-testid="text-file-modal-counter"
+          <div
+            v-else-if="unavailableMessage"
+            class="flex flex-col items-center gap-2 rounded-box bg-base-200 p-8 text-center"
+            role="alert"
+            data-testid="text-file-modal-unavailable"
           >
-            {{ characterCount }} characters, {{ lineCount }} lines
-          </p>
-        </template>
-
-        <div class="modal-action mt-0 shrink-0 flex-wrap">
-          <template v-if="isReadonly">
-            <button
-              type="button"
-              class="btn btn-sm btn-ghost"
-              :disabled="!canUseContent"
-              data-testid="text-file-modal-copy"
-              @click="copyContent"
-            >
-              <Icon name="lucide:copy" size="14" aria-hidden="true" />
-              Copy
-            </button>
-            <a
-              v-if="url"
-              :href="url"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="btn btn-sm btn-ghost"
-              data-testid="text-file-modal-raw"
-            >
-              <Icon name="lucide:external-link" size="14" aria-hidden="true" />
-              Open raw
-            </a>
-            <a
-              v-if="downloadUrl"
-              :href="downloadUrl"
-              class="btn btn-sm btn-ghost"
-              data-testid="text-file-modal-download"
-            >
-              <Icon name="lucide:download" size="14" aria-hidden="true" />
-              Download
-            </a>
-          </template>
+            <Icon
+              name="lucide:file-warning"
+              size="32"
+              class="text-base-content/40"
+            />
+            <p class="text-sm text-base-content/70">
+              {{ unavailableMessage }}
+            </p>
+          </div>
           <template v-else>
-            <button
-              v-if="canInsert"
-              type="button"
-              class="btn btn-sm btn-ghost mr-auto"
-              :disabled="!canUseContent"
-              data-testid="text-file-modal-insert"
-              @click="emit('insert', draft)"
+            <pre
+              v-if="isReadonly"
+              class="min-h-0 grow overflow-auto whitespace-pre-wrap break-words rounded-box bg-base-200 p-3 font-mono text-xs"
+              tabindex="0"
+              data-testid="text-file-modal-content"
+            >{{ draft }}</pre>
+            <textarea
+              v-else
+              ref="textareaRef"
+              v-model="draft"
+              class="textarea w-full grow resize-none font-mono text-xs"
+            :class="isLifted ? 'min-h-24' : 'min-h-64'"
+              spellcheck="false"
+              aria-label="File content"
+              data-testid="text-file-modal-textarea"
+            />
+            <p
+              class="shrink-0 text-xs text-base-content/60"
+              data-testid="text-file-modal-counter"
             >
-              <Icon
-                name="lucide:text-cursor-input"
-                size="14"
-                aria-hidden="true"
-              />
-              Insert as text
-            </button>
-            <button
-              type="button"
-              class="btn btn-sm"
-              data-testid="text-file-modal-cancel"
-              @click="requestClose"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              class="btn btn-sm btn-accent"
-              :disabled="!canSave"
-              data-testid="text-file-modal-save"
-              @click="emit('save', draft)"
-            >
-              Save
-            </button>
+              {{ characterCount }} characters, {{ lineCount }} lines
+            </p>
           </template>
+
+          <div class="modal-action mt-0 shrink-0 flex-wrap">
+            <template v-if="isReadonly">
+              <button
+                type="button"
+                class="btn btn-sm btn-ghost"
+                :disabled="!canUseContent"
+                data-testid="text-file-modal-copy"
+                @click="copyContent"
+              >
+                <Icon name="lucide:copy" size="14" aria-hidden="true" />
+                Copy
+              </button>
+              <a
+                v-if="url"
+                :href="url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-sm btn-ghost"
+                data-testid="text-file-modal-raw"
+              >
+                <Icon
+                  name="lucide:external-link"
+                  size="14"
+                  aria-hidden="true"
+                />
+                Open raw
+              </a>
+              <a
+                v-if="downloadUrl"
+                :href="downloadUrl"
+                class="btn btn-sm btn-ghost"
+                data-testid="text-file-modal-download"
+              >
+                <Icon name="lucide:download" size="14" aria-hidden="true" />
+                Download
+              </a>
+            </template>
+            <template v-else>
+              <button
+                v-if="canInsert"
+                type="button"
+                class="btn btn-sm btn-ghost mr-auto"
+                :disabled="!canUseContent"
+                data-testid="text-file-modal-insert"
+                @click="emit('insert', draft)"
+              >
+                <Icon
+                  name="lucide:text-cursor-input"
+                  size="14"
+                  aria-hidden="true"
+                />
+                Insert as text
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm"
+                data-testid="text-file-modal-cancel"
+                @click="requestClose"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-accent"
+                :disabled="!canSave"
+                data-testid="text-file-modal-save"
+                @click="emit('save', draft)"
+              >
+                Save
+              </button>
+            </template>
+          </div>
         </div>
       </div>
       <form
@@ -167,7 +182,11 @@
 </template>
 
 <script setup lang="ts">
+import type { StyleValue } from 'vue'
 import { parseError } from 'evlog'
+
+const SHEET_KEYBOARD_HEIGHT_RATIO = 0.85
+const SHEET_KEYBOARD_BOTTOM_PADDING = '0.375rem'
 
 const props = withDefaults(defineProps<{
   name: string
@@ -196,6 +215,13 @@ const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef')
 const closeButtonRef = useTemplateRef<HTMLButtonElement>('closeButtonRef')
 const textareaRef = useTemplateRef<HTMLTextAreaElement>('textareaRef')
 const clipboard = useClipboard()
+const { isDesktop } = useDevice()
+const isCenteredLayout = useMediaQuery('(min-width: 40rem)')
+const {
+  bottomInset,
+  viewportHeight,
+  isKeyboardOpen,
+} = useVisualViewportInset()
 const titleId = useId()
 const previouslyFocusedElement = shallowRef<HTMLElement | null>(null)
 const originalContent = shallowRef<string>('')
@@ -203,11 +229,18 @@ const draft = shallowRef<string>('')
 const isLoading = shallowRef<boolean>(false)
 const unavailableMessage = shallowRef<string>('')
 const isConfirmingClose = shallowRef<boolean>(false)
+const isContentInert = shallowRef<boolean>(false)
 
 const characterCount = computed<number>(() => draft.value.length)
 const lineCount = computed<number>(() => countTextLines(draft.value))
 const canUseContent = computed<boolean>(() => {
   return !isLoading.value && !unavailableMessage.value
+})
+const isLifted = computed<boolean>(() => {
+  return isOpen.value && !isCenteredLayout.value && isKeyboardOpen.value
+})
+const shouldFocusTextarea = computed<boolean>(() => {
+  return isDesktop && isCenteredLayout.value
 })
 const hasUnsavedChanges = computed<boolean>(() => {
   return !props.isReadonly
@@ -218,6 +251,28 @@ const canSave = computed<boolean>(() => {
   return canUseContent.value
     && draft.value !== originalContent.value
     && draft.value.trim().length > 0
+})
+
+/**
+ * `dvh` ignores the on-screen keyboard, so while it is up the bottom sheet
+ * sits on the visual viewport instead: lifted by the covered height, sized to
+ * what stays visible and with no safe-area padding under the actions.
+ */
+const sheetBoxStyle = computed<StyleValue>(() => {
+  if (!isLifted.value) {
+    return {}
+  }
+
+  const height = Math.round(
+    viewportHeight.value * SHEET_KEYBOARD_HEIGHT_RATIO,
+  )
+
+  return {
+    'height': `${height}px`,
+    'maxHeight': `${height}px`,
+    'marginBottom': `${bottomInset.value}px`,
+    '--text-file-sheet-bottom-padding': SHEET_KEYBOARD_BOTTOM_PADDING,
+  }
 })
 
 function applyContent(content: string) {
@@ -270,6 +325,22 @@ function restoreFocus() {
   previouslyFocusedElement.value = null
 }
 
+/**
+ * iOS WebKit ignores `autofocus` when `showModal()` picks the initial focus
+ * and takes the first link or text field instead, which opens the keyboard
+ * over the editor. The content is therefore inert while the dialog opens (set
+ * before the render that precedes this call), the close button takes focus
+ * explicitly and the content is released in the same call.
+ */
+function showDialog(dialog: HTMLDialogElement) {
+  try {
+    dialog.showModal()
+    closeButtonRef.value?.focus({ preventScroll: true })
+  } finally {
+    isContentInert.value = false
+  }
+}
+
 async function updateDialog(shouldOpen: boolean) {
   const dialog = dialogRef.value
 
@@ -292,13 +363,19 @@ async function updateDialog(shouldOpen: boolean) {
   previouslyFocusedElement.value = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : null
-  dialog.showModal()
+  isContentInert.value = true
 
   await nextTick()
 
-  if (isOpen.value) {
-    closeButtonRef.value?.focus()
+  const currentDialog = dialogRef.value
+
+  if (!isOpen.value || !currentDialog || currentDialog.open) {
+    isContentInert.value = false
+
+    return
   }
+
+  showDialog(currentDialog)
 }
 
 async function requestClose() {
@@ -339,7 +416,7 @@ onMounted(async () => {
   await loadContent()
   await nextTick()
 
-  if (!props.isReadonly && canUseContent.value) {
+  if (shouldFocusTextarea.value && !props.isReadonly && canUseContent.value) {
     textareaRef.value?.focus()
   }
 })

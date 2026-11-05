@@ -1,6 +1,7 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, nextTick, shallowRef } from 'vue'
 import TextFileModal from '../../../../app/components/Chat/TextFileModal.client.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -8,12 +9,26 @@ const mocks = vi.hoisted(() => ({
   copy: vi.fn(async () => {}),
   useSuccessMessage: vi.fn(),
   useConfirm: vi.fn(),
+  useDevice: vi.fn(),
 }))
+
+const isCenteredLayout = shallowRef<boolean>(true)
+const bottomInset = shallowRef<number>(0)
+const viewportHeight = shallowRef<number>(800)
+const isKeyboardOpen = computed<boolean>(() => bottomInset.value >= 120)
 
 mockNuxtImport('fetchTextFileContent', () => mocks.fetchTextFileContent)
 mockNuxtImport('useClipboard', () => () => ({ copy: mocks.copy }))
 mockNuxtImport('useSuccessMessage', () => mocks.useSuccessMessage)
 mockNuxtImport('useConfirm', () => mocks.useConfirm)
+mockNuxtImport('useDevice', () => mocks.useDevice)
+mockNuxtImport('useMediaQuery', () => () => isCenteredLayout)
+mockNuxtImport('useVisualViewportInset', () => () => ({
+  bottomInset,
+  viewportHeight,
+  isKeyboardOpen,
+  update: vi.fn(),
+}))
 
 enableAutoUnmount(afterEach)
 
@@ -40,6 +55,11 @@ function mountModal(props: Record<string, unknown>) {
       ...props,
     },
     attachTo: document.body,
+    global: {
+      stubs: {
+        teleport: false,
+      },
+    },
   })
 }
 
@@ -59,6 +79,10 @@ describe('Chat/TextFileModal', () => {
     mocks.useSuccessMessage.mockReset()
     mocks.useConfirm.mockReset()
     mocks.useConfirm.mockResolvedValue({ label: 'Discard', index: 0 })
+    mocks.useDevice.mockReturnValue({ isDesktop: true })
+    isCenteredLayout.value = true
+    bottomInset.value = 0
+    viewportHeight.value = 800
   })
 
   afterEach(() => {
@@ -277,6 +301,190 @@ describe('Chat/TextFileModal', () => {
 
       resolveConfirm(null)
       await flushPromises()
+    })
+  })
+
+  describe('opening focus', () => {
+    function emulateIosShowModal() {
+      vi.spyOn(HTMLDialogElement.prototype, 'showModal')
+        .mockImplementation(function (this: HTMLDialogElement) {
+          this.setAttribute('open', '')
+
+          const firstLinkOrField = Array.from(
+            this.querySelectorAll<HTMLElement>('a[href], input, textarea'),
+          ).find((element) => {
+            return !element.closest('[inert]')
+          })
+
+          firstLinkOrField?.focus()
+        })
+    }
+
+    const focusTracker = new AbortController()
+
+    afterEach(() => {
+      focusTracker.abort()
+    })
+
+    function trackFocusedElements(): EventTarget[] {
+      const focusedElements: EventTarget[] = []
+
+      document.addEventListener('focusin', (event) => {
+        if (event.target) {
+          focusedElements.push(event.target)
+        }
+      }, { signal: focusTracker.signal })
+
+      return focusedElements
+    }
+
+    it('never lets the textarea take focus on a touch sheet when showModal ignores autofocus (iOS)',
+      async () => {
+        emulateIosShowModal()
+        mocks.useDevice.mockReturnValue({ isDesktop: false })
+        isCenteredLayout.value = false
+
+        const focusedElements = trackFocusedElements()
+
+        await mountModal({ content: 'body', canInsert: true })
+        await flushPromises()
+
+        const textarea = getInBody('text-file-modal-textarea')
+
+        expect(focusedElements).not.toContain(textarea)
+        expect(document.activeElement).not.toBe(textarea)
+        expect(document.activeElement).toBe(
+          getInBody('text-file-modal-close'),
+        )
+        expect(textarea.closest('[inert]')).toBeNull()
+      })
+
+    it('does not focus the textarea below the centered breakpoint on desktop',
+      async () => {
+        isCenteredLayout.value = false
+
+        await mountModal({ content: 'body' })
+        await flushPromises()
+
+        expect(document.activeElement).not.toBe(
+          getInBody('text-file-modal-textarea'),
+        )
+      })
+
+    it('keeps the read-only file links from taking focus on iOS', async () => {
+      emulateIosShowModal()
+      mocks.useDevice.mockReturnValue({ isDesktop: false })
+      isCenteredLayout.value = false
+      mocks.fetchTextFileContent.mockResolvedValue('body')
+
+      await mountModal({
+        name: 'notes.md',
+        url: '/files/notes-key',
+        downloadUrl: '/files/notes-key?download=1',
+        isReadonly: true,
+      })
+      await flushPromises()
+
+      expect(document.activeElement).toBe(getInBody('text-file-modal-close'))
+      expect(getInBody('text-file-modal-raw').closest('[inert]')).toBeNull()
+    })
+
+    it('focuses the textarea on desktop', async () => {
+      emulateIosShowModal()
+
+      await mountModal({ content: 'body' })
+      await flushPromises()
+
+      expect(document.activeElement).toBe(getInBody('text-file-modal-textarea'))
+    })
+
+    it('does not focus a read-only file on desktop', async () => {
+      mocks.fetchTextFileContent.mockResolvedValue('body')
+
+      await mountModal({
+        name: 'notes.md',
+        url: '/files/notes-key',
+        isReadonly: true,
+      })
+      await flushPromises()
+
+      expect(document.activeElement).not.toBe(getInBody('text-file-modal-content'))
+    })
+  })
+
+  describe('with the on-screen keyboard up', () => {
+    function getBox(): HTMLElement {
+      return getInBody('text-file-modal-box')
+    }
+
+    it('sits on the visual viewport above the keyboard on a sheet',
+      async () => {
+        isCenteredLayout.value = false
+
+        await mountModal({ content: 'body', canInsert: true })
+        await flushPromises()
+
+        expect(getBox().style.height).toBe('')
+        expect(getInBody('text-file-modal-textarea').className)
+          .toContain('min-h-64')
+
+        viewportHeight.value = 400
+        bottomInset.value = 400
+        await nextTick()
+
+        expect(getBox().style.height).toBe('340px')
+        expect(getBox().style.maxHeight).toBe('340px')
+        expect(getBox().style.marginBottom).toBe('400px')
+        expect(
+          getBox().style.getPropertyValue('--text-file-sheet-bottom-padding'),
+        ).toBe('0.375rem')
+        expect(getInBody('text-file-modal-textarea').className)
+          .toContain('min-h-24')
+        expect(getInBody('text-file-modal-textarea').className)
+          .not.toContain('min-h-64')
+        expect(getInBody('text-file-modal-counter')).not.toBeNull()
+        expect(getInBody('text-file-modal-insert')).not.toBeNull()
+        expect(getInBody('text-file-modal-cancel')).not.toBeNull()
+        expect(getInBody('text-file-modal-save')).not.toBeNull()
+
+        bottomInset.value = 0
+        viewportHeight.value = 800
+        await nextTick()
+
+        expect(getBox().style.height).toBe('')
+        expect(getBox().style.marginBottom).toBe('')
+      })
+
+    it('never lifts the centered modal', async () => {
+      await mountModal({ content: 'body' })
+      await flushPromises()
+
+      viewportHeight.value = 400
+      bottomInset.value = 400
+      await nextTick()
+
+      expect(getBox().style.height).toBe('')
+      expect(getBox().style.marginBottom).toBe('')
+    })
+
+    it('keeps a read-only file working while lifted', async () => {
+      isCenteredLayout.value = false
+      mocks.fetchTextFileContent.mockResolvedValue('body')
+
+      await mountModal({
+        name: 'notes.md',
+        url: '/files/notes-key',
+        isReadonly: true,
+      })
+      await flushPromises()
+
+      viewportHeight.value = 400
+      bottomInset.value = 400
+      await nextTick()
+
+      expect(getBox().style.marginBottom).toBe('400px')
+      expect(getInBody('text-file-modal-content').textContent).toBe('body')
+      expect(getInBody('text-file-modal-copy')).not.toBeNull()
     })
   })
 

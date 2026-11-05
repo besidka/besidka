@@ -106,6 +106,27 @@ and shared pages therefore all see one ordinary text part.
   textarea first (the modal's own focus restore runs while it unmounts, before
   the insert), so the `execCommand('insertText')` path runs: native undo
   removes the insertion in one step and the caret ends after the inserted text.
+- **Editor on iOS**: below `sm` (40rem, where the modal is a bottom sheet) the
+  textarea is never focused on open, so the on-screen keyboard does not cover
+  the editor, the counter and the actions before the user has seen them.
+  Desktop devices at `sm` and wider keep focusing the textarea for an editable
+  paste. `autofocus` alone does not work: iOS WebKit's `showModal()` ignores it
+  and focuses the first text field (or link, for a read-only file) in the
+  dialog. The modal therefore reuses the model picker's mechanism
+  (`docs/chats/model-picker.md`): the body and the action row sit in one
+  `display: contents` wrapper that is `inert` for the render before
+  `showModal()`, the close button is focused explicitly right after it, and the
+  wrapper is released in the same call, so iOS has no field to pull focus into
+  (Chromium and happy-dom ignore the quirk, so only a real iPhone or the iOS
+  Simulator shows the bug; reproduced in the iOS 26 Simulator on 2026-11-05). When the user taps into the textarea and the
+  keyboard opens (`useVisualViewportInset`, at least 120 px covered, no
+  pinch zoom), the sheet is lifted exactly like the picker's: `marginBottom`
+  equals the covered height, `height` and `maxHeight` are 85% of the visible
+  viewport, the textarea drops `min-h-64` for `min-h-24` and is the only part
+  that shrinks (header, counter and actions stay visible), and the new
+  `--text-file-sheet-bottom-padding` variable (the iOS safe area under the
+  actions below `sm`) falls to `0.375rem` while lifted. The centered modal is
+  never lifted. Not yet verified on a real iPhone.
 - **Unsaved edits**: Cancel, Escape (the dialog's `cancel` event), the X button
   and the backdrop (both `method="dialog"` forms) all go through
   `requestClose`. With a changed draft it asks "Discard your unsaved changes?"
@@ -443,7 +464,8 @@ than structure-preserving paste.
 - Pasted text chips: `tests/unit/utils/pasted-text.spec.ts`,
   `tests/unit/components/ChatInput/Files/Attached/TextCard.spec.ts`,
   `tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts`,
-  `tests/unit/components/Chat/TextFileModal.client.spec.ts`, the text file
+  `tests/unit/components/Chat/TextFileModal.client.spec.ts` (including the iOS
+  `showModal` stub and the keyboard lift), the text file
   helpers in `tests/unit/utils/files.spec.ts`, and two e2e tests in
   `tests/e2e/chat/chat-input-markdown.spec.ts` (chip, no `/api/v1/files`
   request, edit, joined send payload; Insert as text).
