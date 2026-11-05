@@ -67,6 +67,10 @@ export function useUserSetting() {
     'user-settings:favorite-gateway-models',
     () => null,
   )
+  const serverDismissedLegalNoticeIds = useState<string[] | null>(
+    'user-settings:dismissed-legal-notice-ids',
+    () => null,
+  )
   const isLoadingSettings = useState<boolean>(
     'user-settings:is-loading',
     () => false,
@@ -212,6 +216,14 @@ export function useUserSetting() {
   const isSettingsLoaded = computed<boolean>(() => {
     return Boolean(activeUserId.value)
       && loadedUserId.value === activeUserId.value
+  })
+
+  const dismissedLegalNoticeIds = computed<string[]>(() => {
+    if (!isSettingsLoaded.value) {
+      return []
+    }
+
+    return serverDismissedLegalNoticeIds.value ?? []
   })
 
   const defaultReasoningLevel = computed<ReasoningLevel | null>(() => {
@@ -409,6 +421,8 @@ export function useUserSetting() {
       )
       serverFavoriteGatewayModels.value = nextFavoriteGatewayModels
       fallbackFavoriteGatewayModels.value = nextFavoriteGatewayModels
+      serverDismissedLegalNoticeIds.value
+        = response.dismissedLegalNoticeIds ?? []
 
       if (legacyDefaultReasoningLevel !== null) {
         await migrateLegacyDefaultReasoningLevel(
@@ -434,6 +448,7 @@ export function useUserSetting() {
       serverSidebarPinned.value = null
       serverFavoriteModels.value = null
       serverFavoriteGatewayModels.value = null
+      serverDismissedLegalNoticeIds.value = null
 
       const parsedException = parseError(exception)
 
@@ -909,6 +924,46 @@ export function useUserSetting() {
     })
   }
 
+  async function dismissLegalNotice(noticeId: string) {
+    if (!activeUserId.value || !isSettingsLoaded.value) {
+      return
+    }
+
+    const currentUserId = activeUserId.value as string
+    const previousDismissedIds = serverDismissedLegalNoticeIds.value ?? []
+
+    if (previousDismissedIds.includes(noticeId)) {
+      return
+    }
+
+    serverDismissedLegalNoticeIds.value = [
+      ...previousDismissedIds,
+      noticeId,
+    ]
+
+    try {
+      const response = await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          dismissLegalNoticeIds: [noticeId],
+        },
+      })
+
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      serverDismissedLegalNoticeIds.value
+        = response.dismissedLegalNoticeIds ?? [noticeId]
+    } catch {
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      serverDismissedLegalNoticeIds.value = previousDismissedIds
+    }
+  }
+
   function clearUserContext() {
     activeUserId.value = null
     loadedUserId.value = null
@@ -920,6 +975,7 @@ export function useUserSetting() {
     serverSidebarPinned.value = null
     serverFavoriteModels.value = null
     serverFavoriteGatewayModels.value = null
+    serverDismissedLegalNoticeIds.value = null
     settingsError.value = null
     isLoadingSettings.value = false
     isSavingSettings.value = false
@@ -951,6 +1007,8 @@ export function useUserSetting() {
     toggleFavoriteModel,
     setFavoriteGatewayModels,
     toggleFavoriteGatewayModel,
+    dismissedLegalNoticeIds,
+    dismissLegalNotice,
     clearUserContext,
   }
 }

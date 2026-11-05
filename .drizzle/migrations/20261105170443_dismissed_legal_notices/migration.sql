@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `dismissed_legal_notice_ids` text;

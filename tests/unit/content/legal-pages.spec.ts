@@ -174,17 +174,17 @@ describe('legal page substance', () => {
     expect(source).toContain('`knowledge-cache-info-seen`')
   })
 
-  it('lists the browser storage added with legal change notices', () => {
-    const source = readSource('cookie-policy')
-    const [row] = source.split('\n').filter((line) => {
-      return line.startsWith('| `legal-notice:dismissed:*`')
-    })
+  it('does not list a browser key for dismissed legal change notices', () => {
+    const cookiePolicy = readSource('cookie-policy')
 
-    expect(row).toBeDefined()
-    expect(row).toContain('| localStorage |')
-    expect(row).toContain('one key per notice and account')
-    expect(row).toContain('never sent to me')
-    expect(row).toContain('| Until removed |')
-    expect(source.indexOf(row!)).toBeLessThan(source.indexOf('## Preferences'))
+    expect(cookiePolicy).not.toContain('legal-notice:dismissed')
+  })
+
+  it('names the dismissed legal notices among the stored settings', () => {
+    const privacyPolicy = readSource('privacy-policy')
+
+    expect(privacyPolicy).toContain(
+      'which notices about changes to these pages you dismissed in the app',
+    )
   })
 })

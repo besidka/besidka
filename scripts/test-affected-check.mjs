@@ -126,6 +126,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/profile-settings-legal-notices.spec.ts',
     'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
@@ -1591,10 +1592,11 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(app\/components\/Legal\/ChangeNotice\.client\.vue|app\/composables\/legal-notice-banner\.ts|app\/layouts\/chat\.vue|app\/pages\/chats\/\[slug\]\.vue|shared\/utils\/(legal-notices|legal-change-history)\.ts)$/,
+      pattern: /^(app\/components\/Legal\/ChangeNotice\.client\.vue|app\/composables\/legal-notice-banner\.ts|app\/plugins\/legal-notice-legacy-cleanup\.client\.ts|app\/layouts\/chat\.vue|app\/pages\/chats\/\[slug\]\.vue|shared\/utils\/(legal-notices|legal-change-history)\.ts)$/,
       tests: [
         'tests/unit/components/Legal/ChangeNotice.spec.ts',
         'tests/unit/composables/legal-notice-banner.spec.ts',
+        'tests/unit/plugins/legal-notice-legacy-cleanup.client.spec.ts',
         'tests/unit/layouts/chat.spec.ts',
       ],
     },
@@ -2471,6 +2473,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/api\/v1\/profiles\/settings\/.*\.ts$/,
       tests: profileSettingsTests,
+    },
+    {
+      pattern: /^(server\/utils\/legal\/notice-dismissal|shared\/utils\/user-settings-schemas)\.ts$/,
+      tests: ['tests/integration/api/profile-settings-legal-notices.spec.ts'],
     },
     {
       pattern: /^server\/db\/schemas\/user-settings\.ts$/,

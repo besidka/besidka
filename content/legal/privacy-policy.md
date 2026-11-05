@@ -45,7 +45,7 @@ Everything below lives in a Cloudflare D1 database, except files, which live in 
 - Your chats and messages. The full message content is stored, including text, attachments references and model output.
 - Your projects, including the project name, its instructions, its memory entries and its knowledge (see [Memory](#memory))
 - Metadata about your files (name, size, type, storage key, expiry). The file itself is stored in Cloudflare R2.
-- Your settings, such as your file retention period, your default reasoning effort and whether reasoning is shown expanded, whether the sidebar is pinned, your favourite models, whether links in deep research reports open without a warning, whether you were asked about push notifications and what you answered, and which TypeSafe AI checks you left on (all of them are on until you switch one off)
+- Your settings, such as your file retention period, your default reasoning effort and whether reasoning is shown expanded, whether the sidebar is pinned, your favourite models, whether links in deep research reports open without a warning, whether you were asked about push notifications and what you answered, which notices about changes to these pages you dismissed in the app, and which TypeSafe AI checks you left on (all of them are on until you switch one off)
 - Deep research jobs, including the request and the resulting report
 - Your memory entries and memory settings (see [Memory](#memory))
 - A record of the legal change notices I sent you: which notice, when, whether it was delivered, and an error code if it failed (see [Email I send you](#email-i-send-you))

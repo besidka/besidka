@@ -1006,6 +1006,196 @@ describe('useUserSetting', () => {
 
     expect(getFavoriteGatewayModels('vercel')).toEqual([])
   })
+
+  describe('dismissed legal notices', () => {
+    const NOTICE_ID = '2026-11-legal-notices'
+
+    async function syncWithDismissed(dismissedLegalNoticeIds: string[]) {
+      fetchMock.mockResolvedValue({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        dismissedLegalNoticeIds,
+      })
+
+      const setting = useUserSetting()
+
+      await setting.syncForUser('user-1')
+      fetchMock.mockReset()
+
+      return setting
+    }
+
+    it('is empty before the settings are loaded', () => {
+      const { dismissedLegalNoticeIds } = useUserSetting()
+
+      expect(dismissedLegalNoticeIds.value).toEqual([])
+    })
+
+    it('syncs the dismissed ids from the server response', async () => {
+      const { dismissedLegalNoticeIds } = await syncWithDismissed([NOTICE_ID])
+
+      expect(dismissedLegalNoticeIds.value).toEqual([NOTICE_ID])
+    })
+
+    it('adds the id at once and sends only the id to the account',
+      async () => {
+        const { dismissedLegalNoticeIds, dismissLegalNotice }
+          = await syncWithDismissed([])
+
+        fetchMock.mockResolvedValue({
+          dismissedLegalNoticeIds: [NOTICE_ID],
+        })
+
+        const pending = dismissLegalNotice(NOTICE_ID)
+
+        expect(dismissedLegalNoticeIds.value).toEqual([NOTICE_ID])
+
+        await pending
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/api/v1/profiles/settings',
+          {
+            method: 'PATCH',
+            body: { dismissLegalNoticeIds: [NOTICE_ID] },
+          },
+        )
+        expect(dismissedLegalNoticeIds.value).toEqual([NOTICE_ID])
+      })
+
+    it('writes nothing to browser storage', async () => {
+      const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      const { dismissLegalNotice } = await syncWithDismissed([])
+
+      fetchMock.mockResolvedValue({ dismissedLegalNoticeIds: [NOTICE_ID] })
+      setItem.mockClear()
+
+      await dismissLegalNotice(NOTICE_ID)
+
+      expect(setItem).not.toHaveBeenCalled()
+      setItem.mockRestore()
+    })
+
+    it('does not call the server for an id that is already dismissed',
+      async () => {
+        const { dismissLegalNotice } = await syncWithDismissed([NOTICE_ID])
+
+        await dismissLegalNotice(NOTICE_ID)
+
+        expect(fetchMock).not.toHaveBeenCalled()
+      })
+
+    it('does not call the server before the settings are loaded',
+      async () => {
+        const { dismissLegalNotice } = useUserSetting()
+
+        await dismissLegalNotice(NOTICE_ID)
+
+        expect(fetchMock).not.toHaveBeenCalled()
+      })
+
+    it('rolls back the id without throwing when the save fails',
+      async () => {
+        const { dismissedLegalNoticeIds, dismissLegalNotice, settingsError }
+          = await syncWithDismissed([])
+
+        fetchMock.mockRejectedValue(new Error('offline'))
+
+        await expect(dismissLegalNotice(NOTICE_ID)).resolves.toBeUndefined()
+
+        expect(dismissedLegalNoticeIds.value).toEqual([])
+        expect(settingsError.value).toBeNull()
+      })
+
+    it('never shows another user dismissed ids after a user switch',
+      async () => {
+        const { dismissedLegalNoticeIds, isSettingsLoaded, syncForUser }
+          = await syncWithDismissed([NOTICE_ID])
+
+        let resolveSettings: (value: unknown) => void = () => undefined
+
+        fetchMock.mockImplementation(() => {
+          return new Promise((resolve) => {
+            resolveSettings = resolve
+          })
+        })
+
+        const pendingSync = syncForUser('user-2')
+
+        expect(isSettingsLoaded.value).toBe(false)
+        expect(dismissedLegalNoticeIds.value).toEqual([])
+
+        resolveSettings({
+          reasoningExpanded: false,
+          reasoningAutoHide: true,
+          dismissedLegalNoticeIds: [],
+        })
+        await pendingSync
+
+        expect(isSettingsLoaded.value).toBe(true)
+        expect(dismissedLegalNoticeIds.value).toEqual([])
+      })
+
+    async function startDismissThenSwitchUser(
+      secondUserDismissedIds: string[],
+    ) {
+      const setting = await syncWithDismissed([])
+      let settlePatch: {
+        resolve: (value: unknown) => void
+        reject: (reason: unknown) => void
+      } = { resolve: () => undefined, reject: () => undefined }
+
+      fetchMock.mockImplementation(() => {
+        return new Promise((resolve, reject) => {
+          settlePatch = { resolve, reject }
+        })
+      })
+
+      const pendingDismiss = setting.dismissLegalNotice(NOTICE_ID)
+
+      fetchMock.mockReset()
+      fetchMock.mockResolvedValue({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        dismissedLegalNoticeIds: secondUserDismissedIds,
+      })
+
+      await setting.syncForUser('user-2')
+
+      return { setting, settlePatch, pendingDismiss }
+    }
+
+    it('does not apply a late save response to the next user', async () => {
+      const { setting, settlePatch, pendingDismiss }
+        = await startDismissThenSwitchUser(['2026-01-another-notice'])
+
+      settlePatch.resolve({ dismissedLegalNoticeIds: [NOTICE_ID] })
+      await pendingDismiss
+
+      expect(setting.dismissedLegalNoticeIds.value)
+        .toEqual(['2026-01-another-notice'])
+    })
+
+    it('does not roll back over the next user after a late failure',
+      async () => {
+        const { setting, settlePatch, pendingDismiss }
+          = await startDismissThenSwitchUser(['2026-01-another-notice'])
+
+        settlePatch.reject(new Error('offline'))
+        await pendingDismiss
+
+        expect(setting.dismissedLegalNoticeIds.value)
+          .toEqual(['2026-01-another-notice'])
+      })
+
+    it('clears the dismissed ids with the user context', async () => {
+      const { dismissedLegalNoticeIds, clearUserContext }
+        = await syncWithDismissed([NOTICE_ID])
+
+      clearUserContext()
+
+      expect(dismissedLegalNoticeIds.value).toEqual([])
+    })
+  })
 })
 
 describe('useUserSetting just-in-time consent request', () => {
