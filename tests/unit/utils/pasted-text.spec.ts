@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import {
   MAX_PASTED_TEXTS,
   createPastedText,
+  formatCharacterCount,
+  getMessageTextOverflow,
   getPastedTextSize,
+  hasPastedTextContent,
   joinMessageWithPastedTexts,
 } from '../../../app/utils/pasted-text'
 
@@ -45,6 +49,33 @@ describe('pasted text utils', () => {
   it('measures the size in UTF-8 bytes', () => {
     expect(getPastedTextSize('abc')).toBe(3)
     expect(getPastedTextSize('ї')).toBe(2)
+  })
+
+  it('detects whether any pasted text has content', () => {
+    expect(hasPastedTextContent([])).toBe(false)
+    expect(hasPastedTextContent([{ content: ' \n\t' }])).toBe(false)
+    expect(hasPastedTextContent([{ content: ' ' }, { content: 'x' }]))
+      .toBe(true)
+  })
+
+  it('reports how far the joined text is over the message limit', () => {
+    const half = 'a'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH / 2)
+
+    expect(getMessageTextOverflow('', [{ content: half }, { content: half }]))
+      .toBe(2)
+    expect(getMessageTextOverflow('', [{ content: half }])).toBe(0)
+    expect(getMessageTextOverflow(
+      'x'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH),
+      [],
+    )).toBe(0)
+    expect(getMessageTextOverflow(
+      'x'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH),
+      [{ content: 'y' }],
+    )).toBe(3)
+  })
+
+  it('formats character counts with thousands separators', () => {
+    expect(formatCharacterCount(200000)).toBe('200,000')
   })
 
   it('caps pending pasted texts at ten', () => {

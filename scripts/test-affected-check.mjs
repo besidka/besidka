@@ -1346,6 +1346,15 @@ export function getAffectedTests(changedFiles) {
       tests: deepseekWebSearchTests,
     },
     {
+      pattern: /^shared\/utils\/chat-message-limits\.ts$/,
+      tests: [
+        'tests/unit/utils/chats/request-schema.spec.ts',
+        'tests/unit/utils/pasted-text.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/integration/api/chats-research-start.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/chats\/request-schema\.ts$/,
       tests: [
         'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -2766,7 +2775,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/markdown-textarea\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client)|Chat\/TextFileModal\.client)\.vue)$/,
+        /^(app\/composables\/(markdown-textarea|pasted-texts)\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client)|Chat\/TextFileModal\.client)\.vue)$/,
       tests: markdownTextareaTests,
     },
     {

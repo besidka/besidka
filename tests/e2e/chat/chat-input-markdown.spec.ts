@@ -228,5 +228,70 @@ test.describe('Chat input markdown', () => {
 
       await expect(chip).toHaveCount(0)
       await expect(textarea).toHaveValue(`Before ${LONG_PASTE}`)
+      await expect(textarea).toBeFocused()
+
+      const caretOffset = await textarea.evaluate((element) => {
+        return (element as HTMLTextAreaElement).selectionStart
+      })
+
+      expect(caretOffset).toBe(`Before ${LONG_PASTE}`.length)
+
+      await page.keyboard.press('ControlOrMeta+z')
+
+      await expect(textarea).toHaveValue('Before ')
+    })
+
+  test('asks before discarding unsaved edits of a pasted chip',
+    async ({ page }) => {
+      const textarea = await openNewChat(page)
+
+      await pastePlainText(textarea, LONG_PASTE)
+
+      const chip = page.locator('[data-testid="pasted-text-item"]')
+      const modal = page.locator('[data-testid="text-file-modal"]')
+      const modalTextarea = modal
+        .locator('[data-testid="text-file-modal-textarea"]')
+
+      await chip.locator('[data-testid="files-preview-text-open"]').click()
+      await expect(modal).toBeVisible()
+      await modal.locator('[data-testid="text-file-modal-cancel"]').click()
+      await expect(modal).toBeHidden()
+
+      await chip.locator('[data-testid="files-preview-text-open"]').click()
+      await modalTextarea.fill('changed')
+      await modal.locator('[data-testid="text-file-modal-cancel"]').click()
+
+      await expect(page.locator('[data-testid="confirmation-decline"]'))
+        .toBeVisible()
+      await page.locator('[data-testid="confirmation-decline"]').click()
+      await expect(modal).toBeVisible()
+      await expect(modalTextarea).toHaveValue('changed')
+
+      await modal.locator('[data-testid="text-file-modal-cancel"]').click()
+      await page.locator('[data-testid="confirmation-action-0"]').click()
+      await expect(modal).toBeHidden()
+      await expect(chip).toContainText('45 lines')
+    })
+
+  test('keeps a pasted chip when moving to another chat page',
+    async ({ page }) => {
+      const textarea = await openNewChat(page)
+
+      await pastePlainText(textarea, LONG_PASTE)
+      await expect(page.locator('[data-testid="pasted-text-item"]'))
+        .toHaveCount(1)
+
+      await page.evaluate(() => {
+        const nuxtApp = (window as unknown as {
+          useNuxtApp: () => { $router: { push: (to: string) => void } }
+        }).useNuxtApp()
+
+        nuxtApp.$router.push('/chats/test?scenario=markdown&messages=2')
+      })
+      await expect(page).toHaveURL(/\/chats\/test/)
+      await waitForHydration(page)
+
+      await expect(page.locator('[data-testid="pasted-text-item"]'))
+        .toHaveCount(1)
     })
 })

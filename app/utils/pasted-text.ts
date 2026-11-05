@@ -1,3 +1,5 @@
+import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
+
 export interface PastedText {
   id: string
   content: string
@@ -38,4 +40,23 @@ export function joinMessageWithPastedTexts(
   const typedText = message.trim() ? message.trimEnd() : ''
 
   return [typedText, ...pastedBlocks].filter(Boolean).join('\n\n')
+}
+
+export function hasPastedTextContent(
+  pastedTexts: Pick<PastedText, 'content'>[],
+): boolean {
+  return pastedTexts.some(pastedText => !!pastedText.content.trim())
+}
+
+export function getMessageTextOverflow(
+  message: string,
+  pastedTexts: Pick<PastedText, 'content'>[],
+): number {
+  const joinedLength = joinMessageWithPastedTexts(message, pastedTexts).length
+
+  return Math.max(0, joinedLength - MAX_USER_MESSAGE_TEXT_LENGTH)
+}
+
+export function formatCharacterCount(count: number): string {
+  return count.toLocaleString('en-US')
 }

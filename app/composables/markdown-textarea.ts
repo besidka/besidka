@@ -372,7 +372,7 @@ export function useMarkdownTextarea(
       )
 
       return htmlToChatMarkdown(html)
-    } catch (_exception) {
+    } catch {
       return ''
     }
   }

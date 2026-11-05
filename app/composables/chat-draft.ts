@@ -41,7 +41,11 @@ export function useChatDraftBackup() {
       savedAt: Date.now(),
     }
 
-    getStorage()?.setItem(DRAFT_BACKUP_KEY, JSON.stringify(payload))
+    try {
+      getStorage()?.setItem(DRAFT_BACKUP_KEY, JSON.stringify(payload))
+    } catch {
+      return
+    }
   }
 
   function peek(): string | null {

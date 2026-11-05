@@ -50,6 +50,20 @@ describe('useChatDraftBackup', () => {
     expect(backup.peek()).toBeNull()
   })
 
+  it('does not throw when the storage quota is exceeded', () => {
+    vi.stubGlobal('localStorage', {
+      ...createStorageShim(),
+      setItem: () => {
+        throw new DOMException('Quota exceeded', 'QuotaExceededError')
+      },
+    })
+
+    const backup = useChatDraftBackup()
+
+    expect(() => backup.save('draft too large')).not.toThrow()
+    expect(backup.peek()).toBeNull()
+  })
+
   it('clears the backup', () => {
     const backup = useChatDraftBackup()
 

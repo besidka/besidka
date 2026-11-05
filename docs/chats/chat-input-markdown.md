@@ -84,7 +84,8 @@ code out of the fence the user is writing. Without an `onLongPaste` option
 (the project instructions card) the text is inserted normally.
 
 The chip is **visual only**. `ChatInput.client.vue` keeps the pending pastes
-in local state (`pastedTexts`, `PastedText` from `app/utils/pasted-text.ts`)
+in the global client-only `usePastedTexts()` state (`app/composables/pasted-texts.ts`,
+`PastedText` from `app/utils/pasted-text.ts`)
 and shows them in the attachments row (`Files/Attached/Preview.client.vue`,
 before the files) as `Files/Attached/TextCard.vue`: the first three non-empty
 lines, "Pasted text", and "N lines, size". On send,
@@ -101,20 +102,51 @@ and shared pages therefore all see one ordinary text part.
   per open, `v-if` plus `key`, because it loads its content on mount) with an
   editable textarea, a character and line counter, Save (enabled only for a
   changed, non-blank draft), Cancel and "Insert as text". Insert moves the
-  content into the textarea at the caret and removes the chip.
+  content into the textarea at the caret and removes the chip. It focuses the
+  textarea first (the modal's own focus restore runs while it unmounts, before
+  the insert), so the `execCommand('insertText')` path runs: native undo
+  removes the insertion in one step and the caret ends after the inserted text.
+- **Unsaved edits**: Cancel, Escape (the dialog's `cancel` event), the X button
+  and the backdrop (both `method="dialog"` forms) all go through
+  `requestClose`. With a changed draft it asks "Discard your unsaved changes?"
+  through `useConfirm` (a second `showModal` dialog, so it stacks above the
+  editor; "Keep editing" returns to it). With no changes, and for read-only
+  files, it closes without asking. A second close request while the question is
+  open is ignored.
 - **Remove**: the chip's x button removes it without a confirmation (the text
   is still on the clipboard).
-- **Send**: a message with only chips is sendable (`hasMessage` counts them).
+- **Send**: a message with only chips is sendable (`hasMessage` counts chips
+  that have non-blank content). A whitespace-only long paste is dropped
+  silently in `attachLongPaste`: no chip and no insertion, so it can never
+  produce an empty message (a 400 on `/chats/new`, an empty user message on
+  `/chats/[slug]`).
 - **Limit**: at most `MAX_PASTED_TEXTS` (10) chips, counted separately from
   the file cap (`maxFilesPerMessage`). A further long paste is inserted into
   the textarea at the paste-time snapshot with a warning toast.
-- **Length cap**: there is no client-side cap on message length. The joined
-  text goes through the same request as typed text, so a message over
+- **Length cap**: the client enforces the server limit,
   `MAX_USER_MESSAGE_TEXT_LENGTH` (200 000 characters,
-  `server/utils/chats/request-schema.ts`) gets the same 400 "Invalid request
-  body" as an equally long typed message.
-- **Drafts**: chips are not persisted. A reload before sending loses them
-  (the `chat_input` preference only holds the typed text). A failed send on
+  `shared/utils/chat-message-limits.ts`, imported by
+  `server/utils/chats/request-schema.ts`; it lives in `shared/` so both sides
+  cannot drift). The length that counts is the joined text
+  (`getMessageTextOverflow(message, pastedTexts)`, typed text plus chips plus
+  the blank-line separators). Three places check it, each reporting how far
+  over the limit the message would be: a long paste that would pass the limit
+  is refused with a warning toast and its text is kept out entirely (neither a
+  chip nor inserted, also when the chip limit is reached); saving a chip edit
+  that would pass it keeps the modal open with a warning toast; and
+  `sendMessage` refuses an over-limit message with an error toast, before the
+  consent prompt, leaving the textarea and the chips untouched. Typing has no
+  cap, so only the send check can catch a message that grew by typing.
+- **Drafts and navigation**: pending chips live in `useState`
+  (`chat-input-pasted-texts`), not in the component. Each chat page mounts its
+  own `ChatInput`, and the typed draft already survives navigation through the
+  global `chat_input` preference, so the chips follow the draft the same way:
+  they stay while the user moves between `/chats/new` and `/chats/[slug]`, and
+  `sendMessage` clears them exactly where it clears the textarea. Sign-out and
+  account deletion clear them with the draft (shared-device leak). Chips are
+  **not** persisted to storage: a reload before sending loses them. That is
+  deliberate: a paste can be 200 000 characters, which does not belong in
+  `localStorage` (quota, and a synchronous write on every edit). A failed send on
   `/chats/new` restores the joined text into the textarea and the
   `chat_input_backup` draft backup, so nothing is lost, but it comes back as
   text, not as chips.
@@ -124,7 +156,10 @@ and shared pages therefore all see one ordinary text part.
 Uploaded text files (`text/plain`, `text/markdown`) in the same row also use
 `TextCard` (preview fetched lazily up to `TEXT_FILE_PREVIEW_MAX_BYTES`) and
 open the modal read-only with Copy, Open raw and Download (not loaded above
-`TEXT_FILE_VIEW_MAX_BYTES`).
+`TEXT_FILE_VIEW_MAX_BYTES`). The file picker in `Files/Modal/Upload.client.vue`
+adds `.md,.markdown,.txt` to its `accept` list next to the MIME types, because
+some systems have no MIME mapping for `.md` and would grey those files out;
+the extensions are listed only while a text format is accepted.
 
 ### Why not a file, and why not a message part
 
@@ -314,7 +349,10 @@ the browser's behaviour. Each range is `cloneContents()`-ed, wrapped back in
 its list or table when the selection started inside one (an ordered list keeps
 its numbers through `start`), cleaned, and rendered to plain text by
 `domToPlainText`: `- ` for bullets, `1. ` numbering, indented nested lists,
-blank lines between paragraphs, code verbatim, tables as `a | b` rows. A
+blank lines between paragraphs, code verbatim, tables as `a | b` rows. A link
+keeps its label and gets the address after it (`docs (https://example.com/d)`);
+only a link whose label is the address itself (ignoring the scheme, `www.` and
+a trailing slash) prints the address once. A
 selection inside a code block becomes a `<pre><code>` block, or an inline
 `<code>` when it is one line. A selection that is only text still goes through
 the same path, because the native copy has the Nunito problem too.

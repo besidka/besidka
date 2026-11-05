@@ -7,11 +7,13 @@ const mocks = vi.hoisted(() => ({
   fetchTextFileContent: vi.fn(),
   copy: vi.fn(async () => {}),
   useSuccessMessage: vi.fn(),
+  useConfirm: vi.fn(),
 }))
 
 mockNuxtImport('fetchTextFileContent', () => mocks.fetchTextFileContent)
 mockNuxtImport('useClipboard', () => () => ({ copy: mocks.copy }))
 mockNuxtImport('useSuccessMessage', () => mocks.useSuccessMessage)
+mockNuxtImport('useConfirm', () => mocks.useConfirm)
 
 enableAutoUnmount(afterEach)
 
@@ -55,6 +57,8 @@ describe('Chat/TextFileModal', () => {
     mocks.fetchTextFileContent.mockReset()
     mocks.copy.mockClear()
     mocks.useSuccessMessage.mockReset()
+    mocks.useConfirm.mockReset()
+    mocks.useConfirm.mockResolvedValue({ label: 'Discard', index: 0 })
   })
 
   afterEach(() => {
@@ -117,6 +121,163 @@ describe('Chat/TextFileModal', () => {
 
     expect(wrapper.emitted('update:open')).toEqual([[false]])
     expect(wrapper.emitted('save')).toBeUndefined()
+  })
+
+  describe('closing with unsaved edits', () => {
+    async function editDraft(content: string) {
+      const textarea = getInBody('text-file-modal-textarea') as
+        HTMLTextAreaElement
+
+      textarea.value = content
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+      await flushPromises()
+    }
+
+    function dispatchCancel() {
+      const event = new Event('cancel', { cancelable: true })
+
+      getInBody('text-file-modal').dispatchEvent(event)
+
+      return event
+    }
+
+    function submitForm(form: Element | null) {
+      const event = new Event('submit', { bubbles: true, cancelable: true })
+
+      form?.dispatchEvent(event)
+
+      return event
+    }
+
+    it('asks before Cancel discards edits and keeps editing when declined',
+      async () => {
+        mocks.useConfirm.mockResolvedValue(null)
+
+        const wrapper = await mountModal({ content: 'body' })
+        await flushPromises()
+        await editDraft('body changed')
+
+        getInBody('text-file-modal-cancel').click()
+        await flushPromises()
+
+        expect(mocks.useConfirm).toHaveBeenCalledWith(expect.objectContaining({
+          text: 'Discard your unsaved changes?',
+        }))
+        expect(wrapper.emitted('update:open')).toBeUndefined()
+        expect(
+          (getInBody('text-file-modal-textarea') as HTMLTextAreaElement).value,
+        ).toBe('body changed')
+      })
+
+    it('closes after the discard is confirmed', async () => {
+      const wrapper = await mountModal({ content: 'body' })
+      await flushPromises()
+      await editDraft('body changed')
+
+      getInBody('text-file-modal-cancel').click()
+      await flushPromises()
+
+      expect(mocks.useConfirm).toHaveBeenCalledTimes(1)
+      expect(wrapper.emitted('update:open')).toEqual([[false]])
+    })
+
+    it('does not ask when nothing changed', async () => {
+      const wrapper = await mountModal({ content: 'body' })
+      await flushPromises()
+
+      getInBody('text-file-modal-cancel').click()
+      await flushPromises()
+
+      expect(mocks.useConfirm).not.toHaveBeenCalled()
+      expect(wrapper.emitted('update:open')).toEqual([[false]])
+    })
+
+    it('does not ask once the edit is reverted', async () => {
+      const wrapper = await mountModal({ content: 'body' })
+      await flushPromises()
+      await editDraft('body changed')
+      await editDraft('body')
+
+      getInBody('text-file-modal-cancel').click()
+      await flushPromises()
+
+      expect(mocks.useConfirm).not.toHaveBeenCalled()
+      expect(wrapper.emitted('update:open')).toEqual([[false]])
+    })
+
+    it('intercepts Escape, the close button and the backdrop', async () => {
+      mocks.useConfirm.mockResolvedValue(null)
+
+      const wrapper = await mountModal({ content: 'body' })
+      await flushPromises()
+      await editDraft('body changed')
+
+      const escapeEvent = dispatchCancel()
+      await flushPromises()
+      const closeEvent = submitForm(
+        getInBody('text-file-modal-close').closest('form'),
+      )
+      await flushPromises()
+      const backdropEvent = submitForm(
+        getInBody('text-file-modal').querySelector('.modal-backdrop'),
+      )
+      await flushPromises()
+
+      expect(escapeEvent.defaultPrevented).toBe(true)
+      expect(closeEvent.defaultPrevented).toBe(true)
+      expect(backdropEvent.defaultPrevented).toBe(true)
+      expect(mocks.useConfirm).toHaveBeenCalledTimes(3)
+      expect(wrapper.emitted('update:open')).toBeUndefined()
+    })
+
+    it('closes on Escape without asking when nothing changed', async () => {
+      const wrapper = await mountModal({ content: 'body' })
+      await flushPromises()
+
+      dispatchCancel()
+      await flushPromises()
+
+      expect(mocks.useConfirm).not.toHaveBeenCalled()
+      expect(wrapper.emitted('update:open')).toEqual([[false]])
+    })
+
+    it('never asks for a read-only file', async () => {
+      mocks.fetchTextFileContent.mockResolvedValue('body')
+
+      const wrapper = await mountModal({
+        name: 'notes.md',
+        url: '/files/notes-key',
+        isReadonly: true,
+      })
+      await flushPromises()
+
+      dispatchCancel()
+      await flushPromises()
+
+      expect(mocks.useConfirm).not.toHaveBeenCalled()
+      expect(wrapper.emitted('update:open')).toEqual([[false]])
+    })
+
+    it('shows one confirmation for repeated close requests', async () => {
+      let resolveConfirm: (result: null) => void = () => {}
+
+      mocks.useConfirm.mockReturnValue(new Promise((resolve) => {
+        resolveConfirm = resolve
+      }))
+
+      await mountModal({ content: 'body' })
+      await flushPromises()
+      await editDraft('body changed')
+
+      dispatchCancel()
+      dispatchCancel()
+      await flushPromises()
+
+      expect(mocks.useConfirm).toHaveBeenCalledTimes(1)
+
+      resolveConfirm(null)
+      await flushPromises()
+    })
   })
 
   it('loads a stored file read-only with copy, raw and download', async () => {

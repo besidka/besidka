@@ -610,7 +610,8 @@ const {
 })
 
 const hasMessage = computed<boolean>(() => {
-  return !!input.value?.trim().length || pastedTexts.value.length > 0
+  return !!input.value?.trim().length
+    || hasPastedTextContent(pastedTexts.value)
 })
 
 const canShowRegenerate = computed<boolean>(() => {
@@ -1072,7 +1073,7 @@ function onFilesDetached(fileIds: string[]) {
   files.value = files.value.filter(file => !idsToDetach.has(file.id))
 }
 
-const pastedTexts = ref<PastedText[]>([])
+const pastedTexts = usePastedTexts()
 const openedPastedTextId = shallowRef<PastedText['id'] | null>(null)
 const openedTextFileKey = shallowRef<FileMetadata['storageKey'] | null>(null)
 const isTextModalOpen = shallowRef<boolean>(false)
@@ -1098,7 +1099,33 @@ watch(isTextModalOpen, (isOpen) => {
   openedTextFileKey.value = null
 })
 
+function warnAboutMessageLimit(title: string, overflow: number) {
+  useWarningMessage(
+    title,
+    `A message can hold up to ${
+      formatCharacterCount(MAX_USER_MESSAGE_TEXT_LENGTH)
+    } characters and this would put it ${
+      formatCharacterCount(overflow)
+    } over.`,
+  )
+}
+
 function attachLongPaste(text: string, snapshot: TextSnapshot) {
+  if (!text.trim()) {
+    return
+  }
+
+  const overflow = getMessageTextOverflow(message.value, [
+    ...pastedTexts.value,
+    { content: text },
+  ])
+
+  if (overflow > 0) {
+    warnAboutMessageLimit('This text is too long to paste.', overflow)
+
+    return
+  }
+
   if (pastedTexts.value.length >= MAX_PASTED_TEXTS) {
     useWarningMessage(
       `You can attach up to ${MAX_PASTED_TEXTS} pasted texts.`,
@@ -1133,9 +1160,18 @@ function removePastedText(id: PastedText['id']) {
 function savePastedText(content: string) {
   const id = openedPastedTextId.value
 
-  pastedTexts.value = pastedTexts.value.map((pastedText) => {
+  const editedPastedTexts = pastedTexts.value.map((pastedText) => {
     return pastedText.id === id ? { ...pastedText, content } : pastedText
   })
+  const overflow = getMessageTextOverflow(message.value, editedPastedTexts)
+
+  if (overflow > 0) {
+    warnAboutMessageLimit('These edits make the message too long.', overflow)
+
+    return
+  }
+
+  pastedTexts.value = editedPastedTexts
   isTextModalOpen.value = false
 }
 
@@ -1149,6 +1185,7 @@ async function insertPastedText(content: string) {
   }
 
   await nextTick()
+  textarea.value?.focus()
   insertTextAtSelection(content)
 }
 
@@ -1201,6 +1238,19 @@ async function sendMessage() {
 
   if (props.researchJobActive) {
     return useWarningMessage('Research in progress — please wait.')
+  }
+
+  const overflow = getMessageTextOverflow(message.value, pastedTexts.value)
+
+  if (overflow > 0) {
+    return useErrorMessage(
+      'Message is too long',
+      `The limit is ${
+        formatCharacterCount(MAX_USER_MESSAGE_TEXT_LENGTH)
+      } characters and this message is ${
+        formatCharacterCount(overflow)
+      } over it. Shorten the text or remove a pasted text.`,
+    )
   }
 
   if (!await ensureSendConsent(selectedTransferProviderId.value)) {

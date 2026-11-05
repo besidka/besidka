@@ -3,9 +3,11 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
+import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { usePastedTexts } from '../../../app/composables/pasted-texts'
 import { LONG_PASTE_MIN_CHARACTERS } from '../../../app/composables/markdown-textarea'
 import { MAX_PASTED_TEXTS } from '../../../app/utils/pasted-text'
 import { REVEAL_GUARD_DURATION_MS } from '../../../app/composables/reveal-guard'
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   useDevice: vi.fn(),
   uploadFiles: vi.fn(),
   useWarningMessage: vi.fn(),
+  useErrorMessage: vi.fn(),
   requestPersistence: vi.fn(),
   ensureSendConsent: vi.fn(async () => true),
   setDefaultReasoningLevel: vi.fn(async () => {}),
@@ -27,6 +30,7 @@ mockNuxtImport('useChatInput', () => mocks.useChatInput)
 mockNuxtImport('useChatFiles', () => mocks.useChatFiles)
 mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
+mockNuxtImport('useErrorMessage', () => mocks.useErrorMessage)
 mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
 mockNuxtImport('useLegalConsent', () => () => ({
   ensureSendConsent: mocks.ensureSendConsent,
@@ -325,6 +329,8 @@ describe('ChatInput.client', () => {
     mocks.uploadFiles.mockReset()
     mocks.uploadFiles.mockResolvedValue(true)
     mocks.useWarningMessage.mockReset()
+    mocks.useErrorMessage.mockReset()
+    usePastedTexts().value = []
     mocks.requestPersistence.mockReset()
     mocks.setDefaultReasoningLevel.mockReset()
 
@@ -528,6 +534,167 @@ describe('ChatInput.client', () => {
       )
     })
 
+    it('ignores a whitespace-only long paste', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        ' \n'.repeat(LONG_PASTE_MIN_CHARACTERS),
+      ))
+      await flushPromises()
+
+      expect(getPastedTextItems(wrapper)).toHaveLength(0)
+      expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+      expect(wrapper.get('[data-testid="send-message"]').attributes('disabled'))
+        .toBeDefined()
+    })
+
+    it('refuses a long paste that would pass the message limit', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      element.dispatchEvent(createTextPasteEvent(
+        'a'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH - 10),
+      ))
+      await flushPromises()
+
+      element.dispatchEvent(createTextPasteEvent(
+        'b'.repeat(LONG_PASTE_MIN_CHARACTERS + 1),
+      ))
+      await flushPromises()
+
+      expect(getPastedTextItems(wrapper)).toHaveLength(1)
+      expect(element.value).toBe('')
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'This text is too long to paste.',
+        expect.stringContaining('200,000 characters'),
+      )
+    })
+
+    it('refuses a long paste over the limit even at the chip limit',
+      async () => {
+        const wrapper = await mountChatInput()
+        const element = wrapper.get('textarea').element as HTMLTextAreaElement
+        const longText = 'q'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+        for (let index = 0; index < MAX_PASTED_TEXTS; index++) {
+          element.dispatchEvent(createTextPasteEvent(longText))
+        }
+        await flushPromises()
+
+        element.dispatchEvent(createTextPasteEvent(
+          'z'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH),
+        ))
+        await flushPromises()
+
+        expect(element.value).toBe('')
+        expect(mocks.useWarningMessage).toHaveBeenCalledTimes(1)
+        expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+          'This text is too long to paste.',
+          expect.any(String),
+        )
+      })
+
+    it('does not send a message over the limit and keeps everything',
+      async () => {
+        const wrapper = await mountChatInput()
+        const textarea = wrapper.get('textarea')
+        const typedText = 't'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH - 5)
+
+        await textarea.setValue(typedText)
+        textarea.element.dispatchEvent(createTextPasteEvent(
+          'p'.repeat(LONG_PASTE_MIN_CHARACTERS + 1),
+        ))
+        await flushPromises()
+
+        expect(getPastedTextItems(wrapper)).toHaveLength(0)
+
+        await textarea.setValue(`${typedText}${'u'.repeat(20)}`)
+        await wrapper.get('[data-testid="send-message"]').trigger('click')
+        await flushPromises()
+
+        expect(wrapper.emitted('submit')).toBeUndefined()
+        expect(mocks.ensureSendConsent).not.toHaveBeenCalled()
+        expect((textarea.element as HTMLTextAreaElement).value)
+          .toBe(`${typedText}${'u'.repeat(20)}`)
+        expect(mocks.useErrorMessage).toHaveBeenCalledWith(
+          'Message is too long',
+          expect.stringContaining('15 over it'),
+        )
+      })
+
+    it('does not send typed text plus chips over the limit', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        'c'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH - 100),
+      ))
+      await flushPromises()
+      await textarea.setValue('d'.repeat(200))
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(getPastedTextItems(wrapper)).toHaveLength(1)
+      expect(mocks.useErrorMessage).toHaveBeenCalledWith(
+        'Message is too long',
+        expect.stringContaining('over it'),
+      )
+    })
+
+    it('keeps the modal open when an edit passes the message limit',
+      async () => {
+        const wrapper = await mountChatInput()
+        const longText = 'e'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+        wrapper.get('textarea').element
+          .dispatchEvent(createTextPasteEvent(longText))
+        await flushPromises()
+        await openPastedText(wrapper)
+
+        getTextFileModal(wrapper).vm.$emit(
+          'save',
+          'f'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH + 1),
+        )
+        await flushPromises()
+
+        expect(getTextFileModal(wrapper).exists()).toBe(true)
+        expect(getTextFileModal(wrapper).props('content')).toBe(longText)
+        expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+          'These edits make the message too long.',
+          expect.stringContaining('1 over'),
+        )
+      })
+
+    it('keeps pending chips when the input remounts on another page',
+      async () => {
+        const firstWrapper = await mountChatInput()
+        const longText = 'n'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+        firstWrapper.get('textarea').element
+          .dispatchEvent(createTextPasteEvent(longText))
+        await flushPromises()
+        firstWrapper.unmount()
+
+        const secondWrapper = await mountChatInput()
+
+        expect(getPastedTextItems(secondWrapper)).toHaveLength(1)
+        expect(getPastedTextItems(secondWrapper)[0]!.text())
+          .toContain('nnnn')
+
+        await secondWrapper.get('[data-testid="send-message"]')
+          .trigger('click')
+        await flushPromises()
+        secondWrapper.unmount()
+
+        const thirdWrapper = await mountChatInput()
+
+        expect(getPastedTextItems(thirdWrapper)).toHaveLength(0)
+        expect(usePastedTexts().value).toEqual([])
+      })
+
     it('sends a message that has only pasted text', async () => {
       const wrapper = await mountChatInput()
       const textarea = wrapper.get('textarea')
@@ -624,6 +791,30 @@ describe('ChatInput.client', () => {
       expect(getPastedTextItems(wrapper)).toHaveLength(0)
       expect(getTextFileModal(wrapper).exists()).toBe(false)
     })
+
+    it('focuses the textarea after Insert as text',
+      async () => {
+        const wrapper = await mountChatInput()
+        const textarea = wrapper.get('textarea')
+        const element = textarea.element as HTMLTextAreaElement
+        const longText = 'k'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+        await textarea.setValue('abcd')
+        element.setSelectionRange(2, 2)
+        element.dispatchEvent(createTextPasteEvent(longText))
+        await flushPromises()
+        await openPastedText(wrapper)
+
+        const trigger = wrapper.get('[data-testid="files-preview-text-open"]')
+          .element as HTMLElement
+
+        trigger.focus()
+        getTextFileModal(wrapper).vm.$emit('insert', 'NEW')
+        await flushPromises()
+
+        expect(document.activeElement).toBe(element)
+        expect(element.value).toBe('abNEWcd')
+      })
 
     it('removes a chip', async () => {
       const wrapper = await mountChatInput()

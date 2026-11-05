@@ -31,6 +31,7 @@
       <div
         v-for="pastedText in pastedTexts"
         :key="pastedText.id"
+        role="group"
         :aria-label="PASTED_TEXT_NAME"
         class="carousel-item flex items-center gap-1 relative"
         data-testid="pasted-text-item"
@@ -376,15 +377,27 @@ const hasAnyItems = computed<boolean>(() => {
   return hasAnyFiles.value || props.tiles.length > 0
 })
 
-const regionLabel = computed<string>(() => {
-  const filesLabel = totalFilesCount.value === 1 ? 'File' : 'Files'
+const attachmentsLabel = computed<string>(() => {
+  const pastedTextsCount = props.pastedTexts.length
 
+  if (!pastedTextsCount) {
+    return totalFilesCount.value === 1 ? 'File' : 'Files'
+  }
+
+  if (totalFilesCount.value) {
+    return 'Files and pasted text'
+  }
+
+  return pastedTextsCount === 1 ? 'Pasted text' : 'Pasted texts'
+})
+
+const regionLabel = computed<string>(() => {
   if (!props.tiles.length) {
-    return filesLabel
+    return attachmentsLabel.value
   }
 
   return hasAnyFiles.value
-    ? `Active settings and ${filesLabel.toLowerCase()}`
+    ? `Active settings and ${attachmentsLabel.value.toLowerCase()}`
     : 'Active settings'
 })
 

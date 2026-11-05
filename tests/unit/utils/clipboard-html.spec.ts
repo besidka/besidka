@@ -209,12 +209,22 @@ describe('domToPlainText', () => {
     expect(domToPlainText(parse(html))).toBe('A | B\n1 | 2')
   })
 
-  it('renders links as the url when the text is part of it', () => {
-    const html = '<a href="https://example.com/a">example.com</a> and '
-      + '<a href="https://example.com/b">the docs</a>'
+  it('renders links as the url when the text is the url itself', () => {
+    const html = '<a href="https://example.com/a">example.com/a</a> and '
+      + '<a href="https://www.example.com/b">https://example.com/b</a> and '
+      + '<a href="https://example.com/c">the docs</a>'
+
+    expect(domToPlainText(parse(html))).toBe(
+      'https://example.com/a and https://www.example.com/b and '
+      + 'the docs (https://example.com/c)',
+    )
+  })
+
+  it('keeps a label that is only part of the url', () => {
+    const html = '<a href="https://example.com/docs">docs</a>'
 
     expect(domToPlainText(parse(html)))
-      .toBe('https://example.com/a and the docs (https://example.com/b)')
+      .toBe('docs (https://example.com/docs)')
   })
 
   it('renders blockquotes with a prefix and headings as text', () => {

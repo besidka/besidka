@@ -47,7 +47,7 @@
           data-testid="files-upload-input"
           type="file"
           class="file-input file-input-bordered file-input-sm"
-          :accept="effectiveFileFormats.join(',')"
+          :accept="acceptAttribute"
           multiple
           @change="onFileInputChange"
           @click.stop
@@ -92,6 +92,19 @@ const effectiveFileFormats = computed<string[]>(() => {
   return formats.filter((format) => {
     return !isMediaTypeRejectedByModel(format, props.canAttachMediaType)
   })
+})
+
+const TEXT_FILE_EXTENSIONS = ['.md', '.markdown', '.txt']
+
+const acceptAttribute = computed<string>(() => {
+  const hasTextFormat = effectiveFileFormats.value.some((format) => {
+    return format.startsWith('text/')
+  })
+
+  return [
+    ...effectiveFileFormats.value,
+    ...hasTextFormat ? TEXT_FILE_EXTENSIONS : [],
+  ].join(',')
 })
 
 const formattedFileFormats = computed<string>(() => {

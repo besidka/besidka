@@ -87,7 +87,7 @@ function copyViaCopyEvent(html: string, text: string): boolean {
 
   try {
     succeeded = document.execCommand('copy')
-  } catch (_exception) {
+  } catch {
     succeeded = false
   }
 

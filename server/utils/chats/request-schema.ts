@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
+import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 
 export const chatToolSchema = z.enum([
   'web_search',
@@ -17,7 +18,6 @@ export const chatToolsSchema = z.array(chatToolSchema)
     message: 'Web search and image generation cannot be combined.',
   })
 
-export const MAX_USER_MESSAGE_TEXT_LENGTH = 200_000
 export const MAX_USER_MESSAGE_PARTS = 50
 export const MAX_USER_MESSAGE_FILE_NAME_LENGTH = 255
 export const MAX_USER_MESSAGE_MEDIA_TYPE_LENGTH = 255

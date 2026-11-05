@@ -111,7 +111,9 @@ const resolvedUserName = computed<string | undefined>(() => {
 })
 
 function onCopy(event: ClipboardEvent) {
-  if (event.defaultPrevented || !event.clipboardData) return
+  if (event.defaultPrevented || !event.clipboardData) {
+    return
+  }
 
   const selection = window.getSelection()
 
@@ -127,11 +129,15 @@ function onCopy(event: ClipboardEvent) {
     return isRangeInsideSelector(range, '.js-message-text')
   })
 
-  if (!isInsideMessageText) return
+  if (!isInsideMessageText) {
+    return
+  }
 
   const content = selectionRangesToClipboardContent(ranges)
 
-  if (!content.text.trim()) return
+  if (!content.text.trim()) {
+    return
+  }
 
   event.clipboardData.setData('text/html', content.html)
   event.clipboardData.setData('text/plain', content.text)

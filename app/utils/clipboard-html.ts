@@ -165,7 +165,7 @@ function resolveUrl(
 
   try {
     url = new URL(trimmed, baseUrl || undefined)
-  } catch (_exception) {
+  } catch {
     return null
   }
 
@@ -356,6 +356,7 @@ function normalizeLinkFragment(value: string): string {
     .toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
+    .replace(/\/$/, '')
 }
 
 function renderLink(anchor: Element): string {
@@ -370,7 +371,7 @@ function renderLink(anchor: Element): string {
     return href
   }
 
-  if (normalizeLinkFragment(href).includes(normalizeLinkFragment(text))) {
+  if (normalizeLinkFragment(href) === normalizeLinkFragment(text)) {
     return href
   }
 

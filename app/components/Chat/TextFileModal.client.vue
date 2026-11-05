@@ -6,6 +6,7 @@
       :aria-labelledby="titleId"
       aria-modal="true"
       data-testid="text-file-modal"
+      @cancel.prevent="requestClose"
       @close="onClose"
     >
       <div class="modal-box flex max-h-[85dvh] w-full max-w-3xl flex-col gap-3">
@@ -24,7 +25,10 @@
           >
             {{ name }}
           </h2>
-          <form method="dialog">
+          <form
+            method="dialog"
+            @submit.prevent="requestClose"
+          >
             <button
               ref="closeButtonRef"
               class="btn btn-sm btn-circle btn-ghost"
@@ -135,7 +139,7 @@
               type="button"
               class="btn btn-sm"
               data-testid="text-file-modal-cancel"
-              @click="isOpen = false"
+              @click="requestClose"
             >
               Cancel
             </button>
@@ -154,6 +158,7 @@
       <form
         method="dialog"
         class="modal-backdrop"
+        @submit.prevent="requestClose"
       >
         <button>Close</button>
       </form>
@@ -197,11 +202,17 @@ const originalContent = shallowRef<string>('')
 const draft = shallowRef<string>('')
 const isLoading = shallowRef<boolean>(false)
 const unavailableMessage = shallowRef<string>('')
+const isConfirmingClose = shallowRef<boolean>(false)
 
 const characterCount = computed<number>(() => draft.value.length)
 const lineCount = computed<number>(() => countTextLines(draft.value))
 const canUseContent = computed<boolean>(() => {
   return !isLoading.value && !unavailableMessage.value
+})
+const hasUnsavedChanges = computed<boolean>(() => {
+  return !props.isReadonly
+    && canUseContent.value
+    && draft.value !== originalContent.value
 })
 const canSave = computed<boolean>(() => {
   return canUseContent.value
@@ -287,6 +298,34 @@ async function updateDialog(shouldOpen: boolean) {
 
   if (isOpen.value) {
     closeButtonRef.value?.focus()
+  }
+}
+
+async function requestClose() {
+  if (isConfirmingClose.value) {
+    return
+  }
+
+  if (!hasUnsavedChanges.value) {
+    isOpen.value = false
+
+    return
+  }
+
+  isConfirmingClose.value = true
+
+  try {
+    const result = await useConfirm({
+      text: 'Discard your unsaved changes?',
+      actions: ['Discard'],
+      labelDecline: 'Keep editing',
+    })
+
+    if (result) {
+      isOpen.value = false
+    }
+  } finally {
+    isConfirmingClose.value = false
   }
 }
 
