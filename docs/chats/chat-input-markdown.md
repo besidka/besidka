@@ -304,7 +304,7 @@ done here.
 ## Copying messages
 
 The message context menu "Copy" and a native selection copy (select text in a
-message, press Cmd+C) both put clean semantic HTML on the clipboard, so a paste
+message, press Cmd+C) both put clean, Mail-style HTML on the clipboard, so a paste
 into Apple Mail, Gmail or Docs uses the target app's own fonts, real lists and
 bold, and no bubble tint.
 
@@ -338,8 +338,48 @@ source in the same block, read from the `data-code-source` attribute that
 `prose/PreStream.vue` sets only while the diagram is shown; links keep only a
 resolved `href` (http, https, mailto, tel); images keep `src` (made absolute)
 and `alt`; tables get `border`, `cellpadding` and `cellspacing` attributes so
-they have lines without any style. The output starts with
-`<meta charset="utf-8">` and carries no font styles.
+they have lines without any style.
+
+A second pass then lays the cleaned tree out the way Apple Mail writes its own
+clipboard markup. This is the format (owner decision 2026-11-05, verified in
+Apple Mail and Google Docs):
+
+```html
+<meta charset="utf-8"><div style="font-size: 12px"><div>Dobry wieczór,</div><div><br></div><div>Przesyłam stan liczników za październik:</div><ul style="margin: 0"><li>Prąd: 3597 kWh (+155)</li><li>Woda zimna: 48.3 m³ (+2.8)</li></ul><div><br></div><div>Razem: <b>5458 zł</b></div></div>
+```
+
+The rules:
+
+- Everything sits in one `<div style="font-size: 12px">`: no font family and no
+  colour, so the target keeps its own face.
+- A paragraph is a `<div>`. Consecutive top-level blocks get a `<div><br></div>`
+  spacer between them, except between a paragraph and a list directly after it
+  (the list hangs under its intro line). After a list the spacer is present.
+- `ul` and `ol`, nested ones too, get `style="margin: 0"`; `ol` keeps `start`.
+  Paragraphs inside `li` (loose lists) are unwrapped so items gain no margins,
+  and several paragraphs in one item are separated by `<br>`.
+- `strong` becomes `b` and `em` becomes `i`, as in Mail.
+- A heading is `<div><b>…</b></div>`, with no heading sizes, and follows the
+  normal spacer rules (only a paragraph hangs a list under it).
+- `blockquote` is `<blockquote style="margin: 0 0 0 1em">` with the same inner
+  rules, `pre` is `<pre style="margin: 0"><code>`, `hr` and tables are as before.
+- A selection with no block element (plain text, or inline markup such as one
+  `<code>`) gets no wrapper, so it pastes inline in the middle of a sentence.
+- `text/plain` (`domToPlainText`) is computed from the cleaned tree before the
+  layout pass and is unchanged.
+
+Why 12 px: Apple Mail's factory default is Helvetica 12. WebKit pastes HTML
+with no font size at its "medium" size, 16 px, so an unstyled paste into Mail
+looked noticeably larger than the text around it. Plain `<p>` margins also put
+a blank line between an intro line and its list, which a Mail-written email
+does not have. Measured trade-off: Google Docs shows the same markup as 9 pt
+(it converts 12 px to points), Gmail comes out about equal, and Slack and Notion
+ignore the size. Mail is the target that matters most, so 12 px stays.
+
+Paste-lab evidence (same message, variants pasted into each app): B (no size)
+pasted at 16 px in Mail; D and E (12 px) pasted at 12 px in Mail and 9 pt in
+Docs. D kept `<p>` margins; E, the Mail-style `div` and spacer layout above,
+matched a Mail-written email, so E was chosen.
 
 Native selection copy is intercepted by `@copy` on the root element of
 `Chat/Message.vue`, which both `/chats/[slug]` and `/shared/[slug]` use. It

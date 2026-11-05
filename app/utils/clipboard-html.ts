@@ -18,6 +18,10 @@ const ELEMENT_NODE = 1
 const TEXT_NODE = 3
 
 const DOCUMENT_PREAMBLE = '<meta charset="utf-8">'
+const WRAPPER_STYLE = 'font-size: 12px'
+const LIST_STYLE = 'margin: 0'
+const BLOCKQUOTE_STYLE = 'margin: 0 0 0 1em'
+const PRE_STYLE = 'margin: 0'
 const CODE_SOURCE_ATTRIBUTE = 'data-code-source'
 const SKIP_CLASS = 'js-clipboard-skip'
 
@@ -120,6 +124,36 @@ const BLOCK_TAGS: ReadonlySet<string> = new Set([
   'h5',
   'h6',
 ])
+
+const INLINE_RENAMES: Readonly<Record<string, string>> = {
+  strong: 'b',
+  em: 'i',
+}
+
+const LAYOUT_BLOCK_TAGS: ReadonlySet<string> = new Set([
+  'p',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'blockquote',
+  'pre',
+  'table',
+  'hr',
+])
+
+const LIST_TAGS: ReadonlySet<string> = new Set(['ul', 'ol'])
+const HEADING_PATTERN = /^h[1-6]$/
+
+interface LayoutBlock {
+  node: Node
+  isParagraph: boolean
+  isList: boolean
+}
 
 const WRAPPED_ANCESTORS: ReadonlySet<string> = new Set([
   'ul',
@@ -334,8 +368,205 @@ function cleanContainer(
   })
 }
 
+function getTagName(node: Node): string {
+  return node.nodeType === ELEMENT_NODE
+    ? (node as Element).tagName.toLowerCase()
+    : ''
+}
+
+function renameElement(element: Element, tagName: string): Element {
+  const renamed = element.ownerDocument.createElement(tagName)
+
+  while (element.firstChild) {
+    renamed.appendChild(element.firstChild)
+  }
+
+  replaceNode(element, renamed)
+
+  return renamed
+}
+
+function createSpacer(inertDocument: Document): HTMLElement {
+  const spacer = inertDocument.createElement('div')
+
+  spacer.appendChild(inertDocument.createElement('br'))
+
+  return spacer
+}
+
+function renameInlineTags(container: HTMLElement): void {
+  const elements = Array.from(container.querySelectorAll('strong, em'))
+
+  for (const element of elements) {
+    renameElement(element, INLINE_RENAMES[getTagName(element)]!)
+  }
+}
+
+function flattenListItemParagraphs(item: Element): void {
+  let previousWasParagraph = false
+
+  for (const child of Array.from(item.children)) {
+    const tag = getTagName(child)
+
+    if (tag === 'p') {
+      if (previousWasParagraph) {
+        item.insertBefore(item.ownerDocument.createElement('br'), child)
+      }
+
+      unwrapElement(child)
+      previousWasParagraph = true
+
+      continue
+    }
+
+    previousWasParagraph = false
+
+    if (LIST_TAGS.has(tag)) {
+      layoutList(child)
+    }
+  }
+}
+
+function layoutList(list: Element): void {
+  list.setAttribute('style', LIST_STYLE)
+
+  for (const item of Array.from(list.children)) {
+    if (getTagName(item) === 'li') {
+      flattenListItemParagraphs(item)
+    }
+  }
+}
+
+function layoutHeading(heading: Element): Element {
+  const inertDocument = heading.ownerDocument
+  const line = inertDocument.createElement('div')
+  const bold = inertDocument.createElement('b')
+
+  while (heading.firstChild) {
+    bold.appendChild(heading.firstChild)
+  }
+
+  line.appendChild(bold)
+  replaceNode(heading, line)
+
+  return line
+}
+
+function layoutBlock(element: Element): LayoutBlock {
+  const tag = getTagName(element)
+
+  if (tag === 'p') {
+    return {
+      node: renameElement(element, 'div'),
+      isParagraph: true,
+      isList: false,
+    }
+  }
+
+  if (HEADING_PATTERN.test(tag)) {
+    return {
+      node: layoutHeading(element),
+      isParagraph: false,
+      isList: false,
+    }
+  }
+
+  if (LIST_TAGS.has(tag)) {
+    layoutList(element)
+
+    return { node: element, isParagraph: false, isList: true }
+  }
+
+  if (tag === 'blockquote') {
+    element.setAttribute('style', BLOCKQUOTE_STYLE)
+    layoutBlocks(element)
+  } else if (tag === 'pre') {
+    element.setAttribute('style', PRE_STYLE)
+  }
+
+  return { node: element, isParagraph: false, isList: false }
+}
+
+function layoutBlocks(parent: Element): void {
+  const inertDocument = parent.ownerDocument
+  const blocks: LayoutBlock[] = []
+  let inlineRun: Node[] = []
+
+  function flushInlineRun(): void {
+    const hasContent = inlineRun.some((node) => {
+      return node.nodeType !== TEXT_NODE || !!node.textContent?.trim()
+    })
+
+    if (hasContent) {
+      const line = inertDocument.createElement('div')
+
+      for (const node of inlineRun) {
+        line.appendChild(node)
+      }
+
+      blocks.push({ node: line, isParagraph: true, isList: false })
+    }
+
+    inlineRun = []
+  }
+
+  for (const child of Array.from(parent.childNodes)) {
+    if (LAYOUT_BLOCK_TAGS.has(getTagName(child))) {
+      flushInlineRun()
+      blocks.push(layoutBlock(child as Element))
+
+      continue
+    }
+
+    inlineRun.push(child)
+  }
+
+  flushInlineRun()
+
+  while (parent.firstChild) {
+    parent.removeChild(parent.firstChild)
+  }
+
+  blocks.forEach((block, index) => {
+    const previous = blocks[index - 1]
+
+    if (previous && !(previous.isParagraph && block.isList)) {
+      parent.appendChild(createSpacer(inertDocument))
+    }
+
+    parent.appendChild(block.node)
+  })
+}
+
+function applyMailLayout(container: HTMLElement): void {
+  renameInlineTags(container)
+
+  const hasBlock = Array.from(container.children).some((child) => {
+    return LAYOUT_BLOCK_TAGS.has(getTagName(child))
+  })
+
+  if (!hasBlock) {
+    return
+  }
+
+  const wrapper = container.ownerDocument.createElement('div')
+
+  wrapper.setAttribute('style', WRAPPER_STYLE)
+
+  while (container.firstChild) {
+    wrapper.appendChild(container.firstChild)
+  }
+
+  layoutBlocks(wrapper)
+  container.appendChild(wrapper)
+}
+
 function serializeContainer(container: HTMLElement): string {
-  const html = container.innerHTML
+  const layout = container.cloneNode(true) as HTMLElement
+
+  applyMailLayout(layout)
+
+  const html = layout.innerHTML
 
   return html.trim() ? `${DOCUMENT_PREAMBLE}${html}` : ''
 }

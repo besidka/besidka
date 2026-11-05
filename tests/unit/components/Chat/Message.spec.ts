@@ -270,11 +270,9 @@ describe('Chat/Message', () => {
 
       expect(setData).toHaveBeenCalledWith(
         'text/html',
-        expect.stringContaining('<p>Hello <strong>bold</strong></p>'),
-      )
-      expect(setData).toHaveBeenCalledWith(
-        'text/html',
-        expect.not.stringContaining('style='),
+        '<meta charset="utf-8"><div style="font-size: 12px">'
+        + '<div>Hello <b>bold</b></div>'
+        + '<ul style="margin: 0"><li>one</li><li>two</li></ul></div>',
       )
       expect(setData).toHaveBeenCalledWith(
         'text/plain',

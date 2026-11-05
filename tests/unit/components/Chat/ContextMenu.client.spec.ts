@@ -1882,7 +1882,8 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(setData).toHaveBeenCalledWith(
         'text/html',
-        '<meta charset="utf-8"><p>Hi <strong>there</strong></p>',
+        '<meta charset="utf-8"><div style="font-size: 12px">'
+        + '<div>Hi <b>there</b></div></div>',
       )
       expect(setData).toHaveBeenCalledWith('text/plain', 'Hi there')
       expect(navigator.clipboard.write).not.toHaveBeenCalled()
