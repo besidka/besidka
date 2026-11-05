@@ -2058,6 +2058,14 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/composables/keyboard-inset-root.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
         'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+        'tests/e2e/search/keyboard-inset.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(app\/assets\/css\/main\.css|app\/components\/Search\/Modal\.client\.vue|app\/components\/ChatInput\.client\.vue)$/,
+      tests: [
+        'tests/e2e/search/keyboard-inset.spec.ts',
       ],
     },
     {

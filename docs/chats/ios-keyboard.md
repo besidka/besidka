@@ -181,7 +181,7 @@ global rule fixes all of them instead of each component lifting itself.
   `visual-viewport-inset` spec's expectation of a fresh instance per scope
   (14 failures). It is not a component because a template-less component
   fails `vue/valid-template-root`.
-- **Rules:** three unlayered rules in `app/assets/css/main.css`, next to the
+- **Rules:** four unlayered rules in `app/assets/css/main.css`, next to the
   `--sat` and `--sab` variables.
 
   ```css
@@ -205,6 +205,11 @@ global rule fixes all of them instead of each component lifting itself.
 
   html[data-keyboard-open] .modal:is([open], .modal-open) .modal-box {
     max-height: calc(var(--visible-height) - var(--sat) - 0.5rem);
+  }
+
+  html[data-keyboard-open] .modal-bottom > .modal-box {
+    --modal-bl: var(--radius-box);
+    --modal-br: var(--radius-box);
   }
   ```
 
@@ -254,6 +259,32 @@ global rule fixes all of them instead of each component lifting itself.
   while `html[data-keyboard-open]`, the same two values the text file and
   model picker sheets set from JS. It is CSS-only because it only needs the
   attribute the owner already writes.
+- **Rounded bottom corners while the keyboard is open:** daisyUI 5.7.50 sets
+  `--modal-bl: 0` and `--modal-br: 0` on `.modal-bottom > .modal-box`, so a
+  bottom sheet has square bottom corners because it is docked to the screen
+  edge. While `data-keyboard-open` is set the sheet floats above the keyboard,
+  Safari's address pill and the accessory bar, and square corners there look
+  like a bug. A fourth unlayered rule in `main.css`,
+  `html[data-keyboard-open] .modal-bottom > .modal-box`, sets both variables to
+  `var(--radius-box)`. The corners are square again as soon as the keyboard
+  closes and the attribute is removed. From `sm` up `sm:modal-middle` already
+  rounds all four corners, and desktop never gets the attribute.
+- **E2E coverage:** `tests/e2e/search/keyboard-inset.spec.ts` replaces
+  `window.visualViewport` with a fake before the app boots (an `EventTarget`
+  whose `height` is `innerHeight` minus a keyboard height set through
+  `window.__setKeyboardHeight`, which also dispatches `resize`). At 390 by 844
+  it checks that the search sheet bottom sits at `844 - 300` with rounded
+  bottom corners equal to the top ones and goes back to the screen edge with
+  square bottom corners, that a resize without a focused text field does not
+  open the keyboard state, and that the chat composer lifts above the
+  keyboard. At 1280 by 800 it checks that the centred dialog keeps four
+  rounded corners and no `padding-bottom`. The fake covers the CSS and the
+  wiring from the viewport reading to the `<html>` attribute, variables and
+  lifted composer. It cannot cover real iOS quirks such as `offsetTop`
+  equalling `scrollY`, which the unit tests in
+  `tests/unit/composables/visual-viewport-inset.spec.ts` cover, nor real
+  keyboard timing, which needs a device or the simulator (see the
+  verification steps below).
 - **ToolsMenu:** `ChatInput/ToolsMenu.client.vue` is a `modal modal-bottom`
   dialog below `md` (a popover from `md` up), so it receives the global rules,
   but it has no text field, so the inset never applies to it.
