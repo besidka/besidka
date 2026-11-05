@@ -317,7 +317,7 @@ future session/branch can resume from real evidence instead of re-deriving it.
   this doc (composer, small edit dialogs) has comparatively stable geometry
   once open.
 
-### Attempt 4 — `modal-middle` (current shipped state)
+### Attempt 4 — `modal-middle`
 
 - Dropped the bottom/top placement split entirely in favor of daisyUI's
   centered placement at all breakpoints, autofocus skip unchanged.
@@ -326,10 +326,29 @@ future session/branch can resume from real evidence instead of re-deriving it.
   session/branch opened to continue investigating properly, rather than
   iterating further placement guesses in this PR.
 
+### Attempt 5 — `modal-bottom sm:modal-middle` with the global keyboard inset (2026-11-05, PR #633)
+
+- Placement restored to the bottom sheet on phones and centred from `sm` up,
+  matching every other mobile dialog in the app, at the owner's request on
+  2026-11-05. Autofocus skip on coarse pointers unchanged.
+- The overlap is no longer solved per component. One global rule (see
+  `docs/chats/ios-keyboard.md`) reads the shared `visualViewport` inset and
+  pads the open dialog by it: the dialog keeps its full height, so the dim
+  still covers the whole screen, and the box stays docked just above the
+  keyboard. When typing narrows the results the box shrinks from the top, so
+  the failure from Attempt 3 (a variable-height box behind an already-open
+  keyboard) does not occur.
+- Verified in the iOS 27 Simulator on the PR preview (Safari): tapped the
+  input, typed a narrowing query on the on-screen keyboard. No overlap and no
+  manual scroll.
+
 ### Decision record
 
-- **Shipped**: `modal-middle`, all breakpoints, autofocus skipped on coarse
-  pointers. Accepted as the interim state, not treated as solved.
+- **Shipped**: Attempt 5, `modal-bottom sm:modal-middle` with the global
+  keyboard inset, autofocus skipped on coarse pointers. The owner asked for the
+  switch back to bottom sheets on 2026-11-05. Details and the measured
+  viewport states are in `docs/chats/ios-keyboard.md`. This supersedes the
+  interim `modal-middle` state of Attempt 4.
 - **Rejected**: `modal-top` — technically sound for the open-time pan
   mechanism, but the user found it visually undesirable and, since the
   autofocus skip already prevents that specific failure mode, it added
@@ -345,7 +364,7 @@ future session/branch can resume from real evidence instead of re-deriving it.
   breakage) — any follow-up here should read those findings first rather
   than re-attempting a naive live-metrics approach.
 
-### Suggested starting point for the next session
+### Suggested starting point for the next session (historical, before Attempt 5)
 
 - Reproduce Attempt 3's exact failure (type into the search modal with the
   keyboard already open, on a real iPhone) with the Stage 1 instrumentation
@@ -439,7 +458,8 @@ Each scenario should be repeated 10 times because the bug is intermittent.
 | 6 | Search modal: `modal-bottom`, input autofocused on open | Real device (iPhone, PWA/Safari) | Failed | Keyboard opened on modal open, covered the whole sheet; see "Search modal" section |
 | 7 | Search modal: `modal-top`, autofocus skipped on coarse pointer | Real device (iPhone) | Rejected by user | Technically fixed the open-time pan, but disliked visually; autofocus skip alone already covers the open-time case |
 | 8 | Search modal: `modal-bottom` restored, autofocus skip kept | Real device (iPhone) | Failed (new failure mode) | Fine at rest; keyboard overlap reappears once typing shrinks the modal's own height — a content-driven trigger, not an open-time pan |
-| 9 | Search modal: `modal-middle`, autofocus skip kept | Real device (iPhone) | Shipped as interim state | User's own call after testing; not treated as solved — see "Suggested starting point for the next session" |
+| 9 | Search modal: `modal-middle`, autofocus skip kept | Real device (iPhone) | Superseded by row 10 | User's own call after testing; interim state until 2026-11-05 |
+| 10 | Search modal: `modal-bottom sm:modal-middle` with the global keyboard inset | iOS 27 Simulator (PR #633 preview, Safari and PWA) | Shipped | Typing a narrowing query keeps the sheet docked above the keyboard; see Attempt 5 and docs/chats/ios-keyboard.md. Not yet confirmed on a real iPhone |
 
 ## Updated direction
 
@@ -472,8 +492,7 @@ But the current overlay implementation direction was wrong:
    `app/pages/chats/new.vue` and `app/pages/chats/[slug].vue`
 4. prioritize root-shell or overlay-layer refactor there instead of more modal
    experiments
-5. separately, resume the search-modal thread (see "Search modal (Cmd/Ctrl+K)"
-   above) in its own session/branch — shipped state is `modal-middle` as an
-   accepted interim, with the content-driven height-shrink failure mode still
-   unresolved and not yet attempted against any of the `visualViewport`
-   instrumentation this doc already describes
+5. the search-modal thread (see "Search modal (Cmd/Ctrl+K)" above) is
+   resolved by Attempt 5 in PR #633: a global keyboard inset pads every open
+   dialog, so the content-driven height-shrink case no longer overlaps; a
+   real-iPhone check is still pending

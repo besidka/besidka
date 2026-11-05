@@ -381,22 +381,11 @@ const sendButtonTitle = computed<string>(() => {
 
 const { bottomInset, isKeyboardOpen } = useVisualViewportInset()
 
-/**
- * Slides at 500ms like before and adds `bottom` at 250ms so the lift follows
- * the keyboard instead of snapping behind it while iOS still animates it away
- * after a send. Tailwind's `transition-transform` expands to the first four
- * properties, so the list is restated here.
- */
 const composerTransitionStyle: StyleValue = {
   transitionProperty: 'transform, translate, scale, rotate, bottom',
   transitionDuration: '500ms, 500ms, 500ms, 500ms, 250ms',
-  transitionTimingFunction: [
-    'ease-in-out',
-    'ease-in-out',
-    'ease-in-out',
-    'ease-in-out',
-    'ease-out',
-  ].join(', '),
+  transitionTimingFunction:
+    'ease-in-out, ease-in-out, ease-in-out, ease-in-out, ease-out',
 }
 
 const keyboardLiftStyle = computed<StyleValue>(() => {

@@ -233,6 +233,23 @@ describe('useVisualViewportInset', () => {
     expect(inset.bottomInset.value).toBe(330)
   })
 
+  it('treats a negative scrollY from overscroll as no scroll', () => {
+    mockWindowMetrics(714, -40)
+
+    const viewport = installViewport(714)
+    const { scope, inset } = createInset()
+
+    stopScope = () => scope.stop()
+
+    focusTextarea()
+    viewport.height = 384
+    viewport.offsetTop = 0
+    viewport.dispatchEvent(new Event('resize'))
+    nextFrame()
+
+    expect(inset.bottomInset.value).toBe(330)
+  })
+
   it('still counts a true visual viewport pan with no window scroll', () => {
     mockWindowMetrics(714, 0)
 

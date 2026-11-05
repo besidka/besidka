@@ -39,7 +39,7 @@ iOS Simulator in Safari on 2026-11-05.
 how much of the layout viewport the keyboard covers:
 
 ```
-viewportPan = max(0, visualViewport.offsetTop - window.scrollY)
+viewportPan = max(0, visualViewport.offsetTop - max(0, window.scrollY))
 bottomInset = max(0, round(innerHeight - visualViewport.height - viewportPan))
 ```
 
@@ -48,14 +48,15 @@ scrolls the window while the keyboard opens, `offsetTop` equals
 `window.scrollY` and fixed elements do not move with that scroll, so it is
 subtracted. This app never scrolls the window itself (pages scroll inside
 `.overflow-y-auto` containers, so `scrollY` is 0 with the keyboard closed), and
-a scrolled window with an `offsetTop` of 0 never adds height. The expression
-lives in `getCoveredHeight`.
+a scrolled window with an `offsetTop` of 0 never adds height. A negative
+`scrollY` from rubber-band overscroll counts as 0. The expression lives in
+`getCoveredHeight`.
 
 - It is one shared instance (`createSharedComposable`) for every consumer:
-  the composer, the scroll spacer, the dialog owner (`useKeyboardInsetRoot`) and, for the
-  safe-area padding only, the model picker sheet and the text file editor
-  sheet. The public API is `bottomInset`, `viewportHeight`, `isKeyboardOpen`
-  and `update`.
+  the composer, the scroll spacer, the dialog owner (`useKeyboardInsetRoot`)
+  and, for the safe-area padding only, the model picker sheet and the text
+  file editor sheet. The public API is `bottomInset`, `viewportHeight`,
+  `isKeyboardOpen` and `update`.
 - Readings are batched to one per animation frame. Listeners:
   `visualViewport` `resize` and `scroll`, `window` `resize`, and `document`
   `focusin` and `focusout`.
@@ -157,7 +158,8 @@ In every row with `offsetTop` above 0 it equals `scrollY`. The old formula
 so the search sheet sat under Safari's URL pill and the composer was not
 lifted. All five rows are table-driven cases in
 `tests/unit/composables/visual-viewport-inset.spec.ts`, next to a scrolled
-window with an `offsetTop` of 0 (unchanged) and a true pan with no scroll.
+window with an `offsetTop` of 0 (unchanged), a negative `scrollY` (unchanged)
+and a true pan with no scroll.
 
 ## Keyboard-aware dialogs
 
@@ -179,12 +181,21 @@ global rule fixes all of them instead of each component lifting itself.
   `visual-viewport-inset` spec's expectation of a fresh instance per scope
   (14 failures). It is not a component because a template-less component
   fails `vue/valid-template-root`.
-- **Rules:** two unlayered rules in `app/assets/css/main.css`, next to the
+- **Rules:** three unlayered rules in `app/assets/css/main.css`, next to the
   `--sat` and `--sab` variables.
 
   ```css
-  .modal:is([open], .modal-open) {
+  .modal {
     padding-bottom: var(--keyboard-inset, 0px);
+    transition:
+      overlay 0.3s allow-discrete,
+      visibility 0.3s allow-discrete,
+      background-color 0.3s ease-out,
+      opacity 0.1s ease-out,
+      padding-bottom 0.25s ease-out;
+  }
+
+  .modal:is([open], .modal-open) {
     transition:
       visibility 0s allow-discrete,
       background-color 0.3s ease-out,
@@ -215,11 +226,15 @@ global rule fixes all of them instead of each component lifting itself.
   beats any layered one, so no `!important` is needed. The box cap is the only
   rule that must not apply while the keyboard is closed (a fallback would
   still beat `max-h-[85dvh]`), so it is keyed on `data-keyboard-open`. The
-  dialog rule is an exact no-op at `0px`, so it stays on while closing and the
-  padding animates back together with the keyboard.
-- **Transition coupling:** `transition` is a shorthand, so the rule restates
-  daisyUI's `[open]` list (`visibility`, `background-color`, `opacity`) and
-  adds `padding-bottom`. If a daisyUI upgrade changes that list, update this
+  padding is set on the base `.modal` rule, not only on the open state: when
+  `[open]` is removed on close the padding must not drop to 0 at once while the
+  box slides out, so it keeps the inset and animates back with the keyboard.
+  It is an exact no-op at `0px`.
+- **Transition coupling:** `transition` is a shorthand, so the two rules
+  restate daisyUI's lists and add `padding-bottom`: the base list
+  (`overlay`, `visibility`, `background-color`, `opacity`) on `.modal` and the
+  `[open]` list (`visibility`, `background-color`, `opacity`) on the open
+  state. If a daisyUI upgrade changes that list, update this
   one. A dialog that opens while the keyboard is already up has no previous
   padding, so it does not slide in from under the keyboard.
 - **Per-component leftovers:** the model picker sheet and the text file sheet
@@ -239,8 +254,9 @@ global rule fixes all of them instead of each component lifting itself.
   while `html[data-keyboard-open]`, the same two values the text file and
   model picker sheets set from JS. It is CSS-only because it only needs the
   attribute the owner already writes.
-- **Not covered:** `ChatInput/ToolsMenu.client.vue` is a popover (md and up)
-  and a bottom sheet inside the composer, not a modal dialog.
+- **ToolsMenu:** `ChatInput/ToolsMenu.client.vue` is a `modal modal-bottom`
+  dialog below `md` (a popover from `md` up), so it receives the global rules,
+  but it has no text field, so the inset never applies to it.
 
 ## The send snap
 

@@ -46,10 +46,12 @@ function isTextEntryElement(element: Element | null): boolean {
  * only the part that is a true visual-viewport pan: when iOS scrolls the
  * window while the keyboard opens, `offsetTop` equals `window.scrollY` and
  * fixed elements do not move with it, so that scroll is subtracted. A scrolled
- * window with an `offsetTop` of 0 never adds height.
+ * window with an `offsetTop` of 0 never adds height, and a negative `scrollY`
+ * from rubber-band overscroll counts as 0.
  */
 function getCoveredHeight(viewport: VisualViewport): number {
-  const viewportPan = Math.max(0, viewport.offsetTop - window.scrollY)
+  const windowScroll = Math.max(0, window.scrollY)
+  const viewportPan = Math.max(0, viewport.offsetTop - windowScroll)
 
   return window.innerHeight - viewport.height - viewportPan
 }

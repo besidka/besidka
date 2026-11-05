@@ -476,8 +476,17 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --landing-header-offset: 4rem;
 }
 
-.modal:is([open], .modal-open) {
+.modal {
   padding-bottom: var(--keyboard-inset, 0px);
+  transition:
+    overlay 0.3s allow-discrete,
+    visibility 0.3s allow-discrete,
+    background-color 0.3s ease-out,
+    opacity 0.1s ease-out,
+    padding-bottom 0.25s ease-out;
+}
+
+.modal:is([open], .modal-open) {
   transition:
     visibility 0s allow-discrete,
     background-color 0.3s ease-out,
