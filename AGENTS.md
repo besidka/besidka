@@ -1253,6 +1253,38 @@ try {
 
 **Affected test mappings**: CI runs the full suite on every pull request, so an unregistered test still runs there. The mapping in `scripts/test-affected-check.mjs` now drives the pre-push hook (`.husky/pre-push`) and `pnpm run test:affected`, so when writing new test files you MUST still update it to register them — unregistered tests won't run locally when their source files change. Add new test files to existing test groups or create a new group as appropriate.
 
+## iOS Simulator Testing
+
+When a change touches mobile layout, the on-screen keyboard, bottom sheets,
+focus, paste or anything else iOS-specific, verify it in the iOS Simulator
+in **both** modes, because they behave differently (viewport, keyboard,
+safe areas, toolbars):
+
+1. **Safari**: open the page in Safari.
+2. **PWA**: in Safari use Share → Add to Home Screen, then open Besidka from
+   the home-screen icon (standalone mode) and repeat the same checks.
+
+Prefer testing a **deployed** build (the PR preview
+`https://pr-<n>-besidka.chernenko.workers.dev`), because it is closest to
+production. The PWA check is only meaningful there: `pnpm run dev` disables
+the PWA module (`devOptions.enabled: false`), so the page has no web app
+manifest and iOS opens the home-screen icon as a half-browser web app (title
+bar and toolbar) instead of full screen. The owner signs in on the preview;
+never type the owner's password.
+
+A local dev server (`pnpm run dev`, the simulator reaches the Mac's
+`localhost`) is fine for debugging when you need server logs or fast
+iteration, in Safari only. Sign in there with a test account created through
+the auth API with the e2e helper's dummy Turnstile token
+(`tests/e2e/helpers/auth.ts`). Confirm the final result on the deployed
+preview in both Safari and PWA mode: a bug can show in one mode and not the
+other.
+
+Show the on-screen keyboard (the simulator hides it while a hardware
+keyboard is connected) and focus fields by tapping, the way a user does:
+toggling the keyboard on an already focused field does not reproduce real
+behaviour. Report which build and mode each result came from.
+
 ## Commit Messages
 
 Conventional commits with types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`, `security`, `legal`, `kludge`
