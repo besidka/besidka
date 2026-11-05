@@ -3,9 +3,9 @@ import { shallowRef } from 'vue'
 import {
   LONG_PASTE_MIN_CHARACTERS,
   LONG_PASTE_MIN_LINES,
-  createPastedTextFileName,
   isImeEvent,
   isInsideOpenCodeFence,
+  isLongPaste,
   normalizeBulletLines,
   shouldConvertHtml,
   useMarkdownTextarea,
@@ -353,6 +353,21 @@ describe('useMarkdownTextarea paste', () => {
 
     expect(onLongPaste).not.toHaveBeenCalled()
     expect(preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('uses the 1200 character and 40 line thresholds', () => {
+    expect(LONG_PASTE_MIN_CHARACTERS).toBe(1200)
+    expect(LONG_PASTE_MIN_LINES).toBe(40)
+  })
+
+  it('keeps one short email as text and attaches three of them', () => {
+    const emailLine = 'See you on Monday, Jo'
+    const email = Array.from({ length: 15 }, () => emailLine).join('\n')
+    const threeEmails = [email, email, email].join('\n\n')
+
+    expect(email.length).toBeLessThanOrEqual(330)
+    expect(isLongPaste(email)).toBe(false)
+    expect(isLongPaste(threeEmails)).toBe(true)
   })
 
   it('measures converted HTML for the long paste decision', async () => {
@@ -991,17 +1006,5 @@ describe('markdown textarea helpers', () => {
     expect(shouldConvertHtml('<b>bold</b>')).toBe(true)
     expect(shouldConvertHtml('<pre>code</pre>')).toBe(true)
     expect(shouldConvertHtml(VS_CODE_HTML)).toBe(false)
-  })
-
-  it('names pasted text files with a sortable timestamp', () => {
-    expect(createPastedTextFileName(new Date(2026, 10, 4, 9, 5, 7, 42)))
-      .toBe('pasted-text-20261104-090507-042.txt')
-  })
-
-  it('gives files created in the same second distinct names', () => {
-    const first = createPastedTextFileName(new Date(2026, 10, 4, 9, 5, 7, 1))
-    const second = createPastedTextFileName(new Date(2026, 10, 4, 9, 5, 7, 2))
-
-    expect(first).not.toBe(second)
   })
 })

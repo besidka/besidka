@@ -143,6 +143,20 @@ describe('prose/PreStream.vue mermaid', () => {
     expect(mocks.renderAsync).toHaveBeenCalledTimes(1)
   })
 
+  it('exposes the diagram source for clipboard copying in diagram view',
+    async () => {
+      const wrapper = await mountPre(VALID_DIAGRAM)
+
+      await waitForDiagram(wrapper)
+
+      expect(wrapper.attributes('data-code-source')).toBe(VALID_DIAGRAM)
+      expect(wrapper.find('.js-clipboard-skip').exists()).toBe(true)
+
+      await wrapper.get('[data-testid="mermaid-toggle"]').trigger('click')
+
+      expect(wrapper.attributes('data-code-source')).toBeUndefined()
+    })
+
   it('copies the diagram source from the Copy menu rather than the svg',
     async () => {
       mocks.runExportAction.mockResolvedValue(true)

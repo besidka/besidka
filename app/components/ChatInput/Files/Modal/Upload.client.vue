@@ -107,8 +107,10 @@ function filterValidFiles(files: File[]): File[] {
   const invalid: string[] = []
 
   for (const file of files) {
-    if (formats.includes(file.type)) {
-      valid.push(file)
+    const normalizedFile = normalizeUploadFile(file)
+
+    if (formats.includes(normalizedFile.type)) {
+      valid.push(normalizedFile)
     } else {
       invalid.push(file.name)
     }

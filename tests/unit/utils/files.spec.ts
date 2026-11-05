@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  TEXT_FILE_PREVIEW_MAX_BYTES,
+  TEXT_FILE_VIEW_MAX_BYTES,
   addFileDownloadQuery,
   convertFilesToUIParts,
+  countTextLines,
+  getTextPreviewLines,
+  isTextFileType,
+  normalizeUploadFile,
+  resolveUploadMediaType,
   getFileDownloadUrl,
   getFileIcon,
   getSafeFileLinks,
@@ -168,6 +175,73 @@ describe('files utils', () => {
 
     it('accepts media the model can read', () => {
       expect(isMediaTypeRejectedByModel('image/png', () => true)).toBe(false)
+    })
+  })
+
+  describe('text file helpers', () => {
+    it('recognises text media types', () => {
+      expect(isTextFileType('text/plain')).toBe(true)
+      expect(isTextFileType('text/markdown')).toBe(true)
+      expect(isTextFileType('text/plain; charset=utf-8')).toBe(true)
+      expect(isTextFileType('application/pdf')).toBe(false)
+      expect(isTextFileType('image/png')).toBe(false)
+    })
+
+    it('resolves the upload media type from the name when it is empty', () => {
+      expect(resolveUploadMediaType(new File(['x'], 'notes.md')))
+        .toBe('text/markdown')
+      expect(resolveUploadMediaType(new File(['x'], 'NOTES.MARKDOWN')))
+        .toBe('text/markdown')
+      expect(resolveUploadMediaType(new File(['x'], 'notes.txt')))
+        .toBe('text/plain')
+      expect(resolveUploadMediaType(new File(['x'], 'archive.zip')))
+        .toBe('')
+    })
+
+    it('maps the markdown alias and keeps a declared type', () => {
+      expect(resolveUploadMediaType(
+        new File(['x'], 'a.md', { type: 'text/x-markdown' }),
+      )).toBe('text/markdown')
+      expect(resolveUploadMediaType(
+        new File(['x'], 'a.md', { type: 'application/pdf' }),
+      )).toBe('application/pdf')
+    })
+
+    it('normalises an untyped markdown file and keeps typed files as is',
+      async () => {
+        const untyped = new File(['# Title'], 'notes.md', {
+          lastModified: 42,
+        })
+        const normalized = normalizeUploadFile(untyped)
+        const typed = new File(['x'], 'photo.png', { type: 'image/png' })
+
+        expect(normalized.type).toBe('text/markdown')
+        expect(normalized.name).toBe('notes.md')
+        expect(normalized.lastModified).toBe(42)
+        expect(await normalized.text()).toBe('# Title')
+        expect(normalizeUploadFile(typed)).toBe(typed)
+      })
+
+    it('counts lines without a phantom trailing line', () => {
+      expect(countTextLines('')).toBe(0)
+      expect(countTextLines('one')).toBe(1)
+      expect(countTextLines('one\ntwo')).toBe(2)
+      expect(countTextLines('one\ntwo\n')).toBe(2)
+    })
+
+    it('previews the first non-empty lines, trimmed and shortened', () => {
+      expect(getTextPreviewLines('\n  a  \n\nb\nc\nd')).toEqual([
+        '  a',
+        'b',
+        'c',
+      ])
+      expect(getTextPreviewLines('x'.repeat(100), 3, 10)).toEqual([
+        'x'.repeat(10),
+      ])
+    })
+
+    it('keeps the preview limit below the view limit', () => {
+      expect(TEXT_FILE_PREVIEW_MAX_BYTES).toBeLessThan(TEXT_FILE_VIEW_MAX_BYTES)
     })
   })
 })

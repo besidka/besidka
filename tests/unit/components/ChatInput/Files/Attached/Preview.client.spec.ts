@@ -154,4 +154,77 @@ describe('ChatInput/Files/Attached/Preview', () => {
         .attributes('data-variant'),
     ).toBe('pill')
   })
+
+  it('renders pasted texts as text chips before the files', async () => {
+    const wrapper = await mountSuspended(Preview, {
+      props: {
+        files,
+        pastedTexts: [
+          { id: 'pasted-1', content: 'Hello\nWorld\nThird\nFourth' },
+        ],
+      },
+    })
+
+    const item = wrapper.get('[data-testid="pasted-text-item"]')
+    const carousel = wrapper.get('.carousel')
+
+    expect(carousel.element.firstElementChild).toBe(item.element)
+    expect(item.findAll('[data-testid="files-preview-text-lines"] p')
+      .map(line => line.text())).toEqual(['Hello', 'World', 'Third'])
+    expect(item.get('[data-testid="files-preview-text-meta"]').text())
+      .toBe('4 lines, 24 B')
+    expect(wrapper.get('[data-testid="files-preview-detach-all"]').text())
+      .toContain('2')
+  })
+
+  it('renders a pasted text alone as an attachment region', async () => {
+    const wrapper = await mountSuspended(Preview, {
+      props: {
+        files: [],
+        tiles: [createTile({})],
+        pastedTexts: [{ id: 'pasted-1', content: 'Body' }],
+      },
+    })
+
+    expect(wrapper.find('[role="region"]').exists()).toBe(true)
+    expect(
+      wrapper.get('[data-testid="chat-input-tile-search-body"]')
+        .attributes('data-variant'),
+    ).toBe('square')
+  })
+
+  it('emits open and remove for a pasted text', async () => {
+    const wrapper = await mountSuspended(Preview, {
+      props: {
+        files: [],
+        pastedTexts: [{ id: 'pasted-1', content: 'Body' }],
+      },
+    })
+
+    await wrapper.get('[data-testid="files-preview-text-open"]')
+      .trigger('click')
+    await wrapper.get('[data-testid="pasted-text-remove"]').trigger('click')
+
+    expect(wrapper.emitted('open-pasted')).toEqual([['pasted-1']])
+    expect(wrapper.emitted('remove-pasted')).toEqual([['pasted-1']])
+  })
+
+  it('renders an attached text file as a text card that opens it',
+    async () => {
+      const wrapper = await mountSuspended(Preview, {
+        props: {
+          files: [{
+            storageKey: 'notes-key',
+            name: 'notes.md',
+            type: 'text/markdown',
+            size: 2 * 1024 * 1024 * 1024,
+          }],
+        },
+      })
+
+      await wrapper.get('[data-testid="files-preview-text-open"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('open-text')).toEqual([['notes-key']])
+    })
 })

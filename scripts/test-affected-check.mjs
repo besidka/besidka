@@ -129,6 +129,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/Projects/InstructionsCard.spec.ts',
+    'tests/unit/utils/pasted-text.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/TextCard.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/components/Chat/TextFileModal.client.spec.ts',
     'tests/e2e/chat/chat-input-markdown.spec.ts',
   ]
   const profileSettingsTests = [
@@ -640,6 +644,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/shared/context-menu-clipping.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
+    'tests/unit/utils/clipboard-html.spec.ts',
   ]
 
   const messageUsageTests = [
@@ -1777,6 +1782,13 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^app\/utils\/clipboard-html\.ts$/,
+      tests: [
+        'tests/unit/utils/clipboard-html.spec.ts',
+        ...contextMenuTests,
+      ],
+    },
+    {
       pattern: /^shared\/utils\/model-citation-markers\.ts$/,
       tests: [
         'tests/unit/utils/model-citation-markers.spec.ts',
@@ -2754,7 +2766,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/markdown-textarea\.ts|app\/utils\/knowledge-html-to-markdown\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard)\.vue)$/,
+        /^(app\/composables\/markdown-textarea\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client)|Chat\/TextFileModal\.client)\.vue)$/,
       tests: markdownTextareaTests,
     },
     {

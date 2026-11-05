@@ -22,8 +22,8 @@ describe('ChatInput/Files/Modal/Upload', () => {
     const wrapper = await mountSuspended(Upload)
 
     expect(wrapper.get('[data-testid="files-upload-input"]').attributes('accept'))
-      .toBe('image/png,image/jpeg,image/webp,application/pdf,text/plain')
-    expect(wrapper.text()).toContain('png, jpeg, webp, pdf, plain')
+      .toBe('image/png,image/jpeg,image/webp,application/pdf,text/plain,text/markdown')
+    expect(wrapper.text()).toContain('png, jpeg, webp, pdf, plain, markdown')
   })
 
   it('narrows accepted formats when image input is unsupported', async () => {
@@ -34,8 +34,8 @@ describe('ChatInput/Files/Modal/Upload', () => {
     })
 
     expect(wrapper.get('[data-testid="files-upload-input"]').attributes('accept'))
-      .toBe('application/pdf,text/plain')
-    expect(wrapper.text()).toContain('pdf, plain')
+      .toBe('application/pdf,text/plain,text/markdown')
+    expect(wrapper.text()).toContain('pdf, plain, markdown')
     expect(wrapper.text()).not.toContain('png')
   })
 
@@ -88,7 +88,7 @@ describe('ChatInput/Files/Modal/Upload', () => {
     })
 
     expect(wrapper.get('[data-testid="files-upload-input"]').attributes('accept'))
-      .toBe('image/png,image/jpeg,image/webp,text/plain')
+      .toBe('image/png,image/jpeg,image/webp,text/plain,text/markdown')
     expect(wrapper.text()).not.toContain('pdf')
   })
 
@@ -100,7 +100,7 @@ describe('ChatInput/Files/Modal/Upload', () => {
     })
 
     expect(wrapper.get('[data-testid="files-upload-input"]').attributes('accept'))
-      .toBe('text/plain')
+      .toBe('text/plain,text/markdown')
   })
 
   it('rejects a PDF file selected while PDF input is unsupported', async () => {

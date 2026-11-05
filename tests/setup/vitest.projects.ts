@@ -29,6 +29,7 @@ export const nuxtSpecDirectories: readonly string[] = [
 
 export const nuxtSpecExceptions: readonly string[] = [
   'tests/unit/utils/auth.spec.ts',
+  'tests/unit/utils/clipboard-html.spec.ts',
   'tests/unit/utils/diagram-export-drawio.spec.ts',
   'tests/unit/utils/diagram-export-fonts.spec.ts',
   'tests/unit/utils/diagram-export-png.spec.ts',

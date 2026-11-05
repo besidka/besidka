@@ -5,7 +5,7 @@ are sent as Markdown and rendered with MDC (remark-gfm plus remark-breaks, so
 a single newline is already a line break). `useMarkdownTextarea`
 (`app/composables/markdown-textarea.ts`) makes that textarea Markdown-aware.
 It is bound in `app/components/ChatInput.client.vue` (`/chats/new` and
-`/chats/[slug]`) and, without the long-paste attachment, in
+`/chats/[slug]`) and, without the long-paste chip, in
 `app/components/Projects/InstructionsCard.vue`.
 
 ## Why
@@ -68,40 +68,76 @@ synchronously, before any await, and the insertion uses that range. If the
 value changed in the meantime (the user typed, or sent the message), the text
 is appended at the end of the current value instead of the stale range. The
 same snapshot is passed to `onLongPaste(text, snapshot)` and back to the
-composable's `insertText(text, snapshot)` for the fallback. With a snapshot,
-`insertText` does not call `focus()`, so a user who moved to another field
-does not lose it.
+composable's `insertText(text, snapshot)` when the chip limit is reached.
+With a snapshot, `insertText` does not call `focus()`, so a user who moved to
+another field does not lose it.
 
-## Long paste becomes an attachment
+## Long paste becomes a pasted text chip
 
 After conversion and normalisation, a text longer than
-`LONG_PASTE_MIN_CHARACTERS` (4000) or with more than `LONG_PASTE_MIN_LINES`
-(80) lines is not inserted, unless the caret is inside an open code fence:
-there the text is inserted verbatim, because attaching it would pull code out
-of the fence the user is writing. Otherwise the composable calls
-`options.onLongPaste(text, snapshot)` and `ChatInput.client.vue` wraps it in
-`new File([text], 'pasted-text-YYYYMMDD-HHmmss-SSS.txt', { type: 'text/plain' })`
-(milliseconds avoid same-second name collisions)
-and passes it to `uploadFiles([file])`, the same path as any attachment (the
-chip shows the file name and the `lucide:file-text` icon, no image preview).
-Without an `onLongPaste` option (the project instructions card) the text is
-inserted normally.
+`LONG_PASTE_MIN_CHARACTERS` (1200) or with more than `LONG_PASTE_MIN_LINES`
+(40) lines is not inserted into the textarea. The owner's calibration
+(2026-11-05): one 15-line, 330-character email stays text; three of them
+pasted at once (about 1000 characters, 47 lines) become a chip. Inside an open
+code fence the text is always inserted verbatim, because a chip would pull
+code out of the fence the user is writing. Without an `onLongPaste` option
+(the project instructions card) the text is inserted normally.
 
-`text/plain` is safe for every provider:
+The chip is **visual only**. `ChatInput.client.vue` keeps the pending pastes
+in local state (`pastedTexts`, `PastedText` from `app/utils/pasted-text.ts`)
+and shows them in the attachments row (`Files/Attached/Preview.client.vue`,
+before the files) as `Files/Attached/TextCard.vue`: the first three non-empty
+lines, "Pasted text", and "N lines, size". On send,
+`joinMessageWithPastedTexts` appends every block to the end of the typed text,
+separated by a blank line (`typed\n\nblock 1\n\nblock 2`); with nothing
+typed the message is just the blocks, and with no blocks the typed text is
+sent byte for byte as before. `sendMessage` writes the joined text into the
+`message` model before `emit('submit')`, because both parents read their own
+model synchronously in the submit handler (`new.vue` `onSubmit`,
+`useChat().submit`). The request, D1, the model, search, memory, titles, MCP
+and shared pages therefore all see one ordinary text part.
 
-- it is in `allowedFileFormats` (`nuxt.config.ts`) and `AllowedFileFormat`
-  (`shared/types/files.d.ts`), so the upload endpoints accept it;
-- `isMediaTypeRejectedByModel` only gates `image/*` and `application/pdf`,
-  and `createInputMediaTypePredicate` always allows `text/*`, so no model
-  rejects it;
-- `server/utils/files/convert-files-for-ai.ts` reads `text/*` files from R2 and
-  inlines them as text parts, so no provider needs native file support.
+- **Edit**: clicking a chip opens `Chat/TextFileModal.client.vue` (mounted
+  per open, `v-if` plus `key`, because it loads its content on mount) with an
+  editable textarea, a character and line counter, Save (enabled only for a
+  changed, non-blank draft), Cancel and "Insert as text". Insert moves the
+  content into the textarea at the caret and removes the chip.
+- **Remove**: the chip's x button removes it without a confirmation (the text
+  is still on the clipboard).
+- **Send**: a message with only chips is sendable (`hasMessage` counts them).
+- **Limit**: at most `MAX_PASTED_TEXTS` (10) chips, counted separately from
+  the file cap (`maxFilesPerMessage`). A further long paste is inserted into
+  the textarea at the paste-time snapshot with a warning toast.
+- **Length cap**: there is no client-side cap on message length. The joined
+  text goes through the same request as typed text, so a message over
+  `MAX_USER_MESSAGE_TEXT_LENGTH` (200 000 characters,
+  `server/utils/chats/request-schema.ts`) gets the same 400 "Invalid request
+  body" as an equally long typed message.
+- **Drafts**: chips are not persisted. A reload before sending loses them
+  (the `chat_input` preference only holds the typed text). A failed send on
+  `/chats/new` restores the joined text into the textarea and the
+  `chat_input_backup` draft backup, so nothing is lost, but it comes back as
+  text, not as chips.
+- **Auto web search**: the `https://` auto-enable watcher reads the textarea,
+  so a URL that is only inside a chip does not turn web search on.
 
-`uploadFiles` (`app/composables/chat-files.ts`) resolves `true` only when the
-files were accepted and queued, and `false` on every early return (unsupported
-type, consent declined, file count or size caps). `attachLongPaste` awaits it
-and, on `false` (or a thrown error), inserts the pasted text at the paste-time
-snapshot through the composable's `insertText`, so a long paste is never lost.
+Uploaded text files (`text/plain`, `text/markdown`) in the same row also use
+`TextCard` (preview fetched lazily up to `TEXT_FILE_PREVIEW_MAX_BYTES`) and
+open the modal read-only with Copy, Open raw and Download (not loaded above
+`TEXT_FILE_VIEW_MAX_BYTES`).
+
+### Why not a file, and why not a message part
+
+The first version of this feature uploaded a long paste as
+`pasted-text-*.txt`. The owner dropped that on 2026-11-05: every paste became a file in the file manager and counted
+against the storage quota, while a paste is a one-off that belongs to one
+message. A dedicated message part (a marker in `providerMetadata`, or a
+`data-pasted-text` part) was also considered and rejected: the send schema
+(`userMessagePartsSchema`) is strict, and every consumer of user text (the
+history sanitizer, FTS search, memory extraction, chat titles, MCP
+`get_chat`, shared pages, copy) would need to learn the new shape. Appending
+plain text needs none of that. The trade-off: a sent message shows the pasted
+text inline as Markdown, not as a chip.
 
 ## Keyboard
 
@@ -230,6 +266,63 @@ allowlist of assistant HTML (sanitizing what `rehype-raw` lets through, as the
 user path does by not parsing it at all) is a separate follow-up and is not
 done here.
 
+## Copying messages
+
+The message context menu "Copy" and a native selection copy (select text in a
+message, press Cmd+C) both put clean semantic HTML on the clipboard, so a paste
+into Apple Mail, Gmail or Docs uses the target app's own fonts, real lists and
+bold, and no bubble tint.
+
+Why not `navigator.clipboard.write`: Chromium sanitizes the `text/html` of an
+async `ClipboardItem` by re-serializing it in the page's style context. Every
+element gets its computed style inlined: `font-family: Nunito`, an `oklch()`
+colour, the bubble's `background-color`, `margin: 0; padding: 0` and Tailwind
+preflight's `list-style: none`. A copy of one short message put about 9.7 KB of
+that on the pasteboard, and Mail showed a pink background, Nunito, no bullets
+and no paragraph spacing.
+
+The fix is a synchronous `copy` event. `copyRich` in
+`app/composables/message-copy.ts` registers a one-shot capture listener on
+`document`, calls `document.execCommand('copy')` inside the click handler, and
+the listener calls `clipboardData.setData('text/html', ...)` and
+`setData('text/plain', ...)` then `preventDefault()`. That data reaches the
+pasteboard unchanged (about 1 KB). The listener always comes off again, and the
+path counts only when `execCommand` returned `true` and the listener actually
+ran. Everything before `execCommand` is synchronous, because WebKit's transient
+activation dies across an `await`. The fallbacks, in order: the async
+`ClipboardItem` write (still sanitized), `writeText`, and the old
+contenteditable `execCommand` path.
+
+`app/utils/clipboard-html.ts` cleans the HTML first (parsed in an inert
+document, so nothing loads or runs): comments (Vue's `<!--[-->`), `class`,
+`style`, `id` and `data-*` are dropped; buttons, svg and `aria-hidden` or
+`.js-clipboard-skip` chrome are removed; non-semantic wrappers (the table
+scroller `div`, `span`) are unwrapped; a code block becomes
+`<pre><code>text</code></pre>`; a mermaid diagram in diagram view becomes its
+source in the same block, read from the `data-code-source` attribute that
+`prose/PreStream.vue` sets only while the diagram is shown; links keep only a
+resolved `href` (http, https, mailto, tel); images keep `src` (made absolute)
+and `alt`; tables get `border`, `cellpadding` and `cellspacing` attributes so
+they have lines without any style. The output starts with
+`<meta charset="utf-8">` and carries no font styles.
+
+Native selection copy is intercepted by `@copy` on the root element of
+`Chat/Message.vue`, which both `/chats/[slug]` and `/shared/[slug]` use. It
+acts only when every range of the selection lies inside one `.js-message-text`;
+a selection that touches the avatar, reasoning, tools or two messages keeps
+the browser's behaviour. Each range is `cloneContents()`-ed, wrapped back in
+its list or table when the selection started inside one (an ordered list keeps
+its numbers through `start`), cleaned, and rendered to plain text by
+`domToPlainText`: `- ` for bullets, `1. ` numbering, indented nested lists,
+blank lines between paragraphs, code verbatim, tables as `a | b` rows. A
+selection inside a code block becomes a `<pre><code>` block, or an inline
+`<code>` when it is one line. A selection that is only text still goes through
+the same path, because the native copy has the Nunito problem too.
+
+Not verified outside Chromium: whether Safari and Firefox fire the `copy` event
+for `execCommand('copy')` with no selection. If not, `copyRich` falls through
+to the async write and the paste is styled again, not broken.
+
 ## Rejected for now: a WYSIWYG editor
 
 TipTap or ProseMirror was considered and deferred. The textarea is kept
@@ -264,8 +357,18 @@ than structure-preserving paste.
 - `tests/e2e/chat/chat-input-markdown.spec.ts` (the `markdown` test scenario in
   `server/utils/chats/test/markdown-fixture.ts`, including an iframe directive
   and `Vec<String>`).
+- `tests/unit/utils/clipboard-html.spec.ts`,
+  `tests/unit/composables/message-copy.spec.ts` and the `onCopy` block of
+  `tests/unit/components/Chat/Message.spec.ts` (copying messages).
 - `tests/unit/components/ChatInput.spec.ts` (`markdown-aware textarea`) and
   `tests/unit/components/Projects/InstructionsCard.spec.ts`.
+- Pasted text chips: `tests/unit/utils/pasted-text.spec.ts`,
+  `tests/unit/components/ChatInput/Files/Attached/TextCard.spec.ts`,
+  `tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts`,
+  `tests/unit/components/Chat/TextFileModal.client.spec.ts`, the text file
+  helpers in `tests/unit/utils/files.spec.ts`, and two e2e tests in
+  `tests/e2e/chat/chat-input-markdown.spec.ts` (chip, no `/api/v1/files`
+  request, edit, joined send payload; Insert as text).
 
 Not covered by the jsdom-style environment (happy-dom): the real
 `execCommand` path and native undo. Verify once in a browser: paste an Apple

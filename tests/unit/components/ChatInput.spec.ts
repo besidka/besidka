@@ -7,6 +7,7 @@ import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import { LONG_PASTE_MIN_CHARACTERS } from '../../../app/composables/markdown-textarea'
+import { MAX_PASTED_TEXTS } from '../../../app/utils/pasted-text'
 import { REVEAL_GUARD_DURATION_MS } from '../../../app/composables/reveal-guard'
 
 const mocks = vi.hoisted(() => ({
@@ -65,6 +66,21 @@ const filesModalStub = defineComponent({
   template: '<div />',
 })
 
+const textFileModalStub = defineComponent({
+  name: 'ChatTextFileModalStub',
+  props: {
+    open: { type: Boolean, default: false },
+    name: { type: String, default: '' },
+    content: { type: String, default: undefined },
+    url: { type: String, default: undefined },
+    downloadUrl: { type: String, default: undefined },
+    isReadonly: { type: Boolean, default: false },
+    canInsert: { type: Boolean, default: false },
+  },
+  emits: ['save', 'insert', 'update:open'],
+  template: '<div data-testid="text-file-modal-stub" />',
+})
+
 const uiButtonStub = defineComponent({
   name: 'UiButtonStub',
   props: {
@@ -103,6 +119,8 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
         LazyChatInputFilesDropZone: true,
         LazyChatScroll: true,
         LazyChatInputFilesAttachedPreview: true,
+        LazyChatTextFileModal: textFileModalStub,
+        ChatTextFileModal: textFileModalStub,
         LazyChatInputModelsTrigger: true,
         LazyChatInputFilesTrigger: true,
         LazyChatInputReasoningTrigger: true,
@@ -118,6 +136,23 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
 }
 
 type ChatInputWrapper = Awaited<ReturnType<typeof mountChatInput>>
+
+function getPastedTextItems(wrapper: ChatInputWrapper) {
+  return wrapper.findAll('[data-testid="pasted-text-item"]')
+}
+
+async function openPastedText(wrapper: ChatInputWrapper, index: number = 0) {
+  await getPastedTextItems(wrapper)[index]!
+    .get('[data-testid="files-preview-text-open"]')
+    .trigger('click')
+  await vi.waitFor(() => {
+    expect(getTextFileModal(wrapper).exists()).toBe(true)
+  })
+}
+
+function getTextFileModal(wrapper: ChatInputWrapper) {
+  return wrapper.findComponent({ name: 'ChatTextFileModalStub' })
+}
 
 async function openToolsPanel(wrapper: ChatInputWrapper) {
   await wrapper.get('[data-testid="chat-input-tools-trigger"]')
@@ -450,65 +485,189 @@ describe('ChatInput.client', () => {
       expect(element.value).toBe('- one\n- ')
     })
 
-    it('attaches a long paste as a text/plain file instead of inserting it', async () => {
+    it('keeps a long paste as a pasted text chip without uploading it', async () => {
       const wrapper = await mountChatInput()
       const textarea = wrapper.get('textarea')
-      const longText = 'x'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+      const longText = `first line\n${'x'.repeat(LONG_PASTE_MIN_CHARACTERS)}`
 
       textarea.element.dispatchEvent(createTextPasteEvent(longText))
       await flushPromises()
 
-      expect(mocks.uploadFiles).toHaveBeenCalledTimes(1)
+      const items = getPastedTextItems(wrapper)
 
-      const [[file]] = mocks.uploadFiles.mock.calls[0] as [[File]]
-
-      expect(file.type).toBe('text/plain')
-      expect(file.name).toMatch(/^pasted-text-\d{8}-\d{6}-\d{3}\.txt$/)
-      expect(await file.text()).toBe(longText)
+      expect(mocks.uploadFiles).not.toHaveBeenCalled()
       expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+      expect(items).toHaveLength(1)
+      expect(items[0]!.text()).toContain('first line')
+      expect(items[0]!.text()).toContain('Pasted text')
+      expect(items[0]!.get('[data-testid="files-preview-text-meta"]').text())
+        .toMatch(/^2 lines, /)
     })
 
-    it('inserts the pasted text when the upload is refused', async () => {
-      mocks.uploadFiles.mockResolvedValueOnce(false)
-
-      const wrapper = await mountChatInput()
-      const textarea = wrapper.get('textarea')
-      const longText = 'y'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
-
-      textarea.element.dispatchEvent(createTextPasteEvent(longText))
-      await flushPromises()
-
-      expect(mocks.uploadFiles).toHaveBeenCalledTimes(1)
-      expect((textarea.element as HTMLTextAreaElement).value).toBe(longText)
-    })
-
-    it('inserts the pasted text when the upload throws', async () => {
-      mocks.uploadFiles.mockRejectedValueOnce(new Error('policy failed'))
-
-      const wrapper = await mountChatInput()
-      const textarea = wrapper.get('textarea')
-      const longText = 'z'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
-
-      textarea.element.dispatchEvent(createTextPasteEvent(longText))
-      await flushPromises()
-
-      expect((textarea.element as HTMLTextAreaElement).value).toBe(longText)
-    })
-
-    it('inserts a refused long paste at the original caret', async () => {
-      mocks.uploadFiles.mockResolvedValueOnce(false)
-
+    it('inserts a long paste at the caret once the chip limit is reached', async () => {
       const wrapper = await mountChatInput()
       const textarea = wrapper.get('textarea')
       const element = textarea.element as HTMLTextAreaElement
       const longText = 'q'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      for (let index = 0; index < MAX_PASTED_TEXTS; index++) {
+        element.dispatchEvent(createTextPasteEvent(longText))
+      }
+      await flushPromises()
 
       await textarea.setValue('abcd')
       element.setSelectionRange(2, 2)
       element.dispatchEvent(createTextPasteEvent(longText))
       await flushPromises()
 
+      expect(getPastedTextItems(wrapper)).toHaveLength(MAX_PASTED_TEXTS)
       expect(element.value).toBe(`ab${longText}cd`)
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        `You can attach up to ${MAX_PASTED_TEXTS} pasted texts.`,
+        'The text was inserted into the message instead.',
+      )
+    })
+
+    it('sends a message that has only pasted text', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const longText = 'p'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      textarea.element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+
+      const sendButton = wrapper.get('[data-testid="send-message"]')
+
+      expect(sendButton.attributes('disabled')).toBeUndefined()
+
+      await sendButton.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(wrapper.emitted('update:message')).toEqual([[longText], ['']])
+      expect(getPastedTextItems(wrapper)).toHaveLength(0)
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+    })
+
+    it('appends pasted blocks after the typed text on send', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const firstPaste = 'a'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+      const secondPaste = 'b'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      await textarea.setValue('Compare these two:\n')
+      textarea.element.dispatchEvent(createTextPasteEvent(firstPaste))
+      textarea.element.dispatchEvent(createTextPasteEvent(secondPaste))
+      await flushPromises()
+
+      const emittedBeforeSend = wrapper.emitted('update:message')?.length ?? 0
+
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(wrapper.emitted('update:message')?.slice(emittedBeforeSend))
+        .toEqual([
+          [`Compare these two:\n\n${firstPaste}\n\n${secondPaste}`],
+          [''],
+        ])
+    })
+
+    it('opens an editable modal for a chip and saves the edit', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const longText = 'e'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      textarea.element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+      await openPastedText(wrapper)
+
+      const modal = getTextFileModal(wrapper)
+
+      expect(modal.props()).toMatchObject({
+        open: true,
+        name: 'Pasted text',
+        content: longText,
+        canInsert: true,
+        isReadonly: false,
+      })
+
+      modal.vm.$emit('save', 'edited line one\nedited line two')
+      await flushPromises()
+
+      expect(getTextFileModal(wrapper).exists()).toBe(false)
+      expect(getPastedTextItems(wrapper)[0]!.text())
+        .toContain('edited line one')
+
+      await openPastedText(wrapper)
+
+      expect(getTextFileModal(wrapper).props('content'))
+        .toBe('edited line one\nedited line two')
+    })
+
+    it('moves a chip into the textarea at the caret with Insert as text', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+      const longText = 'i'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      await textarea.setValue('abcd')
+      element.setSelectionRange(2, 2)
+      element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+      await openPastedText(wrapper)
+
+      getTextFileModal(wrapper).vm.$emit('insert', 'NEW')
+      await flushPromises()
+
+      expect(element.value).toBe('abNEWcd')
+      expect(getPastedTextItems(wrapper)).toHaveLength(0)
+      expect(getTextFileModal(wrapper).exists()).toBe(false)
+    })
+
+    it('removes a chip', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        'r'.repeat(LONG_PASTE_MIN_CHARACTERS + 1),
+      ))
+      await flushPromises()
+
+      await wrapper.get('[data-testid="pasted-text-remove"]').trigger('click')
+      await flushPromises()
+
+      expect(getPastedTextItems(wrapper)).toHaveLength(0)
+      expect(wrapper.get('[data-testid="send-message"]').attributes('disabled'))
+        .toBeDefined()
+    })
+
+    it('opens an attached text file read-only', async () => {
+      const wrapper = await mountChatInput({
+        files: [{
+          id: 'file-1',
+          storageKey: 'notes-key',
+          name: 'notes.md',
+          size: 2 * 1024 * 1024 * 1024,
+          type: 'text/markdown',
+        }],
+      })
+
+      await wrapper
+        .get('[data-file-name="notes.md"] [data-testid="files-preview-text-open"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(getTextFileModal(wrapper).exists()).toBe(true)
+      })
+
+      expect(getTextFileModal(wrapper).props()).toMatchObject({
+        open: true,
+        name: 'notes.md',
+        isReadonly: true,
+        canInsert: false,
+        url: '/files/notes-key',
+        downloadUrl: '/files/notes-key?download=1',
+      })
     })
 
     it('does not send on Enter keydown with keyCode 229', async () => {
@@ -544,20 +703,6 @@ describe('ChatInput.client', () => {
 
       expect(element.value).toBe('- one\n- ')
       expect(wrapper.emitted('submit')).toBeUndefined()
-    })
-
-    it('keeps the textarea empty when the upload is accepted', async () => {
-      mocks.uploadFiles.mockResolvedValueOnce(true)
-
-      const wrapper = await mountChatInput()
-      const textarea = wrapper.get('textarea')
-
-      textarea.element.dispatchEvent(createTextPasteEvent(
-        'y'.repeat(LONG_PASTE_MIN_CHARACTERS + 1),
-      ))
-      await flushPromises()
-
-      expect((textarea.element as HTMLTextAreaElement).value).toBe('')
     })
 
     it('continues a list on plain Enter on mobile without sending', async () => {

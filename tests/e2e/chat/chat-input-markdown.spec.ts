@@ -39,6 +39,23 @@ test.beforeEach(async ({ context }) => {
   ])
 })
 
+const LONG_PASTE = Array.from({ length: 45 }, (_line, index) => {
+  return `Line ${index + 1} of the pasted report`
+}).join('\n')
+
+async function pastePlainText(textarea: Locator, text: string) {
+  await textarea.evaluate((element, plain) => {
+    const dataTransfer = new DataTransfer()
+
+    dataTransfer.setData('text/plain', plain)
+    element.dispatchEvent(new ClipboardEvent('paste', {
+      clipboardData: dataTransfer,
+      bubbles: true,
+      cancelable: true,
+    }))
+  }, text)
+}
+
 async function openNewChat(page: Page): Promise<Locator> {
   await page.goto('/chats/new')
   await waitForHydration(page)
@@ -129,4 +146,87 @@ test.describe('Chat input markdown', () => {
 
     await expect(textarea).toHaveValue('- item\n- ')
   })
+
+  test('keeps a long paste as a chip, edits it and appends it on send',
+    async ({ page }) => {
+      const fileRequests: string[] = []
+      const sentBodies: { parts: { type: string, text?: string }[] }[] = []
+
+      page.on('request', (request) => {
+        if (request.url().includes('/api/v1/files')) {
+          fileRequests.push(request.url())
+        }
+      })
+
+      await page.route('**/api/v1/profiles/keys**', async (route) => {
+        await route.fulfill({
+          json: { keys: [{ provider: 'google', hasKey: true }] },
+        })
+      })
+
+      await page.route('**/api/v1/chats/new', async (route) => {
+        sentBodies.push(route.request().postDataJSON())
+        await route.fulfill({
+          status: 503,
+          json: { message: 'Stubbed send failure' },
+        })
+      })
+
+      const textarea = await openNewChat(page)
+
+      await pastePlainText(textarea, LONG_PASTE)
+
+      const chip = page.locator('[data-testid="pasted-text-item"]')
+
+      await expect(chip).toHaveCount(1)
+      await expect(chip).toContainText('Line 1 of the pasted report')
+      await expect(chip).toContainText('45 lines')
+      await expect(textarea).toHaveValue('')
+
+      await chip.locator('[data-testid="files-preview-text-open"]').click()
+
+      const modal = page.locator('[data-testid="text-file-modal"]')
+      const modalTextarea = modal
+        .locator('[data-testid="text-file-modal-textarea"]')
+
+      await expect(modal).toBeVisible()
+      await expect(modalTextarea).toHaveValue(LONG_PASTE)
+
+      await modalTextarea.fill(`${LONG_PASTE}\nEdited ending`)
+      await modal.locator('[data-testid="text-file-modal-save"]').click()
+
+      await expect(modal).toBeHidden()
+      await expect(chip).toContainText('46 lines')
+
+      await textarea.fill('Summarize this report:')
+      await page.locator('[data-testid="send-message"]').click()
+
+      await expect.poll(() => sentBodies.length).toBe(1)
+
+      const expectedText = 'Summarize this report:\n\n'
+        + `${LONG_PASTE}\nEdited ending`
+
+      expect(sentBodies[0]!.parts).toEqual([
+        { type: 'text', text: expectedText },
+      ])
+      await expect(textarea).toHaveValue(expectedText)
+      await expect(chip).toHaveCount(0)
+      expect(fileRequests).toEqual([])
+    })
+
+  test('moves a pasted chip into the textarea with Insert as text',
+    async ({ page }) => {
+      const textarea = await openNewChat(page)
+
+      await textarea.fill('Before ')
+      await pastePlainText(textarea, LONG_PASTE)
+
+      const chip = page.locator('[data-testid="pasted-text-item"]')
+
+      await chip.locator('[data-testid="files-preview-text-open"]').click()
+      await page.locator('[data-testid="text-file-modal-insert"]').click()
+
+      await expect(chip).toHaveCount(0)
+      await expect(textarea).toHaveValue(`Before ${LONG_PASTE}`)
+    })
 })

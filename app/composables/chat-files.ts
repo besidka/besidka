@@ -191,7 +191,9 @@ export function useChatFiles(
    * accepted and queued, false when they were refused before queuing.
    */
   async function uploadFiles(candidateFiles: File[]): Promise<boolean> {
-    const newFiles = rejectUnsupportedFiles(candidateFiles)
+    const newFiles = rejectUnsupportedFiles(
+      candidateFiles.map(normalizeUploadFile),
+    )
 
     if (newFiles.length === 0) {
       return false

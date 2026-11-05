@@ -381,6 +381,33 @@ describe('useChatFiles', () => {
     expect(useWarningMessageMock).not.toHaveBeenCalled()
   })
 
+  it('uploads an untyped markdown file as text/markdown', async () => {
+    const attachedFiles = ref([]) as any
+    const canAttachMediaType = ref(textOnly)
+    const { uploadFiles } = useChatFiles(attachedFiles, canAttachMediaType)
+
+    uploadWithProgressMock.mockImplementation(async ({ file, headers }) => {
+      return {
+        data: {
+          id: file.name,
+          storageKey: file.name,
+          name: file.name,
+          size: file.size,
+          type: headers['Content-Type'],
+          source: 'upload',
+          expiresAt: null,
+        },
+      }
+    })
+
+    expect(await uploadFiles([new File(['# Notes'], 'notes.md')])).toBe(true)
+    await waitFor(() => attachedFiles.value.length === 1)
+
+    expect(uploadWithProgressMock.mock.calls[0]![0].file.type)
+      .toBe('text/markdown')
+    expect(attachedFiles.value[0].type).toBe('text/markdown')
+  })
+
   it('keeps supported files from a mixed batch and warns about the rest', async () => {
     const attachedFiles = ref([]) as any
     const canAttachMediaType = ref(textAndPdf)

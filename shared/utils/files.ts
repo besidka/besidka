@@ -73,6 +73,7 @@ export function extractLocalFileStorageKey(url: string): string | null {
 const preferredExtensionByMediaType: Record<string, string> = {
   'image/jpeg': 'jpg',
   'text/plain': 'txt',
+  'text/markdown': 'md',
 }
 
 export function normalizeMediaType(

@@ -390,7 +390,19 @@ excluded from the Uploaded and Generated tabs.
 ### Upload (`PUT /api/v1/files/upload`)
 
 - Requires auth session.
-- Validates required headers and allowed MIME type.
+- Validates required headers and allowed MIME type (`allowedFileFormats` in
+  `nuxt.config.ts`: WebP/PNG/JPEG/GIF images, `application/pdf`,
+  `text/plain` and `text/markdown`).
+- Markdown uploads: browsers often give a `.md` file an empty `File.type` (and
+  some send `text/x-markdown`). `normalizeUploadFile` in `app/utils/files.ts`
+  resolves the type from the extension (`.md`/`.markdown` to `text/markdown`,
+  `.txt` to `text/plain`) before the type check, in both the upload modal and
+  `useChatFiles().uploadFiles` (drop zone, image paste). A `text/markdown` file
+  is read as text for the model like any `text/*` file
+  (`server/utils/files/convert-files-for-ai.ts`), its download name gets the
+  `.md` extension, and in the chat input it shows as a text card that opens a
+  read-only viewer. Long pastes are not uploaded at all: see
+  `docs/chats/chat-input-markdown.md`.
 - Uses real body size for quota checks (`X-Filesize` is not trusted).
 - Checks user storage usage against effective policy.
 - Image flow:

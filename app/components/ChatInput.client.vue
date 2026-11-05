@@ -44,6 +44,7 @@
           class="p-1 pb-0 bg-transparent max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]"
           :class="{
             'pt-0.5 px-1.5': files.length || tiles.length
+              || pastedTexts.length
           }"
         >
           <!-- Attached Files Preview with Upload Progress -->
@@ -52,7 +53,11 @@
             :uploading-files="uploadingFiles"
             :uploading-count="uploadingCount"
             :tiles="tiles"
+            :pasted-texts="pastedTexts"
             @open-tile="openToolsMenu"
+            @open-text="openTextFile"
+            @open-pasted="openPastedText"
+            @remove-pasted="removePastedText"
             @remove-tile="removeTile"
             @remove="removeAttachedFile"
             @remove-all="removeAllFiles"
@@ -159,6 +164,26 @@
       @detach="onFilesDetached"
       @upload="uploadFiles"
     />
+    <LazyChatTextFileModal
+      v-if="openedPastedText"
+      :key="openedPastedText.id"
+      v-model:open="isTextModalOpen"
+      :name="PASTED_TEXT_NAME"
+      :content="openedPastedText.content"
+      can-insert
+      @save="savePastedText"
+      @insert="insertPastedText"
+    />
+    <LazyChatTextFileModal
+      v-else-if="openedTextFile"
+      :key="openedTextFile.storageKey"
+      v-model:open="isTextModalOpen"
+      :name="openedTextFile.name"
+      :size="openedTextFile.size"
+      :url="getFileUrl(openedTextFile.storageKey)"
+      :download-url="getFileDownloadUrl(openedTextFile.storageKey)"
+      is-readonly
+    />
   </ClientOnly>
 </template>
 <script setup lang="ts">
@@ -169,6 +194,7 @@ import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import type { FileSourceFilter } from '~/types/file-manager'
 import type { TextSnapshot } from '~/composables/markdown-textarea'
+import type { PastedText } from '~/utils/pasted-text'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
 import type {
@@ -584,7 +610,7 @@ const {
 })
 
 const hasMessage = computed<boolean>(() => {
-  return !!input.value?.trim().length
+  return !!input.value?.trim().length || pastedTexts.value.length > 0
 })
 
 const canShowRegenerate = computed<boolean>(() => {
@@ -1046,21 +1072,84 @@ function onFilesDetached(fileIds: string[]) {
   files.value = files.value.filter(file => !idsToDetach.has(file.id))
 }
 
-async function attachLongPaste(text: string, snapshot: TextSnapshot) {
-  const file = new File([text], createPastedTextFileName(), {
-    type: 'text/plain',
-  })
-  let isAttached = false
+const pastedTexts = ref<PastedText[]>([])
+const openedPastedTextId = shallowRef<PastedText['id'] | null>(null)
+const openedTextFileKey = shallowRef<FileMetadata['storageKey'] | null>(null)
+const isTextModalOpen = shallowRef<boolean>(false)
 
-  try {
-    isAttached = await uploadFiles([file])
-  } catch (_exception) {
-    isAttached = false
+const openedPastedText = computed<PastedText | null>(() => {
+  return pastedTexts.value.find((pastedText) => {
+    return pastedText.id === openedPastedTextId.value
+  }) ?? null
+})
+
+const openedTextFile = computed<FileMetadata | null>(() => {
+  return files.value.find((file) => {
+    return file.storageKey === openedTextFileKey.value
+  }) ?? null
+})
+
+watch(isTextModalOpen, (isOpen) => {
+  if (isOpen) {
+    return
   }
 
-  if (!isAttached) {
+  openedPastedTextId.value = null
+  openedTextFileKey.value = null
+})
+
+function attachLongPaste(text: string, snapshot: TextSnapshot) {
+  if (pastedTexts.value.length >= MAX_PASTED_TEXTS) {
+    useWarningMessage(
+      `You can attach up to ${MAX_PASTED_TEXTS} pasted texts.`,
+      'The text was inserted into the message instead.',
+    )
     insertTextAtSelection(text, snapshot)
+
+    return
   }
+
+  pastedTexts.value = [...pastedTexts.value, createPastedText(text)]
+}
+
+function openPastedText(id: PastedText['id']) {
+  openedTextFileKey.value = null
+  openedPastedTextId.value = id
+  isTextModalOpen.value = true
+}
+
+function openTextFile(storageKey: FileMetadata['storageKey']) {
+  openedPastedTextId.value = null
+  openedTextFileKey.value = storageKey
+  isTextModalOpen.value = true
+}
+
+function removePastedText(id: PastedText['id']) {
+  pastedTexts.value = pastedTexts.value.filter((pastedText) => {
+    return pastedText.id !== id
+  })
+}
+
+function savePastedText(content: string) {
+  const id = openedPastedTextId.value
+
+  pastedTexts.value = pastedTexts.value.map((pastedText) => {
+    return pastedText.id === id ? { ...pastedText, content } : pastedText
+  })
+  isTextModalOpen.value = false
+}
+
+async function insertPastedText(content: string) {
+  const id = openedPastedTextId.value
+
+  isTextModalOpen.value = false
+
+  if (id) {
+    removePastedText(id)
+  }
+
+  await nextTick()
+  insertTextAtSelection(content)
 }
 
 function onTextareaKeydown(event: KeyboardEvent) {
@@ -1092,7 +1181,7 @@ function handleEnter(event: KeyboardEvent) {
 }
 
 async function sendMessage() {
-  if (!message.value?.trim()) {
+  if (!hasMessage.value) {
     return useWarningMessage('Please enter a message before sending.')
   }
 
@@ -1118,11 +1207,13 @@ async function sendMessage() {
     return
   }
 
-  const text = message.value
+  const text = joinMessageWithPastedTexts(message.value, pastedTexts.value)
 
+  message.value = text
   emit('submit')
   message.value = ''
   files.value = []
+  pastedTexts.value = []
   nuxtApp.callHook('chat:submit', { text })
 }
 

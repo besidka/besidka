@@ -1851,6 +1851,44 @@ describe('Chat/ContextMenu.client', () => {
       expect(findCopyButton(wrapper).text()).toBe('Copy')
     })
 
+    it('puts cleaned rendered html on the clipboard through a copy event', async () => {
+      const setData = vi.fn()
+
+      bubbleEl.innerHTML = '<div class="chat-markdown js-message-text">'
+        + '<!--[--><p class="x" style="color: red">Hi <strong>there</strong>'
+        + '</p></div>'
+      document.execCommand = vi.fn().mockImplementation(() => {
+        const event = new Event('copy', { cancelable: true })
+
+        Object.defineProperty(event, 'clipboardData', {
+          value: { setData },
+        })
+        document.dispatchEvent(event)
+
+        return true
+      })
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          copyText: 'Hi **there**',
+        },
+        attachTo: document.body,
+      })
+
+      await findCopyButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(setData).toHaveBeenCalledWith(
+        'text/html',
+        '<meta charset="utf-8"><p>Hi <strong>there</strong></p>',
+      )
+      expect(setData).toHaveBeenCalledWith('text/plain', 'Hi there')
+      expect(navigator.clipboard.write).not.toHaveBeenCalled()
+      expect(findCopyButton(wrapper).text()).toContain('Copied!')
+    })
+
     it('writes the plain-text flavor as transformed markdown', async () => {
       const copyText = '# Hello\n\nThis is **bold** text.'
 

@@ -1,5 +1,5 @@
-export const LONG_PASTE_MIN_CHARACTERS = 4000
-export const LONG_PASTE_MIN_LINES = 80
+export const LONG_PASTE_MIN_CHARACTERS = 1200
+export const LONG_PASTE_MIN_LINES = 40
 
 const INDENT = '  '
 const TAB_WIDTH = 4
@@ -145,16 +145,6 @@ export function shouldConvertHtml(html: string): boolean {
 export function isLongPaste(text: string): boolean {
   return text.length > LONG_PASTE_MIN_CHARACTERS
     || text.split('\n').length > LONG_PASTE_MIN_LINES
-}
-
-export function createPastedTextFileName(date: Date = new Date()): string {
-  const pad = (value: number, length: number = 2) => {
-    return String(value).padStart(length, '0')
-  }
-  const day = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
-  const time = `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
-
-  return `pasted-text-${day}-${time}-${pad(date.getMilliseconds(), 3)}.txt`
 }
 
 function advanceFence(
