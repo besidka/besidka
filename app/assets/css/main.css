@@ -502,7 +502,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
     );
 
     html[data-keyboard-open] & {
-      padding-bottom: 0.375rem;
+      padding-bottom: 1rem;
     }
   }
 }

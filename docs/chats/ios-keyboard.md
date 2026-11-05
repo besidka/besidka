@@ -255,10 +255,13 @@ global rule fixes all of them instead of each component lifting itself.
   like the rest of the app (they were `modal-middle`, which centred the box
   in the visible area and looked detached on a phone). Their box carries the
   `sheet-safe-padding` utility from `main.css`: below `sm` it pads the bottom
-  by `max(1rem + --sab, env(safe-area-inset-bottom))`, and by `0.375rem`
-  while `html[data-keyboard-open]`, the same two values the text file and
-  model picker sheets set from JS. It is CSS-only because it only needs the
-  attribute the owner already writes.
+  by `max(1rem + --sab, env(safe-area-inset-bottom))`, and by `1rem` while
+  `html[data-keyboard-open]`. That keyboard-open value matches the
+  closed-keyboard spacing because the sheet floats above the keyboard with
+  rounded bottom corners. The text file and model picker sheets still set
+  `0.375rem` from JS: their bottom edge is a textarea or a model list, not a
+  row of buttons next to a rounded corner. It is CSS-only because it only
+  needs the attribute the owner already writes.
 - **Rounded bottom corners while the keyboard is open:** daisyUI 5.7.50 sets
   `--modal-bl: 0` and `--modal-br: 0` on `.modal-bottom > .modal-box`, so a
   bottom sheet has square bottom corners because it is docked to the screen
