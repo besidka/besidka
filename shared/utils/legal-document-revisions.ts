@@ -11,11 +11,12 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '912e35671a8add52847d1170b604f8a4ba04d0329a693a870aeacbc22947817c',
-    classification: 'material',
-    noticeId: '2026-11-legal-notices',
-    note: 'Change notice clause, its email, recipients, timing and legal '
-      + 'basis, connected-app permissions and per-project memory updates.',
+    hash: 'cd5434daec92ffd66177be56ffbd4a4279605e8f543c4bbe9bf5dc3102f1f0c1',
+    classification: 'minor',
+    note: 'Settings list now names the dismissed in-app legal notices; a UI '
+      + 'choice like the push prompt answer, same purpose, basis and '
+      + 'retention. Body still includes the 2026-11-legal-notices changes, '
+      + 'effective 2026-12-04.',
   },
   'terms-of-use': {
     hash: '9ed16390042063601702e2848cfc14c44ff111c8a6e0dd79b8c4b89e26fea941',
@@ -26,9 +27,9 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + '2026-11-legal-notices changes, effective 2026-12-04.',
   },
   'cookie-policy': {
-    hash: '767342201cf16e5041180bd8d8e7169273784c68a9618ef47614014c0547b0de',
+    hash: '6adda7284ef2cc3f0893193c061470953763750bd56dc5edec91db3b519fc8e5',
     classification: 'minor',
-    note: 'Change clause, change history and one necessary localStorage '
-      + 'key (legal-notice:dismissed:*) that remembers a dismissed notice.',
+    note: 'Removed the legal-notice:dismissed:* key; dismissal is now an '
+      + 'account setting and nothing is stored in the browser for it.',
   },
 } as const satisfies Record<LegalDocumentId, LegalDocumentRevision>

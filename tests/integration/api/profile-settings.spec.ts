@@ -24,6 +24,7 @@ interface SettingsRecord {
   projectMemoryModel: string | null
   projectMemoryGateway: string | null
   typesafeRoles: Record<string, boolean> | null
+  dismissedLegalNoticeIds: string[] | null
 }
 
 type SettingsValues = Partial<Omit<SettingsRecord, 'id'>>
@@ -48,6 +49,7 @@ const columnDefaults: Omit<SettingsRecord, 'id'> = {
   projectMemoryModel: null,
   projectMemoryGateway: null,
   typesafeRoles: null,
+  dismissedLegalNoticeIds: null,
 }
 
 const memoryDefaults = {
@@ -62,6 +64,7 @@ const memoryDefaults = {
   projectMemoryModel: null,
   projectMemoryGateway: null,
   typesafeRoles: null,
+  dismissedLegalNoticeIds: [],
 }
 
 interface FakeStatement {

@@ -128,9 +128,16 @@ describe('cookie consent manifest contract', () => {
         'settings_exa_search_level',
         'settings_web_search_auto',
         'knowledge-folders:*',
-        'legal-notice:dismissed:*',
       ]))
     })
+
+  it('does not declare a key for dismissed legal change notices', () => {
+    const names = getManifestEntries().map((entry) => {
+      return entry.name
+    })
+
+    expect(names).not.toContain('legal-notice:dismissed:*')
+  })
 
   it('lists every manifest entry in the Cookie Policy', () => {
     const policy = readFileSync(

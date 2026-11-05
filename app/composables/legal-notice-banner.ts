@@ -5,8 +5,7 @@ import type {
   LegalNotice,
 } from '#shared/utils/legal-notices'
 
-const DISMISSED_KEY_PREFIX = 'legal-notice:dismissed:'
-const DISMISSED_VALUE = '1'
+const LEGACY_DISMISSED_KEY_PREFIX = 'legal-notice:dismissed:'
 
 const DOCUMENT_LABELS: Record<LegalDocumentId, string> = {
   'privacy-policy': 'Privacy Policy',
@@ -34,25 +33,30 @@ export function getLegalNoticeHref(notice: LegalNotice): string {
   return `/${firstDocument}#change-history`
 }
 
-function getDismissedKey(userId: number | string, noticeId: string): string {
-  return `${DISMISSED_KEY_PREFIX}${userId}:${noticeId}`
+function getSessionDismissalKey(
+  userId: number | string,
+  noticeId: string,
+): string {
+  return `${userId}:${noticeId}`
 }
 
-function readStoredDismissal(key: string): boolean {
+export function removeLegacyLegalNoticeDismissals(): void {
   try {
-    return window.localStorage.getItem(key) === DISMISSED_VALUE
-  } catch (exception) {
-    void exception
+    const legacyKeys: string[] = []
 
-    return false
-  }
-}
+    for (let index = 0; index < window.localStorage.length; index++) {
+      const key = window.localStorage.key(index)
 
-function writeStoredDismissal(key: string): void {
-  try {
-    window.localStorage.setItem(key, DISMISSED_VALUE)
-  } catch (exception) {
-    void exception
+      if (key?.startsWith(LEGACY_DISMISSED_KEY_PREFIX)) {
+        legacyKeys.push(key)
+      }
+    }
+
+    for (const key of legacyKeys) {
+      window.localStorage.removeItem(key)
+    }
+  } catch {
+    return
   }
 }
 
@@ -62,6 +66,11 @@ export function useLegalNoticeVisibility() {
 
 export function useLegalNoticeBanner() {
   const { loggedIn, user } = useAuth()
+  const {
+    isSettingsLoaded,
+    dismissedLegalNoticeIds,
+    dismissLegalNotice,
+  } = useUserSetting()
   const dismissedThisSession = useState<string[]>(
     'legal-notice:dismissed-session',
     () => [],
@@ -69,7 +78,11 @@ export function useLegalNoticeBanner() {
   const now = shallowRef<Date>(new Date())
 
   const notice = computed<LegalNotice | null>(() => {
-    if (!loggedIn.value || user.value?.id === undefined) {
+    if (
+      !loggedIn.value
+      || user.value?.id === undefined
+      || !isSettingsLoaded.value
+    ) {
       return null
     }
 
@@ -79,9 +92,10 @@ export function useLegalNoticeBanner() {
       return null
     }
 
-    const dismissedKey = getDismissedKey(user.value.id, activeNotice.id)
-    const isDismissed = dismissedThisSession.value.includes(dismissedKey)
-      || readStoredDismissal(dismissedKey)
+    const isDismissed = dismissedLegalNoticeIds.value.includes(activeNotice.id)
+      || dismissedThisSession.value.includes(
+        getSessionDismissalKey(user.value.id, activeNotice.id),
+      )
 
     return isDismissed ? null : activeNotice
   })
@@ -98,18 +112,23 @@ export function useLegalNoticeBanner() {
     return notice.value ? getLegalNoticeHref(notice.value) : ''
   })
 
-  function dismiss(): void {
+  async function dismiss(): Promise<void> {
     if (!notice.value || user.value?.id === undefined) {
       return
     }
 
-    const dismissedKey = getDismissedKey(user.value.id, notice.value.id)
+    const noticeId = notice.value.id
 
     dismissedThisSession.value = [
       ...dismissedThisSession.value,
-      dismissedKey,
+      getSessionDismissalKey(user.value.id, noticeId),
     ]
-    writeStoredDismissal(dismissedKey)
+
+    try {
+      await dismissLegalNotice(noticeId)
+    } catch {
+      return
+    }
   }
 
   return {
