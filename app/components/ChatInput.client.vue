@@ -5,31 +5,26 @@
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
-      'max-sm:translate-y-[calc(var(--spacing)_*_4_+_var(--sab))]':
-        visible && isChatInputVisibleOnScroll
-        && isKeyboardVisible && hasSafeAreaBottom,
       'max-sm:translate-y-0':
-        visible && isChatInputVisibleOnScroll && !hasSafeAreaBottom,
+        visible && isChatInputVisibleOnScroll
+        && (isKeyboardOpen || !hasSafeAreaBottom),
       'max-sm:translate-y-[var(--sab)]':
         visible && isChatInputVisibleOnScroll
-        && !isKeyboardVisible && hasSafeAreaBottom,
-      'max-sm:translate-y-[calc(100%-var(--spacing)_*_20-var(--sab))]':
-        visible && !isChatInputVisibleOnScroll
-        && isKeyboardVisible && hasSafeAreaBottom,
+        && !isKeyboardOpen && hasSafeAreaBottom,
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_20)]':
-        visible && !isChatInputVisibleOnScroll
-        && isKeyboardVisible && !hasSafeAreaBottom,
+        visible && !isChatInputVisibleOnScroll && isKeyboardOpen,
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_18-var(--sab))]':
         visible && !isChatInputVisibleOnScroll
-        && !isKeyboardVisible && hasSafeAreaBottom,
+        && !isKeyboardOpen && hasSafeAreaBottom,
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_18)]':
         visible && !isChatInputVisibleOnScroll
-        && !isKeyboardVisible && !hasSafeAreaBottom,
+        && !isKeyboardOpen && !hasSafeAreaBottom,
       'sm:translate-y-0': visible && isChatInputVisibleOnScroll,
       'sm:translate-y-[calc(100%-var(--spacing)_*_14)]':
         visible && !isChatInputVisibleOnScroll,
       '!translate-y-full': anyMessagesSelected
     }"
+    :style="keyboardLiftStyle"
   >
     <LazyChatInputFilesDropZone
       v-if="$device.isDesktop && !isDeepResearchModel"
@@ -41,8 +36,10 @@
         class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
       >
         <div
-          class="p-1 pb-0 bg-transparent max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]"
+          class="p-1 pb-0 bg-transparent"
           :class="{
+            'max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]':
+              !isKeyboardOpen,
             'pt-0.5 px-1.5': files.length || tiles.length
               || pastedTexts.length
           }"
@@ -187,6 +184,7 @@
   </ClientOnly>
 </template>
 <script setup lang="ts">
+import type { StyleValue } from 'vue'
 import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
@@ -381,7 +379,15 @@ const sendButtonTitle = computed<string>(() => {
   return hasMessage.value ? 'Send Message' : 'Message is required'
 })
 
-const isKeyboardVisible = shallowRef<boolean>(false)
+const { bottomInset, isKeyboardOpen } = useVisualViewportInset()
+
+const keyboardLiftStyle = computed<StyleValue>(() => {
+  if (!isKeyboardOpen.value) {
+    return {}
+  }
+
+  return { bottom: `${bottomInset.value}px` }
+})
 
 const blurTimeout = ref<NodeJS.Timeout | null>(null)
 
@@ -389,8 +395,6 @@ function onKeyboardFocus() {
   if (blurTimeout.value) {
     clearTimeout(blurTimeout.value)
   }
-
-  isKeyboardVisible.value = true
 
   nuxtApp.callHook('device-keyboard:state-changed', true)
 
@@ -407,8 +411,6 @@ function onKeyboardBlur() {
   }
 
   blurTimeout.value = setTimeout(() => {
-    isKeyboardVisible.value = false
-
     nuxtApp.callHook('device-keyboard:state-changed', false)
 
     blurTimeout.value = null
@@ -1313,6 +1315,16 @@ watch(chatInputHeight, (newHeight) => {
   isSentHeightOnMounted.value = true
 
   nuxtApp.callHook('chat-input:height', newHeight)
+}, { flush: 'post' })
+
+watch(isKeyboardOpen, async () => {
+  await nextTick()
+
+  const measuredHeight = chatInputRef.value?.offsetHeight
+
+  if (measuredHeight) {
+    nuxtApp.callHook('chat-input:height', measuredHeight)
+  }
 }, { flush: 'post' })
 
 watch(() => tiles.value.length > 0, async () => {

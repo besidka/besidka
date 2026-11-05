@@ -2050,6 +2050,15 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^app\/composables\/visual-viewport-inset\.ts$/,
+      tests: [
+        'tests/unit/composables/visual-viewport-inset.spec.ts',
+        'tests/unit/composables/chat-scroll-spacer.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+      ],
+    },
+    {
       pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
       tests: [
         'tests/e2e/chat/scroll-spacer.spec.ts',

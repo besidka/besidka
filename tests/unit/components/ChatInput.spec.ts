@@ -53,6 +53,26 @@ mockNuxtImport('useUserSetting', () => {
 
 const isPopoverLayout = shallowRef<boolean>(true)
 const defaultReasoningLevel = shallowRef<string | null>(null)
+const keyboardInset = shallowRef<number>(0)
+const safeAreaBottom = shallowRef<number>(0)
+
+mockNuxtImport('useVisualViewportInset', () => {
+  return () => ({
+    bottomInset: keyboardInset,
+    viewportHeight: shallowRef<number>(800),
+    isKeyboardOpen: computed<boolean>(() => keyboardInset.value >= 120),
+    update: vi.fn(),
+  })
+})
+
+mockNuxtImport('useDeviceSafeArea', () => {
+  return () => ({
+    safeAreaTop: computed<number>(() => 0),
+    safeAreaBottom: computed<number>(() => safeAreaBottom.value),
+    hasSafeAreaTop: computed<boolean>(() => false),
+    hasSafeAreaBottom: computed<boolean>(() => safeAreaBottom.value > 0),
+  })
+})
 
 const mockRoute = reactive<{ path: string }>({ path: '/chats/abc123' })
 
@@ -282,6 +302,8 @@ describe('ChatInput.client', () => {
     mockRoute.path = '/chats/abc123'
     isPopoverLayout.value = true
     defaultReasoningLevel.value = null
+    keyboardInset.value = 0
+    safeAreaBottom.value = 0
 
     mocks.useChatInput.mockReturnValue({
       isWebSearchSupported: shallowRef(false),
@@ -3103,6 +3125,207 @@ describe('ChatInput.client', () => {
 
       expect(wrapper.emitted('update:memoryExcluded')?.at(-1))
         .toEqual([false])
+    })
+  })
+
+  describe('on-screen keyboard', () => {
+    const KEYBOARD_INSET = 300
+    const PUSH_DOWN_CLASS
+      = 'max-sm:translate-y-[calc(var(--spacing)_*_4_+_var(--sab))]'
+    const SAFE_AREA_SHIFT_CLASS = 'max-sm:translate-y-[var(--sab)]'
+    const NO_SHIFT_CLASS = 'max-sm:translate-y-0'
+    const KEYBOARD_PEEK_CLASS
+      = 'max-sm:translate-y-[calc(100%-var(--spacing)_*_20)]'
+    const SAFE_AREA_PEEK_CLASS
+      = 'max-sm:translate-y-[calc(100%-var(--spacing)_*_18-var(--sab))]'
+    const PEEK_CLASS = 'max-sm:translate-y-[calc(100%-var(--spacing)_*_18)]'
+    const SIDEBAR_PADDING_CLASS
+      = 'max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]'
+
+    function getComposer(wrapper: ChatInputWrapper): HTMLElement {
+      const composer = wrapper.get('textarea').element.closest<HTMLElement>(
+        '.fixed.bottom-0',
+      )
+
+      if (!composer) {
+        throw new Error('composer root not found')
+      }
+
+      return composer
+    }
+
+    function getPaddingBox(wrapper: ChatInputWrapper): HTMLElement {
+      const parent = wrapper.get('textarea').element.parentElement
+
+      if (!parent) {
+        throw new Error('textarea has no parent')
+      }
+
+      return parent
+    }
+
+    async function mountVisibleComposer(
+      extraProps: Record<string, unknown> = {},
+    ) {
+      const wrapper = await mountChatInput(extraProps)
+
+      await vi.waitFor(() => {
+        expect(getComposer(wrapper).className)
+          .not.toContain('translate-y-[calc(100%_+_')
+      })
+
+      return wrapper
+    }
+
+    it('keeps the closed layout above the home indicator', async () => {
+      safeAreaBottom.value = 34
+
+      const wrapper = await mountVisibleComposer()
+      const composer = getComposer(wrapper)
+
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(true)
+      expect(composer.classList.contains(NO_SHIFT_CLASS)).toBe(false)
+      expect(composer.style.bottom).toBe('')
+      expect(getPaddingBox(wrapper).classList
+        .contains(SIDEBAR_PADDING_CLASS)).toBe(true)
+    })
+
+    it('keeps the closed layout without a safe area', async () => {
+      const wrapper = await mountVisibleComposer()
+      const composer = getComposer(wrapper)
+
+      expect(composer.classList.contains(NO_SHIFT_CLASS)).toBe(true)
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(false)
+      expect(composer.style.bottom).toBe('')
+      expect(getPaddingBox(wrapper).classList
+        .contains(SIDEBAR_PADDING_CLASS)).toBe(true)
+    })
+
+    it('sits on the keyboard while it covers the page', async () => {
+      safeAreaBottom.value = 34
+
+      const wrapper = await mountVisibleComposer()
+
+      keyboardInset.value = KEYBOARD_INSET
+      await nextTick()
+
+      const composer = getComposer(wrapper)
+
+      expect(composer.style.bottom).toBe(`${KEYBOARD_INSET}px`)
+      expect(composer.classList.contains(NO_SHIFT_CLASS)).toBe(true)
+      expect(composer.classList.contains(PUSH_DOWN_CLASS)).toBe(false)
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(false)
+      expect(getPaddingBox(wrapper).classList
+        .contains(SIDEBAR_PADDING_CLASS)).toBe(false)
+
+      keyboardInset.value = 0
+      await nextTick()
+
+      expect(composer.style.bottom).toBe('')
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(true)
+      expect(getPaddingBox(wrapper).classList
+        .contains(SIDEBAR_PADDING_CLASS)).toBe(true)
+    })
+
+    it('ignores an inset below the keyboard threshold', async () => {
+      safeAreaBottom.value = 34
+
+      const wrapper = await mountVisibleComposer()
+
+      keyboardInset.value = 60
+      await nextTick()
+
+      const composer = getComposer(wrapper)
+
+      expect(composer.style.bottom).toBe('')
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(true)
+    })
+
+    it('peeks a fixed strip above the keyboard while collapsed on scroll',
+      async () => {
+        safeAreaBottom.value = 34
+
+        const wrapper = await mountVisibleComposer({
+          status: 'ready',
+          messagesLength: 5,
+        })
+        const composer = getComposer(wrapper)
+
+        expect(composer.classList.contains(SAFE_AREA_PEEK_CLASS)).toBe(true)
+
+        keyboardInset.value = KEYBOARD_INSET
+        await nextTick()
+
+        expect(composer.style.bottom).toBe(`${KEYBOARD_INSET}px`)
+        expect(composer.classList.contains(KEYBOARD_PEEK_CLASS)).toBe(true)
+        expect(composer.classList.contains(SAFE_AREA_PEEK_CLASS)).toBe(false)
+      })
+
+    it('keeps the closed peek without a safe area', async () => {
+      const wrapper = await mountVisibleComposer({
+        status: 'ready',
+        messagesLength: 5,
+      })
+
+      expect(getComposer(wrapper).classList.contains(PEEK_CLASS)).toBe(true)
+    })
+
+    it('reports its new height when the keyboard opens', async () => {
+      const wrapper = await mountVisibleComposer()
+      const reportedHeights: number[] = []
+      const removeHook = useNuxtApp().hook('chat-input:height', (height) => {
+        reportedHeights.push(height)
+      })
+
+      Object.defineProperty(getComposer(wrapper), 'offsetHeight', {
+        configurable: true,
+        value: 180,
+      })
+
+      keyboardInset.value = KEYBOARD_INSET
+      await flushPromises()
+
+      removeHook()
+
+      expect(reportedHeights).toContain(180)
+    })
+
+    it('still announces the keyboard and scrolls to the bottom on focus '
+      + 'without a measured keyboard', async () => {
+      fakeRevealGuardTimers()
+
+      const wrapper = await mountChatInput({
+        status: 'ready',
+        messagesLength: 5,
+      })
+      const keyboardStates: boolean[] = []
+      const scrollToBottom = vi.fn()
+      const nuxtApp = useNuxtApp()
+      const removeKeyboardHook = nuxtApp.hook(
+        'device-keyboard:state-changed',
+        (isOpen) => {
+          keyboardStates.push(isOpen)
+        },
+      )
+      const removeScrollHook = nuxtApp.hook(
+        'chat:scroll-to-bottom',
+        scrollToBottom,
+      )
+
+      await wrapper.get('textarea').trigger('focus')
+      await nextTick()
+
+      expect(keyboardStates).toEqual([true])
+      expect(scrollToBottom).toHaveBeenCalled()
+
+      await wrapper.get('textarea').trigger('blur')
+      vi.advanceTimersByTime(150)
+
+      expect(keyboardStates).toEqual([true, false])
+      expect(getComposer(wrapper).style.bottom).toBe('')
+
+      removeKeyboardHook()
+      removeScrollHook()
     })
   })
 })

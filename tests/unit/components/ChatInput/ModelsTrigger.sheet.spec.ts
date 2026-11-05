@@ -507,13 +507,17 @@ describe('ChatInput/ModelsTrigger below md', () => {
 
       expect(box.element.style.height).toBe('')
 
+      wrapper.get<HTMLInputElement>('[data-testid="models-picker-search"]')
+        .element
+        .focus()
       viewport.height = 400
       viewport.dispatchEvent(new Event('resize'))
-      await nextTick()
 
       const keyboardHeight = window.innerHeight - 400
 
-      expect(box.element.style.height).toBe('340px')
+      await vi.waitFor(() => {
+        expect(box.element.style.height).toBe('340px')
+      })
       expect(box.element.style.marginBottom).toBe(`${keyboardHeight}px`)
       expect(
         box.element.style.getPropertyValue('--models-sheet-bottom-padding'),
@@ -521,9 +525,10 @@ describe('ChatInput/ModelsTrigger below md', () => {
 
       viewport.height = window.innerHeight
       viewport.dispatchEvent(new Event('resize'))
-      await nextTick()
 
-      expect(box.element.style.height).toBe('')
+      await vi.waitFor(() => {
+        expect(box.element.style.height).toBe('')
+      })
     })
   })
 })

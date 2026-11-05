@@ -119,8 +119,9 @@ and shared pages therefore all see one ordinary text part.
   wrapper is released in the same call, so iOS has no field to pull focus into
   (Chromium and happy-dom ignore the quirk, so only a real iPhone or the iOS
   Simulator shows the bug; reproduced in the iOS 26 Simulator on 2026-11-05). When the user taps into the textarea and the
-  keyboard opens (`useVisualViewportInset`, at least 120 px covered, no
-  pinch zoom), the sheet is lifted exactly like the picker's: `marginBottom`
+  keyboard opens (`useVisualViewportInset`, at least 120 px covered while a
+  text field has focus, no pinch zoom; see `docs/chats/ios-keyboard.md`), the
+  sheet is lifted exactly like the picker's: `marginBottom`
   equals the covered height, `height` and `maxHeight` are 85% of the visible
   viewport, the textarea drops `min-h-64` for `min-h-24` and is the only part
   that shrinks (header, counter and actions stay visible), and the new

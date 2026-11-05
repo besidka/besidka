@@ -221,6 +221,15 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the `layout` prop on the shared Panel, inline filter chips, the
   horizontal provider chip row, no search autofocus, the visual-viewport
   keyboard lift, and the only events that close the sheet
+- `docs/chats/ios-keyboard.md` - Keeping the chat composer above the iOS
+  keyboard: why a fixed composer driven by focus/blur was covered when the
+  keyboard opened after focus (layout vs visual viewport, iOS pans only at
+  focus time), the shared `useVisualViewportInset` (inset formula, rAF
+  batching, settle re-reads for WebKit 237851, the text-entry focus gate for
+  the iOS 26 drift, pinch-zoom guard), the inline `bottom` lift and the
+  keyboard-open class matrix, the scroll spacer inset, why not
+  `interactive-widget` or the VirtualKeyboard API, the deferred focus-pan
+  suppression, and the iOS Simulator verification recipe
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no
