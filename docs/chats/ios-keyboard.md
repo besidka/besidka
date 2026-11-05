@@ -39,13 +39,23 @@ iOS Simulator in Safari on 2026-11-05.
 how much of the layout viewport the keyboard covers:
 
 ```
-bottomInset = max(0, round(innerHeight - visualViewport.height - visualViewport.offsetTop))
+viewportPan = max(0, visualViewport.offsetTop - window.scrollY)
+bottomInset = max(0, round(innerHeight - visualViewport.height - viewportPan))
 ```
 
+`offsetTop` counts only the part that is a true visual-viewport pan. When iOS
+scrolls the window while the keyboard opens, `offsetTop` equals
+`window.scrollY` and fixed elements do not move with that scroll, so it is
+subtracted. This app never scrolls the window itself (pages scroll inside
+`.overflow-y-auto` containers, so `scrollY` is 0 with the keyboard closed), and
+a scrolled window with an `offsetTop` of 0 never adds height. The expression
+lives in `getCoveredHeight`.
+
 - It is one shared instance (`createSharedComposable`) for every consumer:
-  the composer, the scroll spacer, the model picker sheet and the text file
-  editor sheet. The public API is `bottomInset`, `viewportHeight`,
-  `isKeyboardOpen` and `update`.
+  the composer, the scroll spacer, the dialog owner (`useKeyboardInsetRoot`) and, for the
+  safe-area padding only, the model picker sheet and the text file editor
+  sheet. The public API is `bottomInset`, `viewportHeight`, `isKeyboardOpen`
+  and `update`.
 - Readings are batched to one per animation frame. Listeners:
   `visualViewport` `resize` and `scroll`, `window` `resize`, and `document`
   `focusin` and `focusout`.
@@ -64,8 +74,9 @@ bottomInset = max(0, round(innerHeight - visualViewport.height - visualViewport.
 
 The composer applies the inset as an inline `bottom: <inset>px` while
 `isKeyboardOpen` is true. It does not use the `translate-y-*` classes for
-this: they animate over 500 ms (`transition-transform duration-500`) and
-would lag behind the keyboard. While the keyboard is open:
+this: they animate over 500 ms and would lag behind the keyboard (`bottom`
+has its own 250 ms transition, see "The send snap" below). While the
+keyboard is open:
 
 | State | Keyboard closed (unchanged) | Keyboard open |
 | --- | --- | --- |
@@ -111,6 +122,153 @@ Known trade-offs to watch on a device:
   keyboard is open and the keyboard then closes, the spacer is up to
   `spacing * 20` short until the next refit.
 
+## Two standalone states
+
+Measured in the iOS 27 Simulator as a home-screen PWA (standalone), the same
+page ends up in one of two states when the keyboard opens:
+
+- **Layout viewport kept.** `innerHeight` keeps its full height, as in Safari.
+  `visualViewport.height` shrinks, the inset is about 330 to 396 px, and
+  everything pinned to the layout viewport must be lifted.
+- **Layout viewport shrunk.** After a real tap on a field, iOS shrinks the
+  layout viewport itself: `innerHeight` equals `visualViewport.height`. The
+  formula gives 0 or less, which the `max(0, ...)` clamp turns into an inset
+  of 0. Nothing is lifted, and `position: fixed; inset: 0` already fits the
+  space above the keyboard.
+
+The clamped formula handles both states without a mode switch, so everything
+built on the inset must be a no-op at 0.
+
+### Measured states
+
+Measured in the iOS 27 Simulator on 2026-11-05. The covered height is the
+inset a fixed element at the bottom of the layout viewport needs:
+
+| State | `innerHeight` | `visualViewport.height` | `offsetTop` | `scrollY` | Inset |
+| --- | --- | --- | --- | --- | --- |
+| Safari, real tap | 714 | 384 | 0 | 0 | 330 |
+| Standalone, layout viewport kept | 812 | 416 | 0 | 0 | 396 |
+| Standalone, layout viewport shrunk by iOS | 416 | 416 | 396 | 396 | 0 |
+| Standalone, soft keyboard toggled on with a hardware keyboard | 620 | 416 | 192 | 192 | 204 |
+| Safari, real tap into the search popup input (dialog open) | 627 | 384 | 87 | 87 | 243 |
+
+In every row with `offsetTop` above 0 it equals `scrollY`. The old formula
+(`offsetTop` subtracted whole) gave 156 for the last row and 12 for the fourth,
+so the search sheet sat under Safari's URL pill and the composer was not
+lifted. All five rows are table-driven cases in
+`tests/unit/composables/visual-viewport-inset.spec.ts`, next to a scrolled
+window with an `offsetTop` of 0 (unchanged) and a true pan with no scroll.
+
+## Keyboard-aware dialogs
+
+Every `<dialog class="modal">` opened with `showModal()` is `position: fixed;
+inset: 0` over the full layout viewport, so `modal-middle` centred its box
+behind the keyboard and `modal-bottom` docked it under the keyboard. One
+global rule fixes all of them instead of each component lifting itself.
+
+- **Owner:** `useKeyboardInsetRoot()` in
+  `app/composables/keyboard-inset-root.ts`, called once from the `<script
+  setup>` of `app/app.vue`, so it lives as long as the app and no dialog has
+  to know about the keyboard. A `watchEffect` mirrors `useVisualViewportInset()`
+  onto `<html>`: `--keyboard-inset` (always set, `0px` while the keyboard is
+  closed), `--visible-height` (`viewportHeight` in px, set only while
+  `isKeyboardOpen`) and a `data-keyboard-open` attribute (only while open).
+  It does nothing on the server. It is not a client plugin on purpose: the
+  Nuxt test environment boots plugins, and one would hold the shared
+  composable open for the whole test file, which broke the
+  `visual-viewport-inset` spec's expectation of a fresh instance per scope
+  (14 failures). It is not a component because a template-less component
+  fails `vue/valid-template-root`.
+- **Rules:** two unlayered rules in `app/assets/css/main.css`, next to the
+  `--sat` and `--sab` variables.
+
+  ```css
+  .modal:is([open], .modal-open) {
+    padding-bottom: var(--keyboard-inset, 0px);
+    transition:
+      visibility 0s allow-discrete,
+      background-color 0.3s ease-out,
+      opacity 0.1s ease-out,
+      padding-bottom 0.25s ease-out;
+  }
+
+  html[data-keyboard-open] .modal:is([open], .modal-open) .modal-box {
+    max-height: calc(var(--visible-height) - var(--sat) - 0.5rem);
+  }
+  ```
+
+- **Why `padding-bottom` and not `height` or `bottom`:** daisyUI 5.7.50 sets
+  `.modal` to `position: fixed; inset: 0; height: 100%; max-height: none;
+  padding: 0; display: grid` with `place-items: center` (`modal-middle`) or
+  `end` (`modal-bottom`). With `top: 0` and `height: 100%` both set, a
+  `bottom` value is over-constrained and ignored. A shorter `height` works for
+  the layout but not for the dim: daisyUI paints the dim on the dialog itself
+  (`.modal::backdrop` is `display: none`, and `main.css` puts `bg-black/70` on
+  `.modal`), so a shortened dialog left the strip behind the keyboard, the
+  Safari URL pill and the accessory bar undimmed. The dialog therefore keeps
+  its full height and the inset is taken from its grid content area with
+  `padding-bottom`: `place-items` docks or centres the box in what remains
+  while the dim still covers everything.
+- **Why unlayered:** per-component utilities such as `max-h-[85dvh]`,
+  `max-h-[80vh]`, `max-h-[90dvh]` and `h-[85dvh]` are layered Tailwind
+  utilities that resolve against the layout viewport, and an unlayered rule
+  beats any layered one, so no `!important` is needed. The box cap is the only
+  rule that must not apply while the keyboard is closed (a fallback would
+  still beat `max-h-[85dvh]`), so it is keyed on `data-keyboard-open`. The
+  dialog rule is an exact no-op at `0px`, so it stays on while closing and the
+  padding animates back together with the keyboard.
+- **Transition coupling:** `transition` is a shorthand, so the rule restates
+  daisyUI's `[open]` list (`visibility`, `background-color`, `opacity`) and
+  adds `padding-bottom`. If a daisyUI upgrade changes that list, update this
+  one. A dialog that opens while the keyboard is already up has no previous
+  padding, so it does not slide in from under the keyboard.
+- **Per-component leftovers:** the model picker sheet and the text file sheet
+  no longer set `height`, `maxHeight` or `marginBottom`. They keep one inline
+  `--models-sheet-bottom-padding` or `--text-file-sheet-bottom-padding` while
+  the keyboard is open, because their `max(..., env(safe-area-inset-bottom))`
+  padding cannot be zeroed from a global rule and would leave a dead strip
+  above the keyboard. The text file textarea drops from `min-h-64` to
+  `min-h-24` while the keyboard is open so the capped box does not need to
+  scroll.
+- **Phone bottom sheets with a text field:** the chat rename, project name,
+  file rename and search dialogs are `modal modal-bottom sm:modal-middle`
+  like the rest of the app (they were `modal-middle`, which centred the box
+  in the visible area and looked detached on a phone). Their box carries the
+  `sheet-safe-padding` utility from `main.css`: below `sm` it pads the bottom
+  by `max(1rem + --sab, env(safe-area-inset-bottom))`, and by `0.375rem`
+  while `html[data-keyboard-open]`, the same two values the text file and
+  model picker sheets set from JS. It is CSS-only because it only needs the
+  attribute the owner already writes.
+- **Not covered:** `ChatInput/ToolsMenu.client.vue` is a popover (md and up)
+  and a bottom sheet inside the composer, not a modal dialog.
+
+## The send snap
+
+The composer root had `transition-transform duration-500 ease-in-out`. On
+send the textarea blurs, `isKeyboardOpen` drops and the inline `bottom`
+vanished at once while iOS was still animating the keyboard away (about
+250 ms), so the composer snapped down behind the keyboard. The root now sets
+an inline transition that keeps the slide at 500 ms ease-in-out and adds
+`bottom` at 250 ms ease-out. Tailwind's `transition-transform` expands to
+`transform, translate, scale, rotate`, and the `translate-y-*` classes write
+`translate`, so the inline list restates all four plus `bottom`. The closed
+state is the `bottom-0` class, which gives the transition its `0px` end.
+
+## External keyboard case (fixed)
+
+With a hardware keyboard the form accessory bar can show alone. In
+standalone it is counted in the visual viewport (about 68 px), below the
+120 px threshold, so nothing is lifted, which is right because the bar is not
+the keyboard. Toggling the software keyboard on from that state left
+`innerHeight` at 620 and `offsetTop` equal to `scrollY` at 192. The old
+formula subtracted that `offsetTop` and returned 12, so nothing was lifted.
+Because iOS scrolled the window and fixed elements do not move with that
+scroll, the `scrollY` correction in the formula gives the real 204 and the
+lift works. This was once recorded as a deliberately unhandled edge case on the
+grounds that a `scrollY` correction would break scrolled pages. It does not:
+only the part of `offsetTop` beyond `scrollY` is treated as a pan, and a
+scrolled window with an `offsetTop` of 0 adds nothing.
+
 ## WebKit bugs
 
 - [237851](https://bugs.webkit.org/show_bug.cgi?id=237851): in standalone web
@@ -126,11 +284,16 @@ Known trade-offs to watch on a device:
 
 ## Rejected options
 
-- **`interactive-widget=resizes-content`** in the viewport meta. Not supported
-  in stable iOS Safari as of Safari 27.2 (MDN browser-compat-data 8.1.8 lists
-  `safari_ios: false`), so it would not fix the bug. It is also global: it
-  would change how Android Chrome and Firefox resize every page while the
-  keyboard is open.
+- **`interactive-widget=resizes-content`** in the viewport meta. WebKit
+  implemented `interactive-widget` behind a flag that was enabled on
+  2026-08-13 (WebKit bugs
+  [259770](https://bugs.webkit.org/show_bug.cgi?id=259770) and
+  [321543](https://bugs.webkit.org/show_bug.cgi?id=321543)), but
+  `resizes-content` is reported broken and no shipping Safari is named, so it
+  would not fix the bug. MDN browser-compat-data 8.1.8 still listed
+  `safari_ios: false` as of Safari 27.2. It is also global: it would change
+  how Android Chrome and Firefox resize every page while the keyboard is
+  open. Still not used.
 - **VirtualKeyboard API** (`navigator.virtualKeyboard`,
   `env(keyboard-inset-height)`): Chromium-only, no iOS support.
 - **Focus-pan suppression** (the Discourse approach: stop iOS from panning on
@@ -158,7 +321,17 @@ case only shows in the PWA):
    composer.
 6. Repeat 2 to 5 from the home-screen PWA.
 
+7. Open a dialog with a text field (rename a chat, the search popup, the file
+   or note editors, the models sheet) and tap the field. The dialog must end
+   above the keyboard: a bottom sheet docked on the keyboard, a middle dialog
+   centred in the visible part, nothing taller than the visible height.
+8. Dismiss the keyboard with the dialog open: it grows back with the keyboard
+   instead of snapping.
+9. Send a message with the keyboard up: the composer follows the keyboard down
+   instead of dropping behind it first.
+
 The unit specs (`tests/unit/composables/visual-viewport-inset.spec.ts`,
+`tests/unit/composables/keyboard-inset-root.spec.ts`,
 `tests/unit/components/ChatInput.spec.ts`,
 `tests/unit/composables/chat-scroll-spacer.spec.ts`) cover the arithmetic,
 the settle schedule, the focus gate and the class matrix, but happy-dom has no

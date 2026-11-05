@@ -28,6 +28,60 @@ function installViewport(height: number, offsetTop = 0): FakeViewport {
   return viewport
 }
 
+const MEASURED_STATES = [
+  {
+    name: 'Safari after a real tap',
+    innerHeight: 714,
+    height: 384,
+    offsetTop: 0,
+    scrollY: 0,
+    inset: 330,
+  },
+  {
+    name: 'standalone with the layout viewport kept',
+    innerHeight: 812,
+    height: 416,
+    offsetTop: 0,
+    scrollY: 0,
+    inset: 396,
+  },
+  {
+    name: 'standalone with the layout viewport shrunk by iOS',
+    innerHeight: 416,
+    height: 416,
+    offsetTop: 396,
+    scrollY: 396,
+    inset: 0,
+  },
+  {
+    name: 'standalone after toggling the soft keyboard with a hardware one',
+    innerHeight: 620,
+    height: 416,
+    offsetTop: 192,
+    scrollY: 192,
+    inset: 204,
+  },
+  {
+    name: 'Safari after a real tap into the search popup input',
+    innerHeight: 627,
+    height: 384,
+    offsetTop: 87,
+    scrollY: 87,
+    inset: 243,
+  },
+] as const
+
+function mockWindowMetrics(innerHeight: number, scrollY: number) {
+  Object.defineProperty(window, 'innerHeight', {
+    configurable: true,
+    value: innerHeight,
+  })
+  Object.defineProperty(window, 'scrollY', {
+    configurable: true,
+    value: scrollY,
+  })
+}
+
 function createInset() {
   const scope = effectScope()
   const inset = scope.run(() => {
@@ -72,6 +126,11 @@ function settle() {
 
 describe('useVisualViewportInset', () => {
   let stopScope: (() => void) | null = null
+  const originalInnerHeight = Object.getOwnPropertyDescriptor(
+    window,
+    'innerHeight',
+  )
+  const originalScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY')
 
   beforeEach(() => {
     vi.useFakeTimers({
@@ -89,9 +148,22 @@ describe('useVisualViewportInset', () => {
     stopScope?.()
     stopScope = null
     Reflect.deleteProperty(window, 'visualViewport')
+    restoreWindowMetrics()
     document.body.innerHTML = ''
     vi.useRealTimers()
   })
+
+  function restoreWindowMetrics() {
+    if (originalInnerHeight) {
+      Object.defineProperty(window, 'innerHeight', originalInnerHeight)
+    }
+
+    if (originalScrollY) {
+      Object.defineProperty(window, 'scrollY', originalScrollY)
+    } else {
+      Reflect.deleteProperty(window, 'scrollY')
+    }
+  }
 
   it('reports no inset while the visual viewport fills the window', () => {
     installViewport(window.innerHeight)
@@ -121,6 +193,61 @@ describe('useVisualViewportInset', () => {
     expect(inset.viewportHeight.value)
       .toBe(window.innerHeight - KEYBOARD_HEIGHT)
     expect(inset.isKeyboardOpen.value).toBe(true)
+  })
+
+  it.each(MEASURED_STATES)(
+    'measures $inset px for $name',
+    (state) => {
+      mockWindowMetrics(state.innerHeight, state.scrollY)
+
+      const viewport = installViewport(state.innerHeight)
+      const { scope, inset } = createInset()
+
+      stopScope = () => scope.stop()
+
+      focusTextarea()
+      viewport.height = state.height
+      viewport.offsetTop = state.offsetTop
+      viewport.dispatchEvent(new Event('resize'))
+      nextFrame()
+
+      expect(inset.bottomInset.value).toBe(state.inset)
+      expect(inset.isKeyboardOpen.value).toBe(state.inset >= 120)
+    },
+  )
+
+  it('never adds height for a scrolled window without a visual pan', () => {
+    mockWindowMetrics(714, 300)
+
+    const viewport = installViewport(714)
+    const { scope, inset } = createInset()
+
+    stopScope = () => scope.stop()
+
+    focusTextarea()
+    viewport.height = 384
+    viewport.offsetTop = 0
+    viewport.dispatchEvent(new Event('resize'))
+    nextFrame()
+
+    expect(inset.bottomInset.value).toBe(330)
+  })
+
+  it('still counts a true visual viewport pan with no window scroll', () => {
+    mockWindowMetrics(714, 0)
+
+    const viewport = installViewport(714)
+    const { scope, inset } = createInset()
+
+    stopScope = () => scope.stop()
+
+    focusTextarea()
+    viewport.height = 384
+    viewport.offsetTop = 87
+    viewport.dispatchEvent(new Event('resize'))
+    nextFrame()
+
+    expect(inset.bottomInset.value).toBe(243)
   })
 
   it('batches several events into one reading per frame', () => {

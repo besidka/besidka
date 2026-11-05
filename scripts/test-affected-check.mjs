@@ -2050,10 +2050,12 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^app\/composables\/visual-viewport-inset\.ts$/,
+      pattern:
+        /^(app\/composables\/visual-viewport-inset\.ts|app\/composables\/keyboard-inset-root\.ts)$/,
       tests: [
         'tests/unit/composables/visual-viewport-inset.spec.ts',
         'tests/unit/composables/chat-scroll-spacer.spec.ts',
+        'tests/unit/composables/keyboard-inset-root.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
         'tests/unit/components/Chat/TextFileModal.client.spec.ts',
       ],

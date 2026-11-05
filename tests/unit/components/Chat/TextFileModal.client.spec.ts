@@ -417,14 +417,16 @@ describe('Chat/TextFileModal', () => {
       return getInBody('text-file-modal-box')
     }
 
-    it('sits on the visual viewport above the keyboard on a sheet',
+    it('drops the safe-area padding and shrinks the textarea on a sheet',
       async () => {
         isCenteredLayout.value = false
 
         await mountModal({ content: 'body', canInsert: true })
         await flushPromises()
 
-        expect(getBox().style.height).toBe('')
+        expect(
+          getBox().style.getPropertyValue('--text-file-sheet-bottom-padding'),
+        ).toBe('')
         expect(getInBody('text-file-modal-textarea').className)
           .toContain('min-h-64')
 
@@ -432,9 +434,9 @@ describe('Chat/TextFileModal', () => {
         bottomInset.value = 400
         await nextTick()
 
-        expect(getBox().style.height).toBe('340px')
-        expect(getBox().style.maxHeight).toBe('340px')
-        expect(getBox().style.marginBottom).toBe('400px')
+        expect(getBox().style.height).toBe('')
+        expect(getBox().style.maxHeight).toBe('')
+        expect(getBox().style.marginBottom).toBe('')
         expect(
           getBox().style.getPropertyValue('--text-file-sheet-bottom-padding'),
         ).toBe('0.375rem')
@@ -451,11 +453,14 @@ describe('Chat/TextFileModal', () => {
         viewportHeight.value = 800
         await nextTick()
 
-        expect(getBox().style.height).toBe('')
-        expect(getBox().style.marginBottom).toBe('')
+        expect(
+          getBox().style.getPropertyValue('--text-file-sheet-bottom-padding'),
+        ).toBe('')
+        expect(getInBody('text-file-modal-textarea').className)
+          .toContain('min-h-64')
       })
 
-    it('never lifts the centered modal', async () => {
+    it('never sets inline lift styles on the centered modal', async () => {
       await mountModal({ content: 'body' })
       await flushPromises()
 
@@ -467,7 +472,7 @@ describe('Chat/TextFileModal', () => {
       expect(getBox().style.marginBottom).toBe('')
     })
 
-    it('keeps a read-only file working while lifted', async () => {
+    it('keeps a read-only file working while the keyboard is up', async () => {
       isCenteredLayout.value = false
       mocks.fetchTextFileContent.mockResolvedValue('body')
 
@@ -482,7 +487,7 @@ describe('Chat/TextFileModal', () => {
       bottomInset.value = 400
       await nextTick()
 
-      expect(getBox().style.marginBottom).toBe('400px')
+      expect(getBox().style.marginBottom).toBe('')
       expect(getInBody('text-file-modal-content').textContent).toBe('body')
       expect(getInBody('text-file-modal-copy')).not.toBeNull()
     })

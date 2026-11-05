@@ -42,6 +42,19 @@ function isTextEntryElement(element: Element | null): boolean {
 }
 
 /**
+ * Layout-viewport height hidden below the visual viewport. `offsetTop` counts
+ * only the part that is a true visual-viewport pan: when iOS scrolls the
+ * window while the keyboard opens, `offsetTop` equals `window.scrollY` and
+ * fixed elements do not move with it, so that scroll is subtracted. A scrolled
+ * window with an `offsetTop` of 0 never adds height.
+ */
+function getCoveredHeight(viewport: VisualViewport): number {
+  const viewportPan = Math.max(0, viewport.offsetTop - window.scrollY)
+
+  return window.innerHeight - viewport.height - viewportPan
+}
+
+/**
  * Tracks how much of the layout viewport the on-screen keyboard covers, as
  * one shared instance for every consumer. Fixed elements stay pinned to the
  * layout viewport, so anything that must sit above the keyboard is lifted by
@@ -80,9 +93,7 @@ function useVisualViewportInsetState() {
 
     const isPinchZoomed = viewport.scale > 1 + PINCH_ZOOM_SCALE_EPSILON
     const hasTextEntryFocus = isTextEntryElement(document.activeElement)
-    const coveredHeight = window.innerHeight
-      - viewport.height
-      - viewport.offsetTop
+    const coveredHeight = getCoveredHeight(viewport)
 
     bottomInset.value = isPinchZoomed || !hasTextEntryFocus
       ? 0

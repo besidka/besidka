@@ -83,7 +83,7 @@
               ref="textareaRef"
               v-model="draft"
               class="textarea w-full grow resize-none font-mono text-xs"
-            :class="isLifted ? 'min-h-24' : 'min-h-64'"
+              :class="isKeyboardCovering ? 'min-h-24' : 'min-h-64'"
               spellcheck="false"
               aria-label="File content"
               data-testid="text-file-modal-textarea"
@@ -185,7 +185,6 @@
 import type { StyleValue } from 'vue'
 import { parseError } from 'evlog'
 
-const SHEET_KEYBOARD_HEIGHT_RATIO = 0.85
 const SHEET_KEYBOARD_BOTTOM_PADDING = '0.375rem'
 
 const props = withDefaults(defineProps<{
@@ -217,11 +216,7 @@ const textareaRef = useTemplateRef<HTMLTextAreaElement>('textareaRef')
 const clipboard = useClipboard()
 const { isDesktop } = useDevice()
 const isCenteredLayout = useMediaQuery('(min-width: 40rem)')
-const {
-  bottomInset,
-  viewportHeight,
-  isKeyboardOpen,
-} = useVisualViewportInset()
+const { isKeyboardOpen } = useVisualViewportInset()
 const titleId = useId()
 const previouslyFocusedElement = shallowRef<HTMLElement | null>(null)
 const originalContent = shallowRef<string>('')
@@ -236,8 +231,8 @@ const lineCount = computed<number>(() => countTextLines(draft.value))
 const canUseContent = computed<boolean>(() => {
   return !isLoading.value && !unavailableMessage.value
 })
-const isLifted = computed<boolean>(() => {
-  return isOpen.value && !isCenteredLayout.value && isKeyboardOpen.value
+const isKeyboardCovering = computed<boolean>(() => {
+  return isOpen.value && isKeyboardOpen.value
 })
 const shouldFocusTextarea = computed<boolean>(() => {
   return isDesktop && isCenteredLayout.value
@@ -254,23 +249,16 @@ const canSave = computed<boolean>(() => {
 })
 
 /**
- * `dvh` ignores the on-screen keyboard, so while it is up the bottom sheet
- * sits on the visual viewport instead: lifted by the covered height, sized to
- * what stays visible and with no safe-area padding under the actions.
+ * The global dialog rule in `main.css` lifts the sheet above the on-screen
+ * keyboard and caps its height to what stays visible, so only the safe-area
+ * padding under the actions is dropped here while the keyboard is up.
  */
 const sheetBoxStyle = computed<StyleValue>(() => {
-  if (!isLifted.value) {
+  if (!isKeyboardCovering.value) {
     return {}
   }
 
-  const height = Math.round(
-    viewportHeight.value * SHEET_KEYBOARD_HEIGHT_RATIO,
-  )
-
   return {
-    'height': `${height}px`,
-    'maxHeight': `${height}px`,
-    'marginBottom': `${bottomInset.value}px`,
     '--text-file-sheet-bottom-padding': SHEET_KEYBOARD_BOTTOM_PADDING,
   }
 })

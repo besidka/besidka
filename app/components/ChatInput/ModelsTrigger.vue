@@ -134,7 +134,6 @@ interface PanelHandle {
   handleEscape: () => boolean
 }
 
-const SHEET_KEYBOARD_HEIGHT_RATIO = 0.85
 const SHEET_KEYBOARD_BOTTOM_PADDING = '0.375rem'
 
 const { selection } = useUserModel()
@@ -158,11 +157,7 @@ const openPopover = useState<'models' | 'tools' | null>(
   'chat-input:open-popover',
   () => null,
 )
-const {
-  bottomInset,
-  viewportHeight,
-  isKeyboardOpen,
-} = useVisualViewportInset()
+const { isKeyboardOpen } = useVisualViewportInset()
 
 const selectedModelId = computed<string>(() => {
   return selection.value.modelId
@@ -175,22 +170,16 @@ const selectedGatewayId = computed<GatewayId | null>(() => {
 })
 
 /**
- * `dvh` ignores the on-screen keyboard, so while it is up the sheet sits on
- * the visual viewport instead: lifted by the covered height and sized to
- * what stays visible, with no safe-area padding under the gateway row.
+ * The global dialog rule in `main.css` lifts the sheet above the on-screen
+ * keyboard and caps its height to what stays visible, so only the safe-area
+ * padding under the gateway row is dropped here while the keyboard is up.
  */
 const sheetBoxStyle = computed<StyleValue>(() => {
   if (!isOpen.value || !isKeyboardOpen.value) {
     return {}
   }
 
-  const height = Math.round(
-    viewportHeight.value * SHEET_KEYBOARD_HEIGHT_RATIO,
-  )
-
   return {
-    'height': `${height}px`,
-    'marginBottom': `${bottomInset.value}px`,
     '--models-sheet-bottom-padding': SHEET_KEYBOARD_BOTTOM_PADDING,
   }
 })

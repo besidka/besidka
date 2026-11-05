@@ -3201,6 +3201,29 @@ describe('ChatInput.client', () => {
         .contains(SIDEBAR_PADDING_CLASS)).toBe(true)
     })
 
+    it('animates bottom alongside the slide so the lift follows the keyboard',
+      async () => {
+        const wrapper = await mountVisibleComposer()
+        const composer = getComposer(wrapper)
+        const properties = composer.style.transitionProperty.split(', ')
+        const durations = composer.style.transitionDuration.split(', ')
+        const timingFunctions
+          = composer.style.transitionTimingFunction.split(', ')
+
+        expect(properties).toEqual([
+          'transform',
+          'translate',
+          'scale',
+          'rotate',
+          'bottom',
+        ])
+        expect(durations).toEqual(['500ms', '500ms', '500ms', '500ms', '250ms'])
+        expect(timingFunctions.at(-1)).toBe('ease-out')
+        expect(timingFunctions.slice(0, -1))
+          .toEqual(Array(4).fill('ease-in-out'))
+        expect(composer.classList.contains('bottom-0')).toBe(true)
+      })
+
     it('sits on the keyboard while it covers the page', async () => {
       safeAreaBottom.value = 34
 
