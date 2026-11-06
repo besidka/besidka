@@ -3,9 +3,13 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInputMediaTypePredicate } from '#shared/utils/input-media-types'
+import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
 import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { usePastedTexts } from '../../../app/composables/pasted-texts'
+import { LONG_PASTE_MIN_CHARACTERS } from '../../../app/composables/markdown-textarea'
+import { MAX_PASTED_TEXTS } from '../../../app/utils/pasted-text'
 import { REVEAL_GUARD_DURATION_MS } from '../../../app/composables/reveal-guard'
 
 const mocks = vi.hoisted(() => ({
@@ -14,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   useDevice: vi.fn(),
   uploadFiles: vi.fn(),
   useWarningMessage: vi.fn(),
+  useErrorMessage: vi.fn(),
   requestPersistence: vi.fn(),
   ensureSendConsent: vi.fn(async () => true),
   setDefaultReasoningLevel: vi.fn(async () => {}),
@@ -25,6 +30,7 @@ mockNuxtImport('useChatInput', () => mocks.useChatInput)
 mockNuxtImport('useChatFiles', () => mocks.useChatFiles)
 mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
+mockNuxtImport('useErrorMessage', () => mocks.useErrorMessage)
 mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
 mockNuxtImport('useLegalConsent', () => () => ({
   ensureSendConsent: mocks.ensureSendConsent,
@@ -47,6 +53,26 @@ mockNuxtImport('useUserSetting', () => {
 
 const isPopoverLayout = shallowRef<boolean>(true)
 const defaultReasoningLevel = shallowRef<string | null>(null)
+const keyboardInset = shallowRef<number>(0)
+const safeAreaBottom = shallowRef<number>(0)
+
+mockNuxtImport('useVisualViewportInset', () => {
+  return () => ({
+    bottomInset: keyboardInset,
+    viewportHeight: shallowRef<number>(800),
+    isKeyboardOpen: computed<boolean>(() => keyboardInset.value >= 120),
+    update: vi.fn(),
+  })
+})
+
+mockNuxtImport('useDeviceSafeArea', () => {
+  return () => ({
+    safeAreaTop: computed<number>(() => 0),
+    safeAreaBottom: computed<number>(() => safeAreaBottom.value),
+    hasSafeAreaTop: computed<boolean>(() => false),
+    hasSafeAreaBottom: computed<boolean>(() => safeAreaBottom.value > 0),
+  })
+})
 
 const mockRoute = reactive<{ path: string }>({ path: '/chats/abc123' })
 
@@ -62,6 +88,21 @@ const filesModalStub = defineComponent({
     open: filesModalOpenMock,
   },
   template: '<div />',
+})
+
+const textFileModalStub = defineComponent({
+  name: 'ChatTextFileModalStub',
+  props: {
+    open: { type: Boolean, default: false },
+    name: { type: String, default: '' },
+    content: { type: String, default: undefined },
+    url: { type: String, default: undefined },
+    downloadUrl: { type: String, default: undefined },
+    isReadonly: { type: Boolean, default: false },
+    canInsert: { type: Boolean, default: false },
+  },
+  emits: ['save', 'insert', 'update:open'],
+  template: '<div data-testid="text-file-modal-stub" />',
 })
 
 const uiButtonStub = defineComponent({
@@ -102,6 +143,8 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
         LazyChatInputFilesDropZone: true,
         LazyChatScroll: true,
         LazyChatInputFilesAttachedPreview: true,
+        LazyChatTextFileModal: textFileModalStub,
+        ChatTextFileModal: textFileModalStub,
         LazyChatInputModelsTrigger: true,
         LazyChatInputFilesTrigger: true,
         LazyChatInputReasoningTrigger: true,
@@ -117,6 +160,23 @@ function mountChatInput(extraProps: Record<string, unknown> = {}) {
 }
 
 type ChatInputWrapper = Awaited<ReturnType<typeof mountChatInput>>
+
+function getPastedTextItems(wrapper: ChatInputWrapper) {
+  return wrapper.findAll('[data-testid="pasted-text-item"]')
+}
+
+async function openPastedText(wrapper: ChatInputWrapper, index: number = 0) {
+  await getPastedTextItems(wrapper)[index]!
+    .get('[data-testid="files-preview-text-open"]')
+    .trigger('click')
+  await vi.waitFor(() => {
+    expect(getTextFileModal(wrapper).exists()).toBe(true)
+  })
+}
+
+function getTextFileModal(wrapper: ChatInputWrapper) {
+  return wrapper.findComponent({ name: 'ChatTextFileModalStub' })
+}
 
 async function openToolsPanel(wrapper: ChatInputWrapper) {
   await wrapper.get('[data-testid="chat-input-tools-trigger"]')
@@ -206,6 +266,27 @@ function createPasteEvent(files: File[]) {
   return event
 }
 
+function createTextPasteEvent(plainText: string, html: string = '') {
+  const event = new Event('paste', {
+    bubbles: true,
+    cancelable: true,
+  }) as ClipboardEvent
+  const data: Record<string, string> = {
+    'text/plain': plainText,
+    'text/html': html,
+  }
+
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      items: [],
+      getData: (type: string) => data[type] ?? '',
+    },
+    configurable: true,
+  })
+
+  return event
+}
+
 function appendBlockingDialog(className: string) {
   const dialog = document.createElement('dialog')
 
@@ -221,6 +302,8 @@ describe('ChatInput.client', () => {
     mockRoute.path = '/chats/abc123'
     isPopoverLayout.value = true
     defaultReasoningLevel.value = null
+    keyboardInset.value = 0
+    safeAreaBottom.value = 0
 
     mocks.useChatInput.mockReturnValue({
       isWebSearchSupported: shallowRef(false),
@@ -266,7 +349,10 @@ describe('ChatInput.client', () => {
 
     filesModalOpenMock.mockReset()
     mocks.uploadFiles.mockReset()
+    mocks.uploadFiles.mockResolvedValue(true)
     mocks.useWarningMessage.mockReset()
+    mocks.useErrorMessage.mockReset()
+    usePastedTexts().value = []
     mocks.requestPersistence.mockReset()
     mocks.setDefaultReasoningLevel.mockReset()
 
@@ -370,6 +456,534 @@ describe('ChatInput.client', () => {
 
       document.dispatchEvent(createPasteEvent([file]))
 
+      expect(mocks.uploadFiles).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('markdown-aware textarea', () => {
+    it('inserts a newline instead of sending for Enter inside an open code fence', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('```ts\nconst a = 1')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(element.value).toBe('```ts\nconst a = 1\n')
+    })
+
+    it('sends on Enter once the code fence is closed', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('```\ncode\n```')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('does not send on Enter while an IME composition is active', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('hello')
+      await textarea.trigger('keydown', { key: 'Enter', isComposing: true })
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('continues a list on Shift+Enter without sending', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('- one')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown', { key: 'Enter', shiftKey: true })
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(element.value).toBe('- one\n- ')
+    })
+
+    it('keeps a long paste as a pasted text chip without uploading it', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const longText = `first line\n${'x'.repeat(LONG_PASTE_MIN_CHARACTERS)}`
+
+      textarea.element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+
+      const items = getPastedTextItems(wrapper)
+
+      expect(mocks.uploadFiles).not.toHaveBeenCalled()
+      expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+      expect(items).toHaveLength(1)
+      expect(items[0]!.text()).toContain('first line')
+      expect(items[0]!.text()).toContain('Pasted text')
+      expect(items[0]!.get('[data-testid="files-preview-text-meta"]').text())
+        .toMatch(/^2 lines, /)
+    })
+
+    it('inserts a long paste at the caret once the chip limit is reached', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+      const longText = 'q'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      for (let index = 0; index < MAX_PASTED_TEXTS; index++) {
+        element.dispatchEvent(createTextPasteEvent(longText))
+      }
+      await flushPromises()
+
+      await textarea.setValue('abcd')
+      element.setSelectionRange(2, 2)
+      element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+
+      expect(getPastedTextItems(wrapper)).toHaveLength(MAX_PASTED_TEXTS)
+      expect(element.value).toBe(`ab${longText}cd`)
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        `You can attach up to ${MAX_PASTED_TEXTS} pasted texts.`,
+        'The text was inserted into the message instead.',
+      )
+    })
+
+    it('ignores a whitespace-only long paste', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        ' \n'.repeat(LONG_PASTE_MIN_CHARACTERS),
+      ))
+      await flushPromises()
+
+      expect(getPastedTextItems(wrapper)).toHaveLength(0)
+      expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+      expect(wrapper.get('[data-testid="send-message"]').attributes('disabled'))
+        .toBeDefined()
+    })
+
+    it('refuses a long paste that would pass the message limit', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      element.dispatchEvent(createTextPasteEvent(
+        'a'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH - 10),
+      ))
+      await flushPromises()
+
+      element.dispatchEvent(createTextPasteEvent(
+        'b'.repeat(LONG_PASTE_MIN_CHARACTERS + 1),
+      ))
+      await flushPromises()
+
+      expect(getPastedTextItems(wrapper)).toHaveLength(1)
+      expect(element.value).toBe('')
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'This text is too long to paste.',
+        expect.stringContaining('200,000 characters'),
+      )
+    })
+
+    it('refuses a long paste over the limit even at the chip limit',
+      async () => {
+        const wrapper = await mountChatInput()
+        const element = wrapper.get('textarea').element as HTMLTextAreaElement
+        const longText = 'q'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+        for (let index = 0; index < MAX_PASTED_TEXTS; index++) {
+          element.dispatchEvent(createTextPasteEvent(longText))
+        }
+        await flushPromises()
+
+        element.dispatchEvent(createTextPasteEvent(
+          'z'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH),
+        ))
+        await flushPromises()
+
+        expect(element.value).toBe('')
+        expect(mocks.useWarningMessage).toHaveBeenCalledTimes(1)
+        expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+          'This text is too long to paste.',
+          expect.any(String),
+        )
+      })
+
+    it('does not send a message over the limit and keeps everything',
+      async () => {
+        const wrapper = await mountChatInput()
+        const textarea = wrapper.get('textarea')
+        const typedText = 't'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH - 5)
+
+        await textarea.setValue(typedText)
+        textarea.element.dispatchEvent(createTextPasteEvent(
+          'p'.repeat(LONG_PASTE_MIN_CHARACTERS + 1),
+        ))
+        await flushPromises()
+
+        expect(getPastedTextItems(wrapper)).toHaveLength(0)
+
+        await textarea.setValue(`${typedText}${'u'.repeat(20)}`)
+        await wrapper.get('[data-testid="send-message"]').trigger('click')
+        await flushPromises()
+
+        expect(wrapper.emitted('submit')).toBeUndefined()
+        expect(mocks.ensureSendConsent).not.toHaveBeenCalled()
+        expect((textarea.element as HTMLTextAreaElement).value)
+          .toBe(`${typedText}${'u'.repeat(20)}`)
+        expect(mocks.useErrorMessage).toHaveBeenCalledWith(
+          'Message is too long',
+          expect.stringContaining('15 over it'),
+        )
+      })
+
+    it('does not send typed text plus chips over the limit', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        'c'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH - 100),
+      ))
+      await flushPromises()
+      await textarea.setValue('d'.repeat(200))
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+      expect(getPastedTextItems(wrapper)).toHaveLength(1)
+      expect(mocks.useErrorMessage).toHaveBeenCalledWith(
+        'Message is too long',
+        expect.stringContaining('over it'),
+      )
+    })
+
+    it('keeps the modal open when an edit passes the message limit',
+      async () => {
+        const wrapper = await mountChatInput()
+        const longText = 'e'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+        wrapper.get('textarea').element
+          .dispatchEvent(createTextPasteEvent(longText))
+        await flushPromises()
+        await openPastedText(wrapper)
+
+        getTextFileModal(wrapper).vm.$emit(
+          'save',
+          'f'.repeat(MAX_USER_MESSAGE_TEXT_LENGTH + 1),
+        )
+        await flushPromises()
+
+        expect(getTextFileModal(wrapper).exists()).toBe(true)
+        expect(getTextFileModal(wrapper).props('content')).toBe(longText)
+        expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+          'These edits make the message too long.',
+          expect.stringContaining('1 over'),
+        )
+      })
+
+    it('keeps pending chips when the input remounts on another page',
+      async () => {
+        const firstWrapper = await mountChatInput()
+        const longText = 'n'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+        firstWrapper.get('textarea').element
+          .dispatchEvent(createTextPasteEvent(longText))
+        await flushPromises()
+        firstWrapper.unmount()
+
+        const secondWrapper = await mountChatInput()
+
+        expect(getPastedTextItems(secondWrapper)).toHaveLength(1)
+        expect(getPastedTextItems(secondWrapper)[0]!.text())
+          .toContain('nnnn')
+
+        await secondWrapper.get('[data-testid="send-message"]')
+          .trigger('click')
+        await flushPromises()
+        secondWrapper.unmount()
+
+        const thirdWrapper = await mountChatInput()
+
+        expect(getPastedTextItems(thirdWrapper)).toHaveLength(0)
+        expect(usePastedTexts().value).toEqual([])
+      })
+
+    it('sends a message that has only pasted text', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const longText = 'p'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      textarea.element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+
+      const sendButton = wrapper.get('[data-testid="send-message"]')
+
+      expect(sendButton.attributes('disabled')).toBeUndefined()
+
+      await sendButton.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(wrapper.emitted('update:message')).toEqual([[longText], ['']])
+      expect(getPastedTextItems(wrapper)).toHaveLength(0)
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+    })
+
+    it('appends pasted blocks after the typed text on send', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const firstPaste = 'a'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+      const secondPaste = 'b'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      await textarea.setValue('Compare these two:\n')
+      textarea.element.dispatchEvent(createTextPasteEvent(firstPaste))
+      textarea.element.dispatchEvent(createTextPasteEvent(secondPaste))
+      await flushPromises()
+
+      const emittedBeforeSend = wrapper.emitted('update:message')?.length ?? 0
+
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+      expect(wrapper.emitted('update:message')?.slice(emittedBeforeSend))
+        .toEqual([
+          [`Compare these two:\n\n${firstPaste}\n\n${secondPaste}`],
+          [''],
+        ])
+    })
+
+    it('opens an editable modal for a chip and saves the edit', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const longText = 'e'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      textarea.element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+      await openPastedText(wrapper)
+
+      const modal = getTextFileModal(wrapper)
+
+      expect(modal.props()).toMatchObject({
+        open: true,
+        name: 'Pasted text',
+        content: longText,
+        canInsert: true,
+        isReadonly: false,
+      })
+
+      modal.vm.$emit('save', 'edited line one\nedited line two')
+      await flushPromises()
+
+      expect(getTextFileModal(wrapper).exists()).toBe(false)
+      expect(getPastedTextItems(wrapper)[0]!.text())
+        .toContain('edited line one')
+
+      await openPastedText(wrapper)
+
+      expect(getTextFileModal(wrapper).props('content'))
+        .toBe('edited line one\nedited line two')
+    })
+
+    it('moves a chip into the textarea at the caret with Insert as text', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+      const longText = 'i'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+      await textarea.setValue('abcd')
+      element.setSelectionRange(2, 2)
+      element.dispatchEvent(createTextPasteEvent(longText))
+      await flushPromises()
+      await openPastedText(wrapper)
+
+      getTextFileModal(wrapper).vm.$emit('insert', 'NEW')
+      await flushPromises()
+
+      expect(element.value).toBe('abNEWcd')
+      expect(getPastedTextItems(wrapper)).toHaveLength(0)
+      expect(getTextFileModal(wrapper).exists()).toBe(false)
+    })
+
+    it('focuses the textarea after Insert as text',
+      async () => {
+        const wrapper = await mountChatInput()
+        const textarea = wrapper.get('textarea')
+        const element = textarea.element as HTMLTextAreaElement
+        const longText = 'k'.repeat(LONG_PASTE_MIN_CHARACTERS + 1)
+
+        await textarea.setValue('abcd')
+        element.setSelectionRange(2, 2)
+        element.dispatchEvent(createTextPasteEvent(longText))
+        await flushPromises()
+        await openPastedText(wrapper)
+
+        const trigger = wrapper.get('[data-testid="files-preview-text-open"]')
+          .element as HTMLElement
+
+        trigger.focus()
+        getTextFileModal(wrapper).vm.$emit('insert', 'NEW')
+        await flushPromises()
+
+        expect(document.activeElement).toBe(element)
+        expect(element.value).toBe('abNEWcd')
+      })
+
+    it('removes a chip', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        'r'.repeat(LONG_PASTE_MIN_CHARACTERS + 1),
+      ))
+      await flushPromises()
+
+      await wrapper.get('[data-testid="pasted-text-remove"]').trigger('click')
+      await flushPromises()
+
+      expect(getPastedTextItems(wrapper)).toHaveLength(0)
+      expect(wrapper.get('[data-testid="send-message"]').attributes('disabled'))
+        .toBeDefined()
+    })
+
+    it('opens an attached text file read-only', async () => {
+      const wrapper = await mountChatInput({
+        files: [{
+          id: 'file-1',
+          storageKey: 'notes-key',
+          name: 'notes.md',
+          size: 2 * 1024 * 1024 * 1024,
+          type: 'text/markdown',
+        }],
+      })
+
+      await wrapper
+        .get('[data-file-name="notes.md"] [data-testid="files-preview-text-open"]')
+        .trigger('click')
+      await vi.waitFor(() => {
+        expect(getTextFileModal(wrapper).exists()).toBe(true)
+      })
+
+      expect(getTextFileModal(wrapper).props()).toMatchObject({
+        open: true,
+        name: 'notes.md',
+        isReadonly: true,
+        canInsert: false,
+        url: '/files/notes-key',
+        downloadUrl: '/files/notes-key?download=1',
+      })
+    })
+
+    it('does not send on Enter keydown with keyCode 229', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('hello')
+      await textarea.trigger('keydown', { key: 'Enter', keyCode: 229 })
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('continues a list on a mobile insertLineBreak beforeinput', async () => {
+      mocks.useDevice.mockReturnValue({
+        isIos: false,
+        isAndroid: true,
+        isDesktop: false,
+      })
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('- one')
+      element.setSelectionRange(element.value.length, element.value.length)
+      element.dispatchEvent(new InputEvent('beforeinput', {
+        inputType: 'insertLineBreak',
+        bubbles: true,
+        cancelable: true,
+      }))
+      await flushPromises()
+
+      expect(element.value).toBe('- one\n- ')
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('continues a list on plain Enter on mobile without sending', async () => {
+      mocks.useDevice.mockReturnValue({
+        isIos: true,
+        isAndroid: false,
+        isDesktop: false,
+      })
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('- one')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(element.value).toBe('- one\n- ')
+      expect(wrapper.emitted('submit')).toBeUndefined()
+
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(element.value).toBe('- one\n')
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('still sends a list message on plain Enter on desktop', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+      const element = textarea.element as HTMLTextAreaElement
+
+      await textarea.setValue('- one')
+      element.setSelectionRange(element.value.length, element.value.length)
+      await textarea.trigger('keydown.enter')
+      await flushPromises()
+
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('inserts a short paste into the textarea without attaching it', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(
+        createTextPasteEvent('\t•\tOne\n\t•\tTwo'),
+      )
+      await flushPromises()
+
+      expect(mocks.uploadFiles).not.toHaveBeenCalled()
+      expect((textarea.element as HTMLTextAreaElement).value)
+        .toBe('- One\n- Two')
+    })
+
+    it('converts a pasted HTML list into Markdown in the textarea', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      textarea.element.dispatchEvent(createTextPasteEvent(
+        'Totals',
+        '<div>Totals</div><ul><li>Power</li><li>Water</li></ul>',
+      ))
+
+      await vi.waitFor(() => {
+        expect((textarea.element as HTMLTextAreaElement).value)
+          .toBe('Totals\n\n- Power\n- Water')
+      })
       expect(mocks.uploadFiles).not.toHaveBeenCalled()
     })
   })
@@ -2511,6 +3125,230 @@ describe('ChatInput.client', () => {
 
       expect(wrapper.emitted('update:memoryExcluded')?.at(-1))
         .toEqual([false])
+    })
+  })
+
+  describe('on-screen keyboard', () => {
+    const KEYBOARD_INSET = 300
+    const PUSH_DOWN_CLASS
+      = 'max-sm:translate-y-[calc(var(--spacing)_*_4_+_var(--sab))]'
+    const SAFE_AREA_SHIFT_CLASS = 'max-sm:translate-y-[var(--sab)]'
+    const NO_SHIFT_CLASS = 'max-sm:translate-y-0'
+    const KEYBOARD_PEEK_CLASS
+      = 'max-sm:translate-y-[calc(100%-var(--spacing)_*_20)]'
+    const SAFE_AREA_PEEK_CLASS
+      = 'max-sm:translate-y-[calc(100%-var(--spacing)_*_18-var(--sab))]'
+    const PEEK_CLASS = 'max-sm:translate-y-[calc(100%-var(--spacing)_*_18)]'
+    const SIDEBAR_PADDING_CLASS
+      = 'max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]'
+
+    function getComposer(wrapper: ChatInputWrapper): HTMLElement {
+      const composer = wrapper.get('textarea').element.closest<HTMLElement>(
+        '.fixed.bottom-0',
+      )
+
+      if (!composer) {
+        throw new Error('composer root not found')
+      }
+
+      return composer
+    }
+
+    function getPaddingBox(wrapper: ChatInputWrapper): HTMLElement {
+      const parent = wrapper.get('textarea').element.parentElement
+
+      if (!parent) {
+        throw new Error('textarea has no parent')
+      }
+
+      return parent
+    }
+
+    async function mountVisibleComposer(
+      extraProps: Record<string, unknown> = {},
+    ) {
+      const wrapper = await mountChatInput(extraProps)
+
+      await vi.waitFor(() => {
+        expect(getComposer(wrapper).className)
+          .not.toContain('translate-y-[calc(100%_+_')
+      })
+
+      return wrapper
+    }
+
+    it('keeps the closed layout above the home indicator', async () => {
+      safeAreaBottom.value = 34
+
+      const wrapper = await mountVisibleComposer()
+      const composer = getComposer(wrapper)
+
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(true)
+      expect(composer.classList.contains(NO_SHIFT_CLASS)).toBe(false)
+      expect(composer.style.bottom).toBe('')
+      expect(getPaddingBox(wrapper).classList
+        .contains(SIDEBAR_PADDING_CLASS)).toBe(true)
+    })
+
+    it('keeps the closed layout without a safe area', async () => {
+      const wrapper = await mountVisibleComposer()
+      const composer = getComposer(wrapper)
+
+      expect(composer.classList.contains(NO_SHIFT_CLASS)).toBe(true)
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(false)
+      expect(composer.style.bottom).toBe('')
+      expect(getPaddingBox(wrapper).classList
+        .contains(SIDEBAR_PADDING_CLASS)).toBe(true)
+    })
+
+    it('animates bottom alongside the slide so the lift follows the keyboard',
+      async () => {
+        const wrapper = await mountVisibleComposer()
+        const composer = getComposer(wrapper)
+        const properties = composer.style.transitionProperty.split(', ')
+        const durations = composer.style.transitionDuration.split(', ')
+        const timingFunctions
+          = composer.style.transitionTimingFunction.split(', ')
+
+        expect(properties).toEqual([
+          'transform',
+          'translate',
+          'scale',
+          'rotate',
+          'bottom',
+        ])
+        expect(durations).toEqual(['500ms', '500ms', '500ms', '500ms', '250ms'])
+        expect(timingFunctions.at(-1)).toBe('ease-out')
+        expect(timingFunctions.slice(0, -1))
+          .toEqual(Array(4).fill('ease-in-out'))
+        expect(composer.classList.contains('bottom-0')).toBe(true)
+      })
+
+    it('sits on the keyboard while it covers the page', async () => {
+      safeAreaBottom.value = 34
+
+      const wrapper = await mountVisibleComposer()
+
+      keyboardInset.value = KEYBOARD_INSET
+      await nextTick()
+
+      const composer = getComposer(wrapper)
+
+      expect(composer.style.bottom).toBe(`${KEYBOARD_INSET}px`)
+      expect(composer.classList.contains(NO_SHIFT_CLASS)).toBe(true)
+      expect(composer.classList.contains(PUSH_DOWN_CLASS)).toBe(false)
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(false)
+      expect(getPaddingBox(wrapper).classList
+        .contains(SIDEBAR_PADDING_CLASS)).toBe(false)
+
+      keyboardInset.value = 0
+      await nextTick()
+
+      expect(composer.style.bottom).toBe('')
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(true)
+      expect(getPaddingBox(wrapper).classList
+        .contains(SIDEBAR_PADDING_CLASS)).toBe(true)
+    })
+
+    it('ignores an inset below the keyboard threshold', async () => {
+      safeAreaBottom.value = 34
+
+      const wrapper = await mountVisibleComposer()
+
+      keyboardInset.value = 60
+      await nextTick()
+
+      const composer = getComposer(wrapper)
+
+      expect(composer.style.bottom).toBe('')
+      expect(composer.classList.contains(SAFE_AREA_SHIFT_CLASS)).toBe(true)
+    })
+
+    it('peeks a fixed strip above the keyboard while collapsed on scroll',
+      async () => {
+        safeAreaBottom.value = 34
+
+        const wrapper = await mountVisibleComposer({
+          status: 'ready',
+          messagesLength: 5,
+        })
+        const composer = getComposer(wrapper)
+
+        expect(composer.classList.contains(SAFE_AREA_PEEK_CLASS)).toBe(true)
+
+        keyboardInset.value = KEYBOARD_INSET
+        await nextTick()
+
+        expect(composer.style.bottom).toBe(`${KEYBOARD_INSET}px`)
+        expect(composer.classList.contains(KEYBOARD_PEEK_CLASS)).toBe(true)
+        expect(composer.classList.contains(SAFE_AREA_PEEK_CLASS)).toBe(false)
+      })
+
+    it('keeps the closed peek without a safe area', async () => {
+      const wrapper = await mountVisibleComposer({
+        status: 'ready',
+        messagesLength: 5,
+      })
+
+      expect(getComposer(wrapper).classList.contains(PEEK_CLASS)).toBe(true)
+    })
+
+    it('reports its new height when the keyboard opens', async () => {
+      const wrapper = await mountVisibleComposer()
+      const reportedHeights: number[] = []
+      const removeHook = useNuxtApp().hook('chat-input:height', (height) => {
+        reportedHeights.push(height)
+      })
+
+      Object.defineProperty(getComposer(wrapper), 'offsetHeight', {
+        configurable: true,
+        value: 180,
+      })
+
+      keyboardInset.value = KEYBOARD_INSET
+      await flushPromises()
+
+      removeHook()
+
+      expect(reportedHeights).toContain(180)
+    })
+
+    it('still announces the keyboard and scrolls to the bottom on focus '
+      + 'without a measured keyboard', async () => {
+      fakeRevealGuardTimers()
+
+      const wrapper = await mountChatInput({
+        status: 'ready',
+        messagesLength: 5,
+      })
+      const keyboardStates: boolean[] = []
+      const scrollToBottom = vi.fn()
+      const nuxtApp = useNuxtApp()
+      const removeKeyboardHook = nuxtApp.hook(
+        'device-keyboard:state-changed',
+        (isOpen) => {
+          keyboardStates.push(isOpen)
+        },
+      )
+      const removeScrollHook = nuxtApp.hook(
+        'chat:scroll-to-bottom',
+        scrollToBottom,
+      )
+
+      await wrapper.get('textarea').trigger('focus')
+      await nextTick()
+
+      expect(keyboardStates).toEqual([true])
+      expect(scrollToBottom).toHaveBeenCalled()
+
+      await wrapper.get('textarea').trigger('blur')
+      vi.advanceTimersByTime(150)
+
+      expect(keyboardStates).toEqual([true, false])
+      expect(getComposer(wrapper).style.bottom).toBe('')
+
+      removeKeyboardHook()
+      removeScrollHook()
     })
   })
 })

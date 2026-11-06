@@ -8,14 +8,19 @@ const {
   uploadWithProgressMock,
   fetchMock,
   useWarningMessageMock,
+  ensureSendConsentMock,
 } = vi.hoisted(() => ({
   uploadWithProgressMock: vi.fn(),
   fetchMock: vi.fn(),
   useWarningMessageMock: vi.fn(),
+  ensureSendConsentMock: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => fetchMock)
 mockNuxtImport('useWarningMessage', () => useWarningMessageMock)
+mockNuxtImport('useLegalConsent', () => () => ({
+  ensureSendConsent: ensureSendConsentMock,
+}))
 
 vi.mock('~/utils/upload-with-progress', () => ({
   uploadWithProgress: (...args: any[]) => uploadWithProgressMock(...args),
@@ -55,6 +60,7 @@ const textOnly = createInputMediaTypePredicate(['text'])
 describe('useChatFiles', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ensureSendConsentMock.mockResolvedValue(true)
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-preview')
     fetchMock.mockImplementation(async (url: string) => {
       if (url === '/api/v1/files/policy') {
@@ -79,6 +85,73 @@ describe('useChatFiles', () => {
   afterEach(() => {
     uploadWithProgressMock.mockReset()
     useWarningMessageMock.mockReset()
+  })
+
+  it('resolves true when the files are accepted and queued', async () => {
+    uploadWithProgressMock.mockResolvedValue({ data: undefined })
+
+    const { uploadFiles } = useChatFiles(ref([]) as any, ref(() => true))
+
+    expect(await uploadFiles([createTextFile('ok.txt')])).toBe(true)
+  })
+
+  it('resolves false when consent is declined', async () => {
+    ensureSendConsentMock.mockResolvedValue(false)
+
+    const { uploadFiles, uploadingFiles } = useChatFiles(
+      ref([]) as any,
+      ref(() => true),
+    )
+
+    expect(await uploadFiles([createTextFile('no.txt')])).toBe(false)
+    expect(uploadingFiles.value.size).toBe(0)
+  })
+
+  it('resolves false when every file is rejected by the model', async () => {
+    const { uploadFiles } = useChatFiles(ref([]) as any, ref(textOnly))
+
+    expect(await uploadFiles([createImageFile('photo.png')])).toBe(false)
+  })
+
+  it('resolves false when the file count cap is exceeded', async () => {
+    const { uploadFiles } = useChatFiles(ref([]) as any, ref(() => true))
+    const files = Array.from({ length: 11 }, (_, index) => {
+      return createTextFile(`file-${index}.txt`)
+    })
+
+    expect(await uploadFiles(files)).toBe(false)
+  })
+
+  it('resolves false when the total file count cap is exceeded', async () => {
+    const attachedFiles = ref(
+      Array.from({ length: 10 }, (_, index) => ({
+        storageKey: `attached-${index}`,
+        size: 1,
+      })),
+    ) as any
+    const { uploadFiles } = useChatFiles(attachedFiles, ref(() => true))
+
+    expect(await uploadFiles([createTextFile('one-too-many.txt')]))
+      .toBe(false)
+  })
+
+  it('resolves false when the size cap is exceeded', async () => {
+    fetchMock.mockImplementation(async () => ({
+      policy: {
+        tier: 'free',
+        maxStorageBytes: 20 * 1024 * 1024,
+        maxFilesPerMessage: 10,
+        maxMessageFilesBytes: 5,
+        fileRetentionDays: 30,
+        imageTransformLimitTotal: 0,
+        imageTransformUsedTotal: 0,
+      },
+      globalTransformRemainingMonth: 1000,
+    }))
+
+    const { uploadFiles } = useChatFiles(ref([]) as any, ref(() => true))
+
+    expect(await uploadFiles([createTextFile('big.txt', 8)])).toBe(false)
   })
 
   it('validates max file count before enqueue', async () => {
@@ -306,6 +379,33 @@ describe('useChatFiles', () => {
     await waitFor(() => attachedFiles.value.length === 1)
 
     expect(useWarningMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('uploads an untyped markdown file as text/markdown', async () => {
+    const attachedFiles = ref([]) as any
+    const canAttachMediaType = ref(textOnly)
+    const { uploadFiles } = useChatFiles(attachedFiles, canAttachMediaType)
+
+    uploadWithProgressMock.mockImplementation(async ({ file, headers }) => {
+      return {
+        data: {
+          id: file.name,
+          storageKey: file.name,
+          name: file.name,
+          size: file.size,
+          type: headers['Content-Type'],
+          source: 'upload',
+          expiresAt: null,
+        },
+      }
+    })
+
+    expect(await uploadFiles([new File(['# Notes'], 'notes.md')])).toBe(true)
+    await waitFor(() => attachedFiles.value.length === 1)
+
+    expect(uploadWithProgressMock.mock.calls[0]![0].file.type)
+      .toBe('text/markdown')
+    expect(attachedFiles.value[0].type).toBe('text/markdown')
   })
 
   it('keeps supported files from a mixed batch and warns about the rest', async () => {

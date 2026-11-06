@@ -3,14 +3,14 @@
     <dialog
       ref="modal"
       data-testid="search-modal"
-      class="js-search-modal modal modal-middle"
+      class="js-search-modal modal modal-bottom sm:modal-middle"
       aria-label="Search"
       @close="onDialogClosed"
     >
       <div
         ref="panel"
         tabindex="-1"
-        class="modal-box max-w-lg max-h-[80vh] flex flex-col gap-3"
+        class="modal-box sheet-safe-padding max-w-lg max-h-[80vh] flex flex-col gap-3"
       >
         <div class="shrink-0">
           <UiSearchInput

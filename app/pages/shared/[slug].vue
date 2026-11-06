@@ -215,12 +215,12 @@
               v-else-if="part.type === 'text'"
               :key="`mdc-${m.id}-part-${index}`"
               :value="m.role === 'user'
-                ? $sanitizeHtml(part.text)
+                ? part.text
                 : stripModelCitationMarkers(part.text)
               "
               :cache-key="`mdc-${m.id}-part-${index}`"
               :components="messageComponents"
-              :parser-options="{ highlight: false }"
+              :parser-options="getParserOptions(m.role)"
               class="chat-markdown js-message-text"
               :unwrap="getUnwrap(m.role)"
             />
@@ -372,7 +372,11 @@ useSeoMeta({
   twitterDescription: () => description.value,
 })
 
-const { messageComponents, getUnwrap } = useChatFormat()
+const {
+  messageComponents,
+  getUnwrap,
+  getParserOptions,
+} = useChatFormat()
 const { loggedIn } = useAuth()
 const {
   isBranching,

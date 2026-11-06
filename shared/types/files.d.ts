@@ -7,6 +7,7 @@ export type AllowedFileFormat
   = | Exclude<ImageOutputOptions['format'], 'avif'>
     | 'application/pdf'
     | 'text/plain'
+    | 'text/markdown'
 
 export type AllowedFileFormats = readonly AllowedFileFormat[]
 

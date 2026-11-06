@@ -1,9 +1,9 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parseMarkdown } from '@nuxtjs/mdc/runtime'
-import sanitizeHtml from 'sanitize-html'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
+import { useChatFormat } from '../../../app/composables/chat-format'
 import HomeBubble from '../../../app/components/content/HomeBubble.vue'
 import HomeCta from '../../../app/components/content/HomeCta.vue'
 import MDCRenderer from '@nuxtjs/mdc/runtime/components/MDCRenderer.vue'
@@ -81,14 +81,6 @@ function collectForbiddenKeys(node: CompiledNode): string[] {
   const childKeys = (node.children ?? []).flatMap(collectForbiddenKeys)
 
   return [...ownKeys, ...childKeys]
-}
-
-function sanitizeLikeUserMessage(markdown: string): string {
-  return sanitizeHtml(markdown, {
-    allowedTags: [],
-    allowedAttributes: {},
-    disallowedTagsMode: 'recursiveEscape',
-  })
 }
 
 const TEMPLATE_BYPASS_PAYLOADS: Record<string, string> = {
@@ -329,11 +321,11 @@ describe('mdc directive prop policy', () => {
         expect(collectForbiddenKeys(parsed.body as CompiledNode)).toEqual([])
       })
 
-      it(`drops directive keys inside a ${label} after user sanitizing`,
+      it(`drops directive keys inside a ${label} with the user message parser`,
         async () => {
           const parsed = await parseMarkdown(
-            sanitizeLikeUserMessage(payload),
-            { highlight: false },
+            payload,
+            useChatFormat().getParserOptions('user'),
           )
 
           expect(collectForbiddenKeys(parsed.body as CompiledNode))

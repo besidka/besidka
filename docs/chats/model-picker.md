@@ -76,6 +76,10 @@ window) closes it.
   inset while `visualViewport.scale` is above 1 (with a 0.01 tolerance), so
   zooming in never lifts the sheet. The cost is that a keyboard opened while
   the page is zoomed does not lift it either.
+- `useVisualViewportInset` is one shared instance and reports an inset only
+  while a text field (here the search input) has focus, so the sheet is
+  lifted only once the search is tapped. Its internals (settle re-reads,
+  WebKit bugs) are in `docs/chats/ios-keyboard.md`.
 
 ### Filters
 

@@ -476,6 +476,46 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --landing-header-offset: 4rem;
 }
 
+.modal {
+  padding-bottom: var(--keyboard-inset, 0px);
+  transition:
+    overlay 0.3s allow-discrete,
+    visibility 0.3s allow-discrete,
+    background-color 0.3s ease-out,
+    opacity 0.1s ease-out,
+    padding-bottom 0.25s ease-out;
+}
+
+.modal:is([open], .modal-open) {
+  transition:
+    visibility 0s allow-discrete,
+    background-color 0.3s ease-out,
+    opacity 0.1s ease-out,
+    padding-bottom 0.25s ease-out;
+}
+
+@utility sheet-safe-padding {
+  @media (width < 40rem) {
+    padding-bottom: max(
+      calc(1rem + var(--sab, 0px)),
+      env(safe-area-inset-bottom)
+    );
+
+    html[data-keyboard-open] & {
+      padding-bottom: 1rem;
+    }
+  }
+}
+
+html[data-keyboard-open] .modal:is([open], .modal-open) .modal-box {
+  max-height: calc(var(--visible-height) - var(--sat) - 0.5rem);
+}
+
+html[data-keyboard-open] .modal-bottom > .modal-box {
+  --modal-bl: var(--radius-box);
+  --modal-br: var(--radius-box);
+}
+
 @layer components {
 
   .bubble {

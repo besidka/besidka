@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MAX_USER_MESSAGE_TEXT_LENGTH } from '~~/server/utils/chats/request-schema'
+import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 
 vi.mock('~~/server/utils/legal/consent', () => {
   return import('../../setup/mocks/legal-consent')

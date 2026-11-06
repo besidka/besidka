@@ -1,6 +1,9 @@
 import type { FileUIPart } from 'ai'
 import type { FileMetadata } from '#shared/types/files.d'
-import { extractLocalFileStorageKey } from '#shared/utils/files'
+import {
+  extractLocalFileStorageKey,
+  normalizeMediaType,
+} from '#shared/utils/files'
 import { getInputMediaKind } from '#shared/utils/input-media-types'
 
 const FILE_URL_ORIGIN = 'https://besidka.local'
@@ -155,6 +158,79 @@ export function getUnsupportedInputMessage(
     `Attach ${article} ${joinWithOr(alternativeLabels)} file instead,`,
     'or switch models.',
   ].join(' ')
+}
+
+const mediaTypeByTextExtension: Record<string, string> = {
+  md: 'text/markdown',
+  markdown: 'text/markdown',
+  txt: 'text/plain',
+}
+
+const markdownAliasMediaTypes = new Set(['text/x-markdown'])
+
+export const TEXT_FILE_PREVIEW_MAX_BYTES = 512 * 1024
+export const TEXT_FILE_VIEW_MAX_BYTES = 2 * 1024 * 1024
+
+export function isTextFileType(type: string): boolean {
+  return getInputMediaKind(type) === 'text'
+}
+
+export function resolveUploadMediaType(file: File): string {
+  const declaredType = normalizeMediaType(file.type)
+
+  if (markdownAliasMediaTypes.has(declaredType)) {
+    return 'text/markdown'
+  }
+
+  if (declaredType) {
+    return declaredType
+  }
+
+  const extension = file.name.split('.').pop()?.toLowerCase() || ''
+
+  return mediaTypeByTextExtension[extension] || ''
+}
+
+export function normalizeUploadFile(file: File): File {
+  const resolvedType = resolveUploadMediaType(file)
+
+  if (!resolvedType || resolvedType === file.type) {
+    return file
+  }
+
+  return new File([file], file.name, {
+    type: resolvedType,
+    lastModified: file.lastModified,
+  })
+}
+
+export function countTextLines(content: string): number {
+  if (!content) {
+    return 0
+  }
+
+  const lines = content.split('\n')
+
+  return content.endsWith('\n') ? lines.length - 1 : lines.length
+}
+
+export function getTextPreviewLines(
+  content: string,
+  maxLines: number = 3,
+  maxLineLength: number = 80,
+): string[] {
+  return content
+    .split('\n')
+    .map(line => line.trimEnd())
+    .filter(line => line.trim().length > 0)
+    .slice(0, maxLines)
+    .map(line => line.slice(0, maxLineLength))
+}
+
+export async function fetchTextFileContent(url: string): Promise<string> {
+  const content = await $fetch(url, { responseType: 'text' })
+
+  return typeof content === 'string' ? content : String(content ?? '')
 }
 
 export function getFileIcon(type: FileMetadata['type']): string {

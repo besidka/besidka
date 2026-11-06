@@ -47,7 +47,7 @@
           data-testid="files-upload-input"
           type="file"
           class="file-input file-input-bordered file-input-sm"
-          :accept="effectiveFileFormats.join(',')"
+          :accept="acceptAttribute"
           multiple
           @change="onFileInputChange"
           @click.stop
@@ -94,6 +94,19 @@ const effectiveFileFormats = computed<string[]>(() => {
   })
 })
 
+const TEXT_FILE_EXTENSIONS = ['.md', '.markdown', '.txt']
+
+const acceptAttribute = computed<string>(() => {
+  const hasTextFormat = effectiveFileFormats.value.some((format) => {
+    return format.startsWith('text/')
+  })
+
+  return [
+    ...effectiveFileFormats.value,
+    ...hasTextFormat ? TEXT_FILE_EXTENSIONS : [],
+  ].join(',')
+})
+
 const formattedFileFormats = computed<string>(() => {
   return effectiveFileFormats.value
     .map(format => format.split('/')[1])
@@ -107,8 +120,10 @@ function filterValidFiles(files: File[]): File[] {
   const invalid: string[] = []
 
   for (const file of files) {
-    if (formats.includes(file.type)) {
-      valid.push(file)
+    const normalizedFile = normalizeUploadFile(file)
+
+    if (formats.includes(normalizedFile.type)) {
+      valid.push(normalizedFile)
     } else {
       invalid.push(file.name)
     }

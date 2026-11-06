@@ -20,6 +20,7 @@ describe('shared files utils', () => {
   it('returns preferred extension for mapped media types', () => {
     expect(getPreferredFileExtension('image/jpeg')).toBe('jpg')
     expect(getPreferredFileExtension('text/plain; charset=utf-8')).toBe('txt')
+    expect(getPreferredFileExtension('text/markdown')).toBe('md')
   })
 
   it('falls back to structured subtype parsing when possible', () => {

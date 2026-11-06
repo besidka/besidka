@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { htmlToKnowledgeMarkdown } from '~/utils/knowledge-html-to-markdown'
+import {
+  htmlToChatMarkdown,
+  htmlToKnowledgeMarkdown,
+} from '~/utils/knowledge-html-to-markdown'
 
 const docxLikeHtml = [
   '<h1>Quarterly Report</h1>',
@@ -177,5 +180,50 @@ describe('htmlToKnowledgeMarkdown', () => {
     )
 
     expect(markdown).toBe('a b c')
+  })
+})
+
+describe('htmlToChatMarkdown', () => {
+  it('uses single-space list markers', () => {
+    expect(htmlToChatMarkdown(
+      '<ul><li>one</li><li>two</li></ul><ol><li>a</li><li>b</li></ol>',
+    )).toBe('- one\n- two\n\n1. a\n2. b')
+  })
+
+  it('keeps nested lists', () => {
+    expect(htmlToChatMarkdown(
+      '<ul><li>one<ul><li>inner</li></ul></li><li>two</li></ul>',
+    )).toBe('- one\n    - inner\n- two')
+  })
+
+  it('keeps list-like lines inside code fences untouched', () => {
+    expect(htmlToChatMarkdown('<pre><code>-   keep\n1.  keep</code></pre>'))
+      .toBe('```\n-   keep\n1.  keep\n```')
+  })
+
+  it('drops Mail and Word wrapper noise and non-breaking spaces', () => {
+    expect(htmlToChatMarkdown([
+      '<meta charset="utf-8"><style>p{margin:0}</style>',
+      '<p>Hello&nbsp;there<o:p>&nbsp;</o:p></p><p>Second</p>',
+    ].join(''))).toBe('Hello there\n\nSecond')
+  })
+
+  it('does not bold the Google Docs neutral wrapper', () => {
+    expect(htmlToChatMarkdown(
+      '<b style="font-weight:normal" id="docs-internal-guid-1">'
+      + '<p>One</p><p><b>Two</b></p></b>',
+    )).toBe('One\n\n**Two**')
+  })
+
+  it('turns line breaks into soft breaks and blank lines', () => {
+    expect(htmlToChatMarkdown('<div>a<br>b<br><br>c</div>'))
+      .toBe('a\nb\n\nc')
+  })
+
+  it('keeps the link scheme hardening', () => {
+    expect(htmlToChatMarkdown(
+      '<p><a href="javascript:alert(1)">bad</a> '
+      + '<a href="https://example.com">good</a></p>',
+    )).toBe('bad [good](https://example.com)')
   })
 })

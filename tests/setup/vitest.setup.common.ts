@@ -28,6 +28,7 @@ vi.mock('#app', () => ({
         'image/webp',
         'application/pdf',
         'text/plain',
+        'text/markdown',
       ],
       maxFilesPerMessage: 10,
       maxMessageFilesBytes: 1000 * 1024 * 1024,

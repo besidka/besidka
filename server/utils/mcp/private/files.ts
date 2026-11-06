@@ -250,8 +250,8 @@ export async function readMcpFile(
  * Stores the text as a library file the same way an upload does: the
  * storage quota check and the retention expiry come from `persistFile`,
  * and a text too large for the remaining quota is refused with the 413 the
- * upload route answers. The media type is always `text/plain`, the one text
- * format the upload allow-list accepts, while the name keeps its extension.
+ * upload route answers. The media type is always `text/plain`, while the name
+ * keeps its extension.
  */
 export async function createMcpFile(
   userId: number,

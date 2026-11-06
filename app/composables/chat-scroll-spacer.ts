@@ -41,11 +41,21 @@ export function useChatScrollSpacer(
 
   const nuxtApp = useNuxtApp()
   const { safeAreaTop, safeAreaBottom } = useDeviceSafeArea()
+  const { bottomInset, isKeyboardOpen } = useVisualViewportInset()
 
   const userMessageData = shallowRef<MessageData | null>(null)
   const assistantMessageData = shallowRef<MessageData | null>(null)
   const spacerHeight = shallowRef<number>(INITIAL_SPACER_HEIGHT)
   const inputHeight = shallowRef<number>(0)
+  const reportedInputHeight = shallowRef<number>(0)
+
+  const keyboardInset = computed<number>(() => {
+    return isKeyboardOpen.value ? bottomInset.value : 0
+  })
+
+  const renderedSpacerHeight = computed<number>(() => {
+    return spacerHeight.value + keyboardInset.value
+  })
 
   const waitingForDimensions = shallowRef<boolean>(false)
 
@@ -424,10 +434,47 @@ export function useChatScrollSpacer(
    * depends on the length of the input.
    */
   nuxtApp.hook('chat-input:height', (height: number) => {
-    if (inputHeight.value !== height) {
-      inputHeight.value = height - safeAreaBottom.value
+    reportedInputHeight.value = height
+    inputHeight.value = getInputClearance(height)
+
+    scheduleFitSpacerToInputHeight()
+  })
+
+  /**
+   * While the keyboard covers the page the composer is lifted by its inset,
+   * so the rendered spacer grows by the same amount in every spacer mode
+   * (fitted to the input or pinned by a push) and the view is scrolled by
+   * the growth to keep the same messages above the composer.
+   */
+  watch(keyboardInset, (inset, previousInset) => {
+    if (reportedInputHeight.value) {
+      inputHeight.value = getInputClearance(reportedInputHeight.value)
     }
 
+    const growth = inset - previousInset
+
+    if (growth > 0) {
+      scrollContainerRef.value?.scrollBy({ top: growth, behavior: 'instant' })
+    }
+
+    rebroadcastSpacerChange(renderedSpacerHeight.value)
+    scheduleFitSpacerToInputHeight()
+  }, { flush: 'post' })
+
+  /**
+   * The closed composer hangs its safe-area padding below the screen edge,
+   * so that part never covers a message. While the keyboard is open the
+   * composer drops that padding; its lift is added by `keyboardInset`.
+   */
+  function getInputClearance(height: number): number {
+    if (isKeyboardOpen.value) {
+      return height
+    }
+
+    return height - safeAreaBottom.value
+  }
+
+  function scheduleFitSpacerToInputHeight() {
     if (!scrollContainerRef.value || spacerComputedByPush.value) {
       return
     }
@@ -440,7 +487,7 @@ export function useChatScrollSpacer(
       fitSpacerToInputHeight,
       DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS,
     )
-  })
+  }
 
   async function fitSpacerToInputHeight() {
     const lastMessage = chatSdk.messages.at(-1)
@@ -464,7 +511,7 @@ export function useChatScrollSpacer(
   nuxtApp.hook('chat:regenerate', pushUserMessageToTop)
 
   return {
-    spacerHeight,
+    spacerHeight: renderedSpacerHeight,
     pushUserMessageToTop,
     waitingForDimensions,
     reservePinnedSpace,

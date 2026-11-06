@@ -1,35 +1,30 @@
 <template>
   <div
     ref="chatInputRef"
-    class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-1/2 sm:-translate-x-1/2 sm:w-3xl sm:max-w-full transition-transform duration-500 ease-in-out"
+    class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-1/2 sm:-translate-x-1/2 sm:w-3xl sm:max-w-full"
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
-      'max-sm:translate-y-[calc(var(--spacing)_*_4_+_var(--sab))]':
-        visible && isChatInputVisibleOnScroll
-        && isKeyboardVisible && hasSafeAreaBottom,
       'max-sm:translate-y-0':
-        visible && isChatInputVisibleOnScroll && !hasSafeAreaBottom,
+        visible && isChatInputVisibleOnScroll
+        && (isKeyboardOpen || !hasSafeAreaBottom),
       'max-sm:translate-y-[var(--sab)]':
         visible && isChatInputVisibleOnScroll
-        && !isKeyboardVisible && hasSafeAreaBottom,
-      'max-sm:translate-y-[calc(100%-var(--spacing)_*_20-var(--sab))]':
-        visible && !isChatInputVisibleOnScroll
-        && isKeyboardVisible && hasSafeAreaBottom,
+        && !isKeyboardOpen && hasSafeAreaBottom,
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_20)]':
-        visible && !isChatInputVisibleOnScroll
-        && isKeyboardVisible && !hasSafeAreaBottom,
+        visible && !isChatInputVisibleOnScroll && isKeyboardOpen,
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_18-var(--sab))]':
         visible && !isChatInputVisibleOnScroll
-        && !isKeyboardVisible && hasSafeAreaBottom,
+        && !isKeyboardOpen && hasSafeAreaBottom,
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_18)]':
         visible && !isChatInputVisibleOnScroll
-        && !isKeyboardVisible && !hasSafeAreaBottom,
+        && !isKeyboardOpen && !hasSafeAreaBottom,
       'sm:translate-y-0': visible && isChatInputVisibleOnScroll,
       'sm:translate-y-[calc(100%-var(--spacing)_*_14)]':
         visible && !isChatInputVisibleOnScroll,
       '!translate-y-full': anyMessagesSelected
     }"
+    :style="[composerTransitionStyle, keyboardLiftStyle]"
   >
     <LazyChatInputFilesDropZone
       v-if="$device.isDesktop && !isDeepResearchModel"
@@ -41,9 +36,12 @@
         class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
       >
         <div
-          class="p-1 pb-0 bg-transparent max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]"
+          class="p-1 pb-0 bg-transparent"
           :class="{
+            'max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]':
+              !isKeyboardOpen,
             'pt-0.5 px-1.5': files.length || tiles.length
+              || pastedTexts.length
           }"
         >
           <!-- Attached Files Preview with Upload Progress -->
@@ -52,7 +50,11 @@
             :uploading-files="uploadingFiles"
             :uploading-count="uploadingCount"
             :tiles="tiles"
+            :pasted-texts="pastedTexts"
             @open-tile="openToolsMenu"
+            @open-text="openTextFile"
+            @open-pasted="openPastedText"
+            @remove-pasted="removePastedText"
             @remove-tile="removeTile"
             @remove="removeAttachedFile"
             @remove-all="removeAllFiles"
@@ -66,7 +68,9 @@
             class="textarea p-2 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
             :placeholder="textareaPlaceholder"
             :disabled="displayStop"
-            @keydown.enter.exact="handleEnter"
+            @keydown="onTextareaKeydown"
+            @beforeinput="onMarkdownBeforeInput"
+            @paste="onMarkdownPaste"
             @focus="onKeyboardFocus"
             @blur="onKeyboardBlur"
           />
@@ -157,15 +161,38 @@
       @detach="onFilesDetached"
       @upload="uploadFiles"
     />
+    <LazyChatTextFileModal
+      v-if="openedPastedText"
+      :key="openedPastedText.id"
+      v-model:open="isTextModalOpen"
+      :name="PASTED_TEXT_NAME"
+      :content="openedPastedText.content"
+      can-insert
+      @save="savePastedText"
+      @insert="insertPastedText"
+    />
+    <LazyChatTextFileModal
+      v-else-if="openedTextFile"
+      :key="openedTextFile.storageKey"
+      v-model:open="isTextModalOpen"
+      :name="openedTextFile.name"
+      :size="openedTextFile.size"
+      :url="getFileUrl(openedTextFile.storageKey)"
+      :download-url="getFileDownloadUrl(openedTextFile.storageKey)"
+      is-readonly
+    />
   </ClientOnly>
 </template>
 <script setup lang="ts">
+import type { StyleValue } from 'vue'
 import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
 import type { FileSourceFilter } from '~/types/file-manager'
+import type { TextSnapshot } from '~/composables/markdown-textarea'
+import type { PastedText } from '~/utils/pasted-text'
 import type { ExaSearchLevel } from '#shared/utils/exa-search-level'
 import type { WebSearchSelection } from '~/types/web-search'
 import type {
@@ -352,7 +379,22 @@ const sendButtonTitle = computed<string>(() => {
   return hasMessage.value ? 'Send Message' : 'Message is required'
 })
 
-const isKeyboardVisible = shallowRef<boolean>(false)
+const { bottomInset, isKeyboardOpen } = useVisualViewportInset()
+
+const composerTransitionStyle: StyleValue = {
+  transitionProperty: 'transform, translate, scale, rotate, bottom',
+  transitionDuration: '500ms, 500ms, 500ms, 500ms, 250ms',
+  transitionTimingFunction:
+    'ease-in-out, ease-in-out, ease-in-out, ease-in-out, ease-out',
+}
+
+const keyboardLiftStyle = computed<StyleValue>(() => {
+  if (!isKeyboardOpen.value) {
+    return {}
+  }
+
+  return { bottom: `${bottomInset.value}px` }
+})
 
 const blurTimeout = ref<NodeJS.Timeout | null>(null)
 
@@ -360,8 +402,6 @@ function onKeyboardFocus() {
   if (blurTimeout.value) {
     clearTimeout(blurTimeout.value)
   }
-
-  isKeyboardVisible.value = true
 
   nuxtApp.callHook('device-keyboard:state-changed', true)
 
@@ -378,8 +418,6 @@ function onKeyboardBlur() {
   }
 
   blurTimeout.value = setTimeout(() => {
-    isKeyboardVisible.value = false
-
     nuxtApp.callHook('device-keyboard:state-changed', false)
 
     blurTimeout.value = null
@@ -570,8 +608,19 @@ const { textarea, input } = useTextareaAutosize({
   input: message,
 })
 
+const {
+  onPaste: onMarkdownPaste,
+  onKeydown: onMarkdownKeydown,
+  onBeforeInput: onMarkdownBeforeInput,
+  insertText: insertTextAtSelection,
+} = useMarkdownTextarea(textarea, {
+  onLongPaste: attachLongPaste,
+  continueListsOnEnter: () => !isDesktop,
+})
+
 const hasMessage = computed<boolean>(() => {
   return !!input.value?.trim().length
+    || hasPastedTextContent(pastedTexts.value)
 })
 
 const canShowRegenerate = computed<boolean>(() => {
@@ -1033,6 +1082,141 @@ function onFilesDetached(fileIds: string[]) {
   files.value = files.value.filter(file => !idsToDetach.has(file.id))
 }
 
+const pastedTexts = usePastedTexts()
+const openedPastedTextId = shallowRef<PastedText['id'] | null>(null)
+const openedTextFileKey = shallowRef<FileMetadata['storageKey'] | null>(null)
+const isTextModalOpen = shallowRef<boolean>(false)
+
+const openedPastedText = computed<PastedText | null>(() => {
+  return pastedTexts.value.find((pastedText) => {
+    return pastedText.id === openedPastedTextId.value
+  }) ?? null
+})
+
+const openedTextFile = computed<FileMetadata | null>(() => {
+  return files.value.find((file) => {
+    return file.storageKey === openedTextFileKey.value
+  }) ?? null
+})
+
+watch(isTextModalOpen, (isOpen) => {
+  if (isOpen) {
+    return
+  }
+
+  openedPastedTextId.value = null
+  openedTextFileKey.value = null
+})
+
+function warnAboutMessageLimit(title: string, overflow: number) {
+  useWarningMessage(
+    title,
+    `A message can hold up to ${
+      formatCharacterCount(MAX_USER_MESSAGE_TEXT_LENGTH)
+    } characters and this would put it ${
+      formatCharacterCount(overflow)
+    } over.`,
+  )
+}
+
+function attachLongPaste(text: string, snapshot: TextSnapshot) {
+  if (!text.trim()) {
+    return
+  }
+
+  const overflow = getMessageTextOverflow(message.value, [
+    ...pastedTexts.value,
+    { content: text },
+  ])
+
+  if (overflow > 0) {
+    warnAboutMessageLimit('This text is too long to paste.', overflow)
+
+    return
+  }
+
+  if (pastedTexts.value.length >= MAX_PASTED_TEXTS) {
+    useWarningMessage(
+      `You can attach up to ${MAX_PASTED_TEXTS} pasted texts.`,
+      'The text was inserted into the message instead.',
+    )
+    insertTextAtSelection(text, snapshot)
+
+    return
+  }
+
+  pastedTexts.value = [...pastedTexts.value, createPastedText(text)]
+}
+
+function openPastedText(id: PastedText['id']) {
+  openedTextFileKey.value = null
+  openedPastedTextId.value = id
+  isTextModalOpen.value = true
+}
+
+function openTextFile(storageKey: FileMetadata['storageKey']) {
+  openedPastedTextId.value = null
+  openedTextFileKey.value = storageKey
+  isTextModalOpen.value = true
+}
+
+function removePastedText(id: PastedText['id']) {
+  pastedTexts.value = pastedTexts.value.filter((pastedText) => {
+    return pastedText.id !== id
+  })
+}
+
+function savePastedText(content: string) {
+  const id = openedPastedTextId.value
+
+  const editedPastedTexts = pastedTexts.value.map((pastedText) => {
+    return pastedText.id === id ? { ...pastedText, content } : pastedText
+  })
+  const overflow = getMessageTextOverflow(message.value, editedPastedTexts)
+
+  if (overflow > 0) {
+    warnAboutMessageLimit('These edits make the message too long.', overflow)
+
+    return
+  }
+
+  pastedTexts.value = editedPastedTexts
+  isTextModalOpen.value = false
+}
+
+async function insertPastedText(content: string) {
+  const id = openedPastedTextId.value
+
+  isTextModalOpen.value = false
+
+  if (id) {
+    removePastedText(id)
+  }
+
+  await nextTick()
+  textarea.value?.focus()
+  insertTextAtSelection(content)
+}
+
+function onTextareaKeydown(event: KeyboardEvent) {
+  if (onMarkdownKeydown(event)) {
+    return
+  }
+
+  const hasModifier = event.shiftKey
+    || event.ctrlKey
+    || event.metaKey
+    || event.altKey
+
+  const key = event.key?.toLowerCase()
+
+  if (key !== 'enter' || isImeEvent(event) || hasModifier) {
+    return
+  }
+
+  handleEnter(event)
+}
+
 function handleEnter(event: KeyboardEvent) {
   if (!isDesktop) {
     return
@@ -1043,7 +1227,7 @@ function handleEnter(event: KeyboardEvent) {
 }
 
 async function sendMessage() {
-  if (!message.value?.trim()) {
+  if (!hasMessage.value) {
     return useWarningMessage('Please enter a message before sending.')
   }
 
@@ -1065,15 +1249,30 @@ async function sendMessage() {
     return useWarningMessage('Research in progress — please wait.')
   }
 
+  const overflow = getMessageTextOverflow(message.value, pastedTexts.value)
+
+  if (overflow > 0) {
+    return useErrorMessage(
+      'Message is too long',
+      `The limit is ${
+        formatCharacterCount(MAX_USER_MESSAGE_TEXT_LENGTH)
+      } characters and this message is ${
+        formatCharacterCount(overflow)
+      } over it. Shorten the text or remove a pasted text.`,
+    )
+  }
+
   if (!await ensureSendConsent(selectedTransferProviderId.value)) {
     return
   }
 
-  const text = message.value
+  const text = joinMessageWithPastedTexts(message.value, pastedTexts.value)
 
+  message.value = text
   emit('submit')
   message.value = ''
   files.value = []
+  pastedTexts.value = []
   nuxtApp.callHook('chat:submit', { text })
 }
 
@@ -1123,6 +1322,16 @@ watch(chatInputHeight, (newHeight) => {
   isSentHeightOnMounted.value = true
 
   nuxtApp.callHook('chat-input:height', newHeight)
+}, { flush: 'post' })
+
+watch(isKeyboardOpen, async () => {
+  await nextTick()
+
+  const measuredHeight = chatInputRef.value?.offsetHeight
+
+  if (measuredHeight) {
+    nuxtApp.callHook('chat-input:height', measuredHeight)
+  }
 }, { flush: 'post' })
 
 watch(() => tiles.value.length > 0, async () => {

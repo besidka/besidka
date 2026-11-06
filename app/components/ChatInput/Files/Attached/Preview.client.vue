@@ -28,6 +28,40 @@
         @open="(section, origin) => emit('open-tile', section, origin)"
         @remove="emit('remove-tile', $event)"
       />
+      <div
+        v-for="pastedText in pastedTexts"
+        :key="pastedText.id"
+        role="group"
+        :aria-label="PASTED_TEXT_NAME"
+        class="carousel-item flex items-center gap-1 relative"
+        data-testid="pasted-text-item"
+      >
+        <div
+          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
+        >
+          <ChatInputFilesAttachedTextCard
+            :file="{
+              name: PASTED_TEXT_NAME,
+              type: PASTED_TEXT_MEDIA_TYPE,
+              size: getPastedTextSize(pastedText.content),
+            }"
+            :content="pastedText.content"
+            @open="emit('open-pasted', pastedText.id)"
+          />
+        </div>
+        <button
+          class="absolute top-1 right-1 btn btn-circle btn-xs btn-error btn-soft size-4"
+          :aria-label="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
+          :title="`Remove ${PASTED_TEXT_NAME.toLowerCase()}`"
+          data-testid="pasted-text-remove"
+          @click="emit('remove-pasted', pastedText.id)"
+        >
+          <Icon
+            name="lucide:x"
+            size="10"
+          />
+        </button>
+      </div>
       <!-- Completed/attached files -->
       <div
         v-for="file in files"
@@ -48,6 +82,15 @@
             class="shrink-0 size-full object-cover"
             loading="lazy"
           >
+        </div>
+        <div
+          v-else-if="isTextFileType(file.type)"
+          class="flex items-center justify-center gap-1 bg-base-100/70 rounded-box p-1"
+        >
+          <ChatInputFilesAttachedTextCard
+            :file="file"
+            @open="emit('open-text', file.storageKey)"
+          />
         </div>
         <div
           v-else
@@ -279,6 +322,7 @@
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
 import type { UploadingFile } from '~/composables/chat-files'
+import type { PastedText } from '~/utils/pasted-text'
 import type {
   ChatInputTile,
   ChatInputTileId,
@@ -290,10 +334,12 @@ const props = withDefaults(defineProps<{
   uploadingFiles?: Map<string, UploadingFile>
   uploadingCount?: number
   tiles?: ChatInputTile[]
+  pastedTexts?: PastedText[]
 }>(), {
   uploadingFiles: undefined,
   uploadingCount: undefined,
   tiles: () => [],
+  pastedTexts: () => [],
 })
 
 const emit = defineEmits<{
@@ -301,6 +347,9 @@ const emit = defineEmits<{
   'removeAll': []
   'cancel': [fileId: string]
   'retry': [fileId: string]
+  'open-text': [storageKey: string]
+  'open-pasted': [id: PastedText['id']]
+  'remove-pasted': [id: PastedText['id']]
   'open-tile': [section: ToolsSection | null, origin: HTMLElement]
   'remove-tile': [id: ChatInputTileId]
 }>()
@@ -321,21 +370,34 @@ const uploadingFilesArray = computed<UploadingFile[]>(() => {
 const hasAnyFiles = computed<boolean>(() => {
   return props.files.length > 0
     || uploadingFilesArray.value.length > 0
+    || props.pastedTexts.length > 0
 })
 
 const hasAnyItems = computed<boolean>(() => {
   return hasAnyFiles.value || props.tiles.length > 0
 })
 
-const regionLabel = computed<string>(() => {
-  const filesLabel = totalFilesCount.value === 1 ? 'File' : 'Files'
+const attachmentsLabel = computed<string>(() => {
+  const pastedTextsCount = props.pastedTexts.length
 
+  if (!pastedTextsCount) {
+    return totalFilesCount.value === 1 ? 'File' : 'Files'
+  }
+
+  if (totalFilesCount.value) {
+    return 'Files and pasted text'
+  }
+
+  return pastedTextsCount === 1 ? 'Pasted text' : 'Pasted texts'
+})
+
+const regionLabel = computed<string>(() => {
   if (!props.tiles.length) {
-    return filesLabel
+    return attachmentsLabel.value
   }
 
   return hasAnyFiles.value
-    ? `Active settings and ${filesLabel.toLowerCase()}`
+    ? `Active settings and ${attachmentsLabel.value.toLowerCase()}`
     : 'Active settings'
 })
 
@@ -407,7 +469,12 @@ useEventListener(carouselRef, 'wheel', scrollCarouselWithWheel, {
 useResizeObserver(carouselRef, updateHiddenContentOnRight)
 
 watch(
-  [() => props.tiles.length, totalFilesCount, carouselRef],
+  [
+    () => props.tiles.length,
+    () => props.pastedTexts.length,
+    totalFilesCount,
+    carouselRef,
+  ],
   async () => {
     await nextTick()
     updateHiddenContentOnRight()

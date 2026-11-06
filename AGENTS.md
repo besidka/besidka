@@ -205,11 +205,31 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   "Save X as default" caption link, rows hidden until they can act (animated
   reveal plus the reveal guard), section header icons, the web search price
   badge with its InfoNote, memory icons, the inline Exa mark
+- `docs/chats/chat-input-markdown.md` - The Markdown-aware chat textarea
+  (`useMarkdownTextarea`, also on the project instructions card): HTML paste
+  conversion from Apple Mail, Gmail and web pages (the `shouldConvertHtml` gate
+  that lets VS Code span soup fall through, `htmlToChatMarkdown`, bullet glyph
+  normalisation for `text/plain`), long paste (over 1200 characters or 40
+  lines) becoming a visual-only "Pasted text" chip (edit, Insert as text, max
+  10) that is appended to the message as plain text on send, and why it is
+  neither an uploaded file nor a message part, the keyboard rules (Enter
+  inside an open fence does not send, Shift+Enter list continuation, Tab
+  indent, IME guard), the single insertion helper that keeps native undo, and
+  why a TipTap/ProseMirror editor was deferred
 - `docs/chats/model-picker.md` - The chat input model picker: dropdown at
   md+, bottom sheet below (same breakpoint and chrome as the tools sheet),
   the `layout` prop on the shared Panel, inline filter chips, the
   horizontal provider chip row, no search autofocus, the visual-viewport
   keyboard lift, and the only events that close the sheet
+- `docs/chats/ios-keyboard.md` - Keeping the chat composer above the iOS
+  keyboard: why a fixed composer driven by focus/blur was covered when the
+  keyboard opened after focus (layout vs visual viewport, iOS pans only at
+  focus time), the shared `useVisualViewportInset` (inset formula, rAF
+  batching, settle re-reads for WebKit 237851, the text-entry focus gate for
+  the iOS 26 drift, pinch-zoom guard), the inline `bottom` lift and the
+  keyboard-open class matrix, the scroll spacer inset, why not
+  `interactive-widget` or the VirtualKeyboard API, the deferred focus-pan
+  suppression, and the iOS Simulator verification recipe
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no
@@ -1241,6 +1261,38 @@ try {
 **Stop hooks**: These still run after each response as a safety net, but should not be relied upon as the primary validation mechanism.
 
 **Affected test mappings**: CI runs the full suite on every pull request, so an unregistered test still runs there. The mapping in `scripts/test-affected-check.mjs` now drives the pre-push hook (`.husky/pre-push`) and `pnpm run test:affected`, so when writing new test files you MUST still update it to register them — unregistered tests won't run locally when their source files change. Add new test files to existing test groups or create a new group as appropriate.
+
+## iOS Simulator Testing
+
+When a change touches mobile layout, the on-screen keyboard, bottom sheets,
+focus, paste or anything else iOS-specific, verify it in the iOS Simulator
+in **both** modes, because they behave differently (viewport, keyboard,
+safe areas, toolbars):
+
+1. **Safari**: open the page in Safari.
+2. **PWA**: in Safari use Share → Add to Home Screen, then open Besidka from
+   the home-screen icon (standalone mode) and repeat the same checks.
+
+Prefer testing a **deployed** build (the PR preview
+`https://pr-<n>-besidka.chernenko.workers.dev`), because it is closest to
+production. The PWA check is only meaningful there: `pnpm run dev` disables
+the PWA module (`devOptions.enabled: false`), so the page has no web app
+manifest and iOS opens the home-screen icon as a half-browser web app (title
+bar and toolbar) instead of full screen. The owner signs in on the preview;
+never type the owner's password.
+
+A local dev server (`pnpm run dev`, the simulator reaches the Mac's
+`localhost`) is fine for debugging when you need server logs or fast
+iteration, in Safari only. Sign in there with a test account created through
+the auth API with the e2e helper's dummy Turnstile token
+(`tests/e2e/helpers/auth.ts`). Confirm the final result on the deployed
+preview in both Safari and PWA mode: a bug can show in one mode and not the
+other.
+
+Show the on-screen keyboard (the simulator hides it while a hardware
+keyboard is connected) and focus fields by tapping, the way a user does:
+toggling the keyboard on an already focused field does not reproduce real
+behaviour. Report which build and mode each result came from.
 
 ## Commit Messages
 

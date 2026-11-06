@@ -124,6 +124,17 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/web-search-price.spec.ts',
     'tests/unit/composables/scroll-edge-fade.spec.ts',
   ]
+  const markdownTextareaTests = [
+    'tests/unit/composables/markdown-textarea.spec.ts',
+    'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/Projects/InstructionsCard.spec.ts',
+    'tests/unit/utils/pasted-text.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/TextCard.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+    'tests/e2e/chat/chat-input-markdown.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
     'tests/integration/api/profile-settings-legal-notices.spec.ts',
@@ -562,6 +573,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/gateway-image-generation.spec.ts',
     'tests/e2e/chat/image-generation-single-message.spec.ts',
     'tests/e2e/chat/mermaid-diagram.spec.ts',
+    'tests/e2e/chat/chat-input-markdown.spec.ts',
   ]
   const mermaidDiagramTests = [
     'tests/unit/utils/markdown-fences.spec.ts',
@@ -633,6 +645,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/shared/context-menu-clipping.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
+    'tests/unit/utils/clipboard-html.spec.ts',
   ]
 
   const messageUsageTests = [
@@ -1334,6 +1347,15 @@ export function getAffectedTests(changedFiles) {
       tests: deepseekWebSearchTests,
     },
     {
+      pattern: /^shared\/utils\/chat-message-limits\.ts$/,
+      tests: [
+        'tests/unit/utils/chats/request-schema.spec.ts',
+        'tests/unit/utils/pasted-text.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/integration/api/chats-research-start.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/chats\/request-schema\.ts$/,
       tests: [
         'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -1771,6 +1793,13 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^app\/utils\/clipboard-html\.ts$/,
+      tests: [
+        'tests/unit/utils/clipboard-html.spec.ts',
+        ...contextMenuTests,
+      ],
+    },
+    {
       pattern: /^shared\/utils\/model-citation-markers\.ts$/,
       tests: [
         'tests/unit/utils/model-citation-markers.spec.ts',
@@ -2020,6 +2049,25 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/composables/chat-scroll-spacer.spec.ts',
         'tests/e2e/chat/scroll-spacer.spec.ts',
         'tests/e2e/chat/chat-input-collapse-on-attach.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(app\/composables\/visual-viewport-inset\.ts|app\/composables\/keyboard-inset-root\.ts)$/,
+      tests: [
+        'tests/unit/composables/visual-viewport-inset.spec.ts',
+        'tests/unit/composables/chat-scroll-spacer.spec.ts',
+        'tests/unit/composables/keyboard-inset-root.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+        'tests/e2e/search/keyboard-inset.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(app\/assets\/css\/main\.css|app\/components\/Search\/Modal\.client\.vue|app\/components\/ChatInput\.client\.vue)$/,
+      tests: [
+        'tests/e2e/search/keyboard-inset.spec.ts',
       ],
     },
     {
@@ -2749,6 +2797,21 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/plugins\/.*user-settings.*\.ts$/,
       tests: profileSettingsTests,
+    },
+    {
+      pattern:
+        /^(app\/composables\/(markdown-textarea|pasted-texts)\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client)|Chat\/TextFileModal\.client)\.vue)$/,
+      tests: markdownTextareaTests,
+    },
+    {
+      pattern:
+        /^(app\/utils\/(rehype-raw-html-as-text|remark-disable-html)\.ts|app\/composables\/chat-format\.ts)$/,
+      tests: [
+        'tests/unit/utils/rehype-raw-html-as-text.spec.ts',
+        'tests/unit/utils/remark-disable-html.spec.ts',
+        'tests/unit/composables/chat-format.spec.ts',
+        'tests/e2e/chat/chat-input-markdown.spec.ts',
+      ],
     },
     {
       pattern: /^app\/utils\/.*\.ts$/,
