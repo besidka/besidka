@@ -2922,6 +2922,329 @@ modal names recipients by category ("the AI providers ... whose keys I add (for 
 consent version stays `2026-11-a`. Research and test results:
 `typesafe-jev-findings.md` in the session scratchpad.
 
+### 3.20 Cross-project memory (proposal, 2026-11-03)
+
+**Status: proposal, nothing is built** (no column, route, tool or UI). The
+idea is the owner's, raised 2026-11-03; statements about today's code were
+checked against the source on that date.
+
+**Problem.** In project A the user asks about something that lives in project
+B. A's chats cannot see B's memory entries, and the model has no way to ask.
+Only the entries are isolated, not the chats:
+
+| Data | Who reads it | Rule (code) |
+|---|---|---|
+| Project entries | Chats of that project only | `isEntryVisible` (`memory-tools.ts:295`) |
+| Account entries | Every chat, except in a project with `useAccountMemory === false` | `accountVisible` (`memory-tools.ts:668`) |
+| Chats (`search_chats`, `read_chat`, J6) | Every chat of the user, except that a project with `useAccountMemory === false` sees only its own | `projectId` is passed only when `chat.project?.useAccountMemory === false` (`index.post.ts:1352`, `:1375`); `search-chats.ts:88`; `read-chat.ts:360` |
+
+Chat isolation is one-way: an isolated project reads only itself, but its
+chats are readable from every other chat (Privacy Policy line 228 and the
+`/memory` guide say so). The new part is the search over other projects'
+**entries**; a normal project's chats already reach other projects' chats,
+only without a project label.
+
+**1. Retrieval only, on demand.** Another project's memory never enters the
+cached memory index or the prompt prefix (3.2), so the token budgets and
+provider prompt caching stay as they are. It arrives only through a tool call
+(item 5 below) or the Jev pre-retrieval block (item 6), per send. The feature
+itself copies nothing into the reading project's memory. Writes never cross:
+`memory_write` and `memory_forget` in project A touch only A or the account
+(the scope resolution at `memory-tools.ts:438` and `isEntryVisible` are
+unchanged). A cross-project read also locks `memory_write` for the rest of the
+turn: the new tool is not a memory tool, so `isUntrustedToolResultPart`
+(`tool-loop.ts:90`) raises the lock, as it does for `search_chats` today.
+
+**What this does not guarantee.** The tool result is not stored as memory, but
+the model's answer in chat A is. Two separate effects:
+
+- **(a) Answer text outlives B.** The answer is persisted as assistant text,
+  `extractMessageSearchText` (`search/text.ts:27`) indexes the text parts of
+  every role in `message_search`, and a public share of A publishes it. So
+  once B's fact is restated in A's answer, it outlives a forget in B, a
+  deleted source project and turning sharing off, and `search_chats` can find
+  it from A. Persisted answer text is not redacted, only the tool part
+  excerpts are (item 5). This is a limit of the feature, not something it can
+  remove.
+- **(b) Extraction could write B's fact into A or the account.** Today this is
+  mitigated, not open. Only `text` parts enter the window
+  (`projectMemoryMessageText`), so tool excerpts never do; assistant prose
+  that paraphrases another chat enters as low-trust context (3.4). Every op
+  needs an evidence quote found in the window's user text
+  (`extract.ts:676` passes `extractionWindow.userTexts` as `groundingTexts`;
+  `isMemoryExtractionEvidenceGrounded`, `extract-grounding.ts:199`), and the
+  quote must share a content token with the saved text
+  (`memoryExtractionSharesContentToken`, `:70`). Code guarantees the evidence
+  is the user's words, not that the stored body is, so an echoed fact could be
+  stored only if the extractor pairs it with such a user quote and the Jev
+  memory checks are off (when on, they compare the body with an excerpt around
+  the quote). The feature closes this: assistant turns holding a
+  `search_other_projects` result are excluded from the extraction window, the
+  way `memory_list` and `memory_read` turns are. `RECALL_TOOL_NAMES`
+  (`extract-input.ts:32`) is matched by `isMemoryExtractionRecallMessage`
+  (`:138`) against `messages.tools` and the part types, and
+  `loadMemoryExtractionWindow` skips those rows (`:281`). The sweep, backfill
+  and the project Refresh all read through that window (`extractChatMemory`),
+  so adding the new name there covers all of them. Grounding is unaffected,
+  because the user row stays in the window. A later turn that restates the
+  fact without a tool part is not excluded.
+
+`search_chats`, `read_chat` and the J6 synthetic chip part (a
+`tool-search_chats` part, matched through the `tool-` prefix) are already
+excluded this way since #620. `search_other_projects` follows the same
+pattern.
+
+**2. Consent per source project, default off.** New nullable column
+`projects.share_memory` (integer boolean), setting "Let my other projects use
+this project's memory". Nullable with no SQL `DEFAULT`, like `useAccountMemory`
+(`projects.ts:37`), but `null` means off here, whereas a `null`
+`useAccountMemory` means on through `MEMORY_SETTING_DEFAULTS`. The migration
+is a single `ALTER TABLE projects ADD share_memory integer`, the same shape as
+`20261030194122_project_memory_auto_update`; per the D1 rule in `CLAUDE.md`
+its SQL must contain no `DROP TABLE`. Default off because projects often
+separate clients, or work from private life; that is our inference, since
+section 2 records only that claude.ai's chat search never crosses projects and
+that project files are forked copies. Turning it off takes effect on the next
+send and no copy has to be removed, but the limit under item 1 (answer text
+already written) applies. Deleting the source project deletes its entries
+through the existing cascade.
+
+**3. Who can read.** The proposed default: any chat of the same user outside
+the source project, project chats and non-project chats alike (owner question
+1). A project with `useAccountMemory === false` is treated as isolated and
+does not read other projects either: the user signalled isolation, and this
+matches the chat rule above, so one switch means one thing. A source project
+whose memory is `disabled` is not offered (tool writes are already refused
+there, 3.13). Chats excluded from memory (`chats.memory_excluded`) stay
+excluded from the chat half, as in every search today.
+
+`share_memory` gates in-chat models only. MCP `list_memory` with `scope: all`
+already reads every project's entries (`docs/mcp-server.md:583`) under the
+user's own `memory:read` approval, and that does not change. MCP
+`update_project` gets the `share_memory` field in X1, for parity with the UI.
+
+**4. What is searched.**
+
+- **Entries of shared projects.** New. Only chats are full-text indexed:
+  `message_search` is the single FTS5 table (migration
+  `20260829223140_message_search_fts5`); `memory_entries` has only
+  `idx_memory_entries_user_project`. Entries are tiny (at most 15 per project,
+  body 4,096 bytes, description 100 characters, `MEMORY_LIMITS`,
+  `shared/utils/memory-policy.ts:35`), so the search is one bounded query and
+  in-process scoring, with no virtual table: select title, description and
+  `substr(body, 1, 600)` where `user_id = ? and project_id in (shared ids)
+  and sensitivity != 'special'`, then score the tokens of the query
+  (`normalizeSearchText`, `search/text.ts:64`) against them, title and
+  description weighted higher. An FTS table would need a write-path sync and
+  a sweep like `message-search-index-sweep.ts` for entries written by five
+  paths, to index at most 15 rows per project. Revisit if the caps are raised.
+  Cap the shared set (for example 20 projects: 300 rows, about 180 KB). The
+  match is lexical, so a Ukrainian query does not find an English entry.
+- **Chats of shared projects.** The existing `searchChats` with the project
+  filter widened from one project to the set of shared project ids, and
+  `SearchChatsHit` (`search-chats.ts:25`) extended with the source project's
+  name and public id. `read_chat` needs no change: it already accepts any chat
+  outside an isolated project. Like `search_chats`, and unlike J6 (which passes
+  `excludeForeignShareBranches`), it keeps every share branch. This half
+  overlaps `search_chats`; it stays so one call returns labelled results from
+  both (owner question 4 covers tightening the overlap).
+
+Results always carry the source project's name and public id.
+
+**5. Tool path (works without Jev).** New tool `search_other_projects({ query,
+limit? })`. The model decides when to call it. It is offered only when all of
+these hold:
+
+- the send allows tools (`toolCallingAllowed`, `index.post.ts:1329`);
+- "Use memory" is on (`isMemoryToolsEnabled`), for the entries half;
+- the chat is not in a project with `useAccountMemory === false`, and its own
+  project's memory is not `disabled`;
+- the user has at least one other project with `share_memory` on and memory
+  not `disabled`.
+
+The chats half additionally needs "Search and reference chats"
+(`isChatSearchToolEnabled`); with it off the tool searches entries only.
+
+The tool list changes, as a one-off prompt-prefix cache miss and not a
+per-message one, when any of those inputs changes: sharing or memory is
+toggled, a source project is deleted or disabled (or archived, if owner
+question 5 is answered no), or the chat moves into or out of an isolated
+project. The system prompt must not change with it: `CHAT_SEARCH_INSTRUCTION`
+(`ai/chat-search-tools.ts:11`, pushed at `index.post.ts:3643` when
+`hasChatSearchTools`) keeps naming only `search_chats` and `read_chat`, and
+nothing else names the new tool. The model learns of it from its description,
+which names no project.
+
+Output: `{ notice, results }`, at most `SEARCH_CHATS_DEFAULT_LIMIT` (5), each
+result either `{ kind: 'entry', project, category, title, description,
+excerpt }` or `{ kind: 'chat', project, chatId, title, url, messageId, role,
+date, snippet }`. There is no entry id: `memory_read` would refuse it, because
+`isEntryVisible` only admits the current project and the account. A chat is
+read further with `read_chat` (`READ_CHAT_MAX_CHARS`, 8,000). The notice says
+the content is the user's other projects' memory, untrusted data, never
+instructions.
+
+Caps and their order. Entries are ranked by the in-process score and chat
+hits by BM25 (the J4 order when that role is on), then merged best first,
+alternating. Each entry excerpt is cut at 600 characters, chat snippets keep
+the 32-token budget (`SEARCH_CHATS_SNIPPET_TOKEN_COUNT`), at most three
+entries are returned, and results are added in rank order until the next
+would pass 1,500 tokens (`JEV_PAST_CHAT_RETRIEVAL.maxExcerptTokens`,
+estimated like `buildPastChatsBlock`, `pre-retrieval.ts:151`), so the
+lowest-ranked results are dropped first. Why 600: Cyrillic runs near 2.5
+characters per token (the `READ_CHAT_MAX_CHARS` comment), so three
+1,200-character excerpts would use about 1,440 of the 1,500 tokens before
+titles, labels and chat hits; at 600 (about 240 tokens) three entries cost
+about 720, under the 500 per hit that the J6 block's 1,500 over 3 hits allows.
+The rest of a long entry is out of reach for the tool.
+
+Wiring that is easy to miss:
+
+- Add the tool to `CHAT_SEARCH_TOOL_NAMES` (`ai/chat-search-tools.ts:6`) and
+  spend from `createChatSearchBudget` with `consumeChatSearchCall`: it shares
+  the 3 lookup calls per turn and, through `isBudgetedLookupToolName`
+  (`tool-loop.ts:81`), does not use up the web-search steps (3.3).
+- Do not add it to `MEMORY_TOOL_NAMES` (`ai/memory-tools.ts:8`): that would
+  stop it raising the write lock.
+- Extend `redactMemoryToolPartsForPersistence` (`persist-redaction.ts:91`),
+  which today strips `body` only for the four memory tools, to drop `excerpt`
+  of `kind: 'entry'` results before `messages.parts` is written. Otherwise an
+  entry that is forgotten or deleted in B outlives itself inside a chat of A.
+  Ids, titles and the project label stay.
+- Add the tool name to `RECALL_TOOL_NAMES` (`extract-input.ts:32`), see item 1.
+
+**6. Jev path (optional, TypeSafe AI key).** No new role. J6 `pastChatRetrieval`
+(3.19) pre-retrieves past chats only on sends where tools are not registered
+(`!toolCallingAllowed`, `index.post.ts:1369`: a model without tool calling, a
+forced `toolChoice`, image generation). Those sends cannot call
+`search_other_projects`, so this is their only route; for tool-calling models
+the tool is the only route, and a weak tool user may never call it (section 6
+of this document, Open risks). When J6 decides to search,
+`resolvePastChatPreRetrieval` (`pre-retrieval.ts:274`) also runs the entry
+search over the shared projects, with the same query and the same
+`JEV_PAST_CHAT_RETRIEVAL.maxHits` (3), so entries and chats compete for three
+slots inside the 1,500-token block, each labelled with its project. The
+persisted chip follows the 3.19 J6 rule: entry hits are written as a
+synthetic `tool-search_other_projects` part
+(`cross-project-pre-retrieval-<user message id>`) that carries the query, the
+project names and links and the entry titles, never an excerpt. Using the
+tool's name means the same extraction exclusion and persistence redaction
+apply to it.
+
+J4 `rerank` (3.19) orders the candidates (at most `JEV_RERANK.maxCandidates`,
+30) and drops those below `dropBelow` (0.5) **only when at least `limit` remain
+above it**. It does not guarantee that only answering passages get in; it
+removes clearly irrelevant ones when there is enough to choose from.
+
+J3 `injectionScreening` does **not** screen past-chat excerpts or memory
+entries today (only project knowledge at ingestion and Brave and Exa
+results). Cross-project passages get the defences excerpts have: the
+data-not-instructions notice, `neutralizeChatText`, never-store redaction and
+the write lock. Screening them with `screenTextsForInjection` is an X2
+option, not a v1 claim. A dedicated question ("does this message refer to
+another project?") is a later option if J6 misses cross-project references;
+it would be an eighth role toggle in `user_settings.typesafe_roles`, so not
+in v1.
+
+**7. UI.** The toggle sits next to "Use account memory" in
+`app/components/Projects/MemoryCard.vue`, written through the strict form of
+`PATCH /api/v1/projects/:id/memory` (as `{ useAccountMemory }` is,
+`setProjectUseAccountMemory`, ownership in the `UPDATE ... WHERE`); MCP
+`update_project` writes the same field (X1). One line of copy: other projects
+can look up this project's memory entries; off by default. It must not
+suggest it hides chats, which are searchable from other chats either way. The
+answer carries a source chip, "From project
+X", in the existing `SearchStep` (`Chat/Reasoning/SearchStep.vue`), linking to
+the project or the chat; it is a tool part, so `filterPublicParts` strips it
+from public shares. The project's Memory tab shows whether it is shared.
+
+**8. Legal.** Same purpose (memory of the user's own data), same controller, no
+new recipient: the provider of the chat you are in already receives "the
+memory index, any entry the assistant reads, chat excerpts and project
+knowledge" (`content/legal/privacy-policy.md:233`). Nothing in the Privacy
+Policy promises project isolation. The nearest lines:
+
+- "In a project, the project's entries are used, plus your account entries if
+  the project is set to use them." (`content/legal/privacy-policy.md:227`)
+- "In a project that does not use account memory, only that project's chats are
+  searched." (`content/legal/privacy-policy.md:228`)
+
+The explicit promise is on two public pages: "Project memory belongs to one
+project and is used only in that project's chats"
+(`content/guides/memory.md:60`) and "its own memory, which only that
+project's chats use" (`content/index.md:307`). All three files need a
+sentence in the PR that ships X1: a user can share a project's memory with
+their other projects, off by default. The home FAQ in `content/index.md:307`
+also feeds the FAQPage JSON-LD (`app/pages/index.vue` passes `page.faqs` to
+`app/utils/landing-jsonld.ts`), so that one edit covers both; no other copy in
+`app/` repeats the sentence. Against the WP260 checklist in
+`docs/legal.md:398`, none of the material triggers applies (no new purpose,
+recipient, transfer, basis, retention or right), and the change matches the
+minor item "describing an opt-in feature already covered by the existing
+purposes and recipients". Record the new hash as `minor` with a note: no
+`LEGAL_NOTICES` entry, no `CURRENT_CONSENT_VERSION` bump. This is the
+engineer's reading, not counsel's. Keep `docs/legal/dpia.md` and
+`docs/legal/art30-record.md` in step with one sentence each. Memory never
+holds special-category data (3.14), so the new path adds no Art. 9 exposure
+beyond the chat search that already exists.
+
+**9. With past.dev as the memory provider** (all of this item is from the
+2026-11-03 evaluation and was not checked against this repo, which holds no
+source for it; past.dev is not adopted). Each Besidka project has its own
+past.dev audience and identity, and profile memory is project-visible.
+Cross-project then means adding identity `project-A` to the fixed audience of
+each shared project B (`PUT /api/v1/audiences/{slug}` with an `identities`
+list), or using a rule audience; a new project must be added to every shared
+audience. Recall results carry no audience field, only `sources[].sourceId`,
+our own data-point id (`chat-<publicId>-<messageId>`), so the source chip comes
+from our ledger of sent ids. J4 rerank can filter past.dev results too.
+`GET /api/v1/trace/roots` (a debugging read, no credits, 50 per page, filters
+only by search text or ingestion id) is the only list-like endpoint and has
+no audience filter, so a per-project memory list there is an open question
+for past.dev.
+
+**10. Phases.**
+
+| Phase | Scope |
+|---|---|
+| X1 | `projects.share_memory` and migration; the strict PATCH and toggle; entry search; `search_other_projects` with budget, write-lock and persistence-redaction wiring; labelled `SearchChatsHit`; source chip; the extraction exclusion; MCP `update_project` field, with `docs/mcp-server.md` and the "Change your projects" wording in the Privacy Policy updated; copy edits on the three pages; `attributes.crossProjectMemory` counts (no text, per `docs/axiom-map-fields.md`) |
+| X2 | Entry search inside J6 pre-retrieval for sends without tools, with the excerpt-free chip; rerank over the mixed pool; optional J3 screening of these passages |
+| X3 | past.dev parity (item 9), only if past.dev is adopted |
+
+**11. Owner questions.**
+
+1. May non-project chats read shared projects? Proposed: yes.
+2. One-way sharing per source project (proposed), or a two-sided pair of
+   projects?
+3. `share_memory` gates in-chat models only, because MCP `list_memory` with
+   `scope: all` already reads every project's entries. Should it also limit
+   what a connected app reads? Proposed: no, the app's own `memory:read`
+   approval is the user's consent; only the `update_project` field is added.
+4. Should `share_memory = false` also remove that project's chats from the
+   default all-chats search? That restricts today's behaviour and the policy
+   sentence above, so it is not part of this proposal unless the owner asks.
+5. Do archived projects keep sharing? Proposed: yes, the setting is the only
+   switch.
+
+**12. Risks.**
+
+- **Wrong-project bleed** (a client's fact surfaces in another client's
+  chat). Default off, rerank, the project label and chip, and the model
+  telling the user where it came from.
+- **Prompt injection from another project's chats or entries.** Same
+  defences as past-chat excerpts, listed in item 6; the write lock holds.
+- **Token cost** of the extra tool result: capped at 1,500 tokens and one
+  call of the three-call budget.
+- **Entry search over many shared projects.** Bounded by the shared-set cap
+  and the 15-entry limit; the chat half is the existing FTS query with a
+  longer `project_id in (...)` filter, so cap the set before widening it.
+- **Residual copies.** B's fact restated in A's answer persists and is
+  searchable (item 1). Sharing a chat publicly publishes that answer text,
+  with the chip stripped by `filterPublicParts` but the text kept; account
+  memory behaves the same today.
+- **Expectation gap.** The setting governs memory entries only; chat search
+  across projects already works. The copy and the guide have to say so.
+
 ## 4. Cost and performance
 
 | Item | Per turn | Who pays |
