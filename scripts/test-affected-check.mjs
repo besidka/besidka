@@ -70,6 +70,7 @@ export function getAffectedTests(changedFiles) {
   const filesModuleTests = [
     'tests/unit/components/Chat/Files.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
@@ -79,6 +80,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/composables/file-manager-project-groups.spec.ts',
     'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/file-manager-sources.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/upload-with-progress.spec.ts',
     'tests/integration/api/files-upload.spec.ts',
@@ -2449,6 +2451,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/types\/file-manager\.d\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^app\/utils\/file-manager-sources\.ts$/,
       tests: filesModuleTests,
     },
     {

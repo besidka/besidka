@@ -1,6 +1,7 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
 import GridView from '../../../../../../../../app/components/ChatInput/Files/Modal/Select/Grid/View.vue'
+import GridSkeleton from '../../../../../../../../app/components/ChatInput/Files/Modal/Select/Grid/Skeleton.vue'
 
 const file = {
   id: 'file-1',
@@ -48,5 +49,37 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     expect(wrapper.emitted('rename')?.[0]).toEqual([file])
     expect(wrapper.emitted('delete')?.[0]).toEqual([file])
     expect(wrapper.emitted('file-click')).toHaveLength(2)
+  })
+
+  it('shows six columns from lg in the wider modal', async () => {
+    const wrapper = await mountSuspended(GridView, {
+      props: {
+        files: [file],
+        selectedIds: new Set<string>(),
+        isTouchSelecting: false,
+        touchedIndices: new Set<number>(),
+      },
+    })
+
+    expect(wrapper.classes()).toEqual(expect.arrayContaining([
+      'grid',
+      'grid-cols-3',
+      'sm:grid-cols-4',
+      'lg:grid-cols-6',
+    ]))
+  })
+
+  it('keeps the skeleton on the same columns with full rows', async () => {
+    const wrapper = await mountSuspended(GridSkeleton)
+    const tiles = wrapper.findAll('.skeleton')
+
+    expect(wrapper.classes()).toEqual(expect.arrayContaining([
+      'grid-cols-3',
+      'sm:grid-cols-4',
+      'lg:grid-cols-6',
+    ]))
+    expect(tiles).toHaveLength(12)
+    expect(tiles.every(tile => tile.classes().includes('skeleton--default')))
+      .toBe(true)
   })
 })

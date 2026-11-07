@@ -1,3 +1,4 @@
+import type { Component } from 'vue'
 import type { FileMetadata } from '#shared/types/files.d'
 
 export type FileManagerFile = Pick<
@@ -16,6 +17,26 @@ export type FileManagerFile = Pick<
 
 export type ViewMode = 'grid' | 'list'
 export type FileSourceFilter = FileMetadata['source'] | 'project'
+
+interface FileSourceTabBase {
+  label: string
+  testId: string
+}
+
+export interface BuiltInFileSourceTab extends FileSourceTabBase {
+  kind: 'built-in'
+  id: FileSourceFilter
+  requiresImageInput?: boolean
+}
+
+export interface ExtraFileSourceTab extends FileSourceTabBase {
+  kind: 'extra'
+  id: string
+  component: Component
+  isEnabled?: () => boolean
+}
+
+export type FileSourceTab = BuiltInFileSourceTab | ExtraFileSourceTab
 
 export interface FetchFilesResponse {
   files: FileManagerFile[]

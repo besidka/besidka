@@ -9,11 +9,12 @@
         <th>Name</th>
         <th class="w-20 hidden sm:table-cell">Type</th>
         <th class="w-20 hidden sm:table-cell">Size</th>
+        <th class="w-24 hidden lg:table-cell">Added</th>
         <th class="w-20">Actions</th>
       </tr>
     </thead>
     <tbody>
-      <tr v-for="i in 6" :key="i">
+      <tr v-for="i in 10" :key="i">
         <td>
           <div class="skeleton size-4 rounded" />
         </td>
@@ -28,6 +29,9 @@
         </td>
         <td class="hidden sm:table-cell">
           <div class="skeleton h-3 w-14" />
+        </td>
+        <td class="hidden lg:table-cell">
+          <div class="skeleton h-3 w-16" />
         </td>
         <td>
           <div class="flex gap-0.5">
