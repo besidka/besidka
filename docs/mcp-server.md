@@ -95,6 +95,30 @@ default on the consent page and each is ticked separately. A new scope has to be
 step: `shared/utils/mcp-oauth-scopes.ts`, the map above, and the consent
 labels in `app/components/OAuth/ScopeLabel.vue`.
 
+#### Planned scopes (Agentic capabilities)
+
+Not built yet. Each is a new scope, so each ships with a major version bump
+(consent is stored by scope name, and a new tool under an existing scope
+would reach existing clients silently). The design is in
+`docs/agentic-capabilities-roadmap.md`.
+
+| Scope | Class | Planned tools | Ticket |
+| --- | --- | --- | --- |
+| `admin:features` | write, admins only (hidden on the consent page and stripped on the server for non-admins) | `list_feature_flags`, `list_feature_access`, `set_feature_access` (one user at a time, never the rule) | P0-8 |
+| `artifacts:read` | read | `list_artifacts`, `get_artifact`, `list_artifact_shares` | A-8 |
+| `artifacts:write` | write | `create_artifact`, `update_artifact`, `revoke_artifact_shares` | A-8 |
+| `artifacts:share` | write, publishes | `share_artifact` (see exclusion 2) | A-8 |
+| `connectors:read` | read | `list_connectors`, `get_connector`, `list_connections` | C-9 |
+| `connectors:write` | write | `add_connector` (created disabled), `update_connector_tools` | C-9 |
+| `skills:read` | read | `list_skills`, `get_skill` | S-6 |
+| `skills:write` | write | `create_skill`, `update_skill` (both leave the skill disabled) | S-6 |
+
+`list_my_features` (P0-8) goes under the existing `settings:read`, because
+it only reads the caller's own state. Deletes of the new resources go under
+the existing `data:delete`. New scopes are used instead of reusing
+`chats:read` or `files:write`, so that an existing grant never silently
+extends to artifacts, connectors or skills.
+
 `openid`, `profile`, `email` and `offline_access` are identity scopes of the
 authorization server; no tool needs them. Every tool needs exactly one
 resource scope. A unit test (`tool-scopes.spec.ts`) fails when a tool file
@@ -901,6 +925,28 @@ add one of these tools without reading its entry first.
    **Revisit when** there is a way to make the user confirm the publication
    outside the agent's reach, for example a draft share the user activates in
    the app.
+
+   **Exception, artifacts only (owner decision 2026-11-07, planned in
+   Phase 1, ticket A-8).** A new scope `artifacts:share` lets an app create a
+   public link to an artifact with `share_artifact`. Chat shares stay
+   excluded. The exception is bounded so that a prompt-injected call does as
+   little harm as possible:
+   - `artifacts:share` is its own scope, unticked by default on the consent
+     page, so no existing grant reaches it (consent is stored by scope name,
+     see [Scope upgrades for existing clients](#scope-upgrades-for-existing-clients));
+   - a share created over MCP is always `noindex`, expires after at most 30
+     days, and has the viewer storage and the LLM bridge switched off;
+   - the artifact runtime is a separate, sandboxed origin
+     (`besidka-artifacts.chernenko.workers.dev`), so a shared artifact cannot
+     reach the user's session;
+   - `revoke_artifact_shares` (`artifacts:write`) withdraws it, and the
+     in-app share list shows MCP-created shares.
+
+   Why artifacts and not chats: an artifact is a self-contained output the
+   user asked an agent to build and usually means to show, while a chat holds
+   the whole conversation, including whatever personal data was in it.
+   **Revisit when** the draft-share idea above exists; then MCP shares of
+   artifacts move to the same confirm-in-app flow.
 3. **"Allow anyway" on a knowledge item flagged as a possible prompt
    injection.** Why: it is the override of the injection screen. An agent
    that reads the flagged text could un-flag itself, which defeats the screen
@@ -925,10 +971,24 @@ add one of these tools without reading its entry first.
    passkeys and account deletion.** Why: they are security and legal acts that
    must stay human. An app that could add a key or end a session could widen
    its own reach or lock the user out. **Revisit when:** not planned.
+6. **Feature rollout percentage, variants and the global kill switch.**
+   Planned MCP admin tools (P0-8, scope `admin:features`) may grant, deny or
+   clear one feature for **one** user. They never change a flag's rule:
+   rollout percentage, A/B variants, allowed roles or the on/off switch for
+   everyone. Why: those settings act on every account at once. A
+   prompt-injected admin agent could switch a feature on for everyone, or
+   switch off a safety feature for everyone, with one call, and no per-call
+   approval reaches the human. They stay in the `/admin` UI, behind a
+   confirmation. The same boundary keeps feature opt-ins (Labs) out of MCP:
+   opting in authorises a feature to spend the user's keys (item 1).
+   **Revisit when** the server enforces a cap on rule changes (for example at
+   most a small rollout step per day, with automatic rollback), or a rule
+   change made over MCP stays pending until the admin confirms it in the
+   app.
 
 ### Not possible, not omitted
 
-6. **Chat archive and restore.** Besidka has no chat archive (only
+7. **Chat archive and restore.** Besidka has no chat archive (only
    project archive, which `update_project` has). **Knowledge folders** are a
    client-only idea: a `folderId` plus browser-local names, with no server
    entity to call. **Binary, PDF and image upload, and project file
