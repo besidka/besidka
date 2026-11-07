@@ -1,5 +1,5 @@
 <template>
-  <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24">
+  <div class="w-screen sm:w-4xl sm:max-w-chat-column mx-auto px-4 sm:px-24">
     <UiBubble class="!block shadow-none">
       <details
         v-if="instructions"

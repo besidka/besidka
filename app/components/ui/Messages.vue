@@ -1,6 +1,6 @@
 <template>
   <div
-    class="fixed top-0 sm:top-8 right-0 sm:right-8 z-50 flex justify-center w-full sm:max-w-md pointer-events-none"
+    class="side-panel-follow fixed top-0 sm:top-8 right-0 sm:right-[calc(var(--side-panel-width,0px)+2rem)] z-[70] flex justify-center w-full sm:max-w-md pointer-events-none"
   >
     <TransitionGroup
       name="messages"

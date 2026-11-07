@@ -1,7 +1,7 @@
 <template>
   <div
     ref="chatInputRef"
-    class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-1/2 sm:-translate-x-1/2 sm:w-3xl sm:max-w-full"
+    class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-[calc((100vw-var(--side-panel-width,0px))/2)] sm:-translate-x-1/2 sm:w-3xl sm:max-w-chat-column side-panel-follow"
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
@@ -203,6 +203,7 @@ import type {
   ToolsSection,
 } from '~/types/chat-input-tools'
 import { LazyChatInputFilesModal } from '#components'
+import { SIDE_PANEL_TRANSITION_MS } from '~/composables/side-panel'
 
 const props = defineProps<{
   stopped?: boolean
@@ -381,12 +382,54 @@ const sendButtonTitle = computed<string>(() => {
 
 const { bottomInset, isKeyboardOpen } = useVisualViewportInset()
 
-const composerTransitionStyle: StyleValue = {
-  transitionProperty: 'transform, translate, scale, rotate, bottom',
-  transitionDuration: '500ms, 500ms, 500ms, 500ms, 250ms',
-  transitionTimingFunction:
-    'ease-in-out, ease-in-out, ease-in-out, ease-in-out, ease-out',
-}
+const COMPOSER_TRANSITIONS = [
+  ['transform', '500ms', 'ease-in-out'],
+  ['translate', '500ms', 'ease-in-out'],
+  ['scale', '500ms', 'ease-in-out'],
+  ['rotate', '500ms', 'ease-in-out'],
+  ['bottom', '250ms', 'ease-out'],
+] as const
+const SIDE_PANEL_FOLLOW_TRANSITIONS = [
+  ['left', `${SIDE_PANEL_TRANSITION_MS}ms`, 'ease-out'],
+  ['max-width', `${SIDE_PANEL_TRANSITION_MS}ms`, 'ease-out'],
+] as const
+
+const { isOpen: isSidePanelOpen } = useSidePanel()
+const isFollowingSidePanel = shallowRef<boolean>(isSidePanelOpen.value)
+
+watch(isSidePanelOpen, (open, _wasOpen, onCleanup) => {
+  if (open) {
+    isFollowingSidePanel.value = true
+
+    return
+  }
+
+  const timeout = setTimeout(() => {
+    isFollowingSidePanel.value = false
+  }, SIDE_PANEL_TRANSITION_MS * 2)
+
+  onCleanup(() => {
+    clearTimeout(timeout)
+  })
+})
+
+const composerTransitionStyle = computed<StyleValue>(() => {
+  const transitions = isFollowingSidePanel.value
+    ? [...COMPOSER_TRANSITIONS, ...SIDE_PANEL_FOLLOW_TRANSITIONS]
+    : COMPOSER_TRANSITIONS
+
+  return {
+    transitionProperty: transitions.map(([property]) => {
+      return property
+    }).join(', '),
+    transitionDuration: transitions.map(([, duration]) => {
+      return duration
+    }).join(', '),
+    transitionTimingFunction: transitions.map(([, , timing]) => {
+      return timing
+    }).join(', '),
+  }
+})
 
 const keyboardLiftStyle = computed<StyleValue>(() => {
   if (!isKeyboardOpen.value) {

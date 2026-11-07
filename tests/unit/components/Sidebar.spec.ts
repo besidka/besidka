@@ -4,13 +4,19 @@ import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Sidebar from '../../../app/components/Sidebar.client.vue'
 import { useSearchModal } from '../../../app/composables/search-modal'
+import { useSidePanel } from '../../../app/composables/side-panel'
 
 enableAutoUnmount(afterEach)
 
 const loggedIn = ref<boolean>(true)
+const sidebarElementWidth = ref<number>(0)
 
 mockNuxtImport('useAuth', () => {
   return () => ({ loggedIn })
+})
+
+mockNuxtImport('useElementSize', () => {
+  return () => ({ width: sidebarElementWidth, height: ref<number>(0) })
 })
 
 function mountSidebar() {
@@ -29,6 +35,23 @@ function stubMatchMedia() {
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
     return {
       matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as unknown as MediaQueryList
+  })
+}
+
+function stubViewport(viewportWidth: number) {
+  vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+    const minWidthRem = Number(/min-width:\s*([\d.]+)rem/.exec(query)?.[1])
+
+    return {
+      matches: viewportWidth >= minWidthRem * 16,
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -121,5 +144,108 @@ describe('Sidebar.client', () => {
       .flatMap(icon => icon.classes())
 
     expect(iconClasses).toContain('i-lucide:home')
+  })
+})
+
+describe('Sidebar.client docked on the side panel seam', () => {
+  const sidePanelView = { viewKey: 'test-view', title: 'Test panel' }
+
+  beforeEach(() => {
+    loggedIn.value = true
+    sidebarElementWidth.value = 56
+    useSearchModal().isModalOpen.value = false
+    useSidePanel().close()
+    stubViewport(1440)
+  })
+
+  afterEach(() => {
+    useSidePanel().close()
+    sidebarElementWidth.value = 0
+    vi.restoreAllMocks()
+  })
+
+  it('docks on the seam while the panel is open, docked and not full width', async () => {
+    useSidePanel().open(sidePanelView)
+
+    const wrapper = await mountSidebar()
+    const root = wrapper.get('[data-testid="sidebar"]')
+
+    expect(root.attributes('data-docked')).toBe('true')
+    expect(root.attributes('style')).toContain(
+      'right: calc(var(--side-panel-width, 0px) - 28px)',
+    )
+    expect(root.classes()).not.toContain('sidebar-hoverable')
+  })
+
+  it('follows the panel opening and closing', async () => {
+    const wrapper = await mountSidebar()
+    const root = wrapper.get('[data-testid="sidebar"]')
+
+    expect(root.attributes('data-docked')).toBeUndefined()
+    expect(root.classes()).toContain('sidebar-hoverable')
+
+    useSidePanel().open(sidePanelView)
+    await nextTick()
+
+    expect(root.attributes('data-docked')).toBe('true')
+    expect(root.classes()).not.toContain('sidebar-hoverable')
+
+    useSidePanel().close()
+    await nextTick()
+
+    expect(root.attributes('data-docked')).toBeUndefined()
+    expect(root.attributes('style') ?? '').not.toContain('right:')
+  })
+
+  it('has no inline right offset while the panel is closed', async () => {
+    const wrapper = await mountSidebar()
+    const root = wrapper.get('[data-testid="sidebar"]')
+
+    expect(root.attributes('data-docked')).toBeUndefined()
+    expect(root.attributes('style') ?? '').not.toContain('right:')
+  })
+
+  it('does not dock in the overlay layout', async () => {
+    stubViewport(900)
+    useSidePanel().open(sidePanelView)
+
+    const wrapper = await mountSidebar()
+    const root = wrapper.get('[data-testid="sidebar"]')
+
+    expect(root.attributes('data-docked')).toBeUndefined()
+    expect(root.attributes('style') ?? '').not.toContain('right:')
+  })
+
+  it('does not dock in the sheet layout', async () => {
+    stubViewport(600)
+    useSidePanel().open(sidePanelView)
+
+    const wrapper = await mountSidebar()
+    const root = wrapper.get('[data-testid="sidebar"]')
+
+    expect(root.attributes('data-docked')).toBeUndefined()
+    expect(root.attributes('style') ?? '').not.toContain('right:')
+  })
+
+  it('returns to its normal place at full width', async () => {
+    useSidePanel().open(sidePanelView)
+    useSidePanel().toggleFullWidth()
+
+    const wrapper = await mountSidebar()
+    const root = wrapper.get('[data-testid="sidebar"]')
+
+    expect(root.attributes('data-docked')).toBeUndefined()
+    expect(root.attributes('style') ?? '').not.toContain('right:')
+  })
+
+  it('adds a ring to the pill only while docked', async () => {
+    const wrapper = await mountSidebar()
+
+    expect(wrapper.find('.ring-1').exists()).toBe(false)
+
+    useSidePanel().open(sidePanelView)
+    await nextTick()
+
+    expect(wrapper.find('.ring-1').exists()).toBe(true)
   })
 })
