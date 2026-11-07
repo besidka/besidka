@@ -1,5 +1,6 @@
 import { computed, defineComponent, h, reactive, ref, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   ExtraFileSourceTab,
@@ -32,6 +33,7 @@ const toggleProjectGroup = vi.fn()
 const loadMoreProjectGroup = vi.fn()
 const toggleProjectGroupSelectAll = vi.fn()
 const resetFileManager = vi.fn()
+const hasSelection = shallowRef<boolean>(false)
 
 const FakeDriveSource = defineComponent({
   name: 'FakeDriveSource',
@@ -90,6 +92,7 @@ describe('ChatInput/Files/Modal/Select', () => {
     loadMoreProjectGroup.mockReset()
     toggleProjectGroupSelectAll.mockReset()
     resetFileManager.mockReset()
+    hasSelection.value = false
     mocks.getFileManagerExtraSourceTabs.mockReset()
     mocks.getFileManagerExtraSourceTabs.mockReturnValue([])
     mocks.fetchFiles.mockReset()
@@ -114,7 +117,7 @@ describe('ChatInput/Files/Modal/Select', () => {
       loadedFiles: computed(() => []),
       hasMore: computed(() => false),
       selectedCount: computed(() => 0),
-      hasSelection: computed(() => false),
+      hasSelection: computed(() => hasSelection.value),
       allSelected: computed(() => false),
       fetchFiles: mocks.fetchFiles,
       loadMore: vi.fn(),
@@ -527,6 +530,97 @@ describe('ChatInput/Files/Modal/Select', () => {
     await wrapper.vm.$nextTick()
 
     expect(resetFileManager).toHaveBeenCalled()
+    expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
+  })
+
+  it('hides the bulk actions toolbar while an extra source is open', async () => {
+    hasSelection.value = true
+    mocks.getFileManagerExtraSourceTabs.mockReturnValue([createExtraTab()])
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+    const toolbar = () => {
+      return wrapper.findComponent({
+        name: 'ChatInputFilesModalSelectActionsToolbar',
+      })
+    }
+
+    expect(toolbar().props('visible')).toBe(true)
+
+    await wrapper.get('[data-testid="files-source-drive"]').trigger('change')
+
+    expect(toolbar().props('visible')).toBe(false)
+
+    await wrapper.get('[data-testid="files-source-upload"]').trigger('change')
+
+    expect(toolbar().props('visible')).toBe(true)
+  })
+
+  it('rebinds the interaction listeners when returning from an extra source', async () => {
+    mocks.getFileManagerExtraSourceTabs.mockReturnValue([createExtraTab()])
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+
+    await flushPromises()
+
+    const addEventListener = vi.spyOn(document, 'addEventListener')
+
+    await wrapper.get('[data-testid="files-source-drive"]').trigger('change')
+    await flushPromises()
+    addEventListener.mockClear()
+
+    await wrapper.get('[data-testid="files-source-upload"]').trigger('change')
+    await flushPromises()
+
+    expect(source.value).toBe('upload')
+    expect(addEventListener.mock.calls.some(([type]) => {
+      return type === 'keydown'
+    })).toBe(true)
+
+    addEventListener.mockRestore()
+  })
+
+  it('forgets an extra source that gets disabled while open', async () => {
+    const isDriveEnabled = shallowRef<boolean>(true)
+
+    mocks.getFileManagerExtraSourceTabs.mockReturnValue([
+      createExtraTab({ isEnabled: () => isDriveEnabled.value }),
+    ])
+
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+      },
+      shallow: true,
+    })
+
+    await wrapper.get('[data-testid="files-source-drive"]').trigger('change')
+    expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(true)
+
+    isDriveEnabled.value = false
+    await flushPromises()
+
+    const uploadedTab = wrapper.get('[data-testid="files-source-upload"]')
+
+    expect(wrapper.find('[data-testid="files-source-drive"]').exists())
+      .toBe(false)
+    expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
+    expect((uploadedTab.element as HTMLInputElement).checked).toBe(true)
+
+    isDriveEnabled.value = true
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="files-source-drive"]').exists())
+      .toBe(true)
     expect(wrapper.findComponent(FakeDriveSource).exists()).toBe(false)
   })
 })

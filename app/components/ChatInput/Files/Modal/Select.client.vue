@@ -139,7 +139,7 @@
     <ChatInputFilesModalSelectActionsToolbar
       :selected-count="selectedCount"
       :max-files="maxFilesPerMessage"
-      :visible="hasSelection"
+      :visible="!activeExtraTab && hasSelection"
       :is-deleting="isDeletingSelected"
       @deselect="handleDeselectAll"
       @delete="confirmDeleteSelected"
@@ -261,6 +261,14 @@ function selectSourceTab(tab: FileSourceTab): void {
   activeExtraTabId.value = null
   source.value = tab.id
 }
+
+watch(activeExtraTab, (tab) => {
+  if (tab || !activeExtraTabId.value) {
+    return
+  }
+
+  activeExtraTabId.value = null
+})
 
 function onExtraSourceAttach(attachedFiles: FileManagerFile[]): void {
   emit('attach', attachedFiles)
@@ -514,7 +522,7 @@ async function rebindInteractionListeners() {
   attachInteractionListeners()
 }
 
-watch([viewMode, source], async (_, __, onCleanup) => {
+watch([viewMode, source, activeExtraTabId], async (_, __, onCleanup) => {
   await rebindInteractionListeners()
 
   onCleanup(() => {

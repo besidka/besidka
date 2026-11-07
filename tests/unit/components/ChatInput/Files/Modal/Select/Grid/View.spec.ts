@@ -69,7 +69,7 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
     ]))
   })
 
-  it('keeps the skeleton on the same columns with full rows', async () => {
+  it('keeps the skeleton on the same columns with full rows at every width', async () => {
     const wrapper = await mountSuspended(GridSkeleton)
     const tiles = wrapper.findAll('.skeleton')
 
@@ -79,6 +79,9 @@ describe('ChatInput/Files/Modal/Select/Grid/View', () => {
       'lg:grid-cols-6',
     ]))
     expect(tiles).toHaveLength(12)
+    expect(tiles.filter((tile) => {
+      return tile.classes().includes('max-sm:hidden')
+    })).toHaveLength(3)
     expect(tiles.every(tile => tile.classes().includes('skeleton--default')))
       .toBe(true)
   })

@@ -42,7 +42,14 @@ export function resolveFileManagerSourceTabs(options: {
   const builtInTabs = fileManagerBuiltInSourceTabs.filter((tab) => {
     return !tab.requiresImageInput || options.isImageInputSupported
   })
+  const builtInIds = new Set<string>(fileManagerBuiltInSourceTabs.map((tab) => {
+    return tab.id
+  }))
   const extraTabs = options.extraTabs.filter((tab) => {
+    if (builtInIds.has(tab.id)) {
+      return false
+    }
+
     return tab.isEnabled?.() ?? true
   })
 

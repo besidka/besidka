@@ -72,4 +72,14 @@ describe('utils/file-manager-sources', () => {
       'flagged',
     ])
   })
+
+  it('drops an extra source whose id collides with a built-in tab', () => {
+    const tabs = resolveFileManagerSourceTabs({
+      isImageInputSupported: true,
+      extraTabs: [createExtraTab({ id: 'upload' })],
+    })
+
+    expect(tabs.map(tab => tab.id)).toEqual(['upload', 'assistant', 'project'])
+    expect(tabs.every(tab => tab.kind === 'built-in')).toBe(true)
+  })
 })

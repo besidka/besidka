@@ -399,8 +399,11 @@ state shows or hides the tab live. Selecting an extra tab does not change the
 `component` in the scroll area instead of the built-in grid, list or project
 groups. The component receives `attachedIds`, `search` and `viewMode` and may
 emit `attach` with `FileManagerFile[]`, which the modal forwards like a normal
-selection. Picking a built-in tab, opening the modal on a source, or closing
-it leaves the extra tab. The tab row scrolls horizontally (`flex-nowrap
+selection. The bulk actions toolbar of the built-in sources is hidden while an
+extra tab is open, so it never acts on files the user cannot see. Picking a
+built-in tab, opening the modal on a source, closing it, or the extra tab's
+`isEnabled()` turning false leaves the extra tab. An extra entry whose `id`
+matches a built-in id is dropped. The tab row scrolls horizontally (`flex-nowrap
 overflow-x-auto no-scrollbar`) instead of wrapping when the tabs do not fit.
 
 ## Projects Tab

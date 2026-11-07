@@ -4,6 +4,7 @@
       v-for="i in 12"
       :key="i"
       class="skeleton skeleton--default aspect-square rounded-box"
+      :class="{ 'max-sm:hidden': i > 9 }"
     />
   </div>
 </template>

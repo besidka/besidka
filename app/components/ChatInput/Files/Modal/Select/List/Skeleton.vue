@@ -14,7 +14,11 @@
       </tr>
     </thead>
     <tbody>
-      <tr v-for="i in 10" :key="i">
+      <tr
+        v-for="i in 10"
+        :key="i"
+        :class="{ 'max-sm:hidden': i > 6 }"
+      >
         <td>
           <div class="skeleton size-4 rounded" />
         </td>
