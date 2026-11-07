@@ -215,7 +215,10 @@ Checked on 2026-11-08 with read-only commands only (`wrangler whoami` and
 1. **D1 Time Travel goes back further than Free allows.**
    `wrangler d1 time-travel info besidka --env production --timestamp=2026-10-20T12:00:00Z`
    returned a bookmark for a point 19 days earlier. The Free plan keeps 7
-   days of Time Travel; Workers Paid keeps 30.
+   days of Time Travel; Workers Paid keeps 30. A timestamp 48 days back was
+   refused with "Please provide a timestamp within the last 30 days". That
+   message may come from the CLI rather than from the account's plan, so
+   this indicator supports the conclusion but does not prove it alone.
 2. **Email Sending is bound in production** (`send_email` binding `EMAIL` in
    `wrangler.jsonc`, `env.production`), and Email Sending needs Workers
    Paid (`docs/email.md`).
