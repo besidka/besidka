@@ -749,10 +749,17 @@ export function getAffectedTests(changedFiles) {
 
   const accountDeletionTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/utils/account/purge-feature-access.spec.ts',
     'tests/unit/utils/account/security-emails.spec.ts',
     'tests/unit/utils/auth.spec.ts',
     'tests/unit/composables/auth.spec.ts',
     'tests/unit/pages/profile/security.spec.ts',
+  ]
+
+  const featureAccessTests = [
+    'tests/unit/server/utils/db/features-schema.spec.ts',
+    'tests/unit/utils/account/purge-feature-access.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
   ]
 
   const accountSecurityHubTests = [
@@ -2250,6 +2257,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/security\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
       tests: accountDeletionTests,
+    },
+    {
+      pattern:
+        /^(server\/db\/schemas\/features\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
+      tests: featureAccessTests,
     },
     {
       pattern:
