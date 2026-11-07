@@ -9,7 +9,7 @@ the section it implements with the final API. The roadmap is in
 |---|---|---|
 | 3. Tables | P0-2 (BES-234) | Built |
 | 4. Registry, 5. Evaluation, 7. Exposure | P0-3 (BES-236) | Built |
-| 8. Client access | P0-4 (BES-238) | Design |
+| 8. Client access | P0-4 (BES-238) | Built |
 | 6. `/admin`, 7. Ledger writers, 8. Labs and MCP | P0-6 to P0-8 | Design |
 
 This document is the contract for per-user feature access: which account can
@@ -357,12 +357,46 @@ revocations, then rule changes.
 
 **Client (P0-4).**
 
-- `GET /api/v1/features` returns `{ features, isAdmin }` for flags with
-  `exposeToClient`, with `Cache-Control: private, no-store`. Signed out, it
-  returns 200 with the defaults.
-- `app/plugins/10.features.ts` fills `useState('features')` during SSR
-  (skipped on cached responses) and refreshes on sign-in and sign-out.
-- `useFeature(key)` returns `{ enabled, active, variant }`.
+- `GET /api/v1/features` (`server/api/v1/features/index.get.ts`) returns
+  `ClientFeaturesPayload` (`shared/types/features.d.ts`):
+  `{ features: { [flag]: { enabled, active, variant } }, isAdmin }` for every
+  flag with `exposeToClient`, with `Cache-Control: private, no-store`. Signed
+  out, it returns 200 with every exposed flag at its registry default
+  (`ANONYMOUS`), never 401, because landing and auth pages render too. The
+  `variant` is null whenever the flag is off. No bucket and no reason leave
+  the server.
+- The listing records **no exposure**: it calls `evaluateFeature` directly,
+  not `evaluateFeatureForEvent`. Exposure is recorded where a server route
+  actually branches (`requireFeature`, `evaluateFeatureForEvent`).
+- `app/plugins/10.features.ts` (universal, after `00.auth.server.ts`): during
+  SSR it calls `useRequestFetch()('/api/v1/features')` and stores the result
+  in `useState('features')`, skipped on cached and prerendered responses
+  (the SWR-cached landing `/`), so per-user state never enters a shared
+  cache; a failure leaves the state null. The internal fetch is a second
+  request through the middleware, so it costs one more session lookup
+  (Better Auth's KV read) plus the rules KV read and the user-state D1
+  batch; it does not share `event.context` with the page request.
+- On the client it watches `useAuth().user.id`: every change (sign-in,
+  account switch, sign-out) clears the state first, so one account's flags
+  never show for another, then loads the new state (anonymous defaults after
+  a sign-out). When SSR left the state null (cached landing page, SSR
+  failure) it refreshes once on `app:mounted`; on the cached landing page a
+  signed-in visitor can therefore cost two requests, because the client
+  session fetch flips the user at mount too (the newer response wins). A
+  failed refresh keeps the last known state and logs a `features-refresh`
+  warning through the evlog client logger; a failed SSR fill leaves the
+  state null (the internal request logs its own error). Every successful
+  refresh calls the `features:changed` runtime hook with the payload; a
+  refresh that finishes after a newer one or after a clear is dropped. The
+  refresh counter lives per Nuxt app, not per module, so SSR requests in one
+  isolate never share it.
+- Flagged UI on the cached landing page renders as off during SSR and flips
+  after mount; gate it behind `onMounted` or `<ClientOnly>`.
+- `useFeatures()` returns `{ features, refreshFeatures, clearFeatures,
+  prefillServerFeatures }`;
+  `useFeature(key)` returns a computed `{ enabled, active, variant }` that is
+  all false while the state is null or the key is missing; `useIsAdmin()` is
+  a computed boolean (for the admin-only Search row in P0-6).
 - Feature state never goes into cookies, localStorage, sessionStorage or
   IndexedDB (C11).
 - The client check only hides UI. The server guard is the security boundary.
