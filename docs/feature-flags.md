@@ -8,7 +8,7 @@ the section it implements with the final API. The roadmap is in
 | Section | Ticket | State |
 |---|---|---|
 | 3. Tables | P0-2 (BES-234) | Built |
-| 4. Registry, 5. Evaluation | P0-3 (BES-236) | Design |
+| 4. Registry, 5. Evaluation, 7. Exposure | P0-3 (BES-236) | Built |
 | 8. Client access | P0-4 (BES-238) | Design |
 | 6. `/admin`, 7. Ledger writers, 8. Labs and MCP | P0-6 to P0-8 | Design |
 
@@ -146,12 +146,31 @@ Seed flags at stage `internal`, `default: false`, `allowRoles: ['admin']`:
 `google.gmail`), `skills` (and `.import-url`, `.scripts`), and
 `ui.side-panel-demo`.
 
+As built: `FEATURE_REGISTRY` (keyed by flag), the `FeatureKey` union,
+`FEATURE_KEYS`, `isFeatureKey(key)` (own keys only, so `constructor` is
+unknown) and `getFeatureDefinition(key)`. The reserved opt-in key is
+`EXPERIMENTS_OPT_IN_KEY` (`experiments`); a spec asserts no flag uses it.
+Seed choices, each to be confirmed by the ticket that builds the feature:
+
+- `spend: 'foreground'` (so `optIn: 'required'`): `artifacts.llm-bridge`,
+  `research.custom`, `research.custom.max`. Everything else spends nothing
+  beyond a normal chat.
+- `exposeToClient: false`: the `*.mcp` flags (`artifacts.mcp`,
+  `documents.mcp`, `research.mcp`), which have no UI. Every other flag is
+  exposed so later UI can gate on it.
+- No seed flag has `variants`.
+
 ## 5. Evaluation (P0-3)
 
-`server/utils/features/evaluate.ts` takes `{ flag, userId, db, kv, config }`
-and never calls `useEvent()`, so crons and background jobs can use it. It
-returns an OpenFeature-like `{ value, variant, reason, flagMetadata }`. The
-first step that decides wins:
+`evaluateFeature(flag, { userState, rules, config, hasBinding? })` in
+`server/utils/features/evaluate.ts` is pure and async: it never calls
+`useEvent()`, so crons and background jobs can use it with
+`loadFeatureRules(kv, db)`, `loadUserFeatureState(db, userId)` and
+`getFeatureEvaluationConfig()`. It returns an OpenFeature-like
+`{ value, variant, reason, bucket?, flagMetadata }`
+(`FeatureResolution` in `server/utils/features/provider.ts`, where the
+`FeatureProvider` interface and `localFeatureProvider` live). The first step
+that decides wins:
 
 | # | Step | Reason |
 |---|---|---|
@@ -167,9 +186,32 @@ first step that decides wins:
 | 10 | Registry default | `DEFAULT` |
 
 The variant comes from a separate hash, `sha256(flag:salt:variant:userId)`,
-against the cumulative `weightBps`. A grant can force a variant. The variant
-split has the same C2 and C3 gates as step 9. A child flag is off whenever
-its parent is off.
+against the cumulative `weightBps` of the rule's `variants` (keys not in the
+registry entry's `variants` are ignored; a bucket past the total weight gets
+no variant). **Only rollout results (step 9) get a hash variant**
+(`flagMetadata.variantSource: 'hash'`), so an experiment runs on the rollout
+cohort and C1's "never for grant, role, default or anonymous" holds for
+exposure too. Grant, role and default results get no variant, except a
+grant's forced variant (`variantSource: 'grant'`). The variant split has the
+same C2 and C3 gates as step 9. Rule rows are sanitised on load: basis points
+are clamped to 0..10000, unknown roles and malformed variants are dropped.
+
+A child flag is off whenever its parent is off. The child is evaluated
+first; when it is on, the parent is evaluated, and a parent that is off turns
+the child off with the **parent's reason** and `flagMetadata.decidedBy` set
+to the parent key (no exposure is recorded for such a result).
+
+An unknown `NUXT_FEATURES_HOST_MODE` value fails closed to `off`.
+Host mode `byok` and `hosted` behave the same today: only `off` and missing
+`requires.bindings` (read from `cloudflare:workers` `env`) turn features off.
+A flag that spends host money will add the `hosted` distinction.
+
+Runtime config: `adminEmails` (`NUXT_ADMIN_EMAILS`, secret),
+`featuresDisabled` (`NUXT_FEATURES_DISABLED`, comma list or `*`, case
+insensitive), `featuresHostMode` (`NUXT_FEATURES_HOST_MODE`, default
+`byok`, unknown values fall back to `off`) and `featuresRolloutEnabled`
+(`NUXT_FEATURES_ROLLOUT_ENABLED`, default `false`). The last three may be
+`wrangler.jsonc` vars.
 
 A feature is **enabled** when the user has access, and **active** when it is
 enabled and, for `optIn: 'required'` features, the user has an active opt-in
@@ -192,19 +234,34 @@ individually what is recorded and how to object (C2).
   admin write deletes the key. Other locations can serve the old rules for up
   to 300 seconds plus KV propagation, so the instant off switch is
   `NUXT_FEATURES_DISABLED` (needs a redeploy).
-- User state: one indexed `db.batch` per request for the user's roles,
-  unexpired grants and opt-ins, memoised on `event.context.features`.
-  Nothing per-user is stored in KV, so a grant takes effect on the next
-  request.
+- User state: one indexed `db.batch` per request for the user's `users`
+  row (email, `email_verified`, `two_factor_enabled`, read fresh for the
+  admin check instead of trusting the cached session), roles, unexpired
+  grants and opt-ins. `useFeatureContext(event)`
+  (`server/utils/features/context.ts`) memoises rules, user state, config,
+  `isAdmin` and the exposure set as one promise on `event.context.features`,
+  so every guard in a request shares them. Nothing per-user is stored in KV,
+  so a grant takes effect on the next request.
+- A KV failure falls back to D1; a failed cache read or write is logged under
+  `attributes.featureRulesCache` and never fails the request. A loader that
+  read D1 just before an admin write can put the old rules back after the
+  bust; the 300-second TTL bounds that.
 
 ### Guards
 
 `server/utils/features/guards.ts`:
 
 - `requireFeature(event, flag, { active? })` throws evlog `createError` with
-  status 404 and `why: 'feature_unavailable'`.
+  status 404, message `Not found` and `why: 'feature_unavailable'`, and
+  otherwise returns the resolution plus `active`. It records the exposure.
+  For a flag with `optIn: 'required'` it also needs an active opt-in **by
+  default**; pass `{ active: false }` only where access without the opt-in is
+  the point (the Labs opt-in route). An opt-in counts only when every
+  ancestor that needs one is opted in too.
 - `requireAdmin(event)` answers 404 to non-admins and 401 to signed-out
-  callers.
+  callers, and returns the request's feature context.
+- `evaluateFeatureForEvent(event, flag, { recordExposure? })` is the
+  non-throwing form for UI branches.
 
 ## 6. Admins
 
@@ -215,6 +272,23 @@ verification is off. An account whose email was changed to an admin address
 without verification is not admin (C13). In production an admin also needs
 `twoFactorEnabled` (C13b), because the admin user search is the first place
 where one account can see every user's email.
+
+As built, `isAdminUser(userState, config)` in
+`server/utils/features/evaluate.ts` applies the verified-email and 2FA rules
+to **both** kinds of admin, and "production" is `isAdminTwoFactorRequired()`:
+`!import.meta.dev && process.env.CI !== 'true'`, the same predicate
+`server/utils/auth.ts` uses for email verification. Cloudflare Previews are
+production in this sense, so an admin on `pr-<n>` needs a verified email, 2FA
+and the secret in the previews base config. Without 2FA an admin is not even
+an `admin` for `allowRoles`. The owner must turn on TOTP before the first
+admin use.
+
+Known limits, accepted for v1: `twoFactorEnabled` is enrolment, not proof
+that this session passed a 2FA challenge (passkey and OAuth sign-ins skip the
+challenge, `docs/auth-security.md`); and a `CI=true` var or secret on a
+deployed Worker would drop the 2FA rule, as it already drops email
+verification in `server/utils/auth.ts`. Never set `CI` on a deployed
+Worker.
 
 `NUXT_ADMIN_EMAILS` is a **secret** (`wrangler secret put`, listed in
 `.dev.vars.example`), never a `wrangler.jsonc` var: email addresses are
@@ -245,8 +319,9 @@ controller, and a second admin would make that false.
 
 ## 7. Telemetry and the replay ledger
 
-**Exposure** (C1), only for hash-based decisions (reason `ROLLOUT` and hash
-variant splits), at most once per flag per request:
+**Exposure** (C1), only for hash-based decisions (reason `ROLLOUT`, which is
+also the only result that carries a hash variant), at most once per flag per
+request:
 
 - Analytics Engine (`ANALYTICS` binding, `server/utils/analytics.ts`):
   `blobs: ['feature_exposure', flag, variant, reason]`. No bucket, no path,
@@ -255,6 +330,12 @@ variant splits), at most once per flag per request:
 - Axiom: `attributes.features[flag] = { value, variant, reason }` on the
   request's wide event (`docs/axiom-map-fields.md`). The wide event already
   carries the user id, so this is personal data under operational logging.
+
+As built: `recordFeatureExposure` in `server/utils/features/exposure.ts`,
+called by `requireFeature` and `evaluateFeatureForEvent`, with the per-request
+set on the feature context. `variant` is an empty string when there is none.
+A missing `ANALYTICS` binding skips that sink; a throwing one is logged under
+`attributes.featureExposure.error` and never fails the request.
 
 `GET /api/v1/features` (a listing) records no exposure.
 
