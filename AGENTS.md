@@ -353,6 +353,23 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   withdrawal button, California ARL and the vacated FTC rule, CAN-SPAM and
   RFC 8058, DSA and AI Act effects, the DMCA agent, open questions for counsel,
   and the repo files to change; read before adding any payment or donation link
+- `docs/legal/agentic-capabilities-precheck.md` - Compliance pre-checks for
+  the Agentic capabilities programme (engineer-drafted, not lawyer-reviewed,
+  2026-11-07): the shared gate G1 to G7 every track runs before building
+  (GDPR records and transfers, public documents, materiality and consent
+  version, review items and breach runbook, third-party terms, monetisation
+  guard, accessibility), the accessibility decision for all tracks (European
+  Accessibility Act most likely not applicable through the microenterprise
+  services exemption, revisit on monetisation; WCAG 2.2 AA as the engineering
+  target with the criteria that matter, such as 2.5.7 dragging alternatives
+  and 2.4.11 focus not obscured), and the Phase 0 verdict GO with changes:
+  bucketing is not profiling, Art. 6(1)(f) for rollout, no bucket in
+  exposure events, an Art. 21 experiments switch in Labs, rollout and
+  variants inert in production until the material Privacy Policy notice takes
+  effect, audit-log scrub and 12-month sweep, tester-only role grants, admin
+  2FA, no other users' emails over MCP, the Axiom `featureAccess` replay
+  ledger, the side-panel width as a Preferences key, and the exact input list
+  for the P0-9 legal records; later track pre-checks append a section here
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
   only, not legal text, superseded on 2026-10-26 by the published pages (its
   anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA
