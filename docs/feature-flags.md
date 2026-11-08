@@ -11,7 +11,8 @@ the section it implements with the final API. The roadmap is in
 | 4. Registry, 5. Evaluation, 7. Exposure | P0-3 (BES-236) | Built |
 | 8. Client access | P0-4 (BES-238) | Built |
 | 11. Capability contract | P0-5 (BES-240) | Built |
-| 6. `/admin`, 7. Ledger writers, 8. Labs and MCP | P0-6 to P0-8 | Design |
+| 6. `/admin`, 7. Admin ledger writers | P0-6 (BES-242) | Built |
+| 7. Opt-in and objection writers, 8. Labs and MCP | P0-7, P0-8 | Design |
 
 This document is the contract for per-user feature access: which account can
 use which experimental feature, how a feature is rolled out to a share of
@@ -304,19 +305,93 @@ controller, and a second admin would make that false.
 
 ### `/admin` (P0-6)
 
-- API: `server/api/v1/admin/**`. Every handler starts with `requireAdmin`.
-- UI: `app/layouts/admin.vue` with the pages Features, Users and Audit.
-  Every page is `noindex`, and `/admin` is in `robots.disallow`.
-- Entry: an admin-only row in the Search popup. Admin never gets a nav pill
+As built:
+
+- **API** under `server/api/v1/admin/`. The first statement of every handler
+  is `await requireAdmin(event)` (401 signed out, 404 for everyone else), and
+  every write then calls `createFeatureAdminWriteContext`, which runs
+  `assertNotCrossSiteRequest` and `assertSameOriginAdminRequest`: a
+  `Sec-Fetch-Site` other than `same-origin` or `none` (so a `same-site`
+  sibling host too) is a 403, and without that header an `Origin` must match
+  the request origin. A client that sends neither (curl, server-side tests)
+  carries no browser cookies to forge and passes. Bodies
+  and queries are validated with the zod schemas in
+  `shared/utils/features/admin-schemas.ts` (`.strict()`, so unknown keys are
+  a 400).
+
+  | Route | Purpose |
+  |---|---|
+  | `GET features` | Registry × rules, grant counts, `rolloutEnabled`, `hostMode`, env kill switch per flag |
+  | `GET features/[flag]` | One flag with its rule and grant counts (404 for an unknown flag) |
+  | `PATCH features/[flag]/rule` | `{ enabled?, rolloutBps?, allowRoles?, variants? }` |
+  | `GET features/[flag]/grants?offset=` | Grants with the account email and name, 50 per page |
+  | `POST features/[flag]/grants` | `{ userId, effect, variant?, expiresInDays? (1 to 365), reason? (≤ 200) }`, upsert on `(user_id, flag)` |
+  | `POST features/grants/[id]/revoke` | Delete one grant |
+  | `GET users/search?q=` | At least 3 characters: email prefix or name substring, 20 results, with roles and `isEnvAdmin` |
+  | `GET roles`, `POST roles`, `POST roles/[id]/revoke` | Role rows plus the env admins; grant and revoke `tester` only |
+  | `GET audit?cursor=&flag=&targetUserId=` | Audit rows newest first, 50 per page, with actor and target emails |
+
+- **Writers** in `server/utils/features/admin.ts`: `setFeatureRule`,
+  `setFeatureGrant`, `revokeFeatureGrant`, `setUserRole`, `revokeUserRole`.
+  Each takes a `FeatureAdminContext` (`db`, `kv`, `actor { userId, kind:
+  'ui' | 'mcp', clientId? }`, `rolloutEnabled`, `logger`), reads the current
+  row, runs one `db.batch([write, auditInsert])`, and logs the ledger line.
+  Only `setFeatureRule` busts `features:config:v1`; grants and roles are read
+  per request, so they apply on the target's next request. P0-8 calls the
+  same functions with `kind: 'mcp'`.
+- **Audit rows** keep `before` and `after` flat. The only user id in them is
+  `userId` (the target, which is also `target_user_id`); grantor ids are left
+  out because they can name a third account that neither audit column
+  covers. The grant `reason` is stored under `reason`, which the purge scrub
+  removes. A write that changes nothing (granting a role the user already
+  has) writes no audit row.
+- **Rule validation**: an unknown flag is 404; `rolloutBps` is 0 to 10000;
+  `allowRoles: null` resets to the registry default; `variants` only for a
+  flag with registry `variants` and `spend === 'none'`, keys from the
+  registry, no repeats, weights summing to 10000 (`variants: []` or `null`
+  clears them); an empty patch is a 400 (`why: 'empty_patch'`). A failed
+  cache bust after the committed write is logged under
+  `attributes.featureRulesCache`, not thrown. While
+  `NUXT_FEATURES_ROLLOUT_ENABLED` is off the writer
+  refuses to set `rolloutBps` above 0 or to set variants (409,
+  `why: 'rollout_disabled'`); setting them back to 0 is allowed. The UI
+  disables both controls with a one-line note, so the server check is the
+  backstop for C2.
+- **Roles (C7)**: `ASSIGNABLE_FEATURE_ROLES = ['tester']`. The schema accepts
+  only `tester`, and the writers refuse `admin` with 403
+  (`why: 'role_not_assignable'`) on grant and revoke, so a `user_roles` admin
+  row (only ever created by hand) is never removed here and the last admin
+  cannot lock themselves out. The ticket's "last admin" 409 is therefore
+  unreachable and not implemented; the env admin is the escape hatch.
+- **Reads (C15)**: the feature list, flag detail, grant list, user search,
+  role list and audit view log `{ action: 'admin.read', resource,
+  resultCount }`. The search text is never logged: the
+  `evlog-request-observability` enrich hook drops the query string from
+  every `/api/v1/admin/` path in the wide event's `path` and `message`
+  (`toLoggedPath`). The search uses SQLite `LIKE`, which ignores case only
+  for ASCII letters, so a Cyrillic name must be typed with its own case.
+- **Retention (C6)**: `server/plugins/feature-audit-sweep.ts` runs on the
+  hourly cron (`0 * * * *`) without an off switch and deletes audit rows
+  older than 365 days, 100 rows per statement and at most 10 statements per
+  run.
+- **UI**: `app/layouts/admin.vue` (the profile chrome without the avatar;
+  tabs Features, Users, Audit), `app/middleware/admin.ts` (named; refreshes
+  the feature state when it is empty, then 404s non-admins with a fatal
+  error, so the area is not revealed), pages `app/pages/admin/index.vue`
+  (redirects to `/admin/features`), `features/index.vue` (table from `md`,
+  cards below), `features/[flag].vue` (rule form with explicit Save, a
+  confirmation before turning a feature off, grants with a user search),
+  `users.vue` (add a tester, roles with env admins marked "from env" and no
+  revoke), `audit.vue` (before and after as compact JSON, Load more). Every
+  page sets `noindex, nofollow`; `/admin` is in `robots.disallow`, the
+  sitemap `exclude` and the agent-discovery `excludePrefixes`. A signed-out
+  visitor is redirected to `/signin` by the global auth middleware, like
+  every other signed-in route.
+- **Entry**: the Search popup shows "Admin" (`search-option-admin`, last in
+  Settings) only when `useIsAdmin()` is true. Admin never gets a nav pill
   slot.
-- Every write runs one `db.batch([write, auditInsert])`, busts the rules
-  cache for rule writes, and logs the Axiom ledger line (section 7).
-- The kill switch needs a confirmation. Rollout changes need an explicit
-  save. While `NUXT_FEATURES_ROLLOUT_ENABLED` is false, the rollout and
-  variant controls are disabled with a one-line explanation.
-- The grant reason field says "Do not write names or emails here".
-- Shared write logic lives in `server/utils/features/admin.ts`, so the MCP
-  tools reuse it with `actorKind: 'mcp'`.
+- Rule changes take effect within 5 minutes on other locations (the KV TTL);
+  the UI says so.
 
 ## 7. Telemetry and the replay ledger
 
@@ -345,7 +420,7 @@ never an email or a reason:
 
 | Writer | Fields |
 |---|---|
-| Admin UI and MCP writes | `{ action, flag, targetUserId, effect, expiresAt }`; MCP writes also carry the client id |
+| Admin UI and MCP writes | `{ action, flag, targetUserId, effect, expiresAt, actorKind }`, plus `role` for role writes; MCP writes also carry the client id. `action` is `rule.set`, `grant.set`, `grant.revoke`, `role.set` or `role.revoke`; for a rule write `effect` is `enabled` or `disabled`, and `rule: { before, after }` carries `enabled`, `rolloutBps`, `allowRoles` and `variants` (before is null for a new rule), so a restore can rebuild the rollout share and variants |
 | Opt-in route | `{ action: 'opt_in.set', flag, optedIn }` |
 | Objection switch | `{ action: 'experiments.set', objected }` |
 | Admin reads (C15) | `{ action: 'admin.read', resource, resultCount }`, never the search text |

@@ -110,12 +110,18 @@ export function isAdminUser(
     return true
   }
 
-  if (!userState.email) {
+  return isEnvAdminEmail(userState.email, config)
+}
+
+export function isEnvAdminEmail(
+  email: string | null | undefined,
+  config: Pick<FeatureEvaluationConfig, 'adminEmails'>,
+): boolean {
+  if (!email) {
     return false
   }
 
-  return toCommaList(config.adminEmails)
-    .includes(userState.email.trim().toLowerCase())
+  return toCommaList(config.adminEmails).includes(email.trim().toLowerCase())
 }
 
 function isActiveOptIn(optIn: FeatureOptInState | undefined): boolean {

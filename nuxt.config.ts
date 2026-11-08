@@ -459,6 +459,7 @@ export default defineNuxtConfig({
       '/chats/',
       '/files/',
       '/profile/',
+      '/admin',
       '/new-password',
       '/2fa',
       '/oauth/',
@@ -550,7 +551,7 @@ export default defineNuxtConfig({
     siteName: 'Besidka',
     routes: agentDiscoveryRoutes,
     excludePrefixes: {
-      extend: ['/chats', '/profile', '/files', '/shared'],
+      extend: ['/chats', '/profile', '/admin', '/files', '/shared'],
     },
     discovery: {
       link: true,
@@ -602,6 +603,8 @@ export default defineNuxtConfig({
       '/chats/**',
       '/files/**',
       '/profile/**',
+      '/admin',
+      '/admin/**',
       '/signin',
       '/signup',
       '/new-password',
