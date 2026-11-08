@@ -146,6 +146,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/preferences.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/db/default-reasoning-level-migration.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
   ]
   const preferencesPageTests = [
     'tests/unit/pages/profile/preferences.spec.ts',
@@ -769,6 +770,18 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/features/registry.spec.ts',
     'tests/unit/utils/account/purge-feature-access.spec.ts',
     'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/integration/api/profiles-features.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
+  ]
+
+  const featureLabsTests = [
+    'tests/integration/api/profiles-features.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/utils/labs.spec.ts',
+    'tests/unit/server/utils/features/opt-ins.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
   ]
 
   const featureAdminTests = [
@@ -2286,6 +2299,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/composables\/features\.ts|app\/plugins\/10\.features\.ts|server\/api\/v1\/features\/.*\.ts|shared\/types\/features\.d\.ts|server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
       tests: featureAccessTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|app\/layouts\/profile\.vue|app\/composables\/user-keys\.ts|server\/api\/v1\/profiles\/features\/.*\.ts|server\/utils\/features\/(opt-ins|evaluate)\.ts|shared\/types\/features\.d\.ts|shared\/utils\/provider-meta\.ts|app\/components\/Search\/Modal\.client\.vue)$/,
+      tests: featureLabsTests,
     },
     {
       pattern:
