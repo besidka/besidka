@@ -169,53 +169,75 @@
         :aria-labelledby="`${idPrefix}-${group.id}`"
         :data-testid="`chat-context-section-${group.id}`"
       >
-        <h4
-          :id="`${idPrefix}-${group.id}`"
-          class="flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wide text-base-content/60"
-        >
-          {{ group.label }}
-          <span class="font-normal normal-case tracking-normal">
-            {{ group.total }}
-          </span>
-        </h4>
-        <p
-          v-if="group.total > group.items.length"
-          class="px-2 text-xs text-base-content/60"
-          :data-testid="`chat-context-section-${group.id}-capped`"
-        >
-          Showing the latest {{ group.items.length }}.
-        </p>
-        <ul class="grid gap-0.5">
-          <li
-            v-for="item in group.items"
-            :key="item.id"
+        <h4 :id="`${idPrefix}-${group.id}`">
+          <button
+            type="button"
+            class="chat-context-section-toggle"
+            :aria-expanded="!isGroupCollapsed(group)"
+            :aria-controls="`${idPrefix}-${group.id}-list`"
+            :data-testid="`chat-context-section-${group.id}-toggle`"
+            @click="toggleGroup(group)"
           >
-            <a
-              v-if="item.href"
-              :href="item.href"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="chat-context-row"
-              :data-testid="`chat-context-item-${item.kind}`"
+            <Icon
+              name="lucide:chevron-right"
+              size="14"
+              class="shrink-0 transition-transform duration-150"
+              :class="{ 'rotate-90': !isGroupCollapsed(group) }"
+              aria-hidden="true"
+            />
+            {{ group.label }}
+            <span class="font-normal normal-case tracking-normal">
+              {{ group.total }}
+            </span>
+          </button>
+        </h4>
+        <div
+          v-if="!isGroupCollapsed(group)"
+          :id="`${idPrefix}-${group.id}-list`"
+          class="grid gap-1"
+        >
+          <p
+            v-if="group.total > group.items.length"
+            class="px-2 text-xs text-base-content/60"
+            :data-testid="`chat-context-section-${group.id}-capped`"
+          >
+            Showing the latest {{ group.items.length }}.
+          </p>
+          <ul
+            class="grid max-h-[500px] gap-0.5 overflow-y-auto"
+            :data-testid="`chat-context-section-${group.id}-list`"
+          >
+            <li
+              v-for="item in group.items"
+              :key="item.id"
             >
-              <ChatContextPanelItem :item="item" />
-              <Icon
-                name="lucide:arrow-up-right"
-                size="14"
-                class="shrink-0 text-base-content/50"
-              />
-            </a>
-            <button
-              v-else
-              type="button"
-              class="chat-context-row"
-              :data-testid="`chat-context-item-${item.kind}`"
-              @click="onItemClick(item)"
-            >
-              <ChatContextPanelItem :item="item" />
-            </button>
-          </li>
-        </ul>
+              <a
+                v-if="item.href"
+                :href="item.href"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="chat-context-row"
+                :data-testid="`chat-context-item-${item.kind}`"
+              >
+                <ChatContextPanelItem :item="item" />
+                <Icon
+                  name="lucide:arrow-up-right"
+                  size="12"
+                  class="shrink-0 text-base-content/50"
+                />
+              </a>
+              <button
+                v-else
+                type="button"
+                class="chat-context-row"
+                :data-testid="`chat-context-item-${item.kind}`"
+                @click="onItemClick(item)"
+              >
+                <ChatContextPanelItem :item="item" />
+              </button>
+            </li>
+          </ul>
+        </div>
       </section>
     </template>
     <LazyChatImagePreview
@@ -238,7 +260,10 @@ import type {
 } from '#shared/types/chat-context.d'
 import { CHAT_CONTEXT_MAX_MESSAGES } from '#shared/utils/chat-context'
 import { formatMessageCost } from '#shared/utils/message-format'
-import { toSafeLocalUrl } from '~/utils/chat-context'
+import {
+  CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD,
+  toSafeLocalUrl,
+} from '~/utils/chat-context'
 
 interface ContextGroup {
   id: 'outputs' | 'inputs' | 'used'
@@ -266,6 +291,10 @@ const {
   setChatMemoryExcluded,
 } = useChatMemoryExclusion()
 
+const collapsedOverrides = useState<Record<string, boolean>>(
+  'chat-context-collapsed-sections',
+  () => ({}),
+)
 const previewImage = shallowRef<ChatContextItem | null>(null)
 const isImagePreviewOpen = shallowRef<boolean>(false)
 
@@ -379,6 +408,19 @@ watch(isShareModalOpen, (open, wasOpen) => {
   }
 })
 
+function isGroupCollapsed(group: ContextGroup): boolean {
+  return collapsedOverrides.value[group.id]
+    ?? (group.id === 'used'
+      && group.total > CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD)
+}
+
+function toggleGroup(group: ContextGroup) {
+  collapsedOverrides.value = {
+    ...collapsedOverrides.value,
+    [group.id]: !isGroupCollapsed(group),
+  }
+}
+
 function onShare() {
   openShareModal(routeSlug.value)
 }
@@ -425,8 +467,15 @@ async function onItemClick(item: ChatContextItem) {
 <style scoped>
 @reference "~/assets/css/main.css";
 
+.chat-context-section-toggle {
+  @apply flex w-full items-center gap-1.5 rounded-field px-2 py-1 text-left
+    text-xs font-semibold uppercase tracking-wide text-base-content/60
+    cursor-pointer transition-colors duration-150 hover:bg-base-200
+    focus-visible:outline-2 focus-visible:outline-accent;
+}
+
 .chat-context-row {
-  @apply flex w-full items-center gap-3 rounded-field px-2 py-1.5 text-left
+  @apply flex w-full items-center gap-2 rounded-field px-2 py-1 text-left
     cursor-pointer transition-colors duration-150 hover:bg-base-200
     focus-visible:outline-2 focus-visible:outline-accent;
 }

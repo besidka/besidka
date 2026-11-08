@@ -1,5 +1,5 @@
 <template>
-  <span class="grid size-9 shrink-0 place-items-center overflow-hidden rounded-field bg-base-200 text-base-content/70">
+  <span class="grid size-7 shrink-0 place-items-center overflow-hidden rounded-field bg-base-200 text-base-content/70">
     <img
       v-if="thumbnailUrl"
       :src="thumbnailUrl"
@@ -11,13 +11,14 @@
       v-else
       :name="iconName"
       size="16"
+      class="size-4"
     />
   </span>
   <span class="min-w-0 grow">
-    <span class="block truncate text-sm">{{ item.title }}</span>
+    <span class="block truncate text-sm leading-tight">{{ item.title }}</span>
     <span
       v-if="detail"
-      class="block truncate text-xs text-base-content/60"
+      class="block truncate text-xs leading-tight text-base-content/60"
     >
       {{ detail }}
     </span>

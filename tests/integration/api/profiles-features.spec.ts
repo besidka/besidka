@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTableName } from 'drizzle-orm'
 import type { Table } from 'drizzle-orm'
+import { markAllFeaturesAvailable } from '../../setup/helpers/features-available'
 
 const mocks = vi.hoisted(() => ({
   featureContext: vi.fn(),
@@ -141,8 +142,9 @@ function unauthorized(): never {
 }
 
 describe('profile features routes', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules()
+    await markAllFeaturesAvailable()
     mocks.db = createFakeDb()
     vi.stubGlobal('useDb', () => mocks.db)
     vi.stubGlobal('useUnauthorizedError', unauthorized)
@@ -220,6 +222,44 @@ describe('profile features routes', () => {
         })
       })
 
+    it('reports a non-spending feature as on until the user switches it off',
+      async () => {
+        mocks.featureContext.mockResolvedValue(createFeatureContext({
+          userState: createUserState({
+            grants: { artifacts: { effect: 'allow', variant: null } },
+          }),
+        }))
+
+        const enabled = await callRoute('index.get.ts')
+
+        expect(enabled.features[0]).toMatchObject({
+          key: 'artifacts',
+          optIn: 'none',
+          optedIn: true,
+          active: true,
+        })
+
+        mocks.featureContext.mockResolvedValue(createFeatureContext({
+          userState: createUserState({
+            grants: { artifacts: { effect: 'allow', variant: null } },
+            optIns: {
+              artifacts: {
+                optedInAt: null,
+                optedOutAt: new Date('2026-11-02T00:00:00Z'),
+              },
+            },
+          }),
+        }))
+
+        const switchedOff = await callRoute('index.get.ts')
+
+        expect(switchedOff.features[0]).toMatchObject({
+          key: 'artifacts',
+          optedIn: false,
+          active: false,
+        })
+      })
+
     it('reports an objection to experiments', async () => {
       mocks.featureContext.mockResolvedValue(createFeatureContext({
         userState: createUserState({
@@ -286,11 +326,51 @@ describe('profile features routes', () => {
         .rejects.toMatchObject({ status: 404, why: 'feature_unavailable' })
     })
 
-    it('answers 400 for a feature that needs no opt-in', async () => {
+    it('switches a non-spending feature off by stamping optedOutAt',
+      async () => {
+        const optedOutAt = new Date('2026-11-02T00:00:00Z')
+
+        mocks.routerParams = { flag: 'artifacts' }
+        mocks.body = { optedIn: false }
+        mocks.loadUserFeatureState.mockResolvedValue(createUserState({
+          optIns: { artifacts: { optedInAt: null, optedOutAt } },
+        }))
+
+        const result = await callRoute('[flag]/opt-in.post.ts')
+        const db = mocks.db as ReturnType<typeof createFakeDb>
+        const optInWrite = db.inserts.find((entry) => {
+          return getTableName(entry.table as Table) === 'feature_opt_ins'
+        })
+
+        expect(result).toEqual({ flag: 'artifacts', optedIn: false, active: false })
+        expect(optInWrite?.values).toMatchObject({
+          userId: 7,
+          flag: 'artifacts',
+        })
+        expect(optInWrite?.values.optedOutAt).toBeInstanceOf(Date)
+        expect(mocks.logger.set).toHaveBeenCalledWith({
+          attributes: {
+            featureAccess: {
+              action: 'opt_in.set',
+              flag: 'artifacts',
+              optedIn: false,
+            },
+          },
+        })
+      })
+
+    it('answers 404 for a feature whose code has not shipped', async () => {
       mocks.routerParams = { flag: 'artifacts' }
+      mocks.evaluateFeatureForEvent.mockResolvedValue({
+        value: false,
+        variant: null,
+        reason: 'NOT_AVAILABLE',
+        flagMetadata: {},
+        active: false,
+      })
 
       await expect(callRoute('[flag]/opt-in.post.ts'))
-        .rejects.toMatchObject({ status: 400, why: 'opt_in_not_applicable' })
+        .rejects.toMatchObject({ status: 404, why: 'feature_unavailable' })
     })
 
     it('answers 400 for an invalid body', async () => {

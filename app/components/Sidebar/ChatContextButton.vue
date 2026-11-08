@@ -15,7 +15,7 @@
       ghost
       circle
       :icon-only="true"
-      icon-name="lucide:panel-right"
+      :icon-name="iconName"
       :title="title"
       tooltip-position="left"
       :class="{ 'btn-active': isActive }"
@@ -34,6 +34,13 @@ const BADGE_MAX = 99
 
 const { mode, isOpen, toggle } = useSidePanel()
 const { outputsCount, refresh } = useChatContext()
+const layout = useSidePanelLayout()
+
+const iconName = computed<string>(() => {
+  return layout.value === 'sheet'
+    ? 'lucide:panel-bottom'
+    : 'lucide:panel-right'
+})
 
 const isActive = computed<boolean>(() => {
   return isOpen.value && mode.value === 'context'

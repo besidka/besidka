@@ -1,3 +1,5 @@
+export const CHAT_CONTEXT_USED_COLLAPSE_THRESHOLD = 10
+
 /**
  * Accepts only same-origin relative paths (`/files/...`) for the context
  * panel's thumbnails and downloads, so a malformed part can never put a

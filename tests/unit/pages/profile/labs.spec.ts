@@ -33,7 +33,7 @@ function createFeature(overrides: Record<string, unknown> = {}) {
     optIn: 'none',
     requires: { keyKinds: [] },
     parent: null,
-    optedIn: false,
+    optedIn: true,
     active: true,
     ...overrides,
   }
@@ -47,6 +47,7 @@ const llmBridge = createFeature({
   optIn: 'required',
   requires: { keyKinds: ['provider'] },
   parent: 'artifacts',
+  optedIn: false,
   active: false,
 })
 
@@ -106,21 +107,45 @@ describe('profile labs page', () => {
       .exists()).toBe(false)
   })
 
-  it('shows opt-in toggles only for features that need one, off by default',
+  it('shows a toggle on every feature: opt-out on, opt-in off by default',
     async () => {
       const wrapper = await mountPage()
-      const toggle = wrapper.get(
+      const optInToggle = wrapper.get(
         '[data-testid="labs-toggle-artifacts.llm-bridge"]',
       )
+      const optOutToggle = wrapper.get('[data-testid="labs-toggle-artifacts"]')
 
-      expect((toggle.element as HTMLInputElement).checked).toBe(false)
-      expect(wrapper.find('[data-testid="labs-toggle-artifacts"]').exists())
-        .toBe(false)
+      expect((optInToggle.element as HTMLInputElement).checked).toBe(false)
+      expect((optOutToggle.element as HTMLInputElement).checked).toBe(true)
       expect(wrapper.get('[data-testid="labs-spend-artifacts.llm-bridge"]')
         .text()).toBe('Uses your API keys')
       expect(wrapper.find('[data-testid="labs-spend-artifacts"]').exists())
         .toBe(false)
     })
+
+  it('shows the feature name on every row, including the first of a section',
+    async () => {
+      const wrapper = await mountPage()
+      const firstRowTitle = wrapper.get('[id="labs-title-artifacts"]')
+
+      expect(firstRowTitle.text()).toBe('Artifacts')
+      expect(firstRowTitle.classes()).not.toContain('sr-only')
+      expect(wrapper.get('[id="labs-title-artifacts.llm-bridge"]').text())
+        .toBe('Artifacts that call a model')
+    })
+
+  it('saves an opt-out when an enabled feature is switched off', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.get('[data-testid="labs-toggle-artifacts"]').setValue(false)
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      '/api/v1/profiles/features/artifacts/opt-in',
+      { method: 'POST', body: { optedIn: false } },
+    )
+    expect(mocks.refreshFeatures).toHaveBeenCalled()
+  })
 
   it('saves an opt-in, then refreshes the page data and the features state',
     async () => {
@@ -188,14 +213,23 @@ describe('profile labs page', () => {
         .toBe(true)
     })
 
-  it('shows Off for a feature without opt-in that is not active', async () => {
-    const wrapper = await mountPage({
-      features: [createFeature({ active: false })],
-    })
+  it('hints that a child works only once its switched-off parent is on',
+    async () => {
+      const wrapper = await mountPage({
+        features: [
+          createFeature({ optedIn: false, active: false }),
+          createFeature({
+            key: 'artifacts.react',
+            title: 'React artifacts',
+            parent: 'artifacts',
+            active: false,
+          }),
+        ],
+      })
 
-    expect(wrapper.get('[data-testid="labs-row-artifacts"]').text())
-      .toContain('Off')
-  })
+      expect(wrapper.get('[data-testid="labs-parent-hint-artifacts.react"]')
+        .text()).toContain('Works once Artifacts is on')
+    })
 
   it('hints that a child works only once its opt-in parent is on',
     async () => {
@@ -206,6 +240,7 @@ describe('profile labs page', () => {
             title: 'Custom research',
             spend: 'foreground',
             optIn: 'required',
+            optedIn: false,
           }),
           createFeature({
             key: 'research.custom.max',

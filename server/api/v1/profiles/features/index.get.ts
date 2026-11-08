@@ -10,8 +10,8 @@ import { useFeatureContext } from '~~/server/utils/features/context'
 import {
   evaluateFeature,
   hasObjectedToExperiments,
-  isActiveOptIn,
   isFeatureActive,
+  isFeatureToggledOn,
 } from '~~/server/utils/features/evaluate'
 
 const labsFeatureKeys = FEATURE_KEYS.filter((key) => {
@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
       optIn: definition.optIn,
       requires: { keyKinds: [...definition.requires.keyKinds] },
       parent: toParentKey(definition.parent),
-      optedIn: isActiveOptIn(context.userState?.optIns[key]),
+      optedIn: isFeatureToggledOn(definition, context.userState?.optIns[key]),
       active: isFeatureActive(key, resolution, context.userState),
     })
   }

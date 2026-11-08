@@ -8,7 +8,12 @@ import { useSidePanel } from '../../../../app/composables/side-panel'
 enableAutoUnmount(afterEach)
 
 const outputsCount = ref<number>(0)
+const layout = ref<'docked' | 'overlay' | 'sheet'>('docked')
 const refresh = vi.fn()
+
+mockNuxtImport('useSidePanelLayout', () => {
+  return () => layout
+})
 
 mockNuxtImport('useChatContext', () => {
   return () => ({ outputsCount, refresh })
@@ -24,6 +29,7 @@ function mountButton() {
 describe('Sidebar/ChatContextButton', () => {
   beforeEach(() => {
     outputsCount.value = 0
+    layout.value = 'docked'
     refresh.mockReset()
     useSidePanel().close()
   })
@@ -82,12 +88,46 @@ describe('Sidebar/ChatContextButton', () => {
     expect(trigger.attributes('aria-label')).toBe('Chat, 4 outputs')
   })
 
-  it('uses the panel-right icon', async () => {
-    const wrapper = await mountButton()
+  it.each(['docked', 'overlay'] as const)(
+    'uses the panel-right icon in the %s layout',
+    async (value) => {
+      layout.value = value
 
-    expect(wrapper.get(TRIGGER).find('.iconify').classes())
-      .toContain('i-lucide:panel-right')
-  })
+      const wrapper = await mountButton()
+
+      expect(wrapper.get(TRIGGER).find('.iconify').classes())
+        .toContain('i-lucide:panel-right')
+    },
+  )
+
+  it('uses the panel-bottom icon where the panel is a bottom sheet',
+    async () => {
+      layout.value = 'sheet'
+
+      const wrapper = await mountButton()
+
+      expect(wrapper.get(TRIGGER).find('.iconify').classes())
+        .toContain('i-lucide:panel-bottom')
+    })
+
+  it('follows viewport changes between the sheet and the side layouts',
+    async () => {
+      const wrapper = await mountButton()
+      const icon = () => wrapper.get(TRIGGER).find('.iconify').classes()
+
+      expect(icon()).toContain('i-lucide:panel-right')
+
+      layout.value = 'sheet'
+      await nextTick()
+
+      expect(icon()).toContain('i-lucide:panel-bottom')
+      expect(icon()).not.toContain('i-lucide:panel-right')
+
+      layout.value = 'overlay'
+      await nextTick()
+
+      expect(icon()).toContain('i-lucide:panel-right')
+    })
 
   it('opens the context panel in the side panel on click', async () => {
     const wrapper = await mountButton()
