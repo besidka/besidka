@@ -50,7 +50,7 @@
       >
         <button
           type="button"
-          class="grid justify-items-start gap-0"
+          class="grid grid-flow-row justify-items-start gap-0"
           :data-testid="`admin-user-search-option-${user.id}`"
           @mousedown.prevent="select(user)"
         >

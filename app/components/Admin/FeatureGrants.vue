@@ -20,7 +20,7 @@
         <span class="text-sm font-medium">Account</span>
         <div
           v-if="selectedUser"
-          class="flex items-center justify-between gap-2 rounded-field border border-base-300 px-3 py-2"
+          class="flex items-center justify-between gap-2 rounded-box border border-base-300 px-3 py-2"
           data-testid="admin-grant-selected-user"
         >
           <span class="grid min-w-0">

@@ -79,9 +79,18 @@
             · for {{ entry.targetEmail ?? `account #${entry.targetUserId}` }}
           </template>
         </p>
-        <div class="grid gap-1 text-xs sm:grid-cols-2">
-          <pre class="bg-base-200 rounded-field overflow-x-auto p-2 whitespace-pre-wrap break-all">{{ formatAuditSnapshot(entry.before) }}</pre>
-          <pre class="bg-base-200 rounded-field overflow-x-auto p-2 whitespace-pre-wrap break-all">{{ formatAuditSnapshot(entry.after) }}</pre>
+        <div class="grid gap-2 text-xs sm:grid-cols-2">
+          <div
+            v-for="snapshot in [
+              { label: 'Before', value: entry.before },
+              { label: 'After', value: entry.after },
+            ]"
+            :key="snapshot.label"
+            class="grid gap-1"
+          >
+            <span class="text-base-content/70">{{ snapshot.label }}</span>
+            <pre class="bg-base-200/60 rounded-box p-2 whitespace-pre-wrap break-all">{{ formatAuditSnapshot(snapshot.value) }}</pre>
+          </div>
         </div>
       </li>
     </ul>
@@ -100,7 +109,7 @@
       />
     </div>
     <p class="text-xs text-base-content/70">
-      Entries are kept for 12 months. Left: before, right: after.
+      Entries are kept for 12 months.
     </p>
   </div>
 </template>

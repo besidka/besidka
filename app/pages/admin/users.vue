@@ -56,7 +56,7 @@
             <span class="text-xs opacity-70">{{ admin.name }}</span>
           </span>
           <span class="flex items-center gap-2">
-            <span class="badge badge-soft badge-primary badge-sm">admin</span>
+            <span class="badge badge-soft badge-info badge-sm">admin</span>
             <span
               class="badge badge-soft badge-sm"
               data-testid="admin-env-badge"
@@ -79,7 +79,7 @@
           <span class="flex items-center gap-2">
             <span
               class="badge badge-soft badge-sm"
-              :class="{ 'badge-primary': role.role === 'admin' }"
+              :class="{ 'badge-info': role.role === 'admin' }"
             >
               {{ role.role }}
             </span>
