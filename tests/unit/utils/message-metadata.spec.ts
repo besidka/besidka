@@ -8,6 +8,7 @@ import {
   isExternalWebSearchTool,
   isWebSearchTool,
   resolveMessageMenuInfo,
+  hasArtifactPart,
 } from '../../../shared/utils/message-metadata'
 
 describe('getMessageMetadata', () => {
@@ -1243,5 +1244,25 @@ describe('hasVisibleTextPart', () => {
     }
 
     expect(hasVisibleTextPart(message)).toBe(true)
+  })
+})
+
+describe('hasArtifactPart', () => {
+  it('finds a persisted reference or a finished artifact tool part', () => {
+    expect(hasArtifactPart({
+      parts: [{
+        type: 'data-artifact',
+        data: { artifactId: 'a', version: 1, kind: 'html', title: 'Quiz' },
+      }],
+    })).toBe(true)
+    expect(hasArtifactPart({
+      parts: [{ type: 'tool-create_artifact', state: 'output-available' }],
+    })).toBe(true)
+    expect(hasArtifactPart({
+      parts: [{ type: 'tool-update_artifact', state: 'output-error' }],
+    })).toBe(false)
+    expect(hasArtifactPart({ parts: [{ type: 'text', text: 'hi' }] }))
+      .toBe(false)
+    expect(hasArtifactPart({})).toBe(false)
   })
 })

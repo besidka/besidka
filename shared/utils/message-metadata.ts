@@ -1,3 +1,4 @@
+import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
 import type {
   ChatMessageMetadata,
   MessageUsage,
@@ -172,6 +173,30 @@ export function hasVisibleTextPart(message: { parts?: unknown }): boolean {
       && typeof part.text === 'string'
       && part.text.trim().length > 0
     )
+  })
+}
+
+/**
+ * Whether a message carries an artifact: a persisted `data-artifact`
+ * reference or a finished artifact tool part while streaming. Artifacts are
+ * not a `ModelTool`, so they stay out of `getMessageUsedTools`.
+ */
+export function hasArtifactPart(message: { parts?: unknown }): boolean {
+  const parts = Array.isArray(message.parts) ? message.parts : []
+
+  return parts.some((part) => {
+    if (typeof part !== 'object' || part === null || !('type' in part)) {
+      return false
+    }
+
+    if (part.type === ARTIFACT_DATA_PART_TYPE) {
+      return true
+    }
+
+    return (part.type === 'tool-create_artifact'
+      || part.type === 'tool-update_artifact')
+    && 'state' in part
+    && part.state === 'output-available'
   })
 }
 

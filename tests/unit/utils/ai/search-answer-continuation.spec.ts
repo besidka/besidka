@@ -1320,6 +1320,19 @@ describe('hasVisibleTextAfterLastFollowUpTool', () => {
     })).toBe(false)
   })
 
+  it('treats an artifact after the last follow-up tool as an answer', () => {
+    expect(hasVisibleTextAfterLastFollowUpTool({
+      parts: [
+        searchPart,
+        {
+          type: 'data-artifact',
+          data: { artifactId: 'a', version: 1, kind: 'html', title: 'Quiz' },
+        },
+      ],
+      followUpToolNames,
+    })).toBe(true)
+  })
+
   it('accepts text after the last follow-up tool', () => {
     expect(hasVisibleTextAfterLastFollowUpTool({
       parts: [

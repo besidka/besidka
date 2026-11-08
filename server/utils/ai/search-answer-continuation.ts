@@ -1,3 +1,4 @@
+import { ARTIFACT_DATA_PART_TYPE } from '#shared/utils/artifacts'
 import type {
   FinishReason,
   LanguageModelUsage,
@@ -224,6 +225,10 @@ export function hasVisibleTextAfterLastFollowUpTool(input: {
   })
 
   return input.parts.slice(lastFollowUpToolIndex + 1).some((part) => {
+    if (part.type === ARTIFACT_DATA_PART_TYPE) {
+      return true
+    }
+
     return part.type === 'text'
       && typeof part.text === 'string'
       && part.text.trim().length > 0

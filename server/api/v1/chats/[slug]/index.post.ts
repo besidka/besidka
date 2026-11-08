@@ -269,6 +269,17 @@ import {
 } from 'nuxt/server'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import { getCapabilityTools } from '~~/server/capabilities/index'
+import { getAllowedArtifactKinds } from '~~/server/capabilities/artifacts'
+import { buildArtifactInstructions } from '~~/server/utils/ai/artifact-tools'
+import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
+import { buildArtifactContextBlock } from '~~/server/utils/artifacts/context'
+import {
+  collectReferencedArtifactIds,
+  isArtifactToolName,
+  rewriteArtifactToolParts,
+} from '~~/server/utils/artifacts/message-parts'
+import { resolveSendFeatures } from '~~/server/utils/features/send-features'
 import {
   assertModelTransferConsent,
   assertProviderTransferConsent,
@@ -1458,6 +1469,63 @@ export default defineEventHandler(async (event) => {
     logger: aiLogger,
   })
 
+  const assistantMessagePublicId = ulid()
+  const sendFeatures = await resolveSendFeatures(
+    event,
+    [
+      'artifacts',
+      'artifacts.react',
+      'artifacts.storage',
+      'artifacts.llm-bridge',
+    ],
+    aiLogger,
+  )
+  const artifactsActive = sendFeatures.isFeatureActive('artifacts')
+  const artifactTools = artifactsActive && toolCallingAllowed
+    ? await getCapabilityTools({
+      userId,
+      chatId: chat.id,
+      db,
+      kv: useKV(),
+      model,
+      modelId,
+      assistantMessageId: assistantMessagePublicId,
+      messages: chat.messages,
+      logger: aiLogger,
+      isFeatureActive: sendFeatures.isFeatureActive,
+    })
+    : {}
+  const artifactToolsRegistered = Object.keys(artifactTools)
+    .some(isArtifactToolName)
+  const allowedArtifactKinds = getAllowedArtifactKinds(
+    sendFeatures.isFeatureActive,
+  )
+  const artifactInstructions = artifactToolsRegistered
+    ? buildArtifactInstructions(allowedArtifactKinds, {
+      storage: sendFeatures.isFeatureActive('artifacts.storage'),
+      modelBridge: sendFeatures.isFeatureActive('artifacts.llm-bridge'),
+    })
+    : null
+  const artifactContextBlock = artifactsActive
+    ? await buildArtifactContextBlock({
+      db,
+      storage: useArtifactBlobStore(),
+      userId,
+      artifactIds: collectReferencedArtifactIds(chat.messages),
+      logger: aiLogger,
+    })
+    : null
+
+  aiLogger.set({
+    attributes: {
+      artifacts: {
+        registered: artifactToolsRegistered,
+        kinds: artifactToolsRegistered ? allowedArtifactKinds : [],
+        contextChars: artifactContextBlock?.length ?? 0,
+      },
+    },
+  })
+
   const knowledgeSendModel: KnowledgeSendModel = gatewayId
     ? {
       providerId: telemetryProviderId,
@@ -1497,12 +1565,15 @@ export default defineEventHandler(async (event) => {
       hasDeepSeekWebSearch,
       hasChatSearchTools: chatSearchToolsRegistered,
       memoryInstructions,
+      artifactInstructions,
+      artifactContextBlock,
     }),
     toolGroupCount: [
       hasProviderToolGroup,
       chatSearchToolsRegistered,
       memoryToolsRegistered,
       toolCallingAllowed,
+      artifactToolsRegistered,
     ].filter(Boolean).length,
     userMessageText,
     newMessageId: newMessage.id,
@@ -1537,6 +1608,13 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (artifactToolsRegistered) {
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...artifactTools },
+    }
+  }
+
   const toolLoop = resolveToolLoop(parsedTools.tools, {
     chatSearchSteps: chatSearchBudget
       ? CHAT_SEARCH_MAX_CALLS_PER_TURN
@@ -1550,7 +1628,8 @@ export default defineEventHandler(async (event) => {
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
-      .map(([toolName]) => toolName),
+      .map(([toolName]) => toolName)
+      .filter(toolName => !isArtifactToolName(toolName)),
   )
 
   const stream = createUIMessageStream({
@@ -1562,7 +1641,7 @@ export default defineEventHandler(async (event) => {
       }))
     },
     async execute({ writer }) {
-      const messagePublicId = ulid()
+      const messagePublicId = assistantMessagePublicId
       const kv = useKV()
       const generatingKey = generationInProgressKvKey(chat.id, newMessage.id)
 
@@ -1786,6 +1865,8 @@ export default defineEventHandler(async (event) => {
               memoryInstructions,
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: knowledgeToolsRegistered,
+              artifactInstructions,
+              artifactContextBlock,
             }),
             reasoning: reasoningEffort,
             messages: modelMessages,
@@ -2017,6 +2098,7 @@ export default defineEventHandler(async (event) => {
               memoryInstructions,
               knowledgeSystemBlock: knowledgeContext?.systemBlock ?? null,
               hasKnowledgeTools: false,
+              artifactContextBlock,
             }),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
@@ -3228,7 +3310,9 @@ async function persistAssistantMessageFromStream(input: {
       return { persisted: false, emptyAnswerFailure: false, answered: false }
     }
 
-    const responseParts = responseMessage.parts as UIMessage['parts']
+    const responseParts = rewriteArtifactToolParts(
+      responseMessage.parts as UIMessage['parts'],
+    )
     const gatewayImageResult = input.gatewayId
       ? await persistGatewayGeneratedImageParts({
         parts: responseParts,
@@ -3642,6 +3726,8 @@ function buildChatInstructions(input: {
   memoryInstructions: string | null
   knowledgeSystemBlock?: string | null
   hasKnowledgeTools?: boolean
+  artifactInstructions?: string | null
+  artifactContextBlock?: string | null
   now?: Date
 }): string | undefined {
   const {
@@ -3654,6 +3740,8 @@ function buildChatInstructions(input: {
     memoryInstructions,
     knowledgeSystemBlock,
     hasKnowledgeTools,
+    artifactInstructions,
+    artifactContextBlock,
     now = new Date(),
   } = input
   const instructions = [
@@ -3669,6 +3757,8 @@ function buildChatInstructions(input: {
   if (hasChatSearchTools) {
     instructions.push(CHAT_SEARCH_INSTRUCTION)
   }
+
+  instructions.push(artifactInstructions ?? null, artifactContextBlock ?? null)
 
   if (requestedTools.includes('image_generation')) {
     instructions.push(gatewayId
