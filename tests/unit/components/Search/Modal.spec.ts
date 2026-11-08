@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const loggedIn = ref<boolean>(true)
+const isAdmin = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -35,6 +36,10 @@ mockNuxtImport('useAuth', () => {
     user: ref(null),
     fetchSession: async () => {},
   })
+})
+
+mockNuxtImport('useIsAdmin', () => {
+  return () => isAdmin
 })
 
 mockNuxtImport('useRoute', () => {
@@ -89,6 +94,7 @@ let closeSpy: ReturnType<typeof vi.spyOn>
 describe('Search/Modal.client', () => {
   beforeEach(() => {
     loggedIn.value = true
+    isAdmin.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -203,6 +209,44 @@ describe('Search/Modal.client', () => {
       'search-option-preferences',
       'search-option-connected-apps',
     ])
+  })
+
+  it('shows the Admin row last in Settings only to admins', async () => {
+    isAdmin.value = true
+    useSearchModal().isModalOpen.value = true
+
+    let isModalOpenDuringNavigate: boolean | null = null
+
+    mocks.navigateToMock.mockImplementation(() => {
+      isModalOpenDuringNavigate = useSearchModal().isModalOpen.value
+
+      return Promise.resolve()
+    })
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.at(-1)).toBe('search-option-admin')
+    expect(wrapper.get('#search-option-admin').text()).toBe('Admin')
+    expect(wrapper.get('#search-option-admin .iconify').classes())
+      .toContain('i-lucide:shield-ellipsis')
+
+    await wrapper.find('#search-option-admin').trigger('click')
+
+    expect(isModalOpenDuringNavigate).toBe(false)
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/admin')
+  })
+
+  it('hides the Admin row from non-admins', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-admin').exists()).toBe(false)
   })
 
   it('groups Projects under Chat and Memory under Settings with icons', async () => {
