@@ -39,6 +39,10 @@ command below is for the operator, preview first.
 | `files` rows whose R2 object is gone | 404 on open, still counted in quota | Medium | Expired rows only |
 | R2 objects uploaded in the window | No row, no owner | Medium (privacy) | No |
 | `message_search` FTS index | Consistent with `messages` | None | Yes |
+| Feature opt-outs and `experiments` objections (`feature_opt_ins`) | Withdrawn opt-ins come back, so a feature can spend a user's key again | High (consent) | No |
+| Revoked roles (`user_roles`), deny grants and grant revocations (`feature_grants`) | Revoked testers and grants work again; deny grants vanish | High | No |
+| Kill switch and rollout changes (`feature_flag_rules`) | Revert to B | Medium | No |
+| `feature_audit_log` | Rolled back with the rows it describes, so it cannot be the replay source; rows anonymised in the window lose their scrub | Medium (erasure) | No |
 | `d1_migrations` | Rolled back, so the next deploy re-applies migrations | **Blocking** | No |
 
 ## Sessions: why a restore revives revoked sessions
@@ -235,6 +239,38 @@ example `aws s3api list-objects-v2 --endpoint-url
 https://<account-id>.r2.cloudflarestorage.com`) and diff the result against
 `SELECT storage_key FROM files`.
 
+## Feature access
+
+`user_roles`, `feature_flag_rules`, `feature_grants`, `feature_opt_ins` and
+`feature_audit_log` (`server/db/schemas/features.ts`, `docs/feature-flags.md`)
+have no foreign key to `users`, so nothing cascades to them. A restore:
+
+- brings back opt-ins that users withdrew and `experiments` objections they
+  turned off or on, so a feature could spend a user's key again without
+  consent (the most serious case),
+- brings back revoked `tester` roles and revoked allow grants, and removes
+  deny grants set in the window,
+- reverts kill-switch, rollout and variant changes made after B,
+- rolls back `feature_audit_log` together with the rows it describes. The
+  audit table is therefore **not a replay source**. The ledger is Axiom
+  `besidka-prod`: every feature-access write logs
+  `attributes.featureAccess` with ids only (action, flag, target user id,
+  effect, expiry; a rule write also logs `rule.before` and `rule.after`
+  with `enabled`, `rolloutBps`, `allowRoles` and `variants`; the opt-in
+  route logs `optedIn`, the objection switch `objected`). Those writers ship with the admin API, Labs and MCP tickets
+  (P0-6, P0-7, P0-8).
+
+Rules live in KV (`features:config:v1`, TTL 300 seconds) as a cache only.
+Delete that key after the restore so every location reads the restored rules
+at once.
+
+The env admin (`NUXT_ADMIN_EMAILS`, a Worker secret, verified email
+required) is not stored in D1, so a restore can never lock the owner out of
+`/admin`. For an instant global off switch while reconciling, set
+`NUXT_FEATURES_DISABLED=*` and redeploy.
+
+Replay is runbook step 4, item 7.
+
 ## Search index
 
 `message_search` is an FTS5 table inside the same D1 database. It is restored
@@ -370,7 +406,17 @@ created in the window matches nothing after the restore. Apply, in this
 order:
 
 1. **Deleted accounts**: for each `userId`,
-   `DELETE FROM image_generation_locks WHERE user_id = <id> AND user_id IN (SELECT id FROM users WHERE created_at <= <B_s>);`
+   `DELETE FROM image_generation_locks WHERE user_id = <id> AND user_id IN (SELECT id FROM users WHERE created_at <= <B_s>);`,
+   the same `DELETE` for `feature_grants`, `feature_opt_ins` and
+   `user_roles` (no foreign key, so no cascade), and the audit scrub that
+   `purgeUserFeatureAccess` (`server/utils/account/purge-feature-access.ts`)
+   runs:
+   `UPDATE feature_audit_log SET actor_user_id = CASE WHEN actor_user_id = <id> THEN NULL ELSE actor_user_id END, target_user_id = CASE WHEN target_user_id = <id> THEN NULL ELSE target_user_id END, before = CASE WHEN json_valid(before) THEN json_remove(before, '$.userId', '$.targetUserId', '$.actorUserId', '$.grantedBy', '$.updatedBy', '$.reason') ELSE NULL END, after = CASE WHEN json_valid(after) THEN json_remove(after, '$.userId', '$.targetUserId', '$.actorUserId', '$.grantedBy', '$.updatedBy', '$.reason') ELSE NULL END WHERE (actor_user_id = <id> OR target_user_id = <id>) AND <id> IN (SELECT id FROM users WHERE created_at <= <B_s>);`
+   and the grantor clean-up
+   `UPDATE feature_grants SET granted_by = NULL WHERE granted_by = <id>;`,
+   the same for `user_roles.granted_by`, and
+   `UPDATE feature_flag_rules SET updated_by = NULL WHERE updated_by = <id>;`
+   (all guarded the same way),
    then `DELETE FROM users WHERE id = <id> AND created_at <= <B_s>;`. The
    cascade removes the restored children. This is the cascade `CLAUDE.md`
    warns about, and here it is intended. R2 and KV were already purged
@@ -393,6 +439,42 @@ order:
    Decode it with the production `encryptionHashids` salt and minimum length
    16, as `decodePublicId` in `server/utils/custom-db-types.ts` does, then run
    `DELETE FROM projects WHERE id = <decoded id> AND user_id = <id> AND created_at <= <B_s> AND user_id IN (SELECT id FROM users WHERE created_at <= <B_s>);`.
+
+7. **Feature access** (`docs/feature-flags.md`). Query the ledger, not
+   `feature_audit_log`:
+
+   ```kusto
+   ['besidka-prod']
+   | where _time between (datetime(<B>) .. datetime(<R>))
+   | where status < 400
+   | where isnotnull(attributes['featureAccess'])
+   | project _time, userId, featureAccess = attributes['featureAccess']
+   | order by _time asc
+   ```
+
+   Re-apply, in this order, each statement guarded with
+   `user_id IN (SELECT id FROM users WHERE created_at <= <B_s>)`:
+   1. opt-outs (`opt_in.set` with `optedIn: false`): set `opted_out_at` on
+      the user's `feature_opt_ins` row; and `experiments` objections
+      (`experiments.set` with `objected: true`): upsert the `experiments`
+      row with `opted_out_at`,
+   2. role revocations (`role.revoke`): delete the `user_roles` row,
+   3. deny grants (`grant.set` with `effect: 'deny'`) and grant revocations
+      (`grant.revoke`): upsert the deny row or delete the grant,
+   4. rule changes (`rule.set`): set `enabled`, `rollout_bps`,
+      `allow_roles` and `variants` to `rule.after` of the last event logged
+      per flag in the window, then delete the KV key `features:config:v1`.
+      The env kill switch (`NUXT_FEATURES_DISABLED`) is not in D1 and needs
+      no replay.
+
+   Within each group, take only the **last** logged event per (user, flag)
+   in `_time asc` order: an opt-out followed by a fresh opt-in in the window
+   ends opted in, and a deny grant followed by a revocation ends with no
+   grant.
+
+   Do not replay grants, roles or opt-ins that were *added* in the window:
+   those were the user's or admin's choice at the time and can be redone by
+   them. Re-adding consent from a log line would be wrong for opt-ins.
 
 Back up anything you delete with a `SELECT` first. Each `DELETE` here
 removes data that users already asked to delete.
