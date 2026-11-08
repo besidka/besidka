@@ -2,10 +2,15 @@ import {
   ARTIFACT_KINDS,
   DISPLAY_MODES,
   LOG_LEVELS,
+  MAX_COMPLETE_OUTPUT_TOKENS,
   MAX_COMPLETE_PROMPT_LENGTH,
+  MAX_FRAME_HEIGHT,
+  MAX_JSON_DEPTH,
+  MAX_JSON_NODES,
   MAX_LINK_URL_LENGTH,
   MAX_LOG_MESSAGE_LENGTH,
   MAX_STORAGE_KEY_LENGTH,
+  MAX_STORAGE_VALUE_BYTES,
   STORAGE_MODES,
   THEMES,
 } from './constants.ts'
@@ -34,7 +39,44 @@ import type {
   ToolResultParams,
 } from './messages.ts'
 
-const MAX_JSON_DEPTH = 32
+export interface JsonLimits {
+  maxNodes: number
+  maxDepth: number
+  maxBytes: number
+}
+
+export const STORAGE_JSON_LIMITS: JsonLimits = {
+  maxNodes: MAX_JSON_NODES,
+  maxDepth: MAX_JSON_DEPTH,
+  maxBytes: MAX_STORAGE_VALUE_BYTES,
+}
+
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+const DIRECTION_CONTROL_CODES = new Set([
+  0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+  0x2066, 0x2067, 0x2068, 0x2069,
+])
+
+function isControlCode(code: number): boolean {
+  return code < 0x20 || code === 0x7F
+}
+
+function hasCharacter(value: string, matches: (code: number) => boolean) {
+  for (let index = 0; index < value.length; index += 1) {
+    if (matches(value.charCodeAt(index))) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function hasUnsafeLinkCharacter(value: string): boolean {
+  return hasCharacter(value, (code) => {
+    return isControlCode(code) || DIRECTION_CONTROL_CODES.has(code)
+  })
+}
 
 function isOneOf<Value extends string>(
   values: readonly Value[],
@@ -55,36 +97,110 @@ export function isDisplayMode(value: unknown): value is DisplayMode {
   return isOneOf(DISPLAY_MODES, value)
 }
 
-export function isJsonValue(value: unknown, depth = 0): value is JsonValue {
-  if (depth > MAX_JSON_DEPTH) {
-    return false
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && Object.getPrototypeOf(value) === Object.prototype
+}
+
+function measureScalar(value: unknown): number | null {
+  if (value === null || typeof value === 'boolean') {
+    return 5
   }
 
-  if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'boolean'
-  ) {
-    return true
+  if (typeof value === 'string') {
+    return value.length + 2
   }
 
   if (typeof value === 'number') {
-    return Number.isFinite(value)
+    return Number.isFinite(value) ? 24 : null
   }
 
-  if (Array.isArray(value)) {
-    return value.every((item) => {
-      return isJsonValue(item, depth + 1)
-    })
+  return null
+}
+
+/**
+ * Walks a structured-clone result iteratively and returns its approximate
+ * JSON size, or null when it is not plain JSON or exceeds the limits.
+ * Every object may be visited once, so shared references (which structured
+ * clone preserves) and cycles cannot make the walk exponential.
+ */
+export function measureJsonValue(
+  value: unknown,
+  limits: JsonLimits = STORAGE_JSON_LIMITS,
+): number | null {
+  const visited = new Set<object>()
+  const stack: Array<[unknown, number]> = [[value, 0]]
+  let nodeCount = 0
+  let byteCount = 0
+
+  while (stack.length > 0) {
+    const [current, depth] = stack.pop() as [unknown, number]
+
+    nodeCount += 1
+
+    if (nodeCount > limits.maxNodes || depth > limits.maxDepth) {
+      return null
+    }
+
+    if (typeof current !== 'object' || current === null) {
+      const size = measureScalar(current)
+
+      if (size === null) {
+        return null
+      }
+
+      byteCount += size
+    } else {
+      if (visited.has(current)) {
+        return null
+      }
+
+      visited.add(current)
+
+      if (Array.isArray(current)) {
+        if (current.length > limits.maxNodes) {
+          return null
+        }
+
+        byteCount += current.length + 2
+
+        for (let index = 0; index < current.length; index += 1) {
+          stack.push([current[index], depth + 1])
+        }
+      } else if (isPlainObject(current)) {
+        const keys = Object.keys(current)
+
+        if (keys.length > limits.maxNodes) {
+          return null
+        }
+
+        for (const key of keys) {
+          if (RESERVED_KEYS.has(key)) {
+            return null
+          }
+
+          byteCount += key.length + 4
+          stack.push([current[key], depth + 1])
+        }
+
+        byteCount += 2
+      } else {
+        return null
+      }
+    }
+
+    if (byteCount > limits.maxBytes) {
+      return null
+    }
   }
 
-  if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) {
-    return false
-  }
+  return byteCount
+}
 
-  return Object.values(value).every((item) => {
-    return isJsonValue(item, depth + 1)
-  })
+export function isJsonValue(
+  value: unknown,
+  limits: JsonLimits = STORAGE_JSON_LIMITS,
+): value is JsonValue {
+  return measureJsonValue(value, limits) !== null
 }
 
 export function isHostContext(value: unknown): value is HostContext {
@@ -153,24 +269,34 @@ export function isSizeChangedParams(
     && typeof value.height === 'number'
     && Number.isFinite(value.height)
     && value.height >= 0
+    && value.height <= MAX_FRAME_HEIGHT
 }
 
-export function isOpenLinkParams(value: unknown): value is OpenLinkParams {
-  if (!isRecord(value) || typeof value.url !== 'string') {
-    return false
+export function normalizeLinkUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > MAX_LINK_URL_LENGTH) {
+    return null
   }
 
-  if (value.url.length > MAX_LINK_URL_LENGTH) {
-    return false
+  if (hasUnsafeLinkCharacter(value)) {
+    return null
   }
 
   try {
-    const url = new URL(value.url)
+    const url = new URL(value)
+    const isWebUrl = url.protocol === 'https:' || url.protocol === 'http:'
 
-    return url.protocol === 'https:' || url.protocol === 'http:'
+    if (!isWebUrl || url.username || url.password) {
+      return null
+    }
+
+    return url.href
   } catch {
-    return false
+    return null
   }
+}
+
+export function isOpenLinkParams(value: unknown): value is OpenLinkParams {
+  return isRecord(value) && normalizeLinkUrl(value.url) !== null
 }
 
 export function isLogMessageParams(value: unknown): value is LogMessageParams {
@@ -184,10 +310,12 @@ export function isLogMessageParams(value: unknown): value is LogMessageParams {
         && value.data.stack.length <= MAX_LOG_MESSAGE_LENGTH))
 }
 
-function isStorageKey(value: unknown): value is string {
+export function isStorageKey(value: unknown): value is string {
   return typeof value === 'string'
     && value.length > 0
     && value.length <= MAX_STORAGE_KEY_LENGTH
+    && !hasCharacter(value, isControlCode)
+    && !RESERVED_KEYS.has(value)
 }
 
 export function isStorageKeyParams(
@@ -223,6 +351,7 @@ export function isStorageListResult(
 ): value is StorageListResult {
   return isRecord(value)
     && Array.isArray(value.keys)
+    && value.keys.length <= MAX_JSON_NODES
     && value.keys.every((key) => {
       return typeof key === 'string'
     })
@@ -236,7 +365,8 @@ export function isCompleteParams(value: unknown): value is CompleteParams {
     && (value.maxOutputTokens === undefined
       || (typeof value.maxOutputTokens === 'number'
         && Number.isInteger(value.maxOutputTokens)
-        && value.maxOutputTokens > 0))
+        && value.maxOutputTokens > 0
+        && value.maxOutputTokens <= MAX_COMPLETE_OUTPUT_TOKENS))
 }
 
 export function isCompleteResult(value: unknown): value is CompleteResult {

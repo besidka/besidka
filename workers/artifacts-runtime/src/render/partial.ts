@@ -16,11 +16,6 @@ export function tailLines(content: string, lineCount: number): string {
   return lines.slice(Math.max(0, lines.length - lineCount)).join('\n')
 }
 
-/**
- * Streaming preview for kinds whose partial source cannot be executed
- * safely or meaningfully: it shows progress and the latest lines as text,
- * never running partial code.
- */
 export function renderSourcePreview(
   payload: ArtifactPayload,
   root: HTMLElement,

@@ -10,6 +10,20 @@ export const INTERACTIVE_REQUEST_TIMEOUT_MS = 300_000
 
 export const MAX_PENDING_REQUESTS = 64
 
+export const MAX_INBOUND_PENDING_REQUESTS = 16
+
+export const MAX_FRAME_HEIGHT = 100_000
+
+export const MAX_COMPLETE_OUTPUT_TOKENS = 2_000
+
+export const MAX_STORAGE_VALUE_BYTES = 100_000
+
+export const MAX_JSON_NODES = 10_000
+
+export const MAX_JSON_DEPTH = 32
+
+export const CONNECT_TIMEOUT_MS = 15_000
+
 export const MAX_LOG_MESSAGE_LENGTH = 2_000
 
 export const MAX_LINK_URL_LENGTH = 2_048

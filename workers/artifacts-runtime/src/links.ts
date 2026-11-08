@@ -2,6 +2,8 @@ type LinkOpener = (url: string) => void
 
 const EXTERNAL_LINK_PATTERN = /^https?:\/\//i
 
+const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink'
+
 let openLink: LinkOpener | null = null
 
 export function resolveExternalLink(href: string | null): string | null {
@@ -23,15 +25,16 @@ function handleClick(event: MouseEvent) {
     return
   }
 
-  const anchor = target.closest('a[href]')
+  const anchor = target.closest('a, area')
 
   if (!anchor) {
     return
   }
 
   const href = anchor.getAttribute('href')
+    ?? anchor.getAttributeNS(XLINK_NAMESPACE, 'href')
 
-  if (href?.startsWith('#')) {
+  if (href === null || href.startsWith('#')) {
     return
   }
 

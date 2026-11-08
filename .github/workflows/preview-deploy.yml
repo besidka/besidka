@@ -281,6 +281,7 @@ jobs:
 
       - name: Deploy PR preview of the artifacts runtime
         if: steps.runtime-artifact.outcome == 'success' && vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED == 'true'
+        continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -293,6 +294,8 @@ jobs:
           fi
 
           cd workers/artifacts-runtime
+          rm -f dist/_headers dist/_redirects
+          node --input-type=module -e "import { createHeadersFile } from './scripts/headers.mjs'; process.stdout.write(createHeadersFile())" > dist/_headers
           pnpm exec wrangler preview \
             --name "pr-${PR_NUMBER}" \
             --message "$PR_URL"

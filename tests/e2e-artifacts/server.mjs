@@ -4,11 +4,16 @@
 
 import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
+import { createServer as createTcpServer } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const HOST_PORT = Number(process.env.ARTIFACTS_HOST_PORT || 8789)
 export const OUTSIDE_PORT = Number(process.env.ARTIFACTS_OUTSIDE_PORT || 8790)
+export const OUTSIDE_TCP_PORT = Number(
+  process.env.ARTIFACTS_OUTSIDE_TCP_PORT || 8791,
+)
+export const RUNTIME_ORIGIN = `http://127.0.0.1:${process.env.ARTIFACTS_RUNTIME_PORT || 8788}`
 
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url))
 const repositoryRoot = path.resolve(testsDirectory, '..', '..')
@@ -74,7 +79,13 @@ createServer((request, response) => {
     return
   }
 
-  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+  const headers = { 'content-type': 'text/html; charset=utf-8' }
+
+  if (url.searchParams.has('frame-src')) {
+    headers['content-security-policy'] = `frame-src ${RUNTIME_ORIGIN}`
+  }
+
+  response.writeHead(200, headers)
   response.end(HOST_HTML)
 }).listen(HOST_PORT, '127.0.0.1', () => {
   console.log(`Artifacts harness host on http://127.0.0.1:${HOST_PORT}`)
@@ -82,6 +93,14 @@ createServer((request, response) => {
 
 createServer((request, response) => {
   outsideRequests.push(request.url ?? '/')
+
+  if (request.url?.startsWith('/no-content')) {
+    response.writeHead(204)
+    response.end()
+
+    return
+  }
+
   response.writeHead(200, {
     'content-type': 'text/html; charset=utf-8',
     'access-control-allow-origin': '*',
@@ -89,4 +108,11 @@ createServer((request, response) => {
   response.end(OUTSIDE_PAGE)
 }).listen(OUTSIDE_PORT, '127.0.0.1', () => {
   console.log(`Outside origin recorder on http://127.0.0.1:${OUTSIDE_PORT}`)
+})
+
+createTcpServer((socket) => {
+  outsideRequests.push(`tcp:${OUTSIDE_TCP_PORT}`)
+  socket.destroy()
+}).listen(OUTSIDE_TCP_PORT, '127.0.0.1', () => {
+  console.log(`Outside TCP recorder on 127.0.0.1:${OUTSIDE_TCP_PORT}`)
 })

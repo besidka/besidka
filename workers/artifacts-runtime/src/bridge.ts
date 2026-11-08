@@ -1,12 +1,14 @@
 import {
   ERROR_CODES,
   INTERACTIVE_REQUEST_TIMEOUT_MS,
+  MAX_COMPLETE_OUTPUT_TOKENS,
   MAX_COMPLETE_PROMPT_LENGTH,
   MAX_STORAGE_KEY_LENGTH,
   METHODS,
   RpcError,
   isJsonValue,
   isMethodNotFound,
+  isStorageKey,
 } from '@besidka/artifacts-protocol'
 import type {
   HostCapabilities,
@@ -55,11 +57,25 @@ const COMPLETE_ERROR_MESSAGES: Record<number, string> = {
   [ERROR_CODES.requestTimeout]: 'The AI completion timed out.',
 }
 
-function toBridgeError(exception: unknown, fallbackMessage: string) {
+const STORAGE_ERROR_MESSAGES: Record<number, string> = {
+  [ERROR_CODES.consentRequired]:
+    'The viewer has not allowed this artifact to save data.',
+  [ERROR_CODES.rateLimited]: 'Too many storage requests. Try again later.',
+  [ERROR_CODES.notAllowed]: 'Saving data is not allowed for this artifact.',
+  [ERROR_CODES.invalidParams]:
+    'The storage key or value was rejected (too large or invalid).',
+  [ERROR_CODES.requestTimeout]: 'The storage request timed out.',
+}
+
+function toBridgeError(
+  exception: unknown,
+  messages: Record<number, string>,
+  fallbackMessage: string,
+) {
   if (exception instanceof RpcError) {
     return new BesidkaBridgeError(
       exception.code,
-      COMPLETE_ERROR_MESSAGES[exception.code] ?? exception.message,
+      messages[exception.code] ?? exception.message,
     )
   }
 
@@ -67,13 +83,9 @@ function toBridgeError(exception: unknown, fallbackMessage: string) {
 }
 
 function assertStorageKey(key: unknown): asserts key is string {
-  if (
-    typeof key !== 'string'
-    || key.length === 0
-    || key.length > MAX_STORAGE_KEY_LENGTH
-  ) {
+  if (!isStorageKey(key)) {
     throw new TypeError(
-      `Storage keys must be non-empty strings of at most ${MAX_STORAGE_KEY_LENGTH} characters.`,
+      `Storage keys must be non-empty strings of at most ${MAX_STORAGE_KEY_LENGTH} characters, without control characters or reserved names.`,
     )
   }
 }
@@ -90,7 +102,9 @@ function toJsonValue(value: unknown): JsonValue {
   }
 
   if (normalized === undefined || !isJsonValue(normalized)) {
-    throw new TypeError('Storage values must be JSON-serialisable.')
+    throw new TypeError(
+      'Storage values must be JSON-serialisable and at most 100 KB.',
+    )
   }
 
   return normalized
@@ -132,7 +146,11 @@ export function createBesidkaApi(
         return local()
       }
 
-      throw toBridgeError(exception, 'Storage request failed.')
+      throw toBridgeError(
+        exception,
+        STORAGE_ERROR_MESSAGES,
+        'Storage request failed.',
+      )
     }
   }
 
@@ -218,9 +236,15 @@ export function createBesidkaApi(
 
     if (
       maxOutputTokens !== undefined
-      && (!Number.isInteger(maxOutputTokens) || maxOutputTokens <= 0)
+      && (
+        !Number.isInteger(maxOutputTokens)
+        || maxOutputTokens <= 0
+        || maxOutputTokens > MAX_COMPLETE_OUTPUT_TOKENS
+      )
     ) {
-      throw new TypeError('maxOutputTokens must be a positive integer.')
+      throw new TypeError(
+        `maxOutputTokens must be an integer from 1 to ${MAX_COMPLETE_OUTPUT_TOKENS}.`,
+      )
     }
 
     try {
@@ -234,7 +258,11 @@ export function createBesidkaApi(
 
       return result.text
     } catch (exception) {
-      throw toBridgeError(exception, 'The AI completion failed.')
+      throw toBridgeError(
+        exception,
+        COMPLETE_ERROR_MESSAGES,
+        'The AI completion failed.',
+      )
     }
   }
 

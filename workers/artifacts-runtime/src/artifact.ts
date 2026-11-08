@@ -109,11 +109,15 @@ export async function renderArtifact(payload: ArtifactPayload) {
   try {
     await unmountCurrentReact()
 
+    if (!isCurrent()) {
+      return
+    }
+
     if (payload.kind === 'html') {
       documentReplaced = true
-      await replaceDocument(payload.content, htmlPrelude)
+      await replaceDocument(payload.content, htmlPrelude, isCurrent)
 
-      if (!document.title) {
+      if (isCurrent() && !document.title) {
         document.title = payload.title || DEFAULT_TITLE
       }
 
@@ -127,14 +131,13 @@ export async function renderArtifact(payload: ArtifactPayload) {
     const root = getRoot()
     const renderer = await selectRenderer(payload.kind).load()
 
-    document.title = payload.title || DEFAULT_TITLE
-
     if (!isCurrent()) {
       return
     }
 
-    await renderer(payload, { root, theme: getTheme(), isCurrent })
+    document.title = payload.title || DEFAULT_TITLE
     reactMounted = payload.kind === 'react'
+    await renderer(payload, { root, theme: getTheme(), isCurrent })
   } catch (exception) {
     if (isCurrent()) {
       reportError(exception)
@@ -158,9 +161,16 @@ async function flushPartial() {
   }
 
   const sequence = startRender()
+  const isCurrent = () => {
+    return sequence === renderSequence
+  }
 
   try {
     await unmountCurrentReact()
+
+    if (!isCurrent()) {
+      return
+    }
 
     if (documentReplaced) {
       restoreShell()
@@ -176,17 +186,11 @@ async function flushPartial() {
 
     const renderer = await selectRenderer('markdown').load()
 
-    if (sequence !== renderSequence) {
+    if (!isCurrent()) {
       return
     }
 
-    await renderer(payload, {
-      root,
-      theme: getTheme(),
-      isCurrent: () => {
-        return sequence === renderSequence
-      },
-    })
+    await renderer(payload, { root, theme: getTheme(), isCurrent })
   } catch (exception) {
     reportError(exception, { level: 'warning', showPanel: false })
   } finally {

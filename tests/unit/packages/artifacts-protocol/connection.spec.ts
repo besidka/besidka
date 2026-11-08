@@ -229,6 +229,39 @@ describe('createEndpoint', () => {
     })
   })
 
+  it('refuses inbound requests beyond the in-flight limit', async () => {
+    const channel = createChannel()
+    const requester = createEndpoint(channel.port1)
+    const releases: Array<() => void> = []
+
+    createEndpoint(channel.port2, {
+      onRequest: () => {
+        return new Promise((resolve) => {
+          releases.push(() => {
+            resolve({})
+          })
+        })
+      },
+    })
+
+    const pending = Array.from({ length: 16 }, () => {
+      return requester.request('slow', {})
+    })
+
+    await vi.waitFor(() => {
+      expect(releases).toHaveLength(16)
+    })
+    await expect(requester.request('slow', {})).rejects.toMatchObject({
+      code: ERROR_CODES.rateLimited,
+    })
+
+    for (const release of releases) {
+      release()
+    }
+
+    await Promise.all(pending)
+  })
+
   it('times out unanswered requests', async () => {
     vi.useFakeTimers()
 

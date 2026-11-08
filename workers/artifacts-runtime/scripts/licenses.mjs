@@ -25,7 +25,7 @@ export const LICENSE_OVERRIDES = {
   'khroma@2.1.0': 'MIT',
 }
 
-const LICENSE_FILE_PATTERN = /^(licen[cs]e|copying|notice)(\.(md|txt|markdown))?$/i
+const LICENSE_FILE_PATTERN = /^(licen[cs]e|copying|notice)([.-][\w.-]*)?$/i
 
 export function isAllowedLicense(expression) {
   const normalized = expression.replace(/^\((.*)\)$/, '$1').trim()
@@ -87,10 +87,6 @@ function normalizeLicense(manifest) {
   return 'UNKNOWN'
 }
 
-/**
- * Resolves every npm package that ended up in a bundle (from esbuild
- * metafiles) to its licence, and fails on anything outside the allowlist.
- */
 export function collectLicenses(metafiles, workerDirectory) {
   const packages = new Map()
 
@@ -103,7 +99,9 @@ export function collectLicenses(metafiles, workerDirectory) {
       const filePath = path.resolve(workerDirectory, input.replace(/^[a-z-]+:/, ''))
       const packageDirectory = findPackageDirectory(filePath)
 
-      if (!packageDirectory || packages.has(packageDirectory)) {
+      const isOwnPackage = packageDirectory === path.resolve(workerDirectory)
+
+      if (!packageDirectory || isOwnPackage || packages.has(packageDirectory)) {
         continue
       }
 

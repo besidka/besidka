@@ -265,7 +265,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(workers/artifacts-runtime/|packages/artifacts-protocol/)'; then
+          if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(workers/artifacts-runtime/|packages/artifacts-protocol/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$)'; then
             echo "NUXT_PUBLIC_ARTIFACTS_ORIGIN=https://pr-${PR_NUMBER}-besidka-artifacts.chernenko.workers.dev" >> "$GITHUB_ENV"
             echo "This preview embeds the artifacts runtime preview of PR #${PR_NUMBER}."
           fi
@@ -402,7 +402,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(workers/|packages/|tests/e2e-artifacts/|playwright\.artifacts\.config\.ts$)'; then
+          if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(workers/|packages/|tests/e2e-artifacts/|playwright\.artifacts\.config\.ts$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$)'; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "The artifacts runtime and its protocol did not change."

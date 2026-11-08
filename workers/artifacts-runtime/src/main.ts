@@ -19,6 +19,7 @@ import { installLinkInterception } from './links.ts'
 import { reportError, setHostNotifier } from './report.ts'
 import { ROOT_ELEMENT_ID } from './shell.ts'
 import { startSizeReporting } from './size.ts'
+import { disableWebRtc } from './webrtc.ts'
 
 const STANDALONE_MESSAGE = 'This page renders Besidka artifacts inside the Besidka app. It does nothing on its own.'
 
@@ -85,6 +86,7 @@ async function boot() {
     return
   }
 
+  disableWebRtc()
   installDocumentHooks()
 
   const connection = await connectRuntime({
@@ -111,10 +113,17 @@ async function boot() {
   })
 
   try {
-    const { hostContext } = await connection.request(METHODS.initialize, {
-      protocolVersion: PROTOCOL_VERSION,
-      appCapabilities: { kinds: [...ARTIFACT_KINDS] },
-    })
+    const { hostContext, protocolVersion } = await connection.request(
+      METHODS.initialize,
+      {
+        protocolVersion: PROTOCOL_VERSION,
+        appCapabilities: { kinds: [...ARTIFACT_KINDS] },
+      },
+    )
+
+    if (protocolVersion !== PROTOCOL_VERSION) {
+      throw new Error(`The host speaks protocol ${protocolVersion}, this runtime speaks ${PROTOCOL_VERSION}.`)
+    }
 
     changeTheme(hostContext.theme)
     installBesidkaApi(createBesidkaApi(connection, hostContext.capabilities))

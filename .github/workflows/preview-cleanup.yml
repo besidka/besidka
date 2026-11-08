@@ -66,7 +66,7 @@ jobs:
           exit 1
 
       - name: Delete artifacts runtime preview
-        if: vars.ARTIFACTS_RUNTIME_DEPLOY_ENABLED == 'true' && hashFiles('workers/artifacts-runtime/wrangler.jsonc') != ''
+        if: hashFiles('workers/artifacts-runtime/wrangler.jsonc') != ''
         working-directory: workers/artifacts-runtime
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -85,7 +85,7 @@ jobs:
 
           cat "$RUNNER_TEMP/delete-runtime.log"
 
-          if grep -qiE "code: 10025|preview not found|does not exist" "$RUNNER_TEMP/delete-runtime.log"; then
+          if grep -qiE "code: 10025|code: 10007|preview not found|not found|does not exist" "$RUNNER_TEMP/delete-runtime.log"; then
             echo "Artifacts runtime preview ${PREVIEW_NAME} does not exist; nothing to delete"
             exit 0
           fi

@@ -149,6 +149,111 @@ describe('createHostConnection', () => {
     host.destroy()
   })
 
+  it('coalesces queued notifications so the latest result wins', async () => {
+    const frame = createFakeFrame()
+    const host = createHostConnection(frame, createHandlers())
+    const notifications: Array<[string, unknown]> = []
+
+    for (let index = 0; index < 50; index += 1) {
+      host.sendToolInputPartial({
+        kind: 'html',
+        title: 'Draft',
+        content: `<p>${index}</p>`,
+      })
+    }
+
+    host.setHostContext({ theme: 'dark' })
+    host.sendToolResult({ kind: 'html', title: 'Final', content: '<p>done</p>' })
+    host.setHostContext({ displayMode: 'fullscreen' })
+    frame.load()
+
+    const runtime = connectFakeRuntime(frame, (method, params) => {
+      notifications.push([method, params])
+    })
+
+    await initialize(runtime)
+    await vi.waitFor(() => {
+      expect(notifications).toHaveLength(2)
+    })
+    expect(notifications).toEqual([
+      [
+        METHODS.hostContextChanged,
+        { theme: 'dark', displayMode: 'fullscreen' },
+      ],
+      [
+        METHODS.toolResult,
+        {
+          structuredContent: {
+            kind: 'html',
+            title: 'Final',
+            content: '<p>done</p>',
+          },
+        },
+      ],
+    ])
+    host.destroy()
+  })
+
+  it('refuses a second initialize and another protocol version', async () => {
+    const frame = createFakeFrame()
+    const onInitialized = vi.fn()
+    const host = createHostConnection(frame, createHandlers({ onInitialized }))
+
+    frame.load()
+
+    const runtime = connectFakeRuntime(frame)
+
+    await expect(runtime.request(METHODS.initialize, {
+      protocolVersion: 2,
+      appCapabilities: { kinds: ['html'] },
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidRequest })
+
+    await initialize(runtime)
+    await expect(initialize(runtime)).rejects.toMatchObject({
+      code: ERROR_CODES.invalidRequest,
+    })
+    expect(onInitialized).toHaveBeenCalledTimes(1)
+    host.destroy()
+  })
+
+  it('reports a runtime that never becomes ready', async () => {
+    vi.useFakeTimers()
+
+    const frame = createFakeFrame()
+    const onConnectTimeout = vi.fn()
+    const host = createHostConnection(
+      frame,
+      createHandlers({ onConnectTimeout }),
+      { connectTimeoutMs: 1_000 },
+    )
+
+    frame.load()
+    await vi.advanceTimersByTimeAsync(1_001)
+
+    expect(onConnectTimeout).toHaveBeenCalledTimes(1)
+    host.destroy()
+    vi.useRealTimers()
+  })
+
+  it('passes a normalised link to the host', async () => {
+    const frame = createFakeFrame()
+    const onOpenLink = vi.fn()
+    const host = createHostConnection(frame, createHandlers({ onOpenLink }))
+
+    frame.load()
+
+    const runtime = connectFakeRuntime(frame)
+
+    await initialize(runtime)
+    await runtime.request(METHODS.openLink, { url: 'https://EXAMPLE.com/a b' })
+
+    expect(onOpenLink).toHaveBeenCalledWith({ url: 'https://example.com/a%20b' })
+    await expect(runtime.request(METHODS.openLink, {
+      url: 'https://user:pass@example.com/',
+    })).rejects.toMatchObject({ code: ERROR_CODES.invalidParams })
+    host.destroy()
+  })
+
   it('answers -32601 for storage and completions without handlers', async () => {
     const frame = createFakeFrame()
     const host = createHostConnection(frame, createHandlers())

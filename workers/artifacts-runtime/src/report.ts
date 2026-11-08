@@ -141,10 +141,6 @@ function handleSecurityPolicyViolation(event: SecurityPolicyViolationEvent) {
   )
 }
 
-/**
- * Safe to call after every document replacement: the browser ignores a
- * second registration of the same listener function.
- */
 export function installGlobalErrorHandlers() {
   window.addEventListener('error', handleWindowError)
   window.addEventListener('unhandledrejection', handleUnhandledRejection)

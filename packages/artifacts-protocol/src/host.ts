@@ -1,4 +1,9 @@
-import { ERROR_CODES, METHODS, PROTOCOL_VERSION } from './constants.ts'
+import {
+  CONNECT_TIMEOUT_MS,
+  ERROR_CODES,
+  METHODS,
+  PROTOCOL_VERSION,
+} from './constants.ts'
 import { createEndpoint } from './endpoint.ts'
 import type { Endpoint, PortLike } from './endpoint.ts'
 import {
@@ -10,6 +15,7 @@ import {
   isStorageKeyParams,
   isStorageListParams,
   isStorageSetParams,
+  normalizeLinkUrl,
 } from './guards.ts'
 import { RpcError, createConnectMessage } from './jsonrpc.ts'
 import type {
@@ -70,10 +76,12 @@ export interface HostHandlers {
   storage?: HostStorageHandlers
   complete?: (params: CompleteParams) => MaybePromise<CompleteResult>
   onUnexpectedNavigation?: (details: UnexpectedNavigationDetails) => void
+  onConnectTimeout?: () => void
 }
 
 export interface HostConnectionOptions {
   timeoutMs?: number
+  connectTimeoutMs?: number
   removeFrameOnNavigation?: boolean
   createChannel?: () => MessageChannel
 }
@@ -86,12 +94,15 @@ export interface HostConnection {
   destroy: () => void
 }
 
-interface QueuedNotification {
-  method: HostNotificationMethod
-  params: HostNotifications[HostNotificationMethod]
+interface QueuedNotifications {
+  hostContext: HostContextChangedParams | null
+  toolResult: HostNotifications[typeof METHODS.toolResult] | null
+  toolInputPartial: HostNotifications[typeof METHODS.toolInputPartial] | null
 }
 
-const MAX_QUEUED_NOTIFICATIONS = 32
+function createEmptyQueue(): QueuedNotifications {
+  return { hostContext: null, toolResult: null, toolInputPartial: null }
+}
 
 function invalidParams(method: string): RpcError {
   return new RpcError(
@@ -108,20 +119,22 @@ function methodNotFound(method: string): RpcError {
 }
 
 /**
- * Connects the app to a runtime iframe. Call it in the same task that sets
- * the iframe `src` (before the first `load`): the first `load` hands the
- * runtime a fresh MessagePort, and any later `load` means the frame
- * navigated itself away from the runtime, so the connection is closed, the
- * frame removed and `onUnexpectedNavigation` called. The URL of that
- * navigation has already left the browser by then; this is a tripwire that
- * limits the damage, not a guarantee that no data leaves the frame.
+ * Connects the app to a runtime iframe. Create the iframe with its `src`
+ * already set, call this, then insert the iframe, all in one task, and never
+ * move it in the DOM afterwards: the first `load` hands the runtime a fresh
+ * MessagePort, and any later `load` is treated as the frame having left the
+ * runtime, so the connection is closed, the frame removed and
+ * `onUnexpectedNavigation` called. Only a `frame-src` policy on the
+ * embedding page stops such a navigation before its request leaves; this
+ * tripwire limits the damage afterwards (docs/artifacts-runtime.md).
  */
 export function createHostConnection(
   frame: HostFrameLike,
   handlers: HostHandlers,
   options: HostConnectionOptions = {},
 ): HostConnection {
-  const queuedNotifications: QueuedNotification[] = []
+  let queuedNotifications = createEmptyQueue()
+  let connectTimer: ReturnType<typeof setTimeout> | null = null
   let endpoint: Endpoint | null = null
   let loadCount = 0
   let initializeAnswered = false
@@ -168,8 +181,22 @@ export function createHostConnection(
 
   async function handleRequest(method: string, params: unknown) {
     if (method === METHODS.initialize) {
+      if (initializeAnswered) {
+        throw new RpcError(
+          ERROR_CODES.invalidRequest,
+          'Already initialized',
+        )
+      }
+
       if (!isInitializeParams(params)) {
         throw invalidParams(method)
+      }
+
+      if (params.protocolVersion !== PROTOCOL_VERSION) {
+        throw new RpcError(
+          ERROR_CODES.invalidRequest,
+          `Unsupported protocol version: ${params.protocolVersion}`,
+        )
       }
 
       handlers.onInitialized?.(params)
@@ -188,11 +215,13 @@ export function createHostConnection(
         throw methodNotFound(method)
       }
 
-      if (!isOpenLinkParams(params)) {
+      const url = isOpenLinkParams(params) ? normalizeLinkUrl(params.url) : null
+
+      if (!url) {
         throw invalidParams(method)
       }
 
-      await handlers.onOpenLink(params)
+      await handlers.onOpenLink({ url })
 
       return {}
     }
@@ -221,11 +250,31 @@ export function createHostConnection(
     throw methodNotFound(method)
   }
 
-  function flushQueuedNotifications() {
-    const pending = queuedNotifications.splice(0)
+  function clearConnectTimer() {
+    if (connectTimer) {
+      clearTimeout(connectTimer)
+    }
 
-    for (const notification of pending) {
-      endpoint?.notify(notification.method, notification.params)
+    connectTimer = null
+  }
+
+  function flushQueuedNotifications() {
+    const pending = queuedNotifications
+
+    queuedNotifications = createEmptyQueue()
+
+    if (pending.hostContext) {
+      endpoint?.notify(METHODS.hostContextChanged, pending.hostContext)
+    }
+
+    if (pending.toolResult) {
+      endpoint?.notify(METHODS.toolResult, pending.toolResult)
+
+      return
+    }
+
+    if (pending.toolInputPartial) {
+      endpoint?.notify(METHODS.toolInputPartial, pending.toolInputPartial)
     }
   }
 
@@ -236,6 +285,7 @@ export function createHostConnection(
       }
 
       ready = true
+      clearConnectTimer()
       flushQueuedNotifications()
       handlers.onReady?.()
 
@@ -267,11 +317,32 @@ export function createHostConnection(
       return
     }
 
-    if (queuedNotifications.length >= MAX_QUEUED_NOTIFICATIONS) {
-      queuedNotifications.shift()
+    queueNotification(method, params)
+  }
+
+  function queueNotification<Method extends HostNotificationMethod>(
+    method: Method,
+    params: HostNotifications[Method],
+  ) {
+    if (method === METHODS.hostContextChanged) {
+      queuedNotifications.hostContext = {
+        ...queuedNotifications.hostContext,
+        ...(params as HostContextChangedParams),
+      }
+
+      return
     }
 
-    queuedNotifications.push({ method, params })
+    if (method === METHODS.toolResult) {
+      queuedNotifications.toolResult
+        = params as HostNotifications[typeof METHODS.toolResult]
+      queuedNotifications.toolInputPartial = null
+
+      return
+    }
+
+    queuedNotifications.toolInputPartial
+      = params as HostNotifications[typeof METHODS.toolInputPartial]
   }
 
   function connect() {
@@ -290,6 +361,13 @@ export function createHostConnection(
     })
 
     contentWindow.postMessage(createConnectMessage(), '*', [channel.port2])
+    connectTimer = setTimeout(() => {
+      connectTimer = null
+
+      if (!ready && !destroyed) {
+        handlers.onConnectTimeout?.()
+      }
+    }, options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS)
   }
 
   function destroy() {
@@ -299,7 +377,8 @@ export function createHostConnection(
 
     destroyed = true
     ready = false
-    queuedNotifications.length = 0
+    queuedNotifications = createEmptyQueue()
+    clearConnectTimer()
     frame.removeEventListener('load', handleLoad)
     endpoint?.close()
     endpoint = null

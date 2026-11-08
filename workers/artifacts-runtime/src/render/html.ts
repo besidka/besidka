@@ -1,3 +1,5 @@
+import { removeNavigatingElements } from './inert.ts'
+
 const DEFERRED_SCRIPT_ATTRIBUTE = 'data-besidka-script-type'
 
 const DEFERRED_SCRIPT_TYPE = 'text/x-besidka-deferred'
@@ -12,7 +14,7 @@ function deferScripts(parsed: Document) {
   }
 }
 
-function createRunnableScript(deferred: HTMLScriptElement): HTMLScriptElement {
+function createRunnableScript(deferred: Element): HTMLScriptElement {
   const script = document.createElement('script')
   const originalType = deferred.getAttribute(DEFERRED_SCRIPT_ATTRIBUTE)
 
@@ -31,51 +33,79 @@ function createRunnableScript(deferred: HTMLScriptElement): HTMLScriptElement {
     script.setAttribute('type', originalType)
   }
 
-  script.text = deferred.text
+  const source = deferred.textContent ?? ''
+
+  if (script.type === 'module' && !script.hasAttribute('src')) {
+    script.src = URL.createObjectURL(
+      new Blob([source], { type: 'text/javascript' }),
+    )
+
+    return script
+  }
+
+  script.text = source
 
   return script
 }
 
+const SCRIPT_WAIT_LIMIT_MS = 5_000
+
 function waitForScript(script: HTMLScriptElement): Promise<void> {
   return new Promise((resolve) => {
-    script.addEventListener('load', () => {
+    const timer = setTimeout(resolve, SCRIPT_WAIT_LIMIT_MS)
+    const finish = () => {
+      clearTimeout(timer)
+
+      if (script.src.startsWith('blob:')) {
+        URL.revokeObjectURL(script.src)
+      }
+
       resolve()
-    }, { once: true })
-    script.addEventListener('error', () => {
-      resolve()
-    }, { once: true })
+    }
+
+    script.addEventListener('load', finish, { once: true })
+    script.addEventListener('error', finish, { once: true })
   })
 }
 
-async function runDeferredScripts() {
+async function runDeferredScripts(isCurrent: () => boolean) {
   const deferredScripts = [
-    ...document.querySelectorAll<HTMLScriptElement>(
-      `script[type="${DEFERRED_SCRIPT_TYPE}"]`,
-    ),
+    ...document.querySelectorAll(`script[type="${DEFERRED_SCRIPT_TYPE}"]`),
   ]
+  const pendingModules: Promise<void>[] = []
 
   for (const deferred of deferredScripts) {
+    if (!isCurrent()) {
+      return
+    }
+
     if (!deferred.isConnected) {
       continue
     }
 
     const script = createRunnableScript(deferred)
+    const isModule = script.type === 'module'
     const isBlockingExternal = script.hasAttribute('src')
       && !script.hasAttribute('async')
-      && script.type !== 'module'
-    const loaded = isBlockingExternal ? waitForScript(script) : null
+      && !isModule
+    const loaded = isBlockingExternal || isModule ? waitForScript(script) : null
 
     deferred.replaceWith(script)
 
-    if (loaded) {
+    if (isModule && loaded) {
+      pendingModules.push(loaded)
+    } else if (loaded) {
       await loaded
     }
   }
+
+  await Promise.all(pendingModules)
 }
 
 export function replaceDocumentRoot(html: string, afterReplace: () => void) {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
 
+  removeNavigatingElements(parsed)
   deferScripts(parsed)
   document.replaceChild(
     document.importNode(parsed.documentElement, true),
@@ -85,17 +115,27 @@ export function replaceDocumentRoot(html: string, afterReplace: () => void) {
 }
 
 /**
- * Replaces the document's root element with the parsed artifact HTML and
- * then runs its scripts in order, followed by synthetic `DOMContentLoaded`
- * and `load` events. Unlike `document.open()`, this does not fire a `load`
+ * Replaces the document's root element with the parsed artifact HTML (minus
+ * `meta[http-equiv]` and `noscript`), runs its scripts in order and waits
+ * for module scripts, then dispatches synthetic `DOMContentLoaded` and
+ * `load`. Unlike `document.open()`, this does not fire a `load`
  * event on the host's iframe element, so the host can treat every `load`
  * after the first as the frame navigating away. The window, the MessagePort
  * and `window.besidka` stay the same; `afterReplace` restores the runtime's
  * document hooks on the new root before any artifact script runs.
  */
-export async function replaceDocument(html: string, afterReplace: () => void) {
+export async function replaceDocument(
+  html: string,
+  afterReplace: () => void,
+  isCurrent: () => boolean,
+) {
   replaceDocumentRoot(html, afterReplace)
-  await runDeferredScripts()
+  await runDeferredScripts(isCurrent)
+
+  if (!isCurrent()) {
+    return
+  }
+
   document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }))
   window.dispatchEvent(new Event('load'))
 }

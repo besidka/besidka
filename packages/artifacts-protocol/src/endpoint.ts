@@ -1,5 +1,6 @@
 import {
   ERROR_CODES,
+  MAX_INBOUND_PENDING_REQUESTS,
   MAX_PENDING_REQUESTS,
   REQUEST_TIMEOUT_MS,
 } from './constants.ts'
@@ -69,6 +70,7 @@ export function createEndpoint(
   const pendingRequests = new Map<JsonRpcId, PendingRequest>()
   const defaultTimeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS
   let nextRequestId = 1
+  let inboundPendingCount = 0
   let closed = false
 
   function send(message: unknown) {
@@ -91,6 +93,25 @@ export function createEndpoint(
   }
 
   async function handleRequest(message: JsonRpcRequest) {
+    if (inboundPendingCount >= MAX_INBOUND_PENDING_REQUESTS) {
+      send(createErrorResponse(message.id, {
+        code: ERROR_CODES.rateLimited,
+        message: 'Too many pending requests',
+      }))
+
+      return
+    }
+
+    inboundPendingCount += 1
+
+    try {
+      await answerRequest(message)
+    } finally {
+      inboundPendingCount -= 1
+    }
+  }
+
+  async function answerRequest(message: JsonRpcRequest) {
     if (!options.onRequest) {
       send(createErrorResponse(message.id, {
         code: ERROR_CODES.methodNotFound,

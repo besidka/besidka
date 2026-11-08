@@ -24,8 +24,8 @@ export function createContentSecurityPolicy({ dev = false } = {}) {
     'connect-src \'none\'',
     'form-action \'none\'',
     'frame-src \'none\'',
-    'worker-src blob:',
     'base-uri \'none\'',
+    'webrtc \'block\'',
     `frame-ancestors ${frameAncestors.join(' ')}`,
   ].join('; ')
 }

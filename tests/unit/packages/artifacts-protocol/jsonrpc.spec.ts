@@ -17,6 +17,8 @@ import {
   isSizeChangedParams,
   isStorageSetParams,
   isToolResultParams,
+  measureJsonValue,
+  normalizeLinkUrl,
   toRpcError,
 } from '@besidka/artifacts-protocol'
 
@@ -133,6 +135,36 @@ describe('artifacts protocol params guards', () => {
       .toBe(true)
     expect(isCompleteParams({ prompt: '' })).toBe(false)
     expect(isCompleteParams({ prompt: 'x'.repeat(8_001) })).toBe(false)
+  })
+
+  it('bounds sizes, tokens, keys and links', () => {
+    expect(isSizeChangedParams({ height: 100_001 })).toBe(false)
+    expect(isCompleteParams({ prompt: 'Hi', maxOutputTokens: 2_001 }))
+      .toBe(false)
+    expect(isStorageSetParams({ key: '__proto__', value: 1 })).toBe(false)
+    expect(isStorageSetParams({ key: 'a\u0000b', value: 1 })).toBe(false)
+    expect(isStorageSetParams({ key: 'quiz:answers', value: 'x'.repeat(100_001) }))
+      .toBe(false)
+    expect(normalizeLinkUrl('https://besidka.com@evil.example/')).toBeNull()
+    expect(normalizeLinkUrl('https://example.com/‮gnp.exe')).toBeNull()
+    expect(normalizeLinkUrl('https://EXAMPLE.com/a b')).toBe(
+      'https://example.com/a%20b',
+    )
+  })
+
+  it('validates shared-reference graphs in linear time', () => {
+    let value: unknown[] = []
+
+    for (let index = 0; index < 31; index += 1) {
+      value = [value, value]
+    }
+
+    const startedAt = performance.now()
+
+    expect(isJsonValue(value)).toBe(false)
+    expect(performance.now() - startedAt).toBeLessThan(100)
+    expect(measureJsonValue({ list: new Array(20_000).fill(1) })).toBeNull()
+    expect(measureJsonValue({ a: [1, 'two', null] })).toBeGreaterThan(0)
   })
 
   it('accepts only plain JSON values for storage', () => {

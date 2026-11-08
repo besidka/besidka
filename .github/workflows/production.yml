@@ -324,7 +324,7 @@ jobs:
             exit 0
           fi
 
-          if git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" | grep -qE '^(workers/artifacts-runtime/|packages/artifacts-protocol/)'; then
+          if git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" | grep -qE '^(workers/artifacts-runtime/|packages/artifacts-protocol/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$)'; then
             echo "artifacts-runtime=true" >> "$GITHUB_OUTPUT"
           else
             echo "The artifacts runtime did not change; nothing to deploy."
@@ -347,6 +347,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
           workingDirectory: workers/artifacts-runtime
+          wranglerVersion: '4.151.1'
           command: deploy
 
   deploy:

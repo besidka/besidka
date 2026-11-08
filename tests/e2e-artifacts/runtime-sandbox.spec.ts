@@ -17,15 +17,15 @@ interface ArtifactInput {
   content: string
 }
 
-async function openHarness(page: Page) {
-  await page.goto('/')
+async function openHarness(page: Page, path = '/') {
+  await page.goto(path)
   await page.waitForFunction(() => {
     return document.body.dataset.harnessReady === 'true'
   })
 }
 
-async function mount(page: Page, options: MountOptions = {}) {
-  await openHarness(page)
+async function mount(page: Page, options: MountOptions = {}, path = '/') {
+  await openHarness(page, path)
   await page.evaluate((mountOptions) => {
     (window as any).harness.mount(mountOptions)
   }, options)
@@ -283,6 +283,43 @@ export default function Chart() {
     expect(state.navigations).toBe(0)
   })
 
+  test('runs module scripts before load and keeps navigating markup inert', async ({ page }) => {
+    await mount(page)
+    await render(page, {
+      kind: 'html',
+      content: `<!doctype html><html><head>
+        <meta http-equiv="refresh" content="0;url=${OUTSIDE_ORIGIN}/refresh">
+        <noscript><style>body { background: rgb(255, 0, 0) }</style></noscript>
+      </head><body>
+        <p id="module">pending</p>
+        <svg width="80" height="40"><a xlink:href="https://example.com/svg-link"><text data-testid="svg-link" x="0" y="20">open</text></a></svg>
+        <script type="module">
+          window.addEventListener('load', () => {
+            document.getElementById('module').textContent = 'loaded'
+          })
+        </script>
+      </body></html>`,
+    })
+
+    const frame = artifactFrame(page)
+
+    await expect(frame.locator('#module')).toHaveText('loaded')
+    expect(await runtimeFrame(page).evaluate(() => {
+      return getComputedStyle(document.body).backgroundColor
+    })).not.toBe('rgb(255, 0, 0)')
+
+    await frame.getByTestId('svg-link').click()
+    await expect.poll(async () => {
+      return (await harnessState(page)).links
+    }).toEqual(['https://example.com/svg-link'])
+    await page.waitForTimeout(500)
+
+    const state = await harnessState(page)
+
+    expect(state.navigations).toBe(0)
+    expect(state.loads).toBe(1)
+  })
+
   test('previews streaming input without running partial code', async ({ page }) => {
     await mount(page)
 
@@ -452,6 +489,63 @@ export default function Chart() {
     test.info().annotations.push({
       type: 'residual-risk',
       description: `Requests that reached the outside origin before teardown: ${JSON.stringify(requests)}`,
+    })
+  })
+
+  test('a host frame-src policy stops self-navigation before any request', async ({ page }) => {
+    await mount(page, {}, '/?frame-src')
+    await resetOutsideRequests(page)
+    await render(page, {
+      kind: 'html',
+      content: `<body><script>setTimeout(() => { location.href = '${OUTSIDE_ORIGIN}/nav?d=blocked' }, 50)</script></body>`,
+    })
+    await expect.poll(async () => {
+      return (await harnessState(page)).navigations
+    }).toBe(1)
+
+    expect(await outsideRequests(page)).toEqual([])
+    expect((await harnessState(page)).frameRemoved).toBe(true)
+  })
+
+  test('closes WebRTC and records the 204 navigation residual', async ({ page }) => {
+    await mount(page, { storage: true })
+    await resetOutsideRequests(page)
+    await render(page, {
+      kind: 'html',
+      content: `<body><script>
+        const turnUrl = 'turn:127.0.0.1:${process.env.ARTIFACTS_OUTSIDE_TCP_PORT || '8791'}?transport=tcp';
+        function leak(PeerConnection) {
+          const connection = new PeerConnection({ iceServers: [{ urls: turnUrl, username: 'secret', credential: 'x' }] });
+          connection.createDataChannel('leak');
+          connection.createOffer().then((offer) => connection.setLocalDescription(offer));
+        }
+        const results = { direct: typeof window.RTCPeerConnection, childFrame: 'none' };
+        try {
+          const child = document.createElement('iframe');
+          document.body.append(child);
+          const ChildPeerConnection = child.contentWindow && child.contentWindow.RTCPeerConnection;
+          results.childFrame = typeof ChildPeerConnection;
+          if (ChildPeerConnection) { leak(ChildPeerConnection) }
+        } catch (exception) {
+          results.childFrame = 'blocked: ' + exception.name;
+        }
+        window.besidka.storage.set('webrtc', results);
+        setTimeout(() => { location.href = '${OUTSIDE_ORIGIN}/no-content?d=secret' }, 50)
+      </script></body>`,
+    })
+    await page.waitForTimeout(2_000)
+
+    const requests = await outsideRequests(page)
+    const state = await harnessState(page)
+
+    expect(state.storage.webrtc.direct).toBe('undefined')
+    expect(state.storage.webrtc.childFrame).not.toBe('function')
+    expect(requests.filter((path) => {
+      return path.startsWith('tcp:')
+    })).toEqual([])
+    test.info().annotations.push({
+      type: 'residual-risk',
+      description: `webrtc ${JSON.stringify(state.storage.webrtc)}, outside requests ${JSON.stringify(requests)}, navigations ${state.navigations}`,
     })
   })
 

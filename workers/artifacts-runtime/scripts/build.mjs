@@ -290,6 +290,14 @@ async function main() {
     process.exit(1)
   }
 
+  const withoutLicenseText = entries.filter((entry) => {
+    return !entry.licenseText
+  })
+
+  for (const entry of withoutLicenseText) {
+    console.warn(`No licence file shipped: ${entry.name}@${entry.version} (${entry.chosenLicense}); the notice names the licence only`)
+  }
+
   await writeFile(
     path.join(versionDirectory, 'index.html'),
     createIndexHtml(importMap, runtimeResult.file),

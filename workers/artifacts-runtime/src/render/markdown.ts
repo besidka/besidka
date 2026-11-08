@@ -1,4 +1,5 @@
 import { marked } from 'marked'
+import { setMarkup } from './inert.ts'
 import type { Renderer } from './types.ts'
 
 export function markdownToHtml(content: string): string {
@@ -9,6 +10,6 @@ export const renderMarkdown: Renderer = (payload, context) => {
   const article = document.createElement('article')
 
   article.className = 'besidka-markdown'
-  article.innerHTML = markdownToHtml(payload.content)
+  setMarkup(article, markdownToHtml(payload.content))
   context.root.replaceChildren(article)
 }
