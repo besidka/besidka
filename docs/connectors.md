@@ -284,10 +284,11 @@ preview.
 
 1. Run `parseSafeOutboundUrl`. A preset id must match a catalog entry, and its
    URL replaces the input.
-2. Derive the slug from the host (section 8.1).
-3. Insert a row with `enabled=false`, `status='needs-auth'`, `authType=null`,
-   no consent, `createdVia` (`app`, `preset`, `registry` or `mcp`) and, for
-   MCP, `createdByClientId`.
+2. Derive the slug (section 8.1).
+3. Insert a row with `enabled=false`, `status='needs-auth'`, `auth_type=null`,
+   no consent, `created_via` (`app`, `preset`, `registry` or `mcp`; any row
+   added over MCP is `mcp`, even with a `presetId`) and, for MCP,
+   `created_by_client_id`.
 4. Make no request to the URL.
 
 ### 5.2 Connect (in the app only)
@@ -310,11 +311,26 @@ The card's **Connect** button runs this flow. All requests go through
      auth kind and, for presets, the preset `notice`.
 2. **Consent** (dialog, `POST /api/v1/connectors/[id]/consent`). The dialog
    names the host (and the issuer host when different) in plain text and shows
-   the text from the pre-check, question 2. Saving writes `consentOrigin`,
-   `consentIssuer`, `consentVersion`, `consentedAt` and logs
-   `attributes.legalConsent` action `connector-granted` with the host. Refusal
-   keeps the connector disconnected. The gate consent (sign-up consent) must be
-   current too, as for MCP private tools.
+   the text from the pre-check, question 2: the server may be outside the EEA
+   with no adequacy decision; Besidka has no contract with it and offers no
+   safeguard; the server keeps, uses and shares what it receives under its
+   own terms; what is sent (the arguments the AI writes into each call, which
+   can include anything from the chat, and the access token); results come
+   back and are stored in the chat; the consent can be withdrawn. It adds the
+   third-party-data advice (pre-check question 3): results can hold other
+   people's data, which the user's consent does not cover. One real checkbox
+   with a visible label covers the two named parts (transfer, Art. 49(1)(a);
+   sensitive data sent to and stored from this server, Art. 9(2)(a)). Saving
+   writes `consent_origin`, `consent_issuer`, `consent_version`,
+   `consented_at` and logs `attributes.legalConsent` action
+   `connector-granted` with the host. Refusal keeps the connector
+   disconnected. The gate consent (sign-up consent) must be current too, as
+   for MCP private tools. Accessibility (WCAG 2.2 AA, pre-check gate item 7):
+   focus moves into the dialog and back, the warning is not carried by colour
+   alone, the host is plain text, targets are at least 24 px, and the
+   connection status after the callback is announced (`aria-live`). Consents
+   are listed and withdrawable per connector on the Connectors page and in
+   Profile → Security → Privacy & consent, next to the existing consents.
 3. **Authenticate.**
    - OAuth (`POST /api/v1/connectors/[id]/oauth/start`, needs
      `connectors.oauth`): register (section 5.3), generate a 32-byte `state`
@@ -349,7 +365,9 @@ if the AS advertises `revocation_endpoint` (best effort), delete the
 credentials row, `enabled=false`, `status='needs-auth'`. Consent stays.
 Delete withdraws consent (`connector-withdrawn` log row) and removes the
 connector, its credentials and its settings; audit rows stay until their 90
-days end.
+days end. Account deletion revokes every connector's tokens best effort
+(through `safeFetch`, purpose `oauth`), then `purgeUserData` deletes all
+connector rows, including the audit rows.
 
 ### 5.3 Client registration (CIMD, DCR)
 
@@ -494,8 +512,8 @@ message".
     `shared/utils/message-metadata.ts`).
 11. **Later sends.** `sanitizeMessagesForModelContext`
     (`server/utils/files/assistant-files.ts`) drops tool parts, so results are
-    not replayed into later turns (the exception for a pending approval is in
-    section 7.3). `filterPublicParts` (`server/utils/chats/share-public-parts.ts`)
+    not replayed into later turns (the exception for a pending approval is at
+    the end of section 7.2). `filterPublicParts` (`server/utils/chats/share-public-parts.ts`)
     and `stripToolPartsFromBranchedMessage` (`server/utils/chats/branch.ts`)
     already drop `dynamic-tool` parts; C-5 adds a spec with a `dynamic-tool`
     part to both, so an `ai` upgrade that changes `isToolUIPart` is caught.
@@ -643,10 +661,17 @@ generated SQL for `DROP TABLE` before applying). Defaults in application code
 (`$defaultFn`), never SQL `DEFAULT`. **No foreign key to `users` and no
 cascade to `chats` on any table (this doc):** `purgeUserData`
 (`server/utils/account/purge-user-data.ts`) deletes every row explicitly, and
-a spec fails when a table with a `user_id` column is not covered. This meets
-the pre-check (rows go with the account, "cascade or explicit purge") without
-adding cascade children to `users`. Per-chat rows store the chat public id as
-text and are deleted by the chat-deletion cleanup.
+a spec fails when a table with a `user_id` column is not covered. This follows
+the programme-wide planning decision "no `users` columns or FKs"
+(`docs/agentic-capabilities-roadmap.md`, the precedent of `research_jobs` and
+the P0-2 feature tables) and meets the purpose of the pre-check's audit-table
+row (rows go with the account and are not deleted with the connector;
+question 7 allows "cascade or explicit purge"). The pre-check's question 12
+and C-2 row also ask for a cascade FK and a `CLAUDE.md` cascade-list entry;
+this document overrides that, because a cascade only adds blast radius to a
+future `users` rebuild and gives nothing explicit purge does not. With no
+cascade, the `CLAUDE.md` list does not change. Per-chat rows store the chat
+public id as text and are deleted by the chat-deletion cleanup.
 
 ### 8.1 `connectors`
 
@@ -654,7 +679,7 @@ text and are deleted by the chat-deletion cleanup.
 | --- | --- | --- |
 | `id` | publicId | |
 | `user_id` | integer, not null | |
-| `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, derived from the host's first label; on collision `-2`, `-3` |
+| `slug` | text | `^[a-z0-9](?:[a-z0-9-]{0,14}[a-z0-9])?$` (1 to 16), unique per user, fixed after create. Presets use the preset id (`github`, `notion`, `linear`, `atlassian`). Other hosts use the second-to-last label (`mcp.example.com` gives `example`), or the third-to-last when the second-to-last has 3 characters or fewer and another label exists (`mcp.example.co.uk` gives `example`), cut to 16. On collision `-2`, `-3` |
 | `title` | text | user-editable, at most 80 characters |
 | `origin` | text | `https://host[:port]`, plain, for display and consent |
 | `url_encrypted` | text | full canonical URL, encrypted (paths and queries can carry secrets) |
@@ -798,7 +823,10 @@ Text names only, no icons. The catalog footer reads "Names belong to their
 owners. Besidka is not affiliated with them." No referral or affiliate
 parameters, no interpolation. `scripts/check-connector-presets.mjs` (C-2)
 probes each URL in a scheduled CI job and only warns. No Google Workspace MCP
-preset while those servers are in Developer Preview (G-11).
+preset while those servers are in Developer Preview (G-11). The C-4 OAuth
+client code is reusable by Phase 4b (the BYO Google client path, G-7), but
+that path follows Phase 4b's own rules and pre-check (G-11) and never appears
+in this catalog.
 
 ## 9. Limits
 
@@ -827,6 +855,10 @@ file; C-3, C-4, C-5, C-6 and C-8 import from it).
 | `CONNECTOR_STEPS_PER_TURN` | 4 | C-5 |
 | `CONNECTOR_CALLS_PER_TURN` | 12 | C-5 |
 | `CONNECTOR_CALLS_PER_MINUTE` | 60 per user, all connectors | C-5 |
+| `CONNECTOR_CALLS_PER_MINUTE_PER_CONNECTOR` | 30 per user per connector | C-5 |
+| `SAFE_FETCH_OAUTH_MAX_BYTES` | 262,144 | C-3, C-4 |
+| `SAFE_FETCH_REGISTRY_MAX_BYTES` | 2,097,152 per page | C-3, C-8 |
+| Skills purposes (`skills-github`, `skills-url`) | caps in `docs/skills.md` section 9 (`SKILL_MAX_GITHUB_ARCHIVE_BYTES`, `SKILL_MAX_RAW_URL_BYTES`) | C-3, S-2 |
 | `CONNECTOR_TOOLS_CACHE_TTL` | default 600 s, clamp 60 to 3,600 s | C-5 |
 | `CONNECTOR_OAUTH_STATE_TTL` | 600 s | C-4 |
 | `CONNECTOR_REFRESH_LOCK_TTL` | 30 s | C-4 |
@@ -936,13 +968,17 @@ Rules:
 - The feature gate runs inside the handler (generic "unavailable"); never the
   toolkit per-tool `enabled` guard.
 - Bookkeeping: `MCP_PRIVATE_TOOL_SCOPES`, `ScopePicker.vue`, the connected-apps
-  permission editor, the Privacy Policy scope list, `pnpm run mcp:surface`, a
-  major `MCP_SERVER_VERSION` bump in the four files, `pnpm run mcp:version-guard`.
-  Existing grants do not gain the scopes; claude.ai does not step up, so users
-  reconnect.
+  permission editor, the Privacy Policy scope list, the tool count in
+  `docs/mcp-server.md` (32 private tools today, 37 after C-9, plus whatever
+  merged first), `pnpm run mcp:surface`, a major `MCP_SERVER_VERSION` bump in
+  the four files, `pnpm run mcp:version-guard`. The version number and the
+  order against P0-8, P0-13, A-8 and S-6 are set at merge time; C-9 and S-6
+  ideally ship in one major release. Existing grants do not gain the scopes;
+  claude.ai does not step up, so users reconnect.
 
 Additions to "What MCP does not do (and why)" in `docs/mcp-server.md`
-(written by C-9): no enabling a connector, no OAuth start or credential entry,
+(written by C-9, including a "Connectors" note under item 4, "settings that
+change the data recipient"): no enabling a connector, no OAuth start or credential entry,
 no consent, no "Always allow" and no approval answers, no enabling tools. Why:
 each opens a data channel or skips a human decision. **Revisit when** the app
 has a confirm-in-app pending state for these actions that an agent cannot
@@ -978,6 +1014,13 @@ When the native path applies to a tool (all must hold):
 5. The chat has no earlier connector result that was flagged; after one, the
    chat stays on the Worker path.
 
+The token is re-sent with each request from the credential store and never
+persisted anywhere else by Besidka. The path is never offered for a chat model
+whose provider needs a transfer consent the user has not given (DeepSeek,
+Moonshot AI, Qwen, gateway-routed vendors); rule 1 already limits it to direct
+OpenAI models, and the check stays explicit in `planConnectorExecution` so a
+later provider cannot slip in.
+
 `openai.tools.mcp({ serverLabel: slug, serverUrl, authorization, allowedTools: { toolNames }, requireApproval: 'never' })`
 under key `mcp__<slug>`; header-auth connectors pass `headers`; OpenAI
 `connectorId` is never used. `requireApproval: 'never'` is acceptable only
@@ -995,17 +1038,24 @@ path stays off. Rendering: `badge badge-soft` "Run by OpenAI".
 Decisions in this document that change a ticket's text. The coordinator
 applies them; implementation follows this document.
 
+Dependencies across stacks: C-3 must be on `main` before S-2 (skills import
+uses `safeFetch`); the C-6 approval flow must be on `main` before S-3 relies
+on forced approvals and before S-5's per-chat script confirmation; the
+context-panel sections need P0-13; the `requireFeature` and Labs wiring need
+P0-3, P0-4 and P0-7.
+
 | Ticket | Change |
 | --- | --- |
-| C-2 BES-235 | `url` becomes `origin` (plain) plus `url_encrypted`; `status` drops `disabled`; `slug` max 16; `addedVia` becomes `created_by_client_id`; consent columns include `consent_issuer`; add `native_opt_in_at`; drop `toolFingerprint` (baseline is `connector_tool_settings.definition_hash`); add `server_read_only`, `approved_definition_hash`; `always_allow_tools` is `Record<tool, hash>`; audit `args_hmac` (HKDF key), `path`, `outcome` gains `pending`; **no FK to `users` on any table, including the audit table** (explicit purge plus a coverage spec), so no `CLAUDE.md` cascade-list change; registry table drops `websiteUrl`, stores `header_names`, `registry_updated_at`, `synced_at`; GitHub preset `auth: ['header']`; catalog has no `icon`; create `shared/utils/connectors-policy.ts` with section 9 |
+| C-2 BES-235 | `url` becomes `origin` (plain) plus `url_encrypted`; `status` drops `disabled`; `auth_type` nullable until discovery; `slug` max 16 with the section 8.1 derivation (preset id for presets); registers all four flags (including `connectors.native`, `spend: 'foreground'`); `CONNECTORS_PER_USER` 20 and the other new constants of section 9; `addedVia` becomes `created_by_client_id`; consent columns include `consent_issuer`; add `native_opt_in_at`; drop `toolFingerprint` (baseline is `connector_tool_settings.definition_hash`); add `server_read_only`, `approved_definition_hash`; `always_allow_tools` is `Record<tool, hash>`; audit `args_hmac` (HKDF key), `path`, `outcome` gains `pending`; **no FK to `users` on any table, including the audit table** (explicit purge plus a coverage spec), so no `CLAUDE.md` cascade-list change; registry table drops `websiteUrl`, stores `header_names`, `registry_updated_at`, `synced_at`; GitHub preset `auth: ['header']`; catalog has no `icon`; create `shared/utils/connectors-policy.ts` with section 9 |
 | C-3 BES-237 | Two-tier redirect rule by purpose (section 4.2): `mcp` same-origin only, others validated hops; per-purpose UA, timeouts and caps (adds `skills-github`, `skills-url`); single-label hosts and ports other than 443/8443 rejected; header rules (section 4.3) |
-| C-4 BES-239 | No probe at add; new connect flow with `connect/discover`, then consent, then auth (section 5.2); CIMD path `/connectors/client-metadata.json` with the preview host rule (section 5.3), route `server/routes/connectors/client-metadata.json.get.ts`, spec path moves accordingly; `invalid_grant` terminal; CIMD through `clientInformation()` (section 14) |
-| C-5 BES-241 | Definition hash includes annotations; tool-name truncation with hash suffix instead of skipping; description 1 KiB and schema 8 KiB per-tool caps; 12 calls per turn; raw response cap 1 MiB; context panel from message parts, not the audit table; no TypeSafe screening of connector results in v1 |
-| C-6 BES-244 | Decision order of section 7.1 (F1, F2 before any "always"); every tool defaults to ask, `readOnlyHint` never skips a card; "always" bound to the definition hash; approval secret from HKDF (no new env var); one approval-settings route (C-7's) plus the per-chat reset route; audit pending row updated in place |
+| C-4 BES-239 | No probe at add; header value cap 4,096 bytes and the extended rejected-header list (section 4.3); consent dialog content, accessibility and the Security → Privacy & consent listing (section 5.2); account deletion revokes best effort before the purge; new connect flow with `connect/discover`, then consent, then auth (section 5.2); CIMD path `/connectors/client-metadata.json` with the preview host rule (section 5.3), route `server/routes/connectors/client-metadata.json.get.ts`, spec path moves accordingly; `invalid_grant` terminal; CIMD through `clientInformation()` (section 14) |
+| C-5 BES-241 | Tools cache key `connectors:tools:<connectorId>:<credentialGeneration>`; per-connector call limit 30 per minute besides 60 per user; definition hash includes annotations; tool-name truncation with hash suffix instead of skipping; description 1 KiB and schema 8 KiB per-tool caps; 12 calls per turn; raw response cap 1 MiB; context panel from message parts, not the audit table; no TypeSafe screening of connector results in v1 |
+| C-6 BES-244 | "Always allow" confirmation text gains ", until the server changes it" and the option is hidden when F1 or F2 caused the card; decision order of section 7.1 (F1, F2 before any "always"); every tool defaults to ask, `readOnlyHint` never skips a card; "always" bound to the definition hash; approval secret from HKDF (no new env var); one approval-settings route (C-7's) plus the per-chat reset route; audit pending row updated in place |
 | C-7 BES-249 | No logos or favicons: text tiles and generated initial avatars; consent dialog and withdraw; bulk "Allow read-only tools without asking" is an explicit action; registry label "From the Official MCP Registry. Not reviewed by Besidka."; Connect button flow of section 5.2 |
 | C-8 BES-252 | Store only the section 8.6 columns; daily full pass with mark-and-sweep; erasure list in KV; no `websiteUrl` in search results |
-| C-9 BES-256 | `delete_connectors` under `connectors:write` (not `data:delete`), write limiter; `update_connector_tools` only reduces (no enabling tools); `add_connector` returns `needs-auth` only, no network call; labels as in section 11 |
-| C-10 BES-257 | The consent step is decided (section 2, item 5); audit HMAC and 90-day retention as in section 7.4 |
+| C-9 BES-256 | `get_connector` tool field `readOnly` is named `serverReadOnly`; `delete_connectors` under `connectors:write` (not `data:delete`), write limiter; `update_connector_tools` only reduces (no enabling tools); `add_connector` returns `needs-auth` only, no network call; labels as in section 11 |
+| C-10 BES-257 | The consent step is decided (section 2, item 5); audit HMAC and 90-day retention as in section 7.4; breach-runbook rows from pre-check question 12 (connector credentials risk row, containment row with revocation, CIMD integrity, stolen-session connector cleanup; no GitHub client-secret row, since GitHub is PAT-only) |
+| C-12 pre-check (PR #738) | Its C-2 row and question 12 ask for a cascade FK to `users` and a `CLAUDE.md` cascade-list entry; this document uses explicit purge with no FK instead (section 8), which question 7 allows. Coordinator to confirm |
 | C-11 BES-261 | OpenAI only; applicability rules of section 12; audit-parity gate; no Anthropic wiring or `nativeMcp` flag in `providers/anthropic.ts` |
 | P0-1 #732 | The planned-scopes table in `docs/mcp-server.md` lists `list_connections` under `connectors:read` and says deletes of new resources go under `data:delete`; for connectors the tools are `list_connectors`, `get_connector`, and `delete_connectors` is on `connectors:write` (pre-check Q11) |
 

@@ -99,8 +99,12 @@ disagreement between tickets and is listed in section 13.
 8. **Skill text is untrusted instructions.** Wrapped as `<skill_content>`,
    with a system rule that skills guide how to do the user's task and cannot
    override the user, Besidka's rules, or ask for secrets. While a skill is
-   active, every tool not marked read-only asks for approval even when set to
-   "Always allow" (`docs/connectors.md` section 7.1, rule F1).
+   active, writes **and spend** need approval: every connector tool not marked
+   read-only asks even when set to "Always allow" (`docs/connectors.md`
+   section 7.1, rule F1), and Besidka's own spending tools offered to the
+   model (today `generate_image`) go through the same approval card
+   (`toolApproval` returns `user-approval` for them while an activation exists
+   in the send or in the chat's re-injected skills).
 9. **Plain text everywhere (this doc).** Skill files are shown as plain
    monospace text in the review screen, the file viewer and the chat side
    panel. No Markdown rendering, no images (an image URL in a skill would leak
@@ -146,7 +150,10 @@ API (`GET /repos/{owner}/{repo}/commits/{ref}` with
 429 gives "GitHub rate limit reached" with the fix "Try again in an hour or
 upload a zip". A per-user GitHub token (`keys.provider = 'github'`, public
 read-only, encrypted) is **not** in the first layer: S-2 measures on the
-preview first (pre-check owner item 3). Never a Besidka-wide token (GitHub
+preview first (pre-check owner item 3). `keys.provider` is a TypeScript-only
+enum, so adding `github` should generate no SQL; whoever adds it runs
+`pnpm run db:generate` and greps any generated `.sql` for `DROP TABLE` before
+applying (a rebuild of `keys` is the cascade disaster `CLAUDE.md` describes). Never a Besidka-wide token (GitHub
 Terms section H). A connector's GitHub PAT is never reused for imports
 (different purpose and consent).
 
@@ -193,7 +200,7 @@ highlights, never a verdict:
 1. `POST /api/v1/skills/import/preview` (multipart `file` or JSON `{ url }`)
    validates, classifies the licence, scans, and stages: manifest in KV
    `skills:stage:<stageId>` (1 h), files in R2
-   `user-skills-staging/u<userId>/<stageId>/<path>` (1 h, plus the hourly
+   `skills-staging/u<userId>/<stageId>/<path>` (1 h, plus the hourly
    sweep). Returns the frontmatter, file list, `SKILL.md`, findings, warnings
    and licence class.
 2. `POST /api/v1/skills/import/commit` `{ stageId, acknowledged: true }` (and,
@@ -217,11 +224,15 @@ at most `SKILLS_PER_USER` skills.
 | Prefix | Content | Lifetime |
 | --- | --- | --- |
 | `user-skills/u<userId>/<skillPublicId>/<version>/<path>` | Committed files, `contentType` `text/*`, `customMetadata.sha256` | Until the skill, the version (pruned) or the account is deleted |
-| `user-skills-staging/u<userId>/<stageId>/<path>` | Staged files | 1 h, swept hourly |
+| `skills-staging/u<userId>/<stageId>/<path>` | Staged files | 1 h, swept hourly |
 
 The `user-` prefix keeps user content visibly apart from the repository's
 host skills directory `skills/` (served at `/.well-known/agent-skills/`
-through the `assets:agentSkills` server-asset mount). The `u<userId>` segment
+through the `assets:agentSkills` server-asset mount). Staging keeps the
+pre-check's `skills-staging/` name: its objects live for an hour and are
+never read by any route. R2 and the server-asset mount are different stores,
+so neither prefix can be served by the host skills routes; the S-1 spec still
+asserts it. The `u<userId>` segment
 matches `knowledge/u<userId>/`, so the account purge reuses the same
 list-by-prefix and batch-delete code (`storage.delete(keys)`, at most 1,000
 keys per call). Reads go through `readSkillFile`, which checks ownership in D1
@@ -262,9 +273,9 @@ MCP `create_skill` and `update_skill`, and returns
 
 | Class | What happens |
 | --- | --- |
-| `restricted` | Blocked on every source, no user override. Anthropic case message: "This copy carries Anthropic's earlier proprietary licence. Anthropic moved these skills to Apache-2.0 on 2026-11-06. Import the current version, or use the built-in Anthropic skill on your own Anthropic key." |
+| `restricted` | Blocked on every source, no user override. General message: "Its licence limits use to <named service>, or forbids copying. Besidka cannot import it." Anthropic case message: "This copy carries Anthropic's earlier proprietary licence. Anthropic moved these skills to Apache-2.0 on 2026-11-06. Import the current version, or use the built-in Anthropic skill on your own Anthropic key." |
 | `open` | Allowed. SPDX badge and "Licence file: LICENSE.txt (view)". `LICENSE` and `NOTICE` stored verbatim (Apache-2.0 section 4) |
-| `custom` | Allowed after the user reads the licence and ticks the review box: "Custom licence. Read it before you install." |
+| `custom` | Allowed after the user reads the licence and ticks an extra box "I read the licence and may use this skill": "Custom licence. Read it before you install." |
 | `none` | Allowed with an extra tick "I have the right to use this skill": "No licence stated. The author keeps all rights by default. Besidka keeps a private copy for you only. Install it only if you have the right to use it." |
 
 A licence containing `NonCommercial` shows a warning (monetisation guard).
@@ -397,7 +408,9 @@ containers" toggle is on; the skill is enabled for the chat.
 3. **Reserved words.** Anthropic skill names cannot contain `anthropic` or
    `claude`; read it as a substring rule. The token is replaced, not prefixed
    (`claude-api` becomes `bsk-c-api`), in the frontmatter `name` and the root
-   folder; the original name goes into `display_title`; a change note is added
+   folder; the original name goes into `display_name` (255 characters;
+   `display_title` under the old `skills-2025-10-02` beta header, which is
+   what the SDK's `displayTitle` maps to, to confirm in S-5); a change note is added
    to the uploaded `SKILL.md` (Apache-2.0 section 4(b)) and shown to the user.
    Automatic for `open` skills, user-confirmed for `none` and `custom`;
    `restricted` never gets here.
@@ -429,8 +442,13 @@ migration in S-1 with only `CREATE TABLE` and `CREATE INDEX`. Defaults in
 application code. **No foreign key to `users` and no cascade to `chats`
 (this doc, same rule as `docs/connectors.md` section 8):** `purgeUserData`
 deletes the rows and the R2 prefixes explicitly, and the purge coverage spec
-fails when a table with a `user_id` is missed. Activations are message parts,
-not a table.
+fails when a table with a `user_id` is missed. The purge deletes the S-5
+provider copies first (best effort, before the key is purged), then the rows,
+then `user-skills/u<userId>/` and `skills-staging/u<userId>/`. The skills
+pre-check (question 8, S-1 row) asks to add the skills tables to the
+`CLAUDE.md` cascade list; that list holds tables with a cascade FK to
+`users`, and these tables have none, so nothing is added (coordinator to
+confirm, see section 13). Activations are message parts, not a table.
 
 ### 8.1 `skills`
 
@@ -581,7 +599,8 @@ Review screen (required before install and before accepting an update;
   viewer with line numbers, a wrap toggle, findings marked with a background
   and a text marker (not colour alone), hidden characters shown as
   `⟨U+…⟩`.
-- Footer: required checkbox "I reviewed this skill" (plus "I have the right to
+- Footer: required checkbox "I reviewed this skill" (plus "I read the licence
+  and may use this skill" for class `custom`, or "I have the right to
   use this skill" for class `none`), "Install (disabled)", "Cancel".
 
 Update diff: per-file unified diff with `+` and `-` markers and a text label,
@@ -658,16 +677,34 @@ to this section in S-1.
 
 ## 13. Ticket changes
 
+Dependencies across stacks: S-2 needs C-3 (`safeFetch`) on `main` first;
+S-3's forced approvals and S-5's per-chat script confirmation need the C-6
+approval flow; S-5 needs D-7 (provider code execution); the context-panel
+section needs P0-13. The MCP version number and order against C-9, P0-8,
+P0-13 and A-8 are set at merge time; S-6 and C-9 ideally ship in one major
+release.
+
+Breach-runbook rows that S-7 adds (pre-check question 12): R2
+`user-skills/` exposure (like the existing R2 row: random ids lower but do not
+remove discovery; skills can hold third-party and company data); a leaked
+per-user GitHub token, once it exists (revoke at GitHub, delete the `keys`
+row; public-read-only, so low harm, but it identifies the user); a stolen
+session that installed or enabled a skill (disable all of that user's skills,
+delete provider copies where a key is held, then the session steps); and a
+note that Anthropic workspace copies sit with the provider, so an exposed key
+means the user deletes them in the Anthropic Console.
+
 | Ticket | Change |
 | --- | --- |
 | BES-231 (parent) | R2 layout is `user-skills/u<userId>/…`; folder-name mismatch is a warning, long descriptions are cut with a warning; "proprietary document skills" wording replaced by section 2 item 7; OpenAI scripts path not built |
-| S-1 BES-264 | No FK to `users` on any skills table (explicit purge plus the coverage spec), so no `CLAUDE.md` cascade-list change; R2 prefixes `user-skills/u<userId>/` and `user-skills-staging/u<userId>/`; licence columns; S-5 provider columns on `skills` (not KV, not a separate table); `skill_files.kind` gains `licence`; status transitions of section 8.5 |
-| S-2 BES-268 | GitHub import through the archive URL with the SHA from the archive comment, REST only for update checks, no token in the first layer; licence classifier on every source; `licenceAcknowledged` for `none` and `custom`; staging prefix `user-skills-staging/` |
-| S-3 BES-276 | Side panel shows `SKILL.md` as plain monospace text (not rendered Markdown); `data-skill-activation` stripped from shares, no "Used skill" chip on shared pages; activation cut at 40 KiB points to `read_skill_file`; memory write lock spec |
-| S-4 BES-280 | Licence class and wording of section 4; extra tick for `none`; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed |
+| S-1 BES-264 | No FK to `users` on any skills table (explicit purge plus the coverage spec), so no `CLAUDE.md` cascade-list change; R2 prefixes `user-skills/u<userId>/` and `skills-staging/u<userId>/`; licence columns; `source_ref` holds the requested ref (branch or tag), the resolved SHA is the version; S-5 provider columns on `skills` (not KV, not a separate table); `skill_files.kind` gains `licence`; status transitions of section 8.5 |
+| S-2 BES-268 | GitHub import through the archive URL with the SHA from the archive comment, REST only for update checks, no token in the first layer; licence classifier on every source; `licenceAcknowledged` for `none` and `custom`; staging prefix `skills-staging/` |
+| S-3 BES-276 | While a skill is active, `generate_image` and any other spending tool goes through the approval card (section 2 item 8); side panel shows `SKILL.md` as plain monospace text (not rendered Markdown); `data-skill-activation` stripped from shares, no "Used skill" chip on shared pages; activation cut at 40 KiB points to `read_skill_file`; memory write lock spec |
+| S-4 BES-280 | Licence class and wording of section 4; extra tick for `none` and for `custom`; scripts toggle tooltip names Anthropic only; plain-text viewer; diff with `+`/`-` markers; "proprietary" wording removed |
 | S-5 BES-285 | Anthropic only; provider id in D1 columns, KV cache removed; substring rename rule; disclosure text of section 7; pinned version; deletion triggers |
-| S-6 BES-292 | Licence classifier in the shared validation; `update_skill` stages a pending version (status `needs-review`); labels of section 11 |
-| S-7 BES-294 | Uses this document's licence and never-public sections; materiality per the pre-check input list |
+| S-6 BES-292 | Licence classifier in the shared validation; `list_skills` and `create_skill` outputs gain `licenseClass`; `update_skill` stages a pending version (status `needs-review`); labels of section 11 |
+| S-7 BES-294 | Uses this document's licence and never-public sections; "Anthropic or OpenAI" becomes Anthropic only; adds the breach-runbook rows above; records the DSM Art. 17, GitHub and workspace-visibility reasoning from the pre-check; materiality per the pre-check input list (material) |
+| S-8 pre-check (PR #739) | Its S-1 row and question 8 ask to add the skills tables to the `CLAUDE.md` cascade list; with no FK to `users` there is nothing to add (section 8). Staging prefix kept as `skills-staging/`, committed files moved to `user-skills/` as it recommends. Coordinator to confirm |
 
 ## 14. SDK verification
 
