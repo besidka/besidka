@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
-  await requireFeature(event, 'artifacts')
+  await requireFeature(event, 'artifacts', { active: false })
 
   const body = await readValidatedBody(event, bodySchema.safeParse)
 

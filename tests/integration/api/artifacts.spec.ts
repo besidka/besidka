@@ -225,7 +225,7 @@ describe('artifacts owner API', () => {
     expect(JSON.stringify(result)).not.toContain('<p>')
   })
 
-  it('returns version content with an immutable private cache header', async () => {
+  it('returns version content with a private no-store header', async () => {
     const { quiz } = await seedArtifacts()
     const version = await handlers.version()
     const event = createEvent({
@@ -237,7 +237,7 @@ describe('artifacts owner API', () => {
       content: '<p>v1</p>',
     })
     expect(event.res.headers.get('Cache-Control'))
-      .toBe('private, max-age=86400')
+      .toBe('private, no-store')
   })
 
   it('answers 404 for another user on every route', async () => {

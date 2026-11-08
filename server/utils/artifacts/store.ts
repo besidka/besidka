@@ -6,7 +6,7 @@ import type {
 } from '#shared/utils/artifacts'
 import type { BlobStore } from '~~/server/utils/platform/types'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import { createError } from 'evlog'
 import {
   ARTIFACT_KINDS,
@@ -29,6 +29,7 @@ export const ARTIFACT_ERROR_CODES = {
   tooLarge: 'artifact_too_large',
   quotaExceeded: 'artifact_quota_exceeded',
   versionCap: 'artifact_version_cap',
+  versionConflict: 'artifact_version_conflict',
   notFound: 'artifact_not_found',
   contentMissing: 'artifact_content_missing',
   takenDown: 'artifact_taken_down',
@@ -63,6 +64,7 @@ export interface AppendArtifactVersionInput extends ArtifactStoreDeps {
   title?: string
   createdBy: ArtifactVersionCreatedBy
   modelId?: string | null
+  expectedVersion?: number
 }
 
 export interface ArtifactWriteResult {
@@ -285,12 +287,34 @@ async function putArtifactObject(
   }
 }
 
+async function deleteArtifactHeader(
+  db: DbClient,
+  artifactId: number,
+  logger: LoggerLike,
+): Promise<void> {
+  try {
+    await db.delete(schema.artifacts).where(eq(schema.artifacts.id, artifactId))
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        artifacts: {
+          rollback: 'header-delete-failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+}
+
 /**
  * Creates an artifact with its first immutable version. Order: size check,
- * quota check, header row, R2 put, version row. Any failure after the header
- * row removes what was written, R2 object included, so no orphan survives.
- * The quota check is read-then-write, so concurrent writes can overshoot the
- * quota by one version each (accepted, ticket A-1).
+ * quota check, a pending header row (`currentVersion` 0, invisible to every
+ * reader and counting 0 bytes), R2 put, then the version row and the header
+ * update in one D1 batch. A failure removes what was written; an invocation
+ * killed mid-write leaves at most a pending header and its object, which no
+ * reader shows and the quota does not count. The quota check is
+ * read-then-write, so concurrent writes can overshoot the quota by one
+ * version each (accepted, ticket A-1).
  */
 export async function createArtifact(
   input: CreateArtifactInput,
@@ -315,8 +339,8 @@ export async function createArtifact(
       originMessageId: input.originMessageId ?? null,
       kind: input.kind,
       title,
-      currentVersion: 1,
-      totalBytes: bytes.byteLength,
+      currentVersion: 0,
+      totalBytes: 0,
       createdVia: input.createdVia,
     })
     .returning({ id: schema.artifacts.id })
@@ -330,23 +354,26 @@ export async function createArtifact(
   try {
     await putArtifactObject(input.storage, r2Key, bytes, logger)
   } catch (exception) {
-    await input.db
-      .delete(schema.artifacts)
-      .where(eq(schema.artifacts.id, header.id))
+    await deleteArtifactHeader(input.db, header.id, logger)
 
     throw exception
   }
 
   try {
-    await input.db.insert(schema.artifactVersions).values({
-      artifactId: header.id,
-      version: 1,
-      r2Key,
-      sha256,
-      sizeBytes: bytes.byteLength,
-      createdBy: input.createdBy,
-      modelId: input.modelId ?? null,
-    })
+    await input.db.batch([
+      input.db.insert(schema.artifactVersions).values({
+        artifactId: header.id,
+        version: 1,
+        r2Key,
+        sha256,
+        sizeBytes: bytes.byteLength,
+        createdBy: input.createdBy,
+        modelId: input.modelId ?? null,
+      }),
+      input.db.update(schema.artifacts)
+        .set({ currentVersion: 1, totalBytes: bytes.byteLength })
+        .where(eq(schema.artifacts.id, header.id)),
+    ])
   } catch (exception) {
     logger.set({
       attributes: {
@@ -358,9 +385,7 @@ export async function createArtifact(
     })
 
     await rollbackObject(input.storage, r2Key, logger)
-    await input.db
-      .delete(schema.artifacts)
-      .where(eq(schema.artifacts.id, header.id))
+    await deleteArtifactHeader(input.db, header.id, logger)
 
     throw createWriteFailedError()
   }
@@ -384,6 +409,7 @@ async function findOwnedArtifact(
     .where(and(
       eq(schema.artifacts.id, artifactId),
       eq(schema.artifacts.userId, userId),
+      gt(schema.artifacts.currentVersion, 0),
     ))
     .limit(1)
 
@@ -403,11 +429,49 @@ function assertNotTakenDown(artifact: { takedownAt: Date | null }) {
   })
 }
 
+function createVersionConflictError() {
+  return createError({
+    message: 'This artifact changed while it was being saved',
+    status: 409,
+    code: ARTIFACT_ERROR_CODES.versionConflict,
+    why: 'Another write created a newer version first',
+    fix: 'Read the artifact again and repeat the change',
+  })
+}
+
+async function rollbackVersionRow(
+  db: DbClient,
+  artifactId: number,
+  version: number,
+  logger: LoggerLike,
+): Promise<void> {
+  try {
+    await db.delete(schema.artifactVersions).where(and(
+      eq(schema.artifactVersions.artifactId, artifactId),
+      eq(schema.artifactVersions.version, version),
+    ))
+  } catch (exception) {
+    logger.set({
+      attributes: {
+        artifacts: {
+          rollback: 'version-delete-failed',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+}
+
 /**
- * Writes a new immutable version. The header update is conditional on the
- * version the caller read, and `(artifact_id, version)` is unique, so a
- * concurrent writer fails its batch instead of overwriting; the R2 key
- * carries a random suffix so the loser never clobbers the winner's object.
+ * Writes a new immutable version. With `expectedVersion` the write is
+ * refused (409 `artifact_version_conflict`) unless that is still the
+ * current version, so an edit computed from an older version never
+ * replaces a newer one. The header update is conditional on the version
+ * read here and `(artifact_id, version)` is unique, so a concurrent writer
+ * fails instead of overwriting; the R2 key carries a random suffix so the
+ * loser never clobbers the winner's object. When the header update matches
+ * no row (the artifact was deleted or moved on meanwhile), the version row
+ * and object are removed again.
  */
 export async function appendArtifactVersion(
   input: AppendArtifactVersionInput,
@@ -426,6 +490,13 @@ export async function appendArtifactVersion(
   }
 
   assertNotTakenDown(artifact)
+
+  if (
+    input.expectedVersion !== undefined
+    && artifact.currentVersion !== input.expectedVersion
+  ) {
+    throw createVersionConflictError()
+  }
 
   if (artifact.currentVersion >= ARTIFACT_MAX_VERSIONS) {
     throw createError({
@@ -450,8 +521,10 @@ export async function appendArtifactVersion(
 
   await putArtifactObject(input.storage, r2Key, bytes, logger)
 
+  let updatedHeaders: Array<{ id: number }>
+
   try {
-    await input.db.batch([
+    const [, updated] = await input.db.batch([
       input.db.insert(schema.artifactVersions).values({
         artifactId: internalId,
         version,
@@ -472,8 +545,11 @@ export async function appendArtifactVersion(
           eq(schema.artifacts.id, internalId),
           eq(schema.artifacts.userId, input.userId),
           eq(schema.artifacts.currentVersion, artifact.currentVersion),
-        )),
+        ))
+        .returning({ id: schema.artifacts.id }),
     ])
+
+    updatedHeaders = updated
   } catch (exception) {
     logger.set({
       attributes: {
@@ -486,7 +562,24 @@ export async function appendArtifactVersion(
 
     await rollbackObject(input.storage, r2Key, logger)
 
+    const current = await findOwnedArtifact(
+      input.db,
+      input.userId,
+      internalId,
+    )
+
+    if (current && current.currentVersion !== artifact.currentVersion) {
+      throw createVersionConflictError()
+    }
+
     throw createWriteFailedError()
+  }
+
+  if (updatedHeaders.length === 0) {
+    await rollbackVersionRow(input.db, internalId, version, logger)
+    await rollbackObject(input.storage, r2Key, logger)
+
+    throw createVersionConflictError()
   }
 
   return {
@@ -632,12 +725,24 @@ async function deleteArtifactsByInternalIds(input: {
       ))
     const deletable: number[] = []
 
+    const held: number[] = []
+
     for (const artifact of owned) {
       if (artifact.legalHoldUntil && artifact.legalHoldUntil > input.now) {
-        result.heldIds.push(encodeArtifactId(artifact.id))
+        held.push(artifact.id)
       } else {
         deletable.push(artifact.id)
       }
+    }
+
+    if (held.length > 0) {
+      await input.db.update(schema.artifactShares)
+        .set({ revokedAt: input.now })
+        .where(and(
+          inArray(schema.artifactShares.artifactId, held),
+          isNull(schema.artifactShares.revokedAt),
+        ))
+      result.heldIds.push(...held.map(encodeArtifactId))
     }
 
     if (deletable.length === 0) {

@@ -3,7 +3,7 @@ import type {
   ArtifactKind,
   ArtifactSummary,
 } from '#shared/utils/artifacts'
-import { and, asc, count, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import {
@@ -105,6 +105,7 @@ export async function listArtifacts(
   const search = input.query?.trim() ?? ''
   const filter = and(
     eq(schema.artifacts.userId, input.userId),
+    gt(schema.artifacts.currentVersion, 0),
     input.kind ? eq(schema.artifacts.kind, input.kind) : undefined,
     search ? containsLikeEscaped(schema.artifacts.title, search) : undefined,
   )
@@ -148,6 +149,7 @@ export async function getArtifactDetail(input: {
     .where(and(
       eq(schema.artifacts.id, internalId),
       eq(schema.artifacts.userId, input.userId),
+      gt(schema.artifacts.currentVersion, 0),
     ))
     .limit(1)
 

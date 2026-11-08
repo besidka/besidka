@@ -241,6 +241,63 @@ describe('artifact store', () => {
       expect(storage.objects.size).toBe(2)
     })
 
+    it('refuses a write computed from an older version', async () => {
+      const created = await create()
+
+      await appendArtifactVersion({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactId: created.artifactId,
+        content: 'v2',
+        createdBy: 'model',
+      })
+
+      await expect(appendArtifactVersion({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactId: created.artifactId,
+        content: 'stale edit',
+        expectedVersion: 1,
+        createdBy: 'model',
+      })).rejects.toMatchObject({
+        status: 409,
+        code: 'artifact_version_conflict',
+      })
+      expect(storage.objects.size).toBe(2)
+    })
+
+    it('lets only one of two appends from the same read win', async () => {
+      const created = await create()
+      const append = (content: string) => appendArtifactVersion({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactId: created.artifactId,
+        content,
+        createdBy: 'model',
+        logger,
+      })
+      const results = await Promise.allSettled([append('a'), append('b')])
+      const { artifacts, versions } = readRows()
+
+      expect(results.map(result => result.status).sort()).toEqual([
+        'fulfilled',
+        'rejected',
+      ])
+      expect(results.find((result) => {
+        return result.status === 'rejected'
+      })).toMatchObject({
+        reason: { status: 409, code: 'artifact_version_conflict' },
+      })
+      expect(versions.map(version => version.version)).toEqual([1, 2])
+      expect(artifacts).toEqual([
+        expect.objectContaining({ current_version: 2, total_bytes: 18 }),
+      ])
+      expect(storage.objects.size).toBe(2)
+    })
+
     it('refuses the version after the cap with 409', async () => {
       const created = await create()
 
@@ -426,6 +483,54 @@ describe('artifact store', () => {
       expect(testDb.sqlite.prepare(
         'select count(*) as count from artifact_storage',
       ).get()).toEqual({ count: 0 })
+    })
+
+    it('revokes the shares of a held artifact instead of deleting it', async () => {
+      const held = await create({ title: 'Held' })
+      const heldId = decodeArtifactId(held.artifactId)
+
+      testDb.sqlite.prepare(
+        'update artifacts set legal_hold_until = ? where id = ?',
+      ).run(Math.floor(Date.now() / 1000) + 3600, heldId)
+      testDb.sqlite.prepare(`
+        insert into artifact_shares (artifact_id, user_id, token_hash,
+          token_encrypted, created_via, bridge_allowed, storage_allowed,
+          created_at, updated_at)
+        values (?, ?, 'hash', 'enc', 'ui', 0, 0, 1, 1)
+      `).run(heldId, userId)
+
+      const result = await deleteArtifacts({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactIds: [held.artifactId],
+      })
+
+      expect(result.heldIds).toEqual([held.artifactId])
+      expect(testDb.sqlite.prepare(
+        'select revoked_at from artifact_shares',
+      ).get()).toEqual({ revoked_at: expect.any(Number) })
+      expect(storage.objects.size).toBe(1)
+    })
+
+    it('hides a pending header left by an interrupted create', async () => {
+      testDb.sqlite.prepare(`
+        insert into artifacts (user_id, kind, title, current_version,
+          total_bytes, created_via, created_at, updated_at)
+        values (?, 'html', 'Pending', 0, 0, 'chat', 1, 1)
+      `).run(userId)
+
+      const pendingId = (testDb.sqlite.prepare(
+        'select id from artifacts',
+      ).get() as { id: number }).id
+
+      await expect(readArtifactVersion({
+        db: testDb.db,
+        storage,
+        userId,
+        artifactId: `pub-${pendingId}`,
+      })).rejects.toMatchObject({ status: 404 })
+      expect(await getArtifactUsageBytes(testDb.db, userId)).toBe(0)
     })
   })
 

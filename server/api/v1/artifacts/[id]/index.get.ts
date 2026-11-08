@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
-  await requireFeature(event, 'artifacts')
+  await requireFeature(event, 'artifacts', { active: false })
 
   const params = paramsSchema.safeParse(getDecodedRouterParams(event))
 

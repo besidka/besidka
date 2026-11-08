@@ -8,7 +8,7 @@ import { requireFeature } from '~~/server/utils/features/guards'
 import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
-const IMMUTABLE_VERSION_CACHE_CONTROL = 'private, max-age=86400'
+const VERSION_CACHE_CONTROL = 'private, no-store'
 
 const paramsSchema = z.object({
   id: z.string().min(1).max(64),
@@ -56,7 +56,7 @@ export default defineEventHandler(async (event) => {
     version: params.data.version,
   })
 
-  event.res.headers.set('Cache-Control', IMMUTABLE_VERSION_CACHE_CONTROL)
+  event.res.headers.set('Cache-Control', VERSION_CACHE_CONTROL)
 
   return content
 })
