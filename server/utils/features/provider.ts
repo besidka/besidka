@@ -2,6 +2,7 @@ import type { FeatureRole } from '#shared/utils/features/registry'
 
 export type FeatureResolutionReason
   = | 'UNKNOWN'
+    | 'NOT_AVAILABLE'
     | 'KILL_SWITCH'
     | 'HOST_MODE'
     | 'DISABLED'

@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { markAllFeaturesAvailable } from '../../../../setup/helpers/features-available'
+
+await markAllFeaturesAvailable()
 
 const mocks = vi.hoisted(() => ({
   logger: { set: vi.fn() },
@@ -49,6 +52,11 @@ function stubRuntime(options: {
   user?: FakeUser | null
   userId?: number
   runtimeConfig?: Record<string, unknown>
+  optIns?: Array<{
+    flag: string
+    optedInAt: Date | null
+    optedOutAt: Date | null
+  }>
 } = {}) {
   const user = options.user ?? null
 
@@ -59,7 +67,7 @@ function stubRuntime(options: {
         return { role }
       }),
       [],
-      [],
+      options.optIns ?? [],
     ]
     : [[], [], [], []])
   mocks.kvGet.mockResolvedValue('[]')
@@ -175,6 +183,32 @@ describe('requireFeature', () => {
       active: false,
     })).resolves.toMatchObject({ value: true, active: false })
   })
+
+  it('answers 404 for a non-spending feature the user switched off',
+    async () => {
+      stubRuntime({
+        user: {
+          email: 'owner@example.com',
+          emailVerified: true,
+          twoFactorEnabled: true,
+        },
+        optIns: [{
+          flag: 'artifacts',
+          optedInAt: null,
+          optedOutAt: new Date('2026-11-02T00:00:00Z'),
+        }],
+      })
+
+      const { requireFeature } = await importGuards()
+
+      await expect(requireFeature(createEvent(), 'artifacts'))
+        .rejects.toMatchObject({ status: 404, why: 'feature_unavailable' })
+      await expect(requireFeature(createEvent(), 'artifacts.react'))
+        .rejects.toMatchObject({ status: 404 })
+      await expect(requireFeature(createEvent(), 'artifacts', {
+        active: false,
+      })).resolves.toMatchObject({ value: true, active: false })
+    })
 
   it('loads the user state once per request', async () => {
     stubRuntime({

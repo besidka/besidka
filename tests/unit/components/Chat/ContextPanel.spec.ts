@@ -165,6 +165,7 @@ describe('Chat/ContextPanel', () => {
     branchSharedChat.mockReset()
     setChatMemoryExcluded.mockReset()
     setChatMemoryExcluded.mockResolvedValue(true)
+    clearNuxtState('chat-context-collapsed-sections')
     useSidePanel().close()
     document.body.innerHTML = ''
   })
@@ -587,6 +588,177 @@ describe('Chat/ContextPanel', () => {
 
       expect(wrapper.get(testId('chat-context-cost')).text()).toBe('$0.02')
     })
+  })
+
+  describe('collapsible sections', () => {
+    function manyItems(count: number) {
+      return Array.from({ length: count }, (_value, index) => {
+        return item({
+          id: `file:/files/key-${index}`,
+          title: `file-${index}.txt`,
+        })
+      })
+    }
+
+    function toggleOf(
+      wrapper: Awaited<ReturnType<typeof mountPanel>>,
+      id: string,
+    ) {
+      return wrapper.get(testId(`chat-context-section-${id}-toggle`))
+    }
+
+    it('renders each section header as a button with count and chevron',
+      async () => {
+        data.value = ownedData({
+          inputs: manyItems(2),
+          counts: { outputs: 0, inputs: 2, used: 0 },
+        })
+
+        const wrapper = await mountPanel()
+        const toggle = toggleOf(wrapper, 'inputs')
+
+        expect(toggle.element.tagName).toBe('BUTTON')
+        expect(toggle.attributes('type')).toBe('button')
+        expect(toggle.attributes('aria-expanded')).toBe('true')
+        expect(toggle.attributes('aria-controls'))
+          .toBe(wrapper.get(testId('chat-context-section-inputs-list'))
+            .element.parentElement?.id)
+        expect(toggle.text()).toContain('Inputs')
+        expect(toggle.text()).toContain('2')
+        expect(toggle.find('.iconify').classes())
+          .toContain('i-lucide:chevron-right')
+      })
+
+    it('collapses and expands a section from its header', async () => {
+      data.value = ownedData({
+        inputs: manyItems(2),
+        counts: { outputs: 0, inputs: 2, used: 0 },
+      })
+
+      const wrapper = await mountPanel()
+
+      await toggleOf(wrapper, 'inputs').trigger('click')
+
+      expect(toggleOf(wrapper, 'inputs').attributes('aria-expanded'))
+        .toBe('false')
+      expect(wrapper.find(testId('chat-context-section-inputs-list')).exists())
+        .toBe(false)
+      expect(toggleOf(wrapper, 'inputs').attributes('aria-controls'))
+        .toBeUndefined()
+      expect(wrapper.get(testId('chat-context-section-inputs')).text())
+        .toContain('Inputs')
+
+      await toggleOf(wrapper, 'inputs').trigger('click')
+
+      expect(toggleOf(wrapper, 'inputs').attributes('aria-expanded'))
+        .toBe('true')
+      expect(wrapper.findAll(
+        `${testId('chat-context-section-inputs-list')} li`,
+      )).toHaveLength(2)
+    })
+
+    it('collapses only the section that was toggled', async () => {
+      data.value = ownedData({
+        outputs: manyItems(1),
+        inputs: manyItems(1),
+        counts: { outputs: 1, inputs: 1, used: 0 },
+      })
+
+      const wrapper = await mountPanel()
+
+      await toggleOf(wrapper, 'outputs').trigger('click')
+
+      expect(toggleOf(wrapper, 'outputs').attributes('aria-expanded'))
+        .toBe('false')
+      expect(toggleOf(wrapper, 'inputs').attributes('aria-expanded'))
+        .toBe('true')
+    })
+
+    it('keeps the choice for the rest of the session when reopened',
+      async () => {
+        data.value = ownedData({
+          inputs: manyItems(2),
+          counts: { outputs: 0, inputs: 2, used: 0 },
+        })
+
+        const first = await mountPanel()
+
+        await toggleOf(first, 'inputs').trigger('click')
+        first.unmount()
+
+        const second = await mountPanel()
+
+        expect(toggleOf(second, 'inputs').attributes('aria-expanded'))
+          .toBe('false')
+      })
+
+    it('collapses Used by default when it has more than 10 items',
+      async () => {
+        data.value = ownedData({
+          inputs: manyItems(2),
+          used: manyItems(11),
+          counts: { outputs: 0, inputs: 2, used: 11 },
+        })
+
+        const wrapper = await mountPanel()
+
+        expect(toggleOf(wrapper, 'used').attributes('aria-expanded'))
+          .toBe('false')
+        expect(toggleOf(wrapper, 'used').text()).toContain('11')
+        expect(wrapper.find(testId('chat-context-section-used-list')).exists())
+          .toBe(false)
+        expect(toggleOf(wrapper, 'inputs').attributes('aria-expanded'))
+          .toBe('true')
+
+        await toggleOf(wrapper, 'used').trigger('click')
+
+        expect(wrapper.findAll(
+          `${testId('chat-context-section-used-list')} li`,
+        )).toHaveLength(11)
+      })
+
+    it('keeps Used open at 10 items or fewer', async () => {
+      data.value = ownedData({
+        used: manyItems(10),
+        counts: { outputs: 0, inputs: 0, used: 10 },
+      })
+
+      const wrapper = await mountPanel()
+
+      expect(toggleOf(wrapper, 'used').attributes('aria-expanded'))
+        .toBe('true')
+    })
+
+    it('bases the Used default on the full total, not the capped list',
+      async () => {
+        data.value = ownedData({
+          used: manyItems(3),
+          counts: { outputs: 0, inputs: 0, used: 250 },
+        })
+
+        const wrapper = await mountPanel()
+
+        expect(toggleOf(wrapper, 'used').attributes('aria-expanded'))
+          .toBe('false')
+      })
+
+    it('scrolls each list inside a 500px box and keeps rows compact',
+      async () => {
+        data.value = ownedData({
+          inputs: manyItems(40),
+          counts: { outputs: 0, inputs: 40, used: 0 },
+        })
+
+        const wrapper = await mountPanel()
+        const list = wrapper.get(testId('chat-context-section-inputs-list'))
+
+        expect(list.classes()).toEqual(expect.arrayContaining([
+          'max-h-[500px]',
+          'overflow-y-auto',
+        ]))
+        expect(list.findAll('li')).toHaveLength(40)
+        expect(list.get('li .size-7').exists()).toBe(true)
+      })
   })
 
   describe('items', () => {

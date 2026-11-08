@@ -5,6 +5,9 @@ import {
   FEATURE_KEYS,
   FEATURE_REGISTRY,
 } from '#shared/utils/features/registry'
+import { markAllFeaturesAvailable } from '../../../../../setup/helpers/features-available'
+
+await markAllFeaturesAvailable()
 
 const mocks = vi.hoisted(() => ({
   context: null as FeatureRequestContext | null,

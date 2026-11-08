@@ -16,6 +16,7 @@ export interface FeatureDefinition {
   title: string
   description: string
   stage: FeatureStage
+  available: boolean
   default: boolean
   allowRoles: FeatureRole[]
   spend: FeatureSpend
@@ -44,6 +45,7 @@ function internalFeature<const Key extends string>(
 
   return {
     stage: 'internal',
+    available: false,
     default: false,
     allowRoles: ['admin'],
     requires: { bindings: [], keyKinds: [] },
@@ -239,6 +241,7 @@ const featureList = [
     key: 'ui.side-panel-demo',
     title: 'Side panel demo',
     description: 'A demo of the right-hand side panel.',
+    available: true,
   }),
 ] as const
 

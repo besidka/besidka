@@ -815,6 +815,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/admin-features.spec.ts',
     'tests/integration/server/feature-audit-sweep-plugin.spec.ts',
     'tests/unit/pages/admin/features/[flag].spec.ts',
+    'tests/unit/utils/admin-features.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
     'tests/unit/config/seo.spec.ts',
     'tests/e2e/admin-features.spec.ts',
@@ -2358,7 +2359,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/features\.ts|app\/plugins\/10\.features\.ts|server\/api\/v1\/features\/.*\.ts|shared\/types\/features\.d\.ts|server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
+        /^(app\/composables\/features\.ts|app\/plugins\/10\.features\.ts|server\/api\/v1\/features\/.*\.ts|shared\/types\/features\.d\.ts|server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|tests\/setup\/helpers\/features-available\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
       tests: featureAccessTests,
     },
     {

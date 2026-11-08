@@ -46,4 +46,31 @@ describe('ui/Button', () => {
     expect(button.classes()).not.toContain('max-lg:btn-square')
     expect(button.classes()).toContain('lg:btn-square')
   })
+
+  it('labels an icon-only button with its title, never a placeholder',
+    async () => {
+      const wrapper = await mountSuspended(UiButton, {
+        props: { iconOnly: true, title: 'Search', iconName: 'lucide:search' },
+      })
+      const label = wrapper.get('button .sr-only')
+
+      expect(label.text()).toBe('Search')
+      expect(wrapper.text()).not.toContain('Text')
+    })
+
+  it('prefers the text over the title for the visible label', async () => {
+    const wrapper = await mountSuspended(UiButton, {
+      props: { text: 'Save', title: 'Save changes' },
+    })
+
+    expect(wrapper.get('button').text()).toBe('Save')
+  })
+
+  it('renders no label when neither text nor title is given', async () => {
+    const wrapper = await mountSuspended(UiButton, {
+      props: { iconName: 'lucide:search', iconOnly: true },
+    })
+
+    expect(wrapper.text()).toBe('')
+  })
 })
