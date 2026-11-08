@@ -108,14 +108,16 @@ would reach existing clients silently). The design is in
 | `artifacts:read` | read | `list_artifacts`, `get_artifact`, `list_artifact_shares` | A-8 |
 | `artifacts:write` | write | `create_artifact`, `update_artifact`, `revoke_artifact_shares` | A-8 |
 | `artifacts:share` | write, publishes | `share_artifact` (see exclusion 2) | A-8 |
-| `connectors:read` | read | `list_connectors`, `get_connector`, `list_connections` | C-9 |
-| `connectors:write` | write | `add_connector` (created disabled), `update_connector_tools` | C-9 |
+| `connectors:read` | read | `list_connectors`, `get_connector` | C-9 |
+| `connectors:write` | write | `add_connector` (created disabled), `update_connector_tools`, `delete_connectors` (destructive) | C-9 |
 | `skills:read` | read | `list_skills`, `get_skill` | S-6 |
 | `skills:write` | write | `create_skill`, `update_skill` (both leave the skill disabled) | S-6 |
 
 `list_my_features` (P0-8) goes under the existing `settings:read`, because
-it only reads the caller's own state. Deletes of the new resources go under
-the existing `data:delete`. New scopes are used instead of reusing
+it only reads the caller's own state. Deletes of the new artifact and skill
+resources go under the existing `data:delete`; `delete_connectors` is the
+exception and sits under `connectors:write` with `destructiveHint`. New
+scopes are used instead of reusing
 `chats:read` or `files:write`, so that an existing grant never silently
 extends to artifacts, connectors or skills.
 
