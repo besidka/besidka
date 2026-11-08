@@ -123,14 +123,26 @@ The detail view:
 - Code and diagram buttons inside the artifact (A-14, see "Code and Mermaid
   blocks" in `docs/artifacts-runtime.md`) reach the host through three hooks
   from `useArtifactHostActions()`. `createHostConnection` has already checked
-  the params, the rate limits and the gesture (the frame's claim and the
-  parent's own `navigator.userActivation`) before a hook runs.
+  the params, the rate limits and the gesture before a hook runs: the
+  frame's claim, plus the Frame's `hasUserActivation`, which is `true` only
+  when the parent's `navigator.userActivation.isActive` is `true` and
+  `document.activeElement` is the artifact iframe. Activation from typing
+  in the composer therefore does not count, so an artifact cannot write to
+  the clipboard while the user types elsewhere (pastejacking); such a
+  request ends as `gesture-required` with no fallback alert. An unknown
+  activation fails closed.
   - `ui/clipboard-write`: `writeClipboardText()` in the parent. When the
     browser refuses for lack of a gesture (`gesture-required`, the realistic
     case is Safari), the request stays open and a small `alert` appears at
     the top of the Preview body (absolutely positioned over the frame, not a
-    header): "Copy from the artifact?" with a Copy button and a dismiss
-    button. Its Copy button takes focus. A click on Copy is a real gesture
+    header): "Copy from the artifact?", the first line of the text
+    (at most 80 characters) and its length ("123 characters"), so the user
+    sees what will be copied, with a Copy button and a dismiss button. The
+    Copy button takes focus only when focus was already in the artifact
+    frame, never away from the composer or anything else. For 500 ms after
+    the alert appears a keyboard activation of Copy (`click` with
+    `detail === 0`) is ignored, so an Enter meant for the artifact cannot
+    confirm a copy the user has not read. A click on Copy is a real gesture
     in the parent, so it writes the text and answers the frame with that
     outcome; dismiss, Escape (handled in the capture phase so the panel does
     not also close), a new version, Retry, unmount or 5 minutes (the
@@ -295,8 +307,16 @@ drops the root element, which no browser does.
 
 ## Known open items
 
-- The report route stores `shareId: null`; the chat share the report came
-  from is only in the log (`attributes.artifacts.chatShareId`).
+- Report rows do not store the chat share id: the route writes
+  `shareId: null` and the share the report came from is only in the log
+  (`attributes.artifacts.chatShareId`). Keeping it needs a column for the
+  chat share (additive migration, not done).
+- Reports from anonymous viewers have no Turnstile check. Adding Turnstile
+  there needs a Cookie Policy edit first (Turnstile on a page any shared-chat
+  viewer can open); not done.
+- The report rate limiter reads the KV counter and then writes it, so
+  concurrent reports from one client can pass the limit by a few before KV
+  catches up (no atomic increment in KV).
 - MCP `get_chat` builds its context summary without the artifacts map, so its
   outputs count omits artifacts.
 

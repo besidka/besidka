@@ -259,7 +259,7 @@ export function createHostConnection(
     const hostActivation = (options.hasUserActivation
       ?? readHostUserActivation)()
 
-    return hostActivation !== false
+    return hostActivation === true
   }
 
   async function handleClipboardWrite(

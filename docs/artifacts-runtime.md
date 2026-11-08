@@ -73,7 +73,11 @@ protocol v2 live next to v1.
      self-navigation before its request leaves, in Chromium and WebKit; the
      blocked frame then loads an error page, which trips the wire below.
      It also covers targets that never fire `load` (a `204` response, a
-     download, a `load` held open) and `data:` or `blob:` documents.
+     download, a `load` held open) and `data:` or `blob:` documents. When the
+     page already has a policy with `frame-src`, the sources must be merged
+     into that directive: browsers ignore a second `frame-src`, so an
+     appended duplicate would leave the old one in force and block the
+     runtime (`server/plugins/artifacts-frame-src.ts` does this merge).
    - **Tripwire.** `createHostConnection` treats every `load` after the first
      as the frame having left the runtime: it closes the port, removes the
      iframe and calls `onUnexpectedNavigation`.
@@ -305,7 +309,16 @@ code shares the runtime's realm, so the host treats that only as a claim: it
 also needs its own `navigator.userActivation.isActive` (a click in a child
 frame activates its ancestors in Chromium and WebKit). Without both the host
 answers `{ copied: false, reason: 'gesture-required' }` and never calls its
-hook. Text is capped at 512 KiB (`MAX_CLIPBOARD_TEXT_LENGTH`, the same as
+hook. The host check fails closed: `hasUserActivation()` must return `true`,
+so an unknown activation (`null`, a browser without
+`navigator.userActivation`) refuses the write. Activation alone is not
+enough either, because typing in the chat composer also activates the parent
+document and an artifact could then write to the clipboard (pastejacking).
+The app's Frame therefore passes `hasUserActivation: () =>
+navigator.userActivation?.isActive === true && document.activeElement ===
+iframe`: the activation must come from the artifact frame, which holds focus
+right after a click in it. With focus anywhere else the request ends as
+`gesture-required` before any hook, so no parent Copy fallback appears. Text is capped at 512 KiB (`MAX_CLIPBOARD_TEXT_LENGTH`, the same as
 `ARTIFACT_VERSION_MAX_BYTES`), at most 5 writes per 10 s (`-32012` beyond),
 plain text only.
 
@@ -355,8 +368,10 @@ openDiagramViewer?: (params: OpenDiagramViewerParams) => MaybePromise<EmptyResul
 ```
 
 `createHostConnection` validates params, applies the rate limits and the
-gesture check before a hook runs, and passes only the known fields. Options
-`hasUserActivation` and `now` exist for tests.
+gesture check before a hook runs, and passes only the known fields. Option
+`hasUserActivation` replaces the host's own activation read (the app uses it
+to require focus in the frame, see Copy through the bridge; only `true`
+passes), and `now` exists for tests.
 
 ## Local development
 

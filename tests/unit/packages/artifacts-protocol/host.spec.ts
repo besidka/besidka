@@ -457,6 +457,14 @@ describe('createHostConnection UI requests', () => {
     await expect(runtime.request(METHODS.clipboardWrite, {
       text: 'a',
       userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    expect(clipboardWrite).not.toHaveBeenCalled()
+
+    hostActivation = true
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
     })).resolves.toEqual({ copied: true })
     host.destroy()
   })

@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bundledLanguagesInfo } from 'shiki/bundle/web'
-import { readSource } from '~~/workers/artifacts-runtime/src/kit/chrome'
+import {
+  FEEDBACK_DURATION_MS,
+  createButton,
+  readSource,
+  showOutcome,
+} from '~~/workers/artifacts-runtime/src/kit/chrome'
 import {
   LANGUAGE_ALIASES,
   LANGUAGE_LOADERS,
@@ -109,5 +114,34 @@ describe('code block upgrade', () => {
     expect(root.querySelector('besidka-code')?.getAttribute('lang'))
       .toBe('python')
     expect(root.querySelectorAll('pre')).toHaveLength(5)
+  })
+})
+
+describe('kit button outcome', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('restarts the reset timer when a new outcome arrives', () => {
+    vi.useFakeTimers()
+
+    const button = createButton('kit-copy', 'copy', 'Copy')
+    const labels = {
+      idleIcon: 'copy' as const,
+      idle: 'Copy',
+      done: 'Copied!',
+      failed: 'Copy failed',
+    }
+
+    showOutcome(button, { ok: false, message: 'denied' }, labels)
+    vi.advanceTimersByTime(FEEDBACK_DURATION_MS - 100)
+    showOutcome(button, { ok: true }, labels)
+    vi.advanceTimersByTime(200)
+
+    expect(button.element.getAttribute('aria-label')).toBe('Copied!')
+
+    vi.advanceTimersByTime(FEEDBACK_DURATION_MS)
+
+    expect(button.element.getAttribute('aria-label')).toBe('Copy')
   })
 })

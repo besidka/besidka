@@ -185,15 +185,27 @@ export function createButton(
   return { element, set }
 }
 
+const outcomeResetTimers = new WeakMap<
+  KitButton,
+  ReturnType<typeof setTimeout>
+>()
+
 /**
  * Shows the outcome of a host action on its button for a moment, then
- * restores the idle label. A failure keeps the host's reason in `title`.
+ * restores the idle label. A new outcome restarts that moment. A failure
+ * keeps the host's reason in `title`.
  */
 export function showOutcome(
   button: KitButton,
   outcome: HostActionOutcome,
   labels: { idleIcon: IconName, idle: string, done: string, failed: string },
 ) {
+  const previousTimer = outcomeResetTimers.get(button)
+
+  if (previousTimer) {
+    clearTimeout(previousTimer)
+  }
+
   if (outcome.ok) {
     button.set('check', labels.done)
     button.element.removeAttribute('title')
@@ -202,9 +214,10 @@ export function showOutcome(
     button.element.title = outcome.message
   }
 
-  setTimeout(() => {
+  outcomeResetTimers.set(button, setTimeout(() => {
+    outcomeResetTimers.delete(button)
     button.set(labels.idleIcon, labels.idle)
-  }, FEEDBACK_DURATION_MS)
+  }, FEEDBACK_DURATION_MS))
 }
 
 export interface KitShell {

