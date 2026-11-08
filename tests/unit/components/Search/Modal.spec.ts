@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const loggedIn = ref<boolean>(true)
+const isAdmin = ref<boolean>(false)
 const currentPreference = ref<ThemePreference>('light')
 const mockRoute = reactive<{ name: string | undefined, path: string }>({
   name: 'chats-new',
@@ -35,6 +36,10 @@ mockNuxtImport('useAuth', () => {
     user: ref(null),
     fetchSession: async () => {},
   })
+})
+
+mockNuxtImport('useIsAdmin', () => {
+  return () => isAdmin
 })
 
 mockNuxtImport('useRoute', () => {
@@ -89,6 +94,7 @@ let closeSpy: ReturnType<typeof vi.spyOn>
 describe('Search/Modal.client', () => {
   beforeEach(() => {
     loggedIn.value = true
+    isAdmin.value = false
     currentPreference.value = 'light'
     mockRoute.name = 'chats-new'
     mockRoute.path = '/chats/new'
@@ -183,7 +189,7 @@ describe('Search/Modal.client', () => {
       .toBe('')
   })
 
-  it('renders the eight documented command rows in order for an empty query', async () => {
+  it('renders the ten documented command rows in order for an empty query', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -202,7 +208,46 @@ describe('Search/Modal.client', () => {
       'search-option-memory',
       'search-option-preferences',
       'search-option-connected-apps',
+      'search-option-labs',
     ])
+  })
+
+  it('shows the Admin row last in Settings only to admins', async () => {
+    isAdmin.value = true
+    useSearchModal().isModalOpen.value = true
+
+    let isModalOpenDuringNavigate: boolean | null = null
+
+    mocks.navigateToMock.mockImplementation(() => {
+      isModalOpenDuringNavigate = useSearchModal().isModalOpen.value
+
+      return Promise.resolve()
+    })
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    const ids = wrapper.findAll('[role="option"]')
+      .map(option => option.attributes('id'))
+
+    expect(ids.at(-1)).toBe('search-option-admin')
+    expect(wrapper.get('#search-option-admin').text()).toBe('Admin')
+    expect(wrapper.get('#search-option-admin .iconify').classes())
+      .toContain('i-lucide:shield-ellipsis')
+
+    await wrapper.find('#search-option-admin').trigger('click')
+
+    expect(isModalOpenDuringNavigate).toBe(false)
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/admin')
+  })
+
+  it('hides the Admin row from non-admins', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountModal()
+    await nextTick()
+
+    expect(wrapper.find('#search-option-admin').exists()).toBe(false)
   })
 
   it('groups Projects under Chat and Memory under Settings with icons', async () => {
@@ -219,7 +264,7 @@ describe('Search/Modal.client', () => {
       return wrapper.get(`#${id} .iconify`).classes()
     }
 
-    expect(rows).toHaveLength(9)
+    expect(rows).toHaveLength(10)
     expect(labelOf('search-option-projects')).toBe('Projects')
     expect(iconOf('search-option-projects')).toContain('i-lucide:folder')
     expect(labelOf('search-option-memory')).toBe('Memory')
@@ -230,6 +275,8 @@ describe('Search/Modal.client', () => {
     expect(labelOf('search-option-connected-apps')).toBe('Connected apps')
     expect(iconOf('search-option-connected-apps'))
       .toContain('i-lucide:plug')
+    expect(labelOf('search-option-labs')).toBe('Labs')
+    expect(iconOf('search-option-labs')).toContain('i-lucide:flask-conical')
 
     const orderedIds = wrapper.findAll('[role="option"]')
       .map(option => option.attributes('id'))
@@ -243,6 +290,8 @@ describe('Search/Modal.client', () => {
       .toBeGreaterThan(orderedIds.indexOf('search-option-memory'))
     expect(orderedIds.indexOf('search-option-connected-apps'))
       .toBeGreaterThan(orderedIds.indexOf('search-option-preferences'))
+    expect(orderedIds.indexOf('search-option-labs'))
+      .toBe(orderedIds.indexOf('search-option-connected-apps') + 1)
   })
 
   it.each([
@@ -250,6 +299,7 @@ describe('Search/Modal.client', () => {
     ['search-option-memory', '/profile/memory'],
     ['search-option-preferences', '/profile/preferences'],
     ['search-option-connected-apps', '/profile/connected-apps'],
+    ['search-option-labs', '/profile/labs'],
   ])('closes the modal and navigates from %s to %s', async (id, path) => {
     useSearchModal().isModalOpen.value = true
 
@@ -270,7 +320,7 @@ describe('Search/Modal.client', () => {
     expect(closeSpy).toHaveBeenCalled()
   })
 
-  it('navigates to Connected apps when it is the active row and Enter is pressed', async () => {
+  it('navigates to Labs when it is the active row and Enter is pressed', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -280,7 +330,7 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').trigger('keydown', { key: 'Enter' })
 
     expect(mocks.navigateToMock)
-      .toHaveBeenCalledWith('/profile/connected-apps')
+      .toHaveBeenCalledWith('/profile/labs')
   })
 
   it('marks section headings as aria-hidden', async () => {
@@ -590,7 +640,7 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
 
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-connected-apps')
+      .toBe('search-option-labs')
   })
 
   it('opens the modal on Cmd+K when logged in and no dialog is open', async () => {
