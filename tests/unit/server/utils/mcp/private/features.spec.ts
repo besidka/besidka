@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { markAllFeaturesAvailable } from '../../../../../setup/helpers/features-available'
+
+await markAllFeaturesAvailable()
 
 const mocks = vi.hoisted(() => ({
   isFeatureAdminUserId: vi.fn(),

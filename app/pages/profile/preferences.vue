@@ -209,6 +209,56 @@
         </label>
       </div>
     </ProfileSecuritySectionCard>
+    <ProfileSecuritySectionCard heading="Sidebar">
+      <template #icon>
+        <Icon
+          name="lucide:panel-left"
+          size="20"
+          class="shrink-0"
+          aria-hidden="true"
+          data-testid="preferences-sidebar-icon"
+        />
+      </template>
+      <label
+        class="flex items-start justify-between gap-4"
+        :class="isPinToggleAvailable ? 'cursor-pointer' : 'opacity-60'"
+      >
+        <span class="grid gap-1">
+          <span
+            id="sidebar-pinned-title"
+            class="font-bold"
+          >Pin sidebar</span>
+          <span
+            id="sidebar-pinned-description"
+            class="text-sm text-base-content/70"
+            data-testid="preferences-sidebar-pinned-note"
+          >
+            Keep the navigation bar visible instead of hiding it until you
+            point at it.
+            <template v-if="!isPinToggleAvailable">
+              Available on desktop screens when your device doesn't ask for
+              reduced motion.
+            </template>
+          </span>
+        </span>
+        <span
+          v-if="!isReasoningReady"
+          class="skeleton skeleton--default mt-1 h-6 w-10 shrink-0 rounded-full"
+          data-testid="preferences-sidebar-pinned-skeleton"
+        />
+        <input
+          v-else
+          type="checkbox"
+          class="toggle mt-1 shrink-0"
+          aria-labelledby="sidebar-pinned-title"
+          aria-describedby="sidebar-pinned-description"
+          data-testid="preferences-sidebar-pinned-toggle"
+          :checked="sidebarPinned"
+          :disabled="!isPinToggleAvailable"
+          @change="onSidebarPinnedChange"
+        >
+      </label>
+    </ProfileSecuritySectionCard>
   </div>
 </template>
 
@@ -248,10 +298,13 @@ const {
   defaultReasoningLevel,
   reasoningExpanded,
   reasoningAutoHide,
+  sidebarPinned,
   setDefaultReasoningLevel,
   setReasoningExpanded,
   setReasoningAutoHide,
+  setSidebarPinned,
 } = useUserSetting()
+const { showPinToggle } = useSidebarPinToggle()
 
 const {
   isSupported: isPushSupported,
@@ -270,6 +323,10 @@ const isReasoningReady = computed<boolean>(() => {
 
 const isAutoHideAvailable = computed<boolean>(() => {
   return isReasoningReady.value && reasoningExpanded.value
+})
+
+const isPinToggleAvailable = computed<boolean>(() => {
+  return isMounted.value && showPinToggle.value
 })
 
 const isPushReady = computed<boolean>(() => {
@@ -327,6 +384,12 @@ async function onAutoHideChange(event: Event) {
   const input = event.target as HTMLInputElement
 
   await setReasoningAutoHide(input.checked)
+}
+
+async function onSidebarPinnedChange(event: Event) {
+  const input = event.target as HTMLInputElement
+
+  await setSidebarPinned(input.checked)
 }
 
 onMounted(() => {

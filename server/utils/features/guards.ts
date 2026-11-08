@@ -4,7 +4,6 @@ import type {
   FeatureRequestContext,
 } from '~~/server/utils/features/context'
 import { createError } from 'evlog'
-import { getFeatureDefinition } from '#shared/utils/features/registry'
 import {
   evaluateFeatureForEvent,
   useFeatureContext,
@@ -23,11 +22,11 @@ export function createFeatureUnavailableError() {
 }
 
 /**
- * Throws a 404 unless the caller has `flag`. For a feature that needs an
- * opt-in (it spends the user's keys) the caller must also be opted in,
- * unless `active: false` is passed, as the opt-in route itself does. A 404
- * keeps unreleased features invisible; the client-side `useFeature` check
- * only hides UI.
+ * Throws a 404 unless the caller has `flag`. The caller must also have its
+ * Labs toggle on (opted in for a feature that spends their keys, not opted
+ * out for any other), unless `active: false` is passed, as the toggle route
+ * itself does. A 404 keeps unreleased features invisible; the client-side
+ * `useFeature` check only hides UI.
  */
 export async function requireFeature(
   event: FeatureEvent,
@@ -35,9 +34,9 @@ export async function requireFeature(
   options: { active?: boolean } = {},
 ): Promise<FeatureEventResolution> {
   const resolution = await evaluateFeatureForEvent(event, flag)
-  const requireActive = options.active
-    ?? getFeatureDefinition(flag)?.optIn === 'required'
-  const allowed = requireActive ? resolution.active : resolution.value
+  const allowed = options.active === false
+    ? resolution.value
+    : resolution.active
 
   if (!allowed) {
     throw createFeatureUnavailableError()

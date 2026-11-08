@@ -11,8 +11,8 @@ import {
   useFeatureContext,
 } from '~~/server/utils/features/context'
 import {
-  isActiveOptIn,
   isFeatureActive,
+  isFeatureToggledOn,
   loadUserFeatureState,
 } from '~~/server/utils/features/evaluate'
 import { createFeatureUnavailableError } from '~~/server/utils/features/guards'
@@ -54,14 +54,6 @@ export default defineEventHandler(async (event) => {
     throw createFeatureUnavailableError()
   }
 
-  if (definition.optIn !== 'required') {
-    throw createError({
-      message: 'This feature does not need an opt-in',
-      status: 400,
-      why: 'opt_in_not_applicable',
-    })
-  }
-
   const db = useDb()
 
   await setFeatureOptIn(
@@ -74,7 +66,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     flag,
-    optedIn: isActiveOptIn(userState?.optIns[flag]),
+    optedIn: isFeatureToggledOn(definition, userState?.optIns[flag]),
     active: isFeatureActive(flag, resolution, userState),
   }
 })

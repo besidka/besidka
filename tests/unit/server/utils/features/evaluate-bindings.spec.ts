@@ -6,6 +6,7 @@ const definition: FeatureDefinition = {
   title: 'Needs a binding',
   description: 'Test entry.',
   stage: 'internal',
+  available: true,
   default: true,
   allowRoles: ['admin'],
   spend: 'none',

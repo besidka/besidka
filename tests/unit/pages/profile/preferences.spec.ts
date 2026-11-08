@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,6 +16,11 @@ const mocks = vi.hoisted(() => ({
   requestEnablePush: vi.fn(async () => undefined),
 }))
 
+const showPinToggle = ref<boolean>(true)
+
+mockNuxtImport('useSidebarPinToggle', () => {
+  return () => ({ showPinToggle })
+})
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useErrorMessage', () => mocks.errorMessage)
 
@@ -56,6 +62,7 @@ interface ServerSettings {
   defaultReasoningLevel: string | null
   reasoningExpanded: boolean
   reasoningAutoHide: boolean
+  sidebarPinned?: boolean
 }
 
 const productDefaultNote = '[data-testid="default-reasoning-product-default"]'
@@ -110,12 +117,55 @@ describe('profile preferences page', () => {
     mocks.isPushStateKnown = true
     mocks.pushPermission = 'default'
     mocks.isPushSubscribed = false
+    showPinToggle.value = true
     useUserSetting().clearUserContext()
   })
 
   afterEach(() => {
     useUserSetting().clearUserContext()
   })
+
+  it('binds a Pin sidebar switch to the sidebar setting', async () => {
+    await loadSettings({ sidebarPinned: false })
+
+    const wrapper = await mountPage()
+    const toggle = wrapper.get(
+      '[data-testid="preferences-sidebar-pinned-toggle"]',
+    )
+
+    expect(wrapper.text()).toContain('Pin sidebar')
+    expect((toggle.element as HTMLInputElement).checked).toBe(false)
+    expect(toggle.attributes('disabled')).toBeUndefined()
+
+    mocks.fetch.mockResolvedValueOnce({})
+    await toggle.setValue(true)
+    await flushPromises()
+
+    expect(patchBodies()).toContainEqual({ sidebarPinned: true })
+    expect(useUserSetting().sidebarPinned.value).toBe(true)
+  })
+
+  it('shows a pinned sidebar as on', async () => {
+    await loadSettings({ sidebarPinned: true })
+
+    const wrapper = await mountPage()
+
+    expect((wrapper.get('[data-testid="preferences-sidebar-pinned-toggle"]')
+      .element as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('disables the Pin sidebar switch with a note where it cannot apply',
+    async () => {
+      showPinToggle.value = false
+      await loadSettings({ sidebarPinned: false })
+
+      const wrapper = await mountPage()
+
+      expect(wrapper.get('[data-testid="preferences-sidebar-pinned-toggle"]')
+        .attributes('disabled')).toBeDefined()
+      expect(wrapper.get('[data-testid="preferences-sidebar-pinned-note"]')
+        .text()).toContain('Available on desktop screens')
+    })
 
   it('renders the heading and the reasoning section', async () => {
     await loadSettings()

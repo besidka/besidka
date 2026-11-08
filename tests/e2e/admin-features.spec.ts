@@ -66,10 +66,11 @@ test('an admin grants a feature to another account', async ({ browser }) => {
   const memberId = await readUserId(memberPage)
   const before = await memberPage.request.get('/api/v1/features')
 
-  expect((await before.json()).features.artifacts.enabled).toBe(false)
+  expect((await before.json()).features['ui.side-panel-demo'].enabled)
+    .toBe(false)
 
   const grantResponse = await adminPage.request.post(
-    '/api/v1/admin/features/artifacts/grants',
+    '/api/v1/admin/features/ui.side-panel-demo/grants',
     { data: { userId: memberId, effect: 'allow', expiresInDays: 1 } },
   )
 
@@ -77,12 +78,12 @@ test('an admin grants a feature to another account', async ({ browser }) => {
 
   const after = await memberPage.request.get('/api/v1/features')
 
-  expect((await after.json()).features.artifacts).toMatchObject({
+  expect((await after.json()).features['ui.side-panel-demo']).toMatchObject({
     enabled: true,
     active: true,
   })
 
-  await adminPage.goto('/admin/features/artifacts')
+  await adminPage.goto('/admin/features/ui.side-panel-demo')
   await expect(adminPage.getByTestId('admin-grants-list'))
     .toContainText(member.email)
 

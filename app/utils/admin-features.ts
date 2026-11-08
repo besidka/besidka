@@ -9,6 +9,7 @@ export interface AdminFeatureRuleView {
 
 export interface AdminFeatureView {
   key: string
+  available: boolean
   default: boolean
   allowRoles: FeatureRole[]
   killSwitched: boolean
@@ -53,6 +54,10 @@ export function getAdminFeatureState(
   feature: AdminFeatureView,
   options: { rolloutEnabled: boolean, hostMode: string },
 ): AdminFeatureState {
+  if (!feature.available) {
+    return { label: 'Not implemented', tone: 'off' }
+  }
+
   if (feature.killSwitched) {
     return { label: 'Off (env)', tone: 'off' }
   }

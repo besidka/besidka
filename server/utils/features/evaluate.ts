@@ -137,20 +137,40 @@ export function isActiveOptIn(optIn: FeatureOptInState | undefined): boolean {
   return optIn.optedOutAt.getTime() < optIn.optedInAt.getTime()
 }
 
-export function hasObjectedToExperiments(
-  userState: FeatureUserState | null,
+export function isWithdrawnOptIn(
+  optIn: FeatureOptInState | undefined,
 ): boolean {
-  const objection = userState?.optIns[EXPERIMENTS_OPT_IN_KEY]
-
-  if (!objection?.optedOutAt) {
+  if (!optIn?.optedOutAt) {
     return false
   }
 
-  if (!objection.optedInAt) {
+  if (!optIn.optedInAt) {
     return true
   }
 
-  return objection.optedOutAt.getTime() >= objection.optedInAt.getTime()
+  return optIn.optedOutAt.getTime() >= optIn.optedInAt.getTime()
+}
+
+export function hasObjectedToExperiments(
+  userState: FeatureUserState | null,
+): boolean {
+  return isWithdrawnOptIn(userState?.optIns[EXPERIMENTS_OPT_IN_KEY])
+}
+
+/**
+ * The state of a feature's Labs toggle: a feature that needs an opt-in is on
+ * only after the user switched it on, any other feature is on until the user
+ * switched it off.
+ */
+export function isFeatureToggledOn(
+  definition: Pick<FeatureDefinition, 'optIn'>,
+  optIn: FeatureOptInState | undefined,
+): boolean {
+  if (definition.optIn === 'required') {
+    return isActiveOptIn(optIn)
+  }
+
+  return !isWithdrawnOptIn(optIn)
 }
 
 export async function computeFeatureBucket(input: string): Promise<number> {
@@ -268,6 +288,10 @@ async function evaluateOwnSteps(
   const { config, userState } = context
   const rule = context.rules[definition.key]
   const hasBinding = context.hasBinding ?? readEnvBinding
+
+  if (!definition.available) {
+    return resolution(false, 'NOT_AVAILABLE')
+  }
 
   if (isFeatureKillSwitched(definition.key, config)) {
     return resolution(false, 'KILL_SWITCH')
@@ -391,10 +415,7 @@ export function isFeatureActive(
   let current: FeatureDefinition | undefined = definition
 
   while (current) {
-    if (
-      current.optIn === 'required'
-      && !isActiveOptIn(userState?.optIns[current.key])
-    ) {
+    if (!isFeatureToggledOn(current, userState?.optIns[current.key])) {
       return false
     }
 

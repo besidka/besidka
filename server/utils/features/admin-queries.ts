@@ -113,6 +113,7 @@ function toFlagSummary(
     title: definition.title,
     description: definition.description,
     stage: definition.stage,
+    available: definition.available,
     spend: definition.spend,
     optIn: definition.optIn,
     default: definition.default,

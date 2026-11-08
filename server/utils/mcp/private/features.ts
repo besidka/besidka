@@ -23,8 +23,8 @@ import { listAdminFeatures } from '~~/server/utils/features/admin-queries'
 import {
   evaluateFeature,
   getFeatureEvaluationConfig,
-  isActiveOptIn,
   isFeatureActive,
+  isFeatureToggledOn,
   loadFeatureRules,
   loadUserFeatureState,
 } from '~~/server/utils/features/evaluate'
@@ -151,7 +151,7 @@ export async function listMyFeatures(
       stage: definition.stage,
       enabled: resolution.value,
       active: isFeatureActive(key, resolution, userState),
-      optedIn: isActiveOptIn(userState?.optIns[key]),
+      optedIn: isFeatureToggledOn(definition, userState?.optIns[key]),
       variant: resolution.value ? resolution.variant : null,
     })
   }

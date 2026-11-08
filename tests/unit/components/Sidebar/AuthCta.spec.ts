@@ -9,10 +9,6 @@ const CHAT_SLUG = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
 const mocks = vi.hoisted(() => ({
   routePath: '/chats/new',
   routeParams: {} as Record<string, string>,
-  showPinToggle: true,
-  sidebarPinned: false,
-  setSidebarPinned: vi.fn(),
-  expandCookieSettings: vi.fn(),
 }))
 
 mockNuxtImport('useAuth', () => {
@@ -24,21 +20,6 @@ mockNuxtImport('useAuth', () => {
 
 mockNuxtImport('useRoute', () => {
   return () => ({ path: mocks.routePath, params: mocks.routeParams })
-})
-
-mockNuxtImport('useSidebarPinToggle', () => {
-  return () => ({ showPinToggle: ref(mocks.showPinToggle) })
-})
-
-mockNuxtImport('useUserSetting', () => {
-  return () => ({
-    sidebarPinned: ref(mocks.sidebarPinned),
-    setSidebarPinned: mocks.setSidebarPinned,
-  })
-})
-
-mockNuxtImport('useCookieConsentUi', () => {
-  return () => ({ expand: mocks.expandCookieSettings })
 })
 
 mockNuxtImport('usePushToggle', () => {
@@ -57,10 +38,6 @@ function setRoute(path: string, params: Record<string, string> = {}) {
   mocks.routeParams = params
 }
 
-function setChatRoute() {
-  setRoute(`/chats/${CHAT_SLUG}`, { slug: CHAT_SLUG })
-}
-
 async function mountCta() {
   return await mountSuspended(SidebarAuthCta, {
     global: {
@@ -77,10 +54,6 @@ async function mountCta() {
 describe('sidebar auth cta', () => {
   beforeEach(() => {
     setRoute('/chats/new')
-    mocks.showPinToggle = true
-    mocks.sidebarPinned = false
-    mocks.setSidebarPinned.mockReset()
-    mocks.expandCookieSettings.mockReset()
     vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
       return {
         matches: false,
@@ -140,127 +113,32 @@ describe('sidebar auth cta', () => {
     expect(wrapper.find('[aria-label="Preferences"]').exists()).toBe(false)
   })
 
-  it('adds pin sidebar and cookie settings as the last rows on a chat page',
+  it('keeps pin sidebar and cookie settings out of the user menu everywhere',
     async () => {
-      setChatRoute()
-
-      const wrapper = await mountCta()
-
-      await flushPromises()
-
-      const actions = Array.from(
-        wrapper.element.querySelectorAll(
-          'button[aria-label], sidebar-theme-switcher-stub, a[to]',
-        ),
-      ).map((element) => {
-        return element.getAttribute('to')
-          ?? element.getAttribute('aria-label')
-          ?? element.tagName.toLowerCase()
-      })
-
-      expect(actions).toEqual([
-        'Sign out',
-        'sidebar-theme-switcher-stub',
-        '/profile/security',
+      const paths = [
+        `/chats/${CHAT_SLUG}`,
+        '/shared/share-slug',
+        '/chats/new',
         '/profile/keys',
-        'Enable push notifications',
-        'Pin sidebar',
-        'Cookie settings',
-      ])
-    })
+        '/chats/history',
+      ]
 
-  it('adds the rows on a shared chat page too', async () => {
-    setRoute('/shared/share-slug', { slug: 'share-slug' })
-
-    const wrapper = await mountCta()
-
-    expect(wrapper.find('[data-testid="user-menu-pin-sidebar"]').exists())
-      .toBe(true)
-    expect(wrapper.find('[data-testid="user-menu-cookie-settings"]').exists())
-      .toBe(true)
-  })
-
-  it('keeps both rows out of the menu on pages that are not chats',
-    async () => {
-      for (const path of ['/chats/new', '/profile/keys', '/chats/history']) {
-        setRoute(path)
+      for (const path of paths) {
+        setRoute(path, { slug: CHAT_SLUG })
 
         const wrapper = await mountCta()
 
-        expect(wrapper.find('[data-testid="user-menu-pin-sidebar"]').exists())
-          .toBe(false)
-        expect(
-          wrapper.find('[data-testid="user-menu-cookie-settings"]').exists(),
-        ).toBe(false)
+        await flushPromises()
+
+        const labels = Array.from(
+          wrapper.element.querySelectorAll('[aria-label]'),
+        ).map((element) => {
+          return element.getAttribute('aria-label')
+        })
+
+        expect(labels, path).not.toContain('Pin sidebar')
+        expect(labels, path).not.toContain('Unpin sidebar')
+        expect(labels, path).not.toContain('Cookie settings')
       }
-    })
-
-  it('does not offer the dev-only test chat the extra rows', async () => {
-    setRoute('/chats/test', { slug: 'test' })
-
-    const wrapper = await mountCta()
-
-    expect(wrapper.find('[data-testid="user-menu-pin-sidebar"]').exists())
-      .toBe(false)
-  })
-
-  it('hides pin sidebar where the pill never hides but keeps cookie settings',
-    async () => {
-      mocks.showPinToggle = false
-      setChatRoute()
-
-      const wrapper = await mountCta()
-
-      expect(wrapper.find('[data-testid="user-menu-pin-sidebar"]').exists())
-        .toBe(false)
-      expect(wrapper.find('[data-testid="user-menu-cookie-settings"]').exists())
-        .toBe(true)
-    })
-
-  it('toggles the pinned state from the pin row', async () => {
-    setChatRoute()
-
-    const wrapper = await mountCta()
-    const pin = wrapper.get('[data-testid="user-menu-pin-sidebar"]')
-
-    expect(pin.attributes('aria-label')).toBe('Pin sidebar')
-    expect(pin.find('.iconify').classes()).toContain('i-lucide:pin')
-
-    await pin.trigger('click')
-
-    expect(mocks.setSidebarPinned).toHaveBeenCalledWith(true)
-  })
-
-  it('offers to unpin a pinned sidebar', async () => {
-    mocks.sidebarPinned = true
-    setChatRoute()
-
-    const wrapper = await mountCta()
-    const pin = wrapper.get('[data-testid="user-menu-pin-sidebar"]')
-
-    expect(pin.attributes('aria-label')).toBe('Unpin sidebar')
-    expect(pin.find('.iconify').classes()).toContain('i-lucide:pin-off')
-
-    await pin.trigger('click')
-
-    expect(mocks.setSidebarPinned).toHaveBeenCalledWith(false)
-  })
-
-  it('opens the cookie settings from the cookie row',
-    async () => {
-      setChatRoute()
-
-      const wrapper = await mountCta()
-      const cookies = wrapper.get(
-        '[data-testid="user-menu-cookie-settings"]',
-      )
-
-      expect(cookies.attributes('aria-label')).toBe('Cookie settings')
-      expect(cookies.find('.iconify').classes())
-        .toContain('i-lucide:cookie')
-
-      await cookies.trigger('click')
-
-      expect(mocks.expandCookieSettings).toHaveBeenCalledOnce()
     })
 })

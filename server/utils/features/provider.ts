@@ -3,6 +3,7 @@ import type { FeatureRolloutGate } from '#shared/utils/features/rollout-gate'
 
 export type FeatureResolutionReason
   = | 'UNKNOWN'
+    | 'NOT_AVAILABLE'
     | 'KILL_SWITCH'
     | 'HOST_MODE'
     | 'DISABLED'

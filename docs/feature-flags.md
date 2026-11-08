@@ -133,6 +133,7 @@ table too. The replay source is therefore Axiom, not the audit table
 | `key` | Dotted flag key |
 | `title`, `description` | Plain-English text for Labs and `/admin` |
 | `stage` | `internal`, `beta` or `ga` |
+| `available` | `true` only once the feature's code ships (default `false`). An unavailable flag evaluates to off with reason `NOT_AVAILABLE` whatever the role, grant or rule, so Labs never lists it and an admin never sees a phantom "On"; `/admin` still lists it, marked "Not implemented". Set it to `true` in the registry in the PR that ships the feature |
 | `default` | Value when no rule, grant or role decides |
 | `allowRoles` | Roles that get the feature (default `['admin']`) |
 | `spend` | `none`, `foreground` (spends the user's key when they act) or `background` (spends it without a fresh action) |
@@ -219,8 +220,12 @@ insensitive), `featuresHostMode` (`NUXT_FEATURES_HOST_MODE`, default
 Privacy notice date, see below). The last three may be `wrangler.jsonc` vars.
 
 A feature is **enabled** when the user has access, and **active** when it is
-enabled and, for `optIn: 'required'` features, the user has an active opt-in
-(`opted_in_at` set and newer than any `opted_out_at`).
+enabled and the user's Labs toggle is on. The toggle lives in the same
+opt-in table for every feature: a feature with `optIn: 'required'` is on only
+after the user opted in (`opted_in_at` set and newer than any `opted_out_at`);
+any other feature is on until the user opted out (`opted_out_at` newer than or
+equal to any `opted_in_at`, the same rule as the experiments objection). A
+child is off whenever an ancestor's toggle is off.
 
 There is no targeting on user attributes (country, email domain, usage). The
 evaluator sees only the user id, roles, grants and opt-ins (C14). Adding
@@ -268,9 +273,9 @@ how to object (C2).
 - `requireFeature(event, flag, { active? })` throws evlog `createError` with
   status 404, message `Not found` and `why: 'feature_unavailable'`, and
   otherwise returns the resolution plus `active`. It records the exposure.
-  For a flag with `optIn: 'required'` it also needs an active opt-in **by
-  default**; pass `{ active: false }` only where access without the opt-in is
-  the point. (The Labs opt-in route calls `evaluateFeatureForEvent` with
+  It also needs the user's Labs toggle on (an opt-in for `optIn: 'required'`,
+  no opt-out for the rest) **by default**; pass `{ active: false }` only where
+  access without the toggle is the point. (The Labs opt-in route calls `evaluateFeatureForEvent` with
   `recordExposure: false` instead, so a settings write records no exposure.) An opt-in counts only when every
   ancestor that needs one is opted in too.
 - `requireAdmin(event)` answers 404 to non-admins and 401 to signed-out
@@ -495,7 +500,8 @@ Search popup row) lists the features the user can access:
 
 - each feature with its stage, a plain description, "Uses your API keys" for
   spend features, and readiness hints that link to `/profile/keys`;
-- an opt-in switch, default OFF, for `optIn: 'required'` features;
+- a switch on every feature: an opt-in, default OFF, for `optIn: 'required'`
+  features, and an opt-out, default ON, for the rest;
 - the switch "Include my account in gradual rollouts and experiments" (on by
   default), with one sentence on the right to object (C3).
 
@@ -509,16 +515,17 @@ As built (P0-7):
   returns `LabsPayload` (`shared/types/features.d.ts`):
   `{ features: LabsFeature[], objectedToExperiments }`. Each feature carries
   `key`, `title`, `description`, `stage`, `spend`, `optIn`,
-  `requires.keyKinds`, `parent`, `optedIn` and `active`. Only flags with
-  `exposeToClient` that the user **has** (`evaluateFeature(...).value`) are
-  listed, so Labs never advertises a feature the user cannot use. It records
+  `requires.keyKinds`, `parent`, `optedIn` (the switch state) and `active`.
+  Only `available` flags with `exposeToClient` that the user **has**
+  (`evaluateFeature(...).value`) are listed, so Labs never advertises a feature the user cannot use. It records
   no exposure.
 - `POST /api/v1/profiles/features/[flag]/opt-in` with `{ optedIn }`:
   same-origin only (`assertSameOriginAdminRequest`), 401 signed out, 404
   `feature_unavailable` when the user lacks the flag **or** the flag has no
   `exposeToClient` (Labs never shows it, so it never takes consent for it;
-  a registry spec asserts every `optIn: 'required'` flag is exposed), 400
-  `opt_in_not_applicable` when the flag has `optIn: 'none'`. It evaluates
+  a registry spec asserts every `optIn: 'required'` flag is exposed). It
+  accepts every listed feature: `optedIn: false` on a non-spending feature
+  records an opt-out. It evaluates
   with `evaluateFeatureForEvent(event, flag, { recordExposure: false })`: a
   settings write is not an exposure. Answers `{ flag, optedIn, active }` read
   back from D1 after the write.
