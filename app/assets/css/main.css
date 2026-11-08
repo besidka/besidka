@@ -476,6 +476,24 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --landing-header-offset: 4rem;
 }
 
+@utility max-w-chat-column {
+  max-width: calc(100vw - var(--side-panel-width, 0px));
+}
+
+.side-panel-inset {
+  margin-right: var(--side-panel-width, 0px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .side-panel-inset {
+    transition: margin-right 0.3s ease-out;
+  }
+}
+
+.side-panel-resizing :is(.side-panel-inset, .side-panel-follow) {
+  transition: none !important;
+}
+
 .modal {
   padding-bottom: var(--keyboard-inset, 0px);
   transition:

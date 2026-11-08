@@ -210,6 +210,12 @@ export default defineI18nLocale(() => ({
           + 'so it stays visible instead of revealing on hover.',
         duration: 'Until deleted',
       },
+      'side-panel-width': {
+        description:
+          'Remembers the width you gave the side panel, '
+          + 'so it opens at that width on this device.',
+        duration: 'Until deleted',
+      },
       'favorite-models': {
         description:
           'Keeps your favourite models in the model picker for '

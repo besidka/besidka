@@ -18,6 +18,8 @@ import type { LegalNotice } from '#shared/utils/legal-notices'
 
 const FIRST_NOTICE_ID = '2026-11-legal-notices'
 
+const EXPERIMENTAL_FEATURES_NOTICE_ID = '2026-11-experimental-features'
+
 function createNotice(overrides: Partial<LegalNotice> = {}): LegalNotice {
   return {
     id: 'test-notice',
@@ -205,5 +207,33 @@ describe('notice helpers', () => {
       'privacy-policy',
       'terms-of-use',
     ])
+  })
+})
+
+describe('experimental features notice', () => {
+  const notice = getLegalNoticeById(EXPERIMENTAL_FEATURES_NOTICE_ID)
+
+  it('announces only the Privacy Policy', () => {
+    expect(notice?.documents).toEqual(['privacy-policy'])
+    expect(notice?.shortNoticeReason).toBeUndefined()
+  })
+
+  it('takes effect on the date the policy and the rollout gate name', () => {
+    expect(notice?.effectiveAt).toBe('2026-12-19')
+  })
+
+  it('becomes the banner notice while the earlier one is still active', () => {
+    const now = new Date('2026-11-20T12:00:00Z')
+    const activeIds = getActiveLegalNotices(now).map((activeNotice) => {
+      return activeNotice.id
+    })
+
+    expect(activeIds).toEqual([
+      FIRST_NOTICE_ID,
+      EXPERIMENTAL_FEATURES_NOTICE_ID,
+    ])
+    expect(getActiveLegalNotices(now).at(-1)?.id).toBe(
+      EXPERIMENTAL_FEATURES_NOTICE_ID,
+    )
   })
 })

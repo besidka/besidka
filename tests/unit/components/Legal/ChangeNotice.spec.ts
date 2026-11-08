@@ -6,6 +6,25 @@ import {
   useLegalNoticeVisibility,
 } from '../../../../app/composables/legal-notice-banner'
 import ChangeNotice from '../../../../app/components/Legal/ChangeNotice.client.vue'
+import type { LegalNotice } from '#shared/utils/legal-notices'
+
+vi.mock('#shared/utils/legal-notices', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('#shared/utils/legal-notices')
+  >()
+  const pinnedNotices = [actual.LEGAL_NOTICES[0]]
+
+  return {
+    ...actual,
+    LEGAL_NOTICES: pinnedNotices,
+    getActiveLegalNotices: (
+      now: Date,
+      notices: readonly LegalNotice[] = pinnedNotices,
+    ) => {
+      return actual.getActiveLegalNotices(now, notices)
+    },
+  }
+})
 
 const NOTICE_ID = '2026-11-legal-notices'
 const USER_ID = 42

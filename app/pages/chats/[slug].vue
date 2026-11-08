@@ -12,6 +12,7 @@
     :class="{ 'pt-[var(--sat)]': !isLegalNoticeVisible }"
   >
     <ChatContainer class="!gap-0">
+      <UiSidePanelDemoCard v-if="isSidePanelDemoVisible" />
       <p
         v-if="isMemoryExcluded"
         data-testid="chat-memory-excluded-indicator"
@@ -303,6 +304,10 @@ useSeoMeta({
 
 const route = useRoute('chats-slug')
 const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
+
+const isSidePanelDemoVisible = computed<boolean>(() => {
+  return isSidePanelDemoEnabled(route.query)
+})
 
 const isTestChat = computed<boolean>(() => {
   return (import.meta.dev || isE2eTestHooksEnabled)
@@ -907,6 +912,7 @@ async function deleteMessage(messageId: string) {
     chatSdk.messages = chatSdk.messages.filter((message) => {
       return message.id !== messageId
     })
+    nuxtApp.callHook('chat:context-changed')
   } catch (exception) {
     const parsedException = parseError(exception)
 
