@@ -70,24 +70,25 @@ export const LEGAL_NOTICES = [
     effectiveAt: '2026-12-19',
     summary: [
       'New features can reach a share of accounts first. Which accounts '
-      + 'are chosen is random, worked out from the account number alone: '
-      + 'nothing about you, such as your country, your email address or how '
-      + 'you use Besidka, plays a part. For features that do not use your '
-      + 'API keys I may also show different versions to compare them. Both '
-      + 'start no earlier than 19 December 2026.',
-      'I keep a record of which experimental features your account can use, '
-      + 'a role or feature I set for your account by hand, and which '
-      + 'features that use your keys you switched on in Labs. A feature that '
-      + 'uses your keys never switches on without your own switch.',
+      + 'are chosen is random, worked out from the account number and a '
+      + 'random value kept for each feature: nothing about you, such as your '
+      + 'country, your email address or how you use Besidka, plays a part. '
+      + 'For features that do not use your API keys I may also show '
+      + 'different versions to compare them. Both start no earlier than '
+      + '19 December 2026.',
+      'I keep a record of the roles and features I set for your account by '
+      + 'hand, and of which features that use your keys you switched on '
+      + 'yourself on the new Labs page. A feature that uses your keys never '
+      + 'switches on without your own switch.',
       'Changes to feature access are logged for 12 months. If you delete '
       + 'your account, your account id and the notes are removed from that '
       + 'log. Short log lines about these decisions and changes are kept for '
       + '30 days.',
-      'My legal basis is legitimate interests: releasing features safely '
-      + 'and learning which version works. You can object at any time by '
-      + 'turning off "Include my account in gradual rollouts and '
-      + 'experiments" in Profile → Labs, or by email. You keep any feature '
-      + 'I turned on for you by hand.',
+      'Rollouts, version tests and the change log rest on my legitimate '
+      + 'interests: releasing features safely and learning which version '
+      + 'works. You can object to rollouts and version tests at any time by '
+      + 'email, and with a switch on the Labs page once it is there. You '
+      + 'keep any feature I turned on for you by hand.',
     ],
   },
 ] as const satisfies readonly LegalNotice[]

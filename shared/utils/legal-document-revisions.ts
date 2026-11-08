@@ -11,13 +11,14 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '59a124392b6f2cf658cfc54e64159c7890a32a24eff40db7e289eec1efd5026c',
+    hash: '4adb3a2a7befe7cda5bbd10175d39e4bb2102c8eafc4013a7e40dd1dbb7476ba',
     classification: 'material',
     noticeId: '2026-11-experimental-features',
     note: 'Experimental features: per-account feature access, gradual '
       + 'rollouts and version tests (new purpose on legitimate interests), '
       + 'Labs opt-ins, the objection switch, the 12-month change log and '
-      + 'the feature counters. Body still includes the '
+      + 'the feature counters. The Labs page is described as coming. '
+      + 'Body still includes the '
       + '2026-11-legal-notices changes, effective 2026-12-04.',
   },
   'terms-of-use': {

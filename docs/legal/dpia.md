@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.7, 2026-11-08 (feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 18; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
+| Version | 1.7, 2026-11-08 (feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -499,9 +499,8 @@ removed.
   `/api/v1/admin/` route. These lines are the replay ledger after a D1
   restore (section 3.12).
 - **Processor.** Axiom, under its data-processing agreement. Retention of
-  `besidka-prod` is 30 days (dataset setting, AWS us-east-1, read on
-  2026-11-08). The audit and consent datasets answer queries for the last 30
-  days only; their own setting was not read **[U]**.
+  `besidka-prod`, `besidka-audit-prod` and `besidka-consent-prod` is 30
+  days each (dataset setting, AWS us-east-1, read on 2026-11-08).
 - **Basis.** Legitimate interests (Art. 6(1)(f)): keeping the service working
   and secure.
 - **Verified against the code on 2026-10-26.** `attributes.memoryCompliance`
@@ -675,6 +674,9 @@ removed.
   sits under the existing `settings:read`. The maker of the controller's
   client is a recipient chosen by the controller (Art. 30 record, row 27 and
   section 6.4), not a user-directed disclosure like the rest of this section.
+  The Privacy Policy does not describe it yet: before the first production
+  use, the client is named there with its country and safeguard, under its
+  own material notice.
 
 ### 3.12 Feature access, rollout and experiments -- built, Labs and MCP planned
 
@@ -764,10 +766,18 @@ removed.
   them. The replay source is the Axiom ledger, opt-outs and objections first,
   then role revocations, deny grants and grant revocations, then rule changes
   (`docs/d1-restore-reconciliation.md`, "Feature access", C8). Axiom keeps
-  30 days, which matches the Time Travel window.
+  30 days, which matches the Time Travel window, so export the window from
+  Axiom before restoring to an old bookmark. Limit: the rule ledger line
+  holds only `enabled` or `disabled`, and a grant line no forced variant, so
+  a changed rollout share, allowed roles, variants or forced variant cannot
+  be rebuilt from Axiom; logging the full rule patch is a follow-up for
+  P0-6. Until P0-7, an objection arrives by email and is written by hand;
+  the email in the privacy mailbox is its record outside D1.
 - **Release gate (C2).** Production keeps `NUXT_FEATURES_ROLLOUT_ENABLED`
   false until the notice `2026-11-experimental-features` takes effect on
-  2026-12-19. Until then, features are granted only to the controller and to
+  2026-12-19 **and** the Labs objection switch with its ledger line (P0-7)
+  is in production, because the policy promises that switch before any
+  rollout starts. Until then, features are granted only to the controller and to
   named testers who were told individually what is recorded and how to
   object.
 - **Basis.** Section 4 and the assessment in section 4.1.
@@ -890,9 +900,13 @@ later feature track ships behind it.
 
 **Result.** The interests are not overridden. For rollouts and variants, an
 objection is honoured without a balancing test: the evaluator skips those
-steps for the user. For the audit log and the log lines, an objection by email
-is assessed case by case; the record of what an admin changed normally
-prevails for its 12 months and 30 days, and the user is told the outcome.
+steps for the user. A user who does not want a role or a grant set by hand
+has it removed on request. For the audit log and the log lines, an objection
+is assessed case by case under Art. 21(1): the controller keeps the record
+only where it can show compelling legitimate grounds that override the
+user's interests, rights and freedoms (for example, an open question about
+who changed an access), or needs it for legal claims, and tells the user the
+outcome.
 
 **Why not another basis.** Contract (Art. 6(1)(b)) is weaker for rollouts
 and experiments, because the EDPB treats service improvement as generally not
@@ -950,12 +964,12 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 40 | Text read by the controller's AI client steers it into granting or denying features (prompt injection) | Low | Medium | `admin:features` only for the admin account; per-account writes only, no rule, rollout or kill-switch change over MCP; write rate limit; `destructiveHint` so the client asks first; a spending feature still needs the user's own opt-in; audit rows with actor kind `mcp` and the client id | planned (P0-8) | Low once built |
 | 41 | A variant or rollout raises what is spent on a user's key | Low | Medium | Variants only for `spend: 'none'` (registry spec and writer check, C4); a spending feature is active only with the user's own opt-in, which the route guard requires by default; no MCP path to opt-ins | built on the Phase 0 stack | Low |
 | 42 | An exposure event in Analytics Engine is linked back to a person | Low | Low | No bucket, path or user id in the event (C1); exposure only for hash-based decisions; the Privacy Policy treats the events as pseudonymous personal data and does not call them unlinkable; Axiom lines with the user id are operational logs kept 30 days | built on the Phase 0 stack | Low (a cohort of one or two accounts stays identifiable to the controller, disclosed) |
-| 43 | A D1 restore brings back a withdrawn opt-in (a feature spends a user's key again without consent), a lifted objection or a revoked role | Low | High | Axiom ledger (`attributes.featureAccess`) as the replay source, not the restored audit table; replay order opt-outs and objections first (C8, `docs/d1-restore-reconciliation.md`); Axiom keeps 30 days, the Time Travel window | partly built: admin writes log the ledger; the opt-in and objection writers are planned (P0-7) | Medium until P0-7 ships, then Low |
+| 43 | A D1 restore brings back a withdrawn opt-in (a feature spends a user's key again without consent), a lifted objection or a revoked role | Low | High | Axiom ledger (`attributes.featureAccess`) as the replay source, not the restored audit table; replay order opt-outs and objections first (C8, `docs/d1-restore-reconciliation.md`); Axiom keeps 30 days, the Time Travel window, so export it before restoring to an old bookmark; P0-7 must ship the `opt_in.set` and `experiments.set` ledger lines together with the writers, so no opt-in or switch-based objection exists without a ledger line; email objections before P0-7 keep the email as the record. Rule changes beyond on and off cannot be rebuilt from the ledger today (follow-up for P0-6) | built for admin writes; the opt-in and objection ledger lines ship with P0-7 | Low |
 | 44 | A second person with the admin role sees every user's email, and the Privacy Policy's "only the controller" becomes false | Low | Medium | The UI and API assign only `tester` (C7); admin only from the env secret, which holds only the controller; the Privacy Policy says only the controller holds the admin role. Adding an admin needs Art. 29 instructions, a confidentiality commitment (Art. 32(4)), a Privacy Policy change and a new notice first | built on the Phase 0 stack | Low |
-| 45 | Rollouts or experiments drift into profiling or unequal treatment (targeting by country, email domain or usage; per-user analysis of outcomes by variant) | Low | Medium | The evaluator sees only the user id, roles, grants and opt-ins (C14); the hash is random; exposure events carry no user id, so per-user outcome analysis by variant is not possible from them; adding attribute targeting reopens the pre-check and this DPIA | built on the Phase 0 stack (design rule) | Low |
-| 46 | Users are put into rollouts or experiments before the Privacy Policy notice takes effect | Medium | Low | `NUXT_FEATURES_ROLLOUT_ENABLED` defaults to false and the writer refuses rollout and variant writes while it is false (C2); production may switch it on only from 2026-12-19; until then grants go only to the controller and to testers told individually | built (code); operating rule for the controller | Low |
+| 45 | Rollouts or experiments drift into profiling or unequal treatment (targeting by country, email domain or usage; per-user analysis of outcomes by variant) | Low | Medium | The evaluator sees only the user id, roles, grants and opt-ins (C14); the hash is random; Analytics Engine exposure events carry no user id. The Axiom `attributes.features` lines do sit on wide events with the user id, so per-user analysis by variant is technically possible for their 30 days: operating rule, never analyse them per user by variant, only in aggregate; adding attribute targeting or per-user outcome analysis reopens the pre-check and this DPIA | built on the Phase 0 stack (design rule and operating rule) | Low |
+| 46 | Users are put into rollouts or experiments before the Privacy Policy notice takes effect, or before they can object in the app as the policy promises | Medium | Low | `NUXT_FEATURES_ROLLOUT_ENABLED` defaults to false and the writer refuses rollout and variant writes while it is false (C2); production may switch it on only from 2026-12-19 and only once the Labs objection switch (P0-7) is in production; until then grants go only to the controller and to testers told individually | built (code); operating rule for the controller | Low |
 | 47 | Audit rows or log lines keep a deleted user's identity | Low | Low | Account deletion nulls the actor and target ids and removes user ids and the reason from `before` and `after` (C5, flat-JSON rule); the admin views read emails live, so they disappear with the account; Axiom lines stay 30 days, disclosed | built on the Phase 0 stack | Low |
-| 48 | The maker of the controller's AI client receives other users' ids, a recipient and possibly a transfer that the records do not cover | Low | Low | Ids and grants only, never emails, names or reasons (C9); the owner names the client and records its terms and safeguard (Art. 30 record, section 6.4) before the first production use | planned (P0-8) | Low once recorded |
+| 48 | The maker of the controller's AI client receives other users' ids, a recipient and possibly a transfer that the records and the Privacy Policy do not cover | Low | Low | Ids and grants only, never emails, names or reasons (C9); before the first production use the owner names the client, records its terms and safeguard (Art. 30 record, section 6.4) and adds it to the Privacy Policy under its own material notice | planned (P0-8) | Low once recorded and announced |
 
 ## 6. Residual risks
 
@@ -1079,6 +1093,13 @@ the Privacy Policy or should be.
     with a passkey or OAuth is not asked for the TOTP code (risk row 38).
     Stronger than the law requires, weaker than a step-up check. Decision:
     accept for v1; revisit if a second admin is ever added.
+19. **Expired grants are kept.** A grant past its end date stops applying
+    but its row, with the free-text reason, stays until it is revoked or the
+    account is deleted. It keeps the admin's view of who had what, and the
+    reason is short and written without names. Art. 5(1)(e) would favour
+    deleting it; the change is already in the audit log for 12 months.
+    Decision: accept for v1; a sweep that deletes expired grants is a
+    follow-up candidate.
 
 **Overall.** With the consent gate, the transfer notice and consent, and the
 removal of the ungated background refresh in place (all built in this release),
@@ -1131,7 +1152,7 @@ release a spending feature to users before P0-7 is in production.
 | Prepared by | Engineer draft, 2026-10-26 |
 | Approved by | [OWNER NAME], controller |
 | Date approved | [DATE] |
-| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 18] |
+| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 19] |
 | Counsel reviewed | No |
 
 **Review this DPIA when:**
@@ -1155,8 +1176,8 @@ This list covers this DPIA and `docs/legal/art30-record.md`.
 - **[OWNER NAME], [DATE] and the residual-risk decision** in the sign-off table
   above, and the controller name in the Art. 30 record.
 - **Axiom.** Confirm that Axiom's DPA is accepted on the plan in use. The
-  `besidka-prod` retention is 30 days (read on 2026-11-08, Art. 30 record,
-  row 15); read the setting of the audit and consent datasets too. That retention
+  retention of all three datasets is 30 days (read on 2026-11-08, Art. 30
+  record, row 15). That retention
   also bounds the consent history: the database keeps only the latest grant
   and withdrawal, and every earlier grant, withdrawal and transfer consent is
   provable only from the Axiom `legalConsent` events.
@@ -1176,7 +1197,8 @@ This list covers this DPIA and `docs/legal/art30-record.md`.
 - **The controller's AI client for `admin:features`.** Before the first
   production use (P0-8), name the client and record its country, its terms
   for the plan in use and the transfer safeguard (Art. 30 record, section
-  6.4; risk row 48).
+  6.4; risk row 48), and add it to the Privacy Policy with its own
+  material notice.
 - **xAI.** Its documents read on 2026-10-26 were tagged "previous version", so
   re-read the current DPA and confirm the entity name (SpaceXAI LLC) and SCCs.
 
