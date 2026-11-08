@@ -1,5 +1,6 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { computed, nextTick, shallowRef } from 'vue'
 import ScopePicker from '../../../../app/components/OAuth/ScopePicker.vue'
 
 const ALL_SCOPES = [
@@ -20,6 +21,12 @@ const ALL_SCOPES = [
   'data:delete',
 ]
 
+const isAdmin = shallowRef<boolean>(false)
+
+mockNuxtImport('useIsAdmin', () => {
+  return () => computed(() => isAdmin.value)
+})
+
 function lastSelection(wrapper: any): string[] {
   const events = wrapper.emitted('update:modelValue') as string[][][]
 
@@ -27,6 +34,46 @@ function lastSelection(wrapper: any): string[] {
 }
 
 describe('OAuth scope picker', () => {
+  beforeEach(() => {
+    isAdmin.value = false
+  })
+
+  it('hides admin:features from non-admins', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: { scopes: [...ALL_SCOPES, 'admin:features'], modelValue: [] },
+    })
+
+    expect(wrapper.find('[data-testid="oauth-scope-admin:features"]').exists())
+      .toBe(false)
+  })
+
+  it('keeps the selection when the admin state arrives late', async () => {
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: { scopes: [...ALL_SCOPES, 'admin:features'], modelValue: [] },
+    })
+
+    await wrapper.setProps({ modelValue: ['chats:read', 'memory:write'] })
+    isAdmin.value = true
+    await nextTick()
+
+    expect(lastSelection(wrapper)).toEqual(['chats:read', 'memory:write'])
+    expect(wrapper.find('[data-testid="oauth-scope-admin:features"]').exists())
+      .toBe(true)
+  })
+
+  it('shows admin:features to admins, unticked', async () => {
+    isAdmin.value = true
+
+    const wrapper = await mountSuspended(ScopePicker, {
+      props: { scopes: [...ALL_SCOPES, 'admin:features'], modelValue: [] },
+    })
+    const checkbox = wrapper.get('[data-testid="oauth-scope-admin:features"]')
+
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false)
+    expect(lastSelection(wrapper)).not.toContain('admin:features')
+    expect(wrapper.text()).toContain('Manage feature access (admin)')
+  })
+
   it('selects read scopes and leaves write scopes off by default', async () => {
     const wrapper = await mountSuspended(ScopePicker, {
       props: { scopes: ALL_SCOPES, modelValue: [] },
