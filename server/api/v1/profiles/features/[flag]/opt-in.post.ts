@@ -6,12 +6,16 @@ import {
   assertSameOriginAdminRequest,
   readAdminFlagParam,
 } from '~~/server/utils/features/admin-request'
-import { useFeatureContext } from '~~/server/utils/features/context'
 import {
+  evaluateFeatureForEvent,
+  useFeatureContext,
+} from '~~/server/utils/features/context'
+import {
+  isActiveOptIn,
   isFeatureActive,
   loadUserFeatureState,
 } from '~~/server/utils/features/evaluate'
-import { requireFeature } from '~~/server/utils/features/guards'
+import { createFeatureUnavailableError } from '~~/server/utils/features/guards'
 import { setFeatureOptIn } from '~~/server/utils/features/opt-ins'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -41,9 +45,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const resolution = await requireFeature(event, flag, { active: false })
+  const definition = getFeatureDefinition(flag)
+  const resolution = await evaluateFeatureForEvent(event, flag, {
+    recordExposure: false,
+  })
 
-  if (getFeatureDefinition(flag)?.optIn !== 'required') {
+  if (!definition?.exposeToClient || !resolution.value) {
+    throw createFeatureUnavailableError()
+  }
+
+  if (definition.optIn !== 'required') {
     throw createError({
       message: 'This feature does not need an opt-in',
       status: 400,
@@ -63,7 +74,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     flag,
-    optedIn: body.data.optedIn,
+    optedIn: isActiveOptIn(userState?.optIns[flag]),
     active: isFeatureActive(flag, resolution, userState),
   }
 })

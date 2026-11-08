@@ -778,6 +778,8 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profiles-features.spec.ts',
     'tests/unit/pages/profile/labs.spec.ts',
     'tests/unit/utils/labs.spec.ts',
+    'tests/unit/server/utils/features/opt-ins.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
     'tests/unit/layouts/profile.spec.ts',
     'tests/unit/components/Search/Modal.spec.ts',
   ]

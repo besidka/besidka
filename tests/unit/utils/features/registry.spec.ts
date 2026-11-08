@@ -83,6 +83,14 @@ describe('feature registry', () => {
     })).toBe(true)
   })
 
+  it('shows every feature that needs an opt-in in Labs', () => {
+    const hidden = definitions.filter((definition) => {
+      return definition.optIn === 'required' && !definition.exposeToClient
+    })
+
+    expect(hidden).toEqual([])
+  })
+
   it('treats prototype keys as unknown', () => {
     expect(isFeatureKey('constructor')).toBe(false)
     expect(getFeatureDefinition('toString')).toBeUndefined()

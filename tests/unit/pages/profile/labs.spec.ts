@@ -1,6 +1,6 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import LabsPage from '../../../../app/pages/profile/labs.vue'
 import ProfileLayout from '../../../../app/layouts/profile.vue'
 
@@ -127,7 +127,7 @@ describe('profile labs page', () => {
       const wrapper = await mountPage()
 
       await wrapper.get('[data-testid="labs-toggle-artifacts.llm-bridge"]')
-        .trigger('click')
+        .setValue(true)
       await flushPromises()
 
       expect(mocks.fetch).toHaveBeenCalledWith(
@@ -137,6 +137,89 @@ describe('profile labs page', () => {
       expect(mocks.refresh).toHaveBeenCalled()
       expect(mocks.refreshFeatures).toHaveBeenCalled()
       expect(mocks.error).not.toHaveBeenCalled()
+    })
+
+  it('keeps the toggle on after a save that refreshes real data', async () => {
+    const data = ref({
+      features: [createFeature(), llmBridge],
+      objectedToExperiments: false,
+    })
+
+    mocks.refresh.mockImplementation(async () => {
+      data.value = {
+        features: [createFeature(), { ...llmBridge, optedIn: true }],
+        objectedToExperiments: false,
+      }
+    })
+    mocks.fetchData.mockReturnValue({
+      data,
+      status: ref('success'),
+      error: ref(null),
+      refresh: mocks.refresh,
+    })
+
+    const wrapper = await mountSuspended(LabsPage)
+    const selector = '[data-testid="labs-toggle-artifacts.llm-bridge"]'
+
+    await wrapper.get(selector).setValue(true)
+    await flushPromises()
+    await nextTick()
+
+    expect((wrapper.get(selector).element as HTMLInputElement).checked)
+      .toBe(true)
+  })
+
+  it('ignores a second change while saving and restores the checkbox',
+    async () => {
+      mocks.fetch.mockImplementation(() => {
+        return new Promise(() => {})
+      })
+
+      const wrapper = await mountPage()
+      const selector = '[data-testid="labs-toggle-artifacts.llm-bridge"]'
+
+      await wrapper.get(selector).setValue(true)
+      await flushPromises()
+      await wrapper.get(selector).setValue(false)
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      expect((wrapper.get(selector).element as HTMLInputElement).checked)
+        .toBe(true)
+    })
+
+  it('shows Off for a feature without opt-in that is not active', async () => {
+    const wrapper = await mountPage({
+      features: [createFeature({ active: false })],
+    })
+
+    expect(wrapper.get('[data-testid="labs-row-artifacts"]').text())
+      .toContain('Off')
+  })
+
+  it('hints that a child works only once its opt-in parent is on',
+    async () => {
+      const wrapper = await mountPage({
+        features: [
+          createFeature({
+            key: 'research.custom',
+            title: 'Custom research',
+            spend: 'foreground',
+            optIn: 'required',
+          }),
+          createFeature({
+            key: 'research.custom.max',
+            title: 'Custom research, maximum depth',
+            spend: 'foreground',
+            optIn: 'required',
+            parent: 'research.custom',
+          }),
+        ],
+      })
+
+      expect(wrapper.get(
+        '[data-testid="labs-parent-hint-research.custom.max"]',
+      ).text()).toContain('Works once Custom research is on')
     })
 
   it('rolls the toggle back and shows the error when saving fails',
@@ -152,13 +235,13 @@ describe('profile labs page', () => {
       const wrapper = await mountPage()
       const selector = '[data-testid="labs-toggle-artifacts.llm-bridge"]'
 
-      await wrapper.get(selector).trigger('click')
+      await wrapper.get(selector).setValue(true)
       await flushPromises()
 
       const pendingToggle = wrapper.get(selector).element as HTMLInputElement
 
       expect(pendingToggle.checked).toBe(true)
-      expect(pendingToggle.disabled).toBe(true)
+      expect(wrapper.get(selector).attributes('aria-busy')).toBe('true')
 
       rejectSave(Object.assign(new Error('Not found'), {
         data: { message: 'Not found', why: 'feature_unavailable' },
@@ -168,7 +251,7 @@ describe('profile labs page', () => {
       const toggle = wrapper.get(selector).element as HTMLInputElement
 
       expect(toggle.checked).toBe(false)
-      expect(toggle.disabled).toBe(false)
+      expect(wrapper.get(selector).attributes('aria-busy')).toBe('false')
       expect(mocks.error).toHaveBeenCalledWith('Not found', expect.anything())
       expect(mocks.refreshFeatures).not.toHaveBeenCalled()
     })
@@ -240,7 +323,7 @@ describe('profile labs page', () => {
       const wrapper = await mountPage()
 
       await wrapper.get('[data-testid="labs-experiments-toggle"]')
-        .trigger('click')
+        .setValue(false)
       await flushPromises()
 
       expect(mocks.fetch).toHaveBeenCalledWith(

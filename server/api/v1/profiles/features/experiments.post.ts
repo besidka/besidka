@@ -4,6 +4,10 @@ import { z } from 'zod'
 import { assertSameOriginAdminRequest }
   from '~~/server/utils/features/admin-request'
 import { useFeatureContext } from '~~/server/utils/features/context'
+import {
+  hasObjectedToExperiments,
+  loadUserFeatureState,
+} from '~~/server/utils/features/evaluate'
 import { setExperimentsObjection } from '~~/server/utils/features/opt-ins'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -32,10 +36,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const db = useDb()
+
   await setExperimentsObjection(
-    { db: useDb(), userId, logger: useRequestLogger(event) },
+    { db, userId, logger: useRequestLogger(event) },
     body.data.objected,
   )
 
-  return { objectedToExperiments: body.data.objected }
+  const userState = await loadUserFeatureState(db, userId)
+
+  return { objectedToExperiments: hasObjectedToExperiments(userState) }
 })

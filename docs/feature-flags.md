@@ -259,7 +259,8 @@ individually what is recorded and how to object (C2).
   otherwise returns the resolution plus `active`. It records the exposure.
   For a flag with `optIn: 'required'` it also needs an active opt-in **by
   default**; pass `{ active: false }` only where access without the opt-in is
-  the point (the Labs opt-in route). An opt-in counts only when every
+  the point. (The Labs opt-in route calls `evaluateFeatureForEvent` with
+  `recordExposure: false` instead, so a settings write records no exposure.) An opt-in counts only when every
   ancestor that needs one is opted in too.
 - `requireAdmin(event)` answers 404 to non-admins and 401 to signed-out
   callers, and returns the request's feature context.
@@ -503,15 +504,22 @@ As built (P0-7):
   no exposure.
 - `POST /api/v1/profiles/features/[flag]/opt-in` with `{ optedIn }`:
   same-origin only (`assertSameOriginAdminRequest`), 401 signed out, 404
-  `feature_unavailable` without access (`requireFeature(event, flag,
-  { active: false })`), 400 `opt_in_not_applicable` when the flag has
-  `optIn: 'none'`. Answers `{ flag, optedIn, active }`.
+  `feature_unavailable` when the user lacks the flag **or** the flag has no
+  `exposeToClient` (Labs never shows it, so it never takes consent for it;
+  a registry spec asserts every `optIn: 'required'` flag is exposed), 400
+  `opt_in_not_applicable` when the flag has `optIn: 'none'`. It evaluates
+  with `evaluateFeatureForEvent(event, flag, { recordExposure: false })`: a
+  settings write is not an exposure. Answers `{ flag, optedIn, active }` read
+  back from D1 after the write.
 - `POST /api/v1/profiles/features/experiments` with `{ objected }`: the
   objection switch. Objecting stamps `opted_out_at` on the reserved
   `experiments` row; withdrawing stamps `opted_in_at`.
 - Both writers live in `server/utils/features/opt-ins.ts`. They stamp only
-  the timestamp that changed (the other one stays as evidence), write a
-  `feature_audit_log` row (`actor_kind 'ui'`, actor and target are the
+  the timestamp that changed (the other one stays as evidence). D1 keeps
+  whole seconds and an equal pair reads as "off" (and as "objected"), so a
+  switch-on in the same second as the last switch-off stamps one second
+  later, and a switch-off never stamps earlier than the last switch-on.
+  They write a `feature_audit_log` row (`actor_kind 'ui'`, actor and target are the
   user, action `opt_in.set` or `experiments.set`, before and after as unix
   seconds) in the same `db.batch`, and log the ledger line from section 7.
 - The page `app/pages/profile/labs.vue` groups children under their parent
@@ -520,7 +528,10 @@ As built (P0-7):
   kind with no saved key. A `provider` requirement is met by a model
   provider **or** a gateway key; a hint shows only when every provider of the
   kind reports `missing` (`keyStatusForProvider`), never while the key
-  summary loads. Toggles update optimistically, roll back on error, then
+  summary loads. Toggles listen to `change` (a `click.prevent` toggle stays
+  visually stuck after the browser restores the pre-click state) and use
+  `aria-busy`, not `disabled`, while saving, so keyboard focus stays put.
+  They update optimistically, roll back on error, then
   refresh the page data and `refreshFeatures()` (which fires
   `features:changed`). The objection card is shown even with no features.
 - The tab is always visible (the empty state explains); it is the sixth

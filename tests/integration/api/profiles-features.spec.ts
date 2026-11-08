@@ -4,7 +4,7 @@ import type { Table } from 'drizzle-orm'
 
 const mocks = vi.hoisted(() => ({
   featureContext: vi.fn(),
-  requireFeature: vi.fn(),
+  evaluateFeatureForEvent: vi.fn(),
   loadUserFeatureState: vi.fn(),
   assertNotCrossSiteRequest: vi.fn(),
   logger: { set: vi.fn() },
@@ -33,10 +33,7 @@ vi.mock('evlog', () => ({
 
 vi.mock('~~/server/utils/features/context', () => ({
   useFeatureContext: mocks.featureContext,
-}))
-
-vi.mock('~~/server/utils/features/guards', () => ({
-  requireFeature: mocks.requireFeature,
+  evaluateFeatureForEvent: mocks.evaluateFeatureForEvent,
 }))
 
 vi.mock('~~/server/utils/features/evaluate', async (importOriginal) => {
@@ -151,14 +148,14 @@ describe('profile features routes', () => {
     vi.stubGlobal('useUnauthorizedError', unauthorized)
     vi.stubGlobal('assertNotCrossSiteRequest', mocks.assertNotCrossSiteRequest)
     mocks.featureContext.mockReset().mockResolvedValue(createFeatureContext())
-    mocks.requireFeature.mockReset().mockResolvedValue({
+    mocks.evaluateFeatureForEvent.mockReset().mockResolvedValue({
       value: true,
       variant: null,
       reason: 'ALLOW_GRANT',
       flagMetadata: {},
       active: false,
     })
-    mocks.loadUserFeatureState.mockReset()
+    mocks.loadUserFeatureState.mockReset().mockResolvedValue(createUserState())
     mocks.logger.set.mockReset()
     mocks.assertNotCrossSiteRequest.mockReset()
     mocks.routerParams = { flag: 'artifacts.llm-bridge' }
@@ -253,22 +250,40 @@ describe('profile features routes', () => {
     })
 
     it('answers 404 without access and writes nothing', async () => {
-      mocks.requireFeature.mockRejectedValue(
-        Object.assign(new Error('Not found'), {
-          status: 404,
-          why: 'feature_unavailable',
-        }),
-      )
+      mocks.evaluateFeatureForEvent.mockResolvedValue({
+        value: false,
+        variant: null,
+        reason: 'DEFAULT',
+        flagMetadata: {},
+        active: false,
+      })
 
       await expect(callRoute('[flag]/opt-in.post.ts'))
         .rejects.toMatchObject({ status: 404, why: 'feature_unavailable' })
-      expect(mocks.requireFeature).toHaveBeenCalledWith(
+      expect(mocks.evaluateFeatureForEvent).toHaveBeenCalledWith(
         expect.anything(),
         'artifacts.llm-bridge',
-        { active: false },
+        { recordExposure: false },
       )
       expect((mocks.db as ReturnType<typeof createFakeDb>).batch)
         .not.toHaveBeenCalled()
+    })
+
+    it('answers 404 for an unknown flag and the reserved experiments key',
+      async () => {
+        for (const flag of ['unknown.flag', 'experiments']) {
+          mocks.routerParams = { flag }
+
+          await expect(callRoute('[flag]/opt-in.post.ts'))
+            .rejects.toMatchObject({ status: 404 })
+        }
+      })
+
+    it('answers 404 for a flag that Labs never shows', async () => {
+      mocks.routerParams = { flag: 'artifacts.mcp' }
+
+      await expect(callRoute('[flag]/opt-in.post.ts'))
+        .rejects.toMatchObject({ status: 404, why: 'feature_unavailable' })
     })
 
     it('answers 400 for a feature that needs no opt-in', async () => {
@@ -285,11 +300,17 @@ describe('profile features routes', () => {
         .rejects.toMatchObject({ status: 400 })
     })
 
-    it('refuses a cross-origin write', async () => {
-      mocks.headers = { 'sec-fetch-site': 'same-site' }
+    it.each([
+      [{ 'sec-fetch-site': 'same-site' }],
+      [{ 'sec-fetch-site': 'cross-site' }],
+      [{ origin: 'https://evil.example' }],
+    ])('refuses a cross-origin write with %o', async (headers) => {
+      mocks.headers = headers
 
       await expect(callRoute('[flag]/opt-in.post.ts'))
         .rejects.toMatchObject({ status: 403 })
+      expect((mocks.db as ReturnType<typeof createFakeDb>).batch)
+        .not.toHaveBeenCalled()
     })
 
     it('opts in, writes the audit row and logs the ledger line', async () => {
@@ -354,8 +375,6 @@ describe('profile features routes', () => {
 
         mocks.db = createFakeDb([{ optedInAt, optedOutAt: null }])
         mocks.body = { optedIn: false }
-        mocks.loadUserFeatureState.mockResolvedValue(createUserState())
-
         const result = await callRoute('[flag]/opt-in.post.ts')
         const db = mocks.db as ReturnType<typeof createFakeDb>
         const optInWrite = db.inserts.find((entry) => {
@@ -390,6 +409,11 @@ describe('profile features routes', () => {
 
     it('records an objection on the reserved experiments row', async () => {
       mocks.body = { objected: true }
+      mocks.loadUserFeatureState.mockResolvedValue(createUserState({
+        optIns: {
+          experiments: { optedInAt: null, optedOutAt: new Date() },
+        },
+      }))
 
       const result = await callRoute('experiments.post.ts')
       const db = mocks.db as ReturnType<typeof createFakeDb>

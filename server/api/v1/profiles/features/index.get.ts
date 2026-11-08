@@ -19,7 +19,11 @@ const labsFeatureKeys = FEATURE_KEYS.filter((key) => {
 })
 
 function toParentKey(parent: string | undefined): FeatureKey | null {
-  return parent && isFeatureKey(parent) ? parent : null
+  if (!parent || !isFeatureKey(parent)) {
+    return null
+  }
+
+  return FEATURE_REGISTRY[parent].exposeToClient ? parent : null
 }
 
 export default defineEventHandler(async (event) => {

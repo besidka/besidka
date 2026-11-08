@@ -15,7 +15,7 @@
       />
     </template>
     <div
-      v-else-if="error || !data"
+      v-else-if="!data"
       role="alert"
       class="alert alert-error alert-soft"
       data-testid="labs-error"
@@ -90,6 +90,19 @@
                 />
                 {{ getLabsSpendNote(feature.spend) }}
               </span>
+              <span
+                v-if="findBlockingParentTitle(feature)"
+                class="inline-flex items-center gap-1 text-xs text-base-content/60"
+                :data-testid="`labs-parent-hint-${feature.key}`"
+              >
+                <Icon
+                  name="lucide:corner-left-up"
+                  size="14"
+                  class="shrink-0"
+                  aria-hidden="true"
+                />
+                Works once {{ findBlockingParentTitle(feature) }} is on
+              </span>
               <NuxtLink
                 v-for="kind in missingKeyKinds(feature)"
                 :key="kind"
@@ -113,20 +126,20 @@
               :aria-labelledby="`labs-title-${feature.key}`"
               :aria-describedby="`labs-description-${feature.key}`"
               :checked="isOptedIn(feature)"
-              :disabled="isSaving(feature.key)"
+              :aria-busy="isSaving(feature.key)"
               :data-testid="`labs-toggle-${feature.key}`"
-              @click.prevent="toggleOptIn(feature)"
+              @change="toggleOptIn(feature, $event)"
             >
             <span
               v-else
               class="mt-1 inline-flex shrink-0 items-center gap-1 text-xs text-base-content/60"
             >
               <Icon
-                name="lucide:check"
+                :name="feature.active ? 'lucide:check' : 'lucide:minus'"
                 size="14"
                 aria-hidden="true"
               />
-              On
+              {{ feature.active ? 'On' : 'Off' }}
             </span>
           </li>
         </ul>
@@ -174,8 +187,8 @@
             aria-describedby="labs-experiments-description"
             data-testid="labs-experiments-toggle"
             :checked="isIncludedInExperiments"
-            :disabled="isSavingExperiments"
-            @click.prevent="toggleExperiments()"
+            :aria-busy="isSavingExperiments"
+            @change="toggleExperiments($event)"
           >
         </label>
       </ProfileSecuritySectionCard>
@@ -199,7 +212,7 @@ useSeoMeta({
   robots: 'noindex, nofollow',
 })
 
-const { data, status, error, refresh } = await useFetch(
+const { data, status, refresh } = await useFetch(
   '/api/v1/profiles/features',
   { key: 'labs-features' },
 )
@@ -231,6 +244,28 @@ function isSaving(flag: string): boolean {
   return savingFlags.value.includes(flag)
 }
 
+function findBlockingParentTitle(feature: LabsFeature): string | null {
+  if (feature.optIn !== 'required' || !feature.parent) {
+    return null
+  }
+
+  const parent = data.value?.features.find((candidate) => {
+    return candidate.key === feature.parent
+  })
+
+  if (!parent || parent.optIn !== 'required' || isOptedIn(parent)) {
+    return null
+  }
+
+  return parent.title
+}
+
+function restoreCheckbox(event: Event, checked: boolean) {
+  if (event.target instanceof HTMLInputElement) {
+    event.target.checked = checked
+  }
+}
+
 function missingKeyKinds(feature: LabsFeature): FeatureKeyKind[] {
   return findMissingKeyKinds(feature, keyStatusForProvider)
 }
@@ -247,8 +282,10 @@ function setOverride(flag: string, value: boolean | null) {
   optInOverrides.value = next
 }
 
-async function toggleOptIn(feature: LabsFeature) {
+async function toggleOptIn(feature: LabsFeature, event: Event) {
   if (isSaving(feature.key)) {
+    restoreCheckbox(event, isOptedIn(feature))
+
     return
   }
 
@@ -278,8 +315,10 @@ async function toggleOptIn(feature: LabsFeature) {
   }
 }
 
-async function toggleExperiments() {
+async function toggleExperiments(event: Event) {
   if (isSavingExperiments.value) {
+    restoreCheckbox(event, isIncludedInExperiments.value)
+
     return
   }
 

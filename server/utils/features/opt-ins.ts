@@ -54,6 +54,40 @@ async function readOptInRow(
   return row
 }
 
+function toWholeSecond(date: Date): number {
+  return Math.floor(date.getTime() / MILLISECONDS_PER_SECOND)
+    * MILLISECONDS_PER_SECOND
+}
+
+/**
+ * D1 keeps whole seconds and an equal pair of timestamps reads as "off", so
+ * switching on within the same second as the last switch-off stamps one
+ * second later, and switching off never stamps earlier than the last
+ * switch-on.
+ */
+function resolveStamp(
+  existing: FeatureOptInState | undefined,
+  switchedOn: boolean,
+  now: Date,
+): Partial<FeatureOptInState> {
+  const nowSecond = toWholeSecond(now)
+
+  if (switchedOn) {
+    const lastOff = existing?.optedOutAt
+      ? toWholeSecond(existing.optedOutAt)
+      : null
+    const onSecond = lastOff !== null && lastOff >= nowSecond
+      ? lastOff + MILLISECONDS_PER_SECOND
+      : nowSecond
+
+    return { optedInAt: new Date(onSecond) }
+  }
+
+  const lastOn = existing?.optedInAt ? toWholeSecond(existing.optedInAt) : null
+
+  return { optedOutAt: new Date(Math.max(nowSecond, lastOn ?? nowSecond)) }
+}
+
 /**
  * Stamps `optedInAt` (switched on) or `optedOutAt` (switched off) on the
  * user's row for `flag`, keeping the other timestamp as evidence, and writes
@@ -65,7 +99,7 @@ async function writeOptInTimestamp(
 ): Promise<void> {
   const now = context.now ?? new Date()
   const existing = await readOptInRow(context, input.flag)
-  const stamp = input.switchedOn ? { optedInAt: now } : { optedOutAt: now }
+  const stamp = resolveStamp(existing, input.switchedOn, now)
   const next: FeatureOptInState = {
     optedInAt: existing?.optedInAt ?? null,
     optedOutAt: existing?.optedOutAt ?? null,
