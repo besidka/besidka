@@ -1,7 +1,7 @@
 <template>
   <div
     ref="element"
-    class="group w-screen sm:w-4xl sm:max-w-screen mx-auto transition-opacity"
+    class="group w-screen sm:w-4xl sm:max-w-chat-column mx-auto transition-opacity"
     :class="{
       'opacity-90 blur-md': anySelected && !isSelected,
       '[@media(pointer:coarse)]:select-none': !isSelected,

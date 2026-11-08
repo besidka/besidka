@@ -1,7 +1,7 @@
 <template>
   <div
     ref="containerRef"
-    class="grid grid-cols-3 sm:grid-cols-4 gap-2 py-1 select-none"
+    class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 py-1 select-none"
   >
     <div
       v-for="(file, index) in files"

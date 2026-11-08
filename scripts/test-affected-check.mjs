@@ -70,6 +70,7 @@ export function getAffectedTests(changedFiles) {
   const filesModuleTests = [
     'tests/unit/components/Chat/Files.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
@@ -79,6 +80,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/composables/file-manager-project-groups.spec.ts',
     'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/file-manager-sources.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/upload-with-progress.spec.ts',
     'tests/integration/api/files-upload.spec.ts',
@@ -154,6 +156,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/preferences.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/db/default-reasoning-level-migration.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
   ]
   const preferencesPageTests = [
     'tests/unit/pages/profile/preferences.spec.ts',
@@ -194,6 +197,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/connected-apps.spec.ts',
   ]
   const mcpUiParityTests = [
+    'tests/unit/server/mcp/tools/list-my-features.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-access.spec.ts',
+    'tests/unit/server/mcp/tools/set-feature-access.spec.ts',
+    'tests/unit/server/utils/mcp/private/features.spec.ts',
+    'tests/unit/server/utils/mcp/admin-scopes.spec.ts',
     'tests/unit/server/mcp/tools/branch-chat.spec.ts',
     'tests/unit/server/mcp/tools/create-file.spec.ts',
     'tests/unit/server/mcp/tools/delete-chat-message.spec.ts',
@@ -757,10 +766,63 @@ export function getAffectedTests(changedFiles) {
 
   const accountDeletionTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/utils/account/purge-feature-access.spec.ts',
     'tests/unit/utils/account/security-emails.spec.ts',
     'tests/unit/utils/auth.spec.ts',
     'tests/unit/composables/auth.spec.ts',
     'tests/unit/pages/profile/security.spec.ts',
+  ]
+
+  const featureAccessTests = [
+    'tests/unit/composables/features.spec.ts',
+    'tests/unit/plugins/features.spec.ts',
+    'tests/unit/server/api/v1/features/index.get.spec.ts',
+    'tests/unit/server/utils/db/features-schema.spec.ts',
+    'tests/unit/server/utils/features/evaluate.spec.ts',
+    'tests/unit/server/utils/features/evaluate-bindings.spec.ts',
+    'tests/unit/server/utils/features/evaluate-variants.spec.ts',
+    'tests/unit/server/utils/features/exposure.spec.ts',
+    'tests/unit/server/utils/features/guards.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/utils/account/purge-feature-access.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/integration/api/profiles-features.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/server/mcp/tools/list-my-features.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-access.spec.ts',
+    'tests/unit/server/mcp/tools/set-feature-access.spec.ts',
+    'tests/unit/server/utils/mcp/private/features.spec.ts',
+    'tests/unit/server/utils/mcp/admin-scopes.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/utils/auth-oauth.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+  ]
+
+  const featureLabsTests = [
+    'tests/integration/api/profiles-features.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/utils/labs.spec.ts',
+    'tests/unit/server/utils/features/opt-ins.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+  ]
+
+  const featureAdminTests = [
+    'tests/unit/server/utils/features/admin.spec.ts',
+    'tests/integration/api/admin-features.spec.ts',
+    'tests/integration/server/feature-audit-sweep-plugin.spec.ts',
+    'tests/unit/pages/admin/features/[flag].spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/config/seo.spec.ts',
+    'tests/e2e/admin-features.spec.ts',
+  ]
+
+  const capabilityContractTests = [
+    'tests/unit/server/capabilities/conformance.spec.ts',
+    'tests/unit/server/utils/platform/blob-store.spec.ts',
   ]
 
   const accountSecurityHubTests = [
@@ -1089,6 +1151,31 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/search/pin.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
+  ]
+
+  const sidePanelTests = [
+    'tests/unit/composables/side-panel.spec.ts',
+    'tests/unit/components/ui/SidePanel.spec.ts',
+    'tests/unit/components/Sidebar.spec.ts',
+    'tests/e2e/side-panel.spec.ts',
+  ]
+
+  const chatContextTests = [
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/server/api/chats-context.spec.ts',
+    'tests/unit/server/api/shared-context.spec.ts',
+    'tests/unit/server/utils/mcp/private-chats-read.spec.ts',
+    'tests/unit/server/mcp/tools/get-chat.spec.ts',
+    'tests/unit/utils/chat-context.spec.ts',
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/composables/chat-context.spec.ts',
+    'tests/unit/composables/chat-route.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/components/Sidebar/ChatContextButton.spec.ts',
+    'tests/unit/components/Sidebar/AuthCta.spec.ts',
+    'tests/unit/components/Sidebar/Development.spec.ts',
+    'tests/unit/components/Sidebar.spec.ts',
+    'tests/e2e/chat-context-panel.spec.ts',
   ]
 
   const messageSearchTests = [
@@ -2023,6 +2110,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
+      tests: sidePanelTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/chats\/context\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/context\.get\.ts|server\/api\/v1\/shared\/\[slug\]\/context\.get\.ts|shared\/types\/chat-context\.d\.ts|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/Sidebar\/.*\.vue|app\/components\/Sidebar\.client\.vue|app\/composables\/(chat-context|chat-route|sidebar-pin-toggle)\.ts|app\/utils\/chat-context\.ts|tests\/setup\/helpers\/chat-context-db\.ts)$/,
+      tests: chatContextTests,
+    },
+    {
+      pattern:
         /^(app\/composables\/(search-modal|files-modal-handoff)\.ts|app\/components\/Search\/.*\.vue)$/,
       tests: searchModalTests,
     },
@@ -2261,6 +2358,26 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(app\/composables\/features\.ts|app\/plugins\/10\.features\.ts|server\/api\/v1\/features\/.*\.ts|shared\/types\/features\.d\.ts|server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
+      tests: featureAccessTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|app\/layouts\/profile\.vue|app\/composables\/user-keys\.ts|server\/api\/v1\/profiles\/features\/.*\.ts|server\/utils\/features\/(opt-ins|evaluate)\.ts|shared\/types\/features\.d\.ts|shared\/utils\/provider-meta\.ts|app\/components\/Search\/Modal\.client\.vue)$/,
+      tests: featureLabsTests,
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/admin\/.*\.ts|server\/utils\/features\/admin(-queries|-request)?\.ts|shared\/utils\/features\/admin-schemas\.ts|server\/plugins\/feature-audit-sweep\.ts|app\/(layouts\/admin\.vue|middleware\/admin\.ts|pages\/admin\/.*\.vue|components\/Admin\/.*\.vue|utils\/admin-features\.ts)|app\/components\/Search\/Modal\.client\.vue|nuxt\.config\.ts)$/,
+      tests: featureAdminTests,
+    },
+    {
+      pattern:
+        /^(server\/capabilities\/.*\.ts|server\/utils\/platform\/.*\.ts|server\/mcp\/tools\/.*\.ts|server\/api\/v1\/.*\.ts|server\/utils\/mcp\/tool-scopes\.ts|shared\/utils\/features\/registry\.ts|tests\/unit\/server\/capabilities\/fixtures\/.*\.ts)$/,
+      tests: capabilityContractTests,
+    },
+    {
+      pattern:
         /^(app\/components\/Profile\/Security\/.*\.vue|server\/api\/v1\/profiles\/sessions\/.*\.ts|server\/db\/schemas\/auth\.ts)$/,
       tests: accountSecurityHubTests,
     },
@@ -2457,6 +2574,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/types\/file-manager\.d\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^app\/utils\/file-manager-sources\.ts$/,
       tests: filesModuleTests,
     },
     {

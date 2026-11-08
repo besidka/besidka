@@ -5,7 +5,7 @@
   <NuxtPwaManifest />
   <NuxtRouteAnnouncer />
   <NuxtLoadingIndicator />
-  <div class="flex flex-col h-svh overflow-hidden">
+  <div class="side-panel-inset flex flex-col h-svh overflow-hidden">
     <div
       class="js-page-content"
       :class="{
@@ -36,6 +36,7 @@
     <LazyChatShareModal />
     <LazySearchModal />
     <LazyNotificationPrompt />
+    <UiSidePanel />
     <Sidebar v-if="hasSidebar" />
     <LazyUiCursorGlow v-if="$device.isDesktop" />
     <LazyCookiesBanner />

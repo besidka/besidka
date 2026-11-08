@@ -52,4 +52,30 @@ describe('ChatInput/Files/Modal/Select/List/View', () => {
     expect(wrapper.emitted('file-click')?.[0]?.[1]).toEqual(file)
     expect(wrapper.emitted('toggle-select-all')).toHaveLength(1)
   })
+
+  it('shows the added date and a longer name only from lg', async () => {
+    const longFile = {
+      ...file,
+      name: 'Quarterly planning notes for the whole product team 2026.pdf',
+    }
+    const wrapper = await mountListView({ files: [longFile] })
+    const headers = wrapper.findAll('th').map(header => header.text())
+    const addedHeader = wrapper.findAll('th').find((header) => {
+      return header.text() === 'Added'
+    })
+    const addedCell = wrapper.get('tbody time')
+    const wideName = wrapper.get('tbody span.hidden.lg\\:block')
+    const narrowName = wrapper.get('tbody span.lg\\:hidden')
+
+    expect(headers).toContain('Added')
+    expect(addedHeader?.classes()).toEqual(expect.arrayContaining([
+      'hidden',
+      'lg:table-cell',
+    ]))
+    expect(addedCell.attributes('datetime')).toBe('2026-07-15T12:00:00.000Z')
+    expect(addedCell.element.closest('td')?.className)
+      .toContain('lg:table-cell')
+    expect(wideName.text().length).toBeGreaterThan(narrowName.text().length)
+    expect(wideName.attributes('title')).toBe(longFile.name)
+  })
 })

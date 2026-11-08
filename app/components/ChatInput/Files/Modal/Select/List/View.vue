@@ -25,6 +25,7 @@
           <span class="max-sm:sr-only">Type</span>
         </th>
         <th class="max-sm:sr-only w-20 pb-2">Size</th>
+        <th class="hidden lg:table-cell w-24 pb-2">Added</th>
         <th class="max-sm:sr-only w-28 pb-2">Expires</th>
         <th class="max-sm:sr-only w-20 pb-2">Actions</th>
       </tr>
@@ -73,12 +74,18 @@
           </div>
         </td>
         <td>
-          <div class="max-w-[150px]">
+          <div class="max-w-[150px] lg:max-w-sm">
             <span
-              class="block"
+              class="block lg:hidden"
               :title="file.name"
             >
               {{ truncateFilenameMiddle(file.name, 24) }}
+            </span>
+            <span
+              class="hidden lg:block"
+              :title="file.name"
+            >
+              {{ truncateFilenameMiddle(file.name, 48) }}
             </span>
             <span
               v-if="file.source === 'assistant'"
@@ -108,6 +115,12 @@
           <span class="text-base-content/60 text-xs">
             {{ formatFileSize(file.size) }}
           </span>
+        </td>
+        <td class="hidden lg:table-cell">
+          <UiLocalDate
+            :value="file.createdAt"
+            class="text-base-content/60 text-xs"
+          />
         </td>
         <td class="hidden sm:table-cell">
           <ChatInputFilesModalSelectExpirationBadge

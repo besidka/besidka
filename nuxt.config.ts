@@ -377,6 +377,10 @@ export default defineNuxtConfig({
     legalNoticeSweepMaxRuntimeMs: 60000,
     legalNoticeDailyCap: 300,
     researchMockEnabled: false,
+    adminEmails: '',
+    featuresDisabled: '',
+    featuresHostMode: 'byok',
+    featuresRolloutEnabled: false,
     messageSearchSweepEnabled: false,
     messageSearchSweepBatchSize: 200,
     messageSearchSweepMaxRuntimeMs: 20000,
@@ -457,6 +461,7 @@ export default defineNuxtConfig({
       '/chats/',
       '/files/',
       '/profile/',
+      '/admin',
       '/new-password',
       '/2fa',
       '/oauth/',
@@ -548,7 +553,7 @@ export default defineNuxtConfig({
     siteName: 'Besidka',
     routes: agentDiscoveryRoutes,
     excludePrefixes: {
-      extend: ['/chats', '/profile', '/files', '/shared'],
+      extend: ['/chats', '/profile', '/admin', '/files', '/shared'],
     },
     discovery: {
       link: true,
@@ -600,6 +605,8 @@ export default defineNuxtConfig({
       '/chats/**',
       '/files/**',
       '/profile/**',
+      '/admin',
+      '/admin/**',
       '/signin',
       '/signup',
       '/new-password',
@@ -1001,6 +1008,11 @@ export default defineNuxtConfig({
           {
             id: 'sidebar-pinned',
             name: 'settings_sidebar_pinned',
+            type: 'localStorage',
+          },
+          {
+            id: 'side-panel-width',
+            name: 'besidka:side-panel-width',
             type: 'localStorage',
           },
           {

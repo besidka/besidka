@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getChatTotalCost,
   getMessageMetadata,
   getMessageUsedTools,
   hasVisibleTextPart,
@@ -806,6 +807,116 @@ describe('resolveMessageMenuInfo cumulative cost totals', () => {
 
     expect(info?.costToMessage).toBe(info?.chatTotalCost)
     expect(info?.costToMessage).toBe(chatTotal)
+  })
+})
+
+describe('getChatTotalCost', () => {
+  function buildUsage(overrides: Record<string, unknown> = {}) {
+    return {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+      ...overrides,
+    }
+  }
+
+  it('returns undefined for an empty chat', () => {
+    expect(getChatTotalCost([])).toBeUndefined()
+  })
+
+  it('returns undefined when no message carries usage', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: { createdAt: 'sent' } },
+      { id: 'a1', role: 'assistant', metadata: {} },
+    ]
+
+    expect(getChatTotalCost(messages)).toBeUndefined()
+  })
+
+  it('sums every turn and is not estimated when all costs are exact', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: {} },
+      { id: 'a1', role: 'assistant', metadata: { usage: buildUsage() } },
+      { id: 'u2', role: 'user', metadata: {} },
+      {
+        id: 'a2',
+        role: 'assistant',
+        metadata: {
+          usage: buildUsage({ inputCost: 0.03, outputCost: 0.04 }),
+        },
+      },
+    ]
+
+    const total = getChatTotalCost(messages)
+
+    expect(total?.amount).toBeCloseTo(0.1)
+    expect(total?.isEstimated).toBe(false)
+  })
+
+  it('matches the chat total of the message context menu', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: {} },
+      { id: 'a1', role: 'assistant', metadata: { usage: buildUsage() } },
+      { id: 'u2', role: 'user', metadata: {} },
+      {
+        id: 'a2',
+        role: 'assistant',
+        metadata: {
+          usage: buildUsage({ inputCost: 0.05, outputCost: 0.06 }),
+        },
+      },
+    ]
+
+    expect(getChatTotalCost(messages)?.amount)
+      .toBe(resolveMessageMenuInfo(messages, 'a2')?.chatTotalCost)
+  })
+
+  it('flags the total as estimated when one turn is estimated', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: {} },
+      { id: 'a1', role: 'assistant', metadata: { usage: buildUsage() } },
+      { id: 'u2', role: 'user', metadata: {} },
+      {
+        id: 'a2',
+        role: 'assistant',
+        metadata: { usage: buildUsage({ costEstimated: true }) },
+      },
+    ]
+
+    expect(getChatTotalCost(messages)?.isEstimated).toBe(true)
+  })
+
+  it('prefers the blended totalCost of a gateway turn', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: {} },
+      {
+        id: 'a1',
+        role: 'assistant',
+        metadata: { usage: buildUsage({ totalCost: 0.5 }) },
+      },
+    ]
+
+    expect(getChatTotalCost(messages)?.amount).toBe(0.5)
+  })
+
+  it('adds the search cost and marks the total estimated', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: {} },
+      {
+        id: 'a1',
+        role: 'assistant',
+        metadata: { usage: buildUsage({ searchCost: 0.014 }) },
+      },
+    ]
+
+    const total = getChatTotalCost(messages)
+
+    expect(total?.amount).toBeCloseTo(0.01 + 0.02 + 0.014)
+    expect(total?.isEstimated).toBe(true)
   })
 })
 

@@ -508,6 +508,16 @@ retention (until the account is deleted).
   last-write-wins, because the merge is a read followed by a write. That is
   harmless while one notice is active at a time. Revisit it if two can be
   active together.
+- **Two active notices (decided 2026-11-08).** `2026-11-experimental-features`
+  (published 2026-11-15) overlaps `2026-11-legal-notices` (active until
+  2026-12-18). The banner shows only the newest active notice, so from
+  2026-11-15 an account that never dismissed the older banner sees the newer
+  one instead, and dismissing it does not bring the older one back. Accepted:
+  the older notice's email went out from 2026-10-31, the sweep keeps walking
+  every notice in its send window oldest first, and both stay in the change
+  history. The dismissal race above stays harmless because the two ids are
+  dismissed through separate banners, never together. A component test pins
+  the newest-wins behaviour with the real registry.
 
 Nothing is written to browser storage for it. The older key
 `legal-notice:dismissed:<user id>:<notice id>` is deleted on load by the

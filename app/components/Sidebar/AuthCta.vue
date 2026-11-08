@@ -44,6 +44,27 @@
       circle
     />
     <LazySidebarPushToggle />
+    <template v-if="isChatPage">
+      <UiButton
+        v-if="showPinToggle"
+        ghost
+        circle
+        :icon-only="true"
+        :icon-name="sidebarPinned ? 'lucide:pin-off' : 'lucide:pin'"
+        :title="sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'"
+        data-testid="user-menu-pin-sidebar"
+        @click="setSidebarPinned(!sidebarPinned)"
+      />
+      <UiButton
+        ghost
+        circle
+        :icon-only="true"
+        icon-name="lucide:cookie"
+        title="Cookie settings"
+        data-testid="user-menu-cookie-settings"
+        @click="openCookieSettings"
+      />
+    </template>
   </LazySidebarSubmenu>
   <template v-else>
     <UiButton
@@ -70,6 +91,20 @@ const $auth = useAuth()
 const { loggedIn } = $auth
 
 const pending = shallowRef<boolean>(false)
+const { isChatPage } = useChatRoute()
+const { showPinToggle } = useSidebarPinToggle()
+const { sidebarPinned, setSidebarPinned } = useUserSetting()
+const cookieConsentUi = useCookieConsentUi()
+
+function openCookieSettings(event: MouseEvent): void {
+  const details = (event.target as HTMLElement | null)?.closest('details')
+
+  if (details) {
+    details.open = false
+  }
+
+  cookieConsentUi.expand()
+}
 
 async function signOut() {
   pending.value = true

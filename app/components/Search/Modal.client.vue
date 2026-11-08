@@ -128,6 +128,7 @@ const SEARCH_DEBOUNCE_MS = 180
 
 const route = useRoute()
 const { loggedIn } = useAuth()
+const isAdmin = useIsAdmin()
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const {
@@ -291,6 +292,20 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Connected apps',
           run: () => goTo('/profile/connected-apps'),
         },
+        {
+          id: 'search-option-labs',
+          iconName: 'lucide:flask-conical',
+          label: 'Labs',
+          run: () => goTo('/profile/labs'),
+        },
+        ...(isAdmin.value
+          ? [{
+            id: 'search-option-admin',
+            iconName: 'lucide:shield-ellipsis',
+            label: 'Admin',
+            run: () => goTo('/admin'),
+          }]
+          : []),
       ],
     },
   )

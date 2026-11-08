@@ -1,7 +1,10 @@
 <template>
   <div
+    ref="sidebarRoot"
     data-testid="sidebar"
-    class="fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 sm:[[data-studio-active='true']_&]:!left-auto max-sm:left-0 z-50 transition-transform duration-500 ease-in-out"
+    class="side-panel-follow fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 sm:[[data-studio-active='true']_&]:!left-auto max-sm:left-0 z-50 transition-[transform,translate,scale,rotate,right] duration-500 ease-in-out"
+    :style="dockStyle"
+    :data-docked="isDockedOnSeam ? 'true' : undefined"
     :class="{
       'sm:translate-x-0': visible,
       'sm:translate-x-[calc(100%_+_(var(--spacing)_*_10))]': !visible,
@@ -12,7 +15,8 @@
       'max-sm:translate-y-0': visible && !hasSafeAreaBottom,
       'max-sm:translate-y-[var(--sab)]':
         visible && !isKeyboardVisible && hasSafeAreaBottom,
-      'sidebar-hoverable': isDesktop && !sidebarPinned && !isModalOpen,
+      'sidebar-hoverable': isDesktop && !sidebarPinned && !isModalOpen
+        && !isDockedOnSeam,
     }"
   >
     <div class="sidebar-clip">
@@ -23,6 +27,7 @@
           !p-2 max-sm:!pb-[calc(var(--spacing)_*_6_+_var(--sab))]
           max-sm:!rounded-none sm:!rounded-full
         "
+        :class="{ 'ring-1 ring-base-300': isDockedOnSeam }"
       >
         <UiButton
           to="/"
@@ -49,13 +54,16 @@
             :class="{ 'btn-active': isModalOpen }"
             @click="openSearchModal"
           />
-          <LazySidebarDevelopment />
+          <SidebarChatContextButton v-if="isChatPage" />
+          <LazySidebarDevelopment v-else />
         </template>
       </UiBubble>
     </div>
   </div>
 </template>
 <script setup lang="ts">
+import type { StyleValue } from 'vue'
+
 const route = useRoute()
 const { loggedIn } = useAuth()
 const { isDesktop } = useDevice()
@@ -63,6 +71,30 @@ const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { sidebarPinned } = useUserSetting()
 const { isModalOpen, openSearchModal } = useSearchModal()
+const { isChatPage } = useChatRoute()
+const {
+  isOpen: isSidePanelOpen,
+  isFullWidth: isSidePanelFullWidth,
+} = useSidePanel()
+const sidePanelLayout = useSidePanelLayout()
+const sidebarRoot = useTemplateRef<HTMLElement>('sidebarRoot')
+const { width: sidebarWidth } = useElementSize(sidebarRoot)
+
+const isDockedOnSeam = computed<boolean>(() => {
+  return isSidePanelOpen.value
+    && sidePanelLayout.value === 'docked'
+    && !isSidePanelFullWidth.value
+})
+
+const dockStyle = computed<StyleValue>(() => {
+  if (!isDockedOnSeam.value) {
+    return {}
+  }
+
+  return {
+    right: `calc(var(--side-panel-width, 0px) - ${sidebarWidth.value / 2}px)`,
+  }
+})
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 

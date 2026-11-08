@@ -141,3 +141,18 @@ STUDIO_GITHUB_CLIENT_SECRET=
 # are built by server/utils/push-protocol.ts (in-house WebCrypto RFC
 # 8291/8292; no Web Push library survives workerd against Apple).
 NUXT_VAPID_PRIVATE_KEY=
+
+# Feature access (docs/feature-flags.md).
+# Comma-separated admin emails. A SECRET in production and previews
+# (`wrangler secret put NUXT_ADMIN_EMAILS`), never a wrangler.jsonc var:
+# emails are personal data and the repository is public. Only accounts with a
+# verified email count, and outside dev/CI they also need 2FA turned on.
+NUXT_ADMIN_EMAILS=
+# Kill switch: comma-separated flags, or * for every feature (admins too).
+NUXT_FEATURES_DISABLED=
+# off | byok | hosted
+NUXT_FEATURES_HOST_MODE=byok
+# Rollout percentages and A/B variants stay inert until this is true.
+# Production turns it on only after the Privacy Policy notice from P0-9 has
+# taken effect (compliance pre-check C2).
+NUXT_FEATURES_ROLLOUT_ENABLED=false

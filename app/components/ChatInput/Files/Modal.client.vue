@@ -7,7 +7,10 @@
         class="js-files-modal modal modal-bottom sm:modal-middle"
         @close="onModalClosed"
       >
-        <div class="modal-box max-w-2xl max-h-[80vh] flex flex-col">
+        <div
+          data-testid="files-modal-box"
+          class="modal-box max-w-2xl max-h-[80vh] flex flex-col sm:max-w-3xl lg:max-w-5xl sm:h-[85vh] sm:max-h-[85vh]"
+        >
           <form method="dialog">
             <button
               ref="closeBtn"
@@ -16,16 +19,20 @@
               <Icon name="lucide:x" size="16" />
             </button>
           </form>
-          <h3 class="mb-4 text-2xl font-bold text-center">
+          <h3 class="shrink-0 mb-4 text-2xl font-bold text-center">
             File manager
           </h3>
 
           <!-- Storage Usage -->
           <ChatInputFilesModalStorageUsage
             ref="storageUsage"
+            class="shrink-0"
           />
 
-          <div role="tablist" class="tabs tabs-box max-xs:tabs-xs xs:tabs-sm mb-3">
+          <div
+            role="tablist"
+            class="tabs tabs-box max-xs:tabs-xs xs:tabs-sm mb-3 shrink-0"
+          >
             <input
               type="radio"
               name="file_manager_tabs"
@@ -58,6 +65,7 @@
             <ChatInputFilesModalUpload
               v-else-if="activeTab === 'upload'"
               :can-attach-media-type="canAttachMediaType"
+              class="sm:flex-1 sm:min-h-0"
               @upload="onFilesUploaded"
             />
           </KeepAlive>
