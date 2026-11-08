@@ -310,7 +310,11 @@ As built:
 - **API** under `server/api/v1/admin/`. The first statement of every handler
   is `await requireAdmin(event)` (401 signed out, 404 for everyone else), and
   every write then calls `createFeatureAdminWriteContext`, which runs
-  `assertNotCrossSiteRequest` (403 for `Sec-Fetch-Site: cross-site`). Bodies
+  `assertNotCrossSiteRequest` and `assertSameOriginAdminRequest`: a
+  `Sec-Fetch-Site` other than `same-origin` or `none` (so a `same-site`
+  sibling host too) is a 403, and without that header an `Origin` must match
+  the request origin. A client that sends neither (curl, server-side tests)
+  carries no browser cookies to forge and passes. Bodies
   and queries are validated with the zod schemas in
   `shared/utils/features/admin-schemas.ts` (`.strict()`, so unknown keys are
   a 400).
@@ -345,7 +349,10 @@ As built:
   `allowRoles: null` resets to the registry default; `variants` only for a
   flag with registry `variants` and `spend === 'none'`, keys from the
   registry, no repeats, weights summing to 10000 (`variants: []` or `null`
-  clears them). While `NUXT_FEATURES_ROLLOUT_ENABLED` is off the writer
+  clears them); an empty patch is a 400 (`why: 'empty_patch'`). A failed
+  cache bust after the committed write is logged under
+  `attributes.featureRulesCache`, not thrown. While
+  `NUXT_FEATURES_ROLLOUT_ENABLED` is off the writer
   refuses to set `rolloutBps` above 0 or to set variants (409,
   `why: 'rollout_disabled'`); setting them back to 0 is allowed. The UI
   disables both controls with a one-line note, so the server check is the
@@ -358,7 +365,11 @@ As built:
   unreachable and not implemented; the env admin is the escape hatch.
 - **Reads (C15)**: the feature list, flag detail, grant list, user search,
   role list and audit view log `{ action: 'admin.read', resource,
-  resultCount }`. The search text is never logged.
+  resultCount }`. The search text is never logged: the
+  `evlog-request-observability` enrich hook drops the query string from
+  every `/api/v1/admin/` path in the wide event's `path` and `message`
+  (`toLoggedPath`). The search uses SQLite `LIKE`, which ignores case only
+  for ASCII letters, so a Cyrillic name must be typed with its own case.
 - **Retention (C6)**: `server/plugins/feature-audit-sweep.ts` runs on the
   hourly cron (`0 * * * *`) without an off switch and deletes audit rows
   older than 365 days, 100 rows per statement and at most 10 statements per

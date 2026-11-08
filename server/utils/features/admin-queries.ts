@@ -212,7 +212,7 @@ export async function searchAdminUsers(
   query: string,
   config: FeatureEvaluationConfig,
 ) {
-  const pattern = escapeLikePattern(query.trim().toLowerCase())
+  const pattern = escapeLikePattern(query.trim())
   const users = await db
     .select({
       id: schema.users.id,
@@ -222,8 +222,8 @@ export async function searchAdminUsers(
     })
     .from(schema.users)
     .where(or(
-      sql`lower(${schema.users.email}) like ${`${pattern}%`} escape '\\'`,
-      sql`lower(${schema.users.name}) like ${`%${pattern}%`} escape '\\'`,
+      sql`${schema.users.email} like ${`${pattern}%`} escape '\\'`,
+      sql`${schema.users.name} like ${`%${pattern}%`} escape '\\'`,
     ))
     .orderBy(schema.users.email)
     .limit(ADMIN_USER_SEARCH_LIMIT)

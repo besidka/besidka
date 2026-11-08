@@ -175,7 +175,7 @@
           </span>
           <span class="text-xs text-base-content/70">
             <template v-if="grant.expiresAt">
-              Expires
+              {{ isExpired(grant) ? 'Expired' : 'Expires' }}
               <UiLocalDate :value="grant.expiresAt * 1000" />
             </template>
             <template v-else>No expiry</template>
@@ -271,6 +271,10 @@ const nextOffset = computed<number | null>(() => {
     ? data.value?.nextOffset ?? null
     : extraNextOffset.value
 })
+
+function isExpired(grant: AdminGrantRow): boolean {
+  return grant.expiresAt !== null && grant.expiresAt * 1000 < Date.now()
+}
 
 async function reloadGrants() {
   extraGrants.value = []

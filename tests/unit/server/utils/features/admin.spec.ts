@@ -245,6 +245,31 @@ describe('setFeatureRule', () => {
     assertAuditInvariants(audit!.values!)
   })
 
+  it('refuses an empty patch', async () => {
+    const { db } = createFakeDb([[]])
+    const { context } = createContext(db)
+
+    await expect(setFeatureRule(context, 'artifacts', {}))
+      .rejects.toMatchObject({ status: 400, why: 'empty_patch' })
+    expect(db.batch).not.toHaveBeenCalled()
+  })
+
+  it('logs a failed cache bust instead of failing the committed write', async () => {
+    const { db, batches } = createFakeDb([[]])
+    const { context, logger, kv } = createContext(db)
+
+    kv.delete.mockRejectedValue(new Error('kv down'))
+
+    await expect(setFeatureRule(context, 'artifacts', { enabled: false }))
+      .resolves.toMatchObject({ enabled: false })
+    expect(batches).toHaveLength(1)
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        featureRulesCache: { operation: 'bust', error: 'kv down' },
+      },
+    })
+  })
+
   it('answers 404 for a flag outside the registry', async () => {
     const { db } = createFakeDb()
     const { context } = createContext(db)

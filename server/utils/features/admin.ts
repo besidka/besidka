@@ -16,6 +16,7 @@ import { getFeatureDefinition } from '#shared/utils/features/registry'
 import * as schema from '~~/server/db/schema'
 import { createFeatureFlagSalt } from '~~/server/db/schemas/features'
 import { bustFeatureRulesCache } from '~~/server/utils/features/evaluate'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const SECONDS_PER_DAY = 24 * 60 * 60
 const MILLISECONDS_PER_SECOND = 1000
@@ -190,8 +191,9 @@ function assertRolloutChangeAllowed(
  * Creates or updates a flag's rule (a fresh salt on the first write), writes
  * the audit row in the same batch and busts the rules cache. Rollout and
  * variant changes are refused while `NUXT_FEATURES_ROLLOUT_ENABLED` is off,
- * except setting them back to zero (compliance pre-check C2). UI-only: the
- * MCP tools never call it.
+ * except setting them back to zero (compliance pre-check C2). A failed cache
+ * bust is logged, not thrown: the write is already committed and the 300 s
+ * TTL bounds the stale window. UI-only: the MCP tools never call it.
  */
 export async function setFeatureRule(
   context: FeatureAdminContext,
@@ -199,6 +201,11 @@ export async function setFeatureRule(
   patch: FeatureRulePatch,
 ) {
   requireKnownFlag(flag)
+
+  if (!Object.values(patch).some(value => value !== undefined)) {
+    throwAdminError(400, 'Nothing to change', 'empty_patch')
+  }
+
   validateVariants(flag, patch.variants)
   assertRolloutChangeAllowed(context, patch)
 
@@ -250,8 +257,6 @@ export async function setFeatureRule(
       after: next,
     }),
   ])
-  await bustFeatureRulesCache(context.kv)
-
   logFeatureAccess(context, {
     action: 'rule.set',
     flag,
@@ -259,6 +264,19 @@ export async function setFeatureRule(
     effect: next.enabled ? 'enabled' : 'disabled',
     expiresAt: null,
   })
+
+  try {
+    await bustFeatureRulesCache(context.kv)
+  } catch (exception) {
+    context.logger.set({
+      attributes: {
+        featureRulesCache: {
+          operation: 'bust',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 
   return { flag, ...next }
 }

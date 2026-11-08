@@ -285,7 +285,7 @@ const canSave = computed<boolean>(() => {
     || variantTotal.value === 0
 })
 
-watch(() => data.value?.flag, () => {
+watch(() => data.value?.flag.key, () => {
   resetDraft()
 })
 
@@ -342,7 +342,11 @@ function buildPatch() {
   }
 
   if (JSON.stringify(next.variants) !== JSON.stringify(saved.variants)) {
-    patch.variants = variantTotal.value ? next.variants : null
+    patch.variants = variantTotal.value
+      ? next.variants.map((variant) => {
+        return { key: variant.key, weightBps: Number(variant.weightBps) || 0 }
+      })
+      : null
   }
 
   return patch
@@ -377,6 +381,7 @@ async function saveRule() {
       { method: 'PATCH', body: buildPatch() },
     )
     await refresh()
+    resetDraft()
     useSuccessMessage('Rule saved')
   } catch (exception) {
     const parsedException = parseError(exception)

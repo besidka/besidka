@@ -62,6 +62,24 @@ export function moveMcpContextToAttributes(event: Record<string, unknown>) {
   delete event.mcp
 }
 
+const QUERY_FREE_PATH_PREFIXES = ['/api/v1/admin/']
+
+/**
+ * Drops the query string from admin API paths, so an admin's user search
+ * text (`?q=`) never reaches the wide event (compliance pre-check C15).
+ */
+export function toLoggedPath(path: unknown): unknown {
+  if (typeof path !== 'string' || !path.includes('?')) {
+    return path
+  }
+
+  const isQueryFree = QUERY_FREE_PATH_PREFIXES.some((prefix) => {
+    return path.startsWith(prefix)
+  })
+
+  return isQueryFree ? path.slice(0, path.indexOf('?')) : path
+}
+
 export default defineNitroPlugin((nitroApp) => {
   // Hook BOTH `request` (early, in case logger is already there) AND
   // `beforeResponse` (late, where logger is guaranteed to exist and the
@@ -84,7 +102,11 @@ export default defineNitroPlugin((nitroApp) => {
     const requestId = context.request?.requestId
     const cfRay = context.headers?.['cf-ray']
     const method = context.request?.method
-    const path = context.request?.path
+    const path = toLoggedPath(context.request?.path)
+
+    if (typeof context.event.path === 'string') {
+      context.event.path = toLoggedPath(context.event.path)
+    }
 
     if (requestId && !context.event.requestId) {
       context.event.requestId = requestId

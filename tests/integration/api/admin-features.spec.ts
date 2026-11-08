@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   useKV: vi.fn(() => ({ delete: vi.fn() })),
   logger: { set: vi.fn() },
   routerParams: {} as Record<string, string>,
+  headers: {} as Record<string, string>,
   body: {} as unknown,
   query: {} as Record<string, unknown>,
   setFeatureRule: vi.fn(),
@@ -28,6 +29,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('nuxt/server', () => ({
   defineEventHandler: (handler: unknown) => handler,
   getRouterParams: () => mocks.routerParams,
+  getRequestHeader: (_event: unknown, name: string) => mocks.headers[name],
+  getRequestURL: () => new URL('https://besidka.com/api/v1/admin'),
   readValidatedBody: async (
     _event: unknown,
     validate: (value: unknown) => unknown,
@@ -124,6 +127,7 @@ describe('admin API routes', () => {
     mocks.routerParams = { flag: 'artifacts', id: '3' }
     mocks.body = {}
     mocks.query = {}
+    mocks.headers = {}
   })
 
   afterEach(() => {
@@ -236,6 +240,33 @@ describe('admin API routes', () => {
       { userId: 5, effect: 'allow', expiresInDays: 30 },
     )
     expect(result.grant.expiresAt).toBe('2026-12-08T00:00:00.000Z')
+  })
+
+  it.each([
+    [{ 'sec-fetch-site': 'same-site' }],
+    [{ 'sec-fetch-site': 'cross-site' }],
+    [{ origin: 'https://evil.besidka.com' }],
+  ])('refuses a write that is not same-origin: %o', async (headers) => {
+    mocks.headers = headers
+    mocks.body = { userId: 5, role: 'tester' }
+    mocks.assertNotCrossSiteRequest.mockImplementation(() => {})
+
+    await expect(callRoute('roles/index.post.ts'))
+      .rejects.toMatchObject({ status: 403 })
+    expect(mocks.setUserRole).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [{ 'sec-fetch-site': 'same-origin' }],
+    [{ origin: 'https://besidka.com' }],
+    [{}],
+  ])('accepts a same-origin write: %o', async (headers) => {
+    mocks.headers = headers
+    mocks.body = { userId: 5, role: 'tester' }
+    mocks.setUserRole.mockResolvedValue({ id: 1, changed: true })
+
+    await expect(callRoute('roles/index.post.ts'))
+      .resolves.toEqual({ role: { id: 1, changed: true } })
   })
 
   it('rejects an admin role before it reaches the writer', async () => {
