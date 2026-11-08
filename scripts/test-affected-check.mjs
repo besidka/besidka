@@ -757,6 +757,9 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const featureAccessTests = [
+    'tests/unit/composables/features.spec.ts',
+    'tests/unit/plugins/features.spec.ts',
+    'tests/unit/server/api/v1/features/index.get.spec.ts',
     'tests/unit/server/utils/db/features-schema.spec.ts',
     'tests/unit/server/utils/features/evaluate.spec.ts',
     'tests/unit/server/utils/features/evaluate-bindings.spec.ts',
@@ -2266,7 +2269,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
+        /^(app\/composables\/features\.ts|app\/plugins\/10\.features\.ts|server\/api\/v1\/features\/.*\.ts|shared\/types\/features\.d\.ts|server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
       tests: featureAccessTests,
     },
     {
