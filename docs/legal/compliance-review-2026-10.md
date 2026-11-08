@@ -392,8 +392,10 @@
     (owner item 3 of the pre-check), otherwise the hour cannot be met.
   - **Preservation (Art. 6).** A takedown disables and never deletes;
     `legalHoldUntil` keeps the removed content and the report rows for six
-    months, through artifact and account deletion (A-1).
-  - **Transparency (Art. 7(2)) and reporting (Art. 11, Polish art. 26e).** If
+    months after the removal, through artifact and account deletion (A-1).
+  - **Unable to act within the hour (Art. 3(7), 3(8)).** Tell the authority
+    with the Annex III template; the Terms say so.
+  - **Transparency (Art. 7(2)) and reporting (Polish art. 26e, for TCO Art. 21).** If
     any action was taken under the regulation in a calendar year, publish a
     transparency report and send the annual data to the ABW by 1 March.
   - Steps: `docs/legal/content-incidents.md`.

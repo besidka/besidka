@@ -842,15 +842,25 @@ below as `planned` unless it says `built`.
   receives the viewer's IP address. A licence scan fails the build on a
   licence outside the allowlist, and `THIRD_PARTY_NOTICES.txt` is served from
   the runtime origin (P6). **Limit (P10):** a sandboxed frame can still
-  navigate itself (`location.href`) to any address, and the request carries
-  whatever the artifact puts in the URL; the page that replaces the runtime
-  is not under its CSP. The host treats any second iframe `load` as
-  navigation and destroys the frame (built in `packages/artifacts-protocol`;
-  wired with `frame-src <artifactsOrigin>` on the embedding pages by A-4),
-  and logs `attributes.artifacts.runtimeNavigation` with ids only. **The first
-  request has already left when the tripwire fires**, and a target that
-  answers 204 never fires a `load`. No document may claim that the frame
-  "cannot send data out" or that credential collection is impossible.
+  try to navigate itself (`location.href`) to any address, with data in the
+  URL; the page that replaces the runtime is not under its CSP. Two layers
+  (`docs/artifacts-runtime.md`): **(1) primary:** every page that embeds
+  artifacts sends `Content-Security-Policy: frame-src <artifactsOrigin>`,
+  which the A-2 e2e spec shows blocks the self-navigation before its request
+  leaves, in Chromium and WebKit, including targets that never fire `load`
+  (a 204, a download); A-4 adds it to the chat and shared-chat pages, and
+  **A-7 must add it to `/a/**` and the admin report drawer** (its
+  `routeRules` set only `frame-ancestors 'none'` today); **(2) fallback:** the
+  host treats any second iframe `load` as navigation and destroys the frame
+  (built in `packages/artifacts-protocol`), and logs
+  `attributes.artifacts.runtimeNavigation` with ids only. Without the
+  `frame-src` header the URL and whatever the new page sends while it loads
+  leave before the tripwire fires, and a 204 target is never detected.
+  Firefox was not tested. No document may claim that the frame "cannot send
+  data out" or that credential collection is impossible.
+  A-14 (planned) adds a clipboard write from the frame, text only and only
+  after a recent user gesture in the parent, and a full-screen request; no
+  new network access.
 - **(c) Viewer storage (A-5).** Per artifact and signed-in viewer
   (`artifact_storage`): opaque JSON written by the artifact's code, at most
   32 KB a value, 100 KB and 64 keys; 120 writes a minute. Only on the owner's
@@ -867,7 +877,10 @@ below as `planned` unless it says `built`.
   takedown (default; owner item 4 of the pre-check may change it).
 - **(d) Public links (A-7, A-8).** `besidka.com/a/<token>`; the token is 32
   random bytes, stored as a SHA-256 hash for lookup and encrypted
-  (`useEncryptText`) so the owner can copy the link again; never logged.
+  (`useEncryptText`) so the owner can copy the link again. The pre-check bans
+  the raw token from logs on `/a/**`; A-7 must also log the
+  `/api/v1/artifact-shares/[token]/**` routes by route pattern (or move the
+  token out of the path), because request logs carry the path.
   At most 10 active links an artifact; expiry from 1 hour to never; latest or
   pinned version; `storageAllowed` and `bridgeAllowed` start off.
   `X-Robots-Tag: noindex, nofollow`, robots meta, not in the sitemap and not
@@ -894,7 +907,8 @@ below as `planned` unless it says `built`.
   user (hashed, expiring keys); no IP stored with a report. `threat-to-life`
   and `terrorism` set a priority and a subject prefix on the mailbox email.
   Emails: receipt to the reporter (DSA Art. 16(4)), decision with redress
-  (Art. 16(5)), statement of reasons to the owner (Art. 17); templates in
+  (Art. 16(5)), statement of reasons to the owner (Art. 17), sent no later
+  than the takedown; templates in
   `docs/legal/content-incidents.md`. Admin actions: take down or reject a
   report with a 20 to 4,000 character statement; **take down by URL, token,
   artifact id or user without a report** (for a one-hour TCO order), at phone
@@ -902,7 +916,9 @@ below as `planned` unless it says `built`.
   Takedown sets `takedownAt` on the artifact so `/a/`, the shared-chat route
   and the owner view all stop (410); it never deletes. `legalHoldUntil`
   preserves content and report rows for six months under a TCO order (Art.
-  6). Report rows outlive the artifact: deleted 12 months after closing, 24
+  6), or at an authority's explicit request; no voluntary holds (the
+  runbook keeps CSAM only as disabled content, never copied). Report rows
+  outlive the artifact: deleted 12 months after closing, 24
   for a copyright removal. Emergency fallback: the global `artifacts` rule
   off. Runbook: `docs/legal/content-incidents.md`.
 - **(f) AI bridge (A-6).** `POST /api/v1/artifacts/[id]/complete` on the
@@ -1142,7 +1158,7 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 48 | The maker of the controller's AI client receives other users' ids, a recipient and possibly a transfer that the records and the Privacy Policy do not cover | Low | Low | Ids and grants only, never emails, names or reasons (C9); before the first production use the owner names the client, records its terms and safeguard (Art. 30 record, section 6.4) and adds it to the Privacy Policy under its own material notice | planned (P0-8) | Low once recorded and announced |
 | 49 | A user publishes personal data, someone else's content or special-category data in a public artifact (section 3.13 (d)) | Medium | High | Off by default, consent per link, `noindex` always, expiry and revoke, deterministic PII warning before publishing (A-7) and for MCP shares (A-8), Terms promise on third-party data and rights (A-9), Report button and form with a `privacy` category, takedown at artifact level (A-7) | planned (A-7, A-8); Terms built in A-9 | Medium (copies cannot be recalled) |
 | 50 | A malicious artifact tries to spend the viewer's key, or to send more than the viewer meant | Medium | Medium | Bridge off on every link until the owner switches it on; signed-in viewers only; direct key only; a modal before each call through a share link with the full prompt, provider, model, maximum cost and remaining calls, and "the author wrote these prompts"; 30 calls an hour per artifact, 200 a day; output at most 2,000 tokens; no tools, memory or history; consent and transfer-consent checks before the call; Terms ban (A-6, A-9) | planned (A-6) | Low |
-| 51 | An artifact navigates its own frame to an attacker's address, carrying data in the URL, or replaces itself with a fake sign-in or payment page (P10) | Medium | High | Opaque sandbox, CSP and no network (built, A-2); second-`load` tripwire that destroys the frame (built in the protocol package, wired with `frame-src` by A-4) and an id-only log line; banner and "never enter passwords or payment details" line outside the frame (A-7); A-3 tool instructions forbid navigation and credential forms; Terms ban and a `phishing` report category (A-9, A-7); e2e test of self-navigation in Chromium and WebKit (A-2) | runtime built; wiring planned (A-4, A-7) | Medium (the first request leaves before the tripwire; a 204 target is not detected) |
+| 51 | An artifact navigates its own frame to an attacker's address, carrying data in the URL, or replaces itself with a fake sign-in or payment page (P10) | Medium | High | Opaque sandbox, CSP and no network (built, A-2); `frame-src <artifactsOrigin>` on every embedding page, which blocks the navigation before its request leaves in Chromium and WebKit (A-4 for chat and shared pages; A-7 must add it to `/a/**` and the admin drawer); second-`load` tripwire that destroys the frame as the fallback (built in the protocol package) and an id-only log line; banner and "never enter passwords or payment details" line outside the frame (A-7); A-3 tool instructions forbid navigation and credential forms; Terms ban and a `phishing` report category (A-9, A-7); e2e test of self-navigation in Chromium and WebKit (A-2) | runtime built; wiring planned (A-4, A-7) | Low to medium (untested browsers such as Firefox, and any embedding page that lacks the `frame-src` header, fall back to the tripwire, which fires only after the first request has left and never for a 204 target) |
 | 52 | Stored answers reveal a viewer's knowledge, health or beliefs, to the artifact's author or by inference (section 3.13 (c)) | Medium | Medium | Storage only for signed-in viewers on links that allow it, consent gate on every storage route, no owner, admin, model or MCP access, ids-only logs, reset button, purge 30 days after the last link ends and at once on takedown (A-5); Privacy Policy states the author's code receives the values (A-9) | planned (A-5) | Medium (the author's code can still send values out, risk 51) |
 | 53 | Children use quizzes and public links, or an artifact is aimed at children | Medium | Medium | 18+ service; storage and the bridge need sign-in and a current consent record, which includes the age confirmation (A-5, A-6); Terms ban artifacts aimed at children under 13 and collecting visitors' personal data (A-9); signed-out visitors get page memory only and no cookie beyond the necessary ones | planned (A-5, A-6); Terms built in A-9 | Medium (whether user-published child-aimed artifacts make Besidka "directed to children" under COPPA is **[U]**) |
 | 54 | Cloudflare suspends the account that also runs besidka.com after abuse reports against artifact links (P11) | Low to medium | High | `artifacts.share` grant-only (invited beta); kill switch (global `artifacts` rule off, UI only); no-report admin takedown; Cloudflare abuse-response steps in `docs/legal/content-incidents.md`; runtime origin configurable in one place. Owner decision 2026-11-08: same Cloudflare account for now (pre-check option C) | planned (A-7, A-10) | Medium to high, accepted for the invited beta; option A (separate registrable domain and account) before wider public sharing |
@@ -1293,11 +1309,12 @@ the Privacy Policy or should be.
     point); (C) a separate first-use consent for storage and the bridge.
     Recommendation: A, timed with the rollout beyond `internal`. Until it is
     decided, the operating rule in section 3.13 (i) applies (risk row 59).
-21. **A frame can still send data out (risk 51).** The tripwire limits a
-    malicious artifact to one request, not zero. The fix would be a browser
-    feature (the withdrawn CSP `navigate-to`) or not running untrusted code.
-    Decision: accept, disclose plainly (Privacy Policy "Where artifacts run",
-    the banner line), and never claim otherwise.
+21. **A frame may still send data out (risk 51).** The `frame-src` header
+    blocks self-navigation in the engines tested (Chromium, WebKit); in other
+    browsers, or on a page that misses the header, the tripwire limits a
+    malicious artifact to one request, not zero. Decision: accept, disclose
+    plainly (Privacy Policy "Where artifacts run", the banner line), and
+    never claim that the frame cannot send data out.
 22. **Same Cloudflare account for public artifacts (risk 54).** An abuse
     report against an artifact link can reach the account that runs the whole
     service. Decision (owner, 2026-11-08): accept for the invited beta with
@@ -1335,8 +1352,8 @@ release a spending feature to users before P0-7 is in production.
 
 **Artifacts (2026-11-08).** Rows 49 to 60, all planned except the runtime
 isolation. With the measures in section 3.13 built, the overall conclusion
-stays medium. Three rows carry it: row 51 (self-navigation, medium, accepted
-and disclosed), row 54 (one Cloudflare account, medium to high, accepted only
+stays medium. Three rows carry it: row 51 (self-navigation, low to medium,
+accepted and disclosed; medium if `/a/` ships without `frame-src`), row 54 (one Cloudflare account, medium to high, accepted only
 for the invited beta) and row 59 (consent text, low only while the operating
 rule holds). If storage or the bridge reaches users before the consent text
 names them, treat row 59 as high. If `artifacts.share` leaves the grant-only

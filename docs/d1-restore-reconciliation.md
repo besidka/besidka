@@ -205,8 +205,15 @@ global `artifacts` rule off in `/admin` until the steps below are done.
 - **Deletions.** Artifacts and viewer storage deleted in the window come back
   as rows. Replay the deletes (artifact ids, viewer resets) from Axiom; their
   R2 objects are already gone, so reads answer 410 until then.
-- **Ids.** Artifact ids are public ids; replay by them, never by a row id that
-  a new artifact could have reused.
+- **Ids.** Public artifact ids are encoded from the integer row id, so an
+  artifact created in the window can get the same public id as one created
+  after the restore. Record `SELECT name, seq FROM sqlite_sequence` before the
+  restore (runbook step 0) and push the sequences past the old high-water mark
+  (step 3). Match a replayed event to a row by its `created_at`, version
+  SHA-256 or `r2_key`, not by the id alone.
+- **R2.** Diff the `artifacts/` prefix against `artifact_versions.r2_key`:
+  objects written in the window have no row after the restore. Delete them
+  unless they belong to an artifact under a legal hold.
 
 ### The visibility-flag migrations (closed)
 

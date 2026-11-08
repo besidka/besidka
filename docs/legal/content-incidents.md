@@ -32,11 +32,15 @@ this before `artifacts.share` is granted to anyone beyond the controller.
 1. **Removal order under Regulation (EU) 2021/784 (TCO)**: section 3, now.
 2. **`threat-to-life`, or anything that suggests a crime threatening someone's
    life or safety**, from any source: section 4, now.
-3. **`csam`**: take the content down at once (section 5), keep it under hold,
-   report to the authorities through section 4, never forward the material
-   itself by email.
+3. **`csam`**: take the content down at once (section 5) and report it to
+   the police or to Dyżurnet.pl (NASK), the Polish hotline for such material
+   (which route fits best is **[U]**, counsel question). Never forward, copy or
+   download the material. Do not set a hold of your own: keep the disabled
+   artifact as it is and preserve it only if an authority asks (possession of
+   such material is itself an offence, kk art. 202).
 4. **`terrorism` report without an order**: take down if it is plainly
-   terrorist content, hold six months as for an order, then decide on Art. 18.
+   terrorist content, then decide on Art. 18 (section 4). Set a hold only if an
+   authority asks for one or issues an order.
 5. **`phishing`**: take down the same day if the artifact imitates a sign-in or
    payment form or asks for credentials (Terms, "What you may not do").
 6. **Everything else** (`copyright`, `privacy`, `illegal`, `harmful`,
@@ -60,15 +64,20 @@ be acted on **within one hour of receipt** (Art. 3(3)).
    the admin page fails): turn the global `artifacts` rule off in `/admin`,
    which hides every artifact for everyone; revoke chat shares with the SQL in
    `docs/legal/breach-runbook.md`, section 2.6.
-3. Set the hold: `legalHoldUntil` = receipt time + six months (Art. 6). Held
-   rows and R2 objects survive artifact deletion, account deletion and the
-   report sweep (A-1). The authority can ask for a longer hold; record it.
+3. Set the hold: `legalHoldUntil` = removal time + six months (Art. 6(2)).
+   Held rows and R2 objects survive artifact deletion, account deletion and
+   the report sweep (A-1). The authority can ask for a longer hold; record it.
 4. Check the content really is gone: open the link in a private window.
 5. Confirm to the authority without undue delay what was removed and when,
    with the template in Annex II of the regulation (Art. 3(6)).
-6. Tell the user who published it (template T4), unless the authority says not
-   to (Art. 11(3)). The statement must let them ask for a review and challenge
-   the order.
+   **If you cannot act within the hour** (force majeure, a technical
+   impossibility, or an order that is manifestly wrong or lacks information),
+   tell the authority without undue delay, with the reasons, using the
+   template in Annex III (Art. 3(7) and 3(8)), and act as soon as the reason is
+   gone. The Terms promise this.
+6. Tell the user who published it (template T4). If the authority decided
+   that nothing may be disclosed (Art. 11(3)), say nothing until that period
+   ends, then send T4.
 7. If the order shows an **imminent threat to life**, also inform the
    authorities competent for criminal offences in the Member States concerned
    (TCO Art. 14(5)); if they cannot be identified, the ABW contact point and
@@ -76,8 +85,9 @@ be acted on **within one hour of receipt** (Art. 3(3)).
 8. Record the order privately (section 8).
 
 **Every 1 March** after a year with any TCO action: publish a transparency
-report (Art. 7(2)) and send the annual data to the ABW (Polish art. 26e, TCO
-Art. 11). If no action was taken, nothing is due.
+report (Art. 7(2)) and send the annual data to the ABW (Polish art. 26e, which
+serves the Member State monitoring in TCO Art. 21). If no action was taken,
+nothing is due.
 
 ## 4. Threat to life or safety (DSA Art. 18)
 
@@ -93,11 +103,12 @@ The Terms promise it.
    office; which body is the right recipient is **[U]**, a counsel question
    (pre-check, Unverified). If the Member State cannot be identified, inform
    the Polish authorities or Europol, or both (Art. 18(2)).
-3. Take the content down (section 5) and set a hold of six months unless the
-   authority asks for longer.
-4. Do not tell the user who published it if that could warn a suspect;
-   statements of reasons may be withheld where the law requires (Art. 17(1)
-   gives way to legal duties). Note the reason.
+3. Take the content down (section 5). Preserve it only if the authority asks;
+   then set `legalHoldUntil` to the period it names.
+4. Before sending the statement of reasons, ask the authority whether telling
+   the user could warn a suspect. Whether the DSA lets a provider hold back a
+   statement of reasons for that reason is **[U]**: Art. 17 has no explicit
+   carve-out for it, so this is a counsel question. Note what you did and why.
 5. Record the decision privately (section 8).
 
 Do **not** add automated scanning to find such content. The Terms promise
@@ -113,7 +124,8 @@ the artifact (A-7).
 For each decision on a report:
 
 1. Write a statement of 20 to 4,000 characters: the facts, the ground (the law
-   or the clause of the Terms), the scope.
+   or the clause of the Terms), the scope and how long it lasts. Send the
+   statement of reasons no later than the takedown itself (DSA Art. 17(1)).
 2. **Takedown**: the owner gets the statement of reasons (template T3), the
    reporter gets the decision (template T2).
 3. **Reject**: the reporter gets the decision (template T2); the owner gets
@@ -196,9 +208,7 @@ Subject: Decision on your report about <URL>
 > The decision was made by a person. No automated means were used to decide.
 >
 > If you disagree, reply to this email and a person will look at it again. You
-> can also go to a court. If you are in the EU, the Digital Services Act gives
-> you the right to use a certified out-of-court dispute settlement body where
-> one is available.
+> can also go to a court.
 >
 > Serhii Chernenko, Besidka
 
@@ -208,20 +218,22 @@ Subject: Your artifact "<title>" was <removed / restricted>
 
 > I <removed / disabled access to / revoked the public links of> your artifact
 > "<title>" (<artifact id>) on <date>. Scope: <all links and the artifact in
-> shared chats / the link <share id> only>. The artifact is disabled, not
-> deleted, and you can still delete it <unless: it is held for six months
-> because an authority ordered its removal>.
+> shared chats / the link <share id> only>, everywhere, not only in some
+> countries. Duration: <until further notice / until <date>>. The artifact is
+> disabled, not deleted, and you can still delete it <unless: it is held until
+> <date> because an authority ordered its removal or asked me to preserve
+> it>.
 >
 > Facts: <what was found, including whether the decision followed a report
 > made under the notice process, without the reporter's name>.
 > Ground: <the law: name the provision / the Terms of Use: name the clause and
 > link https://besidka.com/terms-of-use#what-you-may-not-do>.
-> Automated means: none were used to detect the content or to decide.
+> Automated means: <none were used / Besidka's automatic check noticed that
+> the artifact tried to navigate its frame, and a person then reviewed it>.
+> The decision was made by a person.
 >
 > How to challenge it: reply to this email with your reasons and a person will
-> look at it again. You can also go to a court, and, in the EU, use a
-> certified out-of-court dispute settlement body under the Digital Services
-> Act where one is available.
+> look at it again. You can also go to a court.
 >
 > Serhii Chernenko, Besidka
 
@@ -232,9 +244,8 @@ Subject: Your artifact "<title>" was removed on an authority's order
 > On <date, time UTC> I removed your artifact "<title>" (<artifact id>) and its
 > links because a competent authority, <authority>, ordered its removal under
 > Regulation (EU) 2021/784 on terrorist content online (order <reference>). The
-> reasons the authority gave are: <reasons, or "the authority asked me not to
-> share the reasons yet">. The law requires me to keep the removed content for
-> six months.
+> reasons the authority gave are: <reasons>. The law requires me to keep the
+> removed content for six months after the removal.
 >
 > You can challenge the order before the courts of the Member State whose
 > authority issued it. If you ask, I will send you a copy of the order. If the

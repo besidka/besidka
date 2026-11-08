@@ -101,8 +101,9 @@ export const LEGAL_NOTICES = [
       'Artifacts: the assistant, or an AI app you connect, can make pages, '
       + 'interactive components, diagrams and documents that run in a sealed '
       + 'frame next to the chat. I keep every version until you delete the '
-      + 'artifact or your account. Deleting a chat keeps its artifacts. They '
-      + 'reach accounts step by step, first by hand to me and to testers.',
+      + 'artifact or your account. Deleting a chat keeps its artifacts. Later '
+      + 'messages in the chat send its artifacts to the chat\'s AI provider. '
+      + 'They reach accounts step by step, first by hand to me and to testers.',
       'You can publish an artifact by link. Anyone with the link can open '
       + 'it without an account, search engines never index it, and the page '
       + 'says it was made by AI and not reviewed by me. Links an AI app '
@@ -116,13 +117,13 @@ export const LEGAL_NOTICES = [
       + 'your consent to a text that names them.',
       'Anyone can report an artifact with a form on its page. The Terms '
       + 'now forbid artifacts that imitate a sign-in or payment form, ask '
-      + 'visitors for passwords, payment details or personal data, redirect '
-      + 'them, try to spend their keys, are aimed at children under 13 or '
-      + 'serve as website hosting.',
+      + 'visitors for passwords, payment details, who they are or how to '
+      + 'contact them, redirect them, try to spend their keys, are aimed at '
+      + 'children under 13 or serve as website hosting.',
       'The Terms also say how I handle removal orders for terrorist content '
-      + '(within one hour) and that I keep removed content and the reports '
-      + 'about it for the periods the law requires, also after the artifact '
-      + 'or the account is deleted.',
+      + '(within one hour, and the removed content kept for six months as the '
+      + 'law requires). Reports about an artifact are kept for 12 months after '
+      + 'they are closed, also after the artifact or the account is deleted.',
     ],
   },
 ] as const satisfies readonly LegalNotice[]

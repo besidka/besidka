@@ -11,7 +11,7 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '5188c2be852c0596dc70f78f711c1cee039751ad4ec2c6f076bfff4f92b6b26e',
+    hash: 'ae4fe9e053d0fa9a70f3fdecef7a9254c5ecbde647c7cbe7a8eb1b911079eba5',
     classification: 'material',
     noticeId: '2026-12-artifacts',
     note: 'Artifacts: stored content and versions, public artifact links, '
@@ -22,7 +22,7 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + 'changes, effective 2026-12-19.',
   },
   'terms-of-use': {
-    hash: 'cc9278d02d633fff228b5f2bc35341998bd9bb49d52566707d71b1c220f915cb',
+    hash: 'f031d8b6eedf821cdbe4c5f1db8fcd4f34aa027ad659599089f15b4e5afae741',
     classification: 'material',
     noticeId: '2026-12-artifacts',
     note: 'Artifact links and what the publisher promises, new prohibited '
