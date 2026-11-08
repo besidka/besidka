@@ -152,7 +152,12 @@ NUXT_ADMIN_EMAILS=
 NUXT_FEATURES_DISABLED=
 # off | byok | hosted
 NUXT_FEATURES_HOST_MODE=byok
-# Rollout percentages and A/B variants stay inert until this is true.
-# Production turns it on only after the Privacy Policy notice from P0-9 has
-# taken effect (compliance pre-check C2).
-NUXT_FEATURES_ROLLOUT_ENABLED=false
+# Rollout percentages and A/B variants open on their own when the Privacy
+# notice 2026-11-experimental-features takes effect (2026-12-19). Leave this
+# empty for that. `on` forces them open (self-host, local testing), `off`
+# forces them closed (compliance pre-check C2).
+NUXT_FEATURES_ROLLOUT_ENABLED=
+
+# Only the Playwright web server sets this: it opens the e2e route that runs
+# due scheduled feature changes on demand. Never set it anywhere else.
+NUXT_FEATURES_SCHEDULE_TEST_HOOK=

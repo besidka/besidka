@@ -241,8 +241,9 @@ https://<account-id>.r2.cloudflarestorage.com`) and diff the result against
 
 ## Feature access
 
-`user_roles`, `feature_flag_rules`, `feature_grants`, `feature_opt_ins` and
-`feature_audit_log` (`server/db/schemas/features.ts`, `docs/feature-flags.md`)
+`user_roles`, `feature_flag_rules`, `feature_grants`, `feature_opt_ins`,
+`feature_rule_schedules` and `feature_audit_log`
+(`server/db/schemas/features.ts`, `docs/feature-flags.md`)
 have no foreign key to `users`, so nothing cascades to them. A restore:
 
 - brings back opt-ins that users withdrew and `experiments` objections they
@@ -250,7 +251,12 @@ have no foreign key to `users`, so nothing cascades to them. A restore:
   consent (the most serious case),
 - brings back revoked `tester` roles and revoked allow grants, and removes
   deny grants set in the window,
-- reverts kill-switch, rollout and variant changes made after B,
+- reverts kill-switch, rollout and variant changes made after B, and the
+  scheduled steps created, cancelled or applied after B: a step that applied
+  in the window is `pending` again and would apply a second time on the next
+  cron tick, so before the first tick re-create or cancel it from the
+  `schedule.create`, `schedule.cancel` and `rule.set` (`actorKind: 'schedule'`,
+  `scheduleId`) ledger lines,
 - rolls back `feature_audit_log` together with the rows it describes. The
   audit table is therefore **not a replay source**. The ledger is Axiom
   `besidka-prod`: every feature-access write logs

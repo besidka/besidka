@@ -22,6 +22,7 @@ import {
   FEATURE_ROLES,
   getFeatureDefinition,
 } from '#shared/utils/features/registry'
+import { computeFeatureRolloutGate } from '#shared/utils/features/rollout-gate'
 import * as schema from '~~/server/db/schema'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -43,17 +44,18 @@ interface FeatureRuntimeConfig {
   featuresRolloutEnabled?: unknown
 }
 
-function isEnabledFlag(value: unknown): boolean {
-  return value === true || value === 'true' || value === '1'
-}
-
 export function isAdminTwoFactorRequired(): boolean {
   return !import.meta.dev && process.env.CI !== 'true'
 }
 
 export function getFeatureEvaluationConfig(
   runtimeConfig: FeatureRuntimeConfig = useRuntimeConfig(),
+  now: Date = new Date(),
 ): FeatureEvaluationConfig {
+  const rolloutGate = computeFeatureRolloutGate(
+    runtimeConfig.featuresRolloutEnabled,
+    now,
+  )
   const hostMode = String(runtimeConfig.featuresHostMode || 'byok')
     .trim()
     .toLowerCase()
@@ -64,9 +66,8 @@ export function getFeatureEvaluationConfig(
     featuresHostMode: featureHostModes.includes(hostMode as FeatureHostMode)
       ? hostMode as FeatureHostMode
       : 'off',
-    featuresRolloutEnabled: isEnabledFlag(
-      runtimeConfig.featuresRolloutEnabled,
-    ),
+    featuresRolloutEnabled: rolloutGate.open,
+    featuresRolloutGate: rolloutGate,
     requireAdminTwoFactor: isAdminTwoFactorRequired(),
   }
 }

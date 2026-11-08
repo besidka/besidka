@@ -9,7 +9,20 @@ import {
 
 export const FEATURE_ROLES = ['admin', 'tester'] as const
 export const FEATURE_GRANT_EFFECTS = ['allow', 'deny'] as const
-export const FEATURE_AUDIT_ACTOR_KINDS = ['ui', 'mcp', 'env'] as const
+export const FEATURE_AUDIT_ACTOR_KINDS = [
+  'ui',
+  'mcp',
+  'env',
+  'schedule',
+] as const
+export const FEATURE_SCHEDULE_STATUSES = [
+  'pending',
+  'blocked',
+  'applying',
+  'applied',
+  'failed',
+  'cancelled',
+] as const
 
 export interface FeatureFlagVariantWeight {
   key: string
@@ -112,5 +125,31 @@ export const featureAuditLog = snakeCase.table(
     index('idx_feature_audit_flag').on(table.flag, table.createdAt),
     index('idx_feature_audit_target').on(table.targetUserId),
     index('idx_feature_audit_actor').on(table.actorUserId),
+  ],
+)
+
+export const featureRuleSchedules = snakeCase.table(
+  'feature_rule_schedules',
+  {
+    ...defaultSchemaIdOnly,
+    flag: text().notNull(),
+    change: text({ mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    runAt: integer({ mode: 'timestamp' }).notNull(),
+    status: text({ enum: FEATURE_SCHEDULE_STATUSES })
+      .notNull()
+      .$defaultFn(() => 'pending'),
+    requiresNoticeId: text(),
+    createdBy: integer({ mode: 'number' }),
+    claimedAt: integer({ mode: 'timestamp' }),
+    appliedAt: integer({ mode: 'timestamp' }),
+    error: text(),
+    ...defaultSchemaCreatedAtOnly,
+  },
+  table => [
+    index('idx_feature_rule_schedules_status_run_at')
+      .on(table.status, table.runAt),
+    index('idx_feature_rule_schedules_flag').on(table.flag, table.runAt),
   ],
 )

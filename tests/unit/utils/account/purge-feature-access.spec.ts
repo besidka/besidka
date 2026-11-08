@@ -9,19 +9,26 @@ const migrationsDirectory = new URL(
   import.meta.url,
 )
 
-function readFeatureAccessMigration(): string {
+function readMigration(suffix: string): string {
   const directory = readdirSync(migrationsDirectory).find((name) => {
-    return name.endsWith('_feature_access_tables')
+    return name.endsWith(suffix)
   })
 
   if (!directory) {
-    throw new Error('feature access migration not found')
+    throw new Error(`${suffix} migration not found`)
   }
 
   return readFileSync(
     new URL(`${directory}/migration.sql`, migrationsDirectory),
     'utf8',
   )
+}
+
+function readFeatureAccessMigration(): string {
+  return [
+    readMigration('_feature_access_tables'),
+    readMigration('_feature_rule_schedules'),
+  ].join('--> statement-breakpoint')
 }
 
 const createdAt = 1_762_560_000
@@ -162,6 +169,24 @@ describe('purgeUserFeatureAccess', () => {
       { flag: 'documents', updatedBy: 1 },
       { flag: 'skills', updatedBy: null },
     ])
+  })
+
+  it('nulls the creator id on scheduled steps', async () => {
+    sqlite.exec(`
+      insert into feature_rule_schedules
+        (flag, change, run_at, status, created_by, created_at)
+        values
+          ('artifacts', '{"enabled":true}', ${createdAt}, 'pending', 7,
+            ${createdAt}),
+          ('artifacts', '{"enabled":true}', ${createdAt}, 'pending', 1,
+            ${createdAt});
+    `)
+
+    await purgeUserFeatureAccess(7, database as never)
+
+    expect(sqlite.prepare(
+      'select created_by as createdBy from feature_rule_schedules order by id',
+    ).all()).toEqual([{ createdBy: null }, { createdBy: 1 }])
   })
 
   it('drops audit json that is not valid instead of failing', async () => {
