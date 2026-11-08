@@ -61,6 +61,7 @@ const featureList = [
     key: 'artifacts',
     title: 'Artifacts',
     description: 'Interactive documents and apps rendered next to the chat.',
+    available: true,
   }),
   internalFeature({
     key: 'artifacts.react',

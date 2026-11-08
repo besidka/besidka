@@ -145,6 +145,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
     'tests/unit/workers/artifacts-runtime/build.spec.ts',
   ]
+  const artifactsCoreTests = [
+    'tests/unit/server/utils/artifacts/store.spec.ts',
+    'tests/integration/api/artifacts.spec.ts',
+    'tests/unit/server/capabilities/conformance.spec.ts',
+    'tests/unit/server/utils/chats/lifecycle.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
     'tests/integration/api/profile-settings-legal-notices.spec.ts',
@@ -2942,6 +2950,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(workers\/artifacts-runtime\/|packages\/artifacts-protocol\/|tests\/e2e-artifacts\/|playwright\.artifacts\.config\.ts$)/,
       tests: artifactsRuntimeTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/artifacts\/|server\/api\/v1\/artifacts\/|server\/capabilities\/artifacts\.ts$|server\/db\/schemas\/artifacts\.ts$|shared\/utils\/artifacts\.ts$|server\/plugins\/artifact-report-sweep\.ts$|tests\/setup\/helpers\/artifacts-store\.ts$)/,
+      tests: artifactsCoreTests,
     },
     {
       pattern:

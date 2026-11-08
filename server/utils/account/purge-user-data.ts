@@ -9,6 +9,8 @@ import { buildSearchOwnerTag } from '~~/server/utils/search/query'
 import { purgeProjectKnowledge } from '~~/server/utils/knowledge/purge'
 import { buildOAuthGrantDeletes } from '~~/server/utils/account/revoke-user-oauth-grants'
 import { purgeUserFeatureAccess } from '~~/server/utils/account/purge-feature-access'
+import { useArtifactBlobStore } from '~~/server/utils/artifacts/blob-store'
+import { purgeUserArtifacts } from '~~/server/utils/artifacts/store'
 
 const r2BatchDeleteLimit = 1000
 
@@ -34,6 +36,10 @@ export interface PurgeUserDataResult {
   storageKeysDeleted: number
   storageBatches: number
   knowledgeObjectsDeleted: number
+  artifactsDeleted: number
+  artifactsHeld: number
+  artifactObjectsDeleted: number
+  artifactViewerStorageDeleted: number
   fileCacheKeysInvalidated: number
   imageGenerationLocksDeleted: number
   verificationsDeleted: number
@@ -55,6 +61,11 @@ export interface PurgeUserDataResult {
  *   - R2 objects behind `files.storageKey` (a D1 cascade never touches R2),
  *   - R2 project-knowledge objects under `knowledge/u<userId>/` (extracted
  *     text and packs, which no D1 row references by key),
+ *   - artifacts: the `artifacts`, `artifact_versions`, `artifact_shares` and
+ *     `artifact_storage` rows (no FK to `users`) and their R2 objects under
+ *     `artifacts/<userId>/`, plus the user's own viewer storage on other
+ *     artifacts; artifacts under a legal hold and every `artifact_reports`
+ *     row stay until their retention ends,
  *   - KV cache entries holding file bytes and storage quota,
  *   - KV session records: `getSession` answers from `secondaryStorage` before
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
@@ -152,6 +163,31 @@ export async function purgeUserData(
     logger.set({
       accountPurge: {
         phase: 'knowledge-r2-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    throw exception
+  }
+
+  let artifactPurge: Awaited<ReturnType<typeof purgeUserArtifacts>>
+
+  try {
+    artifactPurge = await purgeUserArtifacts({
+      db,
+      storage: useArtifactBlobStore(),
+      userId,
+      logger,
+    })
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'artifacts-delete',
         userId,
       },
       attributes: {
@@ -266,6 +302,7 @@ export async function purgeUserData(
     storageKeysDeleted: storageKeys.length,
     storageBatches,
     knowledgeObjectsDeleted: knowledgePurge.objectsDeleted,
+    ...artifactPurge,
     fileCacheKeysInvalidated: storageKeys.length,
     imageGenerationLocksDeleted: imageGenerationLocks.length,
     verificationsDeleted: verifications.length,
@@ -277,6 +314,10 @@ export async function purgeUserData(
     memoryEntriesDeleted,
     memoryBackfillJobsDeleted,
     knowledgeObjectsDeleted,
+    artifactsDeleted,
+    artifactsHeld,
+    artifactObjectsDeleted,
+    artifactViewerStorageDeleted,
     featureGrantsDeleted,
     featureOptInsDeleted,
     userRolesDeleted,
@@ -295,6 +336,10 @@ export async function purgeUserData(
         memoryEntriesDeleted,
         memoryBackfillJobsDeleted,
         knowledgeObjectsDeleted,
+        artifactsDeleted,
+        artifactsHeld,
+        artifactObjectsDeleted,
+        artifactViewerStorageDeleted,
         featureGrantsDeleted,
         featureOptInsDeleted,
         userRolesDeleted,

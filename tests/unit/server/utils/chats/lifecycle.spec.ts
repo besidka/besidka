@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
     findMessageOriginFiles: vi.fn(),
     cleanupFilesOrphanedByChatDeletion: vi.fn(),
     detachChatsFromMemory: vi.fn(),
+    detachArtifactsFromChats: vi.fn(),
     removeChatsFromSearchIndex: vi.fn(),
     removeMessageRowsFromSearchIndex: vi.fn(),
     refreshProjectActivityAt: vi.fn(),
@@ -26,6 +27,10 @@ vi.mock('~~/server/utils/files/chat-deletion-cleanup', () => {
 
 vi.mock('~~/server/utils/memory/chat-deletion', () => {
   return { detachChatsFromMemory: mocks.detachChatsFromMemory }
+})
+
+vi.mock('~~/server/utils/artifacts/store', () => {
+  return { detachArtifactsFromChats: mocks.detachArtifactsFromChats }
 })
 
 vi.mock('~~/server/utils/search/index-writer', () => {
@@ -134,6 +139,11 @@ describe('chat lifecycle', () => {
     mocks.cleanupFilesOrphanedByChatDeletion.mockResolvedValue({})
     mocks.detachChatsFromMemory.mockImplementation(async () => {
       mocks.calls.push('detach')
+    })
+    mocks.detachArtifactsFromChats.mockImplementation(async () => {
+      mocks.calls.push('detach-artifacts')
+
+      return 0
     })
     mocks.removeChatsFromSearchIndex.mockImplementation(async () => {
       mocks.calls.push('search-index')
@@ -412,11 +422,17 @@ describe('chat lifecycle', () => {
 
         expect(mocks.calls).toEqual([
           'detach',
+          'detach-artifacts',
           'search-index',
           'delete-row',
           'refresh',
           'stale',
         ])
+        expect(mocks.detachArtifactsFromChats).toHaveBeenCalledWith({
+          db,
+          userId: USER_ID,
+          chatIds: ['c1'],
+        })
         expect(mocks.cleanupFilesOrphanedByChatDeletion)
           .toHaveBeenCalledWith(originFiles, USER_ID, mocks.logger)
       })
