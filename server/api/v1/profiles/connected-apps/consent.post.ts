@@ -12,6 +12,7 @@ import { buildApprovedMcpScope } from '#shared/utils/mcp-oauth-scopes'
 import { OAUTH_CONSENT_ERROR_PARAM } from '#shared/utils/oauth-consent-errors'
 import type { OAuthConsentErrorCode } from '#shared/utils/oauth-consent-errors'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { keepMcpAdminScopesForAdmins } from '~~/server/utils/mcp/admin-scopes'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const OAUTH_QUERY_MAX_LENGTH = 8192
@@ -197,10 +198,14 @@ export default defineEventHandler(async (event) => {
     return returnToConsentPage('account_changed')
   }
 
-  const requestedScopes = new URLSearchParams(oauthQuery)
-    .get('scope')
-    ?.split(' ')
-    .filter(Boolean) ?? []
+  const requestedScopes = await keepMcpAdminScopesForAdmins(
+    new URLSearchParams(oauthQuery)
+      .get('scope')
+      ?.split(' ')
+      .filter(Boolean) ?? [],
+    Number(session.user.id),
+    useDb(),
+  )
   const approvedScope = buildApprovedMcpScope(
     requestedScopes,
     toScopeList(form.data.scope),

@@ -96,6 +96,8 @@ These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `u
 
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
+`user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymises `feature_audit_log` (see `docs/feature-flags.md`).
+
 ### MANDATORY pre-apply checklist
 
 Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:

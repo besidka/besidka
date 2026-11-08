@@ -3,9 +3,21 @@ import type { SQL } from 'drizzle-orm'
 import { SQLiteDialect } from 'drizzle-orm/sqlite-core'
 import * as schema from '../../../../server/db/schema'
 
+const featureAccessCounts = {
+  featureGrantsDeleted: 2,
+  featureOptInsDeleted: 1,
+  userRolesDeleted: 1,
+  featureAuditRowsAnonymised: 4,
+}
+
 const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(),
   invalidateStorageCache: vi.fn(),
+  purgeUserFeatureAccess: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/account/purge-feature-access', () => ({
+  purgeUserFeatureAccess: mocks.purgeUserFeatureAccess,
 }))
 
 vi.mock('~~/server/utils/files/convert-files-for-ai', () => ({
@@ -94,6 +106,7 @@ function stubBindings(
 describe('purgeUserData', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.purgeUserFeatureAccess.mockResolvedValue(featureAccessCounts)
   })
 
   it('removes every R2 object in a single batched delete call', async () => {
@@ -123,6 +136,7 @@ describe('purgeUserData', () => {
       fileCacheKeysInvalidated: 3,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
+      ...featureAccessCounts,
       sessionKeysDeleted: 1,
     })
   })
@@ -263,6 +277,7 @@ describe('purgeUserData', () => {
           memoryEntriesDeleted: result.memoryEntriesDeleted,
           memoryBackfillJobsDeleted: result.memoryBackfillJobsDeleted,
           knowledgeObjectsDeleted: 2,
+          ...featureAccessCounts,
         },
       },
     }))
@@ -418,8 +433,69 @@ describe('purgeUserData', () => {
       fileCacheKeysInvalidated: 0,
       imageGenerationLocksDeleted: 1,
       verificationsDeleted: 2,
+      ...featureAccessCounts,
       sessionKeysDeleted: 1,
     })
+  })
+
+  it('purges feature access scoped to the user with the same db', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 42, logger })
+
+    expect(mocks.purgeUserFeatureAccess).toHaveBeenCalledTimes(1)
+    expect(mocks.purgeUserFeatureAccess).toHaveBeenCalledWith(42, db)
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: {
+        accountPurge: expect.objectContaining(featureAccessCounts),
+      },
+    }))
+  })
+
+  it('rethrows a feature access failure so the deletion aborts', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    mocks.purgeUserFeatureAccess.mockRejectedValueOnce(
+      new Error('d1 unavailable'),
+    )
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({ userId: 1, logger })).rejects.toThrow(
+      'd1 unavailable',
+    )
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: expect.objectContaining({
+        phase: 'feature-access-purge',
+        userId: 1,
+      }),
+    }))
+  })
+
+  it('keeps feature access rows when an earlier step aborts', async () => {
+    const db = createDb([], ['token-a'])
+    const storage = createStorage()
+    const kv = createKv()
+
+    kv.delete.mockRejectedValueOnce(new Error('kv unavailable'))
+    stubBindings(db, storage, kv)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await expect(purgeUserData({
+      userId: 1,
+      logger: { set: vi.fn() },
+    })).rejects.toThrow('kv unavailable')
+    expect(mocks.purgeUserFeatureAccess).not.toHaveBeenCalled()
   })
 
   it('rethrows an R2 failure so the account deletion aborts', async () => {
@@ -436,6 +512,7 @@ describe('purgeUserData', () => {
       'r2 unavailable',
     )
     expect(db.delete).toHaveBeenCalledTimes(2)
+    expect(mocks.purgeUserFeatureAccess).not.toHaveBeenCalled()
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
       accountPurge: expect.objectContaining({
         phase: 'r2-delete',
