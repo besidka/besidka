@@ -42,6 +42,7 @@ const DESTRUCTIVE_TOOLS = [
   'delete_files',
   'reset_memory',
   'update_settings',
+  'set_feature_access',
 ]
 
 function readToolSources() {
@@ -117,6 +118,40 @@ describe('mcp tool scopes', () => {
     expect(getMcpToolRequiredScopes('revoke_chat_shares'))
       .toEqual(['chats:write'])
     expect(isMcpDeleteTool('update_chat')).toBe(false)
+  })
+
+  it('puts the feature admin tools behind admin:features', () => {
+    expect(getMcpToolRequiredScopes('list_my_features'))
+      .toEqual(['settings:read'])
+
+    for (const name of [
+      'list_feature_flags',
+      'list_feature_access',
+      'set_feature_access',
+    ] as const) {
+      expect(getMcpToolRequiredScopes(name), name).toEqual(['admin:features'])
+      expect(isMcpDeleteTool(name), name).toBe(false)
+    }
+
+    expect(isMcpWriteScope('admin:features')).toBe(true)
+    expect(isMcpWriteTool('set_feature_access')).toBe(true)
+    expect(isMcpWriteTool('list_feature_flags')).toBe(false)
+    expect(isMcpWriteTool('list_feature_access')).toBe(false)
+  })
+
+  it('never lets a tool write feature rules', () => {
+    for (const tool of readToolSources()) {
+      const source = readFileSync(`${TOOLS_DIRECTORY}${tool.file}`, 'utf8')
+
+      expect(source, tool.file).not.toMatch(/setFeatureRule|featureFlagRules/)
+    }
+
+    const privateFeatures = readFileSync(fileURLToPath(new URL(
+      '../../../../../server/utils/mcp/private/features.ts',
+      import.meta.url,
+    )), 'utf8')
+
+    expect(privateFeatures).not.toMatch(/setFeatureRule|featureFlagRules/)
   })
 
   it('keeps the delete scope a write scope', () => {
