@@ -20,7 +20,9 @@ describe('parseFeatureRolloutOverride', () => {
     ['', 'auto'],
     [undefined, 'auto'],
     ['auto', 'auto'],
-    ['maybe', 'auto'],
+    ['maybe', 'off'],
+    ['no', 'off'],
+    ['disabled', 'off'],
   ])('reads %j as %s', (value, expected) => {
     expect(parseFeatureRolloutOverride(value)).toBe(expected)
   })

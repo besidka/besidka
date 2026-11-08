@@ -15,14 +15,26 @@ mockNuxtImport('useConfirm', () => mocks.confirm)
 mockNuxtImport('useSuccessMessage', () => mocks.success)
 mockNuxtImport('useErrorMessage', () => mocks.error)
 
+const DAY_MS = 86_400_000
+const gateMs = Date.now() + 60 * DAY_MS
+const gateDate = new Date(gateMs).toISOString().slice(0, 10)
+
 const closedGate = {
   open: false,
   reason: 'notice_pending',
   override: 'auto',
   noticeId: '2026-11-experimental-features',
-  effectiveAt: '2099-12-19',
-  effectiveAtMs: Date.parse('2099-12-19T00:00:00Z'),
-  description: 'Closed until the Privacy notice takes effect on 2099-12-19.',
+  effectiveAt: gateDate,
+  effectiveAtMs: gateMs,
+  description: `Closed until the Privacy notice takes effect on ${gateDate}.`,
+}
+
+function localInput(daysAhead: number): string {
+  const date = new Date(Date.now() + daysAhead * DAY_MS)
+  const pad = (value: number) => String(value).padStart(2, '0')
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
+    + `-${pad(date.getDate())}T10:00`
 }
 
 function createSchedule(overrides: Record<string, unknown> = {}) {
@@ -70,7 +82,7 @@ describe('Admin feature schedules', () => {
     const wrapper = await mountSchedules()
 
     expect(wrapper.get('[data-testid="admin-schedule-gate"]').text())
-      .toContain('2099-12-19')
+      .toContain(gateDate)
     expect(wrapper.find('[data-testid="admin-schedule-empty"]').exists())
       .toBe(true)
   })
@@ -94,7 +106,7 @@ describe('Admin feature schedules', () => {
     })
 
     expect(wrapper.get('[data-testid="admin-schedule-step-1"]').text())
-      .toContain('Applies after 2099-12-19')
+      .toContain(`Applies after ${gateDate}`)
     expect(wrapper.get('[data-testid="admin-schedule-status-2"]').text())
       .toBe('applied')
     expect(wrapper.get('[data-testid="admin-schedule-step-3"]').text())
@@ -170,14 +182,14 @@ describe('Admin feature schedules', () => {
   it('flags a time that another open step already uses', async () => {
     const wrapper = await mountSchedules({
       schedules: [createSchedule({
-        runAt: Math.floor(new Date('2099-01-02T10:00').getTime() / 1000),
+        runAt: Math.floor(new Date(localInput(10)).getTime() / 1000),
       })],
     })
 
     await wrapper.get('[data-testid="admin-schedule-add-step"]')
       .trigger('click')
     await wrapper.get('[data-testid="admin-schedule-run-at-0"]')
-      .setValue('2099-01-02T10:00')
+      .setValue(localInput(10))
     await wrapper.get('[data-testid="admin-schedule-testers-0"]')
       .setValue(true)
     await nextTick()
@@ -192,13 +204,13 @@ describe('Admin feature schedules', () => {
     await wrapper.get('[data-testid="admin-schedule-add-step"]')
       .trigger('click')
     await wrapper.get('[data-testid="admin-schedule-run-at-0"]')
-      .setValue('2099-01-02T10:00')
+      .setValue(localInput(10))
     await wrapper.get('[data-testid="admin-schedule-rollout-toggle-0"]')
       .setValue(true)
     await nextTick()
 
     expect(wrapper.get('[data-testid="admin-schedule-gate-hint-0"]').text())
-      .toContain('Applies after 2099-12-19')
+      .toContain(`Applies after ${gateDate}`)
     expect(wrapper.find('[data-testid="admin-schedule-error-0"]').exists())
       .toBe(false)
   })
@@ -211,11 +223,11 @@ describe('Admin feature schedules', () => {
     await wrapper.get('[data-testid="admin-schedule-add-step"]')
       .trigger('click')
     await wrapper.get('[data-testid="admin-schedule-run-at-0"]')
-      .setValue('2099-12-19T10:00')
+      .setValue(localInput(20))
     await wrapper.get('[data-testid="admin-schedule-testers-0"]')
       .setValue(true)
     await wrapper.get('[data-testid="admin-schedule-run-at-1"]')
-      .setValue('2099-12-26T10:00')
+      .setValue(localInput(27))
     await wrapper.get('[data-testid="admin-schedule-rollout-toggle-1"]')
       .setValue(true)
     await wrapper.get('[data-testid="admin-schedule-rollout-1"]')
@@ -235,11 +247,11 @@ describe('Admin feature schedules', () => {
         body: {
           steps: [
             {
-              runAt: new Date('2099-12-19T10:00').toISOString(),
+              runAt: new Date(localInput(20)).toISOString(),
               grantRoles: ['tester'],
             },
             {
-              runAt: new Date('2099-12-26T10:00').toISOString(),
+              runAt: new Date(localInput(27)).toISOString(),
               rolloutBps: 2500,
             },
           ],
@@ -257,7 +269,7 @@ describe('Admin feature schedules', () => {
     await wrapper.get('[data-testid="admin-schedule-add-step"]')
       .trigger('click')
     await wrapper.get('[data-testid="admin-schedule-run-at-0"]')
-      .setValue('2099-12-19T10:00')
+      .setValue(localInput(20))
     await wrapper.get('[data-testid="admin-schedule-testers-0"]')
       .setValue(true)
     await nextTick()

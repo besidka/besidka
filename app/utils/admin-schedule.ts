@@ -172,6 +172,16 @@ export function scheduleStatusTone(
   }
 }
 
+function parseGateDate(effectiveAt: string | null | undefined): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(effectiveAt ?? '')
+
+  if (!match) {
+    return null
+  }
+
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+}
+
 /**
  * Rows for the "Staged plan" helper: testers first, then a 25% rollout and
  * 100%, a week apart, starting on the notice date at 10:00 local time (or
@@ -184,7 +194,7 @@ export function buildStagedPlanRows(
   firstKey: number,
 ): DraftScheduleStep[] {
   const earliest = new Date(now.getTime() + MILLISECONDS_PER_DAY)
-  const gateStart = gate?.effectiveAtMs ? new Date(gate.effectiveAtMs) : null
+  const gateStart = parseGateDate(gate?.effectiveAt)
   const start = new Date(
     gateStart && gateStart.getTime() > earliest.getTime()
       ? gateStart

@@ -140,7 +140,7 @@ export function buildAuditInsert(
   })
 }
 
-function validateVariants(
+export function validateVariants(
   flag: string,
   variants: FeatureRulePatch['variants'],
 ) {

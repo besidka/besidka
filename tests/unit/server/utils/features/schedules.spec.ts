@@ -228,6 +228,45 @@ describe('feature schedules', () => {
     ).get()).toEqual({ error: null })
   })
 
+  it('does not let a later step overtake an earlier blocked one', async () => {
+    seedStep('2026-11-20T08:00:00Z', { rolloutBps: 5000 })
+    seedStep('2026-11-20T08:30:00Z', { rolloutBps: 0 })
+
+    const first = await run(beforeNotice)
+
+    expect(first).toMatchObject({ applied: 0, blocked: 1, skipped: 1 })
+    expect(statuses()).toEqual(['blocked', 'pending'])
+
+    const second = await run(beforeNotice)
+
+    expect(second).toMatchObject({ applied: 0 })
+    expect(statuses()).toEqual(['blocked', 'pending'])
+
+    const third = await run(afterNotice)
+
+    expect(third.applied).toBe(2)
+    expect(sqlite.prepare(
+      'select json_extract(after, \'$.rolloutBps\') as bps '
+      + 'from feature_audit_log order by id',
+    ).all()).toEqual([{ bps: 5000 }, { bps: 0 }])
+  })
+
+  it('still reaches a due step of another flag behind many blocked ones', async () => {
+    for (let index = 0; index < 30; index += 1) {
+      seedStep(`2026-11-10T08:${String(index).padStart(2, '0')}:00Z`, {
+        rolloutBps: 1000,
+      }, { status: 'blocked' })
+    }
+
+    seedStep('2026-11-20T08:00:00Z', { enabled: false }, {
+      flag: 'documents',
+    })
+
+    const result = await run(beforeNotice)
+
+    expect(result).toMatchObject({ applied: 1, blocked: 30 })
+  })
+
   it('does not block a step that does not raise the rollout', async () => {
     seedStep('2026-11-20T08:00:00Z', { allowRoles: ['admin', 'tester'] })
     seedStep('2026-11-20T08:10:00Z', { rolloutBps: 0 })
@@ -257,7 +296,9 @@ describe('feature schedules', () => {
     expect(statuses()).toEqual(['failed'])
     expect(sqlite.prepare(
       'select error from feature_rule_schedules',
-    ).get()).toEqual({ error: expect.stringContaining('Feature not found') })
+    ).get()).toEqual({
+      error: 'Feature not found (unknown_flag)',
+    })
     expect(notify).toHaveBeenCalledWith(expect.objectContaining({
       outcome: 'failed',
     }))
@@ -387,6 +428,16 @@ describe('feature schedules', () => {
       await expect(createFeatureSchedules(context, 'artifacts', {
         steps: [{ runAt: '2026-12-01T10:00:00.000Z', enabled: false }],
       })).rejects.toMatchObject({ status: 400 })
+    })
+
+    it('refuses variants the registry does not allow at create time', async () => {
+      await expect(createFeatureSchedules(createContext(), 'artifacts', {
+        steps: [{
+          runAt: '2026-12-01T10:00:00.000Z',
+          variants: [{ key: 'nope', weightBps: 10000 }],
+        }],
+      })).rejects.toMatchObject({ status: 400 })
+      expect(statuses()).toEqual([])
     })
 
     it('cancels an open step once and refuses a step that already ran', async () => {

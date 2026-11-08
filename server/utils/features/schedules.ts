@@ -29,11 +29,12 @@ import {
   requireKnownFlag,
   setFeatureRule,
   throwAdminError,
+  validateVariants,
 } from '~~/server/utils/features/admin'
 import { emitScheduledJobEvent } from '~~/server/utils/scheduled-job-logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
-export const FEATURE_SCHEDULE_APPLY_BATCH_SIZE = 20
+export const FEATURE_SCHEDULE_APPLY_BATCH_SIZE = 200
 const STALE_CLAIM_ERROR = 'The change may or may not have been written: '
   + 'check the rule and the audit log before scheduling it again.'
 const ERROR_MAX_LENGTH = 500
@@ -168,6 +169,8 @@ export async function createFeatureSchedules(
   const steps = input.steps.map((step) => {
     const { runAt, ...change } = step
     const patch = toScheduleRulePatch(change)
+
+    validateVariants(flag, patch.variants)
 
     return {
       runAt: new Date(Math.floor(Date.parse(runAt) / 1000) * 1000),
@@ -333,12 +336,16 @@ async function claimSchedule(
 async function finishSchedule(
   db: ScheduleDatabase,
   scheduleId: number,
+  fromStatuses: ScheduleRow['status'][],
   values: Partial<typeof schema.featureRuleSchedules.$inferInsert>,
 ): Promise<ScheduleRow | null> {
   const [row] = await db
     .update(schema.featureRuleSchedules)
     .set(values)
-    .where(eq(schema.featureRuleSchedules.id, scheduleId))
+    .where(and(
+      eq(schema.featureRuleSchedules.id, scheduleId),
+      inArray(schema.featureRuleSchedules.status, fromStatuses),
+    ))
     .returning()
 
   return row ?? null
@@ -363,11 +370,13 @@ function isRolloutDisabledError(exception: unknown): boolean {
 
 function describeFailure(exception: unknown): string {
   const why = (exception as { why?: unknown } | null)?.why
-  const message = exceptionMessage(exception)
 
-  return truncateError(
-    typeof why === 'string' && why ? `${message} (${why})` : message,
-  )
+  if (typeof why !== 'string' || !why) {
+    return 'The change could not be applied because of an unexpected error. '
+      + 'The details are in the logs.'
+  }
+
+  return truncateError(`${exceptionMessage(exception)} (${why})`)
 }
 
 /**
@@ -440,18 +449,27 @@ export async function applyDueFeatureSchedules(
     )
     .limit(FEATURE_SCHEDULE_APPLY_BATCH_SIZE)
 
+  const blockedFlags = new Set<string>()
+
   for (const row of due) {
     const patch = toPatch(row)
 
     if (patch && scheduleChangeNeedsRolloutGate(patch) && !gate.open) {
       if (row.status !== 'blocked') {
-        await finishSchedule(input.db, row.id, {
+        await finishSchedule(input.db, row.id, ['pending'], {
           status: 'blocked',
           error: describeBlockedReason(gate),
         })
       }
 
+      blockedFlags.add(row.flag)
       result.blocked += 1
+
+      continue
+    }
+
+    if (blockedFlags.has(row.flag)) {
+      result.skipped += 1
 
       continue
     }
@@ -504,7 +522,7 @@ export async function applyDueFeatureSchedules(
         patch,
       )
 
-      const applied = await finishSchedule(input.db, claimed.id, {
+      const applied = await finishSchedule(input.db, claimed.id, ['applying'], {
         status: 'applied',
         appliedAt: input.now,
         error: null,
@@ -522,7 +540,7 @@ export async function applyDueFeatureSchedules(
       }
     } catch (exception) {
       if (isRolloutDisabledError(exception)) {
-        await finishSchedule(input.db, claimed.id, {
+        await finishSchedule(input.db, claimed.id, ['applying'], {
           status: 'blocked',
           error: describeBlockedReason(gate),
         })
@@ -531,7 +549,7 @@ export async function applyDueFeatureSchedules(
       } else {
         status = 500
 
-        const failed = await finishSchedule(input.db, claimed.id, {
+        const failed = await finishSchedule(input.db, claimed.id, ['applying'], {
           status: 'failed',
           error: describeFailure(exception),
         })
@@ -541,7 +559,7 @@ export async function applyDueFeatureSchedules(
           attributes: {
             featureSchedule: {
               outcome: 'failed',
-              error: describeFailure(exception),
+              error: exceptionMessage(exception),
             },
           },
         })

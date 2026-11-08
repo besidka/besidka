@@ -9,6 +9,7 @@ import {
 export const FEATURE_SCHEDULE_MAX_STEPS = 12
 export const FEATURE_SCHEDULE_MAX_OPEN_PER_FLAG = 24
 export const FEATURE_SCHEDULE_STALE_CLAIM_MS = 10 * 60 * 1000
+export const FEATURE_SCHEDULE_MAX_LEAD_DAYS = 730
 export const FEATURE_SCHEDULE_ALWAYS_ALLOWED_ROLES = ['admin'] as const
 
 export const FEATURE_SCHEDULE_OPEN_STATUSES = ['pending', 'blocked'] as const
@@ -111,6 +112,7 @@ export type FeatureScheduleIssueCode
     | 'past'
     | 'not_increasing'
     | 'duplicate_time'
+    | 'too_far'
 
 export interface FeatureScheduleIssue {
   index: number
@@ -148,6 +150,17 @@ export function validateScheduleSteps(
         index,
         code: 'past',
         message: 'Pick a date and time in the future.',
+      })
+    }
+
+    if (
+      seconds * 1000 - options.now.getTime()
+      > FEATURE_SCHEDULE_MAX_LEAD_DAYS * 86_400_000
+    ) {
+      issues.push({
+        index,
+        code: 'too_far',
+        message: 'Pick a date within the next two years.',
       })
     }
 

@@ -24,12 +24,12 @@ export interface FeatureRolloutGate {
 }
 
 const OVERRIDE_ON_VALUES = new Set(['on', 'true', '1'])
-const OVERRIDE_OFF_VALUES = new Set(['off', 'false', '0'])
 
 /**
  * Reads `NUXT_FEATURES_ROLLOUT_ENABLED`. `on`, `true` and `1` force the gate
- * open (self-host), `off`, `false` and `0` force it closed, anything else
- * (an empty value included) leaves it to the Privacy notice date.
+ * open (self-host), `off`, `false` and `0` force it closed, and an empty
+ * value or `auto` leaves it to the Privacy notice date. Any other value is a
+ * typo and fails closed: it forces the gate off.
  */
 export function parseFeatureRolloutOverride(
   value: unknown,
@@ -48,11 +48,11 @@ export function parseFeatureRolloutOverride(
     return 'on'
   }
 
-  if (OVERRIDE_OFF_VALUES.has(normalised)) {
-    return 'off'
+  if (!normalised || normalised === 'auto') {
+    return 'auto'
   }
 
-  return 'auto'
+  return 'off'
 }
 
 /**

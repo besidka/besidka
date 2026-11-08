@@ -235,8 +235,8 @@ the environment does not force them off:
 evaluated per request in `getFeatureEvaluationConfig`, so it opens on its own
 at the effective instant with no deploy. `NUXT_FEATURES_ROLLOUT_ENABLED` is
 now only an override: `on`, `true` or `1` force it open (self-host, local
-testing), `off`, `false` or `0` force it closed, an empty value follows the
-notice. **If production still has the variable set to `false`, the gate never
+testing), `off`, `false` or `0` force it closed, an empty value or `auto`
+follows the notice, and any other value (a typo) fails closed. **If production still has the variable set to `false`, the gate never
 opens: unset it.** Until the gate opens, production grants go only to the
 owner and to named testers who were told individually what is recorded and
 how to object (C2).
@@ -720,7 +720,8 @@ same audited path as a manual edit.
 - **Validation** (`validateScheduleSteps`, shared by the form and the
   server): every step changes something, lies in the future, is strictly
   after the step before it and shares no second with an open step of the
-  flag; at most 12 steps per request and 24 open steps per flag. "Give it to
+  flag; at most 12 steps per request and 24 open steps per flag; no further than two
+  years ahead; variants are validated like a manual write. "Give it to
   all testers" is `grantRoles: ['tester']`, never `admin` (C7); it is stored
   as `allowRoles: ['admin', 'tester']` because a rule's `allowRoles` replaces
   the registry default. Testers cannot be removed by a step, only by a
@@ -745,11 +746,15 @@ same audited path as a manual edit.
   `UPDATE ... SET status = 'applying' WHERE id = ? AND status IN ('pending',
   'blocked') AND NOT EXISTS (another 'applying' step of the flag) RETURNING`.
   Overlapping runs cannot apply a step twice, and steps of one flag never run
-  out of order or race on the rule row. A claim older than 10 minutes means
+  out of order or race on the rule row. Once a step of a flag is blocked,
+  later due steps of that flag wait behind it, so a 0% rollback cannot
+  overtake an earlier blocked 50%. Status writes are conditional on the
+  expected status, so a cancel is never overwritten. A claim older than 10 minutes means
   the Worker died mid-write: it becomes `failed` with a note to check the
   rule and the audit log, and is never re-run.
-- **Failure.** A step that throws becomes `failed` with the error and admins
-  are notified; the cron never retries it. The owner schedules it again.
+- **Failure.** A step that throws becomes `failed` with a short reason (the
+  error `why` code; unexpected errors show a generic text and keep the detail
+  in the wide event) and admins are notified; the cron never retries it. The owner schedules it again.
 - **The gate.** A rollout step that comes due while the gate is closed
   becomes `blocked` with the reason and is re-checked on every run; once the
   notice is in force (or the override is `on`) it applies. A forced `off`

@@ -101,6 +101,13 @@ describe('validateScheduleSteps', () => {
     )).toEqual([expect.objectContaining({ code: 'duplicate_time' })])
   })
 
+  it('flags a step more than two years ahead', () => {
+    expect(validateScheduleSteps(
+      [step('2029-01-01T10:00:00Z')],
+      { now, existingRunAtMs: [] },
+    )).toEqual([expect.objectContaining({ code: 'too_far' })])
+  })
+
   it('flags a step that changes nothing', () => {
     expect(validateScheduleSteps(
       [{ runAt: '2026-12-01T10:00:00Z' }],
