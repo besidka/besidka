@@ -1143,6 +1143,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput.spec.ts',
   ]
 
+  const sidePanelTests = [
+    'tests/unit/composables/side-panel.spec.ts',
+    'tests/unit/components/ui/SidePanel.spec.ts',
+    'tests/unit/components/Sidebar.spec.ts',
+    'tests/e2e/side-panel.spec.ts',
+  ]
+
   const messageSearchTests = [
     'tests/unit/utils/search/text.spec.ts',
     'tests/unit/utils/search/ukrainian-stemmer.spec.ts',
@@ -2072,6 +2079,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/components\/Sidebar\.client\.vue$/,
       tests: ['tests/unit/components/Sidebar.spec.ts'],
+    },
+    {
+      pattern:
+        /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
+      tests: sidePanelTests,
     },
     {
       pattern:

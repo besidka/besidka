@@ -22,7 +22,7 @@
   </div>
   <template v-else-if="data">
     <ChatContainer class="!gap-0 pb-16">
-      <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24">
+      <div class="w-screen sm:w-4xl sm:max-w-chat-column mx-auto px-4 sm:px-24">
         <div
           v-if="showOpenInSafariHint"
           data-testid="shared-open-in-safari-hint"

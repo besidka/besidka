@@ -30,9 +30,9 @@ export const LEGAL_DOCUMENT_REVISIONS = {
       + '2026-11-legal-notices changes, effective 2026-12-04.',
   },
   'cookie-policy': {
-    hash: '6adda7284ef2cc3f0893193c061470953763750bd56dc5edec91db3b519fc8e5',
+    hash: 'b8ab26cf96d8978d0818bff9915fca174222cd69560d6093d6544c3c5ddf097e',
     classification: 'minor',
-    note: 'Removed the legal-notice:dismissed:* key; dismissal is now an '
-      + 'account setting and nothing is stored in the browser for it.',
+    note: 'Added the besidka:side-panel-width Preferences row, a '
+      + 'consent-gated UI width like settings_sidebar_pinned; no new purpose.',
   },
 } as const satisfies Record<LegalDocumentId, LegalDocumentRevision>

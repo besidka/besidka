@@ -1009,6 +1009,11 @@ export default defineNuxtConfig({
             type: 'localStorage',
           },
           {
+            id: 'side-panel-width',
+            name: 'besidka:side-panel-width',
+            type: 'localStorage',
+          },
+          {
             id: 'favorite-models',
             name: 'settings_favorite_models',
             type: 'localStorage',

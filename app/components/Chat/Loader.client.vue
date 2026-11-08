@@ -1,7 +1,7 @@
 <template>
   <div
     data-testid="chat-loader"
-    class="relative h-0 w-full sm:w-4xl sm:max-w-screen mt-3 mx-auto px-4 sm:px-24"
+    class="relative h-0 w-full sm:w-4xl sm:max-w-chat-column mt-3 mx-auto px-4 sm:px-24"
     :class="{
       'opacity-0 pointer-events-none': !show,
     }"

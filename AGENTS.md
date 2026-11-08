@@ -223,6 +223,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the `layout` prop on the shared Panel, inline filter chips, the
   horizontal provider chip row, no search autofocus, the visual-viewport
   keyboard lift, and the only events that close the sheet
+- `docs/ui/side-panel.md` - The shared right side panel (`UiSidePanel`,
+  `useSidePanel()`): one surface for every "view a result" screen, docked at
+  lg with the nav pill on the seam, overlay at md, full-screen bottom sheet
+  below; the `--side-panel-width` contract (`.side-panel-inset` on the app
+  shell, `max-w-chat-column`, the composer and pill), scroll anchoring, drag,
+  keyboard and click-preset resize (WCAG 2.5.7), the consent-gated
+  `besidka:side-panel-width` preference, focus and Esc rules, and how a
+  feature opens its view
 - `docs/chats/ios-keyboard.md` - Keeping the chat composer above the iOS
   keyboard: why a fixed composer driven by focus/blur was covered when the
   keyboard opened after focus (layout vs visual viewport, iOS pans only at
