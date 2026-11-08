@@ -9,12 +9,15 @@ import { createError } from 'evlog'
 
 export const BLOB_STORE_SIGNED_URL_NOT_SUPPORTED = 'not_supported'
 
+export const R2_DELETE_BATCH_LIMIT = 1000
+
 type BlobBucket = Pick<R2Bucket, 'put' | 'get' | 'delete'>
 
 /**
  * R2 adapter for `BlobStore`. The bucket is passed in (for example from
  * `useFileStorage()` before any fan-out), so the adapter never reads the
- * request context. `signedUrl` answers 501 until a consumer needs it: the
+ * request context. `delete` sends one R2 batch call per 1000 keys, one
+ * after another. `signedUrl` answers 501 until a consumer needs it: the
  * file-share token helper signs with the request event, which a background
  * job does not have.
  */
@@ -44,11 +47,13 @@ export function createR2BlobStore(bucket: BlobBucket): BlobStore {
       }
     },
     async delete(keys: string[]) {
-      if (!keys.length) {
-        return
+      for (
+        let start = 0;
+        start < keys.length;
+        start += R2_DELETE_BATCH_LIMIT
+      ) {
+        await bucket.delete(keys.slice(start, start + R2_DELETE_BATCH_LIMIT))
       }
-
-      await bucket.delete(keys)
     },
     async signedUrl() {
       throw createError({

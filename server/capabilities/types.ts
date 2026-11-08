@@ -33,18 +33,20 @@ export interface CapabilityJob {
 export interface CapabilityDefinition {
   feature: FeatureKey
   aiTools?: (context: CapabilityToolContext) => Promise<ToolSet> | ToolSet
-  routesPrefix?: string[]
-  mcpTools?: McpPrivateToolName[]
-  jobs?: CapabilityJob[]
+  routesPrefix?: readonly string[]
+  mcpTools?: readonly McpPrivateToolName[]
+  jobs?: readonly Readonly<CapabilityJob>[]
   clientChunk?: string
 }
 
-const registeredCapabilities: CapabilityDefinition[] = []
+const registeredCapabilities: Readonly<CapabilityDefinition>[] = []
 
 /**
  * Declares a capability module: its feature flag and every surface it adds.
  * The definition is frozen and registered for `listCapabilities()`, which the
- * conformance spec walks to prove each surface is gated.
+ * conformance spec walks to prove each surface is gated. A second definition
+ * for the same feature replaces the first, so a module evaluated twice (hot
+ * reload) never registers twice.
  */
 export function defineCapability(
   definition: CapabilityDefinition,
@@ -64,7 +66,15 @@ export function defineCapability(
       : undefined,
   }) as Readonly<CapabilityDefinition>
 
-  registeredCapabilities.push(frozen)
+  const existingIndex = registeredCapabilities.findIndex((capability) => {
+    return capability.feature === frozen.feature
+  })
+
+  if (existingIndex === -1) {
+    registeredCapabilities.push(frozen)
+  } else {
+    registeredCapabilities[existingIndex] = frozen
+  }
 
   return frozen
 }
@@ -72,5 +82,5 @@ export function defineCapability(
 export function getRegisteredCapabilities(): readonly Readonly<
   CapabilityDefinition
 >[] {
-  return registeredCapabilities
+  return [...registeredCapabilities]
 }

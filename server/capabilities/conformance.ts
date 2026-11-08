@@ -26,8 +26,24 @@ export interface CapabilityConformanceReaders {
   mcpToolScopes: Readonly<Record<string, string>>
 }
 
-const FEATURE_GUARD_CALL = 'requireFeature('
-const MCP_PRIVATE_WRAPPER_CALL = 'withMcpPrivateTool('
+const FEATURE_GUARD_PATTERN
+  = /requireFeature\(\s*[^,()]+,\s*['"`]([\w.-]+)['"`]/g
+const MCP_PRIVATE_WRAPPER_PATTERN = /withMcpPrivateTool\(/
+const BLOCK_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g
+const LINE_COMMENT_PATTERN = /(^|[^:'"`])\/\/.*$/gm
+
+function stripComments(source: string): string {
+  return source
+    .replace(BLOCK_COMMENT_PATTERN, '')
+    .replace(LINE_COMMENT_PATTERN, '$1')
+}
+
+function readGuardedFeatures(source: string): string[] {
+  return Array.from(stripComments(source).matchAll(FEATURE_GUARD_PATTERN))
+    .map((match) => {
+      return match[1] ?? ''
+    })
+}
 
 function isSameOrDescendantFeature(flag: string, ancestor: string): boolean {
   let current = getFeatureDefinition(flag)
@@ -61,7 +77,12 @@ function checkRoutes(
     }
 
     for (const file of files) {
-      if (!file.source.includes(FEATURE_GUARD_CALL)) {
+      const guardsOwnFeature = readGuardedFeatures(file.source)
+        .some((flag) => {
+          return isSameOrDescendantFeature(flag, capability.feature)
+        })
+
+      if (!guardsOwnFeature) {
         violations.push({
           feature: capability.feature,
           rule: 'route_without_feature_guard',
@@ -91,7 +112,7 @@ function checkMcpTools(
 
     const source = readers.readMcpToolSource(toolName)
 
-    if (!source?.includes(MCP_PRIVATE_WRAPPER_CALL)) {
+    if (!source || !MCP_PRIVATE_WRAPPER_PATTERN.test(stripComments(source))) {
       violations.push({
         feature: capability.feature,
         rule: 'mcp_tool_without_private_wrapper',
@@ -123,7 +144,8 @@ function checkJobs(
 
 /**
  * Checks one capability against the contract: its flag is in the registry,
- * every route file under its prefixes calls `requireFeature`, every MCP tool
+ * every route file under its prefixes calls `requireFeature` with the
+ * capability's flag or a child of it, every MCP tool
  * has a scope and goes through `withMcpPrivateTool`, and every job names the
  * capability's flag or a child of it. The source checks are a heuristic;
  * the readers are injected so the spec can run them over fixtures.

@@ -1,7 +1,12 @@
-import { readFileSync } from 'node:fs'
-import { describe, expect, it, vi } from 'vitest'
+import { readdirSync, readFileSync } from 'node:fs'
+import { describe, expect, expectTypeOf, it, vi } from 'vitest'
+import type {
+  JobRunner,
+  JobStepOptions,
+} from '~~/server/utils/platform/types'
 import {
   BLOB_STORE_SIGNED_URL_NOT_SUPPORTED,
+  R2_DELETE_BATCH_LIMIT,
   createR2BlobStore,
 } from '~~/server/utils/platform/cloudflare/blob-store'
 import {
@@ -81,6 +86,21 @@ describe('R2 blob store', () => {
     expect(bucket.delete).toHaveBeenCalledWith(['a', 'b', 'c'])
   })
 
+  it('splits more than 1000 keys into sequential batch calls', async () => {
+    const bucket = createBucket()
+    const store = createR2BlobStore(bucket as never)
+    const keys = Array.from({ length: 2500 }, (_value, index) => {
+      return `key-${index}`
+    })
+
+    await store.delete(keys)
+
+    expect(bucket.delete).toHaveBeenCalledTimes(3)
+    expect(bucket.delete.mock.calls.map(([batch]) => {
+      return batch.length
+    })).toEqual([R2_DELETE_BATCH_LIMIT, R2_DELETE_BATCH_LIMIT, 500])
+  })
+
   it('answers 501 for signed URLs', async () => {
     const store = createR2BlobStore(createBucket() as never)
 
@@ -91,29 +111,43 @@ describe('R2 blob store', () => {
   })
 
   it('never reads the request context', () => {
-    const sources = [
-      'server/utils/platform/cloudflare/blob-store.ts',
-      'server/utils/platform/cloudflare/job-runner.ts',
-      'server/utils/platform/types.ts',
-      'server/capabilities/types.ts',
-      'server/capabilities/index.ts',
-      'server/capabilities/conformance.ts',
-    ].map((path) => {
-      return readFileSync(path, 'utf-8')
-    })
+    const requestContextPattern
+      = /useEvent\(|getRequestEvent|useUserSession|event\.context/
+    const sources = ['server/capabilities', 'server/utils/platform']
+      .flatMap((directory) => {
+        return readdirSync(directory, { recursive: true })
+          .map((entry) => {
+            return `${directory}/${String(entry).split('\\').join('/')}`
+          })
+          .filter((path) => {
+            return path.endsWith('.ts')
+          })
+      })
 
-    for (const source of sources) {
-      expect(source).not.toContain('useEvent(')
+    expect(sources.length).toBeGreaterThanOrEqual(6)
+
+    for (const path of sources) {
+      expect(readFileSync(path, 'utf-8')).not.toMatch(requestContextPattern)
     }
   })
 })
 
 describe('Cloudflare job runner stub', () => {
+  it('requires an explicit retries option on step', () => {
+    expectTypeOf<Parameters<JobRunner['step']>[1]>()
+      .toEqualTypeOf<JobStepOptions>()
+    expectTypeOf<JobStepOptions['retries']>().toEqualTypeOf<number>()
+    expectTypeOf<Pick<JobStepOptions, 'retries'>>()
+      .toEqualTypeOf<{ retries: number }>()
+  })
+
   it('answers 501 for every method', async () => {
     const runner = createCloudflareJobRunner()
     const notConfigured = { status: 501, why: JOB_RUNNER_NOT_CONFIGURED }
 
-    await expect(runner.enqueue('kind', {})).rejects.toMatchObject(notConfigured)
+    await expect(runner.enqueue('kind', {}))
+      .rejects
+      .toMatchObject(notConfigured)
     await expect(runner.get('job')).rejects.toMatchObject(notConfigured)
     await expect(runner.cancel('job')).rejects.toMatchObject(notConfigured)
     await expect(runner.step('step', { retries: 0 }, async () => {

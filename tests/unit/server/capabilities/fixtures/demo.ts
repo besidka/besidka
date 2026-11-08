@@ -26,10 +26,16 @@ export const demoUnscopedMcpCapability = defineCapability({
   mcpTools: ['demo_unscoped_tool' as McpPrivateToolName],
 })
 
+export const demoUnwrappedMcpCapability = defineCapability({
+  feature: 'google.drive',
+  mcpTools: ['list_chats'],
+})
+
 export const demoUnflaggedJobCapability = defineCapability({
   feature: 'connectors',
   jobs: [
     { kind: 'demo-no-flag', feature: '' as FeatureKey },
     { kind: 'demo-foreign-flag', feature: 'documents' },
+    { kind: 'demo-unknown-flag', feature: 'connectors.demo' as FeatureKey },
   ],
 })

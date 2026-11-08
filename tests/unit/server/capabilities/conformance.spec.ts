@@ -62,12 +62,30 @@ const fixtureReaders: CapabilityConformanceReaders = {
           path: 'server/api/v1/demo-documents/[id].delete.ts',
           source: 'export default defineEventHandler(async () => {})',
         },
+        {
+          path: 'server/api/v1/demo-documents/[id].patch.ts',
+          source: 'await requireFeature(event, \'artifacts\')',
+        },
+        {
+          path: 'server/api/v1/demo-documents/[id].get.ts',
+          source: '// await requireFeature(event, \'documents\')\n'
+            + '/* requireFeature(event, \'documents\') */',
+        },
+        {
+          path: 'server/api/v1/demo-documents/pdf.post.ts',
+          source: 'await requireFeature(event, \'documents.pdf\')',
+        },
       ]
     }
 
     return []
   },
   readMcpToolSource: (toolName) => {
+    if (toolName === 'list_chats') {
+      return 'export default defineMcpTool({ handler: async () => {} })\n'
+        + '// withMcpPrivateTool(\'list_chats\', handler)'
+    }
+
     return toolName === 'list_memory'
       ? 'export default defineMcpTool({ handler: withMcpPrivateTool(...) })'
       : null
@@ -133,18 +151,24 @@ describe('capability conformance', () => {
     }])
   })
 
-  it('reports a route file without requireFeature', async () => {
+  it('reports route files without a guard for the capability flag', async () => {
     const { checkCapabilityConformance } = await importContract()
     const fixtures = await import('./fixtures/demo')
 
     expect(checkCapabilityConformance(
       fixtures.demoUnguardedRouteCapability,
       fixtureReaders,
-    )).toEqual([{
-      feature: 'documents',
-      rule: 'route_without_feature_guard',
-      detail: 'server/api/v1/demo-documents/[id].delete.ts',
-    }])
+    )).toEqual([
+      'server/api/v1/demo-documents/[id].delete.ts',
+      'server/api/v1/demo-documents/[id].patch.ts',
+      'server/api/v1/demo-documents/[id].get.ts',
+    ].map((detail) => {
+      return {
+        feature: 'documents',
+        rule: 'route_without_feature_guard',
+        detail,
+      }
+    }))
   })
 
   it('reports a route prefix with no route files', async () => {
@@ -182,6 +206,20 @@ describe('capability conformance', () => {
     ])
   })
 
+  it('reports a scoped MCP tool without the private wrapper', async () => {
+    const { checkCapabilityConformance } = await importContract()
+    const fixtures = await import('./fixtures/demo')
+
+    expect(checkCapabilityConformance(
+      fixtures.demoUnwrappedMcpCapability,
+      fixtureReaders,
+    )).toEqual([{
+      feature: 'google.drive',
+      rule: 'mcp_tool_without_private_wrapper',
+      detail: 'list_chats',
+    }])
+  })
+
   it('reports jobs without the capability flag', async () => {
     const { checkCapabilityConformance } = await importContract()
     const fixtures = await import('./fixtures/demo')
@@ -200,7 +238,32 @@ describe('capability conformance', () => {
         rule: 'job_without_feature',
         detail: 'demo-foreign-flag',
       },
+      {
+        feature: 'connectors',
+        rule: 'job_without_feature',
+        detail: 'demo-unknown-flag',
+      },
     ])
+  })
+})
+
+describe('capability modules', () => {
+  it('imports every capability module from the index', () => {
+    const contractFiles = new Set(['types.ts', 'index.ts', 'conformance.ts'])
+    const indexSource = readFileSync('server/capabilities/index.ts', 'utf-8')
+    const moduleFiles = readdirSync('server/capabilities', { recursive: true })
+      .map((entry) => {
+        return String(entry).split('\\').join('/')
+      })
+      .filter((entry) => {
+        return entry.endsWith('.ts') && !contractFiles.has(entry)
+      })
+
+    for (const moduleFile of moduleFiles) {
+      expect(indexSource).toContain(
+        `~~/server/capabilities/${moduleFile.replace(/\.ts$/, '')}`,
+      )
+    }
   })
 })
 
@@ -216,7 +279,18 @@ describe('capability registry', () => {
     expect(Object.isFrozen(fixtures.demoCompliantCapability)).toBe(true)
     expect(Object.isFrozen(fixtures.demoCompliantCapability.jobs)).toBe(true)
     expect(listCapabilities()[0]).toBe(fixtures.demoCompliantCapability)
-    expect(listCapabilities()).toHaveLength(5)
+    expect(listCapabilities()).not.toBe(listCapabilities())
+    expect(listCapabilities()).toHaveLength(6)
+  })
+
+  it('replaces an earlier definition of the same feature', async () => {
+    const { listCapabilities } = await import('~~/server/capabilities/index')
+    const { defineCapability } = await import('~~/server/capabilities/types')
+
+    defineCapability({ feature: 'skills', clientChunk: 'first' })
+    const second = defineCapability({ feature: 'skills', clientChunk: 'second' })
+
+    expect(listCapabilities()).toEqual([second])
   })
 
   it('merges chat tools only from capabilities whose flag is active', async () => {

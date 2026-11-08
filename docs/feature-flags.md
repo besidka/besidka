@@ -496,7 +496,9 @@ definition and registers it for `listCapabilities()`
 To add a capability, create `server/capabilities/<name>.ts` that calls
 `defineCapability`, and import it explicitly in
 `server/capabilities/index.ts` (no auto-discovery, so the module graph stays
-visible). `getCapabilityTools(context)` merges the `aiTools` of every
+visible). A spec fails when a module file is not imported there, so the
+conformance run cannot miss one. A second definition for the same feature
+replaces the first. `getCapabilityTools(context)` merges the `aiTools` of every
 capability whose flag `context.isFeatureActive` reports as active, one
 factory after another. It is the seam the chat send path will call from its
 tool-assembly block; the first consumer (A-3) wires it in. Until then the
@@ -512,13 +514,16 @@ capability and reports:
 |---|---|
 | `unknown_feature` | `feature` is not a registry key |
 | `route_prefix_without_routes` | A `routesPrefix` directory has no route files |
-| `route_without_feature_guard` | A `.ts` file under `server/api/v1/<prefix>/` does not call `requireFeature(` |
+| `route_without_feature_guard` | A `.ts` file under `server/api/v1/<prefix>/` does not call `requireFeature(event, '<flag>')` with the capability's flag or a child of it (comments are ignored) |
 | `mcp_tool_without_scope` | An `mcpTools` name is missing from `MCP_PRIVATE_TOOL_SCOPES` |
 | `mcp_tool_without_private_wrapper` | `server/mcp/tools/<name-with-dashes>.ts` is missing or does not call `withMcpPrivateTool(` |
 | `job_without_feature` | A job has no `feature`, or one outside the capability's flag tree |
 
-The checks read source text, so they are a heuristic: a file that mentions
-`requireFeature(` in a string passes. A later improvement can register
+The checks read source text, so they are a heuristic: a guard inside a
+string literal still passes. Routes are found only in the directory form
+(`server/api/v1/<prefix>/**/*.ts`, the CLAUDE.md layout rule), and every
+`.ts` file there counts as a route, so keep helpers out of route
+directories. A later improvement can register
 handlers through a `defineGuardedHandler(feature, handler)` helper and check
 that instead. The spec also runs the checker over fixtures that break each
 rule (`tests/unit/server/capabilities/fixtures/demo.ts`), so it cannot pass
@@ -535,7 +540,8 @@ live in `server/utils/platform/<host>/`. Only Cloudflare adapters exist.
   `createR2BlobStore(bucket)` (`cloudflare/blob-store.ts`) takes the bucket
   as an argument, for example `useFileStorage()` captured before any
   fan-out, and never reads the request context. `delete` is one R2 batch
-  call, which keeps a Worker under its six simultaneous connections.
+  call per 1000 keys (the R2 limit), sent one after another, which keeps a
+  Worker under its six simultaneous connections.
   `signedUrl` answers 501 with `why: 'not_supported'`: the existing
   file-share token helper (`server/utils/files/file-share-access.ts`) signs
   with the request event, which a background job does not have. The first
