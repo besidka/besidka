@@ -7,6 +7,7 @@ export const nodeSpecDirectories: readonly string[] = [
   'tests/unit/content',
   'tests/unit/db',
   'tests/unit/middleware',
+  'tests/unit/packages',
   'tests/unit/providers',
   'tests/unit/scripts',
   'tests/unit/server',
@@ -29,6 +30,7 @@ export const nuxtSpecDirectories: readonly string[] = [
 
 export const nuxtSpecExceptions: readonly string[] = [
   'tests/unit/utils/auth.spec.ts',
+  'tests/unit/utils/clipboard-html.spec.ts',
   'tests/unit/utils/diagram-export-drawio.spec.ts',
   'tests/unit/utils/diagram-export-fonts.spec.ts',
   'tests/unit/utils/diagram-export-png.spec.ts',

@@ -1,6 +1,7 @@
 import { createError } from 'evlog'
 import type { ReasoningUIPart, TextUIPart } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { ChatTestScenario } from '#shared/utils/chat-test-errors'
 import {
   chatTestErrorIds,
   chatTestScenarios,
@@ -11,6 +12,7 @@ import {
   TEST_IMAGE_PROMPT,
   TEST_IMAGE_USAGE,
 } from '~~/server/utils/chats/test/image-fixture'
+import { TEST_MARKDOWN_USER_MESSAGE } from '~~/server/utils/chats/test/markdown-fixture'
 import { TEST_MERMAID_MESSAGE } from '~~/server/utils/chats/test/mermaid-fixture'
 import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
 
@@ -20,6 +22,22 @@ const longMessage = `Here is text with three paragraphs:
 The sun dipped below the horizon, painting the sky in hues of fiery orange and soft lavender. A gentle breeze rustled through the leaves of the ancient oak tree, its branches reaching like gnarled fingers towards the twilight. The scent of damp earth and blooming jasmine filled the air, creating a tranquil atmosphere that invited reflection. As the first stars began to twinkle, a sense of quiet peace settled over the landscape, a perfect prelude to the approaching night.
 
 Across the meadow, a small cottage stood bathed in the fading light. Smoke curled lazily from its chimney, a sign of warmth and life within. Inside, a family was gathering for supper, their laughter and conversation weaving a tapestry of everyday joy. The simple act of sharing a meal, surrounded by loved ones, held a profound beauty that transcended material possessions. It was in these moments of connection that true contentment could be found.`
+
+function getMessageText(
+  role: string,
+  scenario: ChatTestScenario,
+  fallbackText: string,
+): string {
+  if (role === 'assistant' && scenario === 'mermaid') {
+    return TEST_MERMAID_MESSAGE
+  }
+
+  if (role === 'user' && scenario === 'markdown') {
+    return TEST_MARKDOWN_USER_MESSAGE
+  }
+
+  return fallbackText
+}
 
 export default defineEventHandler(async (event) => {
   const isCiEnvironment: boolean = process.env.CI === 'true'
@@ -110,9 +128,7 @@ export default defineEventHandler(async (event) => {
             : []),
           {
             type: 'text',
-            text: role === 'assistant' && effectiveScenario === 'mermaid'
-              ? TEST_MERMAID_MESSAGE
-              : text,
+            text: getMessageText(role, effectiveScenario, text),
           } as TextUIPart,
         ],
         tools: [],

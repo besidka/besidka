@@ -8,7 +8,12 @@ import {
   oAuthProxy,
   twoFactor,
 } from 'better-auth/plugins'
-import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
+import {
+  APIError,
+  createAuthMiddleware,
+  getSessionFromCtx,
+  isAPIError,
+} from 'better-auth/api'
 import { mcp } from '@better-auth/mcp'
 import { passkey } from '@better-auth/passkey'
 import { jwtVerify } from 'jose'
@@ -22,7 +27,11 @@ import {
   recordSignupActivation,
   resolveSignupUtm,
 } from '~~/server/utils/analytics/activation'
-import { MCP_OAUTH_SCOPES } from '#shared/utils/mcp-oauth-scopes'
+import {
+  MCP_OAUTH_SCOPES,
+  isMcpAdminScope,
+} from '#shared/utils/mcp-oauth-scopes'
+import { keepMcpAdminScopesForAdmins } from '~~/server/utils/mcp/admin-scopes'
 import {
   OAUTH_ACCESS_TOKEN_TTL_SECONDS,
   OAUTH_REFRESH_TOKEN_TTL_SECONDS,
@@ -123,6 +132,59 @@ export function assertClientRegistrationWithinLimits(
       error_description: violation,
     })
   }
+}
+
+function readConsentScopes(body: Record<string, unknown>): string[] {
+  if (typeof body.scope === 'string') {
+    return body.scope.split(' ').filter(Boolean)
+  }
+
+  const oauthQuery = typeof body.oauth_query === 'string'
+    ? new URLSearchParams(body.oauth_query)
+    : new URLSearchParams()
+
+  return oauthQuery.get('scope')?.split(' ').filter(Boolean) ?? []
+}
+
+/**
+ * Removes `admin:features` from an OAuth consent before Better Auth stores
+ * it, unless the signed-in user is an admin. Without a `scope` field Better
+ * Auth grants every originally requested scope, so the requested list is
+ * narrowed and written back as an explicit `scope`. Runs for the hydrated
+ * consent page and the native form route alike, so a crafted request can
+ * never leave a non-admin with the scope.
+ */
+export async function stripMcpAdminScopesFromConsent(
+  body: Record<string, unknown> | undefined,
+  resolveUserId: () => Promise<number | null>,
+): Promise<void> {
+  if (!body || typeof body !== 'object' || body.accept !== true) {
+    return
+  }
+
+  const scopes = readConsentScopes(body)
+
+  if (!scopes.some(isMcpAdminScope)) {
+    return
+  }
+
+  const userId = await resolveUserId()
+  const keptScopes = userId === null
+    ? scopes.filter(scope => !isMcpAdminScope(scope))
+    : await keepMcpAdminScopesForAdmins(scopes, userId, useDb())
+
+  if (keptScopes.length === scopes.length) {
+    return
+  }
+
+  if (keptScopes.length === 0) {
+    throw new APIError('BAD_REQUEST', {
+      error: 'invalid_scope',
+      error_description: 'No permission left to grant',
+    })
+  }
+
+  body.scope = keptScopes.join(' ')
 }
 
 interface OAuthConsentDecision {
@@ -572,6 +634,16 @@ function createAuth() {
             ctx.body,
             ctx.request?.headers.get('content-length'),
           )
+
+          return
+        }
+
+        if (ctx.path === OAUTH_CONSENT_PATH) {
+          await stripMcpAdminScopesFromConsent(ctx.body, async () => {
+            const session = await getSessionFromCtx(ctx)
+
+            return session ? Number(session.user.id) : null
+          })
 
           return
         }

@@ -502,7 +502,9 @@ function extractRenderedHtml(): string {
     return ''
   }
 
-  return Array.from(nodes).map(node => node.innerHTML).join('\n')
+  return cleanClipboardHtml(
+    Array.from(nodes).map(node => node.innerHTML).join('\n'),
+  )
 }
 
 async function onCopy() {

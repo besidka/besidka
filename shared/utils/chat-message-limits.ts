@@ -1,0 +1,1 @@
+export const MAX_USER_MESSAGE_TEXT_LENGTH = 200_000

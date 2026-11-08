@@ -29,6 +29,10 @@ export const IMAGE_GENERATION_FAILURE_TEXT = {
     'The generated image could not be saved.',
     'Try again. If it keeps failing, contact support.',
   ].join(' '),
+  sourceImageUnavailable: [
+    'The earlier image is no longer available to edit.',
+    'Attach it again, then try again.',
+  ].join(' '),
   providerRateLimit: [
     'Image generation is temporarily rate limited.',
     'Wait a moment, then try again.',

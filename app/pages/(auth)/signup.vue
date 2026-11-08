@@ -1,5 +1,12 @@
 <template>
   <UiBubble class="grow w-full min-sm:max-w-md z-20">
+    <AuthCheckEmail
+      v-if="submittedEmail"
+      :email="submittedEmail"
+      :callback-url="verificationCallbackUrl"
+      @change-email="submittedEmail = ''"
+    />
+    <template v-else>
     <div class="my-2 sm:my-4 text-center">
       <h1 class="mb-2 text-3xl font-bold capitalize">
         Create account
@@ -222,12 +229,14 @@
         />
       </UiFormFieldset>
     </UiForm>
+    </template>
     <p class="py-2 text-center">
       Already have an account? <NuxtLink :to="signinLink" class="underline hover:no-underline">Sign in</NuxtLink>
     </p>
   </UiBubble>
 </template>
 <script setup lang="ts">
+import { parseError } from 'evlog'
 import type { ValidationRule } from '~/types/validation.d'
 import type { EstimateCrack } from '~/types/password'
 import { TimeUnits } from '~/types/password'
@@ -370,6 +379,17 @@ const signinLink = computed<string>(() => {
   )
 })
 
+const verificationCallbackUrl = computed<string>(() => {
+  return appendSignedOAuthQueryToPath(
+    appendUtmToPath(
+      appendNextToPath('/signin', safeNext.value),
+      resolveUtm(),
+    ),
+    signedOAuthQuery.value,
+  )
+})
+const submittedEmail = shallowRef<string>('')
+
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
 const { requestToken } = useCaptcha(() => turnstile.value)
 const pending = shallowRef<boolean>(false)
@@ -411,34 +431,41 @@ async function onSubmit() {
       return
     }
 
-    const { error } = await signUp.email({
+    const { data: result, error } = await signUp.email({
       name: data.name,
       email: data.email,
       password: data.password,
-      callbackURL: appendSignedOAuthQueryToPath(
-        appendUtmToPath(
-          appendNextToPath('/signin', safeNext.value),
-          resolveUtm(),
-        ),
-        signedOAuthQuery.value,
-      ),
+      callbackURL: verificationCallbackUrl.value,
       fetchOptions: {
         headers: token ? { 'x-captcha-response': token } : {},
-        onSuccess() {
-          useSuccessMessage('Account created successfully! Please check your email to confirm your account.')
-        },
       },
     })
 
     if (error) {
       useErrorMessage(error.message)
+      turnstile.value?.reset()
+
+      return
     }
 
+    if (result?.token) {
+      await navigateTo(
+        appendUtmToPath(safeNext.value ?? '/chats/new', resolveUtm()),
+      )
+
+      return
+    }
+
+    submittedEmail.value = data.email
     turnstile.value?.reset()
-  } catch (exception: any) {
-    useErrorMessage(exception.statusMessage)
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Something went wrong',
+      parsedException.why,
+    )
     turnstile.value?.reset()
-    throw createError(exception)
   } finally {
     pending.value = false
   }

@@ -95,6 +95,7 @@ describe('wrangler.jsonc previews block', () => {
       const previewOnlyKeys = ['NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS']
       const overriddenKeys = [
         'NUXT_PUBLIC_BASE_URL',
+        'NUXT_TURNSTILE_ENFORCED',
         'NUXT_PUBLIC_TURNSTILE_SITE_KEY',
         'NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN',
       ]
@@ -125,16 +126,14 @@ describe('wrangler.jsonc previews block', () => {
     }
   })
 
-  it('uses the dedicated preview Turnstile widget sitekey', () => {
+  it('disables Turnstile on previews while production keeps it', () => {
     const turnstileSiteKey = 'NUXT_PUBLIC_TURNSTILE_SITE_KEY'
-    const previewWidgetSiteKey = '0x4AAAAAAEFM-2wD0PMvdy4q'
+    const turnstileEnforced = 'NUXT_TURNSTILE_ENFORCED'
 
-    expect(typeof production.vars[turnstileSiteKey]).toBe('string')
-    expect(previews.vars[turnstileSiteKey])
-      .not.toBe(production.vars[turnstileSiteKey])
-    expect(previews.vars[turnstileSiteKey])
-      .not.toBe(config.vars[turnstileSiteKey])
-    expect(previews.vars[turnstileSiteKey]).toBe(previewWidgetSiteKey)
+    expect(production.vars[turnstileEnforced]).toBe(true)
+    expect(production.vars[turnstileSiteKey]).toMatch(/^0x[\w-]+$/)
+    expect(previews.vars[turnstileSiteKey]).toBe('')
+    expect(previews.vars[turnstileEnforced]).toBe(false)
   })
 
   it('keeps the Cloudflare Web Analytics beacon off outside production',

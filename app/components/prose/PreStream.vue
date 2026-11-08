@@ -1,8 +1,9 @@
 <template>
   <div
     class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-clip overflow-y-visible"
+    :data-code-source="isDiagramView ? effectiveSource : undefined"
   >
-    <div class="flex items-center justify-between">
+    <div class="js-clipboard-skip flex items-center justify-between">
       <div
         class="mockup-browser-toolbar w-auto! shrink-0 pr-0!"
         :class="{ 'max-sm:hidden': isToolbarCrowded }"
@@ -143,7 +144,7 @@
         />
         <p
           v-if="isEditing && diagramError"
-          class="pt-2 text-xs text-base-content/60"
+          class="js-clipboard-skip pt-2 text-xs text-base-content/60"
           data-testid="mermaid-error"
         >
           {{ diagramErrorText }}
@@ -165,8 +166,8 @@
             :code="effectiveSource"
             :lang="lang"
             :theme="$colorMode.value === 'dark'
-              ? 'github-dark'
-              : 'github-light'
+              ? 'github-dark-high-contrast'
+              : 'github-light-high-contrast'
             "
           >
             Render
@@ -176,7 +177,7 @@
     </div>
     <p
       v-if="diagramError && !isEditing"
-      class="px-4 pb-3 text-xs text-base-content/60"
+      class="js-clipboard-skip px-4 pb-3 text-xs text-base-content/60"
       data-testid="mermaid-error"
     >
       {{ diagramErrorText }}

@@ -1,6 +1,8 @@
 packages:
   - '.'
   - 'modules/*'
+  - 'packages/*'
+  - 'workers/*'
 
 overrides:
   '@cloudflare/workers-types': ^5.20261018.1

@@ -208,6 +208,13 @@ describe('generated image utils', () => {
       ].join(' '),
     },
     {
+      code: 'source-image-unavailable',
+      expected: [
+        'The earlier image is no longer available to edit.',
+        'Attach it again, then try again.',
+      ].join(' '),
+    },
+    {
       code: 'provider-auth',
       expected: [
         'The image provider rejected the saved API key.',

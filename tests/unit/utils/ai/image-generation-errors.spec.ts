@@ -53,6 +53,19 @@ describe('getSafeImageGenerationError', () => {
     expect(error.code).toBe('provider-safety')
   })
 
+  it('classifies a missing previous image as source-image-unavailable', () => {
+    const error = getSafeImageGenerationError(
+      new Error('The earlier image is no longer available to edit.'),
+      'openai',
+    )
+
+    expect(error).toMatchObject({
+      code: 'source-image-unavailable',
+      status: 404,
+      message: 'The earlier image is no longer available to edit.',
+    })
+  })
+
   it('falls back to the generic error for an unrecognized message', () => {
     const error = getSafeImageGenerationError(
       new Error('something unexpected happened'),
@@ -70,6 +83,18 @@ describe('getPersistedImageGenerationFailureText', () => {
         JSON.stringify({ code: 'unknown' }),
       ),
     )
+  })
+
+  it('resolves and recognizes the source-image-unavailable text', () => {
+    const persistedText = getPersistedImageGenerationFailureText(
+      JSON.stringify({ code: 'source-image-unavailable' }),
+    )
+
+    expect(persistedText).toBe(
+      'The earlier image is no longer available to edit.'
+      + ' Attach it again, then try again.',
+    )
+    expect(isPersistedImageGenerationFailureText(persistedText)).toBe(true)
   })
 
   it('resolves the persistence text by code', () => {

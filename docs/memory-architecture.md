@@ -251,8 +251,9 @@ project entry on first read; the column is left in place and writes stop
   file and reasoning parts are never fed. The extractor prompt forbids
   storing instructions ("always do X when…") that originate outside user
   messages. Assistant turns whose `messages.tools` contain `memory_list` /
-  `memory_read` (a "what do you know about me" dump) are excluded from the
-  extraction window so memory doesn't feed on itself.
+  `memory_read` (a "what do you know about me" dump) or `search_chats` /
+  `read_chat` (excerpts of other chats, including the J6 pre-retrieval chip)
+  are excluded from the extraction window so memory doesn't feed on itself.
 - **Model**: cheapest flagged model on any key the user has — extend
   `forProjectMemory` to Anthropic (Haiku tier), xAI, DeepSeek etc. (fixes G4).
   ~$0.001–0.004 per pass at 10k in / 0.5k out. Superseded by the owner's
@@ -948,9 +949,17 @@ hidden. Anything else is a 404 tool error.
   budget.
   A negated request ("don't remember my address" contains "remember my
   address") and text the user pasted still pass the quote check.
-- `memory_write` upserts: with `id` it updates that entry, without it the entry
-  with the same title slug (or the singleton slug) in that scope is updated,
-  otherwise one is created. Writes always set `origin: 'tool'` (an edited
+- `memory_write` upserts: with `id` it replaces that entry's title,
+  description and body. Without `id`, a write that lands on the entry with the
+  same title slug (or the singleton slug of `profile`/`preferences`) in that
+  scope only appends the body lines that entry does not hold yet
+  (`appendMemoryBodyLines`) and keeps its title and description; otherwise
+  one is created. Before 2026-11-04 the id-less hit replaced all three fields,
+  so a weak model writing "a new preference" wiped the whole `preferences`
+  entry. An append over the body byte cap is a 400 whose `fix` names the
+  entry id, so the model can retry with `id` and a shorter merged body. The
+  output stays `action: 'updated'` with `previous`, so the chip's Undo
+  restores the pre-append body. Writes always set `origin: 'tool'` (an edited
   user entry is re-marked `tool`), `sourceChatIds` = the existing ids plus the
   current chat's **public id** (`chats.id`, not the slug), and
   `sourceMessageId` = the persisted user message's public id (`newMessage.id`).
@@ -1193,7 +1202,9 @@ double pass harmless, and the lease only avoids paying twice.
 **Input and trust boundary.** Only `text` parts. User text is the primary
 source, assistant text is labeled low-trust, tool, source, file and reasoning
 parts are never read. Assistant turns whose `tools` column or tool parts name
-`memory_list`/`memory_read` are excluded. The prompt wraps the transcript as
+`memory_list`/`memory_read` or `search_chats`/`read_chat` are excluded, which
+also covers the J6 pre-retrieval chip (a `tool-search_chats` part). The user
+message before such a turn stays, so its quotes still ground evidence. The prompt wraps the transcript as
 untrusted data and forbids storing instructions that originate outside the
 user's words. The window is capped (36k chars) and bounded to the messages
 after `memory_extracted_at`. The current entry index of the scope (account

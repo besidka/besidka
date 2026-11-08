@@ -47,6 +47,9 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │      ├─ indexnow job (after deploy)                              │
 │      │   No-op without INDEXNOW_KEY; else submits changed pages  │
 │      │                                                           │
+│      ├─ mcp-registry job (after deploy)                          │
+│      │   Publishes server.json's version unless already listed   │
+│      │                                                           │
 │      └─ deploy-preview job (after deploy)                        │
 │          ├─ Apply DB + CONSENT_DB migrations to the preview DBs  │
 │          └─ wrangler preview --env production --name preview     │
@@ -301,11 +304,27 @@ expires on its own after one day. A dry run never reuses a PR's tests, so
 `static`, `unit`, `integration`, `build` and `e2e` all run and no remote
 database or Worker is touched.
 
+**Post-deploy jobs and `!cancelled()`.** `indexnow`, `mcp-registry`,
+`deploy-preview` and `cleanup-preview-build-artifact` all carry
+`!cancelled() && needs.deploy.result == 'success'` in their `if:`. Without
+`!cancelled()`, GitHub's implicit `success()` skips every descendant of a
+skipped job, and on the skip-tests path the test jobs are skipped, so these
+jobs would be skipped even though `deploy` succeeded (run 41732870499).
+
 **indexnow**: Runs after `deploy`. A no-op unless the
 `INDEXNOW_KEY` secret exists. When it does, and the push changed a public
 page (`content/`, public `app/pages/`, landing components), it reads the live
 sitemap, checks `https://besidka.com/indexnow-key.txt` serves the same key,
 and submits the sitemap URLs to IndexNow. See `docs/seo.md` → "IndexNow".
+
+**mcp-registry**: Runs after `deploy` (main only, not on a dry run). Reads
+the `server.json` version and stops when the MCP Registry already lists it.
+Otherwise it installs the pinned `mcp-publisher` (SHA-256 checked against the
+release's checksums file), logs in with the `MCP_REGISTRY_PRIVATE_KEY` secret,
+publishes, and fails unless the version comes back `active`. On pull requests,
+the `static` job's `scripts/mcp-version-guard.mjs` step makes sure a changed
+MCP surface comes with a higher `MCP_SERVER_VERSION`. See
+`docs/mcp-marketplaces.md`.
 
 **deploy-preview**: Runs after `deploy`. Downloads the
 `preview-build` artifact (the build of this exact `main` HEAD, whose tests ran
@@ -325,7 +344,8 @@ without it.
 
 **cleanup-preview-build-artifact**: Runs only after `deploy` and
 `deploy-preview` both succeed and deletes the run's `preview-build` artifact.
-It has no `if: always()` on purpose: the E2E shards and `deploy` download that
+It runs only when `deploy` and `deploy-preview` both report `success`, not
+under `if: always()`, on purpose: the E2E shards and `deploy` download that
 artifact, so keeping it after a failed, cancelled or dry run lets "Re-run
 failed jobs" re-run a failed E2E shard or deploy job without an "Artifact not
 found" error. A failed run, a cancelled run or a dry run leaves the artifact in

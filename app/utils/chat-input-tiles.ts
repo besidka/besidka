@@ -46,8 +46,8 @@ const WEB_SEARCH_PROVIDER_IDS: Partial<Record<WebSearchSelection, string>> = {
 const NEUTRAL_TILE_TONE = 'bg-base-content/7 dark:bg-base-300/40 '
   + 'border-base-content/15 text-base-content/75'
 
-const ACCENT_TILE_TONE
-  = 'bg-accent/10 dark:bg-(--color-accent-bg)/60 border-accent/25 text-accent'
+const ACCENT_TILE_TONE = 'bg-accent/10 dark:bg-(--color-accent-bg)/60 '
+  + 'border-accent/25 text-(--color-accent-text) dark:text-accent'
 
 export function getChatInputTileToneClass(
   tile: Pick<ChatInputTile, 'isNeutral'>,

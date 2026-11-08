@@ -2,9 +2,9 @@
   <Teleport to="body">
     <dialog
       ref="modalRef"
-      class="modal modal-middle"
+      class="modal modal-bottom sm:modal-middle"
     >
-      <div class="modal-box">
+      <div class="modal-box sheet-safe-padding">
         <h3 class="font-bold text-lg mb-4">Rename chat</h3>
         <input
           ref="inputRef"

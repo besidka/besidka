@@ -118,7 +118,9 @@ restart.
   `server/routes/videos/[name].ts` as `key-guide-<id>.mp4`,
   `key-guide-<id>-1080.mp4` and `key-guide-<id>-360.mp4`. The allow-list is
   explicit and derived from the `providerMeta` ids (13 ids, 3 files each), so
-  any other name, such as `-720` or `-480`, is a 404. The route keeps its
+  any other name, such as `-720` or `-480`, is a 404. The same allow-list
+  also holds the memory explainer and the two MCP reviewer demos
+  (`docs/mcp-marketplaces.md`). The route keeps its
   single-read, range and conditional-request behavior.
 - Put the encoded files in `.files/` (gitignored) and run
   `pnpm run cms:files:upload`. Every `.files/key-guide-<id>.mp4`,

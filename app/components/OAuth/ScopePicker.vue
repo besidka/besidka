@@ -12,6 +12,7 @@
         <label class="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
+            name="scope"
             class="checkbox checkbox-sm mt-0.5"
             :class="{ 'checkbox-warning': isMcpWriteScope(scope) }"
             :value="scope"
@@ -64,6 +65,8 @@
 </template>
 <script setup lang="ts">
 import {
+  defaultSelectedMcpScopes,
+  isMcpAdminScope,
   isMcpWriteScope,
   MCP_IDENTITY_SCOPES,
 } from '#shared/utils/mcp-oauth-scopes'
@@ -79,6 +82,8 @@ const props = withDefaults(defineProps<{
 
 const selected = defineModel<string[]>({ default: () => [] })
 
+const isAdmin = useIsAdmin()
+
 const identityScopeSet = new Set<string>(MCP_IDENTITY_SCOPES)
 
 const identityScopes = computed<string[]>(() => {
@@ -89,7 +94,11 @@ const identityScopes = computed<string[]>(() => {
 
 const resourceScopes = computed<string[]>(() => {
   return props.scopes.filter((scope) => {
-    return !identityScopeSet.has(scope)
+    if (identityScopeSet.has(scope)) {
+      return false
+    }
+
+    return isAdmin.value || !isMcpAdminScope(scope)
   })
 })
 
@@ -99,12 +108,25 @@ const hasWriteScopes = computed<boolean>(() => {
   })
 })
 
-watch(resourceScopes, (scopes) => {
-  selected.value = props.mode === 'edit'
-    ? [...scopes]
-    : scopes.filter((scope) => {
-      return !isMcpWriteScope(scope)
-    })
+function initialSelection(scopes: string[]): string[] {
+  return props.mode === 'edit' ? [...scopes] : defaultSelectedMcpScopes(scopes)
+}
+
+watch(resourceScopes, (scopes, previousScopes) => {
+  if (!previousScopes) {
+    selected.value = initialSelection(scopes)
+
+    return
+  }
+
+  const addedScopes = scopes.filter((scope) => {
+    return !previousScopes.includes(scope)
+  })
+  const keptSelection = selected.value.filter((scope) => {
+    return scopes.includes(scope)
+  })
+
+  selected.value = [...keptSelection, ...initialSelection(addedScopes)]
 }, { immediate: true })
 
 function toggle(scope: string) {

@@ -496,7 +496,7 @@ describe('ChatInput/ModelsTrigger below md', () => {
       Reflect.deleteProperty(window, 'visualViewport')
     })
 
-    it('sits on the visual viewport above the keyboard', async () => {
+    it('leaves the lift to the global dialog rule', async () => {
       const wrapper = await mountPicker()
 
       await openSheet(wrapper)
@@ -505,25 +505,33 @@ describe('ChatInput/ModelsTrigger below md', () => {
         '[data-testid="models-picker-sheet-box"]',
       )
 
-      expect(box.element.style.height).toBe('')
-
-      viewport.height = 400
-      viewport.dispatchEvent(new Event('resize'))
-      await nextTick()
-
-      const keyboardHeight = window.innerHeight - 400
-
-      expect(box.element.style.height).toBe('340px')
-      expect(box.element.style.marginBottom).toBe(`${keyboardHeight}px`)
       expect(
         box.element.style.getPropertyValue('--models-sheet-bottom-padding'),
-      ).toBe('0.375rem')
+      ).toBe('')
+
+      wrapper.get<HTMLInputElement>('[data-testid="models-picker-search"]')
+        .element
+        .focus()
+      viewport.height = 400
+      viewport.dispatchEvent(new Event('resize'))
+
+      await vi.waitFor(() => {
+        expect(
+          box.element.style.getPropertyValue('--models-sheet-bottom-padding'),
+        ).toBe('0.375rem')
+      })
+      expect(box.element.style.height).toBe('')
+      expect(box.element.style.maxHeight).toBe('')
+      expect(box.element.style.marginBottom).toBe('')
 
       viewport.height = window.innerHeight
       viewport.dispatchEvent(new Event('resize'))
-      await nextTick()
 
-      expect(box.element.style.height).toBe('')
+      await vi.waitFor(() => {
+        expect(
+          box.element.style.getPropertyValue('--models-sheet-bottom-padding'),
+        ).toBe('')
+      })
     })
   })
 })

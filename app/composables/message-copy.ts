@@ -63,6 +63,39 @@ function execCommandCopyHtml(html: string): boolean {
   return succeeded
 }
 
+function copyViaCopyEvent(html: string, text: string): boolean {
+  let wasHandled = false
+
+  function onCopy(event: ClipboardEvent): void {
+    if (!event.clipboardData) {
+      return
+    }
+
+    if (html) {
+      event.clipboardData.setData('text/html', html)
+    }
+
+    event.clipboardData.setData('text/plain', text)
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    wasHandled = true
+  }
+
+  document.addEventListener('copy', onCopy, true)
+
+  let succeeded: boolean
+
+  try {
+    succeeded = document.execCommand('copy')
+  } catch {
+    succeeded = false
+  }
+
+  document.removeEventListener('copy', onCopy, true)
+
+  return succeeded && wasHandled
+}
+
 async function tryRichWrite(html: string, text: string): Promise<boolean> {
   if (
     typeof ClipboardItem === 'undefined'
@@ -90,6 +123,10 @@ export function useMessageCopy() {
   async function copyRich(
     { html, text }: { html: string, text: string },
   ): Promise<boolean> {
+    if (copyViaCopyEvent(html, text)) {
+      return true
+    }
+
     if (await tryRichWrite(html, text)) {
       return true
     }

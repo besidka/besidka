@@ -96,6 +96,8 @@ These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `u
 
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
+`user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymises `feature_audit_log` (see `docs/feature-flags.md`).
+
 ### MANDATORY pre-apply checklist
 
 Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:
@@ -169,6 +171,10 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
 - `server/` - Backend Nitro server (API routes, database, utilities)
 - `shared/` - Code shared between client and server (types, utility functions)
 - `providers/` - LLM provider configurations (Google, OpenAI models)
+- `packages/` - Workspace packages shared by the app and satellite Workers
+  (`artifacts-protocol`)
+- `workers/` - Satellite Workers deployed by `deploy-satellites`
+  (`artifacts-runtime`, see `docs/artifacts-runtime.md`)
 
 ### Project Docs
 
@@ -205,11 +211,46 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   "Save X as default" caption link, rows hidden until they can act (animated
   reveal plus the reveal guard), section header icons, the web search price
   badge with its InfoNote, memory icons, the inline Exa mark
+- `docs/chats/chat-input-markdown.md` - The Markdown-aware chat textarea
+  (`useMarkdownTextarea`, also on the project instructions card): HTML paste
+  conversion from Apple Mail, Gmail and web pages (the `shouldConvertHtml` gate
+  that lets VS Code span soup fall through, `htmlToChatMarkdown`, bullet glyph
+  normalisation for `text/plain`), long paste (over 1200 characters or 40
+  lines) becoming a visual-only "Pasted text" chip (edit, Insert as text, max
+  10) that is appended to the message as plain text on send, and why it is
+  neither an uploaded file nor a message part, the keyboard rules (Enter
+  inside an open fence does not send, Shift+Enter list continuation, Tab
+  indent, IME guard), the single insertion helper that keeps native undo, and
+  why a TipTap/ProseMirror editor was deferred
+- `docs/chats/context-panel.md` - The chat context panel: the contextual
+  fifth pill slot (Chat button with an outputs badge on owned and shared chat
+  pages, ⋯ More elsewhere), Pin sidebar and Cookie settings moving into the
+  User menu on chat pages, Branch, Share and memory exclusion in the panel
+  header, the Outputs, Inputs and Used sections, the
+  `GET /api/v1/chats/[slug]/context` and shared aggregates, the section
+  registry later features add to, and the `get_chat` context summary
 - `docs/chats/model-picker.md` - The chat input model picker: dropdown at
   md+, bottom sheet below (same breakpoint and chrome as the tools sheet),
   the `layout` prop on the shared Panel, inline filter chips, the
   horizontal provider chip row, no search autofocus, the visual-viewport
   keyboard lift, and the only events that close the sheet
+- `docs/ui/side-panel.md` - The shared right side panel (`UiSidePanel`,
+  `useSidePanel()`): one surface for every "view a result" screen, docked at
+  lg with the nav pill on the seam, overlay at md, full-screen bottom sheet
+  below; the `--side-panel-width` contract (`.side-panel-inset` on the app
+  shell, `max-w-chat-column`, the composer and pill), scroll anchoring, drag,
+  keyboard and click-preset resize (WCAG 2.5.7), the consent-gated
+  `besidka:side-panel-width` preference, focus and Esc rules, and how a
+  feature opens its view
+- `docs/chats/ios-keyboard.md` - Keeping the chat composer above the iOS
+  keyboard: why a fixed composer driven by focus/blur was covered when the
+  keyboard opened after focus (layout vs visual viewport, iOS pans only at
+  focus time), the shared `useVisualViewportInset` (inset formula, rAF
+  batching, settle re-reads for WebKit 237851, the text-entry focus gate for
+  the iOS 26 drift, pinch-zoom guard), the inline `bottom` lift and the
+  keyboard-open class matrix, the scroll spacer inset, why not
+  `interactive-widget` or the VirtualKeyboard API, the deferred focus-pan
+  suppression, and the iOS Simulator verification recipe
 - `docs/chats/model-switch-context.md` - What the model sees when a user
   switches model/provider mid-chat: history rebuilt from D1 on every send, the
   whitelist sanitizer (only text survives past assistant turns, so no
@@ -294,9 +335,34 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   and CAN-SPAM, subscriptions and the California ARL, uploads and the DMCA)
   with status, what changed, owner follow-ups and sources; plus the DSA
   applicability argument and the Polish implementing act (Dz.U. 2026 poz.
-  1296), AI Act Art. 50, TCO Regulation 2021/784, the GDPR Art. 33 runbook gap,
+  1296), AI Act Art. 50 (the 50(2) marking recorded as partly done: provider C2PA
+  passed through byte-identical, an IPTC XMP tag with model id only added by
+  `server/utils/ai/image-provenance.ts`, residual gaps, the open owner decision
+  before 2.12.2026 and revisit conditions),
+  TCO Regulation 2021/784, the GDPR Art. 33 runbook (now
+  `docs/legal/breach-runbook.md`),
   and the DMCA designated-agent decision that conflicts with the
   no-postal-address position
+- `docs/legal/breach-runbook.md` - GDPR Art. 33/34 personal-data breach runbook
+  for a private-individual controller in Poland (engineer-drafted, not
+  lawyer-reviewed, 2026-11-04): what counts as a breach and when the 72 hours
+  start (weekends included, a processor's notice starts the clock), the
+  first-hour checklist (evidence: D1 Time Travel bookmark, Axiom
+  `besidka-prod`, Cloudflare audit log; containment per incident type: revoke
+  sessions in D1 and under the KV `auth:` prefix, never rotate
+  `betterAuthSecret` as a sign-out switch because it destroys 2FA secrets and
+  backup codes, `NUXT_ENCRYPTION_KEY` rotation needing a re-encryption job for
+  the `keys` table, share revocation, route disable, WAF), the EDPB-based risk
+  table (session tokens, encrypted BYOK keys, share links, R2 exposure,
+  outage and loss, IP logs) with the Art. 34(3) exceptions, the UODO channels
+  (biznes.gov.pl e-form, ePUAP, post; Profil Zaufany needed; preliminary then
+  supplementary filing) with the Art. 33(3) fill-in, the user email template
+  and why the legal-notice sweep is not the sender (the owner decision of
+  2026-11-04: no in-app mailer, a manual BCC batch from the privacy mailbox),
+  processor notices (Cloudflare DPA 3.1(e), Axiom DPA 5.3), the private
+  breach record template (Art. 33(5), never in this public repo), and the
+  unconfirmed points (e-form for a private individual, Cloudflare notice
+  channel, KSC amendment, CERT Polska)
 - `docs/legal/monetisation-readiness.md` - Everything that must happen before
   and when Besidka earns in any form (donations, ads, affiliate links, a paid
   tier, credits, paid support; selling data excluded), engineer-drafted,
@@ -308,11 +374,38 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   withdrawal button, California ARL and the vacated FTC rule, CAN-SPAM and
   RFC 8058, DSA and AI Act effects, the DMCA agent, open questions for counsel,
   and the repo files to change; read before adding any payment or donation link
+- `docs/legal/agentic-capabilities-precheck.md` - Compliance pre-checks for
+  the Agentic capabilities programme (engineer-drafted, not lawyer-reviewed,
+  2026-11-07): the shared gate G1 to G7 every track runs before building
+  (GDPR records and transfers, public documents, materiality and consent
+  version, review items and breach runbook, third-party terms, monetisation
+  guard, accessibility), the accessibility decision for all tracks (European
+  Accessibility Act most likely not applicable through the microenterprise
+  services exemption, revisit on monetisation; WCAG 2.2 AA as the engineering
+  target with the criteria that matter, such as 2.5.7 dragging alternatives
+  and 2.4.11 focus not obscured), and the Phase 0 verdict GO with changes:
+  bucketing is not profiling, Art. 6(1)(f) for rollout, no bucket in
+  exposure events, an Art. 21 experiments switch in Labs, rollout and
+  variants inert in production until the material Privacy Policy notice takes
+  effect, audit-log scrub and 12-month sweep, tester-only role grants, admin
+  2FA, no other users' emails over MCP, the Axiom `featureAccess` replay
+  ledger, the side-panel width as a Preferences key, and the exact input list
+  for the P0-9 legal records; later track pre-checks append a section here
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
   only, not legal text, superseded on 2026-10-26 by the published pages (its
   anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA
   skeleton (UODO M.P. 2019 poz. 666 + EDPB criteria) and an Art. 30 record
   skeleton
+- `docs/legal/prechecks/` - Per-track compliance pre-checks for the agentic
+  capabilities programme (engineer-drafted, not lawyer-reviewed, 2026-11-07):
+  one file per track (`research.md` R-11, `google.md` G-11, `artifacts.md`
+  A-12, `documents.md` D-10, `connectors.md` C-12, `skills.md` S-8), each with
+  a verdict, a question table with sources, the shared gate from P0-14, the
+  ticket changes and the input list for the track's legal ticket. Key
+  results: research may not keep Brave/Exa results past a run (Brave §3(b)(i),
+  Exa §4.2(a)); a public BYO Google OAuth client is an owner risk call,
+  recommended owner-only; Google data only to providers that do not train on
+  API input. Read the track's file before building that track
 - `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
   auth routes are noindex-but-crawlable, the "besidka"/"бесідка" brand-entity
   collision the schema and copy are shaped around, deliberate non-actions
@@ -377,6 +470,14 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   trap, per-gateway cost capture and the blended-vs-search double-count
   guard, gateway reasoning/web-search/image-generation/prompt-caching
   mechanisms, and the `GatewayModel.toolCall` Brave/Exa gate
+- `docs/providers/conversation-state.md` - Why Besidka does not use
+  provider-side conversation state (OpenAI `previous_response_id` and the
+  Conversations API, Anthropic message threads), decided on 2026-11-03: neither
+  lowers cost, they clash with D1 as the source of truth (message delete, edit,
+  branch, regenerate), the text-only history sanitizer and model switches, and
+  Anthropic threads expire after 5 minutes with a frozen system prompt and
+  tools; the only candidate is chaining inside one send's tool loop; the AI SDK
+  support for each, data-handling notes, and the revisit criteria
 - `docs/nuxt-4-6-upgrade.md` - Decision log for the Nuxt 4.5 -> 4.6 upgrade
   branch: the Vue 3.6 release candidate (twelve pnpm overrides, accepted RC
   risk), the one-shot `minimum_release_age=0` install and the
@@ -455,12 +556,55 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   the pending Anthropic token factor, non-atomic leases, deferred issues
   #537 to #540), and the cross-project memory proposal (3.20: per-project
   `share_memory`, the `search_other_projects` tool, no entry FTS)
+- `docs/artifacts-runtime.md` - The sandboxed artifacts runtime Worker
+  `besidka-artifacts` (`workers/artifacts-runtime`, assets only, no bindings)
+  and `packages/artifacts-protocol` (JSON-RPC over one MessagePort, shaped
+  like MCP Apps `ui/*`): the isolation layers (iframe + header `sandbox`,
+  the CSP, port-only trust, the self-navigation tripwire and its residual
+  URL leak), why the HTML renderer replaces the root element instead of
+  `document.write()`, the vendored import allowlist (no esm.sh), the licence
+  scan and `THIRD_PARTY_NOTICES.txt` (ELK excluded, dagre layout), the
+  consent error codes for A-5/A-6, the separate Playwright sandbox spec, and
+  the CI jobs guarded by the `ARTIFACTS_RUNTIME_DEPLOY_ENABLED` variable with
+  the owner steps before the first deploy
 - `docs/project-knowledge-design.md` - Project knowledge (W7: files, notes,
   folders): which model's window decides full injection versus the search
   and read tools (the dynamic `min(64k, 7% × context window)` budget plus a
   per-send fit check), R2 text and packs, the owner decisions, and, now that
   it is implemented, the K0 to K3 as-built sections (15, 16.5 to 16.7: DOCX
   and XLSX ZIP-bomb limits, the send path, the spike results)
+- `docs/agentic-capabilities-roadmap.md` - The Agentic capabilities programme
+  (Linear P-BES-3), the repo source of truth that the Linear roadmap document
+  mirrors: phases 0 to 7 with a status table every merged ticket updates
+  (0 foundation, 1 artifacts, 2 documents and code execution, 3 custom
+  research, 4a connectors, 4b Google, 4c skills; 5 voice, 6 scheduled
+  routines, 7 browser agent as roadmap only; computer use deferred), the
+  per-track compliance pre-check and launch-content tickets, execution
+  order, the owner decisions of 2026-11-07 (Flagship later, artifacts
+  runtime on its own `workers.dev` Worker, `artifacts:share`, hybrid document
+  renderer, research overriding the general-model rule, BYO Google client for
+  Gmail, right-hand side panel with a contextual pill slot), the planning
+  decisions (no `users` columns or FKs, UI-only rollout and kill switch,
+  orchestrator Worker with HMAC callbacks, `retries.limit: 0` on spending
+  steps, new scopes instead of reused ones), the host-vs-user cost model, the
+  assumptions table with the Workers Paid finding (confirmed 2026-11-08 by
+  three read-only indicators, not from the billing page), the cross-cutting
+  conventions (flag wiring, MCP rule pack, D1, Workers, legal, telemetry,
+  monorepo `packages/*` and `workers/*`), the UX principles and the
+  one-stack-per-track PR strategy
+- `docs/feature-flags.md` - Per-user feature access design (P0-2 to P0-10):
+  the five tables (`user_roles`, `feature_flag_rules`, `feature_grants`,
+  `feature_opt_ins`, `feature_audit_log`; no FK to `users`, explicit purge,
+  audit rows anonymised and kept 12 months), the registry entry shape
+  (`spend` implies opt-in, variants only on non-spending flags), the
+  evaluation precedence (unknown, `NUXT_FEATURES_DISABLED`, host mode, rule
+  disabled, anonymous, deny, allow, role, sticky salted-hash rollout gated by
+  `NUXT_FEATURES_ROLLOUT_ENABLED` and the user's experiments objection,
+  default), KV rules cache and per-request user state, env admins with
+  verified email and 2FA (`NUXT_ADMIN_EMAILS` is a secret, tester-only role
+  grants in v1), exposure telemetry without a bucket, the Axiom
+  `featureAccess` replay ledger, client access and Labs, MCP limits, the
+  Flagship path and the "adding a flag" checklist
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
   32 per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
@@ -478,6 +622,38 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   there is no `send_message` tool (decided 2026-10-30: no per-call approval
   guarantee, Art. 49 consent path; revisit criteria and the zero-spend
   `create_chat_draft` alternative)
+- `docs/connectors.md` - Connectors design (Phase 4a, C-1, not built yet):
+  user-brought remote MCP servers that Besidka calls as an MCP client
+  (outbound, unlike Connected apps); the threat model with the mitigating
+  ticket per row (SSRF, DNS rebinding and `global_fetch_strictly_public`,
+  LibreChat-style interpolation, token passthrough, lookalike hosts, rug
+  pulls, cross-connector exfiltration, CIMD tampering); the SSRF validator
+  rules and test vectors; the add-without-request, connect, consent and
+  OAuth flow (CIMD at `/connectors/client-metadata.json`, the preview host
+  rule, DCR fallback, PKCE, `resource`, `iss`); the per-send lifecycle;
+  approvals (every tool starts at "ask", forced rules F1 and F2, "approval
+  ends the send"); the data model, limits table (`connectors-policy.ts`),
+  UI placement, MCP tools and scopes, the OpenAI-only native path, the
+  `@ai-sdk/mcp` verification, host portability, the vendor-policy re-check,
+  and the ticket changes it imposes on C-2 to C-11
+- `docs/skills.md` - Skills design (Phase 4c, not built yet): Agent Skills
+  (agentskills.io) imported by GitHub, link, zip, paste or MCP; pinning,
+  archive rules, findings, the licence classifier (Anthropic's 2026-11-06
+  Apache-2.0 relicence, content-based blocking), the R2 layout
+  (`user-skills/`), the runtime (catalog budget, `activate_skill`,
+  `read_skill_file`, re-injection past the text-only sanitizer), the threat
+  model, Anthropic-only provider-container scripts, the data model, limits,
+  review UI, MCP tools, the never-public invariant, and the ticket changes
+  it imposes on S-1 to S-7
+- `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
+  MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
+  Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the
+  `/.well-known/mcp-registry-auth` key, the automatic registry publish on
+  every `MCP_SERVER_VERSION` bump, the `config/mcp-surface.json` snapshot
+  (`pnpm run mcp:surface`) and the PR version guard, the
+  `plugins/besidka/` plugin for Cursor and the ChatGPT ZIP, the
+  `NUXT_OPENAI_APPS_CHALLENGE` token route, paste-ready listing text, the
+  reviewer account rules, and the owner checklist
 - `docs/agent-readiness.md` - How besidka.com answers AI agents
   (isitagentready.com: Level 1, score 20, before 2026-10-29; Level 4 in
   production since that day): the check-by-check
@@ -492,8 +668,8 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   module-internal dependencies, the prerender guard), the ownership boundary
   for a future `/docs` and `/blog` split, and the owner runbook (the WAF
   `.well-known` allowlist and `/mcp` plus `/raw/` in the rate-limit rule, both
-  applied 2026-10-29; step 1b, the OAuth discovery paths to add to the
-  allowlist; the Anthropic egress range against the per-IP limit; the optional
+  applied 2026-10-29; steps 1b and 1c, the OAuth discovery paths and the MCP
+  Registry and ChatGPT verification files, both applied; the Anthropic egress range against the per-IP limit; the optional
   WebMCP origin-trial token; DNSSEC and the DNS-AID records per draft -02)
 - `docs/pnpm-to-bun-evaluation.md` - Why the project stays on pnpm: the CI
   trial (#489) and local benchmarks measured no speed gain, because every
@@ -587,7 +763,7 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   `/auth.md`. The production WAF rule "URL attackers" allows only an explicit
   list of `.well-known` paths (applied 2026-10-29), so a new discovery file
   needs that list extended (runbook step 1; the OAuth metadata paths are
-  step 1b). The MCP server is `/mcp`: public read-only tools plus per-user
+  step 1b, the registry and ChatGPT verification files step 1c). The MCP server is `/mcp`: public read-only tools plus per-user
   tools behind OAuth 2.1 (see the same doc); the repo's `.mcp.json` connects
   Claude Code to it as `besidka`.
 
@@ -656,7 +832,10 @@ subdirectory. Pick the directory form as soon as a second route appears.
   the tab, and its id added to `tests/unit/components/Search/Modal.spec.ts`;
 - nothing in the sidebar user dropdown (`app/components/Sidebar/AuthCta.vue`)
   by default. That dropdown holds only the most important pages (Security and
-  API Keys); add to it only when the owner asks.
+  API Keys); add to it only when the owner asks. The one owner-directed
+  exception: on chat pages it also ends with Pin sidebar and Cookie settings,
+  because slot 5 of the pill is the Chat context button there
+  (`docs/chats/context-panel.md`).
 
 The profile tabs show every label only from `lg`. Below that, only the active
 tab shows its label and the rest show icons, so a sixth tab still fits.
@@ -1200,6 +1379,38 @@ try {
 **Stop hooks**: These still run after each response as a safety net, but should not be relied upon as the primary validation mechanism.
 
 **Affected test mappings**: CI runs the full suite on every pull request, so an unregistered test still runs there. The mapping in `scripts/test-affected-check.mjs` now drives the pre-push hook (`.husky/pre-push`) and `pnpm run test:affected`, so when writing new test files you MUST still update it to register them — unregistered tests won't run locally when their source files change. Add new test files to existing test groups or create a new group as appropriate.
+
+## iOS Simulator Testing
+
+When a change touches mobile layout, the on-screen keyboard, bottom sheets,
+focus, paste or anything else iOS-specific, verify it in the iOS Simulator
+in **both** modes, because they behave differently (viewport, keyboard,
+safe areas, toolbars):
+
+1. **Safari**: open the page in Safari.
+2. **PWA**: in Safari use Share → Add to Home Screen, then open Besidka from
+   the home-screen icon (standalone mode) and repeat the same checks.
+
+Prefer testing a **deployed** build (the PR preview
+`https://pr-<n>-besidka.chernenko.workers.dev`), because it is closest to
+production. The PWA check is only meaningful there: `pnpm run dev` disables
+the PWA module (`devOptions.enabled: false`), so the page has no web app
+manifest and iOS opens the home-screen icon as a half-browser web app (title
+bar and toolbar) instead of full screen. The owner signs in on the preview;
+never type the owner's password.
+
+A local dev server (`pnpm run dev`, the simulator reaches the Mac's
+`localhost`) is fine for debugging when you need server logs or fast
+iteration, in Safari only. Sign in there with a test account created through
+the auth API with the e2e helper's dummy Turnstile token
+(`tests/e2e/helpers/auth.ts`). Confirm the final result on the deployed
+preview in both Safari and PWA mode: a bug can show in one mode and not the
+other.
+
+Show the on-screen keyboard (the simulator hides it while a hardware
+keyboard is connected) and focus fields by tapping, the way a user does:
+toggling the keyboard on an already focused field does not reproduce real
+behaviour. Report which build and mode each result came from.
 
 ## Commit Messages
 

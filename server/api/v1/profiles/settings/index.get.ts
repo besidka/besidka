@@ -80,6 +80,7 @@ export default defineEventHandler(async (event) => {
       projectMemoryModel: true,
       projectMemoryGateway: true,
       typesafeRoles: true,
+      dismissedLegalNoticeIds: true,
     },
   })
   const migration = await migrateAboutMe(
@@ -117,5 +118,6 @@ export default defineEventHandler(async (event) => {
     projectMemoryModel: settings?.projectMemoryModel ?? null,
     projectMemoryGateway: settings?.projectMemoryGateway ?? null,
     typesafeRoles: settings?.typesafeRoles ?? null,
+    dismissedLegalNoticeIds: settings?.dismissedLegalNoticeIds ?? [],
   }
 })

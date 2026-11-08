@@ -214,6 +214,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
     ]
 
     nuxtApp.callHook('chat:scroll-to-bottom')
+    nuxtApp.callHook('chat:context-changed')
   }
 
   async function rehydrateResultMessage(

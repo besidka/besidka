@@ -1,0 +1,12 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "besidka-artifacts",
+	"compatibility_date": "2026-01-28",
+	"workers_dev": true,
+	"preview_urls": true,
+	"assets": {
+		"directory": "./dist",
+		"html_handling": "none",
+		"not_found_handling": "none"
+	}
+}

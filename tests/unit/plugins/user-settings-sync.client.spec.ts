@@ -18,6 +18,12 @@ function getPluginSetup() {
   ) => unknown
 }
 
+function settingsFetchCount() {
+  return fetchMock.mock.calls.filter(([url]) => {
+    return url === '/api/v1/profiles/settings'
+  }).length
+}
+
 async function flushPromises() {
   await Promise.resolve()
   await Promise.resolve()
@@ -97,7 +103,7 @@ describe('user settings sync plugin', () => {
     await nextTick()
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(settingsFetchCount()).toBe(1)
 
     user.value = {
       id: 'user-1',
@@ -105,7 +111,7 @@ describe('user settings sync plugin', () => {
     await nextTick()
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(settingsFetchCount()).toBe(1)
   })
 
   it('drops the cached consent state when the signed-in user changes',

@@ -29,6 +29,7 @@ import {
 } from '~~/server/utils/memory/entries'
 import { resolveMemoryJevChecker } from '~~/server/utils/memory/jev-check'
 import { slugifyMemoryTitle } from '~~/server/utils/memory/entry-slug'
+import { appendMemoryBodyLines } from '~~/server/utils/memory/instruct-verdict'
 import { consumeChatSearchCall } from '~~/server/utils/memory/tools/chat-search-budget'
 import { CHAT_SEARCH_MAX_CALLS_PER_TURN } from '~~/server/utils/memory/tools/constants'
 import {
@@ -134,10 +135,12 @@ const MEMORY_WRITE_DESCRIPTION = 'Save or update one memory entry about the '
   + 'life, union membership, genetic or biometric data, legal disputes, '
   + 'drug use) are never stored: the server refuses such entries, so do not '
   + 'try to word around it. Check the memory index or call '
-  + `${MEMORY_LIST_TOOL_NAME} first; to change an existing entry pass its id `
-  + 'and the complete merged body, because the body is replaced, not '
-  + 'appended. Entries of the profile and preferences categories are '
-  + 'single, always-loaded entries per scope. scope is "account" (default) '
+  + `${MEMORY_LIST_TOOL_NAME} first. With an id, the entry's fields are `
+  + 'replaced, so send the complete merged body (use this to correct or '
+  + 'remove facts). Without an id, a write whose category is profile or '
+  + 'preferences, or whose title matches an existing entry, adds only the '
+  + 'new body lines to that entry and keeps its title and description. '
+  + 'scope is "account" (default) '
   + 'or "project" (only in a project chat). userRequestQuote must be the '
   + 'user\'s whole request sentence from their current message, verbatim, in '
   + `their original language; the call is rejected otherwise. ${CALL_LIMIT_SENTENCE} `
@@ -507,6 +510,47 @@ async function findUpsertTarget(
   return existing && isEntryVisible(existing, context) ? existing : null
 }
 
+function createAppendOverflowError(
+  exception: unknown,
+  target: MemoryEntry,
+): unknown {
+  const details = exception as Error & { status?: unknown, why?: string }
+
+  if (details.status !== 400) {
+    return exception
+  }
+
+  return createError({
+    message: details.message,
+    status: 400,
+    why: details.why,
+    fix: 'This write adds to the existing entry '
+      + `"${target.title}" instead of replacing it. Call `
+      + `${MEMORY_WRITE_TOOL_NAME} again with id "${target.id}" and a shorter `
+      + 'complete merged body.',
+  })
+}
+
+async function appendToMemoryEntry(
+  context: MemoryToolContext,
+  writeContext: Parameters<typeof updateMemoryEntry>[0],
+  target: MemoryEntry,
+  input: MemoryWriteToolInput,
+) {
+  try {
+    return await updateMemoryEntry(writeContext, {
+      id: target.id,
+      patch: { body: appendMemoryBodyLines(target.body, input.body) },
+      origin: 'tool',
+      sourceChatIds: mergeSourceChatIds(target.sourceChatIds, context.chatId),
+      sourceMessageId: context.sourceMessageId,
+      complianceOrigin: COMPLIANCE_ORIGIN,
+    })
+  } catch (exception) {
+    throw createAppendOverflowError(exception, target)
+  }
+}
+
 async function writeMemoryEntry(
   context: MemoryToolContext,
   input: MemoryWriteToolInput,
@@ -527,14 +571,19 @@ async function writeMemoryEntry(
   const target = await findUpsertTarget(context, input, scope)
 
   if (target) {
-    const { entry, previous } = await updateMemoryEntry(writeContext, {
-      id: target.id,
-      patch: buildWritePatch(input),
-      origin: 'tool',
-      sourceChatIds: mergeSourceChatIds(target.sourceChatIds, context.chatId),
-      sourceMessageId: context.sourceMessageId,
-      complianceOrigin: COMPLIANCE_ORIGIN,
-    })
+    const { entry, previous } = input.id === undefined
+      ? await appendToMemoryEntry(context, writeContext, target, input)
+      : await updateMemoryEntry(writeContext, {
+        id: target.id,
+        patch: buildWritePatch(input),
+        origin: 'tool',
+        sourceChatIds: mergeSourceChatIds(
+          target.sourceChatIds,
+          context.chatId,
+        ),
+        sourceMessageId: context.sourceMessageId,
+        complianceOrigin: COMPLIANCE_ORIGIN,
+      })
 
     return {
       notice: MEMORY_TOOL_NOTICE,

@@ -4,6 +4,7 @@ import type {
   ModelContextOmissionReason,
   ModelContextOmittedFile,
 } from '#shared/types/model-context.d'
+import type { AiImageMarking } from '~~/server/utils/ai/image-provenance'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   extractLocalFileStorageKey,
@@ -13,6 +14,7 @@ import {
   normalizeMediaType,
 } from '#shared/utils/files'
 import { validateGeneratedImage } from '~~/server/utils/ai/image-generation'
+import { markAiGeneratedImage } from '~~/server/utils/ai/image-provenance'
 import {
   getPersistedImageGenerationFailureText,
   isPersistedImageGenerationFailureText,
@@ -700,6 +702,7 @@ export async function persistGatewayGeneratedImageParts(
 ): Promise<PersistGatewayImageOutputResult> {
   const fileIds: string[] = []
   const persistedParts: UIMessage['parts'] = []
+  const provenanceMarkings: AiImageMarking[] = []
   let hasGeneratedImagePart = false
   let processedImagePartCount = 0
   const droppedThoughtImagePartIndexes = getDroppedThoughtImagePartIndexes(
@@ -756,18 +759,27 @@ export async function persistGatewayGeneratedImageParts(
         decodedImage,
         part.mediaType,
       )
+      const markedImage = markAiGeneratedImage({
+        data: validatedImage.data,
+        mediaType: validatedImage.mediaType,
+        model: input.modelId,
+        isEdit: false,
+        maxBytes: maxGeneratedImageBytes,
+      })
       const persistedFile = await persistFile({
         userId: input.userId,
         fileName: buildGatewayGeneratedImageFileName(
           validatedImage.mediaType,
         ),
         mediaType: validatedImage.mediaType,
-        fileData: validatedImage.data,
+        fileData: markedImage.data,
         source: 'assistant',
         originProvider: input.gatewayId,
         originModel: input.modelId,
         logger: input.logger,
       })
+
+      provenanceMarkings.push(markedImage.marking)
 
       fileIds.push(persistedFile.id)
 
@@ -797,6 +809,16 @@ export async function persistGatewayGeneratedImageParts(
         text: gatewayGeneratedImageFailureText,
       })
     }
+  }
+
+  if (provenanceMarkings.length > 0) {
+    input.logger.set({
+      attributes: {
+        assistantFiles: {
+          provenance: provenanceMarkings,
+        },
+      },
+    })
   }
 
   return {

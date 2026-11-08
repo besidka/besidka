@@ -6,40 +6,42 @@ import {
   useLegalNoticeVisibility,
 } from '../../../../app/composables/legal-notice-banner'
 import ChangeNotice from '../../../../app/components/Legal/ChangeNotice.client.vue'
+import type { LegalNotice } from '#shared/utils/legal-notices'
+
+vi.mock('#shared/utils/legal-notices', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('#shared/utils/legal-notices')
+  >()
+  const pinnedNotices = [actual.LEGAL_NOTICES[0]]
+
+  return {
+    ...actual,
+    LEGAL_NOTICES: pinnedNotices,
+    getActiveLegalNotices: (
+      now: Date,
+      notices: readonly LegalNotice[] = pinnedNotices,
+    ) => {
+      return actual.getActiveLegalNotices(now, notices)
+    },
+  }
+})
 
 const NOTICE_ID = '2026-11-legal-notices'
 const USER_ID = 42
-const DISMISSED_KEY = `legal-notice:dismissed:${USER_ID}:${NOTICE_ID}`
 const PUBLISHED_AT = '2026-10-31T06:00:00Z'
 const ACTIVE_UNTIL = '2026-12-18T00:00:00Z'
 const BANNER = '[data-testid="legal-change-notice"]'
 const DISMISS = '[data-testid="legal-change-notice-dismiss"]'
 
-const store = new Map<string, string>()
 const loggedIn = ref<boolean>(true)
 const user = ref<{ id: number } | null>({ id: USER_ID })
 const route = reactive<{ name: string }>({ name: 'chats-new' })
-const isPreferencesAllowed = vi.fn(() => false)
+const isSettingsLoaded = ref<boolean>(true)
+const dismissedLegalNoticeIds = ref<string[]>([])
+const dismissLegalNotice = vi.fn()
+const { fetchMock } = vi.hoisted(() => ({ fetchMock: vi.fn() }))
 
-const storageShim = {
-  getItem: (key: string) => store.get(key) ?? null,
-  setItem: (key: string, value: string) => {
-    store.set(key, String(value))
-  },
-  removeItem: (key: string) => {
-    store.delete(key)
-  },
-}
-
-const throwingStorageShim = {
-  getItem: () => {
-    throw new Error('blocked')
-  },
-  setItem: () => {
-    throw new Error('blocked')
-  },
-  removeItem: () => {},
-}
+mockNuxtImport('$fetch', () => fetchMock)
 
 mockNuxtImport('useAuth', () => {
   return () => ({ loggedIn, user })
@@ -49,18 +51,15 @@ mockNuxtImport('useRoute', () => {
   return () => route
 })
 
-mockNuxtImport('useCookieConsent', () => {
-  return () => ({ isAllowed: isPreferencesAllowed })
+mockNuxtImport('useUserSetting', () => {
+  return () => ({
+    isSettingsLoaded,
+    dismissedLegalNoticeIds,
+    dismissLegalNotice,
+  })
 })
 
 enableAutoUnmount(afterEach)
-
-function installStorage(storage: object): void {
-  Object.defineProperty(window, 'localStorage', {
-    value: storage,
-    configurable: true,
-  })
-}
 
 async function mountNotice() {
   const wrapper = await mountSuspended(ChangeNotice)
@@ -78,11 +77,12 @@ describe('Legal change notice', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
     setNow('2026-11-05T12:00:00Z')
-    store.clear()
     clearNuxtState('legal-notice:dismissed-session')
     clearNuxtState('legal-notice:is-visible')
-    installStorage(storageShim)
-    isPreferencesAllowed.mockClear()
+    dismissLegalNotice.mockReset()
+    fetchMock.mockReset()
+    isSettingsLoaded.value = true
+    dismissedLegalNoticeIds.value = []
     route.name = 'chats-new'
     loggedIn.value = true
     user.value = { id: USER_ID }
@@ -145,38 +145,36 @@ describe('Legal change notice', () => {
     expect(tooltip.classes()).not.toContain('tooltip-bottom')
   })
 
-  it('hides and remembers the dismissal per notice id', async () => {
+  it('hides at once and saves the dismissal to the account', async () => {
     const wrapper = await mountNotice()
 
     await wrapper.find(DISMISS).trigger('click')
     await flushPromises()
 
-    expect(store.get(DISMISSED_KEY)).toBe('1')
+    expect(dismissLegalNotice).toHaveBeenCalledWith(NOTICE_ID)
     expect(wrapper.find(BANNER).exists()).toBe(false)
   })
 
-  it('stays hidden when the notice was dismissed earlier', async () => {
-    store.set(DISMISSED_KEY, '1')
+  it('stays hidden when the account dismissed the notice earlier',
+    async () => {
+      dismissedLegalNoticeIds.value = [NOTICE_ID]
+
+      const wrapper = await mountNotice()
+
+      expect(wrapper.find(BANNER).exists()).toBe(false)
+    })
+
+  it('stays hidden until the account settings are loaded', async () => {
+    isSettingsLoaded.value = false
 
     const wrapper = await mountNotice()
 
     expect(wrapper.find(BANNER).exists()).toBe(false)
-  })
 
-  it('keeps a dismissal to the account that made it', async () => {
-    store.set(DISMISSED_KEY, '1')
-    user.value = { id: USER_ID + 1 }
-
-    const wrapper = await mountNotice()
+    isSettingsLoaded.value = true
+    await flushPromises()
 
     expect(wrapper.find(BANNER).exists()).toBe(true)
-
-    await wrapper.find(DISMISS).trigger('click')
-    await flushPromises()
-
-    expect(store.get(
-      `legal-notice:dismissed:${USER_ID + 1}:${NOTICE_ID}`,
-    )).toBe('1')
   })
 
   it('stays hidden until the account is known', async () => {
@@ -227,35 +225,29 @@ describe('Legal change notice', () => {
     expect(wrapper.find(BANNER).exists()).toBe(false)
   })
 
-  it('persists the dismissal with preferences consent declined', async () => {
+  it('stays hidden for the session when saving the dismissal fails',
+    async () => {
+      dismissLegalNotice.mockResolvedValue(undefined)
+
+      const wrapper = await mountNotice()
+
+      await wrapper.find(DISMISS).trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find(BANNER).exists()).toBe(false)
+
+      const remounted = await mountNotice()
+
+      expect(remounted.find(BANNER).exists()).toBe(false)
+    })
+
+  it('makes no request of its own', async () => {
     const wrapper = await mountNotice()
 
     await wrapper.find(DISMISS).trigger('click')
     await flushPromises()
 
-    expect(isPreferencesAllowed).not.toHaveBeenCalled()
-    expect(store.get(DISMISSED_KEY)).toBe('1')
-
-    clearNuxtState('legal-notice:dismissed-session')
-
-    const remounted = await mountNotice()
-
-    expect(remounted.find(BANNER).exists()).toBe(false)
-  })
-
-  it('keeps the dismissal for the session when storage throws', async () => {
-    installStorage(throwingStorageShim)
-
-    const wrapper = await mountNotice()
-
-    await wrapper.find(DISMISS).trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find(BANNER).exists()).toBe(false)
-
-    const remounted = await mountNotice()
-
-    expect(remounted.find(BANNER).exists()).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('does not add a top safe-area inset outside the chat page', async () => {

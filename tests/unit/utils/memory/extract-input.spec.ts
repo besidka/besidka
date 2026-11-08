@@ -50,7 +50,7 @@ describe('memory extraction input', () => {
     await seedMessage(testDb.db, chatId, 'assistant', [
       { type: 'reasoning', text: 'hidden thoughts' },
       { type: 'source-url', url: 'https://example.test/source' },
-      { type: 'tool-search_chats', output: 'tool output text' },
+      { type: 'tool-web_search', output: 'tool output text' },
       { type: 'dynamic-tool', toolName: 'other', output: 'dynamic output' },
       textPart('Assistant answer'),
     ], minutesBefore(49))
@@ -92,6 +92,66 @@ describe('memory extraction input', () => {
     expect(window.consumedCount).toBe(5)
     expect(window.newestCreatedAt).toEqual(minutesBefore(46))
   })
+
+  it('excludes assistant turns that searched or read other chats',
+    async () => {
+      const { loadMemoryExtractionWindow } = await loadInput()
+
+      await seedMessage(testDb.db, chatId, 'user', [
+        textPart('What did we decide in the other chat?'),
+      ], minutesBefore(50))
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        textPart('CHAT-RECALL-BY-TOOLS-COLUMN'),
+      ], minutesBefore(49), { tools: ['read_chat'] as never })
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        { type: 'tool-read_chat', output: 'x' },
+        textPart('CHAT-RECALL-BY-STATIC-PART'),
+      ], minutesBefore(48))
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        { type: 'dynamic-tool', toolName: 'search_chats', output: 'x' },
+        textPart('CHAT-RECALL-BY-DYNAMIC-PART'),
+      ], minutesBefore(47))
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        textPart('A normal answer'),
+      ], minutesBefore(46))
+
+      const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+      expect(window.transcript).not.toContain('CHAT-RECALL')
+      expect(window.transcript).toContain('What did we decide')
+      expect(window.transcript).toContain('A normal answer')
+      expect(window.userTexts).toEqual([
+        'What did we decide in the other chat?',
+      ])
+      expect(window.consumedCount).toBe(5)
+    })
+
+  it('excludes the turn that carries the past-chat pre-retrieval chip',
+    async () => {
+      const { loadMemoryExtractionWindow } = await loadInput()
+      const { buildPastChatChipPart } = await import(
+        '~~/server/utils/memory/tools/pre-retrieval'
+      )
+      const chipPart = buildPastChatChipPart({
+        block: '',
+        hits: [],
+        query: 'other chat',
+        toolCallId: 'pre-retrieval-1',
+      })
+
+      await seedMessage(testDb.db, chatId, 'user', [
+        textPart('Remember the other chat?'),
+      ], minutesBefore(50))
+      await seedMessage(testDb.db, chatId, 'assistant', [
+        chipPart,
+        textPart('CHAT-RECALL-BY-PRE-RETRIEVAL'),
+      ], minutesBefore(49))
+
+      const window = await loadMemoryExtractionWindow(chatId, null, testDb.db)
+
+      expect(window.transcript).toBe('User: Remember the other chat?')
+      expect(window.consumedCount).toBe(2)
+    })
 
   it('reads only messages newer than the last extraction', async () => {
     const { loadMemoryExtractionWindow } = await loadInput()

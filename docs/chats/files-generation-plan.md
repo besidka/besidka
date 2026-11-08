@@ -816,3 +816,385 @@ decisions resolve them without blocking implementation.
 | Should failed OpenAI requests fall back to Google? | No. | Cross-provider use changes consent, billing, and output. |
 | Should exact image price appear now? | No. | Existing token cost does not cover all provider image charging units. |
 | How do documents fit later? | Provider-produced structured content plus a controlled server renderer. | LLM-authored arbitrary binary or executable documents are unsafe and hard to validate. |
+| Which libraries render DOCX, PPTX, XLSX and PDF? | `docx`, `pptxgenjs`, `write-excel-file`, `pdf-lib` with `@pdf-lib/fontkit` and a Noto Sans subset; `fflate` reads ZIPs. | Measured on 2026-11-08; see [Document renderer decision record](#document-renderer-decision-record). |
+
+## Document renderer decision record
+
+Status: decided by the D-1 spike (BES-277), 2026-11-08. D-2 (spec and
+validators) and D-3 (renderer Worker) implement this without re-opening the
+library choice. Revisit only when a "Revisit when" item below is met.
+
+The hybrid renderer runs one package in two places: a lazy client chunk in a
+browser Web Worker, and a separate `workers/doc-renderer` Worker behind the
+`DOC_RENDERER` RPC service binding. Every library below was measured in both
+places, under the app's exact compatibility flags and under plain
+`nodejs_compat`.
+
+### Decision
+
+| Format | Library | Version | Licence | Key numbers (reference document) |
+| --- | --- | --- | --- | --- |
+| DOCX | `docx` | 9.15.3 | MIT | 76 KB gzip client chunk; 13 ms in the local Worker; 45 ms Node CPU |
+| PPTX | `pptxgenjs` | 4.0.1 | MIT; JSZip is MIT OR GPL-3.0, used under MIT | 134 KB gzip client chunk; 17 ms in the local Worker with two stub aliases; 48 ms Node CPU |
+| XLSX | `write-excel-file` (`/universal`) | 4.1.1 | MIT | 21 KB gzip client chunk; 32 ms in the local Worker with the sync-zip alias; 54 ms Node CPU |
+| PDF | `pdf-lib` + `@pdf-lib/fontkit` | 1.17.1 + 1.1.1 | MIT; fontkit inlines Apache-2.0 Brotli code | 550 KB gzip client chunk; 352 ms in the local Worker; 534 ms Node CPU for 50 pages |
+| Font | Noto Sans Regular, Bold, Italic, subset to Latin + Cyrillic | 2.015 | OFL 1.1 | 236 KB for the three files, 123 KB gzip, loaded as a separate lazy asset |
+| ZIP reader | `fflate` (`unzipSync` with `filter`, `Unzip` for streaming) | 0.8.3 | MIT | Declared sizes are visible before inflating (a pre-filter only, they can be forged); a streaming byte cap is the real bound; 0.75 ms for a full DOCX read |
+
+Rejected: SheetJS CE (writes no frozen panes, 5x the chunk of
+`write-excel-file`), `exceljs` (271 KB gzip, no custom properties, highest
+XLSX worst-case CPU), `pdfmake` (fetches URLs, output not deterministic, see
+below), `pdfkit` (fails at Worker start-up and in the browser build without
+extra setup).
+
+### How it was measured
+
+The harness was throwaway code in a scratch folder outside the repository, as
+the ticket asks; it is not committed. Only the reference specs are committed,
+under `tests/fixtures/documents/reference/`. Nothing was deployed: the
+coordinator restricted this spike to local `wrangler dev`, so there is no
+throwaway Worker to delete and no production `cpuTime` from Workers Logs.
+
+- Machine: Apple M1 Pro, 32 GB, macOS 27.0.1. Node 24.18.0.
+- Worker runtime: `wrangler` 4.158.0 with `workerd` 1.20261104.1, local mode,
+  `compatibility_date: "2026-01-28"`. Two flag sets:
+  - **app flags**: `nodejs_compat`, `no_nodejs_compat_v2`, `nodejs_als`
+    (the exact flags in `wrangler.jsonc`);
+  - **v2 flags**: `nodejs_compat` only.
+- One scratch Worker per library and flag set. It exported a
+  `WorkerEntrypoint` with `render(spec)` and a `fetch` handler that took the
+  spec as JSON, rendered it and returned the bytes. Fonts and images were
+  bundled as `Data` modules.
+- **Worker time**: `Date.now()` around `render()` inside the Worker. In local
+  `workerd` the clock advances during synchronous work (it matched
+  `performance.now()` to the millisecond), but it is wall time and includes
+  timer waits. Median of 5 warm requests for the reference spec and of 3 for
+  the worst case.
+- **CPU proxy**: `process.cpuUsage()` around `render()` in Node, same V8 and
+  same code, median of 5 runs (3 for worst cases), heap capped with
+  `--max-old-space-size=128`. Production `cpuTime` was not captured.
+- **Memory**: peak `heapUsed` sampled every 5 ms in Node, then each worst case
+  re-run with the V8 heap capped at 64 MB and at 32 MB. The Workers isolate
+  limit is 128 MB.
+- **Worker bundle**: `wrangler deploy --dry-run --outdir`, with and without
+  `--minify`; the numbers below count the JavaScript only (fonts and images
+  are listed separately) and give its gzip size.
+- **Client chunk**: each library built as a module Web Worker with esbuild
+  0.28.2 (`--bundle --minify --format=esm --platform=browser`), then gzip -9.
+  This stands in for the `vite build` report; Vite's number should be within a
+  few percent.
+- **Browser**: the same chunks loaded as module Web Workers in headless
+  Chromium and WebKit (Playwright 1.64.1 builds 1248 and 2370), median of 5
+  renders (3 for worst cases).
+- **Output checks**: LibreOffice 26.8.0.3 headless `--convert-to pdf` for the
+  reference DOCX, PPTX and XLSX of every candidate and for the worst-case DOCX
+  and PPTX (the 100,000-cell XLSX was not converted); pdf.js (`unpdf` from this repo) for text extraction and
+  metadata; macOS Quick Look (`qlmanage`, the Preview engine) for rendered
+  page images; a ZIP walk for `docProps/custom.xml`, frozen panes, formulas
+  and number formats.
+- **Static scan**: each minified client chunk searched for `new Function`,
+  `eval(`, `fetch(`, `XMLHttpRequest` and `importScripts`.
+
+Reference specs (`tests/fixtures/documents/reference/`, synthetic content
+only, `version: 0` until D-2 fixes the schema):
+
+| File | Content | Rendered size |
+| --- | --- | --- |
+| `report.json` | H1 to H3, nested lists 3 levels deep (ordered and bullet), 3 tables of 20 x 6 with a header row, 2 PNG images, page breaks, Ukrainian and English text | DOCX 12 pages in LibreOffice |
+| `report-pdf.json` | Same block types, Ukrainian-heavy (about 72,000 Cyrillic characters), 5 tables, 2 images | PDF 50 pages |
+| `deck.json` | 30 slides in 5 layouts (title, title-content, two-column, section, image), speaker notes on every slide | 30 slides |
+| `workbook.json` | 3 sheets, 10,000 cells, date, number, currency (`₴`) and percent formats, 20 formulas (`SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`, `ROUND`, `SUMIF`, `COUNTIF`, `IF`, cross-sheet references), frozen header row | 3 sheets |
+| `worst-case.json` | Expansion rules, not content: `report-pdf.json` x4, `deck.json` x2, `workbook.json` rows x10 | PDF 200 pages, DOCX 164 pages in LibreOffice, 60 slides, 100,000 cells |
+| `chart-revenue.png`, `chart-regions.png` | Two 640 x 360 bar charts generated by code for this spike | 2.8 KB and 2.4 KB |
+
+### Results
+
+Worker and browser times are wall times; CPU is the Node proxy. "Ref" is the
+reference spec, "worst" the bound case.
+
+| Library | Worker pass | Browser pass | Worker bundle (minified JS, gzip) | Client gzip | CPU ref | CPU worst | Metadata | Decision |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `docx` | Yes, both flag sets | Yes, Chromium and WebKit | 276 KB (82 KB) | 76 KB | 45 ms (Worker 13 ms) | 178 ms (Worker 92 ms) | `customProperties` writes `docProps/custom.xml` | **Chosen** |
+| `pptxgenjs` | App flags: build fails (`node:fs`, `node:https`) unless both are aliased to a stub; then yes. v2 flags: yes | Yes | 396 KB (136 KB) | 134 KB | 48 ms (Worker 17 ms app flags, 418 ms v2 flags) | 59 ms (Worker 29 ms, 756 ms v2) | No API; a post-render ZIP stamp adds `custom.xml` | **Chosen** |
+| `write-excel-file` | Reference yes; worst case fails (`ReferenceError: Worker is not defined`) unless `fflate` is aliased to a sync shim; then yes, both flag sets | Yes, with or without the shim | 80 KB (23 KB) | 21 KB | 54 ms (Worker 32 ms) | 664 ms (Worker 338 ms) | `features` hook writes `custom.xml` | **Chosen** |
+| SheetJS CE (CDN tarball) | Yes | Yes | 357 KB (118 KB) | 110 KB | 44 ms (Worker 17 ms) | 291 ms (Worker 182 ms) | `Custprops` writes `custom.xml` | Rejected: frozen panes not written (checked in the sheet XML), 5x the chunk |
+| `exceljs` | Yes (the negative control ran successfully) | Yes | 961 KB (276 KB) | 271 KB | 91 ms (Worker 42 ms) | 2,094 ms (Worker 394 ms) | None | Rejected: size, no custom properties |
+| `pdf-lib` + fontkit | Yes, both flag sets | Yes | 1,412 KB (562 KB) | 550 KB | 534 ms (Worker 352 ms) | 1,795 ms (Worker 1,180 ms) | XMP stream, Info dictionary, `/Lang` | **Chosen** |
+| `pdfmake` | Yes (the negative control ran successfully) | Yes | 850 KB (316 KB) | 304 KB | 215 ms (Worker 226 ms) | 679 ms (Worker 856 ms) | Info only; XMP needs pdfkit internals, not tried | Rejected, see below |
+| `pdfkit` | No: `TypeError: Invalid URL string` at start-up, from a module-level `new URL('./data/sRGB_IEC61966_2_1.icc', import.meta.url)` in both builds | No: browser build throws `Standard font "Helvetica" is not registered` unless `registerStdFonts()` is called | 551 KB (221 KB), never ran | 215 KB | 77 ms (Node only) | 177 ms (Node only) | Not tested | Rejected |
+
+Browser medians (Chromium / WebKit, reference then worst case): `docx` 10/14
+and 66/50 ms; `pptxgenjs` 16/18 and 30/28 ms; `write-excel-file` 28/35 and
+219/297 ms (sync shim 28/35 and 266/306 ms); SheetJS 16/15 and 150/140 ms;
+`exceljs` 31/39 and 284/275 ms; `pdf-lib` 351/348 and 1,184/1,265 ms;
+`pdfmake` 121/136 and 443/494 ms.
+
+Output sizes: DOCX 17.9 KB (worst 63.6 KB); PPTX 101.9 KB (190.9 KB); XLSX
+68.8 KB (611.7 KB) from `write-excel-file`, 176.6 KB (1.64 MB) from SheetJS,
+which stores strings inline; PDF 153.7 KB (537 KB).
+
+### Flags: keep the app's flags in the renderer Worker
+
+The ticket expected `no_nodejs_compat_v2` to break libraries. It did not
+break any chosen library once two aliases were in place, and v2 brought no
+measured gain:
+
+- Under the app flags every chosen library runs, with two build aliases:
+  `node:fs` and `node:https` to an empty module for `pptxgenjs` (they are only
+  reached on its Node file-path and URL-image paths, which the spec never
+  uses), and `fflate` to a shim whose async `zip()` calls `zipSync()`. The
+  `fflate` alias is needed under both flag sets: its async `zip()` spawns a
+  `Worker` for large entries, and Workers have no `Worker` global.
+- Under v2 flags `pptxgenjs` took 418 ms instead of 17 ms for the same deck,
+  and SheetJS took 29 ms instead of 17 ms. The PPTX gap is wall time: JSZip
+  schedules its work through `setImmediate`, which v2 provides through timers.
+  Local `workerd` cannot show whether that time is billed CPU. For `pdf-lib`,
+  `docx` and `write-excel-file` the two flag sets were within a few percent
+  of each other.
+
+Recommendation for D-3: `workers/doc-renderer/wrangler.jsonc` uses the same
+three flags as the app, plus an `alias` block for the three modules above.
+One flag set for the app and the renderer means the shared package (and its
+`validate()`, which the app imports) is only ever built and tested one way.
+This is a weak preference, resting on the PPTX wall-time gap; if D-3 finds a
+reason to use v2 flags, every chosen library also runs there.
+
+### Memory
+
+Every worst case finished with the V8 heap capped at 64 MB, half the 128 MB
+isolate limit: `docx` 49 MB peak heap, `pdf-lib` 45 MB, `pptxgenjs` 13 MB,
+`write-excel-file` 49 MB, SheetJS 60 MB. At 32 MB `pptxgenjs` and
+`write-excel-file` still finished; `docx`, `pdf-lib` and SheetJS ran out of
+heap. These peaks include the expanded spec, the assets and the output held at
+the same time, which matches what the renderer Worker holds. With a 64 MB heap
+`pdf-lib` needed 3,481 ms CPU for 200 pages (GC pressure) against 1,795 ms at
+128 MB.
+
+### CPU limit
+
+The slowest observed render is `pdf-lib` on 200 pages: 1.8 s Node CPU, 3.5 s
+under heap pressure, 1.2 s wall in the local Worker. The Workers Paid default
+is 30 s and `limits.cpu_ms` can go up to 300,000 ms (Cloudflare docs, read
+2026-11-08).
+
+Proposal for `workers/doc-renderer/wrangler.jsonc`:
+`"limits": { "cpu_ms": 15000 }`. That is about 4x the slowest observed render
+under memory pressure, and lower than the default, so a runaway spec costs at
+most 15 s. D-2's bounds (200 pages, 60 slides, 100,000 cells) are what keep a
+real render below it. D-3 should confirm with `wrangler tail` once the Worker
+exists, because production CPU was not measured here.
+
+### RPC payload ceiling
+
+Observed in local `workerd` through a real service binding to a named
+`WorkerEntrypoint` (caller on the app flags, renderer on v2 flags; the limit
+is enforced by the runtime, not by a compatibility flag): a
+`Uint8Array` of 31.9 MiB passed in both directions; 32 MiB failed with
+`Serialized RPC arguments or return values are limited to 32MiB, but the size
+of this value was: 33554447 bytes.` A `ReadableStream` returned over the same
+binding carried 64 MiB without error. This matches the documented 32 MiB limit
+in the Workers RPC docs.
+
+For D-3: a 20 MB document fits as a return value, but the limit counts the
+whole serialized message, so spec plus image inputs plus output must stay
+under 32 MiB per call. Pass images as R2 keys rather than bytes, and either
+return a `ReadableStream` or have the renderer write to R2 and return the key.
+
+### Cyrillic PDF and fonts
+
+- Text extraction with pdf.js returns the Ukrainian probe sentences exactly
+  (including `ґ`, `ї`, `є`, the apostrophe and «guillemets»), 71,715 Cyrillic
+  characters for the 50-page report, 0 replacement characters.
+- Quick Look (the Preview engine) renders the glyphs correctly; screenshot
+  attached to the PR.
+- Fonts are embedded as subset TrueType: `NotoSans-Regular` 7.2 KB, `-Bold`
+  4.3 KB, `-Italic` 2.0 KB of compressed font data in the 50-page PDF.
+  `pdf-lib` marks subsets with a numeric suffix (`NotoSans-Regular-5767`), not
+  the `ABCDEF+` prefix the PDF spec recommends; viewers do not care, strict
+  preflight tools may.
+- Source font: Noto Sans 2.015, "Copyright 2022 The Noto Project Authors", OFL
+  1.1. The spike took the static TTFs from `@expo-google-fonts/noto-sans`; D-3
+  should take them from `notofonts/latin-greek-cyrillic` directly. Subset with
+  `pyftsubset` (fonttools) to U+0000-017F, U+0400-052F, general punctuation,
+  `€`, `₴`, `№`, `™`, arrows and minus, layout features `kern`, `liga`,
+  `mark`, `mkmk`: Regular 629 KB to 76.5 KB (39.7 KB gzip), Bold 76.6 KB
+  (40.3 KB), Italic 83.1 KB (43.2 KB). Serve them as same-origin lazy assets
+  with `OFL.txt` beside them, not inside the JavaScript chunk.
+- CPU goes to fontkit shaping: a profile of the 50-page render puts 283 of
+  629 ms in `@pdf-lib/fontkit` (GSUB/GPOS lookups run on every `drawText`).
+  A word-width cache in the layout code cut the render from 1.9 s to 0.5 s;
+  D-3 keeps that cache.
+- Not verified: Acrobat Reader (not installed). pdf.js was checked through
+  its text and metadata layer, not by rendering pages.
+- Tagged PDF: `pdf-lib` has no structure-tree API, so tagged headings are not
+  cheap. PDF/UA is not required (pre-check Q6); DOCX heading styles, PPTX
+  titles, the XLSX header row, `/Lang` and the document title are set.
+
+### AI marking metadata
+
+All four chosen libraries carry the mark the pre-check asks for, mirroring the
+image XMP in `server/utils/ai/image-provenance.ts`: IPTC `DigitalSourceType`
+`http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia` and
+`AISystemUsed` with the model id only.
+
+- DOCX: `new Document({ customProperties: [...] })` writes
+  `docProps/custom.xml`, the content-type override and the root relationship.
+- XLSX: a `write-excel-file` feature inserts the override and relationship and
+  writes `docProps/custom.xml`; no post-processing.
+- PPTX: no API. A 30-line stamp (unzip with `fflate`, add `custom.xml`, the
+  override and the relationship, re-zip with fixed entry times) runs after
+  `pptx.write({ outputType: 'uint8array' })`. This is the same stamp function
+  D-2 needs for provider-made files (D-7, D-8), so it is one shared function.
+- PDF: an uncompressed XMP stream set as the catalog `/Metadata` (both
+  `rdf:Description` blocks: IPTC and Dublin Core title and language), plus
+  `setTitle`, `setLanguage` and `/Lang`. pdf.js parses the XMP (`dc:title`
+  read back); the IPTC attributes are present verbatim.
+
+All three OOXML outputs convert in LibreOffice; the custom properties were
+checked in the ZIP, not in LibreOffice's or Word's properties dialog.
+
+### Determinism (for D-2 goldens)
+
+Two renders of the same spec three seconds apart, in separate processes:
+
+| Library | Result | Fields to pin |
+| --- | --- | --- |
+| `docx` | One part and the ZIP entry times differ | `docProps/core.xml` `dcterms:created` and `dcterms:modified` (`new Date()`, no option to set them); ZIP entry `mtime` |
+| `pptxgenjs` | One part differs | `docProps/core.xml` created and modified (`new Date()`, no option) |
+| `write-excel-file` | Every part identical; only ZIP entry times differ | ZIP entry `mtime` |
+| `pdf-lib` | Byte-identical | Already pinned: `setCreationDate`, `setModificationDate`, `updateMetadata: false`; the subset-name suffix comes from a seeded generator |
+| SheetJS | Byte-identical | `Props.CreatedDate` |
+
+The PPTX stamp already re-zips with a fixed `mtime`; extending it to rewrite
+the two `core.xml` dates makes every OOXML output byte-stable. Goldens should
+be generated in one runtime: the 200-page PDF came out 12 bytes different in
+WebKit than in Chromium and Node (the reference PDF was identical in all
+three), so D-2 compares PDFs structurally or renders goldens only in Node.
+
+### ZIP reader for server-side validation
+
+`fflate` is chosen. It is already a direct dependency of `write-excel-file`
+and needed by the PPTX stamp, and `docx` ships its own inlined copy.
+
+Proof that sizes are read before inflating, with a 205 KB archive holding a
+200 MiB entry of zeros:
+
+- `unzipSync(bytes, { filter })` called the filter with
+  `{ name, size, originalSize, compression }` for both entries; rejecting
+  `originalSize > 20 MiB` returned only the small entry, in under 1 ms, with no
+  measurable `ArrayBuffer` growth.
+- **Forged sizes**: after patching the central directory and local header to
+  declare the bomb as 1 KiB, the filter accepted it and `unzipSync` returned
+  1,024 bytes without any error, after spending 525 ms inflating the full
+  stream. So `originalSize` alone is not a safe bound.
+- The streaming `Unzip` class with a running byte counter and
+  `file.terminate()` stopped the same forged entry after 64 MiB when the
+  archive was pushed in 64 KiB slices. The overshoot is bounded by the slice
+  size times the deflate ratio (about 1,000), so D-2 pushes small slices
+  (4 KiB or less).
+
+Rule for D-2: first run the central-directory check that `readZipSummary` in
+`app/utils/knowledge-zip.ts` already does (no inflation, rejects zip64; move
+it to `shared/` so the server can use it), reject on declared totals, then
+inflate only the XML parts the validator must read, through `Unzip` with a
+running cap, and reject when the inflated length differs from the declared
+one. A hand-rolled inflater is not worth it: the central-directory part is
+the hand-rolled reader that exists today, and inflation needs a real DEFLATE
+implementation.
+
+### Dynamic code and remote fetches
+
+No chosen library evaluated a string as code or made a request on the paths
+the spike exercised: Workers forbid `new Function` and `eval`, and every
+render passed there. The static scan still finds dormant paths, which D-3
+keeps unreachable:
+
+- `pdf-lib` chunk: one `Function("binder", ...)`, the `function-bind`
+  polyfill, used only when `Function.prototype.bind` is missing.
+- `pptxgenjs` chunk: `XMLHttpRequest` and `https.get` for path or URL images
+  (the spec passes image bytes only), and `new Function` inside the
+  `setimmediate` polyfill, reached only when a string is scheduled. The
+  `importScripts` hit is the same polyfill's feature test, not a call.
+- `pdfmake` resolves image and font URLs through its own fetch path, guarded
+  only by `setUrlAccessPolicy()`. Under the ticket's rule (a library that
+  fetches remote resources is disqualified) this alone rules it out.
+
+### Why `pdfmake` stays rejected
+
+`pdfmake` was meant as a negative control. It passed in the Worker and the
+browser, and it is smaller (304 KB against 550 KB gzip) and faster (215 ms
+against 534 ms Node CPU for 50 pages) than `pdf-lib`, with a declarative
+layout engine close to the JSON spec. It stays rejected because:
+
+- it can fetch URLs, which the ticket disqualifies, even if a policy blocks
+  it. This is the deciding reason;
+- its output is not deterministic (`/CreationDate` and the trailer `/ID`
+  change per render, checked), which costs D-2 a normaliser;
+- XMP marking was not tried: pdfkit writes XMP only for PDF versions above
+  1.3 and custom XMP needs its internal `appendXML()`.
+
+Revisit when `pdf-lib` CPU or chunk size becomes the bottleneck in D-4, or
+when `pdf-lib` breaks on a runtime upgrade: it has had no release since 1.17.1
+in 2021, which is the main risk of this choice.
+
+### Licences and notices (pre-check D-10)
+
+- Import every library from its package entry, never from
+  `dist/pptxgen.bundle.js`; the spike imported `pptxgenjs` from
+  `dist/pptxgen.es.js` through its `import` export, which leaves `jszip` as a
+  separate package in the bundle graph.
+- A notices collector that walks the bundle's package graph misses inlined
+  code. The esbuild metafile shows `docx` as one package, yet its `dist`
+  inlines `fflate` and `nanoid` (both MIT); `@pdf-lib/fontkit`'s UMD build
+  inlines, among others, a Brotli decoder, `base64-arraybuffer` (Niklas von
+  Hertzen) and Node's `events` (Joyent). The `pdf-lib` chunk also carries
+  `pako` (MIT AND Zlib), `@pdf-lib/upng`, `@pdf-lib/standard-fonts` (Adobe
+  font metrics) and `tslib`, which a package-graph collector does see. D-2's
+  `THIRD_PARTY_NOTICES` step must
+  also read `/*!` banners and these packages' own dependency lists, or list
+  them by hand.
+- New for the pre-check licence table: the Brotli decoder inlined in
+  `@pdf-lib/fontkit` 1.1.1 (`dist/fontkit.umd.js`, 6 file headers) carries
+  "Copyright 2013 Google Inc. All Rights Reserved. Licensed under the Apache
+  License, Version 2.0". The pre-check lists `@pdf-lib/fontkit` as MIT only.
+  The client chunk ships this code, so the notices file needs the Apache-2.0
+  text for it as well. Not a veto (Apache-2.0 is permissive), but the D-10
+  table should be corrected.
+- SheetJS, if it ever comes back, only from the pinned
+  `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` tarball (as tested
+  here), never npm `xlsx`.
+
+### Output validity matrix
+
+| Check | DOCX | PPTX | XLSX | PDF |
+| --- | --- | --- | --- | --- |
+| LibreOffice 26.8 headless conversion | Pass, 12 pages | Pass, 30 slides | Pass, formulas evaluate, no `Err:` or `#NAME?` | n/a |
+| macOS Quick Look / Preview engine | Not verified on the DOCX itself (only LibreOffice's PDF of it) | Not verified (same) | Not verified (same) | Pass, Cyrillic glyphs render |
+| pdf.js text and metadata | n/a | n/a | n/a | Pass |
+| Word, Excel, PowerPoint (macOS) | Not verified (not installed) | Not verified | Not verified | n/a |
+| Keynote, Numbers | n/a | Not verified | Not verified | n/a |
+| Google Docs, Sheets, Slides import | Not verified | Not verified | Not verified | n/a |
+| Acrobat Reader | n/a | n/a | n/a | Not verified |
+| Firefox, iOS Simulator (browser runner) | Not run | Not run | Not run | Not run |
+
+The "Not verified" rows are open for D-2's golden review: open each golden
+once in Word, Excel, PowerPoint, Keynote, Numbers, Google import and Acrobat,
+and record repair prompts.
+
+### What changes for D-2 to D-5
+
+- **D-2**: the reference specs above are the input for goldens. Pin the
+  `core.xml` dates and ZIP entry times through the shared OOXML stamp; render
+  PDF goldens in Node. The notices collector must handle inlined dependencies. The ZIP
+  validator follows the rule in the ZIP section.
+- **Harness code is not committed.** The `fflate` sync shim, the OOXML stamp,
+  the PDF layout with its word-width cache and the XMP writer exist only in
+  the spike; D-2 and D-3 write them fresh from the descriptions above.
+- **D-3**: renderer Worker on the app's three flags, with aliases for
+  `node:fs`, `node:https` and `fflate`; `limits.cpu_ms: 15000`; images in and
+  documents out as R2 keys or streams because of the 32 MiB RPC limit; fonts
+  as separate same-origin assets; keep the word-width cache in the PDF layout.
+- **D-4**: the PDF chunk (550 KB gzip plus about 123 KB of fonts) is much
+  larger than the other three (21 to 134 KB). Load it only when a PDF is
+  requested; the Worker fallback exists for slow devices.
+- **D-5**: no change found.

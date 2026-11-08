@@ -124,6 +124,121 @@ is a live-key error, not a picker cosmetic).
   this pattern yet; DeepSeek and Moonshot AI don't offer image generation at
   all.
 
+### OpenAI image edits from an attached image
+
+Until 2026-11-03 the `generate_image` tool forwarded only the controller's
+text prompt to the image model, so an image attached to a GPT Image send
+reached the controller (`gpt-6-luna`) but never OpenAI's Images API. "Use
+exactly this background" was answered by a fresh generation from a text
+description of the photo.
+
+Now, on the direct OpenAI path only, the send passes the images on the
+latest user message to the tool as `sourceImages`, and the tool calls
+`generateImage({ prompt: { images, text } })`. AI SDK v7 turns `images` into
+image-model files, and `@ai-sdk/openai` (4.0.102) posts to `/images/edits`
+whenever files are present; a send without an attached image still sends a
+plain string prompt to `/images/generations`, unchanged.
+
+- **Which images.** `getImageEditSourceImages()`
+  (`server/utils/ai/image-generation.ts`) takes the last `user` message of
+  `messagesForAI` and keeps its `file` parts that are `data:` URLs with
+  media type `image/png`, `image/jpeg` or `image/webp`, in their original
+  order (OpenAI treats the first as the primary image), capped at 16 (the
+  Images API limit for GPT image models). The media type is read from the
+  `data:` URL header, because that header is what the AI SDK sends to
+  OpenAI; the part's declared `mediaType` comes from the client and is
+  ignored. Images from earlier turns, generated images in assistant
+  messages, PDFs, GIFs and text files are not forwarded; the controller
+  still sees them as before.
+- **Memory budget.** The SDK decodes each image and copies it into a
+  multipart body, so the edit holds several copies of every source image at
+  once on a 128 MB Worker, while the per-message upload cap is 1 GB. The
+  forwarded images are therefore capped at `MAX_IMAGE_EDIT_SOURCE_BYTES`
+  (20 MB decoded, estimated from the base64 length). An image that would
+  exceed the budget is skipped and later, smaller ones are still kept. If
+  nothing fits, the send falls back to text-only generation.
+- **No extra R2 reads.** `convertFilesForAI()` has already read the latest
+  message's owned files from R2 one at a time (with the 5-minute KV data-URL
+  cache) and replaced their `/files/` URLs with `data:` URLs, so the tool
+  reuses those. The edit adds no R2 or KV connection to the send.
+- **Request options.** `quality`, `outputFormat` and `outputCompression`
+  are in the base options schema shared by the generation and edit
+  endpoints, so `getProviderGenerationOptions('openai', …)` is unchanged.
+  `inputFidelity` is deliberately not sent: OpenAI's edit reference says to
+  omit it for `gpt-image-2`, and an unsupported parameter fails only with a
+  real key. No mask is sent, so the model edits the whole image as the
+  prompt describes.
+- **Controller prompt.** When source images are present, the tool
+  description asks the controller to write the edit instruction (what to
+  change and what to keep) rather than describing the whole scene again,
+  and to pick the aspect ratio closest to the source.
+- **Cost.** `getImageGenerationCost()` is still the per-image output
+  price. An edit also bills the input image tokens, which the flat estimate
+  does not include (the model's `price.display` already says "plus input").
+- **Scope.** Google and xAI image models and every gateway image path are
+  unchanged: their `createImageGenerationTool()` calls pass no source
+  images, and gateway image generation has no tool at all (see
+  [`gateways.md`](./gateways.md)).
+- **Verified live** on the PR preview on 2026-11-03: a red circle on white,
+  attached with "add a blue square in the top-left corner", came back with
+  the circle and background kept and the square added.
+
+### Follow-up edits of the previous generated image
+
+A follow-up such as "make it darker" carries no attachment, and the
+previous result reaches the controller only as the text "Generated file
+saved in the user file library: <name> (<type>)." (`sanitizeMessageParts`
+in `server/utils/files/assistant-files.ts`). Until 2026-11-04 such a send
+was a fresh generation from a text prompt.
+
+Whether a follow-up is an edit is a language decision ("make it darker"
+versus "now draw a cat"), so the controller makes it, not the route:
+
+- **Which image.** `findPreviousGeneratedImage()` walks the persisted
+  history (`allMessages`, built from D1, not `messagesForAI`, where
+  assistant files are already text) from the end and takes the most recent
+  assistant `file` part marked `?generated=1`
+  (`markUrlAsGeneratedFile`) with a PNG, JPEG or WebP media type. Images the
+  user attached in earlier turns are not candidates. A gateway-generated
+  image is persisted the same way, so a Gemini result can be refined with
+  GPT Image after a model switch.
+- **Attachments win.** When the latest message has attached images, the
+  tool edits those, exactly as above, and the previous image is not
+  offered. This holds for any `image/*` attachment, even one the edit
+  endpoint cannot take (a GIF, HEIC or oversized image): "make this darker"
+  then means the attached image, so editing the older generated one would
+  be wrong.
+- **The flag.** Otherwise, when a previous image exists, the tool schema
+  gains an optional `editPreviousImage` boolean and the description names
+  the file and says to set it only when the user asks to change, refine,
+  fix or continue that image. Without a previous image the schema and
+  description are the original ones, byte for byte.
+- **Lazy read.** The image is read only when the controller sets the flag:
+  `loadOwnedGeneratedImageDataUrl()` (`convert-files-for-ai.ts`) checks the
+  `files` row for this user with `source: 'assistant'`, then uses the
+  5-minute KV data-URL cache or one R2 read. A fresh generation in a chat
+  with earlier images costs no extra connection. The loader closes over a
+  `useFileStorage()` captured before the tool is built, because the tool
+  runs inside the AI SDK loop, and it never calls `useEvent()`.
+- **Same limits.** The loaded data URL goes through
+  `filterImageEditSourceImages()`, the filter used for attachments (header
+  media type, count cap, `MAX_IMAGE_EDIT_SOURCE_BYTES`).
+- **Deleted image.** If the controller asks for an edit but the file was
+  deleted or has expired, the tool fails with `source-image-unavailable`
+  ("The earlier image is no longer available to edit. Attach it again, then
+  try again.") instead of quietly making an unrelated image. That is a
+  judgment call: the user asked for an edit, and a new image would look
+  like the edit failed.
+- **Logs.** `attributes.imageGeneration.source` is `attached`, `previous`
+  or `none`, next to `mode`. When the loader finds nothing,
+  `attributes.imageGeneration.previousImageMissing` says why: `not-owned`
+  (no `files` row for this user) or `missing-object` (gone from R2 or the
+  read failed). Both are under the `attributes` map, because
+  `besidka-prod` is at Axiom's field cap (see
+  [`../axiom-map-fields.md`](../axiom-map-fields.md)).
+- **Scope.** Direct OpenAI image models only. Google and xAI image tools and
+  the gateway paths are unchanged.
+
 ## Prompt caching
 
 Cached input tokens bill at a fraction of the base input price, so every

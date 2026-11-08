@@ -27,6 +27,7 @@ export interface UserSettingsFieldUpdates {
   projectMemoryModel?: string | null
   projectMemoryGateway?: GatewayId | null
   typesafeRoles?: JevRoleSettings | null
+  dismissedLegalNoticeIds?: string[]
 }
 
 export function dedupeFavoriteGatewayModels(

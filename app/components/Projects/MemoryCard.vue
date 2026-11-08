@@ -53,7 +53,7 @@
 
     <div
       v-if="metaLines.length"
-      class="mt-2 text-xs opacity-60"
+      class="mt-2 text-xs text-base-content/70"
       data-testid="project-memory-meta"
     >
       <p
@@ -85,7 +85,7 @@
           data-testid="project-memory-entries"
         >
           <p
-            class="text-xs opacity-60"
+            class="text-xs text-base-content/70"
             data-testid="project-memory-count"
           >
             {{ card.total }} of {{ card.limits.maxProjectEntries }}<span

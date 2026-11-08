@@ -36,6 +36,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-secondary-content: var(--color-stone-800);
   --color-accent: var(--color-pink-700);
   --color-accent-bg: var(--color-pink-400);
+  --color-accent-text: var(--color-pink-800);
   --color-accent-content: var(--color-white);
   --color-neutral: var(--color-stone-800);
   --color-neutral-content: var(--color-white);
@@ -46,7 +47,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-input-success: var(--color-emerald-600);
   --color-warning: var(--color-amber-700);
   --color-warning-content: var(--color-amber-100);
-  --color-error: var(--color-red-600);
+  --color-error: var(--color-red-700);
   --color-error-content: var(--color-white);
   --radius-selector: 1rem;
   --radius-field: 2rem;
@@ -80,6 +81,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-secondary-content: var(--color-stone-800);
   --color-accent: var(--color-pink-300);
   --color-accent-bg: var(--color-pink-950);
+  --color-accent-text: var(--color-pink-200);
   --color-accent-content: var(--color-stone-950);
   --color-neutral: var(--color-stone-800);
   --color-neutral-content: var(--color-stone-100);
@@ -212,6 +214,16 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 
   .tab-content {
     @apply bg-base-100 border-base-300 p-6;
+  }
+
+  .tabs > .tab:not(.tab-active, .tab-disabled, [disabled], [aria-selected="true"], [aria-current="true"], [aria-current="page"], :checked, :has(:checked)) {
+    color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+
+    @media (hover: hover) {
+      &:hover {
+        color: var(--color-base-content);
+      }
+    }
   }
 
   .skeleton:not(.skeleton--default):not(.skeleton-text) {
@@ -464,6 +476,64 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --landing-header-offset: 4rem;
 }
 
+@utility max-w-chat-column {
+  max-width: calc(100vw - var(--side-panel-width, 0px));
+}
+
+.side-panel-inset {
+  margin-right: var(--side-panel-width, 0px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .side-panel-inset {
+    transition: margin-right 0.3s ease-out;
+  }
+}
+
+.side-panel-resizing :is(.side-panel-inset, .side-panel-follow) {
+  transition: none !important;
+}
+
+.modal {
+  padding-bottom: var(--keyboard-inset, 0px);
+  transition:
+    overlay 0.3s allow-discrete,
+    visibility 0.3s allow-discrete,
+    background-color 0.3s ease-out,
+    opacity 0.1s ease-out,
+    padding-bottom 0.25s ease-out;
+}
+
+.modal:is([open], .modal-open) {
+  transition:
+    visibility 0s allow-discrete,
+    background-color 0.3s ease-out,
+    opacity 0.1s ease-out,
+    padding-bottom 0.25s ease-out;
+}
+
+@utility sheet-safe-padding {
+  @media (width < 40rem) {
+    padding-bottom: max(
+      calc(1rem + var(--sab, 0px)),
+      env(safe-area-inset-bottom)
+    );
+
+    html[data-keyboard-open] & {
+      padding-bottom: 1rem;
+    }
+  }
+}
+
+html[data-keyboard-open] .modal:is([open], .modal-open) .modal-box {
+  max-height: calc(var(--visible-height) - var(--sat) - 0.5rem);
+}
+
+html[data-keyboard-open] .modal-bottom > .modal-box {
+  --modal-bl: var(--radius-box);
+  --modal-br: var(--radius-box);
+}
+
 @layer components {
 
   .bubble {
@@ -598,6 +668,24 @@ html body[data-studio-active][data-expand-sidebar]::before {
  * accent-on-accent instead of accent-content-on-accent. Point it at
  * --btn-fg (e.g. accent-content) to match pre-5.6 behavior.
  */
+@layer utilities {
+  :where([data-theme="dark"]) .text-base-content\/60 {
+    color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+  }
+
+  :where([data-theme="dark"]) .text-base-content\/70 {
+    color: color-mix(in oklab, var(--color-base-content) 85%, transparent);
+  }
+
+  :where([data-theme="dark"]) :is(.label, .fieldset-label) {
+    color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+  }
+}
+
+.link-accent {
+  color: var(--color-accent-text);
+}
+
 @utility btn-ghost-legacy {
   &.btn-active {
     --btn-rest-fg: var(--btn-fg, var(--color-base-content, currentColor));
@@ -828,7 +916,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
   --tw-prose-body: var(--color-base-content);
   --tw-prose-headings: var(--color-base-content);
   --tw-prose-lead: var(--color-base-content);
-  --tw-prose-links: var(--color-accent);
+  --tw-prose-links: var(--color-accent-text);
   --tw-prose-bold: var(--color-base-content);
   --tw-prose-counters: var(--color-accent);
   --tw-prose-bullets: var(--color-accent);
@@ -912,7 +1000,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
 :root .prose p > code:not(pre > code),
 :root .prose li > code:not(pre > code) {
   @apply whitespace-pre-wrap p-1 rounded border-none bg-accent/10
-    text-accent text-sm;
+    text-(--color-accent-text) text-sm;
 }
 
 /*
@@ -926,7 +1014,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
  * still wraps as one continuous, undecorated run.
  */
 :root .prose :is(th, td) code:not(pre > code) {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   background-color: transparent;
   border: none;
   border-radius: 0;

@@ -1,12 +1,13 @@
 <template>
   <div
     ref="element"
-    class="group w-screen sm:w-4xl sm:max-w-screen mx-auto transition-opacity"
+    class="group w-screen sm:w-4xl sm:max-w-chat-column mx-auto transition-opacity"
     :class="{
       'opacity-90 blur-md': anySelected && !isSelected,
       '[@media(pointer:coarse)]:select-none': !isSelected,
     }"
     @contextmenu="onContextMenu"
+    @copy="onCopy"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="cancelLongPress"
@@ -108,6 +109,40 @@ const resolvedUserName = computed<string | undefined>(() => {
 
   return user.value?.name ?? undefined
 })
+
+function onCopy(event: ClipboardEvent) {
+  if (event.defaultPrevented || !event.clipboardData) {
+    return
+  }
+
+  const selection = window.getSelection()
+
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return
+  }
+
+  const ranges = Array.from({ length: selection.rangeCount }, (_, index) => {
+    return selection.getRangeAt(index)
+  })
+
+  const isInsideMessageText = ranges.every((range) => {
+    return isRangeInsideSelector(range, '.js-message-text')
+  })
+
+  if (!isInsideMessageText) {
+    return
+  }
+
+  const content = selectionRangesToClipboardContent(ranges)
+
+  if (!content.text.trim()) {
+    return
+  }
+
+  event.clipboardData.setData('text/html', content.html)
+  event.clipboardData.setData('text/plain', content.text)
+  event.preventDefault()
+}
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
 let pointerStartX = 0

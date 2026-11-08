@@ -3,14 +3,14 @@
     <dialog
       ref="modal"
       data-testid="search-modal"
-      class="js-search-modal modal modal-middle"
+      class="js-search-modal modal modal-bottom sm:modal-middle"
       aria-label="Search"
       @close="onDialogClosed"
     >
       <div
         ref="panel"
         tabindex="-1"
-        class="modal-box max-w-lg max-h-[80vh] flex flex-col gap-3"
+        class="modal-box sheet-safe-padding max-w-lg max-h-[80vh] flex flex-col gap-3"
       >
         <div class="shrink-0">
           <UiSearchInput
@@ -38,7 +38,7 @@
             <div
               v-if="group.heading"
               aria-hidden="true"
-              class="px-3 pt-3 pb-1 text-xs font-semibold uppercase opacity-50"
+              class="px-3 pt-3 pb-1 text-xs font-semibold uppercase text-base-content/70"
             >
               {{ group.heading }}
             </div>
@@ -128,6 +128,7 @@ const SEARCH_DEBOUNCE_MS = 180
 
 const route = useRoute()
 const { loggedIn } = useAuth()
+const isAdmin = useIsAdmin()
 const { isModalOpen, openSearchModal, closeSearchModal } = useSearchModal()
 const { currentPreference, toggle } = useThemeToggle()
 const {
@@ -291,6 +292,20 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
           label: 'Connected apps',
           run: () => goTo('/profile/connected-apps'),
         },
+        {
+          id: 'search-option-labs',
+          iconName: 'lucide:flask-conical',
+          label: 'Labs',
+          run: () => goTo('/profile/labs'),
+        },
+        ...(isAdmin.value
+          ? [{
+            id: 'search-option-admin',
+            iconName: 'lucide:shield-ellipsis',
+            label: 'Admin',
+            run: () => goTo('/admin'),
+          }]
+          : []),
       ],
     },
   )

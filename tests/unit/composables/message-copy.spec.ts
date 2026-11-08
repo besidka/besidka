@@ -49,7 +49,120 @@ describe('useMessageCopy', () => {
     vi.restoreAllMocks()
   })
 
+  function mockCopyEventExecCommand(options: { succeeds: boolean } = {
+    succeeds: true,
+  }) {
+    const setData = vi.fn()
+    const preventDefault = vi.fn()
+
+    document.execCommand = vi.fn().mockImplementation(() => {
+      const event = new Event('copy', { cancelable: true })
+
+      Object.defineProperty(event, 'clipboardData', {
+        value: { setData },
+      })
+      Object.defineProperty(event, 'preventDefault', {
+        value: preventDefault,
+      })
+      document.dispatchEvent(event)
+
+      return options.succeeds
+    })
+
+    return { setData, preventDefault }
+  }
+
   describe('copyRich', () => {
+    it('writes both flavors through a copy event first', async () => {
+      const { setData, preventDefault } = mockCopyEventExecCommand()
+      const { copyRich } = useMessageCopy()
+
+      const succeeded = await copyRich({
+        html: '<strong>hello</strong>',
+        text: 'hello',
+      })
+
+      expect(succeeded).toBe(true)
+      expect(document.execCommand).toHaveBeenCalledWith('copy')
+      expect(setData).toHaveBeenCalledWith(
+        'text/html',
+        '<strong>hello</strong>',
+      )
+      expect(setData).toHaveBeenCalledWith('text/plain', 'hello')
+      expect(preventDefault).toHaveBeenCalledTimes(1)
+      expect(navigator.clipboard.write).not.toHaveBeenCalled()
+      expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
+    })
+
+    it('skips the html flavor when there is no html', async () => {
+      const { setData } = mockCopyEventExecCommand()
+      const { copyRich } = useMessageCopy()
+
+      await copyRich({ html: '', text: 'hello' })
+
+      expect(setData).toHaveBeenCalledTimes(1)
+      expect(setData).toHaveBeenCalledWith('text/plain', 'hello')
+    })
+
+    it('removes the copy listener after the command', async () => {
+      const { setData } = mockCopyEventExecCommand()
+      const { copyRich } = useMessageCopy()
+
+      await copyRich({ html: '<b>a</b>', text: 'a' })
+      setData.mockClear()
+
+      const event = new Event('copy', { cancelable: true })
+
+      Object.defineProperty(event, 'clipboardData', { value: { setData } })
+      document.dispatchEvent(event)
+
+      expect(setData).not.toHaveBeenCalled()
+    })
+
+    it('falls back to the Clipboard API when execCommand returns false', async () => {
+      const { setData } = mockCopyEventExecCommand({ succeeds: false })
+      const { copyRich } = useMessageCopy()
+
+      const succeeded = await copyRich({
+        html: '<strong>hello</strong>',
+        text: 'hello',
+      })
+
+      expect(succeeded).toBe(true)
+      expect(setData).toHaveBeenCalled()
+      expect(navigator.clipboard.write).toHaveBeenCalledTimes(1)
+    })
+
+    it('falls back when the copy listener never fires', async () => {
+      document.execCommand = vi.fn().mockReturnValue(true)
+
+      const { copyRich } = useMessageCopy()
+
+      const succeeded = await copyRich({
+        html: '<strong>hello</strong>',
+        text: 'hello',
+      })
+
+      expect(succeeded).toBe(true)
+      expect(navigator.clipboard.write).toHaveBeenCalledTimes(1)
+    })
+
+    it('falls back when execCommand throws', async () => {
+      document.execCommand = vi.fn().mockImplementation(() => {
+        throw new Error('not allowed')
+      })
+
+      const { copyRich } = useMessageCopy()
+
+      const succeeded = await copyRich({
+        html: '<strong>hello</strong>',
+        text: 'hello',
+      })
+
+      expect(succeeded).toBe(true)
+      expect(navigator.clipboard.write).toHaveBeenCalledTimes(1)
+    })
+
     it('writes both html and plain text flavors via the Clipboard API', async () => {
       const { copyRich } = useMessageCopy()
 

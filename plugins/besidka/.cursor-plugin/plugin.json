@@ -1,0 +1,13 @@
+{
+  "name": "besidka",
+  "version": "2.1.0",
+  "description": "Read and organise your Besidka chats, projects, project knowledge, memory, files and settings.",
+  "author": {
+    "name": "Besidka"
+  },
+  "homepage": "https://besidka.com",
+  "repository": "https://github.com/besidka/besidka",
+  "license": "MIT",
+  "keywords": ["chat", "projects", "memory", "notes", "productivity"],
+  "logo": "assets/logo.png"
+}

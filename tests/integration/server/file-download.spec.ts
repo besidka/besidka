@@ -109,6 +109,7 @@ describe('private file download route', () => {
     ['scan.jpg', 'image/png', 'scan.png'],
     ['document.txt', 'application/pdf', 'document.pdf'],
     ['notes.pdf', 'text/plain; charset=utf-8', 'notes.txt'],
+    ['notes.txt', 'text/markdown', 'notes.md'],
   ])(
     'normalizes %s as %s to %s',
     async (fileName, mediaType, expectedFileName) => {

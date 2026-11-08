@@ -235,6 +235,7 @@ describe('getMcpChat extra fields', () => {
           allowBranch: true,
         },
         [],
+        [],
       )
 
       const chat = await getMcpChat(createDb(), 1, {
@@ -270,6 +271,7 @@ describe('getMcpChat extra fields', () => {
         allowBranch: false,
       },
       [],
+      [],
     )
 
     const chat = await getMcpChat(createDb(), 1, {
@@ -296,6 +298,7 @@ describe('getMcpChat extra fields', () => {
       }),
       undefined,
       [],
+      [],
     )
 
     const chat = await getMcpChat(createDb(), 1, {
@@ -309,6 +312,167 @@ describe('getMcpChat extra fields', () => {
       memoryExcluded: false,
       share: null,
     })
+  })
+
+  it('summarizes the chat context over the whole chat', async () => {
+    const createdAt = new Date('2026-10-01T00:00:00.000Z')
+
+    queue(
+      chatRow(),
+      undefined,
+      [],
+      [
+        {
+          id: 1,
+          publicId: 'm1',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Look at this' },
+            {
+              type: 'file',
+              url: '/files/key-1',
+              mediaType: 'image/png',
+              filename: 'a.png',
+            },
+          ],
+          tools: [],
+          usage: null,
+          createdAt,
+        },
+        {
+          id: 2,
+          publicId: 'm2',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-generate_image',
+              toolCallId: 'call-1',
+              state: 'output-available',
+              output: {
+                status: 'ready',
+                file: { id: 'f1', name: 'cat.png', url: '/files/key-2' },
+              },
+            },
+            { type: 'source-url', url: 'https://example.com/a', title: 'A' },
+            {
+              type: 'tool-memory_write',
+              toolCallId: 'call-2',
+              state: 'output-available',
+              input: { title: 'Likes cats' },
+            },
+          ],
+          tools: [],
+          usage: null,
+          createdAt,
+        },
+      ],
+      [{ id: 'pub-77', storageKey: 'key-1' }],
+    )
+
+    const chat = await getMcpChat(createDb(), 1, {
+      slug: 'slug-1',
+      siteUrl: 'https://besidka.com',
+    })
+
+    expect(chat.context).toEqual({
+      outputs: 1,
+      inputs: 1,
+      sources: 1,
+      images: 1,
+      researchReports: 0,
+      memoryActions: 1,
+      truncated: false,
+      files: [{ id: 'pub-77', name: 'a.png' }],
+    })
+
+    const { sql, params } = renderCondition(mocks.conditions.at(-1))
+
+    expect(sql).toContain('"files"."user_id" = ?')
+    expect(sql).toContain('"files"."storage_key" in (?)')
+    expect(params).toEqual([1, 'key-1'])
+  })
+
+  it('drops attached files the user no longer owns', async () => {
+    const createdAt = new Date('2026-10-01T00:00:00.000Z')
+
+    queue(
+      chatRow(),
+      undefined,
+      [],
+      [
+        {
+          id: 1,
+          publicId: 'm1',
+          role: 'user',
+          parts: [
+            {
+              type: 'file',
+              url: '/files/key-gone',
+              mediaType: 'image/png',
+              filename: 'gone.png',
+            },
+            {
+              type: 'file',
+              url: '/files/key-kept',
+              mediaType: 'image/png',
+              filename: 'kept.png',
+            },
+            {
+              type: 'file',
+              url: 'https://cdn.test/external.png',
+              mediaType: 'image/png',
+              filename: 'external.png',
+            },
+          ],
+          tools: [],
+          usage: null,
+          createdAt,
+        },
+      ],
+      [{ id: 'pub-5', storageKey: 'key-kept' }],
+    )
+
+    const chat = await getMcpChat(createDb(), 1, {
+      slug: 'slug-1',
+      siteUrl: 'https://besidka.com',
+    })
+
+    expect(chat.context.inputs).toBe(3)
+    expect(chat.context.files).toEqual([{ id: 'pub-5', name: 'kept.png' }])
+  })
+
+  it('does not look files up when the chat has none attached', async () => {
+    queue(chatRow(), undefined, [], [])
+
+    const chat = await getMcpChat(createDb(), 1, {
+      slug: 'slug-1',
+      siteUrl: 'https://besidka.com',
+    })
+
+    expect(chat.context.files).toEqual([])
+    expect(mocks.selectCount).toBe(4)
+  })
+
+  it('flags a context built from the newest messages only', async () => {
+    const rows = Array.from({ length: 1001 }, (_value, index) => {
+      return {
+        id: 1001 - index,
+        publicId: `m${1001 - index}`,
+        role: 'user',
+        parts: [{ type: 'text', text: 'hi' }],
+        tools: [],
+        createdAt: new Date('2026-10-01T00:00:00.000Z'),
+      }
+    })
+
+    queue(chatRow(), undefined, [], rows)
+
+    const chat = await getMcpChat(createDb(), 1, {
+      slug: 'slug-1',
+      siteUrl: 'https://besidka.com',
+    })
+
+    expect(chat.context.truncated).toBe(true)
   })
 
   it('answers 404 for a chat that is not the user\'s', async () => {

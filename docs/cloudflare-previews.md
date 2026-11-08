@@ -104,57 +104,78 @@ Consequences:
 
 ## Turnstile on Previews
 
-Previews run the **real** Turnstile widget (owner decision 2026-10-13), but a
-**dedicated** one: "Besidka (preview)", sitekey `0x4AAAAAAEFM-2wD0PMvdy4q`
-(public by design). Previews inherit `NUXT_TURNSTILE_ENFORCED: true` from
-`env.production`, so `env.production.previews.vars` sets
-`NUXT_PUBLIC_TURNSTILE_SITE_KEY` to that preview sitekey. Production keeps its
-own widget (`0x4AAAAAAEFMAZiwbUuiy0qi`) and previews do not share it.
+Turnstile is **disabled** on every Preview (PR previews
+`pr-<n>-besidka.chernenko.workers.dev` and the long-lived
+`preview-besidka.chernenko.workers.dev`). Owner decision 2026-11-05, replacing
+the 2026-10-13 decision to run a dedicated "Besidka (preview)" widget.
 
-A Turnstile sitekey and secret are a pair. The previews secret in
-`.dev.vars.preview` (pushed with `wrangler preview base-config secret bulk`)
-must be the secret of the **"Besidka (preview)"** widget. A mismatched pair
-(for example the production sitekey with the preview secret, which is what PR
-#444 shipped, or a test sitekey with a real secret) lets the widget itself
-render and pass in the browser, but `siteverify` rejects the token, so every
-sign-in, sign-up and reset-password on a Preview returns 403 "Captcha
-verification failed". The old `besidka-preview` Worker had the test key and no
-enforcement, so captcha was effectively off there.
+Why: all Previews share the `besidka-preview` D1, and automation (Playwright,
+agents) and test accounts have to sign in and sign up there. Automation can
+never pass a real Managed challenge, so with the widget on, nobody but a
+human at a keyboard could use a Preview.
 
-Server side, `allowedHostnames` accepts the wildcard host set in
-`NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS`, so `pr-<n>-besidka...` tokens pass the
-hostname check (details in `docs/auth-security.md`).
+What is set, in `env.production.previews.vars` only:
 
-Dashboard hostnames: the "Besidka (preview)" widget lists
-`chernenko.workers.dev`. Cloudflare's hostname management docs state that
-wildcards are not supported, but "adding a hostname automatically authorizes
-all of its subdomains" and the widget "will work on that exact hostname and
-all of its subdomains"
-(<https://developers.cloudflare.com/turnstile/additional-configuration/hostname-management/>).
-`pr-<n>-besidka` is a single label, so `besidka.chernenko.workers.dev` would
-not cover it; the one entry that covers `preview-besidka.chernenko.workers.dev`,
-every `pr-<n>-besidka.chernenko.workers.dev` and deployment hosts is
-`chernenko.workers.dev`. Registering each `pr-<n>` host is not viable (10
-hostnames per widget on the free plan).
+```jsonc
+"NUXT_TURNSTILE_ENFORCED": false,
+"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "",
+```
 
-The production widget `0x4AAAAAAEFMAZiwbUuiy0qi` lists only `besidka.com`. It
-briefly also carried `chernenko.workers.dev` while previews wrongly used it;
-that entry is removed once this change is deployed, which is the intended end
-state. Using a dedicated preview widget means production never has to authorize
-a `workers.dev` host.
+How it takes effect: `getCaptchaOptions()` in `server/utils/auth-captcha.ts`
+registers Better Auth's `captcha` plugin only when both the secret and the
+public sitekey are non-empty. An empty sitekey makes it return `null`, so no
+captcha check runs on sign-in, sign-up or reset-password. The client hides the
+widget for the same reason (`app/composables/captcha.ts` and
+`app/composables/turnstile.ts` treat an empty sitekey as "captcha off" and send
+an empty token). `NUXT_TURNSTILE_ENFORCED: false` keeps the misconfiguration
+log in `getCaptchaOptions()` (enforced=true with missing keys, a status-500
+wide event) from firing. Empty strings are honoured: Nitro's runtime-config
+env override only skips `undefined`, and the Web Analytics token below already
+relies on the same empty-string override. Previews do not inherit
+`env.production.vars` (see "No inheritance" above), so the enforced flag falls
+back to `runtimeConfig.turnstileEnforced: false` anyway; it is set explicitly so
+the intent is visible and survives a change of that default.
 
-Testing: automation always fails the real challenge, so a human must test
-sign-in on Previews. CI e2e is unaffected: it runs `wrangler dev` with no
-`--env` against a `.dev.vars` that sets no Turnstile secret, so
-`getCaptchaOptions()` returns `null` and the captcha plugin is not registered.
-The Preview sitekey lives only under `env.production.previews.vars`.
+Production is unaffected: `env.production.vars` still has
+`NUXT_TURNSTILE_ENFORCED: true` and the production sitekey
+`0x4AAAAAAEFMAZiwbUuiy0qi`, and the production secret is untouched.
+`tests/unit/config/wrangler-previews.spec.ts` asserts both sides.
 
-Setting Cloudflare's always-pass test secret on a single Preview
-(`pnpm exec wrangler preview secret put NUXT_TURNSTILE_SECRET_KEY --name
-pr-<n> --env production`) is not recommended; use the real widget. If such an
-override was applied, remove it with `pnpm exec wrangler preview secret delete
-NUXT_TURNSTILE_SECRET_KEY --name pr-<n> --env production` so the Preview falls
-back to the base-config secret.
+The base-config secret `NUXT_TURNSTILE_SECRET_KEY` for Previews (from
+`.dev.vars.preview`) is now unused: the empty sitekey disables captcha
+regardless of it. It is harmless to leave. To remove it:
+
+```bash
+pnpm exec wrangler preview base-config secret delete NUXT_TURNSTILE_SECRET_KEY --env production
+```
+
+Remove the line from the local `.dev.vars.preview` too so a later `base-config
+secret bulk` push does not recreate it. Per-Preview overrides, if any were
+ever applied, are removed with `pnpm exec wrangler preview secret delete
+NUXT_TURNSTILE_SECRET_KEY --name pr-<n> --env production`.
+
+The "Besidka (preview)" widget `0x4AAAAAAEFM-2wD0PMvdy4q` is no longer
+referenced by the repo. It can stay in the Cloudflare dashboard for a
+re-enable or be deleted.
+
+To re-enable the real widget on Previews:
+
+1. Restore the "Besidka (preview)" sitekey in
+   `env.production.previews.vars.NUXT_PUBLIC_TURNSTILE_SITE_KEY`.
+2. Set `NUXT_TURNSTILE_ENFORCED` to `true` there if strict
+   `expectedAction`/`allowedHostnames` checks are wanted (they need
+   `NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS`, already set).
+3. Make sure the preview secret is the secret of that same widget (a
+   sitekey/secret mismatch shows as 403 "Captcha verification failed" after the
+   widget itself passed) and that the widget's hostname list includes
+   `chernenko.workers.dev`, which authorizes all subdomains (wildcards are not
+   supported; see
+   <https://developers.cloudflare.com/turnstile/additional-configuration/hostname-management/>).
+4. Update `tests/unit/config/wrangler-previews.spec.ts` and this section.
+
+CI e2e is unaffected either way: it runs `wrangler dev` with no `--env` against
+a `.dev.vars` that sets no Turnstile secret, so `getCaptchaOptions()` returns
+`null` there too.
 
 ## Web Analytics on Previews
 
@@ -205,7 +226,7 @@ Rules:
   Auth secret, OAuth client secrets, `STUDIO_GITHUB_*`,
   `NUXT_STUDIO_AUTH_SESSION_SECRET` (random, 32+ chars; without it
   `server/middleware/00.studio-guard.ts` returns 404 for `/_studio` and
-  `/__nuxt_studio/**`), VAPID private key, Turnstile secret, maintenance
+  `/__nuxt_studio/**`), VAPID private key, maintenance
   token, email/IndexNow keys as applicable).
   Public values belong in `env.production.previews.vars`.
 - Changing `NUXT_ENCRYPTION_KEY` or `NUXT_BETTER_AUTH_SECRET` makes the

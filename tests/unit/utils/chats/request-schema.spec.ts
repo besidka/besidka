@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MAX_USER_MESSAGE_TEXT_LENGTH } from '#shared/utils/chat-message-limits'
 import {
   chatToolsSchema,
   incomingUserMessageSchema,
@@ -6,7 +7,6 @@ import {
   MAX_USER_MESSAGE_ID_LENGTH,
   MAX_USER_MESSAGE_PARTS,
   MAX_USER_MESSAGE_FILE_URL_LENGTH,
-  MAX_USER_MESSAGE_TEXT_LENGTH,
   userMessagePartsSchema,
 } from '../../../../server/utils/chats/request-schema'
 
@@ -117,6 +117,10 @@ describe('chatToolsSchema', () => {
 })
 
 describe('userMessagePartsSchema', () => {
+  it('enforces the shared text length limit the chat input uses', () => {
+    expect(MAX_USER_MESSAGE_TEXT_LENGTH).toBe(200_000)
+  })
+
   it('accepts a normal text part', () => {
     const result = userMessagePartsSchema.safeParse([
       { type: 'text', text: 'Hello there' },

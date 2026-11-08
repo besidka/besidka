@@ -51,17 +51,16 @@ real widget and a real secret are configured.
 
 Since the migration to Cloudflare Workers Previews (PR #430, see
 `docs/cloudflare-previews.md`) PR and `main` Previews run as
-`env.production`, so they inherit `turnstileEnforced: true` and get the real
-secret. They therefore run the **real** captcha, same as production
-(owner decision 2026-10-13), through a **dedicated** "Besidka (preview)"
-widget: `env.production.previews.vars` carries its sitekey
-`0x4AAAAAAEFM-2wD0PMvdy4q`, and the previews secret in `.dev.vars.preview` /
-base-config must be that widget's secret. A sitekey paired with another
-widget's secret (the production sitekey with the preview secret, or a test
-sitekey with a real secret) renders and passes in the browser but can never
-pass `siteverify`, so it returns 403 "Captcha verification failed" on every
-sign-in. The preview widget's hostname list is `chernenko.workers.dev`
-(covers all preview hosts); the production widget lists `besidka.com` only.
+`env.production`'s `previews` block, which does not inherit
+`env.production.vars`. Turnstile is **disabled** on Previews (owner decision
+2026-11-05, replacing the 2026-10-13 dedicated "Besidka (preview)" widget):
+`env.production.previews.vars` sets `NUXT_PUBLIC_TURNSTILE_SITE_KEY` to `""` and
+`NUXT_TURNSTILE_ENFORCED` to `false`, so `getCaptchaOptions()` returns `null`
+and no captcha runs. The reason is that all Previews share the
+`besidka-preview` D1 and automation and test accounts must be able to sign in
+and sign up there. Production keeps `turnstileEnforced: true`, its own widget
+and its own secret. The re-enable steps and the now-unused preview secret are
+in `docs/cloudflare-previews.md` ("Turnstile on Previews").
 
 `allowedHostnames`, when enforced, reuses `getAllowedHosts()` (in
 `server/utils/auth-hosts.ts`, used for Better Auth's
@@ -530,6 +529,37 @@ do restore, follow `docs/d1-restore-reconciliation.md` right after: a
 restore revives revoked sessions through the D1 fallback, and you must clear
 them in both D1 and KV.
 
+## Email sign-up: the "check your email" state
+
+With `requireEmailVerification` on (everywhere except dev and CI), Better Auth
+answers `/sign-up/email` for an email that already has an account with a
+synthetic success: `{ token: null, user: { ...synthetic } }`, no new row and no
+email (`node_modules/better-auth/dist/api/routes/sign-up.mjs`,
+`shouldReturnGenericDuplicateResponse`). That is deliberate anti-enumeration,
+and the response for a brand-new address is indistinguishable from it on the
+wire. In production on 2026-11-03 the two calls took 1726 ms (create, render and
+send) versus 289 ms (password hash only), which is how the duplicate shows up in
+Axiom.
+
+The sign-up page therefore never reads the response as "your account exists" or
+"your account was created". It branches on `data.token` only: a session token
+(dev and CI, `autoSignIn`) navigates on, and `token: null` swaps the form for
+`Auth/CheckEmail.vue`, which names the address, offers a resend and a way back
+to the form. Both outcomes render the same state. Do not add "if this account
+exists" copy and do not reveal which case happened.
+
+Resend calls `/send-verification-email` (not captcha gated, rate limited to 3 per
+900 s in the table above) with the same callback URL as the sign-up, behind a
+60 s client cooldown. An existing but unverified user gets a fresh email; an
+unknown or verified address gets the same success response and no email.
+
+Delivery is not logged on success, and a send failure inside Better Auth's
+`sendVerificationEmail` callback is swallowed by `runInBackgroundOrAwait`, so
+the sign-up still returns 200. If a user reports a missing email, check that
+the recipient has a mailbox before suspecting the code: `besidka.com` mail goes
+through Cloudflare Email Routing, so an address with no rule and no catch-all
+cannot receive it.
+
 ## Turnstile owner checklist
 
 Manual steps needed before `turnstileEnforced` can be safely flipped to
@@ -562,20 +592,13 @@ key is set):
       verification note below, not required. Verified 2026-10-07 with
       `wrangler turnstile widget get 0x4AAAAAAEFMAZiwbUuiy0qi`: mode
       `managed`, domains `[besidka.com]`.
-- [ ] Previews run the real widget through the dedicated "Besidka (preview)"
-      widget `0x4AAAAAAEFM-2wD0PMvdy4q` (see "The `turnstileEnforced` gate").
-      Its hostname list is `chernenko.workers.dev` (Cloudflare dashboard,
-      Turnstile, widget, Hostname management); adding a hostname authorizes
-      all of its subdomains and wildcards are not supported, so that one
-      entry covers `preview-besidka.chernenko.workers.dev` and every
-      `pr-<n>-besidka.chernenko.workers.dev`. The previews secret
-      (`.dev.vars.preview`, pushed via `wrangler preview base-config secret
-      bulk`) must be this widget's secret; a sitekey/secret mismatch shows as
-      "Captcha verification failed" (403) after the widget itself passed. The
-      production widget must keep `besidka.com` only (remove
-      `chernenko.workers.dev` from it). See `docs/cloudflare-previews.md`
-      ("Turnstile on Previews"). Automation cannot pass a real challenge, so
-      a human must test sign-in on a Preview.
+- [x] Previews run **without** Turnstile (owner decision 2026-11-05): the
+      previews vars set an empty sitekey and `NUXT_TURNSTILE_ENFORCED: false`
+      (see "The `turnstileEnforced` gate"). The base-config secret
+      `NUXT_TURNSTILE_SECRET_KEY` for previews is unused and can be deleted
+      (`docs/cloudflare-previews.md`, "Turnstile on Previews"). The
+      production widget keeps `besidka.com` only; if
+      `chernenko.workers.dev` is still listed on it, remove it.
 - [ ] After the first real deploy with keys configured, manually
       exercise sign-up, sign-in, and reset-password in production to
       confirm the widget renders and the rate-limit windows above don't
@@ -630,18 +653,15 @@ model flags — under Managed mode. Under Invisible mode,
 `interaction-only` has no effect at all, so keeping the widget in
 Managed mode is what makes this appearance setting do anything.
 
-**Preview does not exercise strict enforcement.**
+**Previews do not exercise Turnstile at all.**
 `NUXT_TURNSTILE_ENFORCED` (→ `runtimeConfig.turnstileEnforced`) is
-`true` only in production's `wrangler.jsonc` `env` block. The preview
-deploy's top-level `vars` carries its own
-`NUXT_PUBLIC_TURNSTILE_SITE_KEY` but leaves `turnstileEnforced` at its
-`false` default. A sign-up/sign-in/reset-password flow that passes on
-the preview deployment only proves the widget renders and a token
-reaches the server — it does **not** exercise
-`expectedAction`/`allowedHostnames` enforcement, since Better Auth
-only asserts those where `turnstileEnforced` is `true`. Treat a
-working preview test as proof of wiring, not as proof that production
-enforcement works — only a production test does that.
+`true` only in production's `wrangler.jsonc` `env.production.vars`, and the
+Preview vars carry an empty `NUXT_PUBLIC_TURNSTILE_SITE_KEY`, so no widget
+renders and the captcha plugin is not registered (owner decision 2026-11-05).
+A sign-up/sign-in/reset-password flow that passes on a Preview proves nothing
+about the widget, the token header or
+`expectedAction`/`allowedHostnames` enforcement; only a production test does
+that.
 
 **The `www` host doesn't need its own hostname entry.** The
 `wrangler.jsonc` production `routes` block binds the Worker to both
@@ -923,7 +943,7 @@ endpoint. `mcp()` from `@better-auth/mcp` (built on
 | Setting | Value | Why |
 | --- | --- | --- |
 | `resource` | `${siteUrl}/mcp` | RFC 8707 resource; becomes the JWT `aud` |
-| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `data:delete` |
+| `scopes` | `MCP_OAUTH_SCOPES` | identity scopes plus `chats:read`, `projects:read`, `memory:read`, `files:read`, `settings:read`, `projects:write`, `memory:write`, `chats:write`, `files:write`, `settings:write`, `data:delete`, `admin:features` |
 | `accessTokenExpiresIn` | 900 (15 min) | access tokens are JWTs verified offline; disconnecting is still immediate because `/mcp` also checks the consent row |
 | `refreshTokenExpiresIn` | 2,592,000 (30 days) | library default, set explicitly; rotated on every refresh, 30s reuse overlap from `mcp()` |
 | PKCE | required, S256 only | library default |

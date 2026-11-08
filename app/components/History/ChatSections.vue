@@ -20,7 +20,7 @@
   <template v-else>
     <template v-if="pinned.length > 0">
       <div class="flex items-center gap-2">
-        <span class="text-xs opacity-60 uppercase tracking-wide font-semibold">
+        <span class="text-xs text-base-content/70 uppercase tracking-wide font-semibold">
           Pinned
         </span>
         <div class="flex-1 h-px bg-base-300" />
@@ -52,7 +52,7 @@
         :key="group.label"
       >
         <div class="flex items-center gap-2">
-          <span class="text-xs opacity-60 uppercase tracking-wide font-semibold">
+          <span class="text-xs text-base-content/70 uppercase tracking-wide font-semibold">
             {{ group.label }}
           </span>
           <div class="flex-1 h-px bg-base-300" />
@@ -86,7 +86,7 @@
       <template v-if="emptyStateMode === 'search'">
         <Icon name="lucide:search-x" size="40" class="mx-auto mb-3 opacity-60" />
         <p class="font-medium">No chats match your search</p>
-        <p class="mt-2 text-sm opacity-60">
+        <p class="mt-2 text-sm text-base-content/70">
           Try different words — titles and message text are both searched.
         </p>
       </template>
@@ -97,7 +97,7 @@
           class="mx-auto mb-3 opacity-60"
         />
         <p class="font-medium">No chats in this project yet</p>
-        <p class="mt-2 mb-4 text-sm opacity-60">
+        <p class="mt-2 mb-4 text-sm text-base-content/70">
           Start a conversation here to keep it grouped with this project.
         </p>
         <NuxtLink
@@ -115,7 +115,7 @@
           class="mx-auto mb-3 opacity-60"
         />
         <p class="font-medium">No shared chats yet</p>
-        <p class="mt-2 mb-4 text-sm opacity-60">
+        <p class="mt-2 mb-4 text-sm text-base-content/70">
           Share a chat from its "..." menu to see it here.
         </p>
         <NuxtLink
@@ -133,7 +133,7 @@
           class="mx-auto mb-3 opacity-60"
         />
         <p class="font-medium">Start your first conversation</p>
-        <p class="mt-2 mb-4 text-sm opacity-60">
+        <p class="mt-2 mb-4 text-sm text-base-content/70">
           New chats you create will appear here automatically.
         </p>
         <NuxtLink

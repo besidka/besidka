@@ -1,0 +1,303 @@
+{
+  "version": 0,
+  "kind": "presentation",
+  "title": "Квартальні результати / Q3 2026 results",
+  "language": "uk-UA",
+  "slides": [
+    {
+      "layout": "title",
+      "title": "Квартальні результати / Q3 2026 results",
+      "subtitle": "Synthetic fixture for the document renderer spike",
+      "notes": "Привітання. Коротко про мету зустрічі."
+    },
+    {
+      "layout": "two-column",
+      "title": "Порівняння / Comparison 2",
+      "left": [
+        "Наступного кварталу плануємо відкрити представництво в Одесі.",
+        "Обсяг відвантажень у вересні був найбільшим за всю історію компанії.",
+        "Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів."
+      ],
+      "right": [
+        "Revenue in the third quarter grew by twelve percent compared with the previous period.",
+        "Next quarter we plan to open an office in Odesa.",
+        "The board approved the 2027 development strategy."
+      ],
+      "notes": "Щоденна кількість активних користувачів перевищила тридцять тисяч. The board approved the 2027 development strategy."
+    },
+    {
+      "layout": "image",
+      "title": "Діаграма / Chart 3",
+      "image": "chart-regions.png",
+      "alt": "Стовпчикова діаграма / Bar chart",
+      "caption": "Next quarter we plan to open an office in Odesa.",
+      "notes": "Новий склад у Житомирі дозволив скоротити доставку на один день. The board approved the 2027 development strategy."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 4: Виручка",
+      "bullets": [
+        "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова.",
+        "Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів.",
+        "Currency exposure was partly hedged with forward contracts.",
+        "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+      ],
+      "notes": "Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли. Raw material prices stabilised after a sharp rise in spring."
+    },
+    {
+      "layout": "section",
+      "title": "Розділ / Section 1",
+      "notes": "Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. A new warehouse shortened delivery times by one day."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 6: Plans",
+      "bullets": [
+        "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами.",
+        "Рада директорів затвердила стратегію розвитку на 2027 рік.",
+        "The support team cut the median first-response time to four hours.",
+        "Most of the growth came from new customers in the logistics segment."
+      ],
+      "notes": "Наступного кварталу плануємо відкрити представництво в Одесі. Next quarter we plan to open an office in Odesa."
+    },
+    {
+      "layout": "two-column",
+      "title": "Порівняння / Comparison 7",
+      "left": [
+        "Обсяг відвантажень у вересні був найбільшим за всю історію компанії.",
+        "Середній чек у категорії «Послуги» становив 1 240 грн.",
+        "Середній чек у категорії «Послуги» становив 1 240 грн."
+      ],
+      "right": [
+        "The board approved the 2027 development strategy.",
+        "A new warehouse shortened delivery times by one day.",
+        "Currency exposure was partly hedged with forward contracts."
+      ],
+      "notes": "Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Revenue in the third quarter grew by twelve percent compared with the previous period."
+    },
+    {
+      "layout": "image",
+      "title": "Діаграма / Chart 8",
+      "image": "chart-revenue.png",
+      "alt": "Стовпчикова діаграма / Bar chart",
+      "caption": "The board approved the 2027 development strategy.",
+      "notes": "Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Most of the growth came from new customers in the logistics segment."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 9: Клієнти",
+      "bullets": [
+        "Наступного кварталу плануємо відкрити представництво в Одесі.",
+        "Рада директорів затвердила стратегію розвитку на 2027 рік.",
+        "Ціни на сировину стабілізувалися після різкого зростання навесні.",
+        "The board approved the 2027 development strategy."
+      ],
+      "notes": "Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів. We launched a pilot that automates monthly reporting for finance."
+    },
+    {
+      "layout": "section",
+      "title": "Розділ / Section 2",
+      "notes": "Новий склад у Житомирі дозволив скоротити доставку на один день. Daily active users passed thirty thousand for the first time."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 11: Клієнти",
+      "bullets": [
+        "The board approved the 2027 development strategy.",
+        "Ціни на сировину стабілізувалися після різкого зростання навесні.",
+        "The support team cut the median first-response time to four hours.",
+        "Repeat orders reached forty-seven percent of all orders."
+      ],
+      "notes": "Наступного кварталу плануємо відкрити представництво в Одесі. Revenue in the third quarter grew by twelve percent compared with the previous period."
+    },
+    {
+      "layout": "two-column",
+      "title": "Порівняння / Comparison 12",
+      "left": [
+        "Обсяг відвантажень у вересні був найбільшим за всю історію компанії.",
+        "Ціни на сировину стабілізувалися після різкого зростання навесні.",
+        "Рада директорів затвердила стратегію розвитку на 2027 рік."
+      ],
+      "right": [
+        "We launched a pilot that automates monthly reporting for finance.",
+        "Raw material prices stabilised after a sharp rise in spring.",
+        "Next quarter we plan to open an office in Odesa."
+      ],
+      "notes": "Ціни на сировину стабілізувалися після різкого зростання навесні. Most of the growth came from new customers in the logistics segment."
+    },
+    {
+      "layout": "image",
+      "title": "Діаграма / Chart 13",
+      "image": "chart-regions.png",
+      "alt": "Стовпчикова діаграма / Bar chart",
+      "caption": "The support team cut the median first-response time to four hours.",
+      "notes": "Показник задоволеності клієнтів (NPS) зріс з 41 до 52 пунктів. Repeat orders reached forty-seven percent of all orders."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 14: Plans",
+      "bullets": [
+        "Рада директорів затвердила стратегію розвитку на 2027 рік.",
+        "Новий склад у Житомирі дозволив скоротити доставку на один день.",
+        "Currency exposure was partly hedged with forward contracts.",
+        "Команда підтримки скоротила середній час відповіді до чотирьох годин."
+      ],
+      "notes": "Рада директорів затвердила стратегію розвитку на 2027 рік. Daily active users passed thirty thousand for the first time."
+    },
+    {
+      "layout": "section",
+      "title": "Розділ / Section 3",
+      "notes": "Обсяг відвантажень у вересні був найбільшим за всю історію компанії. Daily active users passed thirty thousand for the first time."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 16: Plans",
+      "bullets": [
+        "A new warehouse shortened delivery times by one day.",
+        "Revenue in the third quarter grew by twelve percent compared with the previous period.",
+        "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова.",
+        "Наступного кварталу плануємо відкрити представництво в Одесі."
+      ],
+      "notes": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет. Next quarter we plan to open an office in Odesa."
+    },
+    {
+      "layout": "two-column",
+      "title": "Порівняння / Comparison 17",
+      "left": [
+        "У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом.",
+        "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова.",
+        "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+      ],
+      "right": [
+        "Raw material prices stabilised after a sharp rise in spring.",
+        "The support team cut the median first-response time to four hours.",
+        "Revenue in the third quarter grew by twelve percent compared with the previous period."
+      ],
+      "notes": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет. Most of the growth came from new customers in the logistics segment."
+    },
+    {
+      "layout": "image",
+      "title": "Діаграма / Chart 18",
+      "image": "chart-revenue.png",
+      "alt": "Стовпчикова діаграма / Bar chart",
+      "caption": "The support team cut the median first-response time to four hours.",
+      "notes": "Ціни на сировину стабілізувалися після різкого зростання навесні. Most of the growth came from new customers in the logistics segment."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 19: Plans",
+      "bullets": [
+        "У третьому кварталі виручка компанії зросла на дванадцять відсотків порівняно з попереднім періодом.",
+        "We launched a pilot that automates monthly reporting for finance.",
+        "Наступного кварталу плануємо відкрити представництво в Одесі.",
+        "A new warehouse shortened delivery times by one day."
+      ],
+      "notes": "Наступного кварталу плануємо відкрити представництво в Одесі. Raw material prices stabilised after a sharp rise in spring."
+    },
+    {
+      "layout": "section",
+      "title": "Розділ / Section 4",
+      "notes": "Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли. Next quarter we plan to open an office in Odesa."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 21: Plans",
+      "bullets": [
+        "The board approved the 2027 development strategy.",
+        "Новий склад у Житомирі дозволив скоротити доставку на один день.",
+        "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами.",
+        "We launched a pilot that automates monthly reporting for finance."
+      ],
+      "notes": "Обсяг відвантажень у вересні був найбільшим за всю історію компанії. Raw material prices stabilised after a sharp rise in spring."
+    },
+    {
+      "layout": "two-column",
+      "title": "Порівняння / Comparison 22",
+      "left": [
+        "Ціни на сировину стабілізувалися після різкого зростання навесні.",
+        "Рада директорів затвердила стратегію розвитку на 2027 рік.",
+        "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є."
+      ],
+      "right": [
+        "The board approved the 2027 development strategy.",
+        "Most of the growth came from new customers in the logistics segment.",
+        "Most of the growth came from new customers in the logistics segment."
+      ],
+      "notes": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних. The board approved the 2027 development strategy."
+    },
+    {
+      "layout": "image",
+      "title": "Діаграма / Chart 23",
+      "image": "chart-regions.png",
+      "alt": "Стовпчикова діаграма / Bar chart",
+      "caption": "The support team cut the median first-response time to four hours.",
+      "notes": "Середній чек у категорії «Послуги» становив 1 240 грн. The board approved the 2027 development strategy."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 24: Витрати",
+      "bullets": [
+        "Ми переглянули умови співпраці з трьома ключовими постачальниками.",
+        "Infrastructure costs stayed flat thanks to server consolidation.",
+        "Частка повторних замовлень досягла сорока семи відсотків.",
+        "Next quarter we plan to open an office in Odesa."
+      ],
+      "notes": "Ми переглянули умови співпраці з трьома ключовими постачальниками. The board approved the 2027 development strategy."
+    },
+    {
+      "layout": "section",
+      "title": "Розділ / Section 5",
+      "notes": "Їжак, ящірка та ґава — приклади слів із літерами ї, я, ґ та є. We launched a pilot that automates monthly reporting for finance."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 26: Виручка",
+      "bullets": [
+        "Рада директорів затвердила стратегію розвитку на 2027 рік.",
+        "Рада директорів затвердила стратегію розвитку на 2027 рік.",
+        "Currency exposure was partly hedged with forward contracts.",
+        "Частка повторних замовлень досягла сорока семи відсотків."
+      ],
+      "notes": "Щоденна кількість активних користувачів перевищила тридцять тисяч. Raw material prices stabilised after a sharp rise in spring."
+    },
+    {
+      "layout": "two-column",
+      "title": "Порівняння / Comparison 27",
+      "left": [
+        "Наступного кварталу плануємо відкрити представництво в Одесі.",
+        "Витрати на інфраструктуру залишилися стабільними завдяки оптимізації серверів.",
+        "Ризики, пов’язані з курсом валют, ми частково захистили форвардними контрактами."
+      ],
+      "right": [
+        "Daily active users passed thirty thousand for the first time.",
+        "A new warehouse shortened delivery times by one day.",
+        "Daily active users passed thirty thousand for the first time."
+      ],
+      "notes": "Новий склад у Житомирі дозволив скоротити доставку на один день. The support team cut the median first-response time to four hours."
+    },
+    {
+      "layout": "image",
+      "title": "Діаграма / Chart 28",
+      "image": "chart-revenue.png",
+      "alt": "Стовпчикова діаграма / Bar chart",
+      "caption": "Next quarter we plan to open an office in Odesa.",
+      "notes": "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет. Revenue in the third quarter grew by twelve percent compared with the previous period."
+    },
+    {
+      "layout": "title-content",
+      "title": "Слайд 29: Витрати",
+      "bullets": [
+        "Ґрунтовний аналіз показав, що їхні очікування щодо якості зросли.",
+        "Щоденна кількість активних користувачів перевищила тридцять тисяч.",
+        "Інвестиції в маркетинг окупилися швидше, ніж передбачав бюджет.",
+        "Основний внесок у зростання дали нові клієнти з Києва, Львова та Харкова."
+      ],
+      "notes": "Ми запустили пілотний проєкт із автоматизації звітності для бухгалтерії. Infrastructure costs stayed flat thanks to server consolidation."
+    },
+    {
+      "layout": "section",
+      "title": "Розділ / Section 6",
+      "notes": "Співробітники пройшли навчання з інформаційної безпеки та захисту даних. The board approved the 2027 development strategy."
+    }
+  ]
+}

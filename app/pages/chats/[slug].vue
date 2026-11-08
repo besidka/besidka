@@ -12,10 +12,11 @@
     :class="{ 'pt-[var(--sat)]': !isLegalNoticeVisible }"
   >
     <ChatContainer class="!gap-0">
+      <UiSidePanelDemoCard v-if="isSidePanelDemoVisible" />
       <p
         v-if="isMemoryExcluded"
         data-testid="chat-memory-excluded-indicator"
-        class="flex items-center justify-center gap-1 text-xs opacity-60"
+        class="flex items-center justify-center gap-1 text-xs text-base-content/70"
         :title="CHAT_MEMORY_EXCLUSION_HELPER"
       >
         <Icon :name="CHAT_MEMORY_EXCLUSION_ICON" size="12" />
@@ -130,7 +131,7 @@
               v-else-if="part.type === 'text'"
               :key="`mdc-${m.id}-part-${index}`"
               :source="m.role === 'user'
-                ? $sanitizeHtml(part.text)
+                ? part.text
                 : stripModelCitationMarkers(part.text)
               "
               :streaming="isLastAssistantMessage(messageIndex)
@@ -139,7 +140,7 @@
             >
               <MDCCached
                 :value="m.role === 'user'
-                  ? $sanitizeHtml(part.text)
+                  ? part.text
                   : stripModelCitationMarkers(part.text)
                 "
                 :cache-key="isLastAssistantMessage(messageIndex)
@@ -147,7 +148,7 @@
                   : `mdc-${m.id}-part-${index}`
                 "
                 :components="messageComponents"
-                :parser-options="{ highlight: false }"
+                :parser-options="getParserOptions(m.role)"
                 class="chat-markdown js-message-text"
                 :unwrap="getUnwrap(m.role)"
               />
@@ -303,6 +304,10 @@ useSeoMeta({
 
 const route = useRoute('chats-slug')
 const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
+
+const isSidePanelDemoVisible = computed<boolean>(() => {
+  return isSidePanelDemoEnabled(route.query)
+})
 
 const isTestChat = computed<boolean>(() => {
   return (import.meta.dev || isE2eTestHooksEnabled)
@@ -509,7 +514,11 @@ function onResearchRetry(): void {
   }
 }
 
-const { messageComponents, getUnwrap } = useChatFormat()
+const {
+  messageComponents,
+  getUnwrap,
+  getParserOptions,
+} = useChatFormat()
 const hideMessages = shallowRef<boolean>(true)
 
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
@@ -903,6 +912,7 @@ async function deleteMessage(messageId: string) {
     chatSdk.messages = chatSdk.messages.filter((message) => {
       return message.id !== messageId
     })
+    nuxtApp.callHook('chat:context-changed')
   } catch (exception) {
     const parsedException = parseError(exception)
 

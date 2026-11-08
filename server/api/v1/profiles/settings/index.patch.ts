@@ -3,6 +3,7 @@ import type { GatewayId } from '#shared/types/gateways.d'
 import { jevRoleSettingsPatchSchema } from '#shared/utils/jev-schemas'
 import {
   defaultReasoningLevelSchema,
+  dismissLegalNoticeIdsSchema,
   favoriteGatewayModelsSchema,
   favoriteModelIdsSchema,
 } from '#shared/utils/user-settings-schemas'
@@ -11,6 +12,10 @@ import {
   memorySettingsPatchShape,
   refineMemorySettingsPatch,
 } from '#shared/utils/memory-schemas'
+import {
+  mergeDismissedLegalNoticeIds,
+  readDismissedLegalNoticeIds,
+} from '~~/server/utils/legal/notice-dismissal'
 import { enforceGatewayModelsRateLimit } from '~~/server/utils/gateways/catalog-rate-limit'
 import { assertMemoryModelChoice } from '~~/server/utils/memory/validate-model-choice'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
@@ -55,6 +60,7 @@ export default defineEventHandler(async (event) => {
     favoriteModels: favoriteModelIdsSchema.optional(),
     favoriteGatewayModels: favoriteGatewayModelsSchema.optional(),
     typesafeRoles: jevRoleSettingsPatchSchema.nullable().optional(),
+    dismissLegalNoticeIds: dismissLegalNoticeIdsSchema.optional(),
     ...memorySettingsPatchShape,
   }).superRefine(refineMemorySettingsPatch).safeParse)
 
@@ -126,6 +132,13 @@ export default defineEventHandler(async (event) => {
 
   if (body.data.typesafeRoles !== undefined) {
     fieldUpdates.typesafeRoles = body.data.typesafeRoles
+  }
+
+  if (body.data.dismissLegalNoticeIds !== undefined) {
+    fieldUpdates.dismissedLegalNoticeIds = mergeDismissedLegalNoticeIds(
+      await readDismissedLegalNoticeIds(db, userId),
+      body.data.dismissLegalNoticeIds,
+    )
   }
 
   const memoryModelChoices: MemoryModelChoiceToValidate[] = []

@@ -88,7 +88,7 @@ You are using an **AI system**. The text, code, summaries, images and reports yo
 - **Deep research reports can be wrong in a specific way.** A deep research report may contain **fabricated or misattributed citations** — sources that do not exist, or real sources that do not say what the report claims. Open and read the sources yourself before citing them.
 - Output is not unique to you. Another user with a similar prompt may receive substantially the same answer.
 - Do not use output to make decisions about other people (hiring, credit, eligibility, discipline) without a human being who is competent to make that decision reviewing it.
-- Images the model generates are labelled as AI-generated in the app and on share pages. If you publish AI-generated content that could pass for real, label it where the law requires.
+- Images the model generates are labelled as AI-generated in the app and on share pages. Where the provider adds Content Credentials (C2PA) to an image, Besidka keeps them. Otherwise Besidka tries to add a standard IPTC metadata tag that says the image was made by AI and names the model. The mark can be missing from some files, images saved before this was added were not changed, and re-saving an image or taking a screenshot removes it. The tag holds no prompt, account or other personal details. If you publish AI-generated content that could pass for real, label it where the law requires.
 
 ## Memory and project knowledge
 

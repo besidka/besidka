@@ -1,3 +1,4 @@
+import { crc32 } from 'node:zlib'
 import type { ImageModel, UIMessage } from 'ai'
 import type { ImageGenerationToolOutput } from '#shared/types/image-generation.d'
 import {
@@ -73,6 +74,35 @@ function createWebPBytes(): Uint8Array {
     0x00, 0x00,
   ])
 }
+
+function createPngBytes(): Uint8Array {
+  const buildChunk = (type: string, payload: number[]): number[] => {
+    const body = [...type].map(character => character.charCodeAt(0))
+      .concat(payload)
+    const toUint32 = (value: number): number[] => [
+      (value >>> 24) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 8) & 0xff,
+      value & 0xff,
+    ]
+
+    return [
+      ...toUint32(payload.length),
+      ...body,
+      ...toUint32(crc32(Uint8Array.from(body))),
+    ]
+  }
+
+  return Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ...buildChunk('IHDR', [0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]),
+    ...buildChunk('IDAT', [0x78, 0x9c, 0x63, 0x00, 0x01, 0x00]),
+    ...buildChunk('IEND', []),
+  ])
+}
+
+const TRAINED_SOURCE_TYPE_ATTRIBUTE = 'Iptc4xmpExt:DigitalSourceType='
+  + '"http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"'
 
 function createToolCallingLanguageModel() {
   return new MockLanguageModelV4({
@@ -176,6 +206,7 @@ async function runImageToolThroughAIStream() {
 async function executeTool(
   provider: 'openai' | 'google',
   aspectRatio: '1:1' | '3:2' = '1:1',
+  logger: { set: ReturnType<typeof vi.fn> } = { set: vi.fn() },
 ): Promise<ImageGenerationToolOutput[]> {
   const imageTool = createImageGenerationTool({
     userId: 1,
@@ -184,7 +215,7 @@ async function executeTool(
       ? 'gpt-image-2'
       : 'gemini-3.1-flash-image',
     imageModel: {} as ImageModel,
-    logger: { set: vi.fn() },
+    logger,
   })
   const execution = imageTool.execute?.(
     {
@@ -303,6 +334,37 @@ describe('AI image generation tool', () => {
       token: 'lease-token',
     })
   })
+
+  it('marks the generated image with an IPTC source type before saving',
+    async () => {
+      const logger = { set: vi.fn() }
+
+      mocks.generateImage.mockResolvedValue({
+        image: {
+          uint8Array: createPngBytes(),
+          mediaType: 'image/png',
+        },
+        warnings: [],
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+      })
+
+      await executeTool('openai', '1:1', logger)
+
+      const persistInput = mocks.persistFile.mock.calls[0]?.[0]
+      const persistedText = new TextDecoder().decode(persistInput.fileData)
+
+      expect(persistInput.fileData.length)
+        .toBeGreaterThan(createPngBytes().length)
+      expect(persistedText).toContain(TRAINED_SOURCE_TYPE_ATTRIBUTE)
+      expect(persistedText).toContain('Iptc4xmpExt:AISystemUsed="gpt-image-2"')
+      expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+        attributes: {
+          imageGeneration: expect.objectContaining({
+            provenance: 'added-xmp',
+          }),
+        },
+      }))
+    })
 
   it('runs preliminary image phases through the real AI SDK stream', async () => {
     const { chunks, message } = await runImageToolThroughAIStream()

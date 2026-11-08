@@ -54,6 +54,7 @@ export const userSettings = snakeCase.table(
     providerTransferConsents: text({ mode: 'json' })
       .$type<ProviderTransferConsents>(),
     typesafeRoles: text({ mode: 'json' }).$type<JevRoleSettings>(),
+    dismissedLegalNoticeIds: text({ mode: 'json' }).$type<string[]>(),
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),

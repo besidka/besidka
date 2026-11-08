@@ -68,5 +68,6 @@ export default withNuxt(configNuxt).append({
     '.claude/**',
     '.cursor/**',
     '.windsurf/**',
+    'workers/*/dist/**',
   ],
 })

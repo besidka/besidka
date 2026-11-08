@@ -7,7 +7,8 @@
   pages). They work without a token, read only public content and never
   touch user data.
 - **Private tools** (the signed-in user's chats, projects, files, memory and
-  settings: 32 tools that cover what the web UI does except chatting, see
+  settings: 36 tools that cover what the web UI does except chatting, plus
+  the admin-only feature access tools, see
   [What MCP does not do (and why)](#what-mcp-does-not-do-and-why)). They
   need an OAuth access token issued by Besidka's own authorization server
   (Better Auth `@better-auth/mcp`, see `server/utils/auth.ts`).
@@ -83,9 +84,10 @@ never data.
 | `memory:write` | `add_memory`, `update_memory` |
 | `files:read` | `list_files`, `read_file` |
 | `files:write` | `create_file`, `rename_file` |
-| `settings:read` | `get_settings` |
+| `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
+| `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (admins only, see below) |
 
 The per-user surface has 32 tools: the original thirteen plus 19 added for
 UI parity (six new scopes: `files:read`, `settings:read`, `chats:write`,
@@ -94,6 +96,32 @@ UI parity (six new scopes: `files:read`, `settings:read`, `chats:write`,
 default on the consent page and each is ticked separately. A new scope has to be added in three places that stay in
 step: `shared/utils/mcp-oauth-scopes.ts`, the map above, and the consent
 labels in `app/components/OAuth/ScopeLabel.vue`.
+
+#### Planned scopes (Agentic capabilities)
+
+Not built yet. Each is a new scope, so each ships with a major version bump
+(consent is stored by scope name, and a new tool under an existing scope
+would reach existing clients silently). The design is in
+`docs/agentic-capabilities-roadmap.md`.
+
+| Scope | Class | Planned tools | Ticket |
+| --- | --- | --- | --- |
+| `admin:features` | write, admins only (hidden on the consent page and stripped on the server for non-admins) | `list_feature_flags`, `list_feature_access`, `set_feature_access` (one user at a time, never the rule) | P0-8 |
+| `artifacts:read` | read | `list_artifacts`, `get_artifact`, `list_artifact_shares` | A-8 |
+| `artifacts:write` | write | `create_artifact`, `update_artifact`, `revoke_artifact_shares` | A-8 |
+| `artifacts:share` | write, publishes | `share_artifact` (see exclusion 2) | A-8 |
+| `connectors:read` | read | `list_connectors`, `get_connector` | C-9 |
+| `connectors:write` | write | `add_connector` (created disabled), `update_connector_tools`, `delete_connectors` (destructive) | C-9 |
+| `skills:read` | read | `list_skills`, `get_skill` | S-6 |
+| `skills:write` | write | `create_skill`, `update_skill` (both leave the skill disabled) | S-6 |
+
+`list_my_features` (P0-8) goes under the existing `settings:read`, because
+it only reads the caller's own state. Deletes of the new artifact and skill
+resources go under the existing `data:delete`; `delete_connectors` is the
+exception and sits under `connectors:write` with `destructiveHint`. New
+scopes are used instead of reusing
+`chats:read` or `files:write`, so that an existing grant never silently
+extends to artifacts, connectors or skills.
 
 `openid`, `profile`, `email` and `offline_access` are identity scopes of the
 authorization server; no tool needs them. Every tool needs exactly one
@@ -106,7 +134,59 @@ history (the `DESTRUCTIVE_TOOLS` list in the spec): `delete_memory`,
 `delete_chats`, `delete_chat_message`, `revoke_chat_shares`,
 `update_project`, `delete_project`, `update_project_knowledge_item`,
 `delete_project_knowledge_items`, `rename_file`, `delete_files`,
-`reset_memory` and `update_settings`.
+`reset_memory`, `update_settings` and `set_feature_access`.
+
+Since 2.0.0 the surface has 36 private tools: `list_my_features` under
+`settings:read`, and three admin tools under the new `admin:features` scope.
+The two admin list tools are reads under a write-class scope:
+`isMcpWriteTool` excludes them (`READ_TOOLS_UNDER_WRITE_SCOPES` in
+`tool-scopes.ts`), so they carry `readOnlyHint: true` and count against the
+read limit, while the scope itself stays unticked by default.
+
+#### The `admin:features` scope
+
+An admin's agent can read the feature registry and grant or revoke a
+feature for one person; nothing else (`docs/feature-flags.md`, section 8).
+
+- **Who can get it.** It is in `MCP_WRITE_SCOPES` (unticked by default) and
+  `MCP_ADMIN_SCOPES` (`isMcpAdminScope`, `withoutMcpAdminScopes`). The
+  consent picker (`ScopePicker.vue`) hides it unless `useIsAdmin()` is true.
+  The server strips it twice for anyone who is not an admin right now
+  (`keepMcpAdminScopesForAdmins` in `server/utils/mcp/admin-scopes.ts`,
+  the same `isAdminUser` check as `/admin`: verified email, and 2FA outside
+  dev and CI): in the native form route
+  (`profiles/connected-apps/consent.post.ts`) and in a Better Auth `before`
+  hook on `/oauth2/consent` (`stripMcpAdminScopesFromConsent` in
+  `server/utils/auth.ts`). The hook is the boundary: the hydrated consent
+  page calls Better Auth directly, and a consent body without `scope` would
+  otherwise grant every requested scope, so the hook writes the narrowed
+  list back as an explicit `scope` and refuses a consent left empty.
+- **The 401 and 403 challenges still name it** (it is in `MCP_OAUTH_SCOPES`,
+  and `refreshStaleClientScopes` adds it to old clients), as for every other
+  scope. A non-admin who calls an admin tool gets the usual
+  `403 insufficient_scope`; reconnecting cannot add the scope, so the call
+  keeps failing. Accepted: claude.ai does not step up anyway.
+- **A token that outlives the role** (role removed, 2FA turned off) still
+  carries the scope, and `/oauth2/authorize` reuses a stored consent that
+  holds it. So `withMcpPrivateTool` re-checks the user for every
+  `admin:features` tool (`isMcpAdminTool`, `assertMcpFeatureAdmin`), and
+  the logic functions check again; a non-admin gets a generic
+  `404 Not found` with no side effect. A new admin tool therefore cannot
+  forget the check.
+- **Rate limits.** The two list tools count as reads. `set_feature_access`
+  takes the write limit (30 per minute) plus its own bucket of 60 per hour
+  (`MCP_PRIVATE_ADMIN_WRITE_RATE_LIMIT`), so a prompt-injected admin agent
+  cannot sweep the user base.
+- **No other users' personal data** (pre-check C9): `list_feature_access`
+  returns numeric user ids, never an email, a name or the grant reason, and
+  `set_feature_access` accepts `userId` or an exact `email` but echoes only
+  the id. The admin's AI client therefore receives pseudonymous ids only.
+- **Writes go through the shared writer** (`setFeatureGrant` and
+  `revokeFeatureGrant` in `server/utils/features/admin.ts`) with
+  `actor: { kind: 'mcp', clientId }`, so each change is one grant upsert or
+  delete plus one `feature_audit_log` row with `actor_kind = 'mcp'` and the
+  client id, and the `attributes.featureAccess` ledger line (C8). Reads log
+  `featureAccess.action = 'admin.read'` with `mcp.flags` or `mcp.grants`.
 
 #### The `data:delete` scope
 
@@ -318,6 +398,109 @@ before this existed or from a different place. Accepted trade-offs:
   could revoke the real connection, but only if the user approves its consent
   screen, and it gains nothing: the authorization code still goes to
   claude.ai.
+
+#### The consent page works before it hydrates
+
+`/oauth/consent` (`app/pages/oauth/consent.vue`) is server-rendered, and
+Approve and Deny sit in a real `<form method="post">` that posts to
+`POST /api/v1/profiles/connected-apps/consent`. When the page has hydrated,
+`@submit.prevent` takes over and the Better Auth client calls
+`/oauth2/consent` with a fetch, as before. When it has not, the browser posts
+the form itself and the button still works.
+
+Why: on 2026-11-04 the owner opened the consent page from claude.ai after
+switching to the reviewer account (client `KFyE...`, 15:55:26 UTC), clicked
+Approve and nothing happened; a reload fixed it. Axiom (`besidka-prod`) shows
+that the first open made **no client-side requests at all** for the 34
+seconds before the reload: no `/_i18n/.../messages.json`, no client icons, no
+`get-session?disableCookieCache=true` (the first call Approve makes). The
+reload fetched `messages.json` and the `ClientOnly` icons within half a
+second, and the next click reached `/oauth2/consent`. So on that first open
+the Nuxt client never finished starting, and a `type="button"` with a Vue
+`@click` handler was the only way to decide. Server logs cannot show why the
+client did not start (the `/_nuxt` assets bypass the Worker, so a failed or
+stalled chunk is invisible; no client error reached the evlog ingest). The
+fix does not depend on finding that out, because the decision no longer needs
+client JavaScript. To investigate a repeat, query `besidka-prod` for the
+user's requests after the `/oauth/consent` document: a hydrated page fetches
+`/_i18n/<hash>/en/messages.json` within about a second.
+
+A second, reproducible way to get a dead Approve button was a hydration
+mismatch. The page started with `selectedScopes = []` and let
+`OAuthScopePicker` fill in the defaults from a watcher. On the server the
+picker ran before the parent rendered the button, so the server sent an
+enabled `<button>`. In the browser the parent rendered first with no scopes,
+so when the client requested no identity scope (`openid`, `profile`,
+`email`, `offline_access`), it computed `canApprove = false` and expected
+the disabled `UiButton`, which is a `<span>` without the click handler.
+Vue replaced the server `<button>` with that span and only swapped it back
+after the next render. The page now starts from `defaultSelectedMcpScopes`
+(`shared/utils/mcp-oauth-scopes.ts`), the same helper the picker uses, so
+both renders agree.
+
+The form route:
+
+- Rejects `Sec-Fetch-Site: cross-site` (`assertNotCrossSiteRequest`) and
+  any `Origin` other than the request's own origin, a missing one included:
+  browsers always send `Origin` on a form `POST`, and synthesizing one from
+  the `Referer` or the request URL would hand Better Auth an origin it never
+  checked. A same-site subdomain is refused too. The `Origin` is then
+  forwarded to Better Auth, whose own origin check also applies. The session
+  cookie is `SameSite=Lax`, so a cross-site form post carries no session
+  anyway.
+- Refuses a body above 16 KiB (`413`) before parsing it.
+- Reads `oauth_query` (the signed query the page picked, printable ASCII
+  only), `decision` (`approve`, `deny` or `none`), `user_id` (the account
+  the page showed) and the ticked `scope` checkboxes. It verifies the
+  signature and expiry first, so an unverified query is never reflected
+  into a redirect; an invalid or expired one goes to
+  `/oauth/consent?consent_error=expired`, which the page shows instead of
+  "the link is missing the details" (the auth middleware strips an expired
+  signed query). Without a session it then sends the user to
+  `/signin?<oauth_query>`.
+- Builds the granted scope with `buildApprovedMcpScope`: the requested
+  identity scopes plus the ticked resource scopes the app asked for, the same
+  helper the page uses. A ticked scope the app never asked for is dropped.
+- Forwards the decision to Better Auth's own `/oauth2/consent` through
+  `useServerAuth().handler(...)`, not `auth.api`: the authorize step inside
+  consent needs a `Request`, and going through the handler keeps the
+  `/oauth2/consent` rate limit, the after-hooks (ledger event, new-app email,
+  `revokeSupersededOAuthConnections`) and their logging identical for both
+  paths. It answers `303` to the URL Better Auth returns and copies any
+  `Set-Cookie`.
+- Sends every failure back to the consent page with
+  `consent_error=<code>` (`expired`, `account_changed`, `nothing_selected`,
+  `rate_limited`, `failed`; messages in
+  `shared/utils/oauth-consent-errors.ts`). The page renders the message
+  server-side, so it shows without JavaScript too. The field
+  `attributes.oauthConsentForm` logs the decision and the error code.
+
+On the hydrated path every failure ends in a toast, including a `200` from
+`/oauth2/consent` without a redirect URL, which used to re-enable the button
+silently. `@submit` cancels the native post only once it has read a known
+decision from `event.submitter`; any other submit falls through to the form
+route, so a click is never dropped.
+
+Pressing Enter on a scope checkbox triggers the browser's implicit
+submission, which clicks the form's first submit button. That used to be
+Deny, so Enter sent the user back to the app with `access_denied`. The first
+submit button is now a hidden `decision=none` button: with JavaScript the
+handler ignores it, without it the route sends the user back to the same
+consent page. A *disabled* hidden button does not work: Chromium skips
+disabled buttons and clicks the next one (Deny).
+
+Known limits of the no-JavaScript path: when nothing is pre-ticked (a
+request for write scopes only, with no identity scope), Approve renders as
+the disabled `UiButton` `<span>` and cannot be submitted until JavaScript
+runs; claude.ai and ChatGPT always request read scopes, so this does not
+affect them. A double click posts twice, so Better Auth issues two codes
+and the new-app email can go out twice.
+
+Tests: `tests/e2e/profile/oauth-consent.spec.ts` approves and denies with
+JavaScript disabled, checks that a first open with resource-only scopes
+hydrates without a mismatch and approves, and runs the "Use a different
+account" round trip. `tests/integration/api/profiles-connected-apps-consent.spec.ts`
+covers the form route.
 
 ### Token verification
 
@@ -556,7 +739,7 @@ text only and capped.
 | Tool | Scope | Destructive | What it does | Reuses and limits |
 | --- | --- | --- | --- | --- |
 | `list_chats` | `chats:read` | no | Chats by recent activity with `pinned`, `shared` and `memoryExcluded` flags; `search` (2+ characters) with `searchIn` `all`, `title` or `content`; `projectId` for one project, `pinnedOnly` | `chats/history/cursor`, `search-cursor`, `findChatsMatchingMessageContent` (FTS5 `message_search`), `containsLikeEscaped`. `limit` up to 50; search results up to 200 |
-| `get_chat` | `chats:read` | no | Title, project id and name, pinned and memory-excluded state, share settings (the link only with `chats:write`), models used, messages oldest to newest, text parts only | `messages.parts`, `usage.model`. `maxMessages` up to 200, 8,000 characters per message, 100,000 in total (the oldest are dropped first) |
+| `get_chat` | `chats:read` | no | Title, project id and name, pinned and memory-excluded state, share settings (the link only with `chats:write`), models used, a `context` summary (counts of outputs, inputs, web sources, generated images, research reports and memory actions, plus up to 20 attached files as `{ id, name }`; since 2.1.0), messages oldest to newest, text parts only | `messages.parts`, `usage.model`. The `context` summary comes from the chat context panel's builder (`server/utils/chats/context/`, `docs/chats/context-panel.md`) over all messages, not only the returned window, and never contains memory bodies. `maxMessages` up to 200, 8,000 characters per message, 100,000 in total (the oldest are dropped first) |
 | `list_shared_chats` | `chats:read` | no | Chats with a live public share link: expiry, what the link shows, and the link itself (`shareUrl`) only when the token also has `chats:write` | `listMcpSharedChats`, the active-share filter of `chats/share-management`. `limit` up to 50. The link is a capability, so `McpPrivateToolContext.scopes` decides whether `includeShareUrl` is set (`get_chat` does the same for `share.url`) |
 | `update_chat` | `chats:write` | yes | Set `title`, `pinned`, `memoryExcluded` and `projectId` (at least one; each field sets the value, never toggles) | `renameChat`, `setChatPinnedAt`, `setChatMemoryExclusion`, `moveChatsToProject` in `chats/lifecycle`. Title up to 200 characters |
 | `move_chats_to_project` | `chats:write` | no | Move chats into a project, or out with a null `projectId`; reports moved, already there and not found | `moveChatsToProject`. Up to 100 slugs |
@@ -586,6 +769,10 @@ text only and capped.
 | `delete_memory` | `data:delete` | yes | Delete one entry | `deleteMemoryEntry` |
 | `reset_memory` | `data:delete` | yes | Delete many entries: `scope` `account`, `project` (needs `projectId`) or `all`; `onlyGenerated` (with `all`) keeps what the user or an app wrote. Needs `confirm: true` | `resetMemoryEntries`, `deleteExtractedMemoryEntries`, `clearBackfillWindow`, the memory write limiter |
 | `get_settings` | `settings:read` | no | Reasoning display and default level, favourite models, sidebar pinning, memory and chat search switches. The extraction switch and memory models are shown for reference only | `getMcpSettings` |
+| `list_my_features` | `settings:read` | no | The caller's client-visible experimental features that they have access to, as on the Labs page (a feature without access is never listed): `key`, `title`, `stage`, `enabled`, `active`, `optedIn`, `variant`. Opting in is not possible over MCP | `loadFeatureRules`, `loadUserFeatureState`, `evaluateFeature`, `isFeatureActive` |
+| `list_feature_flags` | `admin:features` | no | Admins only. Every registry flag with stage, roles, rule (enabled, rollout percentage, variants), kill switch and grant counts. Read-only | `listAdminFeatures` (the `/admin` query) |
+| `list_feature_access` | `admin:features` | no | Admins only. Grants newest first, filtered by `flag`, `userId` or exact `email` (an unknown user is a 404 either way); with a user filter also that user's roles. User ids only, never email, name or reason | At most 100 rows (`MCP_FEATURE_ACCESS_LIMIT`), `truncated: true` when there are more |
+| `set_feature_access` | `admin:features` | yes | Admins only. `access` `allow`, `deny` or `clear` for one user (`userId` or `email`) and one registry flag, optional `expiresInDays` (1 to 365) and `reason` (200 characters, kept in the audit log only). Echoes the user id only (`expiresAt` as an ISO string, while `list_feature_access` uses unix seconds, as the admin API does). Cannot touch rules, rollouts, the kill switch or opt-ins | `setFeatureGrant`, `revokeFeatureGrant` with an MCP actor; 30 per minute and 60 per hour |
 | `update_settings` | `settings:write` | yes | Set `reasoningExpanded`, `reasoningAutoHide`, `defaultReasoningLevel` (`null` clears it), `favoriteModels`, `favoriteGatewayModels`, `sidebarPinned`, `memoryEnabled`, `chatSearchEnabled`. Keys that are not listed are dropped by the tool input schema before the handler runs, not refused (the strict schema in `updateMcpSettings` is a second guard for direct callers). `favoriteModels` and `favoriteGatewayModels` are replaced as a whole, so a client reads `get_settings` first and sends the full list or map. `memoryEnabled: true` is refused while it is off and automatic extraction is on, or any of the user's projects has automatic updates set to `on`, because turning it on would resume that background extraction | `applyUserSettingsUpdate`, the same schemas as `PATCH /profiles/settings` (`shared/utils/user-settings-schemas.ts`) |
 
 Notes:
@@ -772,6 +959,14 @@ Some things are left out on purpose, and some are impossible, not omitted.
 Each exclusion has a reason and a point at which to look at it again. Do not
 add one of these tools without reading its entry first.
 
+Connectors and skills (planned, not built) follow the same boundary: MCP may
+add a connector or a skill switched off, list it, reduce what it may do and
+delete it, but never enable it, connect it, give consent, approve a call, set
+"Always allow", grant script permission or import from a URL. The reasons and
+the planned tool rows are in `docs/connectors.md` (section 11) and
+`docs/skills.md` (section 11); C-9 and S-6 add the full entries here when the
+tools ship.
+
 ### Left out on purpose
 
 1. **Anything that spends the user's provider keys.** No `send_message`
@@ -798,6 +993,28 @@ add one of these tools without reading its entry first.
    **Revisit when** there is a way to make the user confirm the publication
    outside the agent's reach, for example a draft share the user activates in
    the app.
+
+   **Exception, artifacts only (owner decision 2026-11-07, planned in
+   Phase 1, ticket A-8).** A new scope `artifacts:share` lets an app create a
+   public link to an artifact with `share_artifact`. Chat shares stay
+   excluded. The exception is bounded so that a prompt-injected call does as
+   little harm as possible:
+   - `artifacts:share` is its own scope, unticked by default on the consent
+     page, so no existing grant reaches it (consent is stored by scope name,
+     see [Scope upgrades for existing clients](#scope-upgrades-for-existing-clients));
+   - a share created over MCP is always `noindex`, expires after at most 30
+     days, and has the viewer storage and the LLM bridge switched off;
+   - the artifact runtime is a separate, sandboxed origin
+     (`besidka-artifacts.chernenko.workers.dev`), so a shared artifact cannot
+     reach the user's session;
+   - `revoke_artifact_shares` (`artifacts:write`) withdraws it, and the
+     in-app share list shows MCP-created shares.
+
+   Why artifacts and not chats: an artifact is a self-contained output the
+   user asked an agent to build and usually means to show, while a chat holds
+   the whole conversation, including whatever personal data was in it.
+   **Revisit when** the draft-share idea above exists; then MCP shares of
+   artifacts move to the same confirm-in-app flow.
 3. **"Allow anyway" on a knowledge item flagged as a possible prompt
    injection.** Why: it is the override of the injection screen. An agent
    that reads the flagged text could un-flag itself, which defeats the screen
@@ -822,10 +1039,28 @@ add one of these tools without reading its entry first.
    passkeys and account deletion.** Why: they are security and legal acts that
    must stay human. An app that could add a key or end a session could widen
    its own reach or lock the user out. **Revisit when:** not planned.
+6. **Feature rules, rollout percentages, variants, the kill switch, Labs
+   opt-ins, the experiments objection and role management.** MCP can read the
+   caller's own features (`list_my_features`) and, for admins, change one
+   user's grant (`set_feature_access`, scope `admin:features`: allow, deny or
+   clear one feature for **one** user); nothing else. Why: a rule or rollout
+   change (rollout percentage, A/B variants, allowed roles or the on/off
+   switch for everyone) affects every account at once, so a prompt-injected
+   admin agent could switch a feature on or off for everyone with one call,
+   and no per-call approval reaches the human. Those settings stay in the
+   `/admin` UI, behind a confirmation. An opt-in (Labs) authorises spending
+   the user's keys (item 1); the objection is a GDPR Art. 21 act of the user;
+   roles widen who is an admin or tester. No tool imports `setFeatureRule` or
+   writes `feature_flag_rules` (the tool-scopes spec checks the sources).
+   **Revisit when:** the server enforces a cap on rule changes (for example at
+   most a small rollout step per day, with automatic rollback), or a rule
+   change made over MCP stays pending until the admin confirms it in the app;
+   not planned for opt-ins; for roles, when the owner asks for tester
+   management from an agent.
 
 ### Not possible, not omitted
 
-6. **Chat archive and restore.** Besidka has no chat archive (only
+7. **Chat archive and restore.** Besidka has no chat archive (only
    project archive, which `update_project` has). **Knowledge folders** are a
    client-only idea: a `folderId` plus browser-local names, with no server
    entity to call. **Binary, PDF and image upload, and project file

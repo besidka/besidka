@@ -17,7 +17,22 @@ const HIDDEN_URL_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}\s]/gu
 const CONTROL_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}]/gu
 const MARKDOWN_CHARACTERS = /[\\`*_~#>|[\]()!<{}]/g
 
+const CHAT_NOISE_TAGS = [
+  'head',
+  'meta',
+  'style',
+  'script',
+  'link',
+  'title',
+] as const
+const NEUTRAL_BOLD_WEIGHT = /font-weight:\s*(normal|400)/i
+const TRAILING_WHITESPACE = /[ \t]+$/
+const NON_BREAKING_SPACE = /\u00a0/g
+const FENCE_LINE = /^\s{0,3}(`{3,}|~{3,})/
+const LIST_MARKER_PADDING = /^(\s*)(-|\d{1,9}\.)\s{2,3}(?=\S)/
+
 let turndownService: TurndownService | null = null
+let chatTurndownService: TurndownService | null = null
 
 function isAllowedLinkTarget(href: string): boolean {
   const schemeMatch = LINK_SCHEME_PATTERN.exec(
@@ -135,6 +150,76 @@ export function htmlToKnowledgeMarkdown(html: string): string {
   return turndownService
     .turndown(html)
     .replaceAll('\u0000', '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function isNeutralBoldWrapper(node: HTMLElement): boolean {
+  return (node.nodeName === 'B' || node.nodeName === 'STRONG')
+    && NEUTRAL_BOLD_WEIGHT.test(node.getAttribute('style') ?? '')
+}
+
+function createChatTurndownService(): TurndownService {
+  const service = createTurndownService()
+
+  service.remove([...CHAT_NOISE_TAGS])
+  service.remove(node => node.nodeName === 'O:P')
+  service.addRule('chatNeutralBoldWrapper', {
+    filter: node => isNeutralBoldWrapper(node as HTMLElement),
+    replacement: content => content,
+  })
+
+  return service
+}
+
+function normalizeChatMarkdownLines(markdown: string): string {
+  let fenceMarker: string | null = null
+
+  return markdown
+    .split('\n')
+    .map((line) => {
+      const fenceMatch = FENCE_LINE.exec(line)
+
+      if (fenceMatch) {
+        const marker = fenceMatch[1]!
+
+        if (fenceMarker === null) {
+          fenceMarker = marker[0]!
+        } else if (marker.startsWith(fenceMarker)) {
+          fenceMarker = null
+        }
+
+        return line
+      }
+
+      if (fenceMarker !== null) {
+        return line
+      }
+
+      return line
+        .replace(TRAILING_WHITESPACE, '')
+        .replace(
+          LIST_MARKER_PADDING,
+          (_match, indent: string, marker: string) => `${indent}${marker} `,
+        )
+    })
+    .join('\n')
+}
+
+/**
+ * Converts pasted clipboard HTML (Apple Mail, Gmail, web pages, Google Docs)
+ * to compact Markdown for the chat input: single-space list markers, soft
+ * line breaks for `<br>`, and no wrapper noise.
+ */
+export function htmlToChatMarkdown(html: string): string {
+  chatTurndownService ??= createChatTurndownService()
+
+  const markdown = chatTurndownService
+    .turndown(html)
+    .replaceAll('\u0000', '')
+    .replace(NON_BREAKING_SPACE, ' ')
+
+  return normalizeChatMarkdownLines(markdown)
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }

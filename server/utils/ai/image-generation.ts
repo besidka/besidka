@@ -1,4 +1,4 @@
-import type { ImageModel } from 'ai'
+import type { ImageModel, UIMessage } from 'ai'
 import type { OpenAIImageModelGenerationOptions } from '@ai-sdk/openai'
 import type { GoogleLanguageModelOptions } from '@ai-sdk/google'
 import type {
@@ -12,7 +12,9 @@ import { createError } from 'evlog'
 import { generateImage, tool } from 'ai'
 import { z } from 'zod'
 import {
+  extractLocalFileStorageKey,
   getPreferredFileExtension,
+  isGeneratedFilePart,
   normalizeMediaType,
 } from '#shared/utils/files'
 import {
@@ -20,8 +22,12 @@ import {
   getUserStorageUsageBytes,
 } from '~~/server/utils/files/file-governance'
 import { persistFile } from '~~/server/utils/files/persist-file'
-import { getSafeImageGenerationError } from '~~/server/utils/ai/image-generation-errors'
+import {
+  SOURCE_IMAGE_UNAVAILABLE_MESSAGE,
+  getSafeImageGenerationError,
+} from '~~/server/utils/ai/image-generation-errors'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
+import { markAiGeneratedImage } from '~~/server/utils/ai/image-provenance'
 import {
   acquireImageGenerationLease,
   releaseImageGenerationLease,
@@ -30,6 +36,13 @@ import {
 export const MAX_GENERATED_IMAGE_BYTES = 10 * 1024 * 1024
 export const MAX_GENERATED_IMAGE_DIMENSION = 8192
 export const MAX_GENERATED_IMAGE_PIXELS = 64 * 1024 * 1024
+export const MAX_IMAGE_EDIT_SOURCE_IMAGES = 16
+export const MAX_IMAGE_EDIT_SOURCE_BYTES = 20 * 1024 * 1024
+export const IMAGE_EDIT_SUPPORTED_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+])
 
 type GenerateImageOptions = Parameters<typeof generateImage>[0]
 
@@ -45,6 +58,30 @@ const generateImageInputSchema = z.object({
   fileName: z.string().trim().min(1).max(120).optional(),
 })
 
+const editPreviousImageInputSchema = generateImageInputSchema.extend({
+  editPreviousImage: z.boolean().optional(),
+})
+
+type ImageGenerationInput = z.infer<typeof editPreviousImageInputSchema>
+
+type ImageGenerationToolMode
+  = 'generate' | 'edit-attached' | 'edit-previous-available'
+
+type ImageEditSource = 'attached' | 'previous' | 'none'
+
+const MAX_PREVIOUS_IMAGE_NAME_LENGTH = 120
+
+export interface PreviousGeneratedImage {
+  storageKey: string
+  filename?: string
+  mediaType: string
+}
+
+export interface PreviousImageSource {
+  name?: string
+  load: () => Promise<string | null>
+}
+
 export interface CreateImageGenerationToolInput {
   userId: number
   provider: ImageGenerationProvider
@@ -52,162 +89,395 @@ export interface CreateImageGenerationToolInput {
   imageModel: ImageModel
   logger: LoggerLike
   requestId?: string
+  sourceImages?: string[]
+  previousImage?: PreviousImageSource
   onGenerated?: (result: {
     aspectRatio: ImageGenerationAspectRatio
   }) => void
+}
+
+function getDataUrlMediaType(url: string): string {
+  const header = url.slice('data:'.length).split(/[;,]/, 1)[0] || ''
+
+  return normalizeMediaType(header)
+}
+
+function estimateDataUrlBytes(url: string): number {
+  const base64Length = url.length - (url.indexOf(',') + 1)
+
+  return Math.ceil(base64Length * 3 / 4)
+}
+
+/**
+ * Keeps the data-URL images that OpenAI's image edit endpoint accepts, in
+ * their original order, capped by the endpoint's image count and by a
+ * raw-byte budget. The media type is read from the data URL header, which is
+ * what the AI SDK sends to OpenAI. Images that do not fit the remaining
+ * budget are skipped.
+ */
+export function filterImageEditSourceImages(urls: string[]): string[] {
+  const sourceImages: string[] = []
+  let totalBytes = 0
+
+  for (const url of urls) {
+    if (sourceImages.length >= MAX_IMAGE_EDIT_SOURCE_IMAGES) {
+      break
+    }
+
+    if (
+      !url.startsWith('data:')
+      || !IMAGE_EDIT_SUPPORTED_MEDIA_TYPES.has(getDataUrlMediaType(url))
+    ) {
+      continue
+    }
+
+    const imageBytes = estimateDataUrlBytes(url)
+
+    if (totalBytes + imageBytes > MAX_IMAGE_EDIT_SOURCE_BYTES) {
+      continue
+    }
+
+    totalBytes += imageBytes
+    sourceImages.push(url)
+  }
+
+  return sourceImages
+}
+
+/**
+ * Returns the edit-capable data-URL image parts of the latest user message.
+ * Earlier turns are deliberately ignored.
+ */
+export function getImageEditSourceImages(messages: UIMessage[]): string[] {
+  const latestUserMessage = messages.findLast((message) => {
+    return message.role === 'user'
+  })
+
+  if (!latestUserMessage || !Array.isArray(latestUserMessage.parts)) {
+    return []
+  }
+
+  const urls: string[] = []
+
+  for (const part of latestUserMessage.parts) {
+    if (part.type === 'file' && typeof part.url === 'string') {
+      urls.push(part.url)
+    }
+  }
+
+  return filterImageEditSourceImages(urls)
+}
+
+/**
+ * Returns the most recent image the assistant generated anywhere in the
+ * history, so a follow-up such as "make it darker" can edit it without the
+ * user attaching it again. Files the user attached and assistant files that
+ * were not generated by the image tool are ignored, and an image attached to
+ * the latest user message, even one that cannot be edited, means the user
+ * means that image, so no previous image is returned.
+ */
+export function findPreviousGeneratedImage(
+  messages: UIMessage[],
+): PreviousGeneratedImage | null {
+  const latestUserMessage = messages.findLast((message) => {
+    return message.role === 'user'
+  })
+
+  if (
+    Array.isArray(latestUserMessage?.parts)
+    && latestUserMessage.parts.some((part) => {
+      return part.type === 'file'
+        && normalizeMediaType(part.mediaType).startsWith('image/')
+    })
+  ) {
+    return null
+  }
+
+  for (const message of messages.toReversed()) {
+    if (message.role !== 'assistant' || !Array.isArray(message.parts)) {
+      continue
+    }
+
+    for (const part of message.parts.toReversed()) {
+      if (
+        part.type !== 'file'
+        || !isGeneratedFilePart(part)
+        || !IMAGE_EDIT_SUPPORTED_MEDIA_TYPES.has(
+          normalizeMediaType(part.mediaType),
+        )
+      ) {
+        continue
+      }
+
+      const storageKey = extractLocalFileStorageKey(part.url)
+
+      if (!storageKey) {
+        continue
+      }
+
+      return {
+        storageKey,
+        filename: part.filename,
+        mediaType: part.mediaType,
+      }
+    }
+  }
+
+  return null
+}
+
+function getImageGenerationToolDescription(
+  mode: ImageGenerationToolMode,
+  previousImageName?: string,
+): string {
+  if (mode === 'edit-attached') {
+    return [
+      'Edit the image or images the user attached and save the result to',
+      'their private Besidka files. The attached image or images are sent to',
+      'the image model as the source to edit. Write prompt as the edit',
+      'instruction: state what to change and what to keep unchanged, rather',
+      'than re-describing the whole scene. Pick the aspectRatio closest to',
+      'the source image. Return the saved file produced by this tool; do not',
+      'claim that image generation is unavailable.',
+    ].join(' ')
+  }
+
+  if (mode === 'edit-previous-available') {
+    const nameClause = previousImageName
+      ? ` (${JSON.stringify(
+        previousImageName.slice(0, MAX_PREVIOUS_IMAGE_NAME_LENGTH),
+      )})`
+      : ''
+
+    return [
+      'Generate one image from the user request and save it to their private',
+      `Besidka files. An earlier image from this chat${nameClause} is`,
+      'available to edit. Set editPreviousImage to true only when the user',
+      'asks to change, refine, fix or continue that image, and set it to',
+      'false or omit it for a new, unrelated image. If the user refers to a',
+      'different earlier image, leave editPreviousImage off. When',
+      'editPreviousImage is true, write prompt as the edit instruction: state what to change and',
+      'what to keep unchanged, and pick the aspectRatio closest to the',
+      'earlier image. Otherwise use the full visual request as prompt. Return',
+      'the saved file produced by this tool; do not claim that image',
+      'generation is unavailable.',
+    ].join(' ')
+  }
+
+  return [
+    'Generate one image from the user request and save it to their private',
+    'Besidka files. Use the full visual request as prompt. Return the saved',
+    'file produced by this tool; do not claim that image generation is',
+    'unavailable.',
+  ].join(' ')
+}
+
+async function loadPreviousImageSource(
+  previousImage: PreviousImageSource,
+): Promise<string> {
+  const dataUrl = await previousImage.load()
+  const [filteredImage] = dataUrl ? filterImageEditSourceImages([dataUrl]) : []
+
+  if (!filteredImage) {
+    throw new Error(SOURCE_IMAGE_UNAVAILABLE_MESSAGE)
+  }
+
+  return filteredImage
 }
 
 export function createImageGenerationTool(
   input: CreateImageGenerationToolInput,
 ) {
   let isExecutionClaimed = false
+  const attachedSourceImages = input.sourceImages ?? []
+  const previousImage = attachedSourceImages.length > 0
+    ? undefined
+    : input.previousImage
+  const toolMode: ImageGenerationToolMode = attachedSourceImages.length > 0
+    ? 'edit-attached'
+    : previousImage ? 'edit-previous-available' : 'generate'
+  const description = getImageGenerationToolDescription(
+    toolMode,
+    previousImage?.name,
+  )
+
+  async function* execute(
+    { prompt, aspectRatio, fileName, editPreviousImage }: ImageGenerationInput,
+  ): AsyncGenerator<ImageGenerationToolOutput> {
+    if (isExecutionClaimed) {
+      throw createError({
+        code: 'generation-busy',
+        message: 'This image request has already been started.',
+        status: 409,
+        why: 'A model attempted to run the same image tool more than once.',
+        fix: 'Send a new message if you want another image.',
+      })
+    }
+
+    isExecutionClaimed = true
+
+    const startedAt = Date.now()
+    const shouldEditPrevious = editPreviousImage === true && !!previousImage
+    const editSource: ImageEditSource = attachedSourceImages.length > 0
+      ? 'attached'
+      : shouldEditPrevious ? 'previous' : 'none'
+    const generationMode = editSource === 'none' ? 'generate' : 'edit'
+    let lease: ImageGenerationLease | undefined
+
+    try {
+      await assertGeneratedImageStorageAvailable(input.userId)
+      lease = await acquireImageGenerationLease(input.userId)
+
+      yield { status: 'generating' }
+
+      let sourceImages = attachedSourceImages
+
+      if (editSource === 'previous' && previousImage) {
+        sourceImages = [await loadPreviousImageSource(previousImage)]
+      }
+
+      const result = await generateImage({
+        model: input.imageModel,
+        prompt: sourceImages.length > 0
+          ? { images: sourceImages, text: prompt }
+          : prompt,
+        n: 1,
+        maxImagesPerCall: 1,
+        maxRetries: 0,
+        ...getProviderGenerationOptions(
+          input.provider,
+          aspectRatio,
+        ),
+      })
+      const image = result.image
+      const validatedImage = validateGeneratedImage(
+        image.uint8Array,
+        image.mediaType,
+      )
+      const markedImage = markAiGeneratedImage({
+        data: validatedImage.data,
+        mediaType: validatedImage.mediaType,
+        model: input.model,
+        isEdit: generationMode === 'edit',
+        maxBytes: MAX_GENERATED_IMAGE_BYTES,
+      })
+
+      yield { status: 'saving' }
+
+      const persistedFile = await persistFile({
+        userId: input.userId,
+        fileName: buildGeneratedImageFileName(
+          fileName || prompt,
+          validatedImage.mediaType,
+        ),
+        mediaType: validatedImage.mediaType,
+        fileData: markedImage.data,
+        source: 'assistant',
+        originProvider: input.provider,
+        originModel: input.model,
+        generationCost: getImageGenerationCost(input.model, aspectRatio),
+        logger: input.logger,
+      })
+      const url = `/files/${persistedFile.storageKey}`
+
+      input.logger.set({
+        imageGeneration: {
+          status: 'ready',
+          durationMs: Date.now() - startedAt,
+          size: persistedFile.size,
+          warnings: result.warnings.length,
+        },
+        attributes: {
+          imageGeneration: {
+            provider: input.provider,
+            model: input.model,
+            mode: generationMode,
+            source: editSource,
+            sourceImages: sourceImages.length,
+            mediaType: persistedFile.type,
+            provenance: markedImage.marking,
+            usage: result.usage,
+          },
+        },
+      })
+
+      input.onGenerated?.({ aspectRatio })
+
+      yield {
+        status: 'ready',
+        file: {
+          id: persistedFile.id,
+          storageKey: persistedFile.storageKey,
+          name: persistedFile.name,
+          size: persistedFile.size,
+          type: persistedFile.type,
+          source: persistedFile.source,
+          url,
+          downloadUrl: `${url}?download=1`,
+        },
+        provider: input.provider,
+        model: input.model,
+      }
+    } catch (exception) {
+      const safeError = getSafeImageGenerationError(
+        exception,
+        input.provider,
+      )
+
+      input.logger.set({
+        imageGeneration: {
+          status: 'failed',
+          durationMs: Date.now() - startedAt,
+          providerStatus: safeError.providerStatus,
+          providerRequestId: safeError.providerRequestId,
+          requestId: input.requestId,
+        },
+        attributes: {
+          imageGeneration: {
+            provider: input.provider,
+            model: input.model,
+            mode: generationMode,
+            source: editSource,
+            errorCode: safeError.code,
+          },
+        },
+      })
+
+      throw createError({
+        code: safeError.code,
+        message: safeError.message,
+        status: safeError.status,
+        why: safeError.why,
+        fix: safeError.fix,
+      })
+    } finally {
+      if (lease) {
+        try {
+          await releaseImageGenerationLease(lease)
+        } catch {
+          input.logger.set({
+            imageGenerationLease: {
+              status: 'release-failed',
+              errorCode: 'lease-release-failed',
+            },
+          })
+        }
+      }
+    }
+  }
+
+  if (previousImage) {
+    return tool({
+      description,
+      inputSchema: editPreviousImageInputSchema,
+      execute,
+    })
+  }
 
   return tool({
-    description: [
-      'Generate one image from the user request and save it to their private',
-      'Besidka files. Use the full visual request as prompt. Return the saved',
-      'file produced by this tool; do not claim that image generation is',
-      'unavailable.',
-    ].join(' '),
+    description,
     inputSchema: generateImageInputSchema,
-    async* execute(
-      { prompt, aspectRatio, fileName },
-    ): AsyncGenerator<ImageGenerationToolOutput> {
-      if (isExecutionClaimed) {
-        throw createError({
-          code: 'generation-busy',
-          message: 'This image request has already been started.',
-          status: 409,
-          why: 'A model attempted to run the same image tool more than once.',
-          fix: 'Send a new message if you want another image.',
-        })
-      }
-
-      isExecutionClaimed = true
-
-      const startedAt = Date.now()
-      let lease: ImageGenerationLease | undefined
-
-      try {
-        await assertGeneratedImageStorageAvailable(input.userId)
-        lease = await acquireImageGenerationLease(input.userId)
-
-        yield { status: 'generating' }
-
-        const result = await generateImage({
-          model: input.imageModel,
-          prompt,
-          n: 1,
-          maxImagesPerCall: 1,
-          maxRetries: 0,
-          ...getProviderGenerationOptions(
-            input.provider,
-            aspectRatio,
-          ),
-        })
-        const image = result.image
-        const validatedImage = validateGeneratedImage(
-          image.uint8Array,
-          image.mediaType,
-        )
-
-        yield { status: 'saving' }
-
-        const persistedFile = await persistFile({
-          userId: input.userId,
-          fileName: buildGeneratedImageFileName(
-            fileName || prompt,
-            validatedImage.mediaType,
-          ),
-          mediaType: validatedImage.mediaType,
-          fileData: validatedImage.data,
-          source: 'assistant',
-          originProvider: input.provider,
-          originModel: input.model,
-          generationCost: getImageGenerationCost(input.model, aspectRatio),
-          logger: input.logger,
-        })
-        const url = `/files/${persistedFile.storageKey}`
-
-        input.logger.set({
-          imageGeneration: {
-            status: 'ready',
-            durationMs: Date.now() - startedAt,
-            size: persistedFile.size,
-            warnings: result.warnings.length,
-          },
-          attributes: {
-            imageGeneration: {
-              provider: input.provider,
-              model: input.model,
-              mediaType: persistedFile.type,
-              usage: result.usage,
-            },
-          },
-        })
-
-        input.onGenerated?.({ aspectRatio })
-
-        yield {
-          status: 'ready',
-          file: {
-            id: persistedFile.id,
-            storageKey: persistedFile.storageKey,
-            name: persistedFile.name,
-            size: persistedFile.size,
-            type: persistedFile.type,
-            source: persistedFile.source,
-            url,
-            downloadUrl: `${url}?download=1`,
-          },
-          provider: input.provider,
-          model: input.model,
-        }
-      } catch (exception) {
-        const safeError = getSafeImageGenerationError(
-          exception,
-          input.provider,
-        )
-
-        input.logger.set({
-          imageGeneration: {
-            status: 'failed',
-            durationMs: Date.now() - startedAt,
-            providerStatus: safeError.providerStatus,
-            providerRequestId: safeError.providerRequestId,
-            requestId: input.requestId,
-          },
-          attributes: {
-            imageGeneration: {
-              provider: input.provider,
-              model: input.model,
-              errorCode: safeError.code,
-            },
-          },
-        })
-
-        throw createError({
-          code: safeError.code,
-          message: safeError.message,
-          status: safeError.status,
-          why: safeError.why,
-          fix: safeError.fix,
-        })
-      } finally {
-        if (lease) {
-          try {
-            await releaseImageGenerationLease(lease)
-          } catch {
-            input.logger.set({
-              imageGenerationLease: {
-                status: 'release-failed',
-                errorCode: 'lease-release-failed',
-              },
-            })
-          }
-        }
-      }
-    },
+    execute,
   })
 }
 
@@ -306,7 +576,7 @@ function getOpenAIImageSize(
   return '1024x1024'
 }
 
-interface ValidatedGeneratedImage {
+export interface ValidatedGeneratedImage {
   data: Uint8Array
   mediaType: 'image/png' | 'image/jpeg' | 'image/webp'
 }

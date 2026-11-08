@@ -2,7 +2,7 @@
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
 updatedAt: 2026-10-30
-summary: "Besidka stores your account, chats, projects, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway you chose, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. The assistant can also look up your earlier chats and send short excerpts of them to the provider of the chat you are in, and memory, if you use it, can be written by an AI model on one of your own keys. If you add a TypeSafe AI key, TypeSafe AI in the United States can also answer short yes/no questions about your text for optional checks, such as memory entries, whether a web search is needed, files and search results screened for hidden instructions, and chats you are about to share, and each check has its own off switch. Each provider is a separate company with its own privacy terms, and some of them are outside the EU, in the United States, China or Singapore. Because you can type anything, your chats may contain sensitive information such as health details or beliefs; I ask for your explicit consent to store it and send it where you tell me to, and I never use it for anything else. If you use a free Google Gemini key outside the EEA, Switzerland and the UK, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. You can also connect an AI app of your choice to your account so that it can read, and only if you allow it, change or delete, the parts of your account you approve; that app and its maker are separate companies with their own privacy terms, and you can remove some of its permissions or disconnect it at any time. Public share links are off by default, and when you create one every extra on it (search indexing, files, your name and avatar) starts off, but anyone who has the link can read the chat. If someone sends me a report about content or a copyright notice, I process it by email as described in the policy. You can delete your account and all its data from your settings at any time."
+summary: "Besidka stores your account, chats, projects, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway you chose, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. The assistant can also look up your earlier chats and send short excerpts of them to the provider of the chat you are in, and memory, if you use it, can be written by an AI model on one of your own keys. If you add a TypeSafe AI key, TypeSafe AI in the United States can also answer short yes/no questions about your text for optional checks, such as memory entries, whether a web search is needed, files and search results screened for hidden instructions, and chats you are about to share, and each check has its own off switch. Each provider is a separate company with its own privacy terms, and some of them are outside the EU, in the United States, China or Singapore. Because you can type anything, your chats may contain sensitive information such as health details or beliefs; I ask for your explicit consent to store it and send it where you tell me to, and I never use it for anything else. If you use a free Google Gemini key outside the EEA, Switzerland and the UK, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. If you arrive through a campaign link, I keep the campaign tags from that link (source, medium, campaign and content) with your account, and no cookie or device storage is used for it. You can also connect an AI app of your choice to your account so that it can read, and only if you allow it, change or delete, the parts of your account you approve; that app and its maker are separate companies with their own privacy terms, and you can remove some of its permissions or disconnect it at any time. From 19 December 2026 some experimental features may reach a share of accounts first, chosen at random from the account number and not from anything about you; I record which experimental features your account can use and keep a 12-month log of changes to that access, and you can object to gradual rollouts and version tests. Public share links are off by default, and when you create one every extra on it (search indexing, files, your name and avatar) starts off, but anyone who has the link can read the chat. If someone sends me a report about content or a copyright notice, I process it by email as described in the policy. You can delete your account and all its data from your settings at any time."
 ---
 
 ## What this policy covers
@@ -45,7 +45,7 @@ Everything below lives in a Cloudflare D1 database, except files, which live in 
 - Your chats and messages. The full message content is stored, including text, attachments references and model output.
 - Your projects, including the project name, its instructions, its memory entries and its knowledge (see [Memory](#memory))
 - Metadata about your files (name, size, type, storage key, expiry). The file itself is stored in Cloudflare R2.
-- Your settings, such as your file retention period, your default reasoning effort and whether reasoning is shown expanded, whether the sidebar is pinned, your favourite models, whether links in deep research reports open without a warning, whether you were asked about push notifications and what you answered, and which TypeSafe AI checks you left on (all of them are on until you switch one off)
+- Your settings, such as your file retention period, your default reasoning effort and whether reasoning is shown expanded, whether the sidebar is pinned, your favourite models, whether links in deep research reports open without a warning, whether you were asked about push notifications and what you answered, which notices about changes to these pages you dismissed in the app, and which TypeSafe AI checks you left on (all of them are on until you switch one off)
 - Deep research jobs, including the request and the resulting report
 - Your memory entries and memory settings (see [Memory](#memory))
 - A record of the legal change notices I sent you: which notice, when, whether it was delivered, and an error code if it failed (see [Email I send you](#email-i-send-you))
@@ -71,6 +71,13 @@ The campaign tags travel in the web address and in the page's memory only. I do 
 
 - The records that let an AI app you connected reach your account: your approval of that app and the permissions you gave it, the access and refresh tokens issued to it, and the details the app gave when it registered itself. What each one holds is under [Connected AI apps](#connected-ai-apps).
 
+### Experimental feature records
+
+- Which experimental features your account may use, where I set it by hand: a role I gave your account (such as tester), a feature I turned on or off for your account, with an optional end date, the version of the feature I chose for it and a short note of why, and the account id of whoever made the change
+- Which experimental features that use your API keys you switched on or off on the Labs page, and when, and whether you objected to gradual rollouts and version tests
+- A log of the changes made to feature access
+- What each of these holds is under [Experimental features](#experimental-features)
+
 ### Sharing and notifications
 
 - Share records, if you publish a chat with a share link, including the switches you chose for it (see [Public chat sharing](#public-chat-sharing))
@@ -93,6 +100,9 @@ I record structured logs of requests and errors so I can keep the service workin
 | Store the sensitive information you choose to include in your chats, projects and files, and send it to the AI provider, AI gateway or search provider you chose | Your explicit consent — GDPR Art. 9(2)(a), in addition to the contract basis above |
 | Keep the memory entries you write or ask the assistant to save, and add your memory to your messages | Contract — Art. 6(1)(b) |
 | Let the assistant search your earlier chats and send short excerpts to the provider of the chat you are in | Contract — Art. 6(1)(b) |
+| Decide which experimental features your account can use (a role or a feature I set for your account by hand, gradual rollouts and version tests), and keep a log of changes to feature access (see [Experimental features](#experimental-features)) | Legitimate interests — Art. 6(1)(f). You can object, see [Experimental features](#experimental-features) |
+| Record which experimental features that use your API keys you switched on or off on the Labs page | Contract — Art. 6(1)(b), at your request |
+| Keep your objection to gradual rollouts and version tests, so that I can honour it | Legal obligation — Art. 6(1)(c) with Art. 21 |
 | Let an AI app you chose sign in to your Besidka account through the approval screen, and keep the records that needs (see [Connected AI apps](#connected-ai-apps)) | Contract — Art. 6(1)(b), at your request each time you connect an app |
 | Give a connected AI app the chats, projects, files, memory and settings you approved when it asks with its token, and, if you allowed it, apply the changes it makes, including deletions | Contract — Art. 6(1)(b), on your instruction. For sensitive information in what it receives, also your explicit consent — Art. 9(2)(a), which the approval screen asks for separately for that app and those permissions |
 | Store project knowledge and add it to messages in that project | Contract — Art. 6(1)(b) |
@@ -114,7 +124,7 @@ I record structured logs of requests and errors so I can keep the service workin
 | Error and operational logging | Legitimate interests — Art. 6(1)(f) |
 | Security, abuse prevention and rate limiting, including for connected AI apps | Legitimate interests — Art. 6(1)(f) |
 
-Where I rely on legitimate interests, my interest is keeping a free service running, debuggable and not abused. I only log what I need for that, and I never log the content of your messages. For campaign measurement my interest is knowing whether my own campaigns lead anyone to use the app, and I keep that to a few short tags and a handful of milestones. For the memory check, my interest is keeping card numbers, keys, sensitive topics and similar items out of memory; the check stores nothing but counts. You can object to this processing — see [Your rights](#your-rights).
+Where I rely on legitimate interests, my interest is keeping a free service running, debuggable and not abused. I only log what I need for that, and I never log the content of your messages. For campaign measurement my interest is knowing whether my own campaigns lead anyone to use the app, and I keep that to a few short tags and a handful of milestones. For the memory check, my interest is keeping card numbers, keys, sensitive topics and similar items out of memory; the check stores nothing but counts. For experimental features, my interest is releasing new features safely, a few accounts at a time, learning which version of a feature works better, and keeping a record of who changed whose access; the random choice looks at nothing about you, and a feature that uses your API keys always needs your own switch. You can object to this processing — see [Your rights](#your-rights).
 
 Where I rely on consent, you can withdraw it at any time, and withdrawing is as easy as giving it.
 
@@ -336,6 +346,40 @@ If you allowed an app to change things, its changes are saved as if you made the
 
 I limit how many requests an app can make, and I may disable an app, or refuse to register one, if it abuses the interface, tries to reach more than you approved or looks like it is impersonating another app. That does not affect your data in Besidka.
 
+## Experimental features
+
+New features often reach a few accounts before everyone. Experimental features may change or be removed (see the [Terms of Use](/terms-of-use)). This section explains how a feature reaches your account and what I record about it.
+
+### How a feature reaches your account
+
+- **By hand.** I can turn an experimental feature on or off for one account, with an optional end date, give an account the tester role, or choose which version of a feature an account sees.
+- **Gradual rollout.** I can turn a feature on for a share of accounts, for example one in ten. Which accounts are in that share is decided at random: a fixed calculation over your account number and a random value kept for that feature, which gives the same answer every time, so a feature does not appear and disappear between visits. It looks at nothing about you. Your country, your email address, how you use Besidka and what you write play no part, and I do not choose accounts by any of them.
+- **Version tests.** For a feature in a gradual rollout I can show different versions to different accounts, chosen in the same random way, to learn which version works better. Only features that do not use your API keys are tested in versions, so a version test never changes what is spent on your keys.
+
+**Gradual rollouts and version tests start no earlier than 19 December 2026**, and not before the Labs page described below is available. Until then they are switched off for everyone, and I turn experimental features on by hand only for my own account and for testers whom I told beforehand what is recorded and how to object.
+
+A feature that uses your own API keys never switches on by itself. Even when your account may use it, you have to switch it on yourself on the Labs page (**Profile → Labs**), and you can switch it off there at any time. The Labs page is being added; it will be there before any such feature is offered and before any gradual rollout starts.
+
+### What I record
+
+- **Your feature access.** The role and the per-account settings listed under [What I store](#experimental-feature-records), with the account id of whoever made the change. A setting with an end date stops applying on that date, and the record stays until it is removed or you delete your account.
+- **Your Labs choices.** For each feature that uses your keys, when you last switched it on and when you last switched it off, and, if you objected to gradual rollouts and version tests, when you did.
+- **The change log.** Each change to feature access: how it was made, the account that made it, the account it applied to, the feature, what kind of change it was, and the setting before and after, including the version, the end date and the note. It has no email or name fields; the note is a short free-text reason, which I write without names. The log is deleted automatically after **12 months**. If you delete your account, your account id and the notes are removed from every entry about your account (where you made the change or it applied to you), and the rest of the entry (the feature, the kind of change, when) stays until its 12 months are over.
+- **Log lines.** When a gradual rollout or version test gives you a feature, the request log line records the feature, the result, the version and the reason, with your pseudonymous user id. When feature access, a Labs switch or your objection changes, the log line records the account ids involved, the feature and the change, never an email address or the note. I use these lines to put feature access right again if I ever have to restore the database from a backup (see [Backups](#backups)). When I use the admin area, the log records which list I opened and how many results it had, never what I searched for.
+- **Feature counters.** When a gradual rollout or version test gives you a feature, that is also counted on the server with the feature, the version and the reason, without a user id (see [Analytics](#analytics)).
+
+Your random position in a rollout is not stored. It is calculated each time it is needed. Nothing about experimental features is stored in your browser.
+
+### Why I may, and how to object
+
+My legal basis for deciding feature access, for gradual rollouts and version tests, for the change log and for the log lines is legitimate interests (GDPR Art. 6(1)(f)): releasing new features safely, a few accounts at a time, finding problems before they reach everyone, learning which version works better, and keeping a record of who changed whose access, so that changes can be checked and undone. Being in a rollout or not, or seeing one version or another, does not change your rights, what you pay your providers or how your data is used elsewhere. Your Labs switches for features that use your keys rest on the contract (Art. 6(1)(b)): you asked for that feature.
+
+**You can object to gradual rollouts and version tests at any time** (GDPR Art. 21) by writing to **:privacy-email-link{}**. The Labs page will also have a switch for it, **Include my account in gradual rollouts and experiments**, which is on until you turn it off. Once your objection is recorded (at once with the switch), your account is left out of every gradual rollout and version test. A feature I turned on for your account by hand stays, and I can still turn one on for you if you ask. If you do not want a role or a feature I set for your account by hand, tell me and I will remove it. I keep your objection with your account so that I can honour it (Art. 6(1)(c)). You can also object to the change log and the log lines; they are my record of what was changed, so I may keep them only where I have compelling legitimate grounds that override your interests, rights and freedoms, or where I need them for legal claims, and I will tell you if I do.
+
+### Who can change feature access
+
+Only I hold the admin role. The admin area can be opened only from an account with a verified email address and two-factor authentication turned on. In the admin area I can search accounts by email address or name to change their access. Nobody else receives the records described in this section, apart from Cloudflare and Axiom, which store and log them for me (see [Who else receives your data](#who-else-receives-your-data)).
+
 ## Who else receives your data
 
 | Recipient | What they receive | Where | Safeguard |
@@ -407,6 +451,7 @@ My logs are deliberately narrow. Specifically:
 - Push endpoints and push keys are never logged.
 - For memory and chat search, logs hold counts (what was saved, refused or skipped, how many chats matched a search), the category of a refused item, which model and provider were used, and technical error labels. They never hold the text of your memory, your chats, your search terms or anything you import.
 - For connected AI apps, the log line records which app called the interface, which action it used and its timing, with your pseudonymous user id. It never holds the content that was read or written.
+- For [experimental features](#experimental-features), the log line records which feature a gradual rollout or version test gave you, with the result, the version and the reason, and, when feature access, a Labs switch or your objection changes, the account ids involved, the feature and the change. It never holds an email address or the note an admin wrote, and when I search accounts in the admin area the search text is not logged. These lines are kept for 30 days.
 - When you give or withdraw a consent, the log line for that request records the action, the version of the text and, for a transfer consent, the provider's name, together with your pseudonymous user id.
 - When you create an account, save your first key or send your first message, the log line for that event can carry the campaign tags from your first-touch record and, for a key or message, the provider's name. Those log lines already carry a pseudonymous user id, so the campaign tags are linked to that id for as long as the logs are kept.
 
@@ -421,9 +466,13 @@ My logs are deliberately narrow. Specifically:
 | Push subscriptions | Until you turn notifications off, until your browser's push service reports the endpoint as invalid, or until you have not opened Besidka in that browser for 60 days, whichever comes first |
 | Sessions | Until they expire or you sign out |
 | Campaign attribution and milestone records | Until you delete your account. They are deleted together with it. |
-| Aggregate analytics counters | About three months, which is how long Cloudflare keeps Workers Analytics Engine data |
+| Aggregate analytics counters, including the feature counters | About three months, which is how long Cloudflare keeps Workers Analytics Engine data |
+| Roles and feature access set for your account by hand | Until it is removed, or until you delete your account. A setting with an end date stops applying on that date, and its record stays until it is removed |
+| Your Labs switches and your objection to gradual rollouts and version tests | While your account exists. Each switch keeps when you last turned it on and off. Deleted with your account |
+| The change log of feature access | 12 months, then deleted automatically. When you delete your account, your account id and the notes are removed from the entries about your account, and the entries stay without them until their 12 months are over |
+| Log lines about experimental features (the decisions and changes described under [Experimental features](#experimental-features)) | 30 days, which is how long Axiom keeps my request logs. They hold account ids, so they stay for those 30 days after you delete your account |
 | Cloudflare Web Analytics measurements (only if you allow the Analytics category) | Held by Cloudflare, not by me. Cloudflare states that it keeps unsampled data for the past 7 days and then aggregates it, and that its dashboard shows the previous six months. It does not state how long the aggregated data is stored. See Cloudflare's [Web Analytics FAQ](https://developers.cloudflare.com/web-analytics/faq/). |
-| Operational logs | As kept by Axiom under my plan, and only in the reduced form described above |
+| Operational logs | 30 days, which is how long Axiom keeps my logs under my plan, and only in the reduced form described above |
 | Memory entries | Until you delete them or reset memory, delete the only chat a generated entry came from, delete the project (for project entries), or delete your account |
 | Text sent to TypeSafe AI for TypeSafe AI checks (only with a TypeSafe AI key) | Not stored by Besidka. Held by TypeSafe AI "as long as necessary" under its data processing agreement, which sets no fixed period |
 | Two short markers for TypeSafe AI checks, kept in Cloudflare KV with no text in them | A project file or note that screening could not check yet is queued by its ids and an attempt counter, for up to **14 days** or until it is checked, whichever comes first. Auto web search keeps the outcome of the first message of a new chat (searched or not) for **1 day**, so a retry of that message does not ask TypeSafe AI again |
@@ -506,6 +555,8 @@ I measure three things. Two of them use no cookie and nothing on your device and
 
 Because those counters are aggregate and cannot be linked back to you, they are not personal data, and they are not gated behind consent.
 
+**Feature counters.** When a gradual rollout or version test gives you an [experimental feature](#experimental-features), a separate server-side counter records the feature, the version and the reason for the decision. It holds no user id, no path and no position in the rollout. While a feature has reached only one or two accounts, I could still tell whose activity a counter shows, so I do not count these counters as anonymous: I treat them as personal data, on the basis of legitimate interests (Art. 6(1)(f)), releasing features safely and learning which version works. Cloudflare keeps them for about three months, like the other counters. If you object to gradual rollouts and version tests, no new counters about you are recorded.
+
 **Cloudflare Web Analytics, only if you allow it.** The cookie banner has an optional **Analytics** category that is off until you turn it on. Only if you do, Besidka loads a script from `static.cloudflareinsights.com` that measures page views and page-load performance (the browser's Navigation Timing data and the Core Web Vitals) and sends the measurements to Cloudflare at `cloudflareinsights.com`. I see the result as aggregate figures in a Cloudflare dashboard. Cloudflare states that this product sets no cookie, uses no localStorage and does no fingerprinting, and that it does not track individual end users across its customers' sites; see [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/) and [how it collects data](https://developers.cloudflare.com/web-analytics/data-metrics/data-origin-and-collection/). Because your browser contacts Cloudflare to send the measurements, Cloudflare receives your IP address and browser details in that request, as in any web request. Cloudflare is my processor for this, as it is for the hosting listed above.
 
 My legal basis is your consent: GDPR Art. 6(1)(a) for the processing, and PKE Art. 399 for reading information from your device. You can withdraw it at any time by turning Analytics off in the cookie settings. If the script was already running, the page reloads once so it stops; on a chat page I wait until you next move to another page, so I never interrupt a reply that is being written. It is not loaded again until you turn the category back on. Withdrawing does not affect what was measured before. Retention is described under [How long I keep things](#how-long-i-keep-things). The script is loaded on the production site only.
@@ -528,6 +579,7 @@ The full list, with names and durations, is in the [Cookie Policy](/cookie-polic
 - Session cookies are `HttpOnly`.
 - Your AI provider, AI gateway, search provider and TypeSafe AI API keys are encrypted as described above.
 - Access to production data is limited to the controller.
+- Only the controller holds the admin role, and the admin area can be opened only from an account with a verified email address and two-factor authentication turned on.
 - Connected AI apps get short-lived access tokens (15 minutes), refresh tokens that are replaced each time they are used, and only the permissions you ticked, which you can reduce at any time in Profile → Connected apps and which are checked on every request. Writing is off until you tick each change permission, deleting needs its own permission, and the number of changes an app can make per minute, and of deletions per hour, is limited.
 
 No service is perfectly secure. If you find a security problem, please write to **:privacy-email-link{}** and give me a chance to fix it before disclosing it.
@@ -539,6 +591,8 @@ No service is perfectly secure. If you find a security problem, please write to 
 [Memory](#memory) can be **profiling** under GDPR Art. 4(4) when you turn on "Generate memory from chats" or set a project to On, and project memory works the same way. What that means and why it is not an Art. 22 decision is explained under [Profiling](#profiling).
 
 The optional [TypeSafe AI checks](#typesafe-ai-checks) are assistive automated decisions: whether to run a web search, whether to skip a memory pass, in what order search results appear and which clearly irrelevant ones are left out, whether to show a personal-data warning before you share, whether to hold a project file for your review, and whether to search your past chats before answering. None of them has a legal or similarly significant effect on you. Each one falls back to normal behaviour if TypeSafe AI is unsure or unavailable, each can be switched off, and a flag never deletes anything. So Art. 22 does not apply to them either.
+
+[Gradual rollouts and version tests](#experimental-features) are not profiling: the random choice evaluates nothing about you, such as your behaviour, interests or location. Being in a rollout or not, and seeing one version or another, has no legal or similarly significant effect on you, and a version test never changes what is spent on your API keys. So Art. 22 does not apply to them either.
 
 ## Sensitive information in your chats
 
@@ -585,7 +639,7 @@ Under the GDPR you have the right to:
 
 ### How to use them
 
-Most things you can do yourself in the app: edit your profile, delete a chat, delete a file, revoke a share, turn notifications off, change your cookie choices, see, edit, export or reset your memory, withdraw your consent to store sensitive information or to a transfer to DeepSeek, Moonshot AI, Qwen, another vendor or a router or preset model (in **Profile → Security → Privacy & consent**), disconnect a connected AI app or remove some of its permissions (in **Profile → Connected apps**), or delete your whole account.
+Most things you can do yourself in the app: edit your profile, delete a chat, delete a file, revoke a share, turn notifications off, change your cookie choices, see, edit, export or reset your memory, withdraw your consent to store sensitive information or to a transfer to DeepSeek, Moonshot AI, Qwen, another vendor or a router or preset model (in **Profile → Security → Privacy & consent**), disconnect a connected AI app or remove some of its permissions (in **Profile → Connected apps**), switch experimental features that use your keys on or off, or object to gradual rollouts and version tests (on the Labs page, once it is there; see [Experimental features](#experimental-features)), or delete your whole account.
 
 For anything else, email **:privacy-email-link{}**. I answer within **one month**. If a request is complex I may extend that by up to **two further months**, and if I do, I will tell you within the first month and explain why.
 
@@ -595,7 +649,7 @@ I do not charge for this. I may ask you to confirm you control the account's ema
 
 **Memory** has a self-service export: **Export JSON** on the Memory page downloads your memory entries and memory settings. It does not include project knowledge or the technical records of memory (such as past-chat run records and when you turned memory generation on).
 
-For everything else, including your account data, chats, projects, project knowledge and file list, email **:privacy-email-link{}** and I will send you a copy in a machine-readable format.
+For everything else, including your account data, chats, projects, project knowledge and file list, email **:privacy-email-link{}** and I will send you a copy in a machine-readable format. That includes your [experimental feature](#experimental-features) records: your role, the feature access set for your account, your Labs switches, your objection and the change log entries about your account. Where a note in the change log is about someone else, I may leave that part out (GDPR Art. 15(4)).
 
 ### Deleting your account
 

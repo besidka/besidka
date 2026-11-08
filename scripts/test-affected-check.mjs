@@ -70,6 +70,7 @@ export function getAffectedTests(changedFiles) {
   const filesModuleTests = [
     'tests/unit/components/Chat/Files.spec.ts',
     'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/List/View.spec.ts',
@@ -79,6 +80,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/composables/file-manager-project-groups.spec.ts',
     'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/file-manager-sources.spec.ts',
     'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/upload-with-progress.spec.ts',
     'tests/integration/api/files-upload.spec.ts',
@@ -124,8 +126,28 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/web-search-price.spec.ts',
     'tests/unit/composables/scroll-edge-fade.spec.ts',
   ]
+  const markdownTextareaTests = [
+    'tests/unit/composables/markdown-textarea.spec.ts',
+    'tests/unit/utils/knowledge-html-to-markdown.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/components/Projects/InstructionsCard.spec.ts',
+    'tests/unit/utils/pasted-text.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/TextCard.spec.ts',
+    'tests/unit/components/ChatInput/Files/Attached/Preview.client.spec.ts',
+    'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+    'tests/e2e/chat/chat-input-markdown.spec.ts',
+  ]
+  const artifactsRuntimeTests = [
+    'tests/unit/packages/artifacts-protocol/jsonrpc.spec.ts',
+    'tests/unit/packages/artifacts-protocol/connection.spec.ts',
+    'tests/unit/packages/artifacts-protocol/host.spec.ts',
+    'tests/unit/workers/artifacts-runtime/render.spec.ts',
+    'tests/unit/workers/artifacts-runtime/bridge.spec.ts',
+    'tests/unit/workers/artifacts-runtime/build.spec.ts',
+  ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/integration/api/profile-settings-legal-notices.spec.ts',
     'tests/integration/api/profile-settings-extraction-restamp.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
@@ -134,6 +156,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/preferences.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/db/default-reasoning-level-migration.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
   ]
   const preferencesPageTests = [
     'tests/unit/pages/profile/preferences.spec.ts',
@@ -163,6 +186,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/routes/auth.md.spec.ts',
     'tests/integration/api/profiles-connected-apps.spec.ts',
     'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
     'tests/integration/api/profiles-connected-apps-list.spec.ts',
     'tests/integration/api/profiles-connected-apps-scopes.spec.ts',
     'tests/integration/api/profiles-connected-apps-revoke-bulk.spec.ts',
@@ -173,6 +197,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/connected-apps.spec.ts',
   ]
   const mcpUiParityTests = [
+    'tests/unit/server/mcp/tools/list-my-features.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-access.spec.ts',
+    'tests/unit/server/mcp/tools/set-feature-access.spec.ts',
+    'tests/unit/server/utils/mcp/private/features.spec.ts',
+    'tests/unit/server/utils/mcp/admin-scopes.spec.ts',
     'tests/unit/server/mcp/tools/branch-chat.spec.ts',
     'tests/unit/server/mcp/tools/create-file.spec.ts',
     'tests/unit/server/mcp/tools/delete-chat-message.spec.ts',
@@ -438,7 +468,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
     'tests/unit/utils/ai/image-generation-xai.spec.ts',
+    'tests/unit/utils/ai/image-generation-openai.spec.ts',
     'tests/unit/utils/ai/image-generation-errors.spec.ts',
+    'tests/unit/utils/ai/image-provenance.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
     'tests/unit/composables/chat-input-url-detection.spec.ts',
     'tests/unit/composables/chat-image-preview-guard.spec.ts',
@@ -558,6 +590,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/gateway-image-generation.spec.ts',
     'tests/e2e/chat/image-generation-single-message.spec.ts',
     'tests/e2e/chat/mermaid-diagram.spec.ts',
+    'tests/e2e/chat/chat-input-markdown.spec.ts',
   ]
   const mermaidDiagramTests = [
     'tests/unit/utils/markdown-fences.spec.ts',
@@ -629,6 +662,7 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/shared/context-menu-clipping.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
+    'tests/unit/utils/clipboard-html.spec.ts',
   ]
 
   const messageUsageTests = [
@@ -732,10 +766,63 @@ export function getAffectedTests(changedFiles) {
 
   const accountDeletionTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/utils/account/purge-feature-access.spec.ts',
     'tests/unit/utils/account/security-emails.spec.ts',
     'tests/unit/utils/auth.spec.ts',
     'tests/unit/composables/auth.spec.ts',
     'tests/unit/pages/profile/security.spec.ts',
+  ]
+
+  const featureAccessTests = [
+    'tests/unit/composables/features.spec.ts',
+    'tests/unit/plugins/features.spec.ts',
+    'tests/unit/server/api/v1/features/index.get.spec.ts',
+    'tests/unit/server/utils/db/features-schema.spec.ts',
+    'tests/unit/server/utils/features/evaluate.spec.ts',
+    'tests/unit/server/utils/features/evaluate-bindings.spec.ts',
+    'tests/unit/server/utils/features/evaluate-variants.spec.ts',
+    'tests/unit/server/utils/features/exposure.spec.ts',
+    'tests/unit/server/utils/features/guards.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/utils/account/purge-feature-access.spec.ts',
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/integration/api/profiles-features.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/server/mcp/tools/list-my-features.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-flags.spec.ts',
+    'tests/unit/server/mcp/tools/list-feature-access.spec.ts',
+    'tests/unit/server/mcp/tools/set-feature-access.spec.ts',
+    'tests/unit/server/utils/mcp/private/features.spec.ts',
+    'tests/unit/server/utils/mcp/admin-scopes.spec.ts',
+    'tests/unit/server/utils/mcp/tool-scopes.spec.ts',
+    'tests/unit/utils/auth-oauth.spec.ts',
+    'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+    'tests/unit/components/OAuth/ScopePicker.spec.ts',
+  ]
+
+  const featureLabsTests = [
+    'tests/integration/api/profiles-features.spec.ts',
+    'tests/unit/pages/profile/labs.spec.ts',
+    'tests/unit/utils/labs.spec.ts',
+    'tests/unit/server/utils/features/opt-ins.spec.ts',
+    'tests/unit/utils/features/registry.spec.ts',
+    'tests/unit/layouts/profile.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+  ]
+
+  const featureAdminTests = [
+    'tests/unit/server/utils/features/admin.spec.ts',
+    'tests/integration/api/admin-features.spec.ts',
+    'tests/integration/server/feature-audit-sweep-plugin.spec.ts',
+    'tests/unit/pages/admin/features/[flag].spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/config/seo.spec.ts',
+    'tests/e2e/admin-features.spec.ts',
+  ]
+
+  const capabilityContractTests = [
+    'tests/unit/server/capabilities/conformance.spec.ts',
+    'tests/unit/server/utils/platform/blob-store.spec.ts',
   ]
 
   const accountSecurityHubTests = [
@@ -1018,6 +1105,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/turnstile.spec.ts',
     'tests/unit/components/Auth/Turnstile.client.spec.ts',
     'tests/unit/components/Auth/OAuthNotice.spec.ts',
+    'tests/unit/components/Auth/CheckEmail.spec.ts',
     'tests/unit/composables/captcha.spec.ts',
     'tests/unit/pages/(auth)/signin.spec.ts',
     'tests/unit/pages/(auth)/signup.spec.ts',
@@ -1045,6 +1133,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/server/routes/well-known/poppy.spec.ts',
     'tests/unit/server/routes/well-known/agent-skills-skill.spec.ts',
     'tests/unit/server/routes/well-known/mcp/server-card.spec.ts',
+    'tests/unit/server/routes/well-known/mcp-registry-auth.spec.ts',
+    'tests/unit/server/routes/well-known/openai-apps-challenge.spec.ts',
+    'tests/unit/config/mcp-registry-manifests.spec.ts',
     'tests/unit/server/plugins/agent-discovery-landing.spec.ts',
     'tests/unit/server/plugins/agent-discovery-page-components.spec.ts',
     'tests/unit/server/utils/agent-discovery/skills.spec.ts',
@@ -1060,6 +1151,31 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/search/pin.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
+  ]
+
+  const sidePanelTests = [
+    'tests/unit/composables/side-panel.spec.ts',
+    'tests/unit/components/ui/SidePanel.spec.ts',
+    'tests/unit/components/Sidebar.spec.ts',
+    'tests/e2e/side-panel.spec.ts',
+  ]
+
+  const chatContextTests = [
+    'tests/unit/server/utils/chats/context/build-chat-context.spec.ts',
+    'tests/unit/server/api/chats-context.spec.ts',
+    'tests/unit/server/api/shared-context.spec.ts',
+    'tests/unit/server/utils/mcp/private-chats-read.spec.ts',
+    'tests/unit/server/mcp/tools/get-chat.spec.ts',
+    'tests/unit/utils/chat-context.spec.ts',
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/composables/chat-context.spec.ts',
+    'tests/unit/composables/chat-route.spec.ts',
+    'tests/unit/components/Chat/ContextPanel.spec.ts',
+    'tests/unit/components/Sidebar/ChatContextButton.spec.ts',
+    'tests/unit/components/Sidebar/AuthCta.spec.ts',
+    'tests/unit/components/Sidebar/Development.spec.ts',
+    'tests/unit/components/Sidebar.spec.ts',
+    'tests/e2e/chat-context-panel.spec.ts',
   ]
 
   const messageSearchTests = [
@@ -1154,7 +1270,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/Preview\.client)\.vue)|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/utils\/ai\/image-provenance\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(ToolsMenu(\.client|\/[A-Za-z]+)|SettingTile|Files\/Attached\/Preview\.client)\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
     },
     {
@@ -1326,6 +1442,15 @@ export function getAffectedTests(changedFiles) {
       tests: deepseekWebSearchTests,
     },
     {
+      pattern: /^shared\/utils\/chat-message-limits\.ts$/,
+      tests: [
+        'tests/unit/utils/chats/request-schema.spec.ts',
+        'tests/unit/utils/pasted-text.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/integration/api/chats-research-start.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/chats\/request-schema\.ts$/,
       tests: [
         'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -1428,6 +1553,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-memory.spec.ts',
         'tests/integration/api/chats-carried-files.spec.ts',
         'tests/integration/api/chats-gateway-images.spec.ts',
+        'tests/unit/utils/ai/image-generation-openai.spec.ts',
         ...projectKnowledgeRetrievalTests,
       ],
     },
@@ -1501,7 +1627,7 @@ export function getAffectedTests(changedFiles) {
       tests: turnstileTests,
     },
     {
-      pattern: /^app\/components\/Auth\/OAuthNotice\.vue$/,
+      pattern: /^app\/components\/Auth\/(OAuthNotice|CheckEmail)\.vue$/,
       tests: turnstileTests,
     },
     {
@@ -1533,6 +1659,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/routes\/\.well-known\/.*|server\/utils\/(agent-discovery|content)\/.*|server\/plugins\/agent-discovery-(landing|page-components)\.ts|config\/(agent-discovery-routes|mcp-server|site-url)\.ts|skills\/.*|content\/index\.md)$/,
       tests: agentDiscoveryTests,
+    },
+    {
+      pattern:
+        /^(server\.json|plugins\/besidka\/.*|\.cursor-plugin\/marketplace\.json)$/,
+      tests: ['tests/unit/config/mcp-registry-manifests.spec.ts'],
     },
     {
       pattern: /^app\/pages\/\((auth|legal)\)\/.*\.vue$/,
@@ -1578,10 +1709,11 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
-      pattern: /^(app\/components\/Legal\/ChangeNotice\.client\.vue|app\/composables\/legal-notice-banner\.ts|app\/layouts\/chat\.vue|app\/pages\/chats\/\[slug\]\.vue|shared\/utils\/(legal-notices|legal-change-history)\.ts)$/,
+      pattern: /^(app\/components\/Legal\/ChangeNotice\.client\.vue|app\/composables\/legal-notice-banner\.ts|app\/plugins\/legal-notice-legacy-cleanup\.client\.ts|app\/layouts\/chat\.vue|app\/pages\/chats\/\[slug\]\.vue|shared\/utils\/(legal-notices|legal-change-history)\.ts)$/,
       tests: [
         'tests/unit/components/Legal/ChangeNotice.spec.ts',
         'tests/unit/composables/legal-notice-banner.spec.ts',
+        'tests/unit/plugins/legal-notice-legacy-cleanup.client.spec.ts',
         'tests/unit/layouts/chat.spec.ts',
       ],
     },
@@ -1595,6 +1727,14 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/config/seo-pages.spec.ts',
         'tests/unit/utils/landing-jsonld.spec.ts',
       ],
+    },
+    {
+      pattern: /^(scripts\/mcp-version-guard\.mjs|config\/mcp-surface\.json|server\.json|config\/mcp-server\.ts)$/,
+      tests: ['tests/unit/scripts/mcp-version-guard.spec.ts'],
+    },
+    {
+      pattern: /^(config\/(mcp-surface\.json|mcp-server\.ts)|server\/(mcp\/tools\/.*|utils\/mcp\/tool-scopes)\.ts)$/,
+      tests: ['tests/unit/config/mcp-surface.spec.ts'],
     },
     {
       pattern: /^(scripts\/indexnow-submit\.mjs|server\/routes\/indexnow-key\.txt\.ts)$/,
@@ -1744,6 +1884,13 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/composables\/message-copy\.ts$/,
       tests: [
         'tests/unit/composables/message-copy.spec.ts',
+        ...contextMenuTests,
+      ],
+    },
+    {
+      pattern: /^app\/utils\/clipboard-html\.ts$/,
+      tests: [
+        'tests/unit/utils/clipboard-html.spec.ts',
         ...contextMenuTests,
       ],
     },
@@ -1963,6 +2110,16 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(app\/components\/ui\/SidePanel[A-Za-z]*(\.client)?\.vue|app\/components\/ui\/SidePanel\/.*\.vue|app\/composables\/side-panel\.ts|app\/utils\/(scroll-anchor|side-panel-demo)\.ts|app\/components\/(Sidebar|ChatInput)\.client\.vue|app\/app\.vue)$/,
+      tests: sidePanelTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/chats\/context\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/context\.get\.ts|server\/api\/v1\/shared\/\[slug\]\/context\.get\.ts|shared\/types\/chat-context\.d\.ts|app\/components\/Chat\/ContextPanel(Item)?\.vue|app\/components\/Sidebar\/.*\.vue|app\/components\/Sidebar\.client\.vue|app\/composables\/(chat-context|chat-route|sidebar-pin-toggle)\.ts|app\/utils\/chat-context\.ts|tests\/setup\/helpers\/chat-context-db\.ts)$/,
+      tests: chatContextTests,
+    },
+    {
+      pattern:
         /^(app\/composables\/(search-modal|files-modal-handoff)\.ts|app\/components\/Search\/.*\.vue)$/,
       tests: searchModalTests,
     },
@@ -1997,6 +2154,25 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/composables/chat-scroll-spacer.spec.ts',
         'tests/e2e/chat/scroll-spacer.spec.ts',
         'tests/e2e/chat/chat-input-collapse-on-attach.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(app\/composables\/visual-viewport-inset\.ts|app\/composables\/keyboard-inset-root\.ts)$/,
+      tests: [
+        'tests/unit/composables/visual-viewport-inset.spec.ts',
+        'tests/unit/composables/chat-scroll-spacer.spec.ts',
+        'tests/unit/composables/keyboard-inset-root.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/components/Chat/TextFileModal.client.spec.ts',
+        'tests/e2e/search/keyboard-inset.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(app\/assets\/css\/main\.css|app\/components\/Search\/Modal\.client\.vue|app\/components\/ChatInput\.client\.vue)$/,
+      tests: [
+        'tests/e2e/search/keyboard-inset.spec.ts',
       ],
     },
     {
@@ -2179,6 +2355,26 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/security\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
       tests: accountDeletionTests,
+    },
+    {
+      pattern:
+        /^(app\/composables\/features\.ts|app\/plugins\/10\.features\.ts|server\/api\/v1\/features\/.*\.ts|shared\/types\/features\.d\.ts|server\/db\/schemas\/features\.ts|shared\/utils\/features\/.*\.ts|server\/utils\/features\/.*\.ts|server\/types\/h3-context\.d\.ts|server\/utils\/account\/purge-(user-data|feature-access)\.ts|\.drizzle\/migrations\/[^/]+_feature_access_tables\/.*)$/,
+      tests: featureAccessTests,
+    },
+    {
+      pattern:
+        /^(app\/pages\/profile\/labs\.vue|app\/utils\/labs\.ts|app\/layouts\/profile\.vue|app\/composables\/user-keys\.ts|server\/api\/v1\/profiles\/features\/.*\.ts|server\/utils\/features\/(opt-ins|evaluate)\.ts|shared\/types\/features\.d\.ts|shared\/utils\/provider-meta\.ts|app\/components\/Search\/Modal\.client\.vue)$/,
+      tests: featureLabsTests,
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/admin\/.*\.ts|server\/utils\/features\/admin(-queries|-request)?\.ts|shared\/utils\/features\/admin-schemas\.ts|server\/plugins\/feature-audit-sweep\.ts|app\/(layouts\/admin\.vue|middleware\/admin\.ts|pages\/admin\/.*\.vue|components\/Admin\/.*\.vue|utils\/admin-features\.ts)|app\/components\/Search\/Modal\.client\.vue|nuxt\.config\.ts)$/,
+      tests: featureAdminTests,
+    },
+    {
+      pattern:
+        /^(server\/capabilities\/.*\.ts|server\/utils\/platform\/.*\.ts|server\/mcp\/tools\/.*\.ts|server\/api\/v1\/.*\.ts|server\/utils\/mcp\/tool-scopes\.ts|shared\/utils\/features\/registry\.ts|tests\/unit\/server\/capabilities\/fixtures\/.*\.ts)$/,
+      tests: capabilityContractTests,
     },
     {
       pattern:
@@ -2381,6 +2577,10 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^app\/utils\/file-manager-sources\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
       pattern: /^shared\/types\/chat-errors\.d\.ts$/,
       tests: [
         ...chatStreamBranchTests,
@@ -2450,6 +2650,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/api\/v1\/profiles\/settings\/.*\.ts$/,
       tests: profileSettingsTests,
+    },
+    {
+      pattern: /^(server\/utils\/legal\/notice-dismissal|shared\/utils\/user-settings-schemas)\.ts$/,
+      tests: ['tests/integration/api/profile-settings-legal-notices.spec.ts'],
     },
     {
       pattern: /^server\/db\/schemas\/user-settings\.ts$/,
@@ -2724,6 +2928,26 @@ export function getAffectedTests(changedFiles) {
       tests: profileSettingsTests,
     },
     {
+      pattern:
+        /^(workers\/artifacts-runtime\/|packages\/artifacts-protocol\/|tests\/e2e-artifacts\/|playwright\.artifacts\.config\.ts$)/,
+      tests: artifactsRuntimeTests,
+    },
+    {
+      pattern:
+        /^(app\/composables\/(markdown-textarea|pasted-texts)\.ts|app\/utils\/(knowledge-html-to-markdown|pasted-text)\.ts|app\/components\/(ChatInput\.client|Projects\/InstructionsCard|ChatInput\/Files\/Attached\/(TextCard|Preview\.client)|Chat\/TextFileModal\.client)\.vue)$/,
+      tests: markdownTextareaTests,
+    },
+    {
+      pattern:
+        /^(app\/utils\/(rehype-raw-html-as-text|remark-disable-html)\.ts|app\/composables\/chat-format\.ts)$/,
+      tests: [
+        'tests/unit/utils/rehype-raw-html-as-text.spec.ts',
+        'tests/unit/utils/remark-disable-html.spec.ts',
+        'tests/unit/composables/chat-format.spec.ts',
+        'tests/e2e/chat/chat-input-markdown.spec.ts',
+      ],
+    },
+    {
       pattern: /^app\/utils\/.*\.ts$/,
       tests: (file) => {
         const name = file.match(/\/([^/]+)\.ts$/)?.[1]
@@ -2932,6 +3156,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/OAuth/ScopePicker.spec.ts',
         'tests/unit/components/Profile/ConnectedApps/PermissionsEditor.spec.ts',
+        'tests/e2e/profile/oauth-consent.spec.ts',
       ],
     },
     {
@@ -2944,7 +3169,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^(shared\/utils\/mcp-oauth-scopes|server\/utils\/auth|server\/routes\/\.well-known\/(oauth-.*|openid-configuration.*))\.ts$/,
-      tests: ['tests/unit/utils/auth-oauth.spec.ts'],
+      tests: [
+        'tests/unit/utils/auth-oauth.spec.ts',
+        'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+      ],
     },
     {
       pattern: /^server\/db\/schemas\/oauth\.ts$/,
@@ -3037,6 +3265,14 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^shared\/utils\/oauth-consent-errors\.ts$/,
+      tests: [
+        'tests/integration/api/profiles-connected-apps-consent.spec.ts',
+        'tests/unit/components/OAuth/ScopePicker.spec.ts',
+        'tests/e2e/profile/oauth-consent.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/plugins\/oauth-grant-sweep\.ts$/,
       tests: ['tests/integration/server/oauth-grant-sweep-plugin.spec.ts'],
     },
@@ -3045,6 +3281,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/integration/api/profiles-connected-apps.spec.ts',
         'tests/integration/api/profiles-connected-apps-authorization-request.spec.ts',
+        'tests/integration/api/profiles-connected-apps-consent.spec.ts',
         'tests/integration/api/profiles-connected-apps-list.spec.ts',
         'tests/integration/api/profiles-connected-apps-scopes.spec.ts',
         'tests/integration/api/profiles-connected-apps-revoke-bulk.spec.ts',

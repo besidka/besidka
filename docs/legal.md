@@ -488,6 +488,43 @@ rules. Two consequences for whoever publishes a notice:
   marketing, like the security notices. The policies say so. Do not add a
   marketing-style opt-out, and keep the email free of promotion.
 
+### In-app banner dismissal
+
+Dismissing the banner is stored per account, not per browser: the notice id is
+added to `user_settings.dismissed_legal_notice_ids` (a nullable JSON list, ids
+only, no timestamp, no SQL default) through `PATCH /api/v1/profiles/settings`
+with `dismissLegalNoticeIds`. The server accepts only ids that exist in
+`LEGAL_NOTICES`, merges them with the stored list and dedupes. The settings read
+returns `dismissedLegalNoticeIds`, which `useUserSetting` loads for every signed-in
+page, and the banner stays hidden until that state is loaded, so there is no
+flash on sign-in. The point is that a dismissal follows the user across
+browsers, the installed PWA, preview URLs and devices. The answer is a UI
+choice of the same kind as the push prompt answer: same purpose, basis and
+retention (until the account is deleted).
+
+- If loading the settings fails, the banner stays hidden for that page load
+  (fail closed). The email still delivers the notice.
+- Dismissals of different notices from two devices at the same moment are
+  last-write-wins, because the merge is a read followed by a write. That is
+  harmless while one notice is active at a time. Revisit it if two can be
+  active together.
+- **Two active notices (decided 2026-11-08).** `2026-11-experimental-features`
+  (published 2026-11-15) overlaps `2026-11-legal-notices` (active until
+  2026-12-18). The banner shows only the newest active notice, so from
+  2026-11-15 an account that never dismissed the older banner sees the newer
+  one instead, and dismissing it does not bring the older one back. Accepted:
+  the older notice's email went out from 2026-10-31, the sweep keeps walking
+  every notice in its send window oldest first, and both stay in the change
+  history. The dismissal race above stays harmless because the two ids are
+  dismissed through separate banners, never together. A component test pins
+  the newest-wins behaviour with the real registry.
+
+Nothing is written to browser storage for it. The older key
+`legal-notice:dismissed:<user id>:<notice id>` is deleted on load by the
+`legal-notice-legacy-cleanup.client` plugin and is never read, so it is never
+uploaded: the Cookie Policy told users these keys are never sent to the server.
+Users who dismissed the banner before this change see it once more.
+
 ### How to add a notice
 
 1. Edit the page(s) under `content/legal/`.

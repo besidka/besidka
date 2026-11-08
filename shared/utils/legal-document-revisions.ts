@@ -11,23 +11,28 @@ export interface LegalDocumentRevision {
 
 export const LEGAL_DOCUMENT_REVISIONS = {
   'privacy-policy': {
-    hash: '912e35671a8add52847d1170b604f8a4ba04d0329a693a870aeacbc22947817c',
+    hash: '4adb3a2a7befe7cda5bbd10175d39e4bb2102c8eafc4013a7e40dd1dbb7476ba',
     classification: 'material',
-    noticeId: '2026-11-legal-notices',
-    note: 'Change notice clause, its email, recipients, timing and legal '
-      + 'basis, connected-app permissions and per-project memory updates.',
+    noticeId: '2026-11-experimental-features',
+    note: 'Experimental features: per-account feature access, gradual '
+      + 'rollouts and version tests (new purpose on legitimate interests), '
+      + 'Labs opt-ins, the objection switch, the 12-month change log and '
+      + 'the feature counters. The Labs page is described as coming. '
+      + 'Body still includes the '
+      + '2026-11-legal-notices changes, effective 2026-12-04.',
   },
   'terms-of-use': {
-    hash: '75ad669cf6a09256d41e6c228d8d93c38f0d8067b6ffe4fe75807801ac54f995',
-    classification: 'material',
-    noticeId: '2026-11-legal-notices',
-    note: 'Change notice clause, its recipients and timing, and '
-      + 'connected-app permissions.',
+    hash: '9ed16390042063601702e2848cfc14c44ff111c8a6e0dd79b8c4b89e26fea941',
+    classification: 'minor',
+    note: 'Describes the machine-readable AI image marks (provider C2PA '
+      + 'kept, otherwise an IPTC tag naming only the model); no new '
+      + 'purpose, recipient or obligation. Body still includes the '
+      + '2026-11-legal-notices changes, effective 2026-12-04.',
   },
   'cookie-policy': {
-    hash: '767342201cf16e5041180bd8d8e7169273784c68a9618ef47614014c0547b0de',
+    hash: 'b8ab26cf96d8978d0818bff9915fca174222cd69560d6093d6544c3c5ddf097e',
     classification: 'minor',
-    note: 'Change clause, change history and one necessary localStorage '
-      + 'key (legal-notice:dismissed:*) that remembers a dismissed notice.',
+    note: 'Added the besidka:side-panel-width Preferences row, a '
+      + 'consent-gated UI width like settings_sidebar_pinned; no new purpose.',
   },
 } as const satisfies Record<LegalDocumentId, LegalDocumentRevision>

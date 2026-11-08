@@ -2,7 +2,7 @@ export const MCP_SERVER_NAME = 'com.besidka/mcp'
 
 export const MCP_SERVER_TITLE = 'Besidka'
 
-export const MCP_SERVER_VERSION = '1.1.0'
+export const MCP_SERVER_VERSION = '2.1.0'
 
 export const MCP_SERVER_ROUTE = '/mcp'
 
@@ -22,6 +22,11 @@ export const MCP_PRIVATE_DELETE_RATE_LIMIT = {
   max: 20,
 } as const
 
+export const MCP_PRIVATE_ADMIN_WRITE_RATE_LIMIT = {
+  window: 3600,
+  max: 60,
+} as const
+
 export const MCP_DISABLED_TOOLKIT_ROUTES = [
   `${MCP_SERVER_ROUTE}/deeplink`,
   `${MCP_SERVER_ROUTE}/badge.svg`,
@@ -36,3 +41,6 @@ export const MCP_SERVER_REPOSITORY = {
   url: 'https://github.com/besidka/besidka',
   source: 'github',
 } as const
+
+export const MCP_REGISTRY_PUBLIC_KEY
+  = 'U7zqIcZTIY1E3EQXsOqYxriQ/shVOnJePLONkfe97E0='

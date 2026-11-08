@@ -377,6 +377,10 @@ export default defineNuxtConfig({
     legalNoticeSweepMaxRuntimeMs: 60000,
     legalNoticeDailyCap: 300,
     researchMockEnabled: false,
+    adminEmails: '',
+    featuresDisabled: '',
+    featuresHostMode: 'byok',
+    featuresRolloutEnabled: false,
     messageSearchSweepEnabled: false,
     messageSearchSweepBatchSize: 200,
     messageSearchSweepMaxRuntimeMs: 20000,
@@ -393,10 +397,13 @@ export default defineNuxtConfig({
     vapidSubject: '',
     // Public by design (served at /indexnow-key.txt); see docs/seo.md.
     indexnowKey: '',
+    openaiAppsChallenge: '',
     public: {
       baseUrl: '',
       privacyEmail: '',
       authorGithubProfile: '',
+      artifactsOrigin: process.env.NUXT_PUBLIC_ARTIFACTS_ORIGIN
+        || 'https://besidka-artifacts.chernenko.workers.dev',
       defaultModel,
       providers,
       redirectUserTo: '/chats/new',
@@ -407,6 +414,7 @@ export default defineNuxtConfig({
         'image/webp',
         'application/pdf',
         'text/plain',
+        'text/markdown',
       ],
       maxFilesPerMessage: 10,
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
@@ -453,6 +461,7 @@ export default defineNuxtConfig({
       '/chats/',
       '/files/',
       '/profile/',
+      '/admin',
       '/new-password',
       '/2fa',
       '/oauth/',
@@ -544,7 +553,7 @@ export default defineNuxtConfig({
     siteName: 'Besidka',
     routes: agentDiscoveryRoutes,
     excludePrefixes: {
-      extend: ['/chats', '/profile', '/files', '/shared'],
+      extend: ['/chats', '/profile', '/admin', '/files', '/shared'],
     },
     discovery: {
       link: true,
@@ -596,6 +605,8 @@ export default defineNuxtConfig({
       '/chats/**',
       '/files/**',
       '/profile/**',
+      '/admin',
+      '/admin/**',
       '/signin',
       '/signup',
       '/new-password',
@@ -731,7 +742,6 @@ export default defineNuxtConfig({
         'shiki-stream/vue',
         'shiki/bundle/web',
         'shiki/engine/javascript',
-        'sanitize-html',
       ],
       // mediabunny spawns a Web Worker for UrlSource range reads; Vite's dep
       // pre-bundler breaks the worker's `new URL(..., import.meta.url)`
@@ -922,11 +932,6 @@ export default defineNuxtConfig({
             type: 'localStorage',
           },
           {
-            id: 'legal-notice-dismissed',
-            name: 'legal-notice:dismissed:*',
-            type: 'localStorage',
-          },
-          {
             id: 'pwa-refresher-dismissed',
             name: 'pwa:refresher-dismissed-until',
             type: 'sessionStorage',
@@ -1003,6 +1008,11 @@ export default defineNuxtConfig({
           {
             id: 'sidebar-pinned',
             name: 'settings_sidebar_pinned',
+            type: 'localStorage',
+          },
+          {
+            id: 'side-panel-width',
+            name: 'besidka:side-panel-width',
             type: 'localStorage',
           },
           {

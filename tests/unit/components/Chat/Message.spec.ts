@@ -231,6 +231,117 @@ describe('Chat/Message', () => {
     })
   })
 
+  describe('onCopy', () => {
+    const slotHtml = '<div class="chat-markdown js-message-text">'
+      + '<p class="x" style="color: red">Hello <strong>bold</strong></p>'
+      + '<ul><li>one</li><li>two</li></ul></div>'
+      + '<p class="outside">Outside</p>'
+
+    async function mountWithContent() {
+      return await mountSuspended(Message, {
+        props: { role: 'assistant', messageId: 'msg-1' },
+        slots: { default: slotHtml },
+        attachTo: document.body,
+      })
+    }
+
+    function selectNodeContents(node: Node) {
+      const range = document.createRange()
+
+      range.selectNodeContents(node)
+
+      const selection = window.getSelection()!
+
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+
+    afterEach(() => {
+      window.getSelection()?.removeAllRanges()
+    })
+
+    it('writes cleaned html and plain text for a selection in message text', async () => {
+      const wrapper = await mountWithContent()
+      const setData = vi.fn()
+
+      selectNodeContents(wrapper.get('.js-message-text').element)
+
+      await wrapper.trigger('copy', { clipboardData: { setData } })
+
+      expect(setData).toHaveBeenCalledWith(
+        'text/html',
+        '<meta charset="utf-8"><div style="font-size: 12px">'
+        + '<div>Hello <b>bold</b></div>'
+        + '<ul style="margin: 0"><li>one</li><li>two</li></ul></div>',
+      )
+      expect(setData).toHaveBeenCalledWith(
+        'text/plain',
+        'Hello bold\n\n- one\n- two',
+      )
+    })
+
+    it('prevents the default copy when it handles the selection', async () => {
+      const wrapper = await mountWithContent()
+
+      selectNodeContents(wrapper.get('.js-message-text').element)
+
+      const event = new Event('copy', { bubbles: true, cancelable: true })
+
+      Object.defineProperty(event, 'clipboardData', {
+        value: { setData: vi.fn() },
+      })
+      wrapper.element.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(true)
+    })
+
+    it('leaves the native copy alone for a selection outside message text', async () => {
+      const wrapper = await mountWithContent()
+      const setData = vi.fn()
+
+      selectNodeContents(wrapper.get('.outside').element)
+
+      await wrapper.trigger('copy', { clipboardData: { setData } })
+
+      expect(setData).not.toHaveBeenCalled()
+    })
+
+    it('leaves the native copy alone when the selection spans outside message text', async () => {
+      const wrapper = await mountWithContent()
+      const setData = vi.fn()
+
+      selectNodeContents(wrapper.get('.js-chat-bubble').element)
+
+      await wrapper.trigger('copy', { clipboardData: { setData } })
+
+      expect(setData).not.toHaveBeenCalled()
+    })
+
+    it('leaves the native copy alone for a collapsed selection', async () => {
+      const wrapper = await mountWithContent()
+      const setData = vi.fn()
+
+      await wrapper.trigger('copy', { clipboardData: { setData } })
+
+      expect(setData).not.toHaveBeenCalled()
+    })
+
+    it('does nothing when another handler already prevented the copy', async () => {
+      const wrapper = await mountWithContent()
+      const setData = vi.fn()
+
+      selectNodeContents(wrapper.get('.js-message-text').element)
+
+      const event = new Event('copy', { bubbles: true, cancelable: true })
+
+      Object.defineProperty(event, 'clipboardData', { value: { setData } })
+      event.preventDefault()
+      wrapper.element.dispatchEvent(event)
+
+      expect(setData).not.toHaveBeenCalled()
+    })
+  })
+
   describe('author avatar', () => {
     const authorImage = '/api/v1/shared/slug/avatar'
 
