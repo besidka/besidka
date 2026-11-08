@@ -286,6 +286,7 @@ test.describe('OAuth consent after hydration', () => {
     expect(code).toBeTruthy()
 
     const tokenResponse = await page.request.post('/api/auth/oauth2/token', {
+      headers: { Origin: new URL(baseUrl).origin },
       form: {
         grant_type: 'authorization_code',
         code: code!,
