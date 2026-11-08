@@ -390,6 +390,17 @@ function sumMessageCosts(
   return hasCost ? { amount: total, isEstimated } : undefined
 }
 
+/**
+ * The whole chat's cost, the same total the message context menu shows as
+ * "Chat total". Messages must carry `metadata.usage`
+ * (see `hydrateMessageUsage`).
+ */
+export function getChatTotalCost(
+  messages: MenuMessage[],
+): DisplayCost | undefined {
+  return sumMessageCosts(messages, messages.length - 1)
+}
+
 export function resolveMessageMenuInfo(
   messages: MenuMessage[],
   selectedMessageId: string | null,

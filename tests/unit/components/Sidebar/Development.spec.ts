@@ -1,67 +1,64 @@
+import { ref } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SidebarDevelopment from '../../../../app/components/Sidebar/Development.vue'
 
+enableAutoUnmount(afterEach)
+
 const mocks = vi.hoisted(() => ({
-  route: { path: '', params: {}, meta: {} } as {
-    path: string
-    params: Record<string, string>
-    meta: Record<string, unknown>
-  },
-  excludedSlugs: new Set<string>(),
-  setChatMemoryExcluded: vi.fn(),
+  layout: 'chat',
+  showPinToggle: true,
+  sidebarPinned: false,
+  setSidebarPinned: vi.fn(),
+  expandCookieSettings: vi.fn(),
 }))
 
-mockNuxtImport('useRoute', () => () => mocks.route)
+mockNuxtImport('useLayout', () => {
+  return () => ref(mocks.layout)
+})
 
-mockNuxtImport('useChatMemoryExclusion', () => {
+mockNuxtImport('useSidebarPinToggle', () => {
+  return () => ({ showPinToggle: ref(mocks.showPinToggle) })
+})
+
+mockNuxtImport('useUserSetting', () => {
   return () => ({
-    savingSlug: { value: null },
-    isChatMemoryExcluded: (slug: string) => mocks.excludedSlugs.has(slug),
-    rememberChatMemoryExcluded: vi.fn(),
-    setChatMemoryExcluded: mocks.setChatMemoryExcluded,
+    sidebarPinned: ref(mocks.sidebarPinned),
+    setSidebarPinned: mocks.setSidebarPinned,
   })
 })
 
-const uiButtonStub = {
-  props: ['title', 'iconName', 'disabled'],
-  emits: ['click'],
-  template: `
-    <button
-      type="button"
-      :title="title"
-      :data-icon="iconName"
-      :disabled="disabled"
-      @click="$emit('click', $event)"
-    />
-  `,
-}
+mockNuxtImport('useCookieConsentUi', () => {
+  return () => ({ expand: mocks.expandCookieSettings })
+})
 
 const submenuStub = {
   template: '<div><slot name="trigger" /><slot /></div>',
 }
 
-const CHAT_SLUG = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
+const MORE = '[data-testid="sidebar-more-features"]'
+const COOKIES = '[data-testid="cookies-trigger-menu"]'
 
-function mountDevelopment(path = `/chats/${CHAT_SLUG}`) {
-  mocks.route = {
-    path,
-    params: path === '/chats/new' ? {} : { slug: CHAT_SLUG },
-    meta: { layout: 'chat' },
-  }
-
+function mountDevelopment() {
   return mountSuspended(SidebarDevelopment, {
     global: {
       stubs: {
         LazySidebarSubmenu: submenuStub,
         SidebarSubmenu: submenuStub,
-        UiButton: uiButtonStub,
       },
     },
   })
 }
 
-describe('Sidebar/Development memory exclusion', () => {
+function findByLabel(
+  wrapper: Awaited<ReturnType<typeof mountDevelopment>>,
+  label: string,
+) {
+  return wrapper.find(`[aria-label="${label}"]`)
+}
+
+describe('Sidebar/Development more menu', () => {
   beforeEach(() => {
     vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
       return {
@@ -71,39 +68,88 @@ describe('Sidebar/Development memory exclusion', () => {
         removeEventListener: vi.fn(),
       } as unknown as MediaQueryList
     })
-    mocks.excludedSlugs.clear()
-    mocks.setChatMemoryExcluded.mockReset()
-    mocks.setChatMemoryExcluded.mockResolvedValue(true)
+    mocks.layout = 'chat'
+    mocks.showPinToggle = true
+    mocks.sidebarPinned = false
+    mocks.setSidebarPinned.mockReset()
+    mocks.expandCookieSettings.mockReset()
   })
 
-  it('offers to exclude an included chat', async () => {
+  it('renders the more trigger', async () => {
     const wrapper = await mountDevelopment()
-    const button = wrapper.get('[data-testid="sidebar-memory-exclusion"]')
 
-    expect(button.attributes('title')).toBe('Don\'t use this chat for memory')
-
-    await button.trigger('click')
-
-    expect(mocks.setChatMemoryExcluded).toHaveBeenCalledWith(CHAT_SLUG, true)
+    expect(wrapper.get(MORE).attributes('aria-label'))
+      .toBe('More Features')
   })
 
-  it('offers to include an excluded chat again', async () => {
-    mocks.excludedSlugs.add(CHAT_SLUG)
+  it('no longer holds the chat actions that moved to the context panel',
+    async () => {
+      const wrapper = await mountDevelopment()
+
+      for (const testId of [
+        'sidebar-branch',
+        'sidebar-share',
+        'sidebar-memory-exclusion',
+        'sidebar-branch-shared',
+      ]) {
+        expect(wrapper.find(`[data-testid="${testId}"]`).exists())
+          .toBe(false)
+      }
+
+      for (const label of ['Branch', 'Share']) {
+        expect(findByLabel(wrapper, label).exists()).toBe(false)
+      }
+    })
+
+  it('offers pin sidebar when the pill can hide', async () => {
+    const wrapper = await mountDevelopment()
+    const pin = findByLabel(wrapper, 'Pin sidebar')
+
+    expect(pin.exists()).toBe(true)
+
+    await pin.trigger('click')
+
+    expect(mocks.setSidebarPinned).toHaveBeenCalledWith(true)
+  })
+
+  it('offers to unpin a pinned sidebar', async () => {
+    mocks.sidebarPinned = true
 
     const wrapper = await mountDevelopment()
-    const button = wrapper.get('[data-testid="sidebar-memory-exclusion"]')
+    const unpin = findByLabel(wrapper, 'Unpin sidebar')
 
-    expect(button.attributes('title')).toBe('Use this chat for memory')
+    expect(unpin.exists()).toBe(true)
 
-    await button.trigger('click')
+    await unpin.trigger('click')
 
-    expect(mocks.setChatMemoryExcluded).toHaveBeenCalledWith(CHAT_SLUG, false)
+    expect(mocks.setSidebarPinned).toHaveBeenCalledWith(false)
   })
 
-  it('is not offered on the new chat page', async () => {
-    const wrapper = await mountDevelopment('/chats/new')
+  it('hides pin sidebar where the pill never hides', async () => {
+    mocks.showPinToggle = false
 
-    expect(wrapper.find('[data-testid="sidebar-memory-exclusion"]').exists())
-      .toBe(false)
+    const wrapper = await mountDevelopment()
+
+    expect(findByLabel(wrapper, 'Pin sidebar').exists()).toBe(false)
+    expect(findByLabel(wrapper, 'Unpin sidebar').exists()).toBe(false)
+  })
+
+  it('offers cookie settings in the chat layout', async () => {
+    const wrapper = await mountDevelopment()
+    const cookies = wrapper.get(COOKIES)
+
+    expect(cookies.attributes('aria-label')).toBe('Cookie settings')
+
+    await cookies.trigger('click')
+
+    expect(mocks.expandCookieSettings).toHaveBeenCalledOnce()
+  })
+
+  it('leaves cookie settings out of other layouts', async () => {
+    mocks.layout = 'default'
+
+    const wrapper = await mountDevelopment()
+
+    expect(wrapper.find(COOKIES).exists()).toBe(false)
   })
 })

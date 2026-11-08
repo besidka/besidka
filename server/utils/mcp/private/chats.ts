@@ -19,6 +19,9 @@ import type { MessageUsage } from '#shared/types/message-usage.d'
 import * as schema from '~~/server/db/schema'
 import { buildChatSharedColumn } from '~~/server/utils/chats/share'
 import { buildActiveShareFilter } from '~~/server/utils/chats/share-management'
+import type { McpChatContextSummary } from '~~/server/utils/chats/context/build-chat-context'
+import { summarizeChatContextForMcp } from '~~/server/utils/chats/context/build-chat-context'
+import { loadChatContextItems } from '~~/server/utils/chats/context/load-chat-context'
 import {
   createHistoryCursor,
   parseHistoryCursor,
@@ -501,6 +504,44 @@ export function collectChatModels(rows: McpChatMessageRow[]): string[] {
   return [...models]
 }
 
+/**
+ * Turns the context summary's storage keys into the `files.id` values that
+ * `list_files`, `read_file` and `delete_files` take, keeping only files the
+ * user still owns, so a deleted or foreign file never appears.
+ */
+async function resolveMcpContextFiles(
+  db: DbClient,
+  userId: number,
+  summary: McpChatContextSummary,
+) {
+  const storageKeys = summary.files.map((file) => {
+    return file.storageKey
+  })
+  const rows = storageKeys.length
+    ? await db.select({
+      id: schema.files.id,
+      storageKey: schema.files.storageKey,
+    })
+      .from(schema.files)
+      .where(and(
+        eq(schema.files.userId, userId),
+        inArray(schema.files.storageKey, storageKeys),
+      ))
+    : []
+  const idByStorageKey = new Map(rows.map((row) => {
+    return [row.storageKey, row.id] as const
+  }))
+
+  return {
+    ...summary,
+    files: summary.files.flatMap((file) => {
+      const id = idByStorageKey.get(file.storageKey)
+
+      return id ? [{ id, name: file.name }] : []
+    }),
+  }
+}
+
 export async function getMcpChat(
   db: DbClient,
   userId: number,
@@ -577,6 +618,11 @@ export async function getMcpChat(
     messageMaxChars: MCP_CHAT_MESSAGE_MAX_CHARS,
     totalMaxChars: MCP_CHAT_TOTAL_MAX_CHARS,
   })
+  const context = await resolveMcpContextFiles(
+    db,
+    userId,
+    summarizeChatContextForMcp(await loadChatContextItems(db, chat.id)),
+  )
 
   return {
     slug: chat.slug,
@@ -597,6 +643,7 @@ export async function getMcpChat(
     models: collectChatModels(window),
     hasOlderMessages: hasOlderMessages || transcript.omittedMessages > 0,
     truncated: transcript.truncated,
+    context,
     messages: transcript.messages,
   }
 }

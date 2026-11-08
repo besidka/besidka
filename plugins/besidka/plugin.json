@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "besidka",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Read and organise your Besidka chats, projects, project knowledge, memory, files and settings.",
   "author": {
     "name": "Besidka",

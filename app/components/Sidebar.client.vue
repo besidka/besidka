@@ -54,7 +54,8 @@
             :class="{ 'btn-active': isModalOpen }"
             @click="openSearchModal"
           />
-          <LazySidebarDevelopment />
+          <SidebarChatContextButton v-if="isChatPage" />
+          <LazySidebarDevelopment v-else />
         </template>
       </UiBubble>
     </div>
@@ -70,6 +71,7 @@ const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { sidebarPinned } = useUserSetting()
 const { isModalOpen, openSearchModal } = useSearchModal()
+const { isChatPage } = useChatRoute()
 const {
   isOpen: isSidePanelOpen,
   isFullWidth: isSidePanelFullWidth,

@@ -1082,6 +1082,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         isAwaitingGeneration.value = false
         hadInterruptionThisTurn = false
         isStopped.value = true
+        nuxtApp.callHook('chat:context-changed')
         return
       }
 
@@ -1093,6 +1094,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       wakeLock.release()
       isAwaitingGeneration.value = false
+      nuxtApp.callHook('chat:generation-finished')
 
       if (isError) {
         isStopped.value = parsedError

@@ -15,6 +15,8 @@ declare module '#app' {
     'chat:stop': () => void
     'chat:regenerate': () => void
     'chat:generation-ready-while-hidden': () => void
+    'chat:generation-finished': () => void
+    'chat:context-changed': () => void
     'chat:message-selected': (messageId: string | null) => void
     'chat:scroll-to-user-message': () => void
     'chat:scroll-to-bottom': () => void
