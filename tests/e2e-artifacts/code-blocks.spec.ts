@@ -13,7 +13,7 @@ interface MountOptions {
 }
 
 interface ArtifactInput {
-  kind: 'html' | 'react' | 'markdown'
+  kind: 'html' | 'react' | 'markdown' | 'mermaid'
   content: string
 }
 
@@ -209,6 +209,36 @@ export default function App() {
     expect(await firstCode.getByTestId('besidka-code').evaluate((block) => {
       return getComputedStyle(block).borderColor
     })).not.toBe(lightBackground)
+  })
+
+  test('renders a whole mermaid artifact through the diagram element', async ({ page }) => {
+    await mount(page, { viewer: true })
+    await render(page, { kind: 'mermaid', content: MERMAID_SOURCE })
+
+    const frame = artifactFrame(page)
+    const mermaid = frame.locator('.besidka-mermaid > besidka-mermaid')
+    const diagram = mermaid.getByTestId('besidka-mermaid-diagram')
+
+    await expect(diagramSvg(frame)).toBeVisible({ timeout: 15_000 })
+    await expect(mermaid.getByTestId('besidka-mermaid-copy')).toBeVisible()
+    await expect(diagram).toHaveAttribute('data-theme', 'light')
+
+    await page.evaluate(() => {
+      (window as any).harness.setTheme('dark')
+    })
+    await expect(diagram).toHaveAttribute('data-theme', 'dark')
+
+    await mermaid.getByTestId('besidka-mermaid-fullscreen').click()
+    await expect.poll(async () => {
+      return (await harnessState(page)).diagramViews
+    }).toEqual([MERMAID_SOURCE])
+
+    await render(page, { kind: 'mermaid', content: 'graph TD\n  A -->' })
+    await expect.poll(async () => {
+      return (await harnessState(page)).messages.some((message: any) => {
+        return message.level === 'error'
+      })
+    }).toBe(true)
   })
 
   test('copies the exact source through the host', async ({ page, context, browserName }) => {

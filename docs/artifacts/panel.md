@@ -14,6 +14,7 @@ The sandboxed runtime that renders the artifact is a separate Worker, see
 | `app/components/Chat/Artifact/Card.vue` | The card in the assistant message, for owner and shared chats |
 | `app/components/Chat/Artifact/Detail.client.vue` | The side panel view: Preview and Code tabs, version select, actions, runtime errors, shared banner |
 | `app/components/Chat/Artifact/Frame.client.vue` | The runtime iframe and the host end of `@besidka/artifacts-protocol` |
+| `app/composables/artifact-host-actions.ts` | `useArtifactHostActions()`: the Frame's Copy, diagram viewer and display mode hooks (A-14) |
 | `app/components/Chat/Artifact/ReportButton.client.vue` | Report form on shared chats |
 | `app/composables/artifacts.ts` | `useArtifactPanel()`, `useArtifactAutoOpen()`, `useSharedArtifactVersions()`, the loaders |
 | `app/utils/artifact-parts.ts` | Reads `data-artifact` and artifact tool parts into one card model |
@@ -77,7 +78,9 @@ The detail view:
 - Preview tab: the Frame. During a stream only `html`, `svg` and `markdown`
   get partial previews; `react` and `mermaid` wait for the stored version.
 - Code tab: `ProsePreStream` with `source-only` (a mermaid fence stays code,
-  no diagram) and `always-expanded` (no 3-line collapse).
+  no diagram) and `always-expanded` (no 3-line collapse). This is the chat's
+  Shiki setup (same themes, language label, Copy), which covers item 5 of
+  A-14 (BES-318).
 - Version select: the owner sees every stored version
   (`GET /api/v1/artifacts/<id>`); a shared viewer sees only versions the
   shared chat references.
@@ -117,6 +120,35 @@ The detail view:
   as `ui/notifications/host-context-changed`.
 - `ui/open-link`: a `useConfirm` dialog, then `window.open` with
   `noopener,noreferrer`.
+- Code and diagram buttons inside the artifact (A-14, see "Code and Mermaid
+  blocks" in `docs/artifacts-runtime.md`) reach the host through three hooks
+  from `useArtifactHostActions()`. `createHostConnection` has already checked
+  the params, the rate limits and the gesture (the frame's claim and the
+  parent's own `navigator.userActivation`) before a hook runs.
+  - `ui/clipboard-write`: `writeClipboardText()` in the parent. When the
+    browser refuses for lack of a gesture (`gesture-required`, the realistic
+    case is Safari), the request stays open and a small `alert` appears at
+    the top of the Preview body (absolutely positioned over the frame, not a
+    header): "Copy from the artifact?" with a Copy button and a dismiss
+    button. Its Copy button takes focus. A click on Copy is a real gesture
+    in the parent, so it writes the text and answers the frame with that
+    outcome; dismiss, Escape (handled in the capture phase so the panel does
+    not also close), a new version, Retry, unmount or 5 minutes (the
+    runtime's own timeout for this request) answer
+    `{ copied: false, reason: 'denied' }`. A second refused copy replaces
+    the first, which is answered `denied`. Nothing is copied without a click.
+  - `besidka/open-diagram-viewer`: opens the chat's `LazyProseMermaidViewer`
+    with the received source, so zoom, pan, Esc, download and copy as image
+    are the chat's. The viewer is teleported to `body` and opened with
+    `showModal()`, so it sits in the top layer above the docked or overlay
+    panel and above the bottom sheet (itself a modal dialog opened earlier);
+    the panel ignores Escape while another dialog is open, so Esc closes
+    only the viewer.
+  - `ui/request-display-mode`: in the docked layout `fullscreen` switches the
+    panel to full width and `panel` back (`useSidePanel().toggleFullWidth()`);
+    the overlay and the sheet stay as they are. It answers the resulting
+    `displayMode`, and the change goes out as `host-context-changed` like
+    any other. The runtime kit does not send this request yet.
 - A second load of the frame (the artifact navigated itself) removes the
   frame, shows "The preview was stopped" and logs
   `attributes.artifacts.runtimeNavigation` with ids only.
@@ -279,4 +311,6 @@ drops the root element, which no browser does.
 - `tests/integration/api/shared-artifacts.spec.ts`,
   `tests/integration/server/artifacts-frame-src-plugin.spec.ts`
 - `tests/e2e/chat/artifacts-panel.spec.ts` (runs the artifacts runtime on
-  port 8788 next to the app, see `playwright.config.ts`)
+  port 8788 next to the app, see `playwright.config.ts`); one case renders an
+  HTML artifact with a TS block and a Mermaid block in the real runtime and
+  opens the diagram in the chat viewer

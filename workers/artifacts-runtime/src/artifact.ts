@@ -19,7 +19,6 @@ const DEFAULT_TITLE = 'Besidka artifact'
 let renderSequence = 0
 let documentReplaced = false
 let reactMounted = false
-let lastPayload: ArtifactPayload | null = null
 let pendingPartial: ArtifactPayload | null = null
 let partialFrame = 0
 
@@ -105,8 +104,6 @@ export async function renderArtifact(payload: ArtifactPayload) {
   const isCurrent = () => {
     return sequence === renderSequence
   }
-
-  lastPayload = payload
 
   try {
     await unmountCurrentReact()
@@ -218,9 +215,5 @@ export function renderPartial(payload: ArtifactPayload) {
 }
 
 export function changeTheme(theme: Theme) {
-  const changed = setTheme(theme)
-
-  if (changed && lastPayload?.kind === 'mermaid') {
-    renderArtifact(lastPayload)
-  }
+  setTheme(theme)
 }

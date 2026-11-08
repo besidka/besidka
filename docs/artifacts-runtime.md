@@ -178,7 +178,7 @@ UI requests below were added this way in A-14). Methods:
 | runtime → host | `besidka/storage/get|set|delete|list` | requests (A-5) |
 | runtime → host | `besidka/complete` | request (A-6) |
 | runtime → host | `ui/clipboard-write` | request `{ text, mimeType?, userActivation }` → `{ copied: true }` or `{ copied: false, reason }` (A-14) |
-| runtime → host | `ui/request-display-mode` | request `{ mode: 'panel' \| 'fullscreen', userActivation }` → `{ displayMode }` (A-14, no runtime caller yet) |
+| runtime → host | `ui/request-display-mode` | request `{ mode: 'panel' \| 'fullscreen', userActivation }` → `{ displayMode }` (A-14, host wired, no runtime caller yet) |
 | runtime → host | `besidka/open-diagram-viewer` | request `{ source, userActivation }` → `{}` (A-14) |
 
 Error codes beyond JSON-RPC's: `-32001` timeout, `-32002` connection closed,
@@ -234,6 +234,12 @@ Code and diagrams inside artifacts look and behave like the chat's
 | --- | --- | --- |
 | `<besidka-code lang="ts">source</besidka-code>` | Shiki, themes `github-light-high-contrast` / `github-dark-high-contrast` (the chat's), window dots and the language label | Expand/Collapse from three lines on (collapsed to 7.5 rem, like chat), Copy |
 | `<besidka-mermaid>source</besidka-mermaid>` | The vendored Mermaid (dagre, `securityLevel: 'strict'`) themed from the host | Fullscreen (also a click on the diagram), Copy (source) |
+
+Whole `mermaid` artifacts use the same element: `render/mermaid.ts` runs
+`mermaid.parse()` first (a syntax error still reaches the host as an
+artifact error, so the panel's Ask to fix works) and then renders
+`<main class="besidka-mermaid"><besidka-mermaid>`. A theme change no longer
+re-renders the whole artifact; the element re-renders itself.
 
 - **Markdown artifacts**: every fenced block is upgraded on the final render
   (```` ```mermaid ```` becomes `<besidka-mermaid>`, a block without a
@@ -444,8 +450,15 @@ runtime anywhere.
 - A-3: instructions list the allowed imports and forbid navigation,
   `document.write()`, credential or payment forms and remote assets.
 - A-9: notices link, DPIA residual risk for self-navigation.
-- A-14 host side: `Frame.client.vue` passes `clipboardWrite` (with
-  `writeClipboardText` and an in-parent Copy button on `gesture-required`),
-  `openDiagramViewer` (opens `MermaidViewer`) and, if wanted,
-  `requestDisplayMode`; the panel's Code tab uses the chat's Shiki setup.
-  Verify Copy and Fullscreen on iOS Simulator Safari and the home-screen PWA.
+- A-14 host side (done, see `docs/artifacts/panel.md`): `Frame.client.vue`
+  passes `clipboardWrite`, `openDiagramViewer` and `requestDisplayMode` from
+  `useArtifactHostActions()`. Copy writes with `writeClipboardText()`; on
+  `gesture-required` (Safari) the request stays open and the panel shows
+  "Copy from the artifact?" with its own Copy button at the top of the
+  Preview body, whose click writes and answers the frame, while dismiss,
+  Escape, a new version or unmount answer `denied`. Fullscreen opens the
+  chat's `MermaidViewer` above the panel and the sheet;
+  `ui/request-display-mode` toggles full width in the docked layout. The
+  panel's Code tab already uses the chat's Shiki setup (`ProsePreStream`).
+  Still to verify: Copy (including the fallback) and Fullscreen on iOS
+  Simulator Safari and the home-screen PWA on the stack-top preview.

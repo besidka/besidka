@@ -52,6 +52,52 @@
         </button>
       </div>
     </div>
+    <div
+      v-if="pendingCopy"
+      class="absolute inset-x-2 top-2 z-10 flex justify-center"
+    >
+      <div
+        class="alert alert-horizontal w-auto max-w-full gap-2 py-2 pr-2 pl-3 shadow-lg"
+        role="alert"
+        data-testid="artifact-copy-fallback"
+      >
+        <Icon
+          name="lucide:clipboard"
+          size="16"
+          class="shrink-0"
+        />
+        <span class="text-sm">Copy from the artifact?</span>
+        <div class="flex items-center gap-1">
+          <button
+            ref="copyFallbackButton"
+            type="button"
+            class="btn btn-sm btn-primary"
+            data-testid="artifact-copy-fallback-copy"
+            @click="confirmPendingCopy"
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost btn-circle"
+            aria-label="Dismiss"
+            data-testid="artifact-copy-fallback-dismiss"
+            @click="dismissPendingCopy"
+          >
+            <Icon
+              name="lucide:x"
+              size="16"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      </div>
+    </div>
+    <LazyProseMermaidViewer
+      v-if="isViewerOpen"
+      v-model:open="isViewerOpen"
+      :source="viewerSource"
+    />
   </div>
 </template>
 
@@ -155,6 +201,19 @@ const isLoading = computed<boolean>(() => {
     || (status.value === 'ready' && !hasContent.value)
 })
 
+const {
+  handlers: hostActionHandlers,
+  pendingCopy,
+  isViewerOpen,
+  viewerSource,
+  confirmPendingCopy,
+  dismissPendingCopy,
+} = useArtifactHostActions({ layout, displayMode })
+
+const copyFallbackButton = useTemplateRef<HTMLButtonElement>(
+  'copyFallbackButton',
+)
+
 const errorCopy = computed(() => {
   return ERROR_COPY[errorKind.value]
 })
@@ -219,6 +278,7 @@ function clearTimers() {
 }
 
 function teardown() {
+  dismissPendingCopy()
   clearTimers()
   connection?.destroy()
   frame?.remove()
@@ -329,6 +389,7 @@ function mountFrame() {
     onMessage,
     onOpenLink,
     onUnexpectedNavigation,
+    ...hostActionHandlers,
   })
   frame = element
   container.appendChild(element)
@@ -370,6 +431,12 @@ function schedulePartial() {
 }
 
 watch(() => props.result, (result) => {
+  if (result && isSameResult(lastSentResult, result)) {
+    return
+  }
+
+  dismissPendingCopy()
+
   if (!result || !connection) {
     return
   }
@@ -396,6 +463,15 @@ watch(theme, (value) => {
 
 watch(displayMode, (value) => {
   connection?.setHostContext({ displayMode: value })
+})
+
+watch(pendingCopy, async (pending) => {
+  if (!pending) {
+    return
+  }
+
+  await nextTick()
+  copyFallbackButton.value?.focus()
 })
 
 watch(() => props.title, (title) => {

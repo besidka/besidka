@@ -217,9 +217,10 @@ test.describe('artifacts runtime sandbox', () => {
       kind: 'mermaid',
       content: 'graph TD\n  Start --> Finish',
     })
-    await expect(frame.locator('.besidka-mermaid svg')).toBeVisible({
-      timeout: 15_000,
-    })
+    await expect(frame.locator('.besidka-mermaid')
+      .getByTestId('besidka-mermaid-diagram')
+      .locator('svg')
+      .first()).toBeVisible({ timeout: 15_000 })
     await expect(frame.locator('.besidka-mermaid')).toContainText('Finish')
 
     await render(page, {
@@ -352,9 +353,10 @@ export default function Chart() {
       kind: 'mermaid',
       content: 'stateDiagram-v2\n  [*] --> Idle\n  Idle --> Busy',
     })
-    await expect(frame.locator('.besidka-mermaid svg')).toBeVisible({
-      timeout: 15_000,
-    })
+    await expect(frame.locator('.besidka-mermaid')
+      .getByTestId('besidka-mermaid-diagram')
+      .locator('svg')
+      .first()).toBeVisible({ timeout: 15_000 })
   })
 
   test('rejects an unknown bare import with an in-frame error and no request', async ({ page }) => {

@@ -1,5 +1,9 @@
 import { ref } from 'vue'
-import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import {
+  mockComponent,
+  mockNuxtImport,
+  mountSuspended,
+} from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -9,11 +13,13 @@ import {
   createEndpoint,
 } from '@besidka/artifacts-protocol'
 import type {
+  ClipboardWriteResult,
   Endpoint,
   HostFrameLike,
   HostHandlers,
   ToolResultContent,
 } from '@besidka/artifacts-protocol'
+import type { SidePanelLayout } from '~/composables/side-panel'
 import ChatArtifactFrame from '../../../../../app/components/Chat/Artifact/Frame.client.vue'
 
 enableAutoUnmount(afterEach)
@@ -25,12 +31,25 @@ interface CapturedConnection {
   runtimePort: () => MessagePort
 }
 
-const { captured, confirmMock, warnMock, colorMode } = vi.hoisted(() => ({
+const {
+  captured,
+  confirmMock,
+  warnMock,
+  colorMode,
+  clipboardMock,
+} = vi.hoisted(() => ({
   colorMode: { value: 'light', preference: 'light' },
   captured: [] as CapturedConnection[],
   confirmMock: vi.fn(),
   warnMock: vi.fn(),
+  clipboardMock: vi.fn(),
 }))
+
+const layout = ref<SidePanelLayout>('docked')
+const isFullWidth = ref<boolean>(false)
+const toggleFullWidth = vi.fn(() => {
+  isFullWidth.value = !isFullWidth.value
+})
 
 vi.mock('@besidka/artifacts-protocol', async (importOriginal) => {
   const actual = await importOriginal<
@@ -39,6 +58,7 @@ vi.mock('@besidka/artifacts-protocol', async (importOriginal) => {
 
   return {
     ...actual,
+    writeClipboardText: clipboardMock,
     createHostConnection: vi.fn((
       element: HTMLIFrameElement,
       handlers: HostHandlers,
@@ -98,7 +118,19 @@ mockNuxtImport('useColorMode', () => {
 })
 
 mockNuxtImport('useSidePanelLayout', () => {
-  return () => ref('docked')
+  return () => layout
+})
+
+mockNuxtImport('useSidePanel', () => {
+  return () => ({ isFullWidth, toggleFullWidth })
+})
+
+mockComponent('ProseMermaidViewer', () => {
+  return {
+    name: 'MermaidViewerStub',
+    props: ['source', 'open'],
+    template: '<div data-testid="mermaid-viewer-stub" />',
+  }
 })
 
 const RESULT: ToolResultContent = {
@@ -166,6 +198,10 @@ beforeEach(() => {
   captured.length = 0
   confirmMock.mockReset()
   warnMock.mockReset()
+  clipboardMock.mockReset()
+  toggleFullWidth.mockClear()
+  layout.value = 'docked'
+  isFullWidth.value = false
 })
 
 afterEach(() => {
@@ -395,6 +431,208 @@ describe('ChatArtifactFrame', () => {
 
       expect(captured).toHaveLength(2)
       expect(captured[1]?.element.isConnected).toBe(true)
+    })
+
+  it('copies through the parent clipboard', async () => {
+    const { connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initialize(runtime)
+    clipboardMock.mockResolvedValueOnce({ copied: true })
+
+    await expect(runtime.request(METHODS.clipboardWrite, {
+      text: 'const answer = 42',
+      userActivation: true,
+    })).resolves.toEqual({ copied: true })
+    expect(clipboardMock).toHaveBeenCalledWith('const answer = 42')
+  })
+
+  it('holds a refused copy until the parent Copy button is clicked',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      clipboardMock
+        .mockResolvedValueOnce({ copied: false, reason: 'gesture-required' })
+        .mockResolvedValueOnce({ copied: true })
+
+      let settled: ClipboardWriteResult | null = null
+      const request = runtime.request(METHODS.clipboardWrite, {
+        text: 'graph TD',
+        userActivation: true,
+      }).then((result) => {
+        settled = result
+
+        return result
+      })
+
+      await waitForPort()
+
+      const fallback = wrapper.find('[data-testid="artifact-copy-fallback"]')
+
+      expect(fallback.exists()).toBe(true)
+      expect(fallback.text()).toContain('Copy from the artifact?')
+      expect(settled).toBeNull()
+      expect(clipboardMock).toHaveBeenCalledTimes(1)
+
+      await wrapper.get('[data-testid="artifact-copy-fallback-copy"]')
+        .trigger('click')
+
+      await expect(request).resolves.toEqual({ copied: true })
+      expect(clipboardMock).toHaveBeenCalledTimes(2)
+      expect(clipboardMock).toHaveBeenLastCalledWith('graph TD')
+      expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
+        .toBe(false)
+    })
+
+  it('answers denied when the copy fallback is dismissed', async () => {
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initialize(runtime)
+    clipboardMock.mockResolvedValue({
+      copied: false,
+      reason: 'gesture-required',
+    })
+
+    const request = runtime.request(METHODS.clipboardWrite, {
+      text: 'one',
+      userActivation: true,
+    })
+
+    await waitForPort()
+    await wrapper.get('[data-testid="artifact-copy-fallback-dismiss"]')
+      .trigger('click')
+
+    await expect(request).resolves.toEqual({
+      copied: false,
+      reason: 'denied',
+    })
+    expect(clipboardMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('dismisses the copy fallback on Escape and on a new version',
+    async () => {
+      const { wrapper, connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+      clipboardMock.mockResolvedValue({
+        copied: false,
+        reason: 'gesture-required',
+      })
+
+      const first = runtime.request(METHODS.clipboardWrite, {
+        text: 'one',
+        userActivation: true,
+      })
+
+      await waitForPort()
+
+      const escape = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      })
+
+      document.dispatchEvent(escape)
+
+      await expect(first).resolves.toEqual({
+        copied: false,
+        reason: 'denied',
+      })
+      expect(escape.defaultPrevented).toBe(true)
+
+      const second = runtime.request(METHODS.clipboardWrite, {
+        text: 'two',
+        userActivation: true,
+      })
+
+      await waitForPort()
+      expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
+        .toBe(true)
+
+      await wrapper.setProps({
+        result: { ...RESULT, content: '<p>v2</p>', version: 2 },
+        version: 2,
+      })
+
+      await expect(second).resolves.toEqual({
+        copied: false,
+        reason: 'denied',
+      })
+      expect(wrapper.find('[data-testid="artifact-copy-fallback"]').exists())
+        .toBe(false)
+    })
+
+  it('opens the chat diagram viewer with the received source', async () => {
+    const { wrapper, connection } = await mountFrame()
+    const runtime = connectRuntime(connection)
+
+    await initialize(runtime)
+    expect(wrapper.find('[data-testid="mermaid-viewer-stub"]').exists())
+      .toBe(false)
+
+    await expect(runtime.request(METHODS.openDiagramViewer, {
+      source: 'graph TD\n  A --> B',
+      userActivation: true,
+    })).resolves.toEqual({})
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="mermaid-viewer-stub"]').exists())
+        .toBe(true)
+    })
+
+    const viewer = wrapper.findComponent({ name: 'MermaidViewerStub' })
+
+    expect(viewer.exists()).toBe(true)
+    expect(viewer.props('source')).toBe('graph TD\n  A --> B')
+    expect(viewer.props('open')).toBe(true)
+  })
+
+  it('switches the docked panel to full width on request', async () => {
+    const { connection } = await mountFrame()
+    const notifications: Array<[string, unknown]> = []
+    const runtime = connectRuntime(connection, (method, params) => {
+      notifications.push([method, params])
+    })
+
+    await initialize(runtime)
+
+    await expect(runtime.request(METHODS.requestDisplayMode, {
+      mode: 'fullscreen',
+      userActivation: true,
+    })).resolves.toEqual({ displayMode: 'fullscreen' })
+    expect(toggleFullWidth).toHaveBeenCalledTimes(1)
+    expect(isFullWidth.value).toBe(true)
+
+    await waitForPort()
+    expect(notifications).toContainEqual([
+      METHODS.hostContextChanged,
+      { displayMode: 'fullscreen' },
+    ])
+
+    await expect(runtime.request(METHODS.requestDisplayMode, {
+      mode: 'panel',
+      userActivation: true,
+    })).resolves.toEqual({ displayMode: 'panel' })
+    expect(isFullWidth.value).toBe(false)
+  })
+
+  it('keeps the bottom sheet as it is on a display mode request',
+    async () => {
+      layout.value = 'sheet'
+
+      const { connection } = await mountFrame()
+      const runtime = connectRuntime(connection)
+
+      await initialize(runtime)
+
+      await expect(runtime.request(METHODS.requestDisplayMode, {
+        mode: 'panel',
+        userActivation: true,
+      })).resolves.toEqual({ displayMode: 'fullscreen' })
+      expect(toggleFullWidth).not.toHaveBeenCalled()
     })
 
   it('destroys the port and the iframe on unmount', async () => {

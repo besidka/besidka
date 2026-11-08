@@ -24,6 +24,16 @@ const SCROLL_TOLERANCE_PX = 4
 const PANEL_SETTLE_MS = 600
 const STREAM_CHUNK_DELAY_MS = 150
 
+const CODE_BLOCK_SOURCE = 'const answer: number = 42'
+const DIAGRAM_SOURCE = 'graph TD\n  Start --> Done'
+const CODE_BLOCKS_CONTENT = [
+  '<!doctype html>',
+  '<html><body>',
+  `<pre><code class="language-ts">${CODE_BLOCK_SOURCE}</code></pre>`,
+  `<pre><code class="language-mermaid">${DIAGRAM_SOURCE}</code></pre>`,
+  '</body></html>',
+].join('\n')
+
 const ARTIFACT_OUTPUT = {
   artifactId: ARTIFACT_ID,
   version: 1,
@@ -226,7 +236,10 @@ async function mockOwnerRoutes(page: Page) {
   )
 }
 
-async function mockSharedRoutes(page: Page) {
+async function mockSharedRoutes(
+  page: Page,
+  versionContent: typeof VERSION_CONTENT = VERSION_CONTENT,
+) {
   await page.route(`**/api/v1/shared/${SHARE_SLUG}`, async (route) => {
     await fulfillJson(route, {
       title: 'Shared artifact chat',
@@ -259,9 +272,26 @@ async function mockSharedRoutes(page: Page) {
   await page.route(
     `**/api/v1/shared/${SHARE_SLUG}/artifacts/${ARTIFACT_ID}/versions/1`,
     async (route) => {
-      await fulfillJson(route, VERSION_CONTENT)
+      await fulfillJson(route, versionContent)
     },
   )
+}
+
+async function openSharedChat(page: Page) {
+  await page.goto('/chats/test?scenario=short&messages=1')
+  await waitForHydration(page)
+
+  await page.evaluate((path) => {
+    const root = document.querySelector('#__nuxt') as unknown as {
+      __vue_app__: {
+        config: {
+          globalProperties: { $router: { push: (to: string) => unknown } }
+        }
+      }
+    }
+
+    return root.__vue_app__.config.globalProperties.$router.push(path)
+  }, `/shared/${SHARE_SLUG}`)
 }
 
 async function signInWithArtifacts(page: Page) {
@@ -416,21 +446,7 @@ test('auto-opens the first streamed artifact once per chat', async ({
 test('shows shared-chat artifacts read-only', async ({ page }) => {
   await signInWithArtifacts(page)
   await mockSharedRoutes(page)
-
-  await page.goto('/chats/test?scenario=short&messages=1')
-  await waitForHydration(page)
-
-  await page.evaluate((path) => {
-    const root = document.querySelector('#__nuxt') as unknown as {
-      __vue_app__: {
-        config: {
-          globalProperties: { $router: { push: (to: string) => unknown } }
-        }
-      }
-    }
-
-    return root.__vue_app__.config.globalProperties.$router.push(path)
-  }, `/shared/${SHARE_SLUG}`)
+  await openSharedChat(page)
 
   const card = page.getByTestId('artifact-card')
 
@@ -455,3 +471,44 @@ test('shows shared-chat artifacts read-only', async ({ page }) => {
   await expect(getPreviewFrame(page).locator('#greeting'))
     .toHaveText(ARTIFACT_TEXT, { timeout: 20_000 })
 })
+
+test('renders artifact code blocks and opens diagrams in the chat viewer',
+  async ({ page }) => {
+    await signInWithArtifacts(page)
+    await mockSharedRoutes(page, {
+      ...VERSION_CONTENT,
+      content: CODE_BLOCKS_CONTENT,
+      sizeBytes: CODE_BLOCKS_CONTENT.length,
+    })
+    await openSharedChat(page)
+
+    const card = page.getByTestId('artifact-card')
+
+    await expect(card).toHaveAttribute('data-state', 'ready', {
+      timeout: 20_000,
+    })
+    await card.click()
+
+    const preview = getPreviewFrame(page)
+    const code = preview.locator('besidka-code')
+    const diagram = preview.locator('besidka-mermaid')
+
+    await expect(code).toHaveAttribute('lang', 'ts', { timeout: 20_000 })
+    await expect(code.locator('pre.shiki')).toContainText(CODE_BLOCK_SOURCE)
+    await expect(code.locator('pre.shiki span[style*="color"]').first())
+      .toBeVisible()
+    await expect(diagram.getByTestId('besidka-mermaid-diagram').locator('svg')
+      .first()).toBeVisible({ timeout: 20_000 })
+
+    await diagram.getByTestId('besidka-mermaid-fullscreen').click()
+
+    const viewer = page.getByTestId('mermaid-viewer')
+
+    await expect(viewer).toBeVisible()
+    await expect(page.getByTestId('mermaid-viewer-target').locator('svg'))
+      .toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await expect(viewer).toBeHidden()
+    await expect(page.getByTestId('side-panel')).toBeVisible()
+  })

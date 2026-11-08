@@ -76,6 +76,11 @@ a {
   display: flex;
   justify-content: center;
 }
+.besidka-mermaid > besidka-mermaid {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
 .besidka-partial {
   color: var(--besidka-muted);
   font-size: 14px;
