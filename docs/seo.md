@@ -122,7 +122,8 @@ Indexable: `/`, `/byok`, `/memory`, `/privacy-policy`, `/terms-of-use`,
 `/privacy` and `/terms` URLs 301 to the `-policy`/`-of-use` routes
 (`routeRules` in `nuxt.config.ts`).
 
-`noindex, nofollow`: all authenticated routes (`/chats/**`, `/profile/**`),
+`noindex, nofollow`: all authenticated routes (`/chats/**`, `/profile/**`,
+`/admin/**`),
 `/signin`, `/signup`, `/reset-password`, `/new-password`, and shared chats with
 `indexable = false`.
 
@@ -151,9 +152,12 @@ it and there is no discovery for a `noindex` to prevent. Keeping it disallowed
 also keeps a token-bearing URL out of scope for crawlers and link prefetchers —
 worth noting because this site serves Cloudflare `speculation-rules`.
 
-`/api/`, `/chats/`, `/files/`, `/profile/`, `/_studio`, `/__nuxt_studio` and
-`/__nuxt_content/` remain disallowed — those either require auth (so a crawler
-gets a redirect anyway) or are machinery.
+`/api/`, `/chats/`, `/files/`, `/profile/`, `/admin`, `/_studio`,
+`/__nuxt_studio` and `/__nuxt_content/` remain disallowed — those either
+require auth (so a crawler gets a redirect anyway) or are machinery. `/admin`
+(the feature access area, `docs/feature-flags.md`) answers 404 to everyone
+but admins, is also excluded from the sitemap and the agent-discovery index,
+and every admin page sets `noindex, nofollow`.
 
 ## The brand-entity problem
 

@@ -9,7 +9,11 @@ import {
 import { toJsonToolResult } from '~~/server/utils/mcp/result'
 import { withSafeToolErrors } from '~~/server/utils/mcp/safe-tool'
 import type { McpPrivateToolName } from '~~/server/utils/mcp/tool-scopes'
-import { isMcpWriteTool } from '~~/server/utils/mcp/tool-scopes'
+import { assertMcpFeatureAdmin } from '~~/server/utils/mcp/private/features'
+import {
+  isMcpAdminTool,
+  isMcpWriteTool,
+} from '~~/server/utils/mcp/tool-scopes'
 
 export type McpLogValue = string | number | boolean
 
@@ -51,6 +55,10 @@ export function withMcpPrivateTool<Args>(
     const db = useDb()
 
     await requireMcpLegalConsent(auth.userId, resolveMcpSiteUrl(), db)
+
+    if (isMcpAdminTool(toolName)) {
+      await assertMcpFeatureAdmin(db, auth.userId)
+    }
 
     const result = await handler(args, {
       userId: auth.userId,

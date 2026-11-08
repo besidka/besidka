@@ -13,6 +13,11 @@ const mocks = vi.hoisted(() => ({
   sendPasswordChangedEmail: vi.fn(async () => undefined),
   purgeUserData: vi.fn(async () => undefined),
   purgeUserOAuthData: vi.fn(async () => undefined),
+  keepMcpAdminScopesForAdmins: vi.fn(),
+}))
+
+vi.mock('~~/server/utils/mcp/admin-scopes', () => ({
+  keepMcpAdminScopesForAdmins: mocks.keepMcpAdminScopesForAdmins,
 }))
 
 vi.mock('~~/server/utils/account/security-emails', () => ({
@@ -143,6 +148,94 @@ describe('stripPrivilegedClientRegistrationFields', () => {
 
     expect(() => stripPrivilegedClientRegistrationFields(undefined))
       .not.toThrow()
+  })
+})
+
+describe('stripMcpAdminScopesFromConsent', () => {
+  const oauthQuery = 'client_id=c1&scope=openid%20chats%3Aread%20admin%3Afeatures'
+
+  beforeEach(() => {
+    stubBindings()
+    mocks.keepMcpAdminScopesForAdmins.mockReset()
+      .mockImplementation(async (scopes: string[]) => {
+        return scopes.filter(scope => scope !== 'admin:features')
+      })
+  })
+
+  it('strips the admin scope from an explicit scope for a non-admin',
+    async () => {
+      const { stripMcpAdminScopesFromConsent } = await importAuthModule()
+      const body: Record<string, unknown> = {
+        accept: true,
+        scope: 'openid chats:read admin:features',
+        oauth_query: oauthQuery,
+      }
+
+      await stripMcpAdminScopesFromConsent(body, async () => 7)
+
+      expect(body.scope).toBe('openid chats:read')
+      expect(mocks.keepMcpAdminScopesForAdmins).toHaveBeenCalledWith(
+        ['openid', 'chats:read', 'admin:features'],
+        7,
+        expect.anything(),
+      )
+    })
+
+  it('writes an explicit narrowed scope when the body omits scope',
+    async () => {
+      const { stripMcpAdminScopesFromConsent } = await importAuthModule()
+      const body: Record<string, unknown> = {
+        accept: true,
+        oauth_query: oauthQuery,
+      }
+
+      await stripMcpAdminScopesFromConsent(body, async () => 7)
+
+      expect(body.scope).toBe('openid chats:read')
+    })
+
+  it('keeps the admin scope for an admin', async () => {
+    mocks.keepMcpAdminScopesForAdmins.mockImplementation(
+      async (scopes: string[]) => scopes,
+    )
+
+    const { stripMcpAdminScopesFromConsent } = await importAuthModule()
+    const body: Record<string, unknown> = {
+      accept: true,
+      scope: 'chats:read admin:features',
+    }
+
+    await stripMcpAdminScopesFromConsent(body, async () => 1)
+
+    expect(body.scope).toBe('chats:read admin:features')
+  })
+
+  it('strips without a session and refuses an empty result', async () => {
+    const { stripMcpAdminScopesFromConsent } = await importAuthModule()
+    const body: Record<string, unknown> = {
+      accept: true,
+      scope: 'admin:features',
+    }
+
+    await expect(stripMcpAdminScopesFromConsent(body, async () => null))
+      .rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.keepMcpAdminScopesForAdmins).not.toHaveBeenCalled()
+  })
+
+  it('ignores denials and consents without an admin scope', async () => {
+    const { stripMcpAdminScopesFromConsent } = await importAuthModule()
+    const resolveUserId = vi.fn(async () => 7)
+
+    await stripMcpAdminScopesFromConsent(
+      { accept: false, scope: 'admin:features' },
+      resolveUserId,
+    )
+    await stripMcpAdminScopesFromConsent(
+      { accept: true, scope: 'chats:read' },
+      resolveUserId,
+    )
+
+    expect(resolveUserId).not.toHaveBeenCalled()
   })
 })
 
