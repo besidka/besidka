@@ -103,6 +103,19 @@ function daysFromNow(days: number): string {
   return toLocalInputValue(new Date(Date.now() + days * 24 * 60 * 60 * 1000))
 }
 
+function clearSchedules() {
+  execFileSync('pnpm', [
+    'exec',
+    'wrangler',
+    'd1',
+    'execute',
+    'DB',
+    '--local',
+    '--command',
+    'delete from feature_rule_schedules',
+  ], { stdio: 'ignore' })
+}
+
 function movePendingSchedulesToThePast() {
   const pastSeconds = Math.floor(Date.now() / 1000) - 60
 
@@ -130,6 +143,7 @@ test('an admin schedules steps, cancels one and the due step applies', async ({
   const adminPage = await openSignedInPage(browser, admin)
 
   markEmailVerified(E2E_ADMIN_EMAIL)
+  clearSchedules()
 
   await adminPage.goto('/admin/features/documents')
   await waitForHydration(adminPage)
