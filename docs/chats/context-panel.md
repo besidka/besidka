@@ -156,7 +156,7 @@ research reports and memory actions, a `truncated` flag, and up to 20
 attached files as `{ id, name }`, where `id` is the `files.id` that
 `list_files`, `read_file` and `delete_files` take (resolved by storage key
 for the signed-in user; files they no longer own are left out). Added in MCP
-1.2.0.
+2.1.0.
 
 The client renders thumbnails and download links only for same-origin
 relative paths (`toSafeLocalUrl`, `app/utils/chat-context.ts`), and section

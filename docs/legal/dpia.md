@@ -8,7 +8,7 @@
 |---|---|
 | Controller | [OWNER NAME], a natural person, Poland |
 | Service | Besidka, a non-commercial, open-source, bring-your-own-key AI chat |
-| Version | 1.6, 2026-10-30 (a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
+| Version | 1.7, 2026-11-08 (feature access, gradual rollouts and experiments: sections 3.9, 3.10, 3.11, new 3.12, 4, new 4.1, risk rows 38 to 48, section 6 items 16 to 19; 1.6, 2026-10-30: a project can turn background extraction on or off for itself: sections 3.4, 3.5, 3.11 and 4; 1.5, 2026-10-30: approval cleanup now waits 30 days without use instead of a day, and an unreadable approval fails closed: section 3.11; 1.4, 2026-10-30: the user can remove an app's permissions, approval cleanup sweep: section 3.11, risk rows 33, 36 and 37; 1.3, 2026-10-30: connected apps reach files and settings and can change and delete: section 3.11, flow row 7, risk rows 36 and 37; 1.2, 2026-10-29: connected AI apps over OAuth and MCP, section 3.11 and risk rows 28 to 35; 1.1, 2026-10-28: share defaults off, avatar proxy, self-hosted fonts and icons, copyright and report handling, risk rows 25 to 27) |
 | Next review | On any material change (section 8), and at least every 12 months |
 | Sibling document | `docs/legal/art30-record.md` (record of processing activities) |
 
@@ -59,6 +59,20 @@ or `CURRENT_CONSENT_VERSION`. A connected app can set a project only to
 `inherit` or `off`, never `on`, and cannot turn project memory back on while
 the project is disabled and set to `on`, so nothing in section 3.11 gains a way
 to spend the user's key.
+
+**Added 2026-11-08 (feature access, rollouts and experiments).** Phase 0 of
+the agentic capabilities programme adds per-account feature access: roles and
+grants set by the controller, gradual rollouts and non-spending variants
+assigned from a hash of the user id, opt-ins for features that spend the
+user's keys, an objection switch, an audit log and exposure telemetry
+(section 3.12, the legitimate-interests assessment in section 4.1, risk rows
+38 to 48). The tables, evaluator, telemetry, `/admin` and the audit sweep are
+built on the Phase 0 stack (PRs #741 to #753, not yet merged); the Labs page,
+the opt-in and objection writers (P0-7) and the MCP admin tools (P0-8) are
+planned. It is a new purpose on a new legitimate interest, so the Privacy
+Policy change is material: notice `2026-11-experimental-features`, effective
+2026-12-19. No special-category data, no new processor, and no change to the
+consent gate or `CURRENT_CONSENT_VERSION`.
 
 ## 1. Why a DPIA is required
 
@@ -473,8 +487,20 @@ removed.
 - **Consent fields.** `attributes.legalConsent` holds the action (`granted`,
   `withdrawn`, `transfer-granted`, `transfer-withdrawn`), the text version and, for a transfer, the
   provider name, with the user id.
-- **Processor.** Axiom, under its data-processing agreement. Retention is as
-  set by the Axiom plan in use.
+- **Feature access fields (built on the Phase 0 stack).**
+  `attributes.features[flag]` (`value`, `variant`, `reason`) only for
+  hash-based rollout and variant decisions, never the bucket;
+  `attributes.featureAccess` for every feature-access write (action, flag,
+  target user id, effect, expiry, actor kind, client id; the opt-in and
+  objection writers add `optedIn` and `objected`, planned with P0-7) and for
+  admin reads (`admin.read`, resource, result count). Ids only: never an
+  email, a name, a grant reason or the admin search text, which the request
+  observability hook also strips from the logged path of every
+  `/api/v1/admin/` route. These lines are the replay ledger after a D1
+  restore (section 3.12).
+- **Processor.** Axiom, under its data-processing agreement. Retention of
+  `besidka-prod`, `besidka-audit-prod` and `besidka-consent-prod` is 30
+  days each (dataset setting, AWS us-east-1, read on 2026-11-08).
 - **Basis.** Legitimate interests (Art. 6(1)(f)): keeping the service working
   and secure.
 - **Verified against the code on 2026-10-26.** `attributes.memoryCompliance`
@@ -499,6 +525,8 @@ removed.
 | 5a | Worker | TypeSafe AI (only with a TypeSafe AI key, per enabled check) | Candidate memory entries the gate allowed, redacted, plus a short redacted source excerpt; chat text for the pre-filter, the share check and Auto web search; project knowledge and Brave or Exa results for injection screening; query and excerpts for re-ranking; recent turns for past-chat retrieval | Per-role toggle; gate first for memory; flagged text never sent; add-only for memory; every role fails safe |
 | 6 | Worker | Axiom | Counts and ids | No memory or chat text |
 | 7 | AI client (pulls) | Worker (MCP server) | Token, then the chats, projects, knowledge, files, memory and settings the user approved; for write scopes, new values (names, instructions, notes, text files, memory entries, settings) and which items to move or delete | OAuth 2.1 with PKCE, scopes ticked per client, 15-minute tokens, per-user ownership in SQL, consent gate, never-store and sensitive-topic gate on memory writes. The client is an independent controller the user chose |
+| 8 | Worker | Workers Analytics Engine | `feature_exposure`, flag, variant, reason for hash-based decisions | No bucket, path or user id (C1). Pseudonymous while a cohort is tiny |
+| 9 | Admin browser, or the controller's AI client (planned) | Worker (`/api/v1/admin/`, MCP `admin:features`) | Searches by email prefix or name; grants, roles and rules; for MCP, user ids and grants | Admin only (env secret or `user_roles`, verified email, TOTP in production), 404 for everyone else, same-origin writes, audit row and Axiom ledger line per write, reads logged without search text; MCP returns ids only (C9) |
 
 ### 3.11 Connected AI apps (OAuth 2.1 and MCP) -- built
 
@@ -632,6 +660,127 @@ removed.
   marked `[U]` (token hashing at rest, account-deletion
   cleanup of OAuth rows, client registrations that carry a user id) are still to
   be verified.
+- **Admin scope `admin:features` (planned, P0-8).** A twelfth scope with
+  three tools, `list_feature_flags`, `list_feature_access` and
+  `set_feature_access`, for the controller's own AI client (section 3.12).
+  The consent page never shows it to a non-admin, and the server strips it
+  from a non-admin's request, so no user can grant it. No tool returns another
+  user's email, name or grant reason: `list_feature_access` returns numeric
+  user ids with their grants, and `set_feature_access` accepts an email or a
+  user id and echoes only the id (pre-check C9). Writes change one account at
+  a time; rules, rollout shares, variants and the kill switch are UI-only.
+  Every write goes through the same writer as `/admin`, with actor kind
+  `mcp` and the client id. `list_my_features` (the user's own features)
+  sits under the existing `settings:read`. The maker of the controller's
+  client is a recipient chosen by the controller (Art. 30 record, row 27 and
+  section 6.4), not a user-directed disclosure like the rest of this section.
+  The Privacy Policy does not describe it yet: before the first production
+  use, the client is named there with its country and safeguard, under its
+  own material notice.
+
+### 3.12 Feature access, rollout and experiments -- built, Labs and MCP planned
+
+- **Purpose.** Decide per account which experimental features are available:
+  release a feature to the controller and named testers first, then to a share
+  of accounts; compare variants of features that do not spend the user's keys;
+  and require the user's own opt-in before a feature spends their API keys.
+  Design: `docs/feature-flags.md` (on the Phase 0 stack). Compliance
+  pre-check: `docs/legal/agentic-capabilities-precheck.md`, section 4 (PR
+  #731); its design changes are cited here as C1 to C15.
+- **Data stored.** Five D1 tables with no foreign key to `users` and no column
+  on `users` (`server/db/schemas/features.ts`): `user_roles` (user id, `admin`
+  or `tester`, granted-by id), `feature_flag_rules` (flag, enabled, rollout
+  share in basis points, allowed roles, variant weights, random 16-byte salt,
+  updated-by id), `feature_grants` (user id, flag, allow or deny, forced
+  variant, expiry, free-text reason up to 200 characters, granted-by id),
+  `feature_opt_ins` (user id, flag, latest opt-in and opt-out times; the
+  reserved key `experiments` with an opt-out time is an Art. 21 objection,
+  C3) and `feature_audit_log` (actor id, actor kind `ui`, `mcp` or `env`, MCP
+  client id, action, flag, target user id, flat `before` and `after` with the
+  target id, the setting and the reason only, C5).
+- **Evaluation.** A pure function (`server/utils/features/evaluate.ts`); the
+  first step that decides wins: flag unknown, off; kill switch
+  `NUXT_FEATURES_DISABLED`, off for everyone including admins; host mode or a
+  missing binding, off; rule disabled, off; signed out, registry default;
+  deny grant; allow grant (with its forced variant); allowed role; gradual
+  rollout; registry default. The rollout step is skipped while
+  `NUXT_FEATURES_ROLLOUT_ENABLED` is false (default, C2) or when the user
+  objected (C3); otherwise the account is in when the first 4 bytes of
+  `sha256(flag:salt:userId)` modulo 10,000 fall below the rule's share. A
+  variant comes from a second hash, only on rollout results and only for a
+  registry entry with `spend: 'none'` (registry spec and writer check, C4).
+  A child flag is off when its parent is off. The evaluator sees only the
+  user id, roles, grants and opt-ins: no country, email domain, usage or other
+  attribute (C14). A feature with `spend` other than `none` is **active**
+  only with the user's own opt-in, and the route guard requires it by
+  default.
+- **Admins.** An admin is a `user_roles` admin row or an address in the
+  `NUXT_ADMIN_EMAILS` secret, always with a verified email (C13), and in
+  production also with TOTP enrolled (C13b). The UI and API assign and revoke
+  only `tester` (C7), so the env secret, which holds only the controller, is
+  the only source of the admin role. Known limits: TOTP enrolment is not
+  proof that the session passed a TOTP challenge (passkey and OAuth sign-ins
+  skip it), and a `CI=true` variable on a deployed Worker would drop the email
+  and TOTP checks (`docs/feature-flags.md`, section 6).
+- **Admin area (`/admin`).** Every route answers 404 to non-admins and 401
+  when signed out; writes are refused unless same-origin; bodies are strictly
+  validated; the writer refuses a rollout share above 0 or variants while
+  `NUXT_FEATURES_ROLLOUT_ENABLED` is false (409), and the UI disables those
+  controls. User search (email prefix or name substring, at least 3
+  characters, 20 results), the grant list and the audit view show the
+  admin the account emails and names, read live from `users`. Reads are
+  logged without the search text (C15). The pages are `noindex` and
+  disallowed in robots.
+- **Client.** `GET /api/v1/features` returns `enabled`, `active` and
+  `variant` for exposed flags, never the bucket or the reason, with
+  `Cache-Control: private, no-store`. The state lives in the server-rendered
+  payload and page memory only, never in cookies or browser storage (C11), so
+  ePrivacy Art. 5(3) is not engaged by this feature.
+- **Labs (planned, P0-7).** `/profile/labs` lists the features the user can
+  use, with an opt-in switch (default off) for features that spend the user's
+  keys and the switch "Include my account in gradual rollouts and
+  experiments" (default on) with one sentence on the right to object, which
+  brings Art. 21(4) to the user's attention. Neither switch is exposed over
+  MCP. Copy says "experimental, may change or be removed" and no email or push
+  announces Labs features (C12).
+- **Exposure telemetry (C1).** Only for hash-based decisions (reason
+  `ROLLOUT`, the only result with a hash variant), once per flag per request:
+  Workers Analytics Engine gets `feature_exposure`, flag, variant and reason
+  (no bucket, path or user id); Axiom gets `attributes.features` on the wide
+  event, which already carries the user id. Grant, role, default and
+  anonymous results are never recorded, and the `/api/v1/features` listing
+  records nothing.
+- **Retention.** Roles and grants until revoked or the account is deleted (an
+  expired grant stops applying, its row stays). Opt-ins and objections for the
+  account's lifetime. Audit rows 365 days, deleted by the hourly
+  `feature-audit-sweep` job (C6), and anonymised on account deletion (C5).
+  Axiom lines 30 days. Analytics Engine about three months. Account deletion
+  runs `purgeUserFeatureAccess` as the last step before the `users` row is
+  deleted.
+- **Who sees what.** The controller, as the only admin, sees every account's
+  email and name in the admin area. A user sees only their own features. The
+  controller's AI client (planned) sees user ids and grants only.
+- **Restore.** A D1 Time Travel restore brings back withdrawn opt-ins (a
+  feature could then spend a user's key again without consent), objections,
+  revoked roles and grants and old rules, and rolls back the audit table with
+  them. The replay source is the Axiom ledger, opt-outs and objections first,
+  then role revocations, deny grants and grant revocations, then rule changes
+  (`docs/d1-restore-reconciliation.md`, "Feature access", C8). Axiom keeps
+  30 days, which matches the Time Travel window, so export the window from
+  Axiom before restoring to an old bookmark. Limit: the rule ledger line
+  holds only `enabled` or `disabled`, and a grant line no forced variant, so
+  a changed rollout share, allowed roles, variants or forced variant cannot
+  be rebuilt from Axiom; logging the full rule patch is a follow-up for
+  P0-6. Until P0-7, an objection arrives by email and is written by hand;
+  the email in the privacy mailbox is its record outside D1.
+- **Release gate (C2).** Production keeps `NUXT_FEATURES_ROLLOUT_ENABLED`
+  false until the notice `2026-11-experimental-features` takes effect on
+  2026-12-19 **and** the Labs objection switch with its ledger line (P0-7)
+  is in production, because the policy promises that switch before any
+  rollout starts. Until then, features are granted only to the controller and to
+  named testers who were told individually what is recorded and how to
+  object.
+- **Basis.** Section 4 and the assessment in section 4.1.
 
 ## 4. Necessity and proportionality
 
@@ -653,6 +802,12 @@ removed.
 | Terms and age record | Legitimate interests, Art. 6(1)(f): proving the user agreed and is an adult |
 | Connecting an AI app and giving it the data the user approved | Contract, Art. 6(1)(b), at the user's request (judgment call, section 6, item 13); for special-category content, explicit consent, Art. 9(2)(a), on the approval screen |
 | Rate limiting, abuse handling and disabling a client | Legitimate interests, Art. 6(1)(f) |
+| Feature access set by the admin (roles and grants, section 3.12) | Legitimate interests, Art. 6(1)(f) (section 4.1) |
+| Gradual rollout and variant split, and the exposure telemetry | Legitimate interests, Art. 6(1)(f) (section 4.1). Not profiling. Objection through the Labs switch or by email |
+| Opt-ins to features that spend the user's keys | Contract, Art. 6(1)(b), at the user's request |
+| Objection records (`experiments` key) | Legal obligation, Art. 6(1)(c) with Art. 21 (judgment call, like the consent receipts) |
+| Feature access audit log and the `featureAccess` log lines | Legitimate interests, Art. 6(1)(f) (section 4.1) |
+| The controller's AI client with `admin:features` (planned) | Legitimate interests, Art. 6(1)(f), as for the admin area |
 
 **Why this is necessary.** Besidka cannot store and forward a chat while leaving
 out the parts that happen to be health or belief. That would mean reading every
@@ -694,6 +849,70 @@ to send messages. It is a judgment call (section 6, item 1).
   sensitive memory (removed from v1 by the owner on 2026-10-25, see
   `docs/legal-memory-sensitive-data.md`). An ephemeral chat mode (not built,
   would give users who refuse consent a real alternative).
+
+### 4.1 Legitimate-interests assessment: feature access, rollouts and experiments
+
+Written under Art. 5(2) for the Art. 6(1)(f) purposes of section 3.12. It
+also supports the Privacy Policy statement of the interest (Art. 13(1)(d)).
+
+**Purpose.** Three interests. (a) Releasing features safely: a feature that
+fails reaches the controller, a few testers or a small share of accounts,
+not everyone. (b) Learning which variant of a non-spending feature works
+better. (c) Accountability and security of access changes (Arts. 5(2) and
+32): who changed whose access, and the replay after a D1 restore. All three
+are lawful, specific and present, because the Phase 0 code is built and every
+later feature track ships behind it.
+
+**Necessity.**
+
+- Releasing to everyone at once loses (a). An opt-in-only beta in Labs is
+  also offered, but a self-selected group says little about a release, so a
+  random share is needed for (a) and (b).
+- The assignment uses the user id only, through a salted hash, and is
+  computed instead of stored. Without an identifier the assignment would
+  change between requests, which breaks the feature it is meant to test.
+- No attribute is used (C14). The exposure event drops the bucket, the path
+  and the user id (C1). Audit rows and log lines carry ids, never emails or
+  free text (C5, C8, C15).
+- 12 months for the audit log covers one yearly review of this DPIA, and it
+  matches the 12-month record for content reports (Art. 30 record, row 14a).
+  30 days in Axiom matches the 30-day D1 Time Travel window, which is the
+  period the restore replay needs.
+
+**Balancing.**
+
+- Data: an account id, flags and timestamps. No content, no special
+  categories, no attribute of the person.
+- Effect on the person: a feature earlier or later, or one of two variants
+  of a feature that spends nothing. No price changes (there is none), no
+  rights change, and a variant never changes what is spent on the user's keys
+  (C4). A spending feature always needs the user's own opt-in. No Art. 22
+  effect.
+- Reasonable expectations: users of a free service with a Labs page can
+  expect features to appear gradually, and they are told 30 days in advance
+  by email and in the app before any rollout share or variant is switched on
+  (C2).
+- Risks: confusion from different screens, a tiny-cohort re-identification of
+  exposure events (row 42), and admin access to emails (rows 38 and 44).
+  Users are adults only (age gate).
+- Safeguards: C1, C2, C3 (objection switch, on by default, with the Art.
+  21(4) sentence), C4, C5, C6, C7, C8, C11, C12, C13, C13b, C14, C15.
+
+**Result.** The interests are not overridden. For rollouts and variants, an
+objection is honoured without a balancing test: the evaluator skips those
+steps for the user. A user who does not want a role or a grant set by hand
+has it removed on request. For the audit log and the log lines, an objection
+is assessed case by case under Art. 21(1): the controller keeps the record
+only where it can show compelling legitimate grounds that override the
+user's interests, rights and freedoms (for example, an open question about
+who changed an access), or needs it for legal claims, and tells the user the
+outcome.
+
+**Why not another basis.** Contract (Art. 6(1)(b)) is weaker for rollouts
+and experiments, because the EDPB treats service improvement as generally not
+necessary for the contract (Guidelines 2/2019). Consent would make a random
+share impossible to keep random. Opt-ins to spending features do rest on the
+contract, because the user asks for the feature.
 
 ## 5. Risks and measures
 
@@ -740,6 +959,17 @@ code) or `planned` (named in the legal-changes plan, not shipped).
 | 35 | OAuth records outlive the account: `oauth_consents`, `oauth_access_tokens` and `oauth_refresh_tokens` reference `users` with no `ON DELETE`, so they are not removed by the cascade | Medium | Medium | The account-deletion path must delete the user's OAuth rows explicitly before the user row, and the same for Time Travel restore reconciliation (`docs/d1-restore-reconciliation.md`). Must be verified before release **[U]** | planned | Low once verified |
 | 36 | A connected app, or an agent steered by text it reads, deletes or overwrites the user's data (chats, messages, projects with their knowledge and project memory, files, memory entries) or changes settings, and the user cannot get it back | Medium | High | Every write scope is off by default and a separate tick; all permanent deletion sits behind its own scope, `data:delete`, which no existing approval holds and which a "Change" scope does not include, so an app that only needs to read, add notes or rename never holds a delete power; the consent screen says in words that write access can change or delete; every destructive tool carries `destructiveHint: true` so a client asks the user first (a unit test fails when the annotations and the tool map disagree); `delete_project` needs the exact project name as `confirmName` and `reset_memory` needs `confirm: true`; batches are capped (25 chats per call, 100 files, 100 knowledge items, 90 share revocations); deleting or branching a chat that is generating a reply is skipped or refused, on a best-effort basis (a check of the generation lease, not a lock); deleting a project keeps its chats; deletes are limited to 20 calls an hour and writes to 30 a minute per user, which slows a runaway agent but does not stop it from deleting within those limits; settings that spend the user's keys or change the data recipient cannot be changed (`docs/mcp-server.md`, "What MCP does not do (and why)"); the user can disconnect an app in Profile → Connected apps and the next call fails at once, or remove just `data:delete` or any other permission there and the next call is refused for that tool (the effective scopes are the token's intersected with the current approval). **Residual:** deletion is permanent, as in the app, and narrowing helps only a user who opens that page: an app the user never reviews keeps what it was given, and a consent row whose scope list cannot be read grants the app no scope until the user approves it again (it fails closed, so it is a damaged row, not a way round narrowing). A "Change" scope cannot delete those records directly but has side effects: excluding a chat from memory removes extraction-only memory entries learned only from it, stopping a share removes its link, editing replaces the old text (instructions, knowledge items, memory entries, file names, favourites) and switching project memory off resets its state. D1 Time Travel is disaster recovery for the whole database, not a per-user undo, and restoring it for one user would roll back every other user (`docs/d1-restore-reconciliation.md`). A client that does not ask before a call can still delete what its scope allows, within the caps. The Privacy Policy and Terms say deletions through an app are permanent | built on `feat/mcp-ui-parity`, not yet deployed | Medium, accepted and disclosed |
 | 37 | Scope growth: a client registered before the write scopes existed may ask for them, and a stored approval could be read as covering them, so an app gains delete power the user never ticked | Low | High | Any client whose stored scope list is a strict subset of the current one may *ask for* the new scopes (the `hooks.before` upgrade on `/oauth2/authorize`, `server/utils/oauth/client-scope-upgrade.ts`: a stored list that is a strict subset of the current scopes is rewritten, anything else is left alone, a failure never blocks sign-in). The user's `oauth_consents` row is not widened: authorize sends the user to the consent page whenever a requested scope is not in their row, so the user ticks each new scope on the screen. A tool behind a scope the user did not grant answers `403 insufficient_scope`. An existing connection that never asks for the new scopes keeps working with what it had. **Residual:** consent is stored per scope name, so when a tool is added behind a scope the user already granted, the existing approval gets it with no new prompt. Deletion is closed off by `data:delete` (`delete_memory` moved there from `memory:write`, so existing connections lose it until the user ticks the new scope). What did reach existing approvals involves no deletion or spend, though overwrites are possible: under `projects:write`, `update_project` (rename, pin, archive, knowledge mode, project memory switch, and `memoryAutoUpdate` set to `inherit` or `off`, which is spend-free but can overwrite a project the user set to `on`) and `update_project_knowledge_item`; under `chats:read`, `list_shared_chats` and share status (the URL needs `chats:write`). The Privacy Policy says this and tells the user to check Profile → Connected apps after such a change. Future extensions of an existing scope must involve no deletion or spend, though overwrites are possible. The user can remove permissions from an approval and never add them there; adding one goes through the app's own OAuth flow, because a token keeps the scopes it was issued with, so narrowing cannot be used to widen. A removed scope is asked for again on the approval screen if the app requests it, and the hourly sweep deletes approvals with no live token that were unused for 30 days, so a long-stale approval cannot silently cover a later authorization | built on `feat/mcp-ui-parity`, not yet deployed | Low to medium, accepted and disclosed |
+| 38 | An admin account is taken over and the attacker reads every user's email and name through the admin search, the grant list and the audit view | Low | Medium | Admin only from the `NUXT_ADMIN_EMAILS` secret (or a hand-made `user_roles` row) with a verified email, and in production TOTP enrolled (C13, C13b); the UI cannot make a second admin (C7); reads logged with actor, resource and count (C15); Better Auth rate limits and Turnstile; owner action: enable TOTP before the first admin use | built on the Phase 0 stack | Low (TOTP enrolment is not a per-session challenge, passkey and OAuth sign-ins skip it) |
+| 39 | An unauthorised or mistaken admin action: a cross-site request, the wrong account, or a feature switched off for everyone by accident | Low | Medium | `requireAdmin` first in every handler (404 otherwise); same-origin check on writes; strict schemas; confirmation before turning a feature off; one audit row and one Axiom ledger line per write; `NUXT_FEATURES_DISABLED` as the instant switch; rollout and variant writes refused while the env flag is off | built on the Phase 0 stack | Low |
+| 40 | Text read by the controller's AI client steers it into granting or denying features (prompt injection) | Low | Medium | `admin:features` only for the admin account; per-account writes only, no rule, rollout or kill-switch change over MCP; write rate limit; `destructiveHint` so the client asks first; a spending feature still needs the user's own opt-in; audit rows with actor kind `mcp` and the client id | planned (P0-8) | Low once built |
+| 41 | A variant or rollout raises what is spent on a user's key | Low | Medium | Variants only for `spend: 'none'` (registry spec and writer check, C4); a spending feature is active only with the user's own opt-in, which the route guard requires by default; no MCP path to opt-ins | built on the Phase 0 stack | Low |
+| 42 | An exposure event in Analytics Engine is linked back to a person | Low | Low | No bucket, path or user id in the event (C1); exposure only for hash-based decisions; the Privacy Policy treats the events as pseudonymous personal data and does not call them unlinkable; Axiom lines with the user id are operational logs kept 30 days | built on the Phase 0 stack | Low (a cohort of one or two accounts stays identifiable to the controller, disclosed) |
+| 43 | A D1 restore brings back a withdrawn opt-in (a feature spends a user's key again without consent), a lifted objection or a revoked role | Low | High | Axiom ledger (`attributes.featureAccess`) as the replay source, not the restored audit table; replay order opt-outs and objections first (C8, `docs/d1-restore-reconciliation.md`); Axiom keeps 30 days, the Time Travel window, so export it before restoring to an old bookmark; P0-7 must ship the `opt_in.set` and `experiments.set` ledger lines together with the writers, so no opt-in or switch-based objection exists without a ledger line; email objections before P0-7 keep the email as the record. Rule changes beyond on and off cannot be rebuilt from the ledger today (follow-up for P0-6) | built for admin writes; the opt-in and objection ledger lines ship with P0-7 | Low |
+| 44 | A second person with the admin role sees every user's email, and the Privacy Policy's "only the controller" becomes false | Low | Medium | The UI and API assign only `tester` (C7); admin only from the env secret, which holds only the controller; the Privacy Policy says only the controller holds the admin role. Adding an admin needs Art. 29 instructions, a confidentiality commitment (Art. 32(4)), a Privacy Policy change and a new notice first | built on the Phase 0 stack | Low |
+| 45 | Rollouts or experiments drift into profiling or unequal treatment (targeting by country, email domain or usage; per-user analysis of outcomes by variant) | Low | Medium | The evaluator sees only the user id, roles, grants and opt-ins (C14); the hash is random; Analytics Engine exposure events carry no user id. The Axiom `attributes.features` lines do sit on wide events with the user id, so per-user analysis by variant is technically possible for their 30 days: operating rule, never analyse them per user by variant, only in aggregate; adding attribute targeting or per-user outcome analysis reopens the pre-check and this DPIA | built on the Phase 0 stack (design rule and operating rule) | Low |
+| 46 | Users are put into rollouts or experiments before the Privacy Policy notice takes effect, or before they can object in the app as the policy promises | Medium | Low | `NUXT_FEATURES_ROLLOUT_ENABLED` defaults to false and the writer refuses rollout and variant writes while it is false (C2); production may switch it on only from 2026-12-19 and only once the Labs objection switch (P0-7) is in production; until then grants go only to the controller and to testers told individually | built (code); operating rule for the controller | Low |
+| 47 | Audit rows or log lines keep a deleted user's identity | Low | Low | Account deletion nulls the actor and target ids and removes user ids and the reason from `before` and `after` (C5, flat-JSON rule); the admin views read emails live, so they disappear with the account; Axiom lines stay 30 days, disclosed | built on the Phase 0 stack | Low |
+| 48 | The maker of the controller's AI client receives other users' ids, a recipient and possibly a transfer that the records and the Privacy Policy do not cover | Low | Low | Ids and grants only, never emails, names or reasons (C9); before the first production use the owner names the client, records its terms and safeguard (Art. 30 record, section 6.4) and adds it to the Privacy Policy under its own material notice | planned (P0-8) | Low once recorded and announced |
 
 ## 6. Residual risks
 
@@ -849,6 +1079,28 @@ the Privacy Policy or should be.
     limits and the ability to disable a client, not verification of the client.
     Decision: accept.
 
+16. **Bucketing is not profiling.** Section 3.12 treats a salted hash of the
+    user id as a random assignment that evaluates no personal aspect (WP251
+    rev.01), so it is not profiling. If an authority read Art. 4(4) more
+    broadly, the practical position would not change: the basis is
+    legitimate interests, the objection switch exists and there is no Art. 22
+    effect. Decision: accept.
+17. **Material notice for rollouts.** Staged rollout could be read as part of
+    running the service rather than a new purpose. The project rule says to
+    treat it as material when unsure, so rollouts wait for the 30-day notice.
+    Decision: accept the delay.
+18. **TOTP enrolment, not a per-session challenge.** An admin who signs in
+    with a passkey or OAuth is not asked for the TOTP code (risk row 38).
+    Stronger than the law requires, weaker than a step-up check. Decision:
+    accept for v1; revisit if a second admin is ever added.
+19. **Expired grants are kept.** A grant past its end date stops applying
+    but its row, with the free-text reason, stays until it is revoked or the
+    account is deleted. It keeps the admin's view of who had what, and the
+    reason is short and written without names. Art. 5(1)(e) would favour
+    deleting it; the change is already in the audit log for 12 months.
+    Decision: accept for v1; a sweep that deletes expired grants is a
+    follow-up candidate.
+
 **Overall.** With the consent gate, the transfer notice and consent, and the
 removal of the ungated background refresh in place (all built in this release),
 the residual risk is medium. It is not high enough for prior consultation under
@@ -866,6 +1118,12 @@ ever becomes default-on or a delete tool loses its cap or confirmation, treat
 row 36 as high. Review before release, and
 again after the first month of real use.
 
+**Feature access (2026-11-08).** Rows 38 to 48. With the measures marked
+built, and rows 40, 43 and 48 completed by P0-7 and P0-8, the overall
+conclusion stays medium; nothing here raises it. Row 43 is medium until the
+opt-in ledger ships, because a restore could revive a withdrawn opt-in; do not
+release a spending feature to users before P0-7 is in production.
+
 ## 7. Consultation
 
 - **Data subjects.** Not consulted. The service has no panel of users. Feedback
@@ -879,7 +1137,9 @@ again after the first month of real use.
   only a disclosure by the user; may it rest on Art. 6(1)(b) or does it need
   consent under Art. 6(1)(a); and is an approval screen the right place for
   the Art. 9(2)(a) consent when the existing gate wording names only the
-  providers whose keys the user adds.
+  providers whose keys the user adds. For feature access (section 3.12): is
+  Art. 6(1)(f) the right basis for staged rollout, and is an objection
+  record rightly kept under Art. 6(1)(c)?
 - **DPO.** None. Not required for one person with no systematic large-scale
   monitoring.
 - **Processors.** Cloudflare and Axiom DPAs. Keep dated copies in a private
@@ -892,7 +1152,7 @@ again after the first month of real use.
 | Prepared by | Engineer draft, 2026-10-26 |
 | Approved by | [OWNER NAME], controller |
 | Date approved | [DATE] |
-| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 15] |
+| Residual-risk decision | [OWNER: accept the residual risks in section 6, items 1 to 19] |
 | Counsel reviewed | No |
 
 **Review this DPIA when:**
@@ -915,8 +1175,9 @@ This list covers this DPIA and `docs/legal/art30-record.md`.
 
 - **[OWNER NAME], [DATE] and the residual-risk decision** in the sign-off table
   above, and the controller name in the Art. 30 record.
-- **Axiom.** Confirm that Axiom's DPA is accepted on the plan in use, and fill
-  in the log retention that plan sets (Art. 30 record, row 15). That retention
+- **Axiom.** Confirm that Axiom's DPA is accepted on the plan in use. The
+  retention of all three datasets is 30 days (read on 2026-11-08, Art. 30
+  record, row 15). That retention
   also bounds the consent history: the database keeps only the latest grant
   and withdrawal, and every earlier grant, withdrawal and transfer consent is
   provable only from the Axiom `legalConsent` events.
@@ -933,6 +1194,11 @@ This list covers this DPIA and `docs/legal/art30-record.md`.
   mechanism (usually SCCs) and cite that. Record the check date here and in
   the Art. 30 record, not on the public page, and update the Privacy Policy's
   "Transfers outside the EU" section with the mechanism only.
+- **The controller's AI client for `admin:features`.** Before the first
+  production use (P0-8), name the client and record its country, its terms
+  for the plan in use and the transfer safeguard (Art. 30 record, section
+  6.4; risk row 48), and add it to the Privacy Policy with its own
+  material notice.
 - **xAI.** Its documents read on 2026-10-26 were tagged "previous version", so
   re-read the current DPA and confirm the entity name (SpaceXAI LLC) and SCCs.
 

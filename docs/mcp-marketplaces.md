@@ -198,8 +198,10 @@ Every tool text or schema change therefore produces a new registry version.
 That is deliberate, even for a one-word description edit.
 
 Choose the level like this: major for a removed tool, a removed or renamed
-input, a new required input or a changed required scope; minor for an added
-tool or an added optional input; patch for text-only changes.
+input, a new required input, a changed required scope or a new OAuth scope
+(owner decision for the agentic roadmap: `admin:features` shipped as 2.0.0,
+`artifacts:share` would be the next major if it does not ride along); minor
+for an added tool or an added optional input; patch for text-only changes.
 
 Known trade-offs: a zod upgrade that changes the JSON Schema output, or a
 pure key reorder in `server.json`, also trips the snapshot test or the guard
@@ -293,9 +295,10 @@ consent page lets the user approve each scope separately.
 | `memory:write` | `add_memory`, `update_memory` |
 | `files:read` | `list_files`, `read_file` |
 | `files:write` | `create_file`, `rename_file` |
-| `settings:read` | `get_settings` |
+| `settings:read` | `get_settings`, `list_my_features` |
 | `settings:write` | `update_settings` |
 | `data:delete` | `delete_chats`, `delete_chat_message`, `delete_project`, `delete_project_knowledge_items`, `delete_files`, `delete_memory`, `reset_memory` |
+| `admin:features` | `list_feature_flags`, `list_feature_access`, `set_feature_access` (Besidka admins only; hidden on the consent page and stripped on the server for everyone else) |
 
 Identity scopes: `openid`, `profile`, `email`, `offline_access`. Every tool
 has a `title` and explicit `readOnlyHint`, `destructiveHint`,

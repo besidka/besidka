@@ -3,12 +3,37 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LEGAL_NOTICES } from '#shared/utils/legal-notices'
+import type { LegalNotice } from '#shared/utils/legal-notices'
 import {
   formatLegalDocumentList,
   getLegalNoticeHref,
   removeLegacyLegalNoticeDismissals,
   useLegalNoticeBanner,
 } from '../../../app/composables/legal-notice-banner'
+
+const registryMode = vi.hoisted(() => ({ useRealRegistry: false }))
+
+vi.mock('#shared/utils/legal-notices', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('#shared/utils/legal-notices')
+  >()
+  const pinnedNotices = [actual.LEGAL_NOTICES[0]]
+
+  return {
+    ...actual,
+    LEGAL_NOTICES: pinnedNotices,
+    getActiveLegalNotices: (now: Date, notices?: readonly LegalNotice[]) => {
+      if (notices) {
+        return actual.getActiveLegalNotices(now, notices)
+      }
+
+      return actual.getActiveLegalNotices(
+        now,
+        registryMode.useRealRegistry ? actual.LEGAL_NOTICES : pinnedNotices,
+      )
+    },
+  }
+})
 
 const [NOTICE] = LEGAL_NOTICES
 const USER_ID = 42
@@ -256,6 +281,21 @@ describe('useLegalNoticeBanner', () => {
 
     expect(wrapper.vm.notice).toBeNull()
   })
+
+  it('shows only the newest notice while two are active in the registry',
+    async () => {
+      registryMode.useRealRegistry = true
+      setNow('2026-11-20T12:00:00Z')
+
+      try {
+        const wrapper = await mountBanner()
+
+        expect(wrapper.vm.notice?.id).toBe('2026-11-experimental-features')
+        expect(wrapper.vm.effectiveDateLabel).toBe('19 December 2026')
+      } finally {
+        registryMode.useRealRegistry = false
+      }
+    })
 
   it('never requests anything itself and never touches browser storage',
     async () => {

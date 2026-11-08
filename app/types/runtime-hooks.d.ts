@@ -1,4 +1,5 @@
 import type { FileMetadata } from '#shared/types/files.d'
+import type { ClientFeaturesPayload } from '#shared/types/features.d'
 import type { CookieConsentChangedPayload } from '@besidka/nuxt-cookie-consent'
 
 declare module '#app' {
@@ -24,6 +25,7 @@ declare module '#app' {
     'chat-input:visibility-changed': (visible: boolean) => void
     'chat-spacer:changed': (height: number) => void
     'device-keyboard:state-changed': (isOpen: boolean) => void
+    'features:changed': (payload: ClientFeaturesPayload) => void
     'files:uploaded': () => void
     'files:deleted': (fileIds: string[]) => void
     'projects:context-updated': (payload: {

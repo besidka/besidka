@@ -27,6 +27,7 @@ const WEB_SERVER_ENV = {
   NUXT_ENCRYPTION_KEY: 'secret',
   NUXT_BETTER_AUTH_SECRET: 'secret',
   NUXT_EMAIL_NOOP_ENABLED: 'true',
+  NUXT_ADMIN_EMAILS: 'e2e-admin@example.com',
 }
 
 /**
