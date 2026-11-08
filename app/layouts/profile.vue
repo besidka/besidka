@@ -139,6 +139,12 @@ const tabs = [
     icon: 'lucide:plug',
     childRoutes: [],
   },
+  {
+    to: '/profile/labs',
+    label: 'Labs',
+    icon: 'lucide:flask-conical',
+    childRoutes: [],
+  },
 ]
 
 function isTabActive(tab: typeof tabs[number]) {

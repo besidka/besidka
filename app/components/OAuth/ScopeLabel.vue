@@ -73,6 +73,11 @@ const scopeDetails: Record<string, ScopeDetails> = {
       + 'files and memory, and reset memory. Deleted data cannot be '
       + 'restored.',
   },
+  'admin:features': {
+    title: 'Manage feature access (admin)',
+    description: 'Grant or revoke experimental features for individual '
+      + 'users. Cannot change rollout or switch features off for everyone.',
+  },
   'openid': {
     title: 'Know who you are',
     description: 'Confirm that you are signed in to Besidka.',
