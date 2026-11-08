@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 let moveMcpContextToAttributes: (event: Record<string, unknown>) => void
+let toLoggedPath: (path: unknown) => unknown
+let enrich: (context: Record<string, any>) => void
 
 beforeAll(async () => {
   vi.stubGlobal('defineNitroPlugin', (plugin: unknown) => plugin)
@@ -9,6 +11,18 @@ beforeAll(async () => {
   const plugin = await import('~~/server/plugins/evlog-request-observability')
 
   moveMcpContextToAttributes = plugin.moveMcpContextToAttributes
+  toLoggedPath = plugin.toLoggedPath
+
+  const hooks: Record<string, (context: Record<string, any>) => void> = {}
+
+  ;(plugin.default as unknown as (app: unknown) => void)({
+    hooks: {
+      hook: (name: string, handler: (context: Record<string, any>) => void) => {
+        hooks[name] = handler
+      },
+    },
+  })
+  enrich = hooks['evlog:enrich']!
 })
 
 function run(mcp: unknown, attributes?: Record<string, unknown>) {
@@ -90,5 +104,34 @@ describe('moveMcpContextToAttributes', () => {
 
     expect(event.attributes).toBeUndefined()
     expect('mcp' in event && event.mcp).toBeFalsy()
+  })
+})
+
+describe('admin path query stripping', () => {
+  it('drops the query string from admin API paths only', () => {
+    expect(toLoggedPath('/api/v1/admin/users/search?q=jane'))
+      .toBe('/api/v1/admin/users/search')
+    expect(toLoggedPath('/api/v1/files?offset=10'))
+      .toBe('/api/v1/files?offset=10')
+    expect(toLoggedPath(undefined)).toBeUndefined()
+  })
+
+  it('keeps the search text out of the wide event path and message', () => {
+    const context = {
+      request: {
+        method: 'GET',
+        path: '/api/v1/admin/users/search?q=jane',
+      },
+      headers: {},
+      event: { path: '/api/v1/admin/users/search?q=jane' },
+    }
+
+    enrich(context)
+
+    expect(context.event).toMatchObject({
+      path: '/api/v1/admin/users/search',
+      message: 'GET /api/v1/admin/users/search',
+    })
+    expect(JSON.stringify(context.event)).not.toContain('jane')
   })
 })

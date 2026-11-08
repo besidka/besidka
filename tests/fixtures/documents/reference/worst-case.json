@@ -1,0 +1,24 @@
+{
+  "version": 0,
+  "description": "Bound cases for renderer limits. Expand the reference specs; do not commit the expanded output.",
+  "cases": [
+    {
+      "name": "document-200-pages",
+      "base": "report-pdf.json",
+      "repeatBlocks": 4,
+      "targetPages": 200
+    },
+    {
+      "name": "presentation-60-slides",
+      "base": "deck.json",
+      "repeatSlides": 2,
+      "targetSlides": 60
+    },
+    {
+      "name": "workbook-100k-cells",
+      "base": "workbook.json",
+      "repeatRows": 10,
+      "targetCells": 100000
+    }
+  ]
+}

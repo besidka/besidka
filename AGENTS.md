@@ -96,6 +96,8 @@ These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `u
 
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`, `research_jobs`; `projects` → `chats` (project-scoped), `projects` → `memory_entries` (project-scoped entries), `projects` → `project_knowledge_items`, `files` → `project_knowledge_items`.
 
+`user_roles` and the `feature_*` tables (`server/db/schemas/features.ts`) have no FK to `users` and no cascade: `purgeUserData` deletes them explicitly and anonymises `feature_audit_log` (see `docs/feature-flags.md`).
+
 ### MANDATORY pre-apply checklist
 
 Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:
@@ -361,11 +363,38 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   withdrawal button, California ARL and the vacated FTC rule, CAN-SPAM and
   RFC 8058, DSA and AI Act effects, the DMCA agent, open questions for counsel,
   and the repo files to change; read before adding any payment or donation link
+- `docs/legal/agentic-capabilities-precheck.md` - Compliance pre-checks for
+  the Agentic capabilities programme (engineer-drafted, not lawyer-reviewed,
+  2026-11-07): the shared gate G1 to G7 every track runs before building
+  (GDPR records and transfers, public documents, materiality and consent
+  version, review items and breach runbook, third-party terms, monetisation
+  guard, accessibility), the accessibility decision for all tracks (European
+  Accessibility Act most likely not applicable through the microenterprise
+  services exemption, revisit on monetisation; WCAG 2.2 AA as the engineering
+  target with the criteria that matter, such as 2.5.7 dragging alternatives
+  and 2.4.11 focus not obscured), and the Phase 0 verdict GO with changes:
+  bucketing is not profiling, Art. 6(1)(f) for rollout, no bucket in
+  exposure events, an Art. 21 experiments switch in Labs, rollout and
+  variants inert in production until the material Privacy Policy notice takes
+  effect, audit-log scrub and 12-month sweep, tester-only role grants, admin
+  2FA, no other users' emails over MCP, the Axiom `featureAccess` replay
+  ledger, the side-panel width as a Preferences key, and the exact input list
+  for the P0-9 legal records; later track pre-checks append a section here
 - `docs/legal/memory-legal-changes-draft.md` - "DRAFT FOR COUNSEL" outlines
   only, not legal text, superseded on 2026-10-26 by the published pages (its
   anchor table is stale): Privacy Policy/ToU clause outlines for memory, a DPIA
   skeleton (UODO M.P. 2019 poz. 666 + EDPB criteria) and an Art. 30 record
   skeleton
+- `docs/legal/prechecks/` - Per-track compliance pre-checks for the agentic
+  capabilities programme (engineer-drafted, not lawyer-reviewed, 2026-11-07):
+  one file per track (`research.md` R-11, `google.md` G-11, `artifacts.md`
+  A-12, `documents.md` D-10, `connectors.md` C-12, `skills.md` S-8), each with
+  a verdict, a question table with sources, the shared gate from P0-14, the
+  ticket changes and the input list for the track's legal ticket. Key
+  results: research may not keep Brave/Exa results past a run (Brave §3(b)(i),
+  Exa §4.2(a)); a public BYO Google OAuth client is an owner risk call,
+  recommended owner-only; Google data only to providers that do not train on
+  API input. Read the track's file before building that track
 - `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
   auth routes are noindex-but-crawlable, the "besidka"/"бесідка" brand-entity
   collision the schema and copy are shaped around, deliberate non-actions
@@ -521,6 +550,38 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   per-send fit check), R2 text and packs, the owner decisions, and, now that
   it is implemented, the K0 to K3 as-built sections (15, 16.5 to 16.7: DOCX
   and XLSX ZIP-bomb limits, the send path, the spike results)
+- `docs/agentic-capabilities-roadmap.md` - The Agentic capabilities programme
+  (Linear P-BES-3), the repo source of truth that the Linear roadmap document
+  mirrors: phases 0 to 7 with a status table every merged ticket updates
+  (0 foundation, 1 artifacts, 2 documents and code execution, 3 custom
+  research, 4a connectors, 4b Google, 4c skills; 5 voice, 6 scheduled
+  routines, 7 browser agent as roadmap only; computer use deferred), the
+  per-track compliance pre-check and launch-content tickets, execution
+  order, the owner decisions of 2026-11-07 (Flagship later, artifacts
+  runtime on its own `workers.dev` Worker, `artifacts:share`, hybrid document
+  renderer, research overriding the general-model rule, BYO Google client for
+  Gmail, right-hand side panel with a contextual pill slot), the planning
+  decisions (no `users` columns or FKs, UI-only rollout and kill switch,
+  orchestrator Worker with HMAC callbacks, `retries.limit: 0` on spending
+  steps, new scopes instead of reused ones), the host-vs-user cost model, the
+  assumptions table with the Workers Paid finding (confirmed 2026-11-08 by
+  three read-only indicators, not from the billing page), the cross-cutting
+  conventions (flag wiring, MCP rule pack, D1, Workers, legal, telemetry,
+  monorepo `packages/*` and `workers/*`), the UX principles and the
+  one-stack-per-track PR strategy
+- `docs/feature-flags.md` - Per-user feature access design (P0-2 to P0-10):
+  the five tables (`user_roles`, `feature_flag_rules`, `feature_grants`,
+  `feature_opt_ins`, `feature_audit_log`; no FK to `users`, explicit purge,
+  audit rows anonymised and kept 12 months), the registry entry shape
+  (`spend` implies opt-in, variants only on non-spending flags), the
+  evaluation precedence (unknown, `NUXT_FEATURES_DISABLED`, host mode, rule
+  disabled, anonymous, deny, allow, role, sticky salted-hash rollout gated by
+  `NUXT_FEATURES_ROLLOUT_ENABLED` and the user's experiments objection,
+  default), KV rules cache and per-request user state, env admins with
+  verified email and 2FA (`NUXT_ADMIN_EMAILS` is a secret, tester-only role
+  grants in v1), exposure telemetry without a bucket, the Axiom
+  `featureAccess` replay ledger, client access and Labs, MCP limits, the
+  Flagship path and the "adding a flag" checklist
 - `docs/mcp-server.md` - The `/mcp` server (four public read-only tools, plus
   32 per-user tools behind OAuth; `@nuxtjs/mcp-toolkit` on Workers): UI parity
   (everything the web UI does except chatting: the eleven scopes, the tool table
@@ -538,6 +599,29 @@ A restore rolls back **only D1**. KV, R2 and Axiom keep their current state, so 
   there is no `send_message` tool (decided 2026-10-30: no per-call approval
   guarantee, Art. 49 consent path; revisit criteria and the zero-spend
   `create_chat_draft` alternative)
+- `docs/connectors.md` - Connectors design (Phase 4a, C-1, not built yet):
+  user-brought remote MCP servers that Besidka calls as an MCP client
+  (outbound, unlike Connected apps); the threat model with the mitigating
+  ticket per row (SSRF, DNS rebinding and `global_fetch_strictly_public`,
+  LibreChat-style interpolation, token passthrough, lookalike hosts, rug
+  pulls, cross-connector exfiltration, CIMD tampering); the SSRF validator
+  rules and test vectors; the add-without-request, connect, consent and
+  OAuth flow (CIMD at `/connectors/client-metadata.json`, the preview host
+  rule, DCR fallback, PKCE, `resource`, `iss`); the per-send lifecycle;
+  approvals (every tool starts at "ask", forced rules F1 and F2, "approval
+  ends the send"); the data model, limits table (`connectors-policy.ts`),
+  UI placement, MCP tools and scopes, the OpenAI-only native path, the
+  `@ai-sdk/mcp` verification, host portability, the vendor-policy re-check,
+  and the ticket changes it imposes on C-2 to C-11
+- `docs/skills.md` - Skills design (Phase 4c, not built yet): Agent Skills
+  (agentskills.io) imported by GitHub, link, zip, paste or MCP; pinning,
+  archive rules, findings, the licence classifier (Anthropic's 2026-11-06
+  Apache-2.0 relicence, content-based blocking), the R2 layout
+  (`user-skills/`), the runtime (catalog budget, `activate_skill`,
+  `read_skill_file`, re-injection past the text-only sanitizer), the threat
+  model, Anthropic-only provider-container scripts, the data model, limits,
+  review UI, MCP tools, the never-public invariant, and the ticket changes
+  it imposes on S-1 to S-7
 - `docs/mcp-marketplaces.md` - Where the `/mcp` server is listed (official
   MCP Registry, Claude, ChatGPT, Cursor, Google Connected Apps) and why Grok,
   Meta Muse, Microsoft 365, Salesforce and AWS do not fit; `server.json`, the
